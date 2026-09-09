@@ -72,6 +72,14 @@ snapshot:
   version_template: '{{ incpatch .Version }}-snapshot'
 
 release:
+  # **no `prerelease:` key, and never `prerelease: auto`.** a tag naming a pre-release
+  # (`v0.0.1-alpha.1`) is still published here as an ordinary release, on purpose: github's
+  # `releases/latest` skips anything flagged pre-release, and `releases/latest/download/install.sh`
+  # is the address the operator documents publish. flagging one — here, or by ticking the box in
+  # github's own release form — takes the install line down for everyone, and the release that did
+  # it is the one nobody can install. the alpha is said in the tag and in the version the binary
+  # prints, which is where a reader looks anyway. internal/update reads the numbers and cuts the
+  # suffix (internal/update/update.go, `numbered`), so a pre-release tag orders correctly there.
   extra_files:
     # the worker bundle, packed by .github/workflows/release.yml before this runs. it is named for
     # the version rather than for the platform, because one bundle serves every architecture — the
