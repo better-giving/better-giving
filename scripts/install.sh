@@ -5,7 +5,7 @@
 #
 # it puts one file on the machine — the console binary for this platform, checked against the
 # release's own checksums.txt — and says how to reach it. nothing else is installed and nothing is
-# configured: signing in to cloudflare is `better-giving open` and a press in the browser.
+# configured: signing in to cloudflare is `better-giving start` and a press in the browser.
 #
 # **posix sh, because the line above pipes it into whatever /bin/sh is.** no arrays, no `local`, no
 # `[[`, no `pipefail`: those are bash, and debian's /bin/sh is dash.
@@ -126,12 +126,12 @@ fi
 say "installed $dir/better-giving"
 case ":${PATH:-}:" in
 	*":$dir:"*)
-		say 'open the console with: better-giving open'
+		say 'set your deployment up with: better-giving start'
 		;;
 	*)
 		say ''
-		say "$dir is not on this machine's PATH. either open the console with the whole path:"
-		say "  $dir/better-giving open"
+		say "$dir is not on this machine's PATH. either run it with the whole path:"
+		say "  $dir/better-giving start"
 		say 'or add this line to your shell profile — ~/.zprofile on macos, ~/.profile on linux — and open a new terminal:'
 		say "  export PATH=\"$dir:\$PATH\""
 		;;

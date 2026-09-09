@@ -217,11 +217,9 @@ func stopped(ran first.Outcome) error {
 // a deployment that was already standing when this command ran, so nothing was deployed.
 func alreadyUp(address deployment.Address) string {
 	if where := address.Origin(); where != "" {
-		return release.Baked.Name + " is already deployed, at " + where +
-			": nothing was deployed, and the console below reads it"
+		return "found " + release.Baked.Name + " deployment: " + where
 	}
-	return release.Baked.Name + " is already deployed and answers on no address this console can " +
-		"read: nothing was deployed, and the console below reads what it can"
+	return "found " + release.Baked.Name + " deployment, answering on no address this console can read"
 }
 
 // where the deployment this run stood up answers.
