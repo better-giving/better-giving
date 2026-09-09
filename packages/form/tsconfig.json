@@ -1,0 +1,13 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"target": "esnext",
+		"module": "esnext",
+		"lib": ["esnext", "DOM", "DOM.Iterable"],
+		"verbatimModuleSyntax": true,
+		"isolatedModules": true,
+		"types": ["node", "vite/client"],
+		"noEmit": true
+	},
+	"include": ["src/**/*.ts", "dev/**/*.ts", "vite.config.ts", "vite.embed.config.ts"]
+}

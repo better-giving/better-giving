@@ -1,0 +1,33 @@
+{
+	"name": "@better-giving/console-ui",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "react-router build",
+		"check": "react-router typegen && tsc --noEmit",
+		"dev": "react-router dev",
+		"prepare": "react-router typegen",
+		"test": "vitest --run"
+	},
+	"dependencies": {
+		"@ark-ui/react": "catalog:",
+		"@better-giving/operator": "workspace:*",
+		"@conform-to/react": "catalog:",
+		"@conform-to/zod": "catalog:",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@react-router/dev": "catalog:",
+		"@react-router/fs-routes": "catalog:",
+		"@types/node": "catalog:",
+		"@types/react": "catalog:",
+		"@types/react-dom": "catalog:",
+		"react": "catalog:",
+		"react-dom": "catalog:",
+		"react-router": "catalog:",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vitest": "catalog:"
+	}
+}

@@ -1,0 +1,610 @@
+/*
+ * how the form is arranged, at the 375px viewport floor and upward.
+ *
+ * one vertical column of decisions, and no width decision in this file is a media query against the
+ * viewport. the card is embedded in a page this code cannot see — it may be a 320px sidebar inside a
+ * 1440px window — so the viewport says nothing about how much room the form has.
+ *
+ * two mechanisms answer instead, and which one a rule takes is a decision rather than a habit. a
+ * container query against the card is for a change the card makes as a whole — the interior's inset,
+ * the pair of name fields. the amount tiles take neither: they wrap on the width their own boxes
+ * need, so there is no breakpoint to state and no count for one to be wrong about. that is what
+ * leaves no preset count with a short row, which a stated column count cannot do at every count
+ * between none and a dozen.
+ *
+ * nothing in this file transitions. a reflow here is caused by a host resizing their own layout
+ * or collapsing a sidebar, and animating a reflow they caused produces a scramble that reads as a
+ * defect rather than as feedback. there is no `transition` and no `animation` declaration in this
+ * stylesheet or in ./parts.css — motion lives in ./motion.css, which touches no property either of
+ * these two files puts inside a container query — and "declares no transition on anything a
+ * container query changes" in ../element.dom.spec.ts is what keeps it that way.
+ *
+ * the breakpoints are `em`, not `rem`, and that is the whole point of the root clamp. inside an
+ * `@container` condition a font-relative `em` resolves against the query container's own
+ * font-size — the card's, which ../styles/tokens.css clamps into [15px, 18px] — while `rem` would
+ * resolve against the host document's root, which is exactly the value the clamp exists to
+ * defend against. a host running `html { font-size: 62.5% }` would otherwise move a 22rem
+ * breakpoint to 220px and put three tiles in a 240px sidebar.
+ *
+ * every length here is a token from ./tokens.css. the exceptions are the four shapes rather than
+ * measures — the segment's own track minimum, a tile's, the reading measure the takeovers are held
+ * to, and the box a host page holds before the upgrade — which are geometry rather than steps of a
+ * scale, and a token apiece would be a scale nobody counts along.
+ *
+ * ../../package.json exports this file as `./styles/layout.css`, third of the four the card is
+ * dressed from. it comes after ./parts.css so that `[hidden]` is the last word on what is on
+ * screen, and before ./motion.css, which moves what these rules place. `sheetsFor` in ../element.ts
+ * is that order for the element; the deployment's own donation page links the four in it.
+ */
+
+:host {
+	/*
+	 * a custom element is `display: inline` until told otherwise, which makes every width and
+	 * every margin below do nothing.
+	 *
+	 * and no floor. the element's box is whatever it is drawing, which past the wait is a card that
+	 * stands at its own height — see `.loading` below for the one state that does reserve.
+	 */
+	display: block;
+}
+
+:host([hidden]) {
+	display: none;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+/*
+ * a control inherits neither the font nor the color of the page it sits in, on any browser. the
+ * form is set in one face and one color scale, and these four elements are where that otherwise
+ * stops being true.
+ */
+button,
+input,
+textarea,
+select,
+fieldset,
+legend {
+	font: inherit;
+	color: inherit;
+	letter-spacing: inherit;
+	margin: 0;
+}
+
+fieldset {
+	padding: 0;
+	border: 0;
+	min-inline-size: 0;
+}
+
+/*
+ * the padded interior is a `<form>` (../views.ts), and the margin is not a style choice: a host
+ * page served without a doctype puts its whole document in quirks mode, where the UA sheet gives
+ * every form a `margin-block-end: 1em`
+ * (https://html.spec.whatwg.org/multipage/rendering.html). the shadow root is in that document,
+ * so the card would take it too — a gap under the last step, on the one kind of page nobody here
+ * can reach to fix.
+ */
+form {
+	margin: 0;
+}
+
+/*
+ * present to a screen reader and absent from the page. carries the labels the layout states
+ * positionally — the entry's own `Amount`, the note's, the tribute's — a donor can see what a box
+ * under a heading is for; a screen reader is told. the two legends on the amount step are not
+ * among them: they are drawn, and `.group > legend` below is what puts them in the flow.
+ */
+.vh {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}
+
+[part~='card'] {
+	/*
+	 * the query container every breakpoint below resolves against, and the reason the form is
+	 * correct in a sidebar it was never measured in. named rather than anonymous so a condition
+	 * cannot silently start resolving against something nested inside it later.
+	 */
+	container: donate / inline-size;
+	display: grid;
+	/*
+	 * the rows are their own height and the card keeps whatever is left over. it matters on the
+	 * loading card below, which is the one card here with a floor taller than its content.
+	 */
+	align-content: start;
+}
+
+/*
+ * the wait, and the one box on this element that reserves rather than measures.
+ *
+ * space held for the form before its configuration has been read, so the card does not grow into
+ * the host's page under content that has already been laid out around it. the host page holds this
+ * same number until the element is defined — ../embed/reservation.ts is where that rule is written,
+ * where the number comes from, and why it is `px` rather than any unit the host's own root can
+ * move — and its `:not(:defined)` stops matching the instant the definition lands, which is the
+ * instant this card is in the tree. so the two are one continuous floor across the join, and
+ * "reserves exactly the height the element's own sheet holds after it" in ../parts.spec.ts is what
+ * keeps them one value.
+ *
+ * it ends where the wait does. the reserve is a guess at the tallest common card, taken at the top
+ * of a range rather than fitted (../embed/reservation.ts argues the number at length), so a card
+ * left standing in it is a short step stretched to a height nothing on it asked for — the amount
+ * step, which is the first thing a donor sees, is the shortest of the three. the host's page has
+ * already been laid out around the reserve by then and gives the difference back once; every
+ * screen after that is the card's own height.
+ *
+ * `min-height` rather than the logical property every other length in this file is written in, and
+ * it is the one place that spelling is load-bearing: the pasted rule is `min-height` and the tie
+ * between the two is textual.
+ */
+.loading {
+	min-height: 620px;
+}
+
+/*
+ * the padded interior, and the reason it is a box of its own rather than padding on the card:
+ * `[part~='card']` is named, so a host's `::part(card)` padding beats anything this sheet declares
+ * there and the interior would be at their measure rather than at `--_inset`. one box inside it
+ * that no part name reaches is what keeps the inset the element's own, which is what
+ * ../../custom-elements.json tells an integrator on that part.
+ *
+ * every state the card draws goes through here, and the padding is the whole of why: a node
+ * appended to the card itself stands outside the inset with one pixel of border beside it.
+ */
+.card-body {
+	display: grid;
+	/*
+	 * the one column shrinks under its content, which is what the dedication row below promises of
+	 * every column in this file: left implicit the column is as wide as the widest min-content on the
+	 * step, and a receipt line holding an address a donor typed sets that past the card at 375px —
+	 * the total, the security code and the button then stand outside a card that scrolls nowhere.
+	 */
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--_sp5);
+	padding: var(--_inset);
+}
+
+/* the steps stack, one visible at a time. */
+.step {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp5);
+}
+
+/*
+ * the line under the receipt saying where the receipt goes belongs to the receipt: a step's full
+ * rhythm above it stands it as far from the total as from the rail below, and a line equidistant
+ * from two blocks reads as a third. it takes the receipt's own row gap instead, by the rule
+ * `.disclosure + .disclosure` below uses — the step's gap negated and the receipt's put back — so
+ * a step drawn at a different rhythm keeps the line where it is. adjacency rather than a name,
+ * because the receipt is moved off the step for the takeover (`receiptSlot` in ../views.ts) and
+ * the line is hidden with the step, so the pair only ever stands together here.
+ */
+[part~='summary'] + .aside {
+	margin-block-start: calc(var(--_sp2) - var(--_sp5));
+}
+
+/*
+ * the head is one line: the step's heading at its start, the marks that move between steps at its
+ * end, and the marks on the heading's first line whether or not the heading wraps.
+ *
+ * both items start at the top of the head, so the heading's first line starts at the same height on
+ * all three steps — which is what keeps the title where a donor left it as they move between
+ * screens — and a heading long enough to wrap grows the head downward from there rather than moving
+ * the line it shares with the marks.
+ *
+ * the head is the line and nothing more. it states no floor of its own: the marks carry `--_row-min`
+ * (`.step-dot` in ./parts.css) on a box one line tall (`.step-dots` below), so each target stands
+ * taller than the head and overhangs it evenly, above into the card's own padding and below into
+ * the step's own gap. a floor here would be that overhang paid for twice — the head would grow to
+ * the target's height and the slack under the heading would land on the gap before the first
+ * control, which is a heading double-spaced from what it names.
+ *
+ * a gap is space and not paint, so a target reaching into one takes nothing from what is drawn
+ * there: nothing else on the card is inside that gap to be pressed instead.
+ *
+ * the heading keeps its default `flex-shrink`, so a card narrow enough that the two would collide
+ * wraps the heading rather than pushing the marks off the end or scrolling the card. the marks are
+ * `flex: none` and never give up their targets to make room.
+ *
+ * the gap is the floor between the two when the heading is long enough to reach the marks; what
+ * puts the marks at the end the rest of the time is the auto margin below.
+ */
+.step-head {
+	display: flex;
+	align-items: start;
+	gap: var(--_sp3);
+}
+
+/*
+ * pushed to the end of the line by what is left over rather than by `space-between` on the head:
+ * `space-between` is a rule about however many items the line has, and this one is a rule about
+ * these items — the marks end the line whatever else is ever put on it.
+ *
+ * no gap between them. they abut, and ./parts.css is where that is load-bearing: each is a target
+ * in its own right, and a gap would be a strip of the line belonging to neither.
+ *
+ * the box is one line of the heading, and the marks are centred on it — which is what puts them on
+ * the heading's first line rather than in the middle of however many lines it takes. it is stated
+ * from the two tokens the heading is drawn with (`[part~='heading']` in ./parts.css) so it follows
+ * the type rather than a length copied off it. each target is taller than this box and overflows it
+ * evenly, and this box is what the head is as tall as — so the overhang falls outside the head in
+ * both directions and the heading is spaced off what it names by the step's own gap alone.
+ */
+.step-dots {
+	display: flex;
+	align-items: center;
+	block-size: calc(var(--_t-lg) * var(--_lh-tight));
+	margin-inline-start: auto;
+}
+
+/*
+ * the anti-abuse challenge, which reserves no space for itself.
+ *
+ * the widget is rendered in the mode that draws nothing at all unless the visitor is actually
+ * asked to interact, so this box is zero-height for almost every donor — and a flex `gap` is spent
+ * between item boxes whatever their size, which would leave a hole under the last control on every
+ * card that never draws a challenge. cancelling exactly the step's own gap is what makes the empty
+ * case cost nothing.
+ *
+ * what it costs is the other case: when a visitor is asked to interact, the widget draws flush
+ * against the control above it rather than a step away from it. that is the trade, and it is this
+ * way round because the empty case is the one nearly every donor sees.
+ */
+.challenge {
+	margin-block-start: calc(-1 * var(--_sp5));
+}
+
+/*
+ * the takeovers are prose — a thank-you, an error, the correction screen — and past about 46
+ * characters a line of prose stops being scannable. the numbered steps carry form controls rather
+ * than prose and take the card's whole width at every size: a control stopping short of the card's
+ * right edge reads as a defect rather than as a measure.
+ */
+.takeover {
+	max-inline-size: 46ch;
+}
+
+/* the block the receipt is moved into when a takeover states the money. */
+.receipt-slot {
+	display: flex;
+	flex-direction: column;
+}
+
+/*
+ * the provider's own authorization wording, scrollable and never truncated. the height is a
+ * measure of lines rather than of pixels so it holds at every step of the clamped root, and the
+ * container is focusable because a scrollable region a keyboard cannot reach is one a keyboard
+ * user cannot read.
+ */
+.mandate {
+	max-block-size: 11em;
+	overflow-y: auto;
+}
+
+.group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp2);
+}
+
+/*
+ * a fieldset's first legend is its rendered legend, laid on the fieldset's border outside any flow
+ * the fieldset lays out — outside the gap above, so a legend left alone stands on the tray's own
+ * edge with nothing between the two. a float is the one thing that stops it being the rendered
+ * legend, and a flex item is never floated, so what is left is a plain first item of the column.
+ * the platform's own inline pad on a legend is taken back so the word starts where the tray does.
+ */
+.group > legend {
+	float: left;
+	inline-size: 100%;
+	padding: 0;
+}
+
+/*
+ * the frequency control: equal columns, one row, every option at the interactive floor. four or
+ * more enabled frequencies wrap into a second row rather than shrinking an option under it.
+ */
+.segment {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(5.5em, 1fr));
+	gap: var(--_sp2);
+}
+
+/*
+ * the amount grid: every row has the columns the first row has, and a row that comes out short
+ * leaves its last cells empty rather than stretching what is on it.
+ *
+ * an org may serve any number of presets from none to a dozen, and no fixed column count places
+ * every one of them without a short row, so the count is never stated. what is stated is a tile's
+ * own width, and the engine answers with as many columns as fit at that width — the same columns on
+ * every row, because a tile on the second row wider than the one above it is two figures at two
+ * sizes that mean the same thing.
+ *
+ * the minimum is two numbers because it is doing two jobs at once. the fraction is the cap — three
+ * to a row and never four, however wide a card gets, because these are shortcuts read at a glance
+ * and a fourth column spends width the tiles themselves should have; the pixel off it is slack for
+ * the engine's own rounding, so three of the minimum always fit where the arithmetic says three do.
+ * the `em` is the floor — the width below which a four-figure amount stops fitting a tile — and it
+ * is `em` off the card's clamped root for the reason every breakpoint in this file is: a `rem`
+ * there resolves against the host document's root, so a page at `font-size: 62.5%` would put three
+ * tiles in a 320px sidebar.
+ *
+ * the free entry is one of these boxes rather than a control under them, and it takes a row of its
+ * own: a tile's cell holds a figure and nothing else, and the entry carries a mark at each end of
+ * the figure, which at the 375px card leaves the word in it cut.
+ *
+ * the tray the boxes stand on is painted in ./parts.css (`.segment, .tiles`); this is the flow
+ * inside it. the gap is twice the tray's own inset, on both trays alike, because a grid line
+ * stands at the middle of it (./parts.css, the grid-line rules): a chosen box then stands off the
+ * line beside it by exactly what it stands off the tray's edge. the tray is a query container so
+ * those lines can be drawn the tray's content width across in `cqi`; nothing queries it.
+ */
+.tiles {
+	display: grid;
+	grid-template-columns: repeat(
+			auto-fill,
+			minmax(max(6em, calc((100% - 2 * var(--_sp2)) / 3 - 1px)), 1fr)
+		);
+	gap: var(--_sp2);
+	container-type: inline-size;
+}
+
+.tiles > * {
+	min-inline-size: 0;
+}
+
+.tiles > .entry {
+	grid-column: 1 / -1;
+}
+
+.names {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--_sp3);
+}
+
+/*
+ * the tribute's first line: how the gift is dedicated, and who it is dedicated to.
+ *
+ * the two read as one sentence — `In honor of` starts it and the name finishes it — and where the
+ * card can hold both they share a line, which is what makes the select a phrase the donor is
+ * completing instead of a second question above the name.
+ *
+ * the columns are not `.names`' pair of equals and cannot be: a select is as wide as its longest
+ * option and a name is as wide as whatever is left. `auto` gives the select its own measure and
+ * `minmax(0, 1fr)` lets the name take the remainder and shrink under its content rather than
+ * pushing the row wider than the card — the same `minmax(0, …)` every column in this file carries,
+ * and the whole of what keeps the card off a horizontal scrollbar at 375px.
+ *
+ * `start` in block, so the two boxes sit on the same line whatever either of them is drawn at.
+ */
+.dedication {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: start;
+	gap: var(--_sp2);
+}
+
+/*
+ * what the remainder is worth is the whole question on a phone, and below the breakpoint it is not
+ * worth a line: `In memory of` takes the better part of half a 375px card, so the name is left
+ * under 150px holding text a donor typed and an `<input>` does not wrap — they read the front of a
+ * name and no more of it. so the name drops to a row of its own and takes the width the sentence
+ * under it already takes, and the select keeps the intrinsic track above it rather than stretching
+ * into a second question.
+ *
+ * this is the pair-below-a-breakpoint `.names` takes, at that same breakpoint and for the same
+ * reason: it is the one width this card states about holding two boxes on a line. the pair is
+ * unequal here and it survives the reuse — at the breakpoint the name is drawn wider than a
+ * `.names` field is at the same width, which ./layout.browser.spec.ts measures rather than assumes.
+ *
+ * the select's measure is the track's and never the select's own: `[part~='field']` in ./parts.css
+ * sets `inline-size: 100%`, so what the box is drawn at is whatever the column it stands in
+ * resolved to, and `auto` here is the longest option.
+ */
+.dedication > input {
+	grid-column: 1 / -1;
+}
+
+/*
+ * the sentence under the name spans the pair rather than sitting in the name's own column. that
+ * column is a little over a third of a 375px card, and the sentence stacked into it runs six lines
+ * deep under a box one line tall — which reads as the block breaking rather than as a refusal.
+ *
+ * `.message` and not the box it belongs to: the box shares the line where the card is wide enough
+ * for it and the words never do.
+ */
+.dedication .message {
+	grid-column: 1 / -1;
+}
+
+/*
+ * the tribute's body holds two groups where the note's holds one control, so the step between them
+ * is the one this file already spends between groups (`.names` above) rather than the one it spends
+ * between a label and the box it names.
+ *
+ * an override on the shared rule rather than a class of its own: what the two disclosures share is
+ * the construction, and this is the one length that follows from what is inside them.
+ */
+.tribute .disclosure-inner {
+	gap: var(--_sp3);
+}
+
+/*
+ * the press that opens and shuts the notify pair, paying back the slack it carries above its words.
+ *
+ * it is drawn as words and stands at `--_row-min` like every other target, so half the difference
+ * between that floor and its own line stands over the words — and the words are what a donor reads
+ * the step above them off, not the box. the negation is that slack, so the line comes to sit the
+ * block's own gap below the dedication row instead of twice it.
+ *
+ * the take-back is the slack or that gap, whichever is the smaller, and the bound is what keeps
+ * the two boxes from overlapping: the press is set smaller than the card's own text (./parts.css),
+ * so its line is shorter, its slack is wider than the gap it is spent out of, and an unbounded
+ * negation lifts the target box into the honoree's — a finger reaching the press lands in the
+ * field above it. where the gap is the smaller the two boxes come to meet at it; where the slack
+ * is, the words sit the gap below and the boxes stand apart by the difference. that is where this
+ * parts from the two ticks below (`.disclosure:has(+ .disclosure)`), which take back a gap that is
+ * already spent and pay for it in overlap.
+ *
+ * the gap is `--_sp3` spelled off the card's own size, because an `em` in this rule resolves
+ * against the press's smaller text rather than against the size the block spent its gap at. the
+ * step is carried here by hand, the way `--_inset` carries `--_sp5`'s in ./tokens.css: a step moved
+ * there is moved here.
+ *
+ * in both states: the same control stands there once the pair is open, reading with a minus over
+ * the boxes it drew, and the slack over its words is the same slack.
+ */
+.tribute [part~='action-quiet'] {
+	margin-block-start: max(calc(-0.75 * var(--_root-size)), calc(-1 * (var(--_row-min) - 1lh) / 2));
+}
+
+.field-row {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp2);
+}
+
+/*
+ * the box and its sentence, with the box in a fixed gutter. `start` rather than centred, because
+ * the sentence wraps on a narrow card and a box centred against two lines sits against neither of
+ * them — ./parts.css offsets it onto the first line's own box instead.
+ */
+.check-row {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: start;
+	align-content: center;
+	gap: var(--_sp3);
+	min-block-size: var(--_row-min);
+	cursor: pointer;
+}
+
+/*
+ * a disclosure: the tick, and what it reveals directly under it. two on the amount step — the note
+ * and the tribute — and one rule, so the pair cannot come to sit differently.
+ *
+ * the pair is one item on the step so that the step's own rhythm falls above it rather than inside
+ * it — a revealed field a full `--_sp5` below the tick that revealed it reads as a second thing on
+ * the step rather than as the disclosure opening.
+ *
+ * no gap of its own, and it is not the same as no space: `.check-row` above carries `--_row-min`
+ * and its content is centred in it, so what stands between the words and the field is the slack the
+ * target leaves under them. that is a target's height doing the spacing, which is why nothing is
+ * added to it — a step on top would put the pair back where this rule took it from.
+ *
+ * a `grid` rather than a `flex` column, because a `gap` is the thing being refused here: there is
+ * no direction to state and nothing to distribute.
+ */
+.disclosure {
+	display: grid;
+}
+
+/*
+ * the two disclosures are a pair in the same way, one level up: the note and the tribute are the
+ * two optional asks on the step, and the step's rhythm belongs above and below the two of them
+ * rather than between them.
+ *
+ * a flex `gap` is spent between every pair of items on the step, so what puts these two together is
+ * taking that one back, and a step of the rows' own slack with it. it is the step's own token
+ * negated rather than a length of its own, so a step drawn at a different rhythm keeps the pair
+ * closed.
+ *
+ * with the gap alone taken back, what stands between the two ticks is the slack `--_row-min`
+ * leaves over and under each row's words (`.check-row` above) twice over — a target's height doing
+ * the spacing, and doing more of it than the step spends between a tick and the field it reveals,
+ * so the two asks read as further apart than an ask and its answer. the `--_sp3` on top of the gap
+ * is what closes that: the two rows overlap by that much of their slack, and the words come to sit
+ * about a `--_sp3` apart. each row still holds the floor in layout; where the two overlap the later
+ * one takes the press, and what the earlier one keeps is its floor less this step, which is still
+ * past the 24px `--_target-min` in ./tokens.css argues from. the pair still sits a step from the
+ * amount block above it and from the button below it, because the gaps the step spends there are
+ * untouched.
+ *
+ * a rule about adjacency rather than about the note and the tribute by name: the two are a pair by
+ * standing next to each other on the step, and a third ask put beside them joins the pair on the
+ * same terms. the skeleton's two rows stand in for the pair (`.skeleton-row` in ./parts.css) and
+ * sit by this same rule, so the shape is the height of the step it holds the place of.
+ */
+.disclosure + .disclosure,
+.skeleton-row + .skeleton-row {
+	margin-block-start: calc(-1 * var(--_sp5) - var(--_sp3));
+}
+
+/*
+ * and what the rule above costs, paid back where it is owed: with the step's gap and a step of
+ * slack gone from between the two, a disclosure the donor opened would leave the next tick less
+ * than one row's slack under the field it revealed — which reads as that tick belonging to the
+ * block that was just opened rather than as the next ask. a step's rhythm there is what tells them
+ * apart again, and it is the step's own token because it is the step's own rhythm, with the
+ * `--_sp3` the rule above took returned beside it so the two lengths cancel to exactly the step.
+ *
+ * inside the row the disclosure opens rather than under the box it opens, and that is the whole
+ * reason it is stated on the inner: the body is a grid row that grows from `0fr` (`.disclosure-body`
+ * in ./parts.css and ./motion.css), so a length inside that row is revealed with the content and a
+ * length outside it would appear whole on the press.
+ *
+ * only while another disclosure follows. the last one on a step already has the step's own gap
+ * under it, and a second length there would set the button further from an opened block than from a
+ * closed one.
+ */
+.disclosure:has(+ .disclosure) .disclosure-inner {
+	padding-block-end: calc(var(--_sp5) + var(--_sp3));
+}
+
+.skeleton {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp5);
+}
+
+/* the block a form that cannot be rendered says so in. */
+.alert {
+	display: grid;
+	gap: var(--_sp2);
+}
+
+@container donate (min-width: 24em) {
+	.names {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	/* back onto the select's line, which is the sentence the two of them are. */
+	.dedication > input {
+		grid-column: 2;
+	}
+}
+
+@container donate (min-width: 26em) {
+	.card-body {
+		padding: var(--_inset-wide);
+	}
+}
+
+/*
+ * `hidden` is a UA declaration and every `display` above outranks it, so the attribute this file's
+ * own layout rules are written around does nothing without this line: `.step[hidden]` still
+ * computes `display: flex` from `.step`, and both steps render stacked on top of each other.
+ *
+ * it is last in the file on purpose. every selector it has to beat is `[hidden]`'s own specificity
+ * or lower, so source order is what decides, and a rule added after this one that sets `display`
+ * on something the element hides silently undoes it. "hides what it marks hidden" in
+ * ./layout.browser.spec.ts is what catches that; a lightweight DOM reads the `hidden` property and
+ * agrees either way.
+ */
+[hidden] {
+	display: none;
+}

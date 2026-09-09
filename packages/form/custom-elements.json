@@ -1,0 +1,108 @@
+{
+	"schemaVersion": "1.0.0",
+	"readme": "../../README.md",
+	"modules": [
+		{
+			"kind": "javascript-module",
+			"path": "src/element.ts",
+			"declarations": [
+				{
+					"kind": "class",
+					"name": "BgDonateForm",
+					"customElement": true,
+					"tagName": "bg-donate-form",
+					"summary": "A nonprofit's donation form, embedded in the org's own page.",
+					"description": "The element renders the flow in packages/form/src/checkout.machine.ts and imports no UI framework. Its public surface is closed: two attributes, one seed custom property, twelve part names and two slots, each of which is permanent. A breaking change to any of them ships as a second element alongside this one, never as an edit to this one. It dispatches no events — there is deliberately no `events` array below rather than an empty one, because the absence is today's fact and not a promise: an event is the one kind of surface that can still be added without breaking anything already pasted into a page.\n\nThe documented integration is the script tag, one style rule and the element, and the rule is not optional: the script is loaded `async`, so the parser builds the element before the definition arrives and an undefined custom element is an inline box of no size — the host's page is laid out around nothing and then reflows by the card's full height. The runtime cannot fix that from inside, because running it is the upgrade. So the host page carries `bg-donate-form:not(:defined) { display: block; min-height: 620px; }`, which reserves the floor the upgraded element stands at and stops applying the moment it is defined. The height is stated in `px` and in no font-relative unit: it is read against the host document's root, the card's own scale is clamped and stops following that root, so a page that shrinks its root would otherwise shrink the reservation under a card that did not shrink with it. It is a floor under the card's common shapes rather than a fit to every configuration — a form suggesting a dozen amounts stands taller than it and the page takes the difference, while a short one leaves space under itself inside the box. It is generated with the snippet on /admin/forms and written out in README.md; packages/form/src/embed/reservation.ts is where the height lives, and it is the same number `:host` carries in packages/form/src/styles/layout.css. The rule works from anywhere on the page — a `<style>` element is not valid in `<body>` and CMS sanitizers strip it, so an integrator pasting into a content block puts the rule in their own stylesheet instead. The height is a permanent contract in the strongest sense: once pasted it is frozen into pages this project cannot reach, so it is added to and never changed.\n\nA Content-Security-Policy on the embedding page has to allow five directives or no donation can be completed, and README.md carries the block to paste and is the one place it is written out. What belongs here is only what the element itself causes: it loads Stripe.js and Cloudflare Turnstile onto the host page, neither of which is styleable and neither of which is a part, because what they draw is inside their own frames; it fetches this deployment's own origin from the donor's browser, which is the entry a starter policy is missing; and it writes inline style text, from this class and from packages/form/src/styles/resolve.ts, which is this form's own doing rather than a vendor requirement and is expected to go away. A nonce-based policy needs no 'strict-dynamic' — a nonce on the pasted script tag is propagated to the runtime and on to both vendor scripts by packages/form/src/embed/loader.ts and packages/form/src/embed/nonce.ts — and a cross-origin-isolated page cannot run the form at all, because Stripe does not support cross-origin isolated sites.",
+					"attributes": [
+						{
+							"name": "form",
+							"type": { "text": "string" },
+							"description": "The id of the form to render. Required; without it the element renders a message naming the attribute instead of a donation form. An attribute only: the element has no `form` property, so `el.form = '…'` (Lit's `.form=`, Vue's `.prop`) sets a plain expando nothing reads — use `setAttribute('form', …)` or the attribute in markup."
+						},
+						{
+							"name": "variant",
+							"type": { "text": "'inline'" },
+							"default": "inline",
+							"description": "How the form is projected into the page. `inline` is the only value this version renders, and any other value — including a missing one — is rendered as `inline` rather than refused."
+						}
+					],
+					"cssProperties": [
+						{
+							"name": "--donate-primary",
+							"syntax": "<color>",
+							"default": "oklch(0.27 0 0)",
+							"description": "The organisation's brand color, and the only seed this element takes \u2014 there is no second, and an organisation wanting more of the card than its brand colour forks the package and configures it in the source. It is every solid block of colour a donor acts on (the buttons, the selected amount tile, the selected frequency segment, the chosen payment rail, the processing-fee switch set on, the platform's own checkboxes, the mark on the step head saying which screen the donor is on) and the two places the brand is ink rather than a fill: the quiet secondary action, and the word on a selected amount or frequency. It is never the focus ring \u2014 that is a fixed dark step of the form's own grey ladder, because where the caret is standing is state rather than brand. Its hue is used as given; its lightness is clamped into [0.27, 0.5] and its chroma into [0, 0.16] before anything derives from it, which is what makes text on the brand fill unconditionally legible with no contrast selection anywhere, and holds the brand as ink at 4.5:1 against the card. A neon or pastel brand therefore renders darker here than in the host's own buttons; ::part(action) is the answer for those brands, where the host sets fill and foreground together and owns the pair. The default is grey, not a brand: an unseeded form draws a near-black button and carries no hue anywhere except its error and attention colours \u2014 there is no success colour, because this form reports success by drawing the receipt. The form is light only and its greys are fixed \u2014 a dark host page gets a light card, and there is no seed through which to attempt otherwise."
+						}
+					],
+					"cssParts": [
+						{
+							"name": "card",
+							"description": "The outermost painted box. The element sets its background, its border and its radius here, and a `::part(card)` rule restyles all three. It carries no shadow and no padding of its own: the interior's inset is on a box inside it, so a padding set here is added to that inset rather than replacing it, and a shadow set here is the host's own — the element draws none, because a shadow on the card's outer edge falls on a page it cannot see and has no ground to be measured against. It is also the element the form's container queries resolve against, and it clips to its own corners."
+						},
+						{
+							"name": "heading",
+							"description": "The title on any full-card screen."
+						},
+						{
+							"name": "label",
+							"description": "Every field label and every fieldset legend."
+						},
+						{
+							"name": "field",
+							"description": "Every text input, the note textarea, and the two selects \u2014 the cause a gift is credited to, on forms that let the donor choose one, and the one that says how a gift is dedicated. One name over two kinds of control: the select keeps the platform's own popup and arrow, so a rule here that sets padding or a background is drawn around an arrow the element does not paint and cannot move. Takes `invalid`."
+						},
+						{
+							"name": "checkbox",
+							"description": "Every two-state control the donor operates: the two disclosures on the amount step \u2014 the note and the tribute \u2014 the contact consent row, and the processing-fee decision inside the receipt. One name, two drawings, and the element draws both: the platform's own box is switched off on all four. The first three are a square box at the card's own inner corner, near-white with a hairline edge, filling with --donate-primary when it is ticked and knocking the tick out of that fill so the card shows through it. The fee decision is drawn as a switch — a track a little over 2x wide with a thumb that travels — so a rule setting background, border or border-radius on ::part(checkbox) paints a track roughly 34-41px across there while painting a roughly 15-18px box on the other three. Target a single one with a rule of your own that also matches its surroundings; the element publishes no state token distinguishing them."
+						},
+						{
+							"name": "frequency-option",
+							"description": "One choice in the frequency control. The options stand on a filled track that carries a hairline of the card's own separator step, with a faint grid line standing in each gap between them, and the chosen one is raised rather than filled: it stands on a chip at the card's own near-white with the element's one `box-shadow` under it, a hairline lift below the threshold of an eye at 1x, and its word steps from the card's own text colour to --donate-primary itself. Every option is drawn at one weight, resting and chosen alike, so choosing one moves no word on the track. The chip is the track's own drawing rather than the option's and travels between options, so a `box-shadow` rule here lands on the option, not the chip. The chip keeps a 1px transparent `outline` so forced-colors mode, which paints no shadow and no fill, still marks the choice. Takes `selected` only: the card opens with a cadence already chosen and offers no way back to none, so no press is ever refused for this group and no option here carries `invalid`."
+						},
+						{
+							"name": "amount-option",
+							"description": "One tile on the amount tray: a preset amount, or the Other tile that follows the presets on any form that suggests two or more amounts: choosing it opens the free entry under the tiles. The card opens with the lowest preset chosen. The tiles stand on the same filled, hairlined tray the free entry stands on, on a grid whose every row has the columns the first row has, ruled by faint grid lines crossing in every gap like a board, each tile standing clear of the lines around it, drawn at rest in the card's own text colour, and the chosen one is raised rather than filled: it rises to the card's own near-white with the element's hairline lift under it and its figure steps to --donate-primary itself. Every tile is drawn at one weight, resting and chosen alike, so choosing one moves no figure on the tray. No edge: a 1px transparent `outline` is kept for forced-colors mode to paint, and an `outline` rule here replaces it; a `box-shadow` rule here replaces the lift. Takes `selected`, and `invalid`, which the element draws nothing from here: a refused amount is marked once, on the tray the tiles stand on, and the token is carried on every tile so a host stylesheet can reach the refused boxes through `::part()`."
+						},
+						{
+							"name": "amount-input",
+							"description": "The free amount entry: the surface behind the figure a donor types, at the card's own near-white on the amount tray with no edge of its own, carrying a currency mark at each end of it, the symbol before the figure and the three-letter code after it. On a form that suggests two or more amounts it is hidden until the Other tile is chosen, then opens under the tiles and takes the caret; a figure typed into it lights no preset, even one it equals. On a form suggesting one amount or none it is the whole amount block, standing on the card with the field's own fill and edge rather than on a tray, and the one suggestion is written into it. It draws no focus ring: the caret says where the focus is. The leading mark is drawn only where the locale writes the currency with a symbol of its own, so a form in CHF or SEK carries the trailing code alone. The input itself covers this surface and stays transparent over it, so a background set here is the one that shows. Takes `selected`, which nothing in the element paints, and `invalid`: standing on a tray it draws nothing from it, because the tray around it is what a refused amount marks, and standing alone as the whole amount block it takes the field's own mark — the recoloured edge and the inset hairline inside it."
+						},
+						{
+							"name": "summary",
+							"description": "The receipt block: the gift, the processing fee and the total, on ruled lines with the figures in one right-aligned column. A fill and no frame — the rules inside it are the ledger's and are not an edge around the block."
+						},
+						{
+							"name": "payment",
+							"description": "The wrapper around the payment provider's own element, and it paints nothing at all: no background, no border, no radius, no padding. The provider draws its own bordered frame around the rails and the fields — the element hands it the same edge every other control on the card carries — so a border here would be a second ring around a box that already has one, and a fill or a pad behind an opaque surface is an inset that only pushes that box in off the seam. What this part is, then, is that seam and a reserved height the step holds from the provider's first paint on. The box is pulled out past the step it stands on at both ends by the card body's own inset, so each rail's band runs to the card's left and right edges; the element gives every rail that same length as side room, which is both the room the provider needs \u2014 it paints one block inside the card rail wider than the rail's own content \u2014 and what leaves the fields on the seam. A host aligning their own layout against this box is measuring that overhang rather than the seam. What is inside it is reached only through the appearance the element resolves and hands the provider; a `::part(payment)` rule reaches none of it. It carries the `hidden` attribute until a payment provider is being prepared for the card, and is in the layout from then on — a provider mounting into a subtree with no layout box may never draw at all. A `::part(payment)` rule setting `display: none` therefore takes away the box the provider draws in and the box a refused Donate press puts the caret on; the refusal is announced through the card's live region instead, but the fields are gone. What it contains changed — the provider's script cannot complete a mount inside a shadow root, so the node it paints into is a light-DOM child of the element, projected into this box through the `payment` slot. The provider still paints inside its own frame, which no rule here or in the host page reaches; the mount node around that frame is in the host's own tree, so the host page's element selectors do reach it. Nothing needs styling there, and the element pins its geometry inline against exactly that."
+						},
+						{
+							"name": "action",
+							"description": "Every primary button. Takes the role token `submit` on the control that spends the money, and the state token `busy`. Never takes `disabled`: a press is bounded by the flow's shape, not by an attribute."
+						},
+						{
+							"name": "action-quiet",
+							"description": "Every secondary action. It is the second control on a full-card screen \u2014 backing out of the correction screen, declining a mandate, starting over from the thank-you \u2014 and it is also the press inside the dedication block that offers to notify the recipient, which draws the name and address boxes when it is made. That press toggles: it reads with a plus while the pair is shut and with a minus while it is open, where it stands as the pair's own heading, and pressing it again takes the pair away and blanks both boxes in the gift \u2014 leaving both empty is how a donor tells nobody. Moving between the three numbered steps is not one of these — the step head carries a mark per step that a donor presses to go to it, and those marks are deliberately outside this vocabulary, because a host able to paint them out would leave a donor on the screen that spends the money with no way off it."
+						}
+					],
+					"slots": [
+						{
+							"name": "loading",
+							"description": "What the host page shows in place of the form until the form's configuration has been read. It is a child element of the host's own carrying `slot=\"loading\"` — never a literal `<slot>` tag, which would render its contents before the upgrade and vanish at it. Rendered before the element upgrades and kept afterwards, in preference to the element's own skeleton, because the host's placeholder matches the host's page better than one written here."
+						},
+						{
+							"name": "payment",
+							"description": "Reserved by the element, and the one slot a host has no reason to fill. The element creates a light-DOM child of itself with slot=\"payment\" and hands that node to the payment provider to paint into, because a provider's script cannot complete a mount inside a shadow root. It is published because the name is permanent and observable, not because it is an invitation: anything a host assigns to it is rendered inside the payment box beside the card fields, and the element neither reads nor removes it."
+						}
+					]
+				}
+			],
+			"exports": [
+				{
+					"kind": "custom-element-definition",
+					"name": "bg-donate-form",
+					"declaration": { "name": "BgDonateForm", "module": "src/element.ts" }
+				}
+			]
+		}
+	]
+}

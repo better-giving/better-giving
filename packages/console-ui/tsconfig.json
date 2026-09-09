@@ -1,0 +1,32 @@
+{
+	// ../../tsconfig.base.json is the repository's strictness and this file adds only what a react
+	// router app needs on top of it.
+	//
+	// `.react-router/types` is written by `react-router typegen`, which the `check` and `prepare`
+	// scripts both run. `rootDirs` is what lets a route module import its own generated types as a
+	// relative sibling — `./+types/setup` resolves into that directory rather than beside the
+	// screen.
+	//
+	// no path alias is spelled here and none is wanted: every import inside this package is
+	// relative, and what it may import from outside it is packages/operator — this package.json
+	// declares it as a `workspace:*` dependency, so the graph already refuses a bare specifier into
+	// packages/app. `biome.jsonc` is where the one thing the graph cannot see is caught: a relative
+	// path into packages/app carries no alias to be absent, so it resolves with nothing else
+	// objecting to it.
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"module": "esnext",
+		"target": "esnext",
+		"lib": ["esnext", "dom", "dom.iterable"],
+		"types": ["node", "vite/client"],
+		"jsx": "react-jsx",
+		// packages/operator ships `.jsx` with each prop's type stated once in JSDoc on the
+		// component. this checker infers a caller's types from that annotation without re-checking
+		// the component's own body — packages/operator's `check` does that, against the same source.
+		"checkJs": false,
+		"verbatimModuleSyntax": true,
+		"noEmit": true,
+		"rootDirs": [".", "./.react-router/types"]
+	},
+	"include": ["src/**/*.ts", "src/**/*.tsx", "*.ts", ".react-router/types/**/*"]
+}

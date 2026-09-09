@@ -1,0 +1,497 @@
+/* the reset and the document defaults for /admin.
+
+   both sit inside cascade layers, and that is load-bearing rather than tidy: an
+   unlayered stylesheet outranks every layer no matter its specificity, which is what
+   keeps the donation form's hand-written css — adopted unlayered — out of reach of
+   anything here. a rule in this file must never be written outside a layer.
+
+   there is no root class. /admin owns its own document, so the ground is stated on `html`
+   and the type on `body`; a wrapper class carrying either would be a screen drawn inside a
+   document somebody else owns, and it would put every rule below at a specificity the next
+   one has to clear.
+
+   what is left in `base` is the document: the ground, the headings, the link and its ring,
+   the selection, the figures a date carries, and the type utilities a run of words is set
+   in. every element /admin draws as a thing is a class in ./adm.css, so nothing here
+   dresses a control, a field or a record — a bare rule for one would be a second spelling
+   of an element that sheet already draws, and the two would drift with nothing on the
+   screen to say which had won. */
+
+@layer reset {
+	/* the reset. it is small on purpose and covers only the elements /admin renders.
+	   two lines do most of the work: margin/padding zeroing, and the zero border-width
+	   that lets a rule state a border by setting only its width. */
+
+	html {
+		-webkit-text-size-adjust: 100%;
+		-webkit-tap-highlight-color: transparent;
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+		tab-size: 4;
+		line-height: 1.5;
+	}
+
+	*,
+	*::before,
+	*::after,
+	::backdrop {
+		box-sizing: border-box;
+		border: 0 solid currentcolor;
+		margin: 0;
+		padding: 0;
+	}
+
+	hr {
+		height: 0;
+		color: inherit;
+		border-top-width: 1px;
+	}
+
+	body {
+		line-height: inherit;
+	}
+
+	img,
+	svg,
+	video,
+	canvas,
+	iframe {
+		display: block;
+		vertical-align: middle;
+	}
+
+	img,
+	video {
+		max-width: 100%;
+		height: auto;
+	}
+
+	/* headings carry no size of their own — the type bundle a rule applies is the only
+	   thing that sets one, so a heading level stays a statement about document structure
+	   rather than about how big the words are. */
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6 {
+		font-size: inherit;
+		font-weight: inherit;
+		text-wrap: balance;
+	}
+
+	p,
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6 {
+		overflow-wrap: break-word;
+	}
+
+	ol,
+	ul,
+	menu {
+		list-style: none;
+	}
+
+	button,
+	input:where([type='button'], [type='reset'], [type='submit']) {
+		appearance: button;
+	}
+
+	button,
+	input,
+	optgroup,
+	select,
+	textarea {
+		/* type-ok: the reset hands the document's face to a form control and states no rank. */
+		font: inherit;
+		font-feature-settings: inherit;
+		font-variation-settings: inherit;
+		letter-spacing: inherit;
+		color: inherit;
+		background: none;
+	}
+
+	::placeholder {
+		opacity: 1;
+	}
+
+	table {
+		text-indent: 0;
+		border-color: inherit;
+		border-collapse: collapse;
+	}
+
+	summary {
+		display: list-item;
+	}
+
+	a {
+		color: inherit;
+		text-decoration: inherit;
+	}
+
+	b,
+	strong {
+		/* type-ok: the reset's relative step, which no rank can express. */
+		font-weight: bolder;
+	}
+
+	code,
+	kbd,
+	samp,
+	pre {
+		font-family: var(--admin-font-mono);
+		/* type-ok: the reset keeps the mono face at the size around it and states no rank. */
+		font-size: 1em;
+	}
+
+	[hidden]:where(:not([hidden='until-found'])) {
+		display: none !important;
+	}
+}
+
+@layer base {
+	/* the ground every /admin screen is set on, and the type it is read in.
+
+	   the two are separated because the root's font-size may not move: a media condition
+	   resolves rem against the initial size and never against the root element's own, so a
+	   size set here would rescale every rem length in ./tokens.css away from the value that
+	   file states and move the two apart with nothing on the screen to say so. `font` as a
+	   shorthand states no type bundle anywhere in /admin for a second reason — it resets
+	   font-variant-numeric, and a money column silently stops lining up wherever one lands. the
+	   reset's `font: inherit` on a form control is the one place the property is written at all and
+	   it carries no value of its own; packages/app/src/lib/admin/styles/conformance.spec.ts flags
+	   every other. */
+	html {
+		color: var(--admin-ink);
+		background-color: var(--admin-page);
+	}
+
+	body {
+		font-family: var(--admin-font-sans);
+		font-size: var(--admin-body-size);
+		line-height: var(--admin-body-lh);
+		min-block-size: 100%;
+		text-wrap: pretty;
+		/* the code face ships contextual alternates and no ligature feature: `calt` redraws a
+		   dash standing beside another dash or an angle bracket, so `->` and `--` in a command
+		   a reader is about to retype come back a shape nobody typed. the face is spent on
+		   exactly the values that have to stay literal — an address, an id, a credential name,
+		   a command — so the alternates are off for the whole document and every box in it
+		   inherits it here rather than beside each `--admin-font-mono`. the same declaration is
+		   the guard if the code face ever becomes one that ligates `://`, where an address comes
+		   back a glyph short instead. `no-contextual` rather than `none`: the sans's own `fi`
+		   and `fl` are common ligatures and are not this. */
+		font-variant-ligatures: no-contextual;
+	}
+
+	/* three heading ranks and no fourth. a level says where a thing sits in the document
+	   outline; the type says how loud it is, and the two stop agreeing the moment there are
+	   more ranks than a page has kinds of section.
+
+	   the three ranks are the whole of where `--admin-font-display` is spent, and it is spent
+	   here rather than by a screen: a heading is the one thing a screen states by element, so
+	   the face follows the element and a rank is never a class to remember. `h4` and below carry
+	   no type of their own and are set in the body face, which is what keeps the display face a
+	   statement about the ranks a page actually draws. */
+	h1 {
+		font-family: var(--admin-font-display);
+		font-size: var(--admin-title-size);
+		font-weight: var(--admin-title-weight);
+		line-height: var(--admin-title-lh);
+		letter-spacing: var(--admin-title-track);
+	}
+
+	h2 {
+		font-family: var(--admin-font-display);
+		font-size: var(--admin-section-size);
+		font-weight: var(--admin-section-weight);
+		line-height: var(--admin-section-lh);
+		letter-spacing: var(--admin-section-track);
+	}
+
+	h3 {
+		font-family: var(--admin-font-display);
+		font-size: var(--admin-subhead-size);
+		font-weight: var(--admin-subhead-weight);
+		line-height: var(--admin-subhead-lh);
+	}
+
+	/* an eyebrow and the heading it qualifies are one thing and sit tight. a `.adm-panel` sets
+	   `--admin-space-6` between its children (./adm.css), which is the distance between the things
+	   a card lists rather than the distance inside one of them, so a bare sibling would be pushed a
+	   card's gap away from the heading it belongs to. */
+	hgroup {
+		display: grid;
+		gap: var(--admin-space-2);
+	}
+
+	a {
+		color: var(--admin-link);
+		text-decoration: underline;
+		/* raw-length-ok: the distance an underline is set below its own baseline is a
+		   property of the face rather than a step of the spacing scale. */
+		text-underline-offset: 0.15em;
+		text-decoration-thickness: from-font;
+	}
+
+	/* carried-ok: .is-hover .is-focus — the twin beside each state pseudo, here and below. no
+	   screen writes one: it is what lets a specimen pin a state without a pointer on the
+	   element. */
+	a:hover,
+	a.is-hover {
+		color: var(--admin-link-hover);
+		text-decoration-thickness: var(--admin-border-width-strong);
+	}
+
+	a:visited {
+		color: var(--admin-link-visited);
+	}
+
+	/* a link to somewhere that is not ready to be used yet. it stays a link and stays reachable:
+	   whatever is at the other end answers for itself, and a destination nobody could press would
+	   hide that from an operator who wants to go and look anyway — so the tone is the whole of
+	   what says so.
+
+	   the attention tone has no link role of its own, so what is spent here is the tone's word
+	   rungs in the shape the link ladder above has: the word rung at rest, the deep rung under the
+	   pointer. the resting colour only — a focused link takes the accent from the rule below
+	   whatever tone it wears, because the ring says where the keyboard is and never what the thing
+	   under it is reporting. */
+	a.adm-link--attention {
+		color: var(--admin-tone-attention-ink);
+	}
+
+	a.adm-link--attention:hover,
+	a.adm-link--attention.is-hover {
+		color: var(--admin-tone-attention-deep);
+	}
+
+	/* one ring for the whole surface, on :focus-visible only — a mouse click on a button
+	   should not leave a ring behind it, and a keyboard tab must always leave one. the
+	   twin class beside each pseudo is what lets a state be pinned without a pointer.
+
+	   the ring is the box-shadow and the outline under it is transparent. under forced
+	   colours the shadow drops and the outline is what the reader's own colours paint, so
+	   the ring survives a scheme this file cannot see. this rule is where every focused element
+	   gets that outline, the link rule below takes it from here rather than restating it, and the
+	   two other places it is written are `.adm-check--boxed` and `.adm-slab--oneline` in ./adm.css,
+	   where the ring lands on a box whose descendant is what the keyboard reached and no selector
+	   here can match it.
+	   it goes on the focused state and on no other: forced colours paints a resting outline as
+	   willingly as a focused one, so a control declaring one at rest is ringed while nothing is
+	   on it.
+
+	   the ring hugs. it starts at the control's own edge and no ground is drawn between the
+	   two, because a band of the page laid inside the ring reads as the control sitting in a
+	   box that arrived with the keyboard. ./adm.css takes the shadow back off the two
+	   controls that draw theirs inset, and ./tokens.css holds the arithmetic that makes them
+	   the two. */
+	:focus-visible,
+	.is-focus {
+		outline: var(--admin-focus-width) solid transparent;
+		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
+	}
+
+	/* a text link takes no ring. a rectangle drawn around a run of words frames the text
+	   rather than the control, and in a dense ledger it collides with the lines above and
+	   below — so a focused link takes the accent tint bled `--admin-focus-bleed` past its own
+	   box plus a heavier underline. the same accent, learned once, spent as emphasis instead
+	   of as a frame. */
+	/* carried-ok: .adm-back — spelled in the derived class list in
+	   packages/operator/src/components/controls/BackLink.jsx rather than in a `class`
+	   attribute. */
+	a:focus-visible,
+	a.is-focus,
+	.adm-back:focus-visible,
+	.adm-back.is-focus {
+		border-radius: var(--admin-radius);
+		box-shadow: 0 0 0 var(--admin-focus-bleed) var(--admin-accent-tint);
+		background: var(--admin-accent-tint);
+		color: var(--admin-accent-ink-hover);
+		text-decoration-thickness: var(--admin-border-width-strong);
+		/* raw-length-ok: as the resting offset above, and a step further out because the
+		   underline is thicker. */
+		text-underline-offset: 0.18em;
+	}
+
+	::selection {
+		background-color: var(--admin-selection-bg);
+		color: var(--admin-selection-ink);
+	}
+
+	/* a date is one value and never breaks into two. `2026-08-03` wrapped after its first
+	   hyphen reads as two numbers, and the column it wraps in then looks like a column that
+	   was measured for something else. tabular figures for the same reason a money column
+	   takes them: a date compared down a column may not shift width between rows.
+
+	   here rather than beside the table rules, because it is true of a date wherever one is
+	   rendered. what makes the gifts table's first column wide enough is this rule and
+	   nothing else: the date's min-content width is now the whole date, so auto table layout
+	   gives the column room for it. */
+	time {
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	/* ---- the type utilities ----------------------------------------------------------
+
+	   a run of words rather than a thing: prose, a standfirst, a hint, a caption, a figure, a
+	   literal and the mark that stands beside one. they are here rather than in ./adm.css because
+	   none of them draws a box. */
+
+	.adm-prose {
+		max-inline-size: var(--admin-measure-prose);
+		line-height: var(--admin-lh-prose);
+		color: var(--admin-ink-2);
+	}
+
+	.adm-prose p + p {
+		margin-block-start: var(--admin-space-5);
+	}
+
+	.adm-standfirst {
+		font-size: var(--admin-standfirst-size);
+		line-height: var(--admin-standfirst-lh);
+		color: var(--admin-ink-2);
+		max-inline-size: var(--admin-measure-prose);
+	}
+
+	.adm-hint {
+		font-size: var(--admin-hint-size);
+		line-height: var(--admin-hint-lh);
+		color: var(--admin-ink-muted);
+		max-inline-size: var(--admin-measure-prose);
+	}
+
+	.adm-caption {
+		font-size: var(--admin-caption-size);
+		color: var(--admin-ink-muted);
+	}
+
+	/* a figure that gets compared down its column. `time` above marks a date wherever one
+	   appears and needs none of this. */
+	.adm-num {
+		font-variant-numeric: tabular-nums lining-nums;
+		font-feature-settings: var(--admin-figures-tabular);
+	}
+
+	/* a label for a screen reader and no box on the screen. it stays reachable by focus, so
+	   it is safe on a skip link. */
+	.adm-vh {
+		position: absolute;
+		inline-size: 1px; /* raw-length-ok: the smallest box that is still laid out. */
+		block-size: 1px; /* raw-length-ok: as above. */
+		margin: -1px; /* raw-length-ok: as above, taken back out of the flow. */
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+		border: 0;
+	}
+
+	/* a literal standing inside a sentence, and the reason it is a utility here and not an
+	   element in ./adm.css: it marks a run of words the way the rules above it do, and the
+	   sentence goes on either side of it. the code face is a first-class role in this system
+	   rather than an accent — an operator's recovery path is largely "run this in your
+	   terminal", so a wall of environment variable names is a thing this system has to set
+	   well. it wraps at any glyph, because a literal that overflows takes the page sideways
+	   with it.
+
+	   **it takes no inline padding, and that is the whole of what separates it from the chip
+	   ./adm.css draws.** what follows a literal in a sentence is a comma or an apostrophe, and
+	   padding puts the tint's edge between the last glyph and that mark — which is read as a
+	   space somebody typed rather than as room around a box. the tint is kept: a literal set in
+	   mono on the page's own ground is a run of small grey words with nothing saying it is a
+	   literal, which is the case `.adm-cmd--oneline` in ./adm.css makes at length. the block
+	   padding is kept as well, because a sentence runs up against a literal on either side of
+	   it and never above or below.
+
+	   a literal drawn on its own — the whole of a value cell, a row in a list of identifiers —
+	   is the chip and not this: `.adm-chip` in ./adm.css, where the padding is what makes it a
+	   box at all. */
+	.adm-code {
+		font-family: var(--admin-font-mono);
+		font-size: var(--admin-code-size);
+		font-weight: var(--admin-code-weight);
+		background: var(--admin-code-bg);
+		color: var(--admin-code-ink);
+		border-radius: var(--admin-radius);
+		padding-block: var(--admin-space-1);
+		padding-inline: var(--admin-space-0);
+		overflow-wrap: anywhere;
+	}
+
+	/* the mark, which is the <svg> lucide renders and which
+	   packages/operator/src/components/status/Mark.jsx puts this class straight onto. it strokes
+	   with `currentColor`, so a mark takes its ink from the text it stands with exactly as text
+	   does and every rule that tones one only sets `color` — the seek glass and the disclosure caret
+	   move the same element.
+
+	   the size is stated here and never passed down: lucide takes a `size` number, and a length
+	   written into a component is what ../raw-values.ts refuses. it beats the `width` and `height`
+	   attributes lucide writes onto the svg, and the glyph's own 24 viewBox scales into whichever
+	   of the two boxes below it lands in — the stroke with it, so the weight is a share of the box
+	   rather than a value this sheet sets.
+
+	   both of the first two lines take back what the reset above does to every `svg` on the page,
+	   and neither is spare. the reset makes one a block, which would drop every mark onto a line of
+	   its own; and it aligns one on `middle`, which centres the box on the x-height. a mark sits on
+	   the baseline the way the run of words it stands in does — every offset in ./adm.css is
+	   computed from a line box on that assumption, and a mark hung half a glyph lower is that
+	   arithmetic silently off by the same amount everywhere it is used.
+
+	   two absolute sizes rather than one ratio, because the gutter a ledger line reserves is
+	   fixed and a mark that resized with the type beside it would stop filling it. a mark
+	   standing beside text that may wrap takes its first-line offset where it stands, in
+	   ./adm.css. `flex: none` because a mark is never what gives width back. */
+	.adm-mark {
+		display: inline-block;
+		vertical-align: baseline;
+		inline-size: var(--admin-mark-size);
+		block-size: var(--admin-mark-size);
+		flex: none;
+	}
+
+	.adm-mark--lg {
+		inline-size: var(--admin-mark-size-lg);
+		block-size: var(--admin-mark-size-lg);
+	}
+
+	/* a company's own mark, and it is beside `.adm-mark` rather than a modifier of it because it
+	   is the opposite thing. a mark is a shape this system draws in this system's ink; this is a
+	   logo somebody else owns, in colours of their own, and it belongs to no tone ladder — nothing
+	   here sets `color` and nothing may.
+
+	   the image is reached by a relative url for the reason ./fonts.css reaches its faces by one:
+	   it is resolved against this sheet, so every surface that imports it emits the file into its
+	   own output and none of them has to serve a public directory holding a second copy.
+
+	   the height is the mark box's and the width follows the picture. `aspect-ratio` is the file's
+	   own 246 × 111 rather than a value from ./tokens.css, and no token could hold it: it is a fact
+	   about a binary somebody else drew, and squaring it would squash the logo. what
+	   packages/operator/src/components/status/Brand.jsx says about the trademark is the rest of
+	   this rule's reason for existing.
+
+	   the box is on `.adm-brand` and the picture on the modifier, so what a second brand would add
+	   is a url and a shape and nothing else. a bare `.adm-brand` draws no picture and, with no
+	   aspect of its own, no box either — which is the right answer for a class that names no
+	   brand. */
+	.adm-brand {
+		display: inline-block;
+		block-size: var(--admin-mark-size);
+		background-repeat: no-repeat;
+		background-position: center;
+		background-size: contain;
+		flex: none;
+	}
+
+	.adm-brand--cloudflare {
+		aspect-ratio: 246 / 111;
+		background-image: url('./brand/cloudflare.png');
+	}
+}

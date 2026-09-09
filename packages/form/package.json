@@ -1,0 +1,49 @@
+{
+	"name": "@better-giving/form",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"exports": {
+		"./v1": "./src/v1.ts",
+		"./fee": "./src/fee.ts",
+		"./config": "./src/config.ts",
+		"./machine": "./src/checkout.machine.ts",
+		"./connect": "./src/connect.ts",
+		"./ports": "./src/ports.ts",
+		"./value": "./src/value.ts",
+		"./money": "./src/money.ts",
+		"./parts": "./src/parts.ts",
+		"./embed/reservation": "./src/embed/reservation.ts",
+		"./embed/rails": "./src/embed/rails.ts",
+		"./embed/snippet": "./src/embed/snippet.ts",
+		"./embed/stamp": "./src/embed/stamp.ts",
+		"./embed/api": "./src/embed/api.ts",
+		"./embed/stripe": "./src/embed/stripe.ts",
+		"./embed/turnstile": "./src/embed/turnstile.ts",
+		"./embed/resume": "./src/embed/resume.ts",
+		"./styles/tokens.css": "./src/styles/tokens.css",
+		"./styles/parts.css": "./src/styles/parts.css",
+		"./styles/layout.css": "./src/styles/layout.css",
+		"./styles/motion.css": "./src/styles/motion.css"
+	},
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build --config vite.embed.config.ts --mode runtime && vite build --config vite.embed.config.ts --mode loader",
+		"check": "tsc --noEmit",
+		"test": "vitest --run",
+		"test:browser": "vitest --config vitest.browser.config.ts --run"
+	},
+	"dependencies": {
+		"@stripe/stripe-js": "9.12.1",
+		"xstate": "catalog:"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@vitest/browser-playwright": "4.1.10",
+		"happy-dom": "catalog:",
+		"playwright": "1.62.1",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vitest": "catalog:"
+	}
+}

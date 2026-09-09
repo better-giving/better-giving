@@ -1,0 +1,14 @@
+@layer tokens, reset, base, elements, layout;
+
+@import '@better-giving/operator/styles/fonts.css';
+@import '@better-giving/operator/styles/tokens.css';
+@import '@better-giving/operator/styles/base.css';
+@import '@better-giving/operator/styles/adm.css';
+
+/* the whole of the gallery's css, and the order it is read in — identical to
+   packages/console-ui/src/app.css and packages/app/src/app.css, per CLAUDE.md's design system
+   section. the sheets themselves live in packages/operator/src/styles/, the leaf package every
+   operator surface imports from, so this file names an order and defines nothing beyond it.
+
+   this package defines no css of its own: every value a preview needs comes from
+   packages/operator/src/styles/tokens.css, gated here by src/raw-values.spec.ts. */

@@ -1,0 +1,13 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"module": "esnext",
+		"target": "esnext",
+		"lib": ["esnext", "dom", "dom.iterable"],
+		"types": ["node"],
+		"jsx": "react-jsx",
+		"verbatimModuleSyntax": true,
+		"noEmit": true
+	},
+	"include": ["emails/**/*.tsx"]
+}

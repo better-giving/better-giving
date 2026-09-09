@@ -1,0 +1,261 @@
+/*
+ * everything in this component that moves, and the whole of it.
+ *
+ * motion reports state. every rule below answers "what does this tell the donor", and anything
+ * that could not answer it is not here: no ambient drift, no hover float, no entrance flourish on
+ * a card that has just loaded. what is left is direction (which way the flow went), continuity
+ * (the money figure is the same figure), tactility (the press landed) and progress (something is
+ * happening).
+ *
+ * the card's height never animates. this component is embedded in a page it cannot see, and a
+ * container that resizes itself over 200ms inside someone else's layout pushes their content
+ * around after they have finished laying it out. so nothing here transitions `block-size`,
+ * `height`, `padding`, `margin` or `font-size`, and the two rules that could change a box —
+ * the press feedback and the receipt's continuity — use `scale`, which paints without reflowing.
+ * the one exception is a disclosure opening, which is user-initiated and grows downward.
+ *
+ * nothing a container query changes is transitioned. `grid-template-columns`, `display` and
+ * `order` move when a host resizes their own layout or collapses a sidebar, and animating two
+ * columns into one produces a scramble that reads as a defect. ../element.dom.spec.ts scans this
+ * file for those property names.
+ *
+ * no rule here composes a duration with a curve, and the busy spinner is the one exception. the
+ * three movements this component makes are named in ./tokens.css — `--_move-state`,
+ * `--_move-enter` and `--_move-press` — and a rule reads the one its purpose matches, so the
+ * pairing is a decision made once rather than two tokens the next rule copies off the line above
+ * it. the spinner is not one of the three: it is a loop rather than a movement between two states,
+ * so it reads `--_dur-spin` with a linear curve at its own rule below, and there is no fourth name
+ * because there is no second loop for one to be shared with. "names every transition it makes
+ * rather than composing one at the rule" in ../element.dom.spec.ts is what holds the pairing out
+ * of this file and the exception at one rule.
+ *
+ * every one of those is a token pair and there is no `prefers-reduced-motion` block here. that is
+ * the mechanism rather than an omission: ./tokens.css re-points `--_dur-fast` and `--_dur-screen`
+ * to zero under `reduce`, the named transitions re-resolve through them, and the collapse is total
+ * — so a rule added here later cannot go on moving for a reader who asked for less of it while a
+ * hand-maintained list of selectors quietly stops being complete. "reads every duration from a
+ * token" in ../element.dom.spec.ts is what holds a literal out.
+ *
+ * the spinner is the one thing that does not collapse. `--_dur-spin` slows to 2.4s rather than
+ * stopping, because a stopped spinner on a control that is still checking a card is a lie about
+ * what is happening to somebody's money. `prefers-reduced-transparency` needs no handling, because
+ * this component uses no translucency.
+ *
+ * ../../package.json exports this file as `./styles/motion.css`, last of the four the card is
+ * dressed from: it moves what ./layout.css has placed, so it comes after it. `sheetsFor` in
+ * ../element.ts is that order for the element; the deployment's own donation page links the four
+ * in it.
+ */
+
+/*
+ * a screen change reports its direction. a donor pressing Back must be able to tell that they were
+ * returned rather than advanced, and the two are otherwise the same cross-fade. the offset is
+ * `0.75em`: enough to be read as a direction, small enough that nothing appears to travel.
+ *
+ * every one of these is behind `data-moved`, which the card carries only once the flow has
+ * actually changed screen (../views.ts). without it the first screen a donor ever sees would
+ * animate in, and a card arriving with a flourish inside somebody else's page is the entrance
+ * this file's header says there is none of.
+ */
+[data-moved] .step:not([hidden]) {
+	animation: screen-enter var(--_move-enter) both;
+}
+
+[data-moved][data-direction='back'] .step:not([hidden]) {
+	animation-name: screen-enter-back;
+}
+
+/*
+ * the takeover's own content enters without the receipt, so the block stating the money is present
+ * and readable for the whole of the transition rather than fading with everything around it.
+ */
+[data-moved] .takeover:not([hidden]) {
+	animation: none;
+}
+
+[data-moved] .takeover:not([hidden]) > :not(.receipt-slot) {
+	animation: screen-enter var(--_move-enter) both;
+}
+
+/*
+ * the most motivated animation in the component. between the review step and a takeover the
+ * receipt is one node that moved, and its total grows from `--_t-lg` to `--_t-xl`. the donor has to
+ * recognise the figure they are authorizing as the figure they just saw, so the growth is shown
+ * rather than jumped — as a `scale` from the ratio between those two sizes, because animating
+ * `font-size` would reflow the card while it ran. the origin is the figure's own right edge, which
+ * is the column every figure in the receipt is aligned to.
+ */
+[data-moved] .takeover .row.total .figure {
+	transform-origin: 100% 50%;
+	animation: money-continuity var(--_move-enter) both;
+}
+
+/*
+ * the press landed, and the surface answered the pointer. `scale` rather than a size, so no
+ * neighbour moves, and a fill and an edge, which nothing else on the card is measured against.
+ *
+ * the `scale` is the one thing here that reads `--_move-press`; the fill and the edge are a state
+ * arriving and read `--_move-state`, so a press moves the surface on one curve while what it is
+ * painted in settles on another.
+ *
+ * the edge is `border-color` and it is the action's. the mark a chosen frequency or amount tile
+ * takes is an `outline` (`[part~='selected']` in ./parts.css), and `outline-color` may not join this
+ * list: every focus ring on this card is an outline too, so putting it here fades a focus indicator
+ * in over `--_dur-fast` instead of drawing it on the key press. the mark snaps, which is what a
+ * radio answering a press should do anyway.
+ */
+:where(
+	[part~='action'],
+	[part~='action-quiet'],
+	[part~='frequency-option'],
+	[part~='amount-option']
+) {
+	transition:
+		scale var(--_move-press),
+		background-color var(--_move-state),
+		border-color var(--_move-state);
+}
+
+:where(
+	[part~='action'],
+	[part~='action-quiet'],
+	[part~='frequency-option'],
+	[part~='amount-option']
+):active {
+	scale: 0.985;
+}
+
+/*
+ * the chosen cadence travelling to the option a donor picked, which is the second of the two things
+ * on this card whose answer to a press is where it now stands rather than that it was pressed.
+ *
+ * one chip on the track rather than a raised treatment per option (`.segment[data-thumb]::before` in
+ * ./parts.css) is what there is to move at all: a mark drawn by each option could only disappear
+ * from one and reappear on another, and a donor watching a set of three is being told which one
+ * their press landed on. `translate` paints without reflowing, which is what this file's header asks
+ * of anything that moves a box, and the words above the chip never move.
+ *
+ * `data-sliding` is the whole of when it travels, and the patch decides it off where the options
+ * were actually laid out (`placeThumb` in ../views.ts). the track flex-wraps at narrow widths with
+ * enough cadences, and a chip crossing rows would travel diagonally across two other options on its
+ * way — so a move between rows is written with the attribute absent and the chip is simply
+ * somewhere else on the next frame. neither half of that is knowable from here: the cadence count is
+ * the deployment's and the width is the host page's.
+ *
+ * the press is on the chip as well as on the option above it, and the two are one movement rather
+ * than two: the chip is what a donor reads as the control now, and a word that flinched while the
+ * box under it held still would read as the word coming loose. the option's own `scale` is in the
+ * list above and this is the same step.
+ */
+.segment::before {
+	transition: scale var(--_move-press);
+}
+
+.segment[data-sliding]::before {
+	transition:
+		translate var(--_move-state),
+		scale var(--_move-press);
+}
+
+.segment:has([part~='frequency-option'][part~='selected']:active)::before {
+	scale: 0.985;
+}
+
+/*
+ * the switch, which is the one control here whose answer to a press is where it now stands rather
+ * than that it was pressed. the thumb travels to the end the decision is set to and the track fills
+ * behind it, so the two halves of one state change are read as one movement.
+ *
+ * no `scale` beside it, unlike every control above: the travel is already the feedback, and a
+ * control that both moved and flinched reads as two things having happened. `translate` paints
+ * without reflowing, which is what this file's header asks of anything that moves a box.
+ */
+.fee-decision [part~='checkbox'] {
+	transition: background-color var(--_move-state);
+}
+
+.fee-decision .switch-thumb {
+	transition: translate var(--_move-state);
+}
+
+/* the controls a donor types into answer with their edge alone: nothing about them is pressed. */
+:where([part~='field'], [part~='amount-input']) {
+	transition:
+		border-color var(--_move-state),
+		background-color var(--_move-state);
+}
+
+/*
+ * the tick box, which is not typed into but is drawn as one of those boxes and answers a pointer
+ * the same way (`[part~='checkbox']` in ./parts.css). both properties, because a tick fills the box
+ * as well: the edge is the hover and the fill is the decision, and one snapping beside the other
+ * fading would read as two controls. the switch is this same part and takes
+ * `.fee-decision [part~='checkbox']` above instead, which outranks this — a track has no edge.
+ */
+[part~='checkbox'] {
+	transition:
+		border-color var(--_move-state),
+		background-color var(--_move-state);
+}
+
+/* bounded by the request that started it: the only loop here, and it ends when the flow does. */
+[part~='busy'] .spinner {
+	animation: spin var(--_dur-spin) linear infinite;
+}
+
+/*
+ * the disclosures, and the one height in this component that is allowed to move. `0fr` to `1fr` is
+ * what opens a row to a height nobody measured; `allow-discrete` is what keeps the element
+ * displayed for the length of the closing half, since the attribute that hides it computes
+ * `display: none` (../styles/layout.css). `@starting-style` supplies the opening half's from
+ * state, which an element entering the render tree otherwise does not have.
+ *
+ * one selector for both of the step's disclosures rather than one each. two rules that agree today
+ * is exactly how the note and the tribute come to open differently, and the class they share is
+ * what makes agreeing not a thing anybody has to maintain.
+ */
+.disclosure-body {
+	transition:
+		grid-template-rows var(--_move-state),
+		opacity var(--_move-state),
+		display var(--_move-state) allow-discrete;
+}
+
+.disclosure-body[hidden] {
+	grid-template-rows: 0fr;
+	opacity: 0;
+}
+
+@starting-style {
+	.disclosure-body:not([hidden]) {
+		grid-template-rows: 0fr;
+		opacity: 0;
+	}
+}
+
+@keyframes screen-enter {
+	from {
+		opacity: 0;
+		translate: 0.75em 0;
+	}
+}
+
+@keyframes screen-enter-back {
+	from {
+		opacity: 0;
+		translate: -0.75em 0;
+	}
+}
+
+/* 0.818 is `--_t-lg` over `--_t-xl`: the figure starts at the size it was last drawn. */
+@keyframes money-continuity {
+	from {
+		scale: 0.818;
+	}
+}
+
+@keyframes spin {
+	to {
+		rotate: 360deg;
+	}
+}

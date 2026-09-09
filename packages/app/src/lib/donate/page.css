@@ -1,0 +1,78 @@
+/*
+ * the donor page's own chrome, and none of the form's.
+ *
+ * every value below belongs to this file. nothing here reads @better-giving/form/styles/tokens.css,
+ * adds to it, or derives from it — that file is the donation form's closed source of values, and
+ * this page is a host page rather than the form. what the card looks like is the card's, so a page
+ * that reached into those values would be a second place the form is dressed from.
+ *
+ * it sets no `--donate-*` seed either. that is the element's one public style surface, and this
+ * deployment leaves it alone: the card renders in its own greys, and an organisation's colour is a
+ * decision nobody has made.
+ *
+ * it is not the operator sheet and never imports one. @better-giving/operator's stylesheets are
+ * layered and the form's four are not, so a document holding both would let unlayered rules outrank
+ * every operator layer — the two systems stay on separate documents, which is why this page links
+ * the form's four and nothing else.
+ *
+ * the column is 28rem because the form's layout sheet sizes the card with container queries at
+ * 22em, 24em and 26em: under 26em the widest of the three shapes is never reached, and this page is
+ * the one place the card is guaranteed the room to render it. everything narrower is the viewport's
+ * doing rather than this sheet's.
+ */
+
+:root {
+	--page-ground: #f6f7f9;
+	--page-ink: #16181d;
+	--page-quiet: #5b6270;
+	color-scheme: light;
+}
+
+body {
+	margin: 0;
+	background: var(--page-ground);
+	color: var(--page-ink);
+	font:
+		16px / 1.5 ui-sans-serif,
+		system-ui,
+		sans-serif;
+	-webkit-text-size-adjust: 100%;
+}
+
+/* the card sits high rather than centred in the viewport. a donation form is taller than most
+   windows once the payment step opens, so a page that centred it would start every donor part-way
+   down a scroll; anchored to the top, the card grows downward from where it began. */
+.stage {
+	box-sizing: border-box;
+	max-width: 28rem;
+	margin-inline: auto;
+	padding-block: 3rem;
+	padding-inline: 1rem;
+}
+
+/* the organisation, named once, above the card rather than inside it. the card states the legal
+   identity the gift is solicited under and this states who the donor came here for, which is why it
+   is quiet type rather than a banner: the form is the thing on this page. a name with no space in
+   it wraps inside the stage rather than widening the document: `anywhere` is what keeps a 375px
+   viewport off a horizontal scrollbar for a name longer than the column. */
+.org-name {
+	margin: 0 0 1rem;
+	overflow-wrap: anywhere;
+	font-size: 1.125rem;
+	font-weight: 600;
+	line-height: 1.3;
+	color: var(--page-quiet);
+}
+
+/* the no-form notice. one sentence, in the page's own dress, because there is no card here for the
+   form's sheets to paint. */
+.notice {
+	margin: 0;
+	color: var(--page-quiet);
+}
+
+@media (max-width: 30rem) {
+	.stage {
+		padding-block: 1.5rem;
+	}
+}

@@ -1,0 +1,90 @@
+node_modules
+
+# Build output
+# `react-router typegen` output, written by each package's `prepare` and `check` scripts. the
+# console's own build writes a static bundle beside it that the go binary embeds, and there is no
+# server to run one, so nothing under it is ever uploaded (packages/console-ui/src/never-deployed.spec.ts).
+/packages/app/.react-router
+/packages/console-ui/.react-router
+# unanchored: a build directory is ignored wherever it appears. `@cloudflare/vite-plugin`
+# writes a deploy configuration redirection into one, and packages/app/scripts/preflight-deploy.js
+# is written on the premise that git never reports it.
+build/
+.output
+
+# what a tag builds: goreleaser's archives and checksums (.goreleaser.yaml's `dist:`), and the
+# worker bundle packages/console/cmd/pack writes beside them — under the module that produces
+# them. each line names its exact path, and that is load-bearing rather than tidy: an unanchored
+# `dist/` would exclude packages/console/ui/dist, and git stops descending into an excluded
+# directory, so the negation below that keeps the committed placeholder could not reach back
+# inside it.
+/packages/console/dist/
+/packages/console/bundle/
+
+# the embed, built by `pnpm run build:embed` into static/ so that `vite build` copies
+# both files into the worker's assets. the runtime's name is the hash of its own
+# contents, so a committed copy would be a stale one the moment anything under
+# packages/form/src/ changes.
+/packages/app/static/embed.js
+/packages/app/static/embed/
+
+# @better-giving/form's own build output, staged into static/ by packages/app/scripts/stage-embed.js.
+/packages/form/dist/
+
+# the console's ui:`pnpm --filter @better-giving/console-ui build` writes it to
+# packages/console-ui/build/client and copying it here is a hand step, after which
+# packages/console/ui/embed.go's one directive carries it into the binary. the placeholder
+# index.html is committed and the negation is what keeps it: an embed of an empty directory is a
+# build error, so without that one file a fresh checkout would not compile.
+/packages/console/ui/dist/*
+!/packages/console/ui/dist/index.html
+
+# Generated types — `wrangler types`, run by the `prepare` script
+worker-configuration.d.ts
+
+# wrangler local state — holds the local D1 database `wrangler dev` and
+# `wrangler d1 migrations apply --local` persist to
+.wrangler/
+
+# Secrets. Real deployments set these as Worker secrets; local dev uses
+# .dev.vars, which is never committed. Only the .example files are.
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+# The deployment's own values, read by `pnpm run deploy:vars` and by nothing else.
+# Held ignored by packages/app/src/lib/server/config/deploy-vars.file.spec.ts, because a rule that
+# only one file depends on is a rule somebody deletes with every gate still green.
+.deploy.vars
+.deploy.vars.*
+.env
+.env.*
+!.env.example
+
+# Scratch notes for trying this deployment end to end — deployed hostnames, a form
+# id, test card numbers. Ignored rather than committed for the reason wrangler.jsonc
+# holds no `database_id`: a fork inherits what is committed, and every line of it
+# points at a resource the fork cannot reach.
+/testing.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Vitest browser mode — failure screenshots (test.browser writes these on a failed
+# assertion) and any locator/network attachments. Generated per run, on the machine
+# that ran `test:browser`, never a fixture.
+.vitest-attachments/
+**/__screenshots__/
+
+# design artboards are never committed — only the design system is, and that is the two token
+# files and their headers (.claude/CLAUDE.md → Design system). `.design-work/` is a design canvas's
+# working directory, rewritten every time it re-seeds; `packages/design/` is where an artboard a
+# screen was drawn from lives on the machine that drew it. ignored rather than swept: biome.jsonc
+# reads this file (`useIgnoreFile`), so every rule the app's lint would apply to a mockup — each
+# reporting the mockup being one — is skipped for the same reason.
+/.design-work/
+/packages/design/

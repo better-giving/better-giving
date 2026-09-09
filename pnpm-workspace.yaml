@@ -1,0 +1,56 @@
+packages:
+  - 'packages/*'
+catalog:
+  # a catalog entry earns its place by having a second package.json to drift against. `@types/node`,
+  # `typescript`, `vite` and `vitest` are each declared by three or more of the packages, and
+  # `happy-dom` by packages/app, packages/form and packages/operator. `@ark-ui/react` is declared by
+  # packages/app and packages/operator, and the drift it would carry is sharper than a version
+  # number: the two would be two copies of one state machine, and a screen that renders a part from
+  # each is a trigger and a card that do not know about each other. the react family —
+  # `react`, `react-dom`, `@types/react`, `@types/react-dom` — is here on the same rule: every
+  # package that renders react declares it.
+  #
+  # `react` carries a second reason on top of that one: a second copy in one tree is a second
+  # runtime — a component resolved against its own react dispatcher — so the pin is what keeps
+  # every package on one. its floor is react-router's, which peers `react >= 19.2.7` at 8.3.0. the
+  # react-router family carries it too, and more sharply: `react-router` holds the router's own
+  # module state, so two copies in one tree are two routers, and `@react-router/dev` writes the
+  # types the other two are read against — the three move together or not at all.
+  #
+  # the workspace root takes `typescript` from the catalog as well, so a root opened in an editor
+  # resolves the same compiler every package type-checks with rather than whatever happens to be on
+  # the machine. the root declares nothing else of any package's: only what lints and formats.
+  #
+  # @cloudflare/vitest-pool-workers and @vitest/browser-playwright are version-coupled to vitest too
+  # but stay pinned in one package.json each rather than promoted here — the pool in
+  # packages/app/package.json, which has the D1-backed tests, and the browser runner in
+  # packages/form/package.json, which has the browser specs. a single consumer has nothing to drift
+  # against, and an entry here would claim otherwise.
+  #
+  # `xstate` is here on react's rule rather than on the count: two copies in one tree are two
+  # runtimes, and an actor started on a copy other than the one the machine was built with is a flow
+  # whose types match and whose identity does not. packages/form declares it for the machine, and
+  # every package that builds an actor on that machine takes the same entry — which is what makes
+  # them equal structurally rather than by review.
+  #
+  # `zod` and the `@conform-to/*` pair carry a coupling worth stating: `@conform-to/zod` is
+  # version-locked to `@conform-to/react`, and both are read against the `zod` major — packages/app
+  # and packages/console-ui declaring them is what makes the deployment's form layer and the
+  # console's the same validator rather than two.
+  '@ark-ui/react': 5.23.0
+  '@conform-to/react': 1.21.1
+  '@conform-to/zod': 1.21.1
+  '@react-router/dev': 8.3.0
+  '@react-router/fs-routes': 8.3.0
+  '@types/node': 24.13.3
+  '@types/react': 19.2.18
+  '@types/react-dom': 19.2.4
+  happy-dom: 20.11.1
+  react: 19.2.8
+  react-dom: 19.2.8
+  react-router: 8.3.0
+  typescript: 6.0.3
+  vite: 8.1.5
+  vitest: 4.1.10
+  xstate: 5.32.5
+  zod: 4.4.3

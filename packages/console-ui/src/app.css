@@ -1,0 +1,24 @@
+@layer tokens, reset, base, elements, layout;
+
+@import '@better-giving/operator/styles/fonts.css';
+@import '@better-giving/operator/styles/tokens.css';
+@import '@better-giving/operator/styles/base.css';
+@import '@better-giving/operator/styles/adm.css';
+
+/* the whole of the console's css, and the order it is read in. the sheets themselves live in
+   packages/operator/src/styles/ — the leaf package every surface imports from — so this
+   file names an order and defines nothing. packages/app/src/app.css is the dashboard's copy of the
+   same chain and carries the long argument for why the layers are declared here rather than left to
+   whichever file the bundler loaded first; what is written below is only what differs on this side.
+
+   all four sheets are imported here, fonts.css included, and this package still serves no assets
+   of its own: the @font-face src urls are relative to that sheet, so vite reads the faces out of
+   packages/operator and emits them into this dev server's own output. the console is set in the
+   same three faces as the dashboard rather than in the fallback stacks `--admin-font-sans`,
+   `--admin-font-display` and `--admin-font-mono` carry — which matters most at weight 500, a face
+   here and a browser's synthesis of 400 anywhere the file does not arrive.
+   packages/operator/src/styles/fonts.css holds the whole of that argument.
+
+   the layers buy ordering inside the console and nothing beyond it, and this surface embeds no
+   donation form — the paragraph in packages/app/src/app.css about the form's shadow root is about
+   what /admin renders and has no counterpart here. */

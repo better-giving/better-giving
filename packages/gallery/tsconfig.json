@@ -1,0 +1,25 @@
+{
+	// ../../tsconfig.base.json is the repository's strictness and this file adds only what a plain
+	// vite + react page needs on top of it.
+	//
+	// no path alias is spelled here and none is wanted: every import inside this package is
+	// relative, and what it may import from outside it is packages/operator — this package.json
+	// declares it as a `workspace:*` dependency, so the graph already refuses a bare specifier into
+	// packages/app or packages/console-ui. biome.jsonc is where the one thing the graph cannot see is
+	// caught: a relative path into either carries no alias to be absent, so it resolves with nothing
+	// else objecting to it.
+	//
+	// `vite/client` is what types `import.meta.glob` in src/main.tsx — the mechanism the whole
+	// package's registration rests on.
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"module": "esnext",
+		"target": "esnext",
+		"lib": ["esnext", "dom", "dom.iterable"],
+		"types": ["node", "vite/client"],
+		"jsx": "react-jsx",
+		"verbatimModuleSyntax": true,
+		"noEmit": true
+	},
+	"include": ["src/**/*.ts", "src/**/*.tsx", "*.ts"]
+}

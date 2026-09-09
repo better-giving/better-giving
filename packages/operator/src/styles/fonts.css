@@ -1,0 +1,148 @@
+/* red hat text, red hat display and red hat mono, self-hosted. no third-party font host: the
+   files sit beside this sheet in ./fonts/ and are served from the origin the operator screen is
+   already on, so a fork inherits the faces along with everything else and no reader of an
+   operator screen is announced to anybody.
+
+   the src urls below are relative on purpose, and it is what lets every surface read this sheet.
+   a root-absolute /fonts/… would need each one to serve a public directory holding the same ten
+   files — the dashboard has one, the console and the component gallery serve no assets at all — so
+   the faces would be a second copy of a binary or a surface set in a fallback stack. a relative
+   url is resolved against this file instead, and each surface's bundler emits the faces into its
+   own output from the one copy here. the binaries are in this package for the reason the sheets
+   are: more than one surface reads them.
+
+   three roles, three faces of one family. red hat text is drawn for interface text at small
+   sizes, which is the job these screens do — dense forms, labels that have to be unambiguous at
+   the 13px `--admin-label-size` sets, and long hints and standfirsts, of which this console has
+   more than most admin screens. red hat display is the same design cut for headings: the same cap
+   height on a narrower body and a narrower word space, which is the fit a title at
+   `--admin-text-2xl` wants and a face drawn for 13px does not have. the pairing is the family's own
+   designed intent rather than two faces put together here, so a heading and the paragraph under it
+   are one drawing at two scales — the third family is a role in the system, not a decoration on
+   top of it. red hat mono is the code
+   face, and it costs about 26kB a face against roughly 32kB for the other two, which is what pays
+   for the third family: ten files come to 314kB where the seven before them came to 356kB.
+
+   text 400, 400 italic, 500, 600 and 700; display 500, 600 and 700; mono 400 and 500. the weights
+   are each face's own rather than a browser's synthesis, so an emphasis is never a smeared 400 and
+   a de-emphasis is never nothing at all. display carries the three a heading can reach and no
+   more: 600 for the ranks ./base.css sets, 500 for a rank a screen re-pitches to
+   `--admin-weight-medium`, which is what a fold's summary in ./adm.css does, and 700 because
+   `--admin-weight-bold` is a step of the same scale. the one italic is the text face's 400
+   companion and it is worn by one thing — a value the deployment has not been given, where the
+   italic is what separates "there is nothing here" from a value that happens to be short. nothing
+   italicises display or mono.
+
+   one of the ten is declared ahead of a screen that paints it. no rule on either surface names
+   `--admin-weight-bold`, and 700 is reached all the same: ./base.css sets `b` and `strong` to
+   `bolder`, which from body text resolves to it, so the text face's bold is painted and the
+   display face's is the file nothing asks for — `bolder` inside a heading asks past it, at 900.
+   it is declared because the set of files is the weight scale
+   packages/operator/src/styles/tokens.css authors, and a scale that is whole in the token file and
+   has holes in the faces is one where reaching for a step silently gets a synthesised weight.
+   `font-display: swap` means an unpainted face costs a reader nothing; it costs each surface's
+   build output the file.
+
+   500 is real here and would not be on the other surface. both operator surfaces self-host, so
+   the medium weight they lean on is a file each one serves. the donation form ships no webfont at
+   all and inherits whatever a host hands it, where a two-weight family resolves 500 down to
+   400 and the emphasis simply vanishes — which is why packages/form/src/styles/tokens.css authors
+   two weights and never this one.
+
+   inside `tokens` for the same reason the rest of the operator css is inside a layer: an
+   unlayered sheet outranks every layer, and the donation form the dashboard embeds carries its
+   own css unlayered into a shadow root. a @font-face carries
+   no cascading declaration, so the layer costs it nothing and there is no exception here for a
+   reader to work out.
+
+   a face whose file is missing falls back to the stack in `--admin-font-sans`, `--admin-font-display`
+   or `--admin-font-mono` and says nothing, so the set of files is the set of blocks below and there
+   is no way to check that from a screen, and nothing else checks it either.
+
+   all three families are licensed under the sil open font license 1.1, which requires the copyright
+   notice and the licence to travel with the binaries wherever they go, and a fork of this
+   repository takes all ten with it. ./fonts/OFL.txt sits beside them and carries the one notice
+   that covers the three, so a face added to or dropped from that directory is a change to that
+   file too. the root LICENSE is this project's own grant and says nothing about the faces. */
+
+@layer tokens {
+	@font-face {
+		font-family: 'Red Hat Text';
+		src: url('./fonts/RedHatText-Regular.woff2') format('woff2');
+		font-weight: 400;
+		font-style: normal;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Text';
+		src: url('./fonts/RedHatText-Italic.woff2') format('woff2');
+		font-weight: 400;
+		font-style: italic;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Text';
+		src: url('./fonts/RedHatText-Medium.woff2') format('woff2');
+		font-weight: 500;
+		font-style: normal;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Text';
+		src: url('./fonts/RedHatText-SemiBold.woff2') format('woff2');
+		font-weight: 600;
+		font-style: normal;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Text';
+		src: url('./fonts/RedHatText-Bold.woff2') format('woff2');
+		font-weight: 700;
+		font-style: normal;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Display';
+		src: url('./fonts/RedHatDisplay-Medium.woff2') format('woff2');
+		font-weight: 500;
+		font-style: normal;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Display';
+		src: url('./fonts/RedHatDisplay-SemiBold.woff2') format('woff2');
+		font-weight: 600;
+		font-style: normal;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Display';
+		src: url('./fonts/RedHatDisplay-Bold.woff2') format('woff2');
+		font-weight: 700;
+		font-style: normal;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Mono';
+		src: url('./fonts/RedHatMono-Regular.woff2') format('woff2');
+		font-weight: 400;
+		font-style: normal;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Mono';
+		src: url('./fonts/RedHatMono-Medium.woff2') format('woff2');
+		font-weight: 500;
+		font-style: normal;
+		font-display: swap;
+	}
+}

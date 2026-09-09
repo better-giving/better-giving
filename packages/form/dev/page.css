@@ -1,0 +1,221 @@
+/*
+ * the dev page's own chrome, and none of the form's.
+ *
+ * every value below belongs to this file. nothing here reads ../src/styles/tokens.css, adds to it,
+ * or derives from it: that file is the donation form's closed source of values and the panel is not
+ * the donation form — a tool standing next to it, deliberately looking like one, so that nothing on
+ * screen is ambiguous about which of the two a contributor is looking at.
+ *
+ * the four grounds are the whole reason the stage is a separate box. the form is pasted into pages
+ * this project cannot see, and a card only ever looked at on white is a card nobody checked; the
+ * `[data-ground]` rules below are the vocabulary ./main.ts switches between, named by the radios in
+ * ../index.html.
+ *
+ * the card's own width is the stage's, on purpose: ../src/styles/layout.css sizes the form with
+ * container queries at 22em, 24em and 26em, so the box this page gives it is what decides which of
+ * those shapes renders. narrowing the window is how the other two are reached.
+ */
+
+:root {
+	--dev-ink: #16181d;
+	--dev-muted: #5b6270;
+	--dev-line: #d9dde3;
+	--dev-panel: #f4f5f7;
+	--dev-field: #ffffff;
+	--dev-focus: #2563eb;
+	color-scheme: light;
+}
+
+body {
+	margin: 0;
+	background: var(--dev-panel);
+	color: var(--dev-ink);
+	font:
+		13px / 1.45 ui-sans-serif,
+		system-ui,
+		sans-serif;
+}
+
+.page {
+	display: grid;
+	grid-template-columns: 19rem 1fr;
+	min-height: 100vh;
+}
+
+.panel {
+	position: sticky;
+	top: 0;
+	align-self: start;
+	max-height: 100vh;
+	overflow-y: auto;
+	padding: 1.25rem;
+	border-right: 1px solid var(--dev-line);
+}
+
+.panel-head h1 {
+	margin: 0 0 0.25rem;
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 0.875rem;
+}
+
+.panel-head p {
+	margin: 0;
+	color: var(--dev-muted);
+}
+
+.group {
+	margin-top: 1rem;
+	padding-top: 0.875rem;
+	border-top: 1px solid var(--dev-line);
+}
+
+.group h2 {
+	margin: 0 0 0.625rem;
+	color: var(--dev-muted);
+	font-size: 0.6875rem;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.seed {
+	display: grid;
+	gap: 0.25rem;
+	margin-bottom: 0.625rem;
+}
+
+.seed label {
+	color: var(--dev-muted);
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 0.6875rem;
+	/* every label here is a custom property name, and a mono face that ligates `--` into one long
+	   dash makes each of them read as a property nobody can set. */
+	font-variant-ligatures: none;
+}
+
+.seed-controls {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.seed-state {
+	flex: 1;
+	color: var(--dev-muted);
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 0.6875rem;
+}
+
+.note {
+	margin: 0.375rem 0 0;
+	color: var(--dev-muted);
+}
+
+.actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.375rem;
+	margin-top: 0.5rem;
+}
+
+button,
+select,
+input[type='number'] {
+	padding: 0.25rem 0.5rem;
+	border: 1px solid var(--dev-line);
+	border-radius: 4px;
+	background: var(--dev-field);
+	color: inherit;
+	font: inherit;
+	font-size: 0.75rem;
+}
+
+button {
+	cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+	background: #eceef1;
+}
+
+button:disabled {
+	cursor: default;
+	opacity: 0.45;
+}
+
+input[type='number'] {
+	inline-size: 4.5rem;
+}
+
+input[type='color'] {
+	inline-size: 2.25rem;
+	block-size: 1.75rem;
+	padding: 0;
+	border: 1px solid var(--dev-line);
+	border-radius: 4px;
+	background: none;
+}
+
+.grounds {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.grounds legend {
+	padding: 0;
+	color: var(--dev-muted);
+}
+
+.grounds label {
+	display: flex;
+	align-items: center;
+	gap: 0.375rem;
+	padding: 0.1875rem 0;
+}
+
+:focus-visible {
+	outline: 2px solid var(--dev-focus);
+	outline-offset: 2px;
+}
+
+.stage {
+	display: grid;
+	justify-items: center;
+	align-content: start;
+	padding: 2rem 1.25rem 4rem;
+	background: #ffffff;
+}
+
+.stage bg-donate-form {
+	inline-size: 100%;
+	max-inline-size: 30rem;
+}
+
+.stage[data-ground='white'] {
+	background: #ffffff;
+}
+
+.stage[data-ground='paper'] {
+	background: #efe9df;
+}
+
+.stage[data-ground='night'] {
+	background: #14161a;
+}
+
+.stage[data-ground='saturated'] {
+	background: #1b3fd8;
+}
+
+@media (max-width: 48rem) {
+	.page {
+		grid-template-columns: 1fr;
+	}
+
+	.panel {
+		position: static;
+		max-height: none;
+		border-right: 0;
+		border-bottom: 1px solid var(--dev-line);
+	}
+}

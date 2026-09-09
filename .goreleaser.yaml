@@ -1,0 +1,90 @@
+# what a tag builds: the console binary for the four platforms an operator installs on, and the
+# worker bundle that binary deploys.
+#
+# it is at the repository root rather than beside the go module, and the module is reached by
+# `dir` instead. the release is the repository's — the tag, the changelog and the assets all
+# belong to it — and every step that produces something for it runs at the root: the pnpm build of
+# the ui the binary carries, the app build wrangler bundles from, and the pack. what those steps
+# write lands under the module that produced it — `dist` below, and the bundle/ directory beside
+# it that .github/workflows/release.yml packs into.
+#
+# nothing here builds the ui or packs the bundle. .github/workflows/release.yml does both, in
+# front of this, so each step is a line in the actions log with its own failure rather than a hook
+# whose output goreleaser folds into one. what this config depends on is the state those steps
+# leave: packages/console/ui/dist holding the built react app, and packages/console/bundle/ holding the packed
+# worker.
+version: 2
+
+project_name: better-giving
+
+# under the go module that produced it rather than at the repository root, and .gitignore names
+# this exact path — so packages/console/ui/dist and the committed placeholder that keeps
+# `go build` working sit beside it untouched.
+dist: packages/console/dist
+
+builds:
+  - id: better-giving
+    # the go module is a directory of the repository rather than the repository, and declares
+    # nothing of the pnpm workspace beside it.
+    dir: packages/console
+    main: ./cmd/better-giving
+    binary: better-giving
+    env:
+      # no cgo, so a binary built on the runner's image runs on an operator's machine whatever libc
+      # it holds — the whole premise of a download that needs nothing installed.
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      # the two words `better-giving version` prints, and the version is load-bearing beyond that
+      # line: internal/release's `BundleSource` derives the bundle's address from it, so a binary
+      # built without this deploys nothing. goreleaser's `.Version` is the tag without its `v`,
+      # which is how the asset below is named too.
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .FullCommit }}
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: better-giving
+    formats:
+      - tar.gz
+    # the name install.sh works out from `uname`, so there is one spelling of a platform between
+    # the two.
+    name_template: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}'
+    files:
+      # the licence and nothing else: the readme at the root is written for a contributor holding a
+      # checkout, and an operator holding this archive has none.
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+  extra_files:
+    # the bundle is checksummed beside the archives rather than left out of the file: it is an
+    # asset an operator's binary downloads, and one line covering every asset is what install.sh
+    # and a hand check both read.
+    - glob: packages/console/bundle/worker-*.tar.gz
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-snapshot'
+
+release:
+  extra_files:
+    # the worker bundle, packed by .github/workflows/release.yml before this runs. it is named for
+    # the version rather than for the platform, because one bundle serves every architecture — the
+    # binary deploys javascript and sql, not machine code.
+    - glob: packages/console/bundle/worker-*.tar.gz
+    # the install line's own script, uploaded unchanged under its base name. it is an asset of
+    # every release because `releases/latest/download/install.sh` is the address the operator
+    # documents publish, and that address resolves to the newest release's copy — so a release that
+    # left it out would break the install line for everyone, not only for itself.
+    - glob: scripts/install.sh
+
+changelog:
+  # every commit, in the order they landed. this repository has no commit-message convention that
+  # would sort them into sections, and one invented at release time would mislabel every commit
+  # made before it.
+  use: git

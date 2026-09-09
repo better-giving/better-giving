@@ -1,0 +1,41 @@
+{
+	// ../../tsconfig.base.json is the repository's strictness and this file adds only what a react
+	// router app on the workers runtime needs on top of it.
+	//
+	// `.react-router/types` is written by `react-router typegen`, which the `check` and `prepare`
+	// scripts both run. `rootDirs` is what lets a route module import its own generated types as a
+	// relative sibling — `./+types/root` resolves into that directory rather than beside the screen.
+	//
+	// worker-configuration.d.ts is named in `include` because it declares globals (`Env`,
+	// `D1Database`) rather than exporting them, so there is nothing to import and nothing else pulls
+	// it in — and `skipLibCheck` would swallow the resulting "cannot find name 'Env'" and leave every
+	// binding `any`. it is gitignored and written by `wrangler types`, which the `prepare` script
+	// runs; if it is missing, run `pnpm wrangler types`.
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"module": "esnext",
+		"target": "esnext",
+		"lib": ["esnext", "dom", "dom.iterable"],
+		"types": ["node", "vite/client"],
+		"jsx": "react-jsx",
+		// nothing in this project is authored in JS, and what `allowJs` lets in is generated:
+		// worker-configuration.d.ts's `mainModule` reference reaches the worker entry, and a build's
+		// output is not this program's to check.
+		"checkJs": false,
+		"verbatimModuleSyntax": true,
+		"noEmit": true,
+		"rootDirs": [".", "./.react-router/types"],
+		// the alias most of src/ already imports through, and ./vite.config.ts declares the same one
+		// for the bundler — neither knows about the other.
+		"paths": {
+			"$lib/*": ["./src/lib/*"]
+		}
+	},
+	"include": [
+		"src/**/*.ts",
+		"src/**/*.tsx",
+		"*.ts",
+		"worker-configuration.d.ts",
+		".react-router/types/**/*"
+	]
+}

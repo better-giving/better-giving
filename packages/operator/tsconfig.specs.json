@@ -1,0 +1,14 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		// a spec over a part passes that part's props, which are react nodes, so it is a `.tsx`
+		// file. `react-jsx` is what lets one type-check with no `import React`, which is how every
+		// part in src/components/** is written.
+		"jsx": "react-jsx"
+	},
+	// the specs are the reason for this config, and the modules they import come with them: one
+	// program over the whole package, so a spec is checked against the same settings as the code
+	// it renders. ./tsconfig.json checks the same `.ts` files again and that is the cost of keeping
+	// `jsx` out of the file esbuild reads — see its header.
+	"include": ["src/**/*.ts", "src/**/*.tsx"]
+}

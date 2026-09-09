@@ -1,0 +1,347 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "better-giving",
+
+	// the worker entry, and it is source rather than build output.
+	//
+	// `@cloudflare/vite-plugin` (vite.config.ts) reads this file, builds what `main` names, and
+	// writes the config `wrangler deploy` actually uploads into build/server/wrangler.json — with
+	// `main` rewritten to the bundle beside it and an `assets` block naming build/client. wrangler
+	// is pointed at that generated config by a deploy configuration redirection the same build
+	// writes at .wrangler/deploy/config.json. scripts/preflight-deploy.js reads both and is where
+	// that chain is argued at length.
+	//
+	// so there is no `assets` block here and none belongs: the assets directory is the client build,
+	// it does not exist until vite has run, and the plugin fills the field in from what it built.
+	// this file is the input to that build rather than a description of its output.
+	//
+	// every wrangler command but `deploy`, `dev` and `versions upload` follows no redirection and
+	// reads this file directly — `d1 migrations apply`, `secret`, `types` — which is what keeps the
+	// bindings below the ones an operator's commands act on.
+	"main": "./src/worker.ts",
+
+	"compatibility_date": "2026-07-22",
+	"compatibility_flags": ["nodejs_compat"],
+
+	// keep the vars this deployment is holding, and do not delete them on the way past.
+	//
+	// all thirteen values an operator configures this deployment with are plain vars, so that the
+	// console can read each one back off the account and show what was stored rather than a mask.
+	// `@better-giving/operator/deploy-split` holds the list and argues it; DEPLOY.md is the same
+	// thing written for an operator.
+	//
+	// there is deliberately no `vars` block below to hold them, for the same reason there is no
+	// `database_id` above: every one of those values is org-specific, so a value committed here
+	// is a deployment artifact a fork inherits and cannot use — and this one would be a live
+	// Stripe key in a public repository. an operator sets a var on their own deployment instead —
+	// from the console, on the Worker's Variables and Secrets page, or by appending
+	// `--var NAME:value` to `pnpm run deploy`, which reaches `wrangler deploy` intact because it
+	// is the last command in that script's chain. `pnpm run deploy:vars` is that last form
+	// thirteen times over, read out of a gitignored file (scripts/deploy-vars.js).
+	//
+	// which is exactly what makes this line load-bearing rather than tidy. wrangler's own
+	// `deploy --help` for the pinned version: "When not used (or set to false), Wrangler will
+	// delete all vars before setting those found in the Wrangler configuration. When used (and
+	// set to true), the environment variables are not deleted before the deployment. … Note that
+	// secrets are never deleted by deployments." the default is false. so without this, a repo
+	// that declares no vars and a deployment that holds thirteen is one plain `pnpm run deploy`
+	// away from holding none — silently, leaving a deployment that can sign nobody in, charge
+	// nothing, send nothing and refuse every gift.
+	//
+	// it is a top-level key and only a top-level key — wrangler's config schema puts `keep_vars`
+	// on `RawConfig` and not on `RawEnvironment` — so this one line already covers any named
+	// environment a fork adds later. src/lib/server/config/deploy-vars.config.spec.ts holds it
+	// here, and `test` runs in lefthook.yml's pre-commit hook, ahead of any deploy.
+	//
+	// the trade it makes: a var can no longer be removed by a deploy. deleting one is the
+	// Variables and Secrets page, or setting it to the empty string — which `readConfigEnv` in
+	// src/lib/server/config/env.ts already reads as absent. `PORT_FIX` in
+	// src/lib/server/email/smtp-config.ts is the one operator sentence that says so.
+	"keep_vars": true,
+
+	"observability": {
+		"enabled": true
+	},
+
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "better-giving",
+
+			// there is deliberately no `database_id` here, and it is not an omission.
+			// an id names one database in one Cloudflare account — a deployment artifact,
+			// which belongs on the deploy and not in a repo meant to be forked. a fork
+			// inheriting ours would carry a pointer at a database it cannot reach.
+			//
+			// wrangler validates this field with `isOptionalProperty`, so leaving it out is
+			// supported even though the public docs list it as required. every path that
+			// needs the database resolves it by `database_name` against your own account:
+			// the remote CLI (`d1 migrations apply --remote`, `d1 execute`, `d1 info`) via
+			// `getDatabaseByNameOrBinding`, and `wrangler deploy` via its provisioning
+			// flow, which connects to an existing database of that name rather than
+			// creating a second one.
+			//
+			// on a fork's first deploy, `pnpm run deploy` builds, then stops at its
+			// `wrangler d1 migrations apply DB --remote` step with
+			// "Couldn't find a D1 DB named 'better-giving' … Run 'wrangler d1 create better-giving'".
+			// run it once — with `--no-update-config`, or wrangler offers to write the id
+			// back into this file and put the artifact right back — and every deploy after
+			// that works untouched. the failure lands before the one-way door, not inside it.
+			//
+			// locally nothing is needed: miniflare derives the local sqlite filename from
+			// this id, and derives it from the absence just as happily. that derivation is
+			// the other reason to keep the id out — pinned, every change to it (a
+			// `d1 create`, a pulled commit, a branch switch) silently points `--local`
+			// at an empty database and orphans the old file under .wrangler/state/v3/d1/,
+			// after which every request 500s on a missing `auth_signing_key` until
+			// `pnpm wrangler d1 migrations apply DB --local` re-applies them. with no id,
+			// contributors all share one filename and it never moves.
+			"migrations_dir": "./migrations"
+		}
+	],
+
+	// the three buckets this app charges: the whole public surface, the one endpoint on it that
+	// takes money, and the staff sign-in. CLAUDE.md names rate limiting as one of the things an
+	// endpoint on `/api/v1` owes before it ships; the sign-in is not on that surface and is here
+	// because it compares a single deploy-time secret for anyone who asks.
+	//
+	// this deployment answers anonymous writes on three paths, not one: `POST /api/v1/forms/:id/
+	// donations`, the sign-in, and `POST /api/stripe/webhook`. the webhook is the one with no
+	// bucket, deliberately — `src/routes/api.stripe.webhook.ts`'s header says why, and the short
+	// version is that a signature is checked before anything is parsed and a shed delivery costs a
+	// settlement.
+	//
+	// each has a `namespace_id` of its own, and that is load-bearing rather than tidy: a namespace
+	// is account-wide, so two bindings naming one share a count for a given key — donors reading a
+	// form would spend the sign-in's bucket, and a scanner on the public api would lock the only
+	// admin out. account-wide is also across Workers, so two deployments of this app in one account
+	// share all three of these; the keys are named after what they bound
+	// (src/lib/server/api/rate-limit.ts) rather than left to the namespace to keep apart, which is
+	// what stops two surfaces metered through one binding from eating each other's count.
+	//
+	// where each is spent is in the code, not here: the surface in `src/routes/api.v1.ts`, whose
+	// `middleware` meters every route beneath it, the quote in
+	// `src/routes/api.v1.forms.$id.donations.ts`, and the sign-in in `src/routes/login.tsx`'s own
+	// action, which is the one site that spends that bucket. what
+	// happens when one of these bindings is missing, and what happens when the edge attributes no
+	// address to a caller, are both stated in src/lib/server/api/rate-limit.ts rather than at the
+	// call sites. `src/lib/server/api/rate-limit.config.spec.ts` holds all three to this file, and
+	// `test` runs ahead of the deploy.
+	"ratelimits": [
+		{
+			"name": "API_RATE_LIMITER",
+
+			// the counter's identity, and unlike `database_id` above this is not a deployment
+			// artifact: it is a number this repo chooses, and every fork's own account counts
+			// under the same one. nothing resolves it against an account and there is no
+			// resource to create — wrangler has no command for one, and a deploy carrying this
+			// block is the whole of the setup.
+			//
+			// it is account-wide though, which is the one thing to know about it: two Workers
+			// in one account naming the same namespace share a limit. that is why this is not
+			// `1001`, the value every Cloudflare example uses and therefore the value another
+			// Worker in the operator's account most likely already carries. any positive
+			// integer as a string; chosen once and never changed, because changing it empties
+			// every live bucket.
+			"namespace_id": "7412",
+
+			"simple": {
+				// per client IP per minute — see `apiRateLimitKey` in
+				// src/lib/server/api/rate-limit.ts for what the key is and why the form id is
+				// not in it.
+				//
+				// the number is sized for the caller this endpoint actually has: one embedded
+				// donation form asks once per page load, so ten a second is far above any
+				// browser and still bounds a single address to ten D1 reads a second. it is
+				// deliberately generous because the failure modes are not symmetric — a
+				// mobile carrier puts thousands of real donors behind one address, and
+				// refusing a donor costs a gift while letting a scanner have ten reads a
+				// second costs a fraction of a cent.
+				//
+				// two things this number is not, both documented at
+				// https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/.
+				// it is not a global count: a limit is local to the Cloudflare location the
+				// Worker ran in, so a caller spread across locations gets this many in each
+				// one — another reason to read it as a bound on a scanner rather than as an
+				// accounting figure. and it is not per deployment: a second deployment of
+				// this app in the same account carries the same `namespace_id`, so a staging
+				// copy beside production shares these counters key for key, and a load test
+				// against one refuses donors on the other.
+				"limit": 600,
+				// seconds, and the only two values the binding accepts are 10 and 60.
+				"period": 60
+			}
+		},
+		{
+			"name": "QUOTE_RATE_LIMITER",
+
+			// a namespace of its own, for the reason given above this block. any positive integer
+			// as a string, chosen here and identical in every fork; changing it empties every live
+			// bucket.
+			"namespace_id": "7413",
+
+			"simple": {
+				// per client IP per minute, on `POST /api/v1/forms/:id/donations` alone — the one
+				// endpoint that mints a payment intent at the processor, writes rows and spends a
+				// Turnstile verification, where the surface bucket above it bounds a read.
+				//
+				// ten times tighter than that bucket and sized against the same address, which is
+				// the constraint that decides the number. the 600 above is generous because a
+				// mobile carrier or a campus puts many real donors behind one address, and that
+				// stays true when the request costs more — so a tighter bucket on the same key
+				// cannot be tightened past what one busy NAT does in a minute. sixty is that: a
+				// handful of donors each pressing the button, being declined, and pressing it
+				// again.
+				//
+				// defence in depth, and not the control on card testing. that is Turnstile
+				// (src/lib/server/api/turnstile.ts), verified inside `mintQuote` before anything
+				// is minted at the processor, and it is what bounds a caller with a fresh address
+				// per request — which this bucket cannot see. what the number does is cap the
+				// damage of a minute in which the challenge is passing anyway, and keep one
+				// address from making the processor its own workload.
+				//
+				// the same two caveats the surface limit carries apply here — the count is per
+				// Cloudflare location rather than global, and it is per account rather than per
+				// deployment, so a staging copy beside production shares these counters.
+				"limit": 60,
+				"period": 60
+			}
+		},
+		{
+			"name": "SIGN_IN_RATE_LIMITER",
+
+			// a namespace of its own, for the reason given above this block.
+			"namespace_id": "7414",
+
+			"simple": {
+				// per client IP per minute on the one path that compares `ADMIN_PASSWORD`: the
+				// form action at `POST /login`. the key is the credential's rather than that
+				// path's (`signInRateLimitKey` in src/lib/server/api/rate-limit.ts), so a second
+				// way in would spend this same bucket instead of minting one of its own.
+				//
+				// ten rather than five, and the direction is deliberate: an operator typing a long
+				// random password out of a password manager can miss several times in a minute,
+				// and a deployment that refuses them is a deployment nobody can administer. ten is
+				// still a hard ceiling on guessing — a secret worth using is not reachable at any
+				// rate this leaves open, and what bounds an attacker who has one is the secret
+				// rather than this number.
+				//
+				// what that ceiling is counted per is not simply the address, which is why the
+				// sentence a refused operator reads does not claim it is. the count is per Cloudflare
+				// location rather than global; and under the zone-level "Remove visitor IP
+				// headers" managed transform the edge attributes no address at all, at which point
+				// this bucket is skipped rather than shared — so one caller cannot hold the login
+				// closed on the operator. src/lib/server/api/rate-limit.ts is where that is
+				// argued.
+				"limit": 10,
+				"period": 60
+			}
+		}
+	],
+
+	// the rehearsal deployment, declared here before anything selects it.
+	//
+	// that order is the point. with no `env` block in this file at all, wrangler downgrades an
+	// unknown environment to a warning and falls back to everything above it — so `wrangler deploy
+	// --env test` would deploy a Worker named `better-giving-test` bound to the real database and
+	// the real rate limiters, and say so in a line that scrolls past. the branch is in wrangler's
+	// own config normalizer: the "No environment found in configuration with name" message goes
+	// onto the errors when `env` has any keys at all and onto the warnings when it has none. so one
+	// environment existing is what turns every misspelling after it into a hard error that lists
+	// the names that are real. the block is the guard, and it lands before the flag does.
+	//
+	// nothing here changes a bare `pnpm run deploy`: an environment is resolved only when one is
+	// selected. `keep_vars` above is top-level and already covers this one — see the comment on it.
+	//
+	// that guard covers every command that reads this file and does not cover `wrangler deploy`,
+	// which reads the generated config instead. an environment is chosen for that half at *build*
+	// time, by `CLOUDFLARE_ENV`, and a redirected config carries no `env` block for `--env` to miss
+	// — so a build made without the variable and uploaded with the flag deploys the top level, which
+	// is the real deployment. `pnpm run deploy:test` sets both together, and
+	// scripts/preflight-deploy.js refuses the pair when they disagree.
+	//
+	// what an environment inherits is not what the published list says, and the two that matter
+	// most are the two it leaves out. wrangler runs `name` (suffixed, so this one deploys as
+	// `better-giving-test`), `main`, `assets`, `compatibility_date`, `compatibility_flags` and
+	// `observability` through its `inheritable` helper, and `d1_databases`, `ratelimits` and `vars`
+	// through `notInheritable`, which takes only what the environment itself declares and warns
+	// when the top level holds one the environment does not. that is why the database and all four
+	// limiters are repeated below in full: an entry left out of here is a binding this deployment
+	// does not have, not one it borrows. `vars` needs no repeating for the same reason there is no
+	// top-level `vars` block to inherit.
+	//
+	// one thing is shared and cannot be unshared, and it is local only: `wrangler dev` and
+	// `wrangler dev --env test` read one sqlite file under .wrangler/state/, because with no
+	// `database_id` the local filename falls back to the binding name and `DB` is the same on both
+	// sides. the two remote databases are genuinely separate.
+	"env": {
+		"test": {
+			"d1_databases": [
+				{
+					"binding": "DB",
+
+					// a database of its own, and the only line that makes this environment worth
+					// having. the same binding name, so no code branches on which one it is talking
+					// to.
+					"database_name": "better-giving-test",
+
+					// no `database_id`, for the reason argued at length on the top-level entry: an
+					// id names one database in one account, and every path that needs this one
+					// resolves it by name. a fork's first `--env test` deploy stops the same way,
+					// asking for `wrangler d1 create better-giving-test` — run it with
+					// `--no-update-config`.
+					"migrations_dir": "./migrations"
+				}
+			],
+
+			// the same four buckets, the same three limits and the same probe, under four namespaces
+			// of their own.
+			//
+			// the numbers are copied so that a rehearsal refuses where the real deployment would.
+			// the namespace ids are not, and that is what this whole repetition is for: a namespace
+			// is account-wide and shared across Workers by design, so a rehearsal reusing 7412-7415
+			// would spend the real deployment's counters key for key — a load test here would refuse
+			// real donors, and a scripted sign-in here would hold the real operator's login closed.
+			// these four are repo-chosen integers exactly like the ones above: nothing creates them,
+			// nothing resolves them against an account, and they are far enough from the four above
+			// that a transposed digit does not land on one.
+			//
+			// what each bucket meters, why each needs a namespace to itself and why each number is
+			// what it is are argued once on the top-level block and not repeated here. change a
+			// limit there and change it here, or the rehearsal stops rehearsing.
+			//
+			// held twice over, and by neither gate naming this block — each reads whatever the file
+			// declares. src/lib/server/api/rate-limit.config.spec.ts reads every block there is — so
+			// these four carry the same numbers as the ones above and namespaces no other block
+			// anywhere uses — and scripts/preflight-deploy.js refuses a deploy whose *selected*
+			// environment declares no `DB` or is missing any of these four, which is the gate that
+			// stands in front of `pnpm run deploy`'s one-way door.
+			"ratelimits": [
+				{
+					"name": "API_RATE_LIMITER",
+					"namespace_id": "3821",
+					"simple": {
+						"limit": 600,
+						"period": 60
+					}
+				},
+				{
+					"name": "QUOTE_RATE_LIMITER",
+					"namespace_id": "3822",
+					"simple": {
+						"limit": 60,
+						"period": 60
+					}
+				},
+				{
+					"name": "SIGN_IN_RATE_LIMITER",
+					"namespace_id": "3823",
+					"simple": {
+						"limit": 10,
+						"period": 60
+					}
+				}
+			]
+		}
+	}
+}

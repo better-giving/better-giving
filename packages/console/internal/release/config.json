@@ -1,0 +1,10 @@
+{
+	"name": "better-giving",
+	"database_name": "better-giving",
+	"migrations_dir": "./migrations",
+	"migrations": [
+		"0000_initial_schema.sql"
+	],
+	"turnstileWidgetName": "better-giving",
+	"commit": "acaef3f74d9560a55e002094c502dbc0a41dbb02"
+}

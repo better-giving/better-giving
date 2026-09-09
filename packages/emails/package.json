@@ -1,0 +1,29 @@
+{
+	"name": "@better-giving/emails",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./render": "./src/render.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit",
+		"test": "vitest --run"
+	},
+	"dependencies": {
+		"@better-giving/operator": "workspace:*",
+		"@react-email/render": "2.1.0"
+	},
+	"peerDependencies": {
+		"react": "catalog:"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@types/react": "catalog:",
+		"@types/react-dom": "catalog:",
+		"react-dom": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

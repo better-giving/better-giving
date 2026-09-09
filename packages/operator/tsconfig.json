@@ -1,0 +1,25 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"target": "esnext",
+		"module": "esnext",
+		"lib": ["esnext", "DOM", "DOM.Iterable"],
+		"verbatimModuleSyntax": true,
+		"isolatedModules": true,
+		"noEmit": true,
+		// explicit rather than left to automatic @types scanning: with no other package still
+		// pulling a wide dependency tree into this leaf, tsc's automatic discovery of
+		// node_modules/@types stops finding this package's own @types/node, and every `node:*`
+		// import in ./src/styles/raw-values.ts fails to resolve.
+		"types": ["node"],
+		// the ports in src/components/** are `.jsx` with their props stated once in JSDoc, and this
+		// is what reads that annotation: `checkJs` type-checks the body against it, and `react-jsx`
+		// is the runtime every port but the real element assumes (no port imports react).
+		"checkJs": true,
+		"jsx": "react-jsx"
+	},
+	// the `.tsx` specs beside the parts are ./tsconfig.specs.json's, not this file's — a `.tsx` spec
+	// passes a part real react nodes as props and needs the whole program in scope to do it, so it
+	// is checked once here as `.jsx` and again there as `.tsx` against the same settings.
+	"include": ["src/**/*.ts", "src/**/*.jsx"]
+}

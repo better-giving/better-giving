@@ -1,0 +1,420 @@
+{
+	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+	"files": {
+		// packages/design/ is the working directory for a design canvas that is published and
+		// edited elsewhere: mockup fragments written by its own gen.py, assembled by its
+		// build.mjs against a copy of packages/operator's stylesheet. it carries no
+		// package.json and is not a workspace package. nothing under it ships, and every
+		// rule the app's lint would apply to a mockup reports the mockup being one — an
+		// href="#" on a link that goes nowhere yet, a heading whose page has no <html> around
+		// it. formatting it is churn against files a generator rewrites. git ignores the
+		// directory as well (.gitignore), and the exclude here keeps the reason beside the rule.
+		//
+		// packages/console/internal/release/config.json is written by `go run ./cmd/bake` and
+		// compared against a fresh bake, byte for byte, by internal/release's own tests. the two
+		// formatters disagree on an array short enough to fit one line: bake keeps every entry on
+		// its own, biome collapses it under lineWidth. formatting it turns the next bake into a
+		// red go-test rather than a diff, so the generator owns the bytes.
+		"includes": [
+			"**",
+			"!packages/app/migrations/meta",
+			"!packages/console/internal/release/config.json",
+			"!packages/design"
+		]
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab",
+		"lineWidth": 100
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "single",
+			"trailingCommas": "none"
+		}
+	},
+	"css": {
+		"formatter": { "quoteStyle": "single" }
+	},
+	"html": {
+		"formatter": {
+			"enabled": true,
+			"indentScriptAndStyle": true,
+			"selfCloseVoidElements": "always"
+		},
+		"experimentalFullSupportEnabled": true
+	},
+	"linter": {
+		"enabled": true,
+		"rules": { "preset": "recommended" }
+	},
+	// import order was never a rule this repository held — eslint's config carried no equivalent
+	// of `organizeImports`, so leaving it on would land as a new rule arriving by accident of the
+	// tool swap, not a decision, and its one-time cost is 153 files reordered in a commit nobody
+	// can review for anything but its own churn. most of those files were on the way out anyway:
+	// the operator surface has since been rebuilt in react and the svelte tree went with it.
+	// reversible on its own terms — the react tree can turn this back on when adopting it costs
+	// one pass over the files that are left.
+	"assist": {
+		"actions": {
+			"source": { "organizeImports": "off" }
+		}
+	},
+	// the five overrides below are the import-boundary gates this repo's CLAUDE.md describes in its
+	// section on the five packages and the graph between them — but they are not the
+	// primary gate. the pnpm workspace graph is: an importing package declares the other as a
+	// `workspace:*` dependency in its own package.json, and the imported package's `exports`
+	// map is the closed list of what a bare specifier may name, so a bare specifier for
+	// anything not on that list, or for a package never declared, fails to resolve in tsc, vite
+	// and every test pool before lint ever runs. the graph governs bare specifiers only — what
+	// it cannot see is a relative path, which carries no specifier and no alias to be absent
+	// and so resolves silently regardless of either manifest. these five overrides are that one
+	// remaining escape, and only that one; each pattern below still carries the comment naming
+	// its own hole.
+	"overrides": [
+		{
+			// packages/form/package.json and the workspace root manifest are the two package
+			// manifests pnpm's isolated layout gives this package to resolve from, and neither
+			// declares an app-only dependency — a bare specifier for one is refused as
+			// `MODULE_NOT_FOUND` by tsc, Vite and the test pools alike, before lint ever runs: the
+			// graph governs a bare specifier and there is no dependency here to resolve one
+			// against. what it cannot catch is a relative path: `../../app/src/lib/server/db/client`
+			// carries no specifier and no alias, so it resolves silently everywhere else. this
+			// rule is the one place that escape is caught.
+			// dev/ is on the list for the reason src/ is: it is inside this package, so a relative
+			// path out of it answers to no manifest either. it reaches ../src by relative path
+			// legitimately — packages/form/src/dev-never-imported.spec.ts is what holds that
+			// direction one-way — and the app is as far out of reach from there as from anywhere
+			// else here.
+			"includes": ["packages/form/src/**/*.ts", "packages/form/dev/**/*.ts", "packages/form/*.ts"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": ["$lib", "$lib/*"],
+										"message": "packages/form has no $lib alias — see packages/form/tsconfig.json."
+									},
+									{
+										// named at the app rather than at `**/src/**` generically, because this
+										// package's own root-level config files reach their own `./src/**` by
+										// relative path too — a pattern that didn't name the app would flag that
+										// self-reference as if it were the escape.
+										"group": ["**/app/src/**", "**/app/scripts/**"],
+										"message": "packages/form may not reach the app by relative path either, into src/ or scripts/ — a relative path carries no alias to be absent, so this is what makes that escape a lint error instead of a silent resolve."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			// the mirror of the rule above: the app declares `@better-giving/form`,
+			// `@better-giving/operator` and `@better-giving/emails` as `workspace:*` dependencies,
+			// and each one's `exports` map is the closed list of what a bare specifier through that
+			// dependency may name — the graph governs a bare specifier and refuses one for anything
+			// off that list. a relative path into any package's `src/` answers to neither manifest
+			// and resolves in both tsc and Vite with nothing objecting to it. this rule is the one
+			// place that escape is caught, for all three packages and for packages/console-ui, which
+			// the app depends on not at all — a bare specifier for it fails for want of the
+			// dependency alone.
+			"includes": [
+				"packages/app/src/**/*.ts",
+				"packages/app/src/**/*.tsx",
+				"packages/app/scripts/**/*.ts",
+				"packages/app/scripts/**/*.js",
+				"packages/app/*.ts"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										// the two packages are siblings under packages/, so a relative path from the
+										// app into the package never spells out "packages/form/src" — it climbs out
+										// of packages/app and straight into form/src. both spellings are listed, so
+										// a path written from anywhere in packages/app is caught either way.
+										"group": ["**/packages/form/src/**", "**/form/src/**"],
+										"message": "reach @better-giving/form only through its published exports (the `exports` map in packages/form/package.json) — a relative path into packages/form/src bypasses the package boundary."
+									},
+									{
+										"group": ["**/packages/operator/src/**", "**/operator/src/**"],
+										"message": "reach @better-giving/operator only through the workspace:* dependency and the exports map in packages/operator/package.json — the graph governs a bare specifier through that dependency; a relative path into packages/operator/src answers to neither and bypasses the package boundary. the entries are not listed here: a copy of them is one that drifts the next time a module is promoted into the package."
+									},
+									{
+										"group": ["**/packages/console-ui/src/**", "**/console-ui/src/**"],
+										"message": "packages/app may not reach packages/console-ui by relative path — the two sit on either side of packages/operator and never import each other directly."
+									},
+									{
+										"group": ["**/packages/emails/src/**", "**/emails/src/**"],
+										"message": "reach @better-giving/emails only through its published exports (@better-giving/emails, /render) — a relative path into packages/emails/src bypasses the package boundary."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		// packages/operator is a leaf the dashboard, the operator console and the component gallery
+		// all import from: app → operator ← console-ui, with gallery → operator beside them and no
+		// app-like package reaching another directly. packages/emails is the one leaf-side package
+		// that reaches operator — for its tokens only: app → emails ← emails-preview, with emails →
+		// operator beside it. the five overrides below hold that shape, each at the one place its
+		// own escape is caught.
+		//
+		// none of these has a resolve-time twin the way packages/form's boundary does
+		// (packages/form/vite.embed.config.ts): that gate exists because the embed ships into a
+		// stranger's page and `lint` never runs in `build` or `deploy`. none of packages/operator,
+		// packages/console-ui, packages/gallery and packages/emails-preview is ever built or
+		// deployed, so lint-at-commit (lefthook.yml) is the whole gate and is proportionate to what
+		// each package actually reaches.
+		{
+			// the secret gate. packages/console-ui declares no dependency on packages/app, and
+			// packages/app declares no `exports` map either (CLAUDE.md) — the graph refuses a bare
+			// specifier twice over, for want of a dependency and for want of anything to resolve
+			// one against, in tsc and Vite alike, before lint ever runs. what it cannot catch is a
+			// relative path — it carries no specifier and no alias to be absent, so it resolves
+			// silently regardless of either manifest. this rule is the one place that escape is
+			// caught.
+			"includes": [
+				"packages/console-ui/src/**/*.ts",
+				"packages/console-ui/src/**/*.tsx",
+				"packages/console-ui/*.ts"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": ["**/app/src/**", "**/app/scripts/**"],
+										"message": "packages/console-ui may not reach packages/app by relative path — packages/app has no exports map, so a bare specifier already fails and a relative path is the one escape left uncaught."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			// packages/operator is the leaf: it may reach into no app-like package, and it
+			// carries no $lib alias of its own — it is consumed by three of them, so naming any
+			// one's alias would make it a leaf that only actually serves one.
+			"includes": [
+				"packages/operator/src/**/*.ts",
+				"packages/operator/src/**/*.tsx",
+				"packages/operator/src/**/*.jsx",
+				"packages/operator/*.ts"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": ["$lib", "$lib/*"],
+										"message": "packages/operator has no $lib alias — see packages/operator/tsconfig.json. it is consumed by more than one app, so an alias here would only ever resolve for one of them."
+									},
+									{
+										// packages/operator/package.json declares none of its three consumers as a
+										// dependency, so the graph already refuses a bare specifier into any of them —
+										// a leaf that named one as a dependency would only ever resolve for it. a
+										// relative path answers to no manifest and is the one escape the graph does
+										// not see.
+										"group": [
+											"**/app/src/**",
+											"**/app/scripts/**",
+											"**/packages/console-ui/src/**",
+											"**/console-ui/src/**",
+											"**/packages/gallery/src/**",
+											"**/gallery/src/**"
+										],
+										"message": "packages/operator is a leaf and may not reach into packages/app, packages/console-ui or packages/gallery by relative path either — a leaf that names one consumer is not a leaf."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			// packages/gallery is a third consumer of the leaf, alongside packages/app and
+			// packages/console-ui: it declares @better-giving/operator as its one workspace:*
+			// dependency and reaches it only through that package's exports map. it declares no
+			// dependency on packages/app or packages/console-ui, and neither of those exposes a bare
+			// specifier for the graph to resolve one against — the graph refuses a bare specifier
+			// for want of a dependency, in tsc and Vite alike, before lint ever runs. what it
+			// cannot catch is a relative path — it carries no specifier and no alias to be absent,
+			// so it resolves silently regardless of either manifest. this rule is the one place
+			// that escape is caught.
+			"includes": [
+				"packages/gallery/src/**/*.ts",
+				"packages/gallery/src/**/*.tsx",
+				"packages/gallery/*.ts"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": [
+											"**/app/src/**",
+											"**/app/scripts/**",
+											"**/packages/console-ui/src/**",
+											"**/console-ui/src/**"
+										],
+										"message": "packages/gallery may not reach packages/app or packages/console-ui by relative path — it is a consumer of packages/operator only, exactly like packages/console-ui, and reaches neither app-like package."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			// packages/emails/package.json declares one workspace:* dependency, on
+			// packages/operator, and reaches it by bare specifier for its tokens alone (CLAUDE.md).
+			// every other package here is absent from that manifest, so the graph refuses a bare
+			// specifier into any of them for want of a dependency, in tsc and Vite alike, before
+			// lint ever runs. what it cannot catch is a relative path — it carries no specifier and
+			// no alias to be absent, so it resolves silently regardless of any manifest, and into
+			// operator it would also skip the export map that names what emails may take. this
+			// rule is the one place that escape is caught.
+			"includes": [
+				"packages/emails/src/**/*.ts",
+				"packages/emails/src/**/*.tsx",
+				"packages/emails/*.ts"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": [
+											"**/app/src/**",
+											"**/app/scripts/**",
+											"**/packages/console-ui/src/**",
+											"**/console-ui/src/**",
+											"**/packages/operator/src/**",
+											"**/operator/src/**",
+											"**/packages/form/src/**",
+											"**/form/src/**",
+											"**/packages/gallery/src/**",
+											"**/packages/emails-preview/**"
+										],
+										"message": "packages/emails reaches this repo only through @better-giving/operator's export map — a relative path is the one escape the graph does not catch."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			// packages/emails-preview declares @better-giving/emails as its one workspace:*
+			// dependency and reaches it only through that package's exports map (`.` and
+			// `./render`) — like packages/gallery, it is dev-only and never built or deployed. the
+			// graph refuses a bare specifier into any other package for want of a dependency, in tsc
+			// and Vite alike, before lint ever runs. what it cannot catch is a relative path — it
+			// carries no specifier and no alias to be absent, so it resolves silently regardless of
+			// either manifest. this rule is the one place that escape is caught.
+			"includes": ["packages/emails-preview/emails/**/*.tsx", "packages/emails-preview/*.ts"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": ["**/packages/emails/src/**", "**/emails/src/**"],
+										"message": "reach @better-giving/emails only through its published exports (@better-giving/emails, /render) — a relative path into packages/emails/src bypasses the package boundary."
+									},
+									{
+										"group": [
+											"**/app/src/**",
+											"**/app/scripts/**",
+											"**/packages/console-ui/src/**",
+											"**/console-ui/src/**",
+											"**/packages/operator/src/**",
+											"**/operator/src/**",
+											"**/packages/form/src/**",
+											"**/form/src/**",
+											"**/packages/gallery/src/**"
+										],
+										"message": "packages/emails-preview may not reach any app-like package by relative path either — it is a consumer of packages/emails only."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		// biome is the first CSS linter this repo has run — eslint never covered .css. the
+		// specificity-ordering and `!important` findings it raises sit inside a cascade the design
+		// system's own header comments and gates (packages/operator/src/styles/raw-values.ts,
+		// packages/app/src/lib/admin/styles/conformance.spec.ts) already review on their own terms;
+		// turning the general linter loose on it in the same commit that swaps formatters is a second,
+		// unrelated audit and belongs to a pass that can weigh the cascade, not this one. formatting
+		// stays on — only css.formatter is what this migration was asked to change.
+		{
+			"includes": ["**/*.css"],
+			"linter": { "enabled": false }
+		},
+		// tsc already gates real type-safety in every package's `check` script (see CLAUDE.md's map).
+		// `noImplicitAnyLet` is a syntax-level guess biome makes without that type information, and it
+		// false-positives on `let x; try { ({ x } = await f()); }` — declare, then narrow by
+		// destructuring assignment in a `try` — which is how a loader in packages/app reads a result
+		// it needs to fall through a `catch`.
+		{
+			"includes": ["**/*.ts"],
+			"linter": { "rules": { "suspicious": { "noImplicitAnyLet": "off" } } }
+		},
+		// broader than the eslint rule it replaces: eslint's `no-cond-assign` (`js.configs.recommended`)
+		// only flagged an assignment inside an `if`/`while`/`for` test, and its default
+		// `except-parenthesized` option explicitly allowed a double-paren one. biome's
+		// `noAssignInExpressions` has no such allowance and flags assignment anywhere in an expression,
+		// including the increment-and-use counter idiom packages/form uses throughout
+		// (`${tag}-${(tags += 1)}`, `const index = (steps += 1)`) — never previously flagged and not a
+		// mistaken `=`/`==` in any of its call sites.
+		{
+			"includes": ["**/*.ts", "**/*.js"],
+			"linter": { "rules": { "suspicious": { "noAssignInExpressions": "off" } } }
+		},
+		// never part of the eslint config this replaces — `no-non-null-assertion` sits in
+		// typescript-eslint's stylistic preset, not the recommended one this repo ran. every existing
+		// `!` is in a test asserting a value the test already knows is there, right after fetching or
+		// awaiting it.
+		{
+			// `*.spec.ts` alone covers `*.workers.spec.ts`, `*.dom.spec.ts` and `*.browser.spec.ts`
+			// too — a glob segment matches across dots, not just up to the first one.
+			"includes": ["**/*.spec.ts"],
+			"linter": { "rules": { "style": { "noNonNullAssertion": "off" } } }
+		}
+	]
+}

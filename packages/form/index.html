@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>bg-donate-form, locally</title>
+		<link rel="stylesheet" href="/dev/page.css" />
+	</head>
+	<body>
+		<div class="page">
+			<aside class="panel">
+				<header class="panel-head">
+					<h1>&lt;bg-donate-form&gt;</h1>
+					<p>
+						The element, its one seed, and the states nobody renders. Nothing here reaches a
+						network.
+					</p>
+				</header>
+
+				<section class="group">
+					<h2>Fixture</h2>
+					<div class="seed">
+						<label for="fixture">Configuration served</label>
+						<select id="fixture"></select>
+					</div>
+					<p class="note" id="fixture-note"></p>
+					<div class="actions">
+						<button type="button" id="reboot">Re-boot</button>
+					</div>
+				</section>
+
+				<section class="group">
+					<h2>Brand</h2>
+					<div class="seed">
+						<label for="primary">--donate-primary</label>
+						<div class="seed-controls">
+							<input type="color" id="primary" value="#1d4ed8" />
+							<span class="seed-state" id="primary-state"></span>
+							<button type="button" id="primary-clear">Clear</button>
+						</div>
+					</div>
+					<p class="note">
+						The only seed the element takes. The card's greys, type, corners and focus ring are the
+						form's own.
+					</p>
+				</section>
+
+				<section class="group">
+					<h2>Host page</h2>
+					<fieldset class="grounds">
+						<legend>Ground behind the card</legend>
+						<label><input type="radio" name="ground" value="white" checked /> white</label>
+						<label><input type="radio" name="ground" value="paper" /> paper</label>
+						<label><input type="radio" name="ground" value="night" /> near-black</label>
+						<label><input type="radio" name="ground" value="saturated" /> saturated</label>
+					</fieldset>
+				</section>
+			</aside>
+
+			<main class="stage" id="stage" data-ground="white"></main>
+		</div>
+		<script type="module" src="/dev/main.ts"></script>
+	</body>
+</html>

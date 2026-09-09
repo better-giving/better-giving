@@ -1,0 +1,2258 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "d159ab8a-7131-4460-8a63-c3a87307d3c2",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "tables": {
+    "account": {
+      "name": "account",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "is_deductible": {
+          "name": "is_deductible",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "is_tax": {
+          "name": "is_tax",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "is_postable": {
+          "name": "is_postable",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "tax_rate_e8": {
+          "name": "tax_rate_e8",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "account_code_idx": {
+          "name": "account_code_idx",
+          "columns": [
+            "code"
+          ],
+          "isUnique": true
+        },
+        "account_parent_id_idx": {
+          "name": "account_parent_id_idx",
+          "columns": [
+            "parent_id"
+          ],
+          "isUnique": false
+        },
+        "account_id_postable_idx": {
+          "name": "account_id_postable_idx",
+          "columns": [
+            "id",
+            "is_postable"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "account_parent_id_account_id_fk": {
+          "name": "account_parent_id_account_id_fk",
+          "tableFrom": "account",
+          "tableTo": "account",
+          "columnsFrom": [
+            "parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "account_type_check": {
+          "name": "account_type_check",
+          "value": "\"account\".\"type\" in ('asset', 'liability', 'net_assets', 'revenue', 'cost_of_sales', 'expense')"
+        },
+        "account_is_deductible_bool_check": {
+          "name": "account_is_deductible_bool_check",
+          "value": "\"account\".\"is_deductible\" in (0, 1)"
+        },
+        "account_is_tax_bool_check": {
+          "name": "account_is_tax_bool_check",
+          "value": "\"account\".\"is_tax\" in (0, 1)"
+        },
+        "account_is_postable_bool_check": {
+          "name": "account_is_postable_bool_check",
+          "value": "\"account\".\"is_postable\" in (0, 1)"
+        },
+        "account_tax_rate_e8_check": {
+          "name": "account_tax_rate_e8_check",
+          "value": "\"account\".\"tax_rate_e8\" is null or (\"account\".\"tax_rate_e8\" >= 0 and \"account\".\"tax_rate_e8\" <= 100000000)"
+        },
+        "account_parent_not_self_check": {
+          "name": "account_parent_not_self_check",
+          "value": "\"account\".\"parent_id\" is null or \"account\".\"parent_id\" <> \"account\".\"id\""
+        }
+      }
+    },
+    "contact": {
+      "name": "contact",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "first_name": {
+          "name": "first_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_name": {
+          "name": "last_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "legal_name": {
+          "name": "legal_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "primary_email": {
+          "name": "primary_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "primary_phone": {
+          "name": "primary_phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "attributes": {
+          "name": "attributes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "consented_to_contact": {
+          "name": "consented_to_contact",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "contact_primary_email_lower_idx": {
+          "name": "contact_primary_email_lower_idx",
+          "columns": [
+            "lower(\"primary_email\")"
+          ],
+          "isUnique": false
+        },
+        "contact_last_name_idx": {
+          "name": "contact_last_name_idx",
+          "columns": [
+            "last_name"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "contact_kind_check": {
+          "name": "contact_kind_check",
+          "value": "\"contact\".\"kind\" in ('individual', 'organization', 'household')"
+        },
+        "contact_display_name_not_blank_check": {
+          "name": "contact_display_name_not_blank_check",
+          "value": "trim(\"contact\".\"display_name\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "contact_attributes_object_check": {
+          "name": "contact_attributes_object_check",
+          "value": "json_valid(\"contact\".\"attributes\") and json_type(\"contact\".\"attributes\") = 'object'"
+        },
+        "contact_consented_to_contact_bool_check": {
+          "name": "contact_consented_to_contact_bool_check",
+          "value": "\"contact\".\"consented_to_contact\" in (0, 1)"
+        }
+      }
+    },
+    "donation": {
+      "name": "donation",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "contact_id": {
+          "name": "contact_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "total_minor": {
+          "name": "total_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fee_minor": {
+          "name": "fee_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "tax_minor": {
+          "name": "tax_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "non_deductible_minor": {
+          "name": "non_deductible_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "form_id": {
+          "name": "form_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "receipt_sent_at": {
+          "name": "receipt_sent_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "thankyou_sent_at": {
+          "name": "thankyou_sent_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "recurring_id": {
+          "name": "recurring_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tribute_kind": {
+          "name": "tribute_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tribute_honoree": {
+          "name": "tribute_honoree",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tribute_notify_name": {
+          "name": "tribute_notify_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tribute_notify_email": {
+          "name": "tribute_notify_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tribute_notified_at": {
+          "name": "tribute_notified_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "program_id": {
+          "name": "program_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "donation_contact_id_idx": {
+          "name": "donation_contact_id_idx",
+          "columns": [
+            "contact_id"
+          ],
+          "isUnique": false
+        },
+        "donation_form_id_idx": {
+          "name": "donation_form_id_idx",
+          "columns": [
+            "form_id"
+          ],
+          "isUnique": false
+        },
+        "donation_recurring_id_idx": {
+          "name": "donation_recurring_id_idx",
+          "columns": [
+            "recurring_id"
+          ],
+          "isUnique": false
+        },
+        "donation_program_id_idx": {
+          "name": "donation_program_id_idx",
+          "columns": [
+            "program_id"
+          ],
+          "isUnique": false
+        },
+        "donation_received_at_idx": {
+          "name": "donation_received_at_idx",
+          "columns": [
+            "received_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "donation_contact_id_contact_id_fk": {
+          "name": "donation_contact_id_contact_id_fk",
+          "tableFrom": "donation",
+          "tableTo": "contact",
+          "columnsFrom": [
+            "contact_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "donation_form_id_form_id_fk": {
+          "name": "donation_form_id_form_id_fk",
+          "tableFrom": "donation",
+          "tableTo": "form",
+          "columnsFrom": [
+            "form_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "donation_recurring_id_recurring_plan_id_fk": {
+          "name": "donation_recurring_id_recurring_plan_id_fk",
+          "tableFrom": "donation",
+          "tableTo": "recurring_plan",
+          "columnsFrom": [
+            "recurring_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "donation_program_id_program_id_fk": {
+          "name": "donation_program_id_program_id_fk",
+          "tableFrom": "donation",
+          "tableTo": "program",
+          "columnsFrom": [
+            "program_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "donation_currency_check": {
+          "name": "donation_currency_check",
+          "value": "length(\"donation\".\"currency\") = 3 and \"donation\".\"currency\" = upper(\"donation\".\"currency\") and \"donation\".\"currency\" glob '[A-Z][A-Z][A-Z]'"
+        },
+        "donation_total_minor_positive_check": {
+          "name": "donation_total_minor_positive_check",
+          "value": "\"donation\".\"total_minor\" > 0"
+        },
+        "donation_fee_minor_check": {
+          "name": "donation_fee_minor_check",
+          "value": "\"donation\".\"fee_minor\" >= 0"
+        },
+        "donation_tax_minor_check": {
+          "name": "donation_tax_minor_check",
+          "value": "\"donation\".\"tax_minor\" >= 0"
+        },
+        "donation_non_deductible_minor_check": {
+          "name": "donation_non_deductible_minor_check",
+          "value": "\"donation\".\"non_deductible_minor\" >= 0"
+        },
+        "donation_source_not_blank_check": {
+          "name": "donation_source_not_blank_check",
+          "value": "\"donation\".\"source\" is null or trim(\"donation\".\"source\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "donation_origin_not_blank_check": {
+          "name": "donation_origin_not_blank_check",
+          "value": "\"donation\".\"origin\" is null or trim(\"donation\".\"origin\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        }
+      }
+    },
+    "entry_group": {
+      "name": "entry_group",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_type": {
+          "name": "source_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_id": {
+          "name": "source_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "memo": {
+          "name": "memo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "entry_group_source_idx": {
+          "name": "entry_group_source_idx",
+          "columns": [
+            "source_type",
+            "source_id"
+          ],
+          "isUnique": true
+        },
+        "entry_group_occurred_at_idx": {
+          "name": "entry_group_occurred_at_idx",
+          "columns": [
+            "occurred_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "entry_group_source_type_check": {
+          "name": "entry_group_source_type_check",
+          "value": "\"entry_group\".\"source_type\" in ('payment', 'donation', 'refund', 'fee', 'adjustment')"
+        },
+        "entry_group_currency_check": {
+          "name": "entry_group_currency_check",
+          "value": "length(\"entry_group\".\"currency\") = 3 and \"entry_group\".\"currency\" = upper(\"entry_group\".\"currency\") and \"entry_group\".\"currency\" glob '[A-Z][A-Z][A-Z]'"
+        },
+        "entry_group_source_id_not_empty_check": {
+          "name": "entry_group_source_id_not_empty_check",
+          "value": "length(\"entry_group\".\"source_id\") > 0"
+        }
+      }
+    },
+    "form": {
+      "name": "form",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'draft'"
+        },
+        "revenue_account_id": {
+          "name": "revenue_account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "suggested_amounts": {
+          "name": "suggested_amounts",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "min_minor": {
+          "name": "min_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "max_minor": {
+          "name": "max_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "allowed_origins": {
+          "name": "allowed_origins",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "copy": {
+          "name": "copy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revenue_account_is_postable": {
+          "name": "revenue_account_is_postable",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "program_mode": {
+          "name": "program_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'none'"
+        },
+        "program_id": {
+          "name": "program_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "form_program_id_program_id_fk": {
+          "name": "form_program_id_program_id_fk",
+          "tableFrom": "form",
+          "tableTo": "program",
+          "columnsFrom": [
+            "program_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "form_revenue_account_id_revenue_account_is_postable_account_id_is_postable_fk": {
+          "name": "form_revenue_account_id_revenue_account_is_postable_account_id_is_postable_fk",
+          "tableFrom": "form",
+          "tableTo": "account",
+          "columnsFrom": [
+            "revenue_account_id",
+            "revenue_account_is_postable"
+          ],
+          "columnsTo": [
+            "id",
+            "is_postable"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "form_revenue_account_postable_check": {
+          "name": "form_revenue_account_postable_check",
+          "value": "\"form\".\"revenue_account_is_postable\" = 1"
+        },
+        "form_status_check": {
+          "name": "form_status_check",
+          "value": "\"form\".\"status\" in ('draft', 'live', 'archived')"
+        },
+        "form_name_not_blank_check": {
+          "name": "form_name_not_blank_check",
+          "value": "trim(\"form\".\"name\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "form_currency_check": {
+          "name": "form_currency_check",
+          "value": "length(\"form\".\"currency\") = 3 and \"form\".\"currency\" = upper(\"form\".\"currency\") and \"form\".\"currency\" glob '[A-Z][A-Z][A-Z]'"
+        },
+        "form_id_not_blank_check": {
+          "name": "form_id_not_blank_check",
+          "value": "trim(\"form\".\"id\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "form_id_length_check": {
+          "name": "form_id_length_check",
+          "value": "length(\"form\".\"id\") >= 12"
+        },
+        "form_min_minor_check": {
+          "name": "form_min_minor_check",
+          "value": "\"form\".\"min_minor\" is null or \"form\".\"min_minor\" >= 0"
+        },
+        "form_max_minor_check": {
+          "name": "form_max_minor_check",
+          "value": "\"form\".\"max_minor\" is null or \"form\".\"max_minor\" >= 0"
+        },
+        "form_min_max_minor_check": {
+          "name": "form_min_max_minor_check",
+          "value": "\"form\".\"min_minor\" is null or \"form\".\"max_minor\" is null or \"form\".\"min_minor\" <= \"form\".\"max_minor\""
+        },
+        "form_suggested_amounts_array_check": {
+          "name": "form_suggested_amounts_array_check",
+          "value": "json_valid(\"form\".\"suggested_amounts\") and json_type(\"form\".\"suggested_amounts\") = 'array'"
+        },
+        "form_allowed_origins_array_check": {
+          "name": "form_allowed_origins_array_check",
+          "value": "json_valid(\"form\".\"allowed_origins\") and json_type(\"form\".\"allowed_origins\") = 'array'"
+        },
+        "form_copy_object_check": {
+          "name": "form_copy_object_check",
+          "value": "json_valid(\"form\".\"copy\") and json_type(\"form\".\"copy\") = 'object'"
+        },
+        "form_program_mode_check": {
+          "name": "form_program_mode_check",
+          "value": "\"form\".\"program_mode\" in ('none', 'pinned', 'choice')"
+        },
+        "form_program_pinned_check": {
+          "name": "form_program_pinned_check",
+          "value": "(\"form\".\"program_id\" is not null) = (\"form\".\"program_mode\" = 'pinned')"
+        }
+      }
+    },
+    "ledger_entry": {
+      "name": "ledger_entry",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entry_group_id": {
+          "name": "entry_group_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "amount_minor": {
+          "name": "amount_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "account_is_postable": {
+          "name": "account_is_postable",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "ledger_entry_entry_group_id_idx": {
+          "name": "ledger_entry_entry_group_id_idx",
+          "columns": [
+            "entry_group_id"
+          ],
+          "isUnique": false
+        },
+        "ledger_entry_account_id_idx": {
+          "name": "ledger_entry_account_id_idx",
+          "columns": [
+            "account_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "ledger_entry_entry_group_id_entry_group_id_fk": {
+          "name": "ledger_entry_entry_group_id_entry_group_id_fk",
+          "tableFrom": "ledger_entry",
+          "tableTo": "entry_group",
+          "columnsFrom": [
+            "entry_group_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ledger_entry_account_id_account_is_postable_account_id_is_postable_fk": {
+          "name": "ledger_entry_account_id_account_is_postable_account_id_is_postable_fk",
+          "tableFrom": "ledger_entry",
+          "tableTo": "account",
+          "columnsFrom": [
+            "account_id",
+            "account_is_postable"
+          ],
+          "columnsTo": [
+            "id",
+            "is_postable"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "ledger_entry_amount_minor_not_zero_check": {
+          "name": "ledger_entry_amount_minor_not_zero_check",
+          "value": "\"ledger_entry\".\"amount_minor\" <> 0"
+        },
+        "ledger_entry_account_postable_check": {
+          "name": "ledger_entry_account_postable_check",
+          "value": "\"ledger_entry\".\"account_is_postable\" = 1"
+        }
+      }
+    },
+    "line_item": {
+      "name": "line_item",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "donation_id": {
+          "name": "donation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "unit_price_minor": {
+          "name": "unit_price_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "line_total_minor": {
+          "name": "line_total_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tax_minor": {
+          "name": "tax_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "revenue_account_id": {
+          "name": "revenue_account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revenue_account_is_postable": {
+          "name": "revenue_account_is_postable",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "line_item_donation_id_idx": {
+          "name": "line_item_donation_id_idx",
+          "columns": [
+            "donation_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "line_item_donation_id_donation_id_fk": {
+          "name": "line_item_donation_id_donation_id_fk",
+          "tableFrom": "line_item",
+          "tableTo": "donation",
+          "columnsFrom": [
+            "donation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "line_item_revenue_account_id_revenue_account_is_postable_account_id_is_postable_fk": {
+          "name": "line_item_revenue_account_id_revenue_account_is_postable_account_id_is_postable_fk",
+          "tableFrom": "line_item",
+          "tableTo": "account",
+          "columnsFrom": [
+            "revenue_account_id",
+            "revenue_account_is_postable"
+          ],
+          "columnsTo": [
+            "id",
+            "is_postable"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "line_item_revenue_account_postable_check": {
+          "name": "line_item_revenue_account_postable_check",
+          "value": "\"line_item\".\"revenue_account_is_postable\" = 1"
+        },
+        "line_item_quantity_check": {
+          "name": "line_item_quantity_check",
+          "value": "\"line_item\".\"quantity\" > 0"
+        },
+        "line_item_unit_price_minor_check": {
+          "name": "line_item_unit_price_minor_check",
+          "value": "\"line_item\".\"unit_price_minor\" >= 0"
+        },
+        "line_item_line_total_minor_check": {
+          "name": "line_item_line_total_minor_check",
+          "value": "\"line_item\".\"line_total_minor\" >= 0"
+        },
+        "line_item_tax_minor_check": {
+          "name": "line_item_tax_minor_check",
+          "value": "\"line_item\".\"tax_minor\" >= 0"
+        },
+        "line_item_label_not_blank_check": {
+          "name": "line_item_label_not_blank_check",
+          "value": "trim(\"line_item\".\"label\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        }
+      }
+    },
+    "org_profile": {
+      "name": "org_profile",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "legal_name": {
+          "name": "legal_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tax_id": {
+          "name": "tax_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "address_line1": {
+          "name": "address_line1",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "address_line2": {
+          "name": "address_line2",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "city": {
+          "name": "city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "region": {
+          "name": "region",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "postal_code": {
+          "name": "postal_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "country": {
+          "name": "country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "notification_email": {
+          "name": "notification_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "deductibility_statement": {
+          "name": "deductibility_statement",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "org_profile_id_check": {
+          "name": "org_profile_id_check",
+          "value": "\"org_profile\".\"id\" = 'default'"
+        },
+        "org_profile_legal_name_not_blank_check": {
+          "name": "org_profile_legal_name_not_blank_check",
+          "value": "trim(\"org_profile\".\"legal_name\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "org_profile_tax_id_not_blank_check": {
+          "name": "org_profile_tax_id_not_blank_check",
+          "value": "\"org_profile\".\"tax_id\" is null or trim(\"org_profile\".\"tax_id\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "org_profile_address_line1_not_blank_check": {
+          "name": "org_profile_address_line1_not_blank_check",
+          "value": "\"org_profile\".\"address_line1\" is null or trim(\"org_profile\".\"address_line1\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "org_profile_address_line2_not_blank_check": {
+          "name": "org_profile_address_line2_not_blank_check",
+          "value": "\"org_profile\".\"address_line2\" is null or trim(\"org_profile\".\"address_line2\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "org_profile_city_not_blank_check": {
+          "name": "org_profile_city_not_blank_check",
+          "value": "\"org_profile\".\"city\" is null or trim(\"org_profile\".\"city\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "org_profile_region_not_blank_check": {
+          "name": "org_profile_region_not_blank_check",
+          "value": "\"org_profile\".\"region\" is null or trim(\"org_profile\".\"region\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "org_profile_postal_code_not_blank_check": {
+          "name": "org_profile_postal_code_not_blank_check",
+          "value": "\"org_profile\".\"postal_code\" is null or trim(\"org_profile\".\"postal_code\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "org_profile_country_not_blank_check": {
+          "name": "org_profile_country_not_blank_check",
+          "value": "\"org_profile\".\"country\" is null or trim(\"org_profile\".\"country\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "org_profile_notification_email_not_blank_check": {
+          "name": "org_profile_notification_email_not_blank_check",
+          "value": "\"org_profile\".\"notification_email\" is null or trim(\"org_profile\".\"notification_email\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "org_profile_deductibility_statement_not_blank_check": {
+          "name": "org_profile_deductibility_statement_not_blank_check",
+          "value": "\"org_profile\".\"deductibility_statement\" is null or trim(\"org_profile\".\"deductibility_statement\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        }
+      }
+    },
+    "payment": {
+      "name": "payment",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "donation_id": {
+          "name": "donation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "amount_minor": {
+          "name": "amount_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "direction": {
+          "name": "direction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "method": {
+          "name": "method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "provider_txn_id": {
+          "name": "provider_txn_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "payment_donation_id_idx": {
+          "name": "payment_donation_id_idx",
+          "columns": [
+            "donation_id"
+          ],
+          "isUnique": false
+        },
+        "payment_provider_txn_idx": {
+          "name": "payment_provider_txn_idx",
+          "columns": [
+            "provider",
+            "provider_txn_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "payment_donation_id_donation_id_fk": {
+          "name": "payment_donation_id_donation_id_fk",
+          "tableFrom": "payment",
+          "tableTo": "donation",
+          "columnsFrom": [
+            "donation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "payment_direction_check": {
+          "name": "payment_direction_check",
+          "value": "\"payment\".\"direction\" in ('inbound', 'refund')"
+        },
+        "payment_method_check": {
+          "name": "payment_method_check",
+          "value": "\"payment\".\"method\" in ('cash', 'check', 'card', 'ach')"
+        },
+        "payment_status_check": {
+          "name": "payment_status_check",
+          "value": "\"payment\".\"status\" in ('pending', 'succeeded', 'failed', 'cancelled')"
+        },
+        "payment_provider_check": {
+          "name": "payment_provider_check",
+          "value": "\"payment\".\"provider\" is null or \"payment\".\"provider\" in ('stripe', 'manual')"
+        },
+        "payment_currency_check": {
+          "name": "payment_currency_check",
+          "value": "length(\"payment\".\"currency\") = 3 and \"payment\".\"currency\" = upper(\"payment\".\"currency\") and \"payment\".\"currency\" glob '[A-Z][A-Z][A-Z]'"
+        },
+        "payment_provider_txn_id_not_blank_check": {
+          "name": "payment_provider_txn_id_not_blank_check",
+          "value": "\"payment\".\"provider_txn_id\" is null or trim(\"payment\".\"provider_txn_id\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "payment_stripe_needs_txn_id_check": {
+          "name": "payment_stripe_needs_txn_id_check",
+          "value": "\"payment\".\"provider\" <> 'stripe' or \"payment\".\"provider_txn_id\" is not null"
+        },
+        "payment_txn_id_needs_provider_check": {
+          "name": "payment_txn_id_needs_provider_check",
+          "value": "\"payment\".\"provider_txn_id\" is null or \"payment\".\"provider\" is not null"
+        },
+        "payment_amount_minor_positive_check": {
+          "name": "payment_amount_minor_positive_check",
+          "value": "\"payment\".\"amount_minor\" > 0"
+        }
+      }
+    },
+    "program": {
+      "name": "program",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "program_name_idx": {
+          "name": "program_name_idx",
+          "columns": [
+            "\"name\" collate nocase"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "program_status_check": {
+          "name": "program_status_check",
+          "value": "\"program\".\"status\" in ('active', 'archived')"
+        },
+        "program_name_not_blank_check": {
+          "name": "program_name_not_blank_check",
+          "value": "trim(\"program\".\"name\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "program_description_not_blank_check": {
+          "name": "program_description_not_blank_check",
+          "value": "\"program\".\"description\" is null or trim(\"program\".\"description\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        }
+      }
+    },
+    "recurring_plan": {
+      "name": "recurring_plan",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "contact_id": {
+          "name": "contact_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "form_id": {
+          "name": "form_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "amount_minor": {
+          "name": "amount_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "interval": {
+          "name": "interval",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_subscription_id": {
+          "name": "provider_subscription_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_customer_id": {
+          "name": "provider_customer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "next_charge_at": {
+          "name": "next_charge_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "recurring_plan_provider_subscription_idx": {
+          "name": "recurring_plan_provider_subscription_idx",
+          "columns": [
+            "provider",
+            "provider_subscription_id"
+          ],
+          "isUnique": true
+        },
+        "recurring_plan_contact_id_idx": {
+          "name": "recurring_plan_contact_id_idx",
+          "columns": [
+            "contact_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "recurring_plan_contact_id_contact_id_fk": {
+          "name": "recurring_plan_contact_id_contact_id_fk",
+          "tableFrom": "recurring_plan",
+          "tableTo": "contact",
+          "columnsFrom": [
+            "contact_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "recurring_plan_form_id_form_id_fk": {
+          "name": "recurring_plan_form_id_form_id_fk",
+          "tableFrom": "recurring_plan",
+          "tableTo": "form",
+          "columnsFrom": [
+            "form_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "recurring_plan_interval_check": {
+          "name": "recurring_plan_interval_check",
+          "value": "\"recurring_plan\".\"interval\" in ('monthly', 'yearly')"
+        },
+        "recurring_plan_status_check": {
+          "name": "recurring_plan_status_check",
+          "value": "\"recurring_plan\".\"status\" in ('active', 'cancelled', 'lapsed')"
+        },
+        "recurring_plan_provider_check": {
+          "name": "recurring_plan_provider_check",
+          "value": "\"recurring_plan\".\"provider\" in ('stripe', 'manual')"
+        },
+        "recurring_plan_currency_check": {
+          "name": "recurring_plan_currency_check",
+          "value": "length(\"recurring_plan\".\"currency\") = 3 and \"recurring_plan\".\"currency\" = upper(\"recurring_plan\".\"currency\") and \"recurring_plan\".\"currency\" glob '[A-Z][A-Z][A-Z]'"
+        },
+        "recurring_plan_amount_minor_positive_check": {
+          "name": "recurring_plan_amount_minor_positive_check",
+          "value": "\"recurring_plan\".\"amount_minor\" > 0"
+        },
+        "recurring_plan_provider_subscription_id_not_blank_check": {
+          "name": "recurring_plan_provider_subscription_id_not_blank_check",
+          "value": "trim(\"recurring_plan\".\"provider_subscription_id\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "recurring_plan_provider_customer_id_not_blank_check": {
+          "name": "recurring_plan_provider_customer_id_not_blank_check",
+          "value": "trim(\"recurring_plan\".\"provider_customer_id\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "recurring_plan_ended_at_check": {
+          "name": "recurring_plan_ended_at_check",
+          "value": "(\"recurring_plan\".\"status\" = 'active' and \"recurring_plan\".\"ended_at\" is null) or (\"recurring_plan\".\"status\" <> 'active' and \"recurring_plan\".\"ended_at\" is not null)"
+        }
+      }
+    },
+    "site": {
+      "name": "site",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "site_origin_idx": {
+          "name": "site_origin_idx",
+          "columns": [
+            "origin"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "site_origin_scheme_check": {
+          "name": "site_origin_scheme_check",
+          "value": "substr(\"site\".\"origin\", 1, 8) = 'https://' or substr(\"site\".\"origin\", 1, 7) = 'http://'"
+        },
+        "site_origin_not_blank_check": {
+          "name": "site_origin_not_blank_check",
+          "value": "trim(\"site\".\"origin\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "site_position_check": {
+          "name": "site_position_check",
+          "value": "\"site\".\"position\" >= 0"
+        }
+      }
+    },
+    "auth_account": {
+      "name": "auth_account",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "access_token": {
+          "name": "access_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "refresh_token": {
+          "name": "refresh_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "id_token": {
+          "name": "id_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "access_token_expires_at": {
+          "name": "access_token_expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "refresh_token_expires_at": {
+          "name": "refresh_token_expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "password": {
+          "name": "password",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "auth_account_user_id_idx": {
+          "name": "auth_account_user_id_idx",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "auth_account_user_id_auth_user_id_fk": {
+          "name": "auth_account_user_id_auth_user_id_fk",
+          "tableFrom": "auth_account",
+          "tableTo": "auth_user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "auth_member_invitation": {
+      "name": "auth_member_invitation",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "invited_by": {
+          "name": "invited_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "accepted_at": {
+          "name": "accepted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "auth_member_invitation_token_hash_idx": {
+          "name": "auth_member_invitation_token_hash_idx",
+          "columns": [
+            "token_hash"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "auth_member_invitation_email_lower_check": {
+          "name": "auth_member_invitation_email_lower_check",
+          "value": "\"auth_member_invitation\".\"email\" = lower(\"auth_member_invitation\".\"email\")"
+        },
+        "auth_member_invitation_token_hash_check": {
+          "name": "auth_member_invitation_token_hash_check",
+          "value": "length(\"auth_member_invitation\".\"token_hash\") = 64"
+        }
+      }
+    },
+    "auth_session": {
+      "name": "auth_session",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ip_address": {
+          "name": "ip_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "user_agent": {
+          "name": "user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "auth_session_token_idx": {
+          "name": "auth_session_token_idx",
+          "columns": [
+            "token"
+          ],
+          "isUnique": true
+        },
+        "auth_session_user_id_idx": {
+          "name": "auth_session_user_id_idx",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "auth_session_user_id_auth_user_id_fk": {
+          "name": "auth_session_user_id_auth_user_id_fk",
+          "tableFrom": "auth_session",
+          "tableTo": "auth_user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "auth_signing_key": {
+      "name": "auth_signing_key",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "auth_signing_key_id_check": {
+          "name": "auth_signing_key_id_check",
+          "value": "\"auth_signing_key\".\"id\" = 'default'"
+        }
+      }
+    },
+    "auth_user": {
+      "name": "auth_user",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "email_verified": {
+          "name": "email_verified",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "image": {
+          "name": "image",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "auth_user_email_idx": {
+          "name": "auth_user_email_idx",
+          "columns": [
+            "email"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "auth_user_email_verified_bool_check": {
+          "name": "auth_user_email_verified_bool_check",
+          "value": "\"auth_user\".\"email_verified\" in (0, 1)"
+        }
+      }
+    },
+    "auth_verification": {
+      "name": "auth_verification",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "identifier": {
+          "name": "identifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "auth_verification_identifier_idx": {
+          "name": "auth_verification_identifier_idx",
+          "columns": [
+            "identifier"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {
+      "contact_primary_email_lower_idx": {
+        "columns": {
+          "lower(\"primary_email\")": {
+            "isExpression": true
+          }
+        }
+      },
+      "program_name_idx": {
+        "columns": {
+          "\"name\" collate nocase": {
+            "isExpression": true
+          }
+        }
+      }
+    }
+  }
+}

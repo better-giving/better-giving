@@ -1,0 +1,872 @@
+/*
+ * the donation form's token system: the file every color, length and size the form paints
+ * comes from.
+ *
+ * it governs the donation form and nothing else. the operator surfaces have a system of their own
+ * (../../../operator/src/styles/tokens.css), and the two never share a token, a file or a name — what
+ * is named here is a public contract a host's own stylesheet is written against, and /admin's
+ * names are free to change.
+ *
+ * one public seed — `--donate-primary` — is what a host page sets, and there is no second.
+ * everything else is `--_`-prefixed and private: derived here, never read or written by a host. an
+ * org wanting more of this card than its brand colour forks the package and edits this file; that
+ * is the whole of the customisation story and ../../custom-elements.json states it to integrators.
+ *
+ * the seed is spent three ways and the difference is what a donor is being told. it *fills* the one
+ * control that commits the gift — the action — and it fills the boxes a donor does not choose a
+ * shape for: the chosen rail, the fee switch set on, the box a donor ticks,
+ * the mark on the step head saying where the donor is standing. it *marks* the two controls a donor
+ * picks from a set: the chosen frequency and the chosen amount tile take a primary edge and a
+ * primary word on a near-white ground rather than a primary fill. one card holding three solid
+ * brand blocks at once ranks them by area, and the largest of the three is not the one that spends
+ * the money — so the fill is reserved for the press and the other two are marked. and it is a
+ * *word* on the quiet action, which is the one control here drawn as words rather than as a box.
+ *
+ * nothing else on this card is chromatic. a focus ring is `--_focus-ring` below, a fixed rung of
+ * the neutral ladder: where the caret is standing is state, and state is not the brand's to say —
+ * a ring that followed the seed would be the colour of the thing it bounds wherever the seed had
+ * already drawn that thing.
+ *
+ * so the ring and the brand would meet along an edge on every control the seed has drawn, and what
+ * keeps them apart is measured rather than assumed. the ring is the ladder's darkest rung and the
+ * seed's band reaches that same darkness at its floor, so the two are 1.00:1 apart on an unseeded
+ * card and never more than 3.01:1 apart at the band's ceiling — which is to say a primary edge and
+ * a ring drawn against each other read as one thick dark band, not as two. a control the primary
+ * *fills* answers that by ringing itself inside, in `--_on-p`. a control the primary *marks*
+ * answers it with a band of `--_n1` laid between its primary edge and the ring outside — the same
+ * construction the free entry, the checkbox and the switch already use — and that hairline is
+ * 14.85:1 against both of the edges it separates. a rule that puts the two in contact without one
+ * of those two answers is what this invariant exists to refuse.
+ *
+ * the seed's `initial-value` is grey and sits at the neutral ladder's own darkest rung, so an
+ * unseeded card is grey throughout — the only hue on it is the two fixed semantic colours.
+ *
+ * this sheet is unlayered, and that is the other half of the guarantee the operator layers
+ * make: an unlayered sheet outranks every layer regardless of specificity, so no rule /admin
+ * ships can reach into this element even if one were somehow adopted alongside it.
+ *
+ * `em` throughout, off the clamped root below. the element is a guest in a document it does
+ * not own, so a host that set `html { font-size: 62.5% }` must not be able to render the card
+ * at 10px, while a reader's own browser zoom still moves type and spacing together.
+ *
+ * no shade is ever made with alpha. a translucent fill takes on whatever the host's page
+ * put behind it, and this component is painted onto a page it cannot see. every shade the
+ * UI needs is its own solid step below — which is why there are twelve neutrals rather
+ * than four and a set of opacities.
+ *
+ * light only. no dark ramp, no `prefers-color-scheme` branch, no mode detection. a
+ * dark-themed host page gets a light card sitting in a dark page. the greys are `--_s` below and
+ * every rung off it is a fixed literal, so a host cannot tint the card and cannot attempt to
+ * darken it either — there is no seed to try it through, and the failure is a rule an integrator
+ * reads rather than a value quietly clamped back.
+ *
+ * a dark-themed host getting a light card is the accepted cost rather than a gap, and
+ * retrofitting dark is authoring a second system rather than adding an attribute: a second
+ * twelve-step scale, a second semantic set, a second pair of clamp bands, a second resolve for
+ * Stripe's `appearance` in ./appearance.ts, and a mode-detection path this element does not
+ * have. the public attribute surface is `form` and `variant`, and there is no third.
+ *
+ * reading a `--_` token off `getComputedStyle` does not hand back a color. these are
+ * unregistered custom properties, so their computed value is the `oklch(from …)` expression
+ * with `var()`s substituted — not the color it evaluates to. to obtain a literal, which is
+ * what `./appearance.ts` needs before anything can be handed to Stripe, assign the token to
+ * a standard property on a probe element and read that property back. `./tokens.browser.spec.ts`
+ * does exactly this, and is the only spec in the repo that can see any of it: a lightweight
+ * DOM computes these as strings, never as a rendered color.
+ *
+ * every text pair below clears WCAG AA on the card it is drawn on — 4.5:1. three numbers carry that
+ * claim: the primary's lightness ceiling, `--_on-p`, and the neutral's rung 10, which is cut below
+ * its own distribution so that the quietest ink this card draws still clears the text floor. each
+ * states its measurement at its own entry.
+ *
+ * one thing below is outside that claim and says so at its own entry: `--_edge-control` is one
+ * hairline shade for every box on the card and states no floor at all — 1.4.11's 3:1 is not reached
+ * at it.
+ *
+ * one band is left for a host to move anything through, and it is the primary's. so a ratio between
+ * two neutrals, or between a neutral and a semantic colour, is a single reading of two fixed values
+ * and is written as one number; a ratio involving `--_p` or `--_on-p` is still the floor across that
+ * band and never the best hue in it, and says so where it is written.
+ *
+ * a control this card draws as unavailable is drawn at exactly the value its available state takes
+ * and buys no quiet at all. nothing in this directory is ever rendered `disabled`
+ * (../checkout.machine.ts states why), so a step a donor cannot reach yet is still focusable and
+ * still in the tab order — and a shape a donor can put a focus ring around is a shape they have to
+ * be able to see. `--_edge-unavailable` below is the whole of how this system says unavailable in
+ * colour: it says it in pattern instead.
+ *
+ * ../../package.json exports this file as `./styles/tokens.css`, first of the four the card is
+ * dressed from. the element adopts them as constructed sheets (`sheetsFor` in ../element.ts); the
+ * deployment's own donation page links the same four by url, in that same order, so the cascade
+ * order those four are written against is one order rather than two.
+ */
+
+/*
+ * the seed is registered so that a host's malformed value is rejected at parse time and
+ * the `initial-value` below is what computes instead.
+ *
+ * unregistered, a bad seed is not a bad color — it substitutes into every
+ * `oklch(from var(--donate-primary) …)`, each one is invalid at computed-value time, and each
+ * dependent property falls back to `unset`. that is a shredded form inside a stranger's page
+ * rather than a form in the wrong color. "a malformed seed falls back to the registered
+ * initial value" in ./tokens.browser.spec.ts is the proof.
+ *
+ * this sheet must be adopted into the host document as well as into the shadow root.
+ * `@property` registrations are collected from the document tree only — one that reaches the
+ * engine solely through a shadow root's stylesheet is ignored, which leaves the seed with no
+ * initial value and the four steps derived from it unresolved on any page that seeded nothing.
+ * "registers only from the document tree" in ./tokens.browser.spec.ts pins that down, because it
+ * is the difference between a working default and a card with no brand on it at all. what it does
+ * not reach is everything else here: the ladder, the two corners and the type are literals and
+ * resolve whether or not the registration landed, which "sends everything the seed does not feed"
+ * in ./resolve.browser.spec.ts holds from the other side. adopting the whole file into the
+ * document tree costs a parse and, on a host's page, nothing else: `:host` matches nothing out
+ * there, and `[data-donate-root]` beside it is a name the embed never writes — the element sets
+ * no attribute on anything it does not own, so on a pasted-snippet page nothing matches either
+ * selector and the private layer is still declared only inside the shadow root. that is the rule
+ * both selectors keep and the one a third would have to keep too: a selector matching something a
+ * host's own markup could carry would define the `--_` layer out there, where a host can read it.
+ * the second selector is for the deployment's own donation page, which draws this card in the
+ * document tree rather than in a shadow root and puts the attribute on the card's outer node
+ * itself. "the light-DOM card root" in ./tokens.browser.spec.ts holds both halves.
+ *
+ * the consequence is one `--donate-`-prefixed name in the host document's property registry.
+ * accepted: the prefix is a namespace this component owns.
+ *
+ * the seed carries an `initial-value` and may not drop it. `@property` requires one for every
+ * syntax except `*`, and a block written without one is invalid and dropped whole — which leaves
+ * the seed unregistered, unvalidated, and back in the shredding case above.
+ */
+
+/*
+ * the brand, and the only colour this card fills anything solid with. the default is grey and sits
+ * at the neutral ladder's own darkest rung, so an unseeded card draws a near-black button rather
+ * than somebody else's blue: this component ships with no brand of its own to lend.
+ */
+@property --donate-primary {
+	syntax: '<color>';
+	inherits: true;
+	initial-value: oklch(0.27 0 0);
+}
+
+:host,
+[data-donate-root] {
+	/*
+	 * the one line that governs the whole scale. every size and space below is `em` off it.
+	 * `1rem` is what respects a reader's zoom; the clamp is what bounds a host who abused
+	 * their own root.
+	 */
+	font-size: var(--_root-size);
+	font-family: var(--_font);
+
+	--_root-size: clamp(15px, 1rem, 18px);
+
+	/*
+	 * the fill band, and it is the load-bearing line in this file. lightness into `[0.27, 0.5]`,
+	 * chroma into `[0, 0.16]`, hue untouched — the hue is the host's, the luminance is ours.
+	 *
+	 * the ceiling is the entire reason `--_on-p` below can be one fixed near-white: no fill in
+	 * this component is ever light enough to want a dark foreground, so nothing here has to
+	 * *select* a foreground for contrast, and the element performs no contrast decision at
+	 * runtime at all.
+	 *
+	 * the ceiling is set by measurement, and the band is measured twice because the seed is spent
+	 * twice: as a fill carrying a near-white foreground, and as ink on the card — the quiet action's
+	 * word, and the word on a chosen frequency or amount tile. oklch lightness is perceptual and
+	 * hue-corrected; WCAG contrast is computed from sRGB luminance, which is not — a cyan and a blue
+	 * at the same oklch lightness carry very different luminance, and the cyan-teal end of the band
+	 * is where both readings run out first.
+	 *
+	 * the fill is the binding one. near-white over the fill reaches 4.5:1 at 0.5157, at chroma 0.16
+	 * and hue 190; ink on the card does not reach it until 0.5228, at that same corner. 0.5 is the
+	 * ceiling and reads 4.79:1 on the fill and 4.93:1 on the card, so the ink follows the fill with a
+	 * quarter of a point in hand and a move to the ceiling is answered by the fill's number first.
+	 * "clears 4.5:1 against the primary fill" and "the primary reads as ink on the card" in
+	 * ./tokens.browser.spec.ts sweep the hues where a lighter ceiling stops clearing either.
+	 *
+	 * so the ceiling is a measured number and may only ever be raised against another
+	 * measurement — 0.56 reads clean on paper and fails at neon, yellow and cyan. real
+	 * chromium is the only place any of this is visible: a lightweight DOM computes
+	 * `oklch(from …)` as a string and never as a color.
+	 *
+	 * the floor is the neutral ladder's own darkest rung, which is what admits the registered
+	 * default: an unseeded card fills its button with the same near-black it sets its text in. a
+	 * floor above that would clamp the default upward into a mid grey, so the seed a host never
+	 * set would render lighter than the words beside it.
+	 *
+	 * the chroma floor reaches zero and that is the whole of how an unseeded card carries no hue.
+	 * a floor above it forces a grey seed into a faint tint, which is a brand colour on a card
+	 * nobody branded.
+	 *
+	 * the cost is real and taken deliberately: a neon or pastel brand renders noticeably
+	 * darker here than in the host's own buttons. the answer for those brands is
+	 * `::part(action)`, where the host sets fill and foreground together and owns the pair.
+	 */
+	--_p: oklch(from var(--donate-primary) clamp(0.27, l, 0.5) clamp(0, c, 0.16) h);
+
+	/*
+	 * the primary's roles. each is a step of the same clamped seed rather than an alpha of it,
+	 * so a muted brand stays muted the whole way up and a saturated one stays saturated — and
+	 * so the action has a real solid fill rather than the brand at ten percent, which
+	 * would take on whatever the host put behind the card.
+	 *
+	 * they are spent on a mark as well as on a fill: a selected frequency or amount tile answers
+	 * the pointer by stepping its edge and its word together, because its ground is `--_n1` and
+	 * the ladder has no second usable step above it for a fill to move through — `--_n3` is where
+	 * the primary stops clearing the text floor, and it is also the fill its unselected neighbours
+	 * already stand on. both steps are *darker* than `--_p`, so a word drawn in either clears that
+	 * floor by more than `--_p` does and neither adds a measurement to the four this file carries.
+	 *
+	 * the two steps are a constant lightness apart at every point of the band, so what they buy
+	 * narrows as the band darkens: oklch lightness is perceptually even and a WCAG ratio is not.
+	 * at the ceiling the pointer moves the colour by 1.25:1 and the press by 1.5:1; at the floor,
+	 * where it is already near-black, the same two steps read 1.08:1 and 1.14:1. that is
+	 * the floor rather than a target — no floor rests on these, they answer a press — and it is
+	 * the number a change to either step has to beat.
+	 *
+	 * every control a pointer can act on carries a hover step, and the rule is stated at this pair
+	 * because this pair is what it exists for. a control drawn in the brand steps to `--_p-hover`:
+	 * the action's fill, the fee switch set on, a chosen option's word, the quiet action's word. a
+	 * control drawn from the ramp steps once along the ramp instead — an edge to `--_n11` (a field,
+	 * the free entry on a bare tray, a tick box, a step mark), a fill to the rung under the one it
+	 * rests on (an unchosen cadence or tile, the fee switch set off).
+	 *
+	 * two controls are exempt and each is exempt for the same reason: there is nothing left for a
+	 * pointer to be offered. a chosen cadence has no fill of its own — the chip behind it is the
+	 * track's — and the free entry standing on a tray is the box that has already been chosen, on
+	 * `--_n1` with the tray's own fill two rungs under it and nothing between the two that reads
+	 * (1.06:1 at `--_n2`, which is the same number `[part~='amount-option'][part~='selected']` in
+	 * ./parts.css refuses a ground step for). an exemption is an argument written where the rule
+	 * would have been drawn; silence is not one, and "answers the pointer on every part a pointer
+	 * can act on" in ../element.dom.spec.ts is what refuses silence.
+	 *
+	 * the press is that same rule stepped once further — `--_p-press` in the brand, one more rung
+	 * along the ramp — and it is not an embellishment on the hover. a touch never hovers, so on the
+	 * device most donors arrive on the press step is the whole of what a control says back, which is
+	 * why the tick box carries one on both of its halves. three controls carry none and each has no
+	 * paint left for a press to move: the two boxes a donor types into are answered by the caret,
+	 * and the quiet action by the `scale` in ./motion.css. "answers the press on every part a press
+	 * repaints" in ../element.dom.spec.ts is what refuses silence there.
+	 */
+	--_p-hover: oklch(from var(--_p) calc(l - 0.055) c h);
+	--_p-press: oklch(from var(--_p) calc(l - 0.1) c h);
+
+	/*
+	 * the one fixed near-white foreground, and the only ink any `--_p` fill ever takes. it is
+	 * also the ring a `--_p`-filled control draws inside itself, and two things hold it there. a
+	 * ring in the fill's own colour laid outside that fill is the colour of the thing it is meant to
+	 * bound and reads as the control growing, and a ring light enough to bound the fill cannot also
+	 * be seen against the card. `--_focus-ring` below laid outside instead does not escape the first
+	 * of those: it is the ladder's darkest rung and the fill's band reaches that same darkness at its
+	 * floor, so on an unseeded card the two are 1.00:1 and the ring is the fill continuing outward.
+	 * so a filled control rings itself, in `--_on-p` at 4.79:1 against the fill at the worst corner
+	 * of the band, which is chroma 0.16 at hue 190.
+	 *
+	 * one control is left taking it, and that is the point of it being one: `[part~='action']` is
+	 * the only thing on this card the primary fills that this sheet also paints a foreground on. a
+	 * control the primary *marks* is a near-white box with a primary edge, so it has no fill to be
+	 * legible against and no inside for a ring — it takes `--_focus-ring` outside a band of the
+	 * ladder, which is the other half of the same invariant and is argued at the top of this file.
+	 */
+	--_on-p: oklch(from var(--_p) 0.985 0.002 h);
+
+	/*
+	 * the ladder's root, and a fixed literal: the greys on this card are ours and there is no seed
+	 * that reaches them. the twelve steps below are derived from it so the hue and the trace of
+	 * chroma are stated once and the column reads as a distribution rather than as twelve
+	 * unrelated colours. the operator surfaces' ladders (../../../operator/src/styles/tokens.css)
+	 * are fixed literals at one hue for the same reason this one now is.
+	 *
+	 * the rung number is the job, and the meanings are radix colors'
+	 * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale), adopted
+	 * whole and shared with those ladders so one reader learns one scale:
+	 *
+	 *   1 app background · 2 subtle background · 3 ui element background · 4 hovered ·
+	 *   5 active or selected · 6 subtle borders and separators · 7 ui element border and focus
+	 *   rings · 8 hovered border · 9 solid backgrounds · 10 hovered solid · 11 low-contrast text ·
+	 *   12 high-contrast text
+	 *
+	 * what is adopted is the distribution and the meanings. rung 1 is the root itself rather than a
+	 * step off it: the card is the ramp's own top step, and a scale whose first rung was not its
+	 * lightest colour would have a thirteenth shade sitting above it with no number.
+	 *
+	 * chroma is the root's down to rung 8 and twice the root's from rung 9, which is where the
+	 * ladder turns dark: the trace that warms a near-white card is invisible under a mid grey. so no
+	 * rung carries more than 0.002 and none of them reads as a hue. "gives the neutral steps a trace
+	 * of chroma, never a colour" in ./tokens.browser.spec.ts holds that ceiling.
+	 *
+	 * rung 10 is authored below the distribution — 0.54 rather than 0.6 — because this card is read
+	 * as text one rung past what the scale guarantees. rungs 11 and 12 are the two text rungs and
+	 * the card spends both, so its quietest ink — the label on a ledger row, an aside, the note
+	 * under the fee — has nowhere left but rung 10. at 0.6 that rung reaches 3.89:1 on the card and
+	 * 3.79:1 on rung 2, the mandate's ground, failing 4.5:1 on both it is drawn on; at 0.54 it
+	 * reaches 4.99:1 and 4.86:1, and it stays its own step at 1.53:1 against rung 9 above and
+	 * 1.24:1 against rung 11 below.
+	 *
+	 * rungs 8 and 9 are unread and stay, and they are the whole of the exemption. a rung of a ladder
+	 * is exempt from deleting what nothing reads, because a scale is read by counting along it and
+	 * one with holes in it is no longer one anybody can count along. every other name in this file
+	 * is a value a reader has to decide about, so one nothing spends is a decision with no consumer
+	 * — "carries no step nothing spends" in ../element.dom.spec.ts derives that sweep from this
+	 * file and names these two rungs as the exception, so a step that stops being read shows up
+	 * there rather than sitting here looking like a step somebody still takes.
+	 */
+	--_s: oklch(0.995 0.001 264);
+	--_n1: oklch(from var(--_s) 0.995 c h);
+	--_n2: oklch(from var(--_s) 0.986 c h);
+	--_n3: oklch(from var(--_s) 0.965 c h);
+	--_n4: oklch(from var(--_s) 0.938 c h);
+	--_n5: oklch(from var(--_s) 0.906 c h);
+	--_n6: oklch(from var(--_s) 0.878 c h);
+	--_n7: oklch(from var(--_s) 0.855 c h);
+	--_n8: oklch(from var(--_s) 0.794 c h);
+	--_n9: oklch(from var(--_s) 0.645 calc(c * 2) h);
+	--_n10: oklch(from var(--_s) 0.54 calc(c * 2) h);
+	--_n11: oklch(from var(--_s) 0.49 calc(c * 2) h);
+	--_n12: oklch(from var(--_s) 0.27 calc(c * 2) h);
+
+	/*
+	 * the boundary of a control a donor has to find before they can operate it: a field, the free
+	 * amount entry, a payment rail, the mount the card fields are drawn into.
+	 *
+	 * one hairline shade for every boundary on this card, and it is the rung the amount tray and
+	 * the cadence track are drawn with (`.segment, .tiles` in ./parts.css). so a field reads as the
+	 * same kind of box the tiles stand in rather than as a heavier one standing next to it, which
+	 * is what the card is: boxes on one ground, told apart by their fill and their words.
+	 *
+	 * it is a look and carries no contrast floor. 1.4.11's 3:1 against the card
+	 * (https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html) is not reached at this
+	 * rung and is claimed for it nowhere in this file, so a reader changing this shade is choosing
+	 * a look and has no floor to hold it to.
+	 *
+	 * it is still named apart from the ramp, because it is one decision drawn in a dozen places: a
+	 * rule that wants the card's boundary names this, and a rule that wants a rung names the rung.
+	 * a rule that draws a container rather than a control — the card's own edge, the scroll well —
+	 * reads a ramp step directly, because a container's edge identifies nothing. the receipt is
+	 * that argument taken to the end: it draws no edge and no fill, because the rules inside it
+	 * already say where the account starts and stops.
+	 */
+	--_edge-control: var(--_n7);
+
+	/*
+	 * unavailable, said in colour — and the first thing to know is that at a boundary it is not
+	 * quieter than available. `--_edge-unavailable` is `--_edge-control` exactly, and points at the
+	 * semantic token rather than at the ramp so the two can never drift apart.
+	 *
+	 * no control in this directory is ever rendered `disabled` (../checkout.machine.ts), so an
+	 * unavailable one keeps its place in the tab order and a donor can tab onto it and ring it. the
+	 * available edge is already as light as a boundary on this card goes (`--_edge-control` above),
+	 * so there is no quieter step to move a state to: what is lighter than it is the card.
+	 *
+	 * so a boundary says the state on a second axis, and the marks on the step head say it in
+	 * pattern: a dashed edge in this same token, at the same size as the marks beside it
+	 * (`.step-mark` in ./parts.css). the rule the control after them takes: draw unavailable at the
+	 * value its available state carries, and say the state anywhere but by fading the thing toward
+	 * the card.
+	 *
+	 * words are the one place quiet would have room — a word carries 4.5:1 whether or not a donor
+	 * may act on it, and the ramp has steps that clear it with room to spare. no control this card
+	 * draws as unavailable carries any, so there is no token for it here: the first one that does is
+	 * where that step gets named, and this is the entry it is named beside.
+	 */
+	--_edge-unavailable: var(--_edge-control);
+
+	/*
+	 * where the caret is standing, and the third of the three edges this file names apart from the
+	 * ramp. it is a rung rather than the brand because focus is state: a ring that followed the seed
+	 * would be drawn in the colour of the thing it bounds on every control the seed had already
+	 * marked or filled, and it would move whenever an org changed its brand — a line saying where
+	 * the caret is, in a colour the card cannot predict.
+	 *
+	 * rung 12 rather than a border rung. a ring outranks every other line on this card and is read
+	 * on four grounds, because a keyboard donor can be hovering what they have tabbed onto: the card
+	 * at 14.85:1, rung 2 under the mandate at 14.47:1, an option's own fill at 13.61:1 and that fill under
+	 * the pointer and the press at 12.56:1 and 11.39:1. the lighter rungs are this card's own
+	 * hairlines and fills, and a ring drawn from one of them would be a field's resting edge again
+	 * rather than a change to it.
+	 *
+	 * so the ring is 9.69:1 against the resting edge it replaces on a field, and that is the number
+	 * that makes focus legible on the border alone before the ring outside it is counted.
+	 *
+	 * the one place it is not drawn is inside a control the primary has filled, which rings itself in
+	 * `--_on-p` above. the reason is measured and it is this token's: rung 12 and the primary's band
+	 * meet at the band's floor, so on an unseeded card a ring here would be the fill continuing
+	 * outward. the same pair is why a control the primary *marks* keeps a band of `--_n1` between its
+	 * edge and this ring.
+	 */
+	--_focus-ring: var(--_n12);
+
+	/*
+	 * the semantic colors are fixed literals with no relation to any seed, and a band is the rule
+	 * around a block and the ground under it rather than a colour for the words inside. an error
+	 * has to be legible whatever the host seeded, so its legibility is not allowed to depend on
+	 * their value. each band leans a shade warmer than the state it says, which is what keeps a
+	 * tint reading as a tint rather than as a wash.
+	 *
+	 * the word inside a band stays on the ramp — `.attention` in ./parts.css is `--_n11`, the same
+	 * ink as any other sentence on the card. a word carries 4.5:1 whether or not the block around
+	 * it is tinted, and the ladder already has the steps that do, so a third token per band would
+	 * be a second floor to hold for nothing the band does not already say.
+	 *
+	 * `--_bad` is the exception and it is not a word colour: it is what a refused control is
+	 * *drawn* in — a marked field's edge, the inset line on a control with no border of its own,
+	 * the ring on the box a provider paints in — and the sentence naming that control is set in it
+	 * (`.message` in ./parts.css) so the word and the thing it points at are one colour. attention
+	 * marks no control, so it has no such shade and needs none.
+	 *
+	 * these surfaces are also absent from the part vocabulary, which is what keeps them
+	 * un-themable: a host's `::part()` normal declaration beats a shadow-internal rule, so
+	 * the enforcement is the missing name, not an `!important`.
+	 *
+	 * two bands and not three. this card reports success by drawing the receipt — the money, the
+	 * cadence and where it is going, on the screen that took it — so there is no sentence for a
+	 * green band to carry and no surface to lay one under. a success ramp is what a confirmed state
+	 * somebody has actually drawn asks for, and it is named here when that state exists.
+	 */
+	--_bad: oklch(0.495 0.19 27);
+	--_bad-line: oklch(0.885 0.048 27);
+	--_bad-tint: oklch(0.972 0.018 27);
+	--_warn-line: oklch(0.895 0.07 85);
+	--_warn-tint: oklch(0.975 0.026 85);
+
+	/*
+	 * two corners for the whole component: `--_r` is the card and every box drawn directly on it,
+	 * `--_r-in` is every control inside one of those boxes. four pixels between them is what makes a
+	 * control read as sitting *in* its container rather than as a second container — a box and the
+	 * box inside it at one radius have concentric corners that do not look concentric, because the
+	 * inner arc has to start further in to end at the same place.
+	 *
+	 * two shapes are outside the pair rather than exceptions to it. the fee switch is a pill:
+	 * `--_switch-radius` below is where that is argued and what it costs. the busy spinner
+	 * (`.spinner` in ./parts.css) is a circle by construction — it is a shape reporting that
+	 * something is happening, not one a donor operates, and a square one would not be a spinner.
+	 */
+	--_r: 8px;
+	--_r-in: 4px;
+
+	/*
+	 * no webfont ships. one is an extra request in a stranger's critical path and a face that by
+	 * definition does not match the host's, so the stack is the platform's own the whole way down
+	 * and ends in `sans-serif`, which never fails to resolve.
+	 */
+	--_font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+	/*
+	 * every size is `em` off the clamped root above, and `--_t-xs` is the one step this scale does
+	 * not protect. nothing at this level floors it: a consumer that needs one states its own
+	 * `max(12px, …)` at its own site, which four of the six do — `.optional`, `.fee-note`,
+	 * `.mandate` and the tribute's notify press in ./parts.css, each arguing what it is protecting.
+	 * `.message` and `.receipt-note` carry none, so they draw at 11.25px at the bottom of the clamp
+	 * band, and a consumer added under a parent already at `--_t-sm` compounds to 10.5px before the
+	 * band is counted at all.
+	 *
+	 * `--_t-md` is the base and it is the card's whole rule: only a heading goes above it, and only
+	 * an error and fine print go below it. every figure a donor reads — the presets, the amount they
+	 * type, the currency symbol beside it, the label on the button that sends it — sits on that base,
+	 * because a figure set larger than the field it is typed into is a size that ranks the two rather
+	 * than a size that reads. the entry is told apart from the shortcuts by its edge and its caret
+	 * instead (`[part~='amount-input']` in ./parts.css); the box is the one floor for both
+	 * (`--_row-min` below).
+	 *
+	 * the ladder stops at `--_t-xl`, which is the receipt's total once the takeover has it and the
+	 * largest thing this card draws. a step above it is a step nothing on a donation form is ever
+	 * set at: the one figure that earns a size of its own already has one.
+	 */
+	--_t-xs: 0.75em;
+	--_t-sm: 0.875em;
+	--_t-md: 1em;
+	--_t-lg: 1.125em;
+	--_t-xl: 1.375em;
+
+	/*
+	 * two weights for emphasis, and the reason is the stack's own tail rather than taste. the far end
+	 * of `--_font` above is Arial and Helvetica Neue, families that ship 400 and 700 and nothing
+	 * between — and CSS weight matching resolves 500 down to 400 there while resolving 600 up to 700.
+	 * so a 500-weight label is invisible emphasis on any reader whose machine falls that far down the
+	 * stack. 600 is the emphasis weight everywhere in this component, and 300 appears nowhere.
+	 *
+	 * the third is not emphasis and that is what admits it. `--_w-medium` is the one weight a word a
+	 * donor chooses among is drawn at, resting and chosen alike (`[part~='amount-option']` in
+	 * ./parts.css), so nothing about it is read against a neighbour at another weight: on a stack
+	 * that ships 500 it is a shade heavier than the card's prose, and on the tail that does not it
+	 * is 400 in both states — and either way choosing one moves no word by a pixel, which is the
+	 * whole of what it is for.
+	 */
+	--_w-normal: 400;
+	--_w-medium: 500;
+	--_w-bold: 600;
+
+	--_lh-tight: 1.25;
+	--_lh-body: 1.5;
+
+	/*
+	 * how far an underline sits below the words it marks. `em`, because it is a text metric and has
+	 * to move with whatever size the words it is under are drawn at — which is the opposite of the
+	 * insets below, where two elements at two sizes have to agree on one length.
+	 *
+	 * one value, because every underline in this component is the same decision: a control that is a
+	 * word rather than a box (`[part~='action-quiet']` in ./parts.css), and two offsets would read as
+	 * two kinds of control.
+	 */
+	--_underline-offset: 0.15em;
+
+	/*
+	 * the one tracking step. the currency code beside the free amount entry is the only run of
+	 * capitals this card sets (`.adorn-trail` in ./parts.css), and three letters at `--_t-sm` close
+	 * up into a shape rather than into a word a donor reads as USD.
+	 *
+	 * `em`, because it is a text metric and has to move with whatever size the letters it opens are
+	 * drawn at — the same reason `--_underline-offset` above is, and the opposite of the insets
+	 * below.
+	 *
+	 * one value, because there is one such run. a second run of capitals takes this step; a run
+	 * that wanted a different one is a second entry here rather than a literal at its own rule.
+	 */
+	--_tracking: 0.02em;
+
+	/*
+	 * spacing rides the clamped root exactly as type does, so an abused host root cannot
+	 * shrink the padding out from under the text.
+	 *
+	 * the step number is the job, the way the rung number is on the ladder above, and each is
+	 * stated here rather than at the rule that first needed it — a job written at a consumer is a
+	 * job the next consumer picks by eye off whichever rule it happened to read.
+	 *
+	 *   1 the tightest gap there is: a tray's own inset, and a mark beside the word it marks. it is
+	 *     also what the payment provider is handed as its `spacingUnit` (`./appearance.ts`), so a
+	 *     step moved here moves the provider's frame with it.
+	 *   2 the gap inside one thing: between the boxes of one control, and between the rows of one
+	 *     block. `.group` and `.segment` in ./layout.css and the receipt's rows in ./parts.css are
+	 *     all this.
+	 *   3 a box's own padding: a field's inline inset, the free entry's, a bounded well's.
+	 *   4 the widest padding a box takes — the action's inline step, and the alert's on every
+	 *     side.
+	 *   5 the step's own gap — the rhythm from one ask to the next, and the whole reason a rule
+	 *     that cancels it or pays it back names this token rather than a length (`.disclosure +
+	 *     .disclosure` in ./layout.css). it is also what the provider is handed as
+	 *     `accordionItemSpacing`.
+	 *
+	 * the ladder stops at 5 and the card's own interior is not on it. the two insets below are
+	 * lengths of the card rather than of whatever box a rule lands on, so they are stated off the
+	 * clamped root and read no step here — the narrow one carries this rung's multiplier and the
+	 * wide one carries a sixth the ladder would have had. a rung nothing spends is a decision with
+	 * no consumer, so neither is declared here for the resemblance alone.
+	 */
+	--_sp1: 0.25em;
+	--_sp2: 0.5em;
+	--_sp3: 0.75em;
+	--_sp4: 1em;
+	--_sp5: 1.25em;
+
+	/*
+	 * the card's content inset, at its two widths. one box takes both — `.card-body` in
+	 * ./layout.css, which is the only thing on this card that pads — and a container query at 26em
+	 * switches it from the first to the second, so the interior loosens as the card widens while
+	 * every control inside it stays on the same scale.
+	 *
+	 * two tokens rather than one and a multiplier, because the wide step is not a ratio of the
+	 * narrow one. the narrow one carries the same multiplier `--_sp5` above does, which is what
+	 * keeps the interior reading as part of the spacing scale — a step moved there is moved here,
+	 * by hand, because these are not reads of it.
+	 *
+	 * off the clamped root rather than in `em`, for the reason the strips below are: an inset stated
+	 * in `em` is a length of whatever box the rule lands on, and this one is a length of the card.
+	 * that is also why neither can be a step of the ladder above, which is stated in `em` throughout.
+	 */
+	--_inset: calc(var(--_root-size) * 1.25);
+	--_inset-wide: calc(var(--_root-size) * 1.75);
+
+	/*
+	 * the strip at the inline end of the free amount entry: what the currency code stands in, and what
+	 * the figure stops short of. off the clamped root rather than in `em`, because the two rules that
+	 * have to agree on one length are drawn at two sizes — the code at `--_t-sm` and the figure at
+	 * `--_t-md` — and an `em` resolves to a different length on each of them. three roots is the
+	 * code's own inset off the edge, its measure at that size, and a gap beside it.
+	 */
+	--_adorn-trail: calc(var(--_root-size) * 3);
+
+	/*
+	 * the strip at the inline start, where the currency symbol stands. narrower than the trailing one
+	 * by exactly what a symbol does not need: one glyph rather than a three-letter word, so the code's
+	 * own measure at `--_t-sm` comes off and the inset and the gap stay.
+	 */
+	--_adorn-lead: calc(var(--_root-size) * 2.25);
+
+	/*
+	 * how far each mark stands off the field's own border — not off the strip it stands in, which is
+	 * a box wide enough to hold it rather than a measurement of where it sits.
+	 *
+	 * two numbers rather than one, and the difference is optical: the symbol is drawn at the figure's
+	 * own size and the code at `--_t-sm` — 16px against 14px at the default root — and the larger of
+	 * the two marks takes the wider inset, which is what makes the two sides read as a pair.
+	 *
+	 * the two sizes are one rung of the scale apart where they were three, so four pixels between the
+	 * insets is wider than the optics now ask for. the pair is unsettled at this spread and is not to
+	 * be closed by nudging one of the two.
+	 *
+	 * off the clamped root like the strips above, and for the reason the strips are: a mark and its
+	 * inset are the same drawing, so an inset that stood still while the glyph beside it grew a fifth
+	 * across [15px, 18px] would read tighter to the border at one end of the band than at the other.
+	 * one root and three quarters of one, which is 16px and 12px at the root a host who touched
+	 * nothing resolves to.
+	 */
+	--_adorn-lead-inset: calc(var(--_root-size) * 1);
+	--_adorn-trail-inset: calc(var(--_root-size) * 0.75);
+
+	/*
+	 * 1px is structure and 2px is state — an invalid field, a needed field, a selected rail — so
+	 * border weight means something here rather than decorating.
+	 *
+	 * the ring is the one pixel of state, and it is no exception to that: it is not a border at all
+	 * and spends none of this weight. what says it is a line nothing at rest draws, standing outside
+	 * the control's own edge in a colour nothing at rest carries (the focus block in ./parts.css),
+	 * and a second pixel would only make it heavier than the edges it stands beside.
+	 */
+	--_border: 1px;
+	--_border-strong: 2px;
+	--_focus-width: 1px;
+
+	/*
+	 * how far in from its own edge a control the primary has filled draws its ring (the focus block
+	 * in ./parts.css). the ring's own width rather than a second number: what the inset buys is a
+	 * band of the fill outside the ring, and a band narrower than the ring reads as the fill's edge
+	 * being lightened rather than as a line drawn within it — which is what a ring at zero is, and
+	 * it is invisible at 1×. so the two are one decision and a change to the width carries the band
+	 * with it: at the width above the ring is a pixel and the band outside it is a pixel, which is
+	 * the least this construction can be drawn at and still be a line inside a fill rather than a
+	 * rim off the edge of one.
+	 */
+	--_focus-inset: var(--_focus-width);
+
+	/*
+	 * the one elevation this component draws, and it is bounded to one place: a box standing on this
+	 * card's own ladder, never the card itself. the card's outer edge stays flat, because a shadow
+	 * laid there falls on a page this element cannot see and has no ground to be measured against.
+	 *
+	 * solid, and never an alpha of black. the ban stated at the top of this file is what admits it
+	 * rather than what it escapes: the reason a translucent shade is refused — it takes on whatever
+	 * the host put behind the card — stops at the card's edge, and a rung of the card's own ramp is a
+	 * shade this component knows the ground for. `--_n7` is a separator step, so what lands under a
+	 * raised box is a shade the card already carries as a hairline elsewhere.
+	 *
+	 * two consumers: the chip the chosen frequency stands on (`.segment[data-thumb]::before` in
+	 * ./parts.css) and a chosen amount tile (`[part~='amount-option'][part~='selected']` there),
+	 * each raised off the tray it stands in. the ground there is `--_n3` rather than the card, which
+	 * is the bound above being met rather than an exception to it.
+	 *
+	 * it is below the threshold of an eye at 1× and it is not a signal anything may rest on. `--_n7`
+	 * is a hairline shade and the offset is one pixel, so what it casts under a chip on `--_n3` was
+	 * findable in a rendered review only at 9× zoom. it is kept because the geometry is right and the
+	 * shade is a value decision rather than this file's to retune; a chosen frequency and a chosen
+	 * tile are said by their weight (`[part~='selected']` in ./parts.css) with the ground under them.
+	 */
+	--_lift: 0 1px 2px var(--_n7);
+
+	/*
+	 * the floors a target is laid out against. px rather than em: a target is measured by a
+	 * finger, which does not scale with the host's root.
+	 *
+	 * `--_row-min` is the general one — every interactive row, the cadences, the denominations and
+	 * the free amount entry alike (`[part~='amount-input']` in ./parts.css). every one of them holds
+	 * a figure or a word at the base size inside the same floor, so nothing about the box ranks a
+	 * shortcut against the control it is a shortcut past: the entry is told apart by its edge and
+	 * the caret in it.
+	 *
+	 * a one-line control is its line and its padding standing inside this floor, never a height
+	 * they add. at the default root a field's line at `--_lh-body` and its `--_sp2` block padding
+	 * come to 42px with the border, and the entry's line at 1 with its `--_sp3` padding comes to the
+	 * same, so on both it is the floor that sets the height and the inset a donor reads above and
+	 * below the words is the floor's slack — 13px around a 16px line, against the 12px inline step
+	 * and its 1px border beside it. ./parts.browser.spec.ts measures that every such box is drawn at
+	 * the floor and that none pads its words more above and below than beside.
+	 *
+	 * `--_target-min` is the floor rather than the standard, and it exists because one control on
+	 * this card cannot be laid out against `--_row-min` on both axes. the step marks stand three
+	 * abreast (`.step-dot` in ./parts.css) and they abut, so the target's inline size is also the
+	 * pitch from one drawn mark to the next — the clear space between two of them is this less
+	 * `--_mark`, which is 12.75px to 14.6px across the roots the clamp allows, and that is already
+	 * enough that three small shapes stop reading as one indicator. a row's worth of pitch would buy
+	 * more of it and take sixty pixels off the line the step's heading shares with them, which is
+	 * the trade this floor refuses. so they take `--_row-min` in block and this in inline. 24px is
+	 * 2.5.8's own minimum (https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html)
+	 * and it is met by each target itself rather than through the spacing exception, which is what
+	 * abutting also buys: no strip of that line belongs to no mark.
+	 */
+	--_row-min: 44px;
+	--_target-min: 24px;
+
+	/*
+	 * the switch: the one control on this card drawn as a shape rather than painted by the
+	 * platform, and the whole of its geometry. the track's block size is the base and the rest is
+	 * stated against it, so the shape closes on itself — the thumb stands `--_switch-inset` off
+	 * every track edge, and the travel is what is left when a thumb at that inset reaches the far
+	 * end. what a donor reads is the fill and where the thumb is standing; nothing is drawn inside
+	 * the thumb, because this component ships no icon.
+	 *
+	 * off the clamped root rather than in `em`, for the reason `--_adorn-trail` above is: it is a
+	 * drawn object standing beside words set at a size of their own, and an `em` would resolve it
+	 * against whichever row it was dropped into. the root is clamped into [15px, 18px], so no host
+	 * root can shrink it.
+	 *
+	 * none of these is a target. the target is the label the switch sits inside, which carries
+	 * `--_row-min` like every other interactive row (`.fee-decision` in ./parts.css) — so the track
+	 * is never given a hit box of its own, and a switch put in a row that does not carry that floor
+	 * is a target under it.
+	 *
+	 * the fill is what says which way it is set: `--_p` on, stepping to `--_p-hover` and
+	 * `--_p-press`, and rung 10 off, stepping down the ladder to `--_n11` and `--_n12`. off is a
+	 * solid at that rung and is never a tint of one, and it names the rung rather than the card's
+	 * hairline because it is a fill: what has to hold is the thumb standing on it, not a boundary.
+	 * nothing on this card says anything by fading toward the card, so an off track drawn light
+	 * would not read as a decision a donor has not made — it would read as a second kind of
+	 * hairline the component has no use for. the two steps under it are uneven and that is the
+	 * ladder rather than a choice: the pointer arriving moves the fill by 1.24:1 and the press by
+	 * 2.39:1, because rungs 11 and 12 are the only rungs left below it and there is nothing between
+	 * them.
+	 * the thumb is `--_on-p` in both, which is the one near-white a `--_p` fill takes and is 4.84:1
+	 * on the off track.
+	 *
+	 * the thumb travels on `translate` over `--_dur-fast` — the step a control answering a press
+	 * already moves at, and one that collapses with everything else under `reduce` below.
+	 */
+	--_switch-inline: calc(var(--_root-size) * 2.25);
+	--_switch-block: calc(var(--_root-size) * 1.25);
+	--_switch-thumb: calc(var(--_root-size) * 0.875);
+	--_switch-inset: calc((var(--_switch-block) - var(--_switch-thumb)) / 2);
+	--_switch-travel: calc(var(--_switch-inline) - var(--_switch-block));
+
+	/*
+	 * the track's half, which makes the switch a pill rather than a control at `--_r-in` like every
+	 * other box inside a box on this card.
+	 *
+	 * a switch's affordance is the track and the thumb, and one at the shared corner reads as a
+	 * checkbox that grew — which is the single thing this control may not be mistaken for, because
+	 * this card draws real checkboxes elsewhere at that corner (`[part~='checkbox']` in ./parts.css,
+	 * the note disclosure and the contact consent). so the shape is the control's own.
+	 *
+	 * the cost is one pill on a card of 4px corners, taken rather than avoided. no other control is
+	 * drawn outside the pair, and a second one is a re-decision of it.
+	 *
+	 * the thumb is drawn with the same value — a radius over half the box it is set on is reduced to
+	 * that half by the engine (https://www.w3.org/TR/css-backgrounds-3/#corner-overlap), so one corner
+	 * serves both and the thumb is as round as the track is.
+	 */
+	--_switch-radius: calc(var(--_switch-block) / 2);
+
+	/*
+	 * the shape drawn inside each mark on the step head (`.step-mark` in ./parts.css), which is the
+	 * whole of what a sighted donor reads there, and one size for all three of them: a step the
+	 * donor cannot reach yet is said by a dashed edge and not by a smaller shape, so the head reads
+	 * as one row of steps in three states. the target around it is `--_target-min` by
+	 * `--_row-min` above and this is not that: the box a finger has to land on and the shape an eye
+	 * has to separate from two others are different measurements, and tying them together would
+	 * either draw a mark the size of a button or shrink the target to the size of a dot.
+	 *
+	 * off the clamped root rather than in `em`, for the reason the switch above is: a drawn object
+	 * sized in `em` resolves against whichever box it is dropped into, and a shape three of which
+	 * have to read as one row is the last thing that should. the root is clamped into [15px, 18px],
+	 * so no host root can shrink it either.
+	 *
+	 * a size of its own rather than a spacing step, because a drawn shape is not a gap: the spacing
+	 * ladder is retuned by whoever is setting the card's rhythm, and a mark taking one of its steps
+	 * changes size the moment they do.
+	 *
+	 * no radius of its own. a mark takes `--_r` directly and the engine reduces a corner over half the
+	 * box to that half (https://www.w3.org/TR/css-backgrounds-3/#corner-overlap), so the 8px corner
+	 * draws a circle whatever the root resolved to: this is 0.625 of a root clamped into [15px, 18px],
+	 * so the box is never above 11.25px and its half never above 5.625px.
+	 */
+	--_mark: calc(var(--_root-size) * 0.625);
+
+	/*
+	 * the box a donor ticks (`[part~='checkbox']` in ./parts.css), and the one drawn shape here
+	 * stated in `em` rather than off the clamped root. the mark above and the switch below are
+	 * objects standing beside words at a size of their own; this one is drawn *against* a sentence
+	 * and has to be the height of that sentence's own line — the row is set at `--_t-sm` and the
+	 * box is centred on its first line by `calc((1lh - var(--_box)) / 2)`, which only closes if the
+	 * two lengths resolve against the same font size. off the root it would stand proud of a line
+	 * the row's own size had shrunk.
+	 *
+	 * a shade over the line's own `em`, which is what makes it a box beside the words rather than a
+	 * glyph among them.
+	 */
+	--_box: 1.15em;
+
+	/*
+	 * the busy spinner drawn on the action (`.spinner` in ./parts.css): the ring's box and its
+	 * stroke. `em` for the reason `--_box` above is — it is drawn inside a control, at that
+	 * control's own words, and a report sized off the root would drift off the label it stands
+	 * beside as the label grew.
+	 *
+	 * the stroke is a fraction of the box rather than `--_border`, and it is stated against the box
+	 * so the shape closes on itself the way the switch's does: one pixel of stroke on a ring this
+	 * size reads as an artifact rather than as a ring, and a change to the box has to carry the
+	 * stroke with it.
+	 *
+	 * no radius. it is a circle by construction, which is the exception `--_r` above states.
+	 */
+	--_spinner: 0.875em;
+	--_spinner-stroke: calc(var(--_spinner) * 0.16);
+
+	/*
+	 * two motions and a spinner. `fast` is a tile or a rail answering the press; `screen` is
+	 * the direction-aware card entry, so a donor knows which way they moved — forward slides
+	 * in from the trailing edge, back from the leading edge.
+	 */
+	--_dur-fast: 120ms;
+	--_dur-screen: 220ms;
+	--_dur-spin: 900ms;
+
+	/*
+	 * two curves, and what each is for.
+	 *
+	 * `--_ease-enter` decelerates, and it is what anything arriving somewhere and staying there
+	 * takes: a screen entering, a fill or an edge settling into the state it now holds, the chip
+	 * and the switch's thumb travelling to where they now stand.
+	 *
+	 * `--_ease-exit` accelerates, and the one thing it is spent on is a press. that is not the
+	 * curve's name being ignored: a press is the surface leaving the plane under a finger rather
+	 * than a state arriving, and a press eased out of would read as the control settling rather
+	 * than as it giving. nothing on this card animates out — a screen that has been left is
+	 * hidden, not faded — so a press is the whole of what leaving means here.
+	 */
+	--_ease-enter: cubic-bezier(0.16, 0.84, 0.44, 1);
+	--_ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+	/*
+	 * the transitions this component makes, named. a duration and a curve composed at the rule is a
+	 * pairing nothing holds: ./motion.css is the one sheet a new movement is added to, and the next
+	 * movement is written by copying the line above it — so what a rule reads has to be a name, and
+	 * the pairing is decided once, here.
+	 *
+	 * three, because the component makes three movements. `state` is a thing changing where it
+	 * stands or what it is filled with and staying there; `enter` is a screen arriving, the one
+	 * movement at the longer duration; `press` is a surface answering a finger. the spinner is not
+	 * one of them and reads `--_dur-spin` at its own rule with a linear curve — a loop rather than
+	 * a movement between two states.
+	 *
+	 * each is a `<time>` and a curve and nothing else, so it substitutes into a `transition`
+	 * shorthand after the property and into an `animation` shorthand after the name. reduced motion
+	 * still collapses at the durations above, because that is all these are.
+	 */
+	--_move-state: var(--_dur-fast) var(--_ease-enter);
+	--_move-enter: var(--_dur-screen) var(--_ease-enter);
+	--_move-press: var(--_dur-fast) var(--_ease-exit);
+}
+
+/*
+ * reduced motion collapses at source: every duration this component declares is read from a
+ * token, so re-pointing the tokens here stops every transition and every screen entry at once
+ * and nothing has to be individually unset.
+ *
+ * the spinner slows rather than stopping. a stopped spinner on an action that is still
+ * checking a card is a lie about what is happening to somebody's money.
+ */
+@media (prefers-reduced-motion: reduce) {
+	:host,
+	[data-donate-root] {
+		--_dur-fast: 0ms;
+		--_dur-screen: 0ms;
+		--_dur-spin: 2.4s;
+	}
+}

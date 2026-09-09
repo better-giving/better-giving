@@ -1,0 +1,21 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"target": "esnext",
+		"module": "esnext",
+		// react-email's own types (and react-dom/server, which render.ts calls into) assume a DOM
+		// lib is in scope, even though nothing here ever mounts into a real one — templates are
+		// rendered to strings, never hydrated.
+		"lib": ["esnext", "DOM", "DOM.Iterable"],
+		"verbatimModuleSyntax": true,
+		"isolatedModules": true,
+		"noEmit": true,
+		"types": ["node"],
+		"jsx": "react-jsx"
+	},
+	// specs live beside the templates and are `.tsx` for the same reason as `.ts`: one program,
+	// checked once, rather than the `.ts`/`.tsx` split packages/operator's two tsconfigs exist for —
+	// nothing here is a `.jsx` port with props stated in JSDoc, so there is no second file to check
+	// jsx-less against a first.
+	"include": ["src/**/*.ts", "src/**/*.tsx"]
+}

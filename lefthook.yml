@@ -1,0 +1,56 @@
+# local quality gate. no remote CI gates a commit — .github/workflows/release.yml
+# runs on a tag, builds the console binary and the worker bundle, and gates
+# nothing — so these gates run at commit time on the contributor's machine instead
+# of in the `deploy` script. a deployer running `pnpm run deploy` makes no code
+# changes; a contributor does, and that is where the gate belongs.
+#
+# `go-test` is the one job a contributor may not have the tool for, and it says so
+# rather than failing: go is needed only to touch packages/console/internal, and a
+# machine without it still commits everything else. CONTRIBUTING.md → "The console,
+# locally" is where that is written for whoever is reading it.
+pre-commit:
+  # stop at the first failing job — a contributor pays for the whole chain only
+  # when the commit is actually clean.
+  piped: true
+  jobs:
+    # `lint` is `biome lint .` and biome's formatter and linter are separate passes, so
+    # nothing else in this hook verifies formatting. this closes that gap, and runs
+    # first because it rewrites staged files — never in parallel with a job below
+    # that reads them. markdown and yaml stay off the glob: biome's formatter doesn't
+    # support either yet, and a file it cannot process at all is an error rather than a
+    # skip.
+    #
+    # `--no-errors-on-unmatched` covers the other half of that: a file on the glob may
+    # still be one biome.jsonc ignores, and a commit whose every staged file is ignored
+    # — anything touching only packages/design/ — leaves the formatter with nothing to do and
+    # fails the hook for having nothing to do.
+    - name: format
+      run: pnpm exec biome format --write --no-errors-on-unmatched {staged_files}
+      glob:
+        - '*.js'
+        - '*.jsx'
+        - '*.ts'
+        - '*.tsx'
+        - '*.json'
+        - '*.jsonc'
+        - '*.css'
+        - '*.html'
+      stage_fixed: true
+    # check and test run before lint, so a style gate can never skip the jobs
+    # that verify correctness.
+    - name: check
+      run: pnpm run check
+    - name: test
+      run: pnpm run test
+    # the console's go half, whose tests the pnpm suite cannot reach. the `if` is
+    # what keeps a red test red: the job has to pass on a machine with no go and
+    # fail on one where the tests fail, and only the branch carries both.
+    - name: go-test
+      run: >
+        if command -v go >/dev/null; then
+          cd packages/console && go test ./...;
+        else
+          echo "go not installed, skipping console go tests";
+        fi
+    - name: lint
+      run: pnpm run lint

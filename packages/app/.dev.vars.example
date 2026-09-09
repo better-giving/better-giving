@@ -1,0 +1,233 @@
+# Local development settings. Copy to `.dev.vars` (gitignored) and fill in.
+#
+# This file configures your machine and nothing else. `pnpm dev` and
+# `pnpm preview` read it; a deployed Worker never does, and no command here
+# uploads it. Setting a value on a deployment is a separate act.
+#
+# All thirteen are set the same way there: each is a plain Worker var. Type it
+# on a console fold, read it back or change it on the Worker's Variables and
+# Secrets page in the Cloudflare dashboard, or set it from a terminal by
+# appending `--var NAME:value` to `pnpm run deploy` — `pnpm run deploy:vars`
+# being that last form for a whole file of them. A var arrives with the deploy
+# carrying it and not before.
+#
+# None of them is a Worker secret, and that is deliberate: Cloudflare never
+# returns a secret's value, so a console fold could only draw a mask over one
+# and an operator could never check what they pasted. Anyone who can open this
+# Cloudflare account can read all thirteen, which was already true of the
+# account holding them.
+#
+# A fourteenth name exists and is not below: CONSOLE_TOKEN, the operator
+# console's session. It is a secret, and nothing you do sets it — `pnpm run
+# console` mints one and writes it to a deployment as a Worker secret,
+# it lasts twelve hours, and connecting a second console replaces it, which is
+# how a session is revoked. It is absent from this file for the same reason it
+# is absent from the checklist the console draws: it is not a value an operator
+# supplies. The console keeps its own copy on the operator's machine, in
+# `.console/session.json` at `0600` and gitignored, and nowhere else — never
+# in this file, so against `pnpm dev` there is no session unless you put a
+# value in your own `.dev.vars`. It has to read as a minted session —
+# `bg1.<expiry-in-seconds>.<43 or more random characters>` — or it is refused
+# as not one
+# (packages/operator/src/console/token.ts). DEPLOY.md carries the whole of it,
+# including where connecting stands today.
+#
+# `packages/app/wrangler.jsonc` carries no `vars` block and never will: these
+# values are org-specific and half of them are credentials, so committing one
+# would put a deployment artifact — and a live key — in a repo meant to be
+# forked. It carries `keep_vars: true` instead, which is what stops the next
+# `pnpm run deploy` deleting every value you set. DEPLOY.md has the whole of
+# it.
+#
+# ADMIN_PASSWORD is the only one an operator has to supply. It is left empty on
+# purpose, and it is refused when empty with a message naming the variable, so a
+# fork that copies this file and deploys cannot end up running on a placeholder
+# credential that is identical in every other fork.
+#
+# The mail and Turnstile values below are fake but valid, so a fresh clone runs
+# and signs in without a single account being created anywhere. Neither set
+# actually works, and neither is reported as ready.
+#
+# Turnstile reads Not set up. No donation can complete on the published test
+# pair: the widget passes every visitor, and the submission is then refused,
+# because Cloudflare's always-passes secret reports the challenge as solved on a
+# site your form is not served from. That is the same outage as having no key at
+# all, so it is the same word — a milder one is a reading an operator defers.
+#
+# Mail reads Needs attention, which is the word for a deployment that would send,
+# to somewhere that cannot receive: smtp.example.org and donations@example.org
+# sit under domains RFC 2606 reserves so that nobody can ever own one, so neither
+# can resolve to a mail server or be authorised to send. An arbitrary host that
+# will refuse you cannot be told from one that will without dialling it; these
+# can. Both say so where they are set.
+#
+# So nothing this file configures goes green, and that is the point. The
+# dashboard is not served until all five set-up jobs read done
+# (src/lib/server/config/readiness.ts): signing in lands on the set-up screen
+# until then, and on /admin/forms after. Two of the five are rows rather than
+# values here — the organisation's registered name and EIN, and the
+# notification address — and `scripts/seed-local.sql` writes both into the
+# local D1, with the local donation page listed as a site (README.md → the
+# quick start). With this file exactly as it ships and that seed applied, one
+# job is left: Payments, because the Stripe keys
+# further down are commented out. Uncomment them with a test pair to reach the
+# dashboard. Where your forms may be used is a fold on the console and gates
+# nothing. Anything further down is commented out because it has a working
+# default.
+
+# The v0 staff credential, typed at /login with the
+# username `admin`. No row stores it and no password hash is ever written —
+# sign-in is a timing-safe compare against this value. Changing it is a redeploy, not a database write. There is deliberately
+# no in-app change-password or reset flow, and no email: the password is the
+# whole credential.
+#
+# ADMIN_PASSWORD is the only thing in front of /admin: there is no key
+# derivation to make guessing expensive (Workers Free caps CPU at 10 ms per
+# invocation, which no usable KDF fits in) and no durable rate limiter. It must
+# be at least 12 characters, and longer is the actual defence. Generate one:
+# `openssl rand -base64 24`.
+ADMIN_PASSWORD=""
+
+# Email. Five values, and the console's mail panel applies them in one press.
+#
+# The values below are fake and deliberately so. They are syntactically
+# valid, so a fresh clone parses them and the app opens with no mail account
+# anywhere — but example.org is one of the three domains RFC 2606 reserves for
+# documentation, which means nobody can register it and nothing can be delivered
+# through it. The checklist recognises both values as the placeholders they are
+# and reports mail as Needs attention rather than ready, and a local send fails
+# at the socket rather than at the settings. Replace every one but the port to
+# send for real.
+#
+# There is no setting that switches email off, and none should be added. This
+# app has one transport, receipts are most of what it is for, and a deployment
+# that sends none of them is incomplete rather than configured. Nothing refuses
+# to run — donations are taken and the app serves normally — /admin simply says
+# so instead of calling it ready.
+#
+# There is one transport and it is SMTP. Every provider is reached the same
+# way — the account's API key or password goes in SMTP_PASSWORD:
+#
+#   Resend    host smtp.resend.com          user resend      pass re_xxxxxxxx
+#   SES       host email-smtp.<region>.amazonaws.com
+#                                           user <smtp-user> pass <smtp-password>
+#   Mailgun   host smtp.mailgun.org         user postmaster@<your-domain>
+#                                                            pass <password>
+#   SendGrid  host smtp.sendgrid.net        user apikey      pass SG.xxxxxxxx
+#   your own  host mail.example.org         user user        pass password
+#
+# Nothing in the credential needs escaping. Paste the key or password exactly as
+# the provider shows it — `@`, `:`, `/`, `#` and `%` are all ordinary characters
+# here. That is exactly why these are four separate variables rather than one
+# `smtp://user:pass@host:465` string: with the credential inside a URL,
+# Mailgun's `postmaster@domain` login has to be written `postmaster%40domain`
+# or the whole value fails to parse. Do not recombine them.
+#
+# SMTP_PORT is optional and 465 is the only value it may take. 465 is TLS from
+# the first byte. 587 is not — it opens in the clear and upgrades only if the
+# server offers STARTTLS in a plaintext reply, so anything on the network path
+# can remove that offer, and the SMTP client then sends your username and
+# password unencrypted and reports the message as delivered. That password is
+# usually a live API key. So 587 is refused with a message saying so, as is
+# every other port. 25 is refused too, and additionally prohibited outbound by
+# Cloudflare itself. If your provider's setup page says 587, use 465 — almost
+# all of them offer both.
+#
+# Postmark cannot be used. It documents that it does not offer port 465 at all,
+# only 25/587/2525 with STARTTLS. That is the one provider this rule excludes;
+# Resend, Amazon SES, Mailgun, SendGrid and essentially every self-hosted MTA
+# offer 465 alongside 587.
+#
+# A local mail catcher cannot be used. Workers block outbound connections to
+# localhost, private-network addresses and Cloudflare's own IP ranges, so
+# MailHog/Mailpit on 127.0.0.1 is unreachable from `pnpm dev` and
+# `pnpm preview` alike — and this app refuses those addresses by name rather
+# than letting them fail as an opaque socket error. Point at a real provider's
+# sandbox, or leave the placeholders and accept that local sends fail.
+SMTP_HOST="smtp.example.org"
+# The one value here you will almost never set at all.
+SMTP_PORT="465"
+# Half of the credential your provider issued.
+SMTP_USERNAME="REPLACE_ME"
+# The other half, and usually a live API key.
+SMTP_PASSWORD="REPLACE_ME"
+
+# The address donors see in their From line. A bare address
+# — not `Name <a@b>` — because it is used as the SMTP envelope sender too.
+#
+# It keeps its own name rather than becoming SMTP_FROM: it is not a credential
+# the provider issued, it is the address a donor reads. It is deploy-time
+# rather than a settings row because it is authorised by the same provider that
+# issued the credential above — SPF and DKIM are configured on the domain, with
+# them — so an address editable independently of the credential is one that
+# silently stops delivering. It is not the notification address the console
+# sets; that one is where operational mail arrives, and is never donor-facing.
+MAIL_FROM="donations@example.org"
+
+# Turnstile — Cloudflare's bot check in front of the public donation form.
+#
+# Not off by default. The values below are Cloudflare's own documented test keys
+# (developers.cloudflare.com/turnstile/troubleshooting/testing/): the widget
+# renders and passes every visitor, so a fresh clone runs with no Cloudflare
+# setup at all. They are convenience, not protection, and /admin says so — it
+# recognises these exact keys and reports the form as unprotected rather than
+# ready.
+#
+# For a real deployment, create a widget at dash.cloudflare.com > Turnstile and
+# set both. They are minted together and stored together; `pnpm run
+# turnstile:keys` prints the pair back as two lines of `.deploy.vars`.
+# The sitekey is rendered into every donation form, so it is public wherever the
+# form is embedded and there is nothing to keep back.
+TURNSTILE_SITE_KEY="1x00000000000000000000AA"
+# This one never leaves the Worker and the donor's browser never sees it.
+TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"
+
+# ---------------------------------------------------------------------------
+# Optional. Nothing below is needed to run the app.
+# ---------------------------------------------------------------------------
+
+# Optional. Override for the session-cookie signing key.
+#
+# Unset — the normal case — auth uses the key in the `auth_signing_key` table,
+# minted by `migrations/0002_auth_signing_key.sql` on the first deploy. Nobody
+# types it, nobody is shown it, and it is a tamper check over a cookie whose
+# authority is the `auth_session` row it names, so a database that a Worker can
+# reach is the right home for it.
+#
+# Set, this wins. That makes it the emergency lever: setting it (or changing it)
+# revokes every live session at once without touching the database. Generate one
+# with `openssl rand -base64 32`. Rotating the row instead is a one-liner in
+# 0002_auth_signing_key.sql's comment.
+# BETTER_AUTH_SECRET=""
+
+# Optional. Canonical-origin pin.
+#
+# Unset — the normal case — the origin is derived from each request, so the same
+# build answers on http://localhost:5321 (`pnpm dev`), http://localhost:8787
+# (`pnpm preview`), your workers.dev subdomain and your custom domain, with no
+# value to keep in sync. The origin comes from the request the auth instance is
+# built for (src/lib/server/auth/gate.ts), so it is whichever you are running.
+#
+# Set it only to pin one origin — e.g. a custom domain, where you want
+# https://donate.example.org canonical and the workers.dev URL not to be. Note
+# that pinning also narrows the trusted-origin list: cookie-bearing HTTP
+# mutations (sign-out, revoke-*) are origin-checked by better-auth itself, so
+# they then succeed only from this value's origin.
+# BETTER_AUTH_URL="https://donate.example.org"
+
+# Stripe — the org's own account. All three, or none: Payments reads Not set
+# up until every one of them is set.
+#
+# Take both keys from the same dashboard screen. They are one pair, and a
+# secret key beside a publishable key that came from somewhere else is
+# refused by Stripe at the first charge — both are valid on their own and
+# nothing in this app checks that they belong together.
+#
+# STRIPE_PUBLISHABLE_KEY is not a credential — it is designed to sit in
+# public HTML and /api/v1 hands it to any browser that asks for a form's
+# config. What goes in the publishable slot must start with pk_: a secret key
+# there is published to every visitor, so the checklist reads Needs attention
+# and /api/v1 serves nothing until it is replaced.
+# STRIPE_SECRET_KEY=""
+# STRIPE_PUBLISHABLE_KEY=""
+# STRIPE_WEBHOOK_SECRET=""

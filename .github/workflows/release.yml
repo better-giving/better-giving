@@ -1,0 +1,119 @@
+# the one remote workflow this repository has, and it gates nothing.
+#
+# it runs on a tag and never on a push or a pull request: what gates a commit is lefthook.yml on
+# the contributor's own machine, and nothing here is asked before code lands. what it produces is
+# the pair an operator installs — the console binary for four platforms, and the worker bundle that
+# binary uploads — held to each other by the baked config both halves carry.
+#
+# **it deploys nothing.** no cloudflare credential reaches this runner and none is needed:
+# `wrangler deploy --dry-run --outdir` emits the worker without uploading it, which is the whole
+# reason wrangler runs here and on no operator's machine. a deployment is still `pnpm run deploy`
+# from a checkout, or a press in the console.
+#
+# **the order is the one internal/pack depends on** — the bake check in front of everything able to
+# ship, then the three builds, then wrangler, then the pack. a baked config that has drifted from
+# packages/app/wrangler.jsonc fails here rather than at an operator's first press, which is a
+# refusal they can do nothing about.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  # the release and its assets, and nothing else.
+  contents: write
+
+# third-party actions are pinned to a full commit sha rather than a major tag. a tag is mutable:
+# whoever controls the upstream repository can retarget v7 at new code, and it runs here with the
+# checkout and a token that may write a release, with no diff in this repository to review. the
+# trailing `# vX.Y.Z` is the tag that sha was, for readability only, so a bump means resolving the
+# new tag to a sha rather than editing that comment.
+
+jobs:
+  release:
+    # blacksmith.sh rather than a github-hosted runner, the same swap ../better-giving made: the app
+    # is installed on the org and the label is the whole integration, with no action to add or pin.
+    # blacksmith proxies the standard cache actions to its own colocated cache, so `cache: pnpm`
+    # below and setup-go's module cache are accelerated as they stand. this job is the heaviest
+    # thing the repository runs — a pnpm install, the app's vite build, wrangler, and goreleaser
+    # cross-building four platforms — and it bills by the minute, so a re-tag is not free.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the whole history and every tag: goreleaser writes the changelog from the commits since
+          # the previous tag, and a shallow clone has neither.
+          fetch-depth: 0
+
+      # no `version` here on purpose: the action reads `packageManager` from the root package.json,
+      # so the pin lives in the one file the repository already keeps it in.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # the `go` line in the module's own file, so the toolchain here is the one CONTRIBUTING.md
+          # states and a bump moves one number.
+          go-version-file: packages/console/go.mod
+          # the module is not at the repository root, and without this the action looks for a
+          # go.sum beside the workflow, finds none, and restores no module cache at all.
+          cache-dependency-path: packages/console/go.sum
+
+      - run: pnpm install --frozen-lockfile
+
+      # in front of every step that produces something, because it is the one failure a release
+      # cannot recover from afterwards: a binary whose baked config disagrees with the app it was
+      # cut from refuses every deploy an operator presses.
+      - name: the baked config still matches packages/app
+        run: cd packages/console && go run ./cmd/bake --check
+
+      # the react app the binary carries. packages/console/ui/dist holds a committed placeholder in
+      # the repository and this is the step that replaces it — the copy is the release's, and
+      # nothing else in the repository does it.
+      - name: build the console's ui into the binary
+        run: |
+          pnpm --filter @better-giving/console-ui build
+          rm -rf packages/console/ui/dist
+          cp -R packages/console-ui/build/client packages/console/ui/dist
+
+      # the tag without its `v` is the version this worker then reports over the console wire
+      # (packages/app/version-define.ts), and it is the spelling the pack step below
+      # names the bundle by — so what an operator installs and what their deployment answers with are one
+      # string, and a console can tell a deployment that is behind from one that is not.
+      #
+      # CLOUDFLARE_ENV is deliberately unset: it selects the environment at build time, and the
+      # release deploys the top-level configuration and no rehearsal.
+      - name: build the app
+        run: BETTER_GIVING_VERSION="${GITHUB_REF_NAME#v}" pnpm --filter @better-giving/app build
+
+      - name: emit the worker without deploying it
+        run: pnpm wrangler deploy --dry-run --outdir "$RUNNER_TEMP/worker"
+
+      - name: pack the worker bundle
+        run: |
+          cd packages/console
+          # packages/console/bundle/ is gitignored, so it is absent on a clean runner, and
+          # cmd/pack writes with os.Create, which does not make a parent directory.
+          mkdir -p bundle
+          go run ./cmd/pack \
+            --worker "$RUNNER_TEMP/worker" \
+            --out "$GITHUB_WORKSPACE/packages/console/bundle/worker-${GITHUB_REF_NAME#v}.tar.gz"
+
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: v2.18.0
+          # `--skip=validate` drops goreleaser's clean-tree check, which this job cannot satisfy
+          # and must not: the ui step replaces the tracked placeholder at packages/console/ui/dist
+          # with the real build, and ui/embed.go embeds whatever sits there when goreleaser runs
+          # `go build`. a tree clean at that moment is a binary serving the placeholder. the check
+          # it drops is over the git state alone — the bake check above is what gates the release
+          # on the tree being the one it claims.
+          args: release --clean --skip=validate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

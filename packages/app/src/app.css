@@ -1,0 +1,49 @@
+@layer tokens, reset, base, elements, layout;
+
+@import '@better-giving/operator/styles/fonts.css';
+@import '@better-giving/operator/styles/tokens.css';
+@import '@better-giving/operator/styles/base.css';
+@import '@better-giving/operator/styles/adm.css';
+
+/* the whole of /admin's css, and the order it is read in. the four sheets themselves live in
+   packages/operator/src/styles/ — a leaf package both this dashboard and the operator
+   console import from, so a sheet has one copy and one owner rather than a fork per surface.
+   this file is the one place that names the import order, because that order is a fact about
+   how /admin is assembled and not a fact any one sheet could state about itself.
+
+   the cascade layers are declared here rather than left to whichever file vite happened
+   to load first, so their order is stated in one place. later layers win, so base.css's
+   document defaults beat the `reset` beneath them; `tokens` leads only because custom
+   properties are values rather than rules and win nothing from being last.
+
+   the layers buy ordering inside /admin and nothing beyond it. they are not a boundary
+   around the donation form, and no rule here needs one, because the two systems never share
+   a document: this sheet is linked by the operator screens' own `links` exports
+   (src/lib/admin/operator-links.ts) and by nothing else, and the donor's page at
+   `/{form_id}` links the form's four sheets instead. src/lib/donate/page.css states the same
+   from the other side. what makes the absence the mechanism rather than a tidiness is that
+   the form's four sheets are unlayered: an unlayered rule outranks every layer below, and
+   base.css's reset zeroes properties the form sets — so a document holding both would let
+   each side beat the other on whatever only one of them writes.
+
+   a sheet that forgets its `@layer` loses its place in the order below; there is nothing for
+   it to cross into.
+
+   four sheets and five layers, and the @import order above is the source order inside a
+   layer, which is what settles a tie between two rules of equal specificity. fonts.css
+   registers the faces; tokens.css fills `tokens` with the custom properties the rest read;
+   base.css claims `reset` and the document defaults in `base`; adm.css fills the last
+   two, `elements` with every `.adm-*` the dashboard draws as a thing and `layout` with the
+   shell, the rail, the measured column, the page header and the reflow of any element whose
+   arrangement changes with the width. only `tokens` is written by two of them, and a
+   @font-face carries no cascading declaration, so nothing fonts.css puts there can tie
+   with tokens.css.
+
+   `layout` is last so a screen's arrangement of an element outranks that element's own rule
+   without either one raising its specificity to say so. a component's scoped <style> block
+   stays unlayered and therefore outranks all five of these — that comparison is between two
+   sheets of this document, which is the one place layer order decides anything — and it is
+   what lets a page arrange the elements the sheets draw — a scoped block is right for composition that belongs to one
+   file, and a component carries adm.css's classes rather than restating those rules in
+   one. there is still no css build step and no extractor anywhere in this: all four sheets
+   are hand-written and layered. */

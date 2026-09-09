@@ -1,0 +1,48 @@
+{
+	"compilerOptions": {
+		"rewriteRelativeImportExtensions": true,
+		"allowJs": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"sourceMap": true,
+		"moduleResolution": "bundler",
+
+		// `strict` is the floor, not the ceiling — the four flags under it are
+		// deliberately outside `strict` upstream (they are too noisy to switch on for an
+		// existing codebase) and are what `tsc --init` now writes for a new one. this project
+		// is new, and it keeps books: the whole design leans on making an invalid state
+		// unrepresentable rather than catching it at runtime, so the flags that do that at
+		// zero runtime cost are on.
+		"strict": true,
+		// `lines[0]` is `PostingLine | undefined`, not `PostingLine`. the ledger indexes into
+		// arrays whose length is a runtime fact (a posting's lines, a query's rows), and an
+		// out-of-bounds read there is silently `undefined` — which reaches the database as a
+		// missing amount rather than as an error.
+		"noUncheckedIndexedAccess": true,
+		// `memo?: string | null` no longer accepts an explicit `memo: undefined`. it matters
+		// where a row is built: drizzle treats a present-but-undefined column differently from
+		// an absent one, and this makes "not supplied" and "supplied as nothing" distinct at
+		// the type level instead of at insert time.
+		"exactOptionalPropertyTypes": true,
+		// a subclass member that shadows a base member must say `override`. cheap here, and
+		// the thing it catches — a base class gaining a member a subclass already had — is
+		// silent otherwise.
+		"noImplicitOverride": true,
+		// every code path returns, or none does.
+		"noImplicitReturns": true,
+		"noFallthroughCasesInSwitch": true,
+		// an import for side effects only must resolve. otherwise a typo'd path is erased at
+		// compile time and the side effect simply never happens.
+		"noUncheckedSideEffectImports": true,
+		// every non-declaration file is a module, so a file with no import/export cannot
+		// silently become a global script and collide in the global scope.
+		"moduleDetection": "force",
+		// bans the TypeScript syntax that has runtime semantics — `enum`, `namespace`,
+		// parameter properties. vite/esbuild transpiles file-by-file and cannot see across
+		// files, so those constructs are the ones whose emit is a guess; this makes reaching
+		// for one a compile error rather than a bundler subtlety.
+		"erasableSyntaxOnly": true
+	}
+}
