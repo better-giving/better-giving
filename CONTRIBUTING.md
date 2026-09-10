@@ -134,7 +134,12 @@ Exercise `install.sh` against it by serving `packages/console/dist/` over http:
 
 ```sh
 (cd packages/console/dist && python3 -m http.server 8099) &
-BETTER_GIVING_DOWNLOAD_BASE=http://127.0.0.1:8099 BETTER_GIVING_INSTALL_DIR=/tmp/bg-bin sh scripts/install.sh
+BETTER_GIVING_DOWNLOAD_BASE=http://127.0.0.1:8099 BETTER_GIVING_INSTALL_DIR=/tmp/bg-bin BETTER_GIVING_INSTALL_ONLY=1 sh scripts/install.sh
 ```
+
+`BETTER_GIVING_INSTALL_ONLY` is what keeps that an install. Without it the script hands the run to
+the console it just installed, and `better-giving start` deploys against whatever Cloudflare
+credential the machine holds — which is a contributor's own account, from a recipe that reads like
+a build step.
 
 Also exercise the refusal: flip a byte in an archive, and the run must install nothing.
