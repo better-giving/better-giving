@@ -49,8 +49,8 @@ var placements = []huh.Option[string]{
 //
 // False with no error is the operator closing the prompt, as ./AskPassword's is.
 func AskPlacement(in io.Reader, to io.Writer) (string, bool, error) {
-	if !attended(in) {
-		return "", false, ErrNoTerminal
+	if !attended(in, to) {
+		return "", false, noTerminal{"where the database keeps its records"}
 	}
 	clear(to)
 	var where string

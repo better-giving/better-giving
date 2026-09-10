@@ -2,9 +2,12 @@ package terminal
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/better-giving/console/internal/deploy"
 	"github.com/better-giving/console/internal/first"
@@ -194,6 +197,11 @@ func TestTheProgramTakesEveryReportOnTheRunsOwnGoroutineAndEndsWhereItDoes(t *te
 	if err := drawn.Show(); err != nil {
 		t.Fatalf("Show = %v", err)
 	}
+	// the cheapest guard on ./Halted's wiring: a run that reported its end is over, and a caller
+	// reading this one as a signal would wait on a press nobody is making.
+	if drawn.Halted() {
+		t.Error("a ledger the run ended was read as one a signal took")
+	}
 
 	for _, row := range ChainRows {
 		if !strings.Contains(held.String(), row.Done) {
@@ -286,4 +294,89 @@ func TestAStageReportedUnderTheRowAlreadyDrawnLeavesItsTimerAlone(t *testing.T) 
 	ticking.at = started.Add(20 * time.Second)
 	drawn = drawn.folding(at(first.Stage(deploy.Checking)))
 	same(t, "a row whose second stage was reported", drawn.timer(), "20s")
+}
+
+// a ledger the terminal's own interrupt ended, told apart from one the run ended.
+//
+// the two are the same silent screen and mean opposite things: a run that reported its end is over,
+// and a run whose ledger a signal took is still going — an upload the operator cannot see, on the
+// far side of a one-way door (CLAUDE.md).
+
+func TestALedgerTheRunEndedIsNotOneASignalTook(t *testing.T) {
+	for _, end := range []End{Landed, Stopped} {
+		drawn := drawing(ChainRows)
+		drawn.end = end
+		if halted(drawn, nil) {
+			t.Errorf("a ledger the run ended as %q was read as a signal", end)
+		}
+	}
+}
+
+func TestALedgerASignalTookIsOneTheRunNeverEnded(t *testing.T) {
+	// ctrl-c: the library's own handler catches it and ends the run with its own error.
+	if !halted(drawing(ChainRows), tea.ErrInterrupted) {
+		t.Error("a ctrl-c under a running ledger was read as a run that ended")
+	}
+	// a term signal quits the program instead, so the error is nil and the model is what says it:
+	// the run never reported how it ended.
+	if !halted(drawing(ChainRows), nil) {
+		t.Error("a ledger quit with the run still going was read as a run that ended")
+	}
+}
+
+func TestALedgerThatCouldNotBeDrawnAtAllIsNotASignal(t *testing.T) {
+	// that one keeps its diagnostic: what the caller has to say about it is the terminal it could
+	// not draw on, and not a press it is waiting for.
+	if halted(nil, errors.New("could not open a new TTY")) {
+		t.Error("a ledger that could not be drawn was read as a signal")
+	}
+}
+
+func TestThePressALedgerLeftRunningIsNamedInTheOperatorsOwnWords(t *testing.T) {
+	said := StillGoing("a deploy")
+	if !strings.HasPrefix(said, "a deploy is still running") {
+		t.Errorf("said %q, want the press named in the words the operator typed it as", said)
+	}
+	if !strings.Contains(said, "waiting for it to finish") {
+		t.Errorf("said %q, want what this terminal is doing about it", said)
+	}
+	if !strings.Contains(said, "ctrl-c again") {
+		t.Errorf("said %q, want the way out of the wait", said)
+	}
+}
+
+// what a terminal is told once a ledger has ended, which is nothing in the ordinary case.
+//
+// the three readings ./Show and ./Halted leave a caller with, and the wiring both presses make of
+// them (../../cmd/better-giving/start.go's chainAt and update.go's carryAt): the order is where a
+// mistake would live, since a ledger a signal took is one ./Show answered with no error at all.
+
+func TestALedgerThatCouldNotBeDrawnKeepsItsDiagnosticAndNamesNoPress(t *testing.T) {
+	said, wrong := Settled(errors.New("could not open a new TTY"), false, "a deploy")
+
+	if said != "" {
+		t.Errorf("said %q about a press over a terminal that drew nothing", said)
+	}
+	if !strings.Contains(wrong, "could not open a new TTY") {
+		t.Errorf("wrong = %q, want the terminal's own diagnostic kept", wrong)
+	}
+}
+
+func TestALedgerASignalTookNamesThePressThatIsStillGoing(t *testing.T) {
+	said, wrong := Settled(nil, true, "a deploy")
+
+	if said != StillGoing("a deploy") {
+		t.Errorf("said %q, want the press named as still running", said)
+	}
+	if wrong != "" {
+		t.Errorf("wrong = %q, want a signal read as no failure", wrong)
+	}
+}
+
+func TestALedgerTheRunEndedSaysNothingBesideTheRowsItDrew(t *testing.T) {
+	said, wrong := Settled(nil, false, "a deploy")
+
+	if said != "" || wrong != "" {
+		t.Errorf("Settled = %q, %q, want the rows themselves to be what it said", said, wrong)
+	}
 }

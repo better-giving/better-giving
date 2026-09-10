@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"errors"
 	"io"
 	"strconv"
 	"strings"
@@ -214,6 +215,9 @@ func (drawn ledger) line(row Row, mark Mark) string {
 // Ledger is one press's rows, drawn as the run reports where it is.
 type Ledger struct {
 	program *tea.Program
+	// stopped is whether the drawing ended on a signal rather than on the run saying how it ended,
+	// written by ./Show and read by the command it hands the terminal back to.
+	stopped bool
 }
 
 // Draw is a ledger of `rows`, drawn to `to`.
@@ -231,9 +235,79 @@ func Draw(rows []Row, to io.Writer) *Ledger {
 //
 // The run is on a goroutine of its own: ../first's chain is sequential and blocking, so it reports
 // back through the calls below while this end holds the terminal.
+//
+// **a signal that took the drawing is not an error to report, and ./Halted is how the caller
+// hears about it.** the library's own words for one name the program rather than the press, and
+// what an operator at that terminal has to be told is that the run is still going.
 func (drawn *Ledger) Show() error {
-	_, err := drawn.program.Run()
+	final, err := drawn.program.Run()
+	drawn.stopped = halted(final, err)
+	if drawn.stopped {
+		return nil
+	}
 	return err
+}
+
+// Halted is whether the drawing ended on a signal rather than on the run saying how it ended, which
+// is a press still running with nothing left drawing it. False until ./Show has returned.
+func (drawn *Ledger) Halted() bool { return drawn.stopped }
+
+// whether the ledger stopped on something other than the run reporting its end.
+//
+// **two readings, because the two signals arrive differently.** the library takes them both while
+// this ledger draws (it holds no input of its own, so nothing else can): a ctrl-c ends Run with its
+// own error, and a term signal quits the program with no error at all — so what settles that one is
+// the model handed back, which carries an end only where the run reported one.
+//
+// **an error of any other kind is a ledger that could not be drawn and is not this.** that terminal
+// gets its diagnostic and the run behind it is answered for as it always was.
+func halted(final tea.Model, err error) bool {
+	if errors.Is(err, tea.ErrInterrupted) {
+		return true
+	}
+	if err != nil {
+		return false
+	}
+	drawn, ours := final.(ledger)
+	return ours && drawn.end == Underway
+}
+
+// StillGoing is what a terminal says about the press a signal left running: the press in the words
+// the operator typed it as, the wait this stop is making of it, and the way out of that wait.
+//
+// The same statement as ../../cmd/better-giving's waitForPress, at the other end of the same
+// argument: an upload takes the minutes it takes, and a console that went away inside one leaves
+// the database ahead of the code that reads it (CLAUDE.md).
+func StillGoing(press string) string {
+	return press + " is still running — waiting for it to finish. press ctrl-c again to stop anyway"
+}
+
+// Settled is what a terminal is told once a ledger has ended: the line the press it left running
+// puts there, and the diagnostic a terminal it could not be drawn on left behind. Both are empty in
+// the ordinary case, which is a run that reported its end — the rows themselves are what that one
+// said.
+//
+// One statement of it because both presses make the same three readings of ./Show and ./Halted
+// (../../cmd/better-giving/start.go's chainAt and update.go's carryAt), and the order is where a
+// mistake would live: a ledger a signal took is one ./Show answered with no error at all.
+//
+// **the ledger is the drawing and not the run:** a terminal it could not be drawn on leaves the
+// press going, and the wait the caller makes after this is still what says how it ended.
+//
+// **a ctrl-c took the drawing and the press carries on with nothing drawing it, so the wait under
+// it says itself:** the door in the middle of one of these is one way (CLAUDE.md), and a silent
+// terminal through an upload is where a second ctrl-c gets pressed.
+//
+// `press` is the run in the words the operator typed it as, as ./StillGoing takes it.
+func Settled(shown error, halted bool, press string) (said, wrong string) {
+	switch {
+	case shown != nil:
+		return "", shown.Error()
+	case halted:
+		return StillGoing(press), ""
+	default:
+		return "", ""
+	}
 }
 
 // At is where the run has got to, in the shape ../first reports it.

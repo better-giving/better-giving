@@ -688,3 +688,20 @@ func TestSigningOutRevokesTheSignInAndForgetsIt(t *testing.T) {
 		t.Error("the credential is still held after signing out")
 	}
 }
+
+func TestAFailureAtCloudflareIsNotTheOperatorTurningTheSignInDown(t *testing.T) {
+	// ../terminal's Refused sentence tells the operator they turned the sign-in down and the
+	// command it reaches ends cleanly on it, so a failure at cloudflare's end reported as a cancel
+	// is a press the operator never made, said back to them as one they did.
+	for _, refusal := range []string{"server_error", "temporarily_unavailable", "invalid_request"} {
+		flow, _, _, _ := flowing(t, &dash{})
+		address := started(t, flow)
+
+		allow(t, flow, address, url.Values{"code": {""}, "error": {refusal}})
+
+		phase := settled(t, flow)
+		if phase.Name != Unfinished || phase.Why != NothingBack {
+			t.Errorf("%q = %+v, want a flow that ended some other way", refusal, phase)
+		}
+	}
+}

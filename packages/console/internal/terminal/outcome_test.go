@@ -176,11 +176,14 @@ func everyWayTheChainStops() []first.Outcome {
 
 // every way the redeploy can end but the one that landed.
 //
-// declared here rather than read off ../effects, which names its four kinds in a comment and
-// publishes no list of them: a kind added there and not to ./redeploy.go reaches
-// `unaccountedUpdate`, and the case below is what says so — the same arrangement the chain's own
-// `stops` is held under.
-var redeployStops = []string{"no-database", "not-deployed", "console-stopped"}
+// spelled out here rather than swept off ../effects, which publishes the four as constants and no
+// list of them: a kind added there and not to ./redeploy.go reaches `unaccountedUpdate`, and the
+// case below is what says so — the same arrangement the chain's own `stops` is held under.
+var redeployStops = []effects.CarriedKind{
+	effects.NoDatabase,
+	effects.NotDeployed,
+	effects.ConsoleStopped,
+}
 
 // every way the database this press deploys over is not resolved (../effects' Absent).
 var databaseAbsences = []string{"none", "many", "refused", "unreachable", "no-credential"}
@@ -198,7 +201,7 @@ func TestEveryWayTheRedeployCanStopSaysWhatItLeftBehind(t *testing.T) {
 }
 
 func TestNoTwoWaysTheRedeployCanStopShareOneSentence(t *testing.T) {
-	seen := map[string]string{}
+	seen := map[string]effects.CarriedKind{}
 	for _, kind := range redeployStops {
 		said := UpdateOutcome(effects.Carried{Kind: kind})
 		if already, twice := seen[said]; twice {
@@ -209,7 +212,7 @@ func TestNoTwoWaysTheRedeployCanStopShareOneSentence(t *testing.T) {
 }
 
 func TestARedeployThatLandedHasNothingToSay(t *testing.T) {
-	if said := UpdateOutcome(effects.Carried{Kind: "deployed"}); said != "" {
+	if said := UpdateOutcome(effects.Carried{Kind: effects.Deployed}); said != "" {
 		t.Errorf("a redeploy that landed says %q", said)
 	}
 }
@@ -272,8 +275,8 @@ func TestNeitherCommandSendsAnOperatorToTheOther(t *testing.T) {
 // one outcome of every kind the redeploy answers with cloudflare's own words.
 func everyWayTheRedeployStops() []effects.Carried {
 	return []effects.Carried{
-		{Kind: "no-database", Found: "refused", Detail: quoted},
-		{Kind: "not-deployed", Ran: &deploy.Run{
+		{Kind: effects.NoDatabase, Found: "refused", Detail: quoted},
+		{Kind: effects.NotDeployed, Ran: &deploy.Run{
 			Kind: deploy.Stopped, At: deploy.Migrating, File: "0007_windy_pandemic.sql",
 			Detail: quoted}},
 	}
@@ -328,13 +331,13 @@ func everyDeployStopSentence(say func(effects.Carried) string) []string {
 	said := []string{}
 	for _, at := range DeployStages {
 		said = append(said, say(effects.Carried{
-			Kind: "not-deployed", Ran: &deploy.Run{At: deploy.Stage(at)}}))
+			Kind: effects.NotDeployed, Ran: &deploy.Run{At: deploy.Stage(at)}}))
 	}
 	for _, kind := range []deploy.Kind{deploy.NoBundle, deploy.Mismatched, deploy.Refused} {
 		said = append(said, say(effects.Carried{
-			Kind: "not-deployed", Ran: &deploy.Run{Kind: kind}}))
+			Kind: effects.NotDeployed, Ran: &deploy.Run{Kind: kind}}))
 	}
-	said = append(said, say(effects.Carried{Kind: "not-deployed"}))
+	said = append(said, say(effects.Carried{Kind: effects.NotDeployed}))
 	return said
 }
 
@@ -362,5 +365,35 @@ func TestAPendingReadThatLandedRefusesNothing(t *testing.T) {
 	read := effects.Migrations{Applied: cf.ResultValue, Names: []string{"0007_donors.sql"}}
 	if said := Unnamed(read); said != "" {
 		t.Errorf("a read that named the door says %q", said)
+	}
+}
+
+// what an upload with no door in front of it names, which is the account and the address the door's
+// own screen would have named (./redeploy.go's CarryingOnto).
+
+func TestTheUndooredUploadNamesTheAccountAndWhereItIsCarrying(t *testing.T) {
+	said := CarryingOnto(Deployment{Account: "Acme Giving", Address: "https://give.acme.test"})
+
+	if !strings.Contains(said, "Acme Giving") {
+		t.Errorf("said %q, want the account this release is carried into", said)
+	}
+	if !strings.Contains(said, "https://give.acme.test") {
+		t.Errorf("said %q, want the deployment it is carried onto", said)
+	}
+}
+
+func TestAnAccountThisConsoleHasNoNameForIsLeftOffRatherThanLeftBlank(t *testing.T) {
+	// the door's own object skips the line for the same reason (./confirm.go): a sentence ending in
+	// "in Cloudflare account " reads as a value that went missing on the way here.
+	said := CarryingOnto(Deployment{Address: "https://give.acme.test"})
+
+	if strings.Contains(said, "Cloudflare account") {
+		t.Errorf("said %q, want an account nobody named left out of the sentence", said)
+	}
+	if !strings.Contains(said, "https://give.acme.test") {
+		t.Errorf("said %q, want what it is carrying onto still named", said)
+	}
+	if strings.HasSuffix(said, " ") {
+		t.Errorf("said %q, want no sentence ending on the space before a missing value", said)
 	}
 }

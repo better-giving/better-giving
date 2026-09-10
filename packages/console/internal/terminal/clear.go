@@ -33,9 +33,8 @@ func clear(to io.Writer) {
 	_, _ = io.WriteString(to, clearScreen)
 }
 
-// onScreen is whether `to` is drawn at a terminal, which is ./prompt.go's `attended` at the other
-// end of the same prompt.
+// onScreen is whether `to` is drawn at a terminal, which is the half of ./prompt.go's `attended`
+// that answers for the end the question is drawn on.
 func onScreen(to io.Writer) bool {
-	held, file := to.(interface{ Fd() uintptr })
-	return file && term.IsTerminal(held.Fd())
+	return terminalEnd(to, term.IsTerminal)
 }

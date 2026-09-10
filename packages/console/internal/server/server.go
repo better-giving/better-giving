@@ -1,10 +1,10 @@
 // Package server is the local http server the console draws its ui through.
 //
-// **it binds the loopback address and offers no cors, and both of those are the door rather than a
-// default.** this process holds a cloudflare credential and answers presses that spend it, so any
-// page open in the operator's browser can reach it by name — `http://127.0.0.1:5320` resolves from
-// any origin. what stops one acting on their account is Guard, and no header here ever invites a
-// browser to try.
+// **it answers on the loopback address alone and offers no cors, and both of those are the door
+// rather than a default.** this process holds a cloudflare credential and answers presses that
+// spend it, so any page open in the operator's browser can reach it by name —
+// `http://127.0.0.1:5320` resolves from any origin. what stops one acting on their account is
+// Guard, and no header here ever invites a browser to try.
 //
 // **the ui is served for every path the router does not know, and `/api` is the exception.** a
 // client route is a path only the browser resolves, so a deep link has to reach the document — but
@@ -153,7 +153,13 @@ func headers(next http.Handler) http.Handler {
 	})
 }
 
-// Listen is the server New's handler is served by, bound to the loopback address alone.
+// Listen is the server New's handler is served by, stated at the loopback address alone.
+//
+// **it binds nothing, and Addr is the one spelling of that address.** the caller takes the listener
+// itself and hands it to Serve (../../cmd/better-giving/main.go's bind), so that nothing claims the
+// console is there until this process holds the port — and an address spelled again at that end
+// would be the live one, with the loopback-only guarantee ./Guard rests on declared here where
+// nothing would read it.
 //
 // The timeouts and the header bound are stated because an http.Server sets none of its own: a
 // request that never finishes arriving would otherwise hold a connection for as long as the process

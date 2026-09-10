@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
+	"io"
+	"net"
 	"os"
 
 	"github.com/better-giving/console/internal/account"
@@ -14,14 +15,19 @@ import (
 	"github.com/better-giving/console/internal/first"
 	"github.com/better-giving/console/internal/oauth"
 	"github.com/better-giving/console/internal/release"
+	"github.com/better-giving/console/internal/server"
 	"github.com/better-giving/console/internal/state"
 	"github.com/better-giving/console/internal/terminal"
-	// aliased for ./main.go's reason: `update` in this package is the command in ./update.go.
-	releases "github.com/better-giving/console/internal/update"
 )
 
 // the one front door: sign in, choose the account, stand the deployment up, and open the console at
 // it.
+//
+// **a console newer than this one installs itself here and takes the run over, and that is the
+// first thing this command does** (./main.go's carried, and ./update.go's header for the bug it
+// closes). nothing this command opens, claims or asks may stand in front of it: the exec discards
+// this process whole, so a state store opened, a loopback port claimed or a question answered ahead
+// of it is work the operator did twice at best.
 //
 // **it is one command because it is one errand**, which is ../../internal/first's argument for the
 // chain and holds one step further out: an operator with nothing yet has to sign in, name an
@@ -33,9 +39,11 @@ import (
 // nothing and leaves the account as it was found — which is the same argument the chain's own order
 // rests on (CLAUDE.md's one-way door).
 //
-// **a closed prompt ends this command quietly.** it is a press not made rather than a failure to
-// report (../../internal/terminal/prompt.go), so nothing is printed and the exit is clean; a
-// question this console could not ask at all is the other thing and is an error.
+// **a closed prompt ends this command on a clean exit and one line.** it is a press not made rather
+// than a failure to report (../../internal/terminal/prompt.go), so the exit is zero; the line says
+// nothing was created, because a command that exited saying nothing would read as a deployment now
+// standing — which is the argument ./update.go makes at its own door for the identical act
+// (./closed). a question this console could not ask at all is the other thing and is an error.
 //
 // **neither the password nor the placement is a flag.** ../../internal/deployment/write.go states
 // that no value reaches a path, an argument list or a sentence, and a password in argv is in the
@@ -47,39 +55,49 @@ import (
 // command rather than starting a chain: the migration is a one-way door and taking it over a
 // deployment this console could not see is not something the operator asked for.
 
-func start(args []string) error {
-	flags := flag.NewFlagSet("start", flag.ContinueOnError)
-	port := flags.Int("port", defaultPort, "the loopback port to serve on")
-	noOpen := flags.Bool("no-open", false, "serve without opening a browser")
-	if err := flags.Parse(args); err != nil {
+func start(args []string, to, wrong io.Writer) error {
+	taken := taking("start", startTakes)
+	port := taken.flags.Int("port", defaultPort, "the loopback port to serve on")
+	noOpen := taken.flags.Bool("no-open", false, "serve without opening a browser")
+	if on, err := taken.read(args, to, wrong); err != nil || !on {
 		return err
+	}
+
+	ctx := context.Background()
+	// **in front of the store, the sign-in, the port and both prompts, which is while nothing has
+	// been created.** a binary deploys only the bundle from its own bake, so a first deploy made
+	// from an out-of-date console stands a deployment up on out-of-date code — the newer console is
+	// installed and handed the run before any of that (./main.go's carried), and a re-exec discards
+	// whatever a run did ahead of it. what comes back is a line, and only where a console another
+	// one installed still reads a release past its own: it is drawn here rather than after the
+	// chain, which would arrive too late to act on.
+	line, err := carried(ctx, to, terminal.Starting)
+	if err != nil {
+		return err
+	}
+	if line != "" {
+		fmt.Fprintln(to, line)
 	}
 
 	records, err := state.Open()
 	if err != nil {
-		return err
+		return noStore(err)
 	}
 	flow := signIn(records)
 	// a console closed mid-sign-in leaves no listener on the callback port behind.
 	defer flow.Stop()
 
-	ctx := context.Background()
 	store := account.New(records)
 
-	// in front of the sign-in and of both prompts, which is while nothing has been created: an
-	// operator who would rather deploy what the newer release carries can stop here having made
-	// nothing, and the same line printed after the chain would arrive too late to act on.
-	sayNewer(ctx, os.Stdout, releases.Source())
-
 	if flow.Credential(ctx).Kind == cf.NoCredential {
-		if err := allow(flow, records); err != nil {
-			return err
+		if given, err := allow(flow, records, "better-giving start", to); err != nil || !given {
+			return closed(to, err)
 		}
 	}
 
-	in, held, err := operating(ctx, flow, store)
+	in, held, err := operating(ctx, flow, store, to)
 	if err != nil || !held {
-		return err
+		return closed(to, err)
 	}
 
 	credential := flow.Credential(ctx)
@@ -94,25 +112,146 @@ func start(args []string) error {
 	standing := effects.OwnAddress(ctx, door)
 	switch standing.Kind {
 	case deployment.Deployed:
-		fmt.Println(alreadyUp(standing))
-		return serve(records, flow, *port, !*noOpen)
+		fmt.Fprintln(to, alreadyUp(standing))
+		return serve(records, flow, *port, !*noOpen, to, nil)
 	case deployment.NotDeployed:
 	default:
-		return unread(standing, "better-giving start")
+		return unread(standing, terminal.Starting)
 	}
 
-	asked, made, err := ask()
-	if err != nil || !made {
+	return standingUp(to,
+		func() (net.Listener, error) { return beforeTheChain(*port) },
+		func() (first.Asked, bool, error) { return ask(aboutToMake(in)) },
+		func(asked first.Asked) (first.Outcome, bool) {
+			return chainAt(ctx, door, credential, records, asked)
+		},
+		func() string { return nowUp(effects.OwnAddress(ctx, door)) },
+		func(bound net.Listener) error { return serve(records, flow, *port, !*noOpen, to, bound) })
+}
+
+// the order a first deploy runs in, which is the whole of what this command is: the port taken, the
+// two questions, the chain, and the console served on the port that was taken in front of all of it.
+//
+// **it is its own function because the order is the thing able to be wrong.** every act in it is a
+// value the caller binds and each is held to what it answers where it lives (./beforeTheChain,
+// ./ask, ./chainAt, ./afterTheChain, ./main.go's serve). what nothing held was the sequence they are
+// put in: the port claimed in front of the first question rather than past the chain, the same
+// listener handed to the console rather than taken again there, and that listener given back on
+// every way out that does not serve (./start_test.go).
+//
+// `where` is read after the chain and not before it, because what it names is a deployment that did
+// not exist when this run started.
+func standingUp(
+	to io.Writer,
+	claiming func() (net.Listener, error),
+	asking func() (first.Asked, bool, error),
+	running func(first.Asked) (first.Outcome, bool),
+	where func() string,
+	console func(net.Listener) error,
+) error {
+	bound, err := claiming()
+	if err != nil {
 		return err
 	}
+	// a listener this run took and never served is one it gives back on the way out: the chain may
+	// stop, and a port held by a process that has ended is a port the next `start` cannot take.
+	defer func() { _ = bound.Close() }()
 
-	ran := chainAt(ctx, door, credential, records, asked)
-	if ran.Kind != first.Deployed {
-		return stopped(ran)
+	asked, made, err := asking()
+	if err != nil || !made {
+		return closed(to, err)
 	}
 
-	fmt.Println(nowUp(effects.OwnAddress(ctx, door)))
-	return serve(records, flow, *port, !*noOpen)
+	reporting, serving, err := afterTheChain(running(asked))
+	if err != nil {
+		return err
+	}
+	if reporting {
+		fmt.Fprintln(to, where())
+	}
+	if !serving {
+		return nil
+	}
+	return console(bound)
+}
+
+// what this command does before it asks anything, which is everything able to fail while nothing
+// has been created.
+//
+// **the loopback port is taken here and not on the far side of the chain.** everything able to fail
+// runs in front of the one-way door (CLAUDE.md) and this one was behind it: a port another console
+// is already holding, met after the migration, the upload and every write the chain makes, is a
+// first deploy that landed and a command that exits 1 with the console never served. the listener
+// is handed to ./serve rather than taken again there, because a port given back in between is one
+// something else can claim in the gap.
+//
+// **it is the port alone, and what is about to be made is named a step later.** every prompt in this
+// package's terminal erases the screen before it draws, so the description belongs on the first
+// question's own screen rather than above a call that wipes it (./ask, and
+// ../../internal/terminal/password.go).
+func beforeTheChain(port int) (net.Listener, error) {
+	return claim(server.Listen(nil, port).Addr)
+}
+
+// the account this deploy writes into, and the three things it puts there.
+//
+// **the account is the first line because it is the one thing no later screen states.** it is
+// remembered between runs and drawn nowhere after the first, so an operator holding a personal
+// account and an organisation's has nothing on the screen telling them which of the two this deploy
+// is about to write into — and what the first stage makes is a database whose placement cannot be
+// changed once it exists (../../internal/terminal/placement.go).
+//
+// **it is a statement and not a door.** the two questions it is drawn above create nothing and
+// closing either ends this command having made nothing (./start.go's header), so what already
+// stands in front of the first write is a press the operator has to make rather than one they have
+// to stop.
+//
+// the three are ../../internal/first's chain in the order it reaches them: the database it makes or
+// finds, the worker it uploads, and the spam widget registered against the address that worker
+// answers on — which is why that one cannot be registered until the upload has landed.
+func aboutToMake(in account.Account) string {
+	return "deploying into your Cloudflare account " + in.Name + " (" + in.ID + "). " +
+		"this makes:\n" +
+		"  a database — where it keeps its records is the next question, " +
+		"and it cannot be changed once the database exists\n" +
+		"  the worker " + release.Baked.Name + " — it serves your donation page, /admin and the API\n" +
+		"  spam protection — registered against the address that worker answers on"
+}
+
+// what a prompt the operator closed leaves on the screen, and the same nil it ended on.
+//
+// ./update.go's door argues the line for the identical act: a press that exited saying nothing would
+// read as a deployment now standing. the exit stays clean, because a press not made is not a failure
+// to report (../../internal/terminal/prompt.go) — and a question this console could not ask at all
+// is the other thing, which says what happened itself.
+func closed(to io.Writer, err error) error {
+	if err == nil {
+		fmt.Fprintln(to, "nothing was created and nothing was deployed")
+	}
+	return err
+}
+
+// how far this command goes once the chain has settled: whether the deployment's address is said,
+// and whether the console is then served at it.
+//
+// **a chain that landed under a ledger a signal took says the address and serves nothing.** what
+// the operator's ctrl-c asked to stop is this process holding their terminal, and never their
+// knowledge of what the deploy did: they were told it was still going
+// (../../internal/terminal's StillGoing), so a command that ended in silence would leave them
+// unable to tell a deploy that landed from one that died — with a deployment now standing, which is
+// the state they most need to know about. what they did not ask for is what stands on the other
+// side of that wait: a port bound and a browser tab opened minutes later, with this process still
+// holding the terminal they asked to be given back. so the address is printed and the exit is
+// clean, which is no failure for the same reason a closed prompt above is none.
+//
+// **a chain that did not land is reported whether or not a signal took its ledger.** a ctrl-c is a
+// stop the operator asked for and a deploy that stopped in the middle is not one: it leaves the
+// database ahead of the code that reads it (CLAUDE.md) and nothing else in this run would say so.
+func afterTheChain(ran first.Outcome, halted bool) (reporting, serving bool, err error) {
+	if ran.Kind != first.Deployed {
+		return false, false, stopped(ran)
+	}
+	return true, !halted, nil
 }
 
 // the account this run operates, chosen where this machine remembers none.
@@ -122,18 +261,30 @@ func operating(
 	ctx context.Context,
 	flow *oauth.Flow,
 	store *account.Store,
+	to io.Writer,
 ) (account.Account, bool, error) {
 	if held := store.Chosen(); held != nil {
 		return held.Account, true, nil
 	}
-	return chooseAccount(ctx, flow, store)
+	return chooseAccount(ctx, flow, store, to)
 }
+
+// a machine whose randomness would not answer, which is a press never started.
+//
+// the act on the end of it because every other sentence this program ends on has one: the failure
+// is a read of the operating system that came back empty, so the press again is the whole of what
+// there is to do about it, and nothing was created (../../internal/first).
+const noSessionKey = "this console could not generate the key that signs a staff session, so " +
+	"nothing was created and nothing was deployed. Run better-giving start again."
 
 // the two an operator answers, taken in the order they are needed and both in front of the chain.
 //
+// `preamble` is what this press is about to make, drawn on the first question's own screen because
+// that is the screen the operator is looking at while they answer it.
+//
 // False with no error is either prompt closed.
-func ask() (first.Asked, bool, error) {
-	password, given, err := terminal.AskPassword(os.Stdin, os.Stdout)
+func ask(preamble string) (first.Asked, bool, error) {
+	password, given, err := terminal.AskPassword(os.Stdin, os.Stdout, preamble)
 	if err != nil || !given {
 		return first.Asked{}, false, err
 	}
@@ -146,13 +297,13 @@ func ask() (first.Asked, bool, error) {
 	// (../../internal/first).
 	secret, err := first.SessionSecret()
 	if err != nil {
-		return first.Asked{}, false,
-			errors.New("this console could not generate the key that signs a staff session")
+		return first.Asked{}, false, errors.New(noSessionKey)
 	}
 	return first.Asked{Password: password, SessionSecret: secret, Placement: placement}, true, nil
 }
 
-// runs the chain while the ledger holds the terminal, and answers how it ended.
+// runs the chain while the ledger holds the terminal, and answers how it ended and whether a signal
+// took the drawing before it did (../../internal/terminal's Halted).
 //
 // **the chain is on a goroutine of its own because the ledger is on this one.**
 // ../../internal/first's chain is sequential and blocking and ../../internal/terminal's Show holds
@@ -169,7 +320,7 @@ func chainAt(
 	credential cf.Credential,
 	records state.Store,
 	asked first.Asked,
-) first.Outcome {
+) (first.Outcome, bool) {
 	drawn := terminal.Draw(terminal.ChainRows, os.Stdout)
 	ended := make(chan first.Outcome, 1)
 	go func() {
@@ -187,12 +338,16 @@ func chainAt(
 			cf.APISend, cf.APISchemaSend, cf.AssetsUpload, release.BundleSource(version), records))
 	}()
 
-	if err := drawn.Show(); err != nil {
-		// the ledger is the drawing and not the run: a terminal it could not be drawn on leaves the
-		// chain going, and the wait below is still what says how it ended.
-		fmt.Fprintln(os.Stderr, err)
+	shown := drawn.Show()
+	halted := drawn.Halted()
+	said, wrong := terminal.Settled(shown, halted, "a deploy")
+	if wrong != "" {
+		fmt.Fprintln(os.Stderr, wrong)
 	}
-	return <-ended
+	if said != "" {
+		fmt.Println(said)
+	}
+	return <-ended, halted
 }
 
 // what a press that did not land is answered with, which is the sentence and then the words the
@@ -215,11 +370,19 @@ func stopped(ran first.Outcome) error {
 }
 
 // a deployment that was already standing when this command ran, so nothing was deployed.
+//
+// **the act is named because the operator who meets this line is the one who most needs it.** this
+// command is the front door, so it is what an operator who has just installed a newer release types
+// — and the console it serves them cannot close the gap, because both deploys are terminal commands
+// and no screen of it draws either one (CLAUDE.md).
 func alreadyUp(address deployment.Address) string {
+	found := "found " + release.Baked.Name + " deployment"
 	if where := address.Origin(); where != "" {
-		return "found " + release.Baked.Name + " deployment: " + where
+		found += ": " + where
+	} else {
+		found += ", answering on no address this console can read"
 	}
-	return "found " + release.Baked.Name + " deployment, answering on no address this console can read"
+	return found + ". nothing was deployed: to carry this release onto it, run better-giving update"
 }
 
 // where the deployment this run stood up answers.
@@ -235,21 +398,26 @@ func nowUp(address deployment.Address) string {
 // The three are three different things to do about it, and none of them is this command again on
 // its own: a sign-in that may not read the account is not a network that dropped.
 //
-// `command` is the caller's own, because both presses make this read and they are repaired by
+// **every one of the three ends in something to do**, and the acts are the ones
+// ../../internal/terminal/outcome.go already gives the same two states: this is the first failure
+// either press can hit, before anything is created, and a refusal here is an access problem an
+// operator can actually fix.
+//
+// `fix` is the caller's own press, because both presses make this read and they are repaired by
 // different ones: `start` stands a deployment up and `update` only carries code over one
 // (./update.go).
-func unread(address deployment.Address, command string) error {
+func unread(address deployment.Address, fix terminal.Repair) error {
 	cannot := "this console can't find out whether " + release.Baked.Name +
 		" is already deployed, and won't deploy over one it can't see"
 	switch address.Kind {
 	case deployment.AddressRefused:
-		return fmt.Errorf("cloudflare won't tell this sign-in what is in this account, so %s: %s",
-			cannot, address.Detail)
+		return fmt.Errorf("Cloudflare won't tell this sign-in what is in this account, so %s: %s. %s",
+			cannot, address.Detail, terminal.AnotherAccount)
 	case deployment.AddressUnreadable:
-		return fmt.Errorf("cloudflare answered about this account in a shape this console was not "+
-			"written against, so %s: %s", cannot, address.Detail)
+		return fmt.Errorf("Cloudflare answered about this account in a shape this console was not "+
+			"written against, so %s: %s. %s", cannot, address.Detail, fix.Alone)
 	default:
-		return fmt.Errorf("cloudflare didn't answer, so %s. check this machine's connection, then "+
-			"run %s again: %s", cannot, command, address.Detail)
+		return fmt.Errorf("Cloudflare didn't answer, so %s: %s. Check this machine's connection, %s",
+			cannot, address.Detail, fix.After)
 	}
 }

@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"strconv"
@@ -79,11 +80,64 @@ func TestAPasswordIsCountedTheWayTheDeploymentCountsIt(t *testing.T) {
 func TestNoPasswordIsAskedForWhereThereIsNobodyToAskIt(t *testing.T) {
 	// a test binary's own input is a pipe, which is exactly the state this refuses: a box drawn at
 	// one is a box nothing is ever typed into, so the prompt says so rather than standing there.
-	typed, given, err := AskPassword(strings.NewReader("anything\n"), io.Discard)
+	typed, given, err := AskPassword(strings.NewReader("anything\n"), io.Discard, "")
 	if given || typed != "" {
 		t.Errorf("AskPassword = %q, %v", typed, given)
 	}
 	if !errors.Is(err, ErrNoTerminal) {
 		t.Errorf("AskPassword refused a pipe with %v, want %v", err, ErrNoTerminal)
+	}
+}
+
+// what the caller has to say above the question, drawn on this prompt's own screen.
+//
+// this is the first screen of a press that makes things, and every prompt here erases the screen
+// before it draws (./clear.go) — so a line the caller printed above the call would be gone at the
+// moment the operator is answering, which is the moment it exists to inform.
+
+func TestThePreambleIsDrawnOnTheQuestionsOwnScreen(t *testing.T) {
+	held := &bytes.Buffer{}
+	preamble := "deploying into your Cloudflare account Acme Giving (ac1). this makes:"
+
+	_, given, err := AskPassword(strings.NewReader("anything\n"), held, preamble)
+
+	if given {
+		t.Error("a pipe was asked for a password")
+	}
+	if !errors.Is(err, ErrNoTerminal) {
+		t.Errorf("AskPassword = %v, want %v", err, ErrNoTerminal)
+	}
+	if !strings.Contains(held.String(), preamble) {
+		t.Errorf("said %q, want what this press is about to make named", held.String())
+	}
+}
+
+func TestTheScreenIsErasedBeforeThePreambleIsDrawnOnIt(t *testing.T) {
+	// the order is the whole of the fix: a preamble drawn before the erase is wiped by it, and the
+	// operator answers the question with nothing above it saying what is about to be made. a buffer
+	// sees no escape at all (./clear.go writes none at one), so what is asserted is the heading as a
+	// value rather than the run of a prompt.
+	preamble := "deploying into your Cloudflare account Acme Giving (ac1). this makes:"
+	said := heading(true, preamble)
+
+	if !strings.HasPrefix(said, clearScreen) {
+		t.Errorf("heading = %q, want the screen erased before anything is drawn on it", said)
+	}
+	if !strings.Contains(said, preamble) {
+		t.Errorf("heading = %q, want what this press is about to make named", said)
+	}
+	if drawn := heading(false, preamble); strings.Contains(drawn, "\033") {
+		t.Errorf("heading at a run nobody is watching = %q, want a record with no escape in it", drawn)
+	}
+	if held := heading(true, ""); held != clearScreen {
+		t.Errorf("heading = %q, want the erase alone where the caller has nothing to say", held)
+	}
+}
+
+func TestNothingIsDrawnAboveTheQuestionWhereTheCallerHasNothingToSay(t *testing.T) {
+	held := &bytes.Buffer{}
+	_, _, _ = AskPassword(strings.NewReader("anything\n"), held, "")
+	if held.String() != "" {
+		t.Errorf("said %q, want a caller with nothing to say drawn as nothing", held.String())
 	}
 }

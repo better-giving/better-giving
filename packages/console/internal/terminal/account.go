@@ -24,7 +24,7 @@ import (
 
 // ErrNoAccounts is a sign-in carrying no account to choose between, which is a prompt with nothing
 // to put.
-var ErrNoAccounts = errors.New("this cloudflare sign-in is a member of no account")
+var ErrNoAccounts = errors.New("this Cloudflare sign-in is a member of no account")
 
 // AskAccount takes which of `accounts` this deployment is in.
 //
@@ -35,14 +35,14 @@ func AskAccount(in io.Reader, to io.Writer, accounts []signin.Account) (signin.A
 	if len(accounts) == 0 {
 		return signin.Account{}, false, ErrNoAccounts
 	}
-	if !attended(in) {
-		return signin.Account{}, false, ErrNoTerminal
+	if !attended(in, to) {
+		return signin.Account{}, false, noTerminal{"which Cloudflare account this deployment is in"}
 	}
 	clear(to)
 	var chosen string
 	asking := huh.NewForm(huh.NewGroup(
 		huh.NewSelect[string]().
-			Title("which cloudflare account this deployment is in").
+			Title("which Cloudflare account this deployment is in").
 			Description("everything this console makes is made inside it").
 			Options(labelled(accounts)...).
 			Value(&chosen),

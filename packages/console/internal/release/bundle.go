@@ -32,8 +32,22 @@ const Repo = "better-giving/better-giving"
 // console older than the latest one points.
 const ReleasesPage = "https://github.com/" + Repo + "/releases"
 
-// where the release keeps its assets, which is this repository's own.
-const releases = ReleasesPage + "/download/"
+// Downloads is where one release keeps its assets, which is this repository's own.
+//
+// **two things a binary fetches by version come out of it, so the address is derived once**: the
+// worker bundle a deploy uploads (./BundleSource) and the console archive an out-of-date binary
+// installs (../update). The tag is `v` and the version, which is what the release is cut under.
+func Downloads(version string) string {
+	return ReleasesPage + "/download/v" + version + "/"
+}
+
+// InstallLine is the one line this console is installed with by hand, which is
+// ../../../../scripts/install.sh served from the newest release.
+//
+// **it is where a path that could not install a console for the operator ends.** that script is an
+// asset of every release for exactly this reason (.goreleaser.yaml's `release.extra_files`), so the
+// address resolves whatever the newest release turns out to be.
+const InstallLine = "curl -fsSL " + ReleasesPage + "/latest/download/install.sh | sh"
 
 // Source is where one deploy's bundle is, and what reaches it.
 type Source struct {
@@ -47,12 +61,11 @@ type Source struct {
 
 // BundleSource is where the bundle for `version` is.
 //
-// The tag is `v` and the version, which is what the release is cut under; the asset carries the
-// version without it.
+// The asset carries the version without the `v` its release is tagged with (./Downloads).
 func BundleSource(version string) Source {
 	override := os.Getenv(BundleVariable)
 	if override == "" {
-		return Source{URL: releases + "v" + version + "/worker-" + version + ".tar.gz"}
+		return Source{URL: Downloads(version) + "worker-" + version + ".tar.gz"}
 	}
 	if strings.HasPrefix(override, "http://") || strings.HasPrefix(override, "https://") {
 		return Source{URL: override}

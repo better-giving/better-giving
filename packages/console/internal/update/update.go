@@ -1,20 +1,27 @@
-// Package update is whether a console newer than this one exists.
+// Package update is whether a console newer than this one exists, and putting it on the machine.
 //
-// **the operator finds out at the terminal they typed a command in.** the install is a line pasted
-// once and nothing on the machine watches for a newer one, so a binary that never says so is one an
-// operator goes on running until something else tells them — and the commands that name it are the
-// two that end in a console standing (../../cmd/better-giving).
+// **the operator finds out at the terminal they typed a command in, and the console acts on it.**
+// the install is a line pasted once and nothing on the machine watches for a newer one, so a binary
+// that never says so is one an operator goes on running until something else tells them — and the
+// commands that act on it are the two that end in a console standing (../../cmd/better-giving).
 //
-// **it names an install and never a deploy.** a binary deploys only the bundle from its own bake —
-// internal/bundle refuses a manifest whose commit is not the baked one — so what a newer release
-// carries cannot be uploaded by the binary holding this reading. installing it is the whole of the
-// way, and the command the operator typed deploys what this binary carries either way.
+// **it installs a console and never deploys one.** a binary deploys only the bundle from its own
+// bake — internal/bundle refuses a manifest whose commit is not the baked one — so what a newer
+// release carries cannot be uploaded by the binary holding this reading. that is why the two deploy
+// commands install the newer console and hand it the run before they touch anything: an operator
+// left on an older binary carries older code onto their deployment, which is the one thing those
+// commands exist to do right.
 //
 // **a reading nobody could take says nothing rather than something wrong.** github is a third host
 // this console does not need to work: no route to it, a rate limit, an answer in a shape nothing
 // here was written against, and a binary carrying no version at all are one kind between them, and
 // nothing is printed for any of them. the read is bounded and every failure is a value, so a
 // command is never held up or ended by it.
+//
+// **a failure past a Newer reading is the other thing, and it ends the command.** the operator has
+// been told the newer console is being installed, so a command that went on after it did not land
+// would deploy the old code under a screen that just said otherwise. ./install.go answers every way
+// that can go wrong with a value, and the caller refuses on all of them.
 package update
 
 import (

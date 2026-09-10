@@ -48,7 +48,7 @@ func sessionRoutes(
 			// the write is scoped to an account, so there is nowhere to write rather than a write
 			// that failed. the page draws the panel that chooses one.
 			answer(w, http.StatusConflict, map[string]string{
-				"error": "this console has not been told which cloudflare account this deployment is in",
+				"error": "this console has not been told which Cloudflare account this deployment is in",
 			})
 			return
 		}

@@ -71,7 +71,7 @@ func homeRoutes(
 			// every read below is scoped to an account, so there is nothing to read rather than a
 			// reading that came back empty. the page draws the panel that chooses one.
 			answer(w, http.StatusConflict, map[string]string{
-				"error": "this console has not been told which cloudflare account this deployment is in",
+				"error": "this console has not been told which Cloudflare account this deployment is in",
 			})
 			return
 		}

@@ -203,6 +203,13 @@ func (flow *Flow) Credential(ctx context.Context) cf.Credential {
 	return cf.BearerCredential(refreshed.Access)
 }
 
+// Waits is how long this flow waits to be allowed before it gives up.
+//
+// It is read rather than spelled a second time by whoever says so: a flow may be built with a wait
+// of its own (./Options), so a sentence carrying a number of its own is one that goes wrong on the
+// flow that moved it.
+func (flow *Flow) Waits() time.Duration { return flow.waits }
+
 // TokenSet is whether the environment the console was started in is where the credential came from.
 //
 // No answer from cloudflare can say so, and it decides two things a screen draws: a sign-in control

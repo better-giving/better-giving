@@ -36,7 +36,12 @@ import (
 // what an operator does about a press that stopped, which at a terminal is the press again.
 const again = "Run better-giving start again."
 
-// repair is that act as the command that made the press, in the two shapes a sentence needs it.
+// Repair is that act as the command that made the press, in the two shapes a sentence needs it.
+//
+// It is exported because the command package composes with it too: the reading that says whether
+// anything is deployed is made by both presses and repaired by different ones
+// (../../cmd/better-giving/start.go's unread), and a sentence written there with its own act on the
+// end is one that disagrees with the sentences in this file about the same predicament.
 //
 // **it is a value rather than a constant because the deploy engine's half is drawn by both
 // commands** (./redeploy.go): a redeploy that stopped inside the download, the migration or the
@@ -44,30 +49,31 @@ const again = "Run better-giving start again."
 // which press repairs it. `start` stands a deployment up and `update` only carries code over one,
 // so either half naming the other command sends an operator to a press that does not repair what
 // they are looking at.
-type repair struct {
-	// alone is the act as a sentence of its own.
-	alone string
-	// after is the same act as the tail of a sentence that names something to do in front of it.
-	after string
+type Repair struct {
+	// Alone is the act as a sentence of its own.
+	Alone string
+	// After is the same act as the tail of a sentence that names something to do in front of it.
+	After string
 }
 
+// Starting and Updating are the two presses, as the act on the end of a sentence about either.
 var (
-	starting = repair{alone: again, after: "then run better-giving start again."}
-	updating = repair{
-		alone: "Run better-giving update again.",
-		after: "then run better-giving update again.",
+	Starting = Repair{Alone: again, After: "then run better-giving start again."}
+	Updating = Repair{
+		Alone: "Run better-giving update again.",
+		After: "then run better-giving update again.",
 	}
 )
 
 // where a sign-in that has gone is taken again, and the press behind it.
 const signInAgain = "Run better-giving login, then better-giving start again."
 
-// what an operator does about an account this sign-in may not act in.
+// AnotherAccount is what an operator does about an account this sign-in may not act in.
 //
 // the two acts and not one: access is granted by somebody else and this console cannot ask for it,
 // so the other way out is an account that already has it — which `login` is where the picker is
 // (./account.go).
-const anotherAccount = "Ask an administrator of that account for administrator access, or run " +
+const AnotherAccount = "Ask an administrator of that account for administrator access, or run " +
 	"better-giving login to choose another account."
 
 // what a chain that ended in a kind this file does not know left behind.
@@ -95,7 +101,7 @@ func Outcome(ran first.Outcome) string {
 	case first.NoDatabase:
 		return noDatabase(ran.Made)
 	case first.NotDeployed:
-		return notDeployed(ran.Ran, starting)
+		return notDeployed(ran.Ran, Starting)
 	case first.NoSignIn:
 		return noSignIn(ran.Written)
 	case first.NoWidget:
@@ -165,7 +171,7 @@ func noDatabase(made *deployment.Standing) string {
 			"account to a paid plan."
 	case deployment.DatabaseRefused:
 		return "Cloudflare won't let this sign-in create things in this account, so nothing was " +
-			"made and nothing was deployed. " + anotherAccount
+			"made and nothing was deployed. " + AnotherAccount
 	case deployment.DatabaseNoCredential:
 		return "This machine isn't signed in to Cloudflare any more, so nothing was made and " +
 			"nothing was deployed. " + signInAgain
@@ -180,30 +186,30 @@ func noDatabase(made *deployment.Standing) string {
 // how the deploy of this release's worker bundle ended.
 //
 // Drawn by both commands, so the act on the end of every sentence is `fix`'s and never this file's
-// own (./repair).
-func notDeployed(ran *deploy.Run, fix repair) string {
+// own (./Repair).
+func notDeployed(ran *deploy.Run, fix Repair) string {
 	if ran == nil {
 		return nowhereNamed(fix)
 	}
 	switch ran.Kind {
 	case deploy.NoBundle:
 		return "This release carries nothing to deploy, so nothing was uploaded and nothing was " +
-			"changed. Install the current release, " + fix.after
+			"changed. Install the current release, " + fix.After
 	case deploy.Mismatched:
 		return "What this release carries was built from a different version of the app than this " +
 			"console was, so nothing was uploaded and nothing was changed. Install the current " +
-			"release, " + fix.after
+			"release, " + fix.After
 	case deploy.Refused:
 		return "Cloudflare won't let this sign-in deploy to this account, so nothing was " +
-			"uploaded. " + anotherAccount
+			"uploaded. " + AnotherAccount
 	default:
 		return bundleStopped(ran.At, fix)
 	}
 }
 
 // a deploy that stopped where this console could not say.
-func nowhereNamed(fix repair) string {
-	return "The deploy stopped, and this console has no account of where. " + fix.alone
+func nowhereNamed(fix Repair) string {
+	return "The deploy stopped, and this console has no account of where. " + fix.Alone
 }
 
 // what a stopped deploy left behind, by the stage it stopped in.
@@ -212,21 +218,21 @@ func nowhereNamed(fix repair) string {
 // they are in front of it** (CLAUDE.md): the release is fetched and the account is read before
 // anything is written, so a press that could not go on leaves the account as it found it. the
 // migration and everything past it may have changed the database, and each of those says so.
-func bundleStopped(at deploy.Stage, fix repair) string {
+func bundleStopped(at deploy.Stage, fix Repair) string {
 	switch at {
 	case deploy.Fetching, deploy.Checking:
 		return "The deploy stopped before any of it reached Cloudflare: nothing was changed and " +
-			"nothing was uploaded. " + fix.alone
+			"nothing was uploaded. " + fix.Alone
 	case deploy.Migrating:
 		return "The deploy stopped in the step that sets up how records are kept, so part of that " +
-			"may have been applied. Nothing was uploaded. " + fix.alone +
+			"may have been applied. Nothing was uploaded. " + fix.Alone +
 			" It applies what is still pending rather than starting over."
 	case deploy.Uploading:
 		return "How records are kept was set up and the upload then stopped, so there may be " +
-			"nothing deployed. " + fix.alone
+			"nothing deployed. " + fix.Alone
 	case deploy.Verifying:
 		return "It was uploaded and came back missing something it needs, so it is deployed and " +
-			"may not serve anything. " + fix.alone
+			"may not serve anything. " + fix.Alone
 	default:
 		return nowhereNamed(fix)
 	}

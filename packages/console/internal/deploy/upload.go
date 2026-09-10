@@ -53,7 +53,7 @@ func uploadAssets(ctx context.Context, options Options, held bundle.Bundle, say 
 	}
 	token, _ := session.Value["jwt"].(string)
 	if token == "" {
-		return "", failure{Kind: Stopped, Detail: "cloudflare opened an upload session with no token on it"}
+		return "", failure{Kind: Stopped, Detail: "Cloudflare opened an upload session with no token on it"}
 	}
 
 	upload := options.Assets(token)
@@ -62,19 +62,19 @@ func uploadAssets(ctx context.Context, options Options, held bundle.Bundle, say 
 	for at, bucket := range buckets {
 		hashes, ok := bucket.([]any)
 		if !ok {
-			return "", failure{Kind: Stopped, Detail: "cloudflare asked for a bucket in a shape nothing was written against"}
+			return "", failure{Kind: Stopped, Detail: "Cloudflare asked for a bucket in a shape nothing was written against"}
 		}
 		parts := []cf.Part{}
 		for _, one := range hashes {
 			hash, ok := one.(string)
 			if !ok {
-				return "", failure{Kind: Stopped, Detail: "cloudflare asked for a file by something that is not a hash"}
+				return "", failure{Kind: Stopped, Detail: "Cloudflare asked for a file by something that is not a hash"}
 			}
 			asset, held := byHash[hash]
 			if !held {
 				// the hash is the whole of what can be looked up: the manifest that opened the
 				// session is keyed by path and this names no path in it.
-				return "", failure{Kind: Stopped, Detail: "cloudflare asked in " + bucketOf(at, len(buckets)) +
+				return "", failure{Kind: Stopped, Detail: "Cloudflare asked in " + bucketOf(at, len(buckets)) +
 					" for a file no path in this bundle hashes to: " + hash}
 			}
 			// the part is named and filed by the hash, and the bytes travel base64-encoded as text —
@@ -111,7 +111,7 @@ func uploadAssets(ctx context.Context, options Options, held bundle.Bundle, say 
 	// that says nothing about the files.
 	if len(buckets) > 0 && !completed {
 		return "", failure{Kind: Stopped,
-			Detail: "cloudflare took every file and handed back no completion token for them"}
+			Detail: "Cloudflare took every file and handed back no completion token for them"}
 	}
 	return token, failure{}
 }

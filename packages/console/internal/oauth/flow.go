@@ -32,10 +32,14 @@ type Why string
 const (
 	// TimedOut is a flow nobody allowed inside the wait.
 	TimedOut Why = "timed-out"
-	// Refused is cloudflare turning the request down, which is the operator's own "cancel".
+	// Refused is the operator turning the request down at cloudflare's own page, which is their
+	// "cancel". It is that one answer alone (./turnedDown) and never every way cloudflare says it
+	// would not finish a flow: what a terminal says about this one names a decision the operator
+	// made, and a failure at cloudflare's end reported that way is a press they never made handed
+	// back to them as one they did — every other of them ends as NothingBack.
 	Refused Why = "refused"
 	// NothingBack is a flow that ended some other way: a browser closed, an exchange cloudflare
-	// would not make.
+	// would not make, a failure cloudflare named on the way back.
 	NothingBack Why = "nothing-back"
 	// NotKept is a sign-in cloudflare allowed and this machine could not write down — the first
 	// exchange, or a later refresh of the pair it left behind.
@@ -189,6 +193,10 @@ func (flow *Flow) Stop() {
 	shut(ending)
 }
 
+// the one `error=` value that is an answer rather than a failure: oauth's word for the person at
+// the page turning the request down.
+const turnedDown = "access_denied"
+
 // the callback cloudflare redirects the operator's browser to once they have allowed it.
 //
 // **the state is read before anything else is believed, and claimed as it is read.** any page in
@@ -213,9 +221,17 @@ func (flow *Flow) callback(w http.ResponseWriter, r *http.Request) {
 	open.claimed = true
 	flow.mutex.Unlock()
 
-	if refusal := asked.Get("error"); refusal != "" {
+	switch refusal := asked.Get("error"); {
+	case refusal == turnedDown:
 		page(w, "The console hasn't been given access. Go back to it to try again.")
 		go flow.end(open, Refused)
+		return
+	case refusal != "":
+		// the same page and the same end as a callback that carried nothing at all, because that
+		// is what this is: cloudflare naming a failure of its own rather than the operator
+		// answering (./Refused).
+		page(w, "Cloudflare sent nothing back. Go back to the console to try again.")
+		go flow.end(open, NothingBack)
 		return
 	}
 	code := asked.Get("code")

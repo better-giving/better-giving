@@ -317,7 +317,7 @@ func hostless() *widget.Supply {
 func noOrigin(address deployment.Address) string {
 	switch {
 	case address.Kind == deployment.NotDeployed:
-		return "cloudflare holds no worker of this deployment's name"
+		return "Cloudflare holds no worker of this deployment's name"
 	case address.Kind == deployment.Deployed:
 		return "this deployment answers on no address a donor could be sent to"
 	case address.Detail != "":
