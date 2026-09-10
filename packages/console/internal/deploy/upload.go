@@ -89,7 +89,7 @@ func uploadAssets(ctx context.Context, options Options, held bundle.Bundle, say 
 
 		say(Progress{Stage: Uploading, Detail: bucketOf(at, len(buckets)), Step: at + 1, Steps: len(buckets)})
 		// nobody counts a bucket's own bytes: what is counted here is the buckets cloudflare asked
-		// for, and a second count under the same words would be two shares in one row.
+		// for, and a second count under the same words would be two shares in one line.
 		answer := upload(ctx, http.MethodPost,
 			"/accounts/"+options.Account+"/workers/assets/upload?base64=true", parts, nil)
 		if refused := refusal(ctx, answer); refused.Kind != "" {
@@ -176,21 +176,21 @@ func address(ctx context.Context, options Options) failure {
 	return refusal(ctx, answer)
 }
 
-// how many cells the script upload's own bar is drawn from.
+// how many steps the script upload's own count moves in.
 //
-// one report per cell rather than one per write, for the reason the download's own count is thinned
-// (./deploy.go): the body goes out in whatever chunks the connection takes, which is thousands of
-// frames for a bar that has twenty places to be.
-const scriptCells = 20
+// one report per step rather than one per write, for the reason the download's own count is thinned
+// (./deploy.go's fetchSteps): the body goes out in whatever chunks the connection takes, which is
+// thousands of frames for a count that moves twenty times.
+const scriptSteps = 20
 
-// what the script's own report says it is on, beside the buckets the assets went up in.
+// how the script upload says how far it has got, thinned to one report per step of ./scriptSteps.
 //
-// **the share starts again under these words, and that is what they are for.** the buckets end at
-// every one of them taken and the worker's own bytes then begin at none of them sent: it is a
-// second count of a second thing, and a figure blending the two would be an estimate of neither.
-const scriptDetail = "the worker itself"
-
-// how the script upload says how far it has got, thinned to one report per cell.
+// **what it says is the bytes alone, because the line it is drawn beside already names the code**
+// (../terminal/lines.go): the row this stage lights says the app's code is going up, and a detail
+// repeating that would say twice what the line says once. the figures are the download's own
+// (./deploy.go's arrivedOf), which is the other long call a deploy makes and the other row of the
+// same ledger — **and a share alone says nothing about what is being waited on**: `37%` of this is
+// four megabytes or forty with nothing on the screen to tell them apart.
 //
 // the count is bytes handed to the connection and not bytes cloudflare took (../cf's Sending), so
 // the last report says the request went rather than that it landed — what says that is the answer.
@@ -200,19 +200,19 @@ func going(say func(Progress)) cf.Sending {
 		if of <= 0 {
 			return
 		}
-		cell := sent * scriptCells / of
+		cell := sent * scriptSteps / of
 		if cell == drawn {
 			return
 		}
 		drawn = cell
-		say(Progress{Stage: Uploading, Detail: scriptDetail, Step: int(sent), Steps: int(of)})
+		say(Progress{Stage: Pushing, Detail: arrivedOf(sent, of), Step: int(sent), Steps: int(of)})
 	}
 }
 
 // uploadScript puts the worker up: its metadata, its entry and every module under it.
 //
 // It is the longest single call a deploy makes — one PUT of every module this app is built from —
-// so the bytes are counted on their way up rather than the row standing in its own words until
+// so the bytes are counted on their way up rather than the line standing in its own words until
 // cloudflare answers.
 func uploadScript(ctx context.Context, options Options, held bundle.Bundle, assets string, say func(Progress)) failure {
 	metadata := map[string]any{
@@ -246,7 +246,7 @@ func uploadScript(ctx context.Context, options Options, held bundle.Bundle, asse
 	// run is called where ./deploy.go's Options says it is: on the goroutine the run is on. the
 	// buffer holds every cell the bar has, so the count never waits on this end and no report of it
 	// is ever dropped.
-	reports := make(chan Progress, scriptCells+1)
+	reports := make(chan Progress, scriptSteps+1)
 	answered := make(chan cf.Answer, 1)
 	go func() {
 		answered <- options.Upload(ctx, http.MethodPut,

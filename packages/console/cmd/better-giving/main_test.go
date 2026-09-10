@@ -15,6 +15,8 @@ import (
 
 	"github.com/better-giving/console/internal/account"
 	"github.com/better-giving/console/internal/cf"
+	"github.com/better-giving/console/internal/deployment"
+	"github.com/better-giving/console/internal/effects"
 	"github.com/better-giving/console/internal/oauth"
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/server"
@@ -837,5 +839,31 @@ func TestAnInstallThatDidNotLandEndsTheRunRatherThanDeployingTheOlderCode(t *tes
 
 	if _, err := run.run(); err == nil {
 		t.Fatal("an install that did not land fell through to the deploy behind it")
+	}
+}
+
+// which rows the account picker marks, out of the reads it took.
+//
+// the mark says this deployment is on that account, so the only reading that earns one is the one
+// that found it there. an account read as holding none and an account nothing was found out about
+// both leave the row bare, because a row that carries nothing is this console saying nothing either
+// way (../../internal/terminal/account.go).
+
+func TestOnlyTheAccountTheDeploymentWasFoundOnIsMarked(t *testing.T) {
+	marked := deployedIn(effects.Addresses{
+		"ac1": {Kind: deployment.Deployed, WorkersDev: "https://one.workers.dev"},
+		"ac2": {Kind: deployment.NotDeployed},
+	})
+
+	if len(marked) != 1 || marked[0] != "ac1" {
+		t.Errorf("the picker marks %v, want the account holding the deployment alone", marked)
+	}
+}
+
+func TestReadsThatFoundOutNothingMarkNothing(t *testing.T) {
+	// a read that did not land is off the reading itself, so what this has to answer is an empty
+	// one: every row bare, and no row saying a deployment is not there.
+	if marked := deployedIn(effects.Addresses{}); len(marked) != 0 {
+		t.Errorf("the picker marks %v off reads that landed for no account", marked)
 	}
 }

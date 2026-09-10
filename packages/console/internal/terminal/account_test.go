@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/huh"
+
+	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/signin"
 )
 
@@ -18,6 +21,25 @@ var (
 	acme  = signin.Account{ID: "a1", Name: "Acme Giving"}
 	other = signin.Account{ID: "b2", Name: "Another Cause"}
 )
+
+// whether the picker drew a row carrying `value`, and every row's words, for a case reporting what
+// it drew instead.
+func carries(offered []huh.Option[string], value string) bool {
+	for _, one := range offered {
+		if one.Value == value {
+			return true
+		}
+	}
+	return false
+}
+
+func keys(offered []huh.Option[string]) []string {
+	drawn := make([]string, 0, len(offered))
+	for _, one := range offered {
+		drawn = append(drawn, one.Key)
+	}
+	return drawn
+}
 
 func TestNoAccountIsAskedForWhereThereIsNobodyToAskIt(t *testing.T) {
 	// the same refusal ./placement.go's is put behind, and for the same reason: a form drawn at a
@@ -52,7 +74,7 @@ func TestTwoAccountsOfOneNameAreToldApartByTheirIDs(t *testing.T) {
 		{ID: "a1", Name: "Cause"},
 		{ID: "b2", Name: "Cause"},
 		{ID: "c3", Name: "Another"},
-	})
+	}, nil)
 	labels := map[string]bool{}
 	for _, one := range offered {
 		if labels[one.Key] {
@@ -101,16 +123,14 @@ func TestAnAccountThisSignInNoLongerReachesOpensOnTheFirstRow(t *testing.T) {
 
 func TestTheSignOutRowIsDrawnOnlyWhereItIsOffered(t *testing.T) {
 	offered, _ := rows(holding(acme), Picker{SignOut: true})
-	if len(offered) != 2 {
-		t.Fatalf("the picker drew %d rows, want the account and the sign-out", len(offered))
-	}
-	if _, answered, _ := picked(offered[1].Value, []signin.Account{acme}); answered != SigningOut {
-		t.Errorf("the last row answered %q, want the sign-out", answered)
+	if !carries(offered, signOutRow) {
+		t.Errorf("a picker offered the sign-out drew %v, want that row on it", keys(offered))
 	}
 
 	plain, _ := rows(holding(acme), Picker{})
-	if len(plain) != 1 {
-		t.Errorf("a picker offered no sign-out drew %d rows, want the account alone", len(plain))
+	if carries(plain, signOutRow) {
+		t.Errorf("a picker offered no sign-out drew %v, want no row that could only fail",
+			keys(plain))
 	}
 }
 
@@ -180,5 +200,103 @@ func TestASignInCloudflareWouldNotNameIsStillSaidAsOne(t *testing.T) {
 	}
 	if strings.HasSuffix(said, ", ") {
 		t.Errorf("said %q, want no sentence ending on the space before a missing value", said)
+	}
+}
+
+// the row that ends the run, which is offered on every drawing of this picker.
+
+func TestTheExitRowIsAlwaysOfferedAndEndsTheRunTheWayAClosedPickerDoes(t *testing.T) {
+	offered, _ := rows(holding(acme), Picker{})
+
+	if len(offered) != 2 {
+		t.Fatalf("the picker drew %d rows, want the account and the way out", len(offered))
+	}
+	_, answered, err := picked(offered[1].Value, []signin.Account{acme})
+	if answered != PickerClosed || err != nil {
+		t.Errorf("the last row answered %q, %v, want the run ended as a closed picker ends it",
+			answered, err)
+	}
+}
+
+func TestTheWayOutIsTheLastRowWhereTheSignOutIsOfferedToo(t *testing.T) {
+	offered, _ := rows(holding(acme), Picker{SignOut: true})
+
+	if len(offered) != 3 {
+		t.Fatalf("the picker drew %d rows, want the account and both acts", len(offered))
+	}
+	if _, answered, _ := picked(offered[1].Value, []signin.Account{acme}); answered != SigningOut {
+		t.Errorf("the row under the accounts answered %q, want the sign-out", answered)
+	}
+	if _, answered, _ := picked(offered[2].Value, []signin.Account{acme}); answered != PickerClosed {
+		t.Errorf("the last row answered %q, want the way out", answered)
+	}
+}
+
+// the account this deployment was found in, marked on its row.
+//
+// what the mark rests on is one read per account, made by the caller before the picker draws
+// (../effects' EachAddress) — so a row carries it where that read found the deployment, and carries
+// nothing where the read said it is not there or never landed at all. an unmarked row is this
+// console saying nothing either way, which is what makes the mark safe to draw.
+
+func TestTheAccountHoldingThisDeploymentIsMarkedOnItsRow(t *testing.T) {
+	offered := labelled([]signin.Account{acme, other}, []string{other.ID})
+
+	if strings.Contains(offered[0].Key, release.Baked.Name) {
+		t.Errorf("an account no read found the deployment in is offered as %q", offered[0].Key)
+	}
+	if !strings.Contains(offered[1].Key, release.Baked.Name) {
+		t.Errorf("the account holding the deployment is offered as %q, want it named there",
+			offered[1].Key)
+	}
+}
+
+func TestAReadThatDidNotLandMarksNothing(t *testing.T) {
+	// the caller hands over the accounts its reads found this deployment in and no others, so an
+	// account missing from that list is one nothing was found out about — a read that was refused,
+	// that never came back, or that ran past the ceiling. a row saying no deployment is there would
+	// be a claim this console cannot make.
+	offered := labelled([]signin.Account{acme}, nil)
+
+	if offered[0].Key != acme.Name {
+		t.Errorf("an account no read landed for is offered as %q, want its name alone", offered[0].Key)
+	}
+}
+
+func TestAMarkedAccountSharingItsNameStillCarriesItsID(t *testing.T) {
+	offered := labelled([]signin.Account{
+		{ID: "a1", Name: "Cause"},
+		{ID: "b2", Name: "Cause"},
+	}, []string{"a1"})
+
+	if !strings.Contains(offered[0].Key, "a1") {
+		t.Errorf("a marked row of two named alike is offered as %q, want its id on it", offered[0].Key)
+	}
+}
+
+func TestTheWaitInFrontOfThePickerSaysWhatItIsWaitingOn(t *testing.T) {
+	// the reads behind the marks are silent seconds, and a terminal showing nothing but a cursor
+	// reads as a console that has hung.
+	said := LookingForDeployments()
+
+	if !strings.Contains(said, "Cloudflare") {
+		t.Errorf("said %q, want where this console is looking", said)
+	}
+	if !strings.Contains(said, release.Baked.Name) {
+		t.Errorf("said %q, want what it is looking for", said)
+	}
+}
+
+func TestTheWaitInFrontOfTheNextScreenSaysWhatItIsReading(t *testing.T) {
+	// the account is picked and the reads under it are silent seconds of their own — the address,
+	// the release the deployment is on, the migrations waiting — and the screen after them erases
+	// the terminal before it draws (./confirm.go).
+	said := ReadingTheDeployment()
+
+	if !strings.Contains(said, "reading") {
+		t.Errorf("said %q, want what this console is doing", said)
+	}
+	if !strings.Contains(said, "this account") {
+		t.Errorf("said %q, want the account the reads are about", said)
 	}
 }

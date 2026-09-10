@@ -1,13 +1,19 @@
 // Package deploy is this repository's worker put onto a cloudflare account with no wrangler, no
 // node and no checkout on the machine that presses the button.
 //
-// **five stages, and their order is the one-way door packages/app's own deploy script keeps.**
+// **six stages, and their order is the one-way door packages/app's own deploy script keeps.**
 // everything able to fail runs in front of the migration and the migration runs before the upload
 // (CLAUDE.md), so: the bundle is fetched and held against what this binary was baked for, the
 // account's own workers are read to see this credential reaches them, then the pending migrations
-// are applied, then the assets and the script go up, then the deployment is read back. a stage that
-// fails ends the run where it is — nothing rolls back, and the migrations a stopped run applied
-// stay applied.
+// are applied, then the static files go up, then the script that names them, then the deployment is
+// read back. a stage that fails ends the run where it is — nothing rolls back, and the migrations a
+// stopped run applied stay applied.
+//
+// **the files and the script are two stages because they are two waits.** the assets session opens,
+// asks for as many buckets as it wants and ends in a completion token; the script is one long PUT
+// that names that token. each counts its own parts and neither's count says anything about the
+// other's, so a screen drawing them under one name has one line to reword as it goes
+// (../terminal/lines.go).
 //
 // **the two in front of the door are a call of their own, and that is what lets the chain make its
 // database between them.** `Prepare` writes nothing anywhere, so a release that is missing or packed
@@ -55,8 +61,16 @@ const (
 	Checking Stage = "checking"
 	// Migrating is every pending migration applied, which is the one-way door.
 	Migrating Stage = "migrating"
-	// Uploading is the static assets and then the worker itself.
+	// Uploading is the static files, sent in the buckets cloudflare asks for.
 	Uploading Stage = "uploading"
+	// Pushing is the app's own code, sent in the one request that names those files and replaces
+	// the worker — and then somewhere for that worker to answer.
+	//
+	// its own stage rather than the tail of ./Uploading because the two are two waits: the files go
+	// up in as many requests as cloudflare asked for and the code in one long one, each counting
+	// its own parts, and a screen drawing them under one name has to reword a single line as it
+	// goes (../terminal/lines.go).
+	Pushing Stage = "pushing"
 	// Verifying is the deployment read back, to see it carries what went up.
 	Verifying Stage = "verifying"
 )
@@ -64,9 +78,9 @@ const (
 // Progress is where a run has got to, reported as it goes.
 type Progress struct {
 	Stage Stage
-	// Detail is what the stage is on: how much of the download has arrived, the migration being
-	// applied, the bucket or the worker itself going up, the read a stage is making. It is empty on
-	// the report that opens a stage, before there is anything for it to be on.
+	// Detail is what the stage is on: how much of the download or of the code has moved, the
+	// migration being applied, the bucket going up, the read a stage is making. It is empty on the
+	// report that opens a stage, before there is anything for it to be on.
 	Detail string
 	// Step and Steps are which part of how many, where the stage counts them, and both 0 where it
 	// does not. What counts them is the stage's own arithmetic and never this package's: the buckets
@@ -170,21 +184,24 @@ func reporter(options Options) func(Progress) {
 	}
 }
 
-// how many cells the download's own bar is drawn from.
+// how many steps the download's own count moves in.
 //
-// what is reported is one per cell rather than one per read: a bundle is tens of megabytes and the
+// what is reported is one per step rather than one per read: a bundle is tens of megabytes and the
 // reader hands back a few tens of kilobytes at a time, so a watcher held level with every read is
-// thousands of frames for a bar that has twenty places to be.
-const fetchCells = 20
+// thousands of frames for a count that moves twenty times.
+//
+// it is this engine's own resolution and not any screen's: what a watcher draws the count as is the
+// watcher's, and a finer stream than it draws from costs it nothing.
+const fetchSteps = 20
 
-// how the download says how far it has got, thinned to one report per cell.
+// how the download says how far it has got, thinned to one report per step of ./fetchSteps.
 //
 // the count is bytes and the total is what the release claimed, so a release that claimed no length
 // reports nothing at all and the stage stays uncounted (../bundle's Watch).
 func arriving(say func(Progress)) bundle.Watch {
 	drawn := int64(-1)
 	return func(read, of int64) {
-		cell := read * fetchCells / of
+		cell := read * fetchSteps / of
 		if cell == drawn {
 			return
 		}
@@ -193,7 +210,11 @@ func arriving(say func(Progress)) bundle.Watch {
 	}
 }
 
-// how much of the download has arrived, in the figures the release's own size is quoted in.
+// how much of a body has moved, in the figures the release's own size is quoted in.
+//
+// one form for the download and for the script upload alike (./upload.go's going): they are the two
+// long calls a deploy makes and they are drawn in the same ledger, so a second spelling of the same
+// fact would read as a second kind of fact.
 func arrivedOf(read, of int64) string { return sized(read) + " of " + sized(of) }
 
 // how many bytes a unit holds, and the units above a byte a size is said in.
@@ -261,8 +282,8 @@ func Prepare(ctx context.Context, options Options) (Prepared, Run) {
 	return Prepared{held: read.Bundle}, Run{}
 }
 
-// Apply is the three stages from the one-way door on: every pending migration, then the assets and
-// the script, then the deployment read back.
+// Apply is the four stages from the one-way door on: every pending migration, then the static
+// files, then the script that names them, then the deployment read back.
 //
 // `prepared` is what Prepare answered with, and the migrations it applies are the ones that
 // bundle carries — so what goes through the door is what was checked in front of it.
@@ -299,21 +320,23 @@ func Apply(ctx context.Context, options Options, prepared Prepared) Run {
 		run.Kind, run.At, run.Detail = failure.Kind, Uploading, failure.Detail
 		return run
 	}
+	say(Progress{Stage: Pushing})
 	if failure := uploadScript(ctx, options, prepared.held, token, say); failure.Kind != "" {
-		run.Kind, run.At, run.Detail = failure.Kind, Uploading, failure.Detail
+		run.Kind, run.At, run.Detail = failure.Kind, Pushing, failure.Detail
 		return run
 	}
 
-	// somewhere for the worker just uploaded to answer, which is part of putting it up rather than a
-	// stage of its own: a screen naming it would be naming a step every deploy after the first skips.
-	say(Progress{Stage: Uploading, Detail: "where the deployment answers"})
+	// somewhere for the worker just uploaded to answer, which is part of putting the code up rather
+	// than a stage of its own: a screen naming it would be naming a step every deploy after the
+	// first skips.
+	say(Progress{Stage: Pushing, Detail: "where the deployment answers"})
 	if failure := address(ctx, options); failure.Kind != "" {
-		run.Kind, run.At, run.Detail = failure.Kind, Uploading, failure.Detail
+		run.Kind, run.At, run.Detail = failure.Kind, Pushing, failure.Detail
 		return run
 	}
 
 	if ctx.Err() != nil {
-		run.Kind, run.At, run.Detail = Cancelled, Uploading, ctx.Err().Error()
+		run.Kind, run.At, run.Detail = Cancelled, Pushing, ctx.Err().Error()
 		return run
 	}
 

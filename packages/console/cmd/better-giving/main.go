@@ -78,15 +78,18 @@ var errSaid = errors.New("this command has already said what went wrong")
 // `to` is where a command's own answer goes and `wrong` where a failure does, so that an operator
 // who asked this binary a question can redirect the answer.
 //
-// **what is left on this process's own terminal is the three that hold the screen, and nothing
+// **what is left on this process's own terminal is the four that hold the screen, and nothing
 // else.** the password, placement and account prompts read the keyboard and draw over the terminal
 // they hold (../../internal/terminal/prompt.go); the ledger draws over that screen and un-draws it
 // again, taking the line it settles on and the diagnostic beside it with it
-// (../../internal/terminal/ledger.go); and the confirm in front of the one-way door erases the
-// screen before it names what it would apply (../../internal/terminal/confirm.go). none of the
-// three is a thing an arbitrary writer could be, so each names this process's own stdout and stderr
-// where it is reached (./start.go's ask, chainAt and carryAt, the door `start` itself puts, and
-// ./carried's question).
+// (../../internal/terminal/ledger.go); the confirm in front of the one-way door erases the
+// screen before it names what it would apply (../../internal/terminal/confirm.go); and the waits
+// draw a spinner over the reads a screen stands on and un-draw it again — the ones behind the
+// account picker's marks, and the ones between the account being picked and the screen after it
+// (../../internal/terminal/waiting.go). none of the four is a thing an arbitrary writer could be, so
+// each names this process's own stdout and stderr where it is reached (./start.go's ask, chainAt
+// and carryAt, the door `start` itself puts, ./carried's question, ./lookingForDeployments and
+// ./start.go's readingAhead).
 // every other line a command says takes `to`, so an operator redirecting what this binary answers
 // keeps the run drawn where they are standing, which is the only place it means anything.
 func run(args []string, to, wrong io.Writer) error {
@@ -842,26 +845,72 @@ func allow(flow *oauth.Flow, records state.Store, command string, to io.Writer) 
 // verified so that a refusal arrives here rather than at the first thing a deploy creates, and only
 // then is it written down.
 //
-// **it is `start`'s picker and it carries two things ./login's does not**: the account this machine
-// already operates, which the list opens on, and the row that gives that sign-in up. only a browser
-// sign-in can be given up — a credential set in this console's environment is one
-// ../../internal/oauth's Out refuses, and ./insteadOfABrowser says the same thing about the same
-// case — so the row is offered on that kind alone.
+// **it is `start`'s picker and it carries three things ./login's does not**: the account this
+// machine already operates, which the list opens on; the row that gives that sign-in up; and the
+// accounts this deployment was found on, which mark their own rows. only a browser sign-in can be
+// given up — a credential set in this console's environment is one ../../internal/oauth's Out
+// refuses, and ./insteadOfABrowser says the same thing about the same case — so the row is offered
+// on that kind alone.
+//
+// **the reads behind the marks are handed back as well as drawn**, because the account the operator
+// picks is one of the ones they were made for: ./start.go's standingOn is what runs the pass under
+// that pick against the reading this screen already took.
 func chooseAccount(
 	ctx context.Context,
 	flow *oauth.Flow,
 	store *account.Store,
 	to io.Writer,
-) (account.Account, terminal.Answered, error) {
+) (account.Account, effects.Addresses, terminal.Answered, error) {
 	held, get := reading(ctx, flow)
 	remembered := ""
 	if chosen := store.Chosen(); chosen != nil {
 		remembered = chosen.Account.ID
 	}
-	return choosing(ctx, held, get, store, to, terminal.Picker{
+
+	found := lookingForDeployments(ctx, get, held.Accounts)
+	chosen, answered, err := choosing(ctx, held, get, store, to, terminal.Picker{
 		Remembered: remembered,
 		SignOut:    held.Kind == signin.OAuth,
+		Deployed:   deployedIn(found),
 	})
+	return chosen, found, answered, err
+}
+
+// the reads that mark the picker's rows, with something on the screen while they are made.
+//
+// **the wait is drawn because these are the silent seconds this screen has.** they are one round
+// trip per account and nothing else is happening, and a terminal showing nothing but a cursor reads
+// as a console that has hung. it is given up in front of the picker, which draws a screen of its
+// own (../../internal/terminal/clear.go).
+//
+// **it draws on this process's own terminal and never on `to`**, which is ./run's rule for every
+// drawing that holds the screen: it stands in the seconds in front of the picker, and a wait drawn
+// into a redirected run would leave the terminal the picker is about to draw over showing nothing.
+func lookingForDeployments(
+	ctx context.Context,
+	get cf.Get,
+	accounts []signin.Account,
+) effects.Addresses {
+	drawn := terminal.WaitingOn(os.Stdout, terminal.LookingForDeployments())
+	defer drawn.Done()
+	return effects.EachAddress(ctx, get, accounts)
+}
+
+// which of the accounts read the deployment was actually found on, which is the only reading the
+// picker marks a row from.
+//
+// an account whose read said there is no deployment there is on the reading and off this list, and
+// one nothing was found out about is on neither: both leave a row unmarked, because a row that
+// carries nothing is this console saying nothing either way
+// (../../internal/terminal/account.go's labelled).
+func deployedIn(found effects.Addresses) []string {
+	held := make([]string, 0, len(found))
+	for id, standing := range found {
+		if standing.Kind == deployment.Deployed {
+			held = append(held, id)
+		}
+	}
+	return held
 }
 
 // what this machine's sign-in reaches, and the read every call about it is made with.

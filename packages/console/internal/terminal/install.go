@@ -34,8 +34,9 @@ import (
 // ConfirmNewer asks whether to install the console `version` names over this one and put that
 // release on the deployment.
 //
-// It answers in ./confirm.go's values, less Ahead: nothing has been read about a deployment when
-// this is put, and a console being behind a release is not a state a deployment can be in.
+// It answers in ./confirm.go's values, less Ahead and Elsewhere: nothing has been read about a
+// deployment when this is put — a console being behind a release is not a state a deployment can be
+// in, and the account picker a door offers the way back to has not been drawn yet.
 // Unattended is a run nobody is standing at, which the caller carries on past — a question nobody
 // was put in front of is not a refusal to report where the act it asks about can be undone.
 //

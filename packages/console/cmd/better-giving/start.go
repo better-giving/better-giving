@@ -75,6 +75,12 @@ import (
 // cloudflare, and this is the only press that reaches it: ./update.go installs a console and
 // deploys nothing. a door the operator shut still opens the console, because the deployment is
 // standing and that is what they typed this command for.
+//
+// **the third answer at that door is the account picker again, and the whole run is made over on
+// the account it names** (./startingOver). the picker opens on the account this machine remembers,
+// so the operator who most needs a way back is the one who kept it by reflex and met a door about a
+// deployment they did not mean — and the pass they walked out of created nothing, uploaded nothing
+// and gave its loopback port back, which is what makes going round again free.
 
 func start(args []string, to, wrong io.Writer) error {
 	taken := taking("start", startTakes)
@@ -120,75 +126,182 @@ func start(args []string, to, wrong io.Writer) error {
 		}
 	}
 
-	in, held, err := operating(
-		func() (account.Account, terminal.Answered, error) {
-			return chooseAccount(ctx, flow, store, to)
+	// what the picker's own reads found on each account, kept for the pass that runs under the
+	// account they picked so that the deployment on it is not asked for twice
+	// (./standingOn, ../../internal/effects' EachAddress). written by the pick and read by the pass
+	// straight after it, which are one goroutine's — ./startingOver runs the two in turn and every
+	// pass overwrites what the one before it read.
+	found := effects.Addresses{}
+
+	return startingOver(to,
+		func() (account.Account, bool, error) {
+			return operating(
+				func() (account.Account, terminal.Answered, error) {
+					in, read, answered, err := chooseAccount(ctx, flow, store, to)
+					found = read
+					return in, answered, err
+				},
+				func() error { return signingOut(ctx, flow, to) })
 		},
-		func() error { return signingOut(ctx, flow, to) })
-	if err != nil || !held {
-		return closed(to, err)
-	}
+		func(in account.Account) (bool, error) {
+			credential := flow.Credential(ctx)
+			door := deployment.Door{
+				AccountID:  in.ID,
+				WorkerName: release.Baked.Name,
+				Get:        cf.APIGet(credential),
+				Patch:      cf.APIMergePatch(credential),
+				Settings:   cf.APIMultipart(credential),
+			}
 
-	credential := flow.Credential(ctx)
-	door := deployment.Door{
-		AccountID:  in.ID,
-		WorkerName: release.Baked.Name,
-		Get:        cf.APIGet(credential),
-		Patch:      cf.APIMergePatch(credential),
-		Settings:   cf.APIMultipart(credential),
-	}
+			// **one wait over every read this pass makes, drawn before the first of them and given
+			// up in front of the screen that follows.** it draws on this process's own terminal and
+			// never on `to`, which is ./main.go's rule for every drawing that holds the screen. the
+			// deferred end is the backstop and never the ordinary one: the paths that draw give it
+			// up themselves (./catchingUp's `settled`), and what is left for this line is a pass
+			// that ended on a port it could not claim.
+			silence := &terminal.Wait{}
+			if readingAhead(found, in) {
+				silence = terminal.WaitingOn(os.Stdout, terminal.ReadingTheDeployment())
+			}
+			defer silence.Done()
 
-	standing := effects.OwnAddress(ctx, door)
-	switch standing.Kind {
-	case deployment.Deployed:
-		// the account and the address are handed in rather than read again: the confirm erases the
-		// visible screen before it draws, so what names the deployment has to be on that screen,
-		// and both are already in this command's hand.
-		onto := terminal.Deployment{Account: in.Name, Address: standing.Origin()}
-		return catchingUp(to, onto, newerConsole,
-			func() (net.Listener, error) { return beforeTheDeploy(*port) },
-			func() bool {
-				return alreadyCarrying(effects.OwnRelease(
-					ctx, records, standing.Origin(), deployment.Reads(deployment.Calls)))
-			},
-			func() effects.Migrations {
-				return effects.Pending(ctx, credential, cf.APISend, in.ID)
-			},
-			func(read effects.Migrations) terminal.Confirmation {
-				return terminal.ConfirmCarry(
-					os.Stdin, os.Stdout, onto, read.Names, read.Ahead, newerConsole)
-			},
-			func() (effects.Carried, bool) {
-				return carryAt(ctx, effects.Carrying{
-					AccountID:  in.ID,
-					Credential: credential,
-					Sends:      cf.APISend,
-					Schema:     cf.APISchemaSend,
-					Settings:   cf.APIMultipart,
-					Assets:     cf.AssetsUpload,
-					Bundle:     release.BundleSource(version),
-				})
-			},
-			func() string { return nowLevel(standing) },
-			func(bound net.Listener) error {
-				return serve(records, flow, *port, !*noOpen, to, bound)
+			standing := standingOn(found, in, func() deployment.Address {
+				return effects.OwnAddress(ctx, door)
 			})
-	case deployment.NotDeployed:
-	default:
-		return unread(standing)
-	}
+			if standing.Kind == deployment.Deployed {
+				// the account and the address are handed in rather than read again: the confirm
+				// erases the visible screen before it draws, so what names the deployment has to be
+				// on that screen, and both are already in this command's hand.
+				onto := terminal.Deployment{Account: in.Name, Address: standing.Origin()}
+				return catchingUp(to, onto, newerConsole, silence.Done,
+					func() (net.Listener, error) { return beforeTheDeploy(*port) },
+					func() string {
+						return effects.OwnRelease(
+							ctx, records, standing.Origin(), deployment.Reads(deployment.Calls))
+					},
+					func() effects.Migrations {
+						return effects.Pending(ctx, credential, cf.APISend, in.ID)
+					},
+					func(at terminal.Deployment, read effects.Migrations) terminal.Confirmation {
+						return terminal.ConfirmCarry(
+							os.Stdin, os.Stdout, at, version, read.Names, read.Ahead, newerConsole)
+					},
+					func() (effects.Carried, bool) {
+						return carryAt(ctx, effects.Carrying{
+							AccountID:  in.ID,
+							Credential: credential,
+							Sends:      cf.APISend,
+							Schema:     cf.APISchemaSend,
+							Settings:   cf.APIMultipart,
+							Assets:     cf.AssetsUpload,
+							Bundle:     release.BundleSource(version),
+						})
+					},
+					func() string { return nowLevel(standing) },
+					func(bound net.Listener) error {
+						return serve(records, flow, *port, !*noOpen, to, bound)
+					})
+			}
+			// every path from here draws on the screen the wait is standing on: the failure this
+			// console cannot deploy past, the held line about a newer console, and the first-run
+			// questions, which erase the screen before they draw.
+			silence.Done()
+			if standing.Kind != deployment.NotDeployed {
+				return false, unread(standing)
+			}
 
-	if newerConsole != "" {
-		fmt.Fprintln(to, newerConsole)
+			if newerConsole != "" {
+				fmt.Fprintln(to, newerConsole)
+			}
+			return false, standingUp(to,
+				func() (net.Listener, error) { return beforeTheDeploy(*port) },
+				func() (first.Asked, bool, error) { return ask(aboutToMake(in)) },
+				func(asked first.Asked) (first.Outcome, bool) {
+					return chainAt(ctx, door, credential, records, asked)
+				},
+				func() string { return nowUp(effects.OwnAddress(ctx, door)) },
+				func(bound net.Listener) error {
+					return serve(records, flow, *port, !*noOpen, to, bound)
+				})
+		})
+}
+
+// the run as many times as the operator asks for it: an account chosen, and the whole reading made
+// against it.
+//
+// **the way back out of the carry door is the account picker, and what it puts up again is this
+// pass in full.** the picker opens on the account this machine remembers, so the operator most
+// likely to want it is the one who kept that account by reflex and met a door about a deployment
+// they did not mean — and every reading past the picker is about the account it named, so a pass
+// that reused any of it would be answering about the deployment they just walked away from.
+//
+// **nothing is carried between passes and nothing has to be.** a pass the operator went back on
+// uploaded nothing and created nothing (./carryingOver), and the loopback port it claimed was given
+// back on the way out of it (./onThePortItTook) — so the next pass claims it again, and a port
+// something else took in the gap is met in front of that pass's own door rather than past it.
+//
+// A picker closed on a later pass ends the run exactly as one closed on the first does: a press not
+// made, said as one, on a clean exit (./closed).
+func startingOver(
+	to io.Writer,
+	picking func() (account.Account, bool, error),
+	against func(account.Account) (bool, error),
+) error {
+	for {
+		in, held, err := picking()
+		if err != nil || !held {
+			return closed(to, err)
+		}
+		again, err := against(in)
+		if err != nil || !again {
+			return err
+		}
 	}
-	return standingUp(to,
-		func() (net.Listener, error) { return beforeTheDeploy(*port) },
-		func() (first.Asked, bool, error) { return ask(aboutToMake(in)) },
-		func(asked first.Asked) (first.Outcome, bool) {
-			return chainAt(ctx, door, credential, records, asked)
-		},
-		func() string { return nowUp(effects.OwnAddress(ctx, door)) },
-		func(bound net.Listener) error { return serve(records, flow, *port, !*noOpen, to, bound) })
+}
+
+// where the deployment on the account just chosen answers, out of the reads the picker already
+// made.
+//
+// **the picker reads every account to mark its rows, and the account picked is one of the ones it
+// read** — so this pass runs against that reading rather than asking cloudflare the same question a
+// second time, which is the argument this command already makes for not reading the address again
+// across a carry (./catchingUp's `where`).
+//
+// **a read that did not land is absent from that list, and there this pass reads for itself.** the
+// picker leaves an account off rather than claiming anything about it
+// (../../internal/effects' EachAddress), and what stands behind this reading is whether a migration
+// is about to be offered — so a pass that treated an absent account as a deployment that is not
+// there would stand a second one up beside one that already exists.
+func standingOn(
+	found effects.Addresses,
+	in account.Account,
+	read func() deployment.Address,
+) deployment.Address {
+	if standing, carried := found[in.ID]; carried {
+		return standing
+	}
+	return read()
+}
+
+// whether this pass reaches cloudflare at all between the account being picked and the screen it
+// draws next, which is what the wait in front of that screen stands over
+// (../../internal/terminal's ReadingTheDeployment).
+//
+// **a pass that fetches nothing draws nothing.** a wait that appeared and vanished in the same
+// frame is noise, and that pass is a real one: the picker's own read landed and said there is no
+// deployment on this account, so ./standingOn asks nobody anything and the first-run questions draw
+// straight away.
+//
+// **the two readings that do fetch are the picker's read that did not land and the deployment it
+// found.** the first is ./standingOn reading the address for itself; the second is ./catchingUp's
+// weighing and ./carryingOver's reading, which are the release the deployment is on and the
+// migrations waiting on it — both made before the door erases the screen to draw.
+//
+// an address the picker read that says neither is the third thing and fetches nothing: this pass
+// stops on what it was already holding (./unread).
+func readingAhead(found effects.Addresses, in account.Account) bool {
+	standing, carried := found[in.ID]
+	return !carried || standing.Kind == deployment.Deployed
 }
 
 // the port this command serves on, taken in front of everything either path does and handed to the
@@ -281,28 +394,50 @@ func standingUp(
 //
 // `where` is read from the address this run already took rather than read again: the worker is the
 // same worker at the same name on either path, and on the far side of the carry.
+//
+// **what the deployment says it is on is a string here and a bool one line later.** the door names
+// it (../../internal/terminal/confirm.go) and ./alreadyCarrying weighs it, and a reading reduced to
+// the bool at the moment it is taken is one the screen can never draw.
+//
+// `settled` gives up the wait standing over this pass's reads (../../internal/terminal's
+// ReadingTheDeployment), and it is called in front of the first thing either path here draws: the
+// door erases the visible screen before it names what it would apply, so a spinner still turning is
+// written into the screen the operator answers on, and the up-to-date path's two lines would be
+// drawn over one.
+//
+// True is the operator back at the account picker, which is the third way out of the door: nothing
+// was uploaded on this pass and no console was served on it (./startingOver).
 func catchingUp(
 	to io.Writer,
 	onto terminal.Deployment,
 	newerConsole string,
+	settled func(),
 	claiming func() (net.Listener, error),
-	carries func() bool,
+	weighing func() string,
 	reading func() effects.Migrations,
-	asking func(effects.Migrations) terminal.Confirmation,
+	asking func(terminal.Deployment, effects.Migrations) terminal.Confirmation,
 	running func() (effects.Carried, bool),
 	where func() string,
 	console func(net.Listener) error,
-) error {
-	return onThePortItTook(claiming, func() (bool, error) {
-		if carries() {
+) (bool, error) {
+	again := false
+	err := onThePortItTook(claiming, func() (bool, error) {
+		deployed := weighing()
+		if alreadyCarrying(deployed) {
+			settled()
 			if newerConsole != "" {
 				fmt.Fprintln(to, newerConsole)
 			}
 			fmt.Fprintln(to, where())
 			return true, nil
 		}
-		return carryingOver(to, onto, reading, asking, running, where)
+		onto.Release = deployed
+
+		serving, back, err := carryingOver(to, settled, onto, reading, asking, running, where)
+		again = back
+		return serving, err
 	}, console)
+	return again, err
 }
 
 // whether the deployment is already on the release this binary carries.
@@ -595,40 +730,54 @@ const noOneAtTheDoor = "this console asks before it applies a migration to the l
 // read taken in front of the door rather than past it, and the door answered before anything
 // reaches cloudflare.
 //
-// True is whatever the caller has past the carry, which is ./catchingUp's console: a door the
+// `serving` is whatever the caller has past the carry, which is ./catchingUp's console: a door the
 // operator shut reaches it, because the deployment is standing and nothing was uploaded, and so
 // does a carry that landed. False with no error is a carry whose ledger a signal took — what a
 // ctrl-c asked to stop is the process holding the terminal (./afterTheChain) — and False with one
 // is a read or a carry that did not land.
+//
+// `again` is the operator taking the third way out of the door, which serves no console here and
+// leaves the account picker to the caller (./startingOver).
+//
+// `settled` is ./catchingUp's, given up on the far side of the read this function opens with.
 func carryingOver(
 	to io.Writer,
+	settled func(),
 	onto terminal.Deployment,
 	reading func() effects.Migrations,
-	asking func(effects.Migrations) terminal.Confirmation,
+	asking func(terminal.Deployment, effects.Migrations) terminal.Confirmation,
 	running func() (effects.Carried, bool),
 	where func() string,
-) (bool, error) {
+) (serving, again bool, err error) {
 	read := reading()
+	// the last read of the pass, so the wait over them all is given up here: what follows is the
+	// door, which erases the screen before it draws (./catchingUp's `settled`), or the failure that
+	// read leaves instead.
+	settled()
 	if why := terminal.Unnamed(read); why != "" {
-		return false, reported(why, read.Detail)
+		return false, false, reported(why, read.Detail)
 	}
-	said, on, err := atTheDoor(asking(read))
+	said, went, err := atTheDoor(asking(onto, read))
 	if said != "" {
 		fmt.Fprintln(to, said)
 	}
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
-	if !on {
-		return true, nil
+	if went != through {
+		// one answer runs the carry and every other leaves the deployment as it stands, the ones
+		// nobody named included (./atTheDoor): ./shut opens the console at a deployment that is
+		// already serving, and ./elsewhere hands the run back to the account picker
+		// (./startingOver).
+		return went == shut, went == elsewhere, nil
 	}
 
 	ran, halted := running()
 	if err := afterTheCarry(ran); err != nil {
-		return false, err
+		return false, false, err
 	}
 	fmt.Fprintln(to, where())
-	return !halted, nil
+	return !halted, false, nil
 }
 
 // what this command says about a carry that settled, which is nothing where it carried.
@@ -645,31 +794,52 @@ func afterTheCarry(ran effects.Carried) error {
 	return nil
 }
 
+// doorway is which way out of the carry door this run took.
+//
+// It is what the answer is worth to this command and never the answer itself: the operator chose
+// between the words the door drew (../../internal/terminal/confirm.go), and this is the three things
+// there are to do about what they chose.
+type doorway string
+
+const (
+	// through is the carry running.
+	through doorway = "through"
+	// shut is nothing uploaded and the console opened at the deployment that is already standing.
+	shut doorway = "shut"
+	// elsewhere is nothing uploaded, no console, and the account picker put up again
+	// (./startingOver).
+	elsewhere doorway = "elsewhere"
+)
+
 // what this command does about the answer the door came back with.
 //
-// **the line and the error are separate because two of the four ends are not failures.** a door an
+// **the line and the error are separate because three of the five ends are not failures.** a door an
 // operator shut is a press not made (../../internal/terminal/prompt.go) and has a line and no
 // error — and it has a line at all because a run that went on to the console saying nothing would
-// read as a deployment now carrying this release. a door that was never put to anybody is the other
-// one: the list was named, nobody was there to answer it, and a command that ended cleanly on that
-// would be reporting a decision nobody made.
+// read as a deployment now carrying this release. a door they left for the account picker is the
+// same reading of a smaller act: nothing was uploaded, and the pass they are about to make is drawn
+// over the sentence saying so. a door that was never put to anybody is the other one: the list was
+// named, nobody was there to answer it, and a command that ended cleanly on that would be reporting
+// a decision nobody made.
 //
 // **one answer opens the door and every other shuts it, the ones nobody named included.**
 // ../../internal/terminal's Confirmation is a bare string and nothing checks that this switch names
 // every value of it, so a default that went on would be a migration applied on an answer this
 // console could not read — and that one cannot be undone (CLAUDE.md).
-func atTheDoor(answered terminal.Confirmation) (said string, on bool, err error) {
+func atTheDoor(answered terminal.Confirmation) (said string, went doorway, err error) {
 	switch answered {
 	case terminal.Confirmed:
-		return "", true, nil
+		return "", through, nil
 	case terminal.Declined:
-		return "the database was left alone and nothing was uploaded", false, nil
+		return "the database was left alone and nothing was uploaded", shut, nil
+	case terminal.Elsewhere:
+		return "nothing was uploaded", elsewhere, nil
 	case terminal.Unattended:
-		return "", false, errors.New(noOneAtTheDoor)
+		return "", shut, errors.New(noOneAtTheDoor)
 	case terminal.Ahead:
-		return "", false, errors.New(aheadOfThisBinary)
+		return "", shut, errors.New(aheadOfThisBinary)
 	default:
-		return "", false, fmt.Errorf("this console didn't understand the answer at the door (%q), "+
+		return "", shut, fmt.Errorf("this console didn't understand the answer at the door (%q), "+
 			"so nothing was applied and nothing was uploaded: run better-giving start again",
 			answered)
 	}

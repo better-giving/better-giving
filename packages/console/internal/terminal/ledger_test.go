@@ -3,6 +3,7 @@ package terminal
 import (
 	"bytes"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ func after(rows []Row, end End, reported ...reached) []Mark {
 	for _, report := range reported {
 		drawn = drawn.folding(report)
 	}
-	return Marks(rows, drawn.at, end)
+	return Marks(rows, drawn.at.row, end)
 }
 
 // a report of a stage that counts nothing, which is every one the chain owns.
@@ -88,7 +89,7 @@ func TestAStageReportedBehindTheRowAlreadyDrawnChangesNothing(t *testing.T) {
 }
 
 func TestAStageNoRowCoversChangesNothing(t *testing.T) {
-	// the redeploy's three rows cover the deploy engine's five, and the chain runs four more around
+	// the redeploy's three rows cover the deploy engine's six, and the chain runs four more around
 	// them that this ledger is not drawing.
 	same(t, "the ledger for a stage no row covers",
 		marks(after(UpdateRows, Underway, at(first.SigningIn))),
@@ -210,6 +211,115 @@ func TestTheProgramTakesEveryReportOnTheRunsOwnGoroutineAndEndsWhereItDoes(t *te
 	}
 }
 
+// a row that is really two waits, drawn as its children rather than as one line reworded as it goes.
+//
+// the children are drawn only while their parent is the row the run is inside, so what a finished
+// ledger holds is one line per thing the operator waited on — which is what it has always held.
+
+// what the ledger draws, one line per row and per child, with any tone taken off.
+func lines(drawn ledger) []string {
+	said := strings.Split(strings.TrimRight(drawn.View(), "\n"), "\n")
+	for at, one := range said {
+		said[at] = toneless.ReplaceAllString(one, "")
+	}
+	return said
+}
+
+var toneless = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+// the upload mid-flight: the files are up and the app's code is going up.
+func uploading() ledger {
+	return drawing(ChainRows).
+		folding(reached{stage: first.Stage(deploy.Uploading), step: 3, steps: 3}).
+		folding(reached{
+			stage: first.Stage(deploy.Pushing), detail: "4.1 MB of 9.0 MB", step: 4, steps: 9,
+		})
+}
+
+func TestTheChildrenOfTheRowTheRunIsInsideAreDrawnUnderItEachInItsOwnState(t *testing.T) {
+	upload := ChainRows[2]
+	said := lines(uploading())
+
+	if !strings.Contains(said[2], upload.Running) || strings.HasPrefix(said[2], nested) {
+		t.Fatalf("the row the run is inside is drawn as %q", said[2])
+	}
+	if !strings.HasPrefix(said[3], nested) || !strings.Contains(said[3], upload.Children[0].Done) {
+		t.Errorf("the wait that is behind the run is drawn as %q", said[3])
+	}
+	if !strings.HasPrefix(said[4], nested) || !strings.Contains(said[4], upload.Children[1].Running) {
+		t.Errorf("the wait the run is inside is drawn as %q", said[4])
+	}
+}
+
+func TestARowWithChildrenSaysNothingBesideItsOwnWordsAndTheWorkingChildSaysItAll(t *testing.T) {
+	// the parent line is the thing being waited on and the children are what is counted, so a note
+	// on the parent would be the child's own reading drawn twice, a line apart.
+	said := lines(uploading())
+
+	for _, beside := range []string{"4.1 MB of 9.0 MB", "44%", barFull, barEmpty} {
+		if strings.Contains(said[2], beside) {
+			t.Errorf("the row with children says %q beside its own words", said[2])
+		}
+		if !strings.Contains(said[4], beside) {
+			t.Errorf("the working child says %q, want %q beside its words", said[4], beside)
+		}
+	}
+	// and the child that is done says nothing beside its words either: it is closed, and a closed
+	// row is its done words and the mark in front of them.
+	if strings.Contains(said[3], "%") {
+		t.Errorf("the child the run is past still carries a share: %q", said[3])
+	}
+}
+
+func TestTheChildrenGoWhenTheirParentClosesSoTheLedgerEndsOneLinePerThingWaitedOn(t *testing.T) {
+	closed := uploading().folding(at(first.SigningIn))
+	said := lines(closed)
+
+	if len(said) != len(ChainRows) {
+		t.Fatalf("a ledger past the upload draws %d lines, want one per row: %q", len(said), said)
+	}
+	if !strings.Contains(said[2], ChainRows[2].Done) {
+		t.Errorf("the row the run is past is drawn as %q", said[2])
+	}
+	for _, child := range ChainRows[2].Children {
+		if strings.Contains(closed.View(), child.Done) {
+			t.Errorf("a child outlived the row it was drawn under: %q", said)
+		}
+	}
+}
+
+func TestAChildIsCountedAndTimedAsARowIsAndItsTimerIsItsOwn(t *testing.T) {
+	// a child is a row of the same kind, so how long the operator has been waiting on it starts
+	// again when the run reaches it — the same reading a row makes of its own age.
+	started := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
+	ticking := &clock{at: started}
+	drawn := drawing(ChainRows)
+	drawn.now = ticking.read
+	drawn = drawn.folding(reached{stage: first.Database})
+
+	ticking.at = started.Add(40 * time.Second)
+	same(t, "the wait on the database itself", drawn.timer(), "40s")
+
+	drawn = drawn.folding(reached{
+		stage: first.Stage(deploy.Migrating), detail: "0003_gifts.sql", step: 3, steps: 4,
+	})
+	same(t, "the wait on its tables, just reached", drawn.timer(), "")
+
+	ticking.at = started.Add(45 * time.Second)
+	said := lines(drawn)
+	if !strings.Contains(said[1], ChainRows[1].Running) || strings.Contains(said[1], "5s") {
+		t.Errorf("the row the run is inside is drawn as %q", said[1])
+	}
+	if !strings.HasPrefix(said[2], nested) || !strings.Contains(said[2], ChainRows[1].Children[0].Done) {
+		t.Errorf("the database itself is drawn as %q", said[2])
+	}
+	for _, beside := range []string{ChainRows[1].Children[1].Running, "0003_gifts.sql", "75%", "5s"} {
+		if !strings.Contains(said[3], beside) {
+			t.Errorf("the tables are drawn as %q, want %q beside their own words", said[3], beside)
+		}
+	}
+}
+
 // a clock a case drives, so what a row's own timer says is a value rather than a wait.
 type clock struct{ at time.Time }
 
@@ -219,9 +329,9 @@ func TestARunningRowSaysWhatItIsOnThenHowFarIntoItThenHowLongItHasBeenRunning(t 
 	// three separate readings rather than a sentence, so each of them is omitted on its own where
 	// the run has not said it.
 	same(t, "a row on something, counted, and running a while",
-		notes("the worker itself", "42%", "18s"), "  the worker itself  42%  18s")
-	same(t, "a row on something and counting nothing", notes("the worker itself", "", ""),
-		"  the worker itself")
+		notes("0003_gifts.sql", "42%", "18s"), "  0003_gifts.sql  42%  18s")
+	same(t, "a row on something and counting nothing", notes("0003_gifts.sql", "", ""),
+		"  0003_gifts.sql")
 	same(t, "a row counting and on nothing nameable", notes("", "42%", ""), "  42%")
 	same(t, "a row that has said neither", notes("", "", ""), "")
 }
@@ -378,5 +488,73 @@ func TestALedgerTheRunEndedSaysNothingBesideTheRowsItDrew(t *testing.T) {
 
 	if said != "" || wrong != "" {
 		t.Errorf("Settled = %q, %q, want the rows themselves to be what it said", said, wrong)
+	}
+}
+
+// the bar a counted row carries, which is the one drawing in this ledger that is about how far
+// rather than about what or how long.
+
+func TestACountedRowDrawsABarAndARowCountingNothingDrawsNone(t *testing.T) {
+	// a bar beside a stage that will never fill it is a row claiming to be nought per cent done for
+	// the whole of the moment it takes, which is what ./share already refuses to say.
+	counted := drawing(ChainRows).folding(reached{
+		stage: first.Stage(deploy.Fetching), step: 5, steps: 10,
+	})
+	if !strings.Contains(counted.View(), barFull) {
+		t.Errorf("a counted row draws no bar: %q", counted.View())
+	}
+
+	uncounted := drawing(ChainRows).folding(at(first.Stage(deploy.Fetching)))
+	for _, cell := range []string{barFull, barEmpty} {
+		if strings.Contains(uncounted.View(), cell) {
+			t.Errorf("a row that counts nothing draws a bar: %q", uncounted.View())
+		}
+	}
+}
+
+func TestABarIsAsManyCellsFullAsTheRunIsThroughTheStage(t *testing.T) {
+	for _, one := range []struct {
+		what        string
+		step, steps int
+		full        int
+	}{
+		{"a stage nothing has been counted of yet", 0, 8, 0},
+		{"a stage a quarter counted", 2, 8, barCells / 4},
+		{"a stage half counted", 4, 8, barCells / 2},
+	} {
+		if full := strings.Count(bar(one.step, one.steps), barFull); full != one.full {
+			t.Errorf("%s draws %d cells full, want %d", one.what, full, one.full)
+		}
+		if drawn := strings.Count(bar(one.step, one.steps), barFull) +
+			strings.Count(bar(one.step, one.steps), barEmpty); drawn != barCells {
+			t.Errorf("%s draws %d cells, want the bar always the same width", one.what, drawn)
+		}
+	}
+}
+
+func TestAStageThatHasCountedEveryStepDrawsEveryCell(t *testing.T) {
+	// **the bar reaches full before the row closes.** a bar last seen part full under a row that
+	// then turns into a check reads as a job something interrupted, and every stage this ledger
+	// counts reports its own last step at the whole of it (../deploy, ../migrate).
+	full := bar(9, 9)
+	if strings.Count(full, barFull) != barCells || strings.Contains(full, barEmpty) {
+		t.Errorf("a stage counted to its last step draws %q, want every cell full", full)
+	}
+	// a stage that overran what it said it would count fills the bar and no more, which is the
+	// clamp ./share makes of the same pair.
+	if over := bar(11, 9); over != full {
+		t.Errorf("a stage past its own total draws %q, want %q", over, full)
+	}
+}
+
+func TestABarAndTheShareBesideItAreOneReadingAndNeverDisagree(t *testing.T) {
+	// the two are one of ./notes rather than two, because how far into the row the run is is one
+	// claim: the figure says it and the bar draws it.
+	said := counting(3, 4)
+	if !strings.Contains(said, barFull) || !strings.Contains(said, "75%") {
+		t.Errorf("a counted stage says %q, want the bar and the share as one note", said)
+	}
+	if counting(0, 0) != "" {
+		t.Errorf("a stage counting nothing says %q, want nothing", counting(0, 0))
 	}
 }

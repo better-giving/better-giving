@@ -86,19 +86,20 @@ const (
 
 // Stages is every stage in the order the chain reaches them.
 //
-// Five of them are the deploy engine's own, reported through as they arrive rather than summarised:
+// Six of them are the deploy engine's own, reported through as they arrive rather than summarised:
 // what an operator cannot tell apart from a hung process is a line that says the same sentence for
 // the minutes an upload takes. ./first_test.go holds this list to internal/deploy's, so a stage the
 // engine gained and this did not is a failing case rather than a line lit for nothing.
 //
 // **the database is made between the engine's second stage and its third**, which is why these are
-// not the engine's five in a row. the order this file heads with is why.
+// not the engine's six in a row. the order this file heads with is why.
 var Stages = []Stage{
 	Stage(deploy.Fetching),
 	Stage(deploy.Checking),
 	Database,
 	Stage(deploy.Migrating),
 	Stage(deploy.Uploading),
+	Stage(deploy.Pushing),
 	Stage(deploy.Verifying),
 	SigningIn,
 	Widget,
@@ -199,8 +200,8 @@ type Effects struct {
 	// At is how the chain says where it is, called on the goroutine the run is on; a call that
 	// blocks holds the run up.
 	//
-	// `detail` is what the stage says it is on — the file being migrated, the bucket or the worker
-	// going up, how much of the download has arrived — and is empty where it is on nothing nameable.
+	// `detail` is what the stage says it is on — the file being migrated, the bucket going up, how
+	// much of the download or of the code has moved — and is empty where it is on nothing nameable.
 	// `step` and `steps` are which part of how many where the stage counts them and 0 where it does
 	// not. Both are the deploy engine's own, carried through rather than summarised
 	// (internal/deploy's Progress), and the argument order is that struct's. The four stages this

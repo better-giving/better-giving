@@ -44,7 +44,7 @@ func TestTheMigrationsAreNamedIntoARecordWithoutClearingIt(t *testing.T) {
 	// the confirm draws its list on the question's own screen, and the same list goes into a record
 	// nobody is standing at — that one is a file somebody reads afterwards and holds no escape.
 	var held bytes.Buffer
-	if answered := ConfirmCarry(strings.NewReader(""), &held, onDeployment,
+	if answered := ConfirmCarry(strings.NewReader(""), &held, onDeployment, carried,
 		[]string{"0014_thing.sql"}, nil, ""); answered != Unattended {
 		t.Errorf("ConfirmCarry at a pipe = %q, want %q", answered, Unattended)
 	}

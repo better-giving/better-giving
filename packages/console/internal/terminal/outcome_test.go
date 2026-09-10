@@ -111,8 +111,8 @@ func TestTheTwoStagesInFrontOfTheOneWayDoorSayNothingWasChanged(t *testing.T) {
 }
 
 func TestEveryStageOfTheDeploySaysWhatItLeftStanding(t *testing.T) {
-	// the five are five different states of one account, and the migration is the line between
-	// them: a deploy stopped in the upload left a database that was migrated, and one stopped in
+	// the six are four different states of one account, and the migration is the line between them:
+	// a deploy stopped anywhere in the upload left a database that was migrated, and one stopped in
 	// front of it left nothing.
 	seen := map[string]deploy.Stage{}
 	for _, at := range DeployStages {
@@ -120,17 +120,32 @@ func TestEveryStageOfTheDeploySaysWhatItLeftStanding(t *testing.T) {
 		if said == "" {
 			t.Errorf("a deploy stopped at %q says nothing at all", at)
 		}
-		if already, twice := seen[said]; twice && !inFrontOfTheDoor(already, deploy.Stage(at)) {
+		// a stage the engine genuinely reaches and this file has no case for falls through to the
+		// sentence for a deploy that stopped where nothing could say — which reads as this console
+		// losing track of a press it watched the whole way.
+		if said == nowhereNamed(Starting) {
+			t.Errorf("a deploy stopped at %q says this console has no account of where", at)
+		}
+		if already, twice := seen[said]; twice && !oneState(already, deploy.Stage(at)) {
 			t.Errorf("a deploy stopped at %q and one stopped at %q say the same thing", already, at)
 		}
 		seen[said] = deploy.Stage(at)
 	}
 }
 
-// the two that leave nothing behind, which is one state and so is one sentence.
-func inFrontOfTheDoor(one, other deploy.Stage) bool {
-	front := map[deploy.Stage]bool{deploy.Fetching: true, deploy.Checking: true}
-	return front[one] && front[other]
+// the stages that leave the same thing standing, each group being one state and so one sentence.
+func oneState(one, other deploy.Stage) bool {
+	for _, group := range []map[deploy.Stage]bool{
+		// in front of the one-way door: nothing written anywhere.
+		{deploy.Fetching: true, deploy.Checking: true},
+		// past it and short of a deployment: the files, the code and where it answers alike.
+		{deploy.Uploading: true, deploy.Pushing: true},
+	} {
+		if group[one] && group[other] {
+			return true
+		}
+	}
+	return false
 }
 
 func TestADeploymentThatNobodyCanSignInToIsSaidInThoseWords(t *testing.T) {

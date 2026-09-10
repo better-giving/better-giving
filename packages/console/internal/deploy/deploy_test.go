@@ -7,14 +7,14 @@ import (
 	"testing"
 )
 
-func TestADeployFetchesMigratesUploadsAndVerifies(t *testing.T) {
+func TestADeployFetchesMigratesUploadsPushesAndVerifies(t *testing.T) {
 	held := &account{}
 	run, stages := deployed(t, held, packed(t, baked()))
 
 	if run.Kind != Deployed {
 		t.Fatalf("kind = %q at %q (%s)", run.Kind, run.At, run.Detail)
 	}
-	if strings.Join(stagesAsText(stages), " ") != "fetching checking migrating uploading verifying" {
+	if strings.Join(stagesAsText(stages), " ") != "fetching checking migrating uploading pushing verifying" {
 		t.Errorf("stages = %v, want each one as the run reached it", stages)
 	}
 	if strings.Join(run.Applied, ",") != "0000_a.sql" {
@@ -221,7 +221,7 @@ func TestADeploymentThatCameBackWithoutABindingIsNotDeployed(t *testing.T) {
 func TestARunTheOperatorStoppedWaitingOnSaysSoAndNotThatItFailed(t *testing.T) {
 	// a stopped run is not a broken one: the migrations it applied are applied, and what the screen
 	// says about it is different from what it says about a cloudflare that turned something down.
-	for _, at := range []Stage{Fetching, Checking, Migrating, Uploading} {
+	for _, at := range []Stage{Fetching, Checking, Migrating, Uploading, Pushing} {
 		held := &account{}
 		run, _ := deployedStopping(t, held, packed(t, baked()), at)
 
@@ -337,7 +337,7 @@ func TestADeploymentThatCouldNotBeGivenAnAddressSaysSo(t *testing.T) {
 	held := &account{neverDeployed: true, refusesSubdomain: true}
 	run, _ := deployed(t, held, packed(t, baked()))
 
-	if run.Kind != Refused || run.At != Uploading {
+	if run.Kind != Refused || run.At != Pushing {
 		t.Fatalf("kind = %q at %q (%s)", run.Kind, run.At, run.Detail)
 	}
 }
@@ -384,9 +384,8 @@ func TestTheUploadCountsTheBucketsCloudflareAsksFor(t *testing.T) {
 
 	counted := []string{}
 	for _, progress := range reportedAt(reported, Uploading) {
-		// the worker's own bytes are reported on this stage too, under words of their own, and are
-		// a second count rather than a bucket.
-		if progress.Steps == 0 || !strings.HasPrefix(progress.Detail, "bucket ") {
+		// the stage opens on a report that is on nothing yet, in front of the buckets it counts.
+		if progress.Steps == 0 {
 			continue
 		}
 		counted = append(counted, strconv.Itoa(progress.Step)+" of "+strconv.Itoa(progress.Steps))
@@ -445,10 +444,10 @@ func TestTheDownloadCountsTheBytesTheReleaseSaidItWasSending(t *testing.T) {
 		t.Errorf("the download ended at %d of %d, want the whole of the %d bytes the release sent",
 			last.Step, last.Steps, len(bundle))
 	}
-	// one report per cell of the bar rather than one per read: a bundle is tens of megabytes and
+	// one report per step of the count rather than one per read: a bundle is tens of megabytes and
 	// the reader hands back a few tens of kilobytes at a time.
 	if len(counted) > 21 {
-		t.Errorf("the download reported %d times, want no more than one per cell of the bar", len(counted))
+		t.Errorf("the download reported %d times, want no more than one per step of the count", len(counted))
 	}
 }
 
@@ -487,7 +486,7 @@ func TestTheDownloadSaysHowManyBytesHaveArrivedOfHowMany(t *testing.T) {
 	}
 }
 
-func TestTheScriptUploadReportsOncePerCellOfItsBarAndOnceAtTheEnd(t *testing.T) {
+func TestTheScriptUploadReportsOncePerStepOfItsCountAndOnceAtTheEnd(t *testing.T) {
 	// **this is the longest silent stretch a deploy has**: one PUT carrying the worker's metadata
 	// and every module under it. what is counted is the body handed to the connection (../cf's
 	// Sending), thinned the way the download is — a watcher held level with every write is thousands
@@ -501,11 +500,11 @@ func TestTheScriptUploadReportsOncePerCellOfItsBarAndOnceAtTheEnd(t *testing.T) 
 	}
 
 	if len(reported) != 21 {
-		t.Fatalf("the script reported %d times over 400 writes, want one per cell and one at the end", len(reported))
+		t.Fatalf("the script reported %d times over 400 writes, want one per step and one at the end", len(reported))
 	}
 	for _, progress := range reported {
-		if progress.Stage != Uploading || progress.Detail == "" {
-			t.Fatalf("the script reported %+v, want the upload stage and what is going up", progress)
+		if progress.Stage != Pushing || progress.Detail == "" {
+			t.Fatalf("the script reported %+v, want the code's own stage and how much has gone", progress)
 		}
 	}
 	last := reported[len(reported)-1]
@@ -522,23 +521,61 @@ func TestAScriptUploadOfNoStatedLengthReportsNothing(t *testing.T) {
 	}
 }
 
-func TestTheScriptSaysItIsTheWorkerAndNotABucket(t *testing.T) {
-	// the buckets finish at 100% and the script's own bytes start again at 0% under different
-	// words, which is two counts and not one — the detail is what says so.
+func TestTheFilesAndTheCodeAreTwoStagesEachCountingItsOwnParts(t *testing.T) {
+	// the buckets finish at every one of them taken and the code's own bytes then start again at
+	// none of them sent, so a screen that drew the two under one name would take a bar to full and
+	// then back to nothing. what tells them apart is the stage and not the words beside it, which
+	// is why neither detail names what is going up (../terminal/lines.go draws that).
 	held := &account{}
 	run, reported := deployedReporting(t, held, packed(t, baked()))
 	if run.Kind != Deployed {
 		t.Fatalf("kind = %q (%s)", run.Kind, run.Detail)
 	}
 
+	if said := detailed(reportedAt(reported, Uploading)); strings.Join(said, "|") != "|bucket 1 of 1" {
+		t.Errorf("the files said %q, want the stage opening and then the buckets", said)
+	}
+	// the code's own line carries its byte count, which is why it is matched by what a run of this
+	// size cannot vary: what a packed bundle weighs is not this case's claim (./arrivedOf).
+	said := detailed(reportedAt(reported, Pushing))
+	if len(said) != 3 || said[0] != "" || !strings.Contains(said[1], " of ") ||
+		said[2] != "where the deployment answers" {
+		t.Errorf("the code said %q, want the stage opening, then its bytes, then where it will answer", said)
+	}
+}
+
+// what a run of reports said it was on, with a detail repeated by the report after it said once.
+func detailed(reported []Progress) []string {
 	said := []string{}
-	for _, progress := range reportedAt(reported, Uploading) {
+	for _, progress := range reported {
 		if len(said) == 0 || said[len(said)-1] != progress.Detail {
 			said = append(said, progress.Detail)
 		}
 	}
-	if strings.Join(said, ",") != ",bucket 1 of 1,the worker itself,where the deployment answers" {
-		t.Errorf("the upload said %q, want the stage opening, then the buckets, then the worker,"+
-			" then where it will answer", said)
+	return said
+}
+
+func TestTheScriptUploadSaysHowManyBytesHaveGoneAndOfHowMany(t *testing.T) {
+	// the longest single call a deploy makes, and until it says this the only figure beside it was a
+	// share: an operator watching `37%` of an upload has no idea whether it is 40 megabytes or four,
+	// and the download beside it in the same ledger has said both all along (./arrivedOf).
+	reported := []Progress{}
+	watching := going(func(progress Progress) { reported = append(reported, progress) })
+
+	total := int64(12_100_000)
+	watching(3_400_000, total)
+	watching(total, total)
+
+	if len(reported) != 2 {
+		t.Fatalf("the script reported %d times, want one per step", len(reported))
+	}
+	// the bytes alone: the line this is drawn beside already says the app's code is what is going
+	// up, and a detail naming it again would say twice what that line says once.
+	if reported[0].Detail != "3.4 MB of 12.1 MB" {
+		t.Errorf("the script said %q, want the bytes alone, in the figures the download quotes",
+			reported[0].Detail)
+	}
+	if !strings.Contains(reported[1].Detail, "12.1 MB of 12.1 MB") {
+		t.Errorf("the script ended saying %q, want the whole body gone", reported[1].Detail)
 	}
 }

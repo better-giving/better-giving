@@ -391,8 +391,10 @@ type standingDeployment struct {
 	claims   int
 	claimed  error
 	newer    string
-	carries  bool
+	deployed string
 	weighed  bool
+	onto     terminal.Deployment
+	again    bool
 	reads    bool
 	read     effects.Migrations
 	named    bool
@@ -402,11 +404,23 @@ type standingDeployment struct {
 	halted   bool
 	served   net.Listener
 	said     strings.Builder
+	// order is every act of the run in the order it was reached, so that a case can say where the
+	// wait over the reads was given up rather than only that it was.
+	order []string
+}
+
+// what the run drew, recorded as one act among the rest: the wait over the reads has to be given up
+// in front of the first of these, because the screen that follows erases the terminal
+// (../../internal/terminal/confirm.go).
+func (onto *standingDeployment) Write(said []byte) (int, error) {
+	onto.order = append(onto.order, "drew")
+	return onto.said.Write(said)
 }
 
 func (onto *standingDeployment) run(t *testing.T) error {
 	t.Helper()
-	return catchingUp(&onto.said, ontoAcme, onto.newer,
+	again, err := catchingUp(onto, ontoAcme, onto.newer,
+		func() { onto.order = append(onto.order, "settled") },
 		func() (net.Listener, error) {
 			onto.claims++
 			if onto.claimed != nil {
@@ -414,16 +428,20 @@ func (onto *standingDeployment) run(t *testing.T) error {
 			}
 			return onto.bound, nil
 		},
-		func() bool {
+		func() string {
 			onto.weighed = true
-			return onto.carries
+			onto.order = append(onto.order, "weighed")
+			return onto.deployed
 		},
 		func() effects.Migrations {
 			onto.reads = true
+			onto.order = append(onto.order, "read")
 			return onto.read
 		},
-		func(effects.Migrations) terminal.Confirmation {
+		func(at terminal.Deployment, _ effects.Migrations) terminal.Confirmation {
 			onto.named = true
+			onto.order = append(onto.order, "named")
+			onto.onto = at
 			return onto.answered
 		},
 		func() (effects.Carried, bool) {
@@ -435,6 +453,8 @@ func (onto *standingDeployment) run(t *testing.T) error {
 			onto.served = bound
 			return nil
 		})
+	onto.again = again
+	return err
 }
 
 // the line a run holds where a console another console installed still reads a release past its
@@ -461,7 +481,7 @@ func TestADeploymentAlreadyCarryingThisReleaseIsOpenedAndNotDeployedTo(t *testin
 	// carry: a door put in front of an operator here is a question about an upload that would change
 	// nothing, and the console is what they typed the command for.
 	onto := aCarryThatLands(t)
-	onto.carries = true
+	onto.deployed = version
 
 	if err := onto.run(t); err != nil {
 		t.Fatalf("catchingUp = %v, want the console this command exists to open", err)
@@ -492,7 +512,7 @@ func TestADeploymentThisConsoleCouldNotWeighIsOfferedTheCarry(t *testing.T) {
 	// deployment on another release are one answer (../../internal/effects' OwnRelease): the
 	// operator is asked, because a console that guessed the other way leaves old code standing.
 	onto := aCarryThatLands(t)
-	onto.carries = false
+	onto.deployed = "0.1.0"
 
 	if err := onto.run(t); err != nil {
 		t.Fatalf("catchingUp = %v, want this release carried onto the deployment", err)
@@ -723,10 +743,10 @@ func TestAPortAnotherConsoleHoldsStopsAStandingCarryBeforeTheDoor(t *testing.T) 
 // release.
 
 func TestADoorTheOperatorShutSaysWhatWasLeftAloneAndEndsTheCarryCleanly(t *testing.T) {
-	said, on, err := atTheDoor(terminal.Declined)
+	said, went, err := atTheDoor(terminal.Declined)
 
-	if on || err != nil {
-		t.Errorf("a door shut on purpose = %v, %v, want a press not made", on, err)
+	if went != shut || err != nil {
+		t.Errorf("a door shut on purpose = %v, %v, want a press not made", went, err)
 	}
 	if !strings.Contains(said, "database") || !strings.Contains(said, "nothing was uploaded") {
 		t.Errorf("said %q, want both halves of what did not happen", said)
@@ -734,9 +754,9 @@ func TestADoorTheOperatorShutSaysWhatWasLeftAloneAndEndsTheCarryCleanly(t *testi
 }
 
 func TestADoorNobodyWasAtEndsTheCarryAsAFailure(t *testing.T) {
-	said, on, err := atTheDoor(terminal.Unattended)
+	said, went, err := atTheDoor(terminal.Unattended)
 
-	if on {
+	if went == through {
 		t.Error("a command went on past a door nobody answered")
 	}
 	if err == nil {
@@ -753,9 +773,9 @@ func TestADoorNobodyWasAtEndsTheCarryAsAFailure(t *testing.T) {
 }
 
 func TestADeploymentAheadOfThisBinaryEndsTheCarryAsAFailure(t *testing.T) {
-	_, on, err := atTheDoor(terminal.Ahead)
+	_, went, err := atTheDoor(terminal.Ahead)
 
-	if on {
+	if went == through {
 		t.Error("a command went on past a deployment a newer console put up")
 	}
 	if err == nil || err.Error() != aheadOfThisBinary {
@@ -769,10 +789,10 @@ func TestADeploymentAheadOfThisBinaryEndsTheCarryAsAFailure(t *testing.T) {
 }
 
 func TestADoorTheOperatorOpenedGoesOnSayingNothing(t *testing.T) {
-	said, on, err := atTheDoor(terminal.Confirmed)
+	said, went, err := atTheDoor(terminal.Confirmed)
 
-	if !on || err != nil {
-		t.Errorf("a door opened on purpose = %v, %v, want the deploy going on", on, err)
+	if went != through || err != nil {
+		t.Errorf("a door opened on purpose = %v, %v, want the deploy going on", went, err)
 	}
 	if said != "" {
 		t.Errorf("said %q about a press that is about to run", said)
@@ -783,9 +803,9 @@ func TestAnAnswerThisConsoleDidNotUnderstandLeavesTheOneWayDoorShut(t *testing.T
 	// nothing reaches this today, and the door behind it cannot be undone: terminal.Confirmation is
 	// a bare string and no exhaustiveness check stands between an unnamed value and a migration.
 	for _, answered := range []terminal.Confirmation{"", "something else"} {
-		said, on, err := atTheDoor(answered)
+		said, went, err := atTheDoor(answered)
 
-		if on {
+		if went == through {
 			t.Errorf("%q opened a one-way door this console could not read the answer to", answered)
 		}
 		if err == nil {
@@ -926,5 +946,279 @@ func TestASignInThisConsoleCouldNotUseEndsTheRunAsAFailure(t *testing.T) {
 
 	if held || err == nil {
 		t.Errorf("operating = %v, %v, want the failure handed back", held, err)
+	}
+}
+
+// the way back out of the door, which is the account picker again.
+//
+// the picker opens on the account this machine remembers and every screen past it is about the
+// deployment in that account, so an operator who kept it by reflex meets a door about a deployment
+// they did not mean. what the third answer costs is nothing: the pass they walked out of uploaded
+// nothing, and the port it took is given back on the way (../../internal/terminal/confirm.go).
+
+func TestTheWayBackFromTheDoorUploadsNothingAndServesNoConsole(t *testing.T) {
+	bound, handedBack := aPortHeld(t)
+	onto := aCarryThatLands(t)
+	onto.bound, onto.answered = bound, terminal.Elsewhere
+
+	err := onto.run(t)
+
+	if err != nil {
+		t.Errorf("catchingUp = %v, want a door left for the picker read as no failure", err)
+	}
+	if !onto.again {
+		t.Error("a door left for the account picker did not put the picker up again")
+	}
+	if onto.carried {
+		t.Error("a door the operator walked out of uploaded this release anyway")
+	}
+	if onto.served != nil {
+		t.Error("a console was opened on a pass the operator walked out of")
+	}
+	if !handedBack() {
+		t.Error("the port this pass took was still held on the way back to the picker")
+	}
+}
+
+func TestEveryOtherWayOutOfTheDoorStaysOnTheAccountItWasAbout(t *testing.T) {
+	for _, answered := range []terminal.Confirmation{
+		terminal.Confirmed, terminal.Declined, terminal.Unattended, terminal.Ahead,
+	} {
+		onto := aCarryThatLands(t)
+		onto.bound, _ = aPortHeld(t)
+		onto.answered = answered
+
+		_ = onto.run(t)
+
+		if onto.again {
+			t.Errorf("%q put the account picker up again", answered)
+		}
+	}
+}
+
+func TestTheDoorIsAskedAboutTheReleaseTheDeploymentSaysItIsOn(t *testing.T) {
+	// ../../internal/effects' OwnRelease is what reads it and the door is what draws it, so what this
+	// holds is the one thing neither of them can: that the string reaches the screen at all.
+	onto := aCarryThatLands(t)
+	onto.deployed = "1.3.2"
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v, want this release carried onto the deployment", err)
+	}
+	if onto.onto.Release != "1.3.2" {
+		t.Errorf("the door was put about %q, want the release the deployment reported", onto.onto)
+	}
+	if onto.onto.Account != ontoAcme.Account || onto.onto.Address != ontoAcme.Address {
+		t.Errorf("the door was put about %q, want the deployment this run read", onto.onto)
+	}
+}
+
+func TestADeploymentThisConsoleReadNoReleaseOffIsPutBehindADoorNamingNone(t *testing.T) {
+	onto := aCarryThatLands(t)
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v, want the carry offered", err)
+	}
+	if onto.onto.Release != "" {
+		t.Errorf("the door was told the deployment is on %q, want the reading that never landed left "+
+			"as one", onto.onto.Release)
+	}
+}
+
+// the account picker put again, which is what the way back is for.
+//
+// each pass is the whole reading over: the account chosen, the deployment in it found, and the door
+// about that deployment. a pass that carried the account of the one before it would be a door about
+// a deployment nobody asked for.
+
+// a run of ./startingOver with the accounts a case hands it and every pass recorded.
+type overAndOver struct {
+	picked  []account.Account
+	closes  int
+	refused error
+	against []string
+	back    int
+	stopped error
+	said    strings.Builder
+}
+
+func (over *overAndOver) run() error {
+	return startingOver(&over.said,
+		func() (account.Account, bool, error) {
+			if len(over.picked) == 0 {
+				over.closes++
+				return account.Account{}, false, over.refused
+			}
+			in := over.picked[0]
+			over.picked = over.picked[1:]
+			return in, true, nil
+		},
+		func(in account.Account) (bool, error) {
+			over.against = append(over.against, in.ID)
+			if len(over.against) <= over.back {
+				return true, nil
+			}
+			return false, over.stopped
+		})
+}
+
+func TestTheWayBackPutsThePickerUpAndReadsTheAccountChosenTheSecondTime(t *testing.T) {
+	over := &overAndOver{
+		picked: []account.Account{{ID: "ac1", Name: "Acme Giving"}, {ID: "ac2", Name: "Beta Trust"}},
+		back:   1,
+	}
+
+	if err := over.run(); err != nil {
+		t.Fatalf("startingOver = %v, want the pass the operator went back for", err)
+	}
+	if len(over.against) != 2 {
+		t.Fatalf("the deployment was read %d times, want the pass and the one after it", len(over.against))
+	}
+	if over.against[1] != "ac2" {
+		t.Errorf("the second pass was made against %q, want the account chosen the second time",
+			over.against[1])
+	}
+}
+
+func TestAPickerClosedOnALaterPassEndsTheRunTheWayAClosedPickerDoes(t *testing.T) {
+	over := &overAndOver{picked: []account.Account{{ID: "ac1"}}, back: 1}
+
+	if err := over.run(); err != nil {
+		t.Errorf("startingOver = %v, want a choice not made read as no failure", err)
+	}
+	if over.closes != 1 {
+		t.Errorf("the picker was closed %d times, want the one the operator closed", over.closes)
+	}
+	if !strings.Contains(over.said.String(), "nothing was created") {
+		t.Errorf("said %q, want what did not happen", over.said.String())
+	}
+}
+
+func TestAPassThatDidNotLandEndsTheRunRatherThanAskingAgain(t *testing.T) {
+	over := &overAndOver{
+		picked:  []account.Account{{ID: "ac1"}, {ID: "ac2"}},
+		stopped: errors.New("this release was not carried onto the deployment"),
+	}
+
+	if err := over.run(); err == nil {
+		t.Fatal("a pass that did not land went back to the picker, which reads as a run still going")
+	}
+	if len(over.against) != 1 {
+		t.Errorf("the deployment was read %d times, want the one pass that failed", len(over.against))
+	}
+}
+
+// the deployment read for the account the operator picked, carried forward out of the picker.
+//
+// the picker reads every account to mark its rows (../../internal/effects' EachAddress), and the
+// account chosen is one of the ones it read — so the pass under it asks cloudflare nothing this
+// screen already answered. a read that never landed is absent from that list exactly as it is from
+// the marks, and there the pass reads for itself: this is a reading carried forward and never a
+// reading stood in for.
+
+func TestTheDeploymentThePickerAlreadyFoundIsNotLookedForAgain(t *testing.T) {
+	read := 0
+
+	standing := standingOn(
+		effects.Addresses{"ac1": {Kind: deployment.Deployed, WorkersDev: "https://one.workers.dev"}},
+		account.Account{ID: "ac1"},
+		func() deployment.Address { read++; return deployment.Address{} })
+
+	if read != 0 {
+		t.Errorf("the deployment was read %d more times, want the reading the picker took", read)
+	}
+	if standing.Origin() != "https://one.workers.dev" {
+		t.Errorf("the pass runs against %v, want where the picker found the deployment", standing)
+	}
+}
+
+func TestAnAccountThePickersOwnReadsDidNotLandForIsReadNow(t *testing.T) {
+	read := 0
+
+	standing := standingOn(effects.Addresses{}, account.Account{ID: "ac1"},
+		func() deployment.Address { read++; return deployment.Address{Kind: deployment.NotDeployed} })
+
+	if read != 1 {
+		t.Errorf("the deployment was read %d times, want the one this pass makes for itself", read)
+	}
+	if standing.Kind != deployment.NotDeployed {
+		t.Errorf("the pass runs against %v, want what it read for itself", standing)
+	}
+}
+
+// whether the pass under the account just picked reads anything at all, which is what the wait in
+// front of the screen after it stands over.
+//
+// a wait that appeared and vanished in the same frame would be noise, so the pass that fetches
+// nothing draws nothing (../../internal/terminal/waiting.go).
+
+func TestAPassWithNothingToFetchDrawsNoWait(t *testing.T) {
+	// the picker's own read landed and found no deployment there, so the two reads behind the carry
+	// are never made and the first-run questions draw straight away.
+	if readingAhead(
+		effects.Addresses{"ac1": {Kind: deployment.NotDeployed}},
+		account.Account{ID: "ac1"},
+	) {
+		t.Error("a pass that reads nothing draws a wait")
+	}
+}
+
+func TestAPassTheDeploymentIsReadForStandsUnderAWait(t *testing.T) {
+	// a deployment the picker found: which release it is on and what a deploy would apply are both
+	// read before the door draws.
+	if !readingAhead(
+		effects.Addresses{"ac1": {Kind: deployment.Deployed}},
+		account.Account{ID: "ac1"},
+	) {
+		t.Error("the reads in front of the door stand under no wait")
+	}
+
+	// and an account the picker's own read did not land for is read here whatever is on it.
+	if !readingAhead(effects.Addresses{}, account.Account{ID: "ac1"}) {
+		t.Error("the read this pass makes for itself stands under no wait")
+	}
+}
+
+func TestAPassOverAnAddressNothingCanBeToldFromDrawsNoWait(t *testing.T) {
+	// a read the picker landed that says neither: this pass reads nothing more, it stops
+	// (./unread).
+	if readingAhead(
+		effects.Addresses{"ac1": {Kind: deployment.AddressRefused}},
+		account.Account{ID: "ac1"},
+	) {
+		t.Error("a pass that stops on what the picker already read draws a wait")
+	}
+}
+
+// where the wait over this pass's own reads is given up, which is in front of the first thing the
+// pass draws and never behind it.
+//
+// the door erases the visible screen before it names what it would apply
+// (../../internal/terminal/clear.go), so a spinner still turning when it draws is written into the
+// screen the operator answers on. the reads themselves are the whole of what the wait is for, so it
+// stands until the last of them has landed (../../internal/terminal's ReadingTheDeployment).
+
+func TestTheWaitOverTheReadsIsGivenUpBetweenTheLastReadAndTheDoor(t *testing.T) {
+	onto := aCarryThatLands(t)
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v", err)
+	}
+	if ran := strings.Join(onto.order, " "); ran != "weighed read settled named drew" {
+		t.Errorf("a carry ran %q, want the wait given up between the last read and the door", ran)
+	}
+}
+
+func TestTheWaitOverTheReadsIsGivenUpBeforeADeploymentAlreadyCarryingIsNamed(t *testing.T) {
+	// the up-to-date path opens no door and says its two lines on the screen the wait is drawn on,
+	// so it is given up in front of those instead.
+	onto := aCarryThatLands(t)
+	onto.deployed = version
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v", err)
+	}
+	if ran := strings.Join(onto.order, " "); ran != "weighed settled drew drew" {
+		t.Errorf("an up-to-date pass ran %q, want the wait given up in front of both lines", ran)
 	}
 }

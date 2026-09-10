@@ -54,3 +54,24 @@ func TestAReleaseAddressIsFetchedWithNoFileTransportOnIt(t *testing.T) {
 		t.Errorf("client = %v, want the deploy's own", source.Client)
 	}
 }
+
+// where a release says what it carries, which is the one thing on the carry door an operator can
+// read before they answer it (../terminal/confirm.go).
+
+func TestAReleaseStatesWhatItCarriesOnItsOwnTagPage(t *testing.T) {
+	want := "https://github.com/better-giving/better-giving/releases/tag/v1.4.0"
+	if notes := Notes("1.4.0"); notes != want {
+		t.Errorf("Notes = %q, want %q", notes, want)
+	}
+}
+
+func TestAVersionThatNamesNoReleaseHasNoPageToPointAt(t *testing.T) {
+	// `dev` is what every go build in this repository leaves (../../cmd/better-giving/main.go), and
+	// the releases page carries no tag for it: a screen drawing this line anyway would offer an
+	// operator a page that is not there.
+	for _, held := range []string{"dev", "", "nightly", "v"} {
+		if notes := Notes(held); notes != "" {
+			t.Errorf("Notes(%q) = %q, want nothing to read where there is no release", held, notes)
+		}
+	}
+}

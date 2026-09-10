@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/mod/semver"
 )
 
 // where a deploy fetches this binary's own worker bundle from.
@@ -36,9 +38,31 @@ const ReleasesPage = "https://github.com/" + Repo + "/releases"
 //
 // **two things a binary fetches by version come out of it, so the address is derived once**: the
 // worker bundle a deploy uploads (./BundleSource) and the console archive an out-of-date binary
-// installs (../update). The tag is `v` and the version, which is what the release is cut under.
+// installs (../update).
 func Downloads(version string) string {
-	return ReleasesPage + "/download/v" + version + "/"
+	return ReleasesPage + "/download/" + tagged(version) + "/"
+}
+
+// Notes is where a release states what it carries, which is its own tag page.
+//
+// **it is derived beside ./Downloads because both are one release's tag**, and an address composed
+// somewhere else is how a console comes to offer the notes of a release it is not carrying. What
+// reads it is the door that offers an operator this release (../terminal/confirm.go).
+//
+// Empty for a version that names no release: `dev` is what a `go build` in this repository leaves
+// (../../cmd/better-giving/main.go) and there is no tag on the releases page for it, so what draws
+// this draws nothing rather than a link to a page that is not there.
+func Notes(version string) string {
+	tag := tagged(version)
+	if !semver.IsValid(tag) {
+		return ""
+	}
+	return ReleasesPage + "/tag/" + tag
+}
+
+// the tag one release is cut under, which is `v` and the version.
+func tagged(version string) string {
+	return "v" + version
 }
 
 // InstallLine is the one line this console is installed with by hand, which is

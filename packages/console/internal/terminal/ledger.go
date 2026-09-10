@@ -29,10 +29,12 @@ import (
 //
 // **what a row is drawn as is ./Marks, and it takes no writer, no clock and no terminal.** the
 // frame is bubbletea's and every mark and tone is lipgloss's; the model below is the shell that
-// folds a report into the one index those marks come from, so what a case asserts is which row is
-// closed, which is running and which has not been reached rather than a frame with a spinner in it.
-// the one clock in this file is the model's own and is handed in, so how long a row has been
-// running is a value a case drives rather than a wait it sits through.
+// folds a report into the one place those marks are read from, so what a case asserts is which row
+// is closed, which is running and which has not been reached rather than a frame with a spinner in
+// it. a row's children are marked by that same call over that row's own list, so a child is closed,
+// running or waiting by the same reading (./lines.go argues which rows have them). the one clock in
+// this file is the model's own and is handed in, so how long a line has been running is a value a
+// case drives rather than a wait it sits through.
 
 // Mark is how a row stands in the ledger.
 type Mark string
@@ -67,6 +69,9 @@ const (
 // `at` is the row the last report named, and -1 before any report named one. A row before it is
 // closed whether or not a stage inside it was ever reported: its running words are a claim about
 // now, and the run is already past it.
+//
+// It is read of a row's children as well, over that row's own list and the child the run is inside,
+// which is the same reading one line further in.
 func Marks(rows []Row, at int, end End) []Mark {
 	marks := make([]Mark, len(rows))
 	for row := range marks {
@@ -96,6 +101,27 @@ var (
 // what stands where a mark does not, so every row's words start in the same column.
 const unmarked = " "
 
+// what a child is drawn in from, so its own mark sits under its parent's words.
+const nested = "  "
+
+// place is where a report landed: the row, and which of that row's children where it has them.
+//
+// `child` is -1 for a row that covers its own stages, which is every row without children
+// (./lines.go holds a row to one or the other). A place is read in the order the run reaches it,
+// which is why a row's children are numbered from 0 and a row without them is not.
+type place struct{ row, child int }
+
+// nowhere is the place a ledger opens on, which is no row reached.
+var nowhere = place{row: -1, child: -1}
+
+// whether `one` is behind `other`, which is a report the ledger is already past.
+func behind(one, other place) bool {
+	if one.row != other.row {
+		return one.row < other.row
+	}
+	return one.child < other.child
+}
+
 // reached is one report of the run's.
 type reached struct {
 	stage       first.Stage
@@ -109,16 +135,16 @@ type ending struct{ end End }
 // the model the program draws: which row the run is in, how far into it, and how it ended.
 type ledger struct {
 	rows []Row
-	// covered is which row each stage belongs to, so a report is one lookup.
-	covered map[first.Stage]int
-	// at is the row the last report named, and -1 before any report named one.
-	at int
+	// covered is where each stage is drawn, so a report is one lookup.
+	covered map[first.Stage]place
+	// at is where the last report landed, and ./nowhere before any report landed.
+	at place
 	// detail is what that report said the stage is on, and step and steps are its counts — both
 	// carried through rather than recomputed here.
 	detail      string
 	step, steps int
-	// since is when the run reached the row it is on, which is what its timer is drawn from. it is
-	// the row's own and starts again at every row.
+	// since is when the run reached the line it is on, which is what that line's timer is drawn
+	// from. it is that line's own and starts again at every one of them, a child included.
 	since time.Time
 	// now is the clock the timer is read off, so a case drives it rather than waiting on one.
 	now  func() time.Time
@@ -126,40 +152,47 @@ type ledger struct {
 	spin spinner.Model
 }
 
-// the model a ledger opens on: no row reached, and every stage looked up to the row that draws it.
+// the model a ledger opens on: no row reached, and every stage looked up to the line that draws it.
 func drawing(rows []Row) ledger {
-	covered := map[first.Stage]int{}
+	covered := map[first.Stage]place{}
 	for at, row := range rows {
 		for _, stage := range row.Stages {
-			covered[stage] = at
+			covered[stage] = place{row: at, child: -1}
+		}
+		for under, child := range row.Children {
+			for _, stage := range child.Stages {
+				covered[stage] = place{row: at, child: under}
+			}
 		}
 	}
 	return ledger{
 		rows:    rows,
 		covered: covered,
-		at:      -1,
+		at:      nowhere,
 		now:     time.Now,
 		end:     Underway,
 		spin:    spinner.New(spinner.WithSpinner(spinner.Line), spinner.WithStyle(turning)),
 	}
 }
 
-// folds one report into the row the run is in.
+// folds one report into the line the run is in.
 //
 // A stage no row covers is ignored, which is what a ledger of the redeploy's three rows does with
-// the stages the chain runs around them. So is a stage under the row already drawn.
+// the stages the chain runs around them. So is a stage behind the line already drawn.
 //
-// A row the run has just reached starts its timer, and a second stage inside the row it is already
-// on does not: what the timer says is how long the operator has been waiting on that row.
+// A line the run has just reached starts its timer, and a second stage inside the line it is
+// already on does not: what the timer says is how long the operator has been waiting on that line.
+// A row's children are lines of their own by this reading, so the run moving from one to the next
+// starts the next one's timer.
 func (drawn ledger) folding(report reached) ledger {
-	row, covered := drawn.covered[report.stage]
-	if !covered || row < drawn.at {
+	where, covered := drawn.covered[report.stage]
+	if !covered || behind(where, drawn.at) {
 		return drawn
 	}
-	if row != drawn.at {
+	if where != drawn.at {
 		drawn.since = drawn.now()
 	}
-	drawn.at, drawn.detail, drawn.step, drawn.steps = row, report.detail, report.step, report.steps
+	drawn.at, drawn.detail, drawn.step, drawn.steps = where, report.detail, report.step, report.steps
 	return drawn
 }
 
@@ -180,35 +213,71 @@ func (drawn ledger) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	return drawn, nil
 }
 
+// the ledger as it stands: every row, and under the one the run is inside its children where it has
+// them.
+//
+// **a row's children are drawn only while that row is the one the run is inside.** they are what it
+// is made of rather than things beside it, so a ledger past them is one line for the whole wait —
+// which is the shape a finished ledger has always had (./lines.go).
 func (drawn ledger) View() string {
 	said := &strings.Builder{}
-	for row, mark := range Marks(drawn.rows, drawn.at, drawn.end) {
-		said.WriteString(drawn.line(drawn.rows[row], mark))
+	for row, mark := range Marks(drawn.rows, drawn.at.row, drawn.end) {
+		held := drawn.rows[row]
+		// a row with children says nothing beside its own words: the children carry the counting,
+		// and the same reading drawn on both would be one claim made twice, a line apart.
+		beside := ""
+		if mark == Working && len(held.Children) == 0 {
+			beside = drawn.beside()
+		}
+		said.WriteString(drawn.line(held, mark, "", beside))
 		said.WriteByte('\n')
+		if mark != Working {
+			continue
+		}
+		for under, childMark := range Marks(held.Children, drawn.at.child, drawn.end) {
+			beside := ""
+			if childMark == Working {
+				beside = drawn.beside()
+			}
+			said.WriteString(drawn.line(held.Children[under], childMark, nested, beside))
+			said.WriteByte('\n')
+		}
 	}
 	return said.String()
 }
 
-// one row: the mark its state puts in front of it, and the words that state puts it in.
-func (drawn ledger) line(row Row, mark Mark) string {
+// what the line the run is inside says beside its own words, in the tones each reading is drawn in.
+//
+// each note in its own tone rather than the block in one, so that the line's own words lead and
+// everything the run says beside them reads as a note on it. the bar carries two tones of its own
+// and could not be nested inside a third: a style ends at its own reset, which would take the
+// dimming off everything drawn after it.
+func (drawn ledger) beside() string {
+	return notes(
+		toned(dimmed, drawn.detail),
+		counting(drawn.step, drawn.steps),
+		toned(dimmed, drawn.timer()),
+	)
+}
+
+// one line: the mark its state puts in front of it, the words that state puts it in, and what the
+// run says beside them where it is the line the run is inside.
+//
+// `under` is what the line is drawn in from, which is nothing for a row and ./nested for a child.
+func (drawn ledger) line(row Row, mark Mark, under, beside string) string {
 	switch mark {
 	case Closed:
-		return check.String() + " " + row.Done
+		return under + check.String() + " " + row.Done
 	case Working:
-		said := row.Running
-		// dimmed as one piece, so the row's own words lead and everything the run says beside them
-		// reads as a note on it.
-		if beside := notes(drawn.detail, share(drawn.step, drawn.steps), drawn.timer()); beside != "" {
-			said += dimmed.Render(beside)
-		}
+		said := row.Running + beside
 		if drawn.end != Underway {
 			// a run that ended inside a row makes no claim about that row either way, so the mark
 			// it carried while the run was live goes with the run.
-			return unmarked + " " + said
+			return under + unmarked + " " + said
 		}
-		return drawn.spin.View() + " " + said
+		return under + drawn.spin.View() + " " + said
 	default:
-		return dimmed.Render(unmarked + " " + row.Running)
+		return dimmed.Render(under + unmarked + " " + row.Running)
 	}
 }
 
@@ -347,9 +416,10 @@ func notes(said ...string) string {
 	return beside
 }
 
-// how long the run has been on the row it is inside, or nothing where that is not worth saying yet.
+// how long the run has been on the line it is inside, or nothing where that is not worth saying
+// yet.
 func (drawn ledger) timer() string {
-	if drawn.at < 0 || drawn.since.IsZero() {
+	if drawn.at.row < 0 || drawn.since.IsZero() {
 		return ""
 	}
 	return timed(drawn.now().Sub(drawn.since))
@@ -381,8 +451,61 @@ func timed(taken time.Duration) string {
 	return strconv.Itoa(whole/60) + "m " + seconds + "s"
 }
 
-// how far into a counted stage the run is, as one of ./notes, or nothing where the stage counts
-// nothing.
+// how many cells a row's bar is drawn from.
+//
+// it stands among ./notes beside a row's own words rather than on a line of its own, so it is short
+// enough to leave the detail and the timer beside it on one line of an ordinary terminal.
+const barCells = 12
+
+// the cells a bar is drawn from: the ones the run is past, and the ones it is not.
+const (
+	barFull  = "\u2501"
+	barEmpty = "\u2500"
+)
+
+// how far into a counted stage the run is, drawn and said, as one of ./notes.
+//
+// **the bar and the share are one note and not two**, because how far into the row the run has got
+// is one claim: the figure states it and the bar is the same claim at a glance. what they are drawn
+// from is ./share alone, so neither can say what the other does not.
+func counting(step, steps int) string {
+	said := share(step, steps)
+	if said == "" {
+		return ""
+	}
+	return bar(step, steps) + " " + toned(dimmed, said)
+}
+
+// the bar a counted stage carries, as many cells full as the run is through it.
+//
+// **a stage that has counted every step draws every cell.** a bar last seen part full under a row
+// that then turns into a check reads as a job something interrupted, and every stage this ledger
+// counts reports its own last step at the whole of it (../deploy, ../migrate). the arithmetic
+// truncates exactly as ./share does, so the last cell fills where the last per cent does and the
+// two never disagree.
+func bar(step, steps int) string {
+	full := 0
+	if steps > 0 && step > 0 {
+		// int64 for ./share's reason: the download's step is a byte count, and multiplying it is
+		// past what a 32-bit int holds.
+		full = min(int(int64(step)*barCells/int64(steps)), barCells)
+	}
+	return toned(turning, strings.Repeat(barFull, full)) +
+		toned(dimmed, strings.Repeat(barEmpty, barCells-full))
+}
+
+// one note in its own tone, and nothing at all where there is no note to draw.
+//
+// a style rendered over an empty string is a pair of escape codes around nothing, which ./notes
+// would then space the row's words away from.
+func toned(style lipgloss.Style, said string) string {
+	if said == "" {
+		return ""
+	}
+	return style.Render(said)
+}
+
+// how far into a counted stage the run is as a figure, or nothing where the stage counts nothing.
 //
 // **one form for every stage, because this end knows nothing about what any of them is counting.**
 // the download counts bytes, the migration counts files and the upload counts buckets, so a "3 of
