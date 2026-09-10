@@ -20,8 +20,9 @@ import (
 	"github.com/better-giving/console/internal/terminal"
 )
 
-// the one front door: sign in, choose the account, stand the deployment up, and open the console at
-// it.
+// the one front door: sign in, choose the account, put this release on the deployment — standing
+// one up where there is none and carrying the code onto one that is already there — and open the
+// console at it.
 //
 // **a console newer than this one installs itself here and takes the run over, and that is the
 // first thing this command does** (./main.go's carried, and ./update.go's header for the bug it
@@ -50,10 +51,19 @@ import (
 // shell's history, in `ps` and in whatever collects that machine's logs. this command is
 // interactive or it does not run.
 //
-// **a deployment that is already up is opened and never deployed over.** what says whether one is
-// there is the worker's own address read off the account, and a read that did not land stops this
-// command rather than starting a chain: the migration is a one-way door and taking it over a
-// deployment this console could not see is not something the operator asked for.
+// **a deployment that is already up is carried onto and then opened, and never stood up a second
+// time.** what says whether one is there is the worker's own address read off the account, and a
+// read that did not land stops this command rather than starting either path: the migration is a
+// one-way door and taking it over a deployment this console could not see is not something the
+// operator asked for. what the carry itself is, and the confirm that stands in front of it, is
+// ./update.go's carryingOver and is the same order that command runs — nothing here tells an
+// operator to go and type the other press.
+//
+// **the same confirm stands here, and there is no flag that skips it.** what a deploy would apply
+// to the live database is read and named and answered before anything reaches cloudflare, on this
+// press exactly as on ./update.go's: a door put on one press and not the other is the same one-way
+// door with nobody in front of it. a door the operator shut still opens the console, because the
+// deployment is standing and that is what they typed this command for.
 
 func start(args []string, to, wrong io.Writer) error {
 	taken := taking("start", startTakes)
@@ -69,14 +79,17 @@ func start(args []string, to, wrong io.Writer) error {
 	// from an out-of-date console stands a deployment up on out-of-date code — the newer console is
 	// installed and handed the run before any of that (./main.go's carried), and a re-exec discards
 	// whatever a run did ahead of it. what comes back is a line, and only where a console another
-	// one installed still reads a release past its own: it is drawn here rather than after the
-	// chain, which would arrive too late to act on.
-	line, err := carried(ctx, to, terminal.Starting)
+	// one installed still reads a release past its own.
+	//
+	// **the line is held rather than printed here, because the two paths put it in two places.**
+	// the confirm erases the visible screen before it names what it would apply
+	// (../../internal/terminal/clear.go), so a line printed above this run is gone from the screen
+	// at the moment the operator answers the one-way door: the carry hands it to the door and it is
+	// drawn over it, which is ./update.go's own arrangement for the same line. the path that stands
+	// a deployment up has no door to draw it over and says it in front of the chain.
+	newerConsole, err := carried(ctx, to, terminal.Starting)
 	if err != nil {
 		return err
-	}
-	if line != "" {
-		fmt.Fprintln(to, line)
 	}
 
 	records, err := state.Open()
@@ -112,15 +125,45 @@ func start(args []string, to, wrong io.Writer) error {
 	standing := effects.OwnAddress(ctx, door)
 	switch standing.Kind {
 	case deployment.Deployed:
-		fmt.Fprintln(to, alreadyUp(standing))
-		return serve(records, flow, *port, !*noOpen, to, nil)
+		// the account and the address are handed in rather than read again, which is ./update.go's
+		// arrangement for the identical screen: the confirm erases the visible screen before it
+		// draws, so what names the deployment has to be on that screen, and both are already in
+		// this command's hand.
+		onto := terminal.Deployment{Account: in.Name, Address: standing.Origin()}
+		return catchingUp(to, onto,
+			func() (net.Listener, error) { return beforeTheDeploy(*port) },
+			func() effects.Migrations {
+				return effects.Pending(ctx, credential, cf.APISend, in.ID)
+			},
+			func(read effects.Migrations) terminal.Confirmation {
+				return terminal.ConfirmMigration(
+					os.Stdin, os.Stdout, onto, read.Names, read.Ahead, newerConsole)
+			},
+			func() (effects.Carried, bool) {
+				return carryAt(ctx, effects.Carrying{
+					AccountID:  in.ID,
+					Credential: credential,
+					Sends:      cf.APISend,
+					Schema:     cf.APISchemaSend,
+					Settings:   cf.APIMultipart,
+					Assets:     cf.AssetsUpload,
+					Bundle:     release.BundleSource(version),
+				})
+			},
+			func() string { return nowLevel(standing) },
+			func(bound net.Listener) error {
+				return serve(records, flow, *port, !*noOpen, to, bound)
+			})
 	case deployment.NotDeployed:
 	default:
 		return unread(standing, terminal.Starting)
 	}
 
+	if newerConsole != "" {
+		fmt.Fprintln(to, newerConsole)
+	}
 	return standingUp(to,
-		func() (net.Listener, error) { return beforeTheChain(*port) },
+		func() (net.Listener, error) { return beforeTheDeploy(*port) },
 		func() (first.Asked, bool, error) { return ask(aboutToMake(in)) },
 		func(asked first.Asked) (first.Outcome, bool) {
 			return chainAt(ctx, door, credential, records, asked)
@@ -129,15 +172,45 @@ func start(args []string, to, wrong io.Writer) error {
 		func(bound net.Listener) error { return serve(records, flow, *port, !*noOpen, to, bound) })
 }
 
-// the order a first deploy runs in, which is the whole of what this command is: the port taken, the
-// two questions, the chain, and the console served on the port that was taken in front of all of it.
+// the port this command serves on, taken in front of everything either path does and handed to the
+// console at the end of it.
+//
+// **it is one function because the port is one rule and this command has two paths.** everything
+// able to fail runs in front of the one-way door (CLAUDE.md), and a port another console is holding
+// is exactly such a failure: met past a chain it is a first deploy that landed under an exit
+// reading as a failure, and met past a carry it is the same over a database already moved forward.
+// so the claim is in front of `going` on both paths, the same listener is handed to the console
+// rather than taken again there — a port given back in between is one something else can claim in
+// the gap — and it is given back on every way out that does not serve, or the next `start` meets a
+// port a process that has ended is still holding (./start_test.go).
+//
+// `going` is the path itself, and True is it reaching the console.
+func onThePortItTook(
+	claiming func() (net.Listener, error),
+	going func() (bool, error),
+	console func(net.Listener) error,
+) error {
+	bound, err := claiming()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = bound.Close() }()
+
+	serving, err := going()
+	if err != nil || !serving {
+		return err
+	}
+	return console(bound)
+}
+
+// the order a first deploy runs in: the port taken, the two questions, the chain, and the console
+// served on the port that was taken in front of all of it.
 //
 // **it is its own function because the order is the thing able to be wrong.** every act in it is a
-// value the caller binds and each is held to what it answers where it lives (./beforeTheChain,
+// value the caller binds and each is held to what it answers where it lives (./beforeTheDeploy,
 // ./ask, ./chainAt, ./afterTheChain, ./main.go's serve). what nothing held was the sequence they are
-// put in: the port claimed in front of the first question rather than past the chain, the same
-// listener handed to the console rather than taken again there, and that listener given back on
-// every way out that does not serve (./start_test.go).
+// put in: the port claimed in front of the first question rather than past the chain, and the
+// questions in front of the chain rather than inside it (./start_test.go).
 //
 // `where` is read after the chain and not before it, because what it names is a deployment that did
 // not exist when this run started.
@@ -149,47 +222,73 @@ func standingUp(
 	where func() string,
 	console func(net.Listener) error,
 ) error {
-	bound, err := claiming()
-	if err != nil {
-		return err
-	}
-	// a listener this run took and never served is one it gives back on the way out: the chain may
-	// stop, and a port held by a process that has ended is a port the next `start` cannot take.
-	defer func() { _ = bound.Close() }()
+	return onThePortItTook(claiming, func() (bool, error) {
+		asked, made, err := asking()
+		if err != nil || !made {
+			return false, closed(to, err)
+		}
 
-	asked, made, err := asking()
-	if err != nil || !made {
-		return closed(to, err)
-	}
+		reporting, serving, err := afterTheChain(running(asked))
+		if err != nil {
+			return false, err
+		}
+		if reporting {
+			fmt.Fprintln(to, where())
+		}
+		return serving, nil
+	}, console)
+}
 
-	reporting, serving, err := afterTheChain(running(asked))
-	if err != nil {
-		return err
-	}
-	if reporting {
-		fmt.Fprintln(to, where())
-	}
-	if !serving {
-		return nil
-	}
-	return console(bound)
+// the order a carry onto a deployment already standing runs in: the port taken, what a deploy would
+// apply read and named, the door answered, the carry, where it left the deployment, and the console
+// served on the port that was taken in front of all of it.
+//
+// **it is ./update.go's order with a port in front of it and a console on the far side**, and the
+// middle of it is that command's own function rather than a second statement of it: the confirm in
+// front of the one-way door is the same door on both presses (./update.go's carryingOver).
+//
+// **the port is claimed in front of the read and the door, for ./onThePortItTook's reason.** a
+// deployment already standing is one an operator meets a migration on, so the failure this order
+// exists to keep in front of that door is the same one the first deploy keeps in front of its
+// chain.
+//
+// `where` is read from the address this run already took rather than read again: the worker is the
+// same worker at the same name on the far side of the carry.
+func catchingUp(
+	to io.Writer,
+	onto terminal.Deployment,
+	claiming func() (net.Listener, error),
+	reading func() effects.Migrations,
+	asking func(effects.Migrations) terminal.Confirmation,
+	running func() (effects.Carried, bool),
+	where func() string,
+	console func(net.Listener) error,
+) error {
+	return onThePortItTook(claiming, func() (bool, error) {
+		return carryingOver(to, onto, reading, asking, running, where)
+	}, console)
 }
 
 // what this command does before it asks anything, which is everything able to fail while nothing
-// has been created.
+// has been created and nothing has been applied.
 //
-// **the loopback port is taken here and not on the far side of the chain.** everything able to fail
-// runs in front of the one-way door (CLAUDE.md) and this one was behind it: a port another console
-// is already holding, met after the migration, the upload and every write the chain makes, is a
-// first deploy that landed and a command that exits 1 with the console never served. the listener
-// is handed to ./serve rather than taken again there, because a port given back in between is one
-// something else can claim in the gap.
+// **the loopback port is taken here and not on the far side of the deploy.** everything able to
+// fail runs in front of the one-way door (CLAUDE.md) and this one was behind it: a port another
+// console is already holding, met after the migration, the upload and every write, is a deploy that
+// landed and a command that exits 1 with the console never served. the listener is handed to
+// ./serve rather than taken again there, because a port given back in between is one something else
+// can claim in the gap.
+//
+// **both of this command's paths claim it here and for that one reason** (./standingUp,
+// ./catchingUp): the chain's migration and the carry's are the same one-way door, and a port met
+// past either is met past a database already moved forward.
 //
 // **it is the port alone, and what is about to be made is named a step later.** every prompt in this
 // package's terminal erases the screen before it draws, so the description belongs on the first
 // question's own screen rather than above a call that wipes it (./ask, and
-// ../../internal/terminal/password.go).
-func beforeTheChain(port int) (net.Listener, error) {
+// ../../internal/terminal/password.go). the carry names its own object on the door's own screen for
+// the same reason (../../internal/terminal/confirm.go).
+func beforeTheDeploy(port int) (net.Listener, error) {
 	return claim(server.Listen(nil, port).Addr)
 }
 
@@ -367,22 +466,6 @@ func reported(sentence, said string) error {
 // what a chain that did not land is answered with.
 func stopped(ran first.Outcome) error {
 	return reported(terminal.Outcome(ran), terminal.Said(ran))
-}
-
-// a deployment that was already standing when this command ran, so nothing was deployed.
-//
-// **the act is named because the operator who meets this line is the one who most needs it.** this
-// command is the front door, so it is what an operator who has just installed a newer release types
-// — and the console it serves them cannot close the gap, because both deploys are terminal commands
-// and no screen of it draws either one (CLAUDE.md).
-func alreadyUp(address deployment.Address) string {
-	found := "found " + release.Baked.Name + " deployment"
-	if where := address.Origin(); where != "" {
-		found += ": " + where
-	} else {
-		found += ", answering on no address this console can read"
-	}
-	return found + ". nothing was deployed: to carry this release onto it, run better-giving update"
 }
 
 // where the deployment this run stood up answers.

@@ -7,7 +7,9 @@ import (
 	"testing"
 
 	"github.com/better-giving/console/internal/account"
+	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/deployment"
+	"github.com/better-giving/console/internal/effects"
 	"github.com/better-giving/console/internal/first"
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/terminal"
@@ -120,7 +122,7 @@ func TestAPortAnotherConsoleHoldsStopsStartBeforeAnythingIsMade(t *testing.T) {
 		t.Fatalf("no loopback port to take: %v", err)
 	}
 
-	taken, err := beforeTheChain(portHeldBy(t, holding))
+	taken, err := beforeTheDeploy(portHeldBy(t, holding))
 
 	if taken != nil {
 		t.Error("a port another console is holding was answered with a listener")
@@ -134,10 +136,10 @@ func TestAPortAnotherConsoleHoldsStopsStartBeforeAnythingIsMade(t *testing.T) {
 }
 
 func TestAPortThisRunCanTakeIsHeldForTheChainToBeServedOn(t *testing.T) {
-	taken, err := beforeTheChain(freePort(t))
+	taken, err := beforeTheDeploy(freePort(t))
 
 	if err != nil {
-		t.Fatalf("beforeTheChain = %v, want the port taken", err)
+		t.Fatalf("beforeTheDeploy = %v, want the port taken", err)
 	}
 	t.Cleanup(func() { _ = taken.Close() })
 	if taken.Addr().String() == "" {
@@ -213,22 +215,6 @@ func TestTheActOnAnUnreadableAddressIsThePressThatMadeTheRead(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "better-giving start") {
 		t.Errorf("said %v, want no press but the one that made the read", err)
-	}
-}
-
-// what a deployment that was already standing is answered with, which is never a deploy.
-
-func TestADeploymentAlreadyStandingNamesThePressThatCarriesThisReleaseOntoIt(t *testing.T) {
-	said := alreadyUp(deployment.Address{Kind: deployment.Deployed, WorkersDev: "https://give.acme.test"})
-
-	if !strings.Contains(said, "give.acme.test") {
-		t.Errorf("said %q, want where the deployment answers", said)
-	}
-	if !strings.Contains(said, "better-giving update") {
-		t.Errorf("said %q, want the press that carries this release onto it", said)
-	}
-	if !strings.Contains(said, "nothing was deployed") {
-		t.Errorf("said %q, want the operator told this press deployed nothing", said)
 	}
 }
 
@@ -384,5 +370,265 @@ func TestAChainAStopWaitedOutSaysWhereTheDeploymentIsAndGivesThePortBack(t *test
 	}
 	if !handedBack() {
 		t.Error("the port this run took was still held on the way out")
+	}
+}
+
+// the order this command runs in over a deployment that is already standing, which is the other
+// half of what it is: the port taken, what a deploy would apply read and named, the door answered,
+// the carry, where it left the deployment, and the console served on the port taken in front of all
+// of it.
+//
+// the port is claimed in front of the door for the same reason it is claimed in front of the two
+// questions above (CLAUDE.md's one-way door): a port another console is holding, met past a
+// migration, is a database moved forward under an exit that reads as a failure. what the door
+// itself answers is ./update_test.go's, and this file holds only what this command does past it —
+// which is a console served, or one that is not.
+
+// a run of ./catchingUp with every act of it recorded, over a listener this case holds.
+type standingDeployment struct {
+	bound    net.Listener
+	claims   int
+	claimed  error
+	read     effects.Migrations
+	named    bool
+	answered terminal.Confirmation
+	carried  bool
+	ran      effects.Carried
+	halted   bool
+	served   net.Listener
+	said     strings.Builder
+}
+
+func (onto *standingDeployment) run(t *testing.T) error {
+	t.Helper()
+	return catchingUp(&onto.said, ontoAcme,
+		func() (net.Listener, error) {
+			onto.claims++
+			if onto.claimed != nil {
+				return nil, onto.claimed
+			}
+			return onto.bound, nil
+		},
+		func() effects.Migrations { return onto.read },
+		func(effects.Migrations) terminal.Confirmation {
+			onto.named = true
+			return onto.answered
+		},
+		func() (effects.Carried, bool) {
+			onto.carried = true
+			return onto.ran, onto.halted
+		},
+		func() string { return "your deployment is up to date, at https://give.acme.test" },
+		func(bound net.Listener) error {
+			onto.served = bound
+			return nil
+		})
+}
+
+// a carry that lands over a deployment already standing, for a case to vary one act of.
+func aCarryThatLands(t *testing.T) *standingDeployment {
+	t.Helper()
+	bound, _ := aPortHeld(t)
+	return &standingDeployment{
+		bound: bound,
+		// a read that landed carrying no migration this database has not: the door opens on its
+		// own for it (../../internal/terminal/confirm.go) and the upload is what is left.
+		read:     effects.Migrations{Applied: cf.ResultValue},
+		answered: terminal.Confirmed,
+		ran:      effects.Carried{Kind: effects.Deployed},
+	}
+}
+
+func TestADeploymentStandingWithNothingToApplyIsCarriedOntoAndTheConsoleOpened(t *testing.T) {
+	onto := aCarryThatLands(t)
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v, want this release carried onto the deployment", err)
+	}
+	if !onto.carried {
+		t.Error("a deployment already standing was opened without this release being carried onto it")
+	}
+	if onto.served != onto.bound {
+		t.Error("the console was served on a port other than the one claimed in front of the door")
+	}
+	// a release carrying no migration this database has not opens no door at all, so this is the
+	// one path that reaches an upload with the account and the address named nowhere else.
+	if !strings.Contains(onto.said.String(), "Acme Giving") {
+		t.Errorf("said %q, want the account this release was carried into", onto.said.String())
+	}
+	if !strings.Contains(onto.said.String(), "up to date") {
+		t.Errorf("said %q, want where the carry left the deployment", onto.said.String())
+	}
+}
+
+func TestTheConsoleAtAStandingDeploymentIsServedOnAPortClaimedOnce(t *testing.T) {
+	// a port given back and taken again is one something else can claim in the gap, so the claim is
+	// made once and the listener carried to the console.
+	onto := aCarryThatLands(t)
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v, want the console this command exists to open", err)
+	}
+	if onto.claims != 1 {
+		t.Errorf("the port was claimed %d times, want the one taken in front of the door", onto.claims)
+	}
+}
+
+func TestADoorTheOperatorOpenedCarriesThisReleaseAndOpensTheConsole(t *testing.T) {
+	onto := aCarryThatLands(t)
+	onto.read = effects.Migrations{Applied: cf.ResultValue, Names: []string{"0007_donors.sql"}}
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v, want this release carried onto the deployment", err)
+	}
+	if !onto.carried {
+		t.Error("a door the operator opened uploaded nothing")
+	}
+	if onto.served != onto.bound {
+		t.Error("a carry the operator agreed to did not end at the console")
+	}
+	if strings.Contains(onto.said.String(), "carrying this release onto") {
+		t.Errorf("said %q, want the door's own screen to be the one that named it", onto.said.String())
+	}
+}
+
+func TestADoorTheOperatorShutUploadsNothingAndStillOpensTheConsole(t *testing.T) {
+	// the deployment is standing and opening the console at it is what the operator typed this
+	// command for, so a database left alone on purpose ends at the console rather than at an exit.
+	onto := aCarryThatLands(t)
+	onto.answered = terminal.Declined
+
+	if err := onto.run(t); err != nil {
+		t.Errorf("catchingUp = %v, want a press not made read as no failure", err)
+	}
+	if onto.carried {
+		t.Error("a door the operator shut went on to upload this release anyway")
+	}
+	if onto.served != onto.bound {
+		t.Error("a door the operator shut took the console down with it")
+	}
+	if !strings.Contains(onto.said.String(), "nothing was uploaded") {
+		t.Errorf("said %q, want what did not happen", onto.said.String())
+	}
+	if strings.Contains(onto.said.String(), "up to date") {
+		t.Errorf("said %q, want no claim that a deployment carries a release it was left without",
+			onto.said.String())
+	}
+}
+
+func TestADoorNobodyWasAtEndsStartAndServesNoConsole(t *testing.T) {
+	bound, handedBack := aPortHeld(t)
+	onto := aCarryThatLands(t)
+	onto.bound, onto.answered = bound, terminal.Unattended
+
+	err := onto.run(t)
+
+	if err == nil {
+		t.Fatal("a run nobody was at ended cleanly, which reads as a deployment carrying this release")
+	}
+	if onto.carried {
+		t.Error("this release was uploaded on an answer nobody gave")
+	}
+	if onto.served != nil {
+		t.Error("a console was opened over a question nobody answered")
+	}
+	if !handedBack() {
+		t.Error("the port this run took was still held on the way out")
+	}
+}
+
+func TestADeploymentAheadOfThisBinaryEndsStartAndServesNoConsole(t *testing.T) {
+	onto := aCarryThatLands(t)
+	onto.answered = terminal.Ahead
+
+	err := onto.run(t)
+
+	if err == nil {
+		t.Fatal("a deployment a newer console put up was carried backwards")
+	}
+	if onto.carried || onto.served != nil {
+		t.Error("a deployment ahead of this binary was uploaded to, or opened, or both")
+	}
+}
+
+func TestAPendingReadThatDidNotLandPutsNoDoorAndServesNoConsole(t *testing.T) {
+	// a confirm in front of a list nobody read would be a confirmation of nothing, and the door
+	// behind it is one way (CLAUDE.md).
+	bound, handedBack := aPortHeld(t)
+	onto := aCarryThatLands(t)
+	onto.bound, onto.read = bound, effects.Migrations{Absent: "none"}
+
+	err := onto.run(t)
+
+	if err == nil {
+		t.Fatal("a read that did not land fell through to the door and the upload behind it")
+	}
+	if onto.named {
+		t.Error("a door was put in front of a list this console could not read")
+	}
+	if onto.carried || onto.served != nil {
+		t.Error("a deployment this console could not read was uploaded to, or opened, or both")
+	}
+	if !handedBack() {
+		t.Error("the port this run took was still held on the way out")
+	}
+}
+
+func TestACarryThatDidNotLandEndsStartAndServesNoConsole(t *testing.T) {
+	bound, handedBack := aPortHeld(t)
+	onto := aCarryThatLands(t)
+	onto.bound, onto.ran = bound, effects.Carried{Kind: effects.NoDatabase}
+
+	err := onto.run(t)
+
+	if err == nil {
+		t.Fatal("a carry that did not land ended cleanly, which reads as one that carried")
+	}
+	if !strings.Contains(err.Error(), terminal.UpdateOutcome(effects.Carried{Kind: effects.NoDatabase})) {
+		t.Errorf("said %v, want what the carry answered with", err)
+	}
+	if onto.served != nil {
+		t.Error("a console was opened over a carry that did not land")
+	}
+	if !handedBack() {
+		t.Error("the port this run took was still held on the way out")
+	}
+}
+
+func TestACarryAStopWaitedOutSaysWhereTheDeploymentIsAndServesNoConsole(t *testing.T) {
+	// the same reading ./afterTheChain takes for the chain: what the operator's ctrl-c asked to stop
+	// is this process holding their terminal, and never their knowledge of what the deploy did.
+	bound, handedBack := aPortHeld(t)
+	onto := aCarryThatLands(t)
+	onto.bound, onto.halted = bound, true
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v, want a stop the operator asked for read as no failure", err)
+	}
+	if onto.served != nil {
+		t.Error("a console the operator stopped went on to serve and open a browser at itself")
+	}
+	if !strings.Contains(onto.said.String(), "up to date") {
+		t.Errorf("said %q, want where the carry left the deployment", onto.said.String())
+	}
+	if !handedBack() {
+		t.Error("the port this run took was still held on the way out")
+	}
+}
+
+func TestAPortAnotherConsoleHoldsStopsAStandingCarryBeforeTheDoor(t *testing.T) {
+	onto := aCarryThatLands(t)
+	onto.claimed = errors.New("5320 is in use")
+
+	err := onto.run(t)
+
+	if err == nil {
+		t.Fatal("a port this run could not take went on to the door and the carry behind it")
+	}
+	if onto.named {
+		t.Error("a one-way door was opened over a port this run never held")
+	}
+	if onto.carried || onto.served != nil {
+		t.Error("a port this run could not take ended in an upload, or a console, or both")
 	}
 }

@@ -29,6 +29,11 @@ import (
 // command's to take, and an operator with neither is sent to `login` rather than asked here: this
 // one makes nothing, stores nothing, serves nothing and opens no browser.
 //
+// **the front door carries this release itself, through this file's own door and carry.** a `start`
+// that finds a deployment already standing runs ./carryingOver and then opens the console at it
+// (./start.go's catchingUp), so the order below is the order both presses take and the confirm in
+// front of the one-way door stands on both.
+//
 // **it refuses where nothing is deployed, and that is not tidiness.** ../../internal/effects' Carry
 // uploads the worker whether or not one is there, so this command run on a fresh machine would put
 // up a worker with no password stored, no spam protection registered and no session minted — a
@@ -118,45 +123,91 @@ func update(args []string, to, wrong io.Writer) error {
 		return unread(standing, terminal.Updating)
 	}
 
-	read := effects.Pending(ctx, credential, cf.APISend, held.Account.ID)
-	if why := terminal.Unnamed(read); why != "" {
-		return reported(why, read.Detail)
-	}
-	// drawn on the door's own screen rather than printed above this command, because the confirm
-	// erases the visible screen before it names what it would apply (./main.go's newer): an
-	// operator standing at a one-way door with an older binary is the one who most needs it, and
-	// that is the moment they are standing there.
 	// the account and the address are handed in rather than read again: the confirm erases the
 	// visible screen before it draws, so what names the deployment has to be on that screen, and
 	// both values are already in this command's hand.
 	onto := terminal.Deployment{Account: held.Account.Name, Address: standing.Origin()}
-	said, on, err := atTheDoor(terminal.ConfirmMigration(
-		os.Stdin, os.Stdout, onto, read.Names, read.Ahead, newerConsole))
+	// nothing stands past the carry here, so what the order answers is read by nobody: this command
+	// prints where the deployment is and ends, and ./start.go is where a console is on the far side
+	// of it.
+	_, err = carryingOver(to, onto,
+		func() effects.Migrations {
+			return effects.Pending(ctx, credential, cf.APISend, held.Account.ID)
+		},
+		// the newer console is drawn on the door's own screen rather than printed above this
+		// command, because the confirm erases the visible screen before it names what it would
+		// apply (./main.go's newer): an operator standing at a one-way door with an older binary is
+		// the one who most needs it, and that is the moment they are standing there.
+		func(read effects.Migrations) terminal.Confirmation {
+			return terminal.ConfirmMigration(
+				os.Stdin, os.Stdout, onto, read.Names, read.Ahead, newerConsole)
+		},
+		func() (effects.Carried, bool) {
+			return carryAt(ctx, effects.Carrying{
+				AccountID:  held.Account.ID,
+				Credential: credential,
+				Sends:      cf.APISend,
+				Schema:     cf.APISchemaSend,
+				Settings:   cf.APIMultipart,
+				Assets:     cf.AssetsUpload,
+				Bundle:     release.BundleSource(version),
+			})
+		},
+		func() string { return nowLevel(standing) })
+	return err
+}
+
+// the order a carry onto a deployment already standing runs in: what a deploy would apply read and
+// named, the door answered, the carry itself, and where it left the deployment.
+//
+// **it is its own function because both presses run it and neither owns it.** this command is the
+// whole of that order; ./start.go is the same order with a loopback port claimed in front of it and
+// a console served on the far side (its catchingUp). it lives in this file because this file owns
+// the carry and its header argues the door, and a door put on one press and not the other would be
+// a migration applied on an answer that press never asked for.
+//
+// **every act is a value the caller binds and the sequence is the thing able to be wrong**, which
+// is ./start.go's standingUp's argument for the identical arrangement: the read taken in front of
+// the door rather than past it, the door answered before anything reaches cloudflare, and the
+// account named on the one path that reaches an upload with no door in front of it (./undoored).
+//
+// True is whatever the caller has past the carry, which is ./start.go's console: a door the
+// operator shut reaches it, because the deployment is standing and nothing was uploaded, and so
+// does a carry that landed. False with no error is a carry whose ledger a signal took — what a
+// ctrl-c asked to stop is the process holding the terminal (./start.go's afterTheChain) — and False
+// with one is a read or a carry that did not land.
+func carryingOver(
+	to io.Writer,
+	onto terminal.Deployment,
+	reading func() effects.Migrations,
+	asking func(effects.Migrations) terminal.Confirmation,
+	running func() (effects.Carried, bool),
+	where func() string,
+) (bool, error) {
+	read := reading()
+	if why := terminal.Unnamed(read); why != "" {
+		return false, reported(why, read.Detail)
+	}
+	said, on, err := atTheDoor(asking(read))
 	if said != "" {
 		fmt.Fprintln(to, said)
 	}
-	if err != nil || !on {
-		return err
+	if err != nil {
+		return false, err
+	}
+	if !on {
+		return true, nil
 	}
 	if line := undoored(read.Names, onto); line != "" {
 		fmt.Fprintln(to, line)
 	}
 
-	ran := carryAt(ctx, effects.Carrying{
-		AccountID:  held.Account.ID,
-		Credential: credential,
-		Sends:      cf.APISend,
-		Schema:     cf.APISchemaSend,
-		Settings:   cf.APIMultipart,
-		Assets:     cf.AssetsUpload,
-		Bundle:     release.BundleSource(version),
-	})
+	ran, halted := running()
 	if err := afterTheCarry(ran); err != nil {
-		return err
+		return false, err
 	}
-
-	fmt.Fprintln(to, nowLevel(standing))
-	return nil
+	fmt.Fprintln(to, where())
+	return !halted, nil
 }
 
 // what this command names in front of an upload that had no door in front of it, and nothing where
@@ -176,10 +227,11 @@ func undoored(pending []string, onto terminal.Deployment) string {
 
 // what this command says about a redeploy that settled, which is nothing where it carried.
 //
-// **a signal that took the ledger is no reading here, and ./start.go's afterTheChain is where it is
-// one.** that command would go on to bind a port and hold the terminal it was asked to give back;
-// this one prints where the deployment is and ends, which it does either way — what a ctrl-c asked
-// to stop was never the operator's knowledge of what the upload did.
+// **a signal that took the ledger is no reading in here, and ./carryingOver is where it is one.**
+// what a halt decides is whether a console is served on the far side of the carry (./start.go's
+// catchingUp) and never whether the carry landed: a ctrl-c is a stop the operator asked for and a
+// deploy that stopped in the middle is not one — what that ctrl-c asked to stop was never the
+// operator's knowledge of what the upload did.
 func afterTheCarry(ran effects.Carried) error {
 	if ran.Kind != effects.Deployed {
 		return reported(terminal.UpdateOutcome(ran), terminal.UpdateSaid(ran))
@@ -217,19 +269,20 @@ func atTheDoor(answered terminal.Confirmation) (said string, on bool, err error)
 	}
 }
 
-// runs the redeploy while the ledger holds the terminal, and answers how it ended.
+// runs the redeploy while the ledger holds the terminal, and answers how it ended and whether a
+// signal took the drawing before it did (../../internal/terminal's Settled and Halted).
 //
-// **a signal that took the drawing is drawn and never returned** (../../internal/terminal's Settled
-// and Halted): this command holds nothing after the run, so what a halt changes is the line the
-// terminal gets and nothing this command decides. ./start.go's chainAt hands its caller the reading
-// because that one has a console to serve or not serve on the far side of it.
+// **the halt is handed back because one caller has a console on the far side of the carry**, which
+// is ./start.go's catchingUp: a port bound and a browser tab opened minutes after a ctrl-c is what
+// the operator asked to be spared. this command holds nothing after the run and prints where the
+// deployment is either way, so what it does with the reading is nothing at all (./carryingOver).
 //
 // The arrangement is ./start.go's chainAt and every argument it makes holds here: the deploy is
 // sequential and blocking while ../../internal/terminal's Show holds the terminal, so the two
 // cannot be one goroutine; a panic inside the run is this console stopping and never the account
 // answering, so the run carries its own recover; and nothing but the kind travels back out of it,
 // because the press it died inside was holding a cloudflare credential.
-func carryAt(ctx context.Context, made effects.Carrying) effects.Carried {
+func carryAt(ctx context.Context, made effects.Carrying) (effects.Carried, bool) {
 	drawn := terminal.Draw(terminal.UpdateRows, os.Stdout)
 	made.At = drawn.Reporting
 	ended := make(chan effects.Carried, 1)
@@ -248,14 +301,15 @@ func carryAt(ctx context.Context, made effects.Carrying) effects.Carried {
 	}()
 
 	shown := drawn.Show()
-	said, wrong := terminal.Settled(shown, drawn.Halted(), "an update")
+	halted := drawn.Halted()
+	said, wrong := terminal.Settled(shown, halted, "an update")
 	if wrong != "" {
 		fmt.Fprintln(os.Stderr, wrong)
 	}
 	if said != "" {
 		fmt.Println(said)
 	}
-	return <-ended
+	return <-ended, halted
 }
 
 // where the deployment this run carried the code onto answers.

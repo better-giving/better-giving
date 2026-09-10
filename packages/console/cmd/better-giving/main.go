@@ -120,7 +120,7 @@ func run(args []string, to, wrong io.Writer) error {
 func usage(to io.Writer) {
 	fmt.Fprint(to, `better-giving — the operator console
 
-  start [--port N] [--no-open]  stand this deployment up, then open the console at it
+  start [--port N] [--no-open]  put this release on your deployment, then open the console at it
   update                        carry this release's code onto the deployment you already have
   open [--port N] [--no-open]   serve the console and open it in a browser
   login                         sign in to Cloudflare, and choose the account this machine operates
@@ -145,8 +145,10 @@ type options struct {
 
 // what each command answers when it is asked what it takes, or handed something it does not know.
 const (
-	startTakes = "better-giving start stands this deployment up and opens the console at it. " +
-		"It takes:"
+	startTakes = "better-giving start puts this release on your deployment and opens the console " +
+		"at it: it stands one up where there is none, and carries this release onto one that is " +
+		"already there. Where it carries, it names every migration it would apply to the live " +
+		"database and waits for your answer, exactly as better-giving update does. It takes:"
 	openTakes = "better-giving open serves the console against the deployment you already have. " +
 		"It takes:"
 	// the sentence and the reason together: the flag an operator reaches for at a door like this
@@ -426,14 +428,16 @@ func asNewer(console string, fix terminal.Repair) error {
 // serves the console on the loopback port and holds this process there until the operator stops it.
 //
 // One statement of what serving is, because two commands end in it: `open` is this and nothing
-// else, and `start` is this after the deployment it opens on has been stood up. The state directory
-// and the sign-in are handed in rather than opened again, so one run holds one of each.
+// else, and `start` is this once the deployment it opens on carries this release — stood up by that
+// command, or found already standing and carried onto. The state directory and the sign-in are
+// handed in rather than opened again, so one run holds one of each.
 //
 // `taken` is a loopback listener the caller already holds, and nil is this run taking one here.
-// `start` takes its own in front of the deploy chain (./start.go's beforeTheChain), because a port
+// `start` takes its own in front of the deploy, on both the path that stands a deployment up and
+// the path that carries this release onto one (./start.go's beforeTheDeploy), because a port
 // something else is answering on is a failure that belongs in front of the one-way door rather than
-// on the far side of it; every other way in has nothing to make and takes the port at the moment it
-// serves.
+// on the far side of it; every other way in has nothing to deploy and takes the port at the moment
+// it serves.
 func serve(
 	records state.Store,
 	flow *oauth.Flow,

@@ -9,7 +9,7 @@ A donation app for a **single** nonprofit, deployed to your own Cloudflare accou
 Named separately everywhere in this repo:
 
 - **The dashboard** is `/admin` on a deployment. Donation forms, donations, donors, recurring gifts. The only thing a staff member opens.
-- **The console** is a program the operator runs on their own machine: `better-giving start` stands the deployment up in the terminal and then serves a page at `http://127.0.0.1:5320`, and `better-giving open` serves that page against a deployment already standing. Never deployed; the screens are built into the binary. Between the terminal half and the screens it sets the deployment up: the Cloudflare account, the D1 database, all thirteen configuration values, Stripe, the site list, the org's legal identity.
+- **The console** is a program the operator runs on their own machine: `better-giving start` puts this release on the deployment in the terminal — standing one up where you have none, carrying the code onto one you already have — and then serves a page at `http://127.0.0.1:5320`, and `better-giving open` serves that page against a deployment already standing. Never deployed; the screens are built into the binary. Between the terminal half and the screens it sets the deployment up: the Cloudflare account, the D1 database, all thirteen configuration values, Stripe, the site list, the org's legal identity.
 
 ## Get started
 
@@ -47,7 +47,7 @@ curl -fsSL https://github.com/better-giving/better-giving/releases/latest/downlo
 better-giving start
 ```
 
-The first line puts one file on your machine. The second asks its questions in the terminal, deploys, and opens the console at the result. macOS and Linux, both architectures; Windows is out of scope. Sign-in is Cloudflare's own page; the credential stays on your machine, renewed automatically, never shown, never typed. `better-giving update` is the other terminal command: it carries a newer release onto a deployment you already have, naming the migrations it would apply before it applies them.
+The first line puts one file on your machine. The second asks its questions in the terminal, deploys, and opens the console at the result. macOS and Linux, both architectures; Windows is out of scope. Sign-in is Cloudflare's own page; the credential stays on your machine, renewed automatically, never shown, never typed. `better-giving update` is the other terminal command: it carries a newer release onto a deployment you already have, naming the migrations it would apply before it applies them. `start` typed again does the same and opens the console after it.
 
 Setting a var writes to the Worker's settings in place, taking effect without a build or an upload.
 
@@ -149,7 +149,7 @@ One custom property, set on the element or anything above it:
 
 From a checkout, the root commands operate a deployment. All run from any directory, because the root `package.json` forwards each into `packages/app`; `pnpm run` on its own lists them. Use them over raw `wrangler`: they carry the flags that matter, like `db:create`'s `--no-update-config`, and resolve the exact wrangler version this app was tested against. Anything you append still reaches wrangler.
 
-The console covers the same jobs without a checkout: every credential, every var, the site list, the org identity. New code reaches the deployment in two steps: install the newer console (the same install line), then `better-giving update`.
+The console covers the same jobs without a checkout: every credential, every var, the site list, the org identity. New code reaches the deployment with `better-giving update`, or `start` where you want the console open after it; either one installs the newer console itself first.
 
 An append-only ledger is corrected by posting a compensating entry rather than by restoring. Tearing a rehearsal deployment down is two raw wrangler commands; [`DEPLOY.md`](./DEPLOY.md) gives them in full.
 
