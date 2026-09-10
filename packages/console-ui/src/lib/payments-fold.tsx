@@ -31,7 +31,7 @@ import { REACHED_STRIPE, pressStopped } from './press-stopped';
 import { Said } from './said';
 import { refusalIn, secretTrouble } from './secret-trouble';
 import { heldValues, withheldAmong } from './held-values';
-import { PAYMENTS_GROUP, SECRET_GROUPS, MINTED_BY_CONSOLE } from './secret-groups';
+import { PAYMENTS_GROUP, SECRET_GROUPS, MINTED_BY_CONSOLE, isMasked } from './secret-groups';
 import { FREE_INTENT, WithheldValues } from './withheld-values';
 import type {
 	AddressRead,
@@ -2115,9 +2115,12 @@ export function PaymentsFold({
 							name={secret.name}
 							label="Secret key"
 							placeholder="sk_live_…"
-							// the code face, and never a masked box. these are literals an operator checks
-							// character for character against the page they were copied from.
+							// the code face. these are literals an operator checks character for character
+							// against the page they were copied from.
 							code
+							// which of the thirteen arrive masked, the publishable key below among the ones
+							// that do not, is ./secret-groups.ts's.
+							masked={isMasked('STRIPE_SECRET_KEY')}
 							autoComplete="off"
 							spellCheck={false}
 							defaultValue={secret.defaultValue}

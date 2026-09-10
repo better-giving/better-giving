@@ -40,7 +40,14 @@ import { heldValues, withheldInGroup } from './held-values';
 import { refusalIn, secretTrouble } from './secret-trouble';
 import { FREE_INTENT, WithheldValues } from './withheld-values';
 import type { SecretGroup } from './secret-groups';
-import { MAIL_GROUP, SECRET_GROUPS, VALUE_FIELD, groupIntent, pressedNames } from './secret-groups';
+import {
+	MAIL_GROUP,
+	SECRET_GROUPS,
+	VALUE_FIELD,
+	groupIntent,
+	isMasked,
+	pressedNames
+} from './secret-groups';
 import type { AddressRead, NoReport, ValuesRefusal, VarsWritten } from '../api/types';
 import type { OrgBoxes } from './org-fields';
 import type { DeployedValues } from '../api/types';
@@ -89,7 +96,8 @@ import type { TestSend } from '../api/types';
 // no row and no second label: emptying a box is the removal, and it is read as one because the
 // form was seeded from what is stored (./secret-edits.ts).
 //
-// **all four boxes hold the value the deployment is holding**, the password among them. every one
+// **all four boxes hold the value the deployment is holding**, the password among them — masked
+// until a press shows it, and holding the value either way (./secret-groups.ts). every one
 // of them is a plain var and the account hands its value back (`DEPLOY_VARS` in
 // packages/operator/src/deploy-split.ts), so an operator reads what their deployment is actually
 // addressed from and can check a paste against the page they copied it from — which is the one
@@ -858,6 +866,8 @@ function MailSettings({
 							// the code face. these are literals an operator checks character for character
 							// against the page they copied them from.
 							code
+							// which of the four arrives masked is ./secret-groups.ts's.
+							masked={isMasked(name)}
 							autoComplete="off"
 							spellCheck={false}
 							defaultValue={bound.defaultValue}

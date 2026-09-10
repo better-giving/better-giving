@@ -24,6 +24,13 @@ import { Field } from '@better-giving/operator/components/forms/Field';
  * `.is-focus`. unavailable is not pinned at all — the sheet draws `:disabled` with no twin beside
  * it — so the specimen for it is the real attribute the field passes through.
  *
+ * the masked boxes open with one standing directly above a plain box, because the width of the two
+ * against each other is the whole reason the press is inside the box rather than on the row beside
+ * it. the rest are what sharing the box's own end can go wrong at: a refusal, whose border reaches
+ * that end too; the box closed, where the press is closed with it; a value long enough to run under
+ * the press if the box reserved it no room; and the wrapper standing on a row a caller also put a
+ * control on.
+ *
  * the last field's label and hint are long on purpose: string length is a layout constraint, and
  * a label that wraps is what puts the box at a different distance from the one above it.
  */
@@ -126,6 +133,66 @@ export default function FormsFieldPreview() {
 				needed="Type an address to send the test to."
 				beside={
 					<button type="button" className="adm-btn" disabled>
+						Send test email
+					</button>
+				}
+			/>
+			{/* a masked box directly above a plain one, which is the comparison this specimen is for:
+			    the two are the same width, and a fold of them reads as one column. both hold a value,
+			    because a console box is seeded with what the deployment is holding. the shown state is
+			    a press away and is not drawn here: whether the value is showing is the field's own and
+			    starts hidden at every mount. */}
+			<Field
+				id="forms-field-masked"
+				label="Password"
+				code
+				masked
+				defaultValue="re_8fJq2xVnW4tLp0Zd"
+			/>
+			<Field
+				id="forms-field-masked-beside-plain"
+				label="Mail host"
+				code
+				defaultValue="smtp.resend.com"
+			/>
+			{/* no specimen here is spelled in a processor's own key shape: github reads a push for
+			    anything shaped like a live key and refuses the whole of it, and a made-up one in a
+			    gallery file reads exactly like a real one to that. */}
+			<Field
+				id="forms-field-masked-refused"
+				label="Secret key"
+				code
+				masked
+				defaultValue="key_live_51NwQpR2eZvKYlo2C"
+				error="Stripe turned that key down. Check it is the secret key and not a restricted one."
+			/>
+			<Field
+				id="forms-field-masked-disabled"
+				label="Password"
+				code
+				masked
+				disabled
+				defaultValue="re_8fJq2xVn"
+			/>
+			{/* a value long enough to run under the press if the box reserved no room for it. */}
+			<Field
+				id="forms-field-masked-long"
+				label="Secret key"
+				code
+				masked
+				defaultValue="key_live_51NwQpR2eZvKYlo2CEuIzT8kWqXn4bVdHfGm7RsYpAj3LcNo6"
+			/>
+			{/* the wrapper on the row with a control the caller put there: what stands on the row is
+			    what the box is inside of, so the box still takes the line's remainder and the press
+			    still stands in it. */}
+			<Field
+				id="forms-field-masked-beside"
+				label="Password"
+				code
+				masked
+				defaultValue="re_8fJq2xVn"
+				beside={
+					<button type="button" className="adm-btn">
 						Send test email
 					</button>
 				}

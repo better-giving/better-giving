@@ -1673,7 +1673,7 @@
 	   than left to fall where it lands: auto-placement would put the pair in the hint's row on a
 	   field that draws no hint, which is the row a neighbouring field in a `.adm-pair--side` keeps
 	   for one. */
-	.adm-field > :is(.adm-input, .adm-textarea, .adm-selectwrap, .adm-actions) {
+	.adm-field > :is(.adm-input, .adm-textarea, .adm-selectwrap, .adm-maskwrap, .adm-actions) {
 		grid-row: 3;
 	}
 
@@ -1820,6 +1820,40 @@
 
 	.adm-selectwrap:has(.adm-select:disabled)::after {
 		border-color: var(--admin-ink-disabled);
+	}
+
+	/* a masked box's press, inside the box rather than on the row beside it. the arrangement is the
+	   select's above and for the arrangement's own reason — a box cannot draw outside itself, so the
+	   wrapper positions and the box reserves the room, and a revealed value never runs under the
+	   press.
+
+	   it is inside for a reason the caret is not, though. a control on the box's row takes the row's
+	   width off the box, and a fold's masked box would then stand visibly narrower than the plain
+	   boxes above and below it, with nothing on the screen saying why one of them is short.
+
+	   and it is a press rather than an adornment, which is the one thing it does not take from the
+	   rule above: nothing here lifts `pointer-events` off it. it is reached by a pointer and by the
+	   keyboard and it draws the quiet rank's own hover, active and focus rungs where it stands.
+	   packages/operator/src/components/forms/Field.jsx writes both classes. */
+	.adm-maskwrap {
+		position: relative;
+		display: block;
+		inline-size: 100%;
+	}
+
+	/* the room the press stands in: its own width, and the step of clear space between it and the
+	   last character of a value long enough to reach it. */
+	.adm-maskwrap > .adm-input {
+		padding-inline-end: var(--admin-space-10);
+	}
+
+	/* off the box's own edge by the narrowest step, so the press never stands over the border the
+	   box draws its state in — refused and needed are both a border and both reach this end of it. */
+	.adm-maskwrap > .adm-btn {
+		position: absolute;
+		inset-inline-end: var(--admin-space-2);
+		inset-block-start: 50%;
+		transform: translateY(-50%);
 	}
 
 	.adm-field__error {
@@ -4334,8 +4368,9 @@
 	   save under a column of boxes. the box takes the line's remainder and may shrink past its
 	   content, which is what keeps the pair on one line until the row's own floor wraps them: a box
 	   at the `inline-size: 100%` above would take the whole line on its own and put the press under
-	   it at every width. */
-	.adm-actions > :is(.adm-input, .adm-textarea) {
+	   it at every width. a masked box is on the row as its wrapper, for the reason
+	   `.adm-selectwrap` is — what stands in the row is what the box is inside of. */
+	.adm-actions > :is(.adm-input, .adm-textarea, .adm-maskwrap) {
 		flex: 1 1 var(--admin-measure-panel);
 		min-inline-size: 0;
 	}

@@ -11,7 +11,7 @@ import type { HeldValues } from './held-values';
 import { withheldInGroup } from './held-values';
 import { refusalIn } from './secret-trouble';
 import type { SecretGroup } from './secret-groups';
-import { VALUE_FIELD, groupIntent, typedNames } from './secret-groups';
+import { VALUE_FIELD, groupIntent, isMasked, typedNames } from './secret-groups';
 import { WithheldValues } from './withheld-values';
 
 // one group of credentials, drawn wherever the act it belongs to is carried out.
@@ -344,9 +344,11 @@ export function SecretGroupForm({
 									name={VALUE_FIELD(name)}
 									label={boxLabel(name)}
 									hint={boxHint?.(name)}
-									// the code face, and never a masked box. these are literals an operator
-									// checks character for character against another screen.
+									// the code face. these are literals an operator checks character for
+									// character against another screen.
 									code
+									// which of the names in a group arrives masked is ./secret-groups.ts's.
+									masked={isMasked(name)}
 									autoComplete="off"
 									spellCheck={false}
 									// what the deployment is holding under this name, so a box nobody edits is

@@ -4,9 +4,11 @@ import { UNGROUPED_VARS } from './deploy-vars';
 import type { SecretGroup } from './secret-groups';
 import {
 	MAIL_GROUP,
+	MASKED_VALUES,
 	MINTED_BY_CONSOLE,
 	SECRET_GROUPS,
 	SIGN_IN_GROUP,
+	isMasked,
 	pressedNames,
 	typedNames
 } from './secret-groups';
@@ -88,5 +90,22 @@ describe('the groups the thirteen are set in', () => {
 		const grouped = SECRET_GROUPS.flatMap((group) => group.names);
 		expect([...grouped, ...UNGROUPED_VARS].sort()).toEqual([...DEPLOY_VARS].sort());
 		expect(new Set(grouped).size).toBe(grouped.length);
+	});
+});
+
+describe('the boxes that arrive masked', () => {
+	it('is the three values reading over a shoulder is enough to take, and no others', () => {
+		// what makes a value one of these is what somebody could do with it after reading it off the
+		// screen, and the only place that judgement is recorded is the list itself — so this case is
+		// what makes changing the list deliberate.
+		expect(MASKED_VALUES).toEqual(['ADMIN_PASSWORD', 'SMTP_PASSWORD', 'STRIPE_SECRET_KEY']);
+	});
+
+	it('leaves the other ten of the thirteen legible, the publishable key among them', () => {
+		// held over the enumeration, so a fourteenth value lands unmasked and this case is where that
+		// shows. the publishable key is the one worth asserting by name: it stands beside a masked box
+		// in the same fold, and ./secret-groups.ts argues why it is not one of them.
+		expect([...DEPLOY_VARS].filter(isMasked).sort()).toEqual([...MASKED_VALUES].sort());
+		expect(isMasked('STRIPE_PUBLISHABLE_KEY')).toBe(false);
 	});
 });

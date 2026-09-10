@@ -167,5 +167,37 @@ export const STATED_VALUES: readonly string[] = ['SMTP_PORT'];
 export const pressedNames = (group: SecretGroup): readonly string[] =>
 	typedNames(group, MINTED_BY_CONSOLE).filter((name) => !STATED_VALUES.includes(name));
 
+/**
+ * the names whose box arrives holding its value as dots, with a press that shows it.
+ *
+ * every box on this console is seeded with the value the deployment is holding (./held-values.ts),
+ * which is what lets an operator check a stored credential against the page they copied it from —
+ * and three of the thirteen are values that reading over their shoulder is enough to take. the
+ * dashboard password opens /admin, the mail password sends as the organisation, and the Stripe
+ * secret key moves money. so those three are drawn masked and the press is how they are read,
+ * rather than standing legible through a screen share for as long as the fold is open. `masked` in
+ * packages/operator/src/components/forms/Field.jsx is what draws it.
+ *
+ * **`STRIPE_PUBLISHABLE_KEY` is deliberately not one of them.** it ships inside the donation form
+ * on every page the snippet is pasted into, so a box that hid it would be hiding a value already
+ * printed in the page source of every site the organisation runs.
+ *
+ * the rest are values that identify rather than authorise — a mail host, a username, the address
+ * receipts leave under — and a box that made an operator press to read their own sending address
+ * would be ceremony over nothing.
+ *
+ * the three are drawn by three different folds — ./password-fold.tsx through
+ * ./secret-group-form.tsx, ./smtp-fold.tsx and ./payments-fold.tsx — and each takes its answer from
+ * here, so a fourth credential is decided once and not at whichever fold draws it.
+ */
+export const MASKED_VALUES: readonly string[] = [
+	'ADMIN_PASSWORD',
+	'SMTP_PASSWORD',
+	'STRIPE_SECRET_KEY'
+];
+
+/** whether the box for `name` is drawn masked ({@link MASKED_VALUES}). */
+export const isMasked = (name: string): boolean => MASKED_VALUES.includes(name);
+
 /** the box one name's value is typed in. */
 export const VALUE_FIELD = (name: string): string => `value:${name}`;

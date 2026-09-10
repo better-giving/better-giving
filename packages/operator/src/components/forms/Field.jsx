@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { Button } from '../controls/Button.jsx';
 import { FieldMessage } from './FieldMessage.jsx';
 
 /**
@@ -22,6 +24,18 @@ import { FieldMessage } from './FieldMessage.jsx';
  *   row rather than under it — one destination and one send, instead of a press below a column of
  *   boxes. the row is `.adm-actions`, which is what makes the box take the line's remainder and the
  *   pair wrap at the 375px floor rather than shrink.
+ * @property {boolean | undefined} [masked] the box holds its value as dots until a press inside it
+ *   swaps it to the value, and back. it is for a box seeded with a credential the deployment is
+ *   already holding: a stored password standing legible on the screen is one anybody beside the
+ *   operator or watching the call can read, and the operator still has to be able to check it
+ *   character for character, so the value is one press away rather than withheld.
+ *
+ *   the press stands at the end of the box rather than on the row {@link beside} uses, so a masked
+ *   box is the width of every plain box in the same fold. the state is this field's own and starts
+ *   hidden at every mount.
+ *
+ *   an input's alone: a textarea takes no type, so a masked one holds nothing back and draws no
+ *   press at all.
  * @property {boolean | undefined} [code]
  * @property {string | undefined} [placeholder]
  * @property {HTMLInputTypeAttribute | undefined} [type]
@@ -59,6 +73,7 @@ export function Field({
 	error,
 	needed,
 	beside,
+	masked,
 	code,
 	placeholder,
 	type = 'text',
@@ -69,12 +84,54 @@ export function Field({
 	...rest
 }) {
 	const Tag = as === 'textarea' ? 'textarea' : 'input';
+	/* what the box is holding, and it starts hidden at every mount: a press is what puts a stored
+	   credential on the screen, so a box that came back revealed because something above it drew
+	   again is one nobody asked to see. */
+	const [shown, setShown] = useState(false);
+	const hidden = masked && !shown;
+	/* the press that swaps the two. it stands inside the box rather than on the row `beside` uses —
+	   `.adm-maskwrap` in packages/operator/src/styles/adm.css, which argues why.
+	   what it says is what the press does and it changes with what the press did; the mark carries
+	   no name of its own (../status/Mark.jsx draws an unlabelled one out of the tree), so the button
+	   is what a reader is told, and `aria-controls` is what says which box it is about.
+	   it closes with the box: a live press inside a box shut for a write in flight reads as a
+	   control that missed the state its own field is in.
+
+	   and it is drawn for an input alone. a textarea takes no `type`, so there is nothing to swap:
+	   the press would stand in a box already legible, promising a change it cannot make. */
+	const reveal =
+		masked && as !== 'textarea' ? (
+			<Button
+				type="button"
+				variant="quiet"
+				size="sm"
+				mark={hidden ? 'eye' : 'eye-off'}
+				aria-controls={id}
+				aria-label={hidden ? 'Show the value' : 'Hide the value'}
+				disabled={rest.disabled}
+				onClick={() => setShown((was) => !was)}
+			/>
+		) : null;
+	/* the box with its own press inside it: `.adm-maskwrap` in packages/operator/src/styles/adm.css
+	   is what places the press and reserves the room for it. a box with no press draws no wrapper. */
+	const inBox = (/** @type {ReactNode} */ box) =>
+		reveal === null ? (
+			box
+		) : (
+			<div className="adm-maskwrap">
+				{box}
+				{reveal}
+			</div>
+		);
 	/* the box, alone on its row or sharing it. what shares it is wrapped rather than placed beside
 	   the box, because the row a pair needs is `.adm-actions` and this field's own rows are what
 	   everything below the box is placed in: packages/operator/src/styles/adm.css puts the wrapper
 	   in the box's row, so the refusal and the standing sentence keep the rows they name whether or
 	   not there is a control up there. a field with nothing beside its box draws no wrapper — a flex
-	   line around one element answers nothing. */
+	   line around one element answers nothing.
+
+	   a masked box stands on that row as its wrapper, as a select does: what is on the row is what
+	   the box is inside of. */
 	const withBox = (/** @type {ReactNode} */ box) =>
 		beside ? (
 			<div className="adm-actions">
@@ -116,15 +173,17 @@ export function Field({
 				</p>
 			) : null}
 			{withBox(
-				<Tag
-					id={id}
-					className={cls}
-					type={as === 'textarea' ? undefined : type}
-					placeholder={placeholder}
-					aria-invalid={refused ? 'true' : undefined}
-					aria-describedby={describedBy}
-					{...rest}
-				/>
+				inBox(
+					<Tag
+						id={id}
+						className={cls}
+						type={as === 'textarea' ? undefined : hidden ? 'password' : type}
+						placeholder={placeholder}
+						aria-invalid={refused ? 'true' : undefined}
+						aria-describedby={describedBy}
+						{...rest}
+					/>
+				)
 			)}
 			{/* both rows are ./FieldMessage.jsx's, and the sentence is wrapped there: which of the two
 			    announces itself, and why a message is never handed to the row unwrapped, are argued in
