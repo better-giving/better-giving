@@ -253,7 +253,7 @@ func object(to io.Writer, at Deployment, notes string) {
 	}
 	fmt.Fprintf(to, "deployment: %s\n", answering(at))
 	if notes != "" {
-		fmt.Fprintf(to, "release notes: %s\n", notes)
+		fmt.Fprintf(to, "release notes: %s\n", Code(notes))
 	}
 	fmt.Fprintln(to)
 }
@@ -266,7 +266,7 @@ func answering(at Deployment) string {
 	if at.Address == "" {
 		return "no address this console can read"
 	}
-	return at.Address
+	return Code(at.Address)
 }
 
 // the count and the noun it counts, inflected, the way ./outcome.go's heldBack inflects its own.

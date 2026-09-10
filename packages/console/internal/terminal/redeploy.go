@@ -81,7 +81,7 @@ func UpdateSaid(ran effects.Carried) string {
 		// the migration is the one stage that says which file to open, and it is the stage where
 		// that matters most: the door it stopped inside is one way.
 		if ran.Ran.File != "" && ran.Ran.Detail != "" {
-			return ran.Ran.File + ": " + ran.Ran.Detail
+			return Code(ran.Ran.File) + ": " + ran.Ran.Detail
 		}
 		return ran.Ran.Detail
 	}

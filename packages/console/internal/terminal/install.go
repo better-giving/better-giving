@@ -78,11 +78,11 @@ func InstallingNewer(version string) string {
 func InstallStep(done update.Step, at update.Landed) string {
 	switch done {
 	case update.Downloaded:
-		return "  downloaded " + at.Asset
+		return "  downloaded " + Code(at.Asset)
 	case update.Checked:
 		return "  checked against the release's checksums"
 	case update.Installed:
-		return "  installed to " + at.Path
+		return "  installed to " + Code(at.Path)
 	}
 	return ""
 }
@@ -102,8 +102,8 @@ func NowOn(version string) string {
 // `start` has a newer console and a deployment on the older release, with nothing on the screen
 // saying which press closes that.
 func NowOnThenStart(version string) string {
-	return "this console is now on " + version + " — run better-giving start to put that release " +
-		"on your deployment"
+	return "this console is now on " + version + " — run " + Cmd("start") +
+		" to put that release on your deployment"
 }
 
 // InstallStopped is why the newer console is not on this machine, and what that left undone.
@@ -120,8 +120,8 @@ func InstallStopped(at update.Landed, fix Repair) string {
 	case update.NoAsset:
 		// the one that will not come right on another try: no console for this platform appears
 		// under that release however many times it is asked for.
-		return "That release publishes no console for this machine (" + at.Asset + "), so nothing " +
-			"was installed and nothing was deployed. " + byHand(fix)
+		return "That release publishes no console for this machine (" + Code(at.Asset) +
+			"), so nothing was installed and nothing was deployed. " + byHand(fix)
 	case update.Unreachable:
 		return "The newer console could not be downloaded, so nothing was installed and nothing " +
 			"was deployed. Check this machine's connection. " + byHand(fix)
@@ -137,7 +137,7 @@ func InstallStopped(at update.Landed, fix Repair) string {
 		// case in which there is no path to quote.
 		where := ""
 		if at.Path != "" {
-			where = " at " + at.Path
+			where = " at " + Code(at.Path)
 		}
 		return "This console could not be replaced" + where + ", so nothing was installed and " +
 			"nothing was deployed. " + byHand(fix)
@@ -159,5 +159,5 @@ func unaccountedInstall(fix Repair) string {
 // what an operator does about a console this one could not install for them, which is the line they
 // installed this one with and then the press they typed.
 func byHand(fix Repair) string {
-	return "Install the newer console yourself:\n  " + release.InstallLine + "\n" + fix.Alone
+	return "Install the newer console yourself:\n  " + Code(release.InstallLine) + "\n" + fix.Alone
 }

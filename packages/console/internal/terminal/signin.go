@@ -38,9 +38,11 @@ import (
 // SignInUnfinished is the one sentence a sign-in that ended without a credential is answered with.
 //
 // `dir` is where this machine keeps what it is signed in as, named by the one state that could not
-// be written there. `command` is the caller's own, as the press that puts the sign-in again.
+// be written there. `command` is the caller's own, as the press that puts the sign-in again, in
+// plain words: it is set off as code here (./Code), so a caller that marked it would mark it
+// twice.
 func SignInUnfinished(why oauth.Why, dir, command string) string {
-	again := "Run " + command + " again"
+	again := "Run " + Code(command) + " again"
 	switch why {
 	case oauth.TimedOut:
 		// a wait this console keeps and never a page that was closed: an operator who was simply
@@ -57,9 +59,9 @@ func SignInUnfinished(why oauth.Why, dir, command string) string {
 		// did not save.
 		// the fragment the other three open a sentence with would land inside a clause here, so
 		// this one words itself: a capital mid-clause reads as two sentences spliced together.
-		return "Cloudflare allowed the sign-in and this console couldn't write it down in " + dir +
-			", so this machine isn't signed in. Until that folder can be written to, running " +
-			command + " again lands here."
+		return "Cloudflare allowed the sign-in and this console couldn't write it down in " +
+			Code(dir) + ", so this machine isn't signed in. Until that folder can be written to, " +
+			"running " + Code(command) + " again lands here."
 	case oauth.NothingBack:
 		return "Cloudflare sent nothing back, and the page may have been closed before the sign-in " +
 			"was allowed. " + again + "."
@@ -82,11 +84,11 @@ func SignInUnfinished(why oauth.Why, dir, command string) string {
 func SignInWaiting(opened bool, address string, waits time.Duration) string {
 	waiting := "this console waits " + spell(waits) + " for it."
 	if opened {
-		return "a Cloudflare page has opened in your browser: " + address +
+		return "a Cloudflare page has opened in your browser: " + Code(address) +
 			"\nallow the access it asks for, then come back here. " + waiting +
 			"\nnothing opened? open that address yourself."
 	}
-	return "open this address in your browser and allow the access it asks for: " + address +
+	return "open this address in your browser and allow the access it asks for: " + Code(address) +
 		"\n" + waiting
 }
 

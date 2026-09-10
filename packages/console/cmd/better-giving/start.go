@@ -493,7 +493,8 @@ func aboutToMake(in account.Account) string {
 		"this makes:\n\n" +
 		"  - a database — where it keeps its records is the next question, " +
 		"and cannot be changed once it exists\n" +
-		"  - the worker " + release.Baked.Name + " — it serves your donation page, /admin and the API\n" +
+		"  - the worker " + release.Baked.Name + " — it serves your donation page, " +
+		terminal.Code("/admin") + " and the API\n" +
 		"  - spam protection — registered against the address that worker answers on"
 }
 
@@ -575,8 +576,8 @@ func operating(
 // the act on the end of it because every other sentence this program ends on has one: the failure
 // is a read of the operating system that came back empty, so the press again is the whole of what
 // there is to do about it, and nothing was created (../../internal/first).
-const noSessionKey = "this console could not generate the key that signs a staff session, so " +
-	"nothing was created and nothing was deployed. Run better-giving start again."
+var noSessionKey = "this console could not generate the key that signs a staff session, so " +
+	"nothing was created and nothing was deployed. Run " + terminal.Cmd("start") + " again."
 
 // the two an operator answers, taken in the order they are needed and both in front of the chain.
 //
@@ -673,7 +674,7 @@ func stopped(ran first.Outcome) error {
 // where the deployment this run stood up answers.
 func nowUp(address deployment.Address) string {
 	if where := address.Origin(); where != "" {
-		return "your deployment is at " + where
+		return "your deployment is at " + terminal.Code(where)
 	}
 	return release.Baked.Name + " is deployed and answers on no address this console can read"
 }
@@ -711,15 +712,15 @@ func unread(address deployment.Address) error {
 // the list itself has already been named at the terminal (../../internal/terminal/confirm.go); what
 // is left is the act, and it is an install rather than a press — a binary older than the database
 // it is looking at has nothing it could deploy that would not carry the app backwards.
-const aheadOfThisBinary = "this deployment's database records migrations this binary does not " +
-	"carry, so nothing was uploaded: run better-giving update to install the current console, " +
-	"then better-giving start again"
+var aheadOfThisBinary = "this deployment's database records migrations this binary does not " +
+	"carry, so nothing was uploaded: run " + terminal.Cmd("update") + " to install the current " +
+	"console, then " + terminal.Cmd("start") + " again"
 
 // what a run nobody is standing at is answered with, which is the rule this whole command keeps:
 // this console is interactive or it does not run.
-const noOneAtTheDoor = "this console asks before it applies a migration to the live database, so " +
-	"nothing was applied and nothing was uploaded: run better-giving start at a terminal the " +
-	"question can be answered at"
+var noOneAtTheDoor = "this console asks before it applies a migration to the live database, so " +
+	"nothing was applied and nothing was uploaded: run " + terminal.Cmd("start") + " at a " +
+	"terminal the question can be answered at"
 
 // the order a carry onto a deployment already standing runs in: what a deploy would apply read and
 // named, the door answered, the carry itself, and where it left the deployment.
@@ -840,8 +841,8 @@ func atTheDoor(answered terminal.Confirmation) (said string, went doorway, err e
 		return "", shut, errors.New(aheadOfThisBinary)
 	default:
 		return "", shut, fmt.Errorf("this console didn't understand the answer at the door (%q), "+
-			"so nothing was applied and nothing was uploaded: run better-giving start again",
-			answered)
+			"so nothing was applied and nothing was uploaded: run %s again",
+			answered, terminal.Cmd("start"))
 	}
 }
 
@@ -895,7 +896,7 @@ func carryAt(ctx context.Context, made effects.Carrying) (effects.Carried, bool)
 // answer to.
 func nowLevel(address deployment.Address) string {
 	if where := address.Origin(); where != "" {
-		return "your deployment is up to date, at " + where
+		return "your deployment is up to date, at " + terminal.Code(where)
 	}
 	return release.Baked.Name + " is up to date and answers on no address this console can read"
 }

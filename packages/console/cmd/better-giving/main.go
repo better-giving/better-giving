@@ -19,9 +19,11 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/better-giving/console/internal/account"
 	"github.com/better-giving/console/internal/cf"
@@ -67,7 +69,7 @@ func exitCode(to io.Writer, err error) int {
 		return 0
 	}
 	if !errors.Is(err, errSaid) {
-		fmt.Fprintf(to, "better-giving: %v\n", err)
+		fmt.Fprintf(to, "%s: %v\n", terminal.Cmd(), err)
 	}
 	return 1
 }
@@ -121,16 +123,33 @@ func run(args []string, to, wrong io.Writer) error {
 	}
 }
 
-func usage(to io.Writer) {
-	fmt.Fprint(to, `better-giving — the operator console
+// the presses this binary answers to, in the order ./run reads them, and what each is for.
+var commands = []struct{ takes, does string }{
+	{"start [--port N] [--no-open]",
+		"put this release on your deployment, then open the console at it"},
+	{"update", "install the newest console on this machine"},
+	{"open [--port N] [--no-open]", "serve the console and open it in a browser"},
+	{"login", "sign in to Cloudflare, and choose the account this machine operates"},
+	{"logout", "give up the sign-in this machine holds"},
+	{"version", "what this binary is, and what it was baked for"},
+}
 
-  start [--port N] [--no-open]  put this release on your deployment, then open the console at it
-  update                        install the newest console on this machine
-  open [--port N] [--no-open]   serve the console and open it in a browser
-  login                         sign in to Cloudflare, and choose the account this machine operates
-  logout                        give up the sign-in this machine holds
-  version                       what this binary is, and what it was baked for
-`)
+// what this binary is, with the presses under it and what each of them is for beside it.
+//
+// **the column is counted over the words and never over what is drawn.** each press is set off as
+// code (../../internal/terminal/ledger.go) and a tone is escape codes of no display width, so a
+// column measured off the drawn span would be short by however many characters the terminal
+// swallows — and the descriptions would land in as many different places as there are presses.
+func usage(to io.Writer) {
+	fmt.Fprintf(to, "%s — the operator console\n\n", terminal.Cmd())
+	column := 0
+	for _, one := range commands {
+		column = max(column, utf8.RuneCountInString(one.takes)+2)
+	}
+	for _, one := range commands {
+		fmt.Fprintf(to, "  %s%s%s\n", terminal.Code(one.takes),
+			strings.Repeat(" ", column-utf8.RuneCountInString(one.takes)), one.does)
+	}
 }
 
 // how a subcommand reads what was typed after its name.
@@ -148,25 +167,26 @@ type options struct {
 }
 
 // what each command answers when it is asked what it takes, or handed something it does not know.
-const (
-	startTakes = "better-giving start puts this release on your deployment and opens the console " +
-		"at it: it stands one up where there is none, and offers to carry this release onto one " +
-		"that is already behind. Before it carries it names every migration it would apply to the " +
-		"live database and waits for your answer, and there is no flag that answers for you: a " +
-		"migration cannot be undone. It takes:"
-	openTakes = "better-giving open serves the console against the deployment you already have. " +
-		"It takes:"
-	updateTakes = "better-giving update takes no options. It installs the newest console on this " +
-		"machine and deploys nothing: what puts a release on your deployment is better-giving start."
+var (
+	startTakes = terminal.Cmd("start") + " puts this release on your deployment and opens the " +
+		"console at it: it stands one up where there is none, and offers to carry this release " +
+		"onto one that is already behind. Before it carries it names every migration it would " +
+		"apply to the live database and waits for your answer, and there is no flag that answers " +
+		"for you: a migration cannot be undone. It takes:"
+	openTakes = terminal.Cmd("open") + " serves the console against the deployment you already " +
+		"have. It takes:"
+	updateTakes = terminal.Cmd("update") + " takes no options. It installs the newest console on " +
+		"this machine and deploys nothing: what puts a release on your deployment is " +
+		terminal.Cmd("start") + "."
 	// **the three that take nothing read what was typed after them all the same.** ./read is where
 	// `-h` is answered and a word this command does not know is refused, and a command that skipped
 	// it answers `better-giving logout -h` by revoking the sign-in this machine holds.
-	loginTakes = "better-giving login takes no options. It signs this machine in to Cloudflare and " +
-		"takes the account every command after it runs under."
-	logoutTakes = "better-giving logout takes no options. It gives up the sign-in this machine " +
-		"holds, at Cloudflare and on this machine."
-	versionTakes = "better-giving version takes no options. It says what this binary is and what " +
-		"it was baked for."
+	loginTakes = terminal.Cmd("login") + " takes no options. It signs this machine in to " +
+		"Cloudflare and takes the account every command after it runs under."
+	logoutTakes = terminal.Cmd("logout") + " takes no options. It gives up the sign-in this " +
+		"machine holds, at Cloudflare and on this machine."
+	versionTakes = terminal.Cmd("version") + " takes no options. It says what this binary is and " +
+		"what it was baked for."
 )
 
 func taking(name, says string) *options {
@@ -191,12 +211,12 @@ func (taken *options) read(args []string, help, wrong io.Writer) (bool, error) {
 		taken.say(help)
 		return false, nil
 	case err != nil:
-		fmt.Fprintf(wrong, "better-giving: %v\n", err)
+		fmt.Fprintf(wrong, "%s: %v\n", terminal.Cmd(), err)
 		taken.say(wrong)
 		return false, errSaid
 	case taken.flags.NArg() > 0:
-		fmt.Fprintf(wrong, "better-giving: %s takes no argument, and was handed %q\n",
-			taken.flags.Name(), taken.flags.Arg(0))
+		fmt.Fprintf(wrong, "%s: %s takes no argument, and was handed %q\n",
+			terminal.Cmd(), terminal.Code(taken.flags.Name()), taken.flags.Arg(0))
 		taken.say(wrong)
 		return false, errSaid
 	default:
@@ -213,7 +233,7 @@ func (taken *options) say(to io.Writer) {
 
 // what an operator with nothing deployed is told, which is never a console.
 var nothingToOpen = "nothing is deployed under the name " + release.Baked.Name +
-	" in this account, so there is nothing for the console to read: run better-giving start"
+	" in this account, so there is nothing for the console to read: run " + terminal.Cmd("start")
 
 // the console served against the deployment this machine operates.
 //
@@ -270,7 +290,7 @@ func open(args []string, to, wrong io.Writer) error {
 func noStore(err error) error {
 	return fmt.Errorf("this console keeps what it remembers in this machine's configuration "+
 		"folder and couldn't work out where that is, so nothing was changed. Set %s to a folder "+
-		"it may write to, then run the command again: %v", state.HomeVar, err)
+		"it may write to, then run the command again: %v", terminal.Code(state.HomeVar), err)
 }
 
 // whether cloudflare says plainly that no worker of this deployment's name is in the account.
@@ -332,7 +352,7 @@ func newer(read releases.Read) string {
 	}
 	return fmt.Sprintf(
 		"version %s of this console is out: install it from %s to deploy what that release carries",
-		read.Version, read.Where)
+		read.Version, terminal.Code(read.Where))
 }
 
 // what `start` does about a console newer than this one, which is ask, and then install it and hand
@@ -483,7 +503,7 @@ func asNewer(console string, fix terminal.Repair) error {
 	err := syscall.Exec(console, os.Args, releases.Marking(os.Environ()))
 	// reached only where the exec did not happen: on the way it does, this process is already gone.
 	return fmt.Errorf("this console installed %s and could not run it: %v. %s",
-		console, err, fix.Alone)
+		terminal.Code(console), err, fix.Alone)
 }
 
 // serves the console on the loopback port and holds this process there until the operator stops it.
@@ -628,7 +648,8 @@ func saying(to io.Writer, bound net.Listener, whose string, openAt func(string))
 	if whose != "" {
 		operating = ", operating Cloudflare account " + whose
 	}
-	fmt.Fprintf(to, "the console is at %s%s — press ctrl-c to stop it\n", where, operating)
+	fmt.Fprintf(to, "the console is at %s%s — press ctrl-c to stop it\n",
+		terminal.Code(where), operating)
 	if openAt != nil {
 		openAt(where)
 	}
@@ -641,9 +662,10 @@ func saying(to io.Writer, bound net.Listener, whose string, openAt func(string))
 func unbound(at string, err error) error {
 	if errors.Is(err, syscall.EADDRINUSE) {
 		return fmt.Errorf("%s is in use, most likely by a console this machine is already "+
-			"running: stop that one, or run this again with --port on another port", at)
+			"running: stop that one, or run this again with %s on another port",
+			terminal.Code(at), terminal.Code("--port"))
 	}
-	return fmt.Errorf("this console could not listen on %s: %v", at, err)
+	return fmt.Errorf("this console could not listen on %s: %v", terminal.Code(at), err)
 }
 
 // ends this run: the press it is holding, and then the server.
@@ -668,8 +690,8 @@ func endRun(to io.Writer, listening *http.Server, presses *server.Presses) error
 // the relationship rather than a claim that a deployment is there: `open` serves a console on a
 // machine that could not read the account at all (./open), so a line asserting a standing
 // deployment would be a reading this run never took.
-const stillUp = "your deployment runs on Cloudflare and stopping this console left it alone. " +
-	"run better-giving open to bring the console back"
+var stillUp = "your deployment runs on Cloudflare and stopping this console left it alone. " +
+	"run " + terminal.Cmd("open") + " to bring the console back"
 
 // how often a stop asks again whether the press it is waiting for has ended.
 const waited = 500 * time.Millisecond
@@ -775,9 +797,10 @@ func login(args []string, to, wrong io.Writer) error {
 // is the repair it has always been.
 func insteadOfABrowser(tokenSet bool, held signin.SignIn, chosen *account.Choice) string {
 	if tokenSet {
-		return oauth.TokenVar + " is set in this console's environment, so that token is the " +
-			"sign-in every command here uses and a browser sign-in would not take its place. " +
-			"Choose the account it reaches, or unset it and run better-giving login again."
+		return terminal.Code(oauth.TokenVar) + " is set in this console's environment, so that " +
+			"token is the sign-in every command here uses and a browser sign-in would not take " +
+			"its place. Choose the account it reaches, or unset it and run " +
+			terminal.Cmd("login") + " again."
 	}
 	if held.Kind != signin.OAuth && held.Kind != signin.Token {
 		return ""
@@ -789,8 +812,8 @@ func insteadOfABrowser(tokenSet bool, held signin.SignIn, chosen *account.Choice
 	if chosen != nil {
 		line += ", operating " + chosen.Account.Name
 	}
-	return line + ". Choose the account it operates, or run better-giving logout to sign in as " +
-		"somebody else."
+	return line + ". Choose the account it operates, or run " + terminal.Cmd("logout") +
+		" to sign in as somebody else."
 }
 
 // what `login` leaves on the screen, which is the account every command after it runs under.
@@ -948,8 +971,8 @@ func choosing(
 	if !account.Verify(ctx, get, picked.ID) {
 		return account.Account{}, terminal.PickerClosed, fmt.Errorf(
 			"this sign-in may not act inside %s: ask an administrator of that account for "+
-				"administrator access, or run better-giving login to choose another account",
-			picked.Name)
+				"administrator access, or run %s to choose another account",
+			picked.Name, terminal.Cmd("login"))
 	}
 
 	chosen := account.Account{ID: picked.ID, Name: picked.Name}
@@ -967,7 +990,7 @@ func choosing(
 //
 // One sentence because it is one state: every command that reaches cloudflare needs a sign-in and
 // none of them can take one, so the act is the same wherever the absence is found.
-const signedOut = "this machine holds no Cloudflare sign-in: run better-giving login"
+var signedOut = "this machine holds no Cloudflare sign-in: run " + terminal.Cmd("login")
 
 // why a sign-in carries no account list to choose from.
 //
@@ -1022,7 +1045,7 @@ func baked(args []string, to, wrong io.Writer) error {
 		return err
 	}
 
-	fmt.Fprintf(to, "better-giving %s (%s)\n", version, commit)
+	fmt.Fprintf(to, "%s %s (%s)\n", terminal.Cmd(), version, commit)
 	fmt.Fprintf(to, "baked for worker %q, database %q, at %s\n",
 		release.Baked.Name, release.Baked.DatabaseName, release.Baked.Commit)
 	return nil

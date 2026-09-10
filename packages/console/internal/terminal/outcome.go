@@ -34,7 +34,7 @@ import (
 // of its own.
 
 // what an operator does about a press that stopped, which at a terminal is the press again.
-const again = "Run better-giving start again."
+var again = "Run " + Cmd("start") + " again."
 
 // Repair is that act as the command that made the press, in the two shapes a sentence needs it.
 //
@@ -57,30 +57,30 @@ type Repair struct {
 
 // Starting and Updating are the two presses, as the act on the end of a sentence about either.
 var (
-	Starting = Repair{Alone: again, After: "then run better-giving start again."}
+	Starting = Repair{Alone: again, After: "then run " + Cmd("start") + " again."}
 	Updating = Repair{
-		Alone: "Run better-giving update again.",
-		After: "then run better-giving update again.",
+		Alone: "Run " + Cmd("update") + " again.",
+		After: "then run " + Cmd("update") + " again.",
 	}
 )
 
 // where a sign-in that has gone is taken again, and the press behind it.
-const signInAgain = "Run better-giving login, then better-giving start again."
+var signInAgain = "Run " + Cmd("login") + ", then " + Cmd("start") + " again."
 
 // AnotherAccount is what an operator does about an account this sign-in may not act in.
 //
 // the two acts and not one: access is granted by somebody else and this console cannot ask for it,
 // so the other way out is an account that already has it — which `login` is where the picker is
 // (./account.go).
-const AnotherAccount = "Ask an administrator of that account for administrator access, or run " +
-	"better-giving login to choose another account."
+var AnotherAccount = "Ask an administrator of that account for administrator access, or run " +
+	Cmd("login") + " to choose another account."
 
 // what a chain that ended in a kind this file does not know left behind.
 //
 // ./outcome_test.go holds every kind ../first names to a sentence of its own, so a kind added there
 // and not here fails `go test` — and reaches this rather than a blank line under the ledger if one
 // ever does.
-const unaccounted = "This deploy did not finish, and this console has no account of how it " +
+var unaccounted = "This deploy did not finish, and this console has no account of how it " +
 	"stopped. " + again
 
 // Outcome is what a chain that did not land left behind, in one sentence an operator can act on.
@@ -134,7 +134,7 @@ func Said(ran first.Outcome) string {
 		// the migration is the one stage that says which file to open, and it is the stage where
 		// that matters most: the door it stopped inside is one way.
 		if ran.Ran.File != "" && ran.Ran.Detail != "" {
-			return ran.Ran.File + ": " + ran.Ran.Detail
+			return Code(ran.Ran.File) + ": " + ran.Ran.Detail
 		}
 		return ran.Ran.Detail
 	case first.NoSignIn, first.Unkept:
@@ -163,11 +163,11 @@ func noDatabase(made *deployment.Standing) string {
 		// holding two would bind the worker to one of them without saying which (CLAUDE.md).
 		return "Two databases in this account are called " + release.Baked.DatabaseName +
 			", so nothing was deployed: a deploy would pick one without saying which. Delete or " +
-			"rename the one that isn't this deployment's, then run better-giving start again."
+			"rename the one that isn't this deployment's, then run " + Cmd("start") + " again."
 	case deployment.DatabaseLimit:
 		return "This account is at its limit for databases, so nothing was made and nothing was " +
-			"deployed. Delete one at dash.cloudflare.com under Storage & Databases, or move the " +
-			"account to a paid plan."
+			"deployed. Delete one at " + Code("dash.cloudflare.com") + " under Storage & " +
+			"Databases, or move the account to a paid plan."
 	case deployment.DatabaseRefused:
 		return "Cloudflare won't let this sign-in create things in this account, so nothing was " +
 			"made and nothing was deployed. " + AnotherAccount
@@ -176,7 +176,7 @@ func noDatabase(made *deployment.Standing) string {
 			"nothing was deployed. " + signInAgain
 	case deployment.DatabaseUnreachable:
 		return "Cloudflare didn't answer, so nothing was made and nothing was deployed. Check " +
-			"this machine's connection, then run better-giving start again."
+			"this machine's connection, then run " + Cmd("start") + " again."
 	default:
 		return "The database wasn't made, so nothing was deployed. " + again
 	}
@@ -238,7 +238,7 @@ func bundleStopped(at deploy.Stage, fix Repair) string {
 		// is one a second run uploads nothing onto (../../cmd/better-giving/start.go's
 		// alreadyCarrying). what is left is looking at what it is holding.
 		return "It was uploaded and came back missing something it needs, so it is deployed and " +
-			"may not serve anything. Run better-giving open: the console reads what the " +
+			"may not serve anything. Run " + Cmd("open") + ": the console reads what the " +
 			"deployment says about itself."
 	default:
 		return nowhereNamed(fix)
@@ -249,11 +249,11 @@ func bundleStopped(at deploy.Stage, fix Repair) string {
 func noSignIn(written *deployment.Written) string {
 	if withheld(written) {
 		return release.Baked.Name + " is deployed, and nobody can sign in to the dashboard yet: " +
-			heldBack(written.Names) + " Run better-giving open: the value is named where it is " +
+			heldBack(written.Names) + " Run " + Cmd("open") + ": the value is named where it is " +
 			"used, with a Remove press beside it."
 	}
 	return release.Baked.Name + " is deployed, and the password wasn't stored, so nobody can sign " +
-		"in to the dashboard yet. Run better-giving start again to store it."
+		"in to the dashboard yet. Run " + Cmd("start") + " again to store it."
 }
 
 // the widget on the account and the deployment holding neither half of it.
@@ -282,7 +282,8 @@ func noWidget(supply *widget.Supply) string {
 	case widget.Ambiguous:
 		return "Two widgets in this account carry this deployment's name, so this console won't " +
 			"guess which of them is its own. " + upAndServing + ". Delete the one that isn't this " +
-			"deployment's at dash.cloudflare.com under Turnstile, then run better-giving start again."
+			"deployment's at " + Code("dash.cloudflare.com") + " under Turnstile, then run " +
+			Cmd("start") + " again."
 	case widget.NoHosts:
 		// cloudflare was never asked: what stopped this is the address read, and ../first's noOrigin
 		// is the answer ./Said draws underneath.
@@ -334,12 +335,19 @@ func withheld(written *deployment.Written) bool {
 // a name and never a value: what is withheld is stored as a worker secret, so this console cannot
 // read it and cannot write over it — and the names themselves are the enumeration's own
 // (../release), not anything an operator typed.
+//
+// each name is set off where they are joined and not at the literals they come from: the commas
+// between them are this sentence's own and are not part of any of them (../release's DeployVars).
 func heldBack(names []string) string {
 	which := "those names"
 	if len(names) == 1 {
 		which = "that name"
 	}
-	return "this deployment already holds " + strings.Join(names, ", ") + " in a form nothing can " +
-		"read back, so nothing was stored under " + which +
-		" and running better-giving start again stores nothing."
+	marked := make([]string, 0, len(names))
+	for _, name := range names {
+		marked = append(marked, Code(name))
+	}
+	return "this deployment already holds " + strings.Join(marked, ", ") + " in a form nothing " +
+		"can read back, so nothing was stored under " + which + " and running " + Cmd("start") +
+		" again stores nothing."
 }

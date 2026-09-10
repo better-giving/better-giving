@@ -4,10 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -865,5 +870,77 @@ func TestReadsThatFoundOutNothingMarkNothing(t *testing.T) {
 	// one: every row bare, and no row saying a deployment is not there.
 	if marked := deployedIn(effects.Addresses{}); len(marked) != 0 {
 		t.Errorf("the picker marks %v off reads that landed for no account", marked)
+	}
+}
+
+// what this package draws as code, and the column that drawing must not move.
+//
+// tone itself is asserted nowhere: a style is escape codes of no display width and every case here
+// takes them off before it reads, which is how ../../internal/terminal/ledger_test.go reads a drawn
+// line. what is worth holding is what the marking could break — the column the help block stands
+// in, and the two values ../../internal/terminal marks for itself.
+
+// a drawn line with any tone taken off.
+var toneless = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+func TestTheHelpBlockDrawsEveryDescriptionInTheSameColumn(t *testing.T) {
+	// what an operator reads, with the tone taken off: the column ./usage pads is counted over
+	// these words, so this is the block that moves if it is ever counted over the drawn span.
+	var said strings.Builder
+	usage(&said)
+
+	want := `better-giving — the operator console
+
+  start [--port N] [--no-open]  put this release on your deployment, then open the console at it
+  update                        install the newest console on this machine
+  open [--port N] [--no-open]   serve the console and open it in a browser
+  login                         sign in to Cloudflare, and choose the account this machine operates
+  logout                        give up the sign-in this machine holds
+  version                       what this binary is, and what it was baked for
+`
+	if drawn := toneless.ReplaceAllString(said.String(), ""); drawn != want {
+		t.Errorf("the help block draws\n%s\nwant\n%s", drawn, want)
+	}
+}
+
+// one of this binary's presses, wherever a string in this package spells one out.
+var pressSpelled = regexp.MustCompile(`better-giving [a-z]+`)
+
+func TestEveryPressThisPackageNamesIsComposedRatherThanSpelled(t *testing.T) {
+	// the same reading ../../internal/terminal/ledger_test.go's TestEveryPressIsSpelledTheOneWay
+	// holds that call to, one package further out: a sentence here composes with terminal.Cmd, so
+	// the spelling lives in one place and every press named in this package is drawn as code.
+	//
+	// **the two exceptions are the value handed to ./allow.** SignInUnfinished sets that press off
+	// as code itself (../../internal/terminal/signin.go), so a caller that marked it would mark it
+	// twice — which is why they arrive in plain words, and why they are read here as the whole of
+	// the list rather than merely allowed.
+	spelled := map[string]int{}
+	read := token.NewFileSet()
+	for _, file := range []string{"main.go", "start.go", "update.go"} {
+		parsed, err := parser.ParseFile(read, file, nil, 0)
+		if err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		ast.Inspect(parsed, func(node ast.Node) bool {
+			literal, ok := node.(*ast.BasicLit)
+			if !ok || literal.Kind != token.STRING {
+				return true
+			}
+			said, err := strconv.Unquote(literal.Value)
+			if err != nil {
+				return true
+			}
+			for _, press := range pressSpelled.FindAllString(said, -1) {
+				spelled[press]++
+			}
+			return true
+		})
+	}
+
+	want := map[string]int{"better-giving login": 1, "better-giving start": 1}
+	if !maps.Equal(spelled, want) {
+		t.Errorf("this package spells %v, want the two ./allow takes and every other press "+
+			"composed with terminal.Cmd", spelled)
 	}
 }

@@ -50,10 +50,10 @@ const alreadyCurrent = "this console is already the newest release, so nothing w
 // build asked github nothing, so an operator told to check their connection would be looking for a
 // fault this machine never had — and a console cut from a release is the one where that is the
 // whole of what there is to try.
-const noReading = "this console couldn't work out whether a newer one has been released, so " +
+var noReading = "this console couldn't work out whether a newer one has been released, so " +
 	"nothing was installed: a console built from a checkout carries no version to weigh against " +
 	"a release, and a release this one could not read is the other way here. If this console came " +
-	"from a release, check this machine's connection and run better-giving update again"
+	"from a release, check this machine's connection and run " + terminal.Cmd("update") + " again"
 
 func update(args []string, to, wrong io.Writer) error {
 	// no flag of its own, and the empty set is the statement: an argument this command does not

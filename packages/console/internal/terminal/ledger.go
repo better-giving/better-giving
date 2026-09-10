@@ -92,11 +92,42 @@ func Marks(rows []Row, at int, end End) []Mark {
 // the colours are the terminal's own numbered eight, so what is drawn is whatever the operator has
 // themed their terminal to. nothing here comes from packages/operator's tokens, which dress the
 // browser surfaces and hold no value a terminal could spend (CLAUDE.md).
+//
+// **the code tone carries no colour, because the three above it already mean something.** the green
+// closes a row, the cyan is the run turning and the faint is a note beside a row's own words — so a
+// fourth colour on a screen drawing both would be read as a fourth meaning. bold is orthogonal to
+// all three and is legible whatever the operator has themed.
 var (
 	check   = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).SetString("✓")
 	turning = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	dimmed  = lipgloss.NewStyle().Faint(true)
+	coded   = lipgloss.NewStyle().Bold(true)
 )
+
+// Code is one span an operator would reproduce exactly — by typing it, pasting it or searching for
+// it — set off from the prose it stands in.
+//
+// A path, a filename, an address, an environment-variable name, this binary's own presses
+// (./Cmd). Never a value the console merely reports back: a version, an account, a count and a
+// duration are things that happened, and a screen marking those marks everything.
+//
+// **a span already set off by its own layout is not marked twice.** a column of filenames under a
+// sentence about them, or a block of what cloudflare said, is code from its first character to its
+// last — the marking is for code inside a sentence.
+func Code(span string) string { return toned(coded, span) }
+
+// the binary an operator types, as ../../cmd/better-giving builds it.
+const binary = "better-giving"
+
+// Cmd is one of this console's own presses drawn as code: the binary, and the words that follow it.
+//
+// **the spelling is here and not in the sentence.** a press is named in the sentences of this
+// package and in the commands themselves, and a spelling that lived at each of those sites is one
+// nothing holds together — so what a sentence composes with is this, and ./ledger_test.go holds it
+// to the four presses.
+func Cmd(sub ...string) string {
+	return Code(strings.Join(append([]string{binary}, sub...), " "))
+}
 
 // what stands where a mark does not, so every row's words start in the same column.
 const unmarked = " "
@@ -344,11 +375,15 @@ func halted(final tea.Model, err error) bool {
 // StillGoing is what a terminal says about the press a signal left running: the press in the words
 // the operator typed it as, the wait this stop is making of it, and the way out of that wait.
 //
+// `press` arrives in plain words and is set off as code here (./Code), so a caller that marked it
+// would mark it twice.
+//
 // The same statement as ../../cmd/better-giving's waitForPress, at the other end of the same
 // argument: an upload takes the minutes it takes, and a console that went away inside one leaves
 // the database ahead of the code that reads it (CLAUDE.md).
 func StillGoing(press string) string {
-	return press + " is still running — waiting for it to finish. press ctrl-c again to stop anyway"
+	return Code(press) +
+		" is still running — waiting for it to finish. press ctrl-c again to stop anyway"
 }
 
 // Settled is what a terminal is told once a ledger has ended: the line the press it left running

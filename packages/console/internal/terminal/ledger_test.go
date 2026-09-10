@@ -558,3 +558,18 @@ func TestABarAndTheShareBesideItAreOneReadingAndNeverDisagree(t *testing.T) {
 		t.Errorf("a stage counting nothing says %q, want nothing", counting(0, 0))
 	}
 }
+
+func TestEveryPressIsSpelledTheOneWay(t *testing.T) {
+	// the verbatim assertions across these files hold the sentences themselves, and this is the
+	// one reading that holds every press inside them to a single spelling.
+	for _, one := range []struct{ sub, said string }{
+		{"start", "better-giving start"},
+		{"update", "better-giving update"},
+		{"login", "better-giving login"},
+		{"open", "better-giving open"},
+	} {
+		if drawn := toneless.ReplaceAllString(Cmd(one.sub), ""); drawn != one.said {
+			t.Errorf("Cmd(%q) = %q, want %q", one.sub, drawn, one.said)
+		}
+	}
+}
