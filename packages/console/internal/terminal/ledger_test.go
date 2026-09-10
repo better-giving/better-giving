@@ -347,8 +347,8 @@ func TestThePressALedgerLeftRunningIsNamedInTheOperatorsOwnWords(t *testing.T) {
 
 // what a terminal is told once a ledger has ended, which is nothing in the ordinary case.
 //
-// the three readings ./Show and ./Halted leave a caller with, and the wiring both presses make of
-// them (../../cmd/better-giving/start.go's chainAt and update.go's carryAt): the order is where a
+// the three readings ./Show and ./Halted leave a caller with, and the wiring both halves of `start`
+// make of them (../../cmd/better-giving/start.go's chainAt and carryAt): the order is where a
 // mistake would live, since a ledger a signal took is one ./Show answered with no error at all.
 
 func TestALedgerThatCouldNotBeDrawnKeepsItsDiagnosticAndNamesNoPress(t *testing.T) {

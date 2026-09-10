@@ -277,7 +277,7 @@ const cut = (value: string): string =>
  * the deployment, which takes them up at once with no build and no upload
  * (`packages/console/internal/deployment/write.go` says what that path costs), and "deploy" on
  * the title is that landing — the build-and-upload errand the same word names elsewhere is the
- * `better-giving update` command, and nothing here starts it.
+ * `better-giving start` command, and nothing here starts it.
  * stopping is the one act whose press is its outcome: nothing is saved, so its title names the
  * stop. a save titled only by its outcome ("start sending email") reads as the sending itself
  * happening on the press, and an operator is left asking which mail. what the boxes cannot say is

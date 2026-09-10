@@ -13,22 +13,22 @@ import (
 	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/effects"
 	"github.com/better-giving/console/internal/first"
-	"github.com/better-giving/console/internal/oauth"
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/server"
 	"github.com/better-giving/console/internal/state"
 	"github.com/better-giving/console/internal/terminal"
 )
 
-// the one front door: sign in, choose the account, put this release on the deployment — standing
-// one up where there is none and carrying the code onto one that is already there — and open the
+// the one front door: sign in, name the account, put this release on the deployment — standing one
+// up where there is none and offering to carry the code onto one that is behind — and open the
 // console at it.
 //
-// **a console newer than this one installs itself here and takes the run over, and that is the
-// first thing this command does** (./main.go's carried, and ./update.go's header for the bug it
-// closes). nothing this command opens, claims or asks may stand in front of it: the exec discards
+// **a console newer than this one is offered here and takes the run over, and that is the first
+// thing this command does** (./main.go's carried, and ./update.go's header for why the two move
+// together). nothing this command opens, claims or asks may stand in front of it: the exec discards
 // this process whole, so a state store opened, a loopback port claimed or a question answered ahead
-// of it is work the operator did twice at best.
+// of it is work the operator did twice at best. an operator who declines carries on with this
+// binary, which deploys what this binary was baked with.
 //
 // **it is one command because it is one errand**, which is ../../internal/first's argument for the
 // chain and holds one step further out: an operator with nothing yet has to sign in, name an
@@ -43,8 +43,14 @@ import (
 // **a closed prompt ends this command on a clean exit and one line.** it is a press not made rather
 // than a failure to report (../../internal/terminal/prompt.go), so the exit is zero; the line says
 // nothing was created, because a command that exited saying nothing would read as a deployment now
-// standing — which is the argument ./update.go makes at its own door for the identical act
-// (./closed). a question this console could not ask at all is the other thing and is an error.
+// standing — which is the argument ./atTheDoor makes for the identical act (./closed). a question
+// this console could not ask at all is the other thing and is an error.
+//
+// **the console question above is the one exception and it is the reason it stands first.** closing
+// it leaves the operator on this binary rather than ending the run: what they declined can be had
+// again by typing this command, and nothing had been opened, claimed or created to abandon. every
+// prompt past it is in front of something that would be, which is what makes a closed one the end
+// of the run there.
 //
 // **neither the password nor the placement is a flag.** ../../internal/deployment/write.go states
 // that no value reaches a path, an argument list or a sentence, and a password in argv is in the
@@ -55,15 +61,20 @@ import (
 // time.** what says whether one is there is the worker's own address read off the account, and a
 // read that did not land stops this command rather than starting either path: the migration is a
 // one-way door and taking it over a deployment this console could not see is not something the
-// operator asked for. what the carry itself is, and the confirm that stands in front of it, is
-// ./update.go's carryingOver and is the same order that command runs — nothing here tells an
-// operator to go and type the other press.
+// operator asked for.
 //
-// **the same confirm stands here, and there is no flag that skips it.** what a deploy would apply
-// to the live database is read and named and answered before anything reaches cloudflare, on this
-// press exactly as on ./update.go's: a door put on one press and not the other is the same one-way
-// door with nobody in front of it. a door the operator shut still opens the console, because the
-// deployment is standing and that is what they typed this command for.
+// **the carry is offered and never taken for granted.** the deployment says which release it was
+// built from and this run weighs that against the release this binary carries
+// (../../internal/effects' OwnRelease): the same one is nothing to upload, so the address is
+// printed and the console opens. every other reading — another release, no session held here, a
+// read that did not land, an envelope naming no version — is a deployment this console cannot call
+// current, and the operator answers for the upload at ./carryingOver's door.
+//
+// **that door is where the migration is named, and there is no flag that skips it.** what a deploy
+// would apply to the live database is read and named and answered before anything reaches
+// cloudflare, and this is the only press that reaches it: ./update.go installs a console and
+// deploys nothing. a door the operator shut still opens the console, because the deployment is
+// standing and that is what they typed this command for.
 
 func start(args []string, to, wrong io.Writer) error {
 	taken := taking("start", startTakes)
@@ -74,20 +85,21 @@ func start(args []string, to, wrong io.Writer) error {
 	}
 
 	ctx := context.Background()
-	// **in front of the store, the sign-in, the port and both prompts, which is while nothing has
+	// **in front of the store, the sign-in, the port and every prompt, which is while nothing has
 	// been created.** a binary deploys only the bundle from its own bake, so a first deploy made
-	// from an out-of-date console stands a deployment up on out-of-date code — the newer console is
-	// installed and handed the run before any of that (./main.go's carried), and a re-exec discards
-	// whatever a run did ahead of it. what comes back is a line, and only where a console another
-	// one installed still reads a release past its own.
+	// from an out-of-date console stands a deployment up on out-of-date code — the question about
+	// the newer console is put before any of that (./main.go's carried), and the exec that follows
+	// an operator agreeing discards whatever a run did ahead of it. what comes back is a line, and
+	// only where a console another one installed still reads a release past its own.
 	//
-	// **the line is held rather than printed here, because the two paths put it in two places.**
-	// the confirm erases the visible screen before it names what it would apply
+	// **the line is held rather than printed here, because the paths put it in three places.** the
+	// confirm erases the visible screen before it names what it would apply
 	// (../../internal/terminal/clear.go), so a line printed above this run is gone from the screen
 	// at the moment the operator answers the one-way door: the carry hands it to the door and it is
-	// drawn over it, which is ./update.go's own arrangement for the same line. the path that stands
-	// a deployment up has no door to draw it over and says it in front of the chain.
-	newerConsole, err := carried(ctx, to, terminal.Starting)
+	// drawn over it. the path that stands a deployment up has no door to draw it over and says it in
+	// front of the chain, and a run whose console question could not be put has already said it
+	// where that question was (./main.go's aboutTheConsole).
+	newerConsole, err := carried(ctx, to)
 	if err != nil {
 		return err
 	}
@@ -108,7 +120,11 @@ func start(args []string, to, wrong io.Writer) error {
 		}
 	}
 
-	in, held, err := operating(ctx, flow, store, to)
+	in, held, err := operating(
+		func() (account.Account, terminal.Answered, error) {
+			return chooseAccount(ctx, flow, store, to)
+		},
+		func() error { return signingOut(ctx, flow, to) })
 	if err != nil || !held {
 		return closed(to, err)
 	}
@@ -125,18 +141,21 @@ func start(args []string, to, wrong io.Writer) error {
 	standing := effects.OwnAddress(ctx, door)
 	switch standing.Kind {
 	case deployment.Deployed:
-		// the account and the address are handed in rather than read again, which is ./update.go's
-		// arrangement for the identical screen: the confirm erases the visible screen before it
-		// draws, so what names the deployment has to be on that screen, and both are already in
-		// this command's hand.
+		// the account and the address are handed in rather than read again: the confirm erases the
+		// visible screen before it draws, so what names the deployment has to be on that screen,
+		// and both are already in this command's hand.
 		onto := terminal.Deployment{Account: in.Name, Address: standing.Origin()}
-		return catchingUp(to, onto,
+		return catchingUp(to, onto, newerConsole,
 			func() (net.Listener, error) { return beforeTheDeploy(*port) },
+			func() bool {
+				return alreadyCarrying(effects.OwnRelease(
+					ctx, records, standing.Origin(), deployment.Reads(deployment.Calls)))
+			},
 			func() effects.Migrations {
 				return effects.Pending(ctx, credential, cf.APISend, in.ID)
 			},
 			func(read effects.Migrations) terminal.Confirmation {
-				return terminal.ConfirmMigration(
+				return terminal.ConfirmCarry(
 					os.Stdin, os.Stdout, onto, read.Names, read.Ahead, newerConsole)
 			},
 			func() (effects.Carried, bool) {
@@ -156,7 +175,7 @@ func start(args []string, to, wrong io.Writer) error {
 			})
 	case deployment.NotDeployed:
 	default:
-		return unread(standing, terminal.Starting)
+		return unread(standing)
 	}
 
 	if newerConsole != "" {
@@ -239,25 +258,35 @@ func standingUp(
 	}, console)
 }
 
-// the order a carry onto a deployment already standing runs in: the port taken, what a deploy would
-// apply read and named, the door answered, the carry, where it left the deployment, and the console
-// served on the port that was taken in front of all of it.
+// the order a carry onto a deployment already standing runs in: the port taken, the deployment
+// weighed against this release, and — where it is behind — what a deploy would apply read and
+// named, the door answered, the carry, and where it left the deployment. the console is served on
+// the port that was taken in front of all of it either way.
 //
-// **it is ./update.go's order with a port in front of it and a console on the far side**, and the
-// middle of it is that command's own function rather than a second statement of it: the confirm in
-// front of the one-way door is the same door on both presses (./update.go's carryingOver).
+// **the up-to-date reading is the first act and it decides whether the rest happens.** a deployment
+// already on this release has nothing to upload, so a door put in front of the operator there is a
+// question about a press that would change nothing — and the console at the address is what they
+// typed this command for.
 //
-// **the port is claimed in front of the read and the door, for ./onThePortItTook's reason.** a
+// `newerConsole` is the held line naming a console newer than this one, drawn here because that
+// path opens no door to draw it over (../../internal/terminal/confirm.go): the operator holding it
+// is the one whose install landed off this machine's PATH, and a run that put it nowhere leaves
+// them on a console that cannot deploy what the release they are reading about carries.
+//
+// **the port is claimed in front of that reading and the door, for ./onThePortItTook's reason.** a
 // deployment already standing is one an operator meets a migration on, so the failure this order
 // exists to keep in front of that door is the same one the first deploy keeps in front of its
-// chain.
+// chain — and a run that weighed the deployment first would be asking about an upload it could not
+// have served the console after.
 //
 // `where` is read from the address this run already took rather than read again: the worker is the
-// same worker at the same name on the far side of the carry.
+// same worker at the same name on either path, and on the far side of the carry.
 func catchingUp(
 	to io.Writer,
 	onto terminal.Deployment,
+	newerConsole string,
 	claiming func() (net.Listener, error),
+	carries func() bool,
 	reading func() effects.Migrations,
 	asking func(effects.Migrations) terminal.Confirmation,
 	running func() (effects.Carried, bool),
@@ -265,8 +294,24 @@ func catchingUp(
 	console func(net.Listener) error,
 ) error {
 	return onThePortItTook(claiming, func() (bool, error) {
+		if carries() {
+			if newerConsole != "" {
+				fmt.Fprintln(to, newerConsole)
+			}
+			fmt.Fprintln(to, where())
+			return true, nil
+		}
 		return carryingOver(to, onto, reading, asking, running, where)
 	}, console)
+}
+
+// whether the deployment is already on the release this binary carries.
+//
+// **empty is every way of not finding out and is never a match**, which is ../../internal/effects'
+// OwnRelease's own arrangement: a console that could not read the deployment may not claim it is
+// current, so what it does instead is ask.
+func alreadyCarrying(deployed string) bool {
+	return deployed != "" && deployed == version
 }
 
 // what this command does before it asks anything, which is everything able to fail while nothing
@@ -319,8 +364,8 @@ func aboutToMake(in account.Account) string {
 
 // what a prompt the operator closed leaves on the screen, and the same nil it ended on.
 //
-// ./update.go's door argues the line for the identical act: a press that exited saying nothing would
-// read as a deployment now standing. the exit stays clean, because a press not made is not a failure
+// ./atTheDoor argues the line for the identical act: a press that exited saying nothing would read
+// as a deployment now standing. the exit stays clean, because a press not made is not a failure
 // to report (../../internal/terminal/prompt.go) — and a question this console could not ask at all
 // is the other thing, which says what happened itself.
 func closed(to io.Writer, err error) error {
@@ -353,19 +398,41 @@ func afterTheChain(ran first.Outcome, halted bool) (reporting, serving bool, err
 	return true, !halted, nil
 }
 
-// the account this run operates, chosen where this machine remembers none.
+// the account this run operates, put to the operator on every run.
 //
-// False with no error is the operator closing the picker, which ends this command quietly.
+// **it is asked even where this machine remembers one, and the remembering is what makes that
+// cheap.** the account is drawn on no other screen of a `start` that carries — the picker opens on
+// the one already held, so keeping it is a return — and what stands behind this question is a
+// database that cannot be moved once it exists and an upload into whichever of an operator's
+// accounts this machine last wrote down. a machine that has ever operated two deployments is one
+// where that memory is a guess.
+//
+// **the row that signs this machine out ends the run here rather than going on.** it is
+// ./main.go's `logout` reached from the screen the operator is already standing at, and what
+// follows a sign-out is a run with no cloudflare to deploy into: false with no error, which the
+// caller draws as a press that made nothing. a sign-out that did not happen is the other thing and
+// is handed back — ../../internal/oauth's Out refuses a credential set in this console's
+// environment, and an operator told nothing would believe this machine gave one up.
+//
+// False with no error is also the operator closing the picker, which ends this command quietly.
+//
+// Both acts are values the caller binds, which is ./standingUp's arrangement and its reason: what
+// each of them does answers for itself where it lives (./main.go's chooseAccount and signingOut),
+// and what nothing else holds is which ending reaches which of them.
 func operating(
-	ctx context.Context,
-	flow *oauth.Flow,
-	store *account.Store,
-	to io.Writer,
+	picking func() (account.Account, terminal.Answered, error),
+	out func() error,
 ) (account.Account, bool, error) {
-	if held := store.Chosen(); held != nil {
-		return held.Account, true, nil
+	chosen, answered, err := picking()
+	switch {
+	case err != nil:
+		return account.Account{}, false, err
+	case answered == terminal.SigningOut:
+		return account.Account{}, false, out()
+	case answered != terminal.AccountChosen:
+		return account.Account{}, false, nil
 	}
-	return chooseAccount(ctx, flow, store, to)
+	return chosen, true, nil
 }
 
 // a machine whose randomness would not answer, which is a press never started.
@@ -454,8 +521,8 @@ func chainAt(
 //
 // The two are separate lines because they are separate readings: the sentence is this console's and
 // the block under it is whatever answered, quoted whole so that it can be searched for
-// (../../internal/terminal/outcome.go). Both presses answer this way, so ./update.go reports
-// through it too.
+// (../../internal/terminal/outcome.go). An install that did not land answers this way too, so
+// ./main.go's installing reports through it for both presses.
 func reported(sentence, said string) error {
 	if said != "" {
 		sentence += "\n\nwhy:\n" + said
@@ -483,13 +550,12 @@ func nowUp(address deployment.Address) string {
 //
 // **every one of the three ends in something to do**, and the acts are the ones
 // ../../internal/terminal/outcome.go already gives the same two states: this is the first failure
-// either press can hit, before anything is created, and a refusal here is an access problem an
+// this press can hit, before anything is created, and a refusal here is an access problem an
 // operator can actually fix.
 //
-// `fix` is the caller's own press, because both presses make this read and they are repaired by
-// different ones: `start` stands a deployment up and `update` only carries code over one
-// (./update.go).
-func unread(address deployment.Address, fix terminal.Repair) error {
+// The act is this command again, which is the whole of what an operator does about it: `start` is
+// the one press that reaches a deployment at all (./update.go).
+func unread(address deployment.Address) error {
 	cannot := "this console can't find out whether " + release.Baked.Name +
 		" is already deployed, and won't deploy over one it can't see"
 	switch address.Kind {
@@ -498,9 +564,168 @@ func unread(address deployment.Address, fix terminal.Repair) error {
 			cannot, address.Detail, terminal.AnotherAccount)
 	case deployment.AddressUnreadable:
 		return fmt.Errorf("Cloudflare answered about this account in a shape this console was not "+
-			"written against, so %s: %s. %s", cannot, address.Detail, fix.Alone)
+			"written against, so %s: %s. %s", cannot, address.Detail, terminal.Starting.Alone)
 	default:
 		return fmt.Errorf("Cloudflare didn't answer, so %s: %s. Check this machine's connection, %s",
-			cannot, address.Detail, fix.After)
+			cannot, address.Detail, terminal.Starting.After)
 	}
+}
+
+// what a deployment a newer console put up is answered with.
+//
+// the list itself has already been named at the terminal (../../internal/terminal/confirm.go); what
+// is left is the act, and it is an install rather than a press — a binary older than the database
+// it is looking at has nothing it could deploy that would not carry the app backwards.
+const aheadOfThisBinary = "this deployment's database records migrations this binary does not " +
+	"carry, so nothing was uploaded: run better-giving update to install the current console, " +
+	"then better-giving start again"
+
+// what a run nobody is standing at is answered with, which is the rule this whole command keeps:
+// this console is interactive or it does not run.
+const noOneAtTheDoor = "this console asks before it applies a migration to the live database, so " +
+	"nothing was applied and nothing was uploaded: run better-giving start at a terminal the " +
+	"question can be answered at"
+
+// the order a carry onto a deployment already standing runs in: what a deploy would apply read and
+// named, the door answered, the carry itself, and where it left the deployment.
+//
+// **it is its own function because the order is the thing able to be wrong**, which is
+// ./standingUp's argument for the identical arrangement: every act is a value the caller binds and
+// each is held to what it answers where it lives, and what nothing else holds is the sequence — the
+// read taken in front of the door rather than past it, and the door answered before anything
+// reaches cloudflare.
+//
+// True is whatever the caller has past the carry, which is ./catchingUp's console: a door the
+// operator shut reaches it, because the deployment is standing and nothing was uploaded, and so
+// does a carry that landed. False with no error is a carry whose ledger a signal took — what a
+// ctrl-c asked to stop is the process holding the terminal (./afterTheChain) — and False with one
+// is a read or a carry that did not land.
+func carryingOver(
+	to io.Writer,
+	onto terminal.Deployment,
+	reading func() effects.Migrations,
+	asking func(effects.Migrations) terminal.Confirmation,
+	running func() (effects.Carried, bool),
+	where func() string,
+) (bool, error) {
+	read := reading()
+	if why := terminal.Unnamed(read); why != "" {
+		return false, reported(why, read.Detail)
+	}
+	said, on, err := atTheDoor(asking(read))
+	if said != "" {
+		fmt.Fprintln(to, said)
+	}
+	if err != nil {
+		return false, err
+	}
+	if !on {
+		return true, nil
+	}
+
+	ran, halted := running()
+	if err := afterTheCarry(ran); err != nil {
+		return false, err
+	}
+	fmt.Fprintln(to, where())
+	return !halted, nil
+}
+
+// what this command says about a carry that settled, which is nothing where it carried.
+//
+// **a signal that took the ledger is no reading in here, and ./carryingOver is where it is one.**
+// what a halt decides is whether a console is served on the far side of the carry (./catchingUp)
+// and never whether the carry landed: a ctrl-c is a stop the operator asked for and a deploy that
+// stopped in the middle is not one — what that ctrl-c asked to stop was never the operator's
+// knowledge of what the upload did.
+func afterTheCarry(ran effects.Carried) error {
+	if ran.Kind != effects.Deployed {
+		return reported(terminal.UpdateOutcome(ran), terminal.UpdateSaid(ran))
+	}
+	return nil
+}
+
+// what this command does about the answer the door came back with.
+//
+// **the line and the error are separate because two of the four ends are not failures.** a door an
+// operator shut is a press not made (../../internal/terminal/prompt.go) and has a line and no
+// error — and it has a line at all because a run that went on to the console saying nothing would
+// read as a deployment now carrying this release. a door that was never put to anybody is the other
+// one: the list was named, nobody was there to answer it, and a command that ended cleanly on that
+// would be reporting a decision nobody made.
+//
+// **one answer opens the door and every other shuts it, the ones nobody named included.**
+// ../../internal/terminal's Confirmation is a bare string and nothing checks that this switch names
+// every value of it, so a default that went on would be a migration applied on an answer this
+// console could not read — and that one cannot be undone (CLAUDE.md).
+func atTheDoor(answered terminal.Confirmation) (said string, on bool, err error) {
+	switch answered {
+	case terminal.Confirmed:
+		return "", true, nil
+	case terminal.Declined:
+		return "the database was left alone and nothing was uploaded", false, nil
+	case terminal.Unattended:
+		return "", false, errors.New(noOneAtTheDoor)
+	case terminal.Ahead:
+		return "", false, errors.New(aheadOfThisBinary)
+	default:
+		return "", false, fmt.Errorf("this console didn't understand the answer at the door (%q), "+
+			"so nothing was applied and nothing was uploaded: run better-giving start again",
+			answered)
+	}
+}
+
+// runs the carry while the ledger holds the terminal, and answers how it ended and whether a signal
+// took the drawing before it did (../../internal/terminal's Settled and Halted).
+//
+// **the halt is handed back because there is a console on the far side of the carry**
+// (./catchingUp): a port bound and a browser tab opened minutes after a ctrl-c is what the operator
+// asked to be spared.
+//
+// The arrangement is ./chainAt's and every argument it makes holds here: the deploy is sequential
+// and blocking while ../../internal/terminal's Show holds the terminal, so the two cannot be one
+// goroutine; a panic inside the run is this console stopping and never the account answering, so
+// the run carries its own recover; and nothing but the kind travels back out of it, because the
+// press it died inside was holding a cloudflare credential.
+func carryAt(ctx context.Context, made effects.Carrying) (effects.Carried, bool) {
+	drawn := terminal.Draw(terminal.UpdateRows, os.Stdout)
+	made.At = drawn.Reporting
+	ended := make(chan effects.Carried, 1)
+	go func() {
+		ran := effects.Carried{Kind: effects.ConsoleStopped}
+		defer func() {
+			_ = recover()
+			if ran.Kind == effects.Deployed {
+				drawn.Landed()
+			} else {
+				drawn.Stopped()
+			}
+			ended <- ran
+		}()
+		ran = effects.Carry(ctx, made)
+	}()
+
+	shown := drawn.Show()
+	halted := drawn.Halted()
+	said, wrong := terminal.Settled(shown, halted, "an update")
+	if wrong != "" {
+		fmt.Fprintln(os.Stderr, wrong)
+	}
+	if said != "" {
+		fmt.Println(said)
+	}
+	return <-ended, halted
+}
+
+// where the deployment this run carried the code onto answers, and where one that needed no carry
+// already does.
+//
+// the address read in front of the press rather than one taken again: the worker is the same worker
+// at the same name, so a second read would ask cloudflare a question this command already has the
+// answer to.
+func nowLevel(address deployment.Address) string {
+	if where := address.Origin(); where != "" {
+		return "your deployment is up to date, at " + where
+	}
+	return release.Baked.Name + " is up to date and answers on no address this console can read"
 }

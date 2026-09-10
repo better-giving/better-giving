@@ -47,7 +47,7 @@ curl -fsSL https://github.com/better-giving/better-giving/releases/latest/downlo
 better-giving start
 ```
 
-The first line puts one file on your machine. The second asks its questions in the terminal, deploys, and opens the console at the result. macOS and Linux, both architectures; Windows is out of scope. Sign-in is Cloudflare's own page; the credential stays on your machine, renewed automatically, never shown, never typed. `better-giving update` is the other terminal command: it carries a newer release onto a deployment you already have, naming the migrations it would apply before it applies them. `start` typed again does the same and opens the console after it.
+The first line puts one file on your machine. The second asks its questions in the terminal, deploys, and opens the console at the result. macOS and Linux, both architectures; Windows is out of scope. Sign-in is Cloudflare's own page; the credential stays on your machine, renewed automatically, never shown, never typed. `better-giving update` is the other terminal command: it brings the console binary up to the newest release and leaves your deployment alone. `start` typed again is what carries that release onto a deployment you already have — offering it where the deployment is behind, naming the migrations it would apply before it applies them, and opening the console after it.
 
 Setting a var writes to the Worker's settings in place, taking effect without a build or an upload.
 
@@ -149,7 +149,7 @@ One custom property, set on the element or anything above it:
 
 From a checkout, the root commands operate a deployment. All run from any directory, because the root `package.json` forwards each into `packages/app`; `pnpm run` on its own lists them. Use them over raw `wrangler`: they carry the flags that matter, like `db:create`'s `--no-update-config`, and resolve the exact wrangler version this app was tested against. Anything you append still reaches wrangler.
 
-The console covers the same jobs without a checkout: every credential, every var, the site list, the org identity. New code reaches the deployment with `better-giving update`, or `start` where you want the console open after it; either one installs the newer console itself first.
+The console covers the same jobs without a checkout: every credential, every var, the site list, the org identity. New code reaches the deployment with `better-giving start`, which offers you a newer console before it carries anything; `better-giving update` installs that console on its own and deploys nothing.
 
 An append-only ledger is corrected by posting a compensating entry rather than by restoring. Tearing a rehearsal deployment down is two raw wrangler commands; [`DEPLOY.md`](./DEPLOY.md) gives them in full.
 

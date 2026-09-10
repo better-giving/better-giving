@@ -38,17 +38,16 @@ const again = "Run better-giving start again."
 
 // Repair is that act as the command that made the press, in the two shapes a sentence needs it.
 //
-// It is exported because the command package composes with it too: the reading that says whether
-// anything is deployed is made by both presses and repaired by different ones
-// (../../cmd/better-giving/start.go's unread), and a sentence written there with its own act on the
-// end is one that disagrees with the sentences in this file about the same predicament.
+// It is exported because the command package composes with it too: an install is made by both
+// presses and repaired by different ones (../../cmd/better-giving/main.go's installing), and a
+// sentence written there with its own act on the end is one that disagrees with the sentences in
+// this file about the same predicament.
 //
-// **it is a value rather than a constant because the deploy engine's half is drawn by both
-// commands** (./redeploy.go): a redeploy that stopped inside the download, the migration or the
-// upload is the same engine in the same stage as a chain that stopped there, and what differs is
-// which press repairs it. `start` stands a deployment up and `update` only carries code over one,
-// so either half naming the other command sends an operator to a press that does not repair what
-// they are looking at.
+// **it is a value rather than a constant because the two presses are repaired differently.**
+// `start` deploys and `update` installs a console, so a sentence about a deploy ends in `start`
+// again (./redeploy.go) and one about an install that did not land ends in whichever press was
+// making it (./install.go) — either naming the other is an operator sent to a press that does not
+// repair what they are looking at.
 type Repair struct {
 	// Alone is the act as a sentence of its own.
 	Alone string
@@ -231,8 +230,13 @@ func bundleStopped(at deploy.Stage, fix Repair) string {
 		return "How records are kept was set up and the upload then stopped, so there may be " +
 			"nothing deployed. " + fix.Alone
 	case deploy.Verifying:
+		// the press again is not the act here: `start` weighs what the deployment says about
+		// itself before it offers to carry, so a worker that went up and answers on this release
+		// is one a second run uploads nothing onto (../../cmd/better-giving/start.go's
+		// alreadyCarrying). what is left is looking at what it is holding.
 		return "It was uploaded and came back missing something it needs, so it is deployed and " +
-			"may not serve anything. " + fix.Alone
+			"may not serve anything. Run better-giving open: the console reads what the " +
+			"deployment says about itself."
 	default:
 		return nowhereNamed(fix)
 	}

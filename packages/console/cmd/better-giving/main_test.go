@@ -20,6 +20,7 @@ import (
 	"github.com/better-giving/console/internal/server"
 	"github.com/better-giving/console/internal/signin"
 	"github.com/better-giving/console/internal/state"
+	"github.com/better-giving/console/internal/terminal"
 	// aliased for ./main.go's reason: `update` in this package is the command in ./update.go.
 	releases "github.com/better-giving/console/internal/update"
 )
@@ -476,7 +477,7 @@ func TestANoOpenRunSaysTheAddressAndOpensNothing(t *testing.T) {
 
 func TestAnArgumentNoSubcommandTakesIsRefusedRatherThanPassedOver(t *testing.T) {
 	// `flag` stops at the first word that is not an option and hands back no error, so a `--yes`
-	// typed past a `--` would otherwise walk to update's one-way door unread (./update.go).
+	// typed past a `--` would otherwise walk to `start`'s one-way door unread (./start.go).
 	for _, command := range []struct {
 		name, says string
 		typed      []string
@@ -659,21 +660,21 @@ func TestAStopSaysWhatItLeftBehindWhereTheAnswersGo(t *testing.T) {
 	}
 }
 
-// what the two deploy commands do about a console newer than this one.
+// what a reading of the release list is worth doing about.
 //
-// a binary deploys only the bundle from its own bake, so an operator running `better-giving update`
-// on an out-of-date console carries out-of-date code onto their deployment. what stands in front of
-// that is this reading, and the one case it does not act on is the console another console already
+// a binary deploys only the bundle from its own bake, so an operator deploying from an out-of-date
+// console carries out-of-date code onto their deployment. what stands in front of that is this
+// reading, and the one case it puts nothing to the operator is the console another console already
 // installed and ran.
 
-func TestAConsoleNewerThanThisOneIsInstalledRatherThanMentioned(t *testing.T) {
+func TestAConsoleNewerThanThisOneIsWorthAskingAbout(t *testing.T) {
 	if did := about(releases.Read{Kind: releases.Newer, Version: "0.0.2"}, false); did != installIt {
-		t.Errorf("about a newer console = %q, want it installed: a command that only mentions one "+
+		t.Errorf("about a newer console = %q, want the operator asked: a run that only mentions one "+
 			"deploys the old code anyway", did)
 	}
 }
 
-func TestAConsoleAnotherOneInstalledNamesTheNewerReleaseRatherThanInstallingItAgain(t *testing.T) {
+func TestAConsoleAnotherOneInstalledNamesTheNewerReleaseRatherThanAskingAgain(t *testing.T) {
 	// the loop guard: this child read a release past its own after an install has already happened
 	// in this run's lineage, so installing again would land in the same place and read the same
 	// release, forever.
@@ -702,5 +703,139 @@ func TestOnlyANewerReleaseIsWorthALine(t *testing.T) {
 	line := newer(releases.Read{Kind: releases.Newer, Version: "0.0.2", Where: "somewhere"})
 	if !strings.Contains(line, "0.0.2") || !strings.Contains(line, "somewhere") {
 		t.Errorf("said %q, want the release and where it is installed from", line)
+	}
+}
+
+// what a run asks before it installs a console over itself, and the three ways past the question.
+//
+// installing one can be undone and nothing on the account has been touched when it is put, so a
+// question nobody was standing at is not a refusal to report: what would be lost by carrying on is
+// this release's code, and what would be lost by ending the command is the press the operator
+// typed.
+
+// a run of ./aboutTheConsole with the question answered and the install recorded rather than made.
+type consoleReading struct {
+	read     releases.Read
+	marked   bool
+	answered terminal.Confirmation
+	asks     int
+	installs int
+	stopped  error
+	said     strings.Builder
+}
+
+func (run *consoleReading) run() (string, error) {
+	return aboutTheConsole(run.read, run.marked, &run.said,
+		func() terminal.Confirmation {
+			run.asks++
+			return run.answered
+		},
+		func() error {
+			run.installs++
+			return run.stopped
+		})
+}
+
+func aNewerConsoleRead() *consoleReading {
+	return &consoleReading{
+		read:     releases.Read{Kind: releases.Newer, Version: "0.9.0", Where: "somewhere"},
+		answered: terminal.Confirmed,
+	}
+}
+
+func TestAConsoleTheOperatorAgreedToIsInstalledAndHandedTheRun(t *testing.T) {
+	run := aNewerConsoleRead()
+
+	line, err := run.run()
+
+	if err != nil {
+		t.Fatalf("aboutTheConsole = %v, want the newer console installed", err)
+	}
+	if run.asks != 1 || run.installs != 1 {
+		t.Errorf("asked %d times and installed %d, want one of each", run.asks, run.installs)
+	}
+	if line != "" {
+		t.Errorf("held %q for a door the newer console will draw for itself", line)
+	}
+}
+
+func TestAConsoleTheOperatorDeclinedLeavesTheRunOnThisBinary(t *testing.T) {
+	run := aNewerConsoleRead()
+	run.answered = terminal.Declined
+
+	line, err := run.run()
+
+	if err != nil {
+		t.Fatalf("aboutTheConsole = %v, want a press not made read as no failure", err)
+	}
+	if run.installs != 0 {
+		t.Error("a console the operator declined was installed anyway")
+	}
+	if line != "" || run.said.String() != "" {
+		t.Errorf("said %q and held %q about a console they were just asked about", run.said.String(), line)
+	}
+}
+
+func TestAQuestionNobodyWasAtLeavesTheRunOnThisBinaryHavingNamedTheNewerConsole(t *testing.T) {
+	run := aNewerConsoleRead()
+	run.answered = terminal.Unattended
+
+	line, err := run.run()
+
+	if err != nil {
+		t.Fatalf("aboutTheConsole = %v, want a question nobody was put in front of to end no run", err)
+	}
+	if run.installs != 0 {
+		t.Error("a console nobody agreed to was installed over the one running")
+	}
+	if line != "" {
+		t.Errorf("held %q, want the line said where the question was, not at a door", line)
+	}
+	if !strings.Contains(run.said.String(), "0.9.0") {
+		t.Errorf("said %q, want the newer console named on the way past", run.said.String())
+	}
+}
+
+func TestAConsoleAnotherOneInstalledIsNamedAndNeverAskedAbout(t *testing.T) {
+	run := aNewerConsoleRead()
+	run.marked = true
+
+	line, err := run.run()
+
+	if err != nil {
+		t.Fatalf("aboutTheConsole = %v, want the command carried on", err)
+	}
+	if run.asks != 0 || run.installs != 0 {
+		t.Errorf("asked %d times and installed %d over a console another one installed and ran",
+			run.asks, run.installs)
+	}
+	if !strings.Contains(line, "0.9.0") {
+		t.Errorf("held %q, want the newer console named at the door this run reaches", line)
+	}
+}
+
+func TestAConsoleThatIsCurrentIsNeitherAskedAboutNorNamed(t *testing.T) {
+	for _, kind := range []releases.Kind{releases.Current, releases.Unknown} {
+		run := aNewerConsoleRead()
+		run.read = releases.Read{Kind: kind}
+
+		line, err := run.run()
+
+		if err != nil || line != "" || run.asks != 0 || run.installs != 0 {
+			t.Errorf("a %q reading = %q, %v, asked %d, installed %d, want the run untouched",
+				kind, line, err, run.asks, run.installs)
+		}
+	}
+}
+
+func TestAnInstallThatDidNotLandEndsTheRunRatherThanDeployingTheOlderCode(t *testing.T) {
+	// three lines above it said an install was happening, and a binary deploys only the bundle from
+	// its own bake: a run that went on from here is the out-of-date code onto the deployment that
+	// this whole path exists to prevent.
+	run := aNewerConsoleRead()
+	run.stopped = errors.New("the archive that came down carries no console")
+
+	if _, err := run.run(); err == nil {
+		t.Fatal("an install that did not land fell through to the deploy behind it")
 	}
 }

@@ -1,146 +1,102 @@
 package main
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
-	"github.com/better-giving/console/internal/effects"
-	"github.com/better-giving/console/internal/terminal"
+	releases "github.com/better-giving/console/internal/update"
 )
 
-// what this command does about the answer the one-way door came back with.
+// what this command does about the reading it took, which is the whole of what it does.
 //
-// the two that are not failures are told apart from each other: an operator who chose to leave the
-// database alone made a decision and is told what it cost, and a run nobody was standing at made
-// none — and a command that ended cleanly on the second reads as a deployment now carrying this
-// release.
+// it installs a console and deploys nothing: it signs in to nothing, reads nothing about a
+// deployment and opens no door, so the only thing that can be wrong here is what it does about the
+// three ways a release reading can go.
 
-func TestADoorTheOperatorShutSaysWhatWasLeftAloneAndEndsTheCommandCleanly(t *testing.T) {
-	said, on, err := atTheDoor(terminal.Declined)
+// a run of ./updating with the install recorded rather than made.
+type consoleUpdate struct {
+	read     releases.Read
+	installs int
+	stopped  error
+	said     strings.Builder
+}
 
-	if on || err != nil {
-		t.Errorf("a door shut on purpose = %v, %v, want a press not made", on, err)
+func (run *consoleUpdate) run() error {
+	return updating(run.read, &run.said, func(releases.Read) error {
+		run.installs++
+		return run.stopped
+	})
+}
+
+func aNewerConsole() *consoleUpdate {
+	return &consoleUpdate{read: releases.Read{
+		Kind: releases.Newer, Version: "0.9.0", Where: "somewhere",
+	}}
+}
+
+func TestAConsoleBehindTheReleaseInstallsItAndNamesThePressThatDeploysIt(t *testing.T) {
+	run := aNewerConsole()
+
+	if err := run.run(); err != nil {
+		t.Fatalf("updating = %v, want the newer console installed", err)
 	}
-	if !strings.Contains(said, "database") || !strings.Contains(said, "nothing was uploaded") {
-		t.Errorf("said %q, want both halves of what did not happen", said)
+	if run.installs != 1 {
+		t.Errorf("the newer console was installed %d times, want once", run.installs)
+	}
+	if !strings.Contains(run.said.String(), "0.9.0") {
+		t.Errorf("said %q, want the release this machine now holds", run.said.String())
+	}
+	// nothing carries on past this command: the console it installed is the one that deploys, and
+	// an operator left with no press named has a newer console and an older deployment.
+	if !strings.Contains(run.said.String(), "better-giving start") {
+		t.Errorf("said %q, want the press that puts that release on the deployment",
+			run.said.String())
 	}
 }
 
-func TestADoorNobodyWasAtEndsTheCommandAsAFailure(t *testing.T) {
-	said, on, err := atTheDoor(terminal.Unattended)
+func TestAnInstallThatDidNotLandEndsThisCommandAsAFailure(t *testing.T) {
+	run := aNewerConsole()
+	run.stopped = errors.New("the archive that came down carries no console")
 
-	if on {
-		t.Error("a command went on past a door nobody answered")
-	}
-	if err == nil {
-		t.Fatal("a run nobody was at ended cleanly, which reads as a deployment carrying this release")
-	}
-	if said != "" {
-		t.Errorf("said %q as well as failing, want the failure alone", said)
-	}
-	for _, want := range []string{"nothing was applied", "nothing was uploaded", "terminal"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("said %q, want %q in it", err, want)
-		}
-	}
-}
-
-func TestADeploymentAheadOfThisBinaryEndsTheCommandAsAFailure(t *testing.T) {
-	_, on, err := atTheDoor(terminal.Ahead)
-
-	if on {
-		t.Error("a command went on past a deployment a newer console put up")
-	}
-	if err == nil || err.Error() != aheadOfThisBinary {
-		t.Errorf("said %v, want %q", err, aheadOfThisBinary)
-	}
-}
-
-func TestADoorTheOperatorOpenedGoesOnSayingNothing(t *testing.T) {
-	said, on, err := atTheDoor(terminal.Confirmed)
-
-	if !on || err != nil {
-		t.Errorf("a door opened on purpose = %v, %v, want the deploy going on", on, err)
-	}
-	if said != "" {
-		t.Errorf("said %q about a press that is about to run", said)
-	}
-}
-
-func TestAnAnswerThisConsoleDidNotUnderstandLeavesTheOneWayDoorShut(t *testing.T) {
-	// nothing reaches this today, and the door behind it cannot be undone: terminal.Confirmation is
-	// a bare string and no exhaustiveness check stands between an unnamed value and a migration.
-	for _, answered := range []terminal.Confirmation{"", "something else"} {
-		said, on, err := atTheDoor(answered)
-
-		if on {
-			t.Errorf("%q opened a one-way door this console could not read the answer to", answered)
-		}
-		if err == nil {
-			t.Fatalf("%q ended the command cleanly, which reads as a database left alone on purpose",
-				answered)
-		}
-		if said != "" {
-			t.Errorf("%q said %q as well as failing, want the failure alone", answered, said)
-		}
-		if !strings.Contains(err.Error(), "nothing was applied") {
-			t.Errorf("%q said %v, want what did not happen", answered, err)
-		}
-	}
-}
-
-// what this command says about a redeploy that settled.
-//
-// a signal that took the ledger is no reading here and ./start_test.go is where it is one: this
-// command holds nothing after it and prints where the deployment is either way.
-
-func TestARedeployThatLandedIsReportedUpToDate(t *testing.T) {
-	if err := afterTheCarry(effects.Carried{Kind: effects.Deployed}); err != nil {
-		t.Errorf("afterTheCarry = %v, want the line that says the deployment carries this release",
-			err)
-	}
-}
-
-func TestARedeployThatDidNotLandIsReportedInWhateverAnsweredIt(t *testing.T) {
-	err := afterTheCarry(effects.Carried{Kind: effects.NoDatabase})
+	err := run.run()
 
 	if err == nil {
-		t.Fatal("a redeploy that did not land ended cleanly, which reads as one that carried")
+		t.Fatal("an install that did not land ended cleanly, which reads as a console now updated")
 	}
-	if !strings.Contains(err.Error(), terminal.UpdateOutcome(effects.Carried{Kind: effects.NoDatabase})) {
-		t.Errorf("said %v, want what the redeploy answered with", err)
-	}
-}
-
-// what this command names in front of an upload that had no door in front of it.
-//
-// a release carrying no migration this database has not opens no door at all, so the screen that
-// names the account and the address is never drawn — and that is the one path in this program that
-// reaches an upload with nothing named.
-
-var ontoAcme = terminal.Deployment{Account: "Acme Giving", Address: "https://give.acme.test"}
-
-func TestAnUploadWithNoDoorInFrontOfItStillNamesTheAccountAndTheDeployment(t *testing.T) {
-	said := undoored(nil, ontoAcme)
-
-	if !strings.Contains(said, "Acme Giving") {
-		t.Errorf("said %q, want the account this release is carried into", said)
-	}
-	if !strings.Contains(said, "https://give.acme.test") {
-		t.Errorf("said %q, want the deployment it is carried onto", said)
+	if strings.Contains(run.said.String(), "better-giving start") {
+		t.Errorf("said %q, want no press named over an install that did not happen",
+			run.said.String())
 	}
 }
 
-func TestAnUploadTheDoorAlreadyNamedItsObjectForSaysNothingASecondTime(t *testing.T) {
-	if said := undoored([]string{"0007_donors.sql"}, ontoAcme); said != "" {
-		t.Errorf("said %q, want the door's own screen to be the one that named it", said)
+func TestAConsoleAlreadyOnTheCurrentReleaseInstallsNothingAndSaysSo(t *testing.T) {
+	run := &consoleUpdate{read: releases.Read{Kind: releases.Current}}
+
+	if err := run.run(); err != nil {
+		t.Fatalf("updating = %v, want a console that is current read as no failure", err)
+	}
+	if run.installs != 0 {
+		t.Error("a console already on the current release installed one anyway")
+	}
+	if !strings.Contains(run.said.String(), "nothing was installed") {
+		t.Errorf("said %q, want what did not happen", run.said.String())
 	}
 }
 
-func TestADeploymentAnsweringOnNoAddressIsStillNamedAsOne(t *testing.T) {
-	said := undoored(nil, terminal.Deployment{Account: "Acme Giving"})
+func TestAReadingNobodyCouldTakeInstallsNothingAndEndsNoCommand(t *testing.T) {
+	// github is a third host this console does not need to work (../../internal/update), and a
+	// binary carrying no version has no release to be behind: neither is a failure to report, and
+	// neither is a console this command may claim is current.
+	run := &consoleUpdate{read: releases.Read{Kind: releases.Unknown}}
 
-	if !strings.Contains(said, "no address this console can read") {
-		t.Errorf("said %q, want an unreadable address said rather than left blank", said)
+	if err := run.run(); err != nil {
+		t.Fatalf("updating = %v, want a reading nobody could take to end no command", err)
+	}
+	if run.installs != 0 {
+		t.Error("a reading that found nothing out installed a console anyway")
+	}
+	if said := run.said.String(); said == "" || strings.Contains(said, "current release") {
+		t.Errorf("said %q, want a console this command could not weigh said as one", said)
 	}
 }

@@ -23,6 +23,7 @@ import (
 
 	"github.com/better-giving/console/internal/account"
 	"github.com/better-giving/console/internal/cf"
+	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/oauth"
 	"github.com/better-giving/console/internal/state"
 	"github.com/better-giving/console/internal/stripe"
@@ -86,7 +87,7 @@ func New(options Options) http.Handler {
 	}
 	surface := options.Surface
 	if surface == nil {
-		surface = deploymentCalls
+		surface = deployment.Calls
 	}
 	processor := options.Processor
 	if processor == nil {

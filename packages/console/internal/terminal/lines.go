@@ -11,8 +11,8 @@ import (
 // second thing.** the chain reports nine stages and the deploy engine five, but `checking` is one
 // read of the cloudflare account made in front of the migration and `verifying` is the read back of
 // what cloudflare is now holding — neither is anything an operator waits on apart from the download
-// and the upload they belong to. so a row covers one or more stages, and both presses draw fewer
-// rows than the binary reports stages.
+// and the upload they belong to. so a row covers one or more stages, and both halves of `start`
+// draw fewer rows than the binary reports stages.
 //
 // **a row rewords itself when its work is done, because the label is the whole statement.** there
 // is no note under it and no status word beside it: a row reads `Downloading app assets` while that
@@ -43,8 +43,8 @@ type Row struct {
 // reaching the account is found in front of the one-way door — and by the time it runs the operator
 // has signed in and chosen the account, so there is nothing for a row of its own to tell them.
 //
-// both presses draw this one row: the two stages are the same two and the words are the same words,
-// because it is the same engine doing the same thing.
+// both halves of `start` draw this one row: the two stages are the same two and the words are the
+// same words, because it is the same engine doing the same thing.
 var assets = Row{
 	Stages:  []first.Stage{first.Stage(deploy.Fetching), first.Stage(deploy.Checking)},
 	Running: "Downloading app assets",
@@ -57,7 +57,7 @@ var assets = Row{
 // the worker's settings, checked for the bindings that went up (../deploy). it is the tail of the
 // upload rather than a thing beside it, so it is drawn as the tail of the upload.
 //
-// drawn by both presses, as assets is and for the same reason.
+// drawn by both halves of `start`, as assets is and for the same reason.
 var cloudflare = Row{
 	Stages:  []first.Stage{first.Stage(deploy.Uploading), first.Stage(deploy.Verifying)},
 	Running: "Deploying to Cloudflare",
@@ -114,10 +114,10 @@ var ChainRows = []Row{
 // is the same engine being watched.
 //
 // **the migration is its own row here and is folded into the database row there, because the two
-// presses run it over different databases.** the chain's is one made seconds earlier where every
-// migration is part of standing it up; this one is a database in use, where a pending migration
-// changes records that are already there — which is the whole of what the operator is waiting on
-// and the whole of what they answered a confirm to allow (./ConfirmMigration).
+// halves of `start` run it over different databases.** the chain's is one made seconds earlier
+// where every migration is part of standing it up; this one is a database in use, where a pending
+// migration changes records that are already there — which is the whole of what the operator is
+// waiting on and the whole of what they answered a confirm to allow (./ConfirmCarry).
 //
 // the password is not among them: this press stores nothing.
 var UpdateRows = []Row{
@@ -131,7 +131,7 @@ var UpdateRows = []Row{
 }
 
 // DeployStages are the deploy engine's own five, in the order it reaches them, spelled as the chain
-// names them so that one renderer draws both presses.
+// names them so that one renderer draws both halves of `start`.
 //
 // a list of its own rather than a slice of ../first's `Stages`, so that a stage added to the chain
 // outside the deploy cannot quietly join it. ./lines_test.go holds it to the five UpdateRows cover.

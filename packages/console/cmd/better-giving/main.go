@@ -85,9 +85,10 @@ var errSaid = errors.New("this command has already said what went wrong")
 // (../../internal/terminal/ledger.go); and the confirm in front of the one-way door erases the
 // screen before it names what it would apply (../../internal/terminal/confirm.go). none of the
 // three is a thing an arbitrary writer could be, so each names this process's own stdout and stderr
-// where it is reached (./start.go's ask and chainAt, ./update.go's door and carryAt). every other
-// line a command says takes `to`, so an operator redirecting what this binary answers keeps the run
-// drawn where they are standing, which is the only place it means anything.
+// where it is reached (./start.go's ask, chainAt and carryAt, the door `start` itself puts, and
+// ./carried's question).
+// every other line a command says takes `to`, so an operator redirecting what this binary answers
+// keeps the run drawn where they are standing, which is the only place it means anything.
 func run(args []string, to, wrong io.Writer) error {
 	if len(args) == 0 {
 		usage(wrong)
@@ -121,7 +122,7 @@ func usage(to io.Writer) {
 	fmt.Fprint(to, `better-giving — the operator console
 
   start [--port N] [--no-open]  put this release on your deployment, then open the console at it
-  update                        carry this release's code onto the deployment you already have
+  update                        install the newest console on this machine
   open [--port N] [--no-open]   serve the console and open it in a browser
   login                         sign in to Cloudflare, and choose the account this machine operates
   logout                        give up the sign-in this machine holds
@@ -146,16 +147,14 @@ type options struct {
 // what each command answers when it is asked what it takes, or handed something it does not know.
 const (
 	startTakes = "better-giving start puts this release on your deployment and opens the console " +
-		"at it: it stands one up where there is none, and carries this release onto one that is " +
-		"already there. Where it carries, it names every migration it would apply to the live " +
-		"database and waits for your answer, exactly as better-giving update does. It takes:"
+		"at it: it stands one up where there is none, and offers to carry this release onto one " +
+		"that is already behind. Before it carries it names every migration it would apply to the " +
+		"live database and waits for your answer, and there is no flag that answers for you: a " +
+		"migration cannot be undone. It takes:"
 	openTakes = "better-giving open serves the console against the deployment you already have. " +
 		"It takes:"
-	// the sentence and the reason together: the flag an operator reaches for at a door like this
-	// one is the flag that answers it for them, and its absence is deliberate (./update.go).
-	updateTakes = "better-giving update takes no options. It names every migration it would apply " +
-		"to the live database and waits for your answer, and there is no flag that answers for " +
-		"you: a migration cannot be undone."
+	updateTakes = "better-giving update takes no options. It installs the newest console on this " +
+		"machine and deploys nothing: what puts a release on your deployment is better-giving start."
 	// **the three that take nothing read what was typed after them all the same.** ./read is where
 	// `-h` is answered and a word this command does not know is refused, and a command that skipped
 	// it answers `better-giving logout -h` by revoking the sign-in this machine holds.
@@ -179,7 +178,7 @@ func taking(name, says string) *options {
 //
 // **a word that is not an option is refused the same way, and that is the library's third wrong
 // default.** `flag` stops at the first one and hands back no error at all, so a `--yes` typed past
-// a `--` would reach ./update.go's one-way door having been read by nobody — and no command here
+// a `--` would reach ./start.go's one-way door having been read by nobody — and no command here
 // takes an argument for it to have been.
 func (taken *options) read(args []string, help, wrong io.Writer) (bool, error) {
 	taken.flags.SetOutput(io.Discard)
@@ -219,9 +218,9 @@ var nothingToOpen = "nothing is deployed under the name " + release.Baked.Name +
 // and cloudflare saying plainly that no worker of this deployment's name is in it. every screen
 // under the bar is a reading of that worker, so what would be served is a page about nothing.
 //
-// **a read that did not land still serves, and that is the opposite of ./start.go and
-// ./update.go.** those two refuse there because a remote migration is behind them and a door that
-// does not close again is not one to walk through blind. this command puts nothing on the account
+// **a read that did not land still serves, and that is the opposite of ./start.go.** that press
+// refuses there because a remote migration is behind it and a door that does not close again is not
+// one to walk through blind. this command puts nothing on the account
 // at all, and the console is the screen an operator opens when something is wrong — so refusing on
 // a cloudflare that would not answer would shut them out of the very thing that explains it.
 //
@@ -302,10 +301,10 @@ func certainlyNotDeployed(
 // wrong with a value, so there is no path out of here that ends a command or holds it long: a
 // github that is not answering is worth less than the command the operator typed.
 //
-// **it is `open`'s alone.** the two deploy commands install the newer console and hand it the run
-// instead (./carried), because a binary carries the bundle from its own bake and no other; `open`
-// deploys nothing, so naming where the newer console comes from is the whole of what it can do
-// about one.
+// **it is `open`'s alone.** `start` puts the question and hands the run to what it installs
+// (./carried), because a binary carries the bundle from its own bake and no other, and `update` is
+// that install as a press of its own (./update.go); `open` deploys nothing, so naming where the
+// newer console comes from is the whole of what it can do about one.
 func sayNewer(ctx context.Context, to io.Writer, get cf.Get) {
 	if line := newer(releases.Latest(ctx, get, version)); line != "" {
 		fmt.Fprintln(to, line)
@@ -318,12 +317,12 @@ func sayNewer(ctx context.Context, to io.Writer, get cf.Get) {
 // one-way door erases the visible screen before it names what it would apply
 // (../../internal/terminal/confirm.go), so a line printed ahead of that call is off the screen at
 // the moment the operator answers — which is the moment it exists to inform. that caller draws it
-// over the door instead (./update.go).
+// over the door instead (./start.go's carryingOver).
 //
-// **the two deploy commands reach it in one case alone**, which is ./nameIt: a console another
-// console installed and ran, still reading a release past its own. every other newer reading either
-// leaves this process or ends the command (./carried). `open` deploys nothing and draws it whenever
-// there is one.
+// **`start` reaches it in the two cases where the question is over**: a console another console
+// installed and ran, still reading a release past its own (./nameIt), and a question this run could
+// not put to anybody. every other newer reading leaves this process, is declined, or ends the
+// command (./aboutTheConsole). `open` deploys nothing and draws it whenever there is one.
 func newer(read releases.Read) string {
 	if read.Kind != releases.Newer {
 		return ""
@@ -333,41 +332,77 @@ func newer(read releases.Read) string {
 		read.Version, read.Where)
 }
 
-// what the two deploy commands do about a console newer than this one, which is install it and hand
+// what `start` does about a console newer than this one, which is ask, and then install it and hand
 // it the run.
 //
-// **it is the first thing either command does and everything else is behind it** (./start.go,
-// ./update.go): no state store open, no loopback port claimed, no sign-in taken and nothing asked
-// of cloudflare. ./asNewer replaces this process, so whatever a run did ahead of it is discarded
-// with it — and a listener held across one is a port nothing gives back.
+// **it is the first thing that command does and everything else is behind it** (./start.go): no
+// state store open, no loopback port claimed, no sign-in taken and nothing asked of cloudflare.
+// ./asNewer replaces this process, so whatever a run did ahead of it is discarded with it — and a
+// listener held across one is a port nothing gives back.
 //
-// **a failure past a newer reading ends the command and never falls through to a deploy.** a binary
-// deploys only the bundle from its own bake (../../internal/release's BundleSource), so a command
-// that went on after the install did not land is the out-of-date code onto the deployment that this
-// whole path exists to prevent — with three lines above it saying an install was happening.
+// **the question is put because the install carries the deployment with it.** a binary deploys only
+// the bundle from its own bake (../../internal/release's BundleSource), so agreeing installs the
+// newer console and hands it this same command — which is the release that then goes onto the
+// deployment. an operator who has a reason to stay on this one says so and the run carries on.
 //
 // what comes back is the line naming that console, which the marked child alone has (./about):
-// every other way past a newer reading leaves this process or returns an error.
-func carried(ctx context.Context, to io.Writer, fix terminal.Repair) (string, error) {
+// every other way past a newer reading answers where the reading was taken.
+func carried(ctx context.Context, to io.Writer) (string, error) {
 	read := releases.Latest(ctx, releases.Source(), version)
-	switch about(read, releases.Marked()) {
+	return aboutTheConsole(read, releases.Marked(), to,
+		func() terminal.Confirmation {
+			return terminal.ConfirmNewer(os.Stdin, os.Stdout, read.Version)
+		},
+		func() error { return installed(ctx, read, to) })
+}
+
+// what a run does about the reading it took, with the question and the install bound by the caller.
+//
+// **a failure past an install ends the command and never falls through to a deploy.** the operator
+// has three lines above them saying an install was happening, so a run that went on is the
+// out-of-date code onto the deployment that this whole path exists to prevent.
+//
+// **a question nobody was standing at carries on and is not a failure.** it is the one prompt in
+// this binary whose act can be undone — the operator installs the console they had back and nothing
+// on their account moved — so a run ended here would cost them the press they typed to spare them
+// something reversible. what it does instead is name the newer console where the question was
+// (./newer), because nothing else in that run will.
+func aboutTheConsole(
+	read releases.Read,
+	marked bool,
+	to io.Writer,
+	asking func() terminal.Confirmation,
+	install func() error,
+) (string, error) {
+	switch about(read, marked) {
 	case nameIt:
 		return newer(read), nil
 	case installIt:
-		return "", installing(ctx, read, to, fix)
+		switch asking() {
+		case terminal.Confirmed:
+			return "", install()
+		case terminal.Declined:
+			return "", nil
+		default:
+			fmt.Fprintln(to, newer(read))
+			return "", nil
+		}
 	default:
 		return "", nil
 	}
 }
 
 // carrying is what a reading is worth doing about, and one of the three is nothing.
+//
+// It is what a reading is worth and never what was decided: the operator answers for the install
+// itself (./aboutTheConsole), and this is what says whether there is anything to put to them.
 type carrying string
 
 const (
 	// carryOn is a console that is current, or a reading nobody could take
 	// (../../internal/update).
 	carryOn carrying = "carry-on"
-	// installIt is a newer console this run installs and hands itself to.
+	// installIt is a newer console this run offers to install and hand itself to.
 	installIt carrying = "install"
 	// nameIt is a newer console read by a console that another console installed and ran.
 	//
@@ -389,22 +424,45 @@ func about(read releases.Read, marked bool) carrying {
 	return installIt
 }
 
-// the newer console downloaded, checked, put where this one is, and handed the run.
+// the newer console downloaded, checked and put where this one is, with every part of it named as
+// it lands.
 //
-// **it returns only where the operator is left on this binary**: every way the install can fail, and
-// the exec that could not happen. the sentence names what did not happen and the install line, and
-// the command it came from ends on it (../../internal/terminal/install.go).
-func installing(ctx context.Context, read releases.Read, to io.Writer, fix terminal.Repair) error {
+// **what happens next is the caller's, because the two presses have different amounts left to do.**
+// ./start.go hands the run to what was installed (./installed) and ./update.go has nothing left to
+// run at all — so this ends at the file being in place, and the line naming the console now on this
+// machine is written by whichever of the two is writing the rest of the run.
+//
+// The sentence a stop is reported with names the install line and `fix`'s own press, because both
+// presses install this way and each is run again by a command of its own
+// (../../internal/terminal/install.go).
+func installing(
+	ctx context.Context,
+	read releases.Read,
+	to io.Writer,
+	fix terminal.Repair,
+) (releases.Landed, error) {
 	fmt.Fprintln(to, terminal.InstallingNewer(read.Version))
 	landed := releases.Install(ctx, read.Version, func(done releases.Step, at releases.Landed) {
 		fmt.Fprintln(to, terminal.InstallStep(done, at))
 	})
 	if landed.Kind != releases.Replaced {
-		return reported(terminal.InstallStopped(landed, fix), landed.Detail)
+		return landed, reported(terminal.InstallStopped(landed, fix), landed.Detail)
+	}
+	return landed, nil
+}
+
+// the newer console installed and handed this run, which is what `start` does about one.
+//
+// **it returns only where the operator is left on this binary**: every way the install can fail, and
+// the exec that could not happen. on the way it works this process is already gone (./asNewer).
+func installed(ctx context.Context, read releases.Read, to io.Writer) error {
+	landed, err := installing(ctx, read, to, terminal.Starting)
+	if err != nil {
+		return err
 	}
 	fmt.Fprintln(to)
 	fmt.Fprintln(to, terminal.NowOn(read.Version))
-	return asNewer(landed.Path, fix)
+	return asNewer(landed.Path, terminal.Starting)
 }
 
 // the newer console taking this run over, in this process and with the words it was typed with.
@@ -649,7 +707,9 @@ func signIn(records state.Store) *oauth.Flow {
 //
 // The picker is here because the sign-in is: allowing it in a browser is what hands this machine a
 // list of accounts, and an operator left holding one with no account chosen is one whose next press
-// refuses. `start` picks only where this machine remembers none (./start.go).
+// refuses. `start` puts the same question on every run of its own (./start.go), and this one is
+// drawn without the row that signs this machine out: giving up a sign-in is not an ending for the
+// press that takes one.
 //
 // **the browser is opened only where there is a sign-in to take**, which is ./insteadOfABrowser: a
 // credential in the environment is one no browser sign-in could replace, and a sign-in this machine
@@ -686,8 +746,8 @@ func login(args []string, to, wrong io.Writer) error {
 		held, get = reading(ctx, flow)
 	}
 
-	chosen, given, err := choosing(ctx, held, get, store, to)
-	if err != nil || !given {
+	chosen, answered, err := choosing(ctx, held, get, store, to, terminal.Picker{})
+	if err != nil || answered != terminal.AccountChosen {
 		return err
 	}
 	fmt.Fprintln(to, nowOperating(chosen))
@@ -782,16 +842,26 @@ func allow(flow *oauth.Flow, records state.Store, command string, to io.Writer) 
 // verified so that a refusal arrives here rather than at the first thing a deploy creates, and only
 // then is it written down.
 //
-// False with no error is the operator closing the picker, which is a choice not made rather than a
-// failure to report.
+// **it is `start`'s picker and it carries two things ./login's does not**: the account this machine
+// already operates, which the list opens on, and the row that gives that sign-in up. only a browser
+// sign-in can be given up — a credential set in this console's environment is one
+// ../../internal/oauth's Out refuses, and ./insteadOfABrowser says the same thing about the same
+// case — so the row is offered on that kind alone.
 func chooseAccount(
 	ctx context.Context,
 	flow *oauth.Flow,
 	store *account.Store,
 	to io.Writer,
-) (account.Account, bool, error) {
+) (account.Account, terminal.Answered, error) {
 	held, get := reading(ctx, flow)
-	return choosing(ctx, held, get, store, to)
+	remembered := ""
+	if chosen := store.Chosen(); chosen != nil {
+		remembered = chosen.Account.ID
+	}
+	return choosing(ctx, held, get, store, to, terminal.Picker{
+		Remembered: remembered,
+		SignOut:    held.Kind == signin.OAuth,
+	})
 }
 
 // what this machine's sign-in reaches, and the read every call about it is made with.
@@ -807,24 +877,27 @@ func reading(ctx context.Context, flow *oauth.Flow) (signin.SignIn, cf.Get) {
 
 // the picker, the verify and the writing down, over a sign-in that has already been read.
 //
-// False with no error is the operator closing the picker, as ./chooseAccount's is.
+// The answer is handed back rather than acted on: a picker the operator closed and the row that
+// signs this machine out are two different endings, and what each of them ends is the caller's
+// (./login, ./start.go's operating).
 func choosing(
 	ctx context.Context,
 	held signin.SignIn,
 	get cf.Get,
 	store *account.Store,
 	to io.Writer,
-) (account.Account, bool, error) {
+	asked terminal.Picker,
+) (account.Account, terminal.Answered, error) {
 	if held.Kind != signin.OAuth && held.Kind != signin.Token {
-		return account.Account{}, false, unusableSignIn(held)
+		return account.Account{}, terminal.PickerClosed, unusableSignIn(held)
 	}
 
-	picked, given, err := terminal.AskAccount(os.Stdin, os.Stdout, held.Accounts)
-	if err != nil || !given {
-		return account.Account{}, false, err
+	picked, answered, err := terminal.AskAccount(os.Stdin, os.Stdout, held, asked)
+	if err != nil || answered != terminal.AccountChosen {
+		return account.Account{}, answered, err
 	}
 	if !account.Verify(ctx, get, picked.ID) {
-		return account.Account{}, false, fmt.Errorf(
+		return account.Account{}, terminal.PickerClosed, fmt.Errorf(
 			"this sign-in may not act inside %s: ask an administrator of that account for "+
 				"administrator access, or run better-giving login to choose another account",
 			picked.Name)
@@ -838,14 +911,13 @@ func choosing(
 			"this machine could not write the account down, so it holds %s for this run alone\n",
 			chosen.Name)
 	}
-	return chosen, true, nil
+	return chosen, terminal.AccountChosen, nil
 }
 
 // what a machine holding no cloudflare sign-in is told, wherever it is met.
 //
-// One sentence because it is one state: every command but `login` needs a sign-in and none of them
-// can take one, so the act is the same whether the absence was found in front of a picker or in
-// front of a press (./update.go).
+// One sentence because it is one state: every command that reaches cloudflare needs a sign-in and
+// none of them can take one, so the act is the same wherever the absence is found.
 const signedOut = "this machine holds no Cloudflare sign-in: run better-giving login"
 
 // why a sign-in carries no account list to choose from.
@@ -874,7 +946,17 @@ func logout(args []string, to, wrong io.Writer) error {
 	if err != nil {
 		return noStore(err)
 	}
-	if err := signIn(records).Out(context.Background()); err != nil {
+	return signingOut(context.Background(), signIn(records), to)
+}
+
+// the act itself, which is this command and the row `start`'s picker draws (./start.go's
+// operating).
+//
+// One statement of it because the two are one act: an operator who reached for the row rather than
+// the command has given up the same sign-in, and a second spelling here is how the two come to
+// leave this machine in different states.
+func signingOut(ctx context.Context, flow *oauth.Flow, to io.Writer) error {
+	if err := flow.Out(ctx); err != nil {
 		return err
 	}
 	fmt.Fprintln(to, "this machine no longer holds a Cloudflare sign-in")

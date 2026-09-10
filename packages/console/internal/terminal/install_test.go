@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -118,5 +119,51 @@ func TestAConsoleThatCouldNotWorkOutWhichFileItRunsFromNamesNoDanglingOne(t *tes
 	}
 	if said == "" {
 		t.Error("an install that could not name the file it replaces says nothing at all")
+	}
+}
+
+// the question a run puts before it installs a newer console over itself.
+//
+// installing one can be undone and an older console deploys older code, so the question stands on
+// the install — which is the opposite of ./confirm.go's door and argued at each of them.
+
+func TestTheConsoleQuestionDrawsNothingWhereNobodyIsStandingAtIt(t *testing.T) {
+	// the opposite of ./confirm.go's door, which names its list either way: this question carries
+	// no list, and the caller names the newer console itself on the way past
+	// (../../cmd/better-giving/main.go's aboutTheConsole) — so a line here is the same news twice
+	// in whatever file the run was redirected into.
+	held := &bytes.Buffer{}
+	said := ConfirmNewer(strings.NewReader("y"), held, "0.9.0")
+
+	if said != Unattended {
+		t.Errorf("ConfirmNewer over a reader nobody is at = %q, want %q", said, Unattended)
+	}
+	if held.String() != "" {
+		t.Errorf("said %q at a run nobody is standing at, which its caller says again", held.String())
+	}
+}
+
+func TestTheConsoleQuestionStandsOnTheInstall(t *testing.T) {
+	put := updatingConsole("0.9.0")
+
+	if !put.opens {
+		t.Error("a return at the console question leaves this run on the older console, which " +
+			"deploys the older code this question exists to keep off the deployment")
+	}
+	if !strings.Contains(put.title, "0.9.0") {
+		t.Errorf("the title is %q, want the release it is about", put.title)
+	}
+}
+
+// what a console that installed a newer one and has nothing left to run leaves on the screen.
+
+func TestAnInstallWithNothingLeftToRunNamesTheVersionAndThePressThatDeploysIt(t *testing.T) {
+	said := NowOnThenStart("0.9.0")
+
+	if !strings.Contains(said, "0.9.0") {
+		t.Errorf("said %q, want the release this machine now holds", said)
+	}
+	if !strings.Contains(said, "better-giving start") {
+		t.Errorf("said %q, want the press that puts it on the deployment", said)
 	}
 }

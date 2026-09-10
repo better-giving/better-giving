@@ -287,8 +287,8 @@ func StillGoing(press string) string {
 // the ordinary case, which is a run that reported its end — the rows themselves are what that one
 // said.
 //
-// One statement of it because both presses make the same three readings of ./Show and ./Halted
-// (../../cmd/better-giving/start.go's chainAt and update.go's carryAt), and the order is where a
+// One statement of it because both halves of `start` make the same three readings of ./Show and
+// ./Halted (../../cmd/better-giving/start.go's chainAt and carryAt), and the order is where a
 // mistake would live: a ledger a signal took is one ./Show answered with no error at all.
 //
 // **the ledger is the drawing and not the run:** a terminal it could not be drawn on leaves the

@@ -68,7 +68,7 @@ func SignInUnfinished(why oauth.Why, dir, command string) string {
 		// fifth ending would otherwise be handed the sentence written for the one that came back
 		// empty — a page nobody closed, reported as one that was. what is said instead is that this
 		// console did not recognise the ending, which is the shape
-		// ../../cmd/better-giving/update.go's atTheDoor takes at its own unnamed answer.
+		// ../../cmd/better-giving/start.go's atTheDoor takes at its own unnamed answer.
 		return "Cloudflare ended the sign-in in a way this console does not recognise, so this " +
 			"machine isn't signed in. " + again + "."
 	}

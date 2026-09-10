@@ -15,8 +15,8 @@ import (
 // rather than met as a form standing there with nobody at it. the press these belong to is one an
 // operator is standing at; there is no unattended spelling of it.
 //
-// **both ends of the prompt are that check and never the reader alone.** `better-giving update >
-// update.log` leaves stdin the operator's keyboard and puts the form in the file: a prompt that
+// **both ends of the prompt are that check and never the reader alone.** `better-giving start >
+// start.log` leaves stdin the operator's keyboard and puts the form in the file: a prompt that
 // asked about the reader alone would draw the question where nobody can see it and then wait on a
 // keystroke for a question the operator was never shown. ./clear.go's onScreen is the other end of
 // the same reading, and ./attended is where the two meet.
@@ -30,7 +30,7 @@ import (
 // **the sentence names the question it could not put.** the caller prints it as the whole of what
 // that run said, so a pronoun standing for the question — "this console asks for that" — is a
 // sentence in which nothing tells an operator which prompt ended the press. the shape is
-// ../../cmd/better-giving/update.go's noOneAtTheDoor, which is the same predicament done well: the
+// ../../cmd/better-giving/start.go's noOneAtTheDoor, which is the same predicament done well: the
 // question, what was not made, and the way to put the question again. the question itself is each
 // prompt's own words for what it wanted, so the three supply theirs.
 

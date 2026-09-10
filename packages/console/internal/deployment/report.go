@@ -24,6 +24,12 @@ import (
 // from that surface rather than an unrelated json body — a page at a custom domain that is not this
 // deployment, or a proxy answering for it. what the lines inside it say is the deployment's
 // business and is rendered as it arrived.
+//
+// **how a call to that surface is bound is here too, because two packages bind it.**
+// internal/server binds it for the browser's reading of the home screen and for the errands the
+// console writes through, and internal/effects binds it to find out which release the deployment
+// carries before `start` offers to carry another. a second spelling of it in either place is how
+// one of them comes to send the session somewhere the other does not.
 
 // ConsolePath is the path on a deployment that answers with what it knows about itself.
 const ConsolePath = "/console"
@@ -84,6 +90,30 @@ type ReportRead struct {
 	// and one built from a checkout rather than a tagged release. Neither can be weighed against a
 	// release, so a reading that offers an update judges such a deployment by its migrations alone.
 	Version *string `json:"version"`
+}
+
+// Calls is how a call to a deployment's own console surface is bound.
+//
+// The session travels in a header and never on the url, which is internal/cf's arrangement for
+// every credential this binary holds: the reader that decides what a screen says is handed a
+// function and never a token. One binding for reads and writes alike, because the seven errands
+// write through the same door a reading reads through.
+func Calls(origin, token string) cf.Send {
+	return cf.JSONSend(origin, map[string]string{"Authorization": "Bearer " + token})
+}
+
+// Reads is the read half of such a binding, which is the whole of what a reading of the deployment
+// needs.
+//
+// `calls` is handed in rather than taken as ./Calls, so a case can answer for a deployment that is
+// not there (internal/server's Options.Surface).
+func Reads(calls func(origin, token string) cf.Send) func(origin, token string) cf.Get {
+	return func(origin, token string) cf.Get {
+		send := calls(origin, token)
+		return func(ctx context.Context, path string) cf.Answer {
+			return send(ctx, http.MethodGet, path, nil)
+		}
+	}
 }
 
 // Report is one read of that surface, over a reader already bound to the session.

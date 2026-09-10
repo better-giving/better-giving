@@ -41,8 +41,8 @@ type Carried struct {
 //
 // the four are constants rather than the words themselves, which is ../first's arrangement for the
 // chain's own: two packages read this set and one of them decides whether a run is reported as a
-// failure (../../cmd/better-giving/update.go), so a literal mistyped at either end compiles, passes
-// `go vet`, and reports every update that landed as one that did not.
+// failure (../../cmd/better-giving/start.go's afterTheCarry), so a literal mistyped at either end
+// compiles, passes `go vet`, and reports every carry that landed as one that did not.
 type CarriedKind string
 
 const (

@@ -18,7 +18,7 @@ import (
 // them unable to tell a press that stopped in front of the first write from one that stopped inside
 // it.
 //
-// the shape is ../../cmd/better-giving/update.go's noOneAtTheDoor: the question, what was not made,
+// the shape is ../../cmd/better-giving/start.go's noOneAtTheDoor: the question, what was not made,
 // and the way to put the question again.
 
 func TestEveryPromptNobodyIsAtNamesTheQuestionItCouldNotPut(t *testing.T) {
@@ -66,9 +66,10 @@ func placementRefusal(t *testing.T) error {
 
 func accountRefusal(t *testing.T) error {
 	t.Helper()
-	_, _, err := AskAccount(strings.NewReader("\n"), io.Discard, []signin.Account{
-		{ID: "a1", Name: "Cause"},
-	})
+	_, _, err := AskAccount(strings.NewReader("\n"), io.Discard, signin.SignIn{
+		Kind:     signin.OAuth,
+		Accounts: []signin.Account{{ID: "a1", Name: "Cause"}},
+	}, Picker{})
 	return err
 }
 
@@ -86,7 +87,7 @@ func (held end) Write(said []byte) (int, error) { return len(said), nil }
 func (held end) Fd() uintptr                    { return held.fd }
 
 func TestAQuestionIsPutOnlyWhereItCanBeBothTypedAndSeen(t *testing.T) {
-	// `better-giving update > update.log` leaves the keyboard where it was and puts the form in the
+	// `better-giving start > start.log` leaves the keyboard where it was and puts the form in the
 	// file: the reader alone answers half the question, and the half it does not answer is the one
 	// that ends with an operator looking at a blank terminal while the process waits.
 	const aTerminal, aFile = uintptr(1), uintptr(2)

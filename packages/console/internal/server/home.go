@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"net/http"
 	"time"
 
@@ -84,27 +83,7 @@ func homeRoutes(
 			Credential:   credential,
 			Account:      reads(credential),
 			Session:      session.Held(records, release.Baked.Name, time.Now()),
-			Deployment:   surfaceReads(surface),
+			Deployment:   deployment.Reads(surface),
 		}))
 	})
-}
-
-// how a call to a deployment's own console surface is bound.
-//
-// The session travels in a header and never on the url, which is internal/cf's arrangement for
-// every credential this binary holds: the reader that decides what a screen says is handed a
-// function and never a token. One binding for reads and writes alike, because the seven errands write
-// through the same door this reads through.
-func deploymentCalls(origin, token string) cf.Send {
-	return cf.JSONSend(origin, map[string]string{"Authorization": "Bearer " + token})
-}
-
-// the read half of that binding, which is the whole of what a reading of the deployment needs.
-func surfaceReads(surface func(origin, token string) cf.Send) func(string, string) cf.Get {
-	return func(origin, token string) cf.Get {
-		send := surface(origin, token)
-		return func(ctx context.Context, path string) cf.Answer {
-			return send(ctx, http.MethodGet, path, nil)
-		}
-	}
 }

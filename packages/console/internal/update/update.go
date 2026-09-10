@@ -2,14 +2,15 @@
 //
 // **the operator finds out at the terminal they typed a command in, and the console acts on it.**
 // the install is a line pasted once and nothing on the machine watches for a newer one, so a binary
-// that never says so is one an operator goes on running until something else tells them — and the
-// commands that act on it are the two that end in a console standing (../../cmd/better-giving).
+// that never says so is one an operator goes on running until something else tells them —
+// `better-giving update` is the press that does something about it, and `better-giving start` puts
+// the same question in front of a deploy (../../cmd/better-giving).
 //
 // **it installs a console and never deploys one.** a binary deploys only the bundle from its own
 // bake — internal/bundle refuses a manifest whose commit is not the baked one — so what a newer
 // release carries cannot be uploaded by the binary holding this reading. that is why the two deploy
-// commands install the newer console and hand it the run before they touch anything: an operator
-// left on an older binary carries older code onto their deployment, which is the one thing those
+// commands ask before they touch anything and hand the run to what they install: an operator left
+// on an older binary carries older code onto their deployment, which is the one thing those
 // commands exist to do right.
 //
 // **a reading nobody could take says nothing rather than something wrong.** github is a third host
@@ -18,9 +19,9 @@
 // nothing is printed for any of them. the read is bounded and every failure is a value, so a
 // command is never held up or ended by it.
 //
-// **a failure past a Newer reading is the other thing, and it ends the command.** the operator has
-// been told the newer console is being installed, so a command that went on after it did not land
-// would deploy the old code under a screen that just said otherwise. ./install.go answers every way
+// **a failure past an install is the other thing, and it ends the command.** the operator has been
+// told the newer console is being installed, so a command that went on after it did not land would
+// deploy the old code under a screen that just said otherwise. ./install.go answers every way
 // that can go wrong with a value, and the caller refuses on all of them.
 package update
 
@@ -143,7 +144,7 @@ func numbered(version string) (string, bool) {
 // The suffix orders as much as the numbers do: `0.0.1-alpha.2` is behind `0.0.1-alpha.3`, both are
 // behind `0.0.1`, and `0.0.1` is behind `0.0.2-alpha.1`. Reading the numbers alone is every console
 // installed in a pre-release series calling itself current for the length of the series, which is
-// the whole of what the two deploy commands install a newer console to avoid.
+// the whole of what installing a newer console exists to avoid.
 //
 // Numbers rather than words: `0.9.0` sorts after `0.10.0` as text, which is a console that never
 // mentions the release an operator is behind. A version with fewer parts than the other is read as

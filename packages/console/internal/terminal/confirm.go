@@ -9,12 +9,19 @@ import (
 	"github.com/charmbracelet/huh"
 )
 
-// the one-way door, named in front of the press that opens it.
+// the carry onto a deployment that is already standing, named in front of the press that makes it.
 //
 // **a remote migration cannot be taken back and nothing here rolls one back** (CLAUDE.md), so what
 // stands in front of it is the list of files it would apply and a confirm that opens on the
 // refusal. a hand resting on the keyboard is how a door like this is opened by accident, and every
 // keystroke that is not the operator choosing to apply them leaves the database as it stands.
+//
+// **it is put where this release moves the database nowhere as well.** `better-giving start` is the
+// one press that carries, and it carries onto a deployment the operator asked it to open a console
+// at — so the upload itself is the thing being agreed to, and a release with nothing to apply is
+// still this release's code going onto their worker. the question is the other question then
+// (./carrying), and the screen is the same screen: an operator whose machine has operated two
+// deployments answers off the account and the address on it or not at all.
 //
 // **a deployment ahead of this binary is refused rather than confirmed.** a migration the database
 // records and this release does not carry was applied by a newer console, so a press from here
@@ -24,7 +31,7 @@ import (
 //
 // **the list is named where nobody is standing, and the door is not opened there.** ./prompt.go's
 // rule is this one's too and it takes both ends of the prompt: a form drawn at a pipe, or into the
-// file `better-giving update > update.log` redirects it to, is one nobody ever answers — so a
+// file `better-giving start > start.log` redirects it to, is one nobody ever answers — so a
 // command that put one there would stand at it waiting on an answer that is not coming. the names
 // go out either way — a run whose output is a record still says what it would have applied — and
 // the answer is its own, because nobody shut that door: an operator who chose to leave the database
@@ -46,7 +53,7 @@ import (
 type Confirmation string
 
 const (
-	// Confirmed is the door opened on purpose, which is also the answer where there is no door.
+	// Confirmed is the door opened on purpose.
 	Confirmed Confirmation = "confirmed"
 	// Declined is the door shut on purpose: the refusal chosen, or the form closed.
 	Declined Confirmation = "declined"
@@ -66,14 +73,14 @@ type Deployment struct {
 	Address string
 }
 
-// ConfirmMigration names what a deploy would apply to the live database and takes the operator's
+// ConfirmCarry names what a carry onto a standing deployment would do and takes the operator's
 // answer for it.
 //
 // `at` is the deployment the answer is about, drawn above the count. `pending` is what this release
 // carries and the database has not, in the order it applies them; `ahead` is what the database
 // records and this release does not carry. Both are ../migrate's. `newer` is the line naming a
 // console newer than the one asking, and empty where there is none.
-func ConfirmMigration(
+func ConfirmCarry(
 	in io.Reader,
 	to io.Writer,
 	at Deployment,
@@ -88,25 +95,55 @@ func ConfirmMigration(
 		list(to, ahead)
 		return Ahead
 	}
-	if len(pending) == 0 {
-		above(to, newer)
-		return Confirmed
-	}
 
-	// the names are what the question is about, so they are drawn on the question's own screen
-	// rather than under whatever the run printed ahead of them (./clear.go). a run at a pipe is
-	// cleared of nothing and keeps its record whole.
+	// what the question is about is drawn on the question's own screen rather than under whatever
+	// the run printed ahead of it (./clear.go). a run at a pipe is cleared of nothing and keeps its
+	// record whole.
 	clear(to)
 	above(to, newer)
 	object(to, at)
-	fmt.Fprintf(to, "this deploy applies %s to the live database, which cannot be\n"+
-		"undone:\n", migrations(len(pending)))
-	list(to, pending)
+	naming(to, pending)
 
 	if !attended(in, to) {
 		return Unattended
 	}
-	return confirming(in, to)
+	return confirming(in, to, carrying(pending))
+}
+
+// what the carry would do to the live database, which is a list of files or a line saying there are
+// none.
+//
+// a release that applies nothing says so rather than saying nothing: the operator is being asked
+// about an upload, and a screen silent about the database reads as one that did not check.
+func naming(to io.Writer, pending []string) {
+	if len(pending) == 0 {
+		fmt.Fprint(to, "this deploy uploads this release's code and applies nothing to the live\n"+
+			"database.\n")
+		return
+	}
+	fmt.Fprintf(to, "this deploy applies %s to the live database, which cannot be\n"+
+		"undone:\n", migrations(len(pending)))
+	list(to, pending)
+}
+
+// the question this door puts, which is a different question where there is nothing to apply.
+//
+// both stand on leaving the deployment as it is: the one-way door for the reason this file opens
+// on, and the upload because a `start` that carries nothing still opens the console at a deployment
+// that is already serving (../../cmd/better-giving/start.go).
+func carrying(pending []string) question {
+	if len(pending) == 0 {
+		return question{
+			title: "carry this release onto the deployment?",
+			apply: "Carry it over",
+			leave: "Leave the deployment alone",
+		}
+	}
+	return question{
+		title: "apply them to the live database?",
+		apply: "Apply them",
+		leave: "Leave the database alone",
+	}
 }
 
 // what stands over the door, with a blank line under it so that the question below reads as its
@@ -130,8 +167,10 @@ func object(to io.Writer, at Deployment) {
 	fmt.Fprintf(to, "deployment: %s\n\n", answering(at))
 }
 
-// where a deployment answers, said once so that the door and ./redeploy.go's CarryingOnto agree
-// about a deployment this console could read no address for.
+// where a deployment answers, or that this console could read no address for it.
+//
+// said rather than left blank, which is ./object's reading of every absent value on that screen: a
+// line with nothing after it reads as a value that went missing on the way here.
 func answering(at Deployment) string {
 	if at.Address == "" {
 		return "no address this console can read"
@@ -147,26 +186,38 @@ func migrations(count int) string {
 	return strconv.Itoa(count) + " migrations"
 }
 
-// the door itself, put once the list has been named and the operator is known to be at it.
+// question is what a confirm puts and which of its two answers a bare return gives.
+//
+// It is a value rather than three arguments because the standing is the part that can be wrong
+// quietly: a door drawn with the right words over the wrong default is a screen that reads
+// correctly and answers itself.
+type question struct {
+	// title is the question, and apply and leave the two answers as the operator reads them.
+	title, apply, leave string
+	// opens is whether a return takes the act. False is a confirm standing on leaving things as
+	// they are, which every door in front of a deployment does; ./install.go argues the one that
+	// does not.
+	opens bool
+}
+
+// the door itself, put once what it is about has been named and the operator is known to be at it.
 //
 // **a form that failed is no answer and never the refusal.** the operator is standing at a terminal
 // this console could not draw the question on, so nothing was put to them: reported as the refusal
-// it would be ../../cmd/better-giving/update.go exiting 0 on "the database was left alone", which
-// is a decision nobody made. the door stays shut either way and only the sentence differs.
+// it would be ../../cmd/better-giving/start.go exiting 0 on "the database was left alone", which is
+// a decision nobody made. the door stays shut either way and only the sentence differs.
 //
 // **the one failure that is an answer is the operator's own.** ctrl-c at the form is a press not
 // made, which every prompt in this package reads as the value not given (./prompt.go) — and what
-// they left is the database alone, which is the refusal.
-func confirming(in io.Reader, to io.Writer) Confirmation {
-	// false is where the confirm opens, so what an operator has to do to open the door is choose
-	// the other one.
-	apply := false
+// they left is the deployment alone, which is the refusal.
+func confirming(in io.Reader, to io.Writer, put question) Confirmation {
+	answered := put.opens
 	asking := huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
-			Title("apply them to the live database?").
-			Affirmative("Apply them").
-			Negative("Leave the database alone").
-			Value(&apply),
+			Title(put.title).
+			Affirmative(put.apply).
+			Negative(put.leave).
+			Value(&answered),
 	)).WithInput(in).WithOutput(to)
 
 	switch err := asking.Run(); {
@@ -174,7 +225,7 @@ func confirming(in io.Reader, to io.Writer) Confirmation {
 		return Declined
 	case err != nil:
 		return Unattended
-	case !apply:
+	case !answered:
 		return Declined
 	}
 	return Confirmed

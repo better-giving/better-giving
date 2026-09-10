@@ -124,7 +124,7 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-`.github/workflows/release.yml` builds the console binaries (ui baked in), the worker bundle `better-giving start` and `better-giving update` upload, `checksums.txt`, and ships `install.sh` alongside. It deploys nothing and holds no Cloudflare credential. `go run ./cmd/bake --check` runs first: a baked config drifted from `wrangler.jsonc` fails the release, not the operator's first deploy. Fix with `go run ./cmd/bake` from `packages/console`, commit, tag again.
+`.github/workflows/release.yml` builds the console binaries (ui baked in), the worker bundle `better-giving start` uploads, `checksums.txt`, and ships `install.sh` alongside. It deploys nothing and holds no Cloudflare credential. `go run ./cmd/bake --check` runs first: a baked config drifted from `wrangler.jsonc` fails the release, not the operator's first deploy. Fix with `go run ./cmd/bake` from `packages/console`, commit, tag again.
 
 Locally, `goreleaser release --snapshot --clean` at the root builds the archives into `packages/console/dist/` without a tag.
 

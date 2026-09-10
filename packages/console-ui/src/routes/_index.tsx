@@ -114,11 +114,12 @@ import type { Route } from './+types/_index';
 // what is left is the head, which goes nowhere, and the folds.
 //
 // **nothing on this page deploys.** standing a deployment up and carrying newer code onto one are
-// both terminal commands of the same binary — `better-giving start` and `better-giving update` —
-// and each opens the one-way door the remote migration is. this page names the command and offers
-// no press of its own: a press that runs for minutes behind a browser tab is one an
-// operator can close, and a screen is the wrong place to stand in front of a door that does not
-// close again. DEPLOY.md has what stands around each of them.
+// the one terminal command of this binary — `better-giving start` — and it is what opens the
+// one-way door the remote migration is; `better-giving update` installs the console binary and
+// reaches no deployment at all. this page names the command and offers no press of its own: a press
+// that runs for minutes behind a browser tab is one an operator can close, and a screen is the
+// wrong place to stand in front of a door that does not close again. DEPLOY.md has what stands
+// around it.
 //
 // **the head is the cloudflare account, and the account is everything on it.** it states the name
 // this deployment lives under and the id cloudflare resolves that name by, with the press that ends
@@ -1276,10 +1277,10 @@ function UnreachableFace({
 	   about it. it is a command and not a press: carrying newer code across applies a remote
 	   migration, which is a door that does not close again, and a run of minutes behind a browser
 	   tab is one an operator can close. */
-	const update = (
+	const applying = (
 		<p className="adm-prose">
-			Run <InlineCode>better-giving update</InlineCode> in the terminal you start the console from
-			to carry this console&rsquo;s code onto it.
+			Run <InlineCode>better-giving start</InlineCode> in the terminal you start the console from to
+			carry this console&rsquo;s code onto it.
 		</p>
 	);
 
@@ -1305,7 +1306,7 @@ function UnreachableFace({
 					Whatever is answering there isn't this deployment, or it's older than this console.
 				</p>
 				{rows}
-				{update}
+				{applying}
 			</div>
 		);
 	}
@@ -1327,14 +1328,14 @@ function UnreachableFace({
 				{title(UNREAD_ANSWER_TITLE)}
 				<p className="adm-prose">
 					A deployment older than this console answers this way, and so does one that failed while
-					answering. Updating it brings the first up to date.
+					answering. The command below brings the first up to date.
 				</p>
 				{rows}
 				{/* the deployment's own words, which are the only thing on this screen that says which
 				    of the two is behind — read before the press rather than under it, because it is what
 				    decides whether the press is the right one. */}
 				<Said answer={read} />
-				{update}
+				{applying}
 			</div>
 		);
 	}

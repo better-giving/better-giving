@@ -255,19 +255,14 @@ func TestNoRedeploySentenceSendsAnOperatorToAScreen(t *testing.T) {
 	}
 }
 
-func TestNeitherCommandSendsAnOperatorToTheOther(t *testing.T) {
-	// the deploy engine's half is drawn by both commands and the two are repaired by different
-	// presses: `start` stands a deployment up and `update` only carries code over one, so either
-	// sentence naming the other command is an operator sent to a press that does not repair what
-	// they are looking at.
-	for _, said := range everyRedeploySentence() {
-		if strings.Contains(said, "better-giving start") {
-			t.Errorf("a redeploy says %q, which names the command that stands a deployment up", said)
-		}
-	}
-	for _, said := range everyChainSentence() {
+func TestNoDeploySentenceSendsAnOperatorToTheConsoleInstaller(t *testing.T) {
+	// both halves of the deploy engine run under `start` now — it stands a deployment up and it
+	// carries this release onto one already standing — and `update` installs a console and deploys
+	// nothing. a sentence about a deploy naming it sends an operator to a press that cannot repair
+	// what they are looking at.
+	for _, said := range append(everyRedeploySentence(), everyChainSentence()...) {
 		if strings.Contains(said, "better-giving update") {
-			t.Errorf("a chain says %q, which names the command that only carries code over", said)
+			t.Errorf("a deploy says %q, which names the command that deploys nothing", said)
 		}
 	}
 }
@@ -365,35 +360,5 @@ func TestAPendingReadThatLandedRefusesNothing(t *testing.T) {
 	read := effects.Migrations{Applied: cf.ResultValue, Names: []string{"0007_donors.sql"}}
 	if said := Unnamed(read); said != "" {
 		t.Errorf("a read that named the door says %q", said)
-	}
-}
-
-// what an upload with no door in front of it names, which is the account and the address the door's
-// own screen would have named (./redeploy.go's CarryingOnto).
-
-func TestTheUndooredUploadNamesTheAccountAndWhereItIsCarrying(t *testing.T) {
-	said := CarryingOnto(Deployment{Account: "Acme Giving", Address: "https://give.acme.test"})
-
-	if !strings.Contains(said, "Acme Giving") {
-		t.Errorf("said %q, want the account this release is carried into", said)
-	}
-	if !strings.Contains(said, "https://give.acme.test") {
-		t.Errorf("said %q, want the deployment it is carried onto", said)
-	}
-}
-
-func TestAnAccountThisConsoleHasNoNameForIsLeftOffRatherThanLeftBlank(t *testing.T) {
-	// the door's own object skips the line for the same reason (./confirm.go): a sentence ending in
-	// "in Cloudflare account " reads as a value that went missing on the way here.
-	said := CarryingOnto(Deployment{Address: "https://give.acme.test"})
-
-	if strings.Contains(said, "Cloudflare account") {
-		t.Errorf("said %q, want an account nobody named left out of the sentence", said)
-	}
-	if !strings.Contains(said, "https://give.acme.test") {
-		t.Errorf("said %q, want what it is carrying onto still named", said)
-	}
-	if strings.HasSuffix(said, " ") {
-		t.Errorf("said %q, want no sentence ending on the space before a missing value", said)
 	}
 }
