@@ -107,3 +107,96 @@ func TestABinaryCarryingNoVersionAsksGithubNothing(t *testing.T) {
 		t.Errorf("github was asked %d times, want none", held.asked)
 	}
 }
+
+func TestAPreReleaseIsBehindALaterPreReleaseOfTheSameNumbers(t *testing.T) {
+	held := &forge{tag: "v0.0.1-alpha.3"}
+	if read := Latest(context.Background(), held.get(t), "0.0.1-alpha.2"); read.Kind != Newer {
+		t.Errorf("read = %+v, want %q", read, Newer)
+	}
+}
+
+func TestAPreReleaseIsBehindThePlainReleaseOfItsOwnNumbers(t *testing.T) {
+	held := &forge{tag: "v0.0.1"}
+	if read := Latest(context.Background(), held.get(t), "0.0.1-alpha.3"); read.Kind != Newer {
+		t.Errorf("read = %+v, want %q", read, Newer)
+	}
+}
+
+func TestAPlainReleaseIsNotBehindItsOwnPreReleases(t *testing.T) {
+	held := &forge{tag: "v0.0.1-alpha.3"}
+	if read := Latest(context.Background(), held.get(t), "0.0.1"); read.Kind != Current {
+		t.Errorf("read = %+v, want %q", read, Current)
+	}
+}
+
+func TestAPlainReleaseIsBehindALaterVersionsPreRelease(t *testing.T) {
+	held := &forge{tag: "v0.0.2-alpha.1"}
+	if read := Latest(context.Background(), held.get(t), "0.0.1"); read.Kind != Newer {
+		t.Errorf("read = %+v, want %q", read, Newer)
+	}
+}
+
+func TestThePreReleaseThisBinaryWasCutInIsCurrent(t *testing.T) {
+	held := &forge{tag: "v0.0.1-alpha.3"}
+	if read := Latest(context.Background(), held.get(t), "0.0.1-alpha.3"); read.Kind != Current {
+		t.Errorf("read = %+v, want %q", read, Current)
+	}
+}
+
+func TestATagsLeadingVIsNoPartOfTheVersion(t *testing.T) {
+	for _, tag := range []string{"v0.0.1-alpha.3", "0.0.1-alpha.3"} {
+		t.Run(tag, func(t *testing.T) {
+			held := &forge{tag: tag}
+			read := Latest(context.Background(), held.get(t), "0.0.1-alpha.2")
+			if read.Kind != Newer || read.Version != "0.0.1-alpha.3" {
+				t.Errorf("read = %+v, want the newer release named without its `v`", read)
+			}
+		})
+	}
+}
+
+func TestAVersionStatingFewerPartsThanTheOtherIsTheSameRelease(t *testing.T) {
+	for _, both := range []struct{ tag, mine string }{
+		{tag: "v0.4.0", mine: "0.4"},
+		{tag: "v0.4", mine: "0.4.0"},
+	} {
+		t.Run(both.tag+" against "+both.mine, func(t *testing.T) {
+			held := &forge{tag: both.tag}
+			if read := Latest(context.Background(), held.get(t), both.mine); read.Kind != Current {
+				t.Errorf("read = %+v, want %q", read, Current)
+			}
+		})
+	}
+}
+
+func TestABuildSuffixIsNoPartOfTheOrdering(t *testing.T) {
+	for _, both := range []struct {
+		tag, mine string
+		want      Kind
+	}{
+		{tag: "v0.0.1+beef", mine: "0.0.1+cafe", want: Current},
+		{tag: "v0.0.1-alpha.3", mine: "0.0.1-alpha.2+cafe", want: Newer},
+		{tag: "v0.0.1-alpha.3+beef", mine: "0.0.1", want: Current},
+	} {
+		t.Run(both.tag+" against "+both.mine, func(t *testing.T) {
+			held := &forge{tag: both.tag}
+			if read := Latest(context.Background(), held.get(t), both.mine); read.Kind != both.want {
+				t.Errorf("read = %+v, want %q", read, both.want)
+			}
+		})
+	}
+}
+
+func TestABinaryCarryingSomethingThatIsNotAVersionAsksGithubNothing(t *testing.T) {
+	for _, mine := range []string{"dev", "", "nightly", "v", "0.0.1.2", "0.0.1-"} {
+		t.Run(mine, func(t *testing.T) {
+			held := &forge{tag: "v9.9.9"}
+			if read := Latest(context.Background(), held.get(t), mine); read.Kind != Unknown {
+				t.Errorf("read = %+v, want %q", read, Unknown)
+			}
+			if held.asked != 0 {
+				t.Errorf("github was asked %d times, want none", held.asked)
+			}
+		})
+	}
+}

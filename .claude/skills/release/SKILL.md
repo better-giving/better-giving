@@ -20,7 +20,7 @@ Publish the pair an operator installs: the console binary for four platforms and
 
 3. **The tag name** — `vMAJOR.MINOR.PATCH`, with an optional `-alpha.N`. Two facts decide it, and both belong in the sentence that asks the user which one this cut is:
    - **A pre-release tag publishes as an ordinary release, with the pre-release flag left off** — here and in github's own release form. `releases/latest` skips a flagged release, and `releases/latest/download/install.sh` is the address the operator documents publish; `.goreleaser.yaml`'s `release:` key argues the rest.
-   - **`internal/update` reads the numbers and cuts everything after them** (`packages/console/internal/update/update.go`, `numbered`), so a tag moving only its `-alpha.N` counter reads as the same version to every binary already installed, and no console offers the update. Moving a number is what reaches those consoles.
+   - **`internal/update` orders by semantic version precedence** (`packages/console/internal/update/update.go`, `behind`), so a tag moving only its `-alpha.N` counter is an update, and every console carrying that reading offers it. A console installed from a release before `v0.0.2-alpha.1` reads the numbers alone and sees no such move: moving a number is what reaches those.
 
    Done when the user has named a tag that `git tag -l` does not already hold.
 

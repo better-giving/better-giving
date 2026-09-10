@@ -27,9 +27,10 @@ package update
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/mod/semver"
 
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/release"
@@ -119,53 +120,35 @@ func Latest(ctx context.Context, get cf.Get, held string) Read {
 	}
 }
 
-// one version as the numbers it is made of, or false where it is not one.
+// one version in the spelling `golang.org/x/mod/semver` reads, or false where it is not one.
 //
-// The tag a release is cut under carries a leading `v` and the version itself does not, so both
-// spellings read the same. Anything after the numbers — a pre-release or a build — is cut, because
-// what this decides is whether to name an install and no ordering of suffixes changes that.
+// The tag a release is cut under carries a leading `v` and the version itself does not, so the `v`
+// is put back where it is missing and both spellings read as the same release.
 //
 // `dev` is what every `go build` in this repository leaves, so a contributor's binary is not a
 // version here and asks github nothing.
-func numbered(version string) ([]int, bool) {
-	stated := strings.TrimPrefix(strings.TrimSpace(version), "v")
-	if at := strings.IndexAny(stated, "-+"); at != -1 {
-		stated = stated[:at]
+func numbered(version string) (string, bool) {
+	stated := strings.TrimSpace(version)
+	if !strings.HasPrefix(stated, "v") {
+		stated = "v" + stated
 	}
-	if stated == "" {
-		return nil, false
+	if !semver.IsValid(stated) {
+		return "", false
 	}
-
-	parts := strings.Split(stated, ".")
-	numbers := make([]int, 0, len(parts))
-	for _, part := range parts {
-		number, err := strconv.Atoi(part)
-		if err != nil || number < 0 {
-			return nil, false
-		}
-		numbers = append(numbers, number)
-	}
-	return numbers, true
+	return stated, true
 }
 
-// whether `mine` is behind `latest`, part by part.
+// whether `mine` is behind `latest`, by semantic version precedence.
+//
+// The suffix orders as much as the numbers do: `0.0.1-alpha.2` is behind `0.0.1-alpha.3`, both are
+// behind `0.0.1`, and `0.0.1` is behind `0.0.2-alpha.1`. Reading the numbers alone is every console
+// installed in a pre-release series calling itself current for the length of the series, which is
+// the whole of what the two deploy commands install a newer console to avoid.
 //
 // Numbers rather than words: `0.9.0` sorts after `0.10.0` as text, which is a console that never
 // mentions the release an operator is behind. A version with fewer parts than the other is read as
-// zero in the ones it does not state, so `0.4` and `0.4.0` are the same release.
-func behind(mine, latest []int) bool {
-	for at := 0; at < len(mine) || at < len(latest); at++ {
-		held, there := part(mine, at), part(latest, at)
-		if held != there {
-			return held < there
-		}
-	}
-	return false
-}
-
-func part(numbers []int, at int) int {
-	if at < len(numbers) {
-		return numbers[at]
-	}
-	return 0
+// zero in the ones it does not state, so `0.4` and `0.4.0` are the same release. A build suffix is
+// no part of the ordering at all: `+sha` says how a binary was cut, not which release it is.
+func behind(mine, latest string) bool {
+	return semver.Compare(mine, latest) < 0
 }
