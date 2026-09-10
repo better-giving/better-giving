@@ -25,6 +25,7 @@ import {
 	useSearchParams
 } from 'react-router';
 import { saidClosing } from '../lib/close-answer';
+import { CLOSE_PARAM, opensOrDropsDialog } from '../lib/dialog-params';
 import { finishStartingBar } from '../lib/starting-bar';
 import { ConsoleClosed, ConsoleStopped } from '../lib/deployment-states';
 import { ConnectPanel } from '../lib/connect-panel';
@@ -158,9 +159,6 @@ const CONNECT_INTENT = 'connect';
 
 /** what the head's one control posts, from the confirm the control opens. */
 const CLOSE_INTENT = 'close';
-
-/** what the address carries while that confirm is up, which is the whole of what draws it. */
-const CLOSE_PARAM = 'close';
 
 /** what the connect panel's way out of a wrong cloudflare sign-in posts. */
 const SIGN_OUT_INTENT = 'signOut';
@@ -630,21 +628,26 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 }
 
 /**
- * every press re-reads this page, except the one that ends the process it would read.
+ * every press re-reads this page, except the one that ends the process it would read — and no press
+ * of a link that only opens a dialog does.
  *
  * the binary answers the close and then stops, so the read that follows it cannot land: it reaches
  * nothing, `clientLoader` rejects, and the operator meets the boundary that says the console
  * crashed in place of the panel saying they closed it. the answer carries the reading that stops it
  * (../lib/close-answer.ts), which is what the router's own docs put `actionResult` there for.
  *
+ * **both confirms on this console are a parameter on the address, so opening one is a navigation**,
+ * and the whole of this page's read is loopback round trips — a confirm that waited on one would
+ * take a second or more to draw over a press that changes nothing this page reads
+ * (../lib/dialog-params.ts, which is where the parameters that do that are enumerated).
+ *
  * everything else is handed straight back: this is one route with one loader, so what the router
  * decides by default about a re-read is the whole of what any other press wants.
  */
-export function shouldRevalidate({
-	actionResult,
-	defaultShouldRevalidate
-}: ShouldRevalidateFunctionArgs): boolean {
-	return saidClosing(actionResult) ? false : defaultShouldRevalidate;
+export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean {
+	if (saidClosing(args.actionResult)) return false;
+	if (opensOrDropsDialog(args)) return false;
+	return args.defaultShouldRevalidate;
 }
 
 /**

@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 import { useCallback, useRef } from 'react';
 import { Form, Link, useNavigate, useSearchParams } from 'react-router';
 import type { Face } from './connect-face';
+import { SIGNIN_PARAM } from './dialog-params';
 import { HeadEnds, HeadIdentity } from './head-strip';
 import { ProductFoot } from './product-foot';
 
@@ -181,7 +182,7 @@ export function ConnectPanel({
 				control={
 					<Button
 						as={Link}
-						to="/?signin"
+						to={`/?${SIGNIN_PARAM}`}
 						variant="soft"
 						size="sm"
 						mark="log-out"
@@ -217,7 +218,7 @@ export function ConnectPanel({
 	/* the parameter is honoured only where the control that sets it is drawn: an address typed with
 	   it on any other face would open a dialog about a sign-in that face has no way to leave. */
 	const leaving =
-		params.has('signin') &&
+		params.has(SIGNIN_PARAM) &&
 		(face.kind === 'unchosen' || face.kind === 'account-gone') &&
 		!face.token;
 
