@@ -141,3 +141,12 @@ func TestNothingIsDrawnAboveTheQuestionWhereTheCallerHasNothingToSay(t *testing.
 		t.Errorf("said %q, want a caller with nothing to say drawn as nothing", held.String())
 	}
 }
+
+func TestTheBoxDrawsWhatIsTypedIntoItRatherThanAMask(t *testing.T) {
+	// there is one box and what stands in it is the password itself, so a typo is something the
+	// operator sees at the prompt rather than at the first sign-in the deployment turns away.
+	typed := strings.Repeat("a", release.MinAdminPasswordLength-1) + "Z"
+	if drawn := passwordBox(&typed).View(); !strings.Contains(drawn, typed) {
+		t.Errorf("the box drew %q, want the password legible in it", drawn)
+	}
+}

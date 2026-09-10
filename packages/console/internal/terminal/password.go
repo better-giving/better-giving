@@ -2,7 +2,6 @@ package terminal
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -21,10 +20,10 @@ import (
 // deployment will authenticate against — a terminal and a deployment disagreeing about what a
 // credential is would be a press that finished on a password nothing takes.
 //
-// **nothing typed is written back out, ever.** it is the whole of this app's credential entropy and
-// a terminal keeps its scrollback, which whatever collects that machine's logs keeps too
-// (CLAUDE.md). The box is masked as it is typed, the refusal states which rule was broken, and
-// neither quotes the value.
+// **the value is legible on the screen while it is typed, and a terminal keeps its scrollback**,
+// which whatever collects that machine's logs keeps too (CLAUDE.md). that is the rule this screen
+// works under. what no refusal does is carry the value: it is the whole of this app's credential
+// entropy, so a password this prompt will not take is measured and never quoted back.
 //
 // **this is the first screen of a press that makes things, so it is where what will be made is
 // named.** every prompt in this package erases the screen before it draws (./clear.go), so a
@@ -34,12 +33,12 @@ import (
 // and the deployment it is about. the screen after this one is the placement question, which states
 // its own permanence in its own description; nothing about it is restated here twice.
 
-// AskPassword takes the dashboard password, twice, and hands back the one that was typed the same
-// way both times.
+// AskPassword takes the dashboard password and hands back what was typed.
 //
-// **the second box is not a courtesy.** nothing is shown as it is typed and nothing anywhere echoes
-// it back afterwards, so a password with a typo in it is one nobody finds out about until the
-// deployment is up and turning every sign-in away — and the way out of that is another deploy.
+// **there is one box, and the typo it would carry is legible in it.** a password nobody reads as
+// they type it is one a mistake survives into the deployment, which is then up and turning every
+// sign-in away with another deploy as the way out; one standing on the screen is corrected before
+// the press that makes anything.
 //
 // **a refusal says which rule was broken and asks again rather than ending the press.** the
 // operator is standing at the prompt; a press abandoned over a value they can retype in a second is
@@ -53,35 +52,30 @@ func AskPassword(in io.Reader, to io.Writer, preamble string) (string, bool, err
 	if !attended(in, to) {
 		return "", false, noTerminal{"a password for the dashboard"}
 	}
-	for {
-		// the two are declared per turn so a second ask opens on two empty boxes: a field is seeded
-		// with what the value behind it already holds, and a box seeded with the password that was
-		// just refused is one an operator submits again without reading it.
-		var typed, again string
-		asking := huh.NewForm(huh.NewGroup(
-			huh.NewInput().
-				Title("a password for the dashboard").
-				Description(strconv.Itoa(release.MinAdminPasswordLength)+" characters or more").
-				EchoMode(huh.EchoModePassword).
-				Validate(refusing).
-				Value(&typed),
-			huh.NewInput().
-				Title("type it again").
-				EchoMode(huh.EchoModePassword).
-				Value(&again),
-		)).WithInput(in).WithOutput(to)
+	var typed string
+	asking := huh.NewForm(huh.NewGroup(passwordBox(&typed))).WithInput(in).WithOutput(to)
 
-		switch err := asking.Run(); {
-		case errors.Is(err, huh.ErrUserAborted):
-			return "", false, nil
-		case err != nil:
-			return "", false, err
-		}
-		if again == typed {
-			return typed, true, nil
-		}
-		fmt.Fprintln(to, "those two are not the same password")
+	switch err := asking.Run(); {
+	case errors.Is(err, huh.ErrUserAborted):
+		return "", false, nil
+	case err != nil:
+		return "", false, err
 	}
+	return typed, true, nil
+}
+
+// the box itself: what it asks for, what it will not take, and what it shows of the value.
+//
+// the echo mode is written out rather than left to the field's default, because legibility is this
+// screen's rule and a rule inherited from a default is one nobody reading the file can see was
+// decided (./password_test.go holds it).
+func passwordBox(into *string) *huh.Input {
+	return huh.NewInput().
+		Title("a password for the dashboard").
+		Description(strconv.Itoa(release.MinAdminPasswordLength) + " characters or more").
+		EchoMode(huh.EchoModeNormal).
+		Validate(refusing).
+		Value(into)
 }
 
 // what stands above the question: the screen erased, and then what the caller has to say.

@@ -6,13 +6,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/huh"
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/signin"
 )
 
-// a sign-in carrying two accounts, which is what every case below picks from.
+// a sign-in carrying the accounts a case picks from.
 func holding(accounts ...signin.Account) signin.SignIn {
 	return signin.SignIn{Kind: signin.OAuth, Accounts: accounts}
 }
@@ -22,27 +22,36 @@ var (
 	other = signin.Account{ID: "b2", Name: "Another Cause"}
 )
 
-// whether the picker drew a row carrying `value`, and every row's words, for a case reporting what
-// it drew instead.
-func carries(offered []huh.Option[string], value string) bool {
-	for _, one := range offered {
-		if one.Value == value {
+// whether the cursor's ring carries a row answering with `value`, and every value on it, for a case
+// reporting what it drew instead.
+func carries(held []choice, value string) bool {
+	for _, one := range held {
+		if one.value == value {
 			return true
 		}
 	}
 	return false
 }
 
-func keys(offered []huh.Option[string]) []string {
-	drawn := make([]string, 0, len(offered))
-	for _, one := range offered {
-		drawn = append(drawn, one.Key)
+func values(held []choice) []string {
+	drawn := make([]string, 0, len(held))
+	for _, one := range held {
+		drawn = append(drawn, one.value)
 	}
 	return drawn
 }
 
+// the row the cursor is resting on.
+func resting(drawn chooser) choice {
+	held := drawn.ring()
+	if drawn.at < 0 || drawn.at >= len(held) {
+		return choice{}
+	}
+	return held[drawn.at]
+}
+
 func TestNoAccountIsAskedForWhereThereIsNobodyToAskIt(t *testing.T) {
-	// the same refusal ./placement.go's is put behind, and for the same reason: a form drawn at a
+	// the same refusal ./placement.go's is put behind, and for the same reason: a screen drawn at a
 	// pipe is one nothing is ever typed back into.
 	picked, answered, err := AskAccount(
 		strings.NewReader("\n"), io.Discard, holding(acme), Picker{})
@@ -55,8 +64,8 @@ func TestNoAccountIsAskedForWhereThereIsNobodyToAskIt(t *testing.T) {
 }
 
 func TestNoAccountIsAskedForWhereThisSignInIsAMemberOfNone(t *testing.T) {
-	// a select with no rows in it is a form an operator cannot leave by choosing anything, so the
-	// list is weighed in front of the prompt rather than drawn empty at them.
+	// a picker with no account on it is a screen an operator cannot leave by choosing anything, so
+	// the list is weighed in front of the drawing rather than drawn empty at them.
 	_, answered, err := AskAccount(strings.NewReader("\n"), io.Discard, holding(), Picker{})
 	if answered == AccountChosen {
 		t.Error("AskAccount answered with an account off an empty list")
@@ -75,15 +84,15 @@ func TestTwoAccountsOfOneNameAreToldApartByTheirIDs(t *testing.T) {
 		{ID: "b2", Name: "Cause"},
 		{ID: "c3", Name: "Another"},
 	}, nil)
-	labels := map[string]bool{}
+	said := map[string]bool{}
 	for _, one := range offered {
-		if labels[one.Key] {
-			t.Errorf("two accounts are both offered as %q", one.Key)
+		if said[one.said] {
+			t.Errorf("two accounts are both offered as %q", one.said)
 		}
-		labels[one.Key] = true
+		said[one.said] = true
 	}
-	if labels["Another"] != true {
-		t.Errorf("an account whose name is its own is offered as something else: %v", labels)
+	if said["Another"] != true {
+		t.Errorf("an account whose name is its own is offered as something else: %v", said)
 	}
 }
 
@@ -94,49 +103,60 @@ func TestTwoAccountsOfOneNameAreToldApartByTheirIDs(t *testing.T) {
 // looking at the list they need.
 
 func TestThePickerOpensOnTheAccountThisMachineRemembers(t *testing.T) {
-	_, opening := rows(holding(acme, other), Picker{Remembered: other.ID})
+	opened := resting(choosing(holding(acme, other), Picker{Remembered: other.ID}))
 
-	if opening != other.ID {
-		t.Errorf("the picker opens on %q, want the account this machine operates", opening)
+	if opened.value != other.ID {
+		t.Errorf("the picker opens on %q, want the account this machine operates", opened.value)
 	}
 }
 
 func TestAPickerRememberingNothingOpensOnTheFirstRow(t *testing.T) {
-	_, opening := rows(holding(acme, other), Picker{})
+	opened := resting(choosing(holding(acme, other), Picker{}))
 
-	if opening != acme.ID {
-		t.Errorf("the picker opens on %q, want the first account on the list", opening)
+	if opened.value != acme.ID {
+		t.Errorf("the picker opens on %q, want the first account on the list", opened.value)
 	}
 }
 
 func TestAnAccountThisSignInNoLongerReachesOpensOnTheFirstRow(t *testing.T) {
 	// the list is read off cloudflare every time and the remembered id is this machine's own, so an
 	// account left since the last run is a value no row carries.
-	_, opening := rows(holding(acme, other), Picker{Remembered: "gone"})
+	opened := resting(choosing(holding(acme, other), Picker{Remembered: "gone"}))
 
-	if opening != acme.ID {
-		t.Errorf("the picker opens on %q, want a row that is on the list", opening)
+	if opened.value != acme.ID {
+		t.Errorf("the picker opens on %q, want a row that is on the list", opened.value)
 	}
 }
 
-// the row that signs this machine out, which `start` offers and `login` does not.
+func TestNeitherActIsEverTheRowThePickerOpensOn(t *testing.T) {
+	// both acts are on the cursor's ring, and neither is a thing an operator meets by pressing
+	// return at a screen they opened: one gives up the sign-in and the other ends the run.
+	for _, asked := range []Picker{{SignOut: true}, {SignOut: true, Remembered: "gone"}} {
+		opened := resting(choosing(holding(acme, other), asked))
+		if opened.value == signOutRow || opened.value == exitRow {
+			t.Errorf("a picker opens on %q, want an account", opened.value)
+		}
+	}
+}
 
-func TestTheSignOutRowIsDrawnOnlyWhereItIsOffered(t *testing.T) {
-	offered, _ := rows(holding(acme), Picker{SignOut: true})
+// the act that signs this machine out, which `start` offers and `login` does not.
+
+func TestTheSignOutActIsDrawnOnlyWhereItIsOffered(t *testing.T) {
+	offered := choosing(holding(acme), Picker{SignOut: true}).ring()
 	if !carries(offered, signOutRow) {
-		t.Errorf("a picker offered the sign-out drew %v, want that row on it", keys(offered))
+		t.Errorf("a picker offered the sign-out drew %v, want that act on it", values(offered))
 	}
 
-	plain, _ := rows(holding(acme), Picker{})
+	plain := choosing(holding(acme), Picker{}).ring()
 	if carries(plain, signOutRow) {
-		t.Errorf("a picker offered no sign-out drew %v, want no row that could only fail",
-			keys(plain))
+		t.Errorf("a picker offered no sign-out drew %v, want no press that could only fail",
+			values(plain))
 	}
 }
 
-func TestTheSignOutRowCarriesAValueNoAccountCan(t *testing.T) {
+func TestTheSignOutActCarriesAValueNoAccountCan(t *testing.T) {
 	// the answer is read off one string, so the sign-out is weighed in front of the list rather
-	// than looked for in it: an account whose id spelled that row would otherwise sign this machine
+	// than looked for in it: an account whose id spelled that act would otherwise sign this machine
 	// out of cloudflare on the press that chose it.
 	_, answered, err := picked(signOutRow, []signin.Account{{ID: signOutRow, Name: "impossible"}})
 	if answered != SigningOut || err != nil {
@@ -203,33 +223,26 @@ func TestASignInCloudflareWouldNotNameIsStillSaidAsOne(t *testing.T) {
 	}
 }
 
-// the row that ends the run, which is offered on every drawing of this picker.
+// the act that ends the run, which is on every drawing of this picker.
 
-func TestTheExitRowIsAlwaysOfferedAndEndsTheRunTheWayAClosedPickerDoes(t *testing.T) {
-	offered, _ := rows(holding(acme), Picker{})
+func TestTheWayOutIsAlwaysOfferedAndEndsTheRunTheWayAClosedPickerDoes(t *testing.T) {
+	offered := choosing(holding(acme), Picker{}).ring()
 
 	if len(offered) != 2 {
 		t.Fatalf("the picker drew %d rows, want the account and the way out", len(offered))
 	}
-	_, answered, err := picked(offered[1].Value, []signin.Account{acme})
+	_, answered, err := picked(offered[1].value, []signin.Account{acme})
 	if answered != PickerClosed || err != nil {
 		t.Errorf("the last row answered %q, %v, want the run ended as a closed picker ends it",
 			answered, err)
 	}
 }
 
-func TestTheWayOutIsTheLastRowWhereTheSignOutIsOfferedToo(t *testing.T) {
-	offered, _ := rows(holding(acme), Picker{SignOut: true})
+func TestTheRingRunsFromTheSignOutThroughTheAccountsToTheWayOut(t *testing.T) {
+	offered := choosing(holding(acme, other), Picker{SignOut: true}).ring()
 
-	if len(offered) != 3 {
-		t.Fatalf("the picker drew %d rows, want the account and both acts", len(offered))
-	}
-	if _, answered, _ := picked(offered[1].Value, []signin.Account{acme}); answered != SigningOut {
-		t.Errorf("the row under the accounts answered %q, want the sign-out", answered)
-	}
-	if _, answered, _ := picked(offered[2].Value, []signin.Account{acme}); answered != PickerClosed {
-		t.Errorf("the last row answered %q, want the way out", answered)
-	}
+	same(t, "the ring", strings.Join(values(offered), " "),
+		strings.Join([]string{signOutRow, acme.ID, other.ID, exitRow}, " "))
 }
 
 // the account this deployment was found in, marked on its row.
@@ -242,13 +255,23 @@ func TestTheWayOutIsTheLastRowWhereTheSignOutIsOfferedToo(t *testing.T) {
 func TestTheAccountHoldingThisDeploymentIsMarkedOnItsRow(t *testing.T) {
 	offered := labelled([]signin.Account{acme, other}, []string{other.ID})
 
-	if strings.Contains(offered[0].Key, release.Baked.Name) {
-		t.Errorf("an account no read found the deployment in is offered as %q", offered[0].Key)
+	if strings.Contains(offered[0].said, release.Baked.Name) {
+		t.Errorf("an account no read found the deployment in is offered as %q", offered[0].said)
 	}
-	if !strings.Contains(offered[1].Key, release.Baked.Name) {
+	if !strings.Contains(offered[1].said, release.Baked.Name) {
 		t.Errorf("the account holding the deployment is offered as %q, want it named there",
-			offered[1].Key)
+			offered[1].said)
 	}
+}
+
+func TestTheMarkIsTheWorkerNameAndACheckAndClaimsNothingAboutAnyOtherRow(t *testing.T) {
+	// the mark is the deployment's own name with a check beside it: a row saying a deployment is
+	// there, and no row anywhere saying one is not.
+	offered := labelled([]signin.Account{acme, other}, []string{other.ID})
+
+	same(t, "the marked row", toneless.ReplaceAllString(offered[1].said, ""),
+		other.Name+"  ("+release.Baked.Name+" ✓)")
+	same(t, "the unmarked row", toneless.ReplaceAllString(offered[0].said, ""), acme.Name)
 }
 
 func TestAReadThatDidNotLandMarksNothing(t *testing.T) {
@@ -258,8 +281,8 @@ func TestAReadThatDidNotLandMarksNothing(t *testing.T) {
 	// be a claim this console cannot make.
 	offered := labelled([]signin.Account{acme}, nil)
 
-	if offered[0].Key != acme.Name {
-		t.Errorf("an account no read landed for is offered as %q, want its name alone", offered[0].Key)
+	if offered[0].said != acme.Name {
+		t.Errorf("an account no read landed for is offered as %q, want its name alone", offered[0].said)
 	}
 }
 
@@ -269,8 +292,12 @@ func TestAMarkedAccountSharingItsNameStillCarriesItsID(t *testing.T) {
 		{ID: "b2", Name: "Cause"},
 	}, []string{"a1"})
 
-	if !strings.Contains(offered[0].Key, "a1") {
-		t.Errorf("a marked row of two named alike is offered as %q, want its id on it", offered[0].Key)
+	if !strings.Contains(offered[0].said, "a1") {
+		t.Errorf("a marked row of two named alike is offered as %q, want its id on it", offered[0].said)
+	}
+	if !strings.Contains(offered[0].said, release.Baked.Name) {
+		t.Errorf("a marked row of two named alike is offered as %q, want its mark on it too",
+			offered[0].said)
 	}
 }
 
@@ -298,5 +325,241 @@ func TestTheWaitInFrontOfTheNextScreenSaysWhatItIsReading(t *testing.T) {
 	}
 	if !strings.Contains(said, "this account") {
 		t.Errorf("said %q, want the account the reads are about", said)
+	}
+}
+
+// what the screen draws, one line at a time, with any tone taken off.
+func screen(drawn chooser) string {
+	said := strings.Split(strings.TrimRight(drawn.View(), "\n"), "\n")
+	for at, one := range said {
+		said[at] = strings.TrimRight(toneless.ReplaceAllString(one, ""), " ")
+	}
+	return strings.Join(said, "\n")
+}
+
+func TestTheSignOutIsDrawnAboveTheAccountsAndTheWayOutBelowThem(t *testing.T) {
+	// the two acts are not accounts and are not drawn as rows of the list: the sign-out stands
+	// above the question and the way out under the block, each with a line of its own around it.
+	same(t, "the screen", screen(choosing(holding(acme, other), Picker{SignOut: true})),
+		strings.Join([]string{
+			"  [ log out ]",
+			"",
+			"┃ choose an account:",
+			"┃ > Acme Giving",
+			"┃   Another Cause",
+			"",
+			"  [ exit ]",
+			"",
+			"↑ up • ↓ down • / filter • enter submit",
+		}, "\n"))
+}
+
+func TestAPickerOfferingNoSignOutDrawsNothingAboveTheAccounts(t *testing.T) {
+	same(t, "the screen", screen(choosing(holding(acme), Picker{})),
+		strings.Join([]string{
+			"┃ choose an account:",
+			"┃ > Acme Giving",
+			"",
+			"  [ exit ]",
+			"",
+			"↑ up • ↓ down • / filter • enter submit",
+		}, "\n"))
+}
+
+func TestTheRowTheCursorIsOnIsTheOnlyOneCarryingTheCursor(t *testing.T) {
+	drawn := choosing(holding(acme, other), Picker{Remembered: other.ID})
+
+	said := strings.Split(screen(drawn), "\n")
+	if said[1] != "┃   Acme Giving" || said[2] != "┃ > Another Cause" {
+		t.Errorf("the accounts are drawn as %q and %q", said[1], said[2])
+	}
+}
+
+func TestACursorRestingOnAnActIsOnNoAccountAtAll(t *testing.T) {
+	// one cursor for the whole screen: an operator who has arrowed up to the sign-out is not also
+	// standing on the account they arrowed off, and a list still drawing its own cursor would say
+	// that a return there takes the account.
+	drawn := choosing(holding(acme, other), Picker{SignOut: true})
+	drawn.at = 0
+
+	said := screen(drawn)
+	if strings.Contains(said, "> ") {
+		t.Errorf("the cursor rests on an act and an account row still carries it: %q", said)
+	}
+}
+
+func TestAFilterBeingTypedStandsWhereTheTitleDoesAndNarrowsTheAccountsAlone(t *testing.T) {
+	drawn := choosing(holding(acme, other), Picker{SignOut: true})
+	drawn.filtering = true
+	drawn.filter.SetValue("acme")
+
+	said := screen(drawn)
+	if !strings.Contains(said, "┃ /acme") || strings.Contains(said, "choose an account:") {
+		t.Errorf("a filter being typed is drawn as %q", said)
+	}
+	if strings.Contains(said, other.Name) {
+		t.Errorf("an account the filter left out is still drawn: %q", said)
+	}
+	if !strings.Contains(said, "[ log out ]") || !strings.Contains(said, "[ exit ]") {
+		t.Errorf("a filter took an act off the screen: %q", said)
+	}
+}
+
+func TestAFilterThatLeavesNoAccountSaysSoAndLeavesBothActsStanding(t *testing.T) {
+	drawn := choosing(holding(acme, other), Picker{SignOut: true})
+	drawn.filtering = true
+	drawn.filter.SetValue("nothing of the sort")
+
+	said := screen(drawn)
+	if !strings.Contains(said, noneMatching) {
+		t.Errorf("a filter matching no account draws %q", said)
+	}
+	if !carries(drawn.ring(), signOutRow) || !carries(drawn.ring(), exitRow) {
+		t.Errorf("a filter matching no account left %v", values(drawn.ring()))
+	}
+}
+
+// the keys, which are the whole of how this screen is answered.
+
+var (
+	pressUp    = tea.KeyMsg{Type: tea.KeyUp}
+	pressDown  = tea.KeyMsg{Type: tea.KeyDown}
+	pressEnter = tea.KeyMsg{Type: tea.KeyEnter}
+	pressEsc   = tea.KeyMsg{Type: tea.KeyEsc}
+	pressStop  = tea.KeyMsg{Type: tea.KeyCtrlC}
+)
+
+func runes(said string) tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(said)}
+}
+
+func pressing(drawn chooser, keys ...tea.KeyMsg) chooser {
+	for _, key := range keys {
+		next, _ := drawn.Update(key)
+		drawn = next.(chooser)
+	}
+	return drawn
+}
+
+func TestTheArrowsRunFromTheSignOutThroughTheAccountsToTheWayOutAndRoundAgain(t *testing.T) {
+	// one cursor for the three parts of the screen: the acts are reached by the same arrows the
+	// accounts are, so nothing on it is a keystroke an operator has to guess at.
+	drawn := choosing(holding(acme, other), Picker{SignOut: true})
+
+	said := []string{resting(drawn).value}
+	for range 4 {
+		drawn = pressing(drawn, pressDown)
+		said = append(said, resting(drawn).value)
+	}
+	same(t, "the ring the arrows run", strings.Join(said, " "),
+		strings.Join([]string{acme.ID, other.ID, exitRow, signOutRow, acme.ID}, " "))
+
+	if up := resting(pressing(choosing(holding(acme, other), Picker{SignOut: true}), pressUp)); up.value != signOutRow {
+		t.Errorf("the arrow up off the first account reaches %q, want the sign-out", up.value)
+	}
+}
+
+func TestTheLettersTheArrowsShareMoveTheCursorUntilAFilterIsBeingTyped(t *testing.T) {
+	// the same two letters huh's own select moved by, because an operator who has answered the
+	// other prompts of this run has been moving by them all along — and they are letters, so a
+	// filter being typed takes them instead.
+	drawn := choosing(holding(acme, other), Picker{SignOut: true})
+
+	same(t, "what the letters reach",
+		resting(pressing(drawn, runes("j"))).value+" "+resting(pressing(drawn, runes("k"))).value,
+		other.ID+" "+signOutRow)
+
+	if typing := pressing(drawn, runes("/"), runes("j"), runes("k")); typing.filter.Value() != "jk" {
+		t.Errorf("a filter being typed reads %q, want the letters typed into it", typing.filter.Value())
+	}
+}
+
+func TestAReturnAnswersWithTheRowTheCursorIsOn(t *testing.T) {
+	drawn := choosing(holding(acme, other), Picker{SignOut: true})
+
+	for _, held := range []struct {
+		said  string
+		keys  []tea.KeyMsg
+		wants string
+	}{
+		{"an account", []tea.KeyMsg{pressEnter}, acme.ID},
+		{"the account under it", []tea.KeyMsg{pressDown, pressEnter}, other.ID},
+		{"the sign-out", []tea.KeyMsg{pressUp, pressEnter}, signOutRow},
+		{"the way out", []tea.KeyMsg{pressDown, pressDown, pressEnter}, exitRow},
+	} {
+		answered := pressing(drawn, held.keys...)
+		if answered.answer != held.wants || answered.left {
+			t.Errorf("a return on %s answered %q, want %q", held.said, answered.answer, held.wants)
+		}
+	}
+}
+
+func TestAScreenTheOperatorLeftCarriesNoAnswerAtAll(t *testing.T) {
+	// a picker given up is a press not made, which is the ending ./picked never sees: the answer is
+	// empty and the caller ends the run quietly.
+	for _, key := range []tea.KeyMsg{pressEsc, pressStop} {
+		left := pressing(choosing(holding(acme), Picker{SignOut: true}), key)
+		if !left.left || left.answer != "" {
+			t.Errorf("a screen given up by %v carries %q", key, left.answer)
+		}
+	}
+}
+
+func TestASlashStartsAFilterAndWhatIsTypedNarrowsTheAccountsAlone(t *testing.T) {
+	drawn := pressing(choosing(holding(acme, other), Picker{SignOut: true}),
+		runes("/"), runes("a"), runes("c"), runes("m"), runes("e"))
+
+	if !drawn.filtering || drawn.filter.Value() != "acme" {
+		t.Fatalf("the filter reads %q, filtering %v", drawn.filter.Value(), drawn.filtering)
+	}
+	same(t, "what a filter leaves standing", strings.Join(values(drawn.ring()), " "),
+		strings.Join([]string{signOutRow, acme.ID, exitRow}, " "))
+}
+
+func TestTheArrowsStillRunWhileAFilterIsBeingTyped(t *testing.T) {
+	// the acts are never filtered away, so an operator who typed three letters that matched nothing
+	// still reaches both of them by the same arrows.
+	drawn := pressing(choosing(holding(acme, other), Picker{SignOut: true}),
+		runes("/"), runes("z"), runes("z"))
+
+	if len(drawn.matching()) != 0 {
+		t.Fatalf("the filter left %v standing", values(drawn.matching()))
+	}
+	same(t, "what the arrows reach",
+		strings.Join([]string{
+			resting(drawn).value,
+			resting(pressing(drawn, pressUp)).value,
+			resting(pressing(drawn, pressUp, pressUp)).value,
+		}, " "),
+		strings.Join([]string{exitRow, signOutRow, exitRow}, " "))
+}
+
+func TestAFilterThatTakesTheAccountTheCursorWasOnMovesItToOneStillStanding(t *testing.T) {
+	// the cursor is a row and not a number: a filter that took the row out from under it would
+	// otherwise leave it standing on whatever moved into that place.
+	drawn := pressing(choosing(holding(acme, other), Picker{Remembered: other.ID}),
+		runes("/"), runes("a"), runes("c"))
+
+	if resting(drawn).value != acme.ID {
+		t.Errorf("the cursor rests on %q, want the account the filter left standing",
+			resting(drawn).value)
+	}
+	if resting(pressing(drawn, runes("z"))).value != exitRow {
+		t.Errorf("a filter leaving no account rests the cursor on %q, want the way out",
+			resting(pressing(drawn, runes("z"))).value)
+	}
+}
+
+func TestEscapeWithAFilterOnDropsTheFilterRatherThanTheScreen(t *testing.T) {
+	drawn := pressing(choosing(holding(acme, other), Picker{}), runes("/"), runes("a"), pressEsc)
+
+	if drawn.left {
+		t.Error("the escape that dropped a filter gave the screen up as well")
+	}
+	if drawn.filtering || drawn.filter.Value() != "" {
+		t.Errorf("the filter reads %q, filtering %v", drawn.filter.Value(), drawn.filtering)
+	}
+	if len(drawn.ring()) != 3 {
+		t.Errorf("the accounts the dropped filter left are %v", values(drawn.ring()))
 	}
 }

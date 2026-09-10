@@ -3,7 +3,10 @@ package terminal
 import (
 	"errors"
 	"io"
+	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 
 	"github.com/better-giving/console/internal/release"
@@ -29,22 +32,29 @@ import (
 // different lists — so which of them these rows came from is on the screen the choice is made on,
 // and nowhere else in a run of `start` (./readFrom).
 //
-// **the two acts sit under the accounts on the same list, and the arrow keys reach them.** an
-// operator meets this screen on every run of `start`, and the two things they may want that are not
-// an account — giving up the sign-in, and leaving without choosing one — are rows rather than a
-// keystroke to guess at. huh's select draws no row that cannot be chosen, so what sets the acts off
-// from the accounts is their own words: an account row is a name, and an act row says what it does
-// (./rows).
+// **the two acts are drawn off the list, and one cursor still runs through all three.** an operator
+// meets this screen on every run of `start`, and the two things they may want that are not an
+// account — giving up the sign-in, and leaving without choosing one — are presses rather than
+// keystrokes to guess at. neither is a row of the accounts: a list an operator reads as the
+// accounts they hold is one a row saying "sign this machine out" makes a liar of, and the sign-out
+// is not a kind of account. so the accounts are drawn as their own block, the sign-out stands above
+// it and the way out below it, and the arrows run through the three in the order an operator
+// reaches for them (./chooser).
+//
+// **it is this package's own drawing and not a form.** a form draws its own title first and puts no
+// row above it, and the act that gives up the sign-in belongs above the question rather than under
+// the accounts — so this screen is a bubbletea model, as ./ledger.go and ./waiting.go are, dressed
+// from the styles every other prompt of the same run is drawn in (./dressing).
 //
 // **an account already holding this deployment is marked on its row, and no row ever says one is
 // not there.** the reads that mark it are the caller's and this file makes none — nothing here
 // reaches cloudflare — so what arrives is ./Picker's Deployed, and an account missing from it is one
 // nothing was found out about rather than one with no deployment on it (./labelled).
 //
-// **the row that signs this machine out is the caller's to offer.** a credential set in this
-// console's environment is one ../oauth's Out refuses, so a picker drawn over one offers a row that
-// could only fail; `login` offers none either, because it is the press that takes a sign-in rather
-// than one standing between an operator and a deploy.
+// **the act that signs this machine out is the caller's to offer.** a credential set in this
+// console's environment is one ../oauth's Out refuses, so a picker drawn over one offers a press
+// that could only fail; `login` offers none either, because it is the press that takes a sign-in
+// rather than one standing between an operator and a deploy.
 //
 // **the id is checked and recorded by the caller, not here.** the order is the browser handler's
 // (../server/account.go): the list is read off cloudflare, the account is picked from it,
@@ -55,18 +65,18 @@ import (
 // Answered is how the account question ended.
 //
 // Three because the two that are not a choice are different acts: a picker the operator closed
-// leaves this machine as it was found, and the sign-out row is a press they made.
+// leaves this machine as it was found, and the sign-out is a press they made.
 type Answered string
 
 const (
 	// AccountChosen is a row picked off the list.
 	AccountChosen Answered = "chosen"
 	// PickerClosed is the picker closed, which is a choice not made rather than a failure to
-	// report. It is also what a list nothing could be picked from answers with, and what the row
+	// report. It is also what a list nothing could be picked from answers with, and what the act
 	// that leaves without choosing an account answers with: an operator who chose to end the run
-	// and one who closed the prompt have both made the same press, which is none.
+	// and one who closed the screen have both made the same press, which is none.
 	PickerClosed Answered = "closed"
-	// SigningOut is the row that gives up the cloudflare sign-in this machine holds.
+	// SigningOut is the act that gives up the cloudflare sign-in this machine holds.
 	SigningOut Answered = "signing-out"
 )
 
@@ -75,7 +85,7 @@ type Picker struct {
 	// Remembered is the account this machine already operates, by id, and empty where it remembers
 	// none. The picker opens on it.
 	Remembered string
-	// SignOut is whether the row that gives up this machine's sign-in is one of the endings.
+	// SignOut is whether the act that gives up this machine's sign-in is one of the endings.
 	SignOut bool
 	// Deployed is the accounts, by id, a read found this deployment in. An id this list does not
 	// name is one nothing was found out about: a read that said the deployment is not there, one
@@ -84,7 +94,7 @@ type Picker struct {
 	Deployed []string
 }
 
-// the values the two act rows carry.
+// the values the two acts carry.
 //
 // no account can carry either: ../signin drops a row whose id is not a string it can be scoped to,
 // and every id cloudflare answers with is hex. they are weighed in front of the list all the same
@@ -128,7 +138,7 @@ var ErrNoAccounts = errors.New("this Cloudflare sign-in is a member of no accoun
 
 // AskAccount takes which of the accounts `held` carries this deployment is in.
 //
-// PickerClosed with no error is the operator closing the prompt, as ./AskPassword's false is.
+// PickerClosed with no error is the operator closing the picker, as ./AskPassword's false is.
 func AskAccount(
 	in io.Reader,
 	to io.Writer,
@@ -145,56 +155,354 @@ func AskAccount(
 			noTerminal{"which Cloudflare account this deployment is in"}
 	}
 	clear(to)
-	// the sign-in is a line of its own above the question rather than a clause under it: it is one
-	// fact about this machine, and the question below it is about the rows.
+	// the sign-in is a line of its own above the screen rather than a clause under the question: it
+	// is one fact about this machine, and what is below it is about the rows.
 	above(to, readFrom(held))
-	offered, opening := rows(held, asked)
-	// the value the form is bound to is what it opens on, which is huh's own arrangement: the row
-	// carrying it is the one under the cursor when the list is drawn.
-	chosen := opening
-	asking := huh.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().
-			Title("choose an account to go on with").
-			Description("everything this console makes is made inside it").
-			Options(offered...).
-			Value(&chosen),
-	)).WithInput(in).WithOutput(to)
 
-	switch err := asking.Run(); {
-	case errors.Is(err, huh.ErrUserAborted):
+	drawn, err := tea.NewProgram(
+		choosing(held, asked), tea.WithInput(in), tea.WithOutput(to)).Run()
+	switch {
+	case errors.Is(err, tea.ErrInterrupted):
 		return signin.Account{}, PickerClosed, nil
 	case err != nil:
 		return signin.Account{}, PickerClosed, err
 	}
-	return picked(chosen, held.Accounts)
-}
-
-// the rows this picker draws, and the one it opens on.
-//
-// the acts go under the accounts in the order an operator reaches for them: the sign-out is about
-// this machine's cloudflare access and the way out is about this question, and only the second of
-// them is on every drawing.
-//
-// **the way out names the question and not what the caller does about it**, because both presses
-// that draw this picker leave it differently: `start` says nothing was created and nothing was
-// deployed and `login` records no account, and each of them says its own words on the way out
-// (../../cmd/better-giving/start.go's closed).
-func rows(held signin.SignIn, asked Picker) ([]huh.Option[string], string) {
-	offered := labelled(held.Accounts, asked.Deployed)
-	if asked.SignOut {
-		offered = append(offered,
-			huh.NewOption("sign this machine out of Cloudflare", signOutRow))
+	answered, ours := drawn.(chooser)
+	// a screen the operator left carries no answer at all, and that is the ending a closed picker
+	// has always had: a press not made, which the caller ends the run on quietly.
+	if !ours || answered.left {
+		return signin.Account{}, PickerClosed, nil
 	}
-	offered = append(offered, huh.NewOption("leave without choosing an account", exitRow))
-	return offered, opening(held.Accounts, asked.Remembered)
+	return picked(answered.answer, held.Accounts)
 }
 
-// the row the cursor starts on: the account this machine remembers, where this sign-in still
+// a row the cursor can rest on: an account, or one of the two acts.
+type choice struct {
+	// said is the row as it is drawn, mark and all.
+	said string
+	// value is what picking it answers with: an account's id, or one of the two act values.
+	value string
+	// named is the row's words with no mark on them, which is what the filter reads. the mark
+	// carries the tone its check is drawn in, and a filter read against that would be matched
+	// against escape codes rather than against a name (./matching).
+	named string
+}
+
+// the model this screen is drawn from: the accounts, whether the sign-out is offered, where the
+// cursor is resting, and what the operator left with.
+type chooser struct {
+	// accounts is every account as a row, in the order cloudflare answered with, whether or not the
+	// filter is leaving it standing.
+	accounts []choice
+	signOut  bool
+	// at is where the cursor is on ./ring, which is the accounts with the acts around them.
+	at int
+	// filter is what an operator has typed to narrow the accounts, and filtering is whether they
+	// are typing it. the acts are never filtered away (./ring).
+	filter    textinput.Model
+	filtering bool
+	// answer is the value the row they pressed return on carries, and empty until they do.
+	answer string
+	// left is the screen given up rather than answered, which is the ending a closed picker has.
+	left bool
+}
+
+// the model the screen opens on: the accounts labelled, and the cursor on the one this machine
+// already operates.
+func choosing(held signin.SignIn, asked Picker) chooser {
+	filter := textinput.New()
+	filter.Prompt = "/"
+	drawn := chooser{
+		accounts: labelled(held.Accounts, asked.Deployed),
+		signOut:  asked.SignOut,
+		filter:   filter,
+	}
+	// the cursor opens on an account and never on an act: one of them gives up the sign-in and the
+	// other ends the run, and neither is a thing an operator meets by pressing return at a screen
+	// they have just opened.
+	drawn.at = drawn.accountsFrom()
+	opens := opening(held.Accounts, asked.Remembered)
+	for at, one := range drawn.accounts {
+		if one.value == opens {
+			drawn.at = drawn.accountsFrom() + at
+			break
+		}
+	}
+	return drawn
+}
+
+// where the accounts start on ./ring, which is under the sign-out where that is offered.
+func (drawn chooser) accountsFrom() int {
+	if drawn.signOut {
+		return 1
+	}
+	return 0
+}
+
+// the ring the cursor runs around: the sign-out where it is offered, the accounts the filter left
+// standing, and the way out.
+//
+// **the acts are on it whatever the filter says.** they are not accounts and a filter is about
+// accounts, so a screen that filtered them away would leave an operator who typed three letters
+// with no way out but the interrupt.
+func (drawn chooser) ring() []choice {
+	held := make([]choice, 0, len(drawn.accounts)+2)
+	if drawn.signOut {
+		held = append(held, choice{said: signOutSaid, value: signOutRow, named: signOutSaid})
+	}
+	held = append(held, drawn.matching()...)
+	return append(held, choice{said: exitSaid, value: exitRow, named: exitSaid})
+}
+
+// the accounts the filter leaves standing, which is all of them where nothing is typed.
+func (drawn chooser) matching() []choice {
+	typed := strings.ToLower(strings.TrimSpace(drawn.filter.Value()))
+	if typed == "" {
+		return drawn.accounts
+	}
+	held := make([]choice, 0, len(drawn.accounts))
+	for _, one := range drawn.accounts {
+		if strings.Contains(strings.ToLower(one.named), typed) {
+			held = append(held, one)
+		}
+	}
+	return held
+}
+
+func (drawn chooser) Init() tea.Cmd { return textinput.Blink }
+
+// one keystroke.
+//
+// **the arrows and the return are read in front of the filter, and the letters fall through to
+// it.** a screen where `j` moved the cursor while an account was being typed would be one an
+// operator cannot type the name of an account into, and one where the arrows did not move while a
+// filter is on would strand them in it.
+//
+// **an escape drops the filter where there is one and gives the screen up where there is not.**
+// what an operator means by it is the last thing they did, and the filter is what they did last.
+//
+// **the interrupt is an ending this screen answers itself.** it holds the terminal in raw mode for
+// the length of the question, so the keystroke arrives here rather than at the process — and what
+// it ends is the question, which is the ending a picker they closed has always had (./AskAccount).
+func (drawn chooser) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	key, pressed := message.(tea.KeyMsg)
+	if !pressed {
+		return drawn, nil
+	}
+	switch key.String() {
+	case "ctrl+c":
+		drawn.left = true
+		return drawn, tea.Quit
+	case "esc":
+		if drawn.filtering {
+			return drawn.unfiltered(), nil
+		}
+		drawn.left = true
+		return drawn, tea.Quit
+	case "enter":
+		drawn.answer = drawn.ring()[drawn.at].value
+		return drawn, tea.Quit
+	case "up":
+		return drawn.moved(-1), nil
+	case "down":
+		return drawn.moved(1), nil
+	case "k":
+		if !drawn.filtering {
+			return drawn.moved(-1), nil
+		}
+	case "j":
+		if !drawn.filtering {
+			return drawn.moved(1), nil
+		}
+	case "/":
+		if !drawn.filtering {
+			drawn.filtering = true
+			return drawn, drawn.filter.Focus()
+		}
+	}
+	if !drawn.filtering {
+		return drawn, nil
+	}
+	resting := drawn.ring()[drawn.at].value
+	typed, next := drawn.filter.Update(message)
+	drawn.filter = typed
+	return drawn.anchored(resting), next
+}
+
+// the cursor moved one row, which runs off either end of the screen onto the other.
+//
+// the three parts are a ring and not a list with stops at its ends: the two acts sit at the far
+// ends of it, so an operator on the last account reaches the way out by carrying on downwards and
+// the sign-out by one press upwards from the first.
+func (drawn chooser) moved(by int) chooser {
+	held := len(drawn.ring())
+	drawn.at = (drawn.at + by + held) % held
+	return drawn
+}
+
+// where the cursor goes when the filter has changed under it.
+//
+// **the cursor is a row and not a number.** the row it was resting on keeps it wherever the filter
+// left that row standing, so typing a letter does not move the cursor onto whatever moved up into
+// its place.
+//
+// **an account the filter took goes to the first account it left**, and to the way out where it
+// left none — which is the one press on the screen that costs nothing: a filter matching nothing is
+// a screen an operator is leaving or retyping, and neither the sign-out nor an account is a thing
+// to rest a return on there.
+func (drawn chooser) anchored(resting string) chooser {
+	held := drawn.ring()
+	for at, one := range held {
+		if one.value == resting {
+			drawn.at = at
+			return drawn
+		}
+	}
+	drawn.at = len(held) - 1
+	if len(drawn.matching()) > 0 {
+		drawn.at = drawn.accountsFrom()
+	}
+	return drawn
+}
+
+// the filter given up, with every account back on the ring.
+func (drawn chooser) unfiltered() chooser {
+	resting := drawn.ring()[drawn.at].value
+	drawn.filtering = false
+	drawn.filter.SetValue("")
+	drawn.filter.Blur()
+	return drawn.anchored(resting)
+}
+
+// the screen: the sign-out where it is offered, the accounts in a block of their own, the way out
+// under them, and the keys along the bottom.
+//
+// **each act is a line with nothing beside it and a blank line between it and the block.** what
+// tells an operator that the two are not accounts is where they are drawn, so the space around them
+// is the whole of that reading.
+func (drawn chooser) View() string {
+	held := drawn.ring()
+	said := &strings.Builder{}
+	if drawn.signOut {
+		said.WriteString(act(held[0], drawn.at == 0) + "\n\n")
+	}
+	said.WriteString(dressing.Focused.Base.Render(drawn.block()) + "\n\n")
+	last := len(held) - 1
+	said.WriteString(act(held[last], drawn.at == last) + "\n\n")
+	said.WriteString(helpSaid + "\n")
+	return said.String()
+}
+
+// the block the cursor moves inside: the question, and a row for every account the filter left
+// standing.
+//
+// a filter that left none says so where a row would be, because a block with nothing under its own
+// question reads as a screen that lost the list rather than as one an operator typed too much into.
+func (drawn chooser) block() string {
+	said := &strings.Builder{}
+	said.WriteString(drawn.asking())
+	standing := drawn.matching()
+	if len(standing) == 0 {
+		said.WriteString("\n" + noCursor + dimmed.Render(noneMatching))
+	}
+	for at, one := range standing {
+		if drawn.at == drawn.accountsFrom()+at {
+			said.WriteString("\n" + dressing.Focused.SelectSelector.String() +
+				dressing.Focused.SelectedOption.Render(one.said))
+			continue
+		}
+		said.WriteString("\n" + noCursor + dressing.Focused.UnselectedOption.Render(one.said))
+	}
+	return said.String()
+}
+
+// what stands at the top of the block: the question, or the filter while one is being typed.
+//
+// the filter takes the question's own line rather than a line beside it, because the two say the
+// same thing one after the other — which accounts the rows under them are.
+func (drawn chooser) asking() string {
+	if drawn.filtering {
+		return drawn.filter.View()
+	}
+	return dressing.Focused.Title.Render(chooseAccount)
+}
+
+// one act as it is drawn: its own words, in the tone that says whether a return would land there.
+//
+// it starts in the column the block's words start in, so the three parts of the screen read as one
+// screen rather than as a list with two strays beside it.
+func act(one choice, resting bool) string {
+	if resting {
+		return noCursor + onAct.Render(one.said)
+	}
+	return noCursor + dimmed.Render(one.said)
+}
+
+// the styles this screen is drawn in, which are the ones every other prompt of the same run is
+// drawn in.
+//
+// the picker stopped being a form so that an act could be drawn above its title (./AskAccount), and
+// a screen that then dressed itself would be the one prompt of a `start` looking like a different
+// program. so the block, the cursor, the rows and the help line are huh's own theme, which
+// ./confirm.go, ./password.go and ./placement.go are all drawn in; the mark on a row is
+// ./ledger.go's check, which is the green every closed row of this console carries.
+var dressing = huh.ThemeCharm()
+
+// what an act the cursor is resting on is drawn in: the tone the cursor carries on the rows, with
+// the "> " that tone sets taken off, because an act is not a row of the list.
+var onAct = dressing.Focused.SelectSelector.UnsetString()
+
+// the keys this screen answers to, drawn along the bottom of it.
+//
+// the words are the ones huh's own select put there and the keys are the same keys, so an operator
+// who has run `start` before reads the line they have always read.
+var helpSaid = helping()
+
+func helping() string {
+	pressing := []struct{ key, does string }{
+		{"↑", "up"}, {"↓", "down"}, {"/", "filter"}, {"enter", "submit"},
+	}
+	said := make([]string, 0, len(pressing))
+	for _, one := range pressing {
+		said = append(said, dressing.Help.ShortKey.Render(one.key)+" "+
+			dressing.Help.ShortDesc.Render(one.does))
+	}
+	return strings.Join(said, dressing.Help.ShortSeparator.Render(" • "))
+}
+
+// what stands where the cursor does not, so every row's words start in the same column, and what
+// the acts are drawn in from.
+const noCursor = "  "
+
+// the question the block puts, and the whole of what it says about itself.
+//
+// nothing stands under it: what is being chosen between is on the rows, and a line of prose saying
+// what an account is for is one an operator reads once and reads past on every run of `start` after.
+const chooseAccount = "choose an account:"
+
+// what a filter leaving no account standing says, where a row would be.
+const noneMatching = "no account matches that"
+
+// what the two acts say, which is the press and never what the caller does after it.
+//
+// **the way out says leaving and not what leaving costs**, because both presses that draw this
+// picker leave it differently: `start` says nothing was created and nothing was deployed and
+// `login` records no account, and each of them says its own words on the way out
+// (../../cmd/better-giving/start.go's closed).
+//
+// **the brackets are what says a press.** neither act is a row of the account list and neither
+// carries the cursor the rows carry, so its own words are the whole of what makes it one.
+const (
+	signOutSaid = "[ log out ]"
+	exitSaid    = "[ exit ]"
+)
+
+// the account the cursor starts on: the one this machine remembers, where this sign-in still
 // reaches it.
 //
 // the list is read off cloudflare on every run and the remembered id is this machine's own, so an
 // account this sign-in has left since is a value no row carries — and a cursor bound to one would
-// open the list on whatever huh falls back to rather than on a row the operator can read.
+// open the screen on no row at all rather than on one the operator can read.
 func opening(accounts []signin.Account, remembered string) string {
 	for _, one := range accounts {
 		if one.ID == remembered {
@@ -207,7 +515,7 @@ func opening(accounts []signin.Account, remembered string) string {
 	return accounts[0].ID
 }
 
-// what the value the picker came back with is worth.
+// what the value the screen came back with is worth.
 //
 // the two acts are weighed in front of the list rather than looked for in it: a row an account
 // could spell would otherwise sign this machine out on the press that chose that account.
@@ -229,7 +537,7 @@ func picked(chosen string, accounts []signin.Account) (signin.Account, Answered,
 	return signin.Account{}, PickerClosed, ErrNoAccounts
 }
 
-// which cloudflare sign-in these rows were read off, as the line above the question.
+// which cloudflare sign-in these rows were read off, as the line above the screen.
 //
 // a credential set in this console's environment is the sign-in every command here uses and no
 // browser sign-in takes its place (../oauth's Credential), so the two are told apart rather than
@@ -260,7 +568,7 @@ func readFrom(held signin.SignIn) string {
 // the accounts a read landed on and found it in (./Picker), so an unmarked row is this console
 // making no claim rather than one saying there is no deployment there — which is the whole of what
 // makes the mark safe to draw.
-func labelled(accounts []signin.Account, deployed []string) []huh.Option[string] {
+func labelled(accounts []signin.Account, deployed []string) []choice {
 	shared := map[string]int{}
 	for _, one := range accounts {
 		shared[one.Name]++
@@ -269,18 +577,20 @@ func labelled(accounts []signin.Account, deployed []string) []huh.Option[string]
 	for _, id := range deployed {
 		found[id] = true
 	}
-	offered := make([]huh.Option[string], 0, len(accounts))
+	offered := make([]choice, 0, len(accounts))
 	for _, one := range accounts {
-		label := one.Name
-		if shared[one.Name] > 1 && label != one.ID {
-			label += " (" + one.ID + ")"
+		named := one.Name
+		if shared[one.Name] > 1 && named != one.ID {
+			named += " (" + one.ID + ")"
 		}
+		said := named
 		if found[one.ID] {
 			// the worker as this binary was baked to name it (../release), because that is the name
-			// on the cloudflare dashboard the operator would go looking at.
-			label += "  (" + release.Baked.Name + " is deployed here)"
+			// on the cloudflare dashboard the operator would go looking at, and the check ./ledger.go
+			// closes a row with, because it is the same claim: this one is done.
+			said += "  (" + release.Baked.Name + " " + check.String() + ")"
 		}
-		offered = append(offered, huh.NewOption(label, one.ID))
+		offered = append(offered, choice{said: said, value: one.ID, named: named})
 	}
 	return offered
 }

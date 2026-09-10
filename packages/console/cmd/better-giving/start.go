@@ -490,11 +490,11 @@ func beforeTheDeploy(port int) (net.Listener, error) {
 // answers on — which is why that one cannot be registered until the upload has landed.
 func aboutToMake(in account.Account) string {
 	return "deploying into your Cloudflare account " + in.Name + " (" + in.ID + "). " +
-		"this makes:\n" +
-		"  a database — where it keeps its records is the next question, " +
-		"and it cannot be changed once the database exists\n" +
-		"  the worker " + release.Baked.Name + " — it serves your donation page, /admin and the API\n" +
-		"  spam protection — registered against the address that worker answers on"
+		"this makes:\n\n" +
+		"  - a database — where it keeps its records is the next question, " +
+		"and cannot be changed once it exists\n" +
+		"  - the worker " + release.Baked.Name + " — it serves your donation page, /admin and the API\n" +
+		"  - spam protection — registered against the address that worker answers on"
 }
 
 // what a prompt the operator closed leaves on the screen, and the same nil it ended on.
