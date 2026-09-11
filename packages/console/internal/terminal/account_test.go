@@ -563,3 +563,20 @@ func TestEscapeWithAFilterOnDropsTheFilterRatherThanTheScreen(t *testing.T) {
 		t.Errorf("the accounts the dropped filter left are %v", values(drawn.ring()))
 	}
 }
+
+func TestTheWaitInFrontOfAFirstRunSaysWhatItIsReading(t *testing.T) {
+	// the picker's row said this account holds no deployment, so a wait claiming to read one is
+	// about something the operator has just been told is not there: what is read is where a
+	// deployment on it would answer (../../cmd/better-giving/start.go's aboutToMake).
+	said := ReadingTheAccount()
+
+	if !strings.Contains(said, "reading") {
+		t.Errorf("said %q, want what this console is doing", said)
+	}
+	if !strings.Contains(said, "this account") {
+		t.Errorf("said %q, want the account the read is about", said)
+	}
+	if strings.Contains(said, "the deployment") {
+		t.Errorf("said %q about a deployment the picker has just said is not there", said)
+	}
+}

@@ -91,7 +91,7 @@ var errSaid = errors.New("this command has already said what went wrong")
 // (../../internal/terminal/waiting.go). none of the four is a thing an arbitrary writer could be, so
 // each names this process's own stdout and stderr where it is reached (./start.go's ask, chainAt
 // and carryAt, the door `start` itself puts, ./carried's question, ./lookingForDeployments and
-// ./start.go's readingAhead).
+// ./start.go's waitingOver and finishAt).
 // every other line a command says takes `to`, so an operator redirecting what this binary answers
 // keeps the run drawn where they are standing, which is the only place it means anything.
 func run(args []string, to, wrong io.Writer) error {

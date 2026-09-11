@@ -3,8 +3,12 @@ package terminal
 import (
 	"errors"
 	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -116,17 +120,72 @@ var (
 // last — the marking is for code inside a sentence.
 func Code(span string) string { return toned(coded, span) }
 
-// the binary an operator types, as ../../cmd/better-giving builds it.
+// the name ../../cmd/better-giving builds the console under, which is what an operator types
+// wherever their terminal knows it (./spelled).
 const binary = "better-giving"
 
-// Cmd is one of this console's own presses drawn as code: the binary, and the words that follow it.
+// how this console is named in the terminal this process is running in, worked out once.
+//
+// **the bare name is a press only where this terminal would run this console from it.**
+// ../../../scripts/install.sh installs the console, appends the line that puts its directory on
+// PATH, and then hands the run straight over — and that line is read by terminals opened after
+// that one, never by the one holding the run. so a sentence naming `better-giving start` there
+// names a press that terminal answers `command not found` to, and where the name does not lead
+// here every press is spelled with the file this process is running from instead.
+var spelled = sync.OnceValue(func() string {
+	return spelling(resolved(os.Executable()), resolved(exec.LookPath(binary)))
+})
+
+// the console as this terminal can type it, given the file this process is running from and the
+// file the bare name leads to on PATH — each empty where there is none to resolve.
+//
+// **a file this console is not named after is no location to send an operator to.** a test binary
+// and a `go run` build are both files a process runs from and neither is a console anybody
+// installed, so both keep the bare name.
+func spelling(running, onPath string) string {
+	if running == "" || onPath == running || filepath.Base(running) != binary {
+		return binary
+	}
+	return running
+}
+
+// a path with every symlink on the way to it resolved, and empty where there is no path to resolve
+// or the resolution did not land.
+//
+// both sides are resolved for the reason ../update's Install states about the file it replaces: a
+// link named `better-giving` on PATH pointing at this file is a terminal that can type the name.
+func resolved(path string, err error) string {
+	if err != nil {
+		return ""
+	}
+	whole, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return ""
+	}
+	return whole
+}
+
+// Cmd is one of this console's own presses drawn as code: the console as this terminal can type it
+// (./spelled), and the words that follow it. With no words after it, it is the console naming
+// itself and is the bare name.
 //
 // **the spelling is here and not in the sentence.** a press is named in the sentences of this
 // package and in the commands themselves, and a spelling that lived at each of those sites is one
 // nothing holds together — so what a sentence composes with is this, and ./ledger_test.go holds it
 // to the four presses.
-func Cmd(sub ...string) string {
-	return Code(strings.Join(append([]string{binary}, sub...), " "))
+func Cmd(sub ...string) string { return Code(press(spelled(), sub)) }
+
+// press is the words one of this console's presses is typed as, given how this terminal spells the
+// console.
+//
+// **the location is for a press and never for the program naming itself.** the help header, the
+// error prefixes and `version` say which program is talking, and a whole path there names a press
+// nobody is being asked to make.
+func press(spelling string, sub []string) string {
+	if len(sub) == 0 {
+		return binary
+	}
+	return strings.Join(append([]string{spelling}, sub...), " ")
 }
 
 // what stands where a mark does not, so every row's words start in the same column.

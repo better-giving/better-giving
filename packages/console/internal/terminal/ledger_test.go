@@ -573,3 +573,37 @@ func TestEveryPressIsSpelledTheOneWay(t *testing.T) {
 		}
 	}
 }
+
+func TestAPressIsSpelledTheWayTheTerminalTheConsoleIsRunningInCanTypeIt(t *testing.T) {
+	// a sentence naming a press an operator's terminal answers `command not found` to is a repair
+	// they cannot make: the install puts the console on PATH for terminals opened after it, and the
+	// one it hands the run to is not one of those (../../../scripts/install.sh).
+	for _, one := range []struct{ what, running, onPath, said string }{
+		{"a console the name on PATH runs", "/home/o/.local/bin/better-giving",
+			"/home/o/.local/bin/better-giving", binary},
+		{"a console the terminal does not know the name of", "/home/o/.local/bin/better-giving", "",
+			"/home/o/.local/bin/better-giving"},
+		{"a name on PATH that is a different console", "/home/o/.local/bin/better-giving",
+			"/usr/local/bin/better-giving", "/home/o/.local/bin/better-giving"},
+		{"a process that cannot say what file it is running", "", "/usr/local/bin/better-giving",
+			binary},
+		{"a process running a file of another name", "/tmp/go-build/terminal.test", "", binary},
+	} {
+		if said := spelling(one.running, one.onPath); said != one.said {
+			t.Errorf("%s is typed %q, want %q", one.what, said, one.said)
+		}
+	}
+}
+
+func TestTheConsoleNamingItselfIsTheBareNameWhateverFileItIsRunningFrom(t *testing.T) {
+	// the spelling that names a whole location is for a press an operator would type: what the help
+	// header, the error prefixes and `version` say is which program is talking, and a path there
+	// names no press at all.
+	where := "/home/o/.local/bin/" + binary
+	if said := press(where, nil); said != binary {
+		t.Errorf("the console names itself %q, want %q", said, binary)
+	}
+	if said := press(where, []string{"start"}); said != where+" start" {
+		t.Errorf("a press is typed %q, want the file this terminal can run", said)
+	}
+}

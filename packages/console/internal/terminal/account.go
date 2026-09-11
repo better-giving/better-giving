@@ -124,12 +124,24 @@ func LookingForDeployments() string {
 // three round trips with nothing between them, and the screen that follows erases the terminal
 // before it draws (./confirm.go) — so an operator who has just chosen an account watches a cursor
 // blink until it does. three lines flickering past would be worse than one that holds, so the
-// caller draws this once over all of them (../../cmd/better-giving/start.go's readingAhead).
+// caller draws this once over all of them (../../cmd/better-giving/start.go's waitingOver).
 //
 // **it names no account.** the picker was the last screen and the account was the press that left
 // it, so which one this is about is the one thing the operator already knows.
 func ReadingTheDeployment() string {
 	return "reading the deployment on this account"
+}
+
+// ReadingTheAccount is what stands over the read a run makes where the picker found no deployment
+// on the account it was left on, drawn by the caller while it makes it (./waiting.go).
+//
+// **it is about the account and never about a deployment, which is the whole reason it is not
+// ./ReadingTheDeployment.** the row the operator pressed said this account holds none, so a wait
+// claiming to read one is about something they have just been told is not there. what is read is
+// the workers.dev name the account answers under, which is where a deployment on it would answer
+// (../../cmd/better-giving/start.go's aboutToMake).
+func ReadingTheAccount() string {
+	return "reading where a deployment on this account would answer"
 }
 
 // ErrNoAccounts is a sign-in carrying no account to choose between, which is a prompt with nothing

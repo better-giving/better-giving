@@ -1124,7 +1124,7 @@ function BlockedFace({
 				{why.why === 'unregistered'
 					? 'This account has never registered a workers.dev subdomain.'
 					: why.why === 'turned-off'
-						? 'Its workers.dev address is turned off and it has no custom domain.'
+						? 'Its workers.dev address is turned off.'
 						: 'It answers on a workers.dev address this account would not name.'}{' '}
 				Turn workers.dev on, or attach a domain, at{' '}
 				<a href={DASHBOARD} target="_blank" rel="noreferrer">

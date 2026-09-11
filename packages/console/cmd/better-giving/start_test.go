@@ -13,6 +13,7 @@ import (
 	"github.com/better-giving/console/internal/first"
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/terminal"
+	"github.com/better-giving/console/internal/widget"
 )
 
 // what this command does about a chain that settled under a ledger a signal took.
@@ -96,7 +97,9 @@ func TestStartNamesTheAccountAndWhatItWillMakeAboveTheFirstQuestion(t *testing.T
 	// it is handed to the password prompt rather than printed above it: that prompt erases the
 	// screen before it draws (../../internal/terminal/clear.go), so a line printed here would be
 	// off the visible screen at the moment the operator is answering.
-	said := aboutToMake(account.Account{ID: "ac1", Name: "Acme Giving"})
+	said := aboutToMake(
+		account.Account{ID: "ac1", Name: "Acme Giving"},
+		deployment.Named{Kind: deployment.NameHeld, Name: "acme"})
 
 	for _, want := range []string{
 		"Acme Giving",
@@ -242,7 +245,13 @@ type firstDeploy struct {
 	asked   bool
 	made    bool
 	closes  error
+	// named is what the name act said, went whether it settled one, and names whether it was
+	// reached at all.
+	named   string
+	went    bool
+	names   bool
 	ran     first.Outcome
+	chained bool
 	halted  bool
 	served  net.Listener
 	said    strings.Builder
@@ -262,7 +271,14 @@ func (deploy *firstDeploy) run(t *testing.T) error {
 			deploy.asked = true
 			return first.Asked{Password: "a password nobody types"}, deploy.made, deploy.closes
 		},
-		func(first.Asked) (first.Outcome, bool) { return deploy.ran, deploy.halted },
+		func() (string, bool, error) {
+			deploy.names = true
+			return deploy.named, deploy.went, nil
+		},
+		func(first.Asked) (first.Outcome, bool) {
+			deploy.chained = true
+			return deploy.ran, deploy.halted
+		},
 		func() string { return "your deployment is at https://give.acme.test" },
 		func(bound net.Listener) error {
 			deploy.served = bound
@@ -317,7 +333,7 @@ func TestAPromptTheOperatorClosedGivesThePortBackAndServesNothing(t *testing.T) 
 
 func TestAChainThatLandedServesTheConsoleOnThePortTakenInFrontOfIt(t *testing.T) {
 	bound, _ := aPortHeld(t)
-	deploy := &firstDeploy{bound: bound, made: true, ran: first.Outcome{Kind: first.Deployed}}
+	deploy := &firstDeploy{bound: bound, made: true, went: true, ran: first.Outcome{Kind: first.Deployed}}
 
 	if err := deploy.run(t); err != nil {
 		t.Fatalf("standingUp = %v, want the console this command exists to open", err)
@@ -338,7 +354,7 @@ func TestAChainThatLandedServesTheConsoleOnThePortTakenInFrontOfIt(t *testing.T)
 
 func TestAChainThatDidNotLandGivesThePortBackAndServesNothing(t *testing.T) {
 	bound, handedBack := aPortHeld(t)
-	deploy := &firstDeploy{bound: bound, made: true, ran: first.Outcome{Kind: first.NoDatabase}}
+	deploy := &firstDeploy{bound: bound, made: true, went: true, ran: first.Outcome{Kind: first.NoDatabase}}
 
 	err := deploy.run(t)
 
@@ -356,7 +372,7 @@ func TestAChainThatDidNotLandGivesThePortBackAndServesNothing(t *testing.T) {
 func TestAChainAStopWaitedOutSaysWhereTheDeploymentIsAndGivesThePortBack(t *testing.T) {
 	bound, handedBack := aPortHeld(t)
 	deploy := &firstDeploy{
-		bound: bound, made: true, halted: true, ran: first.Outcome{Kind: first.Deployed},
+		bound: bound, made: true, went: true, halted: true, ran: first.Outcome{Kind: first.Deployed},
 	}
 
 	if err := deploy.run(t); err != nil {
@@ -402,6 +418,9 @@ type standingDeployment struct {
 	carried  bool
 	ran      effects.Carried
 	halted   bool
+	// finished is what the finish said, and finishes whether it was reached at all.
+	finished string
+	finishes bool
 	served   net.Listener
 	said     strings.Builder
 	// order is every act of the run in the order it was reached, so that a case can say where the
@@ -449,6 +468,11 @@ func (onto *standingDeployment) run(t *testing.T) error {
 			return onto.ran, onto.halted
 		},
 		func() string { return "your deployment is up to date, at https://give.acme.test" },
+		func() string {
+			onto.finishes = true
+			onto.order = append(onto.order, "finished")
+			return onto.finished
+		},
 		func(bound net.Listener) error {
 			onto.served = bound
 			return nil
@@ -1146,47 +1170,47 @@ func TestAnAccountThePickersOwnReadsDidNotLandForIsReadNow(t *testing.T) {
 	}
 }
 
-// whether the pass under the account just picked reads anything at all, which is what the wait in
-// front of the screen after it stands over.
+// what the wait over the pass under the account just picked says, and whether there is one at all.
 //
 // a wait that appeared and vanished in the same frame would be noise, so the pass that fetches
 // nothing draws nothing (../../internal/terminal/waiting.go).
 
-func TestAPassWithNothingToFetchDrawsNoWait(t *testing.T) {
-	// the picker's own read landed and found no deployment there, so the two reads behind the carry
-	// are never made and the first-run questions draw straight away.
-	if readingAhead(
+func TestAPassThatStandsADeploymentUpWaitsOnTheAccountAndNotOnADeployment(t *testing.T) {
+	// the picker's own read landed and found no deployment there, so the row the operator pressed
+	// has already told them there is none: what this pass reads is the account's own name.
+	said := waitingOver(
 		effects.Addresses{"ac1": {Kind: deployment.NotDeployed}},
-		account.Account{ID: "ac1"},
-	) {
-		t.Error("a pass that reads nothing draws a wait")
+		account.Account{ID: "ac1"})
+
+	if said != terminal.ReadingTheAccount() {
+		t.Errorf("waited on %q, want the read this pass actually makes", said)
 	}
 }
 
 func TestAPassTheDeploymentIsReadForStandsUnderAWait(t *testing.T) {
 	// a deployment the picker found: which release it is on and what a deploy would apply are both
 	// read before the door draws.
-	if !readingAhead(
+	if said := waitingOver(
 		effects.Addresses{"ac1": {Kind: deployment.Deployed}},
 		account.Account{ID: "ac1"},
-	) {
-		t.Error("the reads in front of the door stand under no wait")
+	); said != terminal.ReadingTheDeployment() {
+		t.Errorf("waited on %q, want the reads in front of the door", said)
 	}
 
 	// and an account the picker's own read did not land for is read here whatever is on it.
-	if !readingAhead(effects.Addresses{}, account.Account{ID: "ac1"}) {
-		t.Error("the read this pass makes for itself stands under no wait")
+	if said := waitingOver(effects.Addresses{}, account.Account{ID: "ac1"}); said != terminal.ReadingTheDeployment() {
+		t.Errorf("waited on %q, want the read this pass makes for itself", said)
 	}
 }
 
 func TestAPassOverAnAddressNothingCanBeToldFromDrawsNoWait(t *testing.T) {
 	// a read the picker landed that says neither: this pass reads nothing more, it stops
 	// (./unread).
-	if readingAhead(
+	if said := waitingOver(
 		effects.Addresses{"ac1": {Kind: deployment.AddressRefused}},
 		account.Account{ID: "ac1"},
-	) {
-		t.Error("a pass that stops on what the picker already read draws a wait")
+	); said != "" {
+		t.Errorf("waited on %q over a pass that stops on what the picker already read", said)
 	}
 }
 
@@ -1204,7 +1228,7 @@ func TestTheWaitOverTheReadsIsGivenUpBetweenTheLastReadAndTheDoor(t *testing.T) 
 	if err := onto.run(t); err != nil {
 		t.Fatalf("catchingUp = %v", err)
 	}
-	if ran := strings.Join(onto.order, " "); ran != "weighed read settled named drew" {
+	if ran := strings.Join(onto.order, " "); ran != "weighed read settled named drew finished" {
 		t.Errorf("a carry ran %q, want the wait given up between the last read and the door", ran)
 	}
 }
@@ -1218,7 +1242,570 @@ func TestTheWaitOverTheReadsIsGivenUpBeforeADeploymentAlreadyCarryingIsNamed(t *
 	if err := onto.run(t); err != nil {
 		t.Fatalf("catchingUp = %v", err)
 	}
-	if ran := strings.Join(onto.order, " "); ran != "weighed settled drew drew" {
+	if ran := strings.Join(onto.order, " "); ran != "weighed settled drew drew finished" {
 		t.Errorf("an up-to-date pass ran %q, want the wait given up in front of both lines", ran)
+	}
+}
+
+// the workers.dev name this account answers under, settled in front of everything that creates
+// anything.
+//
+// a deployment stands where nobody can reach it when the account holds no name: the address is
+// derived from the account's name and the worker's (../../internal/deployment/address.go), so a
+// press that skipped this leaves a deployment up, a password stored and a spam widget that cannot
+// be registered against any host at all.
+
+// a run of ./naming with every act of it recorded.
+type theName struct {
+	held      deployment.Named
+	registers []string
+	answers   []deployment.Named
+	asks      []string
+	typed     []string
+}
+
+// the run over an account whose own name derives one, which is every case but the account named
+// nothing usable.
+func (one *theName) run() (string, bool, error) { return namingFrom(one, "hound-haven") }
+
+func TestAnAccountAlreadyHoldingANameIsLeftAloneAndNothingIsSaid(t *testing.T) {
+	// cloudflare takes one name per account and every worker on it answers under that one, so a run
+	// that registered over it would move every other deployment in the account.
+	one := &theName{held: deployment.Named{Kind: deployment.NameHeld, Name: "somebody-elses"}}
+
+	said, went, err := one.run()
+
+	if !went || err != nil {
+		t.Fatalf("naming = %v, %v", went, err)
+	}
+	if said != "" {
+		t.Errorf("said %q about an account this run did not touch", said)
+	}
+	if len(one.registers) != 0 || len(one.asks) != 0 {
+		t.Errorf("registered %v and asked %d questions", one.registers, len(one.asks))
+	}
+}
+
+func TestAnAccountHoldingNoNameGetsTheOneDerivedFromItsOwnWithNothingAsked(t *testing.T) {
+	one := &theName{
+		held:    deployment.Named{Kind: deployment.NameNone},
+		answers: []deployment.Named{{Kind: deployment.NameRegistered, Name: "hound-haven"}},
+	}
+
+	said, went, err := one.run()
+
+	if !went || err != nil {
+		t.Fatalf("naming = %v, %v", went, err)
+	}
+	if len(one.asks) != 0 {
+		t.Errorf("the operator was asked %v for a name that was never refused", one.asks)
+	}
+	if strings.Join(one.registers, ",") != "hound-haven" {
+		t.Errorf("registered %v, want the name derived from the account's own", one.registers)
+	}
+	if !strings.Contains(said, "hound-haven.workers.dev") {
+		t.Errorf("said %q, want the name this run registered", said)
+	}
+}
+
+func TestANameCloudflareRefusesIsPutToTheOperatorUntilOneLands(t *testing.T) {
+	// a workers.dev name is one pool for the whole of cloudflare, so the account's own name may be
+	// somebody else's already — and no second name this console invented would be any likelier.
+	one := &theName{
+		held: deployment.Named{Kind: deployment.NameNone},
+		answers: []deployment.Named{
+			{Kind: deployment.NameTaken, Detail: "workers.api.error.subdomain_unavailable"},
+			{Kind: deployment.NameTaken, Detail: "workers.api.error.subdomain_unavailable"},
+			{Kind: deployment.NameRegistered, Name: "hound-haven-giving"},
+		},
+		typed: []string{"hound-haven-too", "hound-haven-giving"},
+	}
+
+	said, went, err := one.run()
+
+	if !went || err != nil {
+		t.Fatalf("naming = %v, %v", went, err)
+	}
+	if strings.Join(one.registers, ",") != "hound-haven,hound-haven-too,hound-haven-giving" {
+		t.Errorf("registered %v, want the derived name and then each one typed", one.registers)
+	}
+	if len(one.asks) != 2 {
+		t.Fatalf("%d questions were put for two refusals", len(one.asks))
+	}
+	// each question says what was refused and what cloudflare said about it, or the operator is
+	// answering the same question twice with nothing to go on.
+	if !strings.Contains(one.asks[0], "hound-haven") || !strings.Contains(one.asks[0], "subdomain_unavailable") {
+		t.Errorf("the first question said %q", one.asks[0])
+	}
+	if !strings.Contains(one.asks[1], "hound-haven-too") {
+		t.Errorf("the second question said %q, want the name it refused", one.asks[1])
+	}
+	if !strings.Contains(said, "hound-haven-giving.workers.dev") {
+		t.Errorf("said %q, want the name that landed", said)
+	}
+}
+
+func TestAnAccountNameNothingCanBeMadeOfPutsTheQuestionWithoutAskingCloudflare(t *testing.T) {
+	one := &theName{
+		held:    deployment.Named{Kind: deployment.NameNone},
+		answers: []deployment.Named{{Kind: deployment.NameRegistered, Name: "hound-haven"}},
+		typed:   []string{"hound-haven"},
+	}
+
+	said, went, err := namingFrom(one, "")
+
+	if !went || err != nil {
+		t.Fatalf("naming = %v, %v", went, err)
+	}
+	if len(one.asks) != 1 {
+		t.Fatalf("%d questions were put", len(one.asks))
+	}
+	if strings.Join(one.registers, ",") != "hound-haven" {
+		t.Errorf("cloudflare was asked to register %v, want the typed name alone", one.registers)
+	}
+	if !strings.Contains(said, "hound-haven.workers.dev") {
+		t.Errorf("said %q", said)
+	}
+}
+
+func TestANameQuestionTheOperatorClosedEndsThePressHavingCreatedNothing(t *testing.T) {
+	one := &theName{
+		held:    deployment.Named{Kind: deployment.NameNone},
+		answers: []deployment.Named{{Kind: deployment.NameTaken, Detail: "unavailable"}},
+	}
+
+	said, went, err := one.run()
+
+	if went || err != nil {
+		t.Fatalf("naming = %q, %v, %v, want a press not made read as no failure", said, went, err)
+	}
+}
+
+func TestAnAccountThisConsoleCouldNotNameEndsInSomethingToDo(t *testing.T) {
+	// the states internal/cf sorts an answer into are four different things for an operator to do,
+	// and a read that found nothing out is never an account with no name.
+	for _, one := range []struct {
+		held  deployment.Named
+		names string
+	}{
+		{deployment.Named{Kind: deployment.NameRefused, Detail: "Authentication error"},
+			"another account"},
+		{deployment.Named{Kind: deployment.NameUnreachable, Detail: "no route to host"},
+			"connection"},
+		{deployment.Named{Kind: deployment.NameUnreadable, Detail: "a shape"}, "start"},
+		{deployment.Named{Kind: deployment.NameFailed, Detail: "cloudflare said no"}, "start"},
+	} {
+		held := &theName{held: one.held}
+		said, went, err := held.run()
+		if went || err == nil {
+			t.Fatalf("naming = %q, %v, %v, want the state that explains it", said, went, err)
+		}
+		if !strings.Contains(err.Error(), one.names) {
+			t.Errorf("%s = %q, which says nothing about %q", one.held.Kind, err, one.names)
+		}
+		if !strings.Contains(err.Error(), one.held.Detail) {
+			t.Errorf("%s = %q, which does not carry what cloudflare said", one.held.Kind, err)
+		}
+		if !strings.Contains(err.Error(), "nothing was created") {
+			t.Errorf("%s = %q, which does not say what did not happen", one.held.Kind, err)
+		}
+	}
+}
+
+// a run of ./naming over what this case states, with the name derived from the account's own name
+// handed in.
+func namingFrom(one *theName, derived string) (string, bool, error) {
+	return naming(
+		one.held,
+		func(name string) deployment.Named {
+			one.registers = append(one.registers, name)
+			at := len(one.registers) - 1
+			if at >= len(one.answers) {
+				at = len(one.answers) - 1
+			}
+			return one.answers[at]
+		},
+		derived,
+		func(why string) (string, bool, error) {
+			one.asks = append(one.asks, why)
+			if len(one.typed) == 0 {
+				return "", false, nil
+			}
+			typed := one.typed[0]
+			one.typed = one.typed[1:]
+			return typed, true, nil
+		},
+		nothingMade)
+}
+
+func TestTheNameIsSettledAfterBothQuestionsAndInFrontOfTheChain(t *testing.T) {
+	// it is the first thing this run creates, so it stands where nothing else has been created yet
+	// — past the two questions, whose closing ends the command having made nothing, and in front of
+	// the chain, which is what needs a host to register the widget against.
+	bound, _ := aPortHeld(t)
+	deploy := &firstDeploy{
+		bound: bound, made: true, went: true,
+		named: "this Cloudflare account had no workers.dev name, so this run registered hound.workers.dev",
+		ran:   first.Outcome{Kind: first.Deployed},
+	}
+
+	if err := deploy.run(t); err != nil {
+		t.Fatalf("standingUp = %v", err)
+	}
+	if !deploy.names || !deploy.chained {
+		t.Fatalf("named %v and ran the chain %v", deploy.names, deploy.chained)
+	}
+	// the line stands above the ledger, which is the one place it can be read: the chain draws over
+	// the screen from the moment it starts.
+	said := deploy.said.String()
+	if !strings.Contains(said, "registered hound.workers.dev") {
+		t.Errorf("said %q, want what this run registered", said)
+	}
+	if strings.Index(said, "registered hound.workers.dev") > strings.Index(said, "your deployment is at") {
+		t.Errorf("said %q, want the name above the address the run ended on", said)
+	}
+}
+
+func TestANameQuestionTheOperatorClosedGivesThePortBackAndDeploysNothing(t *testing.T) {
+	bound, handedBack := aPortHeld(t)
+	deploy := &firstDeploy{bound: bound, made: true, went: false}
+
+	err := deploy.run(t)
+
+	if err != nil {
+		t.Errorf("standingUp = %v, want a press not made read as no failure", err)
+	}
+	if deploy.chained {
+		t.Error("a deployment was stood up over a question the operator closed")
+	}
+	if !strings.Contains(deploy.said.String(), "nothing was created") {
+		t.Errorf("said %q, want what did not happen", deploy.said.String())
+	}
+	if !handedBack() {
+		t.Error("the port this run took was still held on the way out")
+	}
+}
+
+func TestAnAccountAlreadyNamedSaysNothingAboveTheLedger(t *testing.T) {
+	bound, _ := aPortHeld(t)
+	deploy := &firstDeploy{
+		bound: bound, made: true, went: true,
+		ran: first.Outcome{Kind: first.Deployed},
+	}
+
+	if err := deploy.run(t); err != nil {
+		t.Fatalf("standingUp = %v", err)
+	}
+	if said := deploy.said.String(); strings.Contains(said, "workers.dev name") {
+		t.Errorf("said %q about an account this run did not touch", said)
+	}
+}
+
+// what a first run left unfinished, read off the deployment and made before the console opens.
+//
+// a first run that stopped past the deploy is never carried past that point again: the deployment
+// is standing from the moment the upload lands, so every later press weighs it against this release
+// and goes to the carry door and then the console. no console screen registers the widget either
+// (packages/console-ui/src/lib/sites-fold.tsx), so the press that told the operator to run this
+// command again could not have helped them.
+
+// the thirteen as a deployment that never reached the widget stage holds them.
+func holdingNeitherHalf() deployment.VarsRead {
+	return deployment.VarsRead{Kind: deployment.ValuesRead, Vars: []deployment.DeployedVar{
+		{Name: "TURNSTILE_SITE_KEY", Kind: deployment.VarAbsent},
+		{Name: "TURNSTILE_SECRET_KEY", Kind: deployment.VarAbsent},
+	}}
+}
+
+// the thirteen as a deployment a run did finish holds them.
+func holdingBothHalves() deployment.VarsRead {
+	return deployment.VarsRead{Kind: deployment.ValuesRead, Vars: []deployment.DeployedVar{
+		{Name: "TURNSTILE_SITE_KEY", Kind: deployment.VarValue, Value: "0x4"},
+		{Name: "TURNSTILE_SECRET_KEY", Kind: deployment.VarValue, Value: "0x0secret"},
+	}}
+}
+
+// a run of ./finishing with every act of it recorded.
+type unfinished struct {
+	read    deployment.VarsRead
+	said    string
+	settles bool
+	stopped error
+	ran     first.Outcome
+	// order is every act the run reached, in the order it reached them.
+	order []string
+}
+
+func (one *unfinished) run() string {
+	return finishing(
+		func() deployment.VarsRead {
+			one.order = append(one.order, "read")
+			return one.read
+		},
+		func() (string, bool, error) {
+			one.order = append(one.order, "named")
+			return one.said, one.settles, one.stopped
+		},
+		func() first.Outcome {
+			one.order = append(one.order, "registered")
+			return one.ran
+		})
+}
+
+// a deployment holding neither half, over an account that already has a workers.dev name.
+func aFinishThatLands() *unfinished {
+	return &unfinished{read: holdingNeitherHalf(), settles: true}
+}
+
+func TestADeploymentAlreadyCarryingTheSpamPairIsReadAndNothingElse(t *testing.T) {
+	// the ordinary case is a deployment already set up, and a line about work that did not happen
+	// is noise on every run after the first.
+	one := aFinishThatLands()
+	one.read = holdingBothHalves()
+
+	if said := one.run(); said != "" {
+		t.Errorf("said %q about a deployment with nothing missing", said)
+	}
+	if ran := strings.Join(one.order, " "); ran != "read" {
+		t.Errorf("a finish ran %q, want nothing read past the pair", ran)
+	}
+}
+
+func TestADeploymentHoldingNeitherHalfIsRegisteredAndSaidSo(t *testing.T) {
+	one := aFinishThatLands()
+
+	said := one.run()
+
+	if !strings.Contains(said, "spam protection") {
+		t.Errorf("said %q, want what this run registered", said)
+	}
+	if ran := strings.Join(one.order, " "); ran != "read named registered" {
+		t.Errorf("a finish ran %q, want the name settled in front of the widget", ran)
+	}
+}
+
+func TestAFinishThatCouldNotLandSaysWhichStepStoppedIt(t *testing.T) {
+	// the three are three different things for an operator to do about a deployment that answers
+	// nowhere (../../internal/first's noOrigin), and the arms are the chain's own so the words are
+	// the ones a deploy that stopped in the same place is answered in.
+	one := aFinishThatLands()
+	one.ran = first.Outcome{
+		Kind:   first.NoWidget,
+		Supply: &widget.Supply{Kind: widget.NoHosts},
+		Detail: "this account has never registered a workers.dev subdomain",
+	}
+
+	said := one.run()
+
+	if !strings.Contains(said, "never registered a workers.dev subdomain") {
+		t.Errorf("said %q, want which of the three it was", said)
+	}
+	if !strings.Contains(said, terminal.Outcome(one.ran)) {
+		t.Errorf("said %q, want the sentence this state is answered in", said)
+	}
+}
+
+func TestTheNameAFinishRegisteredIsSaidAboveWhatItRegisteredItFor(t *testing.T) {
+	one := aFinishThatLands()
+	one.said = "this Cloudflare account had no workers.dev name, so this run registered hound.workers.dev"
+
+	said := one.run()
+
+	if !strings.Contains(said, "registered hound.workers.dev") {
+		t.Errorf("said %q, want the name this run registered", said)
+	}
+	if strings.Index(said, "hound.workers.dev") > strings.Index(said, "spam protection") {
+		t.Errorf("said %q, want the name above what it was registered for", said)
+	}
+}
+
+func TestANameQuestionTheOperatorClosedStopsTheFinishAndRegistersNothing(t *testing.T) {
+	one := aFinishThatLands()
+	one.settles = false
+
+	said := one.run()
+
+	if said == "" {
+		t.Error("a finish that stopped went unsaid, so a deployment turns nobody away unsaid")
+	}
+	if ran := strings.Join(one.order, " "); ran != "read named" {
+		t.Errorf("a finish ran %q, want nothing registered against a name nobody gave", ran)
+	}
+}
+
+func TestAnAccountThisConsoleCouldNotNameStopsTheFinishInItsOwnWords(t *testing.T) {
+	one := aFinishThatLands()
+	one.settles, one.stopped = false, errors.New("Cloudflare didn't answer, so spam protection")
+
+	said := one.run()
+
+	if !strings.Contains(said, "Cloudflare didn't answer") {
+		t.Errorf("said %q, want what the step that stopped answered", said)
+	}
+	if strings.Contains(said, "nothing was deployed") {
+		t.Errorf("said %q about a deployment that is standing and serving", said)
+	}
+}
+
+func TestAReadThatDidNotLandClaimsNothingIsMissing(t *testing.T) {
+	// a read that came back in none of its ways found nothing out, and a run that registered a
+	// second widget on it would leave the deployment holding a pair nobody is challenging with.
+	one := aFinishThatLands()
+	one.read = deployment.VarsRead{Kind: deployment.ValuesUnreachable}
+
+	if said := one.run(); said != "" {
+		t.Errorf("said %q about a deployment this console could not read", said)
+	}
+	if ran := strings.Join(one.order, " "); ran != "read" {
+		t.Errorf("a finish ran %q over a read that did not land", ran)
+	}
+}
+
+// where the finish stands in a pass over a deployment that is already up: past the carry door,
+// whichever way it was answered, and in front of the console.
+//
+// the operator typed one command and gets a deployment that is set up, whichever run set it up.
+
+func TestADeploymentAlreadyCarryingThisReleaseIsStillFinished(t *testing.T) {
+	// a first run that stopped past the deploy leaves a deployment on this very release, so no
+	// door is put and the console opens straight onto it — which is the pass a finish has to reach.
+	onto := aCarryThatLands(t)
+	onto.deployed = version
+	onto.finished = "spam protection is set up"
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v", err)
+	}
+	if !onto.finishes {
+		t.Fatal("a deployment already carrying this release was opened without being finished")
+	}
+	if !strings.Contains(onto.said.String(), "spam protection is set up") {
+		t.Errorf("said %q, want what the finish did", onto.said.String())
+	}
+	if onto.served == nil {
+		t.Error("the console this command exists to open was not served")
+	}
+}
+
+func TestADoorTheOperatorShutAndOneTheyOpenedAreBothFinished(t *testing.T) {
+	for _, answered := range []terminal.Confirmation{terminal.Confirmed, terminal.Declined} {
+		onto := aCarryThatLands(t)
+		onto.answered = answered
+		onto.finished = "spam protection is set up"
+
+		if err := onto.run(t); err != nil {
+			t.Fatalf("%s: catchingUp = %v", answered, err)
+		}
+		if !onto.finishes || onto.served == nil {
+			t.Errorf("%s finished %v and served %v", answered, onto.finishes, onto.served != nil)
+		}
+	}
+}
+
+func TestAFinishWithNothingToSayDrawsNoLine(t *testing.T) {
+	onto := aCarryThatLands(t)
+	onto.deployed = version
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v", err)
+	}
+	if ran := strings.Join(onto.order, " "); ran != "weighed settled drew drew finished" {
+		t.Errorf("an up-to-date pass ran %q, want no line drawn for a finish that said nothing", ran)
+	}
+}
+
+func TestTheWayBackFromTheDoorFinishesNothing(t *testing.T) {
+	// nothing was uploaded on this pass and no console is served on it: the account picker is what
+	// the operator is about to be standing at, and the deployment they walked away from is not the
+	// one this run is about any more.
+	onto := aCarryThatLands(t)
+	onto.answered = terminal.Elsewhere
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v", err)
+	}
+	if onto.finishes {
+		t.Error("a pass the operator walked out of finished the deployment it walked away from")
+	}
+}
+
+func TestACarryThatDidNotLandFinishesNothing(t *testing.T) {
+	onto := aCarryThatLands(t)
+	onto.ran = effects.Carried{Kind: effects.ConsoleStopped}
+
+	if err := onto.run(t); err == nil {
+		t.Fatal("a carry that did not land ended cleanly")
+	}
+	if onto.finishes {
+		t.Error("a carry that did not land was finished as though it had")
+	}
+}
+
+// what the first question's screen names, which is every account-wide thing this run would make.
+
+func TestAnAccountHoldingNoNameHasTheOneThisRunWouldRegisterNamedFirst(t *testing.T) {
+	// cloudflare takes one name per account and every worker on it answers under that one
+	// (../../internal/deployment/workersdev.go), so a run that registered one quietly would settle
+	// an address across a Cloudflare account off the back of a password prompt.
+	said := aboutToMake(
+		account.Account{ID: "ac1", Name: "Acme Giving"},
+		deployment.Named{Kind: deployment.NameNone})
+
+	if !strings.Contains(said, "acme-giving.workers.dev") {
+		t.Errorf("said %q, want the name this run would register", said)
+	}
+	if !strings.Contains(said, "every worker in this Cloudflare account") {
+		t.Errorf("said %q, want what registering it settles", said)
+	}
+	if strings.Index(said, "acme-giving.workers.dev") > strings.Index(said, "a database") {
+		t.Errorf("said %q, want the acts in the order this run reaches them", said)
+	}
+}
+
+func TestAnAccountWhoseOwnNameMakesNoneNamesTheQuestionInstead(t *testing.T) {
+	said := aboutToMake(
+		account.Account{ID: "ac1", Name: "***"},
+		deployment.Named{Kind: deployment.NameNone})
+
+	if !strings.Contains(said, "workers.dev address") {
+		t.Errorf("said %q, want the address this run would register", said)
+	}
+	if !strings.Contains(said, "you choose the name in a moment") {
+		t.Errorf("said %q, want where the name comes from", said)
+	}
+}
+
+func TestAnAccountAlreadyHoldingANameSaysNothingNew(t *testing.T) {
+	// this run leaves a name that is there exactly as it is, so there is nothing to name.
+	for _, held := range []deployment.Named{
+		{Kind: deployment.NameHeld, Name: "acme"},
+		{Kind: deployment.NameUnreachable, Detail: "no route to host"},
+	} {
+		said := aboutToMake(account.Account{ID: "ac1", Name: "Acme Giving"}, held)
+
+		if strings.Contains(said, "workers.dev") {
+			t.Errorf("%s said %q about a name this run would not register", held.Kind, said)
+		}
+	}
+}
+
+func TestWhatARunThatCouldNotNameTheAccountLostIsThePressesOwn(t *testing.T) {
+	// a first deploy that cannot name the account has created nothing at all; a finish over a
+	// deployment that is standing has only the widget left to make, and an operator told nothing
+	// was deployed goes looking for a deployment that is there
+	// (../../internal/terminal/outcome.go).
+	held := deployment.Named{Kind: deployment.NameUnreachable, Detail: "no route to host"}
+
+	made := unnamed(held, nothingMade)
+	registered := unnamed(held, nothingRegistered)
+
+	if !strings.Contains(made.Error(), "nothing was deployed") {
+		t.Errorf("a first deploy said %q, want what it did not make", made)
+	}
+	if strings.Contains(registered.Error(), "nothing was deployed") {
+		t.Errorf("a finish said %q about a deployment that is standing and serving", registered)
+	}
+	if !strings.Contains(registered.Error(), "spam protection") {
+		t.Errorf("a finish said %q, want the one thing it did not register", registered)
 	}
 }

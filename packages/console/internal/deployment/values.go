@@ -110,6 +110,41 @@ func HoldsStripeSecret(read VarsRead) bool {
 	return false
 }
 
+// the two names the spam widget's halves are held under.
+const (
+	turnstileSitekey = "TURNSTILE_SITE_KEY"
+	turnstileSecret  = "TURNSTILE_SECRET_KEY"
+)
+
+// HoldsNoSpamPair is whether this deployment holds neither half of the spam widget's pair, which is
+// a deployment no run ever registered one for.
+//
+// **a read that did not land claims nothing.** a read that came back in none of its ways found
+// nothing out, and a caller told the slots are empty on that registers a second widget over a
+// deployment already carrying one — so a reading carrying no row for either name says nothing
+// either.
+//
+// **either half held is a pair this reading leaves alone.** the two go up in one write
+// (../first), so one of them standing alone is a deployment somebody configured by hand rather than
+// a stage that did not run. withheld is held, for ./HoldsStripeSecret's reason: the worker reads
+// it, and the only thing that cannot be done with it is drawing it on this console.
+func HoldsNoSpamPair(read VarsRead) bool {
+	if read.Kind != ValuesRead {
+		return false
+	}
+	empty := 0
+	for _, row := range read.Vars {
+		if row.Name != turnstileSitekey && row.Name != turnstileSecret {
+			continue
+		}
+		if row.Kind != VarAbsent {
+			return false
+		}
+		empty++
+	}
+	return empty == 2
+}
+
 // where a worker's own settings are read, values of deployed vars among them.
 func settingsPath(accountID, workerName string) string {
 	return "/accounts/" + accountID + "/workers/scripts/" + url.PathEscape(workerName) + "/settings"

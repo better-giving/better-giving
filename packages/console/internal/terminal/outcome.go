@@ -87,6 +87,11 @@ var unaccounted = "This deploy did not finish, and this console has no account o
 //
 // Empty for the chain that landed: what says a first deploy worked is the console opening on the
 // deployment, so there is nothing left to say about it.
+//
+// **the widget's arms are drawn by a second press as well**, which is the `start` that finishes what
+// a first run never landed (../../cmd/better-giving/start.go's finishing): it stops in the same
+// states and the deployment is standing there too, so the sentences hold for both and neither
+// press has words of its own.
 func Outcome(ran first.Outcome) string {
 	switch ran.Kind {
 	case first.Deployed:

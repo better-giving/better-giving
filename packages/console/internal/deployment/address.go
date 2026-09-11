@@ -129,24 +129,20 @@ func PublicAddress(ctx context.Context, get cf.Get, accountID, workerName string
 		}
 	}
 
-	name := cf.ReadShaped(get(ctx, base+"/subdomain"), func(value any) (string, bool) {
-		held, ok := value.(map[string]any)
-		if !ok {
-			return "", false
-		}
-		named, isText := held["subdomain"].(string)
-		return named, isText && named != ""
-	})
-	if name.Kind == cf.ResultValue {
+	// the account's own name is read by ./workersdev.go, which is the one reading of it: a second
+	// one here would be a second answer to whether an account has a workers.dev name, on the two
+	// paths that both turn on that question.
+	name := AccountName(ctx, get, accountID)
+	if name.Kind == NameHeld {
 		return Address{
 			Kind:        Deployed,
-			WorkersDev:  "https://" + workerName + "." + name.Value + ".workers.dev",
+			WorkersDev:  "https://" + workerName + "." + name.Name + ".workers.dev",
 			Domains:     hostnames,
 			ReadDomains: read,
 		}
 	}
 	why := Unknown
-	if name.Kind == cf.ResultMissing {
+	if name.Kind == NameNone {
 		why = Unregistered
 	}
 	return Address{Kind: Deployed, Why: why, Domains: hostnames, ReadDomains: read}

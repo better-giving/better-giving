@@ -35,6 +35,11 @@ type working struct {
 	ran      deploy.Run
 	// own is where the deployment answers, which is the address the widget's host is taken off.
 	own deployment.Address
+	// answering is what the second read answered where the address was turned on, and answered says
+	// the switch was reached at all. Zero is the same address again, which is a switch that changed
+	// nothing.
+	answering deployment.Address
+	answered  bool
 	// written is how the sign-in pair's write went, and kept how the widget pair's did.
 	written deployment.Written
 	kept    deployment.Written
@@ -82,6 +87,13 @@ func (one *working) bound() Effects {
 			return one.ran
 		},
 		Own: func(context.Context) deployment.Address { return one.own },
+		Answer: func(context.Context) deployment.Address {
+			one.answered = true
+			if one.answering.Kind == "" {
+				return one.own
+			}
+			return one.answering
+		},
 		Widget: func(_ context.Context, hosts []string) widget.Supply {
 			one.hosts = hosts
 			return one.supply
@@ -187,12 +199,20 @@ func TestADeploymentAnsweringNowhereIsNoWidgetAndCloudflareIsAskedNothing(t *tes
 	// the widget is registered against the host a donor is challenged on, so a deployment this
 	// console cannot read an address for is a widget registered against nothing — and the sentence
 	// names which of the five ways the read ended rather than reporting one absence.
+	// a worker that is up and answering on nothing is three of those states and not one, and each
+	// is somewhere different for an operator to go (../deployment/address.go's NoWorkersDev).
 	for _, one := range []struct {
 		address deployment.Address
 		names   string
 	}{
 		{deployment.Address{Kind: deployment.NotDeployed}, "no worker of this deployment's name"},
 		{deployment.Address{Kind: deployment.Deployed}, "no address a donor could be sent to"},
+		{deployment.Address{Kind: deployment.Deployed, Why: deployment.TurnedOff},
+			"workers.dev address is turned off"},
+		{deployment.Address{Kind: deployment.Deployed, Why: deployment.Unregistered},
+			"this account has never registered a workers.dev subdomain"},
+		{deployment.Address{Kind: deployment.Deployed, Why: deployment.Unknown},
+			"a workers.dev address this account would not name"},
 		{deployment.Address{Kind: deployment.AddressRefused, Detail: "Authentication error"},
 			"Authentication error"},
 		{deployment.Address{Kind: deployment.AddressUnreachable}, "could not read where"},
@@ -485,5 +505,95 @@ func TestTheEnginesOwnCountsAreCarriedThroughAndTheChainsStagesCountNothing(t *t
 	}
 	if len(named) != 1 || named[0] != "uploading bucket 2 of 5" {
 		t.Errorf("the stages named %v, want the engine's own words carried through", named)
+	}
+}
+
+func TestADeploymentWhoseOwnAddressIsOffIsTurnedOnAndReadAgain(t *testing.T) {
+	// the upload leaves the worker's own workers.dev off where the account had no name to switch it
+	// on under (../deploy/upload.go), so a deployment this press put up minutes ago stands there
+	// reachable by nobody — and the widget is registered against the host donors are challenged on.
+	one := landing()
+	one.own = deployment.Address{Kind: deployment.Deployed, Why: deployment.TurnedOff}
+	one.answering = deployment.Address{
+		Kind:       deployment.Deployed,
+		WorkersDev: "https://a-deployment.hound.workers.dev",
+	}
+
+	outcome := ran(t, one)
+
+	if outcome.Kind != Deployed {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	if strings.Join(one.hosts, ",") != "a-deployment.hound.workers.dev" {
+		t.Errorf("hosts = %v, want the address the second read answered", one.hosts)
+	}
+}
+
+func TestAnAddressThatIsNotOffIsLeftExactlyAsItIs(t *testing.T) {
+	// the switch is turned on where a deployment answers nowhere and never where it answers: an
+	// account with no workers.dev name of its own and a read that found nothing out are somewhere
+	// else for the operator to go, and a worker already answering is one this press touches nothing
+	// of.
+	for _, address := range []deployment.Address{
+		{Kind: deployment.Deployed, WorkersDev: "https://a-deployment.hound.workers.dev"},
+		{Kind: deployment.Deployed, Why: deployment.Unregistered},
+		{Kind: deployment.Deployed, Why: deployment.Unknown},
+		{Kind: deployment.NotDeployed},
+		{Kind: deployment.AddressRefused, Detail: "Authentication error"},
+	} {
+		one := landing()
+		one.own = address
+		ran(t, one)
+		if one.answered {
+			t.Errorf("%+v had its workers.dev switched on", address)
+		}
+	}
+}
+
+// the widget stage on its own, which is the press a `start` over a deployment already standing
+// makes to finish what a first run never landed
+// (../../cmd/better-giving/start.go's finishing).
+
+func TestTheWidgetStageRegistersAndWritesBothHalvesOnItsOwn(t *testing.T) {
+	one := landing()
+
+	stopped := Registering(context.Background(), one.bound())
+
+	if stopped.Kind != "" {
+		t.Fatalf("Registering = %+v, want every step of it landing", stopped)
+	}
+	if said(one.stages) != "widget" {
+		t.Errorf("stages = %v, want the one stage this press is", one.stages)
+	}
+	if len(one.published) != 1 || one.published[0]["TURNSTILE_SITE_KEY"] != "0x4" {
+		t.Errorf("published %v, want both halves of the widget written", one.published)
+	}
+	if one.made || one.databaseID != "" {
+		t.Error("a press that only registers the widget made a database")
+	}
+}
+
+func TestTheWidgetStageAloneCarriesTheSameOutcomeTheChainWould(t *testing.T) {
+	// the arms are the chain's own, so a finish that stopped is answered in the words the deploy
+	// that stopped in the same place is (../terminal/outcome.go).
+	one := landing()
+	one.supply = widget.Supply{Kind: widget.Ambiguous, Sitekeys: []string{"0x1", "0x2"}}
+
+	stopped := Registering(context.Background(), one.bound())
+
+	if stopped.Kind != NoWidget || stopped.Supply == nil || stopped.Supply.Kind != widget.Ambiguous {
+		t.Fatalf("Registering = %+v, want the widget's own answer whole", stopped)
+	}
+}
+
+func TestTheWidgetStageDrawsNothingWhereNobodyIsReporting(t *testing.T) {
+	// a finish draws no ledger: there is one stage and it stands under a wait of its own
+	// (../../cmd/better-giving/start.go's finishAt).
+	one := landing()
+	effects := one.bound()
+	effects.At = nil
+
+	if stopped := Registering(context.Background(), effects); stopped.Kind != "" {
+		t.Fatalf("Registering = %+v, want a press nobody is reporting to landing", stopped)
 	}
 }

@@ -34,6 +34,6 @@ func TestGivingUpAWaitNobodyWasWatchingIsStillTheEndOfIt(t *testing.T) {
 
 func TestAWaitNothingEverDrewIsStillAWaitToGiveUp(t *testing.T) {
 	// the caller with nothing to wait on holds one of these rather than a nil to check for at every
-	// place the drawing is given up (../../cmd/better-giving/start.go's readingAhead).
+	// place the drawing is given up (../../cmd/better-giving/start.go's waitingOver).
 	(&Wait{}).Done()
 }

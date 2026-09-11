@@ -32,9 +32,15 @@ import (
 // every credential this binary holds: each effect is a function, and nothing that decides what the
 // screen says is ever holding one.
 //
+// **it is bound for one stage as well as for the whole chain.** a `start` over a deployment that is
+// already standing finishes what a first run never landed by calling ../first's Registering with
+// this same set (../../cmd/better-giving/start.go's finishAt), so what a finish registers and what
+// a first deploy registers are one binding rather than two that can come to differ.
+//
 // `at` is where the run says it has got to, in the shape ../first's `Effects.At` states — `start`
 // draws a row from it (../terminal), which is not anything this file knows about. It is called on
-// the run's own goroutine, so a call that blocks holds the run up.
+// the run's own goroutine, so a call that blocks holds the run up. It is nil where nothing is
+// drawing a ledger, which is the press above: one stage, standing under a wait instead.
 func Chain(
 	at func(stage first.Stage, detail string, step, steps int),
 	door deployment.Door,
@@ -92,6 +98,9 @@ func Chain(
 		},
 		Own: func(ctx context.Context) deployment.Address {
 			return OwnAddress(ctx, door)
+		},
+		Answer: func(ctx context.Context) deployment.Address {
+			return deployment.Answering(ctx, sends(credential), door.AccountID, door.WorkerName)
 		},
 		Widget: func(ctx context.Context, hosts []string) widget.Supply {
 			return widget.Provide(ctx,

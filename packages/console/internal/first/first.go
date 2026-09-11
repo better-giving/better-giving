@@ -24,6 +24,12 @@
 // a deployment answering on no address this console can read is a widget registered against
 // nothing, so that is a stop of its own rather than a chain that landed.
 //
+// **one of the ways it answers nowhere is a switch and the rest are somewhere for the operator to
+// go.** a worker deployed with its own workers.dev turned off is turned on here and read again,
+// because this run uploaded it minutes earlier and nobody has chosen where it answers
+// (internal/deployment's Answering); an account with no workers.dev name, an account that would not
+// say what its name is, and a worker that is not there at all are each stopped on instead.
+//
 // **the widget is registered after the deploy, and that is what removes the caveat about a secret
 // held across minutes.** both its halves are vars, and a var is a read of the worker's bindings and
 // one patch back — seconds, no build, no migration, no second trip past the door. Made in front of
@@ -188,6 +194,10 @@ type Effects struct {
 	// knowable before the upload — and the address whole rather than the origin, because a read that
 	// found none says which of the five ways it did.
 	Own func(ctx context.Context) deployment.Address
+	// Answer turns this deployment's own workers.dev address on and reads where it answers then. It
+	// is reached on the one state below that is a switch rather than somewhere for the operator to
+	// go, and its answer is read exactly as Own's is — a switch cloudflare would not take included.
+	Answer func(ctx context.Context) deployment.Address
 	// Widget registers the spam widget against the hosts a form is served on, or adopts the one that
 	// is there. The host is this deployment's own, which is the only one this press has: a site is
 	// typed on the console's sites fold, and that press levels the widget behind it.
@@ -262,8 +272,39 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 		return Outcome{Kind: NoSignIn, Written: &written}
 	}
 
-	at(Widget)
+	if stopped := Registering(ctx, effects); stopped.Kind != "" {
+		return stopped
+	}
+
+	at(Connecting)
+	connection := effects.Connect(ctx)
+	if connection.Kind != deployment.Connected {
+		return Outcome{Kind: NoSession, Connection: &connection}
+	}
+	return Outcome{Kind: Deployed}
+}
+
+// Registering is the widget stage on its own: where this deployment answers read off the account,
+// the spam widget registered against it, and both its halves written as vars. The zero Outcome is
+// every step of it landing.
+//
+// **it is exported because a first run that stopped in front of it is never carried past it by
+// another chain.** the deployment is standing from the moment the deploy lands, so every later
+// press weighs it against this release and goes to the carry door and then the console — and what
+// reaches this stage again is a press of its own (../../cmd/better-giving/start.go's finishing).
+// A second spelling of these three acts is two presses that register differently.
+//
+// Every arm it stops on is the chain's own, so a finish that stopped is answered in the words a
+// deploy that stopped in the same place is (../terminal/outcome.go).
+func Registering(ctx context.Context, effects Effects) Outcome {
+	if effects.At != nil {
+		effects.At(Widget, "", 0, 0)
+	}
+
 	own := effects.Own(ctx)
+	if own.Kind == deployment.Deployed && own.Why == deployment.TurnedOff {
+		own = effects.Answer(ctx)
+	}
 	origin := strings.TrimSpace(own.Origin())
 	if origin == "" {
 		// nothing is asked of cloudflare: what did not happen is the widget's registration, and a
@@ -283,13 +324,7 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 	if published.Kind != deployment.WriteSet && published.Kind != deployment.WriteUnchanged {
 		return Outcome{Kind: Unkept, Supply: kept(supply), Written: &published}
 	}
-
-	at(Connecting)
-	connection := effects.Connect(ctx)
-	if connection.Kind != deployment.Connected {
-		return Outcome{Kind: NoSession, Connection: &connection}
-	}
-	return Outcome{Kind: Deployed}
+	return Outcome{}
 }
 
 // the widget as an outcome may carry it, which is without the half cloudflare keeps.
@@ -315,15 +350,36 @@ func hostless() *widget.Supply {
 // the five ways an address read ends are five different things for an operator to do, so the
 // sentence names which of them it was rather than reporting one absence — a worker that is not
 // there at all and one answering on nothing are opposite states wearing the same emptiness.
+//
+// **a worker that is up and answers on nothing is three of those states and not one**, and each is
+// somewhere different to go: an address switched off is turned back on, an account with no
+// workers.dev name of its own registers one, and an account that would not say what its name is was
+// never asked successfully at all. ../deployment/address.go is what each of the three is, and no
+// sentence here claims anything past it — the custom domains are not spoken for, since a worker
+// answering on none and a read that did not land leave the same empty list.
 func noOrigin(address deployment.Address) string {
 	switch {
 	case address.Kind == deployment.NotDeployed:
 		return "Cloudflare holds no worker of this deployment's name"
 	case address.Kind == deployment.Deployed:
-		return "this deployment answers on no address a donor could be sent to"
+		return deployedNowhere(address.Why)
 	case address.Detail != "":
 		return address.Detail
 	default:
 		return "this console could not read where this deployment answers"
+	}
+}
+
+// why a worker that is in the account answers on no address, by which of the three it was.
+func deployedNowhere(why deployment.NoWorkersDev) string {
+	switch why {
+	case deployment.TurnedOff:
+		return "this deployment's workers.dev address is turned off"
+	case deployment.Unregistered:
+		return "this account has never registered a workers.dev subdomain"
+	case deployment.Unknown:
+		return "this deployment answers on a workers.dev address this account would not name"
+	default:
+		return "this deployment answers on no address a donor could be sent to"
 	}
 }

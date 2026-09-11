@@ -111,3 +111,56 @@ func TestAWithheldStripeKeyIsStillAKeyTheDeploymentHolds(t *testing.T) {
 		t.Error("a key held as a credential was read as no key at all")
 	}
 }
+
+// what says a first run never reached the widget stage, read off the deployment rather than
+// remembered: the machine that stood a deployment up may not be the machine reading it now
+// (../../cmd/better-giving/start.go's finishing).
+
+func TestADeploymentHoldingNeitherHalfOfTheSpamPairNeverRegisteredOne(t *testing.T) {
+	read := varsRead(t, envelope(map[string]any{"bindings": []any{}}))
+
+	if !HoldsNoSpamPair(read) {
+		t.Error("a deployment holding neither half of the pair was read as carrying one")
+	}
+}
+
+func TestEitherHalfOfTheSpamPairIsAPairThisReadingLeavesAlone(t *testing.T) {
+	// the two go up in one write (../first), so one of them alone is a deployment somebody
+	// configured by hand rather than a stage that did not run.
+	for _, name := range []string{"TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY"} {
+		read := varsRead(t, envelope(map[string]any{"bindings": []any{
+			map[string]any{"name": name, "type": "plain_text", "text": "0x4"},
+		}}))
+
+		if HoldsNoSpamPair(read) {
+			t.Errorf("a deployment holding %s was read as holding neither half", name)
+		}
+	}
+}
+
+func TestAWithheldSpamHalfIsOneTheDeploymentHolds(t *testing.T) {
+	// the worker reads it and the only thing that cannot be done with it is drawing it here, which
+	// is ./HoldsStripeSecret's reading of the same state.
+	read := varsRead(t, envelope(map[string]any{"bindings": []any{
+		map[string]any{"name": "TURNSTILE_SITE_KEY", "type": "plain_text", "text": "0x4"},
+		map[string]any{"name": "TURNSTILE_SECRET_KEY", "type": "secret_text"},
+	}}))
+
+	if HoldsNoSpamPair(read) {
+		t.Error("a half held as a credential was read as no half at all")
+	}
+}
+
+func TestAReadThatDidNotLandClaimsNothingAboutTheSpamPair(t *testing.T) {
+	// a read that came back in none of its ways found nothing out, and a caller told the slots are
+	// empty on that registers a second widget over a deployment already carrying one.
+	for _, kind := range []ValuesKind{ValuesRefused, ValuesUnreachable, ValuesUnreadable, ValuesNotDeployed} {
+		if HoldsNoSpamPair(VarsRead{Kind: kind}) {
+			t.Errorf("a %s read was read as a deployment missing both halves", kind)
+		}
+	}
+	// and a reading carrying no row for either name says nothing either.
+	if HoldsNoSpamPair(VarsRead{Kind: ValuesRead}) {
+		t.Error("a reading with no row for either half was read as a deployment missing both")
+	}
+}
