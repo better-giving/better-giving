@@ -1327,7 +1327,11 @@ function UnreachableFace({
 		return (
 			<div className="adm-panel">
 				{title("Can't reach this deployment")}
-				<p className="adm-prose">Check this machine's internet connection.</p>
+				<p className="adm-prose">
+					Nothing answered at that address. A deployment set up in the last few minutes can take a
+					little longer to start answering. If it's older than that, check this machine's internet
+					connection.
+				</p>
 				{rows}
 				{recheck}
 			</div>
