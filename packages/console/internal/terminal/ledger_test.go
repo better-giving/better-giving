@@ -240,7 +240,9 @@ func TestTheChildrenOfTheRowTheRunIsInsideAreDrawnUnderItEachInItsOwnState(t *te
 	upload := ChainRows[2]
 	said := lines(uploading())
 
-	if !strings.Contains(said[2], upload.Running) || strings.HasPrefix(said[2], nested) {
+	// the row itself and never one of its children: a child is drawn in from ./nested and carries
+	// a mark of its own, and this one is at the margin with the mark column blank (./line).
+	if !strings.HasPrefix(said[2], unmarked+" "+upload.Running) {
 		t.Fatalf("the row the run is inside is drawn as %q", said[2])
 	}
 	if !strings.HasPrefix(said[3], nested) || !strings.Contains(said[3], upload.Children[0].Done) {
@@ -605,5 +607,88 @@ func TestTheConsoleNamingItselfIsTheBareNameWhateverFileItIsRunningFrom(t *testi
 	}
 	if said := press(where, []string{"start"}); said != where+" start" {
 		t.Errorf("a press is typed %q, want the file this terminal can run", said)
+	}
+}
+
+func TestTheBarIsDrawnFromTheBrailleCellsTheBrowserConsoleWaitsOn(t *testing.T) {
+	// packages/operator/src/styles/adm.css's adm-braille-bar draws the browser's own wait from this
+	// pair, and one product has one waiting mark: a terminal drawing a different one is the same
+	// wait rendered as two different things.
+	if barFull != "⣿" || barEmpty != "⣀" {
+		t.Errorf("the bar is drawn from %q and %q, want the braille pair", barFull, barEmpty)
+	}
+	part := bar(1, 4)
+	if want := strings.Repeat("⣿", 3) + strings.Repeat("⣀", 9); toneless.ReplaceAllString(part, "") != want {
+		t.Errorf("a quarter-counted bar draws %q, want %q", toneless.ReplaceAllString(part, ""), want)
+	}
+	if drawn := toneless.ReplaceAllString(bar(4, 4), ""); drawn != strings.Repeat("⣿", barCells) {
+		t.Errorf("a counted-out bar draws %q, want every cell full", drawn)
+	}
+}
+
+func TestEveryWaitTurnsOnTheSameBrailleCycle(t *testing.T) {
+	// one drawing style for a run's rows and for the waits in front of them (./waiting.go), and the
+	// cycle is the braille one the bar fills with rather than a second vocabulary a line above it.
+	want := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	turns := turningSpinner()
+	if got := strings.Join(turns.Spinner.Frames, ""); got != strings.Join(want, "") {
+		t.Errorf("the spinner turns on %q, want the braille cycle %q", got, strings.Join(want, ""))
+	}
+	for _, frame := range turns.Spinner.Frames {
+		// spinner.Dot's frames carry a trailing space, which would shift every row's words by a
+		// column against the rows drawn with ./check and ./unmarked.
+		if frame != strings.TrimSpace(frame) {
+			t.Errorf("the frame %q is padded, so a turning row sits a column off every other row",
+				frame)
+		}
+	}
+	if drawing(UpdateRows).spin.Spinner.Frames[0] != want[0] {
+		t.Errorf("a ledger turns on a cycle of its own, want the one every wait turns on")
+	}
+}
+
+func TestARowWithChildrenTurnsNothingAndTheChildTheRunIsInsideTurns(t *testing.T) {
+	// two marks turning a line apart read as two jobs where there is one, and the one the run is
+	// actually inside is the child. the parent keeps its running words and loses only the motion.
+	upload := ChainRows[2]
+	said := lines(uploading())
+	turning := drawing(ChainRows).spin.View()
+
+	if !strings.HasPrefix(said[2], unmarked+" ") {
+		t.Errorf("the row with children is drawn as %q, want the mark column left blank", said[2])
+	}
+	if !strings.Contains(said[2], upload.Running) {
+		t.Errorf("the row with children lost its running words: %q", said[2])
+	}
+	if !strings.Contains(said[4], turning) {
+		t.Errorf("the child the run is inside is drawn as %q, want it turning", said[4])
+	}
+}
+
+func TestARowWithNoChildrenStillTurnsWhileTheRunIsInsideIt(t *testing.T) {
+	// the blank mark is about the children and never about the row: a row that is the whole of what
+	// is being waited on is the one the motion belongs to.
+	// ./assets is the one row of a first deploy that is the whole of its own wait.
+	said := lines(drawing(ChainRows).folding(reached{stage: first.Stage(deploy.Fetching)}))
+	turning := drawing(ChainRows).spin.View()
+
+	if !strings.HasPrefix(said[0], turning+" ") {
+		t.Errorf("the row the run is inside is drawn as %q, want it turning", said[0])
+	}
+}
+
+func TestARunThatStoppedInsideARowLeavesNothingTurningOnIt(t *testing.T) {
+	// a mark still turning under a process that is over reads as a run still going, and this is the
+	// screen an operator is left looking at.
+	stopped := drawing(ChainRows).folding(reached{stage: first.Stage(deploy.Fetching)})
+	stopped.end = Stopped
+	said := lines(stopped)
+
+	if !strings.HasPrefix(said[0], unmarked+" ") {
+		t.Errorf("the row the run stopped inside is drawn as %q, want nothing turning on it",
+			said[0])
+	}
+	if !strings.Contains(said[0], ChainRows[0].Running) {
+		t.Errorf("the row the run stopped inside lost its running words: %q", said[0])
 	}
 }

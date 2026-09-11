@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	"github.com/better-giving/console/internal/terminal"
@@ -88,14 +87,14 @@ func updating(read releases.Read, to io.Writer, install func(releases.Read) erro
 		if err := install(read); err != nil {
 			return err
 		}
-		fmt.Fprintln(to)
-		fmt.Fprintln(to, terminal.NowOnThenStart(read.Version))
+		terminal.Lines(to)
+		terminal.Say(to, terminal.NowOnThenStart(read.Version))
 		return nil
 	case releases.Current:
-		fmt.Fprintln(to, alreadyCurrent)
+		terminal.Say(to, alreadyCurrent)
 		return nil
 	default:
-		fmt.Fprintln(to, noReading)
+		terminal.Say(to, noReading)
 		return nil
 	}
 }

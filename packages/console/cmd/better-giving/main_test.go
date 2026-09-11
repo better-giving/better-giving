@@ -54,8 +54,8 @@ func TestAStopWaitsForThePressStillGoingAndNamesItOnce(t *testing.T) {
 	if !strings.Contains(said.String(), "a deploy is still running (migrating)") {
 		t.Errorf("said %q, want the press named", said.String())
 	}
-	if strings.Count(said.String(), "\n") != 1 {
-		t.Errorf("said %q, want one line and not one per reading", said.String())
+	if strings.Count(said.String(), "waiting for it to finish") != 1 {
+		t.Errorf("said %q, want one block and not one per reading", said.String())
 	}
 }
 
@@ -165,8 +165,8 @@ func TestALaunchNamesAConsoleNewerThanThisOneOnceAndSaysWhereItComesFrom(t *test
 	if !strings.Contains(said.String(), release.ReleasesPage) {
 		t.Errorf("said %q, want where it is installed from", said.String())
 	}
-	if strings.Count(said.String(), "\n") != 1 {
-		t.Errorf("said %q, want one line", said.String())
+	if strings.Count(said.String(), "of this console is out") != 1 {
+		t.Errorf("said %q, want one block", said.String())
 	}
 }
 
@@ -210,7 +210,7 @@ func TestAskingASubcommandWhatItTakesEndsItWithNoError(t *testing.T) {
 	if on || err != nil {
 		t.Errorf("read(-h) = %v, %v, want a command that ends having answered", on, err)
 	}
-	if !strings.Contains(help.String(), startTakes) {
+	if !strings.Contains(flowing(help.String()), flowing(startTakes)) {
 		t.Errorf("said %q, want what the command takes", help.String())
 	}
 	if !strings.Contains(help.String(), "port") {
@@ -239,7 +239,7 @@ func TestAnOptionASubcommandDoesNotKnowIsNamedOnceUnderWhatItDoesTake(t *testing
 	if !strings.Contains(wrong.String(), "yes") {
 		t.Errorf("said %q, want the option that was not understood named", wrong.String())
 	}
-	if !strings.Contains(wrong.String(), updateTakes) {
+	if !strings.Contains(flowing(wrong.String()), flowing(updateTakes)) {
 		t.Errorf("said %q, want what this command does take", wrong.String())
 	}
 	if strings.Count(wrong.String(), "yes") > 1 {
@@ -278,7 +278,7 @@ func TestACommandTakingNoOptionsStillAnswersWhatItTakesAndDoesNothing(t *testing
 			if err != nil {
 				t.Errorf("%s %s = %v, want a command that ends having answered", asked.name, help, err)
 			}
-			if !strings.Contains(out.String(), asked.says) {
+			if !strings.Contains(flowing(out.String()), flowing(asked.says)) {
 				t.Errorf("%s %s said %q, want what the command takes", asked.name, help, out.String())
 			}
 			if wrong.String() != "" {
@@ -459,7 +459,7 @@ func TestAPortThisRunCanTakeIsHeldBeforeTheAddressIsSaid(t *testing.T) {
 	// the account is remembered between runs and drawn on no screen after the first, so `open` —
 	// which asks nothing and makes nothing — would otherwise serve a console of readings without
 	// ever saying whose account they are about.
-	if !strings.Contains(said.String(), "Acme Giving") {
+	if !strings.Contains(flowing(said.String()), "Acme Giving") {
 		t.Errorf("said %q, want the account this console is operating", said.String())
 	}
 	if at != "http://"+stated {
@@ -531,7 +531,7 @@ func TestAnArgumentNoSubcommandTakesIsRefusedRatherThanPassedOver(t *testing.T) 
 		if !strings.Contains(wrong.String(), last) {
 			t.Errorf("%s said %q, want %q named", command.name, wrong.String(), last)
 		}
-		if !strings.Contains(wrong.String(), command.says) {
+		if !strings.Contains(flowing(wrong.String()), flowing(command.says)) {
 			t.Errorf("%s said %q, want what this command does take", command.name, wrong.String())
 		}
 		if help.String() != "" {
@@ -683,7 +683,7 @@ func TestAStopSaysWhatItLeftBehindWhereTheAnswersGo(t *testing.T) {
 	if err := endRun(&said, &http.Server{}, &server.Presses{}); err != nil {
 		t.Fatalf("endRun = %v, want a server that was never serving shut cleanly", err)
 	}
-	if !strings.Contains(said.String(), stillUp) {
+	if !strings.Contains(flowing(said.String()), flowing(stillUp)) {
 		t.Errorf("said %q, want what a stop leaves behind on the writer this run answers on",
 			said.String())
 	}
@@ -902,6 +902,10 @@ func TestReadsThatFoundOutNothingMarkNothing(t *testing.T) {
 // line. what is worth holding is what the marking could break — the column the help block stands
 // in, and the two values ../../internal/terminal marks for itself.
 
+// a block as one line, so that a case asserting a sentence asserts the words and not where
+// ../../internal/terminal/say.go broke them.
+func flowing(said string) string { return strings.ReplaceAll(said, "\n", " ") }
+
 // a drawn line with any tone taken off.
 var toneless = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
@@ -919,6 +923,7 @@ func TestTheHelpBlockDrawsEveryDescriptionInTheSameColumn(t *testing.T) {
   login                         sign in to Cloudflare, and choose the account this machine operates
   logout                        give up the sign-in this machine holds
   version                       what this binary is, and what it was baked for
+
 `
 	if drawn := toneless.ReplaceAllString(said.String(), ""); drawn != want {
 		t.Errorf("the help block draws\n%s\nwant\n%s", drawn, want)

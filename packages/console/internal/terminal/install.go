@@ -1,7 +1,6 @@
 package terminal
 
 import (
-	"fmt"
 	"io"
 
 	"github.com/better-giving/console/internal/release"
@@ -49,8 +48,8 @@ func ConfirmNewer(in io.Reader, to io.Writer, version string) Confirmation {
 		return Unattended
 	}
 	clear(to)
-	fmt.Fprintf(to, "version %s of this console is out, and a console deploys only the release it\n"+
-		"was built with.\n\n", version)
+	Say(to, "version "+version+" of this console is out, and a console deploys only the release "+
+		"it was built with.")
 	return confirming(in, to, updatingConsole(version))
 }
 

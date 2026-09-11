@@ -303,7 +303,7 @@ func TestTheCountInflectsItsOwnNounAtBothDoors(t *testing.T) {
 	} {
 		said := &bytes.Buffer{}
 		ConfirmCarry(strings.NewReader("n"), said, onDeployment, carried, held.names, nil, "")
-		if !strings.Contains(said.String(), held.want) {
+		if !strings.Contains(flowing(said.String()), held.want) {
 			t.Errorf("said %q, want %q", said.String(), held.want)
 		}
 		if strings.Contains(said.String(), "migration(s)") {
@@ -314,7 +314,7 @@ func TestTheCountInflectsItsOwnNounAtBothDoors(t *testing.T) {
 	said := &bytes.Buffer{}
 	ConfirmCarry(strings.NewReader("y"), said, onDeployment, carried,
 		[]string{"0007_donors.sql"}, []string{"0009_pledges.sql"}, "")
-	if !strings.Contains(said.String(), "1 migration") {
+	if !strings.Contains(flowing(said.String()), "1 migration") {
 		t.Errorf("said %q, want the count inflected on the refusal too", said.String())
 	}
 	if strings.Contains(said.String(), "migration(s)") {
@@ -480,5 +480,21 @@ func TestEveryDoorPutsTwoAnswersAndNothingUnderThem(t *testing.T) {
 			t.Errorf("%q: the row under the refusal = %q, want the list come round to the act",
 				put.title, said)
 		}
+	}
+}
+
+func TestTheDoorsBlocksStandOneBlankLineApart(t *testing.T) {
+	// the line about the console, the facts, the sentence about the database and the files it names
+	// are four blocks, and a screen that ran them together is the wall this measure exists against.
+	said := &bytes.Buffer{}
+	ConfirmCarry(strings.NewReader(""), said, onDeployment, carried,
+		[]string{"0013_pledges.sql"}, nil, "version 0.4.0 of this console is out")
+
+	if strings.Contains(said.String(), "\n\n\n") {
+		t.Errorf("said %q, want blocks one blank line apart", said.String())
+	}
+	if blocks := strings.Count(said.String(), "\n\n"); blocks != 4 {
+		t.Errorf("said %q, which is %d blocks and not the four this door draws", said.String(),
+			blocks)
 	}
 }

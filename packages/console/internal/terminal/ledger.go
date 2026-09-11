@@ -261,8 +261,20 @@ func drawing(rows []Row) ledger {
 		at:      nowhere,
 		now:     time.Now,
 		end:     Underway,
-		spin:    spinner.New(spinner.WithSpinner(spinner.Line), spinner.WithStyle(turning)),
+		spin:    turningSpinner(),
 	}
+}
+
+// the one spinner this package turns, wherever it is waiting.
+//
+// **the cycle is the braille the bar fills with** (./barFull), so a row turning and a row filling
+// are the same mark moving rather than two vocabularies a line apart. bubbles' own Dot pads every
+// frame with a trailing space, which would sit a turning row one column off every row drawn with
+// ./check or ./unmarked; MiniDot's frames are one cell each, and ./ledger_test.go holds that.
+//
+// ./waiting.go turns on this too: one drawing for a run's rows and for the waits in front of them.
+func turningSpinner() spinner.Model {
+	return spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(turning))
 }
 
 // folds one report into the line the run is in.
@@ -360,9 +372,12 @@ func (drawn ledger) line(row Row, mark Mark, under, beside string) string {
 		return under + check.String() + " " + row.Done
 	case Working:
 		said := row.Running + beside
-		if drawn.end != Underway {
-			// a run that ended inside a row makes no claim about that row either way, so the mark
-			// it carried while the run was live goes with the run.
+		// the mark turns only where the run is really inside this row. a run that ended inside one
+		// makes no claim about that row either way, so the mark it carried while the run was live
+		// goes with the run; and a row with children hands the motion down for the reason ./View
+		// gives above its own beside, the child being the thing the run is actually inside. the
+		// words are untouched either way: the row is still the one being waited on.
+		if drawn.end != Underway || len(row.Children) > 0 {
 			return under + unmarked + " " + said
 		}
 		return under + drawn.spin.View() + " " + said
@@ -552,9 +567,15 @@ func timed(taken time.Duration) string {
 const barCells = 12
 
 // the cells a bar is drawn from: the ones the run is past, and the ones it is not.
+//
+// **the pair is packages/operator/src/styles/adm.css's, and this is the one value in this file
+// taken from a browser surface.** that sheet's adm-braille-bar draws the console's own wait from
+// these two codepoints, and one product has one waiting mark: a terminal filling with something
+// else is the same wait drawn as two different things. nothing here reads that sheet, so the pair
+// is held by ./ledger_test.go instead.
 const (
-	barFull  = "\u2501"
-	barEmpty = "\u2500"
+	barFull  = "\u28ff"
+	barEmpty = "\u28c0"
 )
 
 // how far into a counted stage the run is, drawn and said, as one of ./notes.

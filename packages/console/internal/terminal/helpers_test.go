@@ -17,6 +17,10 @@ func stages(held []first.Stage) string {
 	return strings.Join(words, " ")
 }
 
+// a block as one line, so that a case asserting a sentence asserts the words and not where ./say.go
+// broke them.
+func flowing(said string) string { return strings.ReplaceAll(said, "\n", " ") }
+
 func same(t *testing.T, what, got, want string) {
 	t.Helper()
 	if got != want {

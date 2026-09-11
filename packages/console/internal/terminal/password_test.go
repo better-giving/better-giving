@@ -118,7 +118,7 @@ func TestTheScreenIsErasedBeforeThePreambleIsDrawnOnIt(t *testing.T) {
 	// sees no escape at all (./clear.go writes none at one), so what is asserted is the heading as a
 	// value rather than the run of a prompt.
 	preamble := "deploying into your Cloudflare account Acme Giving (ac1). this makes:"
-	said := heading(true, preamble)
+	said := heading(true, preamble, widest)
 
 	if !strings.HasPrefix(said, clearScreen) {
 		t.Errorf("heading = %q, want the screen erased before anything is drawn on it", said)
@@ -126,10 +126,10 @@ func TestTheScreenIsErasedBeforeThePreambleIsDrawnOnIt(t *testing.T) {
 	if !strings.Contains(said, preamble) {
 		t.Errorf("heading = %q, want what this press is about to make named", said)
 	}
-	if drawn := heading(false, preamble); strings.Contains(drawn, "\033") {
+	if drawn := heading(false, preamble, widest); strings.Contains(drawn, "\033") {
 		t.Errorf("heading at a run nobody is watching = %q, want a record with no escape in it", drawn)
 	}
-	if held := heading(true, ""); held != clearScreen {
+	if held := heading(true, "", widest); held != clearScreen {
 		t.Errorf("heading = %q, want the erase alone where the caller has nothing to say", held)
 	}
 }
@@ -148,5 +148,17 @@ func TestTheBoxDrawsWhatIsTypedIntoItRatherThanAMask(t *testing.T) {
 	typed := strings.Repeat("a", release.MinAdminPasswordLength-1) + "Z"
 	if drawn := passwordBox(&typed).View(); !strings.Contains(drawn, typed) {
 		t.Errorf("the box drew %q, want the password legible in it", drawn)
+	}
+}
+
+func TestWhatStandsAboveAQuestionIsBrokenToTheMeasure(t *testing.T) {
+	// the preamble is the caller's own words and the longest block of prose in a first run
+	// (../../cmd/better-giving/start.go's aboutToMake), so a heading that printed it whole is the
+	// one screen this measure does not reach.
+	said := heading(false, strings.Repeat("word ", 40), widest)
+	for _, line := range strings.Split(said, "\n") {
+		if len(line) > widest {
+			t.Errorf("a line of the heading runs to %d columns: %q", len(line), line)
+		}
 	}
 }

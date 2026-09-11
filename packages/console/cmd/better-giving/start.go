@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
 
 	"github.com/better-giving/console/internal/account"
 	"github.com/better-giving/console/internal/cf"
@@ -223,9 +224,7 @@ func start(args []string, to, wrong io.Writer) error {
 			named := deployment.AccountName(ctx, door.Get, in.ID)
 			silence.Done()
 
-			if newerConsole != "" {
-				fmt.Fprintln(to, newerConsole)
-			}
+			terminal.Say(to, newerConsole)
 			return standingUp(to,
 				func() (net.Listener, error) { return beforeTheDeploy(*port) },
 				func() (first.Asked, bool, error) { return ask(aboutToMake(in, named)) },
@@ -375,16 +374,14 @@ func standingUp(
 		if err != nil || !settled {
 			return false, closed(to, err)
 		}
-		if said != "" {
-			fmt.Fprintln(to, said)
-		}
+		terminal.Say(to, said)
 
 		reporting, serving, err := afterTheChain(running(asked))
 		if err != nil {
 			return false, err
 		}
 		if reporting {
-			fmt.Fprintln(to, where())
+			terminal.Say(to, where())
 		}
 		return serving, nil
 	}, console)
@@ -458,10 +455,8 @@ func catchingUp(
 		deployed := weighing()
 		if alreadyCarrying(deployed, carrying) {
 			settled()
-			if newerConsole != "" {
-				fmt.Fprintln(to, newerConsole)
-			}
-			fmt.Fprintln(to, where())
+			terminal.Say(to, newerConsole)
+			terminal.Say(to, where())
 			return true, nil
 		}
 		onto.Release = deployed
@@ -475,9 +470,7 @@ func catchingUp(
 		if err != nil || !serving {
 			return serving, err
 		}
-		if said := finish(); said != "" {
-			fmt.Fprintln(to, said)
-		}
+		terminal.Say(to, finish())
 		return true, nil
 	}, func(bound net.Listener) error { return console(bound, named) })
 }
@@ -583,7 +576,7 @@ func workersDevRow(in account.Account, held deployment.Named) string {
 // is the other thing, which says what happened itself.
 func closed(to io.Writer, err error) error {
 	if err == nil {
-		fmt.Fprintln(to, "nothing was created and nothing was deployed")
+		terminal.Say(to, "nothing was created and nothing was deployed")
 	}
 	return err
 }
@@ -864,12 +857,8 @@ func chainAt(
 	shown := drawn.Show()
 	halted := drawn.Halted()
 	said, wrong := terminal.Settled(shown, halted, "a deploy")
-	if wrong != "" {
-		fmt.Fprintln(os.Stderr, wrong)
-	}
-	if said != "" {
-		fmt.Println(said)
-	}
+	terminal.Say(os.Stderr, wrong)
+	terminal.Say(os.Stdout, said)
 	return <-ended, halted
 }
 
@@ -889,9 +878,22 @@ func reported(sentence, said string) error {
 // at, so what it has is a line rather than an error.
 func quoting(sentence, said string) string {
 	if said != "" {
-		sentence += "\n\nwhy:\n" + said
+		sentence += "\n\nwhy:\n" + setIn(said)
 	}
 	return sentence
+}
+
+// what cloudflare said, set in from the margin.
+//
+// the margin is what keeps it whole: a line that is indented is layout and goes out exactly as it
+// arrived (../../internal/terminal/say.go), and an answer folded to a reading measure is one an
+// operator can no longer search for.
+func setIn(said string) string {
+	rows := strings.Split(said, "\n")
+	for row := range rows {
+		rows[row] = "  " + rows[row]
+	}
+	return strings.Join(rows, "\n")
 }
 
 // what a chain that did not land is answered with.
@@ -987,9 +989,7 @@ func carryingOver(
 		return false, reported(why, read.Detail)
 	}
 	said, went, err := atTheDoor(asking(onto, read))
-	if said != "" {
-		fmt.Fprintln(to, said)
-	}
+	terminal.Say(to, said)
 	if err != nil {
 		return false, err
 	}
@@ -1004,7 +1004,7 @@ func carryingOver(
 	if err := afterTheCarry(ran); err != nil {
 		return false, err
 	}
-	fmt.Fprintln(to, landed)
+	terminal.Say(to, landed)
 	return !halted, nil
 }
 
@@ -1218,12 +1218,8 @@ func carryAt(ctx context.Context, made effects.Carrying) (effects.Carried, bool)
 	shown := drawn.Show()
 	halted := drawn.Halted()
 	said, wrong := terminal.Settled(shown, halted, "an update")
-	if wrong != "" {
-		fmt.Fprintln(os.Stderr, wrong)
-	}
-	if said != "" {
-		fmt.Println(said)
-	}
+	terminal.Say(os.Stderr, wrong)
+	terminal.Say(os.Stdout, said)
 	return <-ended, halted
 }
 

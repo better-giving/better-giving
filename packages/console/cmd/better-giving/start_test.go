@@ -1488,7 +1488,7 @@ func TestTheNameIsSettledAfterBothQuestionsAndInFrontOfTheChain(t *testing.T) {
 	}
 	// the line stands above the ledger, which is the one place it can be read: the chain draws over
 	// the screen from the moment it starts.
-	said := deploy.said.String()
+	said := flowing(deploy.said.String())
 	if !strings.Contains(said, "registered hound.workers.dev") {
 		t.Errorf("said %q, want what this run registered", said)
 	}

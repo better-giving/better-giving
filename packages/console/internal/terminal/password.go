@@ -48,7 +48,7 @@ import (
 // empty where it has nothing. False with no error is the operator closing the prompt, which
 // ./prompt.go argues is a press not made rather than a failure to report.
 func AskPassword(in io.Reader, to io.Writer, preamble string) (string, bool, error) {
-	_, _ = io.WriteString(to, heading(onScreen(to), preamble))
+	_, _ = io.WriteString(to, heading(onScreen(to), preamble, measure(to)))
 	if !attended(in, to) {
 		return "", false, noTerminal{"a password for the dashboard"}
 	}
@@ -89,13 +89,16 @@ func passwordBox(into *string) *huh.Input {
 // written at a terminal alone, so a case driving this prompt over a buffer sees nothing of it and a
 // clear deleted or moved below the preamble would pass every one of them
 // (./password_test.go). `cleared` is that reading, taken by the caller.
-func heading(cleared bool, preamble string) string {
+//
+// `at` is the measure the caller's words are broken to, taken off the same end of the prompt for
+// the same reason (./say.go).
+func heading(cleared bool, preamble string, at int) string {
 	said := ""
 	if cleared {
 		said = clearScreen
 	}
 	if preamble != "" {
-		said += preamble + "\n\n"
+		said += wrap(preamble, at) + "\n\n"
 	}
 	return said
 }

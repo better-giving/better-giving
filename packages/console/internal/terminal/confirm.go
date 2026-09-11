@@ -2,7 +2,6 @@ package terminal
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"strconv"
 
@@ -106,9 +105,9 @@ func ConfirmCarry(
 ) Confirmation {
 	if len(ahead) > 0 {
 		above(to, newer)
-		fmt.Fprintf(to, "this deployment was put up by a newer console: its database records %s\n"+
-			"this binary does not carry, so nothing here can carry it forward.\n",
-			migrations(len(ahead)))
+		Say(to, "this deployment was put up by a newer console: its database records "+
+			migrations(len(ahead))+" this binary does not carry, so nothing here can carry it "+
+			"forward.")
 		list(to, ahead)
 		return Ahead
 	}
@@ -151,8 +150,8 @@ func naming(to io.Writer, pending []string) {
 	if len(pending) == 0 {
 		return
 	}
-	fmt.Fprintf(to, "this deploy applies %s to the live database, which cannot be\n"+
-		"undone:\n", migrations(len(pending)))
+	Say(to, "this deploy applies "+migrations(len(pending))+" to the live database, which "+
+		"cannot be undone:")
 	list(to, pending)
 }
 
@@ -202,7 +201,7 @@ func above(to io.Writer, line string) {
 	if line == "" {
 		return
 	}
-	fmt.Fprintf(to, "%s\n\n", line)
+	Say(to, line)
 }
 
 // what the act would be applied to, one fact to the line, with a blank line under it so that what
@@ -227,17 +226,18 @@ func above(to io.Writer, line string) {
 // leave the terminal and read. Both are empty for a binary that names no release, and the version
 // line goes with them — there is no move to state when one end of it does not exist.
 func object(to io.Writer, at Deployment, offering, notes string) {
+	rows := make([]string, 0, 4)
 	if at.Account != "" {
-		fmt.Fprintf(to, "Cloudflare account: %s\n", at.Account)
+		rows = append(rows, "Cloudflare account: "+at.Account)
 	}
-	fmt.Fprintf(to, "deployment: %s\n", answering(at))
+	rows = append(rows, "deployment: "+answering(at))
 	if offering != "" {
-		fmt.Fprintf(to, "version: %s \u2192 %s\n", onRelease(at), offering)
+		rows = append(rows, "version: "+onRelease(at)+" \u2192 "+offering)
 	}
 	if notes != "" {
-		fmt.Fprintf(to, "release notes: %s\n", Code(notes))
+		rows = append(rows, "release notes: "+Code(notes))
 	}
-	fmt.Fprintln(to)
+	Lines(to, rows...)
 }
 
 // which release the deployment is on, or that this console could not find out.
@@ -350,7 +350,9 @@ func confirming(in io.Reader, to io.Writer, put question) Confirmation {
 }
 
 func list(to io.Writer, names []string) {
+	rows := make([]string, 0, len(names))
 	for _, name := range names {
-		fmt.Fprintf(to, "  %s\n", name)
+		rows = append(rows, "  "+name)
 	}
+	Lines(to, rows...)
 }

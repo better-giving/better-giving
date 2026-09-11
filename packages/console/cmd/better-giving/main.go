@@ -69,7 +69,7 @@ func exitCode(to io.Writer, err error) int {
 		return 0
 	}
 	if !errors.Is(err, errSaid) {
-		fmt.Fprintf(to, "%s: %v\n", terminal.Cmd(), err)
+		terminal.Say(to, fmt.Sprintf("%s: %v", terminal.Cmd(), err))
 	}
 	return 1
 }
@@ -141,15 +141,17 @@ var commands = []struct{ takes, does string }{
 // column measured off the drawn span would be short by however many characters the terminal
 // swallows — and the descriptions would land in as many different places as there are presses.
 func usage(to io.Writer) {
-	fmt.Fprintf(to, "%s — the operator console\n\n", terminal.Cmd())
+	terminal.Say(to, terminal.Cmd()+" — the operator console")
 	column := 0
 	for _, one := range commands {
 		column = max(column, utf8.RuneCountInString(one.takes)+2)
 	}
+	rows := make([]string, 0, len(commands))
 	for _, one := range commands {
-		fmt.Fprintf(to, "  %s%s%s\n", terminal.Code(one.takes),
-			strings.Repeat(" ", column-utf8.RuneCountInString(one.takes)), one.does)
+		rows = append(rows, "  "+terminal.Code(one.takes)+
+			strings.Repeat(" ", column-utf8.RuneCountInString(one.takes))+one.does)
 	}
+	terminal.Lines(to, rows...)
 }
 
 // how a subcommand reads what was typed after its name.
@@ -211,12 +213,12 @@ func (taken *options) read(args []string, help, wrong io.Writer) (bool, error) {
 		taken.say(help)
 		return false, nil
 	case err != nil:
-		fmt.Fprintf(wrong, "%s: %v\n", terminal.Cmd(), err)
+		terminal.Say(wrong, fmt.Sprintf("%s: %v", terminal.Cmd(), err))
 		taken.say(wrong)
 		return false, errSaid
 	case taken.flags.NArg() > 0:
-		fmt.Fprintf(wrong, "%s: %s takes no argument, and was handed %q\n",
-			terminal.Cmd(), terminal.Code(taken.flags.Name()), taken.flags.Arg(0))
+		terminal.Say(wrong, fmt.Sprintf("%s: %s takes no argument, and was handed %q",
+			terminal.Cmd(), terminal.Code(taken.flags.Name()), taken.flags.Arg(0)))
 		taken.say(wrong)
 		return false, errSaid
 	default:
@@ -226,7 +228,7 @@ func (taken *options) read(args []string, help, wrong io.Writer) (bool, error) {
 
 // what this command takes, with the options themselves under it.
 func (taken *options) say(to io.Writer) {
-	fmt.Fprintln(to, taken.says)
+	terminal.Say(to, taken.says)
 	taken.flags.SetOutput(to)
 	taken.flags.PrintDefaults()
 }
@@ -329,9 +331,7 @@ func certainlyNotDeployed(
 // that install as a press of its own (./update.go); `open` deploys nothing, so naming where the
 // newer console comes from is the whole of what it can do about one.
 func sayNewer(ctx context.Context, to io.Writer, get cf.Get) {
-	if line := newer(releases.Latest(ctx, get, version)); line != "" {
-		fmt.Fprintln(to, line)
-	}
+	terminal.Say(to, newer(releases.Latest(ctx, get, version)))
 }
 
 // the same line as a value, or empty where this console is the current one.
@@ -407,7 +407,7 @@ func aboutTheConsole(
 		case terminal.Declined:
 			return "", nil
 		default:
-			fmt.Fprintln(to, newer(read))
+			terminal.Say(to, newer(read))
 			return "", nil
 		}
 	default:
@@ -464,9 +464,9 @@ func installing(
 	to io.Writer,
 	fix terminal.Repair,
 ) (releases.Landed, error) {
-	fmt.Fprintln(to, terminal.InstallingNewer(read.Version))
+	terminal.Say(to, terminal.InstallingNewer(read.Version))
 	landed := releases.Install(ctx, read.Version, func(done releases.Step, at releases.Landed) {
-		fmt.Fprintln(to, terminal.InstallStep(done, at))
+		terminal.Line(to, terminal.InstallStep(done, at))
 	})
 	if landed.Kind != releases.Replaced {
 		return landed, reported(terminal.InstallStopped(landed, fix), landed.Detail)
@@ -483,8 +483,8 @@ func installed(ctx context.Context, read releases.Read, to io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(to)
-	fmt.Fprintln(to, terminal.NowOn(read.Version))
+	terminal.Lines(to)
+	terminal.Say(to, terminal.NowOn(read.Version))
 	return asNewer(landed.Path, terminal.Starting)
 }
 
@@ -589,7 +589,9 @@ func serve(
 		}
 		return err
 	case <-ctx.Done():
-		fmt.Fprintln(to, "\nstopping")
+		// the break above the word lands under the terminal's own `^C`, which the operator's
+		// press leaves on the line the cursor is sitting on.
+		terminal.Say(to, "\nstopping")
 		// the signal is handed back before the wait rather than at the end of this function: while it
 		// is diverted here every later interrupt is swallowed, and the second ctrl-c is the only way
 		// out of a press that never ends.
@@ -598,7 +600,7 @@ func serve(
 	case <-closed:
 		// the same end, asked for from the page rather than from this window: the operator closed
 		// the console they were looking at, and this is the terminal that has to say so.
-		fmt.Fprintln(to, "the console was closed from its page, stopping")
+		terminal.Say(to, "the console was closed from its page, stopping")
 		stop()
 		return endRun(to, listening, presses)
 	}
@@ -660,8 +662,8 @@ func saying(to io.Writer, bound net.Listener, whose string, openAt func(string))
 	if whose != "" {
 		operating = ", operating Cloudflare account " + whose
 	}
-	fmt.Fprintf(to, "the console is at %s%s — press ctrl-c to stop it\n",
-		terminal.Code(where), operating)
+	terminal.Say(to, "the console is at "+terminal.Code(where)+operating+
+		" — press ctrl-c to stop it")
 	if openAt != nil {
 		openAt(where)
 	}
@@ -693,7 +695,7 @@ func endRun(to io.Writer, listening *http.Server, presses *server.Presses) error
 	closing, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	shut := listening.Shutdown(closing)
-	fmt.Fprintln(to, stillUp)
+	terminal.Say(to, stillUp)
 	return shut
 }
 
@@ -723,7 +725,7 @@ func waitForPress(to io.Writer, going func() (string, bool), every time.Duration
 	if !running {
 		return
 	}
-	fmt.Fprintf(to, "%s — waiting for it to finish. press ctrl-c again to stop anyway\n", said)
+	terminal.Say(to, said+" — waiting for it to finish. press ctrl-c again to stop anyway")
 	for {
 		time.Sleep(every)
 		if _, running := going(); !running {
@@ -775,7 +777,7 @@ func login(args []string, to, wrong io.Writer) error {
 
 	held, get := reading(ctx, flow)
 	if line := insteadOfABrowser(flow.TokenSet(), held, store.Chosen()); line != "" {
-		fmt.Fprintln(to, line)
+		terminal.Say(to, line)
 	} else {
 		if given, err := allow(flow, records, "better-giving login", to); err != nil || !given {
 			return err
@@ -787,7 +789,7 @@ func login(args []string, to, wrong io.Writer) error {
 	if err != nil || answered != terminal.AccountChosen {
 		return err
 	}
-	fmt.Fprintln(to, nowOperating(chosen))
+	terminal.Say(to, nowOperating(chosen))
 	return nil
 }
 
@@ -854,17 +856,17 @@ func allow(flow *oauth.Flow, records state.Store, command string, to io.Writer) 
 	// the wait is stated because what follows this line is a poll that prints nothing for as long
 	// as ../../internal/oauth waits, and an operator cannot tell that from a console that has hung.
 	// how long that is comes off the flow rather than out of a sentence: the wait is overridable.
-	fmt.Fprintln(to, terminal.SignInWaiting(opensABrowser(), phase.Address, flow.Waits()))
+	terminal.Say(to, terminal.SignInWaiting(opensABrowser(), phase.Address, flow.Waits()))
 
 	for {
 		switch waiting := flow.Phase(); waiting.Name {
 		case oauth.Idle:
-			fmt.Fprintln(to, "signed in")
+			terminal.Say(to, "signed in")
 			return true, nil
 		case oauth.Unfinished:
 			said := terminal.SignInUnfinished(waiting.Why, records.Dir(), command)
 			if waiting.Why == oauth.Refused {
-				fmt.Fprintln(to, said)
+				terminal.Say(to, said)
 				return false, nil
 			}
 			return false, errors.New(said)
@@ -991,9 +993,8 @@ func choosing(
 	// a machine the state directory cannot be written on still lets the operator carry on, and what
 	// did not happen is the remembering (../../internal/account).
 	if !store.Choose(chosen) {
-		fmt.Fprintf(to,
-			"this machine could not write the account down, so it holds %s for this run alone\n",
-			chosen.Name)
+		terminal.Say(to, "this machine could not write the account down, so it holds "+
+			chosen.Name+" for this run alone")
 	}
 	return chosen, terminal.AccountChosen, nil
 }
@@ -1043,7 +1044,7 @@ func signingOut(ctx context.Context, flow *oauth.Flow, to io.Writer) error {
 	if err := flow.Out(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintln(to, "this machine no longer holds a Cloudflare sign-in")
+	terminal.Say(to, "this machine no longer holds a Cloudflare sign-in")
 	return nil
 }
 
@@ -1057,9 +1058,10 @@ func baked(args []string, to, wrong io.Writer) error {
 		return err
 	}
 
-	fmt.Fprintf(to, "%s %s (%s)\n", terminal.Cmd(), version, commit)
-	fmt.Fprintf(to, "baked for worker %q, database %q, at %s\n",
-		release.Baked.Name, release.Baked.DatabaseName, release.Baked.Commit)
+	terminal.Lines(to,
+		fmt.Sprintf("%s %s (%s)", terminal.Cmd(), version, commit),
+		fmt.Sprintf("baked for worker %q, database %q, at %s",
+			release.Baked.Name, release.Baked.DatabaseName, release.Baked.Commit))
 	return nil
 }
 

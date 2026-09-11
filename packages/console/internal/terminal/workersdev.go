@@ -31,7 +31,7 @@ import (
 // prompt's own screen for ./password.go's reason. False with no error is the operator closing the
 // prompt, which ./prompt.go argues is a press not made rather than a failure to report.
 func AskWorkersDevName(in io.Reader, to io.Writer, why string) (string, bool, error) {
-	_, _ = io.WriteString(to, heading(onScreen(to), why))
+	_, _ = io.WriteString(to, heading(onScreen(to), why, measure(to)))
 	if !attended(in, to) {
 		return "", false, noTerminal{"a workers.dev name for this Cloudflare account"}
 	}

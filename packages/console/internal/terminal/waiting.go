@@ -86,8 +86,7 @@ func WaitingOn(to io.Writer, said string) *Wait {
 		return &Wait{}
 	}
 	program := tea.NewProgram(
-		waiting{said: said, spin: spinner.New(
-			spinner.WithSpinner(spinner.Line), spinner.WithStyle(turning))},
+		waiting{said: said, spin: turningSpinner()},
 		tea.WithOutput(to), tea.WithInput(nil))
 
 	drawn := &Wait{program: program, over: make(chan struct{})}
