@@ -422,7 +422,10 @@ type standingDeployment struct {
 	finished string
 	finishes bool
 	served   net.Listener
-	said     strings.Builder
+	// naming is what the run told the console about the account: whether the screen above its line
+	// already names it, which is the door's doing and nothing else's.
+	naming bool
+	said   strings.Builder
 	// order is every act of the run in the order it was reached, so that a case can say where the
 	// wait over the reads was given up rather than only that it was.
 	order []string
@@ -473,8 +476,8 @@ func (onto *standingDeployment) run(t *testing.T) error {
 			onto.order = append(onto.order, "finished")
 			return onto.finished
 		},
-		func(bound net.Listener) error {
-			onto.served = bound
+		func(bound net.Listener, named bool) error {
+			onto.served, onto.naming = bound, named
 			return nil
 		})
 }
@@ -600,8 +603,91 @@ func TestADeploymentStandingWithNothingToApplyIsCarriedOntoAndTheConsoleOpened(t
 		t.Errorf("said %q, want the door's own screen to be the one that named the newer console",
 			onto.said.String())
 	}
-	if !strings.Contains(onto.said.String(), "up to date") {
-		t.Errorf("said %q, want where the carry left the deployment", onto.said.String())
+	if !strings.Contains(onto.said.String(), "now on "+onto.carrying) {
+		t.Errorf("said %q, want the release the carry left the deployment on", onto.said.String())
+	}
+}
+
+// what a run says when it is over, which is one fact each and each of them once.
+//
+// the door erases the visible screen and draws the account, the address and the two releases on its
+// own (../../internal/terminal/confirm.go's object), and that screen is still above whatever the
+// carry says afterwards. so the two endings say different things: the one past the door names the
+// release the deployment landed on and nothing else, and the one that never opened a door names
+// where the deployment answers, because nothing else on that screen does.
+
+func TestACarryThatWentThroughNamesTheReleaseAndNotTheAddressAgain(t *testing.T) {
+	onto := aCarryThatLands(t)
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v, want this release carried onto the deployment", err)
+	}
+	if !strings.Contains(onto.said.String(), "now on "+onto.carrying) {
+		t.Errorf("said %q, want the release the deployment is now on", onto.said.String())
+	}
+	if strings.Contains(onto.said.String(), ontoAcme.Address) {
+		t.Errorf("said %q, want the address left to the door's screen above it", onto.said.String())
+	}
+}
+
+func TestTheUpToDateLineNamesWhereTheDeploymentAnswers(t *testing.T) {
+	said := nowLevel(deployment.Address{
+		Kind:       deployment.Deployed,
+		WorkersDev: "https://give.acme.test",
+	})
+
+	if !strings.Contains(said, "https://give.acme.test") {
+		t.Errorf("said %q, want where the deployment answers on the path that opens no door", said)
+	}
+	if !strings.Contains(said, "up to date") {
+		t.Errorf("said %q, want a deployment needing nothing said as needing nothing", said)
+	}
+}
+
+func TestAnUpToDateDeploymentAnsweringNowhereThisConsoleCanReadSaysSo(t *testing.T) {
+	said := nowLevel(deployment.Address{Kind: deployment.Deployed})
+
+	if !strings.Contains(said, "no address this console can read") {
+		t.Errorf("said %q, want an address that could not be read said as one", said)
+	}
+}
+
+func TestTheCarriedLineNamesTheReleaseThisBinaryPutOn(t *testing.T) {
+	said := nowCarrying("1.4.0")
+
+	if !strings.Contains(said, "1.4.0") {
+		t.Errorf("said %q, want the release the deployment is now on", said)
+	}
+	if strings.Contains(said, "http") {
+		t.Errorf("said %q, want no address on a line the door's screen stands over", said)
+	}
+}
+
+// whether the console's own line says whose cloudflare account it is operating.
+//
+// it is the account at the head of the door's screen, and nothing at all on the path that opens no
+// door — so this is the one thing about that line the carry decides (./main.go's saying).
+
+func TestAConsoleOpenedPastTheDoorLeavesTheAccountToTheDoorsScreen(t *testing.T) {
+	onto := aCarryThatLands(t)
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v, want this release carried onto the deployment", err)
+	}
+	if !onto.naming {
+		t.Error("the console named the account again under a screen that had just named it")
+	}
+}
+
+func TestAConsoleOpenedWithNoDoorInFrontOfItNamesTheAccountItself(t *testing.T) {
+	onto := aCarryThatLands(t)
+	onto.deployed = onto.carrying
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v, want the console this command exists to open", err)
+	}
+	if onto.naming {
+		t.Error("a run that drew no door left the account off every screen of itself")
 	}
 }
 
@@ -651,9 +737,11 @@ func TestADoorTheOperatorShutUploadsNothingAndStillOpensTheConsole(t *testing.T)
 	if !strings.Contains(onto.said.String(), "nothing was uploaded") {
 		t.Errorf("said %q, want what did not happen", onto.said.String())
 	}
-	if strings.Contains(onto.said.String(), "up to date") {
-		t.Errorf("said %q, want no claim that a deployment carries a release it was left without",
-			onto.said.String())
+	for _, unwanted := range []string{"up to date", "now on"} {
+		if strings.Contains(onto.said.String(), unwanted) {
+			t.Errorf("said %q, want no claim that a deployment carries a release it was left without",
+				onto.said.String())
+		}
 	}
 }
 
@@ -749,8 +837,8 @@ func TestACarryAStopWaitedOutSaysWhereTheDeploymentIsAndServesNoConsole(t *testi
 	if onto.served != nil {
 		t.Error("a console the operator stopped went on to serve and open a browser at itself")
 	}
-	if !strings.Contains(onto.said.String(), "up to date") {
-		t.Errorf("said %q, want where the carry left the deployment", onto.said.String())
+	if !strings.Contains(onto.said.String(), "now on "+onto.carrying) {
+		t.Errorf("said %q, want the release the carry left the deployment on", onto.said.String())
 	}
 	if !handedBack() {
 		t.Error("the port this run took was still held on the way out")

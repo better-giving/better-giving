@@ -467,6 +467,28 @@ func TestAPortThisRunCanTakeIsHeldBeforeTheAddressIsSaid(t *testing.T) {
 	}
 }
 
+func TestAConsoleOpenedUnderAScreenThatNamedTheAccountSaysItNoSecondTime(t *testing.T) {
+	// the carry door draws the account at the head of the screen this line lands under, and ./serve
+	// hands nothing on that path (../../internal/terminal/confirm.go's object). the same empty is a
+	// machine that has chosen no account, which `open` serves on purpose: one line either way, and
+	// the account said once on a screen or not at all.
+	at := net.JoinHostPort("127.0.0.1", strconv.Itoa(freePort(t)))
+	var said strings.Builder
+
+	bound, err := bind(&said, at, "", nil)
+
+	if err != nil {
+		t.Fatalf("bind = %v, want the port taken", err)
+	}
+	t.Cleanup(func() { _ = bound.Close() })
+	if strings.Contains(said.String(), "operating Cloudflare account") {
+		t.Errorf("said %q, want the account left to the screen that already named it", said.String())
+	}
+	if !strings.Contains(said.String(), "http://"+at) {
+		t.Errorf("said %q, want the address the console is at all the same", said.String())
+	}
+}
+
 func TestANoOpenRunSaysTheAddressAndOpensNothing(t *testing.T) {
 	at := net.JoinHostPort("127.0.0.1", strconv.Itoa(freePort(t)))
 	var said strings.Builder

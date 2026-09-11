@@ -339,49 +339,64 @@ func TestTheDoorNamesTheReleaseOnOfferAndTheOneTheDeploymentIsOn(t *testing.T) {
 	}
 }
 
-func TestTheNewsIsThatANewVersionOfBetterGivingIsAvailable(t *testing.T) {
+func TestTheDoorStatesBothReleasesOnOneLineUnderWhereItAnswers(t *testing.T) {
 	held := &bytes.Buffer{}
 	ConfirmCarry(strings.NewReader("n"), held, onDeployment, carried, nil, nil, "")
 
-	if !strings.Contains(held.String(), "A new version of better-giving is available "+carried) {
-		t.Errorf("said %q, want the release on offer put as news", held.String())
+	want := "version: " + onDeployment.Release + " \u2192 " + carried
+	pair := strings.Index(held.String(), want)
+	if pair < 0 {
+		t.Fatalf("said %q, want %q", held.String(), want)
+	}
+	if pair < strings.Index(held.String(), onDeployment.Address) {
+		t.Errorf("said %q, want the pair under where the deployment answers", held.String())
 	}
 }
 
-func TestTheDoorNamesTheReleaseTheDeploymentIsOnUnderWhereItAnswers(t *testing.T) {
-	held := &bytes.Buffer{}
-	ConfirmCarry(strings.NewReader("n"), held, onDeployment, carried, nil, nil, "")
-
-	address := strings.Index(held.String(), onDeployment.Address)
-	on := strings.Index(held.String(), "ver: "+onDeployment.Release)
-	if on < 0 {
-		t.Fatalf("said %q, want the release the deployment is on drawn as a fact about it",
-			held.String())
-	}
-	if on < address {
-		t.Errorf("said %q, want the release under where the deployment answers", held.String())
-	}
-}
-
-func TestTheReleaseTheDeploymentIsOnIsLeftOutWhereThisConsoleReadNone(t *testing.T) {
-	// ../effects' OwnRelease answers empty for every way of not finding out, and a label with
-	// nothing after it reads as a value lost on the way here.
+func TestADeploymentThisConsoleReadNoReleaseOffIsSaidAsUnknown(t *testing.T) {
+	// ../effects' OwnRelease answers empty for every way of not finding out, and the door says
+	// outright that this console could not read one: the pair is what the operator answers off, and
+	// a run that drew no line at all left them weighing the offer against nothing.
 	held := &bytes.Buffer{}
 	ConfirmCarry(strings.NewReader("n"), held,
 		Deployment{Account: onDeployment.Account, Address: onDeployment.Address}, carried,
 		nil, nil, "")
 
-	if !strings.Contains(held.String(), carried) {
-		t.Errorf("said %q, want the release on offer named", held.String())
+	if !strings.Contains(held.String(), "version: unknown \u2192 "+carried) {
+		t.Errorf("said %q, want the release this console could not read said as unknown",
+			held.String())
 	}
-	if strings.Contains(held.String(), "ver:") {
-		t.Errorf("said %q, want the line left out rather than drawn empty", held.String())
+}
+
+func TestNoScreenPutsTheOfferedReleaseAsNewsOfItsOwn(t *testing.T) {
+	// the version pair is the news and the question under it is the act, so a sentence announcing
+	// the release over them is the same fact a third time.
+	for _, held := range []struct {
+		what           string
+		at             Deployment
+		offering       string
+		pending, ahead []string
+		newer          string
+	}{
+		{"a carry with nothing to apply", onDeployment, carried, nil, nil, ""},
+		{"a carry with a migration on it", onDeployment, carried, oneMigration, nil, newerConsole},
+		{"a deployment ahead of this binary", onDeployment, carried, oneMigration,
+			[]string{"0009_pledges.sql"}, ""},
+		{"a binary naming no release", onDeployment, "dev", oneMigration, nil, ""},
+	} {
+		said := &bytes.Buffer{}
+		ConfirmCarry(strings.NewReader("n"), said, held.at, held.offering,
+			held.pending, held.ahead, held.newer)
+		if strings.Contains(said.String(), "A new version") {
+			t.Errorf("%s said %q, want the version line to carry the news alone",
+				held.what, said.String())
+		}
 	}
 }
 
 func TestTheTwoAnswersAreTheActsThemselvesAndNameNoRelease(t *testing.T) {
-	// both releases are on the facts above the question (./object, ./weighing), so an answer that
-	// named one again would be the same number twice on one screen.
+	// both releases are on the version line above the question (./object), so an answer that named
+	// one again would be the same number twice on one screen.
 	put := carrying(carried, nil)
 
 	if put.apply != "Update deployment" || put.leave != "Keep current version" {
@@ -401,7 +416,7 @@ func TestABinaryThatNamesNoReleaseOffersNoneAndPointsAtNoNotes(t *testing.T) {
 	ConfirmCarry(strings.NewReader("n"), held, onDeployment, "dev",
 		[]string{"0007_donors.sql"}, nil, "")
 
-	for _, unwanted := range []string{"dev", "A new version", "release notes"} {
+	for _, unwanted := range []string{"dev", "version:", "release notes"} {
 		if strings.Contains(held.String(), unwanted) {
 			t.Errorf("said %q, want no version and no notes over a binary that names none: %q",
 				held.String(), unwanted)

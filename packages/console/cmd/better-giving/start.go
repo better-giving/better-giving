@@ -202,8 +202,8 @@ func start(args []string, to, wrong io.Writer) error {
 					},
 					func() string { return nowLevel(standing) },
 					func() string { return finishAt(ctx, door, credential, records, in) },
-					func(bound net.Listener) error {
-						return serve(records, flow, *port, !*noOpen, to, bound)
+					func(bound net.Listener, named bool) error {
+						return serve(records, flow, *port, !*noOpen, to, bound, !named)
 					})
 			}
 			// **the wait stands until this pass's last read and is given up in front of the first
@@ -237,7 +237,7 @@ func start(args []string, to, wrong io.Writer) error {
 				},
 				func() string { return nowUp(effects.OwnAddress(ctx, door)) },
 				func(bound net.Listener) error {
-					return serve(records, flow, *port, !*noOpen, to, bound)
+					return serve(records, flow, *port, !*noOpen, to, bound, true)
 				})
 		})
 }
@@ -267,8 +267,8 @@ func againstOneAccount(
 //
 // **the picker reads every account to mark its rows, and the account picked is one of the ones it
 // read** — so this pass runs against that reading rather than asking cloudflare the same question a
-// second time, which is the argument this command already makes for not reading the address again
-// across a carry (./catchingUp's `where`).
+// second time, which is the argument this command already makes for handing that same reading to
+// the door and to the line past it rather than taking it again (./catchingUp).
 //
 // **a read that did not land is absent from that list, and there this pass reads for itself.** the
 // picker leaves an account off rather than claiming anything about it
@@ -411,8 +411,9 @@ func standingUp(
 // chain — and a run that weighed the deployment first would be asking about an upload it could not
 // have served the console after.
 //
-// `where` is read from the address this run already took rather than read again: the worker is the
-// same worker at the same name on either path, and on the far side of the carry.
+// `where` is the up-to-date path's line alone, read from the address this run already took rather
+// than read again: the worker is the same worker at the same name. the path past the door says
+// something else, because the door's own screen is still above it (./nowCarrying).
 //
 // **what the deployment says it is on is a string here and a bool one line later.** the door names
 // it (../../internal/terminal/confirm.go) and ./alreadyCarrying weighs it, and a reading reduced to
@@ -445,8 +446,13 @@ func catchingUp(
 	running func() (effects.Carried, bool),
 	where func() string,
 	finish func() string,
-	console func(net.Listener) error,
+	console func(net.Listener, bool) error,
 ) error {
+	// whether the account is already on the screen the console's own line lands under. the door
+	// draws it at the head of that screen (../../internal/terminal/confirm.go's object) and the
+	// up-to-date path draws no door at all, so the one path that opens one is the one that answers
+	// it.
+	named := false
 	// the pass over the deployment itself: whether it needs the carry, and the door where it does.
 	over := func() (bool, error) {
 		deployed := weighing()
@@ -459,8 +465,9 @@ func catchingUp(
 			return true, nil
 		}
 		onto.Release = deployed
+		named = true
 
-		return carryingOver(to, settled, onto, reading, asking, running, where)
+		return carryingOver(to, settled, onto, reading, asking, running, nowCarrying(carrying))
 	}
 
 	return onThePortItTook(claiming, func() (bool, error) {
@@ -472,7 +479,7 @@ func catchingUp(
 			fmt.Fprintln(to, said)
 		}
 		return true, nil
-	}, console)
+	}, func(bound net.Listener) error { return console(bound, named) })
 }
 
 // whether the deployment is already on the release this binary carries.
@@ -959,6 +966,9 @@ var noOneAtTheDoor = "this console asks before it applies a migration to the liv
 // is a read or a carry that did not land.
 //
 // `settled` is ./catchingUp's, given up on the far side of the read this function opens with.
+//
+// `landed` is what a carry that went through says it left the deployment on, printed after the
+// upload and nowhere else: nothing is true of the deployment until the carry has run.
 func carryingOver(
 	to io.Writer,
 	settled func(),
@@ -966,7 +976,7 @@ func carryingOver(
 	reading func() effects.Migrations,
 	asking func(terminal.Deployment, effects.Migrations) terminal.Confirmation,
 	running func() (effects.Carried, bool),
-	where func() string,
+	landed string,
 ) (serving bool, err error) {
 	read := reading()
 	// the last read of the pass, so the wait over them all is given up here: what follows is the
@@ -994,7 +1004,7 @@ func carryingOver(
 	if err := afterTheCarry(ran); err != nil {
 		return false, err
 	}
-	fmt.Fprintln(to, where())
+	fmt.Fprintln(to, landed)
 	return !halted, nil
 }
 
@@ -1217,8 +1227,13 @@ func carryAt(ctx context.Context, made effects.Carrying) (effects.Carried, bool)
 	return <-ended, halted
 }
 
-// where the deployment this run carried the code onto answers, and where one that needed no carry
-// already does.
+// where a deployment that needed no carry answers, on the one path of this command that opens no
+// door.
+//
+// **the address is on this line because it is on no other.** this path opens no door, so nothing
+// erased the screen and nothing above this line names the deployment — and an operator told only
+// that their deployment is current is holding a fact about a worker they were never shown.
+// ./nowCarrying is the other wording, past a door that has already named it.
 //
 // the address read in front of the press rather than one taken again: the worker is the same worker
 // at the same name, so a second read would ask cloudflare a question this command already has the
@@ -1228,4 +1243,17 @@ func nowLevel(address deployment.Address) string {
 		return "your deployment is up to date, at " + terminal.Code(where)
 	}
 	return release.Baked.Name + " is up to date and answers on no address this console can read"
+}
+
+// what a carry that went through left the deployment on, which is a release and not an address.
+//
+// **the address is not said again here.** this line lands under the door's own screen, which names
+// where the deployment answers (../../internal/terminal/confirm.go's object), so a run that
+// repeated it would put one address on the screen twice — and what changed is the release, which is
+// the half of that screen this line is the answer to.
+//
+// it is the release this binary carries rather than a reading taken afterwards: the carry landed,
+// and what it put on is what it was made from (./catchingUp's `carrying`).
+func nowCarrying(carried string) string {
+	return "your deployment is now on " + carried
 }

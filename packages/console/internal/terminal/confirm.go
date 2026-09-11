@@ -52,14 +52,13 @@ import (
 // operator has in mind, cannot answer "apply them to the live database?" from a screen that names
 // neither.
 //
-// **it names both releases and points at what the offered one changes, for the same reason again.**
-// what is being asked for is a deployment moved from one release to another, and neither number is
-// on any other screen of the run: the release this binary carries is what would go on, the release
-// the deployment says it is on is what it is leaving, and ../release's Notes is where the first of
-// them states what it carries. neither is guessed at — a binary a plain `go build` left carries no
-// release at all and names none here, and a deployment this console could not read a release off is
-// ../effects' OwnRelease answering empty, which is every way of not finding out and no number
-// (./object).
+// **it states the move as one line of two releases, and that line is the news.** what is being
+// asked for is a deployment moved from the release it is on to the release this binary carries, and
+// neither number is on any other screen of the run — so the pair is drawn as the move itself, with
+// ../release's Notes under it saying what the offered one carries. a release this console could not
+// read off the deployment is the word `unknown` on the left of it (./object), and the one thing not
+// drawn at all is a binary a plain `go build` left: it carries no release, so there is no move to
+// state.
 
 // Confirmation is how the door was answered.
 type Confirmation string
@@ -120,8 +119,7 @@ func ConfirmCarry(
 	// record whole.
 	clear(to)
 	above(to, newer)
-	object(to, at, notes)
-	weighing(to, named)
+	object(to, at, named, notes)
 	naming(to, pending)
 
 	if !attended(in, to) {
@@ -142,19 +140,6 @@ func offered(version string) (named, notes string) {
 		return "", ""
 	}
 	return version, notes
-}
-
-// that a release newer than the deployment's is out, above what the deploy would do.
-//
-// **it is news because this door is never put in front of a deployment already carrying it**:
-// ../../cmd/better-giving/start.go's alreadyCarrying prints the address and opens the console
-// instead. which release the deployment is on is a fact about the deployment and is drawn with the
-// rest of them (./object).
-func weighing(to io.Writer, offering string) {
-	if offering == "" {
-		return
-	}
-	fmt.Fprintf(to, "A new version of better-giving is available %s\n", offering)
 }
 
 // what the carry would do to the live database, which is a list of files where there is one and
@@ -178,13 +163,13 @@ func naming(to io.Writer, pending []string) {
 // naming two releases as on one naming none.
 //
 // **the answers name no release where the screen above them names two.** the release on offer and
-// the one the deployment is on are both facts on that screen (./object, ./weighing), so an answer
-// spelling either of them again is the same number twice — and the act is the whole of what is
-// being chosen between.
+// the one the deployment is on are one line on that screen (./object), so an answer spelling either
+// of them again is the same number twice — and the act is the whole of what is being chosen
+// between.
 //
 // **a release this binary cannot name asks the question it always asked.** `offering` is empty for
-// exactly that binary (./offered), so there is no news above these answers and the words that name
-// the deployment are what is left to choose between.
+// exactly that binary (./offered), so there is no version line above these answers and the words
+// that name the deployment are what is left to choose between.
 //
 // all three stand on leaving the deployment as it is: the one-way door for the reason this file
 // opens on, and the upload because a `start` that carries nothing still opens the console at a
@@ -226,27 +211,41 @@ func above(to io.Writer, line string) {
 // a deployment answering on no address this console can read is said as that rather than left
 // blank: a line with nothing after it reads as a value that went missing on the way here.
 //
-// **the release the deployment is on is left off the screen in that same state rather than said.**
-// the address is what the door is about and an operator needs to know this console could not read
-// one; the release is what the deploy would move them off, and ../effects' OwnRelease answering
-// empty is not having found out — so there is nothing to say, and a label with nothing after it
-// would read as a value lost on the way here.
+// **the two releases are one line and the news is that line.** what the operator is being asked is
+// whether to move this deployment from the one to the other, so the pair reads as the move: the
+// release it is on, an arrow, the release this binary would put on it. a sentence over them
+// announcing that a newer one exists is that same fact twice on a screen this short — and this door
+// is never put in front of a deployment already carrying the offer in the first place
+// (../../cmd/better-giving/start.go's alreadyCarrying).
 //
-// `notes` is where the release on offer states what it carries, drawn under the address because it
-// is the one line here an operator can leave the terminal and read, and empty where this binary
-// names no release (./offered).
-func object(to io.Writer, at Deployment, notes string) {
+// **a release this console could not read off the deployment is said as `unknown`.** ../effects'
+// OwnRelease answers empty for every way of not finding out, and an operator weighing an offer
+// against a blank half has to be told which half is blank.
+//
+// `offering` and `notes` are ./offered's pair: the release this binary would put on and where it
+// states what it carries, drawn under the address because it is the one line here an operator can
+// leave the terminal and read. Both are empty for a binary that names no release, and the version
+// line goes with them — there is no move to state when one end of it does not exist.
+func object(to io.Writer, at Deployment, offering, notes string) {
 	if at.Account != "" {
 		fmt.Fprintf(to, "Cloudflare account: %s\n", at.Account)
 	}
 	fmt.Fprintf(to, "deployment: %s\n", answering(at))
-	if at.Release != "" {
-		fmt.Fprintf(to, "ver: %s\n", at.Release)
+	if offering != "" {
+		fmt.Fprintf(to, "version: %s \u2192 %s\n", onRelease(at), offering)
 	}
 	if notes != "" {
 		fmt.Fprintf(to, "release notes: %s\n", Code(notes))
 	}
 	fmt.Fprintln(to)
+}
+
+// which release the deployment is on, or that this console could not find out.
+func onRelease(at Deployment) string {
+	if at.Release == "" {
+		return "unknown"
+	}
+	return at.Release
 }
 
 // where a deployment answers, or that this console could read no address for it.

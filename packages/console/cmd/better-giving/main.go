@@ -275,7 +275,7 @@ func open(args []string, to, wrong io.Writer) error {
 	// is nothing for the operator to stop, so the line is worth most standing next to the address
 	// they are left looking at for the life of the run.
 	sayNewer(ctx, to, releases.Source())
-	return serve(records, flow, *port, !*noOpen, to, nil)
+	return serve(records, flow, *port, !*noOpen, to, nil, true)
 }
 
 // what a machine with nowhere to keep what this console remembers is told.
@@ -519,6 +519,12 @@ func asNewer(console string, fix terminal.Repair) error {
 // something else is answering on is a failure that belongs in front of the one-way door rather than
 // on the far side of it; every other way in has nothing to deploy and takes the port at the moment
 // it serves.
+//
+// `naming` is whether this run's own line says whose cloudflare account the console is operating.
+// False is the one way in that has just said it: a carry draws the account at the head of the
+// door's screen and nothing erases that screen afterwards
+// (../../internal/terminal/confirm.go's object), and ./start.go's catchingUp is what knows
+// whether a door was drawn at all.
 func serve(
 	records state.Store,
 	flow *oauth.Flow,
@@ -526,6 +532,7 @@ func serve(
 	opening bool,
 	to io.Writer,
 	taken net.Listener,
+	naming bool,
 ) error {
 	// what a stop has to wait for: the presses this server holds outlive the requests that start
 	// them, so nothing else on the machine knows one is running.
@@ -556,7 +563,7 @@ func serve(
 		browser = nil
 	}
 	whose := ""
-	if held := account.New(records).Chosen(); held != nil {
+	if held := account.New(records).Chosen(); naming && held != nil {
 		whose = held.Account.Name
 	}
 	bound := taken
@@ -613,9 +620,14 @@ func serve(
 // and an address built from the ask names nothing at all.
 //
 // **the account is named in this line rather than in one of its own.** it is remembered between
-// runs and drawn on no screen after the first, so `open` — which makes nothing and asks nothing —
-// would otherwise serve every screen of a console without ever saying whose account those screens
-// are about. Empty where this machine has chosen none, which is a state `open` serves on purpose.
+// runs and drawn on no screen of a run that asks nothing, so `open` — which makes nothing — would
+// otherwise serve every screen of a console without ever saying whose account those screens are
+// about.
+//
+// **`whose` is empty where nothing is to be said, which is two different states.** this machine has
+// chosen no account, which `open` serves on purpose; or the screen this line lands under has just
+// named it, which is the carry door (./serve's `naming`). the line is the same either way — the
+// account said once on a screen or not at all.
 //
 // `openAt` is nil where the run was told not to open a browser, which is the same claim without the
 // tab.
