@@ -65,7 +65,7 @@ func updatingConsole(version string) question {
 
 // InstallingNewer is what stands over an install, naming the release it is about to fetch.
 func InstallingNewer(version string) string {
-	return "version " + version + " of this console is out — installing it"
+	return "installing version " + version + " of this console"
 }
 
 // InstallStep is one finished part of that install, drawn under it.
@@ -100,7 +100,7 @@ func NowOn(version string) string {
 // `start` has a newer console and a deployment on the older release, with nothing on the screen
 // saying which press closes that.
 func NowOnThenStart(version string) string {
-	return "this console is now on " + version + " — run " + Cmd("start") +
+	return "this console is now on " + version + ". run " + Cmd("start") +
 		" to put that release on your deployment"
 }
 

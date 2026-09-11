@@ -554,11 +554,11 @@ func aboutToMake(in account.Account, held deployment.Named) string {
 	return "deploying into your Cloudflare account " + in.Name + " (" + in.ID + "). " +
 		"this makes:\n\n" +
 		workersDevRow(in, held) +
-		"  - a database — where it keeps its records is the next question, " +
+		"  - a database: where it keeps its records is the next question, " +
 		"and cannot be changed once it exists\n" +
-		"  - the worker " + release.Baked.Name + " — it serves your donation page, " +
+		"  - the worker " + release.Baked.Name + ": it serves your donation page, " +
 		terminal.Code("/admin") + " and the API\n" +
-		"  - spam protection — registered against the address that worker answers on"
+		"  - spam protection: registered against the address that worker answers on"
 }
 
 // the workers.dev name this run would register, as a row of what it makes — and nothing at all
@@ -578,9 +578,9 @@ func workersDevRow(in account.Account, held deployment.Named) string {
 	}
 	if derived := deployment.DerivedName(in.Name); deployment.NameUsable(derived) {
 		return "  - the address " + terminal.Code(derived+".workers.dev") +
-			" — every worker in this Cloudflare account answers under this name\n"
+			": every worker in this Cloudflare account answers under this name\n"
 	}
-	return "  - a workers.dev address — you choose the name in a moment, and every worker in " +
+	return "  - a workers.dev address: you choose the name in a moment, and every worker in " +
 		"this Cloudflare account answers under it\n"
 }
 
@@ -815,7 +815,7 @@ var nothingDerived = "this Cloudflare account has no workers.dev name, and there
 // enumerate, and an operator typing a second one is choosing against whatever the first met.
 func takenName(name, said string) string {
 	return "Cloudflare will not take " + terminal.Code(name) + " as this account's workers.dev " +
-		"name — one account anywhere on Cloudflare holds each of these names. Cloudflare said: " +
+		"name. One account anywhere on Cloudflare holds each of these names. Cloudflare said: " +
 		said
 }
 

@@ -144,7 +144,7 @@ func TestALongBulletWrapsAndItsContinuationSitsPastTheMarker(t *testing.T) {
 }
 
 func TestABulletThatFitsIsLeftAsItWasWritten(t *testing.T) {
-	row := "  - spam protection — registered against the address that worker answers on"
+	row := "  - spam protection: registered against the address that worker answers on"
 	if said := wrap(row, widest); said != row {
 		t.Errorf("wrap = %q, want a row that fits left alone", said)
 	}

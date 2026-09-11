@@ -141,7 +141,7 @@ var commands = []struct{ takes, does string }{
 // column measured off the drawn span would be short by however many characters the terminal
 // swallows — and the descriptions would land in as many different places as there are presses.
 func usage(to io.Writer) {
-	terminal.Say(to, terminal.Cmd()+" — the operator console")
+	terminal.Say(to, terminal.Cmd()+": the operator console")
 	column := 0
 	for _, one := range commands {
 		column = max(column, utf8.RuneCountInString(one.takes)+2)
@@ -663,7 +663,7 @@ func saying(to io.Writer, bound net.Listener, whose string, openAt func(string))
 		operating = ", operating Cloudflare account " + whose
 	}
 	terminal.Say(to, "the console is at "+terminal.Code(where)+operating+
-		" — press ctrl-c to stop it")
+		". press ctrl-c to stop it")
 	if openAt != nil {
 		openAt(where)
 	}
@@ -725,7 +725,7 @@ func waitForPress(to io.Writer, going func() (string, bool), every time.Duration
 	if !running {
 		return
 	}
-	terminal.Say(to, said+" — waiting for it to finish. press ctrl-c again to stop anyway")
+	terminal.Say(to, said+". waiting for it to finish. press ctrl-c again to stop anyway")
 	for {
 		time.Sleep(every)
 		if _, running := going(); !running {

@@ -457,7 +457,7 @@ func halted(final tea.Model, err error) bool {
 // the database ahead of the code that reads it (CLAUDE.md).
 func StillGoing(press string) string {
 	return Code(press) +
-		" is still running — waiting for it to finish. press ctrl-c again to stop anyway"
+		" is still running. waiting for it to finish. press ctrl-c again to stop anyway"
 }
 
 // Settled is what a terminal is told once a ledger has ended: the line the press it left running

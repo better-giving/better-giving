@@ -361,7 +361,7 @@ func TestAnExplicitHelpIsWrittenWhereItCanBeRedirected(t *testing.T) {
 		if err := run(asked, &out, &wrong); err != nil {
 			t.Errorf("run(%v) = %v, want a question answered", asked, err)
 		}
-		if !strings.Contains(out.String(), "better-giving — the operator console") {
+		if !strings.Contains(out.String(), "better-giving: the operator console") {
 			t.Errorf("run(%v) said %q to stdout, want what this binary does", asked, out.String())
 		}
 		if wrong.String() != "" {
@@ -377,7 +377,7 @@ func TestNoCommandAndACommandThisBinaryDoesNotKnowStayOnStderr(t *testing.T) {
 		if err := run(asked, &out, &wrong); err == nil {
 			t.Errorf("run(%v) = nil, want a command that did not run", asked)
 		}
-		if !strings.Contains(wrong.String(), "better-giving — the operator console") {
+		if !strings.Contains(wrong.String(), "better-giving: the operator console") {
 			t.Errorf("run(%v) said %q to stderr, want the commands there are", asked, wrong.String())
 		}
 		if out.String() != "" {
@@ -915,7 +915,7 @@ func TestTheHelpBlockDrawsEveryDescriptionInTheSameColumn(t *testing.T) {
 	var said strings.Builder
 	usage(&said)
 
-	want := `better-giving — the operator console
+	want := `better-giving: the operator console
 
   start [--port N] [--no-open]  put this release on your deployment, then open the console at it
   update                        install the newest console on this machine
