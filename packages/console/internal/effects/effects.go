@@ -41,6 +41,9 @@ import (
 // draws a row from it (../terminal), which is not anything this file knows about. It is called on
 // the run's own goroutine, so a call that blocks holds the run up. It is nil where nothing is
 // drawing a ledger, which is the press above: one stage, standing under a wait instead.
+//
+// `version` is the release this binary would put on, which the deploy records onto the worker it
+// uploads (../deploy's Options) and ./OwnRelease reads back.
 func Chain(
 	at func(stage first.Stage, detail string, step, steps int),
 	door deployment.Door,
@@ -49,6 +52,7 @@ func Chain(
 	schema func(cf.Credential) cf.Send,
 	assets func(token string) cf.MultipartUpload,
 	bundle release.Source,
+	version string,
 	records state.Store,
 ) first.Effects {
 	// what the fetch held, kept for the stages past the database that go up out of it. written by
@@ -69,6 +73,7 @@ func Chain(
 			DatabaseID: databaseID,
 			Config:     release.Baked,
 			Shape:      release.Upload,
+			Release:    version,
 			Report:     report,
 		}
 	}

@@ -11,23 +11,31 @@ import (
 	"github.com/better-giving/console/internal/state"
 )
 
-// OwnRelease is the release the deployment says it was built from, and empty where this console
-// could not find out.
+// OwnRelease is the release the deployment is on, and empty where this console could not find out.
 //
 // **it is what says whether `start` has anything to carry**, which is that command's whole reason
 // for asking: a deployment already on this release is one the operator is not put in front of a
 // door about, and every other reading is (../../cmd/better-giving/start.go).
 //
-// **the deployment is judged by what it says about itself and never by its migrations.** a release
+// **the record the console wrote onto the worker is the first reading, and it needs no session.**
+// the act that uploads the code writes the release beside it (../deploy/upload.go), so what is read
+// back off the worker's own settings is what is running — read with the cloudflare sign-in this run
+// is about to deploy on, which is the one credential every `start` holds by the time it asks. the
+// read below is the second reading and is what a deployment put up before that record still answers
+// on: a settings read that did not land found nothing out about the record either, so it falls
+// through to the same place.
+//
+// **the deployment is judged by what it was built from and never by its migrations.** a release
 // that moves no schema is still code the deployment does not have, so a pending list read as empty
 // would report a deployment two releases behind as up to date. ../deployment's ReportRead.Version
-// is the value, served by packages/app/src/lib/server/console/report.ts.
+// is the value the second reading takes, served by packages/app/src/lib/server/console/report.ts.
 //
-// **every way of not finding out is the same empty answer, and that is the safe one.** no session
-// held on this machine, a session minted against another deployment, one this deployment refused, a
-// read that did not land, and an envelope naming no version are five states with one thing to do
-// about them: ask the operator. a console that guessed the other way would leave a deployment on
-// old code with nothing on the screen about it.
+// **every way of not finding out is the same empty answer, and that is the safe one.** a worker
+// carrying no record and a settings read that did not land, then no session held on this machine, a
+// session minted against another deployment, one this deployment refused, a report that did not
+// land, and an envelope naming no version: one thing to do about all of them, which is ask the
+// operator. a console that guessed the other way would leave a deployment on old code with nothing
+// on the screen about it.
 //
 // **the session is weighed against the address this run is asking about, and that is not a
 // formality.** ../session records one under the baked worker name alone and every deployment of
@@ -42,15 +50,20 @@ import (
 // console can read is weighed against nothing at all: an empty address matching an empty origin
 // would be any session on this machine standing in for it.
 //
-// The read is made over the session this machine holds (../session's Held), which is the same
-// session the console's own screens read the deployment over. `reads` is handed in rather than
+// The second read is made over the session this machine holds (../session's Held), which is the
+// same session the console's own screens read the deployment over. `reads` is handed in rather than
 // taken as ../deployment's Reads(Calls), so a case can answer for a deployment that is not there.
 func OwnRelease(
 	ctx context.Context,
+	door deployment.Door,
 	records state.Store,
 	at string,
 	reads func(origin, token string) cf.Get,
 ) string {
+	if recorded := deployment.RecordedRelease(ctx, door.Get, door.AccountID, door.WorkerName); recorded != "" {
+		return recorded
+	}
+
 	held := session.Held(records, release.Baked.Name, time.Now())
 	if held == nil || at == "" || held.Origin != at {
 		return ""

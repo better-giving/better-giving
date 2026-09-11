@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/better-giving/console/internal/deployment"
 )
 
 func TestADeployFetchesMigratesUploadsPushesAndVerifies(t *testing.T) {
@@ -61,8 +63,9 @@ func TestTheScriptGoesUpWithTheBindingsThisAppHas(t *testing.T) {
 	}
 
 	bindings, _ := metadata["bindings"].([]any)
-	if len(bindings) != 2 {
-		t.Fatalf("bindings = %v, want the database and the limiter", bindings)
+	if len(bindings) != 3 {
+		t.Fatalf("bindings = %v, want the database, the limiter and the record of this release",
+			bindings)
 	}
 	database, _ := bindings[0].(map[string]any)
 	if database["type"] != "d1" || database["name"] != "DB" || database["id"] != "a-database" {
@@ -75,6 +78,44 @@ func TestTheScriptGoesUpWithTheBindingsThisAppHas(t *testing.T) {
 	}
 	if simple, _ := limiter["simple"].(map[string]any); simple["limit"] != float64(600) {
 		t.Errorf("the limiter's bucket is %v", limiter["simple"])
+	}
+}
+
+// what release a deployment is on, recorded by the act that puts it there.
+//
+// it rides the upload's own metadata rather than a write after it, so there is no state where the
+// code landed and the record did not: a deploy that stopped before the upload recorded nothing, and
+// one that landed recorded what landed. what reads it back is the cloudflare sign-in
+// (../deployment's RecordedRelease), which is what a machine holding no session for this deployment
+// still has.
+
+func TestTheReleaseGoingUpIsRecordedOnTheWorkerByTheUploadItself(t *testing.T) {
+	held := &account{}
+	deployed(t, held, packed(t, baked()))
+
+	recorded := map[string]any{}
+	bindings, _ := held.metadata[0]["bindings"].([]any)
+	for _, one := range bindings {
+		if binding, ok := one.(map[string]any); ok && binding["name"] == deployment.RecordedReleaseName {
+			recorded = binding
+		}
+	}
+	if recorded["type"] != "plain_text" || recorded["text"] != carriedRelease {
+		t.Errorf("the release went up as %v, want the one this deploy carried", recorded)
+	}
+}
+
+func TestADeployNamingNoReleaseWritesNoRecordRatherThanABlankOne(t *testing.T) {
+	// an empty record would replace a true one with a blank; a binding left off is a record
+	// `keep_bindings` leaves exactly as the last deploy wrote it.
+	held := &account{}
+	deployedNamingNoRelease(t, held, packed(t, baked()))
+
+	bindings, _ := held.metadata[0]["bindings"].([]any)
+	for _, one := range bindings {
+		if binding, ok := one.(map[string]any); ok && binding["name"] == deployment.RecordedReleaseName {
+			t.Errorf("a deploy naming no release wrote %v", binding)
+		}
 	}
 }
 

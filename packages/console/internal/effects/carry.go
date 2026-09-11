@@ -71,6 +71,9 @@ type Carrying struct {
 	Settings   func(cf.Credential) cf.MultipartUpload
 	Assets     func(token string) cf.MultipartUpload
 	Bundle     release.Source
+	// Release is the release this press is putting on, which the upload records onto the worker
+	// (../deploy's Options).
+	Release string
 	// At is how the run says where in the deploy it is, called on the goroutine the run is on; a
 	// call that blocks holds the run up. It is the engine's whole progress rather than the stage:
 	// the counts a stage reports are what a screen draws a bar from.
@@ -109,6 +112,7 @@ func Carry(ctx context.Context, made Carrying) Carried {
 		DatabaseID: standing.UUID,
 		Config:     release.Baked,
 		Shape:      release.Upload,
+		Release:    made.Release,
 		Report: func(progress deploy.Progress) {
 			if made.At != nil {
 				made.At(progress)

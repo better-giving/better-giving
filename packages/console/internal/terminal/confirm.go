@@ -58,14 +58,8 @@ import (
 // the deployment says it is on is what it is leaving, and ../release's Notes is where the first of
 // them states what it carries. neither is guessed at — a binary a plain `go build` left carries no
 // release at all and names none here, and a deployment this console could not read a release off is
-// ../effects' OwnRelease answering empty, which is five different ways of not finding out and no
-// number (./object).
-//
-// **the account is the third answer, because it is the value most likely to be wrong at this door.**
-// the picker opens on the account this machine remembers, so an operator who kept it by reflex meets
-// a deployment they did not mean to carry onto — and a door whose only ways out are carrying and
-// leaving offers them nothing but the command again. ./Elsewhere is that answer, and it costs
-// nothing: the pass they walked out of uploaded nothing (../../cmd/better-giving/start.go).
+// ../effects' OwnRelease answering empty, which is every way of not finding out and no number
+// (./object).
 
 // Confirmation is how the door was answered.
 type Confirmation string
@@ -77,9 +71,6 @@ const (
 	Declined Confirmation = "declined"
 	// Ahead is a deployment put up by a newer console, which is refused outright.
 	Ahead Confirmation = "ahead"
-	// Elsewhere is the door left for the account picker: neither the act nor the refusal, and the
-	// deployment this door was about is untouched.
-	Elsewhere Confirmation = "elsewhere"
 	// Unattended is the door nobody was put in front of: an end of the prompt that is not a
 	// terminal, or a form that could not be drawn at one. The list was named and no question was
 	// ever answered, so nothing was refused and nobody refused it.
@@ -93,8 +84,8 @@ type Deployment struct {
 	Account string
 	// Address is where the deployment answers, and empty where the caller could read none.
 	Address string
-	// Release is the release the deployment says it was built from, and empty where the caller
-	// could not find out — which ../effects' OwnRelease reaches five different ways.
+	// Release is the release the deployment is on, and empty where the caller could not find out —
+	// which is what ../effects' OwnRelease answers for every way of not finding out.
 	Release string
 }
 
@@ -136,7 +127,7 @@ func ConfirmCarry(
 	if !attended(in, to) {
 		return Unattended
 	}
-	return deciding(in, to, carrying(named, at.Release, pending))
+	return deciding(in, to, carrying(named, pending))
 }
 
 // the release this binary would put on the deployment, as this screen names it: the version itself,
@@ -163,7 +154,7 @@ func weighing(to io.Writer, offering string) {
 	if offering == "" {
 		return
 	}
-	fmt.Fprintf(to, "a new release is out — %s\n", offering)
+	fmt.Fprintf(to, "A new version of better-giving is available %s\n", offering)
 }
 
 // what the carry would do to the live database, which is a list of files where there is one and
@@ -180,56 +171,44 @@ func naming(to io.Writer, pending []string) {
 	list(to, pending)
 }
 
-// the way back out of this door, which every one of its questions offers.
-const pickAnotherAccount = "Choose a different Cloudflare account"
-
 // the question this door puts, which is a different question where there is nothing to apply.
 //
 // **the one about the live database is the one that never softens.** what a migration does is what
 // it does: the sentence, the list under it and these two answers are the same words on a screen
-// naming two releases as on one naming none. the other two name their versions on the answers
-// instead, because what is weighed there is a deployment kept on one release or moved to another.
+// naming two releases as on one naming none.
+//
+// **the answers name no release where the screen above them names two.** the release on offer and
+// the one the deployment is on are both facts on that screen (./object, ./weighing), so an answer
+// spelling either of them again is the same number twice — and the act is the whole of what is
+// being chosen between.
 //
 // **a release this binary cannot name asks the question it always asked.** `offering` is empty for
-// exactly that binary (./offered), and an answer reading "Update to" with nothing after it is
-// worse than the words it would replace.
+// exactly that binary (./offered), so there is no news above these answers and the words that name
+// the deployment are what is left to choose between.
 //
 // all three stand on leaving the deployment as it is: the one-way door for the reason this file
 // opens on, and the upload because a `start` that carries nothing still opens the console at a
 // deployment that is already serving (../../cmd/better-giving/start.go).
-func carrying(offering, deployed string, pending []string) question {
+func carrying(offering string, pending []string) question {
 	if len(pending) > 0 {
 		return question{
-			title:     "apply them to the live database?",
-			apply:     "Apply them",
-			leave:     "Leave the database alone",
-			elsewhere: pickAnotherAccount,
+			title: "apply them to the live database?",
+			apply: "Apply them",
+			leave: "Leave the database alone",
 		}
 	}
 	if offering == "" {
 		return question{
-			title:     "carry this release onto the deployment?",
-			apply:     "Carry it over",
-			leave:     "Leave the deployment alone",
-			elsewhere: pickAnotherAccount,
+			title: "carry this release onto the deployment?",
+			apply: "Carry it over",
+			leave: "Leave the deployment alone",
 		}
 	}
 	return question{
-		title:     "update your deployment?",
-		apply:     "Update to " + offering,
-		leave:     keeping(deployed),
-		elsewhere: pickAnotherAccount,
+		title: "update your deployment?",
+		apply: "Update deployment",
+		leave: "Keep current version",
 	}
-}
-
-// the answer that leaves the deployment on the release it is already on, which names that release
-// where this console read one and names none where it did not — ./object's reading of the same
-// absence, on the same screen.
-func keeping(deployed string) string {
-	if deployed == "" {
-		return "Keep the current version"
-	}
-	return "Keep " + deployed
 }
 
 // what stands over a question, with a blank line under it so that the question below reads as its
@@ -250,8 +229,8 @@ func above(to io.Writer, line string) {
 // **the release the deployment is on is left off the screen in that same state rather than said.**
 // the address is what the door is about and an operator needs to know this console could not read
 // one; the release is what the deploy would move them off, and ../effects' OwnRelease answering
-// empty is five different ways of not having found out — so there is nothing to say, and a label
-// with nothing after it would read as a value lost on the way here.
+// empty is not having found out — so there is nothing to say, and a label with nothing after it
+// would read as a value lost on the way here.
 //
 // `notes` is where the release on offer states what it carries, drawn under the address because it
 // is the one line here an operator can leave the terminal and read, and empty where this binary
@@ -297,9 +276,6 @@ func migrations(count int) string {
 type question struct {
 	// title is the question, and apply and leave the two answers as the operator reads them.
 	title, apply, leave string
-	// elsewhere is a third answer that is neither, as the operator reads it, and empty at a
-	// question that has only two (./install.go's).
-	elsewhere string
 	// opens is whether a return takes the act. False is a question standing on leaving things as
 	// they are, which every door in front of a deployment does; ./install.go argues the one that
 	// does not.
@@ -308,9 +284,9 @@ type question struct {
 
 // the door itself, put once what it is about has been named and the operator is known to be at it.
 //
-// **it is a list rather than a confirm because one of its answers is neither yes nor no.** the way
-// back to the account picker is an ending of its own (./Elsewhere), and a screen that fitted it into
-// a two-answer confirm would be spelling it as one of the other two.
+// **it is a list rather than a confirm because its answers are two acts and not a yes and a no.**
+// each row says what it would do to the deployment, which is what an operator is choosing between
+// here; ./confirming is the other shape and ./install.go is what puts it.
 //
 // **the row the list opens on is the one the question stands on**, which is huh's own arrangement:
 // the value the field is bound to is the row under the cursor when it is drawn, so a return takes
@@ -329,7 +305,6 @@ func deciding(in io.Reader, to io.Writer, put question) Confirmation {
 			Options(
 				huh.NewOption(put.apply, Confirmed),
 				huh.NewOption(put.leave, Declined),
-				huh.NewOption(put.elsewhere, Elsewhere),
 			).
 			Value(&answered),
 	)).WithInput(in).WithOutput(to)

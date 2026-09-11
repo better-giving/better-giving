@@ -21,6 +21,10 @@ import (
 	"github.com/better-giving/console/internal/release"
 )
 
+// the release every deploy below is made by a binary carrying, which is the one the bundle is named
+// for.
+const carriedRelease = "1.2.3"
+
 // the config both halves of a deploy are checked against.
 func baked() release.Config {
 	return release.Config{
@@ -394,11 +398,18 @@ func deployed(t *testing.T, held *account, bundle []byte) (Run, []Stage) {
 	return deployedStopping(t, held, bundle, "")
 }
 
+// the same deploy, made by a binary carrying no release of its own — which is every `go build` in
+// this repository (../../cmd/better-giving/main.go).
+func deployedNamingNoRelease(t *testing.T, held *account, bundle []byte) Run {
+	t.Helper()
+	return running(t, held, bundle, "", "", func(Progress) {})
+}
+
 // the same deploy, with every progress it reported rather than the stages it moved through.
 func deployedReporting(t *testing.T, held *account, bundle []byte) (Run, []Progress) {
 	t.Helper()
 	reported := []Progress{}
-	run := running(t, held, bundle, "", func(progress Progress) {
+	run := running(t, held, bundle, carriedRelease, "", func(progress Progress) {
 		reported = append(reported, progress)
 	})
 	return run, reported
@@ -419,7 +430,7 @@ func reportedAt(reported []Progress, stage Stage) []Progress {
 func deployedStopping(t *testing.T, held *account, bundle []byte, at Stage) (Run, []Stage) {
 	t.Helper()
 	stages := []Stage{}
-	run := running(t, held, bundle, at, func(progress Progress) {
+	run := running(t, held, bundle, carriedRelease, at, func(progress Progress) {
 		if len(stages) == 0 || stages[len(stages)-1] != progress.Stage {
 			stages = append(stages, progress.Stage)
 		}
@@ -428,7 +439,7 @@ func deployedStopping(t *testing.T, held *account, bundle []byte, at Stage) (Run
 }
 
 // one deploy against a fake account and a fake release, reporting through `say`.
-func running(t *testing.T, held *account, bundle []byte, at Stage, say func(Progress)) Run {
+func running(t *testing.T, held *account, bundle []byte, carrying string, at Stage, say func(Progress)) Run {
 	t.Helper()
 	api := held.serve(t)
 	defer api.Close()
@@ -464,6 +475,7 @@ func running(t *testing.T, held *account, bundle []byte, at Stage, say func(Prog
 		DatabaseID: "a-database",
 		Config:     baked(),
 		Shape:      shape(),
+		Release:    carrying,
 		Report: func(progress Progress) {
 			say(progress)
 			if progress.Stage == at {

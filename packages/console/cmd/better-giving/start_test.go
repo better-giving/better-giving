@@ -407,10 +407,10 @@ type standingDeployment struct {
 	claims   int
 	claimed  error
 	newer    string
+	carrying string
 	deployed string
 	weighed  bool
 	onto     terminal.Deployment
-	again    bool
 	reads    bool
 	read     effects.Migrations
 	named    bool
@@ -438,7 +438,7 @@ func (onto *standingDeployment) Write(said []byte) (int, error) {
 
 func (onto *standingDeployment) run(t *testing.T) error {
 	t.Helper()
-	again, err := catchingUp(onto, ontoAcme, onto.newer,
+	return catchingUp(onto, ontoAcme, onto.carrying, onto.newer,
 		func() { onto.order = append(onto.order, "settled") },
 		func() (net.Listener, error) {
 			onto.claims++
@@ -477,8 +477,6 @@ func (onto *standingDeployment) run(t *testing.T) error {
 			onto.served = bound
 			return nil
 		})
-	onto.again = again
-	return err
 }
 
 // the line a run holds where a console another console installed still reads a release past its
@@ -490,8 +488,9 @@ func aCarryThatLands(t *testing.T) *standingDeployment {
 	t.Helper()
 	bound, _ := aPortHeld(t)
 	return &standingDeployment{
-		bound: bound,
-		newer: newerConsoleLine,
+		bound:    bound,
+		newer:    newerConsoleLine,
+		carrying: "1.4.0",
 		// a read that landed carrying no migration this database has not: the door opens on its
 		// own for it (../../internal/terminal/confirm.go) and the upload is what is left.
 		read:     effects.Migrations{Applied: cf.ResultValue},
@@ -505,7 +504,7 @@ func TestADeploymentAlreadyCarryingThisReleaseIsOpenedAndNotDeployedTo(t *testin
 	// carry: a door put in front of an operator here is a question about an upload that would change
 	// nothing, and the console is what they typed the command for.
 	onto := aCarryThatLands(t)
-	onto.deployed = version
+	onto.deployed = onto.carrying
 
 	if err := onto.run(t); err != nil {
 		t.Fatalf("catchingUp = %v, want the console this command exists to open", err)
@@ -528,6 +527,22 @@ func TestADeploymentAlreadyCarryingThisReleaseIsOpenedAndNotDeployedTo(t *testin
 	if !strings.Contains(onto.said.String(), newerConsoleLine) {
 		t.Errorf("said %q, want the newer console named where no door will name it",
 			onto.said.String())
+	}
+}
+
+func TestABinaryCarryingNoReleaseIsNeverLevelWithWhatItDeployed(t *testing.T) {
+	// `dev` is what a plain `go build` leaves (./main.go) and every one of them carries whatever
+	// bundle the machine packed, so two of them reading alike says nothing about the code being the
+	// same — and a console that called it up to date would never redeploy on the path this
+	// repository is developed over (scripts/console-start.sh).
+	onto := aCarryThatLands(t)
+	onto.carrying, onto.deployed = "dev", "dev"
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v, want the carry offered", err)
+	}
+	if !onto.named || !onto.carried {
+		t.Error("a deployment a dev binary put up was called up to date and never deployed to")
 	}
 }
 
@@ -973,53 +988,6 @@ func TestASignInThisConsoleCouldNotUseEndsTheRunAsAFailure(t *testing.T) {
 	}
 }
 
-// the way back out of the door, which is the account picker again.
-//
-// the picker opens on the account this machine remembers and every screen past it is about the
-// deployment in that account, so an operator who kept it by reflex meets a door about a deployment
-// they did not mean. what the third answer costs is nothing: the pass they walked out of uploaded
-// nothing, and the port it took is given back on the way (../../internal/terminal/confirm.go).
-
-func TestTheWayBackFromTheDoorUploadsNothingAndServesNoConsole(t *testing.T) {
-	bound, handedBack := aPortHeld(t)
-	onto := aCarryThatLands(t)
-	onto.bound, onto.answered = bound, terminal.Elsewhere
-
-	err := onto.run(t)
-
-	if err != nil {
-		t.Errorf("catchingUp = %v, want a door left for the picker read as no failure", err)
-	}
-	if !onto.again {
-		t.Error("a door left for the account picker did not put the picker up again")
-	}
-	if onto.carried {
-		t.Error("a door the operator walked out of uploaded this release anyway")
-	}
-	if onto.served != nil {
-		t.Error("a console was opened on a pass the operator walked out of")
-	}
-	if !handedBack() {
-		t.Error("the port this pass took was still held on the way back to the picker")
-	}
-}
-
-func TestEveryOtherWayOutOfTheDoorStaysOnTheAccountItWasAbout(t *testing.T) {
-	for _, answered := range []terminal.Confirmation{
-		terminal.Confirmed, terminal.Declined, terminal.Unattended, terminal.Ahead,
-	} {
-		onto := aCarryThatLands(t)
-		onto.bound, _ = aPortHeld(t)
-		onto.answered = answered
-
-		_ = onto.run(t)
-
-		if onto.again {
-			t.Errorf("%q put the account picker up again", answered)
-		}
-	}
-}
-
 func TestTheDoorIsAskedAboutTheReleaseTheDeploymentSaysItIsOn(t *testing.T) {
 	// ../../internal/effects' OwnRelease is what reads it and the door is what draws it, so what this
 	// holds is the one thing neither of them can: that the string reaches the screen at all.
@@ -1049,86 +1017,61 @@ func TestADeploymentThisConsoleReadNoReleaseOffIsPutBehindADoorNamingNone(t *tes
 	}
 }
 
-// the account picker put again, which is what the way back is for.
-//
-// each pass is the whole reading over: the account chosen, the deployment in it found, and the door
-// about that deployment. a pass that carried the account of the one before it would be a door about
-// a deployment nobody asked for.
+// the account named and the whole reading made against it, which is the one pass a run makes.
 
-// a run of ./startingOver with the accounts a case hands it and every pass recorded.
-type overAndOver struct {
-	picked  []account.Account
-	closes  int
+// a run of ./againstOneAccount with the account a case hands it and the pass recorded.
+type overOneAccount struct {
+	picked  account.Account
+	held    bool
 	refused error
 	against []string
-	back    int
 	stopped error
 	said    strings.Builder
 }
 
-func (over *overAndOver) run() error {
-	return startingOver(&over.said,
-		func() (account.Account, bool, error) {
-			if len(over.picked) == 0 {
-				over.closes++
-				return account.Account{}, false, over.refused
-			}
-			in := over.picked[0]
-			over.picked = over.picked[1:]
-			return in, true, nil
-		},
-		func(in account.Account) (bool, error) {
+func (over *overOneAccount) run() error {
+	return againstOneAccount(&over.said,
+		func() (account.Account, bool, error) { return over.picked, over.held, over.refused },
+		func(in account.Account) error {
 			over.against = append(over.against, in.ID)
-			if len(over.against) <= over.back {
-				return true, nil
-			}
-			return false, over.stopped
+			return over.stopped
 		})
 }
 
-func TestTheWayBackPutsThePickerUpAndReadsTheAccountChosenTheSecondTime(t *testing.T) {
-	over := &overAndOver{
-		picked: []account.Account{{ID: "ac1", Name: "Acme Giving"}, {ID: "ac2", Name: "Beta Trust"}},
-		back:   1,
-	}
+func TestTheReadingIsMadeAgainstTheAccountTheOperatorNamed(t *testing.T) {
+	over := &overOneAccount{picked: account.Account{ID: "ac1", Name: "Acme Giving"}, held: true}
 
 	if err := over.run(); err != nil {
-		t.Fatalf("startingOver = %v, want the pass the operator went back for", err)
+		t.Fatalf("againstOneAccount = %v, want the pass the operator asked for", err)
 	}
-	if len(over.against) != 2 {
-		t.Fatalf("the deployment was read %d times, want the pass and the one after it", len(over.against))
-	}
-	if over.against[1] != "ac2" {
-		t.Errorf("the second pass was made against %q, want the account chosen the second time",
-			over.against[1])
+	if len(over.against) != 1 || over.against[0] != "ac1" {
+		t.Errorf("the deployment was read for %v, want the account chosen", over.against)
 	}
 }
 
-func TestAPickerClosedOnALaterPassEndsTheRunTheWayAClosedPickerDoes(t *testing.T) {
-	over := &overAndOver{picked: []account.Account{{ID: "ac1"}}, back: 1}
+func TestAPickerTheOperatorClosedEndsTheRunOnACleanExitAndALine(t *testing.T) {
+	over := &overOneAccount{}
 
 	if err := over.run(); err != nil {
-		t.Errorf("startingOver = %v, want a choice not made read as no failure", err)
+		t.Errorf("againstOneAccount = %v, want a choice not made read as no failure", err)
 	}
-	if over.closes != 1 {
-		t.Errorf("the picker was closed %d times, want the one the operator closed", over.closes)
+	if len(over.against) != 0 {
+		t.Errorf("a run whose picker was closed read %v", over.against)
 	}
 	if !strings.Contains(over.said.String(), "nothing was created") {
 		t.Errorf("said %q, want what did not happen", over.said.String())
 	}
 }
 
-func TestAPassThatDidNotLandEndsTheRunRatherThanAskingAgain(t *testing.T) {
-	over := &overAndOver{
-		picked:  []account.Account{{ID: "ac1"}, {ID: "ac2"}},
+func TestAPassThatDidNotLandEndsTheRunAsTheFailureItIs(t *testing.T) {
+	over := &overOneAccount{
+		picked:  account.Account{ID: "ac1"},
+		held:    true,
 		stopped: errors.New("this release was not carried onto the deployment"),
 	}
 
 	if err := over.run(); err == nil {
-		t.Fatal("a pass that did not land went back to the picker, which reads as a run still going")
-	}
-	if len(over.against) != 1 {
-		t.Errorf("the deployment was read %d times, want the one pass that failed", len(over.against))
+		t.Fatal("a pass that did not land ended the run cleanly")
 	}
 }
 
@@ -1237,7 +1180,7 @@ func TestTheWaitOverTheReadsIsGivenUpBeforeADeploymentAlreadyCarryingIsNamed(t *
 	// the up-to-date path opens no door and says its two lines on the screen the wait is drawn on,
 	// so it is given up in front of those instead.
 	onto := aCarryThatLands(t)
-	onto.deployed = version
+	onto.deployed = onto.carrying
 
 	if err := onto.run(t); err != nil {
 		t.Fatalf("catchingUp = %v", err)
@@ -1670,7 +1613,7 @@ func TestADeploymentAlreadyCarryingThisReleaseIsStillFinished(t *testing.T) {
 	// a first run that stopped past the deploy leaves a deployment on this very release, so no
 	// door is put and the console opens straight onto it — which is the pass a finish has to reach.
 	onto := aCarryThatLands(t)
-	onto.deployed = version
+	onto.deployed = onto.carrying
 	onto.finished = "spam protection is set up"
 
 	if err := onto.run(t); err != nil {
@@ -1704,28 +1647,13 @@ func TestADoorTheOperatorShutAndOneTheyOpenedAreBothFinished(t *testing.T) {
 
 func TestAFinishWithNothingToSayDrawsNoLine(t *testing.T) {
 	onto := aCarryThatLands(t)
-	onto.deployed = version
+	onto.deployed = onto.carrying
 
 	if err := onto.run(t); err != nil {
 		t.Fatalf("catchingUp = %v", err)
 	}
 	if ran := strings.Join(onto.order, " "); ran != "weighed settled drew drew finished" {
 		t.Errorf("an up-to-date pass ran %q, want no line drawn for a finish that said nothing", ran)
-	}
-}
-
-func TestTheWayBackFromTheDoorFinishesNothing(t *testing.T) {
-	// nothing was uploaded on this pass and no console is served on it: the account picker is what
-	// the operator is about to be standing at, and the deployment they walked away from is not the
-	// one this run is about any more.
-	onto := aCarryThatLands(t)
-	onto.answered = terminal.Elsewhere
-
-	if err := onto.run(t); err != nil {
-		t.Fatalf("catchingUp = %v", err)
-	}
-	if onto.finishes {
-		t.Error("a pass the operator walked out of finished the deployment it walked away from")
 	}
 }
 

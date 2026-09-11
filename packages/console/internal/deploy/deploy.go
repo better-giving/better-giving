@@ -150,6 +150,10 @@ type Options struct {
 	DatabaseID string
 	// Config is what this binary was baked for, which the bundle's manifest is held against.
 	Config release.Config
+	// Release is the release this deploy is putting on, recorded onto the worker by the upload that
+	// puts it there (./upload.go's bindings). Empty for a binary carrying no release of its own,
+	// which writes no record rather than a blank one.
+	Release string
 	// Shape is the fixed upload this app's worker goes up in.
 	Shape release.UploadShape
 	// Report is called as the run moves, on the goroutine the run is on; a call that blocks holds

@@ -287,6 +287,13 @@ func assetsField(token, headers string) map[string]any {
 //
 // the database's own is the one that is not fixed: it names a uuid resolved against the operator's
 // account, and the field is `id` on the way up whatever a later read of the settings calls it.
+//
+// **the release goes up with them, and that is what makes it a fact about what is running.** it is
+// the console's own record about the deployment rather than one of the thirteen an operator
+// configures (../deployment/recorded.go), and it travels in this metadata so that no state exists
+// where the code landed and the record says another release. a binary naming no release writes no
+// binding at all: `keep_bindings` then leaves whatever the last deploy recorded, where an empty one
+// would replace a true record with a blank.
 func bindings(options Options) []any {
 	held := []any{map[string]any{
 		"name": options.Shape.D1Binding,
@@ -299,6 +306,13 @@ func bindings(options Options) []any {
 			"type":         "ratelimit",
 			"namespace_id": limiter.NamespaceID,
 			"simple":       map[string]any{"limit": limiter.Simple.Limit, "period": limiter.Simple.Period},
+		})
+	}
+	if options.Release != "" {
+		held = append(held, map[string]any{
+			"name": deployment.RecordedReleaseName,
+			"type": "plain_text",
+			"text": options.Release,
 		})
 	}
 	return held

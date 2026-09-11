@@ -52,7 +52,7 @@ func TestTheConfirmNamesEveryPendingMigrationInTheOrderItWouldApplyThem(t *testi
 func TestTheDoorOpensOnlyWhereTheOperatorChoseToApplyThem(t *testing.T) {
 	held := &bytes.Buffer{}
 	if said := deciding(
-		strings.NewReader("k\r"), held, carrying(carried, onDeployment.Release, oneMigration),
+		strings.NewReader("k\r"), held, carrying(carried, oneMigration),
 	); said != Confirmed {
 		t.Errorf("applying them = %q, want %q", said, Confirmed)
 	}
@@ -61,7 +61,7 @@ func TestTheDoorOpensOnlyWhereTheOperatorChoseToApplyThem(t *testing.T) {
 	// hand resting on the keyboard is how a one-way door is opened by accident.
 	held = &bytes.Buffer{}
 	if said := deciding(
-		strings.NewReader("\r"), held, carrying(carried, onDeployment.Release, oneMigration),
+		strings.NewReader("\r"), held, carrying(carried, oneMigration),
 	); said != Declined {
 		t.Errorf("a return at the door = %q, want %q", said, Declined)
 	}
@@ -84,7 +84,7 @@ func TestAFormThatFailedIsNoDecisionAndNeverTheRefusal(t *testing.T) {
 	held := &bytes.Buffer{}
 	if said := deciding(
 		iotest.ErrReader(errors.New("the keyboard went away")), held,
-		carrying(carried, onDeployment.Release, oneMigration),
+		carrying(carried, oneMigration),
 	); said != Unattended {
 		t.Errorf("a form that failed = %q, want %q", said, Unattended)
 	}
@@ -95,7 +95,7 @@ func TestADoorTheOperatorClosedIsTheRefusalTheyChose(t *testing.T) {
 	// (./prompt.go): the operator was standing at it, and what they left is the database alone.
 	held := &bytes.Buffer{}
 	if said := deciding(
-		strings.NewReader("\x03"), held, carrying(carried, onDeployment.Release, oneMigration),
+		strings.NewReader("\x03"), held, carrying(carried, oneMigration),
 	); said != Declined {
 		t.Errorf("a door the operator closed = %q, want %q", said, Declined)
 	}
@@ -150,8 +150,8 @@ func TestAScreenWithNothingToApplySaysNothingAboutTheDatabase(t *testing.T) {
 func TestTheQuestionIsAboutTheUploadWhereThereIsNothingToApply(t *testing.T) {
 	// a title about the live database over a release that applies nothing to it is a question about
 	// something that is not happening.
-	empty, pending := carrying(carried, onDeployment.Release, nil),
-		carrying(carried, onDeployment.Release, oneMigration)
+	empty, pending := carrying(carried, nil),
+		carrying(carried, oneMigration)
 
 	if strings.Contains(empty.title, "database") {
 		t.Errorf("the title is %q, want the deployment rather than the database", empty.title)
@@ -339,6 +339,15 @@ func TestTheDoorNamesTheReleaseOnOfferAndTheOneTheDeploymentIsOn(t *testing.T) {
 	}
 }
 
+func TestTheNewsIsThatANewVersionOfBetterGivingIsAvailable(t *testing.T) {
+	held := &bytes.Buffer{}
+	ConfirmCarry(strings.NewReader("n"), held, onDeployment, carried, nil, nil, "")
+
+	if !strings.Contains(held.String(), "A new version of better-giving is available "+carried) {
+		t.Errorf("said %q, want the release on offer put as news", held.String())
+	}
+}
+
 func TestTheDoorNamesTheReleaseTheDeploymentIsOnUnderWhereItAnswers(t *testing.T) {
 	held := &bytes.Buffer{}
 	ConfirmCarry(strings.NewReader("n"), held, onDeployment, carried, nil, nil, "")
@@ -355,8 +364,8 @@ func TestTheDoorNamesTheReleaseTheDeploymentIsOnUnderWhereItAnswers(t *testing.T
 }
 
 func TestTheReleaseTheDeploymentIsOnIsLeftOutWhereThisConsoleReadNone(t *testing.T) {
-	// ../effects' OwnRelease answers empty for five different ways of not finding out, and a label
-	// with nothing after it reads as a value lost on the way here.
+	// ../effects' OwnRelease answers empty for every way of not finding out, and a label with
+	// nothing after it reads as a value lost on the way here.
 	held := &bytes.Buffer{}
 	ConfirmCarry(strings.NewReader("n"), held,
 		Deployment{Account: onDeployment.Account, Address: onDeployment.Address}, carried,
@@ -370,20 +379,18 @@ func TestTheReleaseTheDeploymentIsOnIsLeftOutWhereThisConsoleReadNone(t *testing
 	}
 }
 
-func TestBothAnswersNameTheReleaseTheyWouldLeaveTheDeploymentOn(t *testing.T) {
-	put := carrying(carried, onDeployment.Release, nil)
+func TestTheTwoAnswersAreTheActsThemselvesAndNameNoRelease(t *testing.T) {
+	// both releases are on the facts above the question (./object, ./weighing), so an answer that
+	// named one again would be the same number twice on one screen.
+	put := carrying(carried, nil)
 
-	if !strings.Contains(put.apply, carried) {
-		t.Errorf("the act is %q, want the release it would put on named", put.apply)
+	if put.apply != "Update deployment" || put.leave != "Keep current version" {
+		t.Errorf("the answers are %q / %q, want the two acts", put.apply, put.leave)
 	}
-	if !strings.Contains(put.leave, onDeployment.Release) {
-		t.Errorf("the refusal is %q, want the release it would keep named", put.leave)
-	}
-}
-
-func TestTheAnswerThatKeepsTheDeploymentNamesNoReleaseWhereThisConsoleReadNone(t *testing.T) {
-	if leave := carrying(carried, "", nil).leave; leave != "Keep the current version" {
-		t.Errorf("the refusal is %q, want one that names no number nothing ever read", leave)
+	for _, said := range []string{put.apply, put.leave} {
+		if strings.Contains(said, carried) || strings.Contains(said, onDeployment.Release) {
+			t.Errorf("the answer %q names a release the facts above it already carry", said)
+		}
 	}
 }
 
@@ -394,7 +401,7 @@ func TestABinaryThatNamesNoReleaseOffersNoneAndPointsAtNoNotes(t *testing.T) {
 	ConfirmCarry(strings.NewReader("n"), held, onDeployment, "dev",
 		[]string{"0007_donors.sql"}, nil, "")
 
-	for _, unwanted := range []string{"dev", "a new release", "release notes"} {
+	for _, unwanted := range []string{"dev", "A new version", "release notes"} {
 		if strings.Contains(held.String(), unwanted) {
 			t.Errorf("said %q, want no version and no notes over a binary that names none: %q",
 				held.String(), unwanted)
@@ -434,35 +441,29 @@ func TestAScreenWithMigrationsOnItSaysWhatItAppliesAndThatItCannotBeUndone(t *te
 			t.Errorf("said %q, want %q on a screen with migrations on it", held.String(), want)
 		}
 	}
-	put := carrying(carried, onDeployment.Release, []string{"0007_donors.sql"})
+	put := carrying(carried, []string{"0007_donors.sql"})
 	if !strings.Contains(put.title, "live database") || put.apply != "Apply them" {
 		t.Errorf("the question is %q / %q, want the one the migration is applied on",
 			put.title, put.apply)
 	}
 }
 
-// the third answer, which is the way back out of a door an operator met holding the wrong account.
+// the two answers, and that there is no third.
+//
+// the list stands on the refusal and comes round to the act from it, so the row under the refusal
+// is the act itself: a door carrying a third answer is one that row lands on instead. an operator
+// holding the wrong account quits and runs the command again.
 
-func TestTheWayBackToTheAccountPickerIsOneOfTheAnswers(t *testing.T) {
-	held := &bytes.Buffer{}
-	if said := deciding(
-		strings.NewReader("j\r"), held, carrying(carried, onDeployment.Release, oneMigration),
-	); said != Elsewhere {
-		t.Errorf("the row under the refusal = %q, want %q", said, Elsewhere)
-	}
-}
-
-func TestEveryDoorOffersTheWayBackToTheAccountPicker(t *testing.T) {
-	// the account is the thing most likely to be wrong at this door: the picker opens on the one this
-	// machine remembers, so an operator who kept it by reflex meets a deployment they did not mean.
+func TestEveryDoorPutsTwoAnswersAndNothingUnderThem(t *testing.T) {
 	for _, put := range []question{
-		carrying(carried, onDeployment.Release, nil),
-		carrying(carried, onDeployment.Release, oneMigration),
-		carrying("", onDeployment.Release, nil),
-		carrying(carried, "", nil),
+		carrying(carried, nil),
+		carrying(carried, oneMigration),
+		carrying("", nil),
 	} {
-		if !strings.Contains(put.elsewhere, "Cloudflare account") {
-			t.Errorf("%q offers %q, want the way back to the account picker", put.title, put.elsewhere)
+		held := &bytes.Buffer{}
+		if said := deciding(strings.NewReader("j\r"), held, put); said != Confirmed {
+			t.Errorf("%q: the row under the refusal = %q, want the list come round to the act",
+				put.title, said)
 		}
 	}
 }
