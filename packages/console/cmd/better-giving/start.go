@@ -224,17 +224,27 @@ func start(args []string, to, wrong io.Writer) error {
 			named := deployment.AccountName(ctx, door.Get, in.ID)
 			silence.Done()
 
+			// where the chain left the deployment, taken once on the far side of it and wanted by
+			// two acts: the line the run says, and the wait over that address starting to work
+			// (./workingAt). written and read by acts of ./standingUp in the order it puts them,
+			// which are one goroutine's.
+			up := deployment.Address{}
+
 			terminal.Say(to, newerConsole)
 			return standingUp(to,
 				func() (net.Listener, error) { return beforeTheDeploy(*port) },
 				func() (first.Asked, bool, error) { return ask(aboutToMake(in, named)) },
-				func() (string, bool, error) {
+				func() (settledName, bool, error) {
 					return nameAt(ctx, door, credential, in, named, nothingMade)
 				},
 				func(asked first.Asked) (first.Outcome, bool) {
 					return chainAt(ctx, door, credential, records, asked)
 				},
-				func() string { return nowUp(effects.OwnAddress(ctx, door)) },
+				func() string {
+					up = effects.OwnAddress(ctx, door)
+					return nowUp(up)
+				},
+				func() string { return workingAt(ctx, up.Origin()) },
 				func(bound net.Listener) error {
 					return serve(records, flow, *port, !*noOpen, to, bound, true)
 				})
@@ -352,16 +362,19 @@ func onThePortItTook(
 // chain, the questions in front of the chain rather than inside it, and the one act that creates
 // something past both of them (./start_test.go).
 //
-// `named` is the line the name act drew, printed above the ledger because the chain draws over the
-// screen from the moment it starts. `where` is read after the chain and not before it, because what
-// it names is a deployment that did not exist when this run started.
+// `named` is what the name act settled, its line printed above the ledger because the chain draws
+// over the screen from the moment it starts. `where` is read after the chain and not before it,
+// because what it names is a deployment that did not exist when this run started, and `working` is
+// the wait over that address starting to answer — stood only where this run registered the name it
+// is made of and only where there is a console on the far side of it (./workingAt).
 func standingUp(
 	to io.Writer,
 	claiming func() (net.Listener, error),
 	asking func() (first.Asked, bool, error),
-	named func() (string, bool, error),
+	named func() (settledName, bool, error),
 	running func(first.Asked) (first.Outcome, bool),
 	where func() string,
+	working func() string,
 	console func(net.Listener) error,
 ) error {
 	return onThePortItTook(claiming, func() (bool, error) {
@@ -370,11 +383,11 @@ func standingUp(
 			return false, closed(to, err)
 		}
 
-		said, settled, err := named()
+		name, settled, err := named()
 		if err != nil || !settled {
 			return false, closed(to, err)
 		}
-		terminal.Say(to, said)
+		terminal.Say(to, name.Said)
 
 		reporting, serving, err := afterTheChain(running(asked))
 		if err != nil {
@@ -382,6 +395,9 @@ func standingUp(
 		}
 		if reporting {
 			terminal.Say(to, where())
+		}
+		if serving && name.Registered {
+			terminal.Say(to, working())
 		}
 		return serving, nil
 	}, console)
@@ -674,6 +690,20 @@ func ask(preamble string) (first.Asked, bool, error) {
 	return first.Asked{Password: password, SessionSecret: secret, Placement: placement}, true, nil
 }
 
+// what the name act settled, which is the line the run draws and whether this run is the one that
+// made the name.
+//
+// **the two are not one reading.** Said is empty where the account already held a name, and a
+// caller reading the registration off the line would be resting a wait that holds a terminal for
+// two minutes on the wording of a sentence (./workingAt).
+type settledName struct {
+	// Said is what the run draws above the ledger, and is empty where nothing was registered.
+	Said string
+	// Registered is this run having given the account a name it did not hold, which is the one
+	// reading the address wait stands on (../../internal/deployment/working.go).
+	Registered bool
+}
+
 // the workers.dev name this cloudflare account answers under, registered where it holds none.
 //
 // **a deployment on an account with no workers.dev name answers nowhere, and every press after it
@@ -699,8 +729,7 @@ func ask(preamble string) (first.Asked, bool, error) {
 // is handed what it found — a second read here would ask cloudflare a question the caller already
 // has the answer to.
 //
-// `said` is the line the run draws above the ledger, and is empty where the account already held a
-// name. `cannot` is what the press this belongs to loses where the account cannot be named
+// `cannot` is what the press this belongs to loses where the account cannot be named
 // (./nothingMade). False with no error is the question closed.
 func naming(
 	held deployment.Named,
@@ -708,14 +737,14 @@ func naming(
 	derived string,
 	ask func(why string) (string, bool, error),
 	cannot string,
-) (string, bool, error) {
+) (settledName, bool, error) {
 	switch held.Kind {
 	case deployment.NameHeld:
-		return "", true, nil
+		return settledName{}, true, nil
 	case deployment.NameNone:
 		// the one state this act is for, and the only one it creates anything on.
 	default:
-		return "", false, unnamed(held, cannot)
+		return settledName{}, false, unnamed(held, cannot)
 	}
 
 	name, why := derived, ""
@@ -726,18 +755,18 @@ func naming(
 		if name == "" {
 			typed, given, err := ask(why)
 			if err != nil || !given {
-				return "", false, err
+				return settledName{}, false, err
 			}
 			name = typed
 		}
 		registered := register(name)
 		switch registered.Kind {
 		case deployment.NameRegistered:
-			return nowNamed(registered.Name), true, nil
+			return settledName{Said: nowNamed(registered.Name), Registered: true}, true, nil
 		case deployment.NameTaken:
 			name, why = "", takenName(name, registered.Detail)
 		default:
-			return "", false, unnamed(registered, cannot)
+			return settledName{}, false, unnamed(registered, cannot)
 		}
 	}
 }
@@ -754,7 +783,7 @@ func nameAt(
 	in account.Account,
 	held deployment.Named,
 	cannot string,
-) (string, bool, error) {
+) (settledName, bool, error) {
 	return naming(
 		held,
 		func(name string) deployment.Named {
@@ -908,6 +937,50 @@ func nowUp(address deployment.Address) string {
 	}
 	return release.Baked.Name + " is deployed and answers on no address this console can read"
 }
+
+// the wait a run that registered this account's workers.dev name stands over the address that name
+// makes, and the line it says where the bound was reached with nothing answering.
+//
+// **only the run that registered the name stands it.** the callers hold that reading
+// (./standingUp, ./finishing) and what is bound here is the wait itself: an address composed out of
+// a name taken minutes ago does not reach the machine asking yet
+// (../../internal/deployment/working.go), and the console opened straight onto one draws its own
+// unreachable face at an operator whose deployment is fine.
+//
+// **a deployment answering on no address this console can read is nothing to wait on.** what the
+// run said about it one line earlier is that it could not read one (./nowUp), and a wait over an
+// empty address is two minutes of a spinner over a question nobody asked.
+//
+// **the drawing holds no keystroke and is given up whichever way the wait ends**
+// (../../internal/terminal/waiting.go): a ctrl-c through it ends the drawing and leaves the wait
+// itself running to the answer or the bound, which is what the wait over the widget one press
+// earlier does (./finishAt).
+func workingAt(ctx context.Context, where string) string {
+	if where == "" {
+		return ""
+	}
+
+	silence := terminal.WaitingOn(os.Stdout, terminal.WaitingForTheAddress())
+	defer silence.Done()
+
+	if deployment.StartsWorking(ctx, deployment.Reach, where,
+		deployment.AddressBound, deployment.AddressAsked) {
+		return ""
+	}
+	return addressStillNew
+}
+
+// what a run whose address had not come up by the bound says, which is a line and never an exit.
+//
+// **the deployment is standing and the console opens on this run either way**, so what the line
+// names is why that console may not reach it for another minute rather than a press that failed
+// (./noNameToRegisterAgainst's reading of the identical act).
+//
+// it names the address as new rather than as unreachable: this run is the one that registered the
+// name it is made of, and an operator told their deployment cannot be reached goes looking at a
+// connection that is fine.
+var addressStillNew = "your deployment's address is new and isn't answering yet. That usually " +
+	"takes a few minutes, and the console is opening either way."
 
 // what a console that could not find out whether anything is deployed says, which is never a deploy.
 //
@@ -1088,18 +1161,21 @@ func atTheDoor(answered terminal.Confirmation) (said string, went doorway, err e
 // work that did not happen is noise on all of them.
 //
 // `named` is the account's workers.dev name settled, which is what the widget's host is derived
-// from; `registering` the widget stage itself. The line is what the run says about it, empty being
-// a finish there was nothing for.
+// from; `registering` the widget stage itself; `working` the wait over the address a name this run
+// registered makes, made past the widget and only where this run is the one that made it
+// (../../internal/deployment/working.go). The line is what the run says about all of it, empty
+// being a finish there was nothing for.
 func finishing(
 	reading func() deployment.VarsRead,
-	named func() (string, bool, error),
+	named func() (settledName, bool, error),
 	registering func() first.Outcome,
+	working func() string,
 ) string {
 	if !deployment.HoldsNoSpamPair(reading()) {
 		return ""
 	}
 
-	said, settled, err := named()
+	name, settled, err := named()
 	switch {
 	case err != nil:
 		return err.Error()
@@ -1107,16 +1183,25 @@ func finishing(
 		return noNameToRegisterAgainst
 	}
 
+	widget := spamRegistered
 	if stopped := registering(); stopped.Kind != "" {
-		return beside(said, quoting(terminal.Outcome(stopped), terminal.Said(stopped)))
+		widget = quoting(terminal.Outcome(stopped), terminal.Said(stopped))
 	}
-	return beside(said, spamRegistered)
+
+	said := beside(name.Said, widget)
+	if !name.Registered {
+		return said
+	}
+	return beside(said, working())
 }
 
-// the two lines a finish may say as one, and the second alone where the first was never said.
+// the lines a finish may say as one, and either of them alone where the other was never said.
 func beside(said, tail string) string {
-	if said == "" {
+	switch {
+	case said == "":
 		return tail
+	case tail == "":
+		return said
 	}
 	return said + "\n" + tail
 }
@@ -1161,6 +1246,12 @@ const (
 // appeared and vanished in the same frame is noise (../../internal/terminal/waiting.go). the name
 // between them draws none either: it is the one act here that may put a question, and a prompt
 // erases the screen before it draws.
+//
+// **the address is read here rather than carried in, and it is the second wait.** the deployment
+// answered on none of this account's own before this press, because the account held no name to
+// answer under (../../internal/deployment/address.go's Unregistered) — so where the console will be
+// opened is a reading only this press can take, and the wait over it starting to work stands past
+// the widget (./workingAt).
 func finishAt(
 	ctx context.Context,
 	door deployment.Door,
@@ -1172,7 +1263,7 @@ func finishAt(
 		func() deployment.VarsRead {
 			return deployment.DeployedVars(ctx, door.Get, door.AccountID, door.WorkerName)
 		},
-		func() (string, bool, error) {
+		func() (settledName, bool, error) {
 			return nameAt(ctx, door, credential, in,
 				deployment.AccountName(ctx, door.Get, in.ID), nothingRegistered)
 		},
@@ -1182,7 +1273,8 @@ func finishAt(
 			return first.Registering(ctx, effects.Chain(nil, door, credential,
 				cf.APISend, cf.APISchemaSend, cf.AssetsUpload, release.BundleSource(version),
 				version, records))
-		})
+		},
+		func() string { return workingAt(ctx, effects.OwnAddress(ctx, door).Origin()) })
 }
 
 // runs the carry while the ledger holds the terminal, and answers how it ended and whether a signal

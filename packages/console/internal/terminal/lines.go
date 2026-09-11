@@ -6,7 +6,8 @@ import (
 	"github.com/better-giving/console/internal/release"
 )
 
-// the rows an operator waits on while a press runs, and the words each of them is drawn in.
+// the rows an operator waits on while a press runs, the words each of them is drawn in, and the
+// sentence over the one wait past them that draws no row at all (./WaitingForTheAddress).
 //
 // **a row is the thing an operator is waiting on, and a check the binary runs inside it is not a
 // second thing.** the chain reports ten stages and the deploy engine six, but `checking` is one
@@ -202,4 +203,19 @@ var DeployStages = []first.Stage{
 	first.Stage(deploy.Uploading),
 	first.Stage(deploy.Pushing),
 	first.Stage(deploy.Verifying),
+}
+
+// WaitingForTheAddress is what stands over the one wait past the rows above, drawn by the caller
+// while it makes it (./waiting.go).
+//
+// **it is a wait and not a row because it belongs to no press.** the rows are stages a deploy
+// reports as it reaches them; this stands after the last of them, on the one run in a deployment's
+// life that registered the account's workers.dev name — and what it waits on is that name reaching
+// the machine asking (../deployment/working.go), which reports nothing and counts nothing.
+//
+// **it names the address and what the operator is waiting for it to do, and nothing under that.**
+// the naming a cloudflare account holds and how long one takes to reach the machine asking are this
+// console's business and not theirs.
+func WaitingForTheAddress() string {
+	return "waiting for your deployment's address to start answering"
 }

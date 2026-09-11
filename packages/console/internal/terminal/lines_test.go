@@ -103,3 +103,17 @@ func TestTheDownloadAndTheUploadNameThisDeploymentInBothOfTheirStates(t *testing
 		}
 	}
 }
+
+func TestTheWaitOverTheAddressSaysWhatItIsWaitingFor(t *testing.T) {
+	// a name the account registered on this run takes a minute or so to reach the machine asking,
+	// and a terminal showing nothing but a cursor through it reads as a console that has hung
+	// (./waiting.go).
+	said := WaitingForTheAddress()
+
+	if !strings.Contains(said, "address") {
+		t.Errorf("said %q, want what is being waited for", said)
+	}
+	if !strings.Contains(said, "answering") {
+		t.Errorf("said %q, want what is being waited for it to do", said)
+	}
+}
