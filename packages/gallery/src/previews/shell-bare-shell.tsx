@@ -119,31 +119,25 @@ export default function ShellBareShellPreview() {
 			</BareShell>
 
 			{/* the other head, handed in whole: the strip's two ends, and a line under it on the same
-			    band. what stands on either is the caller's — the console hands its own wordmark, the
-			    account it is working in with the way out beside it, and what this machine could not
-			    write down (packages/console-ui/src/lib/head-strip.tsx). the leading end is plain text
-			    here for the reason FOOT above is: the picture the console stands there is that
-			    package's file, and what this specimen is about is the strip.
+			    band. what stands on either is the caller's — the console hands the account it is
+			    working in, the way out across from it, and what this machine could not write down
+			    (packages/console-ui/src/lib/head-strip.tsx).
 
-			    the company's logo is inside the identity rather than at an end of the strip, for the
-			    reason packages/console-ui/src/lib/head-strip.tsx states. */}
+			    the company's logo is inside the identity rather than at an end of the strip, and the
+			    press carries its mark and no word, for the reasons that module states. */}
 			<BareShell
 				head={
 					<>
 						<div className="adm-headstrip">
-							<span>better-giving</span>
-							<div className="adm-headstrip__identity">
-								<span className="adm-headstrip__who">
-									<Brand name="cloudflare" label="Cloudflare" />
-									<span className="adm-headstrip__name">Riverside Shelter</span>
-									<span className="adm-headstrip__note">9f2c1ab4e77d4c0fa1b3d5e6079c8412</span>
+							<span className="adm-headstrip__who">
+								<Brand name="cloudflare" label="Cloudflare" />
+								<span className="adm-headstrip__name">Riverside Shelter</span>
+								<span className="adm-headstrip__sep" aria-hidden="true">
+									/
 								</span>
-								<span className="adm-headstrip__act">
-									<Button variant="soft" size="sm" mark="unplug">
-										Disconnect
-									</Button>
-								</span>
-							</div>
+								<span className="adm-headstrip__note">9f2c1ab4e77d4c0fa1b3d5e6079c8412</span>
+							</span>
+							<Button variant="soft" size="sm" mark="unplug" aria-label="Close console" />
 						</div>
 						<p className="adm-headnote">
 							<Mark name="triangle-alert" />

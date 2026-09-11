@@ -2,7 +2,6 @@ import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { type ReactNode, useEffect, useRef, useSyncExternalStore } from 'react';
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
 import type { Route } from './+types/root';
-import { HeadEnds } from './lib/head-strip';
 import { endsWithin } from './lib/motion-end';
 import { ProductFoot } from './lib/product-foot';
 import { startingBarFinishing, startingBarLanded, subscribeStartingBar } from './lib/starting-bar';
@@ -76,10 +75,10 @@ export function Layout({ children }: { children: ReactNode }) {
  * taken away part full reports that the console gave up on the reading rather than that it
  * arrived.
  *
- * **the head carries the product's mark and nothing else.** every head after this one states an
- * identity opposite it, and this screen has read none — so the strip's trailing end stands empty
- * rather than holding a shape for one. it is here at all because a page whose whole content is one
- * bar, with no head over it, reads as a page that failed to draw rather than one still drawing.
+ * **it carries no head.** every head after this one is an identity with the one press across from
+ * it (./lib/head-strip.tsx), and this screen has read neither — so there is nothing for a band to
+ * hold, and an empty band over a bar reads worse than none: a rule drawn under nothing says the
+ * page has already drawn a head and left it blank.
  *
  * **bare**, because a bar is the whole of it and a box around it draws a boundary around nothing —
  * the state `bare` in packages/operator/src/components/shell/AppShell.jsx is written for.
@@ -127,7 +126,7 @@ export function HydrateFallback() {
 	}, [finishing]);
 
 	return (
-		<PanelRoute bare bar={<HeadEnds>{null}</HeadEnds>} foot={<ProductFoot version="" />}>
+		<PanelRoute bare foot={<ProductFoot version="" />}>
 			<title>{TITLE}</title>
 			<div className="adm-stack adm-stack--tight adm-stack--centred">
 				{/* polite, and the label is the one word a reader of the tree gets: what the bar's rush

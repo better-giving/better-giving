@@ -168,35 +168,28 @@ export default function ShellAppShellPreview() {
 
 			{/* the same route carrying both strips: two nodes at the two ends of each, and the panel
 			    centred in what they leave rather than in the window. what stands in either is the
-			    caller's — the console hands its own wordmark and who is signed in above, and the
-			    release with a run of marks below, where plain text is what a specimen wants.
+			    caller's — the console hands who is signed in with the one press it offers above, and
+			    the release with a mark below, where plain text is what a specimen wants.
 
-			    **narrow the window to the 375px floor and both strips' two ends become two rows.** the
-			    run at the foot's trailing end is one node rather than three, because a strip's step
-			    falls between its two ends — three links handed in loose are three ends spread across
-			    the line. */}
+			    **narrow the window to the 375px floor and the head's leading end wraps inside itself
+			    rather than dropping the press to a row of its own.** the run at the foot's trailing
+			    end is one node rather than three, because a strip's step falls between its two ends —
+			    three links handed in loose are three ends spread across the line. */}
 			<PanelRoute
 				bar={
 					<>
-						<span>A mark</span>
-						{/* the head's other end as both of the console's screens draw it
-						    (packages/console-ui/src/lib/head-strip.tsx): one card holding the identity and
-						    the one control that acts on it, welded side by side. it is drawn here rather
-						    than described because packages/operator/src/styles/adm.css stretches that press
-						    to the card's height and gives it the box a hand has to find, which is a shape
-						    nothing else on this page wears. one line in the leading zone, because a sign-in
-						    is held under an address and has no id under it. */}
-						<div className="adm-headstrip__identity">
-							<span className="adm-headstrip__who">
-								<Brand name="cloudflare" label="Cloudflare" />
-								<span className="adm-headstrip__name">someone@example.org</span>
-							</span>
-							<span className="adm-headstrip__act">
-								<Button variant="soft" size="sm" mark="log-out">
-									Sign out
-								</Button>
-							</span>
-						</div>
+						{/* the head's two ends as both of the console's screens draw them
+						    (packages/console-ui/src/lib/head-strip.tsx): the identity on one line, and the
+						    press across from it carrying its mark and no word. it is drawn here rather than
+						    described because packages/operator/src/styles/adm.css squares that press on the
+						    box a hand has to find, which is a shape nothing else on this page wears. one
+						    value in the identity, because a sign-in is held under an address and has no id
+						    beside it. */}
+						<span className="adm-headstrip__who">
+							<Brand name="cloudflare" label="Cloudflare" />
+							<span className="adm-headstrip__name">someone@example.org</span>
+						</span>
+						<Button variant="soft" size="sm" mark="log-out" aria-label="Sign out of Cloudflare" />
 					</>
 				}
 				foot={

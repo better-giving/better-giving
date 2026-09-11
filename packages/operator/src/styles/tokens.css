@@ -874,7 +874,7 @@
 
 		   a shape whose parts have to read as joined takes the edge where they meet rather than a
 		   shadow round the pair: two fills sharing an edge with no gap between them are already one
-		   object, and `.adm-headstrip__identity` in ./adm.css is where that is argued. */
+		   object, and nothing in this system spends a shadow to say it again. */
 		--admin-elevation-flat: none;
 		/* raw-colour-ok: paired with `--admin-scrim` and drawn in the same channels, for the
 		   same reason it is the one alpha here. */

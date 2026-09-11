@@ -3918,8 +3918,8 @@
 
 	   **the inset at the two sides belongs to the children and never to this rule.** a strip spans
 	   the window and its rule is the edge of a band, not a line under some content — written here,
-	   the padding that holds the wordmark off the glass stops that rule short of both sides. each
-	   child spends `--admin-space-6` at its own two sides instead — the head on each line that
+	   the padding that holds a strip's leading end off the glass stops that rule short of both
+	   sides. each child spends `--admin-space-6` at its own two sides instead — the head on each line that
 	   stands on its band rather than on the band — which is the shape `.adm-topbar` above already
 	   takes: a band pads itself and what is around it does not. */
 	.adm-panelroute {
@@ -3983,14 +3983,13 @@
 	   under the head, over the foot. the inset at the two sides belongs to whatever stands on the
 	   band and never to the band: **the rule reaches both edges of the window and what stands on it
 	   does not**, because a rule stopping an inset short of the glass reads as a line drawn under
-	   some content rather than as the edge of a band, and the inset is what keeps the wordmark and
-	   the small print on the route's own measure.
-	   the rule is what separates a
-	   strip from the page the panel floats on: the strip and the page are one ground with nothing
-	   else between them, so without it a wordmark and a run of small print read as loose items on
-	   the page rather than as the edges of the route. `--admin-rule` is what this sheet divides one
-	   ground with — `.adm-section + .adm-section` and `.adm-rail__foot` are the same case —
-	   and `--admin-hairline` is a box's own edge and belongs to the panel. the block step is the
+	   some content rather than as the edge of a band, and the inset is what keeps a strip's two ends
+	   on the route's own measure. the rule is what separates a strip from the page the panel floats
+	   on: the strip and the page are one ground with nothing else between them, so without it an
+	   identity and a line of small print read as loose items on the page rather than as the edges of
+	   the route. `--admin-rule` is what this sheet divides one ground with — `.adm-section +
+	   .adm-section` and `.adm-rail__foot` are the same case — and `--admin-hairline` is a box's own
+	   edge and belongs to the panel. the block step is the
 	   strip's own and is written on the side the rule is: the other side is this route's padding, so
 	   a step there would be a step counted twice.
 
@@ -4001,17 +4000,17 @@
 	   `justify-self` because the route centres what it holds and a strip is the one thing in it that
 	   spans the width. both strips stand their ends apart, so a surface handing two nodes gets one
 	   at each, and they are centred against each other rather than stood on a baseline: an end may
-	   be a picture, and a picture has no baseline — flex synthesises one from its bottom edge, which
-	   on a logo drops the wordmark drawn inside it to nearly half the picture's own height above the
-	   words beside it. two runs of type at the sizes a strip sets sit within a pixel of each other
-	   either way, so centring costs the text pair nothing and is the only thing that holds a picture
-	   on the line.
+	   be a picture in a box of its own — the mark at the foot's trailing end is one — and a picture
+	   has no baseline, so flex synthesises one from its bottom edge and stands the box that much
+	   above the words across from it. two runs of type at the sizes a strip sets sit within a pixel
+	   of each other either way, so centring costs the text pair nothing and is the only thing that
+	   holds a picture on the line.
 
-	   both wrap, and the head's does at the 375px floor: its ends are a wordmark and an identity with
-	   a press beside it, and that pair does not fit the line. the foot's are a line of small print
-	   and a run of marks each in a box a hand can hit, which still share a line at the floor and
-	   part below it. wrapped, the two ends are two rows starting at the same edge,
-	   which is a strip somebody arranged rather than a line that ran out.
+	   both can wrap and neither does at the 375px floor: the head's ends are an identity that takes
+	   the line the press leaves and wraps inside itself, and the foot's are a line of small print
+	   and one mark in a box a hand can hit — so each pair still shares a line there. wrapped, the
+	   two ends would be two rows starting at the same edge, which is a strip somebody arranged
+	   rather than a line that ran out.
 	   packages/operator/src/components/shell/AppShell.jsx's `PanelRoute` and
 	   packages/operator/src/components/shell/BareShell.jsx write the head's class and what stands
 	   inside it is the caller's. */
@@ -4051,7 +4050,9 @@
 		padding-block-start: var(--admin-space-6);
 	}
 
-	/* the head's own line: two ends and nothing between them. */
+	/* the head's own line: two ends and nothing between them — who the surface is signed in as at
+	   the leading end, and the one press it offers at the trailing one. what stands in either is the
+	   caller's, and packages/console-ui/src/lib/head-strip.tsx is what the console stands there. */
 	.adm-headstrip {
 		display: flex;
 		flex-wrap: wrap;
@@ -4061,135 +4062,49 @@
 		padding-inline: var(--admin-space-6);
 	}
 
-	/* the picture a surface may stand at the leading end of that line — its own product's mark,
-	   which is the one place on a page a masthead belongs. its height is what the row holds steady
-	   and its width follows the file's own shape, and both have to be written: the box the picture
-	   takes before it has loaded is the img's own `width` and `height` attributes, stated at the
-	   element that names the file, and an attribute width outlives a css height — so a height alone
-	   holds the row steady by squeezing the picture into the full width of the file.
-
-	   it is not ./base.css's `.adm-brand` and may not be folded into it. that class is a company's
-	   own mark, drawn from a url this package holds, and the closed `BrandName` in
-	   ../components/status/Brand.jsx beside it is what makes a second one a decision somebody reads.
-	   this is a slot rule: the strip's children are the caller's, and what is stated here is a size
-	   and nothing about which picture arrives.
-
-	   the rung is the one that stands level with the identity across the strip from it, whose floor
-	   is `--admin-touch-min`: the two ends of a head read as a pair, and a mark shorter than the
-	   card opposite it reads as a note in the corner rather than as whose page this is. */
-	.adm-headstrip__brand {
-		block-size: var(--admin-space-10);
-		inline-size: auto;
-	}
-
 	/* a press on this strip takes the box a hand has to find — the same floor
-	   `.adm-footstrip__social` below gives a mark in the foot. the small soft rank is sized for a
-	   word: its height is a line of small print, which is under that floor at every width. the
-	   inline axis is not stated, because a press here carries its word and is wider than the floor
-	   on its own — a control that was a mark and no word would need it back.
+	   `.adm-footstrip__social` below gives the mark in the foot, and **on both axes**. the press
+	   here is its mark and no word (packages/console-ui/src/lib/head-strip.tsx), so neither axis is
+	   given its size by anything inside it: the small soft rank is sized for a word, and left to
+	   itself it is a line of small print tall and two insets around a glyph wide. the floor is what
+	   makes the box square, and it is stated on the inline axis for that reason — a press carrying
+	   a word is wider than the floor on its own and never needed it.
 
-	   inside the card below the floor does a second job: the card is only ever as tall as what
-	   stands in it, and a one-line identity — the sign-in faces' address, with no id under it —
-	   would make a card shorter than that box. the floor on the press is what holds the card open
-	   to it.
-
-	   the rank is the soft one because it is the trailing zone of that card and the leading zone is
-	   the card's own pale ground: the two are told apart by one step down the neutral ramp, which
-	   is a divider drawn in fill rather than a rule between them. a bordered control there would be
-	   a second box inside the box. */
+	   the rank is the soft one because the press stands on the band with nothing around it: the
+	   fill is the whole of its boundary, one step down the neutral ramp from the page, and a
+	   bordered control here would draw a box on a strip that has none. */
 	.adm-headstrip .adm-btn {
 		min-block-size: var(--admin-touch-min);
+		min-inline-size: var(--admin-touch-min);
 	}
 
-	/* the trailing end: who the surface is signed in as, and the one control that acts on that
-	   identity, in one card holding the two side by side. the pair is the whole point of the end —
-	   a control standing at the far side of the strip from the value it acts on reads as acting on
-	   the strip — and a box drawn round the two is what says they are one object rather than two
-	   items that happen to have landed near each other on the band.
+	/* the strip's leading end: the company's mark, the name, the separator and the id, in that order
+	   on one line. it is one block and not four items on the strip, because the strip stands what it
+	   holds at its two ends — four ends is four things spread across the band — and because all four
+	   are the one identity: what this machine is signed in as, and what that is resolved by.
 
-	   **it never breaks apart.** the two zones do not wrap, so a strip too narrow for the wordmark
-	   and the card on one line puts the card on the line under the wordmark whole, and a card too
-	   wide for the glass shrinks rather than stacking: the identity is floored at its own min-content and
-	   the id breaks inside it, while the press keeps its word.
+	   **it is the end that wraps, and it wraps inside itself.** it takes the line the press leaves
+	   rather than the width of what it holds, which is what keeps the two ends on one row at every
+	   width: a flex line is broken on what its items ask for before any of them is shrunk, so an
+	   identity asking for its whole content is a press on a row of its own at the 375px floor. the
+	   press is a fixed box a hand can hit, this is what is left, and the wrapping happens between
+	   the four runs inside it. the id breaks inside itself under that, which is
+	   `.adm-headstrip__note` below.
 
-	   **the card draws nothing of its own — no ground, no outline, no shadow.** what says the two
-	   are one object is the edge where they meet: the press's fill runs up against the name with no
-	   gap between them, and two things sharing an edge read as joined without anything drawn round
-	   the pair. a ground behind the identity would be a second boundary saying what that edge
-	   already says, and on this band it is a step so small that it says it faintly at best.
-
-	   so the box is here for the geometry alone: it stretches the press to the identity's height and
-	   it clips, which is what rounds the press's outer corners and squares the one that meets the
-	   name. that square edge is the join, and it is the reason the radius is on this box and not on
-	   the press.
-
-	   it is drawn only where there is an identity in it: a face with neither a name nor an id stands
-	   the press on the band on its own, because a card holding one zone is that zone with a box
-	   round it — packages/console-ui/src/lib/head-strip.tsx is where that branch is written. */
-	.adm-headstrip__identity {
-		display: flex;
-		align-items: stretch;
-		min-inline-size: 0;
-		overflow: hidden;
-		border-radius: var(--admin-radius);
-	}
-
-	/* the card's trailing zone. what a surface hands in is a bare press — both console screens hand
-	   a link drawn as one (packages/console-ui/src/lib/head-strip.tsx) — and the zone is a box of
-	   its own rather than the press itself so that the card is what stretches it and the press
-	   fills it. it is a grid for that reason: a grid item with no height of its own takes its
-	   area's, which carries the stretch down to whatever stands in the zone.
-
-	   the press gives up its own corners and its border: the card clips, so a radius here would
-	   draw a rounded box against a clipped one and leave a gap at each trailing corner, and 1px of
-	   border — transparent, on the soft rank — is 1px the fill stops short of the card's edge by. */
-	.adm-headstrip__act {
-		display: grid;
-		flex: none;
-	}
-
-	.adm-headstrip__act .adm-btn {
-		border-width: 0;
-		border-radius: var(--admin-radius-0);
-	}
-
-	/* a clipped press has no outside to draw a ring on, so it draws one inside itself — which is
-	   what `.adm-btn--primary:focus-visible` above does for the same reason in reverse, a fill with
-	   no room outside it. the colour is the accent every other ring on these screens is: a ring
-	   says focus and never the tone of the control under it. ./tokens.css holds its step against
-	   this ground — the soft rank's fill is the sunken surface, one of the three the ring is
-	   stated against. */
-	.adm-headstrip__act .adm-btn:focus-visible,
-	.adm-headstrip__act .adm-btn.is-focus {
-		box-shadow: inset 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
-	}
-
-	/* the identity itself, and the card's leading zone: the name, and under it the id that resolves
-	   it. one block and not two items on a row, because the id is a detail of the name rather than
-	   a second value standing beside it.
-
-	   the step between the lines is the smallest one there is, and it is smaller than the zone's
-	   own inset on purpose: the distance inside a value has to read as less than the distance
-	   between that value and the control acting on it. the lines are centred in the zone rather
-	   than starting at its top, because the card is at least as tall as the press's floor and a
-	   block of one or two lines is shorter than that. */
+	   the step between the runs is a rung over the step between the rows they wrap onto: the mark is
+	   a picture with no sidebearing of its own and butts against the first character at anything
+	   less, and wrapped the block still has to read as one value rather than as a stack of them. */
 	.adm-headstrip__who {
-		display: grid;
-		grid-template-columns: auto minmax(0, 1fr);
-		/* the two columns are the logo and the name, and that pair is the only thing this gap ever
-		   falls between: the id is in the second column on a row of its own. it is a rung over the
-		   row step, because the mark is a picture with no sidebearing of its own — set at the
-		   distance the two lines are apart it butts against the first character and reads as part
-		   of the word rather than as the thing the word is held with. */
+		display: flex;
+		flex: 1;
+		flex-wrap: wrap;
+		/* the mark and the letters share the line's baseline, which is what stands the cloud on the
+		   line the name stands on. it takes both of them to say it: a lone item asking for a
+		   baseline has none to meet and falls back to the top of its line. */
+		align-items: baseline;
 		column-gap: var(--admin-space-3);
 		row-gap: var(--admin-space-1);
-		align-content: center;
-		/* the logo and the name share the first row's baseline, which is what stands the cloud on
-		   the line the letters stand on. it takes both of them to say it: a lone item asking for a
-		   baseline has none to meet and falls back to the top of its row. */
-		align-items: baseline;
 		min-inline-size: 0;
-		padding: var(--admin-space-3) var(--admin-space-5);
 	}
 
 	/* raw-length-ok: the logo is sized to the text it stands with rather than to `--admin-mark-size`,
@@ -4200,8 +4115,8 @@
 	   the line the name is read on. what the logo says is whose account the name is held with, and
 	   the name is what is read — so it is drawn under the letters it stands in front of.
 
-	   it sits on the row's baseline, which for a box holding no text is its own bottom edge — so the
-	   cloud stands on the line the letters stand on rather than floating over it. */
+	   it sits on the line's baseline, which for a box holding no text is its own bottom edge — so
+	   the cloud stands on the line the letters stand on rather than floating over it. */
 	.adm-headstrip__who > .adm-brand {
 		block-size: 0.55em;
 	}
@@ -4213,13 +4128,20 @@
 		color: var(--admin-ink);
 	}
 
-	/* the second value under the same identity, pitched a rung under the caption at the fine-print
+	/* what stands between the two values, and it is drawn rather than ruled: a border or a
+	   pseudo-element would be a line this strip has to hold on the baseline of type that wraps, and
+	   what is wanted is punctuation. it is the muted ink because it is neither of the two values it
+	   parts. */
+	.adm-headstrip__sep {
+		color: var(--admin-ink-muted);
+	}
+
+	/* the second value on the same identity, pitched a rung under the caption at the fine-print
 	   rank: the name is what a reader recognises the identity by and this is what they check it
 	   against something off the screen. the mono face and the any-glyph break are
 	   `.adm-topbar__note`'s reasons above — an id is copied and compared rather than read, and has
 	   no break point of its own to narrow the end at. */
 	.adm-headstrip__note {
-		grid-column: 2;
 		font-family: var(--admin-font-mono);
 		font-size: var(--admin-fineprint-size);
 		color: var(--admin-ink-muted);
@@ -4249,8 +4171,8 @@
 		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
 	}
 
-	/* the strip of small print at the foot of a page: which release of the product this is at one
-	   end, and where that product's own addresses are at the other.
+	/* the strip of small print at the foot of a page: which product and which release of it this is
+	   at one end, and where that product's source is at the other.
 
 	   **it carries no shell's name because it stands under both of them.** the panel route above
 	   hands it its last row and packages/operator/src/components/shell/BareShell.jsx hands it the
@@ -4284,37 +4206,19 @@
 		padding-block-end: var(--admin-space-6);
 	}
 
-	/* **a run of marks spends no step of its own between them.** the strip's step above is between
-	   its two ends, which are as wide as they read; a mark is a picture in a box the hand can hit,
-	   and that box is wider than the picture on both sides — so a gap here would stand on top of
-	   slack that is already there and the row would read as scattered rather than as a run. the rung
-	   that names no gap is what says it.
+	/* the one mark the trailing end is, and the box a hand hits around it. the picture is the whole
+	   of the control, so its accessible name is the image's own and never a word beside it:
+	   ../components/status/Brand.jsx states when a logo may go without one, and this does not
+	   qualify — there is no text on this line for the name to already be in.
 
-	   it wraps for the same reason the strip does, and it is the run that makes the strip wrap: six
-	   boxes a hand can hit are most of what a narrow line holds, so this is the end that runs out of
-	   room first — and rows of marks is what that becomes rather than a mark past the edge. */
-	.adm-footstrip__socials {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: var(--admin-space-0);
-	}
-
-	/* the marks that run stands, and the box a hand hits around each one. the
-	   picture is the whole of the control, so its accessible name is the image's own and never a
-	   word beside it: ../components/status/Brand.jsx states when a logo may go without one, and none
-	   of these qualifies — there is no text on this line for the name to already be in.
+	   it is the end itself rather than one of a run: a strip's step falls between its two ends, so a
+	   single mark handed in loose is the end it stands at and needs nothing around it.
 
 	   the target is `--admin-touch-min` square while the picture inside it is a fifth of that: what
 	   a finger has to find is the box, so the box grows and the mark stays the size it reads at. no
 	   underline — ./base.css draws one under every link at rest, and under a picture it is a rule
 	   drawn beneath the glyph rather than a link's own line. what a keyboard leaves on it is that
-	   sheet's treatment, landing on this box, which is the mark's own edge.
-
-	   **the six marks are not one size and must not be given one.** they are six companies' glyphs
-	   drawn at six weights, and a box they share is a row where some of them shout: what is level is
-	   what they read at rather than what they measure. the four below take a box of their own and
-	   the rest take the rung stated here. */
+	   sheet's treatment, landing on this box, which is the mark's own edge. */
 	.adm-footstrip__social {
 		display: inline-flex;
 		align-items: center;
@@ -4326,25 +4230,11 @@
 
 	.adm-footstrip__social > img {
 		display: block;
-		inline-size: var(--admin-space-7);
-		block-size: auto;
-	}
-
-	/* the three marks that fill their file corner to corner where the others stand clear of it: at
-	   the rung above they carry more ink than anything beside them. */
-	.adm-footstrip__social--facebook > img,
-	.adm-footstrip__social--github > img,
-	.adm-footstrip__social--instagram > img {
-		/* raw-length-ok: a glyph's optical box is not a step of the spacing scale. the rung below
-		   this one is visibly the smaller mark on the line and the rung above it is the weight this
-		   rule exists to take off. */
+		/* raw-length-ok: a glyph's optical box is not a step of the spacing scale. the mark fills its
+		   file corner to corner, so the rung above this one is more ink than the small print across
+		   the strip from it and the rung below is a mark nobody sees. */
 		inline-size: 1.125rem;
-	}
-
-	/* the one mark that is a letter, and the narrowest of the six: at the rung above its stroke
-	   stands over every other glyph on the line. */
-	.adm-footstrip__social--x > img {
-		inline-size: var(--admin-space-6);
+		block-size: auto;
 	}
 
 	/* a write and the way out of it on one row, wrapping at the floor rather than shrinking:

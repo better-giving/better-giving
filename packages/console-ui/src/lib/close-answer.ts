@@ -5,7 +5,7 @@
 // shape is the action's own and a field test would do; the router hands the same answer to
 // `shouldRevalidate` as `any`, and that is the reader whose mistake costs something — a revalidation
 // let through here reaches a binary that has stopped, and the operator meets the boundary that says
-// the console crashed in place of the panel saying they closed it.
+// the console crashed over a press that ended the run on purpose.
 //
 // it lives beside the screen for the reason ./unread-answer.ts does: this package's pool is
 // node-only and collects `*.spec.ts` (packages/console-ui/vite.config.ts), so a reading written

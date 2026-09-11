@@ -10,7 +10,7 @@ import { useCallback, useRef } from 'react';
 import { Form, Link, useNavigate, useSearchParams } from 'react-router';
 import type { Face } from './connect-face';
 import { SIGNIN_PARAM } from './dialog-params';
-import { HeadEnds, HeadIdentity } from './head-strip';
+import { HeadIdentity } from './head-strip';
 import { ProductFoot } from './product-foot';
 
 // the page before there is a page: one centred panel, and no shell at all. `signed-out` is the one
@@ -22,13 +22,13 @@ import { ProductFoot } from './product-foot';
 // this console draws stands, on the terms that module states.
 //
 // **the head is drawn on `unchosen` and `account-gone` alone**, because what it carries is a
-// cloudflare identity: the company's mark at one end, and at the other who this machine is signed
-// in as with the way out beside them. no face above those two has one to name: a sign-in that never
-// finished, one cloudflare turned down and a read that would not land are all states with nobody
-// signed in. every other fact the console holds is scoped to an account as well — the database, the
-// worker, the address, the session and everything read over it — so a strip carrying one of those
-// would be a strip with nothing true on it, and a ledger under this panel would be a run of
-// readings nobody made. all of them wait for the shell, which arrives with the account.
+// cloudflare identity: who this machine is signed in as at one end, and the way out of that sign-in
+// at the other. no face above those two has one to name: a sign-in that never finished, one
+// cloudflare turned down and a read that would not land are all states with nobody signed in. every
+// other fact the console holds is scoped to an account as well — the database, the worker, the
+// address, the session and everything read over it — so a strip carrying one of those would be a
+// strip with nothing true on it, and a ledger under this panel would be a run of readings nobody
+// made. all of them wait for the shell, which arrives with the account.
 //
 // **all seven of ./connect-face.ts's faces that are not `connected` land here**, and each is the
 // same panel with its own words. they are one composition rather than seven screens for the reason
@@ -48,8 +48,8 @@ import { ProductFoot } from './product-foot';
 // in as the wrong person meets it on the two faces about the account, which is `unchosen` and
 // `account-gone` and nothing above them: there is no sign-in to leave on `signed-out`, `waiting`
 // and `unfinished`, the way out of `expired` is signing in again, and the three that never reached
-// cloudflare are about this repo and this machine. it is quiet and stands in the head beside the
-// identity it leaves, because what it acts on is that identity and not the account under it.
+// cloudflare are about this repo and this machine. it is quiet and stands in the head across from
+// the identity it leaves, because what it acts on is that identity and not the account under it.
 //
 // pending is `aria-busy`, and the shared button draws the dots.
 
@@ -151,9 +151,8 @@ export function ConnectPanel({
 		</Form>
 	);
 
-	/* who this machine is signed in to cloudflare as, and the way out of it — the trailing end of the
-	   head strip, opposite the company's own logo. the press stands beside the address rather than
-	   across the strip from it, which is what ./head-strip.tsx exists to hold to on both screens.
+	/* who this machine is signed in to cloudflare as, and the way out of it — the head strip's two
+	   ends, which is what ./head-strip.tsx holds to on both of this console's screens.
 
 	   an api token has no way out here and must not get one: `CLOUDFLARE_API_TOKEN` is what the
 	   console is using while it is set, whatever this machine has stored, so the way out of a wrong
@@ -164,15 +163,14 @@ export function ConnectPanel({
 
 	   the address is named where cloudflare gives one, because what is being left is a sign-in and
 	   the operator has to see which. a browser sign-in cloudflare names no email for is a sign-in
-	   with nobody to name, so the end is the way out alone rather than a line with a hole in it.
+	   with nobody to name, so the leading end stands empty rather than holding a line with a hole in
+	   it.
 
-	   **the press carries its word, and the address beside it is what places that word.** a bare
-	   `Sign out` is a press an operator cannot place on its own — this console has no session to end,
-	   `signOut` in packages/operator/src/components/shell/AppShell.jsx being `null` on every screen
-	   it draws — and what answers that is the identity it stands next to rather than a longer label.
-	   the name states the company all the same, because a reader meeting the control on its own has
-	   no strip to read it against; the visible word is inside that name, which is what keeps the two
-	   one control rather than two. */
+	   **the press is the mark alone and its name is what states the company.** nothing on the screen
+	   spells it out, so a bare `Sign out` would be a press an operator cannot place — this console
+	   has no session to end, `signOut` in packages/operator/src/components/shell/AppShell.jsx being
+	   `null` on every screen it draws — and the label is where that is answered. what the press
+	   costs is the dialog's, which is where the cost of a press belongs. */
 	const identity = (token: boolean, email: string | null) =>
 		token ? (
 			<span className="adm-caption">Using this machine's API token</span>
@@ -187,9 +185,7 @@ export function ConnectPanel({
 						size="sm"
 						mark="log-out"
 						aria-label="Sign out of Cloudflare"
-					>
-						Sign out
-					</Button>
+					/>
 				}
 			/>
 		);
@@ -226,9 +222,9 @@ export function ConnectPanel({
 		<PanelRoute
 			bare={face.kind === 'signed-out'}
 			bar={
-				face.kind === 'unchosen' || face.kind === 'account-gone' ? (
-					<HeadEnds>{identity(face.token, face.email)}</HeadEnds>
-				) : undefined
+				face.kind === 'unchosen' || face.kind === 'account-gone'
+					? identity(face.token, face.email)
+					: undefined
 			}
 			foot={<ProductFoot version={version} />}
 		>

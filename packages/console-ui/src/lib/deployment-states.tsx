@@ -145,22 +145,3 @@ export function ConsoleStopped(): ReactNode {
 		</Banner>
 	);
 }
-
-/**
- * the console closed because the operator asked it to, which is the same page with nothing wrong.
- *
- * the note tone and never the blocker one beside it: nothing failed, nothing is being held up, and
- * the operator already knows what they pressed — what this page is for is the tab they are left
- * looking at, because the run was ended from inside a browser the binary cannot close.
- *
- * it names the same command ./ConsoleStopped does, because it is the same errand: `start` opens the
- * console, and it also stands the deployment up where there is none — so the two banners a couple of
- * presses apart do not send an operator to two different commands.
- */
-export function ConsoleClosed(): ReactNode {
-	return (
-		<Banner tone="note" word="The console is closed">
-			Run <InlineCode>better-giving start</InlineCode> to open it again. This tab can be closed.
-		</Banner>
-	);
-}

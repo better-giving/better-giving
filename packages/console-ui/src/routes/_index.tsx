@@ -27,7 +27,7 @@ import {
 import { saidClosing } from '../lib/close-answer';
 import { CLOSE_PARAM, opensOrDropsDialog } from '../lib/dialog-params';
 import { finishStartingBar } from '../lib/starting-bar';
-import { ConsoleClosed, ConsoleStopped } from '../lib/deployment-states';
+import { ConsoleStopped } from '../lib/deployment-states';
 import { ConnectPanel } from '../lib/connect-panel';
 import { ConsoleHead } from '../lib/head-strip';
 import type { OrgFoldProps } from '../lib/org-fold';
@@ -536,9 +536,10 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	 * machine, and the account, the session and the thirteen values are exactly where they were.
 	 *
 	 * **`window.close()` is a request the browser is free to refuse**, and chrome refuses it on a tab
-	 * no script opened — this one was opened by the binary. so the answer below is what the operator
-	 * is left looking at, and the page draws the closed panel from it (`ConsoleClosed` in
-	 * ../lib/deployment-states.tsx).
+	 * no script opened — this one was opened by the binary. so the answer below is what the page is
+	 * left holding, and what it draws from it is nothing at all: a blank page is the nearest thing to
+	 * the closed tab this press promised, and what an operator has to type to come back was said in
+	 * the confirm before they pressed it.
 	 *
 	 * no redirect: there is nothing left to load. `shouldRevalidate` below is what keeps the router
 	 * from asking anyway.
@@ -720,18 +721,17 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 	const navigate = useNavigate();
 	const asking = params.has(CLOSE_PARAM);
 
-	/* the console was asked to stop, and this is the last thing this page draws. there is no shell
-	   under it and no head over it: the binary is gone, so every reading either would be built from
-	   is one nothing can take again. it is the panel outside the shell the boundary at the foot of
-	   this file draws, standing the same foot — with the release in it, which a boundary has no
-	   loader to read. */
-	if (saidClosing(actionData)) {
-		return (
-			<PanelRoute foot={<ProductFoot version={loaderData.version} />}>
-				<ConsoleClosed />
-			</PanelRoute>
-		);
-	}
+	/* the console was asked to stop, and this page draws nothing from here on. the branch is what
+	   keeps a shell off a binary that is gone — every reading either a shell or a strip would be
+	   built from is one nothing can take again — and what stands in its place is nothing at all.
+
+	   **a blank page is the outcome.** the tab closes where the browser allows it and stays open
+	   where it does not, and an empty page is the nearest that refusal gets to the tab that was
+	   asked for. what an operator needs — that the run ends, and what to type to come back — is
+	   stated in the confirm below, before the press, and the confirm promises nothing about the tab
+	   for this reason. a page saying it again afterwards is a page restating a press the operator
+	   just made. */
+	if (saidClosing(actionData)) return null;
 
 	if (loaderData.shape === 'connect') {
 		return (
@@ -748,28 +748,40 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 	   it. what stands in it turns on nothing any of them read (../lib/product-foot.tsx). */
 	const foot = <ProductFoot version={loaderData.version} />;
 
-	/* the press beside the account, which stands with that account rather than acting on it: it ends
-	   the run this console is, and the record naming the account is written at the terminal and left
-	   exactly as it is. it stands next to the account all the same, which is what
-	   ../lib/head-strip.tsx holds to on both of this console's screens. the mark is the plug being
-	   pulled: the set closes over no power glyph
-	   (packages/operator/src/components/status/glyphs.js), and a plug pulled reads for a press that
-	   ends a run.
+	/* the press at the head's trailing end, which stands opposite the account rather than acting on
+	   it: it ends the run this console is, and the record naming the account is written at the
+	   terminal and left exactly as it is. the mark is the plug being pulled: the set closes over no
+	   power glyph (packages/operator/src/components/status/glyphs.js), and a plug pulled reads for a
+	   press that ends a run.
 
-	   it is a link and not a submit, because what it opens is the confirm below and that is a
-	   parameter on the address.
+	   **the mark is the whole of it and the label is the whole of its name.** the head carries one
+	   press and never two, so there is nothing on the strip for a word to tell it apart from — and
+	   what the press costs is the dialog's below, which is where the cost of a press belongs.
+
+	   it is a link and not a submit, because what it opens is that confirm and that is a parameter
+	   on the address.
 
 	   **it is never held while another press is running**, which is why no `busy` reaches it: the
 	   binary waits for the press it is holding to finish before it shuts anything down, so
 	   confirming over a save cuts nothing short. */
 	const closeControl = (
-		<Button as={Link} to={`/?${CLOSE_PARAM}`} variant="soft" size="sm" mark="unplug">
-			Close console
-		</Button>
+		<Button
+			as={Link}
+			to={`/?${CLOSE_PARAM}`}
+			variant="soft"
+			size="sm"
+			mark="unplug"
+			aria-label="Close console"
+		/>
 	);
 
 	/* what the press costs, which is the whole reason it asks: the run ends, and the way back is a
 	   command in a terminal rather than anything on this page.
+
+	   **the tab is not promised.** the action asks for it (`window.close()` above) and chrome refuses
+	   it on a tab no script opened, so a sentence saying the tab closes is one the operator watches
+	   fail. what is stated is what is true on both paths: the console stops, and `start` opens it
+	   again.
 
 	   the `<form>` stands around the whole dialog rather than around the control that submits it,
 	   which is the rule `Dialog` states: the actions row holds controls, and a submit belongs to the
@@ -795,7 +807,7 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 				cancelProps={{ as: Link, to: '/' }}
 			>
 				<p className="adm-prose">
-					You may open this again by typing <InlineCode>better-giving start</InlineCode>
+					The console stops. Type <InlineCode>better-giving start</InlineCode> to open it again.
 				</p>
 			</Modal>
 		</Form>
