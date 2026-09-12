@@ -21,7 +21,10 @@ import { useEffect, useRef } from 'react';
 // way out of it.
 //
 // a fold seeded from the press's own answer states nothing here and is right not to: its seeds are
-// on the screen in the same render the answer is (`storedOrg` in ./org-form.ts).
+// on the screen in the same render the answer is (`storedOrg` in ./org-form.ts). the payments fold
+// is in both camps — its answer carries the pair it stored and seeds the two key boxes from it, and
+// what this is left holding there is every other way a press of it lands (`keysStanding` in
+// ./stripe-press.ts).
 
 /**
  * whether a landed write puts the boxes back yet.

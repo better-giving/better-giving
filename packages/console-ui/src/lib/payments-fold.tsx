@@ -55,13 +55,15 @@ import type {
 import type { ConfirmLine } from './stripe-confirm';
 import { confirmLines, remakesSetup } from './stripe-confirm';
 import { useReseeded } from './reseed';
-import type { PressAnswer, PressPhase, PressRefusal } from './stripe-press';
+import type { KeysSent, PressAnswer, PressPhase, PressRefusal } from './stripe-press';
 import {
 	answerLanded,
 	answeredRefusal,
 	keysClosed,
+	keysStanding,
 	reportStands,
 	runUnderway,
+	secretStored,
 	standingRefusal,
 	writingElsewhere
 } from './stripe-press';
@@ -248,16 +250,6 @@ const POLL_MS = 2500;
 const REREADS: readonly number[] = [1500, 3000, 5000, 8000, 12000];
 
 /**
- * the outcomes a run reaches with the secret key already stored.
- *
- * the store is one call part way down the chain and it carries both credentials
- * (`packages/console/internal/stripe/setup.go`), so every outcome behind it is a deployment that
- * is holding the key and every one in front of it is a deployment that is not — and only the first
- * is worth asking again about.
- */
-const STORED_KEY: readonly StripeSetup['kind'][] = ['done', 'unrepeating', 'not-published'];
-
-/**
  * whether both readings came back saying this deployment holds no Stripe key.
  *
  * `null` is the read nobody made — ../routes/_index.tsx asks for neither where the secrets list
@@ -341,7 +333,7 @@ const ASKS: Record<StripeAct, { title: string; press: string }> = {
 };
 
 export type PaymentsFoldProps = {
-	/** the thirteen as cloudflare answered for them, which is what the boxes are seeded from. */
+	/** the thirteen as cloudflare answered for them, which is what every reading here is drawn from. */
 	values: DeployedValues;
 	/**
 	 * where the account stands, or `null` where that read was never taken.
@@ -511,9 +503,8 @@ export function PaymentsFold({
 	   revalidate the page for as long as the report stayed up. */
 	const revalidator = useRevalidator();
 	const settled = live?.kind === 'ended';
-	/** whether the run that stopped had stored the secret key by the time it did ({@link STORED_KEY}). */
-	const storedKey =
-		live?.kind === 'ended' && live.act === 'errand' && STORED_KEY.includes(live.outcome.kind);
+	/** whether the run that stopped had stored the secret key by the time it did. */
+	const storedKey = secretStored(live);
 	const asked = useRef(false);
 	useEffect(() => {
 		if (!settled) {
@@ -571,25 +562,21 @@ export function PaymentsFold({
 	const holding = values.vars.kind === 'read' ? heldValues(values.vars.vars) : null;
 	const stored: ReadonlySet<string> | null = holding?.held ?? null;
 
-	/* what each box holds before anybody touches it, and what a press is decided against: the value
-	   the deployment is holding under that name, and nothing at all where it holds none.
+	/* what the deployment reported for each of the two names, and nothing at all where it holds
+	   none. what a box is actually drawn with is this or the press's own answer ({@link seeded}).
 
-	   held as one value rather than built at every render: the rules the press runs are made against
-	   these two strings and nothing else ({@link stated}), so a schema rebuilt at every keystroke is
-	   work with no answer of its own. */
-	const seededSecret = holding?.seeds.STRIPE_SECRET_KEY ?? '';
-	const seededPublishable = holding?.seeds.STRIPE_PUBLISHABLE_KEY ?? '';
-	const seeded: StripeKeyBoxes = useMemo(
+	   held as one value rather than built at every render: what the rules are mounted for is drawn
+	   from these two strings ({@link seeded}, and then {@link stated}), so a schema rebuilt at every
+	   keystroke is work with no answer of its own. */
+	const reportedSecret = holding?.seeds.STRIPE_SECRET_KEY ?? '';
+	const reportedPublishable = holding?.seeds.STRIPE_PUBLISHABLE_KEY ?? '';
+	const reported: StripeKeyBoxes = useMemo(
 		() => ({
-			STRIPE_SECRET_KEY: seededSecret,
-			STRIPE_PUBLISHABLE_KEY: seededPublishable
+			STRIPE_SECRET_KEY: reportedSecret,
+			STRIPE_PUBLISHABLE_KEY: reportedPublishable
 		}),
-		[seededSecret, seededPublishable]
+		[reportedSecret, reportedPublishable]
 	);
-
-	/* this form's own rules, which are what the boxes are read against before anything is sent —
-	   `stripeRefusals` whole, mounted for these seeds (./stripe-keys.ts). */
-	const stated = useMemo(() => stripeForm(seeded), [seeded]);
 
 	/**
 	 * the sentence that stands while the deployment is being asked, and nothing where it was not
@@ -652,8 +639,21 @@ export function PaymentsFold({
 	 * and the word beside the fold's heading.
 	 */
 	const [pressedHere, setPressedHere] = useState(false);
+	/**
+	 * and what that press carried, which is what the deployment is holding the moment it says it
+	 * stored it ({@link seeded}).
+	 *
+	 * taken when the navigation carrying the intent begins rather than when the form is submitted: a
+	 * press that asks first is stopped at the form and goes from inside the card, and one the
+	 * operator answers by closing that card never goes at all — so the submit is where the pair is
+	 * read and the press going into flight is where it is kept.
+	 */
+	const [sent, setSent] = useState<KeysSent | null>(null);
+	const typed = useRef<KeysSent | null>(null);
 	useEffect(() => {
-		if (pending === SET_UP_INTENT) setPressedHere(true);
+		if (pending !== SET_UP_INTENT) return;
+		setPressedHere(true);
+		setSent(typed.current);
 	}, [pending]);
 
 	/* what this press was turned down for, kept here rather than read off the answer at every render.
@@ -669,7 +669,11 @@ export function PaymentsFold({
 	const [rememberedRefusal, setRememberedRefusal] = useState<PressRefusal | null>(null);
 	useEffect(() => {
 		if (!answerLanded(phase)) return;
-		setRememberedRefusal(answeredRefusal(pressAnswer));
+		const refusal = answeredRefusal(pressAnswer);
+		setRememberedRefusal(refusal);
+		// and the pair dropped with it: a press turned down at the door or over a box started no run,
+		// so what it carried is on no deployment and a run still on the page is an earlier press's.
+		if (refusal !== null) setSent(null);
 	}, [phase, pressAnswer]);
 	const pressRefusal = standingRefusal(phase, pressAnswer, rememberedRefusal);
 	/** the boxes the last press was answered with, whether the page is still carrying that answer. */
@@ -735,13 +739,25 @@ export function PaymentsFold({
 
 	/** the two ways one press of this form leaves something on the deployment. */
 	const keysLanded = landed || removed?.kind === 'set';
-	/* the boxes go back to what the deployment holds on the reading that lands after this press, and
-	   not on the run ending or the answer arriving, both of which come first (./reseed.ts). the
-	   reading is the values prop the boxes are seeded through rather than the seeds read off it: a
-	   record built at every render is a new reading at every render, and this one is the deployment
-	   answered once per re-read. what a press is made against is taken while `underway` is true,
-	   which is the whole of the press — the request, and then the run it started. */
-	const spent = useReseeded({ landed: keysLanded, pending: underway, reading: values.vars });
+	/* whether the reading this press set off has landed (./reseed.ts). what is handed in is the
+	   values prop itself rather than the seeds read off it: a record built at every render is a new
+	   reading at every render, and this one is the deployment answered once per re-read.
+	   what a press is made against is taken while `underway` is true, which is the whole of the press
+	   — the request, and then the run it started. */
+	const reread = useReseeded({ landed: keysLanded, pending: underway, reading: values.vars });
+	/* what the two boxes hold and whether they have been put back to it: this press's own answer
+	   where it says the deployment took the pair, and the reading after it otherwise
+	   (`keysStanding` in ./stripe-press.ts). the answer is seconds ahead of that reading — the
+	   deployment's own is a promise the loader hands back unresolved (../routes/_index.tsx) — and a
+	   fold waiting for it is one an operator meets with both boxes and the press under them shut. */
+	const { seeded, spent } = useMemo(
+		() => keysStanding({ reported, sent, run: live, reread }),
+		[reported, sent, live, reread]
+	);
+
+	/* this form's own rules, which are what the boxes are read against before anything is sent —
+	   `stripeRefusals` whole, mounted for these seeds (./stripe-keys.ts). */
+	const stated = useMemo(() => stripeForm(seeded), [seeded]);
 	/* what closes the two boxes and the press under them, which is not the page's own `busy`: that
 	   flag is true of this form's own press as well, so read straight it shuts the boxes over this
 	   form's own answer — and a refusal an operator cannot type over is a sentence naming the one
@@ -757,9 +773,9 @@ export function PaymentsFold({
 		landed: keysLanded,
 		spent,
 		refused: carried(namedBoxes ?? keyRefused),
-		/* the boxes seeded from what the deployment holds, keyed by what they post. the marking is
-		   still the pass and not the seeding: nothing is said about a box until a submit runs the
-		   rules (./use-console-form.ts). */
+		/* the boxes seeded from what the deployment holds ({@link seeded}), keyed by what they post.
+		   the marking is still the pass and not the seeding: nothing is said about a box until a
+		   submit runs the rules (./use-console-form.ts). */
 		defaultValue: {
 			[KEY_FIELD('STRIPE_SECRET_KEY')]: seeded.STRIPE_SECRET_KEY,
 			[KEY_FIELD('STRIPE_PUBLISHABLE_KEY')]: seeded.STRIPE_PUBLISHABLE_KEY
@@ -2087,7 +2103,15 @@ export function PaymentsFold({
 						// the question has been asked and answered, so it goes.
 						if (confirming !== null) return;
 						const element = form.current;
-						const ask = element === null ? null : stripeAsked(boxes(element), seeded);
+						const held = element === null ? null : boxes(element);
+						const ask = held === null ? null : stripeAsked(held, seeded);
+						/* and the pair as it stands at the press, kept for the answer that says the
+						   deployment took it ({@link sent}). the card the branch below may put up cannot be
+						   typed behind, so the press that goes from inside it carries exactly this. */
+						typed.current =
+							held === null || ask === null || ask.act === null
+								? null
+								: { act: ask.act, boxes: held };
 						const lines =
 							ask === null ? [] : confirmLines(ask, MINTED, (name) => stored?.has(name) ?? false);
 						/* the first set-up runs on this press and asks nothing. it takes nothing away —
@@ -2125,10 +2149,9 @@ export function PaymentsFold({
 							spellCheck={false}
 							defaultValue={secret.defaultValue}
 							// closed while this form's own press is sending them, while a run is going, while
-							// another press on the page writes, and while a write that landed waits for the
-							// reading that puts these boxes back — and never while a refusal to this form's
-							// own press is being re-read, which is the answer an operator has to type over
-							// ({@link closed}).
+							// another press on the page writes, and while a write that landed has not yet put
+							// them back — and never while a refusal to this form's own press is being
+							// re-read, which is the answer an operator has to type over ({@link closed}).
 							disabled={closed}
 							// the far end's sentence about this box ended by the keystroke that changes it
 							// (./use-console-form.ts).

@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { StripeFacts, StripeRunRead } from '../api/types';
-import type { KeysWrite, PressAnswer, PressPhase } from './stripe-press';
+import type { StripeFacts, StripeRunAct, StripeRunRead, StripeSetup } from '../api/types';
+import type { KeysSent, KeysWrite, PressAnswer, PressPhase } from './stripe-press';
 import {
 	answerLanded,
 	answeredRefusal,
 	keysClosed,
+	keysStanding,
 	reportStands,
+	secretStored,
 	runUnderway,
 	standingRefusal,
 	writingElsewhere
 } from './stripe-press';
+import type { StripeKeyBoxes } from './stripe-keys';
 
 // what a Stripe press is doing and what it was turned down for, read from the router's phase rather
 // than from the answer alone.
@@ -186,5 +189,206 @@ describe('reportStands', () => {
 
 	it('draws nothing where no run is held', () => {
 		expect(reportStands(null, false)).toBe(false);
+	});
+});
+
+describe('keysStanding', () => {
+	const facts: StripeFacts = { named: null, registration: null, elsewhere: [] };
+	/** the run this fold holds once a press of it has ended, whatever it ended as. */
+	const ended = (outcome: StripeSetup): StripeRunRead => ({
+		kind: 'ended',
+		act: 'errand',
+		stage: 'covering',
+		facts,
+		outcome
+	});
+
+	/** what cloudflare answered for the two names before the press went. */
+	const REPORTED: StripeKeyBoxes = {
+		STRIPE_SECRET_KEY: 'sk_live_was',
+		STRIPE_PUBLISHABLE_KEY: 'pk_live_was'
+	};
+
+	/** and what the press carried, which is what the deployment holds the moment it stores them. */
+	const SENT: KeysSent = {
+		act: 'errand',
+		boxes: { STRIPE_SECRET_KEY: 'sk_live_now', STRIPE_PUBLISHABLE_KEY: 'pk_live_now' }
+	};
+
+	it('puts the boxes back to the pair the press sent, on the answer that stored it', () => {
+		expect(
+			keysStanding({ reported: REPORTED, sent: SENT, run: ended({ kind: 'done' }), reread: false })
+		).toEqual({ seeded: SENT.boxes, spent: true });
+	});
+
+	/**
+	 * and the reading that follows lands on the same two values, because the deployment reports both
+	 * of them back: nothing moves under an operator already typing in the boxes.
+	 */
+	it('hands the boxes to the reading once it lands, holding what the answer put there', () => {
+		const read: StripeKeyBoxes = { ...SENT.boxes };
+		expect(
+			keysStanding({ reported: read, sent: SENT, run: ended({ kind: 'done' }), reread: true })
+		).toEqual({ seeded: read, spent: true });
+	});
+
+	// a run that stored the pair and failed further down stored it all the same, and the fold is
+	// holding a deployment that charges.
+	it('reads a stop past the store as the pair being held', () => {
+		expect(
+			keysStanding({
+				reported: REPORTED,
+				sent: SENT,
+				run: ended({
+					kind: 'unrepeating',
+					setup: { kind: 'reported', report: { outcome: 'failed', detail: null } },
+					awaitingKey: false
+				}),
+				reread: false
+			})
+		).toEqual({ seeded: SENT.boxes, spent: true });
+	});
+
+	// the wallet hostnames are the last step of the chain and the published key went up two steps in
+	// front of them, so both boxes are what the press sent.
+	it('reads a stop at the hostnames as both values being held', () => {
+		expect(
+			keysStanding({
+				reported: REPORTED,
+				sent: SENT,
+				run: ended({
+					kind: 'uncovered',
+					levelled: { kind: 'unanswered', read: { kind: 'no-session' } },
+					awaitingKey: false
+				}),
+				reread: false
+			})
+		).toEqual({ seeded: SENT.boxes, spent: true });
+	});
+
+	/**
+	 * the one stop past the store that left the published slot alone, and the whole press is left as
+	 * the operator made it: both boxes hold what they held and the press is armed over them, so
+	 * pressing again retries the one write that did not land.
+	 */
+	it('puts nothing back where the press stored the key and did not publish', () => {
+		expect(
+			keysStanding({
+				reported: REPORTED,
+				sent: SENT,
+				run: ended({ kind: 'not-published', published: { kind: 'unreachable', detail: '' } }),
+				reread: false
+			})
+		).toEqual({ seeded: REPORTED, spent: false });
+	});
+
+	it('seeds nothing from a run still going, whose press has stored nothing yet', () => {
+		expect(
+			keysStanding({
+				reported: REPORTED,
+				sent: SENT,
+				run: { kind: 'running', act: 'errand', stage: 'storing', facts },
+				reread: false
+			})
+		).toEqual({ seeded: REPORTED, spent: false });
+	});
+
+	// the key named no account, so the chain stopped in front of the store and the boxes still hold
+	// what has to change.
+	it('seeds nothing from a run that stopped short of the store', () => {
+		expect(
+			keysStanding({
+				reported: REPORTED,
+				sent: SENT,
+				run: ended({ kind: 'unnamed', failure: { kind: 'refused', detail: 'no such key' } }),
+				reread: false
+			})
+		).toEqual({ seeded: REPORTED, spent: false });
+	});
+
+	/**
+	 * a removal is one request and no run at all (`stripeAsked` in ./stripe-keys.ts), so the run on
+	 * the page is an earlier press's — and read as this one's answer it would seed the boxes from a
+	 * pair the removal took off.
+	 */
+	it('reads no pair off a removal, whatever run the fold is still holding', () => {
+		expect(
+			keysStanding({
+				reported: REPORTED,
+				sent: { act: 'remove', boxes: { STRIPE_SECRET_KEY: '', STRIPE_PUBLISHABLE_KEY: 'pk' } },
+				run: ended({ kind: 'done' }),
+				reread: false
+			})
+		).toEqual({ seeded: REPORTED, spent: false });
+	});
+
+	// a run outlives the page it was pressed on, so a fold drawn over a reload holds an answer to a
+	// press whose boxes are gone.
+	it('reads no pair where this page made no press', () => {
+		expect(
+			keysStanding({ reported: REPORTED, sent: null, run: ended({ kind: 'done' }), reread: false })
+		).toEqual({ seeded: REPORTED, spent: false });
+	});
+
+	it('still spends the boxes on the reading, for a press the run says nothing about', () => {
+		expect(keysStanding({ reported: REPORTED, sent: null, run: null, reread: true })).toEqual({
+			seeded: REPORTED,
+			spent: true
+		});
+	});
+});
+
+describe('secretStored', () => {
+	const facts: StripeFacts = { named: null, registration: null, elsewhere: [] };
+	const ended = (outcome: StripeSetup, act: StripeRunAct = 'errand'): StripeRunRead => ({
+		kind: 'ended',
+		act,
+		stage: 'covering',
+		facts,
+		outcome
+	});
+
+	// every stop behind the store is the charging key on the deployment, whatever else did not land
+	// after it — and each of them is a reading of that deployment worth taking again.
+	it('counts every stop the chain reaches with the key already stored', () => {
+		expect(secretStored(ended({ kind: 'done' }))).toBe(true);
+		expect(
+			secretStored(
+				ended({
+					kind: 'unrepeating',
+					setup: { kind: 'reported', report: { outcome: 'failed', detail: null } },
+					awaitingKey: false
+				})
+			)
+		).toBe(true);
+		expect(
+			secretStored(
+				ended({
+					kind: 'uncovered',
+					levelled: { kind: 'unanswered', read: { kind: 'no-session' } },
+					awaitingKey: false
+				})
+			)
+		).toBe(true);
+		expect(
+			secretStored(ended({ kind: 'not-published', published: { kind: 'unreachable', detail: '' } }))
+		).toBe(true);
+	});
+
+	it('counts no stop in front of the store, where the deployment holds nothing new', () => {
+		expect(
+			secretStored(ended({ kind: 'unnamed', failure: { kind: 'refused', detail: 'no such key' } }))
+		).toBe(false);
+	});
+
+	// a press that left the charging key alone carries none and can store none: what it writes is
+	// the published var and nothing else.
+	it('counts no publish, which stores no key whatever it ends as', () => {
+		expect(secretStored(ended({ kind: 'done' }, 'publish'))).toBe(false);
+	});
+
+	it('counts no run still going, and no fold holding one at all', () => {
+		expect(secretStored({ kind: 'running', act: 'errand', stage: 'storing', facts })).toBe(false);
+		expect(secretStored(null)).toBe(false);
 	});
 });
