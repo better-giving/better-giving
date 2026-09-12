@@ -1,4 +1,4 @@
-import type { PaymentsRead, Wallet, WalletHostLine, WalletsLevel } from '../api/types';
+import type { Wallet, WalletHostLine, WalletsLevel, WalletsReading } from '../api/types';
 
 // what one wallet's panel on the payments fold is drawn from: which sites it is asked about,
 // where each of them stands for that one wallet, and — for the row that has no rail standing of its
@@ -57,16 +57,22 @@ export type WalletRow = {
  * sites, so a panel drawing both would draw each row twice.
  *
  * `null` is the account read that could not be made, which draws no panel anywhere: it is the same
- * one read of the same account the rails come through, and ./payments-fold.tsx says so once.
+ * one read of the same account the rails come through, and ./payments-fold.tsx says so once. it is
+ * also the processor that draws no wallet anywhere — the reading is `null` on the wire for one of
+ * those (`ProcessorPayments` in ../api/types.ts), and there is nothing to register and no panel to
+ * open.
+ *
+ * the reading is handed in rather than the whole report, because the report answers for every
+ * processor and the panels are one account's: a caller narrows to the processor whose ledger the
+ * panel hangs off, which is the same narrowing its rails came through.
  */
 export function walletHostLines(
 	wallets: WalletsLevel | null,
-	read: PaymentsRead
+	reading: WalletsReading | null
 ): readonly WalletHostLine[] | null {
 	if (wallets?.kind === 'reported' && wallets.report.state === 'levelled') {
 		return wallets.report.hosts.map((host) => host.line);
 	}
-	const reading = read.kind === 'read' ? read.report.wallets : null;
 	if (reading === null || reading.state === 'unreadable') return null;
 	return reading.hosts;
 }

@@ -39,10 +39,19 @@ import type {
  *                  not reply. `detail` is the port's own sentence, which names the value to fix. it
  *                  is a state of this block and never of the page — every other capability goes
  *                  on rendering.
+ *   unmanaged    — this release manages no endpoint on the answering processor, so there was never
+ *                  anything to ask. `detail` is the port's own sentence, which says how the endpoint
+ *                  is registered instead.
  *   unregistered — the account holds nothing at this address. the fresh-fork state, and the one the
  *                  setup button belongs to.
  *   registered   — the account holds one here. `complete` is whether it is actually doing the job;
  *                  what it is short of is on the two fields under it.
+ *
+ * **`unmanaged` is told from `unreadable` by the reason the port refused with and by nothing else.**
+ * `unsupported` is the one reason that is a fact about this release rather than about the account or
+ * the credentials (`PAYMENT_FAILURE_REASONS` in ./provider.ts), and it is terminal for that reason.
+ * folded into `unreadable` it would put a deployment that is working as intended under the sentence
+ * written for one that is not, and send an operator to check credentials that are fine.
  *
  * no endpoint id on any arm. every call that acts on the endpoint finds it by URL on this side, so
  * an id has no reader in a browser — and one that travelled there would be a value a form could post
@@ -51,6 +60,7 @@ import type {
  */
 export type WebhookRegistration =
 	| { readonly state: 'unreadable'; readonly detail: string }
+	| { readonly state: 'unmanaged'; readonly detail: string }
 	| { readonly state: 'unregistered' }
 	| {
 			readonly state: 'registered';
@@ -77,20 +87,20 @@ export type WebhookRegistration =
 			/** delivering, and subscribed to everything. the only state that needs no repair. */
 			readonly complete: boolean;
 			/**
-			 * the fingerprint of the signing secret this endpoint was created with, or null where it
-			 * carries none.
+			 * what this endpoint was stamped with when it was created, or null where it carries no
+			 * stamp.
 			 *
 			 * carried and not compared, because the other half of the comparison is a deploy-time
 			 * variable and this module reads none. `webhookSecretStanding` in ./webhook-secret.ts is
-			 * where the two meet, and
-			 * `packages/operator/src/stripe/secret-fingerprint.ts` says what the value is for.
+			 * where the two meet and where which stamp belongs to which processor is decided;
+			 * `WebhookEndpointSummary.verificationStamp` in ./provider.ts says what may go in it.
 			 *
 			 * `complete` above is not the same claim and cannot stand in for it: an endpoint that is
 			 * registered, switched on and fully subscribed is `complete` whether or not this
-			 * deployment holds the secret it signs with — which is exactly the state
+			 * deployment holds what it verifies with — which is exactly the state
 			 * `replaceWebhookRegistration` below leaves behind when nobody sets the new value.
 			 */
-			readonly secretFingerprint: string | null;
+			readonly verificationStamp: string | null;
 	  };
 
 /**
@@ -106,7 +116,12 @@ export async function readWebhookRegistration(
 	url: string
 ): Promise<WebhookRegistration> {
 	const registry = await provider.listWebhookEndpoints();
-	if (!registry.ok) return { state: 'unreadable', detail: registry.detail };
+	if (!registry.ok) {
+		return {
+			state: registry.reason === 'unsupported' ? 'unmanaged' : 'unreadable',
+			detail: registry.detail
+		};
+	}
 
 	const { endpoints, requiredEventTypes } = registry.value;
 	// matched on the URL and on nothing else, because that is the only fact this deployment holds
@@ -125,7 +140,7 @@ export async function readWebhookRegistration(
 		delivering: registered.enabled,
 		eventTypes: registered.eventTypes,
 		missingEventTypes,
-		secretFingerprint: registered.secretFingerprint,
+		verificationStamp: registered.verificationStamp,
 		// both halves, because either alone is a green screen over a deployment that posts no gift.
 		// a subscription with an extra event on it is noise rather than a fault, so nothing here
 		// counts one.

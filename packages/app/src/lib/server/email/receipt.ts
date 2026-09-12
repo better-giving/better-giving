@@ -31,8 +31,8 @@ export interface ReceiptContribution extends receipt.ReceiptContribution {
 	 * why it is here and not on the package's own model.
 	 *
 	 * it is the quoted fee and never the processor's settled one (`Settlement.feeMinor` in
-	 * ../payments/provider.ts). that number is what Stripe actually took, off a balance
-	 * transaction the donor never saw and never agreed to. the two are separate columns for that
+	 * ../payments/provider.ts). that number is what the processor that moved the money actually
+	 * took, off a settlement record the donor never saw and never agreed to. the two are separate columns for that
 	 * reason — ../donations/entries.ts says the same thing from the ledger's side.
 	 */
 	readonly coveredFeeMinor: number;

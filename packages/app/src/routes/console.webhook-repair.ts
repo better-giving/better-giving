@@ -1,7 +1,7 @@
 import type { WebhookRepairReport } from '@better-giving/operator/console/payments';
 import { webhookEndpointUrl } from '@better-giving/operator/stripe/webhook-endpoint';
 import { consoleJson, consoleMethodNotAllowed } from '$lib/server/console/surface';
-import { createPaymentProvider } from '$lib/server/payments/factory';
+import { createPaymentProviders } from '$lib/server/payments/factory';
 import { repairWebhookRegistration } from '$lib/server/payments/webhook-registration';
 import { platform } from '../context';
 import type { Route } from './+types/console.webhook-repair';
@@ -17,6 +17,14 @@ import type { Route } from './+types/console.webhook-repair';
 // goes through the payment port with this deployment's own `STRIPE_SECRET_KEY`, which is
 // deploy-time and lives under `$lib/server/**` (CLAUDE.md) — the same asymmetry ./console.recurring.ts
 // states.
+//
+// **it names Stripe because Stripe is the only processor whose endpoint this release manages.** the
+// PayPal adapter refuses every endpoint arm as `unsupported` ($lib/server/payments/paypal.ts), so a
+// press here on a PayPal deployment could only report that refusal back — and there is no press to
+// offer, because the listener is created by hand on PayPal's own dashboard and its id is what
+// `PAYPAL_WEBHOOK_ID` is set to. what an operator is told instead is the `unmanaged` arm of the
+// reading beside this (./console.payments.ts), which carries the address to point it at. this file
+// grows a processor the day an adapter manages one, and not before.
 //
 // **it is the repair and never the replacement.** replacing deletes the endpoint and creates
 // another, which mints a new signing secret and leaves this deployment verifying nothing until
@@ -45,7 +53,7 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 	// is committed to this repository (CLAUDE.md), and the reading the operator pressed from was
 	// taken at the same address.
 	const url = webhookEndpointUrl(new URL(request.url).origin);
-	const repaired = await repairWebhookRegistration(createPaymentProvider(env), url);
+	const repaired = await repairWebhookRegistration(createPaymentProviders(env).for('stripe'), url);
 
 	// the summary the port hands back is dropped whole rather than narrowed: every field on it is
 	// either already on the reading beside this or is a value that may not cross (its id).

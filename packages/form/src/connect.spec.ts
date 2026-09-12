@@ -4,7 +4,7 @@ import { checkoutMachine } from './checkout.machine';
 import type { CheckoutEvent } from './checkout.machine';
 import { connect, TOP_LEVEL_STATES, type PropTypes } from './connect';
 import type { CheckoutPorts } from './ports';
-import type { FormConfig } from './v1';
+import { PAYMENT_METHODS, type FormConfig, type PaymentMethod } from './v1';
 
 // node pool, and that is the point of the seam: prop getters are plain objects until a
 // framework's `normalize` turns them into props, so the projection is testable with no DOM at
@@ -13,7 +13,7 @@ import type { FormConfig } from './v1';
 
 const CONFIG: FormConfig = {
 	formId: 'frm_a8x2k9',
-	provider: { name: 'stripe', publishableKey: 'pk_test_x' },
+	providers: [{ name: 'stripe', publishableKey: 'pk_test_x' }],
 	currency: 'usd',
 	suggestedAmountsMinor: [2500],
 	minAmountMinor: 500,
@@ -25,7 +25,9 @@ const CONFIG: FormConfig = {
 		card: { percent: 0.029, fixedMinor: 30 },
 		ach: { percent: 0.008, fixedMinor: 0 },
 		apple_pay: { percent: 0.029, fixedMinor: 30 },
-		google_pay: { percent: 0.029, fixedMinor: 30 }
+		google_pay: { percent: 0.029, fixedMinor: 30 },
+		paypal: { percent: 0.0349, fixedMinor: 49 },
+		venmo: { percent: 0.0349, fixedMinor: 49 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -95,6 +97,31 @@ const readyToSubmit = (send: (event: never) => void) => {
 	send({ type: 'CONTINUE' } as never);
 	send({ type: 'SET_METHOD', method: 'card' } as never);
 };
+
+/** a deployment offering every rail, so a case can commit the one it is about. */
+const EVERY_RAIL: FormConfig = { ...CONFIG, paymentMethods: [...PAYMENT_METHODS] };
+
+/**
+ * the donor pressing Donate on a given rail, which is the only way a payer is committed.
+ *
+ * the fee is declined on the way past, so the figure the donor was shown is the bare amount on
+ * every rail and `MATCHED_QUOTE` below settles against all six. covered, each rail grosses up to a
+ * total of its own and a fixed quote would route four of them onto the correction screen — which is
+ * a detour these cases are not about.
+ */
+const submittedOn = (method: PaymentMethod) => (send: (event: never) => void) => {
+	readyToSubmit(send);
+	send({ type: 'SET_METHOD', method } as never);
+	send({ type: 'TOGGLE_FEE_COVERAGE' } as never);
+	send({ type: 'SUBMIT' } as never);
+};
+
+/** the server charging the figure the donor was shown, which is the ordinary answer. */
+const MATCHED_QUOTE = async () => ({
+	paymentToken: 'pi_1_secret_x',
+	feeMinor: 0,
+	totalMinor: 2500
+});
 
 describe('the state projection', () => {
 	it('reports the amount step with no decided value, exactly as the type allows', () => {
@@ -202,6 +229,55 @@ describe('the state projection', () => {
 		const state = get().state;
 		if (state.step !== 'confirm') throw new Error(`expected the confirm step, got ${state.step}`);
 		expect(state.method).toBe('ach');
+	});
+
+	it('carries the committed rail onto every screen a donor waits under', async () => {
+		// the correction screen is not the only one whose words name a rail, and the three below
+		// cannot reach the payer the quote was minted for. a consumer threading a reading of its own
+		// alongside the state it already holds is the same answer derived twice, on pages we cannot
+		// reach — so the projection carries it once.
+		for (const step of ['redirecting', 'processing', 'indeterminate'] as const) {
+			const { get } = api(submittedOn('paypal'), {
+				config: EVERY_RAIL,
+				ports: {
+					quote: MATCHED_QUOTE,
+					confirm: async () => ({ kind: step }),
+					// the read an unanswered confirmation drives, answered the same way: without it the
+					// default port reports a gift that landed and this case never reaches the screen.
+					resume: async () => ({ kind: 'indeterminate' as const })
+				}
+			});
+			await settle();
+			const state = get().state;
+			if (state.step !== step) throw new Error(`expected ${step}, got ${state.step}`);
+			expect(state.method).toBe('paypal');
+		}
+	});
+
+	it('carries the rail through the charge, which is the beat that says who is deciding', async () => {
+		const { get } = api(submittedOn('venmo'), {
+			config: EVERY_RAIL,
+			ports: { quote: MATCHED_QUOTE, confirm: () => new Promise(() => {}) }
+		});
+		await settle();
+		const state = get().state;
+		if (state.step !== 'working') throw new Error(`expected working, got ${state.step}`);
+		expect(state.phase).toBe('confirming');
+		expect(state.method).toBe('venmo');
+	});
+
+	it('names no rail on a cold resume, because the page was handed none', async () => {
+		// this page remembers nothing: it booted on a payment token in the URL and no payer was ever
+		// committed here. a rail guessed for it would be the wrong one on most of them.
+		const { get } = api(
+			() => {},
+			{ ports: { resume: async () => ({ kind: 'processing' }) } },
+			{ paymentToken: 'pi_1_secret_x' }
+		);
+		await settle();
+		const state = get().state;
+		if (state.step !== 'processing') throw new Error(`expected processing, got ${state.step}`);
+		expect(state.method).toBeUndefined();
 	});
 
 	// the promise the correction screen rests on, at the seam where it could quietly stop being

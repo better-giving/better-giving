@@ -66,7 +66,7 @@ describe('the provider this app actually builds, inside workerd', () => {
 	it('verifies a correctly signed delivery', async () => {
 		const result = await createStripeProvider(CREDENTIALS).verifyEvent({
 			body: BODY,
-			signature: await sign(BODY, CREDENTIALS.webhookSecret)
+			headers: { 'stripe-signature': await sign(BODY, CREDENTIALS.webhookSecret) }
 		});
 
 		expect(result.ok === true && result.value.id).toBe('evt_1');
@@ -84,7 +84,7 @@ describe('the provider this app actually builds, inside workerd', () => {
 	it('refuses a delivery signed with the wrong secret', async () => {
 		const result = await createStripeProvider(CREDENTIALS).verifyEvent({
 			body: BODY,
-			signature: await sign(BODY, 'whsec_someoneelses')
+			headers: { 'stripe-signature': await sign(BODY, 'whsec_someoneelses') }
 		});
 
 		expect(result.ok === false && result.reason).toBe('bad_signature');

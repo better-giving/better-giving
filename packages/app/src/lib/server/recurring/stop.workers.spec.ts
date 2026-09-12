@@ -2,8 +2,15 @@ import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { RecurringPlanStatus } from '$lib/recurring/statuses';
 import { createDb, type Db } from '../db/client';
-import type { PaymentProvider, PaymentResult, RecurringGiftEnd } from '../payments/provider';
+import type { PaymentProviderName } from '../db/schema';
+import type {
+	PaymentProvider,
+	PaymentResult,
+	ProcessorName,
+	RecurringGiftEnd
+} from '../payments/provider';
 import { readRecurringPlan } from './queries';
+import { soleProcessor } from '../payments/processors.testing';
 import { stopRecurringGift } from './stop';
 
 // a workers spec because every case here reads or writes a row, and the ordering this module owns
@@ -54,20 +61,30 @@ beforeEach(async () => {
 		.run();
 });
 
-/** the commitment a case acts on, written past drizzle. */
-async function plan(status: RecurringPlanStatus = 'active'): Promise<void> {
+/**
+ * the commitment a case acts on, written past drizzle.
+ *
+ * `provider` is a parameter because the column is: a commitment lives on whichever processor
+ * collected its first charge, and what this act names in a refusal is that column and never a name
+ * the caller supplied.
+ */
+async function plan(
+	status: RecurringPlanStatus = 'active',
+	provider: PaymentProviderName = 'stripe'
+): Promise<void> {
 	await env.DB.prepare(
 		`insert into recurring_plan (id, contact_id, form_id, amount_minor, currency, interval,
 		                             status, provider, provider_subscription_id,
 		                             provider_customer_id, started_at, next_charge_at, ended_at,
 		                             created_at, updated_at)
-		 values (?, ?, ?, 2500, 'USD', 'monthly', ?, 'stripe', ?, 'cus_stoptest1', ?, ?, ?, 0, 0)`
+		 values (?, ?, ?, 2500, 'USD', 'monthly', ?, ?, ?, 'cus_stoptest1', ?, ?, ?, 0, 0)`
 	)
 		.bind(
 			PLAN_ID,
 			DONOR_ID,
 			FORM_ID,
 			status,
+			provider,
 			SUBSCRIPTION_ID,
 			Date.UTC(2026, 5, 1),
 			Date.UTC(2026, 8, 4),
@@ -94,12 +111,16 @@ const ended = (over: Partial<RecurringGiftEnd> = {}): PaymentResult<RecurringGif
  * `called` is what the cases about ordering read — "the row was already stopped, so Stripe was
  * never asked" is a claim about a call that did not happen.
  */
-function port(answer: PaymentResult<RecurringGiftEnd>): PaymentProvider & { called: string[] } {
+function port(
+	answer: PaymentResult<RecurringGiftEnd>,
+	processor: ProcessorName = 'stripe'
+): PaymentProvider & { called: string[] } {
 	const called: string[] = [];
 	const unused = (name: string) => () => {
 		throw new Error(`${name} is not part of stopping a repeating gift`);
 	};
 	return {
+		processor,
 		called,
 		async cancelRecurringGift(providerGiftId: string) {
 			called.push(providerGiftId);
@@ -127,7 +148,9 @@ describe('stopRecurringGift', () => {
 	it('asks the processor by the subscription id on the row, then records the end', async () => {
 		await plan();
 		const processor = port(ended());
-		expect(await stopRecurringGift(db, processor, PLAN_ID)).toEqual({ outcome: 'stopped' });
+		expect(await stopRecurringGift(db, soleProcessor(processor), PLAN_ID)).toEqual({
+			outcome: 'stopped'
+		});
 		expect(processor.called).toEqual([SUBSCRIPTION_ID]);
 		const record = await readRecurringPlan(db, PLAN_ID);
 		expect(record?.status).toBe('cancelled');
@@ -137,7 +160,7 @@ describe('stopRecurringGift', () => {
 
 	it('says a commitment it cannot find is gone, and asks the processor nothing', async () => {
 		const processor = port(ended());
-		expect(await stopRecurringGift(db, processor, crypto.randomUUID())).toEqual({
+		expect(await stopRecurringGift(db, soleProcessor(processor), crypto.randomUUID())).toEqual({
 			outcome: 'gone'
 		});
 		expect(processor.called).toEqual([]);
@@ -150,7 +173,7 @@ describe('stopRecurringGift', () => {
 		await plan('cancelled');
 		const processor = port(ended());
 		const before = await readRecurringPlan(db, PLAN_ID);
-		expect(await stopRecurringGift(db, processor, PLAN_ID)).toEqual({
+		expect(await stopRecurringGift(db, soleProcessor(processor), PLAN_ID)).toEqual({
 			outcome: 'already-stopped'
 		});
 		expect(processor.called).toEqual([]);
@@ -167,10 +190,11 @@ describe('stopRecurringGift', () => {
 			reason: 'unreachable',
 			detail: 'Stripe did not answer in time.'
 		});
-		expect(await stopRecurringGift(db, processor, PLAN_ID)).toEqual({
+		expect(await stopRecurringGift(db, soleProcessor(processor), PLAN_ID)).toEqual({
 			outcome: 'refused',
 			retryable: true,
-			detail: 'Stripe did not answer in time.'
+			detail: 'Stripe did not answer in time.',
+			processor: 'stripe'
 		});
 		expect((await readRecurringPlan(db, PLAN_ID))?.status).toBe('active');
 	});
@@ -182,7 +206,7 @@ describe('stopRecurringGift', () => {
 			reason: 'invalid_request',
 			detail: 'Stripe refused the request as malformed.'
 		});
-		expect(await stopRecurringGift(db, processor, PLAN_ID)).toMatchObject({
+		expect(await stopRecurringGift(db, soleProcessor(processor), PLAN_ID)).toMatchObject({
 			outcome: 'refused',
 			retryable: false
 		});
@@ -200,7 +224,7 @@ describe('stopRecurringGift', () => {
 			detail: 'Stripe has no such object on this account.'
 		});
 		const before = Date.now();
-		expect(await stopRecurringGift(db, processor, PLAN_ID)).toEqual({
+		expect(await stopRecurringGift(db, soleProcessor(processor), PLAN_ID)).toEqual({
 			outcome: 'nothing-to-stop'
 		});
 		expect(processor.called).toEqual([SUBSCRIPTION_ID]);
@@ -222,7 +246,7 @@ describe('stopRecurringGift', () => {
 			reason: 'not_found',
 			detail: 'Stripe has no such object on this account.'
 		});
-		expect(await stopRecurringGift(db, processor, PLAN_ID)).toEqual({
+		expect(await stopRecurringGift(db, soleProcessor(processor), PLAN_ID)).toEqual({
 			outcome: 'nothing-to-stop'
 		});
 		const record = await readRecurringPlan(db, PLAN_ID);
@@ -249,7 +273,9 @@ describe('stopRecurringGift', () => {
 				return webhookFirst.cancelRecurringGift(id);
 			}
 		};
-		expect(await stopRecurringGift(db, processor, PLAN_ID)).toEqual({ outcome: 'stopped' });
+		expect(await stopRecurringGift(db, soleProcessor(processor), PLAN_ID)).toEqual({
+			outcome: 'stopped'
+		});
 		expect((await readRecurringPlan(db, PLAN_ID))?.status).toBe('cancelled');
 	});
 
@@ -262,7 +288,42 @@ describe('stopRecurringGift', () => {
 		// is no reproducing that. what is under test is the arm, not the cause.
 		await plan();
 		const processor = port(ended({ endedAt: new Date('not a date') }));
-		expect(await stopRecurringGift(db, processor, PLAN_ID)).toEqual({ outcome: 'unrecorded' });
+		expect(await stopRecurringGift(db, soleProcessor(processor), PLAN_ID)).toEqual({
+			outcome: 'unrecorded',
+			processor: 'stripe'
+		});
+		expect((await readRecurringPlan(db, PLAN_ID))?.status).toBe('active');
+	});
+
+	it('carries which processor answered, so no screen has to guess one', async () => {
+		// every sentence this act's refusals are rendered into names a dashboard to go and look at,
+		// and a deployment charges on whichever processor it holds keys for. the name travels with
+		// the outcome rather than being read off the route's own configuration, because the
+		// commitment lives on the processor that collected its first charge and nothing else knows
+		// which that was.
+		await plan('active', 'paypal');
+		const processor = port(
+			{ ok: false, reason: 'unreachable', detail: 'PayPal did not answer in time.' },
+			'paypal'
+		);
+		expect(await stopRecurringGift(db, soleProcessor(processor), PLAN_ID)).toMatchObject({
+			outcome: 'refused',
+			processor: 'paypal'
+		});
+	});
+
+	it('refuses a commitment no processor answers for without naming one', async () => {
+		// `recurring_plan.provider` keeps `manual`, which no adapter answers for. there is nothing to
+		// call and no dashboard to send anybody to, so the refusal carries no processor and the
+		// screen writes no sentence that needs one.
+		await plan('active', 'manual');
+		const processor = port(ended());
+		expect(await stopRecurringGift(db, soleProcessor(processor), PLAN_ID)).toMatchObject({
+			outcome: 'refused',
+			retryable: false,
+			processor: null
+		});
+		expect(processor.called).toEqual([]);
 		expect((await readRecurringPlan(db, PLAN_ID))?.status).toBe('active');
 	});
 });

@@ -26,7 +26,7 @@ import { UNCONFIRMABLE, type ConfirmResult } from './outcome';
 
 const CONFIG: FormConfig = {
 	formId: 'frm_a8x2k9',
-	provider: { name: 'stripe', publishableKey: 'pk_live_x' },
+	providers: [{ name: 'stripe', publishableKey: 'pk_live_x' }],
 	currency: 'USD',
 	suggestedAmountsMinor: [2500],
 	minAmountMinor: 500,
@@ -38,7 +38,9 @@ const CONFIG: FormConfig = {
 		card: { percent: 0.029, fixedMinor: 30 },
 		ach: { percent: 0.008, fixedMinor: 0 },
 		apple_pay: { percent: 0.029, fixedMinor: 30 },
-		google_pay: { percent: 0.029, fixedMinor: 30 }
+		google_pay: { percent: 0.029, fixedMinor: 30 },
+		paypal: { percent: 0.0349, fixedMinor: 49 },
+		venmo: { percent: 0.0349, fixedMinor: 49 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -317,7 +319,7 @@ describe('the element group this adapter asks for', () => {
 	/**
 	 * a wire type is named once however many rails settle as it.
 	 *
-	 * three of the four rails this vocabulary holds are delivered as `card` (`RAILS` in ./rails.ts),
+	 * three of the four rails this processor settles are delivered as `card` (`RAILS` in ./rails.ts),
 	 * so a deployment offering a card and a wallet has the group refuse the whole list — and it
 	 * refuses at mount, on a donor's screen, where this adapter can say nothing but that the fields
 	 * are not coming up. the wallets add no type of their own: they are drawn by the `wallets` hash
@@ -332,6 +334,22 @@ describe('the element group this adapter asks for', () => {
 		await settle();
 
 		expect(kit.elementsOptions[0]?.paymentMethodTypes).toEqual(['card', 'us_bank_account']);
+	});
+
+	/**
+	 * a rail another processor settles is left out of the group entirely.
+	 *
+	 * the group is created from `paymentMethodTypes`, and one name this processor has no method for
+	 * refuses the whole creation — so a deployment offering the hosted window's rails beside the
+	 * inline fields would lose the card box as well, on a form whose card rail was never in doubt.
+	 * `STRIPE_RAILS` in ./rails.ts is the list this adapter draws from.
+	 */
+	it('names no rail another processor settles', async () => {
+		const kit = recorder();
+		surfaceOn(box(), kit, [], { ...CONFIG, paymentMethods: ['card', 'paypal', 'venmo'] });
+		await settle();
+
+		expect(kit.elementsOptions[0]?.paymentMethodTypes).toEqual(['card']);
 	});
 
 	// a form offering nothing but wallets still names the type they settle as, or the group is
@@ -1307,6 +1325,33 @@ describe('fields that never came up', () => {
 
 		expect(unavailable).toHaveLength(1);
 		expect(unavailable[0]?.fix).toContain('No such publishable key.');
+	});
+
+	/**
+	 * a config naming no entry for this processor is one this adapter cannot start at all.
+	 *
+	 * `FormConfig.providers` is a set (../v1.ts) and this file takes its own entry by name, so a
+	 * deployment that holds only the other processor hands this surface no key. reported rather
+	 * than loaded with nothing: the SDK would answer badly on its own clock, and a donor would sit
+	 * in front of an empty box while it did.
+	 */
+	it('reports a config that names no entry for this processor', async () => {
+		const kit = recorder();
+		const unavailable: Failure[] = [];
+		surfaceOn(
+			box(),
+			kit,
+			[],
+			{
+				...CONFIG,
+				providers: [{ name: 'paypal', publishableKey: 'AZ_client_id' }]
+			},
+			{ unavailable }
+		);
+		await settle();
+
+		expect(unavailable).toHaveLength(1);
+		expect(unavailable[0]?.fix).toContain('names no stripe processor');
 	});
 
 	// the stall this was found on named nothing: `loaderstart` and then silence, with no

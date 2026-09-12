@@ -33,6 +33,20 @@ const allSet: ConfigEnv = {
 	MAIL_FROM: 'giving@example.org'
 };
 
+/** {@link allSet} with no Stripe key at all, which the PayPal cases below start from. */
+const {
+	STRIPE_SECRET_KEY: _stripeSecret,
+	STRIPE_PUBLISHABLE_KEY: _stripePublishable,
+	STRIPE_WEBHOOK_SECRET: _stripeHook,
+	...mailSet
+} = allSet;
+
+/** the pair the other processor charges on. */
+const paypalPair: ConfigEnv = {
+	PAYPAL_CLIENT_ID: 'AX-client-id',
+	PAYPAL_CLIENT_SECRET: 'EC-client-secret'
+};
+
 const facts = (over: Partial<SetupFacts> = {}): SetupFacts => ({
 	password: true,
 	profile: { ...filledIn, notificationEmail: 'alerts@example.org' } as OrgProfile,
@@ -74,11 +88,36 @@ describe('one job at a time left undone', () => {
 		expect(line({ profile: blank }, 'organisation').state).toBe('todo');
 	});
 
-	it('holds payments incomplete on either half of the pair that charges a card', () => {
+	it("holds payments incomplete on either half of Stripe's pair", () => {
 		const { STRIPE_SECRET_KEY: _secret, ...noSecret } = allSet;
 		const { STRIPE_PUBLISHABLE_KEY: _public, ...noPublishable } = allSet;
 		expect(line({ config: noSecret }, 'payments').state).toBe('todo');
 		expect(line({ config: noPublishable }, 'payments').state).toBe('todo');
+	});
+
+	it("reads payments done on PayPal's pair with no Stripe key at all", () => {
+		// the whole of what a second processor buys: an organisation holding one account is set up,
+		// and the gate over the dashboard opens on it. the pair is also the whole of what is set —
+		// no webhook id, no charity-rate answer — which is what says neither of those is waited on.
+		expect(line({ config: { ...mailSet, ...paypalPair } }, 'payments').state).toBe('ready');
+	});
+
+	it("holds payments incomplete on either half of PayPal's pair", () => {
+		const { PAYPAL_CLIENT_ID: _id, ...noId } = paypalPair;
+		const { PAYPAL_CLIENT_SECRET: _secret, ...noSecret } = paypalPair;
+		expect(line({ config: { ...mailSet, ...noId } }, 'payments').state).toBe('todo');
+		expect(line({ config: { ...mailSet, ...noSecret } }, 'payments').state).toBe('todo');
+	});
+
+	it('holds payments incomplete where neither processor holds a whole pair', () => {
+		// half of each is not one of either, which is the case a flat list of everything payments
+		// needs would have read as done.
+		const halves: ConfigEnv = {
+			...mailSet,
+			STRIPE_SECRET_KEY: 'sk_live_x',
+			PAYPAL_CLIENT_ID: 'AX-client-id'
+		};
+		expect(line({ config: halves }, 'payments').state).toBe('todo');
 	});
 
 	it('does not hold payments on the webhook secret, which no one-off charge needs', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { projectStatus, type SettlementAttempt } from './queries';
+import { projectRail, projectStatus, type SettlementAttempt } from './queries';
 
 // node pool, no database: the projection is a pure function over rows, and the rows it is given
 // here are written by hand precisely so a case can hold a shape a fixture would have to work to
@@ -23,6 +23,8 @@ function attempt(over: Partial<SettlementAttempt> = {}): SettlementAttempt {
 		direction: 'inbound',
 		status: 'succeeded',
 		amountMinor: 10_000,
+		method: 'card',
+		provider: 'stripe',
 		occurredAt: new Date(0),
 		...over
 	};
@@ -123,5 +125,51 @@ describe('the gift status projection', () => {
 		// an ACH debit or an intent awaiting the donor. money that has not arrived is not money
 		// that failed, and a fundraiser chasing the second would be chasing nothing.
 		expect(projectStatus([attempt({ status: 'pending' })])).toBe('pending');
+	});
+});
+
+describe('the gift rail projection', () => {
+	it('names the rail the money arrived on, never one that failed before it', () => {
+		// the same reading `projectStatus` takes of the same rows: an attempt that succeeded is what
+		// the gift is, and an earlier refusal is not. the two attempts differ in rail because that
+		// is the only way a case can tell which one was read.
+		const rail = projectRail([
+			attempt({ status: 'failed', method: 'card', provider: 'stripe', occurredAt: new Date(1000) }),
+			attempt({ method: 'venmo', provider: 'paypal', occurredAt: new Date(2000) })
+		]);
+		expect(rail).toEqual({ method: 'venmo', provider: 'paypal' });
+	});
+
+	it('names the rail that was tried on a gift nothing has settled', () => {
+		// `payment.method` is written at quote time from what the donor picked and overwritten by
+		// what settled, so on a gift with nothing settled it is the attempt — which is the whole of
+		// what anybody knows, and a blank cell would say less than that.
+		const rail = projectRail([attempt({ status: 'pending', method: 'ach', provider: 'stripe' })]);
+		expect(rail).toEqual({ method: 'ach', provider: 'stripe' });
+	});
+
+	it('keeps the rail a donor used apart from the processor that settled it', () => {
+		// the pair the schema's two columns exist to keep apart: Venmo is a rail PayPal settles, so
+		// a projection reading one column for both answers `paypal` to a gift the donor gave on
+		// Venmo — and the screen then names a rail nobody used.
+		expect(projectRail([attempt({ method: 'venmo', provider: 'paypal' })])).toEqual({
+			method: 'venmo',
+			provider: 'paypal'
+		});
+	});
+
+	it('carries no processor on a gift no processor stands behind', () => {
+		// a staff-entered cheque. `payment.provider` is nullable, and inventing a processor for a
+		// gift none moved is worse than naming none.
+		expect(projectRail([attempt({ method: 'check', provider: null })])).toEqual({
+			method: 'check',
+			provider: null
+		});
+	});
+
+	it('reads a gift with no settlement attempt at all as no rail', () => {
+		// the shape `projectStatus` answers `pending` to. there is nothing to name, and the screen
+		// draws the absence rather than a rail nobody used.
+		expect(projectRail([])).toBeNull();
 	});
 });

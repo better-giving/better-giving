@@ -1,6 +1,7 @@
 import type { PaymentMethod } from '@better-giving/form/v1';
 import { OFFERED_PAYMENT_METHODS } from '../../forms/offered-rails';
-import type { RailChargeability } from '../payments/rail-chargeability';
+import { processorOf } from '../payments/provider';
+import type { RailChargeabilities } from '../payments/rail-chargeability';
 
 // which of the rails this deployment lists a donor is actually shown, which is a fact about the
 // processor's account and about no form.
@@ -31,9 +32,14 @@ import type { RailChargeability } from '../payments/rail-chargeability';
 // with a TTL; its header states why that is not the balance CLAUDE.md bans caching.
 
 /**
- * which rails a donor is shown, given what the account answered.
+ * which rails a donor is shown, given what each configured processor's account answered.
  *
- * a read that could not be made offers the deployment's list whole, and that is the opposite
+ * composed per processor and never across them, which is the whole of what makes the widening arm
+ * below safe. a processor this deployment cannot charge on has no reading at all, so none of its
+ * rails is ever offered — and a processor whose account could not be read widens its own rails and
+ * nobody else's.
+ *
+ * a read that could not be made offers that processor's rails whole, and that is the opposite
  * direction from `offeredCadences` in ./offered-cadences.ts on purpose. narrowing a cadence leaves a
  * working form that shows one-time; narrowing every rail leaves no form at all — `readFormConfig` in
  * packages/form/src/config.ts drops a config offering no rail, so a processor blip answered narrowly would
@@ -44,10 +50,13 @@ import type { RailChargeability } from '../payments/rail-chargeability';
  * the list is filtered rather than rebuilt, so the order a donor is shown the rails is the order
  * that constant states.
  */
-export function offeredRails(chargeability: RailChargeability): readonly PaymentMethod[] {
-	if (chargeability.state === 'unreadable') return OFFERED_PAYMENT_METHODS;
-	// `approved` and nothing else. every other standing is a rail this deployment cannot charge
-	// today, and the seven of them differ in what an operator does about it rather than in whether a
-	// donor may pick it — which is what the console reads them for.
-	return OFFERED_PAYMENT_METHODS.filter((rail) => chargeability.rails[rail] === 'approved');
+export function offeredRails(readings: RailChargeabilities): readonly PaymentMethod[] {
+	return OFFERED_PAYMENT_METHODS.filter((rail) => {
+		const reading = readings[processorOf(rail)];
+		if (reading === undefined) return false;
+		// `approved` and nothing else. every other standing is a rail this deployment cannot charge
+		// today, and the six of them differ in what an operator does about it rather than in whether
+		// a donor may pick it — which is what the console reads them for.
+		return reading.state === 'unreadable' || reading.rails[rail] === 'approved';
+	});
 }

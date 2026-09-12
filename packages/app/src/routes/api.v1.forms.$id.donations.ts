@@ -7,7 +7,7 @@ import {
 import { verifyTurnstile } from '$lib/server/api/turnstile';
 import { mintQuote, refusalCode, type QuoteRefusal } from '$lib/server/donations/quote';
 import { readFormOrigins } from '$lib/server/forms/queries';
-import { createPaymentProvider } from '$lib/server/payments/factory';
+import { createPaymentProviders } from '$lib/server/payments/factory';
 import { database, platform } from '../context';
 import type { Route } from './+types/api.v1.forms.$id.donations';
 
@@ -102,7 +102,7 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 		{
 			db,
 			env,
-			provider: createPaymentProvider(env),
+			processors: createPaymentProviders(env),
 			verifyChallenge: verifyTurnstile
 		},
 		{ formId: params.id, body: await readJsonBody(request), request }
@@ -210,7 +210,7 @@ async function readJsonBody(request: Request): Promise<unknown> {
  *   read at the top of this request and the write at the bottom. nothing about the request is
  *   wrong, no caller can act on it, and retrying fails identically until a row is restored by hand.
  * - 503, this deployment is not finished or something it depends on is not answering. the
- *   organisation's details, the Stripe keys, a recurring gift it cannot honour, the challenge
+ *   organisation's details, a processor's keys, a recurring gift it cannot honour, the challenge
  *   service, the processor. 4xx would blame the caller for a value they very likely cannot see, and
  *   monitoring that treats 5xx as an outage is right to: a donation form that cannot take a gift is
  *   one.

@@ -75,6 +75,15 @@ function formatDate(at: number, locale: string): string {
 	}
 }
 
+/**
+ * the screen, as the words a donor on this rail reads.
+ *
+ * the rail is the state's own and there is no other reading of it here: `State`
+ * (@better-giving/form/connect) carries the committed payer's method on every screen a donor waits
+ * under as well as on the correction, so a screen below that names a rail names the one the intent
+ * was minted for. absent is a cold return — the page was handed a payment token and nothing else —
+ * and it is a reading of its own rather than a missing one.
+ */
 export function takeoverFor(
 	state: State,
 	config: FormConfig,
@@ -133,7 +142,11 @@ export function takeoverFor(
 			};
 
 		case 'redirecting':
-			return { ...BLANK, heading: copy.REDIRECTING_HEADING, body: copy.REDIRECTING_BODY };
+			return {
+				...BLANK,
+				heading: copy.redirectingHeading(state.method),
+				body: copy.redirectingBody(state.method)
+			};
 
 		case 'processing':
 			return {
@@ -141,8 +154,8 @@ export function takeoverFor(
 				heading: copy.PROCESSING_HEADING,
 				receipt: 'pending',
 				totalLabel: copy.TO_BE_CHARGED,
-				receiptNote: copy.PROCESSING_NOTE,
-				body: copy.processingBody(org)
+				receiptNote: copy.processingNote(state.method),
+				body: copy.processingBody(org, state.method)
 			};
 
 		case 'indeterminate':
@@ -152,7 +165,7 @@ export function takeoverFor(
 			return {
 				...BLANK,
 				heading: copy.INDETERMINATE_HEADING,
-				body: copy.indeterminateBody(org),
+				body: copy.indeterminateBody(org, state.method),
 				announce: copy.INDETERMINATE_ANNOUNCE
 			};
 
@@ -209,8 +222,9 @@ export function takeoverFor(
 				primary: { label: copy.TRY_AGAIN, submit: false }
 			};
 
-		// a resume, which is the only busy flow that reaches a takeover: a donor is back from their
-		// bank and the flow has not yet found out what happened.
+		// a resume, which is the only busy flow that reaches a takeover: a donor is back from wherever
+		// they authorized, and the flow has not yet found out what happened. its two sentences name no
+		// rail, which is what makes them right on the page load that has none.
 		case 'working':
 			return { ...BLANK, heading: copy.RESUMING_HEADING, body: copy.RESUMING_BODY };
 

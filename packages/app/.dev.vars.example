@@ -4,7 +4,7 @@
 # `pnpm preview` read it; a deployed Worker never does, and no command here
 # uploads it. Setting a value on a deployment is a separate act.
 #
-# All thirteen are set the same way there: each is a plain Worker var. Type it
+# All seventeen are set the same way there: each is a plain Worker var. Type it
 # on a console fold, read it back or change it on the Worker's Variables and
 # Secrets page in the Cloudflare dashboard, or set it from a terminal by
 # appending `--var NAME:value` to `pnpm run deploy` — `pnpm run deploy:vars`
@@ -14,10 +14,10 @@
 # None of them is a Worker secret, and that is deliberate: Cloudflare never
 # returns a secret's value, so a console fold could only draw a mask over one
 # and an operator could never check what they pasted. Anyone who can open this
-# Cloudflare account can read all thirteen, which was already true of the
+# Cloudflare account can read all seventeen, which was already true of the
 # account holding them.
 #
-# A fourteenth name exists and is not below: CONSOLE_TOKEN, the operator
+# An eighteenth name exists and is not below: CONSOLE_TOKEN, the operator
 # console's session. It is a secret, and nothing you do sets it — `pnpm run
 # console` mints one and writes it to a deployment as a Worker secret,
 # it lasts twelve hours, and connecting a second console replaces it, which is
@@ -69,11 +69,10 @@
 # notification address — and `scripts/seed-local.sql` writes both into the
 # local D1, with the local donation page listed as a site (README.md → the
 # quick start). With this file exactly as it ships and that seed applied, one
-# job is left: Payments, because the Stripe keys
-# further down are commented out. Uncomment them with a test pair to reach the
-# dashboard. Where your forms may be used is a fold on the console and gates
-# nothing. Anything further down is commented out because it has a working
-# default.
+# job is left: Payments, because neither processor's keys further down are set.
+# Uncomment Stripe's with a test pair to reach the dashboard. Where your forms
+# may be used is a fold on the console and gates nothing. Anything further down
+# is commented out because it has a working default.
 
 # The v0 staff credential, typed at /login with the
 # username `admin`. No row stores it and no password hash is ever written —
@@ -231,3 +230,38 @@ TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"
 # STRIPE_SECRET_KEY=""
 # STRIPE_PUBLISHABLE_KEY=""
 # STRIPE_WEBHOOK_SECRET=""
+
+# PayPal — the org's own account, and the second processor a deployment may
+# be configured with. Either processor's pair finishes the Payments job on its
+# own: a deployment holding these two and no Stripe key is set up, and the same
+# in reverse (src/lib/server/config/readiness.ts).
+#
+# PAYPAL_CLIENT_ID is not a credential — PayPal's own script is loaded in the
+# donor's page with it in the query string, so it is public wherever a form is
+# embedded, exactly as STRIPE_PUBLISHABLE_KEY is. Both come off the same app in
+# PayPal's developer dashboard, and they are one pair.
+#
+# There is no sandbox. This app reads nothing that says which deployment it is,
+# so these are a live PayPal account's values and a gift taken through them is a
+# real gift. Rehearsing is a second deployment, as it is for Stripe.
+#
+# PAYPAL_WEBHOOK_ID comes back from PayPal rather than being chosen: the
+# endpoint is registered by hand in PayPal's own developer dashboard, at this
+# deployment's address followed by /api/paypal/webhook, and the id PayPal gives
+# that registration is what goes here. Nothing in this app creates or deletes a
+# PayPal endpoint, which is where it differs from Stripe's. Without the id, a
+# delivery verifies against nothing and is refused — the donor approved a
+# payment that is never captured and never reaches your books. The events to
+# subscribe it to are the three in
+# src/lib/server/payments/paypal.ts's SETTLEMENT_EVENT_TYPES.
+#
+# PAYPAL_CHARITY_RATE_APPROVED is the one value here that is an answer rather
+# than a credential: `true` if PayPal has approved this organisation for its
+# charity rate, and unset otherwise. PayPal reports on no call which rate an
+# account is on, and the rate decides what a donor covering fees is quoted. The
+# rates themselves are constants in the tree (src/lib/server/payments/fees.ts) —
+# there is no number to type.
+# PAYPAL_CLIENT_ID=""
+# PAYPAL_CLIENT_SECRET=""
+# PAYPAL_WEBHOOK_ID=""
+# PAYPAL_CHARITY_RATE_APPROVED=""

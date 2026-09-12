@@ -20,7 +20,7 @@ import type { PaymentMethod } from '@better-giving/form/v1';
  * `null` is the whole of "there is nothing to report", and it covers two different deployments on
  * purpose: an account approved for this way of paying, and an account nobody could read. what tells
  * them apart is not something a screen acts on — neither one gets a sentence — so the editor is
- * drawn the same for both, which is what keeps a fork with no Stripe keys editable.
+ * drawn the same for both, which is what keeps a fork holding no processor's keys editable.
  *
  * every sentence is advisory. nothing here blocks a save or blocks a publish: what a donor is
  * offered is not a form's to choose, so a sentence's whole job is to send an operator to the

@@ -85,7 +85,7 @@ describe('the names a press carries a value for', () => {
 	});
 });
 
-describe('the groups the thirteen are set in', () => {
+describe('the groups the seventeen are set in', () => {
 	it('covers the enumeration exactly, each name in one group or named as having none', () => {
 		const grouped = SECRET_GROUPS.flatMap((group) => group.names);
 		expect([...grouped, ...UNGROUPED_VARS].sort()).toEqual([...DEPLOY_VARS].sort());
@@ -94,18 +94,25 @@ describe('the groups the thirteen are set in', () => {
 });
 
 describe('the boxes that arrive masked', () => {
-	it('is the three values reading over a shoulder is enough to take, and no others', () => {
+	it('is the four values reading over a shoulder is enough to take, and no others', () => {
 		// what makes a value one of these is what somebody could do with it after reading it off the
 		// screen, and the only place that judgement is recorded is the list itself — so this case is
 		// what makes changing the list deliberate.
-		expect(MASKED_VALUES).toEqual(['ADMIN_PASSWORD', 'SMTP_PASSWORD', 'STRIPE_SECRET_KEY']);
+		expect(MASKED_VALUES).toEqual([
+			'ADMIN_PASSWORD',
+			'SMTP_PASSWORD',
+			'STRIPE_SECRET_KEY',
+			'PAYPAL_CLIENT_SECRET'
+		]);
 	});
 
-	it('leaves the other ten of the thirteen legible, the publishable key among them', () => {
-		// held over the enumeration, so a fourteenth value lands unmasked and this case is where that
-		// shows. the publishable key is the one worth asserting by name: it stands beside a masked box
-		// in the same fold, and ./secret-groups.ts argues why it is not one of them.
+	it('leaves the other thirteen of the seventeen legible, the two public halves among them', () => {
+		// held over the enumeration, so an eighteenth value lands unmasked and this case is where that
+		// shows. the two named are the ones worth asserting: each stands beside a masked box in the
+		// same fold and carries a word that reads like a credential, and ./secret-groups.ts argues why
+		// neither is one.
 		expect([...DEPLOY_VARS].filter(isMasked).sort()).toEqual([...MASKED_VALUES].sort());
 		expect(isMasked('STRIPE_PUBLISHABLE_KEY')).toBe(false);
+		expect(isMasked('PAYPAL_CLIENT_ID')).toBe(false);
 	});
 });

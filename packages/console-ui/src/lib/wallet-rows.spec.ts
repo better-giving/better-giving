@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PaymentsRead, Wallet, WalletHostLine, WalletsLevel } from '../api/types';
+import type { Wallet, WalletHostLine, WalletsLevel, WalletsReading } from '../api/types';
 import { linkStanding, walletHostLines, walletRow, walletRows } from './wallet-rows';
 
 // the reading behind the wallet panels, held to the properties tsc cannot see.
@@ -127,15 +127,7 @@ describe('what the whole list says about Link', () => {
 });
 
 describe('which sites a panel is drawn from', () => {
-	const read = (hosts: WalletHostLine[]): PaymentsRead => ({
-		kind: 'read',
-		report: {
-			rails: { state: 'read', chargesEnabled: true, rails: [] },
-			webhook: { state: 'verifying', detail: null },
-			subscription: { state: 'complete' },
-			wallets: { state: 'read', hosts }
-		}
-	});
+	const read = (hosts: WalletHostLine[]): WalletsReading => ({ state: 'read', hosts });
 
 	const levelled = (hosts: WalletHostLine[]): WalletsLevel => ({
 		kind: 'reported',
@@ -172,19 +164,13 @@ describe('which sites a panel is drawn from', () => {
 	});
 
 	it('draws nothing where the site read could not be made', () => {
-		const blind: PaymentsRead = {
-			kind: 'read',
-			report: {
-				rails: { state: 'read', chargesEnabled: true, rails: [] },
-				webhook: { state: 'verifying', detail: null },
-				subscription: { state: 'complete' },
-				wallets: { state: 'unreadable', reason: 'failed', detail: 'Stripe said no' }
-			}
-		};
+		const blind: WalletsReading = { state: 'unreadable', detail: 'Stripe said no' };
 		expect(walletHostLines(null, blind)).toBeNull();
 	});
 
-	it('draws nothing where the deployment answered nothing at all', () => {
-		expect(walletHostLines(null, { kind: 'unread', read: { kind: 'no-session' } })).toBeNull();
+	it('draws nothing where there is no reading at all', () => {
+		// the deployment answered nothing, the processor holds no credentials, or it draws no wallet
+		// anywhere — three states a caller tells apart above this, and none of them a panel.
+		expect(walletHostLines(null, null)).toBeNull();
 	});
 });

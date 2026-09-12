@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 // the guard on "the file `pnpm run deploy:vars` reads can never be committed".
 //
-// why this file exists. all thirteen of a deployment's configuration values are plain Worker vars
+// why this file exists. all seventeen of a deployment's configuration values are plain Worker vars
 // (`@better-giving/operator/deploy-split`), and a var is set by a flag on the deploy — so there is
 // no prompt anywhere in this project that takes a value straight off a terminal. the bulk path
 // reads a file instead, and that file holds a deployment's real ADMIN_PASSWORD, its Stripe secret

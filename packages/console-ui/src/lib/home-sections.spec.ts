@@ -52,7 +52,7 @@ const reading = (over: Partial<HomeReading> = {}): HomeReading => ({
 	...over
 });
 
-/** the same reading with some of the thirteen unset. */
+/** the same reading with some of the seventeen unset. */
 const without = (...names: readonly string[]): HomeReading =>
 	reading({
 		values: {
@@ -64,6 +64,36 @@ const without = (...names: readonly string[]): HomeReading =>
 			}
 		}
 	});
+
+/** the Stripe values the fixture above holds, which a deployment on PayPal alone holds none of. */
+const STRIPE_VALUES = [
+	'STRIPE_SECRET_KEY',
+	'STRIPE_PUBLISHABLE_KEY',
+	'STRIPE_WEBHOOK_SECRET'
+] as const;
+
+/** the same reading with PayPal's own set stored and Stripe's gone, less whatever is named. */
+const onPaypalAlone = (...short: readonly string[]): HomeReading => {
+	const paypal: DeployedVar[] = [
+		{ name: 'PAYPAL_CLIENT_ID', kind: 'value', value: 'A21aa' },
+		{ name: 'PAYPAL_CLIENT_SECRET', kind: 'value', value: 'EKx7' },
+		{ name: 'PAYPAL_WEBHOOK_ID', kind: 'value', value: '1TE12345' }
+	];
+	const read = without(...STRIPE_VALUES);
+	const vars = read.values.vars;
+	return {
+		...read,
+		values: {
+			vars:
+				vars.kind === 'read'
+					? {
+							kind: 'read',
+							vars: [...vars.vars, ...paypal.filter((row) => !short.includes(row.name))]
+						}
+					: vars
+		}
+	};
+};
 
 const rowOf = (read: HomeReading, id: SectionId) =>
 	readSections(read).find((section) => section.id === id);
@@ -242,10 +272,37 @@ describe('the six folds', () => {
 		expect(noteOf(read, 'smtp')).toBe(JOB_NOTES.smtp);
 	});
 
-	// the payments row waits on all three: the key every charge is made with, the one that verifies
-	// what Stripe delivers back, and the half every donor's browser is handed.
+	// the row waits on the pair that charges and on neither webhook value: without one a settled
+	// charge is never heard about, and a one-off gift is still taken — which is what this row is
+	// about (`CHARGE_PAIRS` in packages/app/src/lib/server/config/readiness.ts).
 	it('read a missing publishable key as a payments fold that is not done', () => {
 		expect(stateOf(without('STRIPE_PUBLISHABLE_KEY'), 'payments')).toBe('todo');
+	});
+
+	it('read the Stripe pair alone as done, with nothing stored to verify a delivery', () => {
+		expect(stateOf(without('STRIPE_WEBHOOK_SECRET'), 'payments')).toBe('ready');
+	});
+
+	// the two processors are alternatives and neither is the one that counts: an organisation on
+	// PayPal alone holds no Stripe key and is set up, which is the reading the deployment makes and
+	// the one this row disagreed with.
+	it('read a deployment holding PayPal\u2019s pair and no Stripe key as done', () => {
+		expect(stateOf(onPaypalAlone(), 'payments')).toBe('ready');
+	});
+
+	it('read PayPal\u2019s client id without its secret as not done', () => {
+		expect(stateOf(onPaypalAlone('PAYPAL_CLIENT_SECRET'), 'payments')).toBe('todo');
+	});
+
+	// the webhook id is the same kind of value the signing secret is: without it a settled charge is
+	// never heard about, and a gift is still taken.
+	it('read PayPal\u2019s pair as done with no webhook id stored', () => {
+		expect(stateOf(onPaypalAlone('PAYPAL_WEBHOOK_ID'), 'payments')).toBe('ready');
+	});
+
+	it('read a deployment holding neither processor\u2019s pair as not done', () => {
+		const read = without(...STRIPE_VALUES);
+		expect(stateOf(read, 'payments')).toBe('todo');
 	});
 
 	// a name held in a form nothing can read back is a name that is set: what cannot be done with it

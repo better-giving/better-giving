@@ -76,6 +76,7 @@ const insertPlan = (opts: {
 	id: string;
 	interval?: string;
 	status?: string;
+	provider?: string;
 	subscriptionId?: string;
 	endedAt?: number | null;
 }) =>
@@ -84,7 +85,7 @@ const insertPlan = (opts: {
 		   (id, contact_id, form_id, amount_minor, currency, "interval", status,
 		    provider, provider_subscription_id, provider_customer_id,
 		    started_at, ended_at, created_at, updated_at)
-		 values (?, ?, ?, 2500, 'USD', ?, ?, 'stripe', ?, 'cus_probe', 0, ?, 0, 0)`
+		 values (?, ?, ?, 2500, 'USD', ?, ?, ?, ?, 'cus_probe', 0, ?, 0, 0)`
 	)
 		.bind(
 			opts.id,
@@ -92,6 +93,7 @@ const insertPlan = (opts: {
 			FORM_ID,
 			opts.interval ?? 'monthly',
 			opts.status ?? 'active',
+			opts.provider ?? 'stripe',
 			opts.subscriptionId ?? `sub_${opts.id}`,
 			opts.endedAt ?? null
 		)
@@ -182,6 +184,30 @@ describe('one rail-side subscription is one commitment', () => {
 			insertPlan({ id: 'plan-sub-second', subscriptionId: 'sub_shared' })
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_UNIQUE);
+	});
+});
+
+describe('a commitment names a processor the schema knows', () => {
+	it.each(['stripe', 'paypal'])(
+		'accepts %s, which is a processor that runs one',
+		async (provider) => {
+			// the positive control the rejection below is worth nothing without, and the whole of
+			// what this ticket widened on this table: a commitment carried by PayPal is a row here
+			// exactly as a Stripe one is.
+			await insertPlan({ id: `plan-${provider}`, provider });
+			const row = await env.DB.prepare('select provider as p from recurring_plan where id = ?')
+				.bind(`plan-${provider}`)
+				.first();
+			expect(row).toEqual({ p: provider });
+		}
+	);
+
+	it('refuses a processor outside the list', async () => {
+		const message = await rejection(() =>
+			insertPlan({ id: 'plan-badprovider', provider: 'braintree' })
+		);
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('recurring_plan_provider_check');
 	});
 });
 

@@ -50,7 +50,7 @@ describe('refusing', () => {
 	 * that quietly does something while the others refuse.
 	 */
 	it('answers every method with the same refusal', async () => {
-		const provider = refusing('not_configured', 'STRIPE_SECRET_KEY is not set.');
+		const provider = refusing('stripe', 'not_configured', 'STRIPE_SECRET_KEY is not set.');
 
 		const results = await Promise.all([
 			provider.createIntent(REQUEST),
@@ -60,7 +60,7 @@ describe('refusing', () => {
 			provider.readRecurringGiftProvision(),
 			provider.createRecurringGift(GIFT),
 			provider.cancelRecurringGift('sub_1'),
-			provider.verifyEvent({ body: '{}', signature: 't=1,v1=x' }),
+			provider.verifyEvent({ body: '{}', headers: { 'stripe-signature': 't=1,v1=x' } }),
 			provider.readSettlement('pi_1'),
 			provider.readRecurringGift(NOTICE),
 			// the account reads answer identically too, and on this provider that is the whole of
@@ -141,6 +141,7 @@ function throwing(): PaymentProvider {
 		throw new TypeError('Cannot read properties of undefined');
 	};
 	return {
+		processor: 'stripe',
 		prepareRecurringGifts: fault,
 		readRecurringGiftProvision: fault,
 		createRecurringGift: fault,
@@ -173,7 +174,7 @@ describe('sealed', () => {
 		['readRecurringGiftProvision', (p: PaymentProvider) => p.readRecurringGiftProvision()],
 		['createRecurringGift', (p: PaymentProvider) => p.createRecurringGift(GIFT)],
 		['cancelRecurringGift', (p: PaymentProvider) => p.cancelRecurringGift('sub_1')],
-		['verifyEvent', (p: PaymentProvider) => p.verifyEvent({ body: '{}', signature: null })],
+		['verifyEvent', (p: PaymentProvider) => p.verifyEvent({ body: '{}', headers: {} })],
 		['readSettlement', (p: PaymentProvider) => p.readSettlement('pi_1')],
 		['readRecurringGift', (p: PaymentProvider) => p.readRecurringGift(NOTICE)],
 		['readAccountChargeability', (p: PaymentProvider) => p.readAccountChargeability()],

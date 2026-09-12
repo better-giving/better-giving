@@ -2,7 +2,7 @@ import { checkoutMachine } from '@better-giving/form/machine';
 import type { Failure } from '@better-giving/form/machine';
 import { toState, type CheckoutSnapshot, type State } from '@better-giving/form/connect';
 import type { CheckoutPorts } from '@better-giving/form/ports';
-import { createPaymentSurface, type PaymentSeam } from '@better-giving/form/embed/stripe';
+import { createPaymentSurface, type PaymentSeams } from '@better-giving/form/embed/surface';
 import { createChallenge, type ChallengeSeam } from '@better-giving/form/embed/turnstile';
 import type { FormConfig, PaymentMethod } from '@better-giving/form/v1';
 import { createActor, type Actor } from 'xstate';
@@ -64,8 +64,13 @@ export type CheckoutMounts = {
 	readonly challengeMount: HTMLElement;
 	/** the payment this page was sent back to, where it was sent anywhere. */
 	readonly resumeToken: string | null;
-	/** what a spec replaces so neither provider's script is reached. */
-	readonly seams?: { readonly payment?: PaymentSeam; readonly challenge?: ChallengeSeam };
+	/**
+	 * what a spec replaces so no processor's script is reached.
+	 *
+	 * `payment` is one entry per processor rather than one seam, because the composer this page
+	 * builds its surface through is in between the two adapters rather than in front of them.
+	 */
+	readonly seams?: { readonly payment?: PaymentSeams; readonly challenge?: ChallengeSeam };
 };
 
 export type Checkout = {
@@ -83,9 +88,12 @@ export type Checkout = {
 };
 
 /**
- * the flow, running, with both providers wired into it.
+ * the flow, running, with every provider wired into it.
  *
  * the payment surface is built before the actor because two of the actor's four ports are its own.
+ * it is the composer in @better-giving/form/embed/surface rather than either processor's adapter,
+ * so a deployment holding two of them still hands the flow one surface and nothing below this line
+ * learns there was more than one.
  * the challenge is built on arrival at the details step instead, which is the last moment it can be
  * drawn without a donor waiting on it: from there it has that step's typing and the review step to
  * finish in.

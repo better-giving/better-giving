@@ -10,7 +10,14 @@ import {
 import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from './parts';
 import type { CheckoutPorts } from './ports';
 import type { Failure } from './checkout.machine';
-import type { FormConfig, Frequency, PaymentMethod, Program, QuoteRequest } from './v1';
+import {
+	PAYMENT_METHODS,
+	type FormConfig,
+	type Frequency,
+	type PaymentMethod,
+	type Program,
+	type QuoteRequest
+} from './v1';
 import { DEFAULT_SHAPE } from './views';
 import { APPEARANCE_INPUTS } from './styles/appearance';
 import partStyles from './styles/parts.css?inline';
@@ -32,7 +39,7 @@ import tokenStyles from './styles/tokens.css?inline';
 
 const CONFIG: FormConfig = {
 	formId: 'frm_a8x2k9',
-	provider: { name: 'stripe', publishableKey: 'pk_live_x' },
+	providers: [{ name: 'stripe', publishableKey: 'pk_live_x' }],
 	currency: 'usd',
 	suggestedAmountsMinor: [2500, 10_000, 25_000, 100_000],
 	minAmountMinor: 500,
@@ -44,7 +51,9 @@ const CONFIG: FormConfig = {
 		card: { percent: 0.029, fixedMinor: 30 },
 		ach: { percent: 0.008, fixedMinor: 0 },
 		apple_pay: { percent: 0.029, fixedMinor: 30 },
-		google_pay: { percent: 0.029, fixedMinor: 30 }
+		google_pay: { percent: 0.029, fixedMinor: 30 },
+		paypal: { percent: 0.0349, fixedMinor: 49 },
+		venmo: { percent: 0.0349, fixedMinor: 49 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -354,6 +363,32 @@ async function atUnpricedReview(options: Options = {}): Promise<Mounted> {
  */
 async function atSubmitted(options: Options = {}): Promise<Mounted> {
 	const card = await atReview(options);
+	card.find('[part~="submit"]').click();
+	await settle();
+	return card;
+}
+
+/** a deployment offering every rail, so a case can commit the one it is about. */
+const EVERY_RAIL: FormConfig = { ...CONFIG, paymentMethods: [...PAYMENT_METHODS] };
+
+/**
+ * the press that spends the money, on a named rail.
+ *
+ * the fee is declined on the way past so the figure the donor was shown is the bare amount on every
+ * rail, which is what lets one quote settle against all six: covered, each rail grosses up to a
+ * total of its own and a fixed quote would route four of them onto the correction screen.
+ */
+async function atSubmittedOn(method: PaymentMethod, options: Options = {}): Promise<Mounted> {
+	const card = await atReviewBeforeRail({
+		config: EVERY_RAIL,
+		...options,
+		ports: {
+			quote: async () => ({ paymentToken: 'pi_1_secret_x', feeMinor: 0, totalMinor: 2500 }),
+			...options.ports
+		}
+	});
+	card.rail(method);
+	press(card.find('.row.fee [part~="checkbox"]'));
 	card.find('[part~="submit"]').click();
 	await settle();
 	return card;
@@ -2792,7 +2827,7 @@ describe('the review step', () => {
 		card.find('[part~="submit"]').click();
 		await settle();
 
-		expect(card.text('[role="status"]')).toBe('Confirming your gift with your bank.');
+		expect(card.text('[role="status"]')).toBe('Confirming your gift with your card issuer.');
 	});
 
 	it('goes back to the details step without losing what was typed', async () => {
@@ -4092,18 +4127,18 @@ describe('the endings', () => {
 		});
 		const body = shows(card, '.takeover .prose');
 
-		expect(body).toContain('sent to your bank for confirmation');
+		expect(body).toContain('sent to your card issuer for confirmation');
 		expect(body).toContain('will email you when it goes through');
 		expect(body).toContain('charge you a second time');
 		expect(body).not.toContain('receipt');
 	});
 
-	it('says the bank is deciding and offers nothing to press', async () => {
+	it('says who is deciding and offers nothing to press', async () => {
 		const card = await atSubmitted({
 			ports: { confirm: async () => ({ kind: 'redirecting' as const }) }
 		});
 
-		expect(card.text('.takeover [part~="heading"]')).toBe('Continue at your bank');
+		expect(card.text('.takeover [part~="heading"]')).toBe('Continue with your card issuer');
 		expect(card.find('.takeover > [part~="action"]').hidden).toBe(true);
 		// a gift is in flight here, and a start-over beside it is a donor who thinks it failed
 		// paying twice.
@@ -4120,6 +4155,161 @@ describe('the endings', () => {
 		expect(card.text('.takeover [part~="heading"]')).toBe('Your gift is on its way');
 		expect(card.text('.row.total .row-label')).toBe('To be charged');
 		expect(secondary(card).hidden).toBe(true);
+	});
+});
+
+// every screen a donor waits under, on each rail a gift can be committed to and on the page that
+// was handed none. asserted rail by rail rather than once, because a sentence hard-coded to one of
+// them passes any single reading of it — and a donor who pressed PayPal being told to continue at
+// their bank is the defect these cases exist for.
+describe('the waiting screens, per rail', () => {
+	/** the cold return: a page handed a payment token and nothing else, with no payer of its own. */
+	async function atColdResume(outcome: 'redirecting' | 'processing' | 'indeterminate') {
+		const card = await mount({
+			resume: { paymentToken: 'pi_1_secret_x' },
+			ports: {
+				resume: async () => ({ kind: outcome }),
+				confirm: async () => ({ kind: outcome })
+			}
+		});
+		await settle();
+		return card;
+	}
+
+	it('names where the donor was sent, and asks them to stay put wherever that is', async () => {
+		const bank = await atSubmittedOn('ach', {
+			ports: { confirm: async () => ({ kind: 'redirecting' as const }) }
+		});
+		expect(bank.text('.takeover [part~="heading"]')).toBe('Continue at your bank');
+		expect(shows(bank, '.takeover .prose')).toContain('Your bank is checking this payment.');
+
+		const card = await atSubmittedOn('card', {
+			ports: { confirm: async () => ({ kind: 'redirecting' as const }) }
+		});
+		expect(card.text('.takeover [part~="heading"]')).toBe('Continue with your card issuer');
+		expect(shows(card, '.takeover .prose')).toContain('Your card issuer is checking this payment.');
+
+		const paypal = await atSubmittedOn('paypal', {
+			ports: { confirm: async () => ({ kind: 'redirecting' as const }) }
+		});
+		expect(paypal.text('.takeover [part~="heading"]')).toBe('Continue in PayPal');
+		expect(shows(paypal, '.takeover .prose')).toContain('PayPal is checking this payment.');
+
+		const venmo = await atSubmittedOn('venmo', {
+			ports: { confirm: async () => ({ kind: 'redirecting' as const }) }
+		});
+		expect(venmo.text('.takeover [part~="heading"]')).toBe('Continue in Venmo');
+
+		const cold = await atColdResume('redirecting');
+		expect(cold.text('.takeover [part~="heading"]')).toBe('Continue with this payment');
+		expect(shows(cold, '.takeover .prose')).toContain('This payment is being checked.');
+
+		// the one sentence that is the same on all of them, and the reason it is: wherever the donor
+		// was sent, this page is what they come back to.
+		for (const screen of [bank, card, paypal, venmo, cold]) {
+			expect(shows(screen, '.takeover .prose')).toContain(
+				'Keep this window open until you are sent back.'
+			);
+		}
+	});
+
+	it('promises business days on the bank rail and on no other', async () => {
+		const bank = await atSubmittedOn('ach', {
+			ports: { confirm: async () => ({ kind: 'processing' as const }) }
+		});
+		expect(shows(bank, '.takeover .prose')).toContain(
+			'Bank transfers usually take 4 to 5 business days to settle.'
+		);
+		expect(bank.text('.row.total .row-label')).toBe('To be charged');
+
+		// a PayPal approval is not a transfer and carries no schedule this deployment could keep —
+		// and it is that rail's ordinary ending rather than its rare one, because the browser never
+		// captures on it (`outcomeOfTermination` in ./embed/paypal.ts).
+		const paypal = await atSubmittedOn('paypal', {
+			ports: { confirm: async () => ({ kind: 'processing' as const }) }
+		});
+		expect(shows(paypal, '.takeover .prose')).toContain(
+			'PayPal has your approval and the payment has not finished clearing.'
+		);
+
+		const venmo = await atSubmittedOn('venmo', {
+			ports: { confirm: async () => ({ kind: 'processing' as const }) }
+		});
+		expect(shows(venmo, '.takeover .prose')).toContain('Venmo has your approval');
+
+		const card = await atSubmittedOn('card', {
+			ports: { confirm: async () => ({ kind: 'processing' as const }) }
+		});
+		expect(shows(card, '.takeover .prose')).toContain('This payment has not finished clearing.');
+
+		const cold = await atColdResume('processing');
+
+		for (const screen of [paypal, venmo, card, cold]) {
+			expect(shows(screen, '.takeover .prose')).not.toContain('business days');
+		}
+		// every rail still says the money has not landed, which is why this screen is not the
+		// thank-you.
+		for (const screen of [bank, paypal, venmo, card, cold]) {
+			expect(shows(screen, '.takeover .prose')).toContain('has been told your gift is coming');
+		}
+	});
+
+	it('names who is still holding a gift nobody read the outcome of', async () => {
+		const unanswered = { confirm: async () => ({ kind: 'indeterminate' as const }) };
+		const bank = await atSubmittedOn('ach', {
+			ports: { ...unanswered, resume: async () => ({ kind: 'indeterminate' as const }) }
+		});
+		const venmo = await atSubmittedOn('venmo', {
+			ports: { ...unanswered, resume: async () => ({ kind: 'indeterminate' as const }) }
+		});
+		const card = await atSubmittedOn('card', {
+			ports: { ...unanswered, resume: async () => ({ kind: 'indeterminate' as const }) }
+		});
+		const cold = await atColdResume('indeterminate');
+
+		expect(shows(bank, '.takeover .prose')).toContain('sent to your bank for confirmation');
+		expect(shows(venmo, '.takeover .prose')).toContain('sent to Venmo for confirmation');
+		expect(shows(card, '.takeover .prose')).toContain('sent to your card issuer for confirmation');
+		// a cold return has no rail to name, so it names none rather than the wrong one.
+		expect(shows(cold, '.takeover .prose')).toContain('Your gift has been sent for confirmation.');
+
+		for (const screen of [bank, venmo, card, cold]) {
+			expect(screen.text('.takeover [part~="heading"]')).toBe('Still confirming your gift');
+			expect(shows(screen, '.takeover .prose')).toContain(
+				'Nothing here will charge you a second time.'
+			);
+		}
+	});
+
+	it('says who is being asked, in the one sentence a donor hears rather than reads', async () => {
+		const held = { confirm: () => new Promise<never>(() => {}) };
+		const bank = await atSubmittedOn('ach', { ports: held });
+		const paypal = await atSubmittedOn('paypal', { ports: held });
+		const card = await atSubmittedOn('card', { ports: held });
+
+		expect(bank.text('[role="status"]')).toBe('Confirming your gift with your bank.');
+		expect(paypal.text('[role="status"]')).toBe('Confirming your gift with PayPal.');
+		expect(card.text('[role="status"]')).toBe('Confirming your gift with your card issuer.');
+	});
+
+	// the two outcomes only the bank rail reaches: `outcomeOfTermination` in ./embed/paypal.ts
+	// returns neither. so neither screen is worded off the rail, and asserting that is what stops a
+	// later pass making them rail-generic and losing the bank's words.
+	it('leaves the microdeposit and expired screens the same words on every rail', async () => {
+		const said: string[] = [];
+		for (const rail of ['ach', 'paypal'] as const) {
+			const verifying = await atSubmittedOn(rail, {
+				ports: { confirm: async () => ({ kind: 'awaiting_microdeposits' as const }) }
+			});
+			const expired = await atSubmittedOn(rail, {
+				ports: { confirm: async () => ({ kind: 'verification_expired' as const }) }
+			});
+			said.push(shows(verifying, '.takeover .prose'), shows(expired, '.takeover .prose'));
+		}
+
+		expect(said[0]).toContain('Two small deposits are on their way to your account.');
+		expect(said[1]).toContain('The window for verifying your bank account has closed');
+		expect(said.slice(2)).toEqual(said.slice(0, 2));
 	});
 });
 

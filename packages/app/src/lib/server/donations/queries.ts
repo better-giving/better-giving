@@ -36,14 +36,19 @@ import { projectTribute } from '../../donations/tributes';
 // what reads it, for the reason stated there.
 
 /**
- * the part of a `payment` row the projection reads.
+ * the part of a `payment` row the projections read.
  *
  * derived from `Payment` rather than written out, so a column that is renamed or retyped is a
  * compile error here rather than a field that silently stops arriving.
+ *
+ * `method` and `provider` are both here because they answer different questions and the row keeps
+ * them apart on purpose (../db/schema.ts): `method` is the rail as the donor used it and is NOT
+ * NULL, `provider` is who moved the money and is null on a gift no processor stands behind. a
+ * projection reading one for the other answers `paypal` to a gift given on Venmo.
  */
 export type SettlementAttempt = Pick<
 	Payment,
-	'id' | 'direction' | 'status' | 'amountMinor' | 'occurredAt'
+	'id' | 'direction' | 'status' | 'amountMinor' | 'method' | 'provider' | 'occurredAt'
 >;
 
 /** minor units, added as the integers they are stored as. */
@@ -114,6 +119,40 @@ export function projectStatus(attempts: readonly SettlementAttempt[]): DonationS
 	if (latest?.status === 'failed') return 'failed';
 	if (latest?.status === 'cancelled') return 'cancelled';
 	return 'pending';
+}
+
+/**
+ * how a gift arrived and who moved the money, off its settlement attempts alone.
+ *
+ * the two columns and not one. Venmo is a rail PayPal settles, so a Venmo gift is
+ * `provider = 'paypal'` with `method = 'venmo'` (../db/schema.ts) — collapsing them names a
+ * processor where a donor would name a rail, and names one at all on a gift that has none.
+ */
+export type GiftRail = {
+	readonly method: Payment['method'];
+	/** null where no processor stands behind the gift: a staff entry, or a rail recorded before it. */
+	readonly provider: Payment['provider'];
+};
+
+/**
+ * which rail a gift arrived on, or `null` where nothing has been attempted.
+ *
+ * the deciding attempt is the one `projectStatus` above decides on, and it has to be: a gift whose
+ * money moved is the attempt that moved it, and a gift whose money has not is the latest one tried.
+ * reading the latest attempt outright would name the rail of a retry the processor refused on a
+ * gift already collected somewhere else.
+ *
+ * inbound only. a refund travels back down the same rail and is routinely the latest row on the
+ * gift, and the question this answers is how the gift arrived.
+ *
+ * `method` is NOT NULL and is written at quote time from the rail the donor picked, then
+ * overwritten by what the settlement reports (../donations/record.ts). so on a gift with nothing
+ * settled this is what was tried, which is the whole of what anybody knows.
+ */
+export function projectRail(attempts: readonly SettlementAttempt[]): GiftRail | null {
+	const inbound = attempts.filter((a) => a.direction === 'inbound');
+	const deciding = latestOf(inbound.filter((a) => a.status === 'succeeded')) ?? latestOf(inbound);
+	return deciding ? { method: deciding.method, provider: deciding.provider } : null;
 }
 
 /**
@@ -198,12 +237,26 @@ const DONATION_COLUMNS = {
 /** an attempt with the gift it settles, which is the only extra column the grouping needs. */
 type AttemptRow = SettlementAttempt & Pick<Payment, 'donationId'>;
 
+/**
+ * the columns of `payment` the two projections read.
+ *
+ * `method` and `provider` are selected deliberately and not by widening a `select()`: they are what
+ * `projectRail` answers with, and a rail nothing selects is the reason no screen could say how a
+ * gift arrived. the rest of the row stays out on the argument `DONATION_COLUMNS` above makes —
+ * `provider_txn_id` is the processor's own id for the charge and `created_at` is when the row was
+ * written, and no list asks either.
+ *
+ * these rows never cross to a browser: they are read here and collapsed into `DonationListRow`
+ * below, which is where the narrowing a browser payload gets is stated.
+ */
 const ATTEMPT_COLUMNS = {
 	id: payment.id,
 	donationId: payment.donationId,
 	direction: payment.direction,
 	status: payment.status,
 	amountMinor: payment.amountMinor,
+	method: payment.method,
+	provider: payment.provider,
 	occurredAt: payment.occurredAt
 } satisfies Record<keyof AttemptRow, SQLiteColumn>;
 
@@ -216,6 +269,14 @@ export type DonationListRow = Omit<
 	donorName: string;
 	/** derived, never stored. see `projectStatus`. */
 	status: DonationStatus;
+	/**
+	 * how the gift arrived and who moved it, or `null` where nothing has been attempted.
+	 *
+	 * derived, never stored — see `projectRail`. both halves cross this boundary because this type
+	 * is the read's answer rather than a browser payload; which of them a screen may name is the
+	 * screen's own narrowing (src/routes/_app.admin.donations.tsx).
+	 */
+	rail: GiftRail | null;
 	/**
 	 * whether this charge was collected under a standing commitment.
 	 *
@@ -320,6 +381,7 @@ export async function listDonations(db: Db): Promise<DonationPage> {
 			// answer to a state that cannot happen than a word saying so.
 			donorName: names.get(contactId) ?? 'Unknown donor',
 			status: projectStatus(byDonation.get(row.id) ?? []),
+			rail: projectRail(byDonation.get(row.id) ?? []),
 			repeating: recurringId !== null,
 			tribute: projectTribute(tributeKind, tributeHonoree)
 		})),

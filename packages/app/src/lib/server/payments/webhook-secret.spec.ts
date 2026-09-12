@@ -20,19 +20,20 @@ import { webhookSecretStanding } from './webhook-secret';
  */
 describe('webhookSecretStanding', () => {
 	/** a registration that is registered, delivering and fully subscribed, stamped as named. */
-	const registered = (secretFingerprint: string | null): WebhookRegistration => ({
+	const registered = (verificationStamp: string | null): WebhookRegistration => ({
 		state: 'registered',
 		url: 'https://give.example.workers.dev/api/stripe/webhook',
 		delivering: true,
 		eventTypes: [],
 		missingEventTypes: [],
 		complete: true,
-		secretFingerprint
+		verificationStamp
 	});
 
 	it('reports a stored secret that is the registered endpoint’s as verifying', async () => {
 		const standing = await webhookSecretStanding(
 			{ STRIPE_WEBHOOK_SECRET: 'whsec_notarealsecret' },
+			'stripe',
 			registered('85fd512dab8038e3')
 		);
 		expect(standing.state).toBe('verifying');
@@ -49,6 +50,7 @@ describe('webhookSecretStanding', () => {
 	it('reports a stored secret from a replaced endpoint as stale', async () => {
 		const standing = await webhookSecretStanding(
 			{ STRIPE_WEBHOOK_SECRET: 'whsec_theoldone' },
+			'stripe',
 			registered('362db036820ee774')
 		);
 		expect(standing.state).toBe('stale');
@@ -66,6 +68,7 @@ describe('webhookSecretStanding', () => {
 	it('reports an unstamped endpoint as unconfirmable, not as stale', async () => {
 		const standing = await webhookSecretStanding(
 			{ STRIPE_WEBHOOK_SECRET: 'whsec_notarealsecret' },
+			'stripe',
 			registered(null)
 		);
 		expect(standing.state).toBe('unconfirmable');
@@ -81,7 +84,7 @@ describe('webhookSecretStanding', () => {
 		['unset', {}],
 		['blank', { STRIPE_WEBHOOK_SECRET: '   ' }]
 	])('says nothing about a %s variable beyond that it is unset', async (_label, env) => {
-		const standing = await webhookSecretStanding(env, registered('85fd512dab8038e3'));
+		const standing = await webhookSecretStanding(env, 'stripe', registered('85fd512dab8038e3'));
 		expect(standing.state).toBe('unset');
 	});
 
@@ -99,6 +102,7 @@ describe('webhookSecretStanding', () => {
 	])('reports the secret as unconfirmable where %s', async (_label, registration) => {
 		const standing = await webhookSecretStanding(
 			{ STRIPE_WEBHOOK_SECRET: 'whsec_notarealsecret' },
+			'stripe',
 			registration
 		);
 		expect(standing.state).toBe('unconfirmable');
@@ -108,9 +112,65 @@ describe('webhookSecretStanding', () => {
 	it('carries no part of the stored secret or its digest out', async () => {
 		const standing = await webhookSecretStanding(
 			{ STRIPE_WEBHOOK_SECRET: 'whsec_theoldone' },
+			'stripe',
 			registered('362db036820ee774')
 		);
 		expect(JSON.stringify(standing)).not.toContain('whsec_');
 		expect(JSON.stringify(standing)).not.toContain('05a06e8e12cff3f9');
+	});
+});
+
+/**
+ * the same four standings on the processor whose deliveries are identified rather than signed.
+ *
+ * PayPal registers an endpoint and mints an id for it, and a delivery is checked by naming that id
+ * back — so the stamp on the endpoint is the id itself and the comparison is equality on the value.
+ * the digest is Stripe's alone, and a module that ran one over an id would report every PayPal
+ * deployment stale.
+ */
+describe('webhookSecretStanding on PayPal', () => {
+	const registered = (verificationStamp: string | null): WebhookRegistration => ({
+		state: 'registered',
+		url: 'https://give.example.workers.dev/api/paypal/webhook',
+		delivering: true,
+		eventTypes: [],
+		missingEventTypes: [],
+		complete: true,
+		verificationStamp
+	});
+
+	it('reports the stored webhook id that the endpoint carries as verifying', async () => {
+		const standing = await webhookSecretStanding(
+			{ PAYPAL_WEBHOOK_ID: '5GP028458A2701834' },
+			'paypal',
+			registered('5GP028458A2701834')
+		);
+		expect(standing.state).toBe('verifying');
+	});
+
+	it('reports a stored webhook id from another endpoint as stale, naming its own variable', async () => {
+		const standing = await webhookSecretStanding(
+			{ PAYPAL_WEBHOOK_ID: '5GP028458A2701834' },
+			'paypal',
+			registered('1TY93450YW9540350')
+		);
+		expect(standing.state).toBe('stale');
+		expect(standing.detail).toContain('PAYPAL_WEBHOOK_ID');
+	});
+
+	/**
+	 * Stripe's variable is not PayPal's answer, and this is the case that says the table is read.
+	 *
+	 * a deployment holding both processors' values has both variables set, and a standing that read
+	 * whichever one the module happened to name would report one account's state under the other's
+	 * heading.
+	 */
+	it('says nothing about a PayPal endpoint from Stripe’s stored secret', async () => {
+		const standing = await webhookSecretStanding(
+			{ STRIPE_WEBHOOK_SECRET: 'whsec_notarealsecret' },
+			'paypal',
+			registered('5GP028458A2701834')
+		);
+		expect(standing.state).toBe('unset');
 	});
 });

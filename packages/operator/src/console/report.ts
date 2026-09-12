@@ -16,7 +16,7 @@
 // reads only part of the envelope instantiates only that part, and a member typed for it that it
 // never guards is a shape asserted rather than read.
 //
-// **no configuration value crosses this wire.** the console reads all thirteen off the Cloudflare
+// **no configuration value crosses this wire.** the console reads all seventeen off the Cloudflare
 // account it is signed in to (`DEPLOY_VARS` in ../deploy-split.ts), so a deployment reporting one
 // too would be a second seed disagreeing with the first mid-deploy. the session credential is not
 // among the names the deployment reads at all — see `tokenSlot` in

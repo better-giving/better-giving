@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PaymentProvider, PaymentResult, RecurringGiftProvision } from './provider';
 import type { RecurringGiftStanding } from './provider';
+import { createPaymentProviders } from './factory';
 import { readRecurringProvision, setUpRecurringGifts } from './recurring-provision';
 
 // what the console asks the payment port about repeating gifts, away from the screen that asks
@@ -27,6 +28,7 @@ function port(script: {
 		throw new Error(`${name} is not part of reading what an account holds for repeating gifts`);
 	};
 	return {
+		processor: 'stripe',
 		async prepareRecurringGifts() {
 			if (!script.prepare) throw new Error('prepareRecurringGifts was called by a read');
 			return script.prepare;
@@ -120,5 +122,37 @@ describe('setUpRecurringGifts', () => {
 			outcome: 'failed',
 			detail: REFUSAL.detail
 		});
+	});
+});
+
+/**
+ * the same module asked about a deployment whose credentials name a processor this release cannot
+ * charge on.
+ *
+ * the factory is in the path on purpose: what this covers is that the sentence the console draws
+ * comes from the deployment's own configuration and names the processor it is about, rather than
+ * sending an operator whose PayPal boxes are full to look at a Stripe variable.
+ */
+describe('readRecurringProvision on a PayPal deployment', () => {
+	const PAYPAL_ONLY = {
+		PAYPAL_CLIENT_ID: 'notarealclientid',
+		PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
+	};
+
+	it('reports the standing as unreadable, in PayPal’s own name', async () => {
+		const provision = await readRecurringProvision(
+			createPaymentProviders(PAYPAL_ONLY).for('paypal')
+		);
+
+		expect(provision.state).toBe('unreadable');
+		expect(provision.state === 'unreadable' && provision.detail).toContain('PayPal');
+	});
+
+	/** the setup press answers the same way, so the console reports rather than throwing. */
+	it('reports the setup press as failed, with the same sentence', async () => {
+		const setup = await setUpRecurringGifts(createPaymentProviders(PAYPAL_ONLY).for('paypal'));
+
+		expect(setup.outcome).toBe('failed');
+		expect(setup.detail).toContain('PayPal');
 	});
 });

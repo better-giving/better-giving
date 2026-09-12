@@ -9,8 +9,10 @@ import type { CheckoutPorts } from '@better-giving/form/ports';
 // total the server just named. the fourth is the clock.
 //
 // this is the client half of the rule CLAUDE.md states about payments: nothing here imports a
-// payment SDK. `createPaymentSurface` in @better-giving/form/embed/stripe is the seam, and it is
-// the only module on either side of the wire that knows which processor this is.
+// payment SDK. `createPaymentSurface` in @better-giving/form/embed/surface is the seam, and the
+// adapters behind it are the only modules on either side of the wire that know which processor a
+// gift is going through. the surface stays singular however many of them a served config names,
+// which is why this function still takes exactly one.
 
 /**
  * where the quote is posted, which is nowhere: this page and `/api/v1` are one deployment.

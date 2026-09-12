@@ -58,7 +58,7 @@ describe('the group a withheld name is named in', () => {
 	});
 
 	it('names one group per withheld name and never a second', () => {
-		// the enumeration files each of the thirteen in one group or none (./secret-groups.spec.ts),
+		// the enumeration files each of the seventeen in one group or none (./secret-groups.spec.ts),
 		// so a name reaching two blocks would be two presses drawn for one act.
 		for (const group of SECRET_GROUPS) {
 			for (const name of group.names) expect(naming(name)).toEqual([group.id]);

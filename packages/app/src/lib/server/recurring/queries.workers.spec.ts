@@ -192,10 +192,11 @@ describe('listRecurringPlans', () => {
 
 describe('readRecurringPlan', () => {
 	it('reads the one commitment, with what the detail screen and the stop both need', async () => {
-		// the subscription id is on this row because the stop names it, and the form id because the
-		// screen links to the form rather than to the fund — the fund is read off the form at the
-		// moment each charge settles, so a fund stated here would be today's answer over a series
-		// whose earlier charges posted somewhere else.
+		// the subscription id is on this row because the stop names it, the processor because the
+		// stop picks the adapter to cancel with off it, and the form id because the screen links to
+		// the form rather than to the fund — the fund is read off the form at the moment each charge
+		// settles, so a fund stated here would be today's answer over a series whose earlier charges
+		// posted somewhere else.
 		const id = await plan();
 		expect(await readRecurringPlan(db, id)).toEqual({
 			id,
@@ -205,6 +206,7 @@ describe('readRecurringPlan', () => {
 			currency: 'USD',
 			interval: 'monthly',
 			status: 'active',
+			provider: 'stripe',
 			providerSubscriptionId: `sub_${id}`,
 			startedAt: new Date(Date.UTC(2026, 5, 1)),
 			nextChargeAt: new Date(Date.UTC(2026, 8, 4)),

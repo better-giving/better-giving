@@ -4,6 +4,7 @@ import type { RecurringPlanStatus } from '$lib/recurring/statuses';
 import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { createDb, type Db } from '$lib/server/db/client';
+import type { PaymentProviderName } from '$lib/server/db/schema';
 import { redirectWithFlash, SAVED_FLASH } from '$lib/server/flash';
 import { readRecurringPlan } from '$lib/server/recurring/queries';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
@@ -105,20 +106,31 @@ async function signIn(): Promise<string> {
 	return cookies.join('; ');
 }
 
-/** the commitment these cases read, written past drizzle: what this screen reads is columns. */
-async function plan(status: RecurringPlanStatus = 'active', contactId = DONOR_ID): Promise<void> {
+/**
+ * the commitment these cases read, written past drizzle: what this screen reads is columns.
+ *
+ * `provider` is a parameter because the column is, and because every processor-naming sentence on
+ * this screen is written off it: a commitment lives on whichever processor collected its first
+ * charge, and a deployment may hold keys for either.
+ */
+async function plan(
+	status: RecurringPlanStatus = 'active',
+	contactId = DONOR_ID,
+	provider: PaymentProviderName = 'stripe'
+): Promise<void> {
 	await env.DB.prepare(
 		`insert into recurring_plan (id, contact_id, form_id, amount_minor, currency, interval,
 		                             status, provider, provider_subscription_id,
 		                             provider_customer_id, started_at, next_charge_at, ended_at,
 		                             created_at, updated_at)
-		 values (?, ?, ?, 12345, 'USD', 'monthly', ?, 'stripe', ?, 'cus_detailtest1', ?, ?, ?, 0, 0)`
+		 values (?, ?, ?, 12345, 'USD', 'monthly', ?, ?, ?, 'cus_detailtest1', ?, ?, ?, 0, 0)`
 	)
 		.bind(
 			PLAN_ID,
 			contactId,
 			FORM_ID,
 			status,
+			provider,
 			SUBSCRIPTION_ID,
 			Date.UTC(2026, 5, 1, 8, 0),
 			status === 'active' ? Date.UTC(2026, 8, 4, 23, 30) : null,
@@ -139,6 +151,7 @@ type Loaded = {
 	endedOn: string | null;
 	formId: string;
 	formName: string;
+	processor: string | null;
 	subscriptionId: string;
 	stopLanded: 'stopped' | 'nothing-to-stop' | null;
 	confirmStop: boolean;
@@ -239,6 +252,7 @@ describe('/admin/recurring/[id] load', () => {
 			endedOn: null,
 			formId: FORM_ID,
 			formName: 'Spring appeal',
+			processor: 'Stripe',
 			subscriptionId: SUBSCRIPTION_ID
 		});
 	});
@@ -304,11 +318,29 @@ describe('/admin/recurring/[id] load', () => {
 			'id',
 			'interval',
 			'nextChargeOn',
+			'processor',
 			'startedOn',
 			'status',
 			'stopLanded',
 			'subscriptionId'
 		]);
+	});
+
+	it('names the processor the commitment lives on, as an operator reads it', async () => {
+		// the row's own column and never a name this route chose: a deployment may hold keys for
+		// both, and every sentence on this screen that sends somebody to a dashboard is written off
+		// this value. the word rather than the value, because the spelling lives in
+		// `$lib/server/payments/provider.ts` and a component may not import from `$lib/server/**`.
+		await plan('active', DONOR_ID, 'paypal');
+		expect((await runLoad()).processor).toBe('PayPal');
+	});
+
+	it('names no processor for a commitment none stands behind', async () => {
+		// `recurring_plan.provider` keeps `manual`, which no adapter answers for. the screen is given
+		// nothing to name rather than a name it would have to soften, which is what keeps every
+		// sentence written off it out of the page.
+		await plan('active', DONOR_ID, 'manual');
+		expect((await runLoad()).processor).toBeNull();
 	});
 
 	it('refuses an id no commitment carries, and says where to go instead', async () => {
@@ -404,6 +436,27 @@ describe('/admin/recurring/[id] stop', () => {
 		expect(pressed.failure?.stopError).not.toContain('still collecting');
 		expect(pressed.failure?.stopError).not.toContain('nothing was changed');
 		expect(pressed.failure?.stopError).toContain('unknown');
+	});
+
+	it('names the processor that refused, on a commitment collected by PayPal', async () => {
+		// the pair this screen's copy exists to keep straight: the same refusal on a PayPal
+		// commitment sends an operator to PayPal's dashboard, and a sentence naming Stripe is an
+		// errand with nowhere to arrive. the deployment holds neither processor's keys here, so what
+		// is under test is which name the refusal is written in and not which call was made.
+		await plan('active', DONOR_ID, 'paypal');
+		const pressed = await pressStop();
+		expect(pressed.failure?.stopError).toContain('PayPal');
+		expect(pressed.failure?.stopError).not.toContain('Stripe');
+	});
+
+	it('writes no processor sentence for a commitment no processor answers for', async () => {
+		// there is no dashboard to send anybody to, so the refusal is the port's own sentence about
+		// the column and nothing is added in front of it.
+		await plan('active', DONOR_ID, 'manual');
+		const pressed = await pressStop();
+		expect(pressed.failure?.stopError).toContain('manual');
+		expect(pressed.failure?.stopError).not.toContain('Stripe');
+		expect(pressed.failure?.stopError).not.toContain('PayPal');
 	});
 
 	it('answers a refused stop on its own channel, never through a form’s', async () => {

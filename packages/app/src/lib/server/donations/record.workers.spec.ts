@@ -81,6 +81,7 @@ function gift(over: Partial<RecordDonationInput> = {}): RecordDonationInput {
 		formId,
 		origin: 'https://example.org',
 		currency: 'USD',
+		processor: 'stripe',
 		totalMinor: 10_000,
 		feeMinor: 320,
 		lines: [{ label: 'Donation', revenueAccountId: FUND, amountMinor: 10_000 }],

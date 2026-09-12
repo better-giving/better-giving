@@ -3,8 +3,9 @@
 	"database_name": "better-giving",
 	"migrations_dir": "./migrations",
 	"migrations": [
-		"0000_initial_schema.sql"
+		"0000_initial_schema.sql",
+		"0001_paypal_provider_and_rails.sql"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "ee1fa341d9e57a4d67735a5045bb7ad1d0cacc0d"
+	"commit": "84f4257266042a72ca286433179ad425ea4f09ec"
 }

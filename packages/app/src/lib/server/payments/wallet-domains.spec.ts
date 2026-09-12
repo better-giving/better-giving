@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PaymentProvider, PaymentResult, WalletDomain } from './provider';
+import { createPaymentProviders } from './factory';
 import { levelWalletDomains, readWalletDomains } from './wallet-domains';
 
 // what a caller asks the payment port about the hostnames a deployment wants wallets drawn on,
@@ -47,6 +48,7 @@ function port(
 		throw new Error(`${name} is not part of reading wallet domains`);
 	};
 	return {
+		processor: 'stripe',
 		prepareRecurringGifts: unused('prepareRecurringGifts'),
 		readRecurringGiftProvision: unused('readRecurringGiftProvision'),
 		createRecurringGift: unused('createRecurringGift'),
@@ -343,5 +345,28 @@ describe('levelWalletDomains', () => {
 		);
 
 		expect(levelling).toEqual({ state: 'unreadable', detail: 'Stripe rejected the key.' });
+	});
+});
+
+/**
+ * the same module asked about a processor that draws no wallet on a page this deployment serves.
+ *
+ * the wallet block is one processor's question — the three wallets are drawn inside that
+ * processor's own box — and another's funding sources are drawn on its own domain, where no
+ * hostname of this deployment's is registered or could be. so there is nothing to read rather than
+ * a read that failed, and the two are told apart here because a console draws a section for one and
+ * none at all for the other.
+ */
+describe('readWalletDomains on a PayPal deployment', () => {
+	it('reports the hostnames as undrawn rather than unreadable', async () => {
+		const reading = await readWalletDomains(
+			createPaymentProviders({
+				PAYPAL_CLIENT_ID: 'notarealclientid',
+				PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
+			}).for('paypal'),
+			['give.example.org']
+		);
+
+		expect(reading.state).toBe('undrawn');
 	});
 });

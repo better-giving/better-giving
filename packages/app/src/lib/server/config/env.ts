@@ -21,12 +21,41 @@ export interface ConfigEnv {
 	 * not a credential: it is designed to sit in public HTML, and `/api/v1/forms/:id/config`
 	 * serves it to any browser that asks. so an operator sets it as a Worker var and can read
 	 * it back, where the secret key beside it is a secret and cannot be — DEPLOY.md draws that
-	 * split for all thirteen. either arrives here as a string on the platform env, which is why
+	 * split for all seventeen. either arrives here as a string on the platform env, which is why
 	 * nothing below this line distinguishes them.
 	 */
 	readonly STRIPE_PUBLISHABLE_KEY?: string;
 	/** the signing secret of the org's own webhook endpoint. */
 	readonly STRIPE_WEBHOOK_SECRET?: string;
+	/**
+	 * the client id of the org's own PayPal app, which is the half of the pair the browser gets.
+	 *
+	 * not a credential, for `STRIPE_PUBLISHABLE_KEY`'s reason: PayPal's own SDK is loaded in the
+	 * donor's page with it in the query string, so it is public wherever a form is embedded.
+	 */
+	readonly PAYPAL_CLIENT_ID?: string;
+	/** the matching client secret, which is what buys an OAuth token server-side. */
+	readonly PAYPAL_CLIENT_SECRET?: string;
+	/**
+	 * the id PayPal minted when the org's webhook endpoint was registered.
+	 *
+	 * not a signing secret and nothing here compares it: a delivery is authenticated by posting it
+	 * back to PayPal with this id, so the value identifies the endpoint rather than signing for it.
+	 * it is minted *by* registering that endpoint, so the press that registers is the only moment
+	 * one exists to store — `STRIPE_WEBHOOK_SECRET`'s lifecycle exactly, and requiring either of
+	 * them before a call may be made would refuse the call that mints it.
+	 */
+	readonly PAYPAL_WEBHOOK_ID?: string;
+	/**
+	 * whether PayPal has approved this organisation for its charity rate.
+	 *
+	 * an answer about the account and not a rate: PayPal charges an approved 501(c)(3) less than
+	 * everyone else and reports on no call which an account is on, so it is the one thing about
+	 * PayPal's pricing this deployment cannot read. what it picks between is two tables of
+	 * published rates that stay constants in the tree (../payments/fees.ts), so nothing an operator
+	 * types is ever a number.
+	 */
+	readonly PAYPAL_CHARITY_RATE_APPROVED?: string;
 	/** the mail host's submission hostname, e.g. `smtp.resend.com`. */
 	readonly SMTP_HOST?: string;
 	/**
@@ -118,7 +147,11 @@ export const CONFIG_VAR_NAMES = [
 	'TURNSTILE_SECRET_KEY',
 	'STRIPE_SECRET_KEY',
 	'STRIPE_PUBLISHABLE_KEY',
-	'STRIPE_WEBHOOK_SECRET'
+	'STRIPE_WEBHOOK_SECRET',
+	'PAYPAL_CLIENT_ID',
+	'PAYPAL_CLIENT_SECRET',
+	'PAYPAL_WEBHOOK_ID',
+	'PAYPAL_CHARITY_RATE_APPROVED'
 ] as const satisfies readonly (keyof ConfigEnv)[];
 
 /**

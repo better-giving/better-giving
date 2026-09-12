@@ -174,6 +174,7 @@ function provider(script: {
 		throw new Error(`${name} is not part of the collection path`);
 	};
 	return {
+		processor: 'stripe',
 		createIntent: refuse('createIntent'),
 		async verifyEvent() {
 			return script.verify ?? { ok: true, value: collectionEvent() };
@@ -213,7 +214,7 @@ function mailer(ok = true) {
 	return { port, sent };
 }
 
-const DELIVERY = { body: '{"id":"evt_collect_1"}', signature: 't=1,v1=abc' };
+const DELIVERY = { body: '{"id":"evt_collect_1"}', headers: { 'stripe-signature': 't=1,v1=abc' } };
 
 function deps(over: Partial<SettleDeps> = {}): SettleDeps {
 	return { db, provider: provider({}), email: mailer().port, ...over };

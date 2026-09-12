@@ -1556,7 +1556,7 @@ func TestAnAccountAlreadyNamedSaysNothingAboveTheLedger(t *testing.T) {
 // (packages/console-ui/src/lib/sites-fold.tsx), so the press that told the operator to run this
 // command again could not have helped them.
 
-// the thirteen as a deployment that never reached the widget stage holds them.
+// the seventeen as a deployment that never reached the widget stage holds them.
 func holdingNeitherHalf() deployment.VarsRead {
 	return deployment.VarsRead{Kind: deployment.ValuesRead, Vars: []deployment.DeployedVar{
 		{Name: "TURNSTILE_SITE_KEY", Kind: deployment.VarAbsent},
@@ -1564,7 +1564,7 @@ func holdingNeitherHalf() deployment.VarsRead {
 	}}
 }
 
-// the thirteen as a deployment a run did finish holds them.
+// the seventeen as a deployment a run did finish holds them.
 func holdingBothHalves() deployment.VarsRead {
 	return deployment.VarsRead{Kind: deployment.ValuesRead, Vars: []deployment.DeployedVar{
 		{Name: "TURNSTILE_SITE_KEY", Kind: deployment.VarValue, Value: "0x4"},

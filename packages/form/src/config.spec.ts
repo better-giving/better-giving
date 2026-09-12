@@ -7,7 +7,7 @@ import { readFormConfig } from './config';
 /** the shape `/api/v1/forms/:id/config` is contracted to answer with. */
 const RESPONSE = {
 	formId: 'frm_a8x2k9',
-	provider: { name: 'stripe', publishableKey: 'pk_test_x' },
+	providers: [{ name: 'stripe', publishableKey: 'pk_test_x' }],
 	currency: 'usd',
 	suggestedAmountsMinor: [2500, 10_000],
 	minAmountMinor: 500,
@@ -81,7 +81,7 @@ describe('a response the form cannot solicit a gift on', () => {
 		}
 	);
 
-	it.each(['formId', 'currency', 'provider'])('refuses a config with no %s', (field) => {
+	it.each(['formId', 'currency', 'providers'])('refuses a config with no %s', (field) => {
 		expect(readFormConfig(withField(field, undefined))).toBeNull();
 	});
 
@@ -103,8 +103,47 @@ describe('a response the form cannot solicit a gift on', () => {
 		expect(readFormConfig(withField('paymentMethods', []))).toBeNull();
 	});
 
-	it('refuses a provider with no publishable key', () => {
-		expect(readFormConfig(withField('provider', { name: 'stripe' }))).toBeNull();
+	it('refuses a config whose only provider has no publishable key', () => {
+		expect(readFormConfig(withField('providers', [{ name: 'stripe' }]))).toBeNull();
+	});
+
+	// a set with nothing in it names no processor, which is the same config as one with no field
+	// at all: a form that collects a gift and has nothing to send it through.
+	it('refuses a config naming no processor', () => {
+		expect(readFormConfig(withField('providers', []))).toBeNull();
+	});
+
+	it('refuses a set that is not a list', () => {
+		expect(
+			readFormConfig(withField('providers', { name: 'stripe', publishableKey: 'pk_test_x' }))
+		).toBeNull();
+	});
+
+	/**
+	 * the two processors a deployment holds, kept in the order it named them.
+	 *
+	 * each adapter takes its own entry by `name` (`STRIPE_RAILS` and `PAYPAL_RAILS` in
+	 * ./embed/rails.ts say which rails each draws), so the order is the deployment's own and this
+	 * parse neither sorts it nor prefers one.
+	 */
+	it('carries every processor a deployment names', () => {
+		const providers = [
+			{ name: 'stripe', publishableKey: 'pk_test_x' },
+			{ name: 'paypal', publishableKey: 'AZ_client_id' }
+		];
+
+		expect(readFormConfig(withField('providers', providers))?.providers).toEqual(providers);
+	});
+
+	// an entry nobody can initialise an SDK from is dropped rather than refusing the whole config:
+	// the deployment's other processor still draws its own rails, which is the direction that keeps
+	// a donation form on screen.
+	it('drops an unreadable entry and keeps the processors it can read', () => {
+		const config = readFormConfig(
+			withField('providers', [{ name: 'paypal' }, { name: 'stripe', publishableKey: 'pk_test_x' }])
+		);
+
+		expect(config?.providers).toEqual([{ name: 'stripe', publishableKey: 'pk_test_x' }]);
 	});
 
 	// a program the response states and this file cannot read is not a field with a safe reading:

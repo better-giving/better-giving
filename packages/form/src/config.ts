@@ -86,6 +86,29 @@ function provider(value: unknown): Provider | null {
 }
 
 /**
+ * the processors this deployment takes gifts through, holding only the entries an adapter could be
+ * started on.
+ *
+ * an unreadable entry is dropped rather than refusing the whole config, which is `feeRules`' rule
+ * rather than `program`'s: a deployment holding two processors and serving one garbled entry still
+ * draws the other one's rails, and the rails the broken entry would have drawn are ones no adapter
+ * asks for. an empty answer is the caller's refusal — a config naming no processor is a form that
+ * collects a gift with nothing to send it through.
+ *
+ * in the order the response named them, for `vocabulary` above's opposite reason: there is no
+ * contract order to impose here, because this is a set of processors rather than a closed
+ * vocabulary.
+ */
+function providers(value: unknown): readonly Provider[] {
+	const entries: Provider[] = [];
+	for (const entry of list(value)) {
+		const readable = provider(entry);
+		if (readable !== null) entries.push(readable);
+	}
+	return entries;
+}
+
+/**
  * one rail's price, dropped rather than defaulted: a made-up fee rate is a made-up charge.
  *
  * the cap is optional and stays optional. absent it is carried through absent, because a bound
@@ -191,11 +214,11 @@ export function readFormConfig(value: unknown): FormConfig | null {
 	const orgLegalName = text(source.orgLegalName);
 	const ein = text(source.ein);
 	const deductibilityStatement = text(source.deductibilityStatement);
-	const paymentProvider = provider(source.provider);
+	const paymentProviders = providers(source.providers);
 	const minAmountMinor = wholeAtLeast(source.minAmountMinor, 1);
 	const maxAmountMinor = wholeAtLeast(source.maxAmountMinor, 1);
 
-	if (formId === null || currency === null || paymentProvider === null) return null;
+	if (formId === null || currency === null || paymentProviders.length === 0) return null;
 	// the identity a gift is solicited under. the form does not render without it.
 	if (orgLegalName === null || ein === null || deductibilityStatement === null) return null;
 	// without both bounds no amount is ever complete, so the form would render and then refuse
@@ -222,7 +245,7 @@ export function readFormConfig(value: unknown): FormConfig | null {
 
 	return {
 		formId,
-		provider: paymentProvider,
+		providers: paymentProviders,
 		currency,
 		suggestedAmountsMinor,
 		minAmountMinor,

@@ -21,7 +21,13 @@ import type { AmountDecision, PayerField } from './value';
 import { RECONCILIATION_LABELS, type DeductedFee } from './fee';
 import { currencySymbol, formatFigure, formatMinor, formatOffer, parseMinor } from './money';
 import { part, partWhen } from './parts';
-import { FREQUENCY_LABELS, NO_PROGRAM_LABEL, PAYMENT_METHOD_LABELS, type FormConfig } from './v1';
+import {
+	FREQUENCY_LABELS,
+	NO_PROGRAM_LABEL,
+	PAYMENT_METHOD_LABELS,
+	type FormConfig,
+	type PaymentMethod
+} from './v1';
 
 /** one member of a native radio family, as ./connect.ts states it. */
 type Option = {
@@ -232,9 +238,9 @@ const STEP_COUNT = STEP_HEADINGS.length;
  * step drops the donor onto a blank frame for the length of a request that spans two beats.
  *
  * the one exception is a `working` that carries no decided gift at all. `boot` is never observed
- * (its `always` fires before the first snapshot), so that is a resume: a donor back from their
- * bank, on a page that must not show them an empty donation form while it finds out whether they
- * have already paid.
+ * (its `always` fires before the first snapshot), so that is a resume: a donor back from wherever
+ * they authorized, on a page that must not show them an empty donation form while it finds out
+ * whether they have already paid.
  */
 function visibleStep(api: DomApi, last: Screen): Screen {
 	const { state } = api;
@@ -246,6 +252,127 @@ function visibleStep(api: DomApi, last: Screen): Screen {
 }
 
 /**
+ * who a donor on a given rail is waiting on, which is three answers rather than six.
+ *
+ * the wallets are a card presented differently and wait on the same issuer; the two hosted-window
+ * rails wait on the processor whose window opened, and there the word a donor read on the control
+ * is the honest noun, so it is taken from `PAYMENT_METHOD_LABELS` rather than spelled a second time
+ * here. `undefined` is a cold return — this page was handed a payment token and nothing else, and a
+ * sentence naming a rail it does not have would be naming the wrong one on most of them.
+ *
+ * total over `PaymentMethod`, so a rail added to the vocabulary is a `pnpm check` failure here
+ * rather than a donor reading about a bank they never chose.
+ */
+type Waiting =
+	| { readonly kind: 'bank' }
+	| { readonly kind: 'issuer' }
+	| { readonly kind: 'window'; readonly name: string }
+	| { readonly kind: 'unknown' };
+
+function waitingOn(method: PaymentMethod | undefined): Waiting {
+	if (method === undefined) return { kind: 'unknown' };
+	switch (method) {
+		case 'ach':
+			return { kind: 'bank' };
+		case 'card':
+		case 'apple_pay':
+		case 'google_pay':
+			return { kind: 'issuer' };
+		case 'paypal':
+		case 'venmo':
+			return { kind: 'window', name: PAYMENT_METHOD_LABELS[method] };
+	}
+}
+
+/**
+ * the redirect screen.
+ *
+ * the body is the same promise on every rail — keep this window open — because it is true wherever
+ * the donor was sent, and the heading is not: a donor who pressed PayPal is in a window PayPal
+ * opened rather than at a bank, and telling them to continue at one names a place they are not.
+ */
+function redirectingHeading(method: PaymentMethod | undefined): string {
+	const waiting = waitingOn(method);
+	switch (waiting.kind) {
+		case 'bank':
+			return 'Continue at your bank';
+		case 'issuer':
+			return 'Continue with your card issuer';
+		case 'window':
+			return `Continue in ${waiting.name}`;
+		case 'unknown':
+			return 'Continue with this payment';
+	}
+}
+
+function redirectingBody(method: PaymentMethod | undefined): string {
+	const keepOpen = 'Keep this window open until you are sent back.';
+	const waiting = waitingOn(method);
+	switch (waiting.kind) {
+		case 'bank':
+			return `Your bank is checking this payment. ${keepOpen}`;
+		case 'issuer':
+			return `Your card issuer is checking this payment. ${keepOpen}`;
+		case 'window':
+			return `${waiting.name} is checking this payment. ${keepOpen}`;
+		case 'unknown':
+			return `This payment is being checked. ${keepOpen}`;
+	}
+}
+
+/**
+ * the settling screen.
+ *
+ * the four-to-five-business-days sentence is the bank rail's alone and may not be said on another:
+ * it is true of an ACH debit and of nothing else, and a donor told it about a PayPal gift has been
+ * given a date the deployment cannot keep. what every rail's version does say is that the money has
+ * not landed yet, which is the whole reason this screen is not the thank-you — and on the two
+ * hosted-window rails it is the ordinary ending rather than the rare one, because the browser never
+ * captures there and the server does (`outcomeOfTermination` in ./embed/paypal.ts). so the sentence
+ * below promises no schedule: it is the last thing most donors on those rails see.
+ */
+function processingNote(method: PaymentMethod | undefined): string {
+	return waitingOn(method).kind === 'bank'
+		? 'This transfer has not settled yet.'
+		: 'This payment has not settled yet.';
+}
+
+function processingBody(org: string, method: PaymentMethod | undefined): string {
+	const told = `${org} has been told your gift is coming.`;
+	const waiting = waitingOn(method);
+	switch (waiting.kind) {
+		case 'bank':
+			return `Bank transfers usually take 4 to 5 business days to settle. ${told}`;
+		case 'window':
+			return `${waiting.name} has your approval and the payment has not finished clearing. ${told}`;
+		case 'issuer':
+		case 'unknown':
+			return `This payment has not finished clearing. ${told}`;
+	}
+}
+
+/**
+ * the ending that claims nothing, in the words of whoever is still holding the gift.
+ *
+ * every rail's version claims as little as the bank's did: nothing here knows the charge landed, so
+ * nothing here says a receipt is on its way.
+ */
+function indeterminateBody(org: string, method: PaymentMethod | undefined): string {
+	const rest = `${org} will email you when it goes through. Nothing here will charge you a second time.`;
+	const waiting = waitingOn(method);
+	switch (waiting.kind) {
+		case 'bank':
+			return `Your gift has been sent to your bank for confirmation. ${rest}`;
+		case 'issuer':
+			return `Your gift has been sent to your card issuer for confirmation. ${rest}`;
+		case 'window':
+			return `Your gift has been sent to ${waiting.name} for confirmation. ${rest}`;
+		case 'unknown':
+			return `Your gift has been sent for confirmation. ${rest}`;
+	}
+}
+
+/**
  * what a busy flow says out loud, and it is not one sentence.
  *
  * the press on the review step spans a mint and a charge, and the two are different news to a
@@ -254,9 +381,18 @@ function visibleStep(api: DomApi, last: Screen): Screen {
  * takeover's own.
  */
 function workingWords(state: State): string {
-	return state.step === 'working' && state.phase === 'confirming'
-		? 'Confirming your gift with your bank.'
-		: 'Working on your gift.';
+	if (state.step !== 'working' || state.phase !== 'confirming') return 'Working on your gift.';
+	const waiting = waitingOn(state.method);
+	switch (waiting.kind) {
+		case 'bank':
+			return 'Confirming your gift with your bank.';
+		case 'issuer':
+			return 'Confirming your gift with your card issuer.';
+		case 'window':
+			return `Confirming your gift with ${waiting.name}.`;
+		case 'unknown':
+			return 'Confirming your gift.';
+	}
 }
 
 /**
@@ -408,8 +544,8 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 		case 'redirecting':
 			return {
 				...BLANK,
-				heading: 'Continue at your bank',
-				body: 'Your bank is checking this payment. Keep this window open until it sends you back.'
+				heading: redirectingHeading(state.method),
+				body: redirectingBody(state.method)
 			};
 
 		case 'processing':
@@ -418,8 +554,8 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 				heading: 'Your gift is on its way',
 				receipt: 'pending',
 				totalLabel: 'To be charged',
-				receiptNote: 'This transfer has not settled yet.',
-				body: `Bank transfers usually take 4 to 5 business days to settle. ${org} has been told your gift is coming.`
+				receiptNote: processingNote(state.method),
+				body: processingBody(org, state.method)
 			};
 
 		case 'indeterminate':
@@ -434,7 +570,7 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 				// over an outcome nobody read is a completion the donor is entitled to believe, and
 				// the only correction they would ever get is an email that may never come.
 				heading: 'Still confirming your gift',
-				body: `Your gift has been sent to your bank for confirmation. ${org} will email you when it goes through. Nothing here will charge you a second time.`,
+				body: indeterminateBody(org, state.method),
 				announce: 'Your gift has been sent for confirmation.'
 			};
 
@@ -511,8 +647,9 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 				primary: { label: 'Try again', submit: false }
 			};
 
-		// a resume, which is the only `working` that reaches a takeover: a donor is back from
-		// their bank and the flow has not yet found out what happened.
+		// a resume, which is the only `working` that reaches a takeover: a donor is back from wherever
+		// they authorized, and the flow has not yet found out what happened. its two sentences name no
+		// rail, which is what makes them right on the page load that has none.
 		case 'working':
 			return {
 				...BLANK,
@@ -756,7 +893,7 @@ export function createCard(
 	 * whether the card has been patched even once.
 	 *
 	 * what separates a screen change from the first paint, and the only reason focus is not moved on
-	 * that first one: a donor returning from their bank boots straight onto a takeover, and an
+	 * that first one: a donor returning from a payment window boots straight onto a takeover, and an
 	 * element that took focus as it rendered would move the caret on a page it does not own.
 	 */
 	let painted = false;

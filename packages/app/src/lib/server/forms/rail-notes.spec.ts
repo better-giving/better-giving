@@ -20,8 +20,8 @@ import { railNotes } from './rail-notes';
 // to the wrong place by them has nowhere to go. ../payments/rail-chargeability.ts's header states
 // the constraint they are held to.
 
-/** an account that answered, with every rail's standing stated. */
-function read(rails: Record<PaymentMethod, RailStanding>): RailChargeability {
+/** an account that answered, with the standing of every rail it settles stated. */
+function read(rails: Partial<Record<PaymentMethod, RailStanding>>): RailChargeability {
 	return { state: 'read', chargesEnabled: true, rails };
 }
 
@@ -35,7 +35,7 @@ function standing(rail: PaymentMethod, value: RailStanding): RailChargeability {
 
 /** the sentence written for `value`, taken off the rail it was put on. */
 function noteFor(value: RailStanding): string {
-	const note = railNotes(standing('ach', value)).ach;
+	const note = railNotes('stripe', standing('ach', value)).ach;
 	if (note === null) throw new Error(`\`${value}\` has no sentence`);
 	return note;
 }
@@ -59,14 +59,38 @@ describe('railNotes', () => {
 	 * editable.
 	 */
 	it('says nothing at all when the account could not be read', () => {
-		const notes = railNotes({ state: 'unreadable', detail: 'no keys are set' });
+		const notes = railNotes('stripe', { state: 'unreadable', detail: 'no keys are set' });
 
-		expect(notes).toEqual({ card: null, ach: null, apple_pay: null, google_pay: null });
+		expect(notes).toEqual({
+			card: null,
+			ach: null,
+			apple_pay: null,
+			google_pay: null,
+			paypal: null,
+			venmo: null
+		});
+	});
+
+	/**
+	 * a rail the read never covered is silence too, and it is the third deployment this `null`
+	 * covers.
+	 *
+	 * the form vocabulary holds more than one processor's rails and a read answers for one
+	 * processor's (`RailChargeability.rails` in ../payments/rail-chargeability.ts), so a rail with no
+	 * standing is one nothing about this account keeps off a form. a sentence under it would send an
+	 * operator to a dashboard that has never heard of it.
+	 */
+	it('says nothing beside a way of paying this account was never asked about', () => {
+		const notes = railNotes('stripe', read({ card: 'never_requested' }));
+
+		expect(notes.paypal).toBeNull();
+		expect(notes.venmo).toBeNull();
+		expect(notes.card).not.toBeNull();
 	});
 
 	/** the only standing a caller may act on, and the only one with nothing beside it. */
 	it('says nothing beside a way of paying the account is approved for', () => {
-		const notes = railNotes(standing('card', 'approved'));
+		const notes = railNotes('stripe', standing('card', 'approved'));
 
 		expect(notes.card).toBeNull();
 		expect(notes.ach).toBeNull();
@@ -82,7 +106,7 @@ describe('railNotes', () => {
 	 * so an operator sent there arrives somewhere with a switch to throw.
 	 */
 	it('sends an operator to Stripe over a wallet', () => {
-		const notes = railNotes(standing('apple_pay', 'switched_off'));
+		const notes = railNotes('stripe', standing('apple_pay', 'switched_off'));
 
 		expect(notes.apple_pay).toMatch(/Stripe dashboard/);
 	});
@@ -139,4 +163,54 @@ describe('railNotes', () => {
 			expect(noteFor(value)).toMatch(/Stripe dashboard/);
 		}
 	);
+
+	/**
+	 * every sentence names the processor it is about, and the gate is over the processor rather than
+	 * over the word.
+	 *
+	 * a deployment on one processor read a sentence naming another's dashboard for as long as these
+	 * sentences were written for one account: an operator holding no Stripe account was sent to the
+	 * Stripe dashboard over a PayPal rail, which is an errand with nowhere to arrive.
+	 */
+	it('names the processor every sentence is about', () => {
+		for (const value of SPEAKING) {
+			expect(noteFor(value)).toContain('Stripe');
+		}
+	});
+});
+
+/**
+ * the same sentences under a processor that publishes no approval per rail.
+ *
+ * every standing such a processor reports is `approved`, and `approved` there means the credentials
+ * authenticated rather than that the account was approved for anything
+ * (`readAccountChargeability` in ../payments/paypal.ts argues it at the arm). so the one sentence
+ * that is silence under Stripe is the one that has to speak here: an operator told a way of paying
+ * is on for an account that has never enabled it finds out from a donor.
+ */
+describe('railNotes on a processor that publishes no per-rail approval', () => {
+	const paypal = (): RailChargeability => read({ paypal: 'approved', venmo: 'approved' });
+
+	it('speaks beside an approved rail rather than saying nothing', () => {
+		const notes = railNotes('paypal', paypal());
+
+		expect(notes.paypal).not.toBeNull();
+		expect(notes.venmo).not.toBeNull();
+	});
+
+	/** the whole distinction: what was read is the credentials, and not this rail's standing. */
+	it('says the credentials were accepted and never that the rail is on', () => {
+		const note = railNotes('paypal', paypal()).venmo ?? '';
+
+		expect(note).toContain('PayPal');
+		expect(note).toMatch(/credential/i);
+		expect(note).not.toMatch(/\bworks?\b|\bwill work\b|\bworking\b|\bswitched on\b|\benabled\b/i);
+	});
+
+	/** and it never sends an operator to the other processor's dashboard. */
+	it('names no other processor', () => {
+		const note = railNotes('paypal', paypal()).venmo ?? '';
+
+		expect(note).not.toContain('Stripe');
+	});
 });

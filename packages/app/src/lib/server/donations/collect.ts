@@ -33,7 +33,7 @@ import {
 	GIFT_MINOR_METADATA_KEY,
 	INTERVAL_METADATA_KEY,
 	isRetryable,
-	PROVIDER_NAME,
+	type ProcessorName,
 	type RecurringEvent,
 	type RecurringGiftNotice,
 	type Settlement
@@ -205,7 +205,7 @@ export async function collectRecurringGift(
 		return { ok: true, outcome: 'unactionable', detail: read.detail };
 	}
 	const notice = read.value;
-	const plan = await findPlan(deps.db, notice.providerGiftId);
+	const plan = await findPlan(deps.db, deps.provider.processor, notice.providerGiftId);
 
 	// a delivery about the commitment itself, which is about no collection at all.
 	if (notice.about === 'commitment') return standingResult(deps.db, event, notice, plan);
@@ -347,13 +347,17 @@ async function standingResult(
  * depends on the answer still being true when the write runs, because every write it leads to is
  * refused by that same index or by `payment_provider_txn_idx` if it stopped being true.
  */
-async function findPlan(db: Db, providerGiftId: string): Promise<RecurringPlan | null> {
+async function findPlan(
+	db: Db,
+	processor: ProcessorName,
+	providerGiftId: string
+): Promise<RecurringPlan | null> {
 	const [row] = await db
 		.select()
 		.from(recurringPlan)
 		.where(
 			and(
-				eq(recurringPlan.provider, PROVIDER_NAME),
+				eq(recurringPlan.provider, processor),
 				eq(recurringPlan.providerSubscriptionId, providerGiftId)
 			)
 		)
@@ -475,7 +479,7 @@ async function recordCharge(
 	const opened = await openCommitment(deps, event, notice, settlement);
 	if (opened !== 'duplicate') return opened;
 
-	const existing = await findPlan(deps.db, notice.providerGiftId);
+	const existing = await findPlan(deps.db, deps.provider.processor, notice.providerGiftId);
 	if (existing === null) {
 		// the write was refused for a duplicate and no commitment is there to have caused it, which
 		// is a state nothing in this path produces. worth another delivery rather than a shrug: the
@@ -594,7 +598,7 @@ async function openCommitment(
 		currency: settlement.currency,
 		interval: named.interval,
 		status: ending?.status ?? 'active',
-		provider: PROVIDER_NAME,
+		provider: deps.provider.processor,
 		providerSubscriptionId: notice.providerGiftId,
 		providerCustomerId: notice.providerCustomerId,
 		// when the commitment began, which `recurring_plan` defines as when its first charge
@@ -616,6 +620,7 @@ async function openCommitment(
 		authorized === null
 			? chargeWrites(
 					deps.db,
+					deps.provider.processor,
 					planId,
 					named.contactId,
 					named.formId,
@@ -628,6 +633,7 @@ async function openCommitment(
 				)
 			: claimWrites(
 					deps.db,
+					deps.provider.processor,
 					planId,
 					authorized.gift,
 					authorized.program,
@@ -703,6 +709,7 @@ async function writeAgainstPlan(
 
 	const writes = chargeWrites(
 		deps.db,
+		deps.provider.processor,
 		plan.id,
 		plan.contactId,
 		plan.formId,
@@ -1096,6 +1103,7 @@ type OpeningGift = {
  */
 function chargeWrites(
 	db: Db,
+	processor: ProcessorName,
 	planId: string,
 	contactId: string,
 	formId: string,
@@ -1165,7 +1173,7 @@ function chargeWrites(
 		// written settled rather than corrected into it: this row is minted by the settlement that
 		// produced it, so `pending` never describes it.
 		status: 'succeeded',
-		provider: PROVIDER_NAME,
+		provider: processor,
 		providerTxnId: settlement.providerTxnId,
 		occurredAt: settlement.occurredAt
 	};
@@ -1245,6 +1253,7 @@ function chargeWrites(
  */
 function claimWrites(
 	db: Db,
+	processor: ProcessorName,
 	planId: string,
 	gift: Donation,
 	program: string | null,
@@ -1266,7 +1275,7 @@ function claimWrites(
 		// row stands behind this one to fall back on.
 		method: settlement.method ?? 'card',
 		status: 'succeeded',
-		provider: PROVIDER_NAME,
+		provider: processor,
 		providerTxnId: settlement.providerTxnId,
 		occurredAt: settlement.occurredAt
 	};

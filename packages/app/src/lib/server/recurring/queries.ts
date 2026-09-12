@@ -22,10 +22,10 @@ import { recurringPlan, type RecurringPlan } from '../db/schema';
 // the reason `readContactNames` states one module over: a join written here would read `contact`
 // out of a file nobody looking for every reader of that table would think to open.
 //
-// nothing here calls the payment provider. a list that asks Stripe anything fails or hangs whenever
-// Stripe does, and nothing on these screens is a fact about the processor's account — what the
-// commitment is, when it started and where it stands are all this deployment's own rows. the one
-// call there is is the cancel in ./stop.ts, which is a write an operator pressed.
+// nothing here calls the payment provider. a list that asks a processor anything fails or hangs
+// whenever that processor does, and nothing on these screens is a fact about the processor's
+// account — what the commitment is, when it started and where it stands are all this deployment's
+// own rows. the one call there is is the cancel in ./stop.ts, which is a write an operator pressed.
 
 /**
  * how many commitments a list page returns.
@@ -184,8 +184,8 @@ export async function listRecurringPlans(db: Db): Promise<RecurringPage> {
  * a projection again rather than the row, and it is wider than the list's by three columns, each
  * of which the detail screen genuinely uses: `form_id` because the screen links to the form,
  * `provider_subscription_id` because it is what `cancelRecurringGift` names and what an operator
- * looks the commitment up by in the Stripe dashboard when a stop half-lands, and `ended_at`
- * because a stopped commitment says when.
+ * looks the commitment up by in the processor's own dashboard when a stop half-lands, and
+ * `ended_at` because a stopped commitment says when.
  *
  * `contact_id` is here for the same reason it is on the list row and leaves for the same one: it
  * is how the donor is looked up, and the screen is handed a name rather than an id.
@@ -193,6 +193,13 @@ export async function listRecurringPlans(db: Db): Promise<RecurringPage> {
  * the two processor ids are not both here. `provider_customer_id` names the donor's record on the
  * account and nothing on this screen or in the stop reaches it, so it stays out — a column reaches
  * a browser by being selected.
+ *
+ * `provider` is read by the stop and by the screen alike, and for one reason: the commitment lives
+ * on whichever processor collected its first charge. `stopRecurringGift` in ./stop.ts picks the
+ * adapter to cancel with off this column rather than off a name the route supplied, and every
+ * sentence on the screen that names a processor — the subscription row's own term included — is
+ * written off it too, so a deployment holding both processors' keys cannot be sent to the wrong
+ * dashboard. it is the processor's own name and nothing about the donor or the account.
  */
 type RecurringPlanRecordRow = Pick<
 	RecurringPlan,
@@ -203,6 +210,7 @@ type RecurringPlanRecordRow = Pick<
 	| 'currency'
 	| 'interval'
 	| 'status'
+	| 'provider'
 	| 'providerSubscriptionId'
 	| 'startedAt'
 	| 'nextChargeAt'
@@ -217,6 +225,7 @@ const RECORD_COLUMNS = {
 	currency: recurringPlan.currency,
 	interval: recurringPlan.interval,
 	status: recurringPlan.status,
+	provider: recurringPlan.provider,
 	providerSubscriptionId: recurringPlan.providerSubscriptionId,
 	startedAt: recurringPlan.startedAt,
 	nextChargeAt: recurringPlan.nextChargeAt,

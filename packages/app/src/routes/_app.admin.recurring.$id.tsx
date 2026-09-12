@@ -11,12 +11,17 @@ import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { RouterLink } from '$lib/admin/router-link';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formatMinor } from '$lib/donations/money';
-import { RECURRING_STATUS_LABELS, RECURRING_STATUS_NOTES } from '$lib/recurring/statuses';
+import {
+	recurringStatusNote,
+	RECURRING_STATUS_LABELS,
+	type RecurringPlanStatus
+} from '$lib/recurring/statuses';
 import { readContactSummaries } from '$lib/server/contacts/queries';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
 import { readForm } from '$lib/server/forms/queries';
-import { createPaymentProvider } from '$lib/server/payments/factory';
+import { createPaymentProviders } from '$lib/server/payments/factory';
+import { isProcessor, PROCESSOR_LABELS } from '$lib/server/payments/provider';
 import { readRecurringPlan } from '$lib/server/recurring/queries';
 import { stopRecurringGift } from '$lib/server/recurring/stop';
 import { database, platform } from '../context';
@@ -46,8 +51,14 @@ import type { Route } from './+types/_app.admin.recurring.$id';
 // under.
 //
 // no provider read is performed to draw this page. everything on it is this deployment's own row,
-// and a screen that asked Stripe anything would fail or hang whenever Stripe did — on the screen an
-// operator opened to stop a gift.
+// and a screen that asked the processor anything would fail or hang whenever that processor did —
+// on the screen an operator opened to stop a gift.
+//
+// **every sentence here that names a processor is written off the commitment's own `provider`
+// column.** a deployment may hold keys for either, and a commitment lives on whichever one collected
+// its first charge — so a name written in rather than read off the row is a staff member sent to an
+// account they hold nothing on. the column also keeps `manual`, which no processor answers for, and
+// a sentence that would need a name there is not softened but left unwritten.
 
 /**
  * the two markers a stop leaves for the GET it redirects to, one per landing this screen has a
@@ -73,7 +84,7 @@ type StopLanding = typeof STOPPED | typeof NOTHING_TO_STOP | null;
  *
  * `isRetryable`'s partition is what decides it, one module over, so this screen never guesses: a
  * "try again" over a terminal refusal is an operator pressing a button that will answer the same
- * way every time, and a dead end over a retryable one sends them to the Stripe dashboard for a
+ * way every time, and a dead end over a retryable one sends them to the processor's dashboard for a
  * minute of bad weather.
  *
  * neither says what the gift is now, and that is the rule this pair is written under: this row was
@@ -85,16 +96,45 @@ type StopLanding = typeof STOPPED | typeof NOTHING_TO_STOP | null;
  * `lapsed` for good, because the `customer.subscription.deleted` that follows is written only over
  * `status = 'active'` (`recordStanding` in $lib/server/donations/collect.ts) — so a screen that told
  * an operator to leave it alone would be telling them to leave a row nothing repairs.
+ *
+ * `processor` is which one refused, in the words an operator reads, and `null` is the one refusal
+ * no processor issued — a commitment recorded against a provider no adapter answers for
+ * ($lib/server/recurring/stop.ts). both sentences send somebody to a dashboard, so with no
+ * processor to name there is nowhere to send them and the port's own sentence stands alone: it
+ * says what the column holds, which is the whole of what is wrong.
  */
-function refusalSentence(retryable: boolean, detail: string): string {
+function refusalSentence(retryable: boolean, detail: string, processor: string | null): string {
+	if (processor === null) return detail;
 	return retryable
-		? 'This attempt did not finish, so whether Stripe stopped collecting this gift is unknown ' +
-				'here and nothing was recorded. Reload the page and try again. Stopping a gift twice ' +
-				'does nothing extra. If it keeps failing, check the Stripe subscription id on this ' +
-				`screen against the Stripe dashboard. ${detail}`
-		: 'Stripe refused to stop this gift and nothing was recorded here. Repeating this will ' +
-				'answer the same way. Find this subscription in the Stripe dashboard, check whether it ' +
-				`is still collecting, and cancel it there if it is. ${detail}`;
+		? `This attempt did not finish, so whether ${processor} stopped collecting this gift is ` +
+				'unknown here and nothing was recorded. Reload the page and try again. Stopping a gift ' +
+				'twice does nothing extra. If it keeps failing, check the subscription id on this ' +
+				`screen against your ${processor} dashboard. ${detail}`
+		: `${processor} refused to stop this gift and nothing was recorded here. Repeating this ` +
+				`will answer the same way. Find this subscription in your ${processor} dashboard, check ` +
+				`whether it is still collecting, and cancel it there if it is. ${detail}`;
+}
+
+/**
+ * what stopping this commitment does to the money, which is the first half of what the
+ * confirmation states.
+ *
+ * a lapsed gift is the one worth telling apart: the processor is not collecting it now, and
+ * `revives` in `$lib/server/donations/collect.ts` moves the row back to `active` when the rail
+ * reports the card went through — so "stops collecting it straight away" would describe a gift
+ * nothing is charging, and leave the reason to press unstated.
+ *
+ * a commitment no processor answers for gets the consequence with no processor in it, and the same
+ * one in both states: nothing can revive it, because reviving is a delivery from a processor. the
+ * clause is never dropped — this is the press's own cost, and a destructive confirmation that
+ * states none is one an operator answers blind.
+ */
+function stopConsequence(status: RecurringPlanStatus, processor: string | null): string {
+	if (processor === null) return 'Nothing further is collected.';
+	return status === 'lapsed'
+		? `${processor} is not collecting this now, but it can start again on its own if this ` +
+				'donor’s card goes through.'
+		: `${processor} stops collecting it straight away.`;
 }
 
 /**
@@ -171,7 +211,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			// the value, not the word: `FREQUENCY_LABELS` in `packages/form/src/v1.ts` is what the page renders
 			// it with, and a cadence with no label there is a type error.
 			interval: plan.interval,
-			// the value, not the word: `RECURRING_STATUS_LABELS` and `RECURRING_STATUS_NOTES` in
+			// the value, not the word: `RECURRING_STATUS_LABELS` and `recurringStatusNote` in
 			// `$lib/recurring/statuses.ts` are what the page renders it with.
 			status: plan.status,
 			// the dates only, ISO, formatted here for the reason /admin/donations formats its own here:
@@ -195,17 +235,27 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			// and is the row's own label rather than a minted sentence, so a state that cannot happen
 			// costs the screen no copy nobody reviewed.
 			formName: form?.name ?? 'Donation form',
-			// the processor's own id for the commitment, and the one deliberate processor word on this
-			// screen: it is what a staff member looks the gift up by in the Stripe dashboard when a stop
-			// half-lands, which is the state the outcome copy sends them there for.
+			// which processor this commitment lives on, in the words an operator reads, or `null` where
+			// no processor answers for it. every sentence on this screen that names one is written off
+			// this value.
+			//
+			// the word and not the row's value, which is where this parts company with `status` above:
+			// `PROCESSOR_LABELS` is in `$lib/server/payments/provider.ts`, beside the processors it
+			// spells, and a component may not import from `$lib/server/**` at all — so the lookup is
+			// here and what crosses is the spelling. `isProcessor` is the narrowing rather than a
+			// comparison, so `manual` is answered with nothing rather than shown to an operator.
+			processor: isProcessor(plan.provider) ? PROCESSOR_LABELS[plan.provider] : null,
+			// the processor's own id for the commitment, and the one deliberate processor reference on
+			// this screen: it is what a staff member looks the gift up by in that processor's dashboard
+			// when a stop half-lands, which is the state the outcome copy sends them there for.
 			subscriptionId: plan.providerSubscriptionId,
 			// which stop just landed here, if either. it is a banner rather than a mark on the control
 			// that carried it, because after it lands there is no stop control left on the page — the
 			// stated carve-out in the operator surfaces' rule about where a write reports.
 			//
 			// a landing rather than a boolean, because the two are different sentences: one gift was
-			// being collected until this act, the other was not being collected at all — Stripe held no
-			// subscription for it — and the page says which.
+			// being collected until this act, the other was not being collected at all — the processor
+			// held no subscription for it — and the page says which.
 			stopLanded: landing(landed?.marker ?? null),
 			// whether the operator has asked to stop and is being asked again.
 			//
@@ -248,7 +298,7 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 	// refuses and the refusal names the variable to set.
 	const result = await stopRecurringGift(
 		context.get(database),
-		createPaymentProvider(context.get(platform).env),
+		createPaymentProviders(context.get(platform).env),
 		params.id
 	);
 
@@ -270,7 +320,14 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 			// no input on this page fixes a processor that refused.
 			return refused(500, {
 				stopWord: 'Not stopped',
-				stopError: refusalSentence(result.retryable, result.detail)
+				stopError: refusalSentence(
+					result.retryable,
+					result.detail,
+					// the processor that refused, off the outcome rather than off the row this action
+					// never read: which one a commitment lives on is what `stopRecurringGift` learns
+					// first, and it carries the answer back so this sentence cannot name the other.
+					result.processor === null ? null : PROCESSOR_LABELS[result.processor]
+				)
 			});
 
 		case 'unrecorded':
@@ -281,10 +338,11 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 			return refused(500, {
 				stopWord: 'Partly done',
 				stopError:
-					'Stripe has stopped collecting this gift, so nothing further will be charged. ' +
-					'This deployment could not record that, so it may still read as collecting here. ' +
-					'Reload the page; if it has not caught up, the Stripe subscription id on this ' +
-					'screen is what to check against the Stripe dashboard.'
+					`${PROCESSOR_LABELS[result.processor]} has stopped collecting this gift, so nothing ` +
+					'further will be charged. This deployment could not record that, so it may still ' +
+					'read as collecting here. Reload the page; if it has not caught up, the ' +
+					'subscription id on this screen is what to check against your ' +
+					`${PROCESSOR_LABELS[result.processor]} dashboard.`
 			});
 
 		// the two successes, one arm because what they do is identical and one marker each because
@@ -334,6 +392,7 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 		id,
 		interval,
 		nextChargeOn,
+		processor,
 		startedOn,
 		status,
 		stopLanded,
@@ -402,7 +461,10 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 		</Banner>
 	) : null;
 
-	const note = RECURRING_STATUS_NOTES[status];
+	// what the status word costs, said in the words this commitment's own processor is named in. a
+	// commitment no processor answers for gets no sentence that would need one — see
+	// `recurringStatusNote` in `$lib/recurring/statuses.ts`.
+	const note = recurringStatusNote(status, processor);
 
 	return (
 		// one column and the column is what spaces it: every block below carries no margin of its
@@ -424,16 +486,22 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 			{stopLanded && !actionData ? (
 				<Banner tone="note" word="Stopped">
 					{/* two landings, because what was happening before the button was pressed is not
-					    the same fact: a gift Stripe was collecting has been cancelled, or Stripe held
-					    no subscription at all and this record was the half that was out of date. an
-					    operator who cancelled in the Stripe dashboard first is owed the second one
-					    plainly, rather than a sentence implying this act reached Stripe. both end on
-					    the donor not having been told, which is the one fact nothing else on this
-					    landing states. */}
-					{stopLanded === NOTHING_TO_STOP ? (
+					    the same fact: a gift the processor was collecting has been cancelled, or it
+					    held no subscription at all and this record was the half that was out of date.
+					    an operator who cancelled in that processor's own dashboard first is owed the
+					    second one plainly, rather than a sentence implying this act reached the
+					    processor. both end on the donor not having been told, which is the one fact
+					    nothing else on this landing states.
+
+					    a landing with no processor to name falls to the plain sentence rather than
+					    naming one: the stop refuses a commitment no processor answers for before it
+					    calls anything, so neither marker can be written under one — and a state that
+					    cannot happen gets the sentence that is true rather than a name invented for
+					    it. */}
+					{stopLanded === NOTHING_TO_STOP && processor !== null ? (
 						<>
-							Stripe had no subscription with this id, so nothing was collecting. Nothing here has
-							told {donorName}. Reply to the message you have from them.
+							{processor} had no subscription with this id, so nothing was collecting. Nothing here
+							has told {donorName}. Reply to the message you have from them.
 						</>
 					) : (
 						<>Nothing here has told {donorName}. Reply to the message you have from them.</>
@@ -560,16 +628,27 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 						<dd className="adm-setting__value">{donorEmail ?? 'None'}</dd>
 					</div>
 
-					{/* the one deliberate processor word on this screen, and it earns its place: it
-					    names the object in Stripe's own dashboard that a staff member goes and looks
-					    at when a stop half-lands, which is exactly where the `Partly done` sentence
-					    sends them. */}
-					<div className="adm-setting">
-						<dt className="adm-setting__label">Stripe subscription</dt>
-						<dd className="adm-setting__value">
-							<CodeChip>{subscriptionId}</CodeChip>
-						</dd>
-					</div>
+					{/* the one deliberate processor reference among these rows, and it earns its place:
+					    it names the object in that processor's own dashboard that a staff member goes
+					    and looks at when a stop half-lands, which is exactly where the `Partly done`
+					    sentence sends them.
+
+					    the processor's name in front of the same word, because both of them call it a
+					    subscription — what changes between a Stripe commitment and a PayPal one is
+					    whose account the id is in, which is the whole of what this row is for.
+
+					    and drawn only where there is a processor to name: an id in no account an
+					    operator can open sends them nowhere, so on a commitment no processor answers
+					    for the row is not written rather than headed by a word that points at
+					    nothing. */}
+					{processor === null ? null : (
+						<div className="adm-setting">
+							<dt className="adm-setting__label">{processor} subscription</dt>
+							<dd className="adm-setting__value">
+								<CodeChip>{subscriptionId}</CodeChip>
+							</dd>
+						</div>
+					)}
 				</dl>
 			</Section>
 
@@ -635,18 +714,14 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 								   goes is answered in the effect above. */
 								cancelProps={{ as: Link, to: screen(id), preventScrollReset: true }}
 							>
-								{status === 'lapsed' ? (
-									<>
-										Stripe is not collecting this now, but it can start again on its own if this
-										donor&rsquo;s card goes through. Nothing already collected is returned, and
-										nothing here tells {donorName}. Reply to them yourself.
-									</>
-								) : (
-									<>
-										Stripe stops collecting it straight away. Nothing already collected is returned,
-										and nothing here tells {donorName}. Reply to them yourself.
-									</>
-								)}
+								{/* what pressing it does, then what it does not do. the first clause is the
+								    only half that names a processor and it is `stopConsequence` above,
+								    so the two states and the commitment with no processor behind it are
+								    decided in one place; the rest is one sentence for all of them,
+								    because what is not returned and who is not told is this product's
+								    own behaviour rather than any processor's. */}
+								{stopConsequence(status, processor)} Nothing already collected is returned, and
+								nothing here tells {donorName}. Reply to them yourself.
 							</DestructiveConfirm>
 						</Form>
 					) : (

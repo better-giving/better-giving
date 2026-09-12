@@ -12,21 +12,22 @@
 // served from — and ./api.ts's write, which this composes: the quote port is wrapped so the
 // provider's own fields learn the total the server just named. the write is in that other module
 // because the deployment's own donation page spends it holding none of this one, and its header
-// states the rule. the payment half is ./stripe.ts, which this composes too: the three ports a
-// provider owns are taken from the surface it builds.
+// states the rule. the payment half is ./surface.ts, which this composes too: the three ports a
+// provider owns are taken from the one surface it builds over however many processors the served
+// config names.
 //
 // a donor coming back from a payment provider is ./resume.ts's, both ends of it, and this file
 // composes that too: what is decided here is which boot gets the one return a page can carry.
 //
 // the config is passed to the flow exactly as the deployment served it. narrowing it here is a
 // thing this file used to do and deliberately no longer does: every rail a config may name is one
-// ./stripe.ts can carry to a confirmation, wallets included, so a rail dropped on the way in would
-// be this runtime overruling the account that was actually asked.
+// an adapter behind ./surface.ts can carry to a confirmation, wallets included, so a rail dropped
+// on the way in would be this runtime overruling the account that was actually asked.
 
 import { defineDonateForm, type FormBoot, type FormRuntime } from '../element';
 import type { CheckoutPorts } from '../ports';
 import { apiWords, createQuote, EmbedFailure, readJson } from './api';
-import { createPaymentSurface } from './stripe';
+import { createPaymentSurface } from './surface';
 import { takeResumeToken } from './resume';
 import { createChallenge } from './turnstile';
 import {
@@ -154,10 +155,10 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 			// read here rather than where `post` is built, because the answer is per form and per
 			// boot, and neither is known until an element asks.
 			const resumeToken = returned(config.formId, boot);
-			// the two reports the provider's own surface makes, passed straight through. nothing is
-			// decided here — `chosenRail` in ./stripe.ts has already turned the provider's word into
-			// one of this deployment's rails or into `null`, and the sentence a donor reads when the
-			// fields never came up is written there too, next to what it knows about why.
+			// the two reports the payment surface makes, passed straight through. nothing is decided
+			// here — the adapter behind ./surface.ts has already turned its own processor's word into
+			// one of this deployment's rails or into `null`, and the sentence a donor reads when
+			// nothing came up is written there too, next to what it knows about why.
 			// ../element.ts is what turns each report into an event the flow accepts.
 			const surface = createPaymentSurface(config, mount, onRail, onUnavailable);
 			// the quote port, wrapped so the provider's own fields learn what the server just
@@ -180,8 +181,8 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 					...(resumeToken === null ? {} : { resume: { paymentToken: resumeToken } })
 				},
 				// the cadence the card reports, passed straight through. nothing is decided here: the
-				// donor committed to it and ./stripe.ts is what turns it into the shape the provider's
-				// own fields are drawn in.
+				// donor committed to it and each adapter behind ./surface.ts is what turns it into
+				// the shape its own processor's surface is drawn in.
 				cadence: surface.cadence,
 				// the card letting go of the surface built for this configuration, and it is this
 				// surface's own: a second gift is a second call here, so a door shared between them

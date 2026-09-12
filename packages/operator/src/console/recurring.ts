@@ -42,12 +42,13 @@ export type RecurringStanding = (typeof RECURRING_STANDINGS)[number];
  * nothing about what the account holds. `detail` is the deployment's own sentence, which names the
  * value to fix.
  *
- * `reason` says which of those it was, in the closed set ./stripe-read.ts states, and it is the
- * same union ./payments.ts's rails carry: both reads go through one port with one key, so a
- * deployment holding no key makes neither of them and a console has one thing to say about that
- * rather than one per reading. `detail` is the sentence and `reason` is the fact — a console
- * deciding between them off the prose would be a screen that changes what it draws when somebody
- * edits a string.
+ * `reason` says which of those it was, in the closed set ./stripe-read.ts states. it is carried here
+ * and on no reading in ./payments.ts, and the asymmetry is the shape of the two addresses rather
+ * than an oversight: a payments reading exists only under a processor the deployment is configured
+ * for, so "nothing was asked because no credential is set" is an arm of the report there, where this
+ * address answers for Stripe whatever the deployment holds and has nowhere else to say it.
+ * `detail` is the sentence and `reason` is the fact — a console deciding between them off the prose
+ * would be a screen that changes what it draws when somebody edits a string.
  */
 export type RecurringReading =
 	| {

@@ -92,9 +92,17 @@ export type WalletDomainStanding =
  *
  * `detail` is the port's own sentence, which names the value to fix. it is a state of this block and
  * never of the page — every other capability goes on rendering.
+ *
+ * `undrawn` is the third arm and is not a failure at all: the answering processor draws its funding
+ * sources on its own domain rather than on a page this deployment serves, so it registers no
+ * hostname anywhere and there is nothing here to read or to press. it is told from `unreadable` by
+ * the reason the port refused with — `unsupported` is the one reason that is a fact about this
+ * release rather than about the account (`PAYMENT_FAILURE_REASONS` in ./provider.ts) — and it is a
+ * member of its own because a console draws a wallet section for one and none at all for the other.
  */
 export type WalletDomainsReading =
 	| { readonly state: 'unreadable'; readonly detail: string }
+	| { readonly state: 'undrawn' }
 	| { readonly state: 'read'; readonly hosts: readonly WalletDomainStanding[] };
 
 /**
@@ -110,7 +118,13 @@ export async function readWalletDomains(
 	hosts: readonly string[]
 ): Promise<WalletDomainsReading> {
 	const registered = await provider.listWalletDomains();
-	if (!registered.ok) return { state: 'unreadable', detail: registered.detail };
+	if (!registered.ok) {
+		// the sentence is dropped on the `undrawn` arm rather than carried: it says a processor draws
+		// no wallet here, and a console reading that state draws no section for it to stand in.
+		return registered.reason === 'unsupported'
+			? { state: 'undrawn' }
+			: { state: 'unreadable', detail: registered.detail };
+	}
 
 	return { state: 'read', hosts: hosts.map((host) => standingOf(host, registered.value)) };
 }

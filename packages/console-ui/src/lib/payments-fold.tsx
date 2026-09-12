@@ -17,7 +17,6 @@ import {
 	StatusLine,
 	StatusStep
 } from '@better-giving/operator/components/status/StatusLine';
-import type { RailStanding } from '@better-giving/operator/console/payments';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import {
 	SUBSCRIBED_EVENT_TYPES,
@@ -31,6 +30,14 @@ import { REACHED_STRIPE, pressStopped } from './press-stopped';
 import { Said } from './said';
 import { refusalIn, secretTrouble } from './secret-trouble';
 import { heldValues, withheldAmong } from './held-values';
+import { PaypalSection } from './paypal-section';
+import {
+	configuredStanding,
+	EVIDENCE_SAYS,
+	processorStanding,
+	STANDING
+} from './processor-payments';
+import type { GroupReport } from './secret-group-form';
 import { PAYMENTS_GROUP, SECRET_GROUPS, MINTED_BY_CONSOLE, isMasked } from './secret-groups';
 import { FREE_INTENT, WithheldValues } from './withheld-values';
 import type {
@@ -38,7 +45,7 @@ import type {
 	DeployedValues,
 	NoReport,
 	PaymentsRead,
-	RailLine,
+	RailsReading,
 	RecurringRead,
 	RecurringSetup,
 	Wallet,
@@ -79,6 +86,14 @@ import { linkStanding, walletHostLines, walletRows } from './wallet-rows';
 // the whole of Stripe on this deployment — two boxes, one press, and what the account is approved
 // for — read and set inside the second fold of the one page.
 //
+// **the fold holds two processors and this file is the first of them.** a deployment set up on
+// either is set up, so the two answer to one row on the page above (./home-sections.ts) and stand
+// one above the other under it as two sections, divided by the rule
+// packages/operator/src/styles/adm.css draws between them. PayPal's own section is
+// ./paypal-section.tsx, and every claim below is about Stripe unless it says otherwise. one read
+// answers for both accounts (`PaymentsReport` in ../api/types.ts), so the promise this fold awaits
+// is handed down to that section rather than asked for a second time.
+//
 // **it is one form and one press because there is one errand.** an operator holding the two keys off
 // one Stripe screen has already decided everything the rest of the setup needs, so the press does
 // the rest: it names the account back, registers the webhook endpoint at the address it derives,
@@ -86,11 +101,13 @@ import { linkStanding, walletHostLines, walletRows } from './wallet-rows';
 // item a repeating gift is collected against on the account. no terminal step, no second band of
 // boxes for the same three values, and nobody is shown a `whsec_`.
 //
-// **the operator need not know about webhooks, and nothing on this fold asks them to.** the
-// endpoint, the events it is subscribed to and the secret that proves a delivery came from Stripe
-// are all things the press establishes from the two keys, so none of them is a row, a reading or a
-// repair press here. what an operator is told about them is one line in the confirm, at the moment
-// it changes whether they press.
+// **the operator need not know about webhooks on this processor, and nothing in this half asks
+// them to.** the endpoint, the events it is subscribed to and the secret that proves a delivery came
+// from Stripe are all things the press establishes from the two keys, so none of them is a row, a
+// reading or a repair press here. what an operator is told about them is one line in the confirm, at
+// the moment it changes whether they press. the other processor is the opposite and cannot be made
+// to be this one: this release registers no endpoint on it, so the operator registers one by hand
+// and the section says where (./paypal-section.tsx).
 //
 // **the boxes arrive holding what the deployment holds.** both keys are plain vars and the account
 // hands each value back (`DEPLOY_VARS` in packages/operator/src/deploy-split.ts), so an operator
@@ -191,7 +208,7 @@ import { linkStanding, walletHostLines, walletRows } from './wallet-rows';
 // each answer is said in. which fold this is — its label, its tone, the word beside it and what
 // standing undone costs — is decided in ./home-sections.ts with the other four.
 //
-// **the two names every read is scoped to and the thirteen values arrive as props.** what this
+// **the two names every read is scoped to and the seventeen values arrive as props.** what this
 // fold reaches for itself is the run, which is the one reading that changes while it is on screen —
 // everything else was taken by ../routes/_index.tsx and is handed down.
 
@@ -252,17 +269,19 @@ const REREADS: readonly number[] = [1500, 3000, 5000, 8000, 12000];
 /**
  * whether both readings came back saying this deployment holds no Stripe key.
  *
- * `null` is the read nobody made — ../routes/_index.tsx asks for neither where the secrets list
- * says there is no key — and `no_key` is the deployment saying so itself
- * (`packages/operator/src/console/stripe-read.ts`). those two are the whole of what this fold draws
+ * `null` is the read nobody made — ../routes/_index.tsx asks for neither on a face that draws no
+ * fold — and the deployment says it itself in two different shapes, one per address: the payments
+ * report answers `unconfigured` for a processor it holds no credentials for
+ * (`ProcessorPayments` in ../api/types.ts), and the recurring reading answers `no_key`
+ * (`packages/operator/src/console/stripe-read.ts`). those are the whole of what this fold draws
  * nothing for, which is what makes them the thing to wait on: every other answer is one it has a
  * line for.
  */
 const withoutKey = (payments: PaymentsRead | null, gifts: RecurringRead | null): boolean => {
-	const rails = payments?.kind === 'read' ? payments.report.rails : null;
+	const stripe = processorStanding(payments, 'stripe');
 	const standing = gifts?.kind === 'read' ? gifts.reading : null;
 	return (
-		(payments === null || (rails?.state === 'unreadable' && rails.reason === 'no_key')) &&
+		(payments === null || stripe?.state === 'unconfigured') &&
 		(gifts === null || (standing?.state === 'unreadable' && standing.reason === 'no_key'))
 	);
 };
@@ -333,19 +352,23 @@ const ASKS: Record<StripeAct, { title: string; press: string }> = {
 };
 
 export type PaymentsFoldProps = {
-	/** the thirteen as cloudflare answered for them, which is what every reading here is drawn from. */
+	/** the seventeen as cloudflare answered for them, which is what every reading here is drawn from. */
 	values: DeployedValues;
 	/**
-	 * where the account stands, or `null` where that read was never taken.
+	 * where every processor account stands, or `null` where that read was never taken.
 	 *
-	 * what this fold draws off it is the ways of paying. the report carries the endpoint's own
+	 * one read answers for both of them (`PaymentsReport` in ../api/types.ts), so this fold's two
+	 * sections await the same promise: a request each would be two views of one deployment able to
+	 * disagree by the time an operator reads them.
+	 *
+	 * what the Stripe half draws off it is the ways of paying. the report carries the endpoint's own
 	 * readings as well and nothing here reads them: they are machinery this press establishes, and
 	 * `packages/console/internal/deployment/payments.go` is where they still answer for.
 	 *
 	 * a promise rather than a value: it goes through the deployment's own console surface, and the
 	 * boxes are drawn out of what cloudflare said without waiting for it.
 	 */
-	stripeAccount: Promise<PaymentsRead | null>;
+	payments: Promise<PaymentsRead | null>;
 	/** where the account stands on gifts that repeat, through the same door and on its own promise. */
 	recurring: Promise<RecurringRead | null>;
 	workerName: string;
@@ -400,6 +423,10 @@ export type PaymentsFoldProps = {
 	freed: VarsWritten | null;
 	/** how the last repeating-gifts press went, or `null`. */
 	provision: RecurringSetup | null;
+	/** how the last press over a group of credentials went, or `null` (./secret-group-form.tsx). */
+	secrets: GroupReport | null;
+	/** how the last press of PayPal's charity-rate switch went, or `null` (./paypal-charity.ts). */
+	charity: VarsWritten | null;
 	/**
 	 * how the last press that registers the sites wallet buttons are drawn on went, or `null`.
 	 *
@@ -417,7 +444,7 @@ export type PaymentsFoldProps = {
 
 export function PaymentsFold({
 	values,
-	stripeAccount,
+	payments,
 	recurring,
 	workerName,
 	accountName,
@@ -429,6 +456,8 @@ export function PaymentsFold({
 	removed,
 	freed,
 	provision,
+	secrets,
+	charity,
 	wallets,
 	busy,
 	pending
@@ -541,7 +570,7 @@ export function PaymentsFold({
 		if (wait === undefined) return;
 		let gone = false;
 		let timer: ReturnType<typeof setTimeout> | undefined;
-		void Promise.all([stripeAccount, recurring]).then(
+		void Promise.all([payments, recurring]).then(
 			([payments, gifts]) => {
 				if (gone || !withoutKey(payments, gifts)) return;
 				timer = setTimeout(() => {
@@ -556,7 +585,7 @@ export function PaymentsFold({
 			gone = true;
 			clearTimeout(timer);
 		};
-	}, [storedKey, stripeAccount, recurring, revalidate]);
+	}, [storedKey, payments, recurring, revalidate]);
 
 	/** what this deployment holds, or `null` where that read did not land (./held-values.ts). */
 	const holding = values.vars.kind === 'read' ? heldValues(values.vars.vars) : null;
@@ -1504,9 +1533,10 @@ export function PaymentsFold({
 	 *
 	 * **and nothing at all where nothing was asked.** a deployment holding no Stripe key is what the
 	 * two empty boxes below this already say, and a row here would restate them and then send an
-	 * operator to a terminal for a key this fold has a box for. `no_key` is the member that says so
-	 * — `packages/operator/src/console/stripe-read.ts` — and it is the fact rather than the sentence
-	 * that decides it.
+	 * operator to a terminal for a key this fold has a box for. the payments report says so by
+	 * carrying no reading at all for such a processor (`ProcessorPayments` in ../api/types.ts) and the
+	 * recurring reading says it as `no_key` — each a fact rather than a sentence, which is what
+	 * decides it.
 	 *
 	 * **it is drawn inside the awaited block and never outside it.** both readings are awaited (the
 	 * `Suspense` this stands in), and a sentence about them drawn outside that would hold every box
@@ -1517,14 +1547,15 @@ export function PaymentsFold({
 	 * where both failed, since that is the one whose cause the other inherits.
 	 */
 	const unreadable = (payments: PaymentsRead | null, gifts: RecurringRead | null): ReactNode => {
-		const railsRead = payments?.kind === 'read' ? payments.report.rails : null;
-		const walletsRead = payments?.kind === 'read' ? payments.report.wallets : null;
+		const stripe = configuredStanding(processorStanding(payments, 'stripe'));
+		const railsRead = stripe?.rails ?? null;
+		const walletsRead = stripe?.wallets ?? null;
 		const giftsRead = gifts?.kind === 'read' ? gifts.reading : null;
 
 		const unread: { says: string; detail: string }[] = [];
-		if (railsRead?.state === 'unreadable' && railsRead.reason === 'failed')
+		if (railsRead?.state === 'unreadable')
 			unread.push({ says: 'which ways of paying it can take', detail: railsRead.detail });
-		if (walletsRead?.state === 'unreadable' && walletsRead.reason === 'failed')
+		if (walletsRead?.state === 'unreadable')
 			unread.push({ says: 'which sites draw wallet buttons', detail: walletsRead.detail });
 		if (giftsRead?.state === 'unreadable' && giftsRead.reason === 'failed')
 			unread.push({ says: 'whether repeating gifts are set up', detail: giftsRead.detail });
@@ -1553,10 +1584,12 @@ export function PaymentsFold({
 	 * sentences are the deployment's own and are not shortened here — each names the one door out of
 	 * its state, and three of the six lead to a Stripe screen this console does not have.
 	 *
-	 * **the one sentence over them says what `Approved` is not.** nothing on any screen may claim a
-	 * rail works (`packages/app/src/lib/server/payments/rail-chargeability.ts`), and approval is the
-	 * closest reading this console has to one — so what it is is said where it is read, and only
-	 * where there are lines to read.
+	 * **the one sentence over them says what `Approved` is not, and the evidence is what decides
+	 * whether there is one.** nothing on any screen may claim a rail works
+	 * (`packages/app/src/lib/server/payments/rail-chargeability.ts`), and approval is the closest
+	 * reading this console has to one — so what it is is said where it is read, and only where there
+	 * are lines to read. `EVIDENCE_SAYS` in ./processor-payments.ts is which sentence, and where it is
+	 * `null` every row is already carrying it.
 	 *
 	 * **the wallets are rows of this ledger and not a block under it.** Apple Pay, Google Pay and
 	 * Link are ways of paying a donor is offered, so an operator reading down what their form takes
@@ -1596,20 +1629,21 @@ export function PaymentsFold({
 	 * a fold with no ledger is a fold with nowhere to draw the press's own answer.
 	 */
 	const rails = (
-		lines: readonly RailLine[] | null,
+		read: Extract<RailsReading, { state: 'read' }> | null,
 		hosts: readonly WalletHostLine[] | null,
 		outcome: ReactNode
 	): ReactNode => {
-		if (lines === null) return null;
+		if (read === null) return null;
+		const says = EVIDENCE_SAYS[read.evidence];
 		return (
 			<div className="adm-named">
-				<h3>Donation methods</h3>
-				<p className="adm-prose">
-					Approved is Stripe's permission and not a promise. A gift can still be refused over the
-					currency, the amount, or the donor's own bank.
-				</p>
+				{/* the processor is named, because this fold draws a ledger per processor and two headings
+				    reading the same words over two accounts is a reader working out which one they are
+				    looking at. */}
+				<h3>Stripe donation methods</h3>
+				{says === null ? null : <p className="adm-prose">{says}</p>}
 				<StatusLedger aligned>
-					{lines.map((line) => (
+					{read.rails.map((line) => (
 						<StatusLine
 							key={line.rail}
 							labelAs="span"
@@ -1968,14 +2002,17 @@ export function PaymentsFold({
 		const outcome = busy ? null : provisionOutcome();
 
 		const unread = unreadable(payments, gifts);
-		const read = payments === null || payments.kind === 'unread' ? null : payments;
-		/* the two lists the ledger is drawn from, narrowed here rather than inside {@link rails},
+		/* the one processor this half of the fold is about, taken out of the report that answers for
+		   both of them (./processor-payments.ts). a deployment holding no Stripe key is `unconfigured`
+		   and carries no reading at all, which is the same nothing this block drew for `no_key` before
+		   the report answered per processor. */
+		const stripe = configuredStanding(processorStanding(payments, 'stripe'));
+		/* the two readings the ledger is drawn from, narrowed here rather than inside {@link rails},
 		   because whether each of them landed is what decides where the press's own answer goes: the
 		   panels hang off the rails, so a fold with no rails has no panel to draw one in and a fold
 		   whose sites could not be read has nothing to put in a panel. */
-		const railLines =
-			read !== null && read.report.rails.state === 'read' ? read.report.rails.rails : null;
-		const hostLines = read === null ? null : walletHostLines(wallets, read);
+		const railsRead = stripe?.rails.state === 'read' ? stripe.rails : null;
+		const hostLines = stripe === null ? null : walletHostLines(wallets, stripe.wallets);
 		/* the same read that answered for the rails, so a read that did not land draws no panel and
 		   says so once above. a deployment that answered nothing at all is already saying so on the
 		   line above this one, which is the same sentence about the same request — but the press's own
@@ -1987,9 +2024,9 @@ export function PaymentsFold({
 				? null
 				: payments.kind === 'unread'
 					? noAnswer(payments.read, "it can't say where this Stripe account stands")
-					: rails(railLines, hostLines, walletsResult);
+					: rails(railsRead, hostLines, walletsResult);
 		/* and standing on its own where no panel was drawn to carry it. */
-		const loose = railLines !== null && hostLines !== null ? null : walletsResult;
+		const loose = railsRead !== null && hostLines !== null ? null : walletsResult;
 		const repeats =
 			gifts === null ? null : gifts.kind === 'unread' ? (
 				noAnswer(gifts.read, "it can't say whether repeating gifts are set up")
@@ -2038,23 +2075,24 @@ export function PaymentsFold({
 	}
 
 	return (
-		<Section>
-			{live === null || live.facts.named === null ? null : named(live.facts.named)}
+		<>
+			<Section>
+				{live === null || live.facts.named === null ? null : named(live.facts.named)}
 
-			{/* the two the deployment answers, and the form the one press among them stands in — both
+				{/* the two the deployment answers, and the form the one press among them stands in — both
 			    inside `readings` above, because what says whether either draws anything at all is
 			    what they resolved to. */}
-			<Suspense fallback={asking}>
-				<Await resolve={stripeAccount}>
-					{(payments) => (
-						<Suspense fallback={asking}>
-							<Await resolve={recurring}>{(gifts) => readings(payments, gifts)}</Await>
-						</Suspense>
-					)}
-				</Await>
-			</Suspense>
+				<Suspense fallback={asking}>
+					<Await resolve={payments}>
+						{(accounts) => (
+							<Suspense fallback={asking}>
+								<Await resolve={recurring}>{(gifts) => readings(accounts, gifts)}</Await>
+							</Suspense>
+						)}
+					</Await>
+				</Suspense>
 
-			{/* what this deployment has told Stripe to report to it, and where, once there is a
+				{/* what this deployment has told Stripe to report to it, and where, once there is a
 			    registration to read: the signing secret is stored in the same breath the endpoint is
 			    created, so a deployment holding one is a deployment Stripe has been told to deliver to.
 			    before that there is nothing to report and this draws nothing — the form below is the
@@ -2065,28 +2103,28 @@ export function PaymentsFold({
 			    form is what the deployment holds, and the form is the one thing on the fold to act on.
 			    a reading drawn under it would be a fact an operator meets after the press they came
 			    here to make. */}
-			{stored?.has('STRIPE_WEBHOOK_SECRET') ? <Webhooks address={address} /> : null}
+				{stored?.has('STRIPE_WEBHOOK_SECRET') ? <Webhooks address={address} /> : null}
 
-			{/* the heading names the boxes under it, and the block is what binds it to them:
+				{/* the heading names the boxes under it, and the block is what binds it to them:
 			    `.adm-named` in packages/operator/src/styles/adm.css is a heading, the close step under
 			    it, and a boundary above wide enough that what stands over it and the keys read as two
 			    subjects at a squint. a plain div rather than the class on the form itself, because the
 			    heading has to stand inside the block and a `<form>` inside a `<form>` is not a tree the
 			    parser keeps — everything above stays its own sibling. */}
-			<div className="adm-named">
-				<h3>
-					Your Stripe keys{' '}
-					<AnchoredNote mark="info" label="Where to get your two Stripe keys">
-						<StripeKeys />
-					</AnchoredNote>
-				</h3>
+				<div className="adm-named">
+					<h3>
+						Your Stripe keys{' '}
+						<AnchoredNote mark="info" label="Where to get your two Stripe keys">
+							<StripeKeys />
+						</AnchoredNote>
+					</h3>
 
-				<Form
-					{...keys.mount}
-					className="adm-stack"
-					method="post"
-					preventScrollReset
-					/* every press on this form comes through here, whichever control carries it — the
+					<Form
+						{...keys.mount}
+						className="adm-stack"
+						method="post"
+						preventScrollReset
+						/* every press on this form comes through here, whichever control carries it — the
 					   button below, or the one inside the card it puts up — and what it decides is which
 					   of those two this press is.
 
@@ -2096,226 +2134,248 @@ export function PaymentsFold({
 					   no run to report, no question worth asking, and the button never draws `Setting up`
 					   over a press that was never made — which is what the branching below is arranged
 					   around. */
-					onSubmit={(event) => {
-						keys.mount.onSubmit(event);
-						if (event.defaultPrevented) return;
-						// the submit inside the card, which is the press the card was put up to ask about:
-						// the question has been asked and answered, so it goes.
-						if (confirming !== null) return;
-						const element = form.current;
-						const held = element === null ? null : boxes(element);
-						const ask = held === null ? null : stripeAsked(held, seeded);
-						/* and the pair as it stands at the press, kept for the answer that says the
+						onSubmit={(event) => {
+							keys.mount.onSubmit(event);
+							if (event.defaultPrevented) return;
+							// the submit inside the card, which is the press the card was put up to ask about:
+							// the question has been asked and answered, so it goes.
+							if (confirming !== null) return;
+							const element = form.current;
+							const held = element === null ? null : boxes(element);
+							const ask = held === null ? null : stripeAsked(held, seeded);
+							/* and the pair as it stands at the press, kept for the answer that says the
 						   deployment took it ({@link sent}). the card the branch below may put up cannot be
 						   typed behind, so the press that goes from inside it carries exactly this. */
-						typed.current =
-							held === null || ask === null || ask.act === null
-								? null
-								: { act: ask.act, boxes: held };
-						const lines =
-							ask === null ? [] : confirmLines(ask, MINTED, (name) => stored?.has(name) ?? false);
-						/* the first set-up runs on this press and asks nothing. it takes nothing away —
+							typed.current =
+								held === null || ask === null || ask.act === null
+									? null
+									: { act: ask.act, boxes: held };
+							const lines =
+								ask === null ? [] : confirmLines(ask, MINTED, (name) => stored?.has(name) ?? false);
+							/* the first set-up runs on this press and asks nothing. it takes nothing away —
 						   every value it touches is stated `Set` — so a card between the press and the run
 						   would ask the operator to agree to the press they just made. what no row can
 						   carry is the other errand: a re-save deletes the endpoint Stripe is already
 						   delivering to, which is what `remakesSetup` reads (./stripe-confirm.ts). */
-						if (ask?.act === 'errand' && !remakesSetup(lines)) {
-							// the run still reports in the top layer: this press puts no question up, so the
-							// card it puts up is the report itself.
-							setReporting('pressed');
-							return;
-						}
-						event.preventDefault();
-						if (ask === null || ask.act === null) return;
-						setConfirming({ act: ask.act, lines, pressed: false });
-					}}
-				>
-					{/* the fields stand apart at the group's own step, which is what says where one label,
+							if (ask?.act === 'errand' && !remakesSetup(lines)) {
+								// the run still reports in the top layer: this press puts no question up, so the
+								// card it puts up is the report itself.
+								setReporting('pressed');
+								return;
+							}
+							event.preventDefault();
+							if (ask === null || ask.act === null) return;
+							setConfirming({ act: ask.act, lines, pressed: false });
+						}}
+					>
+						{/* the fields stand apart at the group's own step, which is what says where one label,
 					    its sentence and its box end and the next one begins — the step inside a field is
 					    narrower on purpose (`.adm-field` in packages/operator/src/styles/adm.css). */}
-					<div className="adm-stack">
-						<Field
-							id={secret.id}
-							name={secret.name}
-							label="Secret key"
-							placeholder="sk_live_…"
-							// the code face. these are literals an operator checks character for character
-							// against the page they were copied from.
-							code
-							// which of the thirteen arrive masked, the publishable key below among the ones
-							// that do not, is ./secret-groups.ts's.
-							masked={isMasked('STRIPE_SECRET_KEY')}
-							autoComplete="off"
-							spellCheck={false}
-							defaultValue={secret.defaultValue}
-							// closed while this form's own press is sending them, while a run is going, while
-							// another press on the page writes, and while a write that landed has not yet put
-							// them back — and never while a refusal to this form's own press is being
-							// re-read, which is the answer an operator has to type over ({@link closed}).
-							disabled={closed}
-							// the far end's sentence about this box ended by the keystroke that changes it
-							// (./use-console-form.ts).
-							onInput={secret.onInput}
-							error={secret.message}
-						/>
-						<Field
-							id={published.id}
-							name={published.name}
-							label="Publishable key"
-							placeholder="pk_live_…"
-							code
-							autoComplete="off"
-							spellCheck={false}
-							defaultValue={published.defaultValue}
-							disabled={closed}
-							onInput={published.onInput}
-							error={published.message}
-						/>
-						{withheldBlock(holding === null ? [] : withheldAmong(holding, PAYMENTS_WRITES))}
-					</div>
+						<div className="adm-stack">
+							<Field
+								id={secret.id}
+								name={secret.name}
+								label="Secret key"
+								placeholder="sk_live_…"
+								// the code face. these are literals an operator checks character for character
+								// against the page they were copied from.
+								code
+								// which of the seventeen arrive masked, the publishable key below among the ones
+								// that do not, is ./secret-groups.ts's.
+								masked={isMasked('STRIPE_SECRET_KEY')}
+								autoComplete="off"
+								spellCheck={false}
+								defaultValue={secret.defaultValue}
+								// closed while this form's own press is sending them, while a run is going, while
+								// another press on the page writes, and while a write that landed has not yet put
+								// them back — and never while a refusal to this form's own press is being
+								// re-read, which is the answer an operator has to type over ({@link closed}).
+								disabled={closed}
+								// the far end's sentence about this box ended by the keystroke that changes it
+								// (./use-console-form.ts).
+								onInput={secret.onInput}
+								error={secret.message}
+							/>
+							<Field
+								id={published.id}
+								name={published.name}
+								label="Publishable key"
+								placeholder="pk_live_…"
+								code
+								autoComplete="off"
+								spellCheck={false}
+								defaultValue={published.defaultValue}
+								disabled={closed}
+								onInput={published.onInput}
+								error={published.message}
+							/>
+							{withheldBlock(holding === null ? [] : withheldAmong(holding, PAYMENTS_WRITES))}
+						</div>
 
-					{/* what Stripe turned the pair down for, standing over the press that asked and going the
+						{/* what Stripe turned the pair down for, standing over the press that asked and going the
 					    moment either box is edited — `standing` is the same answer cut down to the boxes
 					    nobody has typed in since (./use-console-form.ts). the row is a field's, drawn
 					    outside a field on purpose: it is one sentence with a mark, and what it is about is
 					    the two boxes above it rather than either one. */}
-					{keys.standing?.[KEY_FIELD('STRIPE_SECRET_KEY')] === undefined ||
-					keyRefusal === undefined ? null : (
-						<FieldMessage>{keyRefusal}</FieldMessage>
-					)}
+						{keys.standing?.[KEY_FIELD('STRIPE_SECRET_KEY')] === undefined ||
+						keyRefusal === undefined ? null : (
+							<FieldMessage>{keyRefusal}</FieldMessage>
+						)}
 
-					<div className="adm-actions">
-						{/* the submit of this form, which also makes it the button Enter in either box
+						<div className="adm-actions">
+							{/* the submit of this form, which also makes it the button Enter in either box
 						    presses. a press that asks first is stopped at the form above rather than here:
 						    what such a press takes away is stated in the card, and the submit carrying it is
 						    the control in there. */}
-						<SaveButton
-							id={SET_UP_PRESS}
-							type="submit"
-							name="intent"
-							value={SET_UP_INTENT}
-							state={keys.state}
-							label="Save"
-							doneLabel="Set up"
-							// closed for exactly what closes the boxes above it ({@link closed}): a press made
-							// while they are shut posts a form the browser leaves those two boxes out of,
-							// which the far end reads as the pair being taken away. the other half — the
-							// boxes having nothing to send — is the state's own and is composed with this
-							// one by packages/operator/src/components/controls/SaveButton.jsx.
-							disabled={closed || undefined}
-						/>
-					</div>
+							<SaveButton
+								id={SET_UP_PRESS}
+								type="submit"
+								name="intent"
+								value={SET_UP_INTENT}
+								state={keys.state}
+								label="Save"
+								doneLabel="Set up"
+								// closed for exactly what closes the boxes above it ({@link closed}): a press made
+								// while they are shut posts a form the browser leaves those two boxes out of,
+								// which the far end reads as the pair being taken away. the other half — the
+								// boxes having nothing to send — is the state's own and is composed with this
+								// one by packages/operator/src/components/controls/SaveButton.jsx.
+								disabled={closed || undefined}
+							/>
+						</div>
 
-					{/* the removal answers here and the other two acts answer in the ledger below: an
+						{/* the removal answers here and the other two acts answer in the ledger below: an
 					    outcome reports at the control that caused it. a write that landed is the button's
 					    own `Set up`, so what is left is the ways it did not happen. */}
-					{removedFailure === null ? null : wrote(removedFailure)}
+						{removedFailure === null ? null : wrote(removedFailure)}
 
-					{/* the run that stopped, standing as the report of the press above it — the one that
+						{/* the run that stopped, standing as the report of the press above it — the one that
 					    came with the page load as much as this page's own once its card is closed. not a
 					    card, because no card is keyed on it: both go up on the press and only the page that
 					    pressed has that. no heading, because the stopped line carries the sentence naming
 					    what to do. it goes when the next press puts a card up, and the running run that
 					    follows replaces the stopped one in the binary. */}
-					{live !== null && reportStands(live, reporting !== null || confirming !== null)
-						? ledger(live)
-						: null}
+						{live !== null && reportStands(live, reporting !== null || confirming !== null)
+							? ledger(live)
+							: null}
 
-					{confirming === null ? null : (
-						<Modal
-							title={ASKS[confirming.act].title}
-							/* a run that is going cannot be left: Escape and a press on the ground are the two
+						{confirming === null ? null : (
+							<Modal
+								title={ASKS[confirming.act].title}
+								/* a run that is going cannot be left: Escape and a press on the ground are the two
 							   ways out of the top layer and both come through here, and either would take the
 							   only report of a chain still running against three hosts off the screen. */
-							onDismiss={() => {
-								if (underway) return;
-								setConfirming(null);
-							}}
-							danger={press?.destroys ? press.label : undefined}
-							dangerProps={press?.destroys ? press.props : undefined}
-							exit={press !== null && !press.destroys ? press.label : undefined}
-							exitProps={press !== null && !press.destroys ? press.props : undefined}
-							/* `Go back` is only true while nothing has happened. once the press is made it is made,
+								onDismiss={() => {
+									if (underway) return;
+									setConfirming(null);
+								}}
+								danger={press?.destroys ? press.label : undefined}
+								dangerProps={press?.destroys ? press.props : undefined}
+								exit={press !== null && !press.destroys ? press.label : undefined}
+								exitProps={press !== null && !press.destroys ? press.props : undefined}
+								/* `Go back` is only true while nothing has happened. once the press is made it is made,
 							   and the way out says so — the run it started is not undone by leaving. */
-							cancel={confirming.pressed ? 'Close' : 'Go back'}
-							cancelProps={{
-								type: 'button',
-								disabled: underway || undefined,
-								onClick: () => setConfirming(null)
-							}}
-						>
-							{/* one line per value the press touches and nothing about the rest: an operator
+								cancel={confirming.pressed ? 'Close' : 'Go back'}
+								cancelProps={{
+									type: 'button',
+									disabled: underway || undefined,
+									onClick: () => setConfirming(null)
+								}}
+							>
+								{/* one line per value the press touches and nothing about the rest: an operator
 							    reading this is deciding whether to make it, and a value they left alone is not
 							    part of that decision. all three words are drawn in the descriptive register —
 							    packages/operator/src/styles/tokens.css states that such a state carries no
 							    mark and no tone, so nothing here colours the removal. the word carries it, and
 							    the destructive rank on the confirm carries the rest. */}
-							<div>
-								{confirming.lines.map((line) => (
-									<SettingRow
-										key={line.name}
-										label={LABEL[line.name] ?? line.name}
-										value={line.act}
-									/>
-								))}
-							</div>
-							{/* the rest of what the press does, which no row can carry — drawn only for the act
+								<div>
+									{confirming.lines.map((line) => (
+										<SettingRow
+											key={line.name}
+											label={LABEL[line.name] ?? line.name}
+											value={line.act}
+										/>
+									))}
+								</div>
+								{/* the rest of what the press does, which no row can carry — drawn only for the act
 							    it belongs to. it is the whole reason an errand puts a card up at all: a first
 							    set-up is made at the button and reaches this only where there is a working
 							    set-up to remake (./stripe-confirm.ts). */}
-							{confirming.act === 'errand' && remakesSetup(confirming.lines) ? (
-								<p className="adm-prose">
-									The endpoint Stripe already sends payments to is deleted and registered again.
-								</p>
-							) : null}
-							{confirming.act === 'remove' ? (
-								<p className="adm-prose">
-									No card can be charged on this deployment afterwards, and the signing secret
-									Stripe issued goes with the key. Nothing can read that one back, so keep your own
-									copy if you still need it.
-								</p>
-							) : null}
-							{/* the run this card's own press started, reported where that press was made. a
+								{confirming.act === 'errand' && remakesSetup(confirming.lines) ? (
+									<p className="adm-prose">
+										The endpoint Stripe already sends payments to is deleted and registered again.
+									</p>
+								) : null}
+								{confirming.act === 'remove' ? (
+									<p className="adm-prose">
+										No card can be charged on this deployment afterwards, and the signing secret
+										Stripe issued goes with the key. Nothing can read that one back, so keep your
+										own copy if you still need it.
+									</p>
+								) : null}
+								{/* the run this card's own press started, reported where that press was made. a
 							    removal makes no run at all and answers at the button, so it draws none. */}
-							{confirming.pressed && live !== null && !landed ? ledger(live) : null}
-						</Modal>
-					)}
+								{confirming.pressed && live !== null && !landed ? ledger(live) : null}
+							</Modal>
+						)}
 
-					{/* the card goes up on the press itself, before there is any reading of the run to
+						{/* the card goes up on the press itself, before there is any reading of the run to
 					    draw it from: the first stage is the console handing the secret key to Stripe, and
 					    those seconds are exactly the wait the card exists to report. what it draws until
 					    the first reading lands is that stage ({@link ledger}), and never the run this fold
 					    is holding — a stopped run stays in the binary until the next press clears it, so it
 					    is the press before this one ({@link reporting}). */}
-					{reporting === null ? null : (
-						<Modal
-							/* the errand the card is about, which is what it goes on saying once the run
+						{reporting === null ? null : (
+							<Modal
+								/* the errand the card is about, which is what it goes on saying once the run
 							   stops: not every stop is a failure — a set-up whose keys are stored and
 							   published and whose repeating gifts are not is one — so a heading that read as
 							   a verdict would be wrong on the half of them the ledger below states exactly. */
-							title="Setting up Stripe"
-							/* a run that is going cannot be left, for the reason the confirm above states:
+								title="Setting up Stripe"
+								/* a run that is going cannot be left, for the reason the confirm above states:
 							   this card is the only report of a chain still running against three hosts. */
-							onDismiss={() => {
-								if (underway) return;
-								setReporting(null);
-							}}
-							/* one way out and no press to make. it is stated rather than left to the default,
+								onDismiss={() => {
+									if (underway) return;
+									setReporting(null);
+								}}
+								/* one way out and no press to make. it is stated rather than left to the default,
 							   which is an unnamed control that would submit the form this card stands inside
 							   (packages/operator/src/components/shell/Dialog.jsx). */
-							exit="Close"
-							exitProps={{
-								type: 'button' as const,
-								disabled: underway || undefined,
-								onClick: () => setReporting(null)
-							}}
-						>
-							{ledger(reporting === 'reading' ? live : null)}
-						</Modal>
-					)}
-				</Form>
-			</div>
-		</Section>
+								exit="Close"
+								exitProps={{
+									type: 'button' as const,
+									disabled: underway || undefined,
+									onClick: () => setReporting(null)
+								}}
+							>
+								{ledger(reporting === 'reading' ? live : null)}
+							</Modal>
+						)}
+					</Form>
+				</div>
+			</Section>
+
+			{/* the second processor, standing under the first as a section of its own: two sections in
+			    one panel are divided by the rule packages/operator/src/styles/adm.css draws between them,
+			    which is what says where one account's readings end and the other's begin. it awaits the
+			    same promise, because one read answers for both (./paypal-section.tsx).
+
+			    the values are read again rather than handed the derivation above: it is the same pure
+			    function over the same answer, and the alternative is a prop typed as the read that did
+			    not land, which the guard above has already returned for. */}
+			<PaypalSection
+				payments={payments}
+				values={heldValues(values.vars.vars)}
+				secrets={secrets}
+				charity={charity}
+				freed={freed}
+				trouble={wrote}
+				noAnswer={noAnswer}
+				busy={busy || working}
+				pending={pending}
+				revalidating={revalidating}
+			/>
+		</>
 	);
 }
 
@@ -2378,7 +2438,7 @@ function Webhooks({ address }: { address: string }): ReactNode {
 	const events = `${useId()}-webhook-events`;
 	return (
 		<div className="adm-named">
-			<h3>Webhooks</h3>
+			<h3>Stripe webhooks</h3>
 			<p className="adm-prose">
 				Stripe reports these events to this deployment, at{' '}
 				<InlineCode>{webhookEndpointUrl(address)}</InlineCode>.
@@ -2398,28 +2458,6 @@ function Webhooks({ address }: { address: string }): ReactNode {
 		</div>
 	);
 }
-
-/**
- * what each standing is called on the page and how loudly it is said.
- *
- * **named for approval and never for outcome.** an approved rail is a necessary condition and never
- * a sufficient one — a real gift still fails on the currency, the amount, or where the donor's bank
- * is — so no word here may be read as saying a way of paying will work. `Approved` rather than
- * `Ready` for exactly that reason.
- *
- * the four that are somebody's to fix are told apart rather than collapsed, because they send an
- * operator to four different places: waiting, a requirement on the Stripe dashboard, asking for the
- * rail in the first place, and one switch. the sentence under each says which, and it is the
- * deployment's own.
- */
-const STANDING: Record<RailStanding, { word: string; tone: Tone }> = {
-	approved: { word: 'Approved', tone: 'done' },
-	in_review: { word: 'Being reviewed', tone: 'note' },
-	not_approved: { word: 'Not usable yet', tone: 'attention' },
-	never_requested: { word: 'Not asked for', tone: 'attention' },
-	switched_off: { word: 'Switched off', tone: 'attention' },
-	account_cannot_charge: { word: 'Blocked', tone: 'blocker' }
-};
 
 /**
  * what each wallet is called on the page.

@@ -1,6 +1,6 @@
 import { FREQUENCIES, type Frequency } from '@better-giving/form/v1';
-import type { PaymentProvider } from '../payments/provider';
-import { readRecurringProvision } from '../payments/recurring-provision';
+import type { Processors } from '../payments/factory';
+import { readRecurringProvisions } from '../payments/recurring-provision';
 import { offeredCadences } from './offered-cadences';
 
 // the repeating-gifts read, kept at the edge for a few minutes at a time.
@@ -24,7 +24,7 @@ import { offeredCadences } from './offered-cadences';
 // re-checked against the served config by `parseQuoteRequest` in ../donations/quote-input.ts.
 //
 // nothing built from a binding is a module-scope singleton (CLAUDE.md): the store is reached inside
-// the call, and the provider arrives as an argument from whichever request built it.
+// the call, and the processor set arrives as an argument from whichever request built it.
 
 /**
  * how long an answer is kept, in seconds.
@@ -63,7 +63,7 @@ const CACHE_PATH = '/__recurring-cadences';
  * straight through.
  */
 export async function cachedCadences(
-	provider: PaymentProvider,
+	processors: Processors,
 	origin: string
 ): Promise<readonly Frequency[]> {
 	const cache = edgeCache();
@@ -74,10 +74,13 @@ export async function cachedCadences(
 		if (kept !== null) return kept;
 	}
 
-	const provision = await readRecurringProvision(provider);
-	const cadences = offeredCadences(provision);
+	const provisions = await readRecurringProvisions(processors);
+	const cadences = offeredCadences(provisions);
 
-	if (cache !== null && key !== null && provision.state !== 'unreadable') {
+	// every configured processor answered, or nothing is kept: a failure kept for five minutes is a
+	// blip turned into a form that has stopped offering Monthly.
+	const readable = Object.values(provisions).every((reading) => reading.state !== 'unreadable');
+	if (cache !== null && key !== null && readable) {
 		await cache.put(
 			key,
 			new Response(JSON.stringify(cadences), {

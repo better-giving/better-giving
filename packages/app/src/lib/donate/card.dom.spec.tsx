@@ -1,4 +1,11 @@
 import type {
+	EligibilityLike,
+	PaypalNamespaceLike,
+	PaypalSdkLike,
+	PaypalSessionLike,
+	SessionOptionsLike
+} from '@better-giving/form/embed/paypal';
+import type {
 	PaymentChangeLike,
 	PaymentElementLike,
 	StripeLike
@@ -16,8 +23,8 @@ import * as copy from './copy';
 //
 // money-shaped, so the coverage is the decisions rather than the markup: which amounts a press is
 // refused for, which fields, what the fee decision does to the figure on the control that spends it,
-// and what the card says out loud about each. the two providers are reached through their own seams,
-// so nothing here touches a network or a payment SDK.
+// and what the card says out loud about each. every provider is reached through its own seam — one
+// entry per processor plus the challenge's — so nothing here touches a network or a payment SDK.
 //
 // in the dom pool because what is asserted is the tree: which element carries a sentence, which
 // control an `aria-describedby` names, where the caret landed. it is not the browser spec CLAUDE.md
@@ -31,12 +38,14 @@ const FEE_RULES: FeeRules = {
 	card: { percent: 0.029, fixedMinor: 30 },
 	apple_pay: { percent: 0.029, fixedMinor: 30 },
 	google_pay: { percent: 0.029, fixedMinor: 30 },
-	ach: { percent: 0.008, fixedMinor: 0, capMinor: 500 }
+	ach: { percent: 0.008, fixedMinor: 0, capMinor: 500 },
+	paypal: { percent: 0.0349, fixedMinor: 49 },
+	venmo: { percent: 0.0349, fixedMinor: 49 }
 };
 
 const CONFIG: FormConfig = {
 	formId: 'ff000000-0000-4000-8000-000000000001',
-	provider: { name: 'stripe', publishableKey: 'pk_test_spec' },
+	providers: [{ name: 'stripe', publishableKey: 'pk_test_spec' }],
 	currency: 'usd',
 	suggestedAmountsMinor: [1000, 2500, 5000],
 	minAmountMinor: 500,
@@ -78,7 +87,8 @@ function paymentProvider() {
 	} as unknown as PaymentElementLike;
 	const stripe = {
 		elements: () => ({ create: () => element, update: async () => {}, submit: async () => ({}) }),
-		confirmPayment: async () => ({}),
+		// never settles, so a gift that reaches the charge stays on the beat that is announced as one.
+		confirmPayment: () => new Promise(() => {}),
 		retrievePaymentIntent: async () => ({})
 	} as unknown as StripeLike;
 	return {
@@ -91,6 +101,25 @@ function paymentProvider() {
 			});
 		}
 	};
+}
+
+/** PayPal's hosted window, as a plain object: the buttons are the whole of what this spec presses. */
+function paypalProvider() {
+	const session = (_options: SessionOptionsLike): PaypalSessionLike => ({
+		start: () => new Promise<unknown>(() => {}),
+		destroy: () => {},
+		cancel: () => {},
+		hasReturned: () => false,
+		resume: () => Promise.resolve()
+	});
+	const sdk: PaypalSdkLike = {
+		findEligibleMethods: () =>
+			Promise.resolve({ isEligible: () => true } satisfies EligibilityLike),
+		createPayPalOneTimePaymentSession: session,
+		createVenmoOneTimePaymentSession: session
+	};
+	const namespace: PaypalNamespaceLike = { createInstance: () => Promise.resolve(sdk) };
+	return { load: async () => namespace };
 }
 
 const CHALLENGE: ChallengeSeam = {
@@ -110,6 +139,7 @@ const CHALLENGE: ChallengeSeam = {
  */
 async function card(config: FormConfig = CONFIG) {
 	const payment = paymentProvider();
+	const paypal = paypalProvider();
 	const host = document.createElement('div');
 	document.body.appendChild(host);
 	const mounted = createRoot(host);
@@ -117,7 +147,13 @@ async function card(config: FormConfig = CONFIG) {
 		mounted.render(
 			<DonateCard
 				config={config}
-				seams={{ payment: { load: payment.load, delay: () => () => {} }, challenge: CHALLENGE }}
+				seams={{
+					payment: {
+						stripe: { load: payment.load, delay: () => () => {} },
+						paypal: { load: paypal.load, delay: () => () => {} }
+					},
+					challenge: CHALLENGE
+				}}
 			/>
 		);
 	});
@@ -431,4 +467,66 @@ it('emits only part names the element publishes, and no control anywhere is disa
 		[...names].filter((name) => (PART_NAMES as readonly string[]).includes(name)).sort()
 	);
 	expect(names.size).toBeGreaterThan(6);
+});
+
+// the hole this page had while its payment seam composed one processor: a deployment holding
+// PayPal's keys and no card processor's served its own donation page with no way to pay on it.
+it('draws a way to pay on a config that offers only PayPal’s rails', async () => {
+	const { root } = await card({
+		...CONFIG,
+		providers: [{ name: 'paypal', publishableKey: 'live_client_id' }],
+		paymentMethods: ['paypal']
+	});
+	walkToGive(root);
+
+	const box = one(root, '[part~="payment"]');
+	expect(box.hidden).toBe(false);
+	expect(box.querySelector('paypal-button')).not.toBeNull();
+});
+
+it('draws both processors’ boxes where a deployment holds both', async () => {
+	const { root } = await card({
+		...CONFIG,
+		providers: [
+			{ name: 'stripe', publishableKey: 'pk_test_spec' },
+			{ name: 'paypal', publishableKey: 'live_client_id' }
+		],
+		paymentMethods: ['card', 'paypal']
+	});
+	walkToGive(root);
+
+	// one box on the card and a node inside it per processor, placed and ordered by the composer.
+	const box = one(root, '[part~="payment"]');
+	expect(box.children).toHaveLength(2);
+	expect(box.querySelector('paypal-button')).not.toBeNull();
+});
+
+// the charge is different news from the mint for a donor who cannot see the spinner, and on which
+// rail is different news again: the sentence is the one place this page says who is holding it.
+it('names the rail in what it says out loud while the charge is in flight', async () => {
+	const { root, payment } = await card();
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(
+			async () =>
+				new Response(
+					// the figure the card is showing, answered back: a quote that moved lands on the
+					// correction screen instead, which is a different sentence and a different test.
+					JSON.stringify({ paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor: 2606 }),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
+				)
+		)
+	);
+	walkToGive(root);
+	payment.pick('card');
+
+	await act(async () => {
+		one(root, 'button[part~="submit"]').click();
+		for (let at = 0; at < 6; at += 1) await Promise.resolve();
+	});
+
+	expect(said(root)).toBe('Confirming your gift with your card issuer.');
+	expect(said(root)).toBe(copy.confirming('card'));
+	// and not the bank's, which a card donor is never waiting on.
+	expect(said(root)).not.toBe(copy.confirming('ach'));
 });

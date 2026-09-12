@@ -19,6 +19,8 @@
 		"./embed/stamp": "./src/embed/stamp.ts",
 		"./embed/api": "./src/embed/api.ts",
 		"./embed/stripe": "./src/embed/stripe.ts",
+		"./embed/paypal": "./src/embed/paypal.ts",
+		"./embed/surface": "./src/embed/surface.ts",
 		"./embed/turnstile": "./src/embed/turnstile.ts",
 		"./embed/resume": "./src/embed/resume.ts",
 		"./styles/tokens.css": "./src/styles/tokens.css",
@@ -34,6 +36,7 @@
 		"test:browser": "vitest --config vitest.browser.config.ts --run"
 	},
 	"dependencies": {
+		"@paypal/paypal-js": "11.0.1",
 		"@stripe/stripe-js": "9.12.1",
 		"xstate": "catalog:"
 	},

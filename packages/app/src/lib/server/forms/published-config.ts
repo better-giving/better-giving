@@ -7,15 +7,15 @@ import type {
 	Program
 } from '@better-giving/form/v1';
 import { OFFERED_PAYMENT_METHODS } from '../../forms/offered-rails';
-import { setCommand } from '@better-giving/operator/deploy-split';
 import { readConfigEnv, type ConfigEnv } from '../config/env';
 import type { Db } from '../db/client';
 import type { OrgProfile } from '../db/schema';
 import { servedDeductibilityStatement } from '../org/deductibility';
 import { readOrgProfile } from '../org/queries';
 import { present } from '../org/receipt-fields';
-import { STRIPE_US_FEE_RULES } from '../payments/fees';
-import { PROVIDER_NAME } from '../payments/provider';
+import { paypalFeeRules, servedFeeRules } from '../payments/fees';
+import { servedProcessors } from '../payments/factory';
+import { PROCESSOR_LABELS, PROCESSOR_NAMES, processorOf } from '../payments/provider';
 import { readActivePrograms, readProgram } from '../programs/queries';
 import { redactPublicId } from '../../redact';
 import type { FormRecord } from './form-input';
@@ -168,7 +168,7 @@ export interface PublishedConfigSources {
  * can reach changes what a form offers rather than taking this route down.
  *
  * `source` is the platform env whole, narrowed here by `readConfigEnv` — the same entry point
- * `createEmailProvider` and `createPaymentProvider` take, so a blank value and a binding sitting
+ * `createEmailProvider` and `createPaymentProviders` take, so a blank value and a binding sitting
  * in a string's slot mean "unset" here exactly as they do there. taking the raw env is what
  * lets the endpoint pass `platform.env` at the one call site that needs a deploy-time value
  * rather than being handed a copy narrowed for a screen: a loader's return value is serialized to
@@ -424,23 +424,22 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 	// the payment keys, last because they are the furthest from the request: an integrator
 	// reading this answer may have no access to the deployment that has to change.
 	//
-	// the secret key is checked here alongside the publishable one though only the publishable
-	// one is served. the next request the form makes after this is the one that charges, so a
+	// a processor's server half is checked here alongside its browser half though only the browser
+	// half is served. the next request the form makes after this is the one that charges, so a
 	// config handed to a deployment that cannot charge is a form that renders and fails at the
-	// last step, which is the worse of the two failures.
-	const publishableKey = (sources.env.STRIPE_PUBLISHABLE_KEY ?? '').trim();
-	const secretKey = (sources.env.STRIPE_SECRET_KEY ?? '').trim();
-	const unsetKeys = [
-		...(publishableKey === '' ? ['STRIPE_PUBLISHABLE_KEY'] : []),
-		...(secretKey === '' ? ['STRIPE_SECRET_KEY'] : [])
-	];
-	if (unsetKeys.length > 0) {
+	// last step, which is the worse of the two failures. `servedProcessors` in
+	// ../payments/factory.ts is where both halves are read, so which processors this deployment can
+	// serve a form on is decided beside which ones it can charge on rather than twice.
+	const processors = servedProcessors(sources.env);
+	if (processors.providers.length === 0) {
 		return refusal(
 			form,
 			'payments_not_configured',
-			`This deployment cannot take a donation: ${unsetKeys.join(' and ')} ` +
-				`${unsetKeys.length === 1 ? 'is' : 'are'} not set.`,
-			STRIPE_KEY_FIX
+			`This deployment cannot take a donation: ${processors.shortfall}.`,
+			// the sentence a deployment part-way through one processor's pair is handed names that
+			// processor's own dashboard, which is what makes it a fix rather than an errand
+			// (`ServedProcessors.fix` in ../payments/factory.ts).
+			processors.fix
 		);
 	}
 
@@ -452,7 +451,11 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 		form,
 		config: {
 			formId: form.id,
-			provider: { name: PROVIDER_NAME, publishableKey },
+			// every processor this deployment can both charge on and start an SDK for, in the port's
+			// own order. `providers` is a set (`FormConfig` in packages/form/src/v1.ts) and each
+			// adapter on the donor's page takes its own entry by name, so a deployment holding a
+			// second processor names it beside the first rather than replacing it.
+			providers: processors.providers,
 			currency: form.currency,
 			suggestedAmountsMinor: form.suggestedAmounts,
 			minAmountMinor: minMinor,
@@ -475,7 +478,11 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 			// account is approved for, read by `offeredRails` in ./offered-rails.ts.
 			paymentMethods: sources.rails,
 			feeCoverage: SERVED_FEE_COVERAGE,
-			feeRules: STRIPE_US_FEE_RULES,
+			// every rail the vocabulary holds, composed from each processor's own table
+			// (`servedFeeRules` in ../payments/fees.ts). which of the two PayPal tables is the one thing
+			// about that processor's pricing this deployment cannot read off the account, so it comes off
+			// a deploy-time answer (`paypalFeeRules` beside it).
+			feeRules: servedFeeRules(paypalFeeRules(sources.env)),
 			locale: SERVED_LOCALE,
 			orgLegalName: legalName,
 			ein: taxId,
@@ -533,12 +540,6 @@ const SERVED_FEE_COVERAGE = 'optional' as const;
  */
 const SERVED_LOCALE = 'en-US';
 
-/** where both keys come from, and the one thing that has to be true of the pair. */
-const STRIPE_KEY_FIX =
-	"In the org's own Stripe dashboard, take the secret key and the publishable key from the same " +
-	`screen, then run \`${setCommand('STRIPE_SECRET_KEY')}\` and ` +
-	`\`${setCommand('STRIPE_PUBLISHABLE_KEY')}\` against this deployment.`;
-
 /**
  * the same answer, or a refusal where what it holds is a config no donation form would render.
  *
@@ -571,11 +572,23 @@ const STRIPE_KEY_FIX =
 export function renderableConfig(result: PublishedConfigResult): PublishedConfigResult {
 	if (!result.ok || result.config.paymentMethods.length > 0) return result;
 
+	// the processors that answered and the rails those processors settle, rather than the whole
+	// vocabulary: a deployment holding PayPal alone has no Stripe account whose standings could be
+	// read and no card rail anything here could mint, so naming either sends an operator looking for
+	// a screen that does not exist. taken out of the port's own list rather than off the served one,
+	// because `Provider.name` in packages/form/src/v1.ts is a string on purpose — a name off the
+	// wire is not one this repository has a label or a rail table for.
+	const named = new Set(result.config.providers.map((provider) => provider.name));
+	const answering = PROCESSOR_NAMES.filter((name) => named.has(name));
+	const labels = answering.map((name) => PROCESSOR_LABELS[name]).join(' and ');
+	const rails = OFFERED_PAYMENT_METHODS.filter((rail) => answering.includes(processorOf(rail)));
+	const one = answering.length === 1;
+
 	return refusal(
 		result.form,
 		'payments_not_configured',
-		'This deployment cannot serve a donation form: its Stripe account is approved for none of ' +
-			`the rails a donation form offers (${[...OFFERED_PAYMENT_METHODS].join(', ')}).`,
+		`This deployment cannot serve a donation form: ${labels} ${one ? 'is' : 'are'} approved for ` +
+			`none of the rails ${one ? 'it settles' : 'they settle'} (${rails.join(', ')}).`,
 		'Open the console (`better-giving open`), read the standing shown against each rail, and clear ' +
 			'it where the processor’s own dashboard says to. A rail switched off there is one switch; ' +
 			'a capability never requested has to be asked for.'

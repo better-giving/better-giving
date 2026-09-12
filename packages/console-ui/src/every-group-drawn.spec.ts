@@ -7,7 +7,7 @@ import * as groups from './lib/secret-groups';
 // nobody types, and this is what makes that structural rather than remembered.
 //
 // **it exists because the absence of one was invisible.** ./lib/secret-groups.ts declares four
-// groups and ./lib/secret-groups.spec.ts holds the covering that files every one of the thirteen in
+// groups and ./lib/secret-groups.spec.ts holds the covering that files every one of the seventeen in
 // a group or on the list of those that have none — so a name added to `DEPLOY_VARS` with neither is
 // a case that fails. what neither of those can see is a group with no block on the page: the
 // enumeration still covers every name, the covering still passes, and the value simply has nowhere
@@ -34,6 +34,7 @@ const DRAWS = /SECRET_GROUPS\.filter\(\(group\) => group\.id === (\w+)\)/g;
 const SOURCES = [
 	'routes/_index.tsx',
 	'lib/payments-fold.tsx',
+	'lib/paypal-section.tsx',
 	'lib/sites-fold.tsx',
 	'lib/smtp-fold.tsx',
 	'lib/password-fold.tsx'
@@ -43,7 +44,7 @@ const SOURCES = [
    `TURNSTILE_SECRET_KEY` is the whole of the spam group and the first deploy mints it with the
    widget it belongs to (`packages/console/internal/first`), so there is no value for an operator to paste
    and a block over it would be boxes for a credential already set. it stays in the enumeration
-   because lib/secret-groups.spec.ts's covering has to file every one of the thirteen somewhere.
+   because lib/secret-groups.spec.ts's covering has to file every one of the seventeen somewhere.
 
    an id here is an exemption and not a skip: the case below asserts each one is drawn by nothing,
    so a block added back for it fails this file rather than passing under it. */

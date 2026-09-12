@@ -20,7 +20,8 @@ import { readOrgProfile } from '../org/queries';
 import {
 	DONATION_METADATA_KEY,
 	isRetryable,
-	PROVIDER_NAME,
+	PROCESSOR_LABELS,
+	type ProcessorName,
 	type Settlement,
 	type WebhookDelivery
 } from '../payments/provider';
@@ -31,7 +32,7 @@ import { sendReceipt } from './receipt';
 import { sendSettledNotice } from './settled-notice';
 import { sendTributeNotice } from './tribute-notice';
 
-// what a verified Stripe delivery does to this deployment's records: it corrects the payment row
+// what a verified delivery does to this deployment's records: it corrects the payment row
 // and, where money actually moved, puts the gift in the books.
 //
 // ---------------------------------------------------------------------------
@@ -58,10 +59,11 @@ import { sendTributeNotice } from './tribute-notice';
 // for this payment is recognised exactly once" the thing the database enforces.
 //
 // keying on the delivery's event id instead would enforce something weaker and wrong: every one of
-// `SETTLEMENT_EVENT_TYPES` in ../payments/stripe.ts re-reads the transaction rather than trusting
-// what arrived, precisely because deliveries carry no ordering guarantee — so two different events
-// about one charge can both read `succeeded`, and under distinct event ids both would post. the
-// gift would be in the books twice, with every row reading clean.
+// `SETTLEMENT_EVENT_TYPES` — the constant each adapter declares, ../payments/stripe.ts and
+// ../payments/paypal.ts alike — re-reads the transaction rather than trusting what arrived,
+// precisely because deliveries carry no ordering guarantee. so two different events about one
+// charge can both read `succeeded`, and under distinct event ids both would post; the gift would be
+// in the books twice, with every row reading clean.
 //
 // a redelivery therefore surfaces as a UNIQUE violation on insert, which CLAUDE.md names as the
 // correct and only reliable answer, and `alreadyPosted` below is what turns it back into a 200.
@@ -133,8 +135,8 @@ import { sendTributeNotice } from './tribute-notice';
 //
 // the batch is the commit. the receipt, the donor's "we could not collect your gift" and the alert
 // are all sent after it, and their failure is reported rather than raised, because a non-200 makes
-// Stripe redeliver and a redelivery whose posting is refused by the constraint above would re-send
-// only the mail — a donor receipted twice for one gift. an unsent receipt leaves
+// the processor redeliver and a redelivery whose posting is refused by the constraint above would
+// re-send only the mail — a donor receipted twice for one gift. an unsent receipt leaves
 // `donation.receipt_sent_at` null, which is exactly the backlog ../email/receipt.ts describes.
 //
 // "reported rather than raised" covers a transport that faults outright as well as one that answers
@@ -161,8 +163,8 @@ import { sendTributeNotice } from './tribute-notice';
  * deals with one delivery: verify, re-read, correct, post, then tell people.
  *
  * never throws. both ports are sealed by their factories and every write is a result, so the only
- * way out is a `SettleResult` — an exception here is a 500, and Stripe reads a 500 as "deliver this
- * again" for three days.
+ * way out is a `SettleResult` — an exception here is a 500, and a processor reads a 500 as "deliver
+ * this again" for three days.
  */
 export async function settleDelivery(
 	deps: SettleDeps,
@@ -175,8 +177,8 @@ export async function settleDelivery(
 		// a delivery that did not verify is answered non-2xx rather than 200, and that is a
 		// departure from the terminal-means-2xx rule `isRetryable` states — taken because of what
 		// the two answers do to the one operator who can act. the processor treats every non-2xx as
-		// a failed delivery and shows it as one, so a deployment holding the wrong
-		// STRIPE_WEBHOOK_SECRET sees a dashboard full of failures. answered 200, the same
+		// a failed delivery and shows it as one, so a deployment holding the wrong verification
+		// value for its own endpoint sees a dashboard full of failures. answered 200, the same
 		// deployment reads as healthy while every settlement is silently dropped, and nothing
 		// anywhere reports it. no alert goes with it: this endpoint is public, so an unverified
 		// delivery is anyone's, and mailing on one is a way to send mail from outside.
@@ -209,8 +211,9 @@ export async function settleDelivery(
 	const read = await deps.provider.readSettlement(event.providerTxnId);
 	if (!read.ok) {
 		if (isRetryable(read.reason)) return { ok: false, reason: 'incomplete', detail: read.detail };
+		const processor = processorLabel(deps);
 		await alert(deps, {
-			headline: 'A Stripe delivery could not be read and was not acted on',
+			headline: `A ${processor} delivery could not be read and was not acted on`,
 			body:
 				'The delivery verified and the transaction behind it could not be read. Nothing was ' +
 				'written. Repeating the call answers the same way, so this needs a person.',
@@ -220,7 +223,7 @@ export async function settleDelivery(
 				{ label: 'Transaction', value: event.providerTxnId },
 				{ label: 'Reason', value: read.detail }
 			],
-			action: 'Find the payment in the Stripe dashboard and reconcile it by hand.'
+			action: `Find the payment in the ${processor} dashboard and reconcile it by hand.`
 		});
 		return { ok: true, outcome: 'unactionable', detail: read.detail };
 	}
@@ -238,7 +241,7 @@ export async function settleDelivery(
 		};
 	}
 
-	const target = await findTarget(deps.db, settlement.providerTxnId);
+	const target = await findTarget(deps.db, deps.provider.processor, settlement.providerTxnId);
 	if (target === null) return unmatched(deps, event.id, settlement);
 
 	// what the gift's own lines say this money is for — read only where money moved, since a
@@ -348,6 +351,20 @@ async function tellingFault(
 	}
 }
 
+/**
+ * what an operator-facing sentence calls the processor that delivered this.
+ *
+ * off the provider that answered rather than off anything on the row or in the delivery, because it
+ * is the same fact `findTarget` keys the lookup on — `PaymentProvider.processor` in
+ * ../payments/provider.ts — so a sentence and the row it is about cannot name different processors.
+ * every dashboard this file sends somebody to is named this way and none is spelled in place: one
+ * literal is all it takes to send an operator to the wrong company's dashboard for a payment it
+ * does not hold.
+ */
+function processorLabel(deps: SettleDeps): string {
+	return PROCESSOR_LABELS[deps.provider.processor];
+}
+
 /** the gift a settlement belongs to, read once. */
 type Target = {
 	readonly payment: Payment;
@@ -377,7 +394,11 @@ type Target = {
  * `donation.program_id` is nullable, and a gift given to no cause is the ordinary one. its name is
  * what the receipt states (`ReceiptTarget.program` in ./receipt.ts).
  */
-async function findTarget(db: Db, providerTxnId: string): Promise<Target | null> {
+async function findTarget(
+	db: Db,
+	processor: ProcessorName,
+	providerTxnId: string
+): Promise<Target | null> {
 	const [row] = await db
 		.select({
 			payment,
@@ -392,7 +413,7 @@ async function findTarget(db: Db, providerTxnId: string): Promise<Target | null>
 		.innerJoin(contact, eq(donation.contactId, contact.id))
 		.leftJoin(form, eq(donation.formId, form.id))
 		.leftJoin(program, eq(donation.programId, program.id))
-		.where(and(eq(payment.provider, PROVIDER_NAME), eq(payment.providerTxnId, providerTxnId)))
+		.where(and(eq(payment.provider, processor), eq(payment.providerTxnId, providerTxnId)))
 		.limit(1);
 
 	return row ?? null;
@@ -588,14 +609,15 @@ async function unrecognisable(
 	settlement: Settlement,
 	problem: string
 ): Promise<SettleResult> {
+	const processor = processorLabel(deps);
 	await alert(deps, {
 		headline: 'A gift settled and the books could not take it',
 		body:
 			'A payment succeeded and nothing was posted, so the books do not have it: either what ' +
-			'Stripe reported about the payment is not something the ledger can hold, or what the gift ' +
-			'is itemized as does not account for the money that moved. The payment record was ' +
-			'corrected with everything Stripe did report. Nothing was guessed at, and sending the ' +
-			'delivery again reaches the same figures.',
+			`${processor} reported about the payment is not something the ledger can hold, or what the ` +
+			'gift is itemized as does not account for the money that moved. The payment record was ' +
+			`corrected with everything ${processor} did report. Nothing was guessed at, and sending ` +
+			'the delivery again reaches the same figures.',
 		facts: [
 			{ label: 'Payment', value: target.payment.id },
 			{ label: 'Donation', value: target.donation.id },
@@ -604,8 +626,8 @@ async function unrecognisable(
 			{ label: 'Problem', value: problem }
 		],
 		action:
-			'Open the gift in /admin, check it against the payment in the Stripe dashboard, and post ' +
-			'it by hand.'
+			`Open the gift in /admin, check it against the payment in the ${processor} dashboard, and ` +
+			'post it by hand.'
 	});
 
 	return {
@@ -641,15 +663,21 @@ async function somethingWasCollected(db: Db, donationId: string): Promise<boolea
  * the rail is what answers it, and the answer is a property of when the rail fails rather than of
  * how it fails:
  *
- *   ach   — the debit is refused days after the donor closed the tab. nothing was ever on screen
- *           and there is nobody left to show it to, so a message is the only way they find out.
- *   card  — the decline happens while the donor is watching, and the form shows it. a message
- *           arriving afterwards contradicts the retry that succeeded, and tells somebody who
- *           already gave that they did not.
+ *   ach    — the debit is refused days after the donor closed the tab. nothing was ever on screen
+ *            and there is nobody left to show it to, so a message is the only way they find out.
+ *   card   — the decline happens while the donor is watching, and the form shows it. a message
+ *            arriving afterwards contradicts the retry that succeeded, and tells somebody who
+ *            already gave that they did not.
+ *   paypal — refused in the processor's window while the donor watches, and refused days later
+ *            when a delayed funding source is declined. one rail fails at both times and the row
+ *            cannot say which, so it is written as ach is: a message to somebody who already saw
+ *            the failure is the cheaper mistake than silence on a gift they believe they made.
+ *   venmo  — the balance transfer is instant and the donor is still in that window when it is
+ *            refused, so it fails the way card does.
  *   cash,
- *   check — staff entry: there is no donor session, no processor and no attempt the donor made.
- *           a failure here is a correction to a record, and the person who typed it is the person
- *           who fixes it.
+ *   check  — staff entry: there is no donor session, no processor and no attempt the donor made.
+ *            a failure here is a correction to a record, and the person who typed it is the person
+ *            who fixes it.
  *
  * a rail added to `PAYMENT_METHODS` in ../db/schema.ts lands on the `default`-free switch below
  * and stops the type check, which is the point of writing it as one: whether a new rail's failure
@@ -658,8 +686,10 @@ async function somethingWasCollected(db: Db, donationId: string): Promise<boolea
 export function failureIsNewsToTheDonor(rail: PaymentMethod): boolean {
 	switch (rail) {
 		case 'ach':
+		case 'paypal':
 			return true;
 		case 'card':
+		case 'venmo':
 		case 'cash':
 		case 'check':
 			return false;
@@ -766,8 +796,9 @@ async function unmatched(
 	settlement: Settlement
 ): Promise<SettleResult> {
 	const named = settlement.metadata[DONATION_METADATA_KEY] ?? '';
+	const processor = processorLabel(deps);
 	await alert(deps, {
-		headline: 'A Stripe payment settled against no gift in this deployment',
+		headline: `A ${processor} payment settled against no gift in this deployment`,
 		body:
 			'A delivery verified and named a transaction with no payment row here, so nothing was ' +
 			'written and nothing was posted. If it succeeded, money moved and the books do not have ' +
@@ -780,7 +811,7 @@ async function unmatched(
 			{ label: 'Amount', value: `${settlement.amountMinor} ${settlement.currency} (minor units)` },
 			{ label: 'Donation named by the intent', value: named }
 		],
-		action: 'Find this transaction in the Stripe dashboard and record the gift by hand.'
+		action: `Find this transaction in the ${processor} dashboard and record the gift by hand.`
 	});
 
 	return {
@@ -805,31 +836,34 @@ async function unmatched(
  */
 async function tellPeople(deps: SettleDeps, target: Target, settlement: Settlement): Promise<void> {
 	if (settlement.feeMinor === null) {
-		// the fee is waited for rather than read once — `readSettlement` in ../payments/stripe.ts
-		// asks again inside the delivery and refuses it while the figure is still coming, so a gift
-		// reaching here is one where waiting is over rather than one that raced Stripe and lost.
+		// a figure that is genuinely absent rather than one this delivery arrived ahead of, and each
+		// adapter earns that for its own processor: ../payments/stripe.ts asks again inside the
+		// delivery and refuses it while the figure is still coming, and PayPal publishes the fee on
+		// the capture that carries it (`feeOf` in ../payments/paypal.ts), so a completed capture has
+		// it in the same answer. so this alert is unconditional rather than a guess at a race.
+		const processor = processorLabel(deps);
 		await alert(deps, {
 			headline: 'A settled gift was posted with no processor fee',
 			body:
 				'The charge is in the books at face value and the fee it was taken out of is not. ' +
-				'Undeposited funds is overstated by that amount until an entry is posted for it. Stripe ' +
-				'published no fee for this payment in the currency the gift was charged in, which is ' +
-				'the only currency the entry could be posted in.',
+				'Undeposited funds is overstated by that amount until an entry is posted for it. ' +
+				`${processor} published no fee for this payment in the currency the gift was charged ` +
+				'in, which is the only currency the entry could be posted in.',
 			facts: [
 				{ label: 'Payment', value: target.payment.id },
 				{ label: 'Donation', value: target.donation.id },
 				{ label: 'Transaction', value: settlement.providerTxnId }
 			],
-			// what an operator can actually do, and no more. the figure has to come from Stripe
-			// because this app could not read it, and nothing in the dashboard posts a correcting
-			// entry — `post` in ../ledger/posting.ts is reached from the settlement path alone — so
-			// handing over the figure is the whole of what this alert can do with it.
+			// what an operator can actually do, and no more. the figure has to come from the
+			// processor because this app could not read it, and nothing in the dashboard posts a
+			// correcting entry — `post` in ../ledger/posting.ts is reached from the settlement path
+			// alone — so handing over the figure is the whole of what this alert can do with it.
 			action:
-				'Find this payment in the Stripe dashboard and keep the fee it states, in the currency ' +
-				'the gift was charged in. Keep only a figure Stripe states for this payment: a fee ' +
-				'reported in another currency is not one to convert, because Stripe publishes no fee ' +
-				'in the currency a donor was charged in. This deployment records nothing for it, so ' +
-				'carry that figure into the books your organisation keeps outside it.'
+				`Find this payment in the ${processor} dashboard and keep the fee it states, in the ` +
+				`currency the gift was charged in. Keep only a figure ${processor} states for this ` +
+				'payment: a fee reported in another currency is not one to convert, because the ' +
+				'converted figure is one nobody published. This deployment records nothing for it, ' +
+				'so carry that figure into the books your organisation keeps outside it.'
 		});
 	}
 

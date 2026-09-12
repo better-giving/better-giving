@@ -9,7 +9,7 @@ import pageChrome from '$lib/donate/page.css?url';
 import { cachedCadences } from '$lib/server/forms/cadence-cache';
 import { readPublishedConfig, renderableConfig } from '$lib/server/forms/published-config';
 import { cachedRails } from '$lib/server/forms/rail-cache';
-import { createPaymentProvider } from '$lib/server/payments/factory';
+import { createPaymentProviders } from '$lib/server/payments/factory';
 import { database, platform } from '../context';
 import type { Route } from './+types/$formId';
 
@@ -81,7 +81,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	// a return value is serialized into the document, so an env handed onward puts the Stripe secret
 	// one `return { env }` from being published. `readPublishedConfig` narrows it.
 	const { env } = context.get(platform);
-	const provider = createPaymentProvider(env);
+	const processors = createPaymentProviders(env);
 	const origin = new URL(request.url).origin;
 
 	// composed exactly as ./api.v1.forms.$id.config.ts composes it, so the page and the embed refuse
@@ -92,8 +92,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			db,
 			params.formId,
 			env,
-			() => cachedCadences(provider, origin),
-			() => cachedRails(provider, origin)
+			() => cachedCadences(processors, origin),
+			() => cachedRails(processors, origin)
 		)
 	);
 	if (!result.ok) return noForm();

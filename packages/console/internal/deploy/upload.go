@@ -289,7 +289,7 @@ func assetsField(token, headers string) map[string]any {
 // account, and the field is `id` on the way up whatever a later read of the settings calls it.
 //
 // **the release goes up with them, and that is what makes it a fact about what is running.** it is
-// the console's own record about the deployment rather than one of the thirteen an operator
+// the console's own record about the deployment rather than one of the seventeen an operator
 // configures (../deployment/recorded.go), and it travels in this metadata so that no state exists
 // where the code landed and the record says another release. a binary naming no release writes no
 // binding at all: `keep_bindings` then leaves whatever the last deploy recorded, where an empty one

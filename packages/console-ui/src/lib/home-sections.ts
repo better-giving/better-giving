@@ -177,7 +177,7 @@ function sitesRow(sites: readonly string[], donatePage: string): HomeSection {
 /**
  * the six rows, from the reading the binary answered with.
  *
- * **a door that did not answer never reaches here.** the thirteen values come off the account in
+ * **a door that did not answer never reaches here.** the seventeen values come off the account in
  * one read that is scoped to no fold, so a console that could not take it draws no fold at all —
  * the face is `blocked` and this is not called. the empty fallback below is what that arm would
  * read as, and it is stated rather than asserted because an assertion is a way for this to throw
@@ -191,6 +191,10 @@ export function readSections(read: HomeReading): readonly HomeSection[] {
 	const held = new Set(vars.filter((row) => row.kind !== 'absent').map((row) => row.name));
 	const configured = (...names: readonly DeployValueName[]): SectionState =>
 		names.every((name) => held.has(name)) ? 'ready' : 'todo';
+
+	/** the first of several alternatives being met, which is what the payments row is read as. */
+	const either = (...alternatives: readonly SectionState[]): SectionState =>
+		alternatives.includes('ready') ? 'ready' : 'todo';
 
 	// the profile as the deployment holds it, which is what the two folds that edit it are read
 	// against. an empty box is the whole reading — what a value may be is the deployment's, in one
@@ -212,9 +216,20 @@ export function readSections(read: HomeReading): readonly HomeSection[] {
 		// as a job an operator had left undone.
 		password: configured('ADMIN_PASSWORD'),
 		organisation: identity,
-		// the three a deployment cannot take a card without: the key every charge is made with, the
-		// one that verifies what Stripe delivers back, and the half every donor's browser is handed.
-		payments: configured('STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'STRIPE_PUBLISHABLE_KEY'),
+		// the pair one processor charges on, and a deployment holding either pair can take a gift.
+		// **it is the same reading the deployment makes** (`CHARGE_PAIRS` in
+		// packages/app/src/lib/server/config/readiness.ts), because the two sides report one job: a
+		// console holding a longer list is a screen saying `Incomplete` over a deployment that has
+		// already served the gate aside and is taking gifts.
+		//
+		// **neither webhook value is on a pair.** without one a settled charge is never heard about,
+		// which is what stops a repeating gift being written down — but a one-off gift is still
+		// charged, and this row answers whether one can be. the payments fold is where the difference
+		// between the two is drawn and acted on (./payments-fold.tsx, ./paypal-section.tsx).
+		payments: either(
+			configured('STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY'),
+			configured('PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET')
+		),
 		// `SMTP_PORT` is deliberately not here. 465 is the only port the deployment dials and an
 		// absent one means 465, so there is nothing an operator sets — the fold states the value
 		// rather than asking for it (./smtp-fold.tsx), and a row waiting on the name would report a

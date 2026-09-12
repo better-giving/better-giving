@@ -4,7 +4,7 @@ import { readWranglerConfig } from '../wrangler-config.testing';
 
 // the guard on "a deploy from a terminal does not wipe this deployment's settings".
 //
-// all thirteen values ./env.ts and ../auth/env.ts read are plain Worker vars — which thirteen, and
+// all seventeen values ./env.ts and ../auth/env.ts read are plain Worker vars — which seventeen, and
 // why every one of them is a var rather than a secret, is `@better-giving/operator/deploy-split`,
 // and the assertion that the list is exactly the names this app reads is ./deploy-split.spec.ts.
 // this file is the wrangler side alone: what has to be true of packages/app/wrangler.jsonc for a
@@ -20,7 +20,7 @@ import { readWranglerConfig } from '../wrangler-config.testing';
 // value is a deployment artifact (CLAUDE.md, Product surface) — and half of them are credentials,
 // so a committed block is a live Stripe key in a public repository. that leaves the deployment
 // itself as the only place a value exists — and with `keep_vars` off, the next plain
-// `pnpm run deploy` uploads a config that mentions none of them and Cloudflare drops all thirteen,
+// `pnpm run deploy` uploads a config that mentions none of them and Cloudflare drops all seventeen,
 // leaving a deployment that can sign nobody in, charge nothing and send nothing.
 //
 // `keep_vars` is a top-level key and wrangler's config schema puts it on `RawConfig` alone and not
@@ -72,11 +72,11 @@ describe('the deploy-time configuration this app is deployed with', () => {
 	 * and the same thing said against the list, so a failure names the value rather than the block.
 	 *
 	 * the assertion above is the stronger one — no `vars` block at all — and this is what it is for:
-	 * every one of the thirteen is a credential or an org-specific address, and the one that gets
+	 * every one of the seventeen is a credential or an org-specific address, and the one that gets
 	 * committed will be committed by someone adding a `vars` block for a value they thought was
 	 * harmless.
 	 */
-	it('declares none of the thirteen anywhere in the file', () => {
+	it('declares none of the seventeen anywhere in the file', () => {
 		const declared = [
 			...Object.keys((config.vars as Record<string, unknown>) ?? {}),
 			...Object.values(config.env ?? {}).flatMap((env) =>

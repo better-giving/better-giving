@@ -37,7 +37,7 @@ import type { Failure } from '../checkout.machine';
 import type { CheckoutPorts, ConfirmOutcome } from '../ports';
 import { resolveAppearance } from '../styles/resolve';
 import { INJECTING_NONCE } from './nonce';
-import { RAILS } from './rails';
+import { isStripeRail, RAILS, type StripeRail } from './rails';
 import { stampReturnUrl } from './resume';
 import type { FormConfig, Frequency, PaymentMethod, Quote, QuoteRequest } from '../v1';
 import {
@@ -50,11 +50,23 @@ import {
 } from './outcome';
 
 /**
+ * what this adapter's own entry on `FormConfig.providers` calls itself.
+ *
+ * the config carries a set of processors and each adapter takes its own by name (`Provider` in
+ * ../v1.ts), so this is the word that picks this file's key out of it. it is the same word the
+ * deployment serving this repository writes — `PROVIDER_NAME` in
+ * `src/lib/server/payments/provider.ts` — and a served config spelling it differently is one this
+ * file draws no fields for.
+ */
+const PROVIDER_NAME = 'stripe';
+
+/**
  * whether a rail may be collected from again on a schedule.
  *
- * total over `PaymentMethod` for the reason `RAILS` above is: a rail added to `PAYMENT_METHODS` in
- * ../v1.ts has to answer this question rather than inherit an answer, and the answer it would
- * inherit is a donor authorizing a repeat on a rail nothing can collect from a second time.
+ * total over `StripeRail` for the reason `RAILS` in ./rails.ts is: a rail added to this processor's
+ * list there has to answer this question rather than inherit an answer, and the answer it would
+ * inherit is a donor authorizing a repeat on a rail nothing can collect from a second time. the
+ * rails another processor settles are absent because this file never asks for one of those.
  *
  * both rails this deployment quotes on answer yes. cards and ACH Direct Debit are each supported by
  * Subscriptions and by the Payment Element in the provider's own product-support table
@@ -63,7 +75,7 @@ import {
  * decision rather than an assumption. the wallets answer for the card they are delivered as, which
  * is the same thing `RAILS` above already says about them.
  */
-const REPEATING_RAILS: Readonly<Record<PaymentMethod, boolean>> = Object.freeze({
+const REPEATING_RAILS: Readonly<Record<StripeRail, boolean>> = Object.freeze({
 	card: true,
 	apple_pay: true,
 	google_pay: true,
@@ -417,7 +429,25 @@ export function createPaymentSurface(
 	onUnavailable: (failure: Failure) => void,
 	seam?: PaymentSeam
 ): PaymentSurface {
-	const rails = config.paymentMethods;
+	/**
+	 * the rails on offer that this processor settles, and never the whole offered list.
+	 *
+	 * a config may name rails another processor collects (`PAYPAL_RAILS` in ./rails.ts), and this
+	 * group is built from `paymentMethodTypes`: one name this processor has no method for is a group
+	 * that refuses to be created at all, which takes the card fields down with it on a form whose
+	 * card rail was fine.
+	 */
+	const rails = config.paymentMethods.filter(isStripeRail);
+	/**
+	 * the publishable key for this file's own processor, off a config that may name several.
+	 *
+	 * taken by `name` rather than by position: a deployment holding two processors names both, and
+	 * the one entry this file can start an SDK on is its own. a config naming none is not this
+	 * adapter's to draw, and it is reported the way every other missing-fields case is rather than
+	 * as a silent empty box.
+	 */
+	const publishableKey =
+		config.providers.find((entry) => entry.name === PROVIDER_NAME)?.publishableKey ?? null;
 	const currency = config.currency.toLowerCase();
 	/**
 	 * where a donor sent to their bank comes back to, decided here rather than at the press.
@@ -462,8 +492,8 @@ export function createPaymentSurface(
 	/**
 	 * the rails a gift of the current shape may be confirmed on, as the provider names them.
 	 *
-	 * deduplicated, and that is load-bearing rather than tidy: three of the four rails this form
-	 * vocabulary holds are delivered as `card`, so a deployment offering a card and a wallet names
+	 * deduplicated, and that is load-bearing rather than tidy: three of the four rails this processor
+	 * settles are delivered as `card`, so a deployment offering a card and a wallet names
 	 * the same wire type twice and the provider refuses the group outright. the wallets add no type
 	 * of their own — they are drawn by the `wallets` hash below, off the `card` this already
 	 * carries.
@@ -530,27 +560,28 @@ export function createPaymentSurface(
 	 * fields are not coming up, which is the one thing this file has to say and the one way forward
 	 * it has to offer.
 	 */
-	const started: Promise<StripeLike | null> = abandoned
-		? Promise.resolve(null)
-		: new Promise((answer) => {
-				disarm = delay(() => {
-					disarm = null;
-					unanswered.add(load);
-					unavailable(noFieldsFix('its script never answered on this page, either way'));
-					answer(null);
-				}, MOUNT_DEADLINE_MS);
-				const answered = (stripe: StripeLike | null): void => {
-					disarm?.();
-					disarm = null;
-					// an answer, however late. left on the record a loader that came up at forty seconds
-					// would refuse every boot after it for the life of the page — the donor presses Try
-					// again on a page where the provider's script is loaded and working, and is told the
-					// fields are not coming up by a surface that never asked.
-					unanswered.delete(load);
-					answer(stripe);
-				};
-				load(config.provider.publishableKey).then(answered, () => answered(null));
-			});
+	const started: Promise<StripeLike | null> =
+		abandoned || publishableKey === null
+			? Promise.resolve(null)
+			: new Promise((answer) => {
+					disarm = delay(() => {
+						disarm = null;
+						unanswered.add(load);
+						unavailable(noFieldsFix('its script never answered on this page, either way'));
+						answer(null);
+					}, MOUNT_DEADLINE_MS);
+					const answered = (stripe: StripeLike | null): void => {
+						disarm?.();
+						disarm = null;
+						// an answer, however late. left on the record a loader that came up at forty seconds
+						// would refuse every boot after it for the life of the page — the donor presses Try
+						// again on a page where the provider's script is loaded and working, and is told the
+						// fields are not coming up by a surface that never asked.
+						unanswered.delete(load);
+						answer(stripe);
+					};
+					load(publishableKey).then(answered, () => answered(null));
+				});
 
 	const ready = started
 		.then((stripe): LiveGroup | null => {
@@ -637,7 +668,7 @@ export function createPaymentSurface(
 			// unchecked — a rail name or a layout value the provider does not know is an error it
 			// raises at mount, on a donor's screen, where this module can only report that the
 			// fields are not coming up. checked against the vendor's own type it is a failed build.
-			const wallet = (rail: PaymentMethod): 'auto' | 'never' =>
+			const wallet = (rail: StripeRail): 'auto' | 'never' =>
 				rails.includes(rail) ? 'auto' : 'never';
 			const element = elements.create('payment', {
 				fields: { billingDetails: { name: 'never', email: 'never' } },
@@ -701,9 +732,11 @@ export function createPaymentSurface(
 		if (live !== null) return;
 		unavailable(
 			noFieldsFix(
-				abandoned
-					? 'its script had already been found dead on this page by an earlier attempt'
-					: 'it could not be started on this page at all'
+				publishableKey === null
+					? `the served config names no ${PROVIDER_NAME} processor to start it with`
+					: abandoned
+						? 'its script had already been found dead on this page by an earlier attempt'
+						: 'it could not be started on this page at all'
 			)
 		);
 	});

@@ -50,11 +50,16 @@ export const RECURRING_STATUS_LABELS: Record<RecurringPlanStatus, string> = {
 };
 
 /**
- * the sentence under the heading on /admin/recurring/[id], one per status.
+ * the sentence under the heading on /admin/recurring/[id], one per status, written against the
+ * processor the commitment is on.
  *
  * `active` carries none, the same way `FORM_STATUS_NOTES.live` carries none: the label says Active
  * and the Next charge row on that screen gives the date, so a note there would be a third telling.
  * the other two each have a consequence a staff member acts on that the label alone does not say.
+ *
+ * one function per status rather than one string, because a caller must not have to know which of
+ * them names a processor. what it holds is the name to write, and what it gets back is the sentence
+ * or nothing.
  *
  * the `lapsed` note is the one that carries weight. `revives` in
  * `$lib/server/donations/collect.ts` moves a lapsed row back to `active` when the rail reports the
@@ -63,14 +68,39 @@ export const RECURRING_STATUS_LABELS: Record<RecurringPlanStatus, string> = {
  * same screen.
  *
  * the stopped note names what a donor would do instead, because there is no un-stopping in this
- * product and a screen with a status and no control on it reads as broken otherwise.
+ * product and a screen with a status and no control on it reads as broken otherwise. it names no
+ * processor at all — what it states is what this deployment does — so it is written for every
+ * commitment alike.
  */
-export const RECURRING_STATUS_NOTES: Record<RecurringPlanStatus, string | null> = {
-	active: null,
-	cancelled:
+const NOTES: Record<RecurringPlanStatus, (processor: string | null) => string | null> = {
+	active: () => null,
+	cancelled: () =>
 		'Nothing further is collected. To give again, this donor sets up a new gift on one of your ' +
 		'donation forms.',
-	lapsed:
-		"Stripe stopped collecting after this donor's payments kept failing. It can start collecting " +
-		'again on its own if their card goes through. Stopping it here is what prevents that.'
+	lapsed: (processor) =>
+		processor === null
+			? null
+			: `${processor} stopped collecting after this donor's payments kept failing. It can start ` +
+				'collecting again on its own if their card goes through. Stopping it here is what ' +
+				'prevents that.'
 };
+
+/**
+ * what the status word costs, said in the words the commitment's own processor is named in, or
+ * `null` where there is nothing to add.
+ *
+ * `processor` is the name an operator reads — `PROCESSOR_LABELS` in
+ * `$lib/server/payments/provider.ts` is the one spelling of each, and the screen resolves it there
+ * because a component may not import from `$lib/server/**`.
+ *
+ * `null` is a commitment no processor stands behind: `recurring_plan.provider` keeps `manual`,
+ * which no adapter answers for. a sentence claiming a processor did something is then not softened
+ * but dropped — naming the wrong processor sends a staff member to an account they hold nothing on,
+ * and naming none says less than the label already does.
+ */
+export function recurringStatusNote(
+	status: RecurringPlanStatus,
+	processor: string | null
+): string | null {
+	return NOTES[status](processor);
+}

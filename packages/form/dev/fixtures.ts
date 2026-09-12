@@ -36,7 +36,7 @@ import {
  */
 type ServedConfig = {
 	readonly formId: string;
-	readonly provider: Provider;
+	readonly providers: readonly Provider[];
 	readonly currency: string;
 	readonly suggestedAmountsMinor?: readonly number[];
 	readonly minAmountMinor: number;
@@ -53,19 +53,22 @@ type ServedConfig = {
 };
 
 /**
- * the provider block every fixture carries.
+ * the provider set every fixture carries.
  *
  * the key is a shape and not a credential: `checkout` below hands the flow its ports directly and
- * never builds a payment surface, so no SDK reads this and nothing is initialised with it.
+ * never builds a payment surface, so no SDK reads this and nothing is initialised with it. one
+ * processor, which is what a deployment holding one serves.
  */
-const PROVIDER: Provider = { name: 'stripe', publishableKey: 'pk_live_x' };
+const PROVIDERS: readonly Provider[] = [{ name: 'stripe', publishableKey: 'pk_live_x' }];
 
-/** stripe's published list prices, which is what a deployment's own rules look like. */
+/** the processors' published list prices, which is what a deployment's own rules look like. */
 const RULES: Record<PaymentMethod, FeeRule> = {
 	card: { percent: 0.029, fixedMinor: 30 },
 	ach: { percent: 0.008, fixedMinor: 0 },
 	apple_pay: { percent: 0.029, fixedMinor: 30 },
-	google_pay: { percent: 0.029, fixedMinor: 30 }
+	google_pay: { percent: 0.029, fixedMinor: 30 },
+	paypal: { percent: 0.0349, fixedMinor: 49 },
+	venmo: { percent: 0.0349, fixedMinor: 49 }
 };
 
 const IDENTITY = {
@@ -78,7 +81,7 @@ const IDENTITY = {
 /** the fixture ../src/element.browser.spec.ts drives the element from, reproduced. */
 const DEFAULT: ServedConfig = {
 	formId: 'frm_a8x2k9',
-	provider: PROVIDER,
+	providers: PROVIDERS,
 	currency: 'usd',
 	suggestedAmountsMinor: [2500, 10_000],
 	minAmountMinor: 500,
@@ -93,7 +96,7 @@ const DEFAULT: ServedConfig = {
 /** the shortest card this element draws: one frequency, one rail, no tiles and no fee row. */
 const MINIMAL: ServedConfig = {
 	formId: 'frm_minimal',
-	provider: PROVIDER,
+	providers: PROVIDERS,
 	currency: 'usd',
 	minAmountMinor: 500,
 	maxAmountMinor: 5_000_000,
@@ -111,7 +114,7 @@ const MINIMAL: ServedConfig = {
  */
 const MANY: ServedConfig = {
 	formId: 'frm_many',
-	provider: PROVIDER,
+	providers: PROVIDERS,
 	currency: 'usd',
 	suggestedAmountsMinor: [2500, 10_000, 25_000, 100_000],
 	minAmountMinor: 500,

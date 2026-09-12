@@ -52,7 +52,9 @@ import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
 //   - what is said out loud, on one channel, decided in one place.
 //
 // the two mount nodes are the card's and the checkout's between them: this file renders them and
-// hands them over, and `startCheckout` in ./machine.ts is what mounts a provider into each.
+// hands them over, and `startCheckout` in ./machine.ts is what mounts into each. the payment one
+// takes a node per processor the served config offers, placed and ordered by the composer in
+// @better-giving/form/embed/surface — so this file draws one box however many a deployment holds.
 
 const SCREENS = ['amount', 'details', 'give', 'takeover'] as const;
 type Screen = (typeof SCREENS)[number];
@@ -62,8 +64,9 @@ type Screen = (typeof SCREENS)[number];
  *
  * a busy flow stays where it happened: without that, the press on the review step drops the donor
  * onto a blank frame for the length of a request that spans two beats. the one exception is a busy
- * flow carrying no decided gift at all, which is a resume — a donor back from their bank, on a page
- * that must not show them an empty donation form while it finds out whether they have already paid.
+ * flow carrying no decided gift at all, which is a resume — a donor back from wherever they
+ * authorized, on a page that must not show them an empty donation form while it finds out whether
+ * they have already paid.
  */
 function visibleStep(state: State, last: Screen): Screen {
 	if (state.step === 'amount') return 'amount';
@@ -75,7 +78,9 @@ function visibleStep(state: State, last: Screen): Screen {
 
 /** what a busy flow says out loud, which is not one sentence: a mint and a charge are different news. */
 function workingWords(state: State): string {
-	return state.step === 'working' && state.phase === 'confirming' ? copy.CONFIRMING : copy.WORKING;
+	return state.step === 'working' && state.phase === 'confirming'
+		? copy.confirming(state.method)
+		: copy.WORKING;
 }
 
 export type DonateCardProps = {
@@ -87,12 +92,13 @@ export type DonateCardProps = {
 	 */
 	readonly config: FormConfig;
 	/**
-	 * what a spec reaches the two providers through, and nothing production passes.
+	 * what a spec reaches each provider's own script through, and nothing production passes.
 	 *
-	 * the same seam `createPaymentSurface` and `createChallenge` already declare in the form package,
-	 * carried up to the one component a route mounts: a payment SDK and a challenge widget are the
-	 * two things on this page that cannot be driven from a spec, and a card the specs could not reach
-	 * would be a money screen tested only through the states it happens to boot into.
+	 * the same seams the form package already declares, carried up to the one component a route
+	 * mounts: `payment` is one entry per processor, the composer's own `PaymentSeams`, and
+	 * `challenge` is the widget's. those scripts are what cannot be driven from a spec, and a card
+	 * the specs could not reach would be a money screen tested only through the states it happens to
+	 * boot into.
 	 */
 	readonly seams?: CheckoutMounts['seams'];
 };

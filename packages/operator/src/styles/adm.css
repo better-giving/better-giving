@@ -1956,8 +1956,27 @@
 		gap: var(--admin-space-5);
 	}
 
+	/* the rows of a group abut, and the step a reader sees between two labels is the height of the
+	   row itself: a row is padded out to the touch target below, which is taller than the one line
+	   most labels are, so the label sits in the middle of a target with room above and below it
+	   already. a gap on top of that is the same separation drawn twice, and two choices spaced by
+	   twice their own step read as two questions rather than as one question with two answers.
+
+	   a group takes the step back where its rows have no such height to stand apart by, and there
+	   are two ways they do not. a boxed row draws a border, and two borders that meet are one rule
+	   between two rows: the set reads as a table of rows rather than as a list of choices, which is
+	   the whole of what the box was drawn for. a row carrying a second line is already taller than
+	   the target, so nothing is left over below it and its note or its sub lands on the next row's
+	   label — a line as near the row under it as the row it belongs to has stopped naming which
+	   choice it is about.
+
+	   one step and one rule for both, so a group that is boxed and noted at once has nothing to
+	   resolve: either way in is the same value. */
 	.adm-checkgroup {
 		display: grid;
+	}
+
+	.adm-checkgroup:has(.adm-check--boxed, .adm-check__note, .adm-check__sub) {
 		gap: var(--admin-space-4);
 	}
 

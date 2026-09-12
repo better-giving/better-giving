@@ -12,11 +12,12 @@ import type {
 	PaymentFailureReason,
 	PaymentProvider,
 	PaymentResult,
+	ProcessorName,
 	Settlement,
 	SettlementEvent
 } from '../payments/provider';
 import { recordDonation } from './record';
-import type { SettleDeps } from './delivery';
+import type { SettleDeps, SettleOutcome } from './delivery';
 import { failureIsNewsToTheDonor, settleDelivery } from './settle';
 
 // the settlement half, against a real D1: what a verified delivery does to the payment row and to
@@ -110,7 +111,15 @@ function donor(over: { email?: string | null } = {}): ParsedContact {
 /** the pending gift a quote leaves behind, written by the module that writes it in production. */
 async function pendingGift(
 	over: {
-		method?: 'card' | 'apple_pay' | 'ach';
+		method?: 'card' | 'apple_pay' | 'ach' | 'paypal';
+		/**
+		 * which processor minted the intent, written onto the row exactly as ./record.ts writes it.
+		 *
+		 * it is half of `payment_provider_txn_idx`, which is the lookup the settlement path makes —
+		 * so a fixture whose processor is not the answering provider's is a gift no delivery can
+		 * find, and a case built on one silently tests the `unmatched` arm instead of its own.
+		 */
+		processor?: ProcessorName;
 		providerTxnId?: string;
 		/** `null` is a gift from a donor who left the address box empty. */
 		donorEmail?: string | null;
@@ -133,6 +142,7 @@ async function pendingGift(
 		formId: FORM_ID,
 		origin: 'https://acme.org',
 		currency: 'USD',
+		processor: over.processor ?? 'stripe',
 		totalMinor: lines.reduce((total, line) => total + line.amountMinor, 0),
 		feeMinor: 330,
 		lines,
@@ -173,9 +183,12 @@ const settledEvent = (over: Partial<SettlementEvent> = {}): PaymentEvent => ({
 /** the payment port, answering from a script. */
 function provider(
 	verify: PaymentResult<PaymentEvent> = { ok: true, value: settledEvent() },
-	read: PaymentResult<Settlement> = { ok: true, value: settlement() }
+	read: PaymentResult<Settlement> = { ok: true, value: settlement() },
+	processor: ProcessorName = 'stripe'
 ): PaymentProvider {
 	return {
+		processor,
+
 		async createIntent() {
 			throw new Error('createIntent is not part of the settlement path');
 		},
@@ -260,7 +273,7 @@ function brittleMailer(faultsOn: (message: EmailMessage) => boolean) {
 	return { port, sent };
 }
 
-const DELIVERY = { body: '{"id":"evt_1"}', signature: 't=1,v1=abc' };
+const DELIVERY = { body: '{"id":"evt_1"}', headers: { 'stripe-signature': 't=1,v1=abc' } };
 
 function deps(over: Partial<SettleDeps> = {}): SettleDeps {
 	return { db, provider: provider(), email: mailer().port, ...over };
@@ -1274,5 +1287,167 @@ describe('settleDelivery() — the notice that a gift settled', () => {
 		expect(await groupLines('payment', gift.paymentId)).not.toBeNull();
 		// the receipt goes first and is unaffected by what happens after it.
 		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org']);
+	});
+});
+
+describe('the processor an operator is sent to', () => {
+	/**
+	 * every path in ./settle.ts that writes an operator a sentence, each run against one processor.
+	 *
+	 * a table rather than four cases, because the claim is about the file and not about any one
+	 * alert: a headline naming the wrong processor sends an operator to a dashboard the payment is
+	 * not in, and the way that gets written is a sentence added beside three that already say the
+	 * name. an arm added here is the same decision being made again on purpose.
+	 *
+	 * the outcome is on the table rather than left implied, and it is what keeps every case honest:
+	 * the gift and the provider have to name the same processor for the lookup to find the row, and
+	 * a case where they disagree reaches `unmatched` — which names a processor correctly while
+	 * testing none of the paths below.
+	 */
+	const alerting: readonly [string, SettleOutcome, (p: ProcessorName) => PaymentProvider][] = [
+		[
+			'a transaction that could not be read',
+			'unactionable',
+			(p) =>
+				provider(
+					undefined,
+					{ ok: false, reason: 'not_found', detail: 'no such object on this account' },
+					p
+				)
+		],
+		[
+			'a settlement the books cannot take',
+			'unactionable',
+			(p) => provider(undefined, { ok: true, value: settlement({ currency: 'usd' }) }, p)
+		],
+		[
+			'a settled charge whose fee is unknown',
+			'posted',
+			(p) => provider(undefined, { ok: true, value: settlement({ feeMinor: null }) }, p)
+		]
+	];
+
+	/** every word this delivery put in front of a person, whichever message carried it. */
+	const operatorProse = (sent: readonly EmailMessage[]) =>
+		sent.map((m) => `${m.subject} ${m.text} ${m.html}`).join(' ');
+
+	it.each(alerting)('names PayPal and never Stripe for %s', async (_, outcome, build) => {
+		await pendingGift({ processor: 'paypal', method: 'paypal' });
+		const mail = mailer();
+
+		const result = await settleDelivery(
+			deps({ email: mail.port, provider: build('paypal') }),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome });
+		// somewhere in the operational mail, because not every message on a path has a processor to
+		// name — the notice that a gift reached the books is about the books.
+		expect(operatorProse(mail.sent)).toContain('PayPal');
+		// and nowhere at all, donor mail included: an operator reading the wrong name goes to a
+		// dashboard the payment is not in.
+		expect(operatorProse(mail.sent)).not.toContain('Stripe');
+	});
+
+	it.each(alerting)('names Stripe and never PayPal for %s', async (_, outcome, build) => {
+		await pendingGift();
+		const mail = mailer();
+
+		const result = await settleDelivery(
+			deps({ email: mail.port, provider: build('stripe') }),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome });
+		expect(operatorProse(mail.sent)).toContain('Stripe');
+		expect(operatorProse(mail.sent)).not.toContain('PayPal');
+	});
+
+	/**
+	 * the fourth path, which takes no `pendingGift` — it is the one reached precisely because this
+	 * deployment has no payment row for the transaction, so it cannot share the table above.
+	 */
+	it('names the processor that settled against no gift here', async () => {
+		const mail = mailer();
+
+		const result = await settleDelivery(
+			deps({ email: mail.port, provider: provider(undefined, undefined, 'paypal') }),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
+		expect(mail.sent[0]?.subject).toContain('PayPal');
+		expect(`${mail.sent[0]?.subject} ${mail.sent[0]?.text}`).not.toContain('Stripe');
+	});
+});
+
+describe('settleDelivery() — a gift settled on PayPal', () => {
+	/** the one-off gift as PayPal's half opens it: an order id in the column, the PayPal rail. */
+	const paypalGift = () =>
+		pendingGift({ processor: 'paypal', method: 'paypal', providerTxnId: '5O190127TN364715T' });
+
+	/** what the capture reports, which is PayPal's own gross and its own fee. */
+	const captured = (over: Partial<Settlement> = {}) =>
+		provider(
+			{ ok: true, value: settledEvent({ providerTxnId: '5O190127TN364715T' }) },
+			{
+				ok: true,
+				value: settlement({
+					providerTxnId: '5O190127TN364715T',
+					method: 'paypal',
+					feeMinor: 319,
+					...over
+				})
+			},
+			'paypal'
+		);
+
+	it('posts the gift at PayPal’s gross, with PayPal’s own fee', async () => {
+		const gift = await paypalGift();
+
+		const result = await settleDelivery(deps({ provider: captured() }), DELIVERY);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		const charge = await groupLines('payment', gift.paymentId);
+		expect(charge?.lines.map((l) => l.amountMinor).sort()).toEqual([-10_000, 10_000]);
+		// the figure the capture reported, never the 330 the donor was quoted and agreed to.
+		const fee = await groupLines('fee', gift.paymentId);
+		expect(fee?.lines.map((l) => l.amountMinor).sort()).toEqual([-319, 319]);
+	});
+
+	it('records the rail the capture settled on', async () => {
+		const gift = await paypalGift();
+
+		await settleDelivery(deps({ provider: captured() }), DELIVERY);
+
+		const [row] = await db.select().from(payment).where(eq(payment.id, gift.paymentId));
+		expect(row).toMatchObject({ status: 'succeeded', provider: 'paypal', method: 'paypal' });
+	});
+
+	it('posts nothing a second time when the delivery arrives again', async () => {
+		const gift = await paypalGift();
+		await settleDelivery(deps({ provider: captured() }), DELIVERY);
+
+		const again = await settleDelivery(deps({ provider: captured() }), DELIVERY);
+
+		// `entry_group_source_idx` refuses it, keyed on the payment row rather than on the event —
+		// which is what makes PayPal's whole redelivery window a no-op rather than a second gift.
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		const [groups] = await db.select({ n: sql<number>`count(*)` }).from(entryGroup);
+		expect(groups?.n).toBe(2);
+		expect(await groupLines('payment', gift.paymentId)).not.toBeNull();
+	});
+
+	it('finds no gift for an order this deployment did not open on PayPal', async () => {
+		// the same order id against a row Stripe wrote: `payment_provider_txn_idx` is on the pair,
+		// so the processor is half the key and not decoration on it.
+		await pendingGift({ providerTxnId: '5O190127TN364715T' });
+		const mail = mailer();
+
+		const result = await settleDelivery(deps({ email: mail.port, provider: captured() }), DELIVERY);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
+		const [groups] = await db.select({ n: sql<number>`count(*)` }).from(entryGroup);
+		expect(groups?.n).toBe(0);
 	});
 });

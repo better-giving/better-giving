@@ -47,6 +47,7 @@
 		"@better-giving/operator": "workspace:*",
 		"@conform-to/react": "catalog:",
 		"@conform-to/zod": "catalog:",
+		"@paypal/paypal-server-sdk": "2.5.0",
 		"better-auth": "1.6.25",
 		"drizzle-orm": "0.45.2",
 		"react": "catalog:",

@@ -696,7 +696,7 @@ describe('the enum CHECKs', () => {
 		);
 	});
 
-	it('refuses a payment method outside cash/check/card/ach', async () => {
+	it('refuses a payment method outside the six the schema models', async () => {
 		await rejects(
 			'payment.method',
 			`insert into payment (id, donation_id, amount_minor, currency, direction, method,
@@ -706,6 +706,28 @@ describe('the enum CHECKs', () => {
 			'payment_method_check'
 		);
 	});
+
+	it.each(['paypal', 'venmo'])(
+		'admits %s, which is a rail of its own and not card',
+		async (method) => {
+			// the positive control on the widened list, and the claim `PAYMENT_METHODS` makes: a
+			// gift through PayPal's window is not recorded as a card payment, and a Venmo one is
+			// told apart from a PayPal one on the row rather than only in the processor's console.
+			await env.DB.prepare(
+				`insert into payment (id, donation_id, amount_minor, currency, direction, method,
+				                      status, provider, provider_txn_id, occurred_at, created_at)
+				 values (?, ?, 10000, 'USD', 'inbound', ?, 'succeeded', 'paypal', ?, 0, 0)`
+			)
+				.bind(`p-${method}`, DONATION_ID, method, `pp_${method}`)
+				.run();
+			const row = await env.DB.prepare(
+				'select method as m, provider as p from payment where id = ?'
+			)
+				.bind(`p-${method}`)
+				.first();
+			expect(row).toEqual({ m: method, p: 'paypal' });
+		}
+	);
 
 	it('refuses a payment status outside the four', async () => {
 		// 'canceled' is Stripe's spelling of `cancelled`, so this is the near-miss that
@@ -720,13 +742,13 @@ describe('the enum CHECKs', () => {
 		);
 	});
 
-	it('refuses a payment provider outside stripe/manual, while still allowing none', async () => {
+	it('refuses a payment provider outside stripe/paypal/manual, while still allowing none', async () => {
 		await rejects(
 			'payment.provider',
 			`insert into payment (id, donation_id, amount_minor, currency, direction, method,
 			                      status, provider, provider_txn_id, occurred_at, created_at)
 			 values ('p-badprovider', '${DONATION_ID}', 10000, 'USD', 'inbound', 'card',
-			         'succeeded', 'paypal', 'pp_1', 0, 0)`,
+			         'succeeded', 'braintree', 'bt_1', 0, 0)`,
 			'payment_provider_check'
 		);
 		// the half that must not be broken by it: `provider` is nullable and `null in (...)`
@@ -909,13 +931,18 @@ describe('payment-grain idempotency', () => {
 	// Stripe charge becoming a second settlement event, and both of its columns are
 	// nullable, with NULLs DISTINCT in a sqlite unique index.
 
-	it('refuses a stripe payment with no txn id — the pair would not collide', async () => {
-		// without this check ('stripe', null) inserts twice: two settlement events for one
-		// charge, the exact outcome the index exists to prevent.
-		const message = await rejection(() => insertPayment('p-stripe-notxn', 'stripe', null));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('payment_stripe_needs_txn_id_check');
-	});
+	it.each(['stripe', 'paypal'])(
+		'refuses a %s payment with no txn id — the pair would not collide',
+		async (provider) => {
+			// without this check (provider, null) inserts twice: two settlement events for one
+			// charge, the exact outcome the index exists to prevent. it runs over every processor
+			// rather than over Stripe alone, which is the whole of what the check's generalised
+			// predicate claims.
+			const message = await rejection(() => insertPayment(`p-${provider}-notxn`, provider, null));
+			expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+			expect(message).toContain('payment_processor_needs_txn_id_check');
+		}
+	);
 
 	it('refuses a txn id with no provider', async () => {
 		// without this check (null, 'ch_x') inserts twice — the same hole from the other side,
@@ -945,9 +972,10 @@ describe('payment-grain idempotency', () => {
 	});
 
 	it('still admits a manual payment with no txn id', async () => {
-		// the constraint the three CHECKs must not break, and the reason the first one names
-		// 'stripe' rather than "provider is not null": staff entry of cash and checks is every
-		// gift in v0, and `('manual', NULL)` has to insert.
+		// the constraint the three CHECKs must not break, and the reason
+		// `payment_processor_needs_txn_id_check` names its exception rather than saying "provider
+		// is not null": staff entry of cash and checks is every gift in v0, and `('manual', NULL)`
+		// has to insert.
 		await insertPayment('p-manual-named', 'manual', null);
 		const row = await env.DB.prepare(
 			'select provider as p, provider_txn_id as t from payment where id = ?'

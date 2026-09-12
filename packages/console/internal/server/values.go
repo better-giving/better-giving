@@ -12,17 +12,18 @@ import (
 	"github.com/better-giving/console/internal/release"
 )
 
-// the two presses over the thirteen values this deployment is configured with: one sets them and
+// the two presses over the seventeen values this deployment is configured with: one sets them and
 // takes them off, and one frees a name the deployment is holding as a credential.
 //
 // **what a browser posts is names and values, and a name mapped to `null` is a removal.** setting
 // and removing are one door because they are one patch of the worker's bindings — internal/deployment
 // is where that is argued.
 //
-// **a body is refused in two cases.** internal/release holds the thirteen, and a name off that list
-// is refused here rather than written under whatever the page said — the console's own session
-// credential is on no enumeration and is not reachable through this door. the other is a name
-// carrying a blank, which is neither a value the deployment reads nor the removal `null` is.
+// **a body is refused in three cases.** internal/release holds the seventeen, and a name off that
+// list is refused here rather than written under whatever the page said — the console's own session
+// credential is on no enumeration and is not reachable through this door. the second is a name
+// carrying a blank, which is neither a value the deployment reads nor the removal `null` is. the
+// third is the charity-rate switch carrying anything but its one word, argued at ./charityRate.
 //
 // **every one of them answers 200 carrying how the write went.** each way a write did not happen is
 // a state the fold draws at the control that was pressed, with a sentence and a way out of its own,
@@ -34,9 +35,27 @@ import (
 // about the call, and the names of any vars held as credentials — internal/deployment is where the
 // values go, and they go into a request body and nowhere else.
 
+// the name whose value is an answer rather than a credential, and the one word the deployment reads
+// as yes.
+//
+// **it is a switch with two positions, and the off one is the removal above rather than a stored
+// no.** the deployment prices a gift at the standard rate on every other value — `false` and `no`
+// alike — exactly as it does on an absent one (`paypalFeeRules` in
+// packages/app/src/lib/server/payments/fees.ts), so a word stored for off is a box this console
+// draws full over a deployment that is not on the charity rate, and a fold would have a third shape
+// to word and nothing true to say in it.
+//
+// the word is exact rather than case-insensitive, though the deployment reads it either way: this
+// door is the only writer, so one spelling is what every deployment ends up holding and what the
+// row an operator reads back always says.
+const (
+	charityRate         = "PAYPAL_CHARITY_RATE_APPROVED"
+	charityRateApproved = "true"
+)
+
 // how much of a press's body is read before it is a request nobody made.
 //
-// The whole enumeration is the largest thing posted here — thirteen names and their values — and
+// The whole enumeration is the largest thing posted here — seventeen names and their values — and
 // anything past that is not this page.
 const writtenBytes = 32 << 10
 
@@ -71,6 +90,14 @@ func valuesRoutes(
 			if strings.TrimSpace(*value) == "" {
 				answer(w, http.StatusBadRequest, map[string]string{
 					"error": "this console does not store " + name + " with nothing in it",
+				})
+				return
+			}
+			if name == charityRate && *value != charityRateApproved {
+				answer(w, http.StatusBadRequest, map[string]string{
+					"error": "this console stores " + name + " as " + charityRateApproved +
+						", or takes the name off to say the rate was not approved; it does not store " +
+						*value,
 				})
 				return
 			}
@@ -187,7 +214,7 @@ func enumerated(enumeration []string, name string) bool {
 
 func refuseName(w http.ResponseWriter, name string) {
 	answer(w, http.StatusBadRequest, map[string]string{
-		"error": "this console sets the thirteen values a deployment is configured with, and " +
+		"error": "this console sets the seventeen values a deployment is configured with, and " +
 			name + " is not one of them",
 	})
 }

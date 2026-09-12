@@ -4,10 +4,10 @@ import type { ApiErrorCode, Quote } from '@better-giving/form/v1';
 import type { TurnstileCheck, TurnstileResult } from '../api/turnstile';
 import type { Db } from '../db/client';
 import type { FormRecord } from '../forms/form-input';
-import { setCommand } from '@better-giving/operator/deploy-split';
 import { cachedCadences } from '../forms/cadence-cache';
 import { readPublishedConfig } from '../forms/published-config';
 import { cachedRails } from '../forms/rail-cache';
+import { processorSetupFix, type Processors } from '../payments/factory';
 import {
 	CONTACT_METADATA_KEY,
 	DONATION_METADATA_KEY,
@@ -16,7 +16,8 @@ import {
 	FORM_METADATA_KEY,
 	GIFT_MINOR_METADATA_KEY,
 	INTERVAL_METADATA_KEY,
-	type PaymentProvider,
+	processorOf,
+	type QuotedRail,
 	type RecurringInterval
 } from '../payments/provider';
 import { commitDonor } from './donor';
@@ -179,13 +180,17 @@ export type QuoteDeps = {
 	/** the raw platform env, narrowed by the readers that take it. never returned from a loader. */
 	readonly env: unknown;
 	/**
-	 * the payment port, already sealed by `createPaymentProvider`.
+	 * the processors this deployment can charge on, already sealed by `createPaymentProviders`.
 	 *
 	 * built by the route from the same env, per request. it arrives as a dependency rather than
 	 * being constructed here so that a spec can drive every arm of `PaymentResult` without an
 	 * account — the seam ../payments/stripe.spec.ts takes one level lower.
+	 *
+	 * the set rather than one provider, because the route cannot select: it builds this before the
+	 * body is read, and which processor mints the intent is decided by the rail the donor picked
+	 * (`Processors.forRail` in ../payments/factory.ts), which is a value on the parsed submission.
 	 */
-	readonly provider: PaymentProvider;
+	readonly processors: Processors;
 	/**
 	 * the challenge check, injected for the same reason and required rather than defaulted.
 	 *
@@ -223,7 +228,7 @@ const LINE_LABEL = 'Donation';
  */
 export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise<QuoteResult> {
 	// how often a gift may repeat and which rails a donor is shown are both read off this
-	// deployment's processor account through the edge cache, and the port is `deps.provider` — the
+	// deployment's processor accounts through the edge cache, and the port is `deps.processors` — the
 	// same injected one every other call here uses, so this reaches no network a spec did not ask
 	// for. the request's own origin is spent as a cache key and nothing else: an entry in
 	// `caches.default` belongs to the zone that asked for it. see ../forms/cadence-cache.ts and
@@ -242,8 +247,8 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 		deps.db,
 		attempt.formId,
 		deps.env,
-		() => cachedCadences(deps.provider, origin),
-		() => cachedRails(deps.provider, origin)
+		() => cachedCadences(deps.processors, origin),
+		() => cachedRails(deps.processors, origin)
 	);
 	if (!served.ok) {
 		return {
@@ -328,7 +333,12 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 	// trip, which is a second commit, with the intent already live.
 	const donationId = uuidv7();
 
-	const intent = await deps.provider.createIntent({
+	// the rail the donor was quoted on selects the adapter, and the same value carries the processor
+	// onto the row below: `payment_provider_txn_idx` is keyed on the pair, so the name a row is
+	// written under has to be the name of whatever minted the id beside it.
+	const provider = deps.processors.forRail(submission.method);
+
+	const intent = await provider.createIntent({
 		amountMinor: priced.chargeMinor,
 		currency: config.currency,
 		method: submission.method,
@@ -349,7 +359,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 		}
 	});
 	if (!intent.ok) {
-		return paymentRefusal(form, intent.reason, intent.detail);
+		return paymentRefusal(form, submission.method, intent.reason, intent.detail);
 	}
 
 	const quote: Quote = {
@@ -377,6 +387,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 			}
 		],
 		method: submission.method,
+		processor: provider.processor,
 		providerTxnId: intent.value.providerTxnId,
 		occurredAt: new Date(),
 		consentedToContact: submission.consentedToContact,
@@ -470,7 +481,7 @@ async function mintCommitment(
 	// derived from the donor instead would hand them back the one they already had.
 	const donationId = uuidv7();
 
-	const gift = await deps.provider.createRecurringGift({
+	const gift = await deps.processors.forRail(submission.method).createRecurringGift({
 		amountMinor: priced.chargeMinor,
 		currency,
 		interval,
@@ -492,7 +503,7 @@ async function mintCommitment(
 			[FEE_COVERED_METADATA_KEY]: submission.coversFee ? 'true' : 'false'
 		}
 	});
-	if (!gift.ok) return paymentRefusal(form, gift.reason, gift.detail);
+	if (!gift.ok) return paymentRefusal(form, submission.method, gift.reason, gift.detail);
 
 	const written = await recordAuthorizedGift(deps.db, {
 		donationId,
@@ -675,7 +686,12 @@ function readTurnstileSiteKey(env: unknown): string | undefined {
  * nothing minting an intent can produce it, since it is a settled charge's fee still being computed
  * and this path settles nothing.
  */
-function paymentRefusal(form: FormRecord, reason: string, detail: string): QuoteResult {
+function paymentRefusal(
+	form: FormRecord,
+	rail: QuotedRail,
+	reason: string,
+	detail: string
+): QuoteResult {
 	if (reason === 'rate_limited' || reason === 'unreachable' || reason === 'provider_error') {
 		return refuse(
 			form,
@@ -690,8 +706,10 @@ function paymentRefusal(form: FormRecord, reason: string, detail: string): Quote
 			form,
 			'payments_not_configured',
 			detail,
-			`Run \`${setCommand('STRIPE_SECRET_KEY')}\` and \`${setCommand('STRIPE_PUBLISHABLE_KEY')}\` ` +
-				'against this deployment, with a pair taken from the same Stripe dashboard screen.'
+			// the processor that settles the rail the donor picked, and never the one this deployment
+			// happens to hold: a donor on a cached page may name a rail whose processor was cleared
+			// since, and the pair that is set is not the pair to go and re-check.
+			processorSetupFix([processorOf(rail)])
 		);
 	}
 	return refuse(

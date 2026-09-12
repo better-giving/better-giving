@@ -1,5 +1,6 @@
 import type { Db } from '../db/client';
-import { isRetryable, type PaymentProvider } from '../payments/provider';
+import type { Processors } from '../payments/factory';
+import { isProcessor, isRetryable, type ProcessorName } from '../payments/provider';
 import { readRecurringPlan, stopRecurringPlan } from './queries';
 
 // stopping a repeating gift: the processor's cancel and this deployment's own record of it, in the
@@ -24,25 +25,39 @@ import { readRecurringPlan, stopRecurringPlan } from './queries';
  *                   keeps `ended_at` from being overwritten.
  *   refused         the processor said no and nothing was written. `retryable` is `isRetryable`'s
  *                   answer about the reason, which decides whether the screen may say "try again";
- *                   `detail` is the port's own sentence, which names the value to fix.
+ *                   `detail` is the port's own sentence, which names the value to fix; `processor`
+ *                   is which one said no, and `null` on the one refusal no processor issued — a
+ *                   commitment recorded against a provider no adapter answers for.
  *   nothing-to-stop the processor holds no such subscription, so there was nothing to cancel — and
  *                   the row is stopped all the same. an outcome of its own rather than `stopped`
  *                   because the screen has something different to say: nothing was collecting
  *                   before this act either.
  *   unrecorded      the processor stopped it and the row write did not land. money has stopped and
  *                   this deployment may still show the gift as collecting — the one outcome where
- *                   the two halves disagree, and the reason it has a name of its own.
+ *                   the two halves disagree, and the reason it has a name of its own. `processor`
+ *                   is never null here: one answered, which is what this arm is about.
  *   stopped         it is stopped and the row says so.
  *
  * a union rather than a boolean and a message, so a screen cannot draw a sentence for an outcome it
  * did not get: each arm carries exactly what its own sentence needs and nothing else.
+ *
+ * the two arms whose sentences send an operator to a dashboard carry the processor whose dashboard
+ * it is. it is the row's own column and never a name the route supplied — a deployment may hold
+ * keys for both, and a sentence naming the wrong one is an errand with nowhere to arrive. the name
+ * and not the word: the spelling an operator reads is `PROCESSOR_LABELS` in ../payments/provider.ts,
+ * and no copy is written in this file.
  */
 export type StopOutcome =
 	| { readonly outcome: 'gone' }
 	| { readonly outcome: 'already-stopped' }
-	| { readonly outcome: 'refused'; readonly retryable: boolean; readonly detail: string }
+	| {
+			readonly outcome: 'refused';
+			readonly retryable: boolean;
+			readonly detail: string;
+			readonly processor: ProcessorName | null;
+	  }
 	| { readonly outcome: 'nothing-to-stop' }
-	| { readonly outcome: 'unrecorded' }
+	| { readonly outcome: 'unrecorded'; readonly processor: ProcessorName }
 	| { readonly outcome: 'stopped' };
 
 /**
@@ -62,7 +77,7 @@ export type StopOutcome =
  *      when collection stopped is the rail's fact — and `stopRecurringPlan` keeps an existing one,
  *      which is what preserves the moment a lapsed commitment really ended. the row is written
  *      where the processor holds no such subscription too, which is what makes a gift cancelled in
- *      the Stripe dashboard first correctable from this dashboard at all.
+ *      the processor's own dashboard first correctable from this dashboard at all.
  *
  * step 4 writing no row is a **success**. the inbound `customer.subscription.deleted` for the
  * cancel just made can reach the row first — `recordStanding` in ../donations/collect.ts writes
@@ -77,33 +92,55 @@ export type StopOutcome =
  */
 export async function stopRecurringGift(
 	db: Db,
-	provider: PaymentProvider,
+	processors: Processors,
 	id: string
 ): Promise<StopOutcome> {
 	const plan = await readRecurringPlan(db, id);
 	if (plan === null) return { outcome: 'gone' };
 	if (plan.status === 'cancelled') return { outcome: 'already-stopped' };
 
-	const cancelled = await provider.cancelRecurringGift(plan.providerSubscriptionId);
+	// the processor the row was written under and never one a caller picked: the commitment lives on
+	// whichever account collected its first charge, and the route cannot know which that was until
+	// the row is read.
+	//
+	// the narrowing is the column's and not a state a row can be in: `recurring_plan.provider` is
+	// typed over `PAYMENT_PROVIDERS` (../db/schema.ts), which keeps `manual` for a staff entry, and
+	// ../donations/collect.ts is the only module that may insert one of these rows — it writes the
+	// processor that settled. so the refusal below names the column rather than a value to fix.
+	if (!isProcessor(plan.provider)) {
+		return {
+			outcome: 'refused',
+			retryable: false,
+			detail: `This gift is recorded against \`${plan.provider}\`, which no payment processor answers for, so there is nothing to cancel.`,
+			// no processor issued this refusal and none has a dashboard to be sent to, so the screen
+			// is given nothing to name. the detail above is the whole sentence on this arm.
+			processor: null
+		};
+	}
+
+	const cancelled = await processors
+		.for(plan.provider)
+		.cancelRecurringGift(plan.providerSubscriptionId);
 
 	// the one refusal that is not a reason to leave the row alone. `not_found` means the processor
 	// holds no such subscription, so nothing is collecting under it and the row is the half that is
-	// out of date — which is the ordinary shape of an operator who cancelled in the Stripe dashboard
-	// first and then came here. reported as a refusal, this dashboard had no way at all to correct
-	// that row, and it stayed active or lapsed for good.
+	// out of date — which is the ordinary shape of an operator who cancelled in the processor's own
+	// dashboard first and then came here. reported as a refusal, this dashboard had no way at all to
+	// correct that row, and it stayed active or lapsed for good.
 	//
-	// the risk taken deliberately: if this deployment's Stripe keys name a different account from
-	// the one holding the subscription, every subscription reads as missing and this writes a
-	// stopped row over a gift still collecting elsewhere. that account cannot be charged from here
-	// either — every collection this deployment makes is already failing — so the row is wrong on a
-	// deployment that is already wrong, rather than on a working one.
+	// the risk taken deliberately: if this deployment's keys for that processor name a different
+	// account from the one holding the subscription, every subscription reads as missing and this
+	// writes a stopped row over a gift still collecting elsewhere. that account cannot be charged
+	// from here either — every collection this deployment makes is already failing — so the row is
+	// wrong on a deployment that is already wrong, rather than on a working one.
 	const absent = !cancelled.ok && cancelled.reason === 'not_found';
 
 	if (!cancelled.ok && !absent) {
 		return {
 			outcome: 'refused',
 			retryable: isRetryable(cancelled.reason),
-			detail: cancelled.detail
+			detail: cancelled.detail,
+			processor: plan.provider
 		};
 	}
 
@@ -114,12 +151,12 @@ export async function stopRecurringGift(
 		await stopRecurringPlan(db, id, cancelled.ok ? cancelled.value.endedAt : new Date());
 	} catch (e) {
 		// logged here rather than at the route, because this is the only frame that knows nothing is
-		// being collected at the processor — which is what makes this line worth reading against the
-		// Stripe dashboard afterwards.
+		// being collected at the processor — which is what makes this line worth reading against
+		// that processor's own dashboard afterwards.
 		console.error('recording a stopped repeating gift failed:', e);
 		// one arm for both paths above, because what a screen has to say about them is the same: no
 		// money is moving and this deployment may still show the gift as collecting.
-		return { outcome: 'unrecorded' };
+		return { outcome: 'unrecorded', processor: plan.provider };
 	}
 
 	// deliberately not `stopped.length > 0`: see the paragraph above about the webhook arriving

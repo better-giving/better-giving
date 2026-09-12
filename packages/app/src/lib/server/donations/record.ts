@@ -14,7 +14,7 @@ import {
 	type NewPayment,
 	type PaymentMethod as SettledRail
 } from '../db/schema';
-import { PROVIDER_NAME } from '../payments/provider';
+import type { ProcessorName } from '../payments/provider';
 import type { QuotedRail } from '../payments/provider';
 import { resolveDonor } from './donor';
 import type { Tribute } from './quote-input';
@@ -177,6 +177,15 @@ export type RecordDonationInput = {
 	readonly programId: string | null;
 	/** the rail the donor was quoted on, in the form's vocabulary. */
 	readonly method: QuotedRail;
+	/**
+	 * which processor minted the intent, off the provider that answered.
+	 *
+	 * taken from `PaymentProvider.processor` in ../payments/provider.ts and never derived from the
+	 * id beside it: `payment_provider_txn_idx` is keyed on the pair, so a row whose processor was
+	 * guessed from an id's shape is a row the settlement path looks for under the wrong name and a
+	 * gift that never posts.
+	 */
+	readonly processor: ProcessorName;
 	/** the processor's id for the intent this gift is being paid with — `Intent.providerTxnId`. */
 	readonly providerTxnId: string;
 	/**
@@ -335,7 +344,9 @@ const QUOTED_RAIL_METHODS: Readonly<Record<QuotedRail, SettledRail>> = Object.fr
 	card: 'card',
 	apple_pay: 'card',
 	google_pay: 'card',
-	ach: 'ach'
+	ach: 'ach',
+	paypal: 'paypal',
+	venmo: 'venmo'
 });
 
 /**
@@ -519,7 +530,7 @@ async function write(db: Db, input: RecordDonationInput): Promise<RecordedDonati
 		// yet ours, which is exactly an intent the donor has not confirmed — and it is what keeps
 		// this write out of the books, since only a `succeeded` payment triggers a posting.
 		status: 'pending',
-		provider: PROVIDER_NAME,
+		provider: input.processor,
 		providerTxnId: input.providerTxnId,
 		occurredAt: input.occurredAt
 	};

@@ -1,4 +1,5 @@
-import type { PaymentProvider, RecurringGiftStanding } from './provider';
+import type { Processors } from './factory';
+import type { PaymentProvider, ProcessorName, RecurringGiftStanding } from './provider';
 
 // what `src/routes/console.recurring.ts` asks the payment port about repeating gifts on this
 // deployment's own Stripe account, and the one thing it can ask for.
@@ -97,4 +98,35 @@ export async function setUpRecurringGifts(provider: PaymentProvider): Promise<Re
 		outcome: provisioned.value.created ? 'set_up' : 'already_set_up',
 		detail: null
 	};
+}
+
+/**
+ * where every configured processor stands on repeating gifts, one reading each.
+ *
+ * never collapsed into one, for the reason `RailChargeabilities` in ./rail-chargeability.ts is not:
+ * each reading carries its own sentence naming its own value to fix, and the console draws each in
+ * that processor's own fold.
+ *
+ * partial over `ProcessorName` because only the configured processors are asked — an entry for a
+ * processor this deployment cannot charge on would be a reading of an account nobody named.
+ */
+export type RecurringProvisions = Readonly<Partial<Record<ProcessorName, RecurringProvision>>>;
+
+/**
+ * every configured processor's standing, read together.
+ *
+ * issued together rather than one after another: no reading needs another's answer, and a caller
+ * waiting on this is a donor's browser booting a form or an operator holding a screen open.
+ *
+ * never throws and never rejects, for the reason the single read above does not.
+ */
+export async function readRecurringProvisions(
+	processors: Processors
+): Promise<RecurringProvisions> {
+	const readings = await Promise.all(
+		processors.configured.map(
+			async (name) => [name, await readRecurringProvision(processors.for(name))] as const
+		)
+	);
+	return Object.fromEntries(readings);
 }

@@ -103,7 +103,7 @@ import type { TestSend } from '../api/types';
 // addressed from and can check a paste against the page they copied it from — which is the one
 // thing they opened the fold to do. **a box drawn empty over a value that is there would read as
 // nothing stored, and the next press would remove it**, so the boxes are drawn from the one read
-// that answers for all thirteen and no box is drawn at all where that read did not land.
+// that answers for all seventeen and no box is drawn at all where that read did not land.
 //
 // **a name held in a form nothing can read back is the one box that cannot be typed.** it seeds
 // empty over a value that is there, no save may set it, and the way out is the press that takes it
@@ -315,7 +315,7 @@ const MAIL_ASKS: Record<MailAct, { title: string; press: string; consequence: st
 };
 
 export type SmtpFoldProps = {
-	/** the thirteen as cloudflare answered for them, which is what the five boxes are seeded from. */
+	/** the seventeen as cloudflare answered for them, which is what the five boxes are seeded from. */
 	values: DeployedValues;
 	workerName: string;
 	/** the cloudflare account both reads are scoped to, named in every sentence about a refusal. */
@@ -361,7 +361,7 @@ export function SmtpFold({
 	const sending = ownPress(pending, TEST_EMAIL_INTENT);
 
 	/**
-	 * what this deployment holds under each of the thirteen, or `null` where that read did not land.
+	 * what this deployment holds under each of the seventeen, or `null` where that read did not land.
 	 *
 	 * the send below is closed off the four mail values and the block above draws its boxes from the
 	 * same four, so the two are one reading: a press drawn off anything else would stand open under

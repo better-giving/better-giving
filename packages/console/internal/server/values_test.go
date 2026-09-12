@@ -15,7 +15,7 @@ import (
 	"github.com/better-giving/console/internal/state"
 )
 
-// the two presses that set the thirteen, and what each of them refuses.
+// the two presses that set the seventeen, and what each of them refuses.
 
 // a cloudflare that answers everything and remembers what it was asked.
 func writes(t *testing.T, answers map[string]any) (*httptest.Server, *[]string) {
@@ -86,7 +86,7 @@ func TestNothingIsWrittenForAMachineThatHasChosenNoAccount(t *testing.T) {
 }
 
 // **the names a press may carry are the enumeration's and never the body's own keys.** a name off
-// that list is a value written under whatever a page said, and the thirteen are what this console
+// that list is a value written under whatever a page said, and the seventeen are what this console
 // is for — the console's own session credential among the names it refuses.
 func TestANameOffTheEnumerationIsRefusedBeforeCloudflareIsAsked(t *testing.T) {
 	api, asked := writes(t, nil)
@@ -229,5 +229,52 @@ func TestAVarPressCarryingNothingIsRefused(t *testing.T) {
 	}
 	if len(*asked) != 0 {
 		t.Fatalf("cloudflare was asked %v", *asked)
+	}
+}
+
+// **the charity-rate switch has two positions and its off one is the name being taken off.** the
+// deployment reads one word as approved and every other value — a stored `false` among them — as
+// the standard rate, so a switch left off with a word in it is a box this console draws full over a
+// deployment that is not on that rate. the removal above is the off position, and nothing else is.
+func TestTheCharityRateSwitchIsOnlyEverStoredAsTheWordTheDeploymentReads(t *testing.T) {
+	worker := release.Baked.Name
+	stored := map[string]any{"name": "PAYPAL_CHARITY_RATE_APPROVED", "type": "plain_text", "text": "true"}
+	for what, one := range map[string]struct {
+		bindings []any
+		body     string
+	}{
+		"switched on":  {bindings: []any{}, body: `{"values":{"PAYPAL_CHARITY_RATE_APPROVED":"true"}}`},
+		"switched off": {bindings: []any{stored}, body: `{"values":{"PAYPAL_CHARITY_RATE_APPROVED":null}}`},
+	} {
+		api, asked := writes(t, map[string]any{
+			"GET " + settingsOf(worker): map[string]any{
+				"success": true, "errors": []any{},
+				"result": map[string]any{"bindings": one.bindings},
+			},
+		})
+		status, answer := press(t, pressing(t, "an-account", api), "/api/values/vars", one.body)
+		if status != http.StatusOK || answer["kind"] != "set" {
+			t.Errorf("%s answered %d %v", what, status, answer)
+		}
+		if len(*asked) != 2 || (*asked)[1] != "PATCH "+settingsOf(worker) {
+			t.Errorf("%s asked cloudflare %v", what, *asked)
+		}
+	}
+}
+
+// a third position is one the fold cannot draw and the deployment does not act on: `false` and `no`
+// price at the standard rate exactly as an absent value does, so storing one would be a value an
+// operator could read back and a deployment that reads nothing of it.
+func TestASpellingTheDeploymentDoesNotReadAsApprovedIsRefused(t *testing.T) {
+	for _, spelling := range []string{"false", "no", "True", "1"} {
+		api, asked := writes(t, nil)
+		status, answer := press(t, pressing(t, "an-account", api), "/api/values/vars",
+			`{"values":{"PAYPAL_CHARITY_RATE_APPROVED":"`+spelling+`"}}`)
+		if status != http.StatusBadRequest || answer["error"] == "" {
+			t.Errorf("%q answered %d %v", spelling, status, answer)
+		}
+		if len(*asked) != 0 {
+			t.Errorf("%q asked cloudflare %v", spelling, *asked)
+		}
 	}
 }

@@ -27,12 +27,14 @@ const FEE_RULES: FeeRules = {
 	card: { percent: 0.029, fixedMinor: 30 },
 	apple_pay: { percent: 0.029, fixedMinor: 30 },
 	google_pay: { percent: 0.029, fixedMinor: 30 },
-	ach: { percent: 0.008, fixedMinor: 0, capMinor: 500 }
+	ach: { percent: 0.008, fixedMinor: 0, capMinor: 500 },
+	paypal: { percent: 0.0349, fixedMinor: 49 },
+	venmo: { percent: 0.0349, fixedMinor: 49 }
 };
 
 const CONFIG: FormConfig = {
 	formId: 'ff000000-0000-4000-8000-000000000001',
-	provider: { name: 'stripe', publishableKey: 'pk_test_spec' },
+	providers: [{ name: 'stripe', publishableKey: 'pk_test_spec' }],
 	currency: 'usd',
 	suggestedAmountsMinor: [2500],
 	minAmountMinor: 500,
@@ -52,6 +54,13 @@ const money = (minor: number) => formatMinor(minor, CONFIG.locale, CONFIG.curren
 const GIFT: FormValue = { amountMinor: 2500, frequency: 'monthly', programId: null };
 const QUOTE: Quote = { paymentToken: 'pi_1', feeMinor: 106, totalMinor: 2606 };
 
+/**
+ * one screen, as a donor on a given rail reads it.
+ *
+ * the rail is the state's own, so a screen is drawn on one by building the state that carries it —
+ * and a state built without it is the cold return this page boots into with a payment token and
+ * nothing else, which is the reading every screen has to be right in.
+ */
 function draw(state: State): HTMLElement {
 	const host = document.createElement('div');
 	document.body.appendChild(host);
@@ -147,30 +156,79 @@ it('shows the provider’s own authorization wording verbatim, with the conseque
 	expect(controls(root)).toEqual(['Authorize $26.06', copy.USE_DIFFERENT_METHOD]);
 });
 
-it('asks a donor sent to their bank to keep the window open, and offers nothing to press', () => {
-	const root = draw({ step: 'redirecting' });
+// the three rails and the page load that has none, on every screen a donor waits under. asserted
+// three ways round rather than once, because a sentence hard-coded to one rail passes any single
+// reading of it — and a donor who pressed PayPal being told to continue at their bank is the defect.
+it('asks a donor to keep the window open wherever they were sent, and names where that is', () => {
+	const bank = draw({ step: 'redirecting', method: 'ach' });
+	expect(heading(bank)).toBe('Continue at your bank');
+	expect(shown(bank, '.prose')).toContain('Your bank is checking this payment.');
 
-	expect(heading(root)).toBe(copy.REDIRECTING_HEADING);
-	expect(shown(root, '.prose')).toBe(copy.REDIRECTING_BODY);
-	expect(controls(root)).toEqual([]);
+	const card = draw({ step: 'redirecting', method: 'card' });
+	expect(heading(card)).toBe('Continue with your card issuer');
+	expect(shown(card, '.prose')).toContain('Your card issuer is checking this payment.');
+
+	const paypal = draw({ step: 'redirecting', method: 'paypal' });
+	expect(heading(paypal)).toBe('Continue in PayPal');
+	expect(shown(paypal, '.prose')).toContain('PayPal is checking this payment.');
+
+	// the one sentence that is the same on all of them, and the reason it is: wherever the donor
+	// was sent, this page is what they come back to.
+	for (const root of [bank, card, paypal, draw({ step: 'redirecting' })]) {
+		expect(shown(root, '.prose')).toContain('Keep this window open until you are sent back.');
+		expect(controls(root)).toEqual([]);
+	}
 });
 
-it('says a transfer has not settled rather than that it has', () => {
-	const root = draw({ step: 'processing' });
+it('promises business days on the bank rail and on no other', () => {
+	const bank = draw({ step: 'processing', method: 'ach' });
+	expect(heading(bank)).toBe(copy.PROCESSING_HEADING);
+	expect(shown(bank, '.prose')).toContain('Bank transfers usually take 4 to 5 business days');
 
-	expect(heading(root)).toBe(copy.PROCESSING_HEADING);
-	expect(shown(root, '.prose')).toBe(copy.processingBody('Helping Hands'));
-	expect(controls(root)).toEqual([]);
+	// a PayPal approval is not a transfer and carries no schedule this deployment could keep.
+	const paypal = draw({ step: 'processing', method: 'paypal' });
+	expect(shown(paypal, '.prose')).toContain('PayPal has your approval');
+	expect(shown(paypal, '.prose')).not.toContain('business days');
+
+	const card = draw({ step: 'processing', method: 'card' });
+	expect(shown(card, '.prose')).not.toContain('business days');
+	expect(shown(card, '.prose')).not.toContain('PayPal');
+
+	// every rail still says the money has not landed, which is why this screen is not the thank-you.
+	for (const root of [bank, paypal, card, draw({ step: 'processing' })]) {
+		expect(shown(root, '.prose')).toContain('has been told your gift is coming');
+		expect(controls(root)).toEqual([]);
+	}
 });
 
-it('claims nothing where nobody read the outcome, and offers no way to try again', () => {
-	const root = draw({ step: 'indeterminate' });
+it('claims nothing where nobody read the outcome, and names who is still holding it', () => {
+	const bank = draw({ step: 'indeterminate', method: 'ach' });
+	const paypal = draw({ step: 'indeterminate', method: 'venmo' });
+	const cold = draw({ step: 'indeterminate' });
+
+	expect(shown(bank, '.prose')).toContain('sent to your bank for confirmation');
+	expect(shown(paypal, '.prose')).toContain('sent to Venmo for confirmation');
+	// a cold return has no rail to name, so it names none rather than the wrong one.
+	expect(shown(cold, '.prose')).toContain('Your gift has been sent for confirmation.');
 
 	// weaker than the thank-you on purpose: a completion the donor is entitled to believe would be
 	// corrected only by an email that may never come.
-	expect(heading(root)).toBe(copy.INDETERMINATE_HEADING);
-	expect(shown(root, '.prose')).toContain('Nothing here will charge you a second time.');
-	expect(controls(root)).toEqual([]);
+	for (const root of [bank, paypal, cold]) {
+		expect(heading(root)).toBe(copy.INDETERMINATE_HEADING);
+		expect(shown(root, '.prose')).toContain('Nothing here will charge you a second time.');
+		expect(controls(root)).toEqual([]);
+	}
+});
+
+// the two outcomes only the bank rail reaches: `outcomeOfTermination` in
+// @better-giving/form/embed/paypal returns neither. the projection carries no rail on either state,
+// so neither screen has one to be worded off — what is asserted is that both keep the bank's own
+// words, which is what a later pass making them rail-generic would lose.
+it('keeps the microdeposit and expired screens the bank rail’s own words', () => {
+	const verify = draw({ step: 'awaitingVerification', deadline: null });
+	expect(shown(verify, '.prose')).toBe(copy.verifyBody('Helping Hands'));
+	expect(shown(verify, '.prose')).toContain('Two small deposits');
+	expect(shown(draw({ step: 'verificationExpired' }), '.prose')).toBe(copy.EXPIRED_BODY);
 });
 
 it('states the verification deadline as a date, and draws no block without one', () => {
@@ -225,7 +283,7 @@ it('carries the rail’s own sentence and never the fix written for whoever depl
 	expect(misconfigured.textContent).not.toContain('STRIPE_PUBLISHABLE_KEY');
 });
 
-it('tells a donor back from their bank that the flow is still finding out', () => {
+it('tells a donor back from wherever they authorized that the flow is still finding out', () => {
 	const root = draw({ step: 'working', phase: 'resuming' });
 
 	expect(heading(root)).toBe(copy.RESUMING_HEADING);

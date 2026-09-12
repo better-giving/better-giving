@@ -93,9 +93,10 @@ export type RoleToken = (typeof ROLE_TOKENS)[number];
  * the two are not the same kind of thing, which is why they are named apart rather than merged.
  * `loading` is an invitation — a host puts their own placeholder in it. `payment` is a projection
  * this element makes for itself: it holds the node a payment provider paints into, which lives in
- * the light DOM because a provider's own script cannot complete its mount inside a shadow root
- * (`#start` in ./element.ts). A host may address it, and content a host puts there lands in the
- * payment box beside the provider's fields, which is nobody's idea of a good time.
+ * the light DOM because the processor whose fields this element draws cannot complete its mount
+ * inside a shadow root (`#openPaymentBox` in ./element.ts, which also records the processor that
+ * can). A host may address it, and content a host puts there lands in the payment box beside the
+ * provider's fields, which is nobody's idea of a good time.
  */
 export const SLOT_NAMES = ['loading', 'payment'] as const;
 

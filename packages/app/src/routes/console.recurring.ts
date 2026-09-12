@@ -3,7 +3,7 @@ import type {
 	RecurringSetupReport
 } from '@better-giving/operator/console/recurring';
 import { consoleJson } from '$lib/server/console/surface';
-import { createPaymentProvider, stripeUnreadableReason } from '$lib/server/payments/factory';
+import { createPaymentProviders, stripeUnreadableReason } from '$lib/server/payments/factory';
 import {
 	readRecurringProvision,
 	setUpRecurringGifts
@@ -23,6 +23,12 @@ import type { Route } from './+types/console.recurring';
 // Stripe up in the first place: that press calls the processor with a key an operator has just
 // pasted, because there is nothing on the deployment yet to ask; by the time this one is pressed
 // there is.
+//
+// **it names Stripe because Stripe is the only processor this release charges a repeating gift on.**
+// a repeating gift is a catalog product, a billing plan and a subscription on PayPal's side and this
+// release builds none of the three, so the PayPal adapter refuses every recurring arm as
+// `unsupported` ($lib/server/payments/paypal.ts) and a reading of it would be that refusal wearing
+// this block's vocabulary. this file grows a processor the day an adapter takes one.
 //
 // **the read is the port's read arm and never the find-or-create one.** `prepareRecurringGifts`
 // makes what the account is missing, so a screen drawn from it would provision an operator's Stripe
@@ -44,7 +50,9 @@ import type { Route } from './+types/console.recurring';
 // nothing in this deployment could ever be told had changed.
 
 export async function action({ context }: Route.ActionArgs): Promise<Response> {
-	const setup = await setUpRecurringGifts(createPaymentProvider(context.get(platform).env));
+	const setup = await setUpRecurringGifts(
+		createPaymentProviders(context.get(platform).env).for('stripe')
+	);
 	const report: RecurringSetupReport = setup;
 
 	// a hole in the deployment and a refusal from the processor are both 500s rather than 400s, for
@@ -68,7 +76,7 @@ export async function action({ context }: Route.ActionArgs): Promise<Response> {
  */
 export async function loader({ context }: Route.LoaderArgs): Promise<Response> {
 	const { env } = context.get(platform);
-	const provision = await readRecurringProvision(createPaymentProvider(env));
+	const provision = await readRecurringProvision(createPaymentProviders(env).for('stripe'));
 	const reading: RecurringReading =
 		provision.state === 'unreadable'
 			? { state: 'unreadable', reason: stripeUnreadableReason(env), detail: provision.detail }

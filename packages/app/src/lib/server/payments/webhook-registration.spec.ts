@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PaymentProvider, PaymentResult, WebhookEndpointRegistry } from './provider';
 import { STRIPE_WEBHOOK_PATH } from '@better-giving/operator/stripe/webhook-endpoint';
+import { createPaymentProviders } from './factory';
 import {
 	readWebhookRegistration,
 	repairWebhookRegistration,
@@ -50,7 +51,7 @@ function endpoint(overrides: Record<string, unknown> = {}) {
 		apiVersion: '2026-07-29.dahlia',
 		// unstamped by default, which is the state a hand-registered endpoint is in and the one this
 		// module can say nothing about. the cases that are about the stamp set it.
-		secretFingerprint: null,
+		verificationStamp: null,
 		...overrides
 	};
 }
@@ -67,6 +68,7 @@ function port(list: PaymentResult<WebhookEndpointRegistry>): PaymentProvider {
 		throw new Error(`${name} is not part of reading a webhook registration`);
 	};
 	return {
+		processor: 'stripe',
 		prepareRecurringGifts: unused('prepareRecurringGifts'),
 		readRecurringGiftProvision: unused('readRecurringGiftProvision'),
 		createRecurringGift: unused('createRecurringGift'),
@@ -126,7 +128,7 @@ describe('readWebhookRegistration', () => {
 			complete: true,
 			eventTypes: [...REQUIRED],
 			missingEventTypes: [],
-			secretFingerprint: null
+			verificationStamp: null
 		});
 	});
 
@@ -142,11 +144,11 @@ describe('readWebhookRegistration', () => {
 	 */
 	it('carries the endpoint’s signing-secret fingerprint out', async () => {
 		const registration = await readWebhookRegistration(
-			port(holding(endpoint({ secretFingerprint: '85fd512dab8038e3' }))),
+			port(holding(endpoint({ verificationStamp: '85fd512dab8038e3' }))),
 			URL_HERE
 		);
 
-		expect(registration.state === 'registered' && registration.secretFingerprint).toBe(
+		expect(registration.state === 'registered' && registration.verificationStamp).toBe(
 			'85fd512dab8038e3'
 		);
 	});
@@ -279,7 +281,10 @@ function repairable(list: PaymentResult<WebhookEndpointRegistry>) {
 			replaced.push({ id, url });
 			return {
 				ok: true as const,
-				value: { endpoint: endpoint({ id: 'we_new', url }), signingSecret: 'whsec_notarealsecret' }
+				value: {
+					endpoint: endpoint({ id: 'we_new', url }),
+					verificationValue: 'whsec_notarealsecret'
+				}
 			};
 		}
 	};
@@ -367,7 +372,7 @@ describe('replaceWebhookRegistration', () => {
 		const result = await replaceWebhookRegistration(provider, URL_HERE);
 
 		expect(replaced).toEqual([{ id: 'we_ours', url: URL_HERE }]);
-		expect(result.ok && result.value.signingSecret).toBe('whsec_notarealsecret');
+		expect(result.ok && result.value.verificationValue).toBe('whsec_notarealsecret');
 	});
 
 	/** the same race the repair answers, and the same answer: there is nothing to replace. */
@@ -378,5 +383,63 @@ describe('replaceWebhookRegistration', () => {
 
 		expect(replaced).toEqual([]);
 		expect(result.ok === false && result.reason).toBe('not_found');
+	});
+});
+
+/**
+ * the same module asked about a deployment on a processor whose endpoint this release does not
+ * manage.
+ *
+ * the URL it looks for is that processor's own address, so this is the arm that has to keep
+ * answering with a state: a console drawing the webhook block for such a deployment needs a
+ * sentence, not an exception.
+ */
+describe('readWebhookRegistration on a PayPal deployment', () => {
+	const paypal = (): PaymentProvider =>
+		createPaymentProviders({
+			PAYPAL_CLIENT_ID: 'notarealclientid',
+			PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
+		}).for('paypal');
+
+	/**
+	 * a refusal that says this release manages no endpoint here is not a read that failed, and the
+	 * two send an operator to opposite places: one is credentials to check, the other is a
+	 * registration to make by hand. reported as `unreadable` it reads as a deployment with something
+	 * wrong with it, on a deployment working exactly as intended.
+	 */
+	it('reports the registration as unmanaged rather than unreadable', async () => {
+		const registration = await readWebhookRegistration(
+			paypal(),
+			'https://give.example.workers.dev/api/paypal/webhook'
+		);
+
+		expect(registration.state).toBe('unmanaged');
+	});
+
+	it('carries the port’s own sentence, in PayPal’s own name', async () => {
+		const registration = await readWebhookRegistration(
+			paypal(),
+			'https://give.example.workers.dev/api/paypal/webhook'
+		);
+
+		expect(registration.state === 'unmanaged' && registration.detail).toContain('PayPal');
+	});
+
+	/**
+	 * a read that could not be made keeps answering `unreadable` on this processor too: the state is
+	 * about what the port refused with rather than about which processor answered, so a PayPal
+	 * deployment short of its credentials is still a deployment with something to set.
+	 */
+	it('keeps unreadable for a refusal that is not this release declining to manage one', async () => {
+		const registration = await readWebhookRegistration(
+			port({
+				ok: false,
+				reason: 'unreachable',
+				detail: 'PayPal did not answer.'
+			}),
+			URL_HERE
+		);
+
+		expect(registration.state).toBe('unreadable');
 	});
 });

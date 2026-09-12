@@ -1,7 +1,7 @@
 import type { WalletLevellingReport } from '@better-giving/operator/console/payments';
 import { consoleJson, consoleMethodNotAllowed } from '$lib/server/console/surface';
 import { levelledWalletHost, walletHosts } from '$lib/server/console/wallet-hosts';
-import { createPaymentProvider, stripeUnreadableReason } from '$lib/server/payments/factory';
+import { createPaymentProviders, stripeUnreadableReason } from '$lib/server/payments/factory';
 import { levelWalletDomains } from '$lib/server/payments/wallet-domains';
 import { database, platform } from '../context';
 import type { Route } from './+types/console.wallet-domains';
@@ -44,7 +44,7 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 	const { env } = context.get(platform);
 
 	const asked = await walletHosts(context.get(database), request.url);
-	const levelled = await levelWalletDomains(createPaymentProvider(env), asked.hosts);
+	const levelled = await levelWalletDomains(createPaymentProviders(env).for('stripe'), asked.hosts);
 
 	const report: WalletLevellingReport =
 		levelled.state === 'unreadable'

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PaymentProvider, PaymentResult, RecurringGiftStanding } from '../payments/provider';
+import { soleProcessor } from '../payments/processors.testing';
 import { cachedCadences } from './cadence-cache';
 
 // the edge cache in front of the repeating-gifts read, against workerd's own `caches`.
@@ -29,6 +30,7 @@ function countingPort(read: PaymentResult<RecurringGiftStanding>): {
 	return {
 		reads: () => reads,
 		provider: {
+			processor: 'stripe',
 			async readRecurringGiftProvision() {
 				reads += 1;
 				return read;
@@ -71,8 +73,16 @@ describe('cachedCadences', () => {
 		const { provider, reads } = countingPort({ ok: true, value: 'ready' });
 		const origin = 'https://first-then-cached.example';
 
-		expect(await cachedCadences(provider, origin)).toEqual(['one_time', 'monthly', 'yearly']);
-		expect(await cachedCadences(provider, origin)).toEqual(['one_time', 'monthly', 'yearly']);
+		expect(await cachedCadences(soleProcessor(provider), origin)).toEqual([
+			'one_time',
+			'monthly',
+			'yearly'
+		]);
+		expect(await cachedCadences(soleProcessor(provider), origin)).toEqual([
+			'one_time',
+			'monthly',
+			'yearly'
+		]);
 		expect(reads()).toBe(1);
 	});
 
@@ -80,8 +90,8 @@ describe('cachedCadences', () => {
 		const { provider, reads } = countingPort({ ok: true, value: 'absent' });
 		const origin = 'https://absent-is-cached.example';
 
-		expect(await cachedCadences(provider, origin)).toEqual(['one_time']);
-		expect(await cachedCadences(provider, origin)).toEqual(['one_time']);
+		expect(await cachedCadences(soleProcessor(provider), origin)).toEqual(['one_time']);
+		expect(await cachedCadences(soleProcessor(provider), origin)).toEqual(['one_time']);
 		expect(reads()).toBe(1);
 	});
 
@@ -96,8 +106,8 @@ describe('cachedCadences', () => {
 		const { provider, reads } = countingPort(REFUSAL);
 		const origin = 'https://unreadable-not-stored.example';
 
-		expect(await cachedCadences(provider, origin)).toEqual(['one_time']);
-		expect(await cachedCadences(provider, origin)).toEqual(['one_time']);
+		expect(await cachedCadences(soleProcessor(provider), origin)).toEqual(['one_time']);
+		expect(await cachedCadences(soleProcessor(provider), origin)).toEqual(['one_time']);
 		expect(reads()).toBe(2);
 	});
 
@@ -116,7 +126,11 @@ describe('cachedCadences', () => {
 		);
 
 		const { provider, reads } = countingPort({ ok: true, value: 'ready' });
-		expect(await cachedCadences(provider, origin)).toEqual(['one_time', 'monthly', 'yearly']);
+		expect(await cachedCadences(soleProcessor(provider), origin)).toEqual([
+			'one_time',
+			'monthly',
+			'yearly'
+		]);
 		expect(reads()).toBe(1);
 	});
 
@@ -126,7 +140,11 @@ describe('cachedCadences', () => {
 		await edge.put(key, new Response('[]', { headers: { 'cache-control': 'max-age=300' } }));
 
 		const { provider, reads } = countingPort({ ok: true, value: 'ready' });
-		expect(await cachedCadences(provider, origin)).toEqual(['one_time', 'monthly', 'yearly']);
+		expect(await cachedCadences(soleProcessor(provider), origin)).toEqual([
+			'one_time',
+			'monthly',
+			'yearly'
+		]);
 		expect(reads()).toBe(1);
 	});
 
@@ -140,12 +158,14 @@ describe('cachedCadences', () => {
 		const ready = countingPort({ ok: true, value: 'ready' });
 		const absent = countingPort({ ok: true, value: 'absent' });
 
-		expect(await cachedCadences(ready.provider, 'https://one.example')).toEqual([
+		expect(await cachedCadences(soleProcessor(ready.provider), 'https://one.example')).toEqual([
 			'one_time',
 			'monthly',
 			'yearly'
 		]);
-		expect(await cachedCadences(absent.provider, 'https://two.example')).toEqual(['one_time']);
+		expect(await cachedCadences(soleProcessor(absent.provider), 'https://two.example')).toEqual([
+			'one_time'
+		]);
 		expect(absent.reads()).toBe(1);
 	});
 });

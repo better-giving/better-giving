@@ -51,6 +51,7 @@ function gift(over: Partial<Gift> = {}): Gift {
 		source: 'Annual appeal',
 		note: null,
 		status: 'completed',
+		paidWith: 'Card',
 		repeating: false,
 		tribute: null,
 		program: null,
@@ -134,4 +135,18 @@ it('leaves the cell empty on a gift given for nobody', () => {
 	// fallback of its own — `—` here is `DataTable`'s and not this screen's.
 	const root = screen([gift()]);
 	expect(cell(root, 'Dedication')).toBe('—');
+});
+
+it('prints the rail under the column headed for it', () => {
+	// the loader resolves the word, so what this reads is that the column and the cell agree on
+	// their key: a typo in either leaves a dashed column standing beside a green workers spec.
+	const root = screen([gift({ paidWith: 'Venmo' })]);
+	expect(cell(root, 'Paid with')).toBe('Venmo');
+});
+
+it('leaves the rail empty on a gift nothing has been attempted on', () => {
+	// `DataTable` dashes and mutes an empty cell itself, which is why the page reaches for no
+	// fallback — a rail invented for a gift that has none is a claim about money that never moved.
+	const root = screen([gift({ paidWith: null })]);
+	expect(cell(root, 'Paid with')).toBe('—');
 });

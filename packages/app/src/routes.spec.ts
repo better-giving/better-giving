@@ -3,6 +3,8 @@ import { createRequire } from 'node:module';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { API_BASE_PATH } from '$lib/server/api/surface';
 import { CONSOLE_BASE_PATH } from '$lib/server/console/surface';
+import { PAYPAL_WEBHOOK_PATH } from '$lib/server/payments/webhook-address';
+import { STRIPE_WEBHOOK_PATH } from '@better-giving/operator/stripe/webhook-endpoint';
 import {
 	matchedFileAt,
 	reachesServerTree,
@@ -81,15 +83,30 @@ const API_LAYOUT = 'routes/api.v1.ts';
 const ROOT_ROUTE = 'root.tsx';
 
 /**
- * the payment processor's callback, which is the one route in this app that owes its position.
+ * the payment processors' callbacks, with the address each answers on — the two routes in this app
+ * that owe their position.
  *
- * every other route's placement decides what it inherits; this one's decides what it does not.
- * the signature is computed over the raw body exactly as sent, and the body is read exactly once
- * by the handler that owns it (CLAUDE.md) — so a `middleware` anywhere above it that touched the
- * request would break verification in production and nowhere else. it is named here so the case
- * at the foot of `where middleware is mounted` can hold that it has no layout above it.
+ * every other route's placement decides what it inherits; theirs decides what they do not. the
+ * delivery is verified against the raw body exactly as sent, and the body is read exactly once by
+ * the handler that owns it (CLAUDE.md) — so a `middleware` anywhere above either of them that
+ * touched the request would break verification in production and nowhere else. they are named here
+ * so the case at the foot of `where middleware is mounted` can hold that neither has a layout above
+ * it.
+ *
+ * the address is here beside the file rather than left to the name, because it is what an operator
+ * pastes into a processor's dashboard: Stripe's is registered by this app and PayPal's is typed in
+ * by hand, and the deployment tells an operator PayPal's over the console wire
+ * (`src/routes/console.payments.ts`).
+ *
+ * each address is the constant the rest of the tree builds from rather than a second spelling of
+ * it, which is what makes this the pin: a route file renamed changes the path react router resolves
+ * and nothing else, so a literal here would agree with the rename and leave every caller of those
+ * constants pointing at a 404.
  */
-const PROCESSOR_CALLBACK = 'routes/api.stripe.webhook.ts';
+const PROCESSOR_CALLBACKS: Readonly<Record<string, string>> = {
+	'routes/api.stripe.webhook.ts': STRIPE_WEBHOOK_PATH,
+	'routes/api.paypal.webhook.ts': PAYPAL_WEBHOOK_PATH
+};
 
 /**
  * the donor's page, which is the one screen outside the layout that wears no operator stylesheet.
@@ -154,12 +171,12 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// Turnstile token checked before any intent is minted, and the amount re-read from the form
 	// record rather than taken from the body.
 	'routes/api.v1.forms.$id.donations.ts',
-	// the payment processor's callback, delivered by a machine belonging to somebody else. it is
-	// unauthenticated because there is no session a processor could hold and no page it is
+	// the payment processors' callbacks, delivered by machines belonging to somebody else. they are
+	// unauthenticated because there is no session a processor could hold and no page either is
 	// answering: no origin to echo, no visitor to challenge, no form id in the path. what stands
-	// in for all of it is one signature over the raw body, checked before anything is parsed —
-	// which is also why it is under no layout at all, held below.
-	PROCESSOR_CALLBACK,
+	// in for all of it is the delivery being verified against the raw body, checked before anything
+	// is parsed — which is also why neither is under a layout at all, held below.
+	...Object.keys(PROCESSOR_CALLBACKS),
 	// the donor's page, opened from a link the organisation published. it is unauthenticated
 	// because a donor holds no session and never could — there is nobody for a gate here to ask
 	// about. it initiates no payment itself and takes no submission: the gift goes through the
@@ -196,14 +213,14 @@ const CONSOLE_ROUTE_FILES: readonly string[] = [
 	// that changes nothing, and the one press that provisions it. it answers on its own address, so
 	// it is not in the report.
 	'routes/console.recurring.ts',
-	// which ways of paying this deployment's own processor account can charge, whether the signing
-	// secret it holds is the one its endpoint is signed with, and what that endpoint is subscribed
-	// to. three readings of somebody else's account, all of them facts only this deployment can
+	// which ways of paying each processor account this deployment holds keys for can charge, whether
+	// what verifies its deliveries is what its endpoint was registered with, and what that endpoint is
+	// subscribed to. readings of somebody else's accounts, all of them facts only this deployment can
 	// state, and the press for the third is the file below.
 	'routes/console.payments.ts',
 	// the repair for the endpoint that reading reports on: subscribed to everything this app acts
 	// on and switched back on, keeping the signing secret it has. a press and no read — where the
-	// endpoint stands is the file above.
+	// endpoint stands is the file above — and Stripe's alone, for the reason its own header states.
 	'routes/console.webhook-repair.ts',
 	// registering this deployment's own address and every site it lists on the processor account,
 	// so a donor is drawn the wallet buttons. a press and no read — which hostnames the account
@@ -610,24 +627,27 @@ describe('where middleware is mounted', () => {
 	});
 
 	/**
-	 * and the callback sits under nothing, so neither of the two mountings above can reach it.
+	 * and each callback sits under nothing, so neither of the two mountings above can reach one.
 	 *
 	 * the other half of the same claim, and the half a name cannot carry: the two cases above say
-	 * where a `middleware` may be, this one says the callback is under no layout that could hold
+	 * where a `middleware` may be, this one says the callbacks are under no layout that could hold
 	 * one — asserted against the route config react router serves rather than against the file
-	 * name that produced it, because `flatRoutes` nests by name and a layout added at
-	 * `routes/api.ts` would adopt this route without a character of it changing.
+	 * names that produced them, because `flatRoutes` nests by name and a layout added at
+	 * `routes/api.ts` would adopt both routes without a character of either changing.
 	 *
-	 * what breaks if it does is in routes/api.stripe.webhook.ts's header and is invisible in
-	 * every other place: verification fails in production on every delivery, and the processor's
-	 * own dashboard is the only thing that reports it. the runtime half — that the bytes reach
-	 * the handler unread and are read once — is routes/api.stripe.webhook.workers.spec.ts's.
+	 * what breaks if it does is in each callback's own header and is invisible in every other
+	 * place: verification fails in production on every delivery, and the processor's own dashboard
+	 * is the only thing that reports it. the runtime half — that the bytes reach the handler unread
+	 * and are read once — is each route's own `.workers.spec.ts`.
 	 */
-	it('is above no layout at all for the processor’s callback', () => {
-		const callback = routes.find((r) => r.file === PROCESSOR_CALLBACK);
-		expect(callback?.path).toBe('/api/stripe/webhook');
-		expect(callback?.ancestors).toEqual([]);
-	});
+	it.each(Object.entries(PROCESSOR_CALLBACKS))(
+		'is above no layout at all for %s',
+		(file, address) => {
+			const callback = routes.find((r) => r.file === file);
+			expect(callback?.path).toBe(address);
+			expect(callback?.ancestors).toEqual([]);
+		}
+	);
 });
 
 /**

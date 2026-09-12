@@ -126,6 +126,17 @@ export type PropTypes<
 };
 
 /**
+ * the rail a gift was committed to, on the screens whose words name one.
+ *
+ * off the payer an intent was minted for rather than off the payment surface's last report: the
+ * two agree until they do not, and these screens are read after the money has gone, where the
+ * honest answer is the rail it actually went down. absent is a reading of its own and never a
+ * missing one — a page that booted on a payment token and nothing else has no committed payer, and
+ * a rail guessed for it would be the wrong one on most of them.
+ */
+type CommittedRail = { readonly method?: PaymentMethod };
+
+/**
  * the flow as a renderer sees it: one variant per step, each carrying what that step may show.
  *
  * the value is non-optional from `details` onward, by construction. that is the whole point of
@@ -214,7 +225,7 @@ export type State =
 			readonly method: PaymentMethod;
 	  }
 	| { readonly step: 'mandate'; readonly fv: FormValue; readonly quote: Quote }
-	| {
+	| ({
 			readonly step: 'working';
 			readonly fv?: FormValue;
 			/**
@@ -227,10 +238,10 @@ export type State =
 			 * the last one shown (./views.ts).
 			 */
 			readonly phase: WorkingPhase;
-	  }
-	| { readonly step: 'redirecting' }
-	| { readonly step: 'processing' }
-	| { readonly step: 'indeterminate' }
+	  } & CommittedRail)
+	| ({ readonly step: 'redirecting' } & CommittedRail)
+	| ({ readonly step: 'processing' } & CommittedRail)
+	| ({ readonly step: 'indeterminate' } & CommittedRail)
 	| { readonly step: 'awaitingVerification'; readonly deadline: number | null }
 	| { readonly step: 'verificationExpired' }
 	| { readonly step: 'success' }
@@ -375,9 +386,12 @@ export function toState(snapshot: CheckoutSnapshot): State {
 	const { context } = snapshot;
 	const fv = context.fv;
 	const step = topLevelStateOf(snapshot);
+	// spread rather than written as a key holding `undefined`: `exactOptionalPropertyTypes` is on,
+	// and a screen with no committed rail is absent rather than present-but-nothing.
+	const rail: CommittedRail = context.payer === null ? {} : { method: context.payer.method };
 	/** the shape every collapsed arm below returns, so the phase cannot be forgotten on one of them. */
 	const working = (phase: WorkingPhase): State =>
-		fv === null ? { step: 'working', phase } : { step: 'working', fv, phase };
+		fv === null ? { step: 'working', phase, ...rail } : { step: 'working', fv, phase, ...rail };
 
 	switch (step) {
 		case 'amount': {
@@ -387,11 +401,11 @@ export function toState(snapshot: CheckoutSnapshot): State {
 		case 'success':
 			return { step: 'success' };
 		case 'redirecting':
-			return { step: 'redirecting' };
+			return { step: 'redirecting', ...rail };
 		case 'processing':
-			return { step: 'processing' };
+			return { step: 'processing', ...rail };
 		case 'indeterminate':
-			return { step: 'indeterminate' };
+			return { step: 'indeterminate', ...rail };
 		case 'verificationExpired':
 			return { step: 'verificationExpired' };
 		case 'awaitingVerification':

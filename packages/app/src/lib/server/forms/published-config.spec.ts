@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { SUGGESTED_DEDUCTIBILITY_STATEMENT } from '@better-giving/operator/deductibility';
 import { readFormConfig } from '@better-giving/form/config';
+import { PAYPAL_RAILS, STRIPE_RAILS } from '@better-giving/form/embed/rails';
 import { OFFERED_PAYMENT_METHODS } from '../../forms/offered-rails';
 import { postableFromAccount, type PostableAccountId } from '../db/postable';
 import type { OrgProfile } from '../db/schema';
-import { STRIPE_US_FEE_RULES } from '../payments/fees';
+import {
+	PAYPAL_US_FEE_RULES_CHARITY,
+	PAYPAL_US_FEE_RULES_STANDARD,
+	STRIPE_US_FEE_RULES
+} from '../payments/fees';
 import type { FormRecord } from './form-input';
 import { publishedConfig, renderableConfig, type PublishedConfigSources } from './published-config';
 import type { PaymentMethod } from '@better-giving/form/v1';
@@ -86,6 +91,12 @@ const STRIPE = {
 	STRIPE_SECRET_KEY: 'sk_test_abc',
 	STRIPE_PUBLISHABLE_KEY: 'pk_test_abc',
 	STRIPE_WEBHOOK_SECRET: 'whsec_abc'
+};
+
+/** a deployment holding PayPal's pair and no Stripe key at all. */
+const PAYPAL = {
+	PAYPAL_CLIENT_ID: 'notarealclientid',
+	PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
 };
 
 describe('publishedConfig — refusals', () => {
@@ -289,7 +300,15 @@ describe('publishedConfig — refusals', () => {
 			env: { STRIPE_PUBLISHABLE_KEY: 'pk_test_a' },
 			names: 'STRIPE_SECRET_KEY'
 		},
-		{ label: 'no Stripe keys at all', env: {}, names: 'STRIPE_PUBLISHABLE_KEY' }
+		{ label: 'no Stripe keys at all', env: {}, names: 'STRIPE_PUBLISHABLE_KEY' },
+		{
+			// the deployment whose operator filled one processor's boxes and half of the other's. a
+			// refusal has to name the half that is missing rather than the processor that is whole,
+			// or it reads as this app having lost the values they typed.
+			label: 'PayPal’s client id and neither secret',
+			env: { PAYPAL_CLIENT_ID: 'notarealclientid' },
+			names: 'PAYPAL_CLIENT_SECRET'
+		}
 	])('refuses a deployment with $label, naming $names', ({ env, names }) => {
 		const result = publishedConfig({
 			id: FORM_ID,
@@ -304,6 +323,60 @@ describe('publishedConfig — refusals', () => {
 		if (result.ok) return;
 		expect(result.reason).toBe('payments_not_configured');
 		expect(result.error.message).toContain(names);
+	});
+
+	/**
+	 * the fix names the processor the operator is actually setting up.
+	 *
+	 * the message names every value that is short and this names where they come from, so it is the
+	 * half that can send somebody to a dashboard they hold no account on. a half-filled pair is the
+	 * choice this deployment has already made, and a deployment holding neither has made none —
+	 * which is the one case where both are named.
+	 */
+	it.each([
+		{
+			label: 'PayPal’s client id alone',
+			env: { PAYPAL_CLIENT_ID: 'notarealclientid' },
+			names: 'PayPal',
+			omits: 'Stripe'
+		},
+		{
+			label: 'Stripe’s secret key alone',
+			env: { STRIPE_SECRET_KEY: 'sk_test_abc' },
+			names: 'Stripe',
+			omits: 'PayPal'
+		}
+	])('sends a deployment holding $label to $names and nowhere else', ({ env, names, omits }) => {
+		const result = publishedConfig({
+			id: FORM_ID,
+			cadences: SERVED_CADENCES,
+			program: null,
+			rails: OFFERED_PAYMENT_METHODS,
+			form: formRecord(),
+			profile: orgProfile(),
+			env
+		});
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.error.fix).toContain(names);
+		expect(result.error.fix).not.toContain(omits);
+	});
+
+	it('offers a deployment holding neither processor both, saying either finishes the job', () => {
+		const result = publishedConfig({
+			id: FORM_ID,
+			cadences: SERVED_CADENCES,
+			program: null,
+			rails: OFFERED_PAYMENT_METHODS,
+			form: formRecord(),
+			profile: orgProfile(),
+			env: {}
+		});
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.error.fix).toContain('Stripe');
+		expect(result.error.fix).toContain('PayPal');
+		expect(result.error.fix).toContain('Either processor is enough on its own.');
 	});
 
 	/**
@@ -444,6 +517,33 @@ describe('renderableConfig', () => {
 		// the row still comes back: the endpoint answers this 4xx with CORS headers taken from
 		// `allowed_origins`, and a body a browser cannot read is a refusal that reaches nobody.
 		expect(result.form?.allowedOrigins).toEqual(['https://acme.org']);
+	});
+
+	/**
+	 * the sentence names the account that answered and the rails that account settles.
+	 *
+	 * a PayPal-only deployment has no Stripe account to have its standings read, and card, bank
+	 * debit and the two wallets are rails nothing here could mint whatever their standing — so a
+	 * message naming either sends an operator to look for a screen that does not exist.
+	 */
+	it('names the processor whose account answered and only its own rails', () => {
+		const result = renderableConfig(
+			publishedConfig({
+				id: FORM_ID,
+				cadences: SERVED_CADENCES,
+				program: null,
+				rails: [],
+				form: formRecord(),
+				profile: orgProfile(),
+				env: PAYPAL
+			})
+		);
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.error.message).toContain('PayPal');
+		expect(result.error.message).not.toContain('Stripe');
+		for (const rail of PAYPAL_RAILS) expect(result.error.message).toContain(rail);
+		for (const rail of STRIPE_RAILS) expect(result.error.message).not.toContain(rail);
 	});
 
 	it.each([
@@ -596,20 +696,71 @@ describe('publishedConfig — the config it serves', () => {
 	/**
 	 * the publishable key and nothing else about Stripe. `name` is what tells an adapter which
 	 * SDK to reach for — the vendor is data on this contract rather than a field named after one.
+	 *
+	 * a set of one, because this deployment holds one processor's keys: the field is plural so that
+	 * a deployment holding two names both, and a deployment holding one says exactly what it said
+	 * when the field was singular.
 	 */
 	it('names the payment provider and hands over the publishable key', () => {
-		expect(served().provider).toEqual({ name: 'stripe', publishableKey: 'pk_test_abc' });
+		expect(served().providers).toEqual([{ name: 'stripe', publishableKey: 'pk_test_abc' }]);
 	});
 
 	/**
-	 * the fee rules are the repo constant, served whole.
+	 * a deployment holding PayPal's credentials alone is served on PayPal, not refused.
 	 *
-	 * asserted by identity rather than by value, because the point is that nothing between the
-	 * constant and the wire gets to reshape it: a rail dropped or a rate rounded on the way out
-	 * is a fee line quoting a number the processor does not charge.
+	 * PayPal's client id is the browser half as well as part of the server pair, so one variable
+	 * short is a form that cannot be drawn and two variables set is a form that can. the key handed
+	 * over is that client id — it is the half that is public, and the secret never crosses to a
+	 * browser (CLAUDE.md).
 	 */
-	it('serves the published Stripe fee rules unchanged', () => {
-		expect(served().feeRules).toBe(STRIPE_US_FEE_RULES);
+	it('serves a deployment holding PayPal’s credentials alone', () => {
+		const result = publishedConfig({
+			id: FORM_ID,
+			cadences: SERVED_CADENCES,
+			program: null,
+			rails: OFFERED_PAYMENT_METHODS,
+			form: formRecord(),
+			profile: orgProfile(),
+			env: {
+				PAYPAL_CLIENT_ID: 'notarealclientid',
+				PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
+			}
+		});
+
+		expect(result.ok && result.config.providers).toEqual([
+			{ name: 'paypal', publishableKey: 'notarealclientid' }
+		]);
+	});
+
+	/**
+	 * the fee rules are the repo constants, served whole.
+	 *
+	 * each rail's rule asserted by identity rather than by value, because the point is that nothing
+	 * between the constants and the wire gets to reshape one: a rail dropped or a rate rounded on
+	 * the way out is a fee line quoting a number the processor does not charge. the table itself is
+	 * composed per served config (`servedFeeRules` in ../payments/fees.ts), so identity is the
+	 * claim to make about the rules inside it rather than about the object holding them.
+	 */
+	it('serves the published fee rules unchanged, rail by rail', () => {
+		const feeRules = served().feeRules;
+
+		for (const rail of STRIPE_RAILS) expect(feeRules[rail]).toBe(STRIPE_US_FEE_RULES[rail]);
+		for (const rail of PAYPAL_RAILS) {
+			expect(feeRules[rail]).toBe(PAYPAL_US_FEE_RULES_STANDARD[rail]);
+		}
+	});
+
+	/**
+	 * which PayPal table a donor is quoted from is the one thing about PayPal's pricing this
+	 * deployment cannot read off the account, so it comes off a deploy-time answer
+	 * (`paypalFeeRules` in ../payments/fees.ts). the Stripe half is untouched by it: the two tables
+	 * price disjoint rails.
+	 */
+	it('quotes PayPal’s rails at the charity rate where the organisation is approved for it', () => {
+		const feeRules = served({ env: { ...STRIPE, PAYPAL_CHARITY_RATE_APPROVED: 'true' } }).feeRules;
+
+		for (const rail of PAYPAL_RAILS) expect(feeRules[rail]).toBe(PAYPAL_US_FEE_RULES_CHARITY[rail]);
+		for (const rail of STRIPE_RAILS) expect(feeRules[rail]).toBe(STRIPE_US_FEE_RULES[rail]);
 	});
 
 	/**

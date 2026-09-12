@@ -135,7 +135,7 @@ export const homeReading = (): Promise<HomeReading> => ask('/home/reading', 'GET
 /**
  * sets and clears the values a fold's boxes carry, in one request to cloudflare.
  *
- * every one of the thirteen is a plain var, so this is the one door every press on the page writes
+ * every one of the seventeen is a plain var, so this is the one door every press on the page writes
  * through — a read of the worker's bindings and one patch back. seconds and no deploy: the binary
  * replaces the named bindings and sends every other one back up as inherited, so the deployment's
  * database and its rate limiters are untouched.
@@ -146,7 +146,7 @@ export const homeReading = (): Promise<HomeReading> => ask('/home/reading', 'GET
  *
  * **every way it did not happen comes back as a value rather than thrown**, because each is a state
  * the fold draws at the control that was pressed. the binary refuses a name that is not one of the
- * thirteen before cloudflare is asked, and that refusal is thrown: no control on this page can make
+ * seventeen before cloudflare is asked, and that refusal is thrown: no control on this page can make
  * one.
  */
 export const setVars = (values: Record<string, string | null>): Promise<VarsWritten> =>

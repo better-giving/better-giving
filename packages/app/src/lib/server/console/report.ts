@@ -23,7 +23,7 @@ import type { ConsoleSession } from './access';
 // this deployment's forms may be used on, and the organisation's legal identity — which is what
 // makes this surface a mutation surface and not a report.
 //
-// **no configuration value is in here and none may be added.** the console reads all thirteen off
+// **no configuration value is in here and none may be added.** the console reads all seventeen off
 // the Cloudflare account it is signed in to (`DEPLOY_VARS` in
 // `@better-giving/operator/deploy-split`), so a member reporting one too would be a second seed
 // disagreeing with the first mid-deploy. the console's own session credential is on no list here

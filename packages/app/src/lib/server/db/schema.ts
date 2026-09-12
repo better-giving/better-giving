@@ -98,7 +98,7 @@ import type { PostableAccountId } from './postable';
 // anywhere in this schema or in the query layer over it.
 //
 // ---------------------------------------------------------------------------
-// four rules for anyone editing this file. all four are about `drizzle-kit
+// five rules for anyone editing this file. all five are about `drizzle-kit
 // generate`, whose output is a draft, not a reviewed migration. read every generated
 // .sql before committing it.
 //
@@ -180,6 +180,20 @@ import type { PostableAccountId } from './postable';
 //    `build` ran first without looking at migrations/ at all. so the deploy dies at the
 //    one-way door with no gate having had a chance. `contact_primary_email_lower_idx`
 //    is the only functional index today; every future one inherits this.
+//
+// 5. a rebuild's CHECK constraints keep naming the table it is about to stop being.
+//    every check here renders qualified — `CHECK("payment"."direction" in (...))` is what
+//    `enumCheck` and its neighbours emit — so inside rule 2's rebuild each one reads
+//    `"__new_payment"."direction"`, naming the table the rebuild creates. `ALTER TABLE
+//    __new_payment RENAME TO payment` rewrites the table's own name in its stored SQL and
+//    leaves that qualifier pointing at a table that no longer exists.
+//    sqlite 3.43 refuses the rename outright — `error in table payment after rename: no such
+//    column: __new_payment.direction` — and takes the whole migration down with it. workerd's
+//    sqlite accepted the same file, which is the half that matters: the suite runs there, so a
+//    rebuild left as generated passes every gate and is then a coin toss at `deploy`'s one-way
+//    door, decided by whichever sqlite the remote database happens to be built on.
+//    strip the qualifier: `CHECK("direction" in (...))`. an unqualified column reference in a
+//    check resolves against whatever the table is called, so it survives the rename on both.
 // ---------------------------------------------------------------------------
 
 /** primary-key column shared by every table: text uuidv7, generated app-side. */
@@ -1362,16 +1376,50 @@ export const lineItem = sqliteTable(
 export const PAYMENT_DIRECTIONS = ['inbound', 'refund'] as const;
 export type PaymentDirection = (typeof PAYMENT_DIRECTIONS)[number];
 
-export const PAYMENT_METHODS = ['cash', 'check', 'card', 'ach'] as const;
+/**
+ * how the money arrived. not the list the donation form offers — `PAYMENT_METHODS` in
+ * packages/form/src/v1.ts is the rails a donor may pick, whose two wallets ride the card rail
+ * rather than being rails of their own; `QUOTED_RAIL_METHODS` in ../donations/record.ts is the
+ * mapping between the two lists.
+ *
+ * `paypal` and `venmo` are members here rather than arriving as `card`, and that is the decision
+ * worth writing down: PayPal's window settles a balance, a Pay Later agreement or Venmo as
+ * readily as a card, so `card` would be a false claim on most of them and would leave the two
+ * rails indistinguishable on the row afterwards. there is no third answer available — the column
+ * is NOT NULL, and `Settlement.method`'s null in ../payments/provider.ts means "the settlement
+ * named no rail", which leaves the row keeping whatever opened it rather than recording nothing.
+ */
+export const PAYMENT_METHODS = ['cash', 'check', 'card', 'ach', 'paypal', 'venmo'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 /**
  * which rail settled it. not the `PaymentProvider` port — that is the interface in
  * lib/server/payments, and this is the string stored on a row, so the type is
  * `PaymentProviderName` to keep the two importable into one module.
+ *
+ * `venmo` is deliberately not a member, though it is a member of `PAYMENT_METHODS` above: Venmo
+ * is a rail PayPal settles, so a Venmo gift is `provider = 'paypal'` with `method = 'venmo'`.
+ * the two columns answer different questions — who moved the money, and how it arrived — and a
+ * member here would give one processor two spellings, which is what `payment_provider_txn_idx`
+ * below would then be keyed on.
  */
-export const PAYMENT_PROVIDERS = ['stripe', 'manual'] as const;
+export const PAYMENT_PROVIDERS = ['stripe', 'paypal', 'manual'] as const;
 export type PaymentProviderName = (typeof PAYMENT_PROVIDERS)[number];
+
+/**
+ * the members of `PAYMENT_PROVIDERS` that mint no transaction id, which is the exception
+ * `payment_processor_needs_txn_id_check` is predicated on. staff entry is the whole of it: no
+ * processor stands behind a cash gift to have issued an id for it.
+ *
+ * typed against `PaymentProviderName` so a rename in the list above cannot leave this naming a
+ * member that no longer exists — which would compile, and would quietly turn that check into
+ * "every provider carries a txn id", refusing every gift staff type in.
+ *
+ * a provider added above inherits the rule rather than the exception, which is the safe
+ * direction: a processor whose id this schema then demands is caught by the first row that
+ * arrives without one, where a free pass would be caught by nothing.
+ */
+const NON_PROCESSOR_PROVIDERS = ['manual'] as const satisfies readonly PaymentProviderName[];
 
 /**
  * how a settlement attempt ended. four states, and the vocabulary is the rail's, not
@@ -1478,7 +1526,8 @@ export const payment = sqliteTable(
 		check('payment_method_check', enumCheck(t.method, PAYMENT_METHODS)),
 		check('payment_status_check', enumCheck(t.status, PAYMENT_STATUSES)),
 		// the `is null` half is documentation — a check is satisfied by null, and
-		// `null in ('stripe','manual')` evaluates to null, not false. see `optionalNotBlank`.
+		// `null in ('stripe','paypal','manual')` evaluates to null, not false. see
+		// `optionalNotBlank`.
 		check(
 			'payment_provider_check',
 			sql`${t.provider} is null or ${enumCheck(t.provider, PAYMENT_PROVIDERS)}`
@@ -1498,21 +1547,27 @@ export const payment = sqliteTable(
 		 *                               payment as a redelivery, which is the failure that
 		 *                               loses a gift rather than duplicating one.
 		 *
-		 * so: a txn id may be absent but never blank; a `stripe` row must carry one; and a
-		 * txn id must name the rail that minted it. `('manual', NULL)` and `(NULL, NULL)`
+		 * so: a txn id may be absent but never blank; a row naming a processor must carry one;
+		 * and a txn id must name the rail that minted it. `('manual', NULL)` and `(NULL, NULL)`
 		 * stay legal, and have to — staff entry of cash and checks is every gift in v0, and
 		 * `(NULL, NULL)` is the payment recorded before the rail was known.
 		 *
 		 * the `is null` disjuncts on the first and third are documentation, same as
-		 * `payment_provider_check` above. the second one's is not: `<>` against a null
-		 * `provider` evaluates to null and the row passes, which is deliberate — that is the
-		 * `(NULL, NULL)` case, and it is the third constraint that keeps a null provider from
-		 * being a way to smuggle a txn id in unguarded.
+		 * `payment_provider_check` above. the second one's is not: `in ('manual')` against a
+		 * null `provider` evaluates to null and the row passes, which is deliberate — that is
+		 * the `(NULL, NULL)` case, and it is the third constraint that keeps a null provider
+		 * from being a way to smuggle a txn id in unguarded.
 		 */
 		check('payment_provider_txn_id_not_blank_check', optionalNotBlank(t.providerTxnId)),
+		/**
+		 * the rule is every processor's, not one processor's: a payment attributed to a
+		 * processor carries that processor's own id for it, and the predicate names the
+		 * exception — `NON_PROCESSOR_PROVIDERS` — rather than the rule, so a member added to
+		 * `PAYMENT_PROVIDERS` is held to it instead of falling outside it.
+		 */
 		check(
-			'payment_stripe_needs_txn_id_check',
-			sql`${t.provider} <> 'stripe' or ${t.providerTxnId} is not null`
+			'payment_processor_needs_txn_id_check',
+			sql`${enumCheck(t.provider, NON_PROCESSOR_PROVIDERS)} or ${t.providerTxnId} is not null`
 		),
 		check(
 			'payment_txn_id_needs_provider_check',

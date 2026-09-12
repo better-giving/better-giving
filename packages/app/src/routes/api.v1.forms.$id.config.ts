@@ -7,7 +7,7 @@ import {
 } from '$lib/server/forms/published-config';
 import { readFormOrigins } from '$lib/server/forms/queries';
 import { cachedRails } from '$lib/server/forms/rail-cache';
-import { createPaymentProvider } from '$lib/server/payments/factory';
+import { createPaymentProviders } from '$lib/server/payments/factory';
 import { database, platform } from '../context';
 import type { Route } from './+types/api.v1.forms.$id.config';
 
@@ -57,7 +57,7 @@ import type { Route } from './+types/api.v1.forms.$id.config';
 // config that come off this deployment's processor account rather than out of D1, and this file is
 // where the way to find them out is assembled: one provider built per request from `platform.env` —
 // never a module-scope singleton (CLAUDE.md) — behind an edge cache each, because this route is the
-// one every embedded form boots on and a donor should not wait on Stripe for it. the reader calls
+// one every embedded form boots on and a donor should not wait on a processor for it. the reader calls
 // them only once a row has been found, so an id nothing matches costs no outbound call.
 //
 // one provider for both, because building one costs nothing and two would be two clients against
@@ -105,7 +105,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs): Pr
 		return preflightResponse(request, await readFormOrigins(db, params.id), GRANT);
 	}
 
-	const provider = createPaymentProvider(env);
+	const processors = createPaymentProviders(env);
 	const origin = new URL(request.url).origin;
 	// `renderableConfig` is this route's own judgement and not the ladder's, which is why it is
 	// composed here rather than folded into the reader: a config offering no rail is one
@@ -118,8 +118,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs): Pr
 			db,
 			params.id,
 			env,
-			() => cachedCadences(provider, origin),
-			() => cachedRails(provider, origin)
+			() => cachedCadences(processors, origin),
+			() => cachedRails(processors, origin)
 		)
 	);
 	const headers = corsHeaders(request, result.form?.allowedOrigins ?? []);
@@ -164,7 +164,7 @@ const GRANT = { methods: 'GET, OPTIONS', headers: null, maxAge: '600' } as const
  *   afterwards with nothing on the integrator's page changing. two members, one status, because
  *   the status answers "whose" and the code answers "which box".
  * - 503, nothing about the request or the form is wrong and this deployment is not finished. the
- *   organisation's details are unsaved, or its Stripe keys are unset or mismatched. 4xx would
+ *   organisation's details are unsaved, or neither processor's keys are set. 4xx would
  *   blame the caller for a value they cannot see and very likely cannot reach, and monitoring
  *   that treats 5xx as an outage is right to: a donation form no one can give through is one.
  *   no `Retry-After` — nothing here comes true with time, only when a person sets a value.

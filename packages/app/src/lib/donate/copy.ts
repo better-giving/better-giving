@@ -1,3 +1,5 @@
+import { PAYMENT_METHOD_LABELS, type PaymentMethod } from '@better-giving/form/v1';
+
 // every donor-facing word this page states, and the whole of them.
 //
 // one file, so a wording is changed in one place and a screen cannot come to say two things about
@@ -5,11 +7,12 @@
 // predicate held twice, and `connect` in @better-giving/form/connect is where it is already held.
 // what the builders below take is a figure or a name, already decided by whoever calls them.
 //
-// the same words are in packages/form/src/views.ts, which draws this card for the embedded element.
-// that duplication is deliberate and bounded: the element's copy is a permanent contract on a
-// stranger's page and this page's is not, so promoting the words to a form-package entry is a
-// decision to make once, out loud, and not a refactor to slip in. what may not happen is a third
-// copy: no sentence a donor reads belongs anywhere else under this directory.
+// the same screens are drawn by packages/form/src/views.ts for the embedded element, and the words
+// there are its own. that duplication is deliberate and bounded: the element's copy is a permanent
+// contract on a stranger's page and this page's is not, so promoting the words to a form-package
+// entry is a decision to make once, out loud, and not a refactor to slip in — and until it is made,
+// a wording changed on one side is not changed on the other. what may not happen is a third copy:
+// no sentence a donor reads belongs anywhere else under this directory.
 
 /**
  * what each numbered step is called, in the order a donor is asked.
@@ -208,16 +211,106 @@ export function mandateNote(org: string, total: string): string {
 }
 export const USE_DIFFERENT_METHOD = 'Use a different payment method';
 
-/** the redirect screen. */
-export const REDIRECTING_HEADING = 'Continue at your bank';
-export const REDIRECTING_BODY =
-	'Your bank is checking this payment. Keep this window open until it sends you back.';
+/**
+ * who a donor on a given rail is waiting on, which is three answers rather than six.
+ *
+ * the wallets are a card presented differently and wait on the same issuer; the two hosted-window
+ * rails wait on the processor whose window opened, and there the word a donor read on the button is
+ * the honest noun, so it is taken from `PAYMENT_METHOD_LABELS` rather than spelled a second time
+ * here. a rail that is absent is a cold return — this page was handed a payment token and nothing
+ * else — and it is a reading of its own rather than a missing one: a sentence naming a rail the
+ * flow never committed would be naming the wrong one on some of them. it arrives absent rather than
+ * null because that is how `State` (@better-giving/form/connect) carries it, which is the one place
+ * this page reads a rail from.
+ *
+ * total over `PaymentMethod`, so a rail added to the vocabulary is a compile error here rather than
+ * a donor reading about a bank they never chose.
+ */
+type Waiting =
+	| { readonly kind: 'bank' }
+	| { readonly kind: 'issuer' }
+	| { readonly kind: 'window'; readonly name: string }
+	| { readonly kind: 'unknown' };
 
-/** the settling screen. */
+function waitingOn(method: PaymentMethod | undefined): Waiting {
+	if (method === undefined) return { kind: 'unknown' };
+	switch (method) {
+		case 'ach':
+			return { kind: 'bank' };
+		case 'card':
+		case 'apple_pay':
+		case 'google_pay':
+			return { kind: 'issuer' };
+		case 'paypal':
+		case 'venmo':
+			return { kind: 'window', name: PAYMENT_METHOD_LABELS[method] };
+	}
+}
+
+/**
+ * the redirect screen.
+ *
+ * the body is the same promise on every rail — keep this window open — because it is true wherever
+ * the donor was sent, and the heading is not: a donor who pressed PayPal is in a window PayPal
+ * opened rather than at a bank, and telling them to continue at one names a place they are not.
+ */
+export function redirectingHeading(method: PaymentMethod | undefined): string {
+	const waiting = waitingOn(method);
+	switch (waiting.kind) {
+		case 'bank':
+			return 'Continue at your bank';
+		case 'issuer':
+			return 'Continue with your card issuer';
+		case 'window':
+			return `Continue in ${waiting.name}`;
+		case 'unknown':
+			return 'Continue with this payment';
+	}
+}
+
+export function redirectingBody(method: PaymentMethod | undefined): string {
+	const keepOpen = 'Keep this window open until you are sent back.';
+	const waiting = waitingOn(method);
+	switch (waiting.kind) {
+		case 'bank':
+			return `Your bank is checking this payment. ${keepOpen}`;
+		case 'issuer':
+			return `Your card issuer is checking this payment. ${keepOpen}`;
+		case 'window':
+			return `${waiting.name} is checking this payment. ${keepOpen}`;
+		case 'unknown':
+			return `This payment is being checked. ${keepOpen}`;
+	}
+}
+
+/**
+ * the settling screen.
+ *
+ * the four-to-five-business-days sentence is the bank rail's alone and may not be said on another:
+ * it is true of an ACH debit and of nothing else, and a donor told it about a PayPal gift has been
+ * given a date the deployment cannot keep. what every rail's version does say is that the money has
+ * not landed yet, which is the whole reason this screen is not the thank-you.
+ */
 export const PROCESSING_HEADING = 'Your gift is on its way';
-export const PROCESSING_NOTE = 'This transfer has not settled yet.';
-export function processingBody(org: string): string {
-	return `Bank transfers usually take 4 to 5 business days to settle. ${org} has been told your gift is coming.`;
+
+export function processingNote(method: PaymentMethod | undefined): string {
+	return waitingOn(method).kind === 'bank'
+		? 'This transfer has not settled yet.'
+		: 'This payment has not settled yet.';
+}
+
+export function processingBody(org: string, method: PaymentMethod | undefined): string {
+	const told = `${org} has been told your gift is coming.`;
+	const waiting = waitingOn(method);
+	switch (waiting.kind) {
+		case 'bank':
+			return `Bank transfers usually take 4 to 5 business days to settle. ${told}`;
+		case 'window':
+			return `${waiting.name} has your approval and the payment has not finished clearing. ${told}`;
+		case 'issuer':
+		case 'unknown':
+			return `This payment has not finished clearing. ${told}`;
+	}
 }
 
 /**
@@ -228,8 +321,19 @@ export function processingBody(org: string): string {
  * outcome nobody read is a completion the donor is entitled to believe.
  */
 export const INDETERMINATE_HEADING = 'Still confirming your gift';
-export function indeterminateBody(org: string): string {
-	return `Your gift has been sent to your bank for confirmation. ${org} will email you when it goes through. Nothing here will charge you a second time.`;
+export function indeterminateBody(org: string, method: PaymentMethod | undefined): string {
+	const rest = `${org} will email you when it goes through. Nothing here will charge you a second time.`;
+	const waiting = waitingOn(method);
+	switch (waiting.kind) {
+		case 'bank':
+			return `Your gift has been sent to your bank for confirmation. ${rest}`;
+		case 'issuer':
+			return `Your gift has been sent to your card issuer for confirmation. ${rest}`;
+		case 'window':
+			return `Your gift has been sent to ${waiting.name} for confirmation. ${rest}`;
+		case 'unknown':
+			return `Your gift has been sent for confirmation. ${rest}`;
+	}
 }
 export const INDETERMINATE_ANNOUNCE = 'Your gift has been sent for confirmation.';
 
@@ -278,7 +382,19 @@ export const RESUMING_BODY =
  * who cannot see the spinner: one is a form being submitted and the other is money moving.
  */
 export const WORKING = 'Working on your gift.';
-export const CONFIRMING = 'Confirming your gift with your bank.';
+export function confirming(method: PaymentMethod | undefined): string {
+	const waiting = waitingOn(method);
+	switch (waiting.kind) {
+		case 'bank':
+			return 'Confirming your gift with your bank.';
+		case 'issuer':
+			return 'Confirming your gift with your card issuer.';
+		case 'window':
+			return `Confirming your gift with ${waiting.name}.`;
+		case 'unknown':
+			return 'Confirming your gift.';
+	}
+}
 
 // ── the page ─────────────────────────────────────────────────────────────────────────────────
 

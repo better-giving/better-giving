@@ -16,7 +16,7 @@ import type { FormConfig } from './v1';
 /** the ordinary deployment: one-time or monthly, card or bank, $5 to $50,000. */
 const CONFIG: FormConfig = {
 	formId: 'frm_a8x2k9',
-	provider: { name: 'stripe', publishableKey: 'pk_test_x' },
+	providers: [{ name: 'stripe', publishableKey: 'pk_test_x' }],
 	currency: 'usd',
 	suggestedAmountsMinor: [2500, 10_000],
 	minAmountMinor: 500,
@@ -28,7 +28,9 @@ const CONFIG: FormConfig = {
 		card: { percent: 0.029, fixedMinor: 30 },
 		ach: { percent: 0.008, fixedMinor: 0 },
 		apple_pay: { percent: 0.029, fixedMinor: 30 },
-		google_pay: { percent: 0.029, fixedMinor: 30 }
+		google_pay: { percent: 0.029, fixedMinor: 30 },
+		paypal: { percent: 0.0349, fixedMinor: 49 },
+		venmo: { percent: 0.0349, fixedMinor: 49 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',

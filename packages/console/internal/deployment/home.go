@@ -19,7 +19,7 @@
 // words and the sentence a fold that is not done carries. a second statement of those words here
 // would be the two surfaces coming to disagree about what a job is called.
 //
-// **a read that did not land takes the whole page and never a fold.** the thirteen values come off
+// **a read that did not land takes the whole page and never a fold.** the seventeen values come off
 // the account in one read that is scoped to no fold, so a console that could not take them cannot
 // say anything about any of the six. reported per fold it would be six findings from one failure,
 // five of them over jobs that may already be done.
@@ -125,11 +125,19 @@ type Reading struct {
 	DonatePage string `json:"donatePage"`
 	// Org is the organisation's profile as the deployment holds it, carried through unread.
 	Org any `json:"org"`
-	// HoldsStripeKey is whether there is anything to ask the deployment about its Stripe account:
-	// every such read reaches Stripe with the stored secret and answers in a shape that says there
-	// was none, which a console draws as an answer it could not read — so a deployment nobody has
-	// finished setting up would report a failure rather than the empty boxes that are the truth of
-	// it. false on every face but the ready one, and false where the values read did not land.
+	// HoldsStripeKey is whether there is anything to ask the deployment on the two addresses that
+	// are Stripe's alone: what its account holds for gifts that repeat, and the press that registers
+	// the hostnames wallet buttons are drawn on. both reach Stripe with the stored secret and answer
+	// in a shape that says there was none, which a console draws as an answer it could not read — so
+	// a deployment nobody has finished setting up would report a failure rather than the empty boxes
+	// that are the truth of it.
+	//
+	// **the payments reading is not one of them and may not be put back under it.** that reading
+	// answers for every processor and carries an arm for one this deployment holds no credentials
+	// for (./payments.go), so a key that charges on one processor gating it is a deployment set up
+	// on the other reporting nothing at all about the processor it does charge on.
+	//
+	// false on every face but the ready one, and false where the values read did not land.
 	HoldsStripeKey bool `json:"holdsStripeKey"`
 }
 
@@ -151,14 +159,14 @@ type Inputs struct {
 
 // Read is the whole reading, from the account and from the deployment.
 //
-// **the halves overlap rather than queue.** the account's own reads, the thirteen values and the
+// **the halves overlap rather than queue.** the account's own reads, the seventeen values and the
 // deployment's report are not each other's inputs, and a page that waited on each in turn would hold
 // the operator for the sum of them. what is sequenced is the pair inside the first: a refused
 // account read decides the face on its own, and asking about an address there would be a call made
 // for a line the screen is not going to draw.
 func Read(ctx context.Context, inputs Inputs) Reading {
 	if inputs.Credential.Kind == cf.NoCredential {
-		// nothing is asked of the account at all, so what the reading says about why the thirteen
+		// nothing is asked of the account at all, so what the reading says about why the seventeen
 		// were not read is that they were not asked for.
 		detail := inputs.Credential.Detail
 		return Reading{
@@ -198,7 +206,7 @@ func Read(ctx context.Context, inputs Inputs) Reading {
 	return assemble(databases, address, values, report)
 }
 
-// the thirteen, which is one read of the worker's own bindings.
+// the seventeen, which is one read of the worker's own bindings.
 func readValues(ctx context.Context, inputs Inputs) Values {
 	return Values{Vars: DeployedVars(ctx, inputs.Account, inputs.AccountID, inputs.WorkerName)}
 }
@@ -217,7 +225,7 @@ func readSurface(ctx context.Context, inputs Inputs) ReportRead {
 
 // the face, from what the three reads answered.
 func assemble(databases DatabaseList, address Address, values Values, report ReportRead) Reading {
-	// the thirteen and the rows are carried on every face and never only on the one that draws
+	// the seventeen and the rows are carried on every face and never only on the one that draws
 	// them: what the read answered is the same answer whichever face the reading landed on, and a
 	// face carrying none would be a value read as unset rather than as unasked.
 	read := Reading{Values: values, Sites: []string{}}

@@ -8,7 +8,7 @@ import { refusalIn } from './secret-trouble';
 
 // the one state a box cannot be typed out of, and the press out of it.
 //
-// **a withheld name is a binding under one of the thirteen that is not plain text**, which is a
+// **a withheld name is a binding under one of the seventeen that is not plain text**, which is a
 // deployment that stored the value as a secret (`DeployedVar` in ../api/types.ts). the
 // value is there and the deployment reads it; nothing hands it back, and no write may set the name
 // while it stands that way — cloudflare would leave the deployment holding the name twice, so the

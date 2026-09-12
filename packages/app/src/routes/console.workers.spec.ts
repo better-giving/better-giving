@@ -1,9 +1,12 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEPLOY_VARS } from '@better-giving/operator/deploy-split';
-import type {
-	WalletLevellingReport,
-	WalletsReading
+import {
+	PAYMENT_PROCESSORS,
+	type PaymentsReport,
+	type ProcessorPayments,
+	type WalletLevellingReport,
+	type WalletsReading
 } from '@better-giving/operator/console/payments';
 import {
 	CONSOLE_SESSION_SECONDS,
@@ -11,7 +14,15 @@ import {
 	formatConsoleToken
 } from '@better-giving/operator/console/token';
 import { refusing } from '$lib/server/payments/provider';
-import type { PaymentProvider, PaymentResult, WalletDomain } from '$lib/server/payments/provider';
+import type {
+	AccountChargeability,
+	PaymentProvider,
+	PaymentResult,
+	ProcessorName,
+	RailSwitchboard,
+	WalletDomain,
+	WebhookEndpointRegistry
+} from '$lib/server/payments/provider';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as org from './console.org';
 import * as payments from './console.payments';
@@ -47,26 +58,38 @@ const STRIPE_VALUES = {
 };
 
 /**
- * the payment port the routes are given, or null for the one this deployment's own values build.
+ * the payment port each processor's routes are given, or nothing for the one this deployment's own
+ * values build.
  *
  * it stands in for an account rather than for the processor: what these cases need is registrations
  * to look at, and those are on the far side of the port rather than in anything a variable can
- * describe. every case that leaves it null goes on meeting the real adapter, which is what the
+ * describe. every processor left out of it goes on meeting the real adapter, which is what the
  * unconfigured arms below are about — so the file keeps both, and `beforeEach` puts it back.
  *
+ * keyed by processor because the report is now a reading per processor: one port handed back under
+ * every name would make a case about one account answer for both, which is the exact mistake the
+ * unconfigured arm exists to prevent.
+ *
  * mounted over the factory rather than passed in, because a route builds its own provider from the
- * request's platform env (`createPaymentProvider` in $lib/server/payments/factory.ts) and there is
+ * request's platform env (`createPaymentProviders` in $lib/server/payments/factory.ts) and there is
  * nothing on the wire to hand one through. the real module is delegated to rather than replaced,
- * so `stripeUnreadableReason` beside it goes on being the deployment's own answer.
+ * so `configured` and `unset` beside it go on being the deployment's own answer.
  */
-const stub = vi.hoisted(() => ({ port: null as PaymentProvider | null }));
+const stub = vi.hoisted(() => ({
+	ports: {} as Partial<Record<'stripe' | 'paypal', PaymentProvider>>
+}));
 
 vi.mock('$lib/server/payments/factory', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('$lib/server/payments/factory')>();
 	return {
 		...actual,
-		createPaymentProvider: (platformEnv: Env) =>
-			stub.port ?? actual.createPaymentProvider(platformEnv)
+		createPaymentProviders: (platformEnv: Env) => {
+			const processors = actual.createPaymentProviders(platformEnv);
+			return {
+				...processors,
+				for: (name: 'stripe' | 'paypal') => stub.ports[name] ?? processors.for(name)
+			};
+		}
 	};
 });
 
@@ -252,6 +275,29 @@ function readPayments(vars: Record<string, string | undefined> = {}): Promise<Re
 	);
 }
 
+/** one processor's reading off the report, which is what every case about an account is about. */
+async function readingFor(
+	processor: ProcessorName,
+	vars: Record<string, string | undefined> = {}
+): Promise<ProcessorPayments> {
+	const body = (await (await readPayments(vars)).json()) as PaymentsReport;
+	const reading = body.processors.find((entry) => entry.processor === processor);
+	if (!reading) throw new Error(`the report carries no ${processor} reading`);
+	return reading;
+}
+
+/** the same reading, narrowed to the arm a case that set the credentials is about. */
+async function configuredReading(
+	processor: ProcessorName,
+	vars: Record<string, string | undefined> = {}
+): Promise<Extract<ProcessorPayments, { state: 'configured' }>> {
+	const reading = await readingFor(processor, vars);
+	if (reading.state !== 'configured') {
+		throw new Error(`${processor} is ${reading.state} on this deployment`);
+	}
+	return reading;
+}
+
 /**
  * the press beside that read: bringing the endpoint at this deployment's address level.
  *
@@ -294,7 +340,7 @@ const DRAWING: WalletDomain['wallets'] = {
 function walletPort(held: readonly WalletDomain[]): PaymentProvider {
 	const account = [...held];
 	return {
-		...refusing('not_configured', 'no case here asks this arm'),
+		...refusing('stripe', 'not_configured', 'no case here asks this arm'),
 		async listWalletDomains(): Promise<PaymentResult<readonly WalletDomain[]>> {
 			return { ok: true, value: [...account] };
 		},
@@ -343,7 +389,7 @@ async function envelopeOf(response: Response): Promise<Envelope> {
 }
 
 beforeEach(async () => {
-	stub.port = null;
+	stub.ports = {};
 	await env.DB.prepare('delete from form').run();
 	await env.DB.prepare('delete from site').run();
 	await env.DB.prepare('delete from org_profile').run();
@@ -412,7 +458,7 @@ describe('the report this deployment answers with', () => {
 	/**
 	 * no configuration value crosses this wire, and neither does the name of one.
 	 *
-	 * the console reads all thirteen off the Cloudflare account it is signed in to, so a member
+	 * the console reads all seventeen off the Cloudflare account it is signed in to, so a member
 	 * here that reported one too would be a second seed disagreeing with the first mid-deploy —
 	 * which is why the envelope carries none and why this is one case over the whole list rather
 	 * than an assertion per name. the name is checked as well as the value because a member is
@@ -774,42 +820,68 @@ describe('setting up repeating gifts', () => {
 	});
 });
 
-describe('the account this deployment charges on', () => {
+describe('the accounts this deployment charges on', () => {
 	/**
-	 * a read the deployment could not make is a state of the block rather than a failed request: it
-	 * says nothing about the account, and the sentence names the value to fix. no rail is reported
-	 * on that arm — a rail drawn as blocked would be a statement about an answer nobody was given.
+	 * a fold per processor whether or not this deployment can charge on it, because the fold for one
+	 * it cannot is where the boxes that configure it are.
 	 */
-	it('answers a deployment holding no Stripe key with what to set, and no rail at all', async () => {
-		const response = await readPayments(NO_STRIPE);
-		expect(response.status).toBe(200);
-		const body = (await response.json()) as {
-			rails: { state: string; detail: string; rails?: unknown };
-		};
-		expect(body.rails.state).toBe('unreadable');
-		expect(body.rails.detail).toContain('STRIPE_SECRET_KEY');
-		expect(body.rails.rails).toBeUndefined();
+	it('carries a reading for every processor this release can charge on', async () => {
+		const body = (await (await readPayments()).json()) as PaymentsReport;
+
+		expect(body.processors.map((entry) => entry.processor)).toEqual([...PAYMENT_PROCESSORS]);
 	});
 
 	/**
-	 * which of the two ways that read failed, carried beside the sentence rather than inside it —
-	 * the same fact ./console.recurring.ts's read carries, because both go through one port with one
-	 * key (`packages/operator/src/console/stripe-read.ts`).
+	 * the whole point of the shape: a deployment set up on one processor says nothing about the other.
+	 *
+	 * `unconfigured` is not a read that failed and must not be drawn as one — nothing was asked, so
+	 * there is nothing about the account to report and no row to colour in. what it carries instead is
+	 * which boxes are empty, which is a fact the deployment holds and the console does not.
 	 */
-	it('says a deployment holding no key asked nothing', async () => {
-		const body = (await (await readPayments(NO_STRIPE)).json()) as {
-			rails: { reason: string };
-		};
-		expect(body.rails.reason).toBe('no_key');
+	it('reports a processor it holds no credentials for as unconfigured', async () => {
+		const reading = await readingFor('paypal');
+
+		expect(reading.state).toBe('unconfigured');
+		expect(reading.state === 'unconfigured' && reading.unset).toEqual([
+			'PAYPAL_CLIENT_ID',
+			'PAYPAL_CLIENT_SECRET'
+		]);
+	});
+
+	/** and it says nothing whatever about that account — not a rail, not an endpoint, not a wallet. */
+	it('reports no reading at all under a processor it holds no credentials for', async () => {
+		const reading = await readingFor('paypal');
+
+		expect(Object.keys(reading).sort()).toEqual(['label', 'processor', 'state', 'unset']);
+	});
+
+	/** the name an operator is shown, decided on the deployment and travelling rather than spelled. */
+	it('names each processor the way an operator is shown it', async () => {
+		const body = (await (await readPayments()).json()) as PaymentsReport;
+
+		expect(body.processors.map((entry) => entry.label)).toEqual(['Stripe', 'PayPal']);
+	});
+
+	/**
+	 * the deployment with no Stripe key at all, which is every fork before payments are set up.
+	 *
+	 * it used to arrive as a rails reading that could not be made, carrying a reason that said no key
+	 * was held. it is the arm above the readings now, and that is the whole improvement: `unreadable`
+	 * is a deployment with something wrong with it, and this one merely has not been set up yet.
+	 */
+	it('reports a deployment holding no Stripe key as unconfigured rather than unreadable', async () => {
+		const reading = await readingFor('stripe', NO_STRIPE);
+
+		expect(reading.state).toBe('unconfigured');
+		expect(reading.state === 'unconfigured' && reading.unset).toEqual(['STRIPE_SECRET_KEY']);
 	});
 
 	/** a key is held, so the read was attempted and came away without an answer. */
-	it('says a deployment holding a key the processor will not answer for failed', async () => {
-		const body = (await (await readPayments()).json()) as {
-			rails: { state: string; reason: string };
-		};
-		expect(body.rails.state).toBe('unreadable');
-		expect(body.rails.reason).toBe('failed');
+	it('reports a key the processor will not answer for as a rails read that failed', async () => {
+		const reading = await configuredReading('stripe');
+
+		expect(reading.rails.state).toBe('unreadable');
+		expect(reading.rails.state === 'unreadable' && reading.rails.detail.length).toBeGreaterThan(0);
 	});
 
 	/**
@@ -819,24 +891,19 @@ describe('the account this deployment charges on', () => {
 	 * $lib/server/payments/webhook-secret.ts.
 	 */
 	it('answers a deployment holding no signing secret with unset', async () => {
-		const response = await readPayments({
-			...NO_STRIPE,
-			STRIPE_WEBHOOK_SECRET: undefined
-		});
-		const body = (await response.json()) as { webhook: { state: string; detail: string | null } };
-		expect(body.webhook.state).toBe('unset');
-		expect(body.webhook.detail).toBeNull();
+		const reading = await configuredReading('stripe', { STRIPE_WEBHOOK_SECRET: undefined });
+
+		expect(reading.webhook).toEqual({ state: 'unset', detail: null });
 	});
 
 	/**
-	 * an endpoint nobody could read carries no fingerprint to compare against, and reported as a
-	 * mismatch it would send an operator to replace a working endpoint and cost them the secret
-	 * they have.
+	 * an endpoint nobody could read carries no stamp to compare against, and reported as a mismatch
+	 * it would send an operator to replace a working endpoint and cost them the secret they have.
 	 */
 	it('answers a deployment whose account could not be read with unconfirmable', async () => {
-		const response = await readPayments(NO_STRIPE);
-		const body = (await response.json()) as { webhook: { state: string } };
-		expect(body.webhook.state).toBe('unconfirmable');
+		const reading = await configuredReading('stripe');
+
+		expect(reading.webhook.state).toBe('unconfirmable');
 	});
 
 	/**
@@ -845,10 +912,9 @@ describe('the account this deployment charges on', () => {
 	 * event verifies every delivery it makes and makes fewer than it should.
 	 */
 	it('answers a deployment that could not ask with a subscription it cannot state', async () => {
-		const response = await readPayments(NO_STRIPE);
-		const body = (await response.json()) as { subscription: { state: string; detail: string } };
-		expect(body.subscription.state).toBe('unreadable');
-		expect(body.subscription.detail).toContain('STRIPE_SECRET_KEY');
+		const reading = await configuredReading('stripe');
+
+		expect(reading.subscription.state).toBe('unreadable');
 	});
 
 	/**
@@ -880,6 +946,129 @@ describe('the account this deployment charges on', () => {
 		const response = await readPayments(NO_STRIPE);
 		expect(response.headers.get('access-control-allow-origin')).toBeNull();
 		expect(response.headers.get('cache-control')).toBe('no-store');
+	});
+});
+
+/**
+ * the same reading of a processor that answers differently on three of its four members.
+ *
+ * the port is stood in for rather than met, which is what keeps every case here off the network: the
+ * account arms answer what the adapter asserts (`readAccountChargeability` in
+ * $lib/server/payments/paypal.ts argues why it asserts), and the two arms this release does not
+ * manage refuse the way the adapter refuses them. that the real adapter refuses those two with
+ * `unsupported` is held where the real adapter is used —
+ * $lib/server/payments/webhook-registration.spec.ts and
+ * $lib/server/payments/wallet-domains.spec.ts — so what is left here is the mapping onto the wire,
+ * which is this route's own.
+ */
+describe('a deployment set up on a processor that publishes no per-rail approval', () => {
+	const PAYPAL_VALUES = {
+		PAYPAL_CLIENT_ID: 'notarealclientid',
+		PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
+	};
+
+	/** the two rails PayPal settles, asserted active the way the adapter asserts them. */
+	function paypalPort(): PaymentProvider {
+		const rails = { paypal: 'active', venmo: 'active' } as const;
+		return {
+			...refusing('paypal', 'not_configured', 'no case here asks this arm'),
+			async readAccountChargeability(): Promise<PaymentResult<AccountChargeability>> {
+				return { ok: true, value: { chargesEnabled: true, rails } };
+			},
+			async readRailSwitchboard(): Promise<PaymentResult<RailSwitchboard>> {
+				return {
+					ok: true,
+					value: {
+						paypal: { offered: true, switchedOn: true },
+						venmo: { offered: true, switchedOn: true }
+					}
+				};
+			},
+			async listWebhookEndpoints(): Promise<PaymentResult<WebhookEndpointRegistry>> {
+				return {
+					ok: false,
+					reason: 'unsupported',
+					detail:
+						'This release does not manage PayPal’s listeners. The listener for this deployment’s ' +
+						'address is created on the PayPal developer dashboard.'
+				};
+			},
+			async listWalletDomains(): Promise<PaymentResult<readonly WalletDomain[]>> {
+				return {
+					ok: false,
+					reason: 'unsupported',
+					detail: 'PayPal registers no hostname for wallets.'
+				};
+			}
+		};
+	}
+
+	beforeEach(() => {
+		stub.ports.paypal = paypalPort();
+	});
+
+	/**
+	 * the honesty this whole reading turns on. every rail comes back `approved` because the
+	 * credentials authenticated, and a console that drew that the way it draws Stripe's would tell an
+	 * operator Venmo is switched on for an account that has never enabled it.
+	 */
+	it('says what its rail standings are worth', async () => {
+		const reading = await configuredReading('paypal', PAYPAL_VALUES);
+
+		expect(reading.rails.state === 'read' && reading.rails.evidence).toBe('credentials_only');
+	});
+
+	/** and the sentence beside each rail says the same thing in the words an operator reads. */
+	it('speaks beside every approved rail rather than leaving it silent', async () => {
+		const reading = await configuredReading('paypal', PAYPAL_VALUES);
+		const rails = reading.rails.state === 'read' ? reading.rails.rails : [];
+
+		expect(rails.map((line) => line.rail)).toEqual(['paypal', 'venmo']);
+		for (const line of rails) {
+			expect(line.standing).toBe('approved');
+			expect(line.note).toMatch(/PayPal/);
+			expect(line.note).not.toMatch(/Stripe/);
+		}
+	});
+
+	/**
+	 * an endpoint this release does not manage is not an endpoint nobody could read, and the two send
+	 * an operator to opposite places. this one is a registration to make by hand, so the arm carries
+	 * the address it has to be pointed at — which nothing else in this tree ever tells them.
+	 */
+	it('reports the endpoint as unmanaged and says where deliveries have to arrive', async () => {
+		const reading = await configuredReading('paypal', PAYPAL_VALUES);
+
+		expect(reading.subscription.state).toBe('unmanaged');
+		expect(reading.subscription.state === 'unmanaged' && reading.subscription.address).toBe(
+			`https://${OWN_HOST}/api/paypal/webhook`
+		);
+	});
+
+	/** the listener id has the same lifecycle as a signing secret, and an unset one is a hole. */
+	it('reports a deployment holding no listener id as unset', async () => {
+		const reading = await configuredReading('paypal', PAYPAL_VALUES);
+
+		expect(reading.webhook).toEqual({ state: 'unset', detail: null });
+	});
+
+	/**
+	 * a processor that draws its funding sources in its own window registers no hostname anywhere, so
+	 * there is nothing to read and no section to draw. an empty reading would be a screen inviting an
+	 * operator to register sites that would do nothing.
+	 */
+	it('reports no wallet section at all rather than an empty one', async () => {
+		const reading = await configuredReading('paypal', PAYPAL_VALUES);
+
+		expect(reading.wallets).toBeNull();
+	});
+
+	/** and a deployment set up on both says nothing false about either. */
+	it('leaves the other processor’s reading alone', async () => {
+		const body = (await (await readPayments(PAYPAL_VALUES)).json()) as PaymentsReport;
+		const stripe = body.processors.find((entry) => entry.processor === 'stripe');
+
+		expect(stripe?.state).toBe('configured');
 	});
 });
 
@@ -957,17 +1146,17 @@ describe('the hostnames this deployment wants wallet buttons on', () => {
 		await listSite('ste_1', 'https://www.hope.example', 0);
 		await listSite('ste_2', `https://${OWN_HOST}`, 1);
 		await listSite('ste_3', 'https://hope.example:8443', 2);
-		stub.port = walletPort([]);
+		stub.ports.stripe = walletPort([]);
 
-		const body = (await (await readPayments()).json()) as { wallets: WalletsReading };
-		expect(body.wallets.state).toBe('read');
-		if (body.wallets.state !== 'read') return;
-		expect(body.wallets.hosts.map((line) => line.host)).toEqual([
+		const wallets = (await configuredReading('stripe')).wallets as WalletsReading;
+		expect(wallets.state).toBe('read');
+		if (wallets.state !== 'read') return;
+		expect(wallets.hosts.map((line) => line.host)).toEqual([
 			OWN_HOST,
 			'www.hope.example',
 			'hope.example'
 		]);
-		expect(body.wallets.hosts.map((line) => line.own)).toEqual([true, false, false]);
+		expect(wallets.hosts.map((line) => line.own)).toEqual([true, false, false]);
 	});
 
 	/**
@@ -976,7 +1165,7 @@ describe('the hostnames this deployment wants wallet buttons on', () => {
 	 * to do, since what such a wallet is short of is settled on the operator's own domain.
 	 */
 	it('carries each wallet’s state and the processor’s own sentence about it', async () => {
-		stub.port = walletPort([
+		stub.ports.stripe = walletPort([
 			{
 				host: OWN_HOST,
 				enabled: true,
@@ -987,7 +1176,7 @@ describe('the hostnames this deployment wants wallet buttons on', () => {
 			}
 		]);
 
-		const body = (await (await readPayments()).json()) as { wallets: WalletsReading };
+		const wallets = (await configuredReading('stripe')).wallets;
 		const expected: WalletsReading = {
 			state: 'read',
 			hosts: [
@@ -1006,7 +1195,7 @@ describe('the hostnames this deployment wants wallet buttons on', () => {
 				}
 			]
 		};
-		expect(body.wallets).toEqual(expected);
+		expect(wallets).toEqual(expected);
 	});
 
 	/**
@@ -1015,26 +1204,27 @@ describe('the hostnames this deployment wants wallet buttons on', () => {
 	 * wallet is active, and the donor is shown no button.
 	 */
 	it('reports a registration the account is not honouring as switched off', async () => {
-		stub.port = walletPort([{ host: OWN_HOST, enabled: false, wallets: DRAWING }]);
+		stub.ports.stripe = walletPort([{ host: OWN_HOST, enabled: false, wallets: DRAWING }]);
 
-		const body = (await (await readPayments()).json()) as { wallets: WalletsReading };
-		expect(body.wallets.state === 'read' && body.wallets.hosts[0]?.standing).toBe('switched_off');
+		const wallets = (await configuredReading('stripe')).wallets as WalletsReading;
+		expect(wallets.state === 'read' && wallets.hosts[0]?.standing).toBe('switched_off');
 	});
 
 	/**
-	 * which of the two ways the read failed, carried beside the sentence rather than inside it — the
-	 * same fact the rails beside it carry, because both go through one port with one key.
+	 * a deployment that has never been set up asks nothing, so there is no reading of hostnames at all
+	 * rather than one that failed — the same arm the rails beside it land on, because both go through
+	 * one port with one key.
 	 */
-	it('says a deployment holding no key asked nothing', async () => {
-		const body = (await (await readPayments(NO_STRIPE)).json()) as { wallets: WalletsReading };
-		expect(body.wallets.state).toBe('unreadable');
-		expect(body.wallets.state === 'unreadable' && body.wallets.reason).toBe('no_key');
+	it('reads no hostname at all on a deployment holding no key', async () => {
+		const reading = await readingFor('stripe', NO_STRIPE);
+
+		expect(reading.state).toBe('unconfigured');
 	});
 
 	/** the press: a hostname the account does not hold is registered, and says so. */
 	it('registers the hostnames the account does not hold', async () => {
 		await listSite('ste_1', 'https://www.hope.example', 0);
-		stub.port = walletPort([]);
+		stub.ports.stripe = walletPort([]);
 
 		const response = await levelWallets();
 		expect(response.status).toBe(200);
@@ -1053,7 +1243,7 @@ describe('the hostnames this deployment wants wallet buttons on', () => {
 	 * the list holds.
 	 */
 	it('levels its own address on a deployment that lists no site', async () => {
-		stub.port = walletPort([]);
+		stub.ports.stripe = walletPort([]);
 
 		const report = (await (await levelWallets()).json()) as WalletLevellingReport;
 		expect(report.state === 'levelled' && report.hosts.length).toBe(1);

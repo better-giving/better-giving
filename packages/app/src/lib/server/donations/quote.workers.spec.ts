@@ -11,6 +11,9 @@ import type {
 	PaymentResult,
 	RecurringGift
 } from '../payments/provider';
+import { estimateFee } from '@better-giving/form/fee';
+import { PAYPAL_US_FEE_RULES_CHARITY, PAYPAL_US_FEE_RULES_STANDARD } from '../payments/fees';
+import { soleProcessor } from '../payments/processors.testing';
 import { mintQuote, refusalCode, type QuoteDeps } from './quote';
 
 // the whole quote path, against a real D1 and against every arm of the two ports it reaches
@@ -33,6 +36,13 @@ const STRIPE_ENV = {
 	STRIPE_SECRET_KEY: 'sk_test_abc',
 	STRIPE_PUBLISHABLE_KEY: 'pk_test_abc',
 	STRIPE_WEBHOOK_SECRET: 'whsec_abc',
+	TURNSTILE_SECRET_KEY: '0xSECRET'
+};
+
+/** a deployment configured for PayPal and nothing else. its client id is the browser half too. */
+const PAYPAL_ENV = {
+	PAYPAL_CLIENT_ID: 'notarealclientid',
+	PAYPAL_CLIENT_SECRET: 'notarealclientsecret',
 	TURNSTILE_SECRET_KEY: '0xSECRET'
 };
 
@@ -87,6 +97,8 @@ function provider(
 	const requests: Parameters<PaymentProvider['createIntent']>[0][] = [];
 	const gifts: Parameters<PaymentProvider['createRecurringGift']>[0][] = [];
 	const port: PaymentProvider = {
+		processor: 'stripe',
+
 		async createIntent(request) {
 			requests.push(request);
 			return (
@@ -115,7 +127,10 @@ function provider(
 			// served list to the deployment's own and prove nothing about either.
 			return {
 				ok: true,
-				value: { chargesEnabled: true, cardPayments: 'active', achPayments: 'active' }
+				value: {
+					chargesEnabled: true,
+					rails: { card: 'active', ach: 'active', apple_pay: 'active', google_pay: 'active' }
+				}
 			} as const;
 		},
 		async prepareRecurringGifts() {
@@ -185,6 +200,45 @@ function provider(
 	return { port, requests, gifts };
 }
 
+/**
+ * the same scripted port under PayPal's name, answering for PayPal's own two rails.
+ *
+ * built on the port above rather than written out again: what differs between the two processors on
+ * this path is which rails the account answers for, which one repeating gifts it can collect, and
+ * the name a `payment` row is written under — everything else a quote asks of a port is the same
+ * call. the answers below mirror what ../payments/paypal.ts really gives: both rails offered
+ * (PayPal publishes no per-rail approval and no switchboard to read one off), and no repeating gift
+ * at all, so this deployment offers one-time alone.
+ */
+function paypalProvider(answers: readonly PaymentResult<Intent>[] = []) {
+	const scripted = provider(answers);
+	const both = { paypal: 'active', venmo: 'active' } as const;
+	const port: PaymentProvider = {
+		...scripted.port,
+		processor: 'paypal',
+		async readAccountChargeability() {
+			return { ok: true, value: { chargesEnabled: true, rails: both } } as const;
+		},
+		async readRailSwitchboard() {
+			return {
+				ok: true,
+				value: {
+					paypal: { offered: true, switchedOn: true },
+					venmo: { offered: true, switchedOn: true }
+				}
+			} as const;
+		},
+		async readRecurringGiftProvision() {
+			return {
+				ok: false,
+				reason: 'unsupported',
+				detail: 'this release collects no repeating gift through PayPal.'
+			} as const;
+		}
+	};
+	return { port, requests: scripted.requests };
+}
+
 /** a challenge check that answers as scripted, and records what it was handed. */
 function challenge(result: TurnstileResult = { ok: true }) {
 	const checks: TurnstileCheck[] = [];
@@ -216,14 +270,23 @@ const body = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
 	...over
 });
 
-/** one attempt, with the two ports and the env this file's cases share. */
-function deps(over: Partial<QuoteDeps> = {}): QuoteDeps {
+/**
+ * one attempt, with the two ports and the env this file's cases share.
+ *
+ * a case names the port it wants rather than a whole `Processors`, because what every case here
+ * drives is one port's answers — `soleProcessor` in ../payments/processors.testing.ts is what turns
+ * it into the set `mintQuote` takes, keyed on the port's own processor.
+ */
+type DepsOver = Partial<Omit<QuoteDeps, 'processors'>> & { readonly provider?: PaymentProvider };
+
+function deps(over: DepsOver = {}): QuoteDeps {
+	const { provider: port, ...rest } = over;
 	return {
 		db,
 		env: STRIPE_ENV,
-		provider: provider().port,
+		processors: soleProcessor(port ?? provider().port),
 		verifyChallenge: challenge().verify,
-		...over
+		...rest
 	};
 }
 
@@ -961,6 +1024,23 @@ describe('mintQuote() — the processor', () => {
 		expect(result.ok || result.reason).toBe('payments_not_configured');
 	});
 
+	/**
+	 * the fix names the processor that settles the rail the donor picked.
+	 *
+	 * this deployment holds Stripe alone and the body names a PayPal rail, which is what a donor on
+	 * a cached page sends after the deployment's PayPal pair was cleared — `soleProcessor` in
+	 * ../payments/processors.testing.ts answers for the processor it holds no port for exactly as
+	 * the factory does. a fix naming Stripe's dashboard would send an operator to re-check a pair
+	 * that is set and fine.
+	 */
+	it('names the rail’s own processor where that processor is the one unset', async () => {
+		const result = await mint(deps(), { method: 'paypal' });
+
+		expect(result.ok || result.reason).toBe('payments_not_configured');
+		expect(result.ok || result.fix).toContain('PayPal');
+		expect(result.ok || result.fix).not.toContain('Stripe');
+	});
+
 	it.each(['invalid_request', 'internal_error', 'bad_signature', 'not_found'] as const)(
 		'reports %s as a defect of ours, with no code for a form to render',
 		async (reason) => {
@@ -1099,5 +1179,84 @@ describe('mintQuote() — the cause the gift is credited to', () => {
 		await mint(deps({ provider: port.port }));
 
 		expect(JSON.stringify(port.requests[0]?.metadata)).not.toContain(CLEAN);
+	});
+});
+
+describe('mintQuote() — a gift on PayPal’s rails', () => {
+	/**
+	 * a PayPal order, which is what an adapter's `Intent` is on this rail: `createIntent` in
+	 * ../payments/paypal.ts answers with the order id under both fields, because the id is what the
+	 * donor's browser opens PayPal's window on and what a capture is reconciled against.
+	 */
+	const ORDER_ID = '5O190127TN364715T';
+	const order = (): PaymentResult<Intent> => ({
+		ok: true,
+		value: { providerTxnId: ORDER_ID, paymentToken: ORDER_ID }
+	});
+
+	const paypalDeps = (env: Record<string, string> = PAYPAL_ENV, port?: PaymentProvider) =>
+		deps({ env, provider: port ?? paypalProvider([order()]).port });
+
+	it.each(['paypal', 'venmo'] as const)(
+		'answers a %s gift with what the donor’s window is opened on',
+		async (method) => {
+			const result = await mint(paypalDeps(), { method });
+
+			expect(result.ok && result.quote.paymentToken).toBe(ORDER_ID);
+		}
+	);
+
+	// the row is what a settlement is found by, and `payment_provider_txn_idx` is keyed on the pair —
+	// so the name it is written under has to be the name of whatever minted the id beside it.
+	it('records the payment against PayPal and the order it minted', async () => {
+		await mint(paypalDeps(), { method: 'paypal' });
+
+		const [paid] = await db.select().from(payment);
+		expect(paid).toMatchObject({ status: 'pending', provider: 'paypal', providerTxnId: ORDER_ID });
+	});
+
+	/**
+	 * the figure a donor covering the fee is quoted, off PayPal's own table rather than the card one.
+	 *
+	 * priced against `estimateFee` and the constant rather than against a number written here: what
+	 * is under test is which table the served config carried, and a literal would pass just as well
+	 * if the gift had been priced off Stripe's card rule.
+	 */
+	it('prices a PayPal rail off PayPal’s standard table', async () => {
+		const result = await mint(paypalDeps(), { method: 'paypal', coversFee: true });
+
+		const expected = estimateFee(10_000, PAYPAL_US_FEE_RULES_STANDARD.paypal);
+		expect(result.ok && result.quote).toMatchObject({
+			totalMinor: expected?.totalMinor,
+			feeMinor: expected?.feeMinor
+		});
+	});
+
+	/**
+	 * the charity rate, which is the one thing about PayPal's pricing this deployment cannot read off
+	 * the account — so a deploy-time answer picks the table (`paypalFeeRules` in ../payments/fees.ts)
+	 * and a donor covering the fee is quoted 1.99% rather than 3.49%.
+	 */
+	it('prices it off the charity table where the deployment says the account holds that rate', async () => {
+		const result = await mint(paypalDeps({ ...PAYPAL_ENV, PAYPAL_CHARITY_RATE_APPROVED: 'true' }), {
+			method: 'paypal',
+			coversFee: true
+		});
+
+		const expected = estimateFee(10_000, PAYPAL_US_FEE_RULES_CHARITY.paypal);
+		expect(result.ok && result.quote).toMatchObject({
+			totalMinor: expected?.totalMinor,
+			feeMinor: expected?.feeMinor
+		});
+	});
+
+	// a card rail on a deployment holding no Stripe key reaches no adapter at all, which is the
+	// whole of what `Processors.forRail` buys: the two processors never compete for a rail, and
+	// PayPal can mint nothing for one of Stripe's.
+	it('mints nothing for a Stripe rail on a deployment holding only PayPal', async () => {
+		const result = await mint(paypalDeps(), { method: 'card' });
+
+		expect(result.ok || result.reason).toBe('payments_not_configured');
+		expect(result.ok || result.fix).toContain('Stripe');
 	});
 });

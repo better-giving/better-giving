@@ -80,14 +80,23 @@ const allSet = (config: ConfigEnv, names: readonly (keyof ConfigEnv)[]): boolean
 	names.every((name) => config[name] !== undefined);
 
 /**
- * the two keys that charge a card.
+ * the pair of keys each processor charges on, and a deployment holding either pair can take a gift.
  *
- * the webhook secret is not among them: without it a settled charge is never heard about, which is
- * what stops a recurring gift being written down — but a one-off card is still charged, and this
- * line answers whether one can be. the console's payments fold is where the difference between the
- * two is drawn and acted on.
+ * **neither webhook value is on a pair, and that is the distinction this list is about rather than
+ * an omission.** without one a settled charge is never heard about, which is what stops a recurring
+ * gift being written down — but a one-off gift is still charged, and this line answers whether one
+ * can be. the console's payments fold is where the difference between the two is drawn and acted
+ * on. `PAYPAL_CHARITY_RATE_APPROVED` is off them for a reason of its own: it picks which published
+ * fee table a donor covering fees is quoted from (../payments/fees.ts), and unset is an answer
+ * rather than a gap.
+ *
+ * a pair rather than a flat list of everything payments needs, because the two are alternatives:
+ * an organisation on PayPal alone holds no Stripe key and is set up, and the same in reverse.
  */
-const CHARGE_VARS = ['STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY'] as const;
+const CHARGE_PAIRS: readonly (readonly (keyof ConfigEnv)[])[] = [
+	['STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY'],
+	['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET']
+];
 
 /** whether each of the five is done, from the facts alone. */
 function states(facts: SetupFacts): Record<SetupJobId, boolean> {
@@ -98,7 +107,7 @@ function states(facts: SetupFacts): Record<SetupJobId, boolean> {
 		// (../forms/readiness.ts), so a deployment serving no form and a row reading `Incomplete`
 		// are one fact stated twice rather than two readings that can disagree.
 		organisation: identityMissing(profile).length === 0,
-		payments: allSet(facts.config, CHARGE_VARS),
+		payments: CHARGE_PAIRS.some((pair) => allSet(facts.config, pair)),
 		smtp: allSet(facts.config, MAIL_SMTP_VARS),
 		// the column is nullable and carries a not-blank check when it is set
 		// (`org_profile_notification_email_not_blank_check` in ../db/schema.ts), so a row holding

@@ -11,7 +11,7 @@ import (
 // uploaded it.
 //
 // **it is the console's own record about the deployment and is not a configuration value.** the
-// thirteen are what an operator sets and what every screen draws (./values.go); this is a note the
+// seventeen are what an operator sets and what every screen draws (./values.go); this is a note the
 // console wrote to itself, on no enumeration and drawn as configuration nowhere — which is the
 // reading ./write.go's ConsoleTokenName already argues for the one Worker secret (CLAUDE.md →
 // Boundaries). ./values.go drops a name off the enumeration, so this is read on its own.

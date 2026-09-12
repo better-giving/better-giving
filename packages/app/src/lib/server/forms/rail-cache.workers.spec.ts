@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OFFERED_PAYMENT_METHODS } from '../../forms/offered-rails';
+import { STRIPE_RAILS } from '@better-giving/form/embed/rails';
 import type {
 	AccountChargeability,
 	RailCapabilityState,
@@ -7,6 +7,7 @@ import type {
 	PaymentResult,
 	RailSwitchboard
 } from '../payments/provider';
+import { soleProcessor } from '../payments/processors.testing';
 import { cachedRails } from './rail-cache';
 
 // the edge cache in front of the rail-chargeability read, against workerd's own `caches`.
@@ -36,6 +37,7 @@ function countingPort(
 	return {
 		reads: () => reads,
 		provider: {
+			processor: 'stripe',
 			async readAccountChargeability() {
 				reads += 1;
 				return account;
@@ -67,7 +69,17 @@ const account = (
 	achPayments: RailCapabilityState
 ): PaymentResult<AccountChargeability> => ({
 	ok: true,
-	value: { chargesEnabled: true, cardPayments, achPayments }
+	value: {
+		chargesEnabled: true,
+		// the wallets take the card capability, which is the mapping the adapter makes
+		// (`RAIL_CAPABILITIES` in $lib/server/payments/stripe.ts).
+		rails: {
+			card: cardPayments,
+			ach: achPayments,
+			apple_pay: cardPayments,
+			google_pay: cardPayments
+		}
+	}
 });
 
 /** every rail switched on and offered, or only the ones named. */
@@ -103,8 +115,8 @@ describe('cachedRails', () => {
 		);
 		const origin = 'https://rails-first-then-cached.example';
 
-		expect(await cachedRails(provider, origin)).toEqual(['card', 'ach']);
-		expect(await cachedRails(provider, origin)).toEqual(['card', 'ach']);
+		expect(await cachedRails(soleProcessor(provider), origin)).toEqual(['card', 'ach']);
+		expect(await cachedRails(soleProcessor(provider), origin)).toEqual(['card', 'ach']);
 		expect(reads()).toBe(1);
 	});
 
@@ -112,26 +124,30 @@ describe('cachedRails', () => {
 		const { provider, reads } = countingPort(account('active', 'active'), switches(['card']));
 		const origin = 'https://rails-narrowed-is-cached.example';
 
-		expect(await cachedRails(provider, origin)).toEqual(['card']);
-		expect(await cachedRails(provider, origin)).toEqual(['card']);
+		expect(await cachedRails(soleProcessor(provider), origin)).toEqual(['card']);
+		expect(await cachedRails(soleProcessor(provider), origin)).toEqual(['card']);
 		expect(reads()).toBe(1);
 	});
 
 	/**
 	 * a read that could not be made is answered and never stored.
 	 *
-	 * the answer on that arm is the deployment's list whole (`offeredRails` in ./offered-rails.ts),
-	 * which is the wide direction — so storing it would turn a processor blip into minutes of a form
-	 * offering a rail the account may not be approved for, with nothing on either side able to clear
-	 * it early.
+	 * the answer on that arm is that processor's own rails whole (`offeredRails` in
+	 * ./offered-rails.ts), which is the wide direction — so storing it would turn a processor blip
+	 * into minutes of a form offering a rail the account may not be approved for, with nothing on
+	 * either side able to clear it early.
+	 *
+	 * that processor's rails and not `OFFERED_PAYMENT_METHODS` whole: the widening is per processor,
+	 * so a blip on the one account this deployment holds cannot put another processor's rails on the
+	 * form.
 	 */
 	it('does not store a chargeability it could not read', async () => {
 		const { provider, reads } = countingPort(REFUSAL, switches(['card', 'ach']));
 		const origin = 'https://rails-unreadable-not-stored.example';
 
-		const whole = [...OFFERED_PAYMENT_METHODS];
-		expect(await cachedRails(provider, origin)).toEqual(whole);
-		expect(await cachedRails(provider, origin)).toEqual(whole);
+		const widened = [...STRIPE_RAILS];
+		expect(await cachedRails(soleProcessor(provider), origin)).toEqual(widened);
+		expect(await cachedRails(soleProcessor(provider), origin)).toEqual(widened);
 		expect(reads()).toBe(2);
 	});
 
@@ -149,7 +165,7 @@ describe('cachedRails', () => {
 		);
 
 		const { provider, reads } = countingPort(account('active', 'active'), switches(['card']));
-		expect(await cachedRails(provider, origin)).toEqual(['card']);
+		expect(await cachedRails(soleProcessor(provider), origin)).toEqual(['card']);
 		expect(reads()).toBe(1);
 	});
 
@@ -169,7 +185,7 @@ describe('cachedRails', () => {
 		);
 
 		const { provider, reads } = countingPort(account('active', 'active'), switches(['card']));
-		expect(await cachedRails(provider, origin)).toEqual([]);
+		expect(await cachedRails(soleProcessor(provider), origin)).toEqual([]);
 		expect(reads()).toBe(0);
 	});
 
@@ -183,8 +199,13 @@ describe('cachedRails', () => {
 		const both = countingPort(account('active', 'active'), switches(['card', 'ach']));
 		const cards = countingPort(account('active', 'inactive'), switches(['card']));
 
-		expect(await cachedRails(both.provider, 'https://rails-one.example')).toEqual(['card', 'ach']);
-		expect(await cachedRails(cards.provider, 'https://rails-two.example')).toEqual(['card']);
+		expect(await cachedRails(soleProcessor(both.provider), 'https://rails-one.example')).toEqual([
+			'card',
+			'ach'
+		]);
+		expect(await cachedRails(soleProcessor(cards.provider), 'https://rails-two.example')).toEqual([
+			'card'
+		]);
 		expect(cards.reads()).toBe(1);
 	});
 });

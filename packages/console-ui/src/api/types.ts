@@ -168,14 +168,14 @@ export type HomeFace =
 	/** it is up, it answers, and the six folds are what is left. */
 	| { kind: 'ready'; address: string };
 
-/** one of the thirteen values an operator configures a deployment with, every one of them a var. */
+/** one of the seventeen values an operator configures a deployment with, every one of them a var. */
 export type DeployVarName = (typeof DEPLOY_VARS)[number];
 
 /**
  * one var, as the deployment holds it.
  *
  * three states and not two. `absent` is nothing in the slot; `withheld` is a binding under one of
- * the thirteen names that is not plain text, which is a deployment that stored the value as a
+ * the seventeen names that is not plain text, which is a deployment that stored the value as a
  * secret — the value is there and the deployment reads it, and the free press is the way out.
  * collapsing them would print the same cell over two deployments an operator has to do different
  * things to.
@@ -185,7 +185,7 @@ export type DeployedVar =
 	| { readonly name: DeployVarName; readonly kind: 'withheld' }
 	| { readonly name: DeployVarName; readonly kind: 'absent' };
 
-/** what the thirteen read as, or which way they did not. */
+/** what the seventeen read as, or which way they did not. */
 export type VarsRead =
 	| { kind: 'read'; vars: DeployedVar[] }
 	/** the worker is not in the account, which is every run before a first deploy. */
@@ -199,7 +199,7 @@ export type VarsRead =
 	/** it answered, and in a shape nothing was written against. */
 	| { kind: 'unreadable'; detail: string };
 
-/** the thirteen as the one door answered for them, whether or not it landed. */
+/** the seventeen as the one door answered for them, whether or not it landed. */
 export type DeployedValues = { vars: VarsRead };
 
 /**
@@ -241,21 +241,27 @@ export type HomeReading = {
 	/** the organisation's profile as the deployment holds it, carried through unread. */
 	org: unknown;
 	/**
-	 * whether there is anything to ask the deployment about its Stripe account.
+	 * whether there is anything to ask the deployment on the addresses that are Stripe's alone.
 	 *
-	 * every such read reaches Stripe with the stored secret and answers in a shape that says there
-	 * was none, which this console draws as an answer it could not read (../lib/unread-answer.ts) —
-	 * so a deployment nobody has finished setting up would report a failure rather than the empty
-	 * boxes that are the whole truth of it. `false` on every face but the ready one, and `false`
-	 * where the values read did not land: a read that came back in none of its ways found nothing
-	 * out either way. a key the deployment is holding as a credential is a key it charges with, so
-	 * `withheld` is `true` here.
+	 * each of those reaches Stripe with the stored secret and answers in a shape that says there was
+	 * none, which this console draws as an answer it could not read (../lib/unread-answer.ts) — so a
+	 * deployment nobody has finished setting up would report a failure rather than the empty boxes
+	 * that are the whole truth of it.
+	 *
+	 * **the payments reading is not one of them and may not be put back under it.** that reading
+	 * answers for every processor and carries an arm for one this deployment holds no credentials for
+	 * ({@link ProcessorPayments}), so a key that charges on one processor gating it is a deployment
+	 * set up on the other reporting nothing at all about the processor it does charge on.
+	 *
+	 * `false` on every face but the ready one, and `false` where the values read did not land: a read
+	 * that came back in none of its ways found nothing out either way. a key the deployment is
+	 * holding as a credential is a key it charges with, so `withheld` is `true` here.
 	 */
 	holdsStripeKey: boolean;
 };
 
 /**
- * why there was nowhere to write one of the thirteen to.
+ * why there was nowhere to write one of the seventeen to.
  *
  * two members and not the seven an address read has: a write finds out from its own answer, and the
  * only two things it can find out are that the account holds no such worker and that the binary
@@ -264,7 +270,7 @@ export type HomeReading = {
 export type NoWhere = { kind: 'not-deployed' } | { kind: 'no-credential'; detail: string };
 
 /**
- * the ways a write of one of the thirteen did not happen.
+ * the ways a write of one of the seventeen did not happen.
  *
  * shared by both doors because they are the same four facts about the machine and the account:
  * every fold on this surface already draws the one it got.
@@ -279,7 +285,7 @@ export type ValuesRefusal =
 	| { kind: 'failed'; detail: string };
 
 /**
- * how a write of one or more of the thirteen went, which is the one answer every press on the page
+ * how a write of one or more of the seventeen went, which is the one answer every press on the page
  * gets: each of them is a var and they all go through one door.
  *
  * `set` is the only one that left anything on the deployment. `nothing` is a press the binary
@@ -399,6 +405,14 @@ export type TestSend =
 /** why a reading the deployment makes against its processor account could not be made. */
 export type StripeUnreadableReason = 'no_key' | 'failed';
 
+/**
+ * the processors a deployment can be set up to charge on, as a closed set both ends name.
+ *
+ * the vocabulary is `PAYMENT_PROCESSORS` in `packages/operator/src/console/payments.ts`, and the
+ * order is the deployment's: nothing here sorts, so the sections always stand in one order.
+ */
+export type PaymentProcessor = 'stripe' | 'paypal';
+
 /** where one way of paying stands on that account. */
 export type RailStanding =
 	| 'approved'
@@ -418,10 +432,30 @@ export type RailLine = {
 	note: string | null;
 };
 
-/** which ways of paying this deployment can take, or that nothing was asked. */
+/**
+ * what the standings under a rails reading are worth, which is not the same question as what they
+ * say.
+ *
+ * `per_rail_approval` is an approval the processor publishes against this account, read back.
+ * `credentials_only` is a processor that publishes none: what was proven is that the credentials
+ * authenticate, every rail is reported `approved` on the strength of that alone, and which funding
+ * sources a payer is offered is decided in the payer's own browser. a screen reads this before it
+ * words a single standing, or it tells an operator a way of paying is switched on for an account
+ * that has never enabled it — and the operator finds out from a donor.
+ */
+export type RailEvidence = 'per_rail_approval' | 'credentials_only';
+
+/**
+ * which ways of paying this deployment can take on one account, or that the read could not be made.
+ *
+ * it carries no reason beside `detail`, unlike the reading on the recurring address: a rails
+ * reading exists only under a processor this deployment is configured for
+ * ({@link ProcessorPayments}), so the one thing a reason could say here — that nothing was asked
+ * because no credential is set — is already the arm above it.
+ */
 export type RailsReading =
-	| { state: 'unreadable'; reason: StripeUnreadableReason; detail: string }
-	| { state: 'read'; chargesEnabled: boolean; rails: RailLine[] };
+	| { state: 'unreadable'; detail: string }
+	| { state: 'read'; chargesEnabled: boolean; evidence: RailEvidence; rails: RailLine[] };
 
 /** whether deliveries from the processor verify. */
 export type WebhookSecretReading = {
@@ -432,12 +466,19 @@ export type WebhookSecretReading = {
 /**
  * what this deployment's endpoint is subscribed to.
  *
+ * **`unmanaged` is not `unreadable` and a screen must not word it as one.** it is a processor whose
+ * endpoint this release registers on nobody's behalf, so there is nothing to ask and no press could
+ * repair it: the operator registers one by hand in the processor's own dashboard and carries its id
+ * back, and `address` is what they point it at. drawn as a failure it sends an operator to check
+ * credentials that are fine.
+ *
  * the two faults the incomplete arm holds are the whole reason a screen can say which one an
  * operator is looking at: a missing `delivering` read as `true` would draw a switched-off endpoint
  * as one merely short of an event.
  */
 export type WebhookSubscriptionReading =
 	| { state: 'unreadable'; detail: string }
+	| { state: 'unmanaged'; detail: string; address: string }
 	| { state: 'unregistered' }
 	| { state: 'complete' }
 	| { state: 'incomplete'; delivering: boolean; missingEventTypes: string[] };
@@ -491,26 +532,67 @@ export type WalletHostLine =
 	  };
 
 /**
- * which hostnames the account draws wallet buttons on, or that nothing was asked.
+ * which hostnames the account draws wallet buttons on, or that the read could not be made.
  *
- * the same two arms {@link RailsReading} takes and for the same reasons: `unreadable` is the read
- * that could not be made, carried as a state because it says nothing about the account, with
- * `reason` the fact and `detail` the sentence. the failing arm is the whole reading rather than one
- * hostname's — one read of the account answers for all of them.
+ * the same two arms {@link RailsReading} takes and for the same reasons, the absence of a reason
+ * included. the failing arm is the whole reading rather than one hostname's — one read of the
+ * account answers for all of them.
  */
 export type WalletsReading =
-	| { state: 'unreadable'; reason: StripeUnreadableReason; detail: string }
+	| { state: 'unreadable'; detail: string }
 	| { state: 'read'; hosts: WalletHostLine[] };
 
-/** the whole of what a deployment answers about the account it charges on. */
-export type PaymentsReport = {
-	rails: RailsReading;
-	webhook: WebhookSecretReading;
-	subscription: WebhookSubscriptionReading;
-	wallets: WalletsReading;
-};
+/**
+ * where a deployment stands on one processor, which is what one section of the payments fold is
+ * drawn from.
+ *
+ * **`unconfigured` and a failing reading are different answers, and this is the arm that keeps them
+ * apart.** a deployment set up on one processor holds none of the other's credentials, so nothing
+ * was asked of it and nothing about its account is known — which is not an account that was asked
+ * and did not answer, and a screen drawing either as the other reports a fault on keys nobody has
+ * set. this arm carries no reading at all rather than empty ones, so a screen has no blank row to
+ * colour in.
+ *
+ * `label` travels rather than being spelled on this side: what an operator is shown a processor
+ * called is decided once, on the deployment.
+ *
+ * `wallets` is `null` on the configured arm too, for a processor that draws none anywhere, and that
+ * is a third answer rather than an empty reading: a processor whose funding sources are drawn in its
+ * own window on its own domain registers no hostname, so there is nothing to read, nothing to press
+ * and no section to draw.
+ */
+export type ProcessorPayments =
+	| {
+			processor: PaymentProcessor;
+			label: string;
+			state: 'unconfigured';
+			/**
+			 * the names this deployment would have to hold before any of it could be asked, in the
+			 * deployment's own order. names only — no value of any of them crosses this wire, set or
+			 * unset.
+			 */
+			unset: DeployVarName[];
+	  }
+	| {
+			processor: PaymentProcessor;
+			label: string;
+			state: 'configured';
+			rails: RailsReading;
+			webhook: WebhookSecretReading;
+			subscription: WebhookSubscriptionReading;
+			wallets: WalletsReading | null;
+	  };
 
-/** where that account stands, or which way the binary did not find out. */
+/**
+ * the whole of what a deployment answers about the accounts it charges on.
+ *
+ * one entry per member of {@link PaymentProcessor} and never only the configured ones: a screen
+ * draws a section for each either way — the unconfigured one is where the boxes that configure it
+ * are — and a processor left out of the list would be a section with nothing to key off.
+ */
+export type PaymentsReport = { processors: ProcessorPayments[] };
+
+/** where those accounts stand, or which way the binary did not find out. */
 export type PaymentsRead =
 	| { kind: 'read'; report: PaymentsReport }
 	| { kind: 'unread'; read: NoReport };

@@ -7,7 +7,7 @@ import type { DeployValueName } from '@better-giving/operator/deploy-split';
 // the names to remove — so the two ends need the same vocabulary, and what is here is the half both
 // of them need and nothing that touches a network or a credential.
 //
-// **a group is a group of boxes and says nothing about how a value is stored.** all thirteen are
+// **a group is a group of boxes and says nothing about how a value is stored.** all seventeen are
 // plain vars (`DEPLOY_VARS` in packages/operator/src/deploy-split.ts); a name here calls a value a
 // secret only where Stripe or a mail host calls it one.
 //
@@ -37,12 +37,12 @@ export type SecretGroup = {
 };
 
 /**
- * the four groups.
+ * the five groups.
  *
  * the order is `DEPLOY_VARS`'s own, so a name added to the enumeration lands in a group here
- * without the screen and the split having an order each to drift from the other. three of the
- * thirteen are in no group and ./secret-groups.spec.ts names them: they are the values no group's
- * press sets, and ./deploy-vars.ts is where each is argued.
+ * without the screen and the split having an order each to drift from the other. four of the
+ * seventeen are in no group and ./deploy-vars.ts names them: they are the values no group's press
+ * sets, and that is where each is argued.
  *
  * two of the grouped names belong to no fold's own errand, and they are the first group:
  * `ADMIN_PASSWORD` is the credential that opens the dashboard for the operator who set the
@@ -66,6 +66,22 @@ export const SECRET_GROUPS: readonly SecretGroup[] = [
 		id: 'payments',
 		label: 'Taking card payments',
 		names: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']
+	},
+	/* the second processor's own credentials, and a group of its own rather than three names added
+	   to the one above: the two processors are alternatives, so a deployment set up on one holds
+	   none of the other's and a single press over both would ask an operator to commit values they
+	   will never have. the three are one press because an operator holds all three off one PayPal
+	   app — the pair that authenticates every call, and the id of the listener it hears settlements
+	   on.
+
+	   `PAYPAL_CHARITY_RATE_APPROVED` is deliberately not among them. it is an answer about the
+	   organisation rather than a credential, it is set months after the keys are, and it is drawn as
+	   a switch rather than a box (./paypal-charity.ts) — so it carries a press of its own and is
+	   filed with the values no group's press sets (./deploy-vars.ts). */
+	{
+		id: 'paypal',
+		label: 'Taking PayPal and Venmo',
+		names: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'PAYPAL_WEBHOOK_ID']
 	}
 ];
 
@@ -88,6 +104,14 @@ export const SPAM_GROUP = 'spam';
 
 /** the group the payments fold draws, named here for {@link SIGN_IN_GROUP}'s reason. */
 export const PAYMENTS_GROUP = 'payments';
+
+/**
+ * the group the same fold's PayPal section draws, named here for {@link SIGN_IN_GROUP}'s reason.
+ *
+ * the three credentials alone. what the same section draws beside them and this group does not hold
+ * is the charity-rate switch, which carries a press of its own (./paypal-charity.ts).
+ */
+export const PAYPAL_GROUP = 'paypal';
 
 /** what a press posts to save `group`, which is the submitting button's own value. */
 export const groupIntent = (group: SecretGroup): string => `secrets:${group.id}`;
@@ -172,28 +196,37 @@ export const pressedNames = (group: SecretGroup): readonly string[] =>
  *
  * every box on this console is seeded with the value the deployment is holding (./held-values.ts),
  * which is what lets an operator check a stored credential against the page they copied it from —
- * and three of the thirteen are values that reading over their shoulder is enough to take. the
+ * and four of the seventeen are values that reading over their shoulder is enough to take. the
  * dashboard password opens /admin, the mail password sends as the organisation, and the Stripe
- * secret key moves money. so those three are drawn masked and the press is how they are read,
- * rather than standing legible through a screen share for as long as the fold is open. `masked` in
- * packages/operator/src/components/forms/Field.jsx is what draws it.
+ * secret key and the PayPal client secret move money. so those four are drawn masked and the press
+ * is how they are read, rather than standing legible through a screen share for as long as the fold
+ * is open. `masked` in packages/operator/src/components/forms/Field.jsx is what draws it.
  *
  * **`STRIPE_PUBLISHABLE_KEY` is deliberately not one of them.** it ships inside the donation form
  * on every page the snippet is pasted into, so a box that hid it would be hiding a value already
  * printed in the page source of every site the organisation runs.
  *
+ * **`PAYPAL_CLIENT_ID` is not one of them on that same argument and never on the word in its name.**
+ * it is the half of PayPal's pair that starts the SDK in a donor's browser
+ * (`PaypalCredentials.clientId` in packages/app/src/lib/server/payments/paypal.ts), so it is not a
+ * secret and nothing can be done with it read off this screen. `PAYPAL_WEBHOOK_ID` is the same kind
+ * of value: it names a listener and authorises nothing. what is masked beside them is the client
+ * secret, which authenticates every server call this deployment makes to PayPal.
+ *
  * the rest are values that identify rather than authorise — a mail host, a username, the address
  * receipts leave under — and a box that made an operator press to read their own sending address
  * would be ceremony over nothing.
  *
- * the three are drawn by three different folds — ./password-fold.tsx through
- * ./secret-group-form.tsx, ./smtp-fold.tsx and ./payments-fold.tsx — and each takes its answer from
- * here, so a fourth credential is decided once and not at whichever fold draws it.
+ * the four are drawn by three different folds — ./password-fold.tsx through
+ * ./secret-group-form.tsx, ./smtp-fold.tsx, and ./payments-fold.tsx with ./paypal-section.tsx — and
+ * each takes its answer from here, so a fifth credential is decided once and not at whichever fold
+ * draws it.
  */
 export const MASKED_VALUES: readonly string[] = [
 	'ADMIN_PASSWORD',
 	'SMTP_PASSWORD',
-	'STRIPE_SECRET_KEY'
+	'STRIPE_SECRET_KEY',
+	'PAYPAL_CLIENT_SECRET'
 ];
 
 /** whether the box for `name` is drawn masked ({@link MASKED_VALUES}). */

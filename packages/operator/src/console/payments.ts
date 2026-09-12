@@ -1,13 +1,22 @@
 import type { StripeUnreadableReason } from './stripe-read.js';
 
-// what a deployment says about the Stripe account it charges on — which ways of paying it can
-// actually take, whether the deliveries coming back are verified, whether they are all being sent,
-// and which of its hostnames the account will draw wallet buttons on — named once for both ends of
-// the wire, with the two presses that repair the last two of them.
+// what a deployment says about each processor account it charges on — whether it holds that
+// processor's credentials at all, which ways of paying the account can actually take, whether the
+// deliveries coming back are verified, whether they are all being sent, and which of its hostnames
+// the account will draw wallet buttons on — named once for both ends of the wire, with the two
+// presses that repair the last two of them.
 //
 // it is here for the reason ./recurring.ts is here: the deployment reads every fact against its own
 // processor account with the key it holds, the operator console draws them, and the two packages
 // import nothing of each other's.
+//
+// **a reading per processor, and a deployment set up on one says nothing at all about the other.**
+// the processors differ in what they will even answer, so the shape is a union per processor rather
+// than one reading with fields left empty: one publishes an approval per rail and the other
+// publishes none, one lets its endpoint be registered and repaired over its own API and the other
+// is registered by hand in a dashboard, and only one draws a wallet on a page this deployment
+// serves. every one of those differences is a member below rather than a blank, because a blank is
+// what a console colours in as a failure.
 //
 // **every read here is the deployment's and can be nowhere else.** the rails, the endpoint's
 // subscription and the hostnames the account holds for wallets are read through the deployment's
@@ -34,6 +43,20 @@ import type { StripeUnreadableReason } from './stripe-read.js';
 // `packages/app/src/lib/server/forms/rail-notes.ts`, and both arrive in the values below.
 
 /**
+ * the processors a deployment can be set up to charge on, as a closed set both ends name.
+ *
+ * declared here rather than imported: this package reaches nothing of the app's (CLAUDE.md). the
+ * vocabulary is `PROCESSOR_NAMES` in `packages/app/src/lib/server/payments/provider.ts`, and the
+ * route that builds the report below is total over that list — so a processor added on one side and
+ * not the other is a deployment that no longer compiles rather than an account nothing reports on.
+ *
+ * the order is the deployment's and no consumer sorts it, so the folds always stand in one order.
+ */
+export const PAYMENT_PROCESSORS = ['stripe', 'paypal'] as const;
+
+export type PaymentProcessor = (typeof PAYMENT_PROCESSORS)[number];
+
+/**
  * why a deployment can or cannot charge one rail, as a closed set the console draws.
  *
  *   approved              — the account is approved for it and the operator has it switched on.
@@ -48,6 +71,10 @@ import type { StripeUnreadableReason } from './stripe-read.js';
  * currency, the amount, or where the donor's bank is — the reasoning is in
  * `packages/app/src/lib/server/payments/rail-chargeability.ts`'s header, and the members are named
  * for approval rather than for outcome so that "this will work" has no word to be written in.
+ *
+ * **and `approved` does not always mean an account was approved for anything.** on a reading whose
+ * `RailEvidence` is `credentials_only` it means the credentials authenticated and nothing else was
+ * asked, so a console reads the evidence before it words a single standing below.
  */
 export const RAIL_STANDINGS = [
 	'approved',
@@ -68,9 +95,11 @@ export type RailStanding = (typeof RAIL_STANDINGS)[number];
  * second spelling on the console side is a name that quietly stops matching what a donor is shown.
  *
  * `note` is the deployment's own sentence for the standing and is `null` where there is nothing to
- * say — one sentence per standing, written in
- * `packages/app/src/lib/server/forms/rail-notes.ts`. it is drawn rather than printed: it marks a
- * command or a variable name with paired backticks (../code-spans.ts).
+ * say — one sentence per standing and per processor, written in
+ * `packages/app/src/lib/server/forms/rail-notes.ts`, which is why a console never spells one: the
+ * sentence under an approved rail differs by who answered, and the {@link RailEvidence} beside it is
+ * the fact that says which. it is drawn rather than printed: it marks a command or a variable name
+ * with paired backticks (../code-spans.ts).
  */
 export interface RailLine {
 	/** the processor-independent name of the rail, which is what makes a line identifiable. */
@@ -82,6 +111,30 @@ export interface RailLine {
 }
 
 /**
+ * what a rails reading's standings are worth, as a closed set the console draws.
+ *
+ *   per_rail_approval — the processor publishes an approval per rail against this account, and each
+ *                       standing below is that approval read back.
+ *   credentials_only  — the processor publishes no per-rail approval to a merchant holding only its
+ *                       own credentials. what was proven is that the credentials authenticate, and
+ *                       every rail is reported `approved` on the strength of that alone.
+ *
+ * **it exists because `approved` means two different things and a screen has to word them
+ * differently.** on the second member a green row says the keys work and says nothing whatever
+ * about the rail beside it — which funding sources a payer is actually shown is decided in the
+ * payer's own browser, per account, per payer and per device. a console that drew the two the same
+ * way would tell an operator a way of paying is switched on for an account that has never enabled
+ * it, and the operator would find out from a donor.
+ *
+ * a fact rather than a sentence, for `RailLine.note`'s reason: the note beside it says the same
+ * thing in words an operator reads, and a console deciding what to draw off that prose is a screen
+ * that changes the day somebody edits a string.
+ */
+export const RAIL_EVIDENCE = ['per_rail_approval', 'credentials_only'] as const;
+
+export type RailEvidence = (typeof RAIL_EVIDENCE)[number];
+
+/**
  * where a deployment stands on every way of paying its form offers.
  *
  * `unreadable` is the read that could not be made — no credentials, a rejected key, a processor
@@ -89,13 +142,18 @@ export interface RailLine {
  * nothing about the account. no rail is reported on that arm: a rail drawn as blocked would be a
  * statement about an answer nobody was given.
  *
- * `reason` says which of those it was, in the closed set ./stripe-read.ts states: a deployment
- * holding no key asked nothing, and a deployment holding one asked and came away without an answer.
- * `detail` is the sentence and `reason` is the fact — a console deciding between them off the prose
- * would be a screen that changes what it draws when somebody edits a string.
+ * it carries no reason beside `detail`, unlike the readings on the console's other two addresses.
+ * a reading only exists under a processor this deployment is configured for
+ * ({@link ProcessorPayments}), so the one thing a reason could say here — that nothing was asked
+ * because no credential is set — is already the arm above this one, where a console reads it before
+ * it draws a rail at all.
  *
  * `chargesEnabled` rides beside the rails rather than only folded into them, so a console can say
  * which of the two kinds of problem it is looking at.
+ *
+ * `evidence` is what the standings underneath it are worth, and a console may not draw a rail
+ * without reading it: on a `credentials_only` reading every rail is `approved` because the
+ * credentials authenticated, and nothing was read about any rail.
  *
  * the rails arrive in the deployment's order and no consumer sorts them: the order is a donor's,
  * decided once where the vocabulary is.
@@ -103,12 +161,12 @@ export interface RailLine {
 export type RailsReading =
 	| {
 			readonly state: 'unreadable';
-			readonly reason: StripeUnreadableReason;
 			readonly detail: string;
 	  }
 	| {
 			readonly state: 'read';
 			readonly chargesEnabled: boolean;
+			readonly evidence: RailEvidence;
 			readonly rails: readonly RailLine[];
 	  };
 
@@ -124,9 +182,12 @@ export type RailsReading =
  *   unset         — nothing is stored.
  *   unconfirmable — there is nothing to compare against: no endpoint is registered, the account
  *                   could not be read, or the endpoint carries no fingerprint. an endpoint
- *                   registered in the Stripe dashboard carries none and a deployment on one is
- *                   working, so a console drawing this as a mismatch would send an operator to
- *                   replace a working endpoint and cost them the secret they have.
+ *                   registered in a processor's own dashboard carries none and a deployment on one
+ *                   is working, so a console drawing this as a mismatch would send an operator to
+ *                   replace a working endpoint and cost them the secret they have. it is the
+ *                   standing every deployment lands on for a processor whose endpoint this release
+ *                   does not register, and a console drawing it as a fault there would be a fault
+ *                   on every such deployment forever.
  *
  * four members and not a boolean, because `unconfirmable` and `stale` are opposite instructions
  * wearing the same absence of a match.
@@ -154,10 +215,18 @@ export interface WebhookSecretReading {
  *
  *   unreadable   — the deployment could not ask its processor. `detail` is its own sentence, which
  *                  names the value to fix. it says nothing about the endpoint.
+ *   unmanaged    — this release manages no endpoint on this processor, so there is nothing to ask
+ *                  and nothing a press could repair. the operator registers it by hand and carries
+ *                  its id back, and `address` is what they point it at.
  *   unregistered — the account holds nothing at this deployment's address, so nothing is delivered
  *                  anywhere. the fresh-fork state, and the one the setup press belongs to.
  *   complete     — switched on and subscribed to everything this app records. nothing to do.
  *   incomplete   — the endpoint is the right one and is not doing the whole job.
+ *
+ * **`unmanaged` is not `unreadable` and a console must not word it as one.** a read that did not
+ * land is a deployment with something wrong with it and a press to try again; this is a deployment
+ * working exactly as this release intends, waiting on a registration only a person can make. drawn
+ * as a failure it sends an operator to check credentials that are fine.
  *
  * **the two faults `incomplete` carries are kept apart and both are true at once.** an endpoint
  * switched off delivers nothing at all; an endpoint delivering while short of an event drops
@@ -173,6 +242,19 @@ export interface WebhookSecretReading {
  */
 export type WebhookSubscriptionReading =
 	| { readonly state: 'unreadable'; readonly detail: string }
+	| {
+			readonly state: 'unmanaged';
+			readonly detail: string;
+			/**
+			 * the address the operator has to point the endpoint at, which only the deployment knows.
+			 *
+			 * no hostname is committed to this repository (CLAUDE.md), so the deployment learns its own
+			 * off the request that reached it and this is the only place it is ever said. an operator
+			 * who is not told it registers nothing, and a processor with nowhere to deliver settles
+			 * gifts that never reach the books.
+			 */
+			readonly address: string;
+	  }
 	| { readonly state: 'unregistered' }
 	| { readonly state: 'complete' }
 	| {
@@ -331,10 +413,10 @@ export type WalletHostLine =
 /**
  * which hostnames the account will draw wallet buttons on, as the deployment reports them.
  *
- * the same two arms `RailsReading` above takes and for the same reasons. `unreadable` is the read
- * that could not be made, carried as a state rather than as a failure of the request because it
- * says nothing about the account; `reason` is the fact and `detail` the sentence, so a console
- * never decides what to draw by reading prose somebody may reword.
+ * the same two arms `RailsReading` above takes and for the same reasons, and it carries no reason
+ * beside `detail` for the same one: a wallets reading exists only under a processor this deployment
+ * is configured for and only under one that draws wallets at all, so both of the things a reason
+ * could say are already said above it.
  *
  * the failing arm is the whole reading rather than one hostname's: one read of the account answers
  * for all of them, so an arm per hostname would be the same sentence repeated once per site.
@@ -342,7 +424,6 @@ export type WalletHostLine =
 export type WalletsReading =
 	| {
 			readonly state: 'unreadable';
-			readonly reason: StripeUnreadableReason;
 			readonly detail: string;
 	  }
 	| {
@@ -392,10 +473,61 @@ export type WalletLevellingReport =
 			readonly hosts: readonly LevelledWalletHost[];
 	  };
 
-/** the whole of what a deployment answers about the account it charges on. */
+/**
+ * where a deployment stands on one processor, as the console draws one fold from.
+ *
+ * **`unconfigured` and a failing reading are different answers, and this is the arm that keeps them
+ * apart.** a deployment set up on one processor holds none of the other's credentials, so nothing
+ * was asked of it and nothing about its account is known — which is not the same as an account that
+ * was asked and did not answer, and a console drawing either as the other is a fold reporting on
+ * keys nobody has set. `unconfigured` carries no reading at all rather than empty ones, so a
+ * console has no blank row to colour in.
+ *
+ * `label` travels rather than being spelled here, for `RailLine.label`'s reason: what an operator
+ * is shown a processor called is decided once, on the deployment
+ * (`PROCESSOR_LABELS` in `packages/app/src/lib/server/payments/provider.ts`).
+ *
+ * `wallets` is `null` on a processor that draws none, and that is a third answer rather than an
+ * empty reading: a processor whose funding sources are drawn inside its own window on its own
+ * domain registers no hostname anywhere, so there is nothing to read, nothing to press and no
+ * section to draw. a reading with an empty host list would be a screen inviting an operator to
+ * register sites that would do nothing.
+ */
+export type ProcessorPayments =
+	| {
+			readonly processor: PaymentProcessor;
+			readonly label: string;
+			readonly state: 'unconfigured';
+			/**
+			 * the variables this deployment would have to hold before any of it could be asked, in the
+			 * deployment's own order.
+			 *
+			 * which variables a processor cannot be called without is the deployment's fact and lives in
+			 * one place there (`PROCESSORS` in
+			 * `packages/app/src/lib/server/payments/factory.ts`); a console listing them itself would be a
+			 * second copy that stops matching the day a processor needs another one.
+			 *
+			 * names only. no value of any of them crosses this wire, set or unset.
+			 */
+			readonly unset: readonly string[];
+	  }
+	| {
+			readonly processor: PaymentProcessor;
+			readonly label: string;
+			readonly state: 'configured';
+			readonly rails: RailsReading;
+			readonly webhook: WebhookSecretReading;
+			readonly subscription: WebhookSubscriptionReading;
+			readonly wallets: WalletsReading | null;
+	  };
+
+/**
+ * the whole of what a deployment answers about the accounts it charges on.
+ *
+ * one entry per member of {@link PAYMENT_PROCESSORS} and never only the configured ones: a console
+ * draws a fold for each either way — the unconfigured one is where the boxes that configure it are
+ * — and a processor left out of the list would be a fold with nothing to key off.
+ */
 export interface PaymentsReport {
-	readonly rails: RailsReading;
-	readonly webhook: WebhookSecretReading;
-	readonly subscription: WebhookSubscriptionReading;
-	readonly wallets: WalletsReading;
+	readonly processors: readonly ProcessorPayments[];
 }

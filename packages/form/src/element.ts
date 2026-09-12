@@ -166,8 +166,8 @@ export type FormRuntime = {
 	 * for. nothing about the node reaches `CheckoutInput` — the flow never learns a DOM node
 	 * exists, so a headless consumer is unaffected.
 	 *
-	 * that node is in the light DOM and `#start` below says why. what a runtime must not do is
-	 * assume otherwise: it is handed a node to mount into and never a tree to search.
+	 * that node is in the light DOM and `#openPaymentBox` below says why. what a runtime must not
+	 * do is assume otherwise: it is handed a node to mount into and never a tree to search.
 	 *
 	 * `onRail` and `onUnavailable` are the two things that travel the other way, and both are
 	 * callbacks rather than return values because both answer whenever the provider's script gets
@@ -364,9 +364,10 @@ function unansweredFix(formId: string): string {
  * the fields.
  */
 const UNREADABLE_CONFIG_FIX =
-	'The config response must carry formId, provider.publishableKey, currency, minAmountMinor, ' +
-	'maxAmountMinor, at least one known frequency and payment method, and the orgLegalName, ein ' +
-	'and deductibilityStatement the gift is solicited under.';
+	'The config response must carry formId, at least one providers entry with a name and a ' +
+	'publishableKey, currency, minAmountMinor, maxAmountMinor, at least one known frequency and ' +
+	'payment method, and the orgLegalName, ein and deductibilityStatement the gift is solicited ' +
+	'under.';
 
 /**
  * the element class, closed over one runtime.
@@ -902,6 +903,17 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		 * so the node is a child of the host and is projected back into the card through a slot in
 		 * the `payment` box. `::part(payment)` therefore still resolves to the same visible box an
 		 * integrator has always styled, and the provider's fields still appear inside it.
+		 *
+		 * that is this provider's constraint rather than every provider's, and the same node serves
+		 * both. the button surface `@paypal/paypal-js`'s `sdk-v6` entry loads is a custom element its
+		 * core script registers — `<paypal-button>`, an ordinary `<button>` and an inline svg in a
+		 * shadow root of its own, with no frame anywhere — so it has no container to lose track of
+		 * across a boundary. the same three mounts from byte-identical markup — an ordinary light-DOM
+		 * node, this slotted node, and directly inside this element's shadow root — paint the same
+		 * button at the same size in all three, and a click on it inside a shadow root is `composed`
+		 * and reaches a listener on the host element. so a second provider is handed this node as it
+		 * stands; a node or a slot of its own would widen a published surface (CLAUDE.md, "Permanent
+		 * contracts") for nothing.
 		 *
 		 * what it costs is stated rather than hidden: this node is outside the encapsulation, so the
 		 * host page's own selectors reach it — a `div { margin: 2rem }` in their stylesheet lands on

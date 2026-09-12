@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RAILS } from '@better-giving/form/embed/rails';
+import { PAYPAL_RAILS, RAILS, STRIPE_RAILS } from '@better-giving/form/embed/rails';
 import { PAYMENT_METHODS } from '@better-giving/form/v1';
 import { INTENT_METHODS } from './stripe';
 
@@ -29,16 +29,38 @@ import { INTENT_METHODS } from './stripe';
 // intent was minted for.
 
 describe('the rails a confirmation names at both ends', () => {
-	// total over `PAYMENT_METHODS`, so a rail added there reaches this file rather than being
-	// covered by whichever cases somebody remembered to write.
-	it.each(PAYMENT_METHODS)('spells %s the same way on the intent and in the group', (method) => {
+	// total over this processor's own rails, so a rail added there reaches this file rather than
+	// being covered by whichever cases somebody remembered to write.
+	it.each(STRIPE_RAILS)('spells %s the same way on the intent and in the group', (method) => {
 		expect([...INTENT_METHODS[method]]).toEqual([RAILS[method]]);
 	});
 
 	// the intent is payable on exactly one rail, because the fee that produced its amount was priced
 	// for that rail (./fees.ts). the group is narrowed to that rail at confirmation, so a second
 	// entry here would be a rail the group could never name back.
-	it.each(PAYMENT_METHODS)('mints a %s intent for one rail and no more', (method) => {
+	it.each(STRIPE_RAILS)('mints a %s intent for one rail and no more', (method) => {
 		expect(INTENT_METHODS[method]).toHaveLength(1);
+	});
+
+	/**
+	 * every rail is settled by exactly one processor, which is what lets each adapter hold a table
+	 * total over its own list rather than over the vocabulary.
+	 *
+	 * the runtime half of a claim the types make one way only: `STRIPE_RAILS` and `PAYPAL_RAILS` are
+	 * each checked to be a subset of `PAYMENT_METHODS`, and nothing there says the two cover it and
+	 * do not overlap. a rail in neither is one no processor settles and no table owes a price or an
+	 * intent method for — a gift offered on it reaches the point of charging and finds nothing.
+	 */
+	it('gives every rail one processor and no more', () => {
+		const owned = [...STRIPE_RAILS, ...PAYPAL_RAILS];
+
+		expect([...owned].sort()).toEqual([...PAYMENT_METHODS].sort());
+		expect(new Set(owned).size).toBe(owned.length);
+	});
+
+	// this processor mints an intent for its own rails and for no other: a rail it does not settle
+	// with an entry here is one this adapter would name to an API that has no method for it.
+	it('mints an intent for this processor’s rails alone', () => {
+		expect(Object.keys(INTENT_METHODS).sort()).toEqual([...STRIPE_RAILS].sort());
 	});
 });

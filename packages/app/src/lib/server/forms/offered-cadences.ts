@@ -1,6 +1,11 @@
 import { FREQUENCIES, type Frequency } from '@better-giving/form/v1';
-import type { PaymentProvider, RecurringGiftStanding } from '../payments/provider';
-import { readRecurringProvision, type RecurringProvision } from '../payments/recurring-provision';
+import type { Processors } from '../payments/factory';
+import type { RecurringGiftStanding } from '../payments/provider';
+import {
+	readRecurringProvisions,
+	type RecurringProvision,
+	type RecurringProvisions
+} from '../payments/recurring-provision';
 
 // how often a gift may repeat on this deployment, which is a fact about the processor's account
 // and about no form.
@@ -56,17 +61,31 @@ const STANDING_CADENCES: Readonly<Record<RecurringGiftStanding, readonly Frequen
 	});
 
 /**
- * how often a gift may repeat here, given what the account answered.
+ * how often a gift may repeat here, given what each configured processor's account answered.
  *
  * a read that could not be made offers one-time alone, and that is the whole direction this exists
  * to hold: a cadence offered and not chargeable is a donor picking Monthly and meeting a failure at
  * the last step, on a page nobody here can see, while a cadence chargeable and not offered costs
  * them nothing they can tell. so a processor nobody could reach narrows the form rather than
  * widening it.
+ *
+ * every configured processor has to offer a cadence for a donor to be shown it, and a deployment
+ * that can charge on none offers one-time alone. that is the same direction: `FormConfig` in
+ * packages/form/src/v1.ts carries one flat list for the whole form, a donor picks a cadence before
+ * a rail, and CLAUDE.md's repeating-gifts rule is that a cadence this deployment cannot charge is
+ * not offered in the first place — so the narrow reading is the one that can honour it.
  */
-export function offeredCadences(provision: RecurringProvision): readonly Frequency[] {
-	if (provision.state === 'unreadable') return ONE_TIME_ONLY;
-	return STANDING_CADENCES[provision.state];
+export function offeredCadences(provisions: RecurringProvisions): readonly Frequency[] {
+	const readings = Object.values(provisions);
+	if (readings.length === 0) return ONE_TIME_ONLY;
+	return FREQUENCIES.filter((cadence) =>
+		readings.every((reading) => cadencesOf(reading).includes(cadence))
+	);
+}
+
+/** what one processor's standing offers, whichever arm it landed on. */
+function cadencesOf(provision: RecurringProvision): readonly Frequency[] {
+	return provision.state === 'unreadable' ? ONE_TIME_ONLY : STANDING_CADENCES[provision.state];
 }
 
 /**
@@ -80,8 +99,6 @@ export function offeredCadences(provision: RecurringProvision): readonly Frequen
  * put a product on an operator's Stripe account as a side effect of a donor opening somebody else's
  * website. the button on the console is where that write belongs.
  */
-export async function readOfferedCadences(
-	provider: PaymentProvider
-): Promise<readonly Frequency[]> {
-	return offeredCadences(await readRecurringProvision(provider));
+export async function readOfferedCadences(processors: Processors): Promise<readonly Frequency[]> {
+	return offeredCadences(await readRecurringProvisions(processors));
 }

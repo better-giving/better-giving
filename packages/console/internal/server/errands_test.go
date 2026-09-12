@@ -211,12 +211,24 @@ func TestARefusedProfileAndAnUnreachableDeploymentStayApart(t *testing.T) {
 func TestTheFiveOtherErrandsReachTheirOwnAddress(t *testing.T) {
 	handler, asked := errands(t, map[string]any{
 		"POST /console/test-email": map[string]any{"outcome": "sent", "to": "you@example.org"},
-		"GET /console/payments": map[string]any{
-			"rails":        map[string]any{"state": "read", "chargesEnabled": true, "rails": []any{}},
-			"webhook":      map[string]any{"state": "verifying"},
-			"subscription": map[string]any{"state": "complete"},
-			"wallets":      map[string]any{"state": "read", "hosts": []any{}},
-		},
+		// one entry per processor and always all of them, whether or not the deployment holds a
+		// processor's credentials.
+		"GET /console/payments": map[string]any{"processors": []any{
+			map[string]any{
+				"processor": "stripe", "label": "Stripe", "state": "configured",
+				"rails": map[string]any{
+					"state": "read", "chargesEnabled": true,
+					"evidence": "per_rail_approval", "rails": []any{},
+				},
+				"webhook":      map[string]any{"state": "verifying"},
+				"subscription": map[string]any{"state": "complete"},
+				"wallets":      map[string]any{"state": "read", "hosts": []any{}},
+			},
+			map[string]any{
+				"processor": "paypal", "label": "PayPal", "state": "unconfigured",
+				"unset": []any{"PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET"},
+			},
+		}},
 		"GET /console/recurring":       map[string]any{"state": "ready"},
 		"POST /console/recurring":      map[string]any{"outcome": "already_set_up"},
 		"POST /console/sites":          reported(),

@@ -1,11 +1,12 @@
 import { settleDelivery } from '$lib/server/donations/settle';
 import { createEmailProvider } from '$lib/server/email/factory';
-import { createPaymentProvider } from '$lib/server/payments/factory';
+import { createPaymentProviders } from '$lib/server/payments/factory';
 import { database, platform } from '../context';
 import type { Route } from './+types/api.stripe.webhook';
 
-// where a settled payment becomes a gift in the books: the processor's own callback, and the only
-// route in this app whose caller is a machine belonging to somebody else.
+// where a settled Stripe payment becomes a gift in the books: the processor's own callback, and one
+// of the two routes in this app whose caller is a machine belonging to somebody else — the other is
+// ./api.paypal.webhook.ts, which takes this file's shape for PayPal.
 //
 // a resource route: no component export, so react router answers with what the handlers return
 // instead of rendering anything (react-router/docs/how-to/resource-routes.md). the delivery is a
@@ -27,7 +28,7 @@ import type { Route } from './+types/api.stripe.webhook';
 // anything that touched this request ahead of the handler would break every delivery in production
 // with nothing anywhere reporting it. a `middleware` above this route is the way that happens, and
 // the two halves of the claim are asserted rather than left to the name — ../routes.spec.ts holds
-// that this route has no layout above it and that no route but the two surface layouts exports a
+// that this route has no layout above it and that no route but the three surface layouts exports a
 // `middleware` at all, and ./api.stripe.webhook.workers.spec.ts holds that the bytes arrive unread
 // and are read once.
 //
@@ -51,10 +52,13 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 	const result = await settleDelivery(
 		{
 			db: context.get(database),
-			provider: createPaymentProvider(env),
+			provider: createPaymentProviders(env).for('stripe'),
 			email: createEmailProvider(env)
 		},
-		{ body: await request.text(), signature: request.headers.get('stripe-signature') }
+		// the headers whole, because which of them verifies a delivery is the adapter's fact
+		// ($lib/server/payments/provider.ts). `Headers` iterates lowercase, which is the keying that
+		// type states.
+		{ body: await request.text(), headers: Object.fromEntries(request.headers) }
 	);
 
 	if (result.ok) return Response.json({ outcome: result.outcome, message: result.detail });

@@ -14,6 +14,14 @@
 // retyped or removed. the `as const` arrays are covered too — a member may join
 // `PAYMENT_METHODS`, no member may leave it.
 //
+// `FormConfig.provider` was corrected to `providers` under that rule rather than in spite of it,
+// and it is recorded here for `PART_NAMES`' reason in ./parts.ts: the next reader has to be able to
+// tell a stated exception from an oversight. a second processor made the singular field
+// unrepresentable, and CLAUDE.md's *Permanent contracts* opens by saying nothing is deployed for
+// real and no site carries the snippet — so a contract here is permanent by decision rather than by
+// exposure, and the fix is weighed on its merits. **the correction stops being available the day
+// that paragraph is deleted**, and the next one needs the same argument made again.
+//
 // not under `src/lib/server/**`, and more strongly than `../contacts/kinds.ts` is: this module is
 // consumed by code that runs on a stranger's website. it imports nothing — no framework, no
 // DOM, no Stripe SDK — and it never will.
@@ -139,8 +147,21 @@ export type FeeCoverage = (typeof FEE_COVERAGE_MODES)[number];
  * this. the machine must never assume a member of this union is available: it reads
  * `config.paymentMethods` as data, and `methodIsChargeable` in ./value.ts is where that is
  * enforced.
+ *
+ * more than one processor's rails, and no rail is offered by two of them: `card`, `ach` and the
+ * wallets are settled by the processor whose fields the card draws inline, `paypal` and `venmo` by
+ * the processor whose own window collects them. `STRIPE_RAILS` and `PAYPAL_RAILS` in
+ * ./embed/rails.ts are that split written down, and `providers` on `FormConfig` below is the field
+ * that lets one config name both.
  */
-export const PAYMENT_METHODS = ['card', 'ach', 'apple_pay', 'google_pay'] as const;
+export const PAYMENT_METHODS = [
+	'card',
+	'ach',
+	'apple_pay',
+	'google_pay',
+	'paypal',
+	'venmo'
+] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 /**
@@ -148,12 +169,17 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
  *
  * `ach` is the schema's word and never the donor's — CLAUDE.md keeps table vocabulary off a
  * screen, and "ACH" is exactly the kind of initialism a fundraiser's donor does not use.
+ *
+ * `paypal` and `venmo` are the two a donor does read as the processor's own name, because that is
+ * what a donor is being sent to: the word on the control is the brand whose window opens.
  */
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 	card: 'Card',
 	ach: 'Bank account',
 	apple_pay: 'Apple Pay',
-	google_pay: 'Google Pay'
+	google_pay: 'Google Pay',
+	paypal: 'PayPal',
+	venmo: 'Venmo'
 };
 
 /**
@@ -237,11 +263,15 @@ export type MonthlyAsk = {
 };
 
 /**
- * which payment provider this deployment uses, and the public key its SDK is initialised with.
+ * one payment provider this deployment uses, and the public key its SDK is initialised with.
  *
  * the vendor is data, not a field name. `name` is what tells an adapter which SDK to reach for,
  * so the contract can carry a provider without a field named after one — and a field named
  * after one could only ever be corrected by shipping a `v2`.
+ *
+ * `name` is a string rather than a union of the processors this repository has an adapter for,
+ * and that is the same decision: a deployment naming a processor this snippet does not know draws
+ * the rails it does know and no screen renders a word it cannot place.
  *
  * neither field is secret, by construction: both are embedded in public HTML on the org's site,
  * and a publishable key is designed to be.
@@ -269,7 +299,23 @@ export type Provider = {
  */
 export type FormConfig = {
 	readonly formId: string;
-	readonly provider: Provider;
+	/**
+	 * every processor this deployment takes gifts through, one entry each.
+	 *
+	 * a set rather than the one provider, because the rails on `paymentMethods` below are not all
+	 * one processor's: a deployment holding both offers the inline card fields and the hosted
+	 * window side by side, and each adapter needs its own publishable key. a deployment holding one
+	 * says exactly what it said before, as the single entry — nothing about a one-processor config
+	 * is longer or differently shaped than it was.
+	 *
+	 * never empty: a config that names no processor is one nothing can be charged through, and
+	 * ./config.ts drops it rather than rendering a form that collects and then cannot send.
+	 *
+	 * ordered by the deployment and read by name, never by position — `STRIPE_RAILS` and
+	 * `PAYPAL_RAILS` in ./embed/rails.ts say which rails an adapter draws, and `name` above says
+	 * which entry is its own.
+	 */
+	readonly providers: readonly Provider[];
 	readonly currency: string;
 	readonly suggestedAmountsMinor: readonly number[];
 	readonly minAmountMinor: number;

@@ -120,6 +120,36 @@ async function gift(
 	return id;
 }
 
+/**
+ * one settlement attempt against a gift, written past drizzle for the same reason `gift` is.
+ *
+ * `provider` is passed rather than defaulted, because the column being nullable is half of what
+ * these cases are about: a gift no processor stands behind is a row with a rail and no provider.
+ */
+async function attempt(
+	donationId: string,
+	over: {
+		id?: string;
+		method?: string;
+		provider?: string | null;
+		status?: string;
+	} = {}
+) {
+	const {
+		id = '019fb300-0000-7000-8000-000000000009',
+		method = 'card',
+		provider = 'stripe',
+		status = 'succeeded'
+	} = over;
+	await env.DB.prepare(
+		`insert into payment (id, donation_id, amount_minor, currency, direction, method, status,
+		                      provider, provider_txn_id, occurred_at, created_at)
+		 values (?, ?, 12345, 'USD', 'inbound', ?, ?, ?, ?, 0, 0)`
+	)
+		.bind(id, donationId, method, status, provider, provider === null ? null : `txn_${id}`)
+		.run();
+}
+
 /** the standing commitment a repeating charge is collected under, and the form it was made on. */
 async function commitment() {
 	const formId = 'frm_giftslistrepeat1';
@@ -163,6 +193,7 @@ async function runLoad() {
 			source: string | null;
 			note: string | null;
 			status: string;
+			paidWith: string | null;
 			repeating: boolean;
 			tribute: { kind: string; honoree: string } | null;
 			program: string | null;
@@ -223,6 +254,7 @@ describe('/admin/donations load', () => {
 			'donorName',
 			'id',
 			'note',
+			'paidWith',
 			'program',
 			'receivedOn',
 			'repeating',
@@ -301,6 +333,70 @@ describe('/admin/donations load', () => {
 	it('leaves a one-time gift unmarked', async () => {
 		await gift();
 		expect((await runLoad()).donations[0]?.repeating).toBe(false);
+	});
+
+	it('names the rail a card gift arrived on', async () => {
+		// the word and not the value, unlike `status` above: the rail vocabulary is the `payment`
+		// table's own and is declared in `$lib/server/db/schema.ts`, which a component may not
+		// import — so the screen is handed what it prints.
+		const id = await gift();
+		await attempt(id);
+		expect((await runLoad()).donations[0]?.paidWith).toBe('Card');
+	});
+
+	it('names a PayPal gift and a Venmo gift apart, on one page', async () => {
+		// the pair this slice exists for: Venmo is a rail PayPal settles, so both rows carry
+		// `provider = 'paypal'` and only `method` tells them apart. a screen reading the provider
+		// would call a Venmo gift PayPal, which is a processor the donor never saw — and both on
+		// one page is what makes that a difference the case can see.
+		const paypal = await gift({
+			id: '019fb300-0000-7000-8000-00000000000b',
+			receivedAt: Date.UTC(2026, 6, 5)
+		});
+		await attempt(paypal, { id: '019fb300-0000-7000-8000-00000000000c', method: 'paypal' });
+		const venmo = await gift({
+			id: '019fb300-0000-7000-8000-00000000000d',
+			receivedAt: Date.UTC(2026, 6, 4)
+		});
+		await attempt(venmo, {
+			id: '019fb300-0000-7000-8000-00000000000e',
+			method: 'venmo',
+			provider: 'paypal'
+		});
+
+		// newest first, which is the order this list is read in.
+		const { donations } = await runLoad();
+		expect(donations.map((d) => d.paidWith)).toEqual(['PayPal', 'Venmo']);
+	});
+
+	it('never sends the processor that moved the money', async () => {
+		// the narrowing that makes "no sentence names a processor that did not move the money"
+		// structural rather than a copy review: nothing on this screen sends an operator to a
+		// processor's dashboard, so the provider stops at the loader and cannot be printed by
+		// anything downstream.
+		const id = await gift();
+		await attempt(id, { method: 'venmo', provider: 'paypal' });
+		const { donations } = await runLoad();
+		expect(donations[0]?.paidWith).toBe('Venmo');
+		expect(JSON.stringify(donations)).not.toContain('paypal');
+		expect(JSON.stringify(donations)).not.toContain('stripe');
+	});
+
+	it('names the rail alone on a gift no processor stands behind', async () => {
+		// a cheque a staff member entered. `payment.provider` is nullable, and a rail with nothing
+		// behind it is named by the rail — inventing a processor for it is worse than naming none.
+		const id = await gift();
+		await attempt(id, { method: 'check', provider: null });
+		const { donations } = await runLoad();
+		expect(donations[0]?.paidWith).toBe('Check');
+		expect(JSON.stringify(donations)).not.toContain('manual');
+	});
+
+	it('leaves a gift nothing has been attempted on with no rail', async () => {
+		// the quote is written with its own attempt, so this is a shape the app does not produce —
+		// and the page draws the absence rather than a rail nobody used, the same as a cause.
+		await gift();
+		expect((await runLoad()).donations[0]?.paidWith).toBeNull();
 	});
 
 	it('reports the cap so the page can say the list is one', async () => {

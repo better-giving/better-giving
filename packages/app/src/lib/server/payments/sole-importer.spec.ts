@@ -3,13 +3,13 @@ import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// the guard on "./stripe.ts is the only module that imports `stripe`".
+// the guard on "one module per processor SDK, and nothing else may import one".
 //
-// why this test exists. payments go through the `PaymentProvider` port and never Stripe directly
-// (CLAUDE.md), and until this file that was enforced by nothing — a convention, which is a code
-// review somebody has to remember to do. it is the same guard ../ledger/sole-writer.spec.ts holds
-// over `INSERT`, written the same way, and the rule it protects is the one ../db/client.ts states
-// about D1: everything else takes the interface, so the contract has exactly one place to be
+// why this test exists. payments go through the `PaymentProvider` port and never a processor's SDK
+// directly (CLAUDE.md), and until this file that was enforced by nothing — a convention, which is a
+// code review somebody has to remember to do. it is the same guard ../ledger/sole-writer.spec.ts
+// holds over `INSERT`, written the same way, and the rule it protects is the one ../db/client.ts
+// states about D1: everything else takes the interface, so the contract has exactly one place to be
 // stated.
 //
 // what the rule buys, concretely. the SDK's vocabulary — seven PaymentIntent states, sixteen
@@ -22,6 +22,11 @@ import { describe, expect, it } from 'vitest';
 // `stripe.webhooks` because the port does not expose what it needs yet. the answer is to widen the
 // port, which is a reviewable change, rather than to open a second channel to the processor.
 //
+// **a processor is guarded before its adapter is written, not after.** the shortcut above is taken
+// in a hurry, and the hurry is at its worst on the day somebody is standing an adapter up — so an
+// entry here costs nothing while the tree holds no importer for it, and is already standing when
+// one arrives.
+//
 // it scans the whole repository rather than `src/`, because `src/` is not the whole repository:
 // CLAUDE.md puts packages in `packages/*` consumable as source, and the root holds build and test
 // configuration that is ordinary TypeScript and could import anything. a guard that stopped at
@@ -32,12 +37,33 @@ import { describe, expect, it } from 'vitest';
 // it reads text and can be fooled by a computed specifier — accepted, because what it defends
 // against is a shortcut taken in a hurry, not an adversary.
 //
-// what is exempt: ./stripe.ts, and this file, which necessarily contains the pattern it searches
-// for.
+// what is exempt: each processor's own adapter, and this file, which necessarily contains the
+// patterns it searches for.
 
 const ROOT = resolve(import.meta.dirname, '../../../../../..');
-const ADAPTER = resolve(import.meta.dirname, 'stripe.ts');
 const SELF = resolve(import.meta.filename);
+
+/**
+ * every processor SDK the tree is swept for, and the one module that may import it.
+ *
+ * a table rather than "these files may import any SDK", which is the shape that would let the
+ * PayPal adapter reach for `stripe` and the Stripe one reach for PayPal — each adapter translates
+ * one processor's vocabulary, and a file importing both is a file translating neither.
+ *
+ * `@stripe/stripe-js` and `@paypal/paypal-js` are deliberately not here. those are the browser
+ * loaders the donation form's element uses (packages/form), which is a different package with a
+ * different rule — the anchoring below is what keeps a specifier ending at the quote from matching
+ * one of them.
+ */
+const GUARDED: { specifier: string; adapter: string }[] = [
+	{ specifier: 'stripe', adapter: resolve(import.meta.dirname, 'stripe.ts') },
+	{
+		specifier: '@paypal/paypal-server-sdk',
+		adapter: resolve(import.meta.dirname, 'paypal.ts')
+	}
+];
+
+const ADAPTERS = new Set(GUARDED.map((entry) => entry.adapter));
 
 const EXTENSIONS = ['.ts', '.tsx', '.js', '.jsonc'];
 
@@ -68,7 +94,7 @@ const SKIP = new Set([
 	'build'
 ]);
 
-/** every authored source file in the repository, minus the adapter and this spec. */
+/** every authored source file in the repository, minus the adapters and this spec. */
 function sourceFiles(dir: string, out: string[] = []): string[] {
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
 		if (SKIP.has(entry.name)) continue;
@@ -77,7 +103,7 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 			sourceFiles(path, out);
 		} else if (
 			EXTENSIONS.some((e) => entry.name.endsWith(e)) &&
-			path !== ADAPTER &&
+			!ADAPTERS.has(path) &&
 			path !== SELF
 		) {
 			out.push(path);
@@ -87,24 +113,30 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 }
 
 /**
- * three ways to reach the package, because a rule that knew only the first would be worth less
- * than no rule:
+ * three ways to reach a package, because a rule that knew only the first would be worth less than
+ * no rule:
  *
  *   - `import … from 'stripe'` / `import 'stripe'`, in either quote style.
  *   - `import('stripe')`, which is the shape a "keep it out of the cold path" change reaches for.
  *   - `require('stripe')`.
  *
- * anchored on the specifier ending at the quote, so `@stripe/stripe-js` and a path inside the
- * package would not match — neither is this package, and a rule that flagged them would be
- * abandoned rather than fixed.
+ * anchored on the specifier ending at the quote, so `@stripe/stripe-js`, `@paypal/paypal-js` and a
+ * path inside either package would not match — none of those is the package being guarded, and a
+ * rule that flagged them would be abandoned rather than fixed.
+ *
+ * built from the specifier rather than written out per package, so the second SDK is guarded by the
+ * same three patterns as the first rather than by whichever two somebody remembered.
  */
-const IMPORTERS: { label: string; re: RegExp }[] = [
-	{ label: 'static import', re: /\bfrom\s*['"]stripe['"]|\bimport\s*['"]stripe['"]/ },
-	{ label: 'dynamic import', re: /\bimport\s*\(\s*['"]stripe['"]\s*\)/ },
-	{ label: 'require', re: /\brequire\s*\(\s*['"]stripe['"]\s*\)/ }
-];
+function importers(specifier: string): { label: string; re: RegExp }[] {
+	const quoted = `['"]${specifier.replaceAll('/', '\\/')}['"]`;
+	return [
+		{ label: 'static import', re: new RegExp(`\\bfrom\\s*${quoted}|\\bimport\\s*${quoted}`) },
+		{ label: 'dynamic import', re: new RegExp(`\\bimport\\s*\\(\\s*${quoted}\\s*\\)`) },
+		{ label: 'require', re: new RegExp(`\\brequire\\s*\\(\\s*${quoted}\\s*\\)`) }
+	];
+}
 
-describe('stripe.ts is the only importer of the Stripe SDK', () => {
+describe('one module per processor SDK is the only importer of it', () => {
 	const files = sourceFiles(ROOT);
 
 	it('finds source files to scan at all, across the whole repository', () => {
@@ -145,25 +177,52 @@ describe('stripe.ts is the only importer of the Stripe SDK', () => {
 		}
 	});
 
-	it('finds no import of `stripe` outside src/lib/server/payments/stripe.ts', () => {
-		const offenders: string[] = [];
-		for (const file of files) {
-			const source = readFileSync(file, 'utf8');
-			for (const { label, re } of IMPORTERS) {
-				if (re.test(source)) offenders.push(`${relative(ROOT, file)} (${label})`);
+	it.each(GUARDED)(
+		'finds no import of `$specifier` outside its own adapter',
+		({ specifier, adapter }) => {
+			const offenders: string[] = [];
+			for (const file of files) {
+				const source = readFileSync(file, 'utf8');
+				for (const { label, re } of importers(specifier)) {
+					if (re.test(source)) offenders.push(`${relative(ROOT, file)} (${label})`);
+				}
 			}
+			// the message is the whole value of this test: it is read by whoever just added the import.
+			expect(
+				offenders,
+				`these modules import \`${specifier}\` directly: ${offenders.join(', ')}. only ${relative(ROOT, adapter)} may — take \`PaymentProvider\` from src/lib/server/payments/provider.ts and build one with \`createPaymentProviders(platform.env).for(…)\`. if the port does not expose what you need, widen the port: a second importer is a second translation of that processor's vocabulary, and the two disagree where nobody looks.`
+			).toEqual([]);
 		}
-		// the message is the whole value of this test: it is read by whoever just added the import.
-		expect(
-			offenders,
-			`these modules import the Stripe SDK directly: ${offenders.join(', ')}. only src/lib/server/payments/stripe.ts may — take \`PaymentProvider\` from src/lib/server/payments/provider.ts and build one with \`createPaymentProvider(platform.env)\`. if the port does not expose what you need, widen the port: a second importer is a second translation of Stripe's vocabulary, and the two disagree where nobody looks.`
-		).toEqual([]);
+	);
+
+	it.each(GUARDED)('matches every way of importing `$specifier`', ({ specifier }) => {
+		// without this, a typo'd regex that matches nothing anywhere would report a clean tree
+		// forever — and the patterns are built from the specifier, so a specifier that needs
+		// escaping (`@paypal/paypal-server-sdk` has a slash in it) is exactly where that happens.
+		const written = [
+			`import Sdk from '${specifier}';`,
+			`import "${specifier}";`,
+			`const sdk = await import('${specifier}');`,
+			`const sdk = require('${specifier}');`
+		];
+
+		for (const line of written) {
+			expect(
+				importers(specifier).some(({ re }) => re.test(line)),
+				`no pattern matched: ${line}`
+			).toBe(true);
+		}
 	});
 
-	it('matches the adapter itself, so the patterns are known to work', () => {
-		// without this, a typo'd regex that matches nothing anywhere would report a clean tree
-		// forever. stripe.ts is the one file that must match.
-		const adapter = readFileSync(ADAPTER, 'utf8');
-		expect(IMPORTERS.some(({ re }) => re.test(adapter))).toBe(true);
-	});
+	it.each(GUARDED)(
+		'matches `$specifier` in its own adapter, so the patterns work on real source',
+		({ specifier, adapter }) => {
+			// the case above is written from the same idea as the patterns, so it cannot catch a rule
+			// that is wrong about how an import is actually spelled in this repository. this one reads
+			// files nobody wrote for it — which is also what holds each adapter to importing the SDK
+			// it is the sole importer of, rather than standing empty beside a guard nothing tests.
+			const source = readFileSync(adapter, 'utf8');
+			expect(importers(specifier).some(({ re }) => re.test(source))).toBe(true);
+		}
+	);
 });

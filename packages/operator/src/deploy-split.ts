@@ -1,4 +1,4 @@
-// the thirteen deploy-time values an operator configures a deployment with, and the one command
+// the seventeen deploy-time values an operator configures a deployment with, and the one command
 // that sets one. every instruction a deployment prints or logs is built from here: a refusal's fix
 // sentence, a log line's `operatorFix`.
 //
@@ -16,16 +16,16 @@
 // cost the operator the ability to verify it, because Cloudflare never returns a secret's value.
 //
 // **it is here rather than beside the readers because both ends need it.** the deployment reads all
-// thirteen off `platform.env` and builds the instruction beside each one, and the operator console
-// reads the same thirteen back off the Worker — one enumeration, in the leaf package the two
+// seventeen off `platform.env` and builds the instruction beside each one, and the operator console
+// reads the same seventeen back off the Worker — one enumeration, in the leaf package the two
 // already share, for the reason ./console/report.ts is here. a second list on the console side
-// would be a fourteenth name, a missing name, or a command spelled the other way round, with
+// would be an eighteenth name, a missing name, or a command spelled the other way round, with
 // nothing able to see the disagreement. DEPLOY.md's "Configuration values" section is this list
 // written for an operator.
 //
 // nothing that *reads* one of these can tell how it was stored: a var and a secret both arrive on
 // `platform.env`, and `packages/app/src/lib/server/config/env.ts` and `.../auth/env.ts` read all
-// thirteen the same way. that is exactly why a wrong instruction here is silent — an operator who
+// seventeen the same way. that is exactly why a wrong instruction here is silent — an operator who
 // stores a value as a secret holds a working deployment whose console cannot show them what they
 // set. so the rule is asserted rather than reviewed:
 // `packages/app/src/lib/server/config/deploy-split.spec.ts` checks the command built for every
@@ -33,18 +33,25 @@
 // by hand as a secret, and holds this list to the names the app actually reads — in both
 // directions, which is more than a `satisfies` could say, and this leaf can name no env type to
 // write one against anyway. `.../config/deploy-vars.config.spec.ts` is the other half:
-// `keep_vars` in wrangler.jsonc, without which a plain deploy deletes all thirteen.
+// `keep_vars` in wrangler.jsonc, without which a plain deploy deletes all seventeen.
 //
 // `CONSOLE_TOKEN` is on no list here and is not a configuration value: the console mints it for its
 // own session and writes it as a Worker secret. ./console/token.ts and
 // `packages/app/src/lib/server/console/access.ts` are where that one is argued.
 
 /**
- * the thirteen, in the order the app reads them — `CONFIG_VAR_NAMES` in
+ * the seventeen, in the order the app reads them — `CONFIG_VAR_NAMES` in
  * `packages/app/src/lib/server/config/env.ts`, then `AUTH_VAR_NAMES` in `.../auth/env.ts`.
  *
  * `SMTP_PORT` is on it though its right answer is usually to leave it unset (`SMTP_PORT` in
  * `packages/app/src/lib/server/config/env.ts`).
+ *
+ * `PAYPAL_CHARITY_RATE_APPROVED` is the one name here holding an answer rather than a credential or
+ * an address — whether PayPal has approved this organisation for its charity rate, which is a fact
+ * about the account that no PayPal call reports. it is a configuration value like any other and
+ * takes no exception from the rule this header states; what it picks between is two tables of
+ * published rates that stay constants in the tree, so no rate is ever typed
+ * (`packages/app/src/lib/server/payments/fees.ts`).
  */
 export const DEPLOY_VARS = [
 	'SMTP_HOST',
@@ -57,6 +64,10 @@ export const DEPLOY_VARS = [
 	'STRIPE_SECRET_KEY',
 	'STRIPE_PUBLISHABLE_KEY',
 	'STRIPE_WEBHOOK_SECRET',
+	'PAYPAL_CLIENT_ID',
+	'PAYPAL_CLIENT_SECRET',
+	'PAYPAL_WEBHOOK_ID',
+	'PAYPAL_CHARITY_RATE_APPROVED',
 	'BETTER_AUTH_SECRET',
 	'BETTER_AUTH_URL',
 	'ADMIN_PASSWORD'

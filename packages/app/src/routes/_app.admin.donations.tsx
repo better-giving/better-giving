@@ -7,6 +7,7 @@ import { screenTitle } from '$lib/admin/screen-title';
 import { formatMinor } from '$lib/donations/money';
 import { DONATION_STATUS_LABELS } from '$lib/donations/statuses';
 import { loadFailed } from '$lib/server/db/load-failure';
+import type { PaymentMethod } from '$lib/server/db/schema';
 import { DONATION_LIST_LIMIT, listDonations } from '$lib/server/donations/queries';
 import { database } from '../context';
 import type { Route } from './+types/_app.admin.donations';
@@ -34,11 +35,12 @@ const CAPTION_ID = 'gifts-caption';
  * one value and never wraps, money is end-aligned tabular figures, and a whole message wraps and
  * keeps a floor under its column. the two with no kind are prose.
  *
- * a `width` is the column's share of the table, and the eight sum to the whole of it. it is stated
- * here rather than taken from a token because a share is a fact about these eight columns and
+ * a `width` is the column's share of the table, and the nine sum to the whole of it. it is stated
+ * here rather than taken from a token because a share is a fact about these nine columns and
  * nothing a design system could hold — packages/operator/src/styles/tokens.css's header names a
- * table column's percentage among the few things a screen still writes. the date and the figure take
- * the smallest because what they hold is one value of a fixed width.
+ * table column's percentage among the few things a screen still writes. the date, the figure and the
+ * rail take the smallest shares of the columns holding a value, because what each holds is one short
+ * one.
  *
  * the message is where a new column's share comes from, and it is the only column it could come
  * from. every other one holds a single value of a roughly fixed width, so narrowing it wraps a name
@@ -56,6 +58,13 @@ const CAPTION_ID = 'gifts-caption';
  * fundraiser's own word and the schema's word at once — the table is `program`, and it is what the
  * screen an operator makes one on is called.
  *
+ * `Paid with` stands between the state and the source: the figure and its state are the money, how
+ * it arrived qualifies both, and Source is where the gift came from. it is a column rather than a
+ * word under the figure, which is where `Repeating` sits — a rail is what an operator scans a
+ * whole list down, and the money cell already carries the one qualifier a figure can hold on the
+ * line beneath it without becoming a paragraph. the header is the fundraiser's phrase and never
+ * `method`, which is the column's name in the schema.
+ *
  * `Dedication` and not the schema's `tribute`: it is the fundraiser's own word, and the word the
  * donor is asked in — packages/form/src/views.ts writes `Dedicate this gift` on the tick that opens
  * it. the column carries no `kind`, so it is prose: what is in it is one short line, and `whole`'s
@@ -66,11 +75,36 @@ const COLUMNS = [
 	{ key: 'donor', label: 'Donor', width: '15%' },
 	{ key: 'amount', label: 'Amount', kind: 'money', width: '11%' },
 	{ key: 'status', label: 'Status', width: '11%' },
+	{ key: 'paidWith', label: 'Paid with', width: '9%' },
 	{ key: 'source', label: 'Source', width: '12%' },
 	{ key: 'program', label: 'Program', width: '11%' },
 	{ key: 'dedication', label: 'Dedication', width: '16%' },
-	{ key: 'message', label: 'Message', kind: 'whole', width: '13%' }
+	{ key: 'message', label: 'Message', kind: 'whole', width: '4%' }
 ] as const;
+
+/**
+ * what each rail is called on this screen.
+ *
+ * the word is resolved in the loader below rather than looked up in the page, which is where this
+ * parts company with `DONATION_STATUS_LABELS` and `TRIBUTE_KIND_LABELS`: those vocabularies are
+ * declared outside `$lib/server/**` because a component may import them, and this one is the
+ * `payment` table's own — `PAYMENT_METHODS` in `$lib/server/db/schema.ts`, which a component may
+ * not reach at all. so what crosses is the word, and the type is what keeps the table total: a
+ * seventh rail on the column is a compile error here rather than a raw `ach` on a screen.
+ *
+ * every word is the fundraiser's. `Bank transfer` and never `ACH`, which is the schema's word and
+ * exactly the initialism CLAUDE.md keeps off a screen. `PayPal` and `Venmo` are the two a donor
+ * read on the button they pressed, so they are what a staff member holding that donor's email
+ * hears — and `Venmo` is never `PayPal` here, though PayPal is what settled it.
+ */
+const RAIL_LABELS: Record<PaymentMethod, string> = {
+	cash: 'Cash',
+	check: 'Check',
+	card: 'Card',
+	ach: 'Bank transfer',
+	paypal: 'PayPal',
+	venmo: 'Venmo'
+};
 
 /** the screen's name, rendered as the document title and as the heading. */
 const SCREEN_TITLE = 'Gifts';
@@ -115,6 +149,18 @@ export async function loader({ context }: Route.LoaderArgs) {
 			// the value, not the word. `DONATION_STATUS_LABELS` in `$lib/donations/statuses.ts` is
 			// what the page renders it with, and a state with no label there is a type error.
 			status: d.status,
+			// the rail the gift arrived on, as the word for it — see `RAIL_LABELS` above for why
+			// this one is resolved here and the state above is not. null on a gift with no
+			// settlement attempt at all, which the table dashes itself.
+			//
+			// the rail and never the processor behind it, which is where the provider the read
+			// hands over stops: nothing on this screen sends an operator to a processor's
+			// dashboard, and a gift given on Venmo is settled by PayPal — so a screen naming the
+			// provider would name a processor the donor never saw, on the rows it is least
+			// entitled to. the projection keeps both because `payment` keeps them apart
+			// (`projectRail` in `$lib/server/donations/queries.ts`); this is the boundary that
+			// drops one.
+			paidWith: d.rail === null ? null : RAIL_LABELS[d.rail.method],
 			// whether a standing commitment collected this charge, marked beside the figure rather
 			// than in Source — Source is free text a staff member typed, and a derived value in it
 			// would make one column mean two things. the read hands over a boolean and never
@@ -204,6 +250,9 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 								}
 							: d.amount,
 						status: <StatusWord>{DONATION_STATUS_LABELS[d.status]}</StatusWord>,
+						// the word the loader resolved, printed. a gift with nothing attempted hands
+						// over nothing and the table dashes the cell itself.
+						paidWith: d.paidWith,
 						// a cell with nothing in it is dashed and set in the muted ink by the table
 						// itself, which is why neither column reaches for a fallback here.
 						source: d.source,

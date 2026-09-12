@@ -247,7 +247,7 @@ describe('the clock the shipped ports read', () => {
 			.checkout(
 				{
 					formId: 'frm_a8x2k9',
-					provider: { name: 'stripe', publishableKey: 'pk_live_x' },
+					providers: [{ name: 'stripe', publishableKey: 'pk_live_x' }],
 					currency: 'USD',
 					minAmountMinor: 500,
 					paymentMethods: ['card']
@@ -418,7 +418,7 @@ describe('the quote port the element is handed', () => {
 				formId: SUBMISSION.formId,
 				currency: 'USD',
 				paymentMethods: ['card'],
-				provider: { name: 'stripe', publishableKey: 'pk_test_x' }
+				providers: [{ name: 'stripe', publishableKey: 'pk_test_x' }]
 			} as never,
 			document.createElement('div'),
 			() => {},
@@ -444,7 +444,7 @@ describe('the rails a runtime offers', () => {
 	const config = (paymentMethods: readonly string[]) =>
 		({
 			formId: 'frm_a8x2k9',
-			provider: { name: 'stripe', publishableKey: 'pk_live_x' },
+			providers: [{ name: 'stripe', publishableKey: 'pk_live_x' }],
 			currency: 'USD',
 			minAmountMinor: 500,
 			paymentMethods
@@ -499,7 +499,7 @@ describe('the rails a runtime offers', () => {
 describe('a donor coming back from their bank', () => {
 	const config = {
 		formId: 'frm_a8x2k9',
-		provider: { name: 'stripe', publishableKey: 'pk_live_x' },
+		providers: [{ name: 'stripe', publishableKey: 'pk_live_x' }],
 		currency: 'USD',
 		minAmountMinor: 500,
 		paymentMethods: ['card']

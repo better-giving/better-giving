@@ -239,7 +239,7 @@ function storedPair(run: StripeRunRead | null, sent: KeysSent | null): StripeKey
  * is the same seeding, from the same camp (./reseed.ts).
  *
  * **and the reading takes it back the moment it lands.** it reports the same two values — every one
- * of the thirteen is a plain var and the account hands each back (`heldValues` in ./held-values.ts)
+ * of the seventeen is a plain var and the account hands each back (`heldValues` in ./held-values.ts)
  * — so nothing moves under the operator when it does.
  *
  * **the one stop past the store that puts nothing back is `not-published`.** it is the publishable

@@ -294,13 +294,13 @@ func read(t *testing.T, fromRoot string) string {
 	return string(source)
 }
 
-// the thirteen against the module both operator surfaces read them from.
+// the seventeen against the module both operator surfaces read them from.
 //
 // The list is this binary's own and the enumeration is packages/operator's, so what is asserted is
 // that they are the same names in the same order: a name added there and not here is a row the
 // console never draws, and a console drawing them in another order sends an operator looking for a
 // row where the document they are reading does not put it.
-func TestTheThirteenAreTheOnesBothOperatorSurfacesRead(t *testing.T) {
+func TestTheSeventeenAreTheOnesBothOperatorSurfacesRead(t *testing.T) {
 	stated := namesIn(t, read(t, "packages/operator/src/deploy-split.ts"), "DEPLOY_VARS")
 	if strings.Join(stated, ",") != strings.Join(DeployVars, ",") {
 		t.Errorf("DEPLOY_VARS states %v and this binary holds %v", stated, DeployVars)
@@ -327,7 +327,7 @@ func namesIn(t *testing.T, source, constant string) []string {
 
 // the closed sets the deployment answers in, against the modules that state them.
 //
-// Gated the way the thirteen are and for the same reason: a member added there and not here is an
+// Gated the way the seventeen are and for the same reason: a member added there and not here is an
 // answer this binary reads as one it has no state for, which a screen draws as an answer it could
 // not read rather than as the thing the deployment said.
 func TestTheAnswersTheDeploymentSendsAreTheOnesItStates(t *testing.T) {
@@ -343,7 +343,9 @@ func TestTheAnswersTheDeploymentSendsAreTheOnesItStates(t *testing.T) {
 			"packages/operator/src/console/recurring.ts",
 			"RECURRING_SETUP_OUTCOMES", RecurringSetupOutcomes,
 		},
+		{"packages/operator/src/console/payments.ts", "PAYMENT_PROCESSORS", PaymentProcessors},
 		{"packages/operator/src/console/payments.ts", "RAIL_STANDINGS", RailStandings},
+		{"packages/operator/src/console/payments.ts", "RAIL_EVIDENCE", RailEvidence},
 		{
 			"packages/operator/src/console/payments.ts",
 			"WEBHOOK_SECRET_STANDINGS", WebhookSecretStandings,
@@ -368,7 +370,7 @@ func TestTheAnswersTheDeploymentSendsAreTheOnesItStates(t *testing.T) {
 
 // the endpoint's spelling, against the module both ends of it read.
 //
-// Gated the way the thirteen are: the console registers the endpoint and the deployment serves it,
+// Gated the way the seventeen are: the console registers the endpoint and the deployment serves it,
 // so a path joined one way here and another there is an endpoint that reads as absent to the reader
 // it was registered for — packages/operator/src/stripe/webhook-endpoint.ts's own header is the
 // whole argument.

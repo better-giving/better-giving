@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PAYMENT_METHODS } from '@better-giving/form/v1';
+import { STRIPE_RAILS } from '@better-giving/form/embed/rails';
 import type { RecurringEvent } from './provider';
 import {
 	API_VERSION,
@@ -584,7 +584,7 @@ describe('verifyEvent', () => {
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).verifyEvent({
 			body,
-			signature: await sign(body, CREDENTIALS.webhookSecret)
+			headers: { 'stripe-signature': await sign(body, CREDENTIALS.webhookSecret) }
 		});
 
 		expect(result).toEqual({
@@ -612,7 +612,7 @@ describe('verifyEvent', () => {
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).verifyEvent({
 			body: eventBody('payment_intent.succeeded', { id: 'pi_ATTACKER', object: 'payment_intent' }),
-			signature
+			headers: { 'stripe-signature': signature }
 		});
 
 		expect(result.ok === false && result.reason).toBe('bad_signature');
@@ -625,7 +625,7 @@ describe('verifyEvent', () => {
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).verifyEvent({
 			body,
-			signature: await sign(body, 'whsec_someoneelses')
+			headers: { 'stripe-signature': await sign(body, 'whsec_someoneelses') }
 		});
 
 		expect(result.ok === false && result.reason).toBe('bad_signature');
@@ -637,7 +637,7 @@ describe('verifyEvent', () => {
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).verifyEvent({
 			body: eventBody('payment_intent.succeeded'),
-			signature: null
+			headers: {}
 		});
 
 		expect(result.ok === false && result.reason).toBe('bad_signature');
@@ -656,7 +656,7 @@ describe('verifyEvent', () => {
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).verifyEvent({
 			body,
-			signature: await sign(body, CREDENTIALS.webhookSecret, hoursAgo)
+			headers: { 'stripe-signature': await sign(body, CREDENTIALS.webhookSecret, hoursAgo) }
 		});
 
 		expect(result.ok === false && result.reason).toBe('bad_signature');
@@ -675,7 +675,7 @@ describe('verifyEvent', () => {
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).verifyEvent({
 			body,
-			signature: await sign(body, CREDENTIALS.webhookSecret)
+			headers: { 'stripe-signature': await sign(body, CREDENTIALS.webhookSecret) }
 		});
 
 		expect(result.ok === false && result.reason).toBe('provider_error');
@@ -694,7 +694,7 @@ describe('verifyEvent', () => {
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).verifyEvent({
 			body,
-			signature: await sign(body, CREDENTIALS.webhookSecret)
+			headers: { 'stripe-signature': await sign(body, CREDENTIALS.webhookSecret) }
 		});
 
 		expect(result.ok === false && result.detail).not.toContain('sk_live_51abcdefghijklmnop');
@@ -717,7 +717,7 @@ describe('verifyEvent', () => {
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).verifyEvent({
 			body,
-			signature: await sign(body, CREDENTIALS.webhookSecret)
+			headers: { 'stripe-signature': await sign(body, CREDENTIALS.webhookSecret) }
 		});
 
 		expect(result).toEqual({
@@ -750,7 +750,7 @@ describe('verifyEvent', () => {
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).verifyEvent({
 			body,
-			signature: await sign(body, CREDENTIALS.webhookSecret)
+			headers: { 'stripe-signature': await sign(body, CREDENTIALS.webhookSecret) }
 		});
 
 		expect(result).toEqual({
@@ -781,7 +781,7 @@ describe('verifyEvent', () => {
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).verifyEvent({
 			body,
-			signature: await sign(body, CREDENTIALS.webhookSecret)
+			headers: { 'stripe-signature': await sign(body, CREDENTIALS.webhookSecret) }
 		});
 
 		expect(result.ok === true && result.value.kind).toBe('recurring');
@@ -803,7 +803,7 @@ describe('verifyEvent', () => {
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).verifyEvent({
 			body,
-			signature: await sign(body, CREDENTIALS.webhookSecret)
+			headers: { 'stripe-signature': await sign(body, CREDENTIALS.webhookSecret) }
 		});
 
 		expect(result.ok === true && result.value.kind).toBe('settlement');
@@ -826,7 +826,7 @@ describe('verifyEvent', () => {
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).verifyEvent({
 			body,
-			signature: await sign(body, CREDENTIALS.webhookSecret)
+			headers: { 'stripe-signature': await sign(body, CREDENTIALS.webhookSecret) }
 		});
 
 		expect(result.ok === false && result.reason).toBe('provider_error');
@@ -1279,8 +1279,7 @@ describe('readAccountChargeability', () => {
 		expect(calls[0]?.path).toBe('/v1/account');
 		expect(result.ok && result.value).toEqual({
 			chargesEnabled: true,
-			cardPayments: 'active',
-			achPayments: 'active'
+			rails: { card: 'active', ach: 'active', apple_pay: 'active', google_pay: 'active' }
 		});
 	});
 
@@ -1301,8 +1300,8 @@ describe('readAccountChargeability', () => {
 			httpClient
 		}).readAccountChargeability();
 
-		expect(result.ok && result.value.cardPayments).toBe('inactive');
-		expect(result.ok && result.value.achPayments).toBe('unrequested');
+		expect(result.ok && result.value.rails.card).toBe('inactive');
+		expect(result.ok && result.value.rails.ach).toBe('unrequested');
 	});
 
 	/** an account carrying no capabilities hash at all has asked for neither rail. */
@@ -1315,8 +1314,12 @@ describe('readAccountChargeability', () => {
 
 		expect(result.ok && result.value).toEqual({
 			chargesEnabled: true,
-			cardPayments: 'unrequested',
-			achPayments: 'unrequested'
+			rails: {
+				card: 'unrequested',
+				ach: 'unrequested',
+				apple_pay: 'unrequested',
+				google_pay: 'unrequested'
+			}
 		});
 	});
 
@@ -1341,7 +1344,7 @@ describe('readAccountChargeability', () => {
 			httpClient
 		}).readAccountChargeability();
 
-		expect(result.ok && result.value.achPayments).toBe('pending');
+		expect(result.ok && result.value.rails.ach).toBe('pending');
 	});
 
 	/**
@@ -1362,8 +1365,7 @@ describe('readAccountChargeability', () => {
 
 		expect(result.ok && result.value).toEqual({
 			chargesEnabled: false,
-			cardPayments: 'active',
-			achPayments: 'active'
+			rails: { card: 'active', ach: 'active', apple_pay: 'active', google_pay: 'active' }
 		});
 	});
 
@@ -1384,7 +1386,7 @@ describe('readAccountChargeability', () => {
 			httpClient
 		}).readAccountChargeability();
 
-		expect(result.ok && result.value.cardPayments).toBe('inactive');
+		expect(result.ok && result.value.rails.card).toBe('inactive');
 	});
 
 	/**
@@ -1452,14 +1454,15 @@ function configurationList(...data: unknown[]) {
 
 describe('readRailSwitchboard', () => {
 	/**
-	 * the account's default configuration, read as one answer per rail this app's form vocabulary
-	 * holds.
+	 * the account's default configuration, read as one answer per rail this processor settles.
 	 *
-	 * total over `PAYMENT_METHODS` in packages/form/src/v1.ts, which is the runtime half of a claim the type
-	 * already makes: a rail added there without a key here would be an entry missing from the answer,
-	 * and every caller reading it by name would find `undefined` where a setting belongs.
+	 * total over `STRIPE_RAILS` in packages/form/src/embed/rails.ts, which is the runtime half of a
+	 * claim the type already makes: a rail added there without a key here would be an entry missing
+	 * from the answer, and every caller reading it by name would find `undefined` where a setting
+	 * belongs. a rail another processor settles carries no key at all — this account holds no switch
+	 * for one, and ./rail-chargeability.ts is where that absence is read.
 	 */
-	it('reads the default configuration and answers for every rail the form vocabulary holds', async () => {
+	it('reads the default configuration and answers for every rail it settles', async () => {
 		const { httpClient, calls } = recording([
 			{ status: 200, json: configurationList(configuration()) }
 		]);
@@ -1468,7 +1471,7 @@ describe('readRailSwitchboard', () => {
 
 		expect(calls[0]?.method).toBe('GET');
 		expect(calls[0]?.path.startsWith('/v1/payment_method_configurations')).toBe(true);
-		expect(result.ok && Object.keys(result.value).sort()).toEqual([...PAYMENT_METHODS].sort());
+		expect(result.ok && Object.keys(result.value).sort()).toEqual([...STRIPE_RAILS].sort());
 		expect(result.ok && result.value.card).toEqual({ offered: true, switchedOn: true });
 	});
 
@@ -1744,7 +1747,7 @@ describe('listWebhookEndpoints', () => {
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).listWebhookEndpoints();
 
-		expect(result.ok && result.value.endpoints.map((e) => e.secretFingerprint)).toEqual([
+		expect(result.ok && result.value.endpoints.map((e) => e.verificationStamp)).toEqual([
 			'85fd512dab8038e3',
 			null
 		]);
@@ -1831,7 +1834,7 @@ describe('registerWebhookEndpoint', () => {
 			ENDPOINT_URL
 		);
 
-		expect(result.ok && result.value.signingSecret).toBe('whsec_notarealsecret');
+		expect(result.ok && result.value.verificationValue).toBe('whsec_notarealsecret');
 		expect(result.ok && result.value.endpoint.id).toBe('we_new');
 	});
 
@@ -1867,7 +1870,7 @@ describe('registerWebhookEndpoint', () => {
 		expect(calls[2]?.method).toBe('POST');
 		expect(fields(calls[2]).get('metadata[signing_secret_fingerprint]')).toBe('85fd512dab8038e3');
 		expect(calls[2]?.body).not.toContain('whsec_');
-		expect(result.ok && result.value.signingSecret).toBe('whsec_notarealsecret');
+		expect(result.ok && result.value.verificationValue).toBe('whsec_notarealsecret');
 	});
 
 	/**
@@ -1889,7 +1892,7 @@ describe('registerWebhookEndpoint', () => {
 			ENDPOINT_URL
 		);
 
-		expect(result.ok && result.value.signingSecret).toBe('whsec_notarealsecret');
+		expect(result.ok && result.value.verificationValue).toBe('whsec_notarealsecret');
 	});
 
 	/**
@@ -2050,7 +2053,7 @@ describe('replaceWebhookEndpoint', () => {
 		expect(calls[0]?.path).toBe('/v1/webhook_endpoints/we_old');
 		expect(calls[1]?.method).toBe('POST');
 		expect(result.ok && result.value.endpoint.id).toBe('we_new');
-		expect(result.ok && result.value.signingSecret).toBe('whsec_notarealsecret');
+		expect(result.ok && result.value.verificationValue).toBe('whsec_notarealsecret');
 	});
 
 	/**

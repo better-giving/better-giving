@@ -1,7 +1,7 @@
 import Stripe from 'stripe';
 import type { PaymentStatus } from '../db/schema';
 import { redact, redactPublicId } from '../../redact';
-import { PAYMENT_METHODS } from '@better-giving/form/v1';
+import { isStripeRail, STRIPE_RAILS, type StripeRail } from '@better-giving/form/embed/rails';
 import { RAIL_CAPABILITY_STATES, WALLETS } from './provider';
 import {
 	FINGERPRINT_METADATA_KEY,
@@ -139,6 +139,14 @@ function pause(ms: number): Promise<void> {
 const CURRENCY = /^[A-Z]{3}$/;
 
 /**
+ * the header a delivery's signature arrives in, lowercase.
+ *
+ * lowercase because `WebhookDelivery.headers` in ./provider.ts is keyed the way `Headers` iterates,
+ * so the lookup is exact rather than case-folded.
+ */
+const SIGNATURE_HEADER = 'stripe-signature';
+
+/**
  * the rail the donor was quoted on, as the parameter that holds a charge to it.
  *
  * one table for both write arms, because Stripe spells a rail the same way in each: the same
@@ -153,19 +161,47 @@ const CURRENCY = /^[A-Z]{3}$/;
  * them when the intent supports cards and the donor's platform has one — so all three map to
  * `card`. asking for a wallet by name would name a method the API does not have.
  *
- * total over `QuotedRail`, so a rail added to `PAYMENT_METHODS` in packages/form/src/v1.ts without a
- * mapping is a compile error rather than an intent minted for the wrong method.
+ * total over `StripeRail`, so a rail added to this processor's own list in
+ * packages/form/src/embed/rails.ts without a mapping is a compile error rather than an intent
+ * minted for the wrong method. the rails another processor settles are absent: this API has no
+ * method for them, and naming one would mint an intent nothing can pay.
  *
  * it mirrors `RAILS` in `packages/form/src/embed/rails.ts`, which is the list the element group confirms
  * with, and ./rail-agreement.spec.ts holds the two to each other: a confirmation carries the
  * group's own list for the API to check against the intent's, so a rail the two spell differently
  * is a gift refused before any rail is touched.
  */
-export const INTENT_METHODS: Readonly<Record<QuotedRail, readonly string[]>> = Object.freeze({
+export const INTENT_METHODS: Readonly<Record<StripeRail, readonly string[]>> = Object.freeze({
 	card: Object.freeze(['card']),
 	apple_pay: Object.freeze(['card']),
 	google_pay: Object.freeze(['card']),
 	ach: Object.freeze(['us_bank_account'])
+});
+
+/**
+ * which of the account's capabilities answers for a rail.
+ *
+ * total over `StripeRail`, so a rail added to this processor's own list in
+ * packages/form/src/embed/rails.ts has to be given a source here rather than inheriting one.
+ *
+ * the wallets answer to the card capability, which is not the card rail's answer borrowed: a wallet
+ * settles as a card charge (`RAILS` in packages/form/src/embed/rails.ts), so the approval that
+ * governs it is the same approval, while the switch is each wallet's own — an account approved for
+ * cards with Apple Pay switched off reports `switched_off` for the wallet and `approved` for the
+ * card, which is exactly the difference an operator needs to see
+ * (./rail-chargeability.ts derives both).
+ *
+ * a reader per rail rather than a key string, for the reason {@link RAIL_SWITCHES} below has one:
+ * read by a string index the hash would need a cast, and a cast is what would let a key that no
+ * longer exists compile.
+ */
+const RAIL_CAPABILITIES: Readonly<
+	Record<StripeRail, (capabilities: Stripe.Account.Capabilities | undefined) => string | undefined>
+> = Object.freeze({
+	card: (capabilities) => capabilities?.card_payments,
+	ach: (capabilities) => capabilities?.us_bank_account_ach_payments,
+	apple_pay: (capabilities) => capabilities?.card_payments,
+	google_pay: (capabilities) => capabilities?.card_payments
 });
 
 /**
@@ -182,12 +218,13 @@ export const INTENT_METHODS: Readonly<Record<QuotedRail, readonly string[]>> = O
  * configuration object: read by a string index the four would need a cast, and a cast is what would
  * let a key that no longer exists compile.
  *
- * total over `QuotedRail`, so a rail added to `PAYMENT_METHODS` in packages/form/src/v1.ts is a compile
- * error here rather than a rail quietly missing from what the deployment reports it offers.
+ * total over `StripeRail`, so a rail added to this processor's own list in
+ * packages/form/src/embed/rails.ts is a compile error here rather than a rail quietly missing from
+ * what the deployment reports it offers.
  */
 const RAIL_SWITCHES: Readonly<
 	Record<
-		QuotedRail,
+		StripeRail,
 		(configuration: Stripe.PaymentMethodConfiguration) => ConfiguredRail | undefined
 	>
 > = Object.freeze({
@@ -465,7 +502,44 @@ function quoteProvider(message: string): string {
 }
 
 /**
- * why a request may not be sent, or nothing.
+ * why a rail this processor does not settle may not be charged, in the words of whichever path
+ * asked.
+ *
+ * a request carries any rail the form's vocabulary holds and this processor settles four of them
+ * (`STRIPE_RAILS` in packages/form/src/embed/rails.ts), so both write paths narrow before their
+ * own lookup rather than calling this from inside a guard: `INTENT_METHODS` is total over the four,
+ * and a check that answered only with a failure would leave the lookup behind it reaching for a key
+ * the table cannot hold.
+ *
+ * neither path has a fallback behind that narrowing, and what an unsettled rail would cost differs
+ * by path. an intent minted for no method is refused by the API; `payment_settings
+ * .payment_method_types` takes an empty list as the field being unset, which is a commitment whose
+ * every collection is decided by the account's own invoice settings, under a 200.
+ *
+ * `isStripeRail` reads a list rather than the table's own keys, and never `in`: `in` walks the
+ * prototype chain, so `constructor` and `toString` pass it and the lookup behind hands back
+ * something off `Object.prototype` — a function spread as a rail list, which throws a `TypeError`
+ * out of the adapter. that is a 500 on a public payment-initiating endpoint in place of the 4xx
+ * these guards are written to produce, and an untyped caller is precisely who they are for.
+ */
+function unsettledRail(method: QuotedRail, attempt: string): PaymentFailure {
+	return {
+		ok: false,
+		reason: 'invalid_request',
+		detail:
+			`method \`${redact(String(method))}\` is not a rail this app can ${attempt}. ` +
+			`The rails are ${Object.keys(INTENT_METHODS).join(', ')}, and the value is one a ` +
+			'donor picked from what the form offered.'
+	};
+}
+
+/**
+ * why an amount, a currency or a key may not be sent, or nothing.
+ *
+ * the three checks both write paths share, in one place because the messages are what a caller
+ * reads and two copies of a sentence drift into two different explanations of the same field. what
+ * is not shared is what each path does beyond them — an intent is held to a rail, a repeating gift
+ * to a cadence — so those stay at their own call sites.
  *
  * checked here rather than left to the API, for three reasons. the message names the offending
  * field instead of quoting a processor's error at someone reading a 4xx; the currency check has to
@@ -477,36 +551,6 @@ function quoteProvider(message: string): string {
  * everywhere in this app (CLAUDE.md) and are exactly what the API takes, so a float arriving here
  * is money arithmetic done in dollars somewhere upstream — rounding it would charge a number
  * nobody computed.
- *
- * `Object.hasOwn` and never `in`, on this guard and on `unusableGift`'s two below. `in` walks the
- * prototype chain, so `constructor` and `toString` pass it and the lookup behind hands back
- * something off `Object.prototype` — a function spread as a rail list, which throws a `TypeError`
- * out of the adapter. that is a 500 on a public payment-initiating endpoint in place of the 4xx
- * this branch is written to produce, and an untyped caller is precisely who these guards are for.
- */
-function unusable(request: IntentRequest): PaymentFailure | null {
-	return (
-		unusableMoney(request) ??
-		(Object.hasOwn(INTENT_METHODS, request.method)
-			? null
-			: {
-					ok: false,
-					reason: 'invalid_request',
-					detail:
-						`method \`${redact(String(request.method))}\` is not a rail this app can mint an intent ` +
-						`for. The rails are ${Object.keys(INTENT_METHODS).join(', ')}, and the value is one a ` +
-						'donor picked from what the form offered.'
-				})
-	);
-}
-
-/**
- * why an amount, a currency or a key may not be sent, or nothing.
- *
- * the three checks both write paths share, in one place because the messages are what a caller
- * reads and two copies of a sentence drift into two different explanations of the same field. what
- * is not shared is what each path does beyond them — an intent is held to a rail, a repeating gift
- * to a cadence — so those stay at their own call sites.
  */
 function unusableMoney(request: {
 	readonly amountMinor: number;
@@ -563,27 +607,16 @@ function unusableMoney(request: {
  * the second of them leaves the account holding the first — a donor record with no commitment
  * behind it.
  *
- * the rail check is the same one `unusable` makes and it is not shared with it, because what an
- * unmapped rail costs differs: an intent minted for none is refused by the API, while
- * `payment_settings.payment_method_types` takes an empty list as the field being unset — so a rail
- * falling through here is a commitment the account's own invoice settings decide the rails for,
- * every collection, under a 200.
+ * the rail is not checked here. it is narrowed at the call site instead, for the reason
+ * `unsettledRail` above states, and the refusal is that function's.
  */
 function unusableGift(request: RecurringGiftRequest): PaymentFailure | null {
 	const refusal = unusableMoney(request);
 	if (refusal) return refusal;
 
-	if (!Object.hasOwn(INTENT_METHODS, request.method)) {
-		return {
-			ok: false,
-			reason: 'invalid_request',
-			detail:
-				`method \`${redact(String(request.method))}\` is not a rail this app can commit a repeating ` +
-				`gift on. The rails are ${Object.keys(INTENT_METHODS).join(', ')}, and the value is one a ` +
-				'donor picked from what the form offered.'
-		};
-	}
-
+	// `Object.hasOwn` and never `in`, for `unsettledRail` above's reason: `in` walks the prototype
+	// chain, so `toString` passes it and the lookup behind hands back something off
+	// `Object.prototype`.
 	if (!Object.hasOwn(RECURRING_INTERVALS, request.interval)) {
 		return {
 			ok: false,
@@ -1074,7 +1107,7 @@ function summarise(registered: Stripe.WebhookEndpoint): WebhookEndpointSummary {
 		enabled: registered.status === 'enabled',
 		eventTypes: [...registered.enabled_events],
 		apiVersion: registered.api_version,
-		secretFingerprint: typeof stamped === 'string' && stamped !== '' ? stamped : null
+		verificationStamp: typeof stamped === 'string' && stamped !== '' ? stamped : null
 	};
 }
 
@@ -1246,7 +1279,7 @@ export function createStripeProvider(
 
 			return {
 				ok: true,
-				value: { endpoint: summarise(stamped ?? created), signingSecret: created.secret }
+				value: { endpoint: summarise(stamped ?? created), verificationValue: created.secret }
 			};
 		} catch (error) {
 			return classify(error);
@@ -1503,6 +1536,8 @@ export function createStripeProvider(
 	}
 
 	return {
+		processor: 'stripe',
+
 		async prepareRecurringGifts(): Promise<PaymentResult<RecurringGiftProvision>> {
 			return ensureRecurringProduct();
 		},
@@ -1516,6 +1551,9 @@ export function createStripeProvider(
 		): Promise<PaymentResult<RecurringGift>> {
 			const refusal = unusableGift(request);
 			if (refusal) return refusal;
+			if (!isStripeRail(request.method)) {
+				return unsettledRail(request.method, 'commit a repeating gift on');
+			}
 
 			const priced = await findOrCreatePrice(request);
 			if (!priced.ok) return priced;
@@ -1656,8 +1694,9 @@ export function createStripeProvider(
 		},
 
 		async createIntent(request: IntentRequest): Promise<PaymentResult<Intent>> {
-			const refusal = unusable(request);
+			const refusal = unusableMoney(request);
 			if (refusal) return refusal;
+			if (!isStripeRail(request.method)) return unsettledRail(request.method, 'mint an intent for');
 
 			try {
 				const intent = await stripe.paymentIntents.create(
@@ -1674,7 +1713,7 @@ export function createStripeProvider(
 						// holds this call to the switches an operator set: what a rail arriving here
 						// is allowed to be is decided by ./rail-chargeability.ts and enforced by the
 						// caller. its header states that rule in full.
-						payment_method_types: [...(INTENT_METHODS[request.method] ?? [])],
+						payment_method_types: [...INTENT_METHODS[request.method]],
 						...(request.metadata ? { metadata: { ...request.metadata } } : {})
 					},
 					{ idempotencyKey: request.idempotencyKey }
@@ -1726,7 +1765,8 @@ export function createStripeProvider(
 				};
 			}
 
-			if (delivery.signature === null) {
+			const signature = delivery.headers[SIGNATURE_HEADER];
+			if (signature === undefined) {
 				return {
 					ok: false,
 					reason: 'bad_signature',
@@ -1750,7 +1790,7 @@ export function createStripeProvider(
 				// hook from touching it.
 				event = await stripe.webhooks.constructEventAsync(
 					delivery.body,
-					delivery.signature,
+					signature,
 					credentials.webhookSecret,
 					undefined,
 					cryptoProvider
@@ -1915,12 +1955,16 @@ export function createStripeProvider(
 					ok: true,
 					value: {
 						chargesEnabled: current.charges_enabled,
-						// the two rails `INTENT_METHODS` above can mint an intent for, and no others. the
-						// hash holds a key per capability the account has ever asked for, which is a list
-						// of somebody else's products; a mapper that carried all of them would be a list
-						// to keep in step for the sake of fields with no reader.
-						cardPayments: railCapabilityState(current.capabilities?.card_payments),
-						achPayments: railCapabilityState(current.capabilities?.us_bank_account_ach_payments)
+						// the rails this adapter settles, and no others. the hash holds a key per
+						// capability the account has ever asked for, which is a list of somebody else's
+						// products; a mapper that carried all of them would be a list to keep in step for
+						// the sake of fields with no reader.
+						rails: Object.fromEntries(
+							STRIPE_RAILS.map((rail) => [
+								rail,
+								railCapabilityState(RAIL_CAPABILITIES[rail](current.capabilities))
+							])
+						)
 					}
 				};
 			} catch (error) {
@@ -1953,8 +1997,8 @@ export function createStripeProvider(
 					};
 				}
 
-				const switchboard = {} as Record<QuotedRail, RailSwitch>;
-				for (const rail of PAYMENT_METHODS) {
+				const switchboard: Partial<Record<QuotedRail, RailSwitch>> = {};
+				for (const rail of STRIPE_RAILS) {
 					const configured = RAIL_SWITCHES[rail](preferred);
 					// a rail the configuration does not mention is off, never on. the direction is the one
 					// this whole read is safe to be wrong in: a rail wrongly reported on is a way of paying

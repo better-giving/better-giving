@@ -45,6 +45,7 @@ import { PasswordFold } from '../lib/password-fold';
 import { ProductFoot } from '../lib/product-foot';
 import { Said } from '../lib/said';
 import type { GroupReport } from '../lib/secret-group-form';
+import { CHARITY_INTENT, charityEdit } from '../lib/paypal-charity';
 import { groupPosted, pressedNames } from '../lib/secret-groups';
 import { heldValues } from '../lib/held-values';
 import { FREE_INTENT } from '../lib/withheld-values';
@@ -259,7 +260,7 @@ async function readConsole() {
 		sections: readSections(read),
 		// the seed both folds that edit the profile read.
 		stored: orgBoxes(read.org),
-		// the thirteen as cloudflare answered for them: the folds draw the rows and the boxes out of
+		// the seventeen as cloudflare answered for them: the folds draw the rows and the boxes out of
 		// the same answer the six rows above were read from.
 		values: read.values,
 		sites: read.sites,
@@ -267,13 +268,20 @@ async function readConsole() {
 		holdsStripeKey: read.holdsStripeKey
 	}));
 
-	/* the two the deployment answers about its Stripe account, asked off the reading rather than
-	   beside it: both go through the console session, and every face before `ready` is one that has
-	   no session or draws no fold — so an answer kept on all of them would be two readings nothing
-	   draws. **neither is asked of a deployment holding no key that charges**: both reach Stripe
-	   with the stored secret and answer in a shape that says there was none, which this console
-	   draws as an answer it could not read (../lib/unread-answer.ts). */
-	const stripeAccount = reading.then((read) => (read.holdsStripeKey ? readPayments() : null));
+	/* what the deployment answers about the accounts it charges on, asked off the reading rather
+	   than beside it: both go through the console session, and every face before `ready` is one that
+	   has no session or draws no fold — so an answer kept on all of them would be two readings
+	   nothing draws.
+
+	   **the payments read is made whatever this deployment holds, and the recurring one is not.**
+	   the payments report answers for every processor and carries an arm for one this deployment
+	   holds no credentials for (`ProcessorPayments` in ../api/types.ts), so gating it on a Stripe
+	   key would leave a deployment set up on PayPal alone reporting nothing at all about the
+	   processor it does charge on — which is the disagreement this fold had with its own deployment.
+	   the recurring address is Stripe's alone: it reaches Stripe with the stored secret and answers
+	   in a shape that says there was none, which this console draws as an answer it could not read
+	   (../lib/unread-answer.ts). */
+	const payments = reading.then((read) => (read.face.kind === 'ready' ? readPayments() : null));
 	const recurring = reading.then((read) => (read.holdsStripeKey ? readRecurring() : null));
 
 	/* the setup run the binary is holding, read on this face alone: it is what the payments fold
@@ -285,7 +293,7 @@ async function readConsole() {
 		shape: 'shell' as const,
 		...shell,
 		reading,
-		stripeAccount,
+		payments,
 		recurring,
 		stripe
 	};
@@ -424,6 +432,21 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	if (intent === WALLETS_INTENT) return { wallets: await levelWallets() };
 
 	/**
+	 * stores whether PayPal has approved this organisation for its charity rate, or takes the name
+	 * off.
+	 *
+	 * **it is one of the seventeen and goes through the same door every other value does**, so there
+	 * is nothing here but the two positions the switch can be in: the payload is composed from them
+	 * rather than from what the body claimed (`charityEdit` in ../lib/paypal-charity.ts), which is
+	 * what keeps a third spelling off a door that refuses one with a 400.
+	 *
+	 * it is a press of its own rather than a name in PayPal's group: the three credentials are one
+	 * errand off one PayPal app, and this is an answer about the organisation given months after
+	 * them (../lib/secret-groups.ts).
+	 */
+	if (intent === CHARITY_INTENT) return { charity: await setVars(charityEdit(posted)) };
+
+	/**
 	 * does to the processor whatever the two Stripe boxes asked for, which is one of three acts.
 	 *
 	 * **which act it is follows from the secret box and is settled before anything leaves this
@@ -533,7 +556,7 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	 * ends the run this console is inside, and asks the browser for the tab back.
 	 *
 	 * nothing on cloudflare and nothing on the deployment changes: what stops is the process on this
-	 * machine, and the account, the session and the thirteen values are exactly where they were.
+	 * machine, and the account, the session and the seventeen values are exactly where they were.
 	 *
 	 * **`window.close()` is a request the browser is free to refuse**, and chrome refuses it on a tab
 	 * no script opened — this one was opened by the binary. so the answer below is what the page is
@@ -864,6 +887,10 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 	const freed: VarsWritten | null = actionData && 'freed' in actionData ? actionData.freed : null;
 	const provision: RecurringSetup | null =
 		actionData && 'recurring' in actionData ? actionData.recurring : null;
+	/* how the press of PayPal's charity-rate switch went, which is one var written through the same
+	   door every other value goes through. */
+	const charity: VarsWritten | null =
+		actionData && 'charity' in actionData ? actionData.charity : null;
 	// the fold's own levelling press, which is the repair a site press and the keys run both stand in
 	// front of. the sites press's own levelling rides on its report and is read off `list` below.
 	const covered: WalletsLevel | null =
@@ -981,7 +1008,7 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 											payments={{
 												address: home.address,
 												values: read.values,
-												stripeAccount: loaderData.stripeAccount,
+												payments: loaderData.payments,
 												recurring: loaderData.recurring,
 												workerName: loaderData.workerName,
 												accountName: loaderData.account,
@@ -992,6 +1019,8 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 												removed,
 												freed,
 												provision,
+												secrets,
+												charity,
 												wallets: covered,
 												busy,
 												pending: intent
@@ -1105,7 +1134,7 @@ function BlockedFace({
 		);
 	}
 	if (why.kind === 'no-values') {
-		/* the deployment is up and answering, and one of the two doors its thirteen values come
+		/* the deployment is up and answering, and one of the two doors its seventeen values come
 		   through is not (`packages/console/internal/deployment/values.go`). every fold below reads
 		   them, so there is nothing to draw — and nothing here to repair by hand either: the way out
 		   is the read taken again, which is what a reload is.

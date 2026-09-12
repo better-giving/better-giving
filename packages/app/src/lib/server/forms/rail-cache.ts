@@ -1,6 +1,6 @@
 import { PAYMENT_METHODS, type PaymentMethod } from '@better-giving/form/v1';
-import type { PaymentProvider } from '../payments/provider';
-import { readRailChargeability } from '../payments/rail-chargeability';
+import type { Processors } from '../payments/factory';
+import { readRailChargeabilities } from '../payments/rail-chargeability';
 import { offeredRails } from './offered-rails';
 
 // the rail-chargeability read, kept at the edge for a few minutes at a time.
@@ -38,7 +38,7 @@ import { offeredRails } from './offered-rails';
 // cannot recall (CLAUDE.md).
 //
 // nothing built from a binding is a module-scope singleton (CLAUDE.md): the store is reached inside
-// the call, and the provider arrives as an argument from whichever request built it.
+// the call, and the processor set arrives as an argument from whichever request built it.
 
 /**
  * how long an answer is kept, in seconds.
@@ -66,8 +66,8 @@ const CACHE_PATH = '/__offered-rails';
  * it. it is taken as an argument rather than invented, because a synthetic hostname is one this
  * deployment does not own.
  *
- * a chargeability that could not be read is answered and never stored. the answer on that arm is the
- * deployment's list whole (`offeredRails` in ./offered-rails.ts), so keeping it would turn a
+ * a chargeability that could not be read is answered and never stored. the answer on that arm is that
+ * processor's rails whole (`offeredRails` in ./offered-rails.ts), so keeping it would turn a
  * processor blip into minutes of a form offering rails the account may not be approved for, with
  * nothing on either side able to clear it early.
  *
@@ -81,7 +81,7 @@ const CACHE_PATH = '/__offered-rails';
  * straight through.
  */
 export async function cachedRails(
-	provider: PaymentProvider,
+	processors: Processors,
 	origin: string
 ): Promise<readonly PaymentMethod[]> {
 	const cache = edgeCache();
@@ -92,10 +92,14 @@ export async function cachedRails(
 		if (kept !== null) return kept;
 	}
 
-	const chargeability = await readRailChargeability(provider);
-	const rails = offeredRails(chargeability);
+	const readings = await readRailChargeabilities(processors);
+	const rails = offeredRails(readings);
 
-	if (cache !== null && key !== null && chargeability.state !== 'unreadable') {
+	// every configured processor answered, or nothing is kept. one processor's blip widens its own
+	// rails (`offeredRails` in ./offered-rails.ts), and storing that would hold the widening open
+	// for the whole window with nothing on either side able to clear it early.
+	const readable = Object.values(readings).every((reading) => reading.state !== 'unreadable');
+	if (cache !== null && key !== null && readable) {
 		await cache.put(
 			key,
 			new Response(JSON.stringify(rails), {

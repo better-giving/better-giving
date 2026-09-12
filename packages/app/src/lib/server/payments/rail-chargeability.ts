@@ -1,8 +1,9 @@
-import { PAYMENT_METHODS, type PaymentMethod } from '@better-giving/form/v1';
+import type { PaymentMethod } from '@better-giving/form/v1';
+import type { Processors } from './factory';
 import type {
-	AccountChargeability,
 	RailCapabilityState,
 	PaymentProvider,
+	ProcessorName,
 	RailSwitchboard
 } from './provider';
 
@@ -99,47 +100,22 @@ export type RailChargeability =
 			/** whether the account may process a charge at all. */
 			readonly chargesEnabled: boolean;
 			/**
-			 * one standing per rail, total over the form's own vocabulary.
+			 * one standing per rail this account answers for, and no entry for a rail it does not
+			 * settle.
 			 *
-			 * `PAYMENT_METHODS` in packages/form/src/v1.ts is a permanent contract that may gain a member
-			 * (CLAUDE.md), and total here means a rail added there without an answer is a compile error
-			 * rather than a screen with a gap in it.
+			 * partial over the form's own vocabulary rather than total, because the vocabulary holds
+			 * more than one processor's rails (`STRIPE_RAILS` and `PAYPAL_RAILS` in
+			 * packages/form/src/embed/rails.ts) and this read is one processor's answer. an absent rail
+			 * is one nothing here was asked about: `offeredRails` in ../forms/offered-rails.ts offers
+			 * only what reached `approved`, so an absence never reads as a rail a donor may pick, and
+			 * `railNotes` in ../forms/rail-notes.ts says nothing under it.
+			 *
+			 * which rails an account answers for is the adapter's own table, kept total over its
+			 * processor's list, so a rail added to *that* list without an answer is still a compile
+			 * error rather than a screen with a gap in it.
 			 */
-			readonly rails: Readonly<Record<PaymentMethod, RailStanding>>;
+			readonly rails: Readonly<Partial<Record<PaymentMethod, RailStanding>>>;
 	  };
-
-/**
- * the fields on `AccountChargeability` that carry a capability state, derived rather than listed.
- *
- * derived so that `chargesEnabled` cannot be named as a rail's source. listed by hand, the table
- * below would take any key on that type and a rail pointed at the account-level boolean would be a
- * lookup returning `true` where a state belongs — which type-checks nowhere useful and reads as a
- * standing nobody wrote.
- */
-type CapabilityField = {
-	[K in keyof AccountChargeability]: AccountChargeability[K] extends RailCapabilityState
-		? K
-		: never;
-}[keyof AccountChargeability];
-
-/**
- * which capability answers for a rail.
- *
- * total over `PaymentMethod`, so a rail added to packages/form/src/v1.ts has to be given a source
- * here rather than inheriting one.
- *
- * the wallets answer to the card capability, which is not the card rail's answer borrowed: a wallet
- * settles as a card charge (`RAILS` in packages/form/src/embed/rails.ts), so the approval that
- * governs it is the same approval, while the switch below is each wallet's own — an account
- * approved for cards with Apple Pay switched off reports `switched_off` for the wallet and
- * `approved` for the card, which is exactly the difference an operator needs to see.
- */
-const RAIL_CAPABILITY: Readonly<Record<PaymentMethod, CapabilityField>> = Object.freeze({
-	card: 'cardPayments',
-	ach: 'achPayments',
-	apple_pay: 'cardPayments',
-	google_pay: 'cardPayments'
-});
 
 /**
  * where this deployment stands on each of its rails, read fresh from the processor.
@@ -147,6 +123,14 @@ const RAIL_CAPABILITY: Readonly<Record<PaymentMethod, CapabilityField>> = Object
  * never throws and never rejects: every arm of the port answers with a value, and this turns the
  * failing one into a state rather than passing it up. that is what keeps a processor nobody can
  * reach from taking down the screen an operator opened to find out why nothing works.
+ *
+ * the rails it answers for are the ones the answering account reported an approval for, and which
+ * those are is the adapter's fact rather than this module's: `AccountChargeability.rails` on
+ * ./provider.ts is keyed by rail, so each adapter maps its processor's own capabilities onto its own
+ * list and this derives over whatever came back. a rail this processor does not settle is therefore
+ * absent rather than reported as blocked, and so is one it settles and cannot report an approval
+ * for — `offeredRails` in ../forms/offered-rails.ts offers only what reached `approved`, so an
+ * absence never reads as a rail a donor may pick.
  */
 export async function readRailChargeability(provider: PaymentProvider): Promise<RailChargeability> {
 	// both reads issued together rather than one after the other. neither needs the other's answer,
@@ -175,8 +159,13 @@ export async function readRailChargeability(provider: PaymentProvider): Promise<
 	}
 
 	const account = chargeability.value;
-	const rails = {} as Record<PaymentMethod, RailStanding>;
-	for (const rail of PAYMENT_METHODS) rails[rail] = standingOf(rail, account, switchboard.value);
+	const rails: Partial<Record<PaymentMethod, RailStanding>> = {};
+	for (const [rail, capability] of Object.entries(account.rails) as [
+		PaymentMethod,
+		RailCapabilityState
+	][]) {
+		rails[rail] = standingOf(account.chargesEnabled, capability, switchboard.value[rail]);
+	}
 
 	return { state: 'read', chargesEnabled: account.chargesEnabled, rails };
 }
@@ -201,18 +190,22 @@ export async function readRailChargeability(provider: PaymentProvider): Promise<
  * wrong in is the one that never claims a rail can be charged.
  */
 function standingOf(
-	rail: PaymentMethod,
-	account: AccountChargeability,
-	switchboard: RailSwitchboard
+	chargesEnabled: boolean,
+	capability: RailCapabilityState,
+	setting: RailSwitchboard[keyof RailSwitchboard]
 ): RailStanding {
-	if (!account.chargesEnabled) return 'account_cannot_charge';
+	if (!chargesEnabled) return 'account_cannot_charge';
 
-	const setting = switchboard[rail];
-	if (setting.offered) return 'approved';
+	// a rail the switchboard did not report is one the processor is not presenting, which is the
+	// same thing as its switch being off — `readRailSwitchboard` in ./stripe.ts states that
+	// direction where it builds the answer, and the two readings below are what tell an unapproved
+	// account apart from a switch somebody turned.
+	const rail = setting ?? { offered: false, switchedOn: false };
+	if (rail.offered) return 'approved';
 
-	const approval = APPROVAL[account[RAIL_CAPABILITY[rail]]];
+	const approval = APPROVAL[capability];
 	if (approval !== 'approved') return approval;
-	return setting.switchedOn ? 'not_approved' : 'switched_off';
+	return rail.switchedOn ? 'not_approved' : 'switched_off';
 }
 
 /**
@@ -229,3 +222,40 @@ const APPROVAL: Readonly<Record<RailCapabilityState, RailStanding>> = Object.fre
 	inactive: 'not_approved',
 	unrequested: 'never_requested'
 });
+
+/**
+ * where this deployment stands on every configured processor's rails, one reading each.
+ *
+ * never collapsed into one, and that is the shape rather than a convenience: each reading carries
+ * its own `unreadable` arm with its own sentence naming its own value to fix, and a merge would
+ * have to pick one of them. a Stripe blip must not blank PayPal's rails and must not read as one.
+ *
+ * partial over `ProcessorName` because only the configured processors are asked — an entry for a
+ * processor this deployment cannot charge on would be a reading of an account nobody named.
+ */
+export type RailChargeabilities = Readonly<Partial<Record<ProcessorName, RailChargeability>>>;
+
+/**
+ * every configured processor's reading, made together.
+ *
+ * over `Processors.configured` and nothing wider, which is the whole reason that list is stricter
+ * than "the operator filled the boxes in": an unconfigured processor asked here would answer
+ * `not_configured`, arrive as `unreadable`, and reach `offeredRails` in ../forms/offered-rails.ts —
+ * whose unreadable arm widens — putting that processor's rails on a donation form served by a
+ * deployment that holds none of its keys.
+ *
+ * issued together rather than one after another: no reading needs another's answer, and a caller
+ * waiting on this is a donor's browser booting a form or an operator holding a screen open.
+ *
+ * never throws and never rejects, for the reason the single read below does not.
+ */
+export async function readRailChargeabilities(
+	processors: Processors
+): Promise<RailChargeabilities> {
+	const readings = await Promise.all(
+		processors.configured.map(
+			async (name) => [name, await readRailChargeability(processors.for(name))] as const
+		)
+	);
+	return Object.fromEntries(readings);
+}

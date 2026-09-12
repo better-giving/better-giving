@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { PAYMENT_METHODS, type PaymentMethod } from '@better-giving/form/v1';
+import { describe, expect, it, vi } from 'vitest';
+import { STRIPE_RAILS } from '@better-giving/form/embed/rails';
+import type { PaymentMethod } from '@better-giving/form/v1';
 import type {
 	AccountChargeability,
 	RailCapabilityState,
@@ -7,7 +8,8 @@ import type {
 	PaymentResult,
 	RailSwitchboard
 } from './provider';
-import { readRailChargeability } from './rail-chargeability';
+import { createPaymentProviders } from './factory';
+import { readRailChargeabilities, readRailChargeability } from './rail-chargeability';
 
 // which rails this deployment is approved to charge, away from anything that would have to be
 // asked over a network.
@@ -17,10 +19,39 @@ import { readRailChargeability } from './rail-chargeability';
 // asked for, a rail under review, an account switched off — is a `PaymentProvider` written in three
 // lines, where reaching them against a real account would mean owning one Stripe account per case.
 
-/** an account approved for both rails and able to charge, which is the working deployment. */
-function chargeable(overrides: Partial<AccountChargeability> = {}): AccountChargeability {
-	return { chargesEnabled: true, cardPayments: 'active', achPayments: 'active', ...overrides };
+/**
+ * an account approved for both capabilities and able to charge, which is the working deployment.
+ *
+ * written as the two capabilities rather than as the four rails `AccountChargeability` carries,
+ * because that is the shape the account really answers in and the shape the adapter maps from
+ * (`RAIL_CAPABILITIES` in ./stripe.ts): the wallets have no capability of their own and take the
+ * card's. a fixture that set a wallet apart from the card would be building an account no read can
+ * produce, and every case over it would assert about a state that cannot happen.
+ */
+function chargeable(overrides: Partial<Capabilities> = {}): AccountChargeability {
+	const { chargesEnabled, cardPayments, achPayments } = {
+		chargesEnabled: true,
+		cardPayments: 'active',
+		achPayments: 'active',
+		...overrides
+	} satisfies Capabilities;
+	return {
+		chargesEnabled,
+		rails: {
+			card: cardPayments,
+			ach: achPayments,
+			apple_pay: cardPayments,
+			google_pay: cardPayments
+		}
+	};
 }
+
+/** the account as Stripe reports it, which is two capabilities and the account-level gate. */
+type Capabilities = {
+	readonly chargesEnabled: boolean;
+	readonly cardPayments: RailCapabilityState;
+	readonly achPayments: RailCapabilityState;
+};
 
 /**
  * the switchboard an account of this shape would really be read beside: every switch on.
@@ -32,14 +63,17 @@ function chargeable(overrides: Partial<AccountChargeability> = {}): AccountCharg
  * happen. a case that wants the two apart overrides the rail it is about.
  */
 function switchesFor(chargeability: AccountChargeability): RailSwitchboard {
-	const from = (state: RailCapabilityState) => ({ offered: state === 'active', switchedOn: true });
+	const from = (state: RailCapabilityState | undefined) => ({
+		offered: state === 'active',
+		switchedOn: true
+	});
 	return {
-		card: from(chargeability.cardPayments),
-		ach: from(chargeability.achPayments),
+		card: from(chargeability.rails.card),
+		ach: from(chargeability.rails.ach),
 		// the wallets are the card capability as far as the processor is concerned, and their own
 		// switches beside it. what this deployment can do with either is not the fixture's business.
-		apple_pay: from(chargeability.cardPayments),
-		google_pay: from(chargeability.cardPayments)
+		apple_pay: from(chargeability.rails.apple_pay),
+		google_pay: from(chargeability.rails.google_pay)
 	};
 }
 
@@ -62,6 +96,7 @@ function port(
 	};
 	const calls: string[] = [];
 	return {
+		processor: 'stripe',
 		calls,
 		prepareRecurringGifts: unused('prepareRecurringGifts'),
 		readRecurringGiftProvision: unused('readRecurringGiftProvision'),
@@ -124,18 +159,22 @@ describe('readRailChargeability', () => {
 	});
 
 	/**
-	 * every rail the form vocabulary holds gets an answer, and no rail outside it does.
+	 * every rail this processor settles gets an answer, and no other rail does.
 	 *
-	 * `PAYMENT_METHODS` in packages/form/src/v1.ts is a permanent contract that may gain a member
-	 * (CLAUDE.md), and a rail added there with no standing here is a screen rendering nothing where
-	 * an answer belongs. the type is total over the union, so this is the runtime half of the same
-	 * claim: the keys are read off the same list rather than written down a second time.
+	 * `STRIPE_RAILS` in packages/form/src/embed/rails.ts is the list this account answers for, and a
+	 * rail added there with no standing here is a screen rendering nothing where an answer belongs.
+	 * the table the read is built from is total over that list, so this is the runtime half of the
+	 * same claim: the keys are read off the list rather than written down a second time.
+	 *
+	 * the rails another processor settles carry no key at all, rather than a standing this account
+	 * has no way to hold — `offeredRails` in ../forms/offered-rails.ts offers only what reached
+	 * `approved`, so an absence is never read as a rail a donor may pick.
 	 */
-	it('answers for every rail the form vocabulary holds', async () => {
+	it('answers for every rail this processor settles and no other', async () => {
 		const report = await readRailChargeability(account(chargeable()));
 
 		expect(report.state === 'read' && Object.keys(report.rails).sort()).toEqual(
-			[...PAYMENT_METHODS].sort()
+			[...STRIPE_RAILS].sort()
 		);
 	});
 
@@ -426,5 +465,86 @@ describe('readRailChargeability', () => {
 
 		expect(JSON.stringify(report)).not.toContain('not_approved');
 		expect(JSON.stringify(report)).not.toContain('account_cannot_charge');
+	});
+});
+
+/**
+ * the same module asked about a real deployment's configuration, through the factory rather than
+ * through a port a case built.
+ *
+ * the factory is in the path on purpose: what this covers is that the reading an operator's screen
+ * draws comes from the deployment's own configuration and names the processor it is about. a fake
+ * port here would assert a sentence this file wrote.
+ *
+ * PayPal's own reading costs one call — the token that proves the credentials — so `fetch` is stubbed
+ * rather than reached. no spec in this repository dials a processor: there is no sandbox in this
+ * project, and a suite that called one would fail on a plane.
+ */
+describe('readRailChargeabilities', () => {
+	const PAYPAL_ONLY = {
+		PAYPAL_CLIENT_ID: 'notarealclientid',
+		PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
+	};
+
+	const STRIPE_ONLY = { STRIPE_SECRET_KEY: 'sk_test_notarealkey' };
+
+	/** the one call PayPal's reading makes, answered without leaving the process. */
+	const mintsToken = () =>
+		vi.stubGlobal('fetch', async () =>
+			Response.json({ access_token: 'A21AA-token', token_type: 'Bearer', expires_in: 32400 })
+		);
+
+	/**
+	 * a processor this deployment holds no keys for is unreadable, in that processor's own name.
+	 *
+	 * the sentence is the whole of it: an operator whose Stripe fold is filled and whose PayPal fold
+	 * is empty has to be told which of the two could not be read, and the port's refusal is what
+	 * carries that.
+	 */
+	it('reports a processor with no credentials as unreadable, in its own name', async () => {
+		const paypal = createPaymentProviders(STRIPE_ONLY).for('paypal');
+
+		const reading = await readRailChargeability(paypal);
+
+		expect(reading.state).toBe('unreadable');
+		expect(reading.state === 'unreadable' && reading.detail).toContain('PayPal');
+	});
+
+	/**
+	 * a deployment holding PayPal's credentials reads both of PayPal's rails and none of Stripe's.
+	 *
+	 * the rails a reading answers for are the ones the answering account reported, so this is what
+	 * keeps one processor's reading from making a claim about the other's — `offeredRails` in
+	 * ../forms/offered-rails.ts offers only what reached `approved`, and a `card` entry on PayPal's
+	 * reading would put the inline card fields on a deployment holding no Stripe key.
+	 */
+	it('reads PayPal’s own rails and nothing of another processor’s', async () => {
+		mintsToken();
+
+		const reading = await readRailChargeability(createPaymentProviders(PAYPAL_ONLY).for('paypal'));
+
+		expect(reading.state === 'read' && reading.rails).toEqual({
+			paypal: 'approved',
+			venmo: 'approved'
+		});
+	});
+
+	/**
+	 * a processor this deployment cannot charge on gets no reading at all.
+	 *
+	 * the list this is taken over is `Processors.configured`, and the reason it matters is here: an
+	 * entry on this answer reaches `offeredRails` in ../forms/offered-rails.ts, whose unreadable arm
+	 * widens — so a reading for a processor with no keys would put that processor's rails on a form
+	 * nothing could mint them on.
+	 */
+	it.each([
+		['PayPal alone', PAYPAL_ONLY, ['paypal']],
+		['Stripe alone', STRIPE_ONLY, ['stripe']]
+	])('reads only the configured processors on a deployment holding %s', async (_l, env, named) => {
+		mintsToken();
+
+		const readings = await readRailChargeabilities(createPaymentProviders(env));
+
+		expect(Object.keys(readings)).toEqual(named);
 	});
 });

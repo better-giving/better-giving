@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PAYMENT_METHODS, TRIBUTE_KINDS, type FormConfig } from '@better-giving/form/v1';
 import { OFFERED_PAYMENT_METHODS } from '../../forms/offered-rails';
-import { STRIPE_US_FEE_RULES } from '../payments/fees';
+import { PAYPAL_US_FEE_RULES_STANDARD, servedFeeRules } from '../payments/fees';
 import { parseQuoteRequest } from './quote-input';
 
 // the posted body, checked against a form record. no database, no network — every rule here is
@@ -12,7 +12,7 @@ import { parseQuoteRequest } from './quote-input';
 
 const CONFIG: FormConfig = {
 	formId: 'frm_quoteinput00001',
-	provider: { name: 'stripe', publishableKey: 'pk_test_x' },
+	providers: [{ name: 'stripe', publishableKey: 'pk_test_x' }],
 	currency: 'USD',
 	suggestedAmountsMinor: [2_500, 5_000],
 	minAmountMinor: 500,
@@ -20,7 +20,7 @@ const CONFIG: FormConfig = {
 	frequencies: ['one_time', 'monthly'],
 	paymentMethods: ['card', 'ach'],
 	feeCoverage: 'optional',
-	feeRules: STRIPE_US_FEE_RULES,
+	feeRules: servedFeeRules(PAYPAL_US_FEE_RULES_STANDARD),
 	locale: 'en-US',
 	orgLegalName: 'Hope Foundation',
 	ein: '12-3456789',

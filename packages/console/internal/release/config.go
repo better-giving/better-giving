@@ -140,13 +140,13 @@ func mustParse(source []byte) Config {
 	return config
 }
 
-// DeployVars is the thirteen values a deployment is configured with, and every one of them is a
+// DeployVars is the seventeen values a deployment is configured with, and every one of them is a
 // plain worker var.
 //
 // **stated here rather than baked, and gated rather than trusted.** the list is
 // packages/operator/src/deploy-split.ts's — both operator surfaces read it — and ./config_test.go
 // holds this one to that module's, so a name added there and not here fails `go test` rather than
-// shipping a console that draws twelve rows. it is a list rather than a bake because it is this
+// shipping a console that draws sixteen rows. it is a list rather than a bake because it is this
 // binary's own reading of the deployment and not a fact about the checkout it was baked from.
 //
 // **the order is the source's and is not a preference**: it is the order every screen draws the
@@ -167,6 +167,10 @@ var DeployVars = []string{
 	"STRIPE_SECRET_KEY",
 	"STRIPE_PUBLISHABLE_KEY",
 	"STRIPE_WEBHOOK_SECRET",
+	"PAYPAL_CLIENT_ID",
+	"PAYPAL_CLIENT_SECRET",
+	"PAYPAL_WEBHOOK_ID",
+	"PAYPAL_CHARITY_RATE_APPROVED",
 	"BETTER_AUTH_SECRET",
 	"BETTER_AUTH_URL",
 	"ADMIN_PASSWORD",
@@ -174,7 +178,7 @@ var DeployVars = []string{
 
 // the closed sets a deployment answers its own console surface in.
 //
-// **stated here and gated rather than trusted, the way the thirteen above are.** each of them is
+// **stated here and gated rather than trusted, the way the seventeen above are.** each of them is
 // one operator surface's statement in packages/operator/src/console/, and ./config_test.go holds
 // these lists to it — so a member added there and not here fails `go test` rather than shipping a
 // console that reads a real answer as one it has no state for. what a member means is written
@@ -202,6 +206,9 @@ var (
 	RecurringStandings = []string{"ready", "absent", "archived"}
 	// RecurringSetupOutcomes is what one press to provision it did.
 	RecurringSetupOutcomes = []string{"set_up", "already_set_up", "failed"}
+	// PaymentProcessors is every processor a deployment can be set up to charge on, which the
+	// payments reading carries one entry per whether or not the deployment holds its credentials.
+	PaymentProcessors = []string{"stripe", "paypal"}
 	// RailStandings is where one way of paying stands on that account.
 	RailStandings = []string{
 		"approved",
@@ -211,6 +218,9 @@ var (
 		"switched_off",
 		"account_cannot_charge",
 	}
+	// RailEvidence is what a rails reading's standings are worth: whether the processor published an
+	// approval per rail, or whether nothing was proven but that the credentials authenticate.
+	RailEvidence = []string{"per_rail_approval", "credentials_only"}
 	// WebhookSecretStandings is whether deliveries from the processor verify.
 	WebhookSecretStandings = []string{"verifying", "stale", "unset", "unconfirmable"}
 	// StripeUnreadableReasons is why a reading the deployment makes against that account could not
@@ -228,7 +238,7 @@ var (
 // what the deployment's webhook endpoint is: the path it answers on, the version its deliveries are
 // serialised in, and everything it subscribes to.
 //
-// **stated here and gated rather than trusted, the way the thirteen above are.** the source is
+// **stated here and gated rather than trusted, the way the seventeen above are.** the source is
 // packages/operator/src/stripe/webhook-endpoint.ts, which both ends of the endpoint read — this
 // binary registers it on the processor account and the deployment serves it — and ./config_test.go
 // holds these to that module's. what each of them costs when the two ends disagree is written

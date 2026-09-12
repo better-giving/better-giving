@@ -25,7 +25,7 @@
 
 	// keep the vars this deployment is holding, and do not delete them on the way past.
 	//
-	// all thirteen values an operator configures this deployment with are plain vars, so that the
+	// all seventeen values an operator configures this deployment with are plain vars, so that the
 	// console can read each one back off the account and show what was stored rather than a mask.
 	// `@better-giving/operator/deploy-split` holds the list and argues it; DEPLOY.md is the same
 	// thing written for an operator.
@@ -37,14 +37,14 @@
 	// from the console, on the Worker's Variables and Secrets page, or by appending
 	// `--var NAME:value` to `pnpm run deploy`, which reaches `wrangler deploy` intact because it
 	// is the last command in that script's chain. `pnpm run deploy:vars` is that last form
-	// thirteen times over, read out of a gitignored file (scripts/deploy-vars.js).
+	// seventeen times over, read out of a gitignored file (scripts/deploy-vars.js).
 	//
 	// which is exactly what makes this line load-bearing rather than tidy. wrangler's own
 	// `deploy --help` for the pinned version: "When not used (or set to false), Wrangler will
 	// delete all vars before setting those found in the Wrangler configuration. When used (and
 	// set to true), the environment variables are not deleted before the deployment. … Note that
 	// secrets are never deleted by deployments." the default is false. so without this, a repo
-	// that declares no vars and a deployment that holds thirteen is one plain `pnpm run deploy`
+	// that declares no vars and a deployment that holds seventeen is one plain `pnpm run deploy`
 	// away from holding none — silently, leaving a deployment that can sign nobody in, charge
 	// nothing, send nothing and refuse every gift.
 	//

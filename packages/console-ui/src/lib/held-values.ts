@@ -3,14 +3,14 @@ import type { SecretGroup } from './secret-groups';
 
 // what the deployment is holding, in the one shape every fold on the page reads it in.
 //
-// **each of the thirteen is a plain var, so the account hands its value back** (`DEPLOY_VARS` in
+// **each of the seventeen is a plain var, so the account hands its value back** (`DEPLOY_VARS` in
 // packages/operator/src/deploy-split.ts). that is what lets a box be seeded with the value itself
 // rather than with a stand-in, and it is why one derivation serves the boxes, the rows and the
 // press: what a box was drawn with and what the press reads it against have to be the same value,
 // and five folds deriving it apart is five chances for one of them to disagree.
 //
 // **a withheld name is held and has no seed, and those are two different facts.** it is a binding
-// under one of the thirteen that is not plain text — a deployment that stored the value as a
+// under one of the seventeen that is not plain text — a deployment that stored the value as a
 // secret — so the value is there and the deployment reads it, and nothing can hand it back.
 // its box is drawn empty and its row still reads as set; ./withheld-values.tsx is the press that
 // frees it.
@@ -58,7 +58,7 @@ export const withheldAmong = (
  * the fold drawing that group says so of.
  *
  * **it is the group's whole list and never the names its press types.** a name in this state has no
- * box to be typed out of whether or not it would have had one, and two of the thirteen are minted
+ * box to be typed out of whether or not it would have had one, and two of the seventeen are minted
  * rather than typed — the session signing secret and the spam widget's key — so a block scoped to
  * the boxes leaves each of those named nowhere on the page, in a state no press it draws can end.
  * ./held-values.spec.ts holds the property, one group per name.

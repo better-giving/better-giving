@@ -1,37 +1,101 @@
+import { isStripeRail } from '@better-giving/form/embed/rails';
 import type { Frequency, PaymentMethod as QuotedRail } from '@better-giving/form/v1';
-import type { PaymentMethod as SettledRail, PaymentStatus } from '../db/schema';
+import type {
+	PaymentMethod as SettledRail,
+	PaymentProviderName,
+	PaymentStatus
+} from '../db/schema';
 
 // the payment port: the one interface every caller in this app takes money through, and the one
 // thing an adapter has to implement.
 //
-// payments go through this port, never Stripe directly (CLAUDE.md). exactly one module imports
-// the `stripe` package — ./stripe.ts — which is the same shape ../db/client.ts holds over D1, and
-// for the same stated reason: so the contract has one place to be stated rather than one per call
-// site.
+// payments go through this port, never a processor's SDK directly (CLAUDE.md). one module imports
+// each SDK and no other may — ./stripe.ts for `stripe` and ./paypal.ts for
+// `@paypal/paypal-server-sdk`, gated by ./sole-importer.spec.ts — which is the same shape
+// ../db/client.ts holds over D1, and for the same stated reason: so the contract has one place to be
+// stated rather than one per call site.
 //
-// the seam is hypothetical, and saying so is the honest version of the argument for it. one
-// adapter has ever been written against this interface, so nothing has yet pulled on it, and
-// CLAUDE.md rejects speculative portability for the store on exactly those grounds. what the port
-// buys is not a second processor. it is containment and testability: the processor's vocabulary —
-// seven PaymentIntent states, sixteen error classes, unix seconds, lowercase currencies,
-// expandable fields that are sometimes id strings — stops at one file, and everything above it
-// takes types this repository defines and can construct in a test with no network and no account.
+// **the port names two processors and both have an adapter, and neither answers every arm.** an
+// adapter this release ships refuses the arms its processor has nothing behind — a gift that
+// repeats, a capability read the API does not publish — with `unsupported`, exactly as ./factory.ts
+// answers for a processor with no adapter at all. so a method being present here is never a claim
+// that every deployment can reach it, and a caller's answer to any of them is `if (!result.ok)`.
+//
+// what the port buys beyond that is containment and testability: the processor's vocabulary — seven
+// PaymentIntent states, sixteen error classes, unix seconds, lowercase currencies, expandable
+// fields that are sometimes id strings — stops at one file, and everything above it takes types
+// this repository defines and can construct in a test with no network and no account.
 //
 // nothing here imports an SDK, a binding or a route. ./factory.ts is what turns a deployment's
 // configuration into one of these, per request.
 //
-// this file also holds `PROVIDER_NAME`, because it lives beside the fee table rather than in
-// ../forms/: both are facts about the processor and neither is a fact about a form, so this
-// folder is where a Stripe fact goes.
+// this file also holds the processor vocabulary below, because it lives beside the fee table
+// rather than in ../forms/: which processors exist and which rails each of them settles are facts
+// about the processors and neither is a fact about a form, so this folder is where they go.
 
 /**
- * what `Provider.name` on the served config says.
+ * the processors this app can take money through, in the order every list derived from it is read.
  *
- * data, not a field name. `Provider` in packages/form/src/v1.ts is what tells an adapter which SDK to
- * reach for, so the contract carries a provider without a field named after one — and a field
- * named after one could only ever be corrected by shipping a `v2`.
+ * a subset of `PAYMENT_PROVIDERS` in ../db/schema.ts by `satisfies` rather than by copy, and the
+ * subset is the point: that list keeps `manual`, which is a provider name a staff entry writes and
+ * an adapter never answers for. pinned this way, a rename on the column's list is a compile error
+ * here rather than a row written under a name nothing can settle against.
+ *
+ * data, not a field name. `Provider` in packages/form/src/v1.ts is what tells an adapter on the
+ * donor's page which SDK to reach for, so the contract carries a processor without a field named
+ * after one — and a field named after one could only ever be corrected by shipping a `v2`.
  */
-export const PROVIDER_NAME = 'stripe';
+export const PROCESSOR_NAMES = [
+	'stripe',
+	'paypal'
+] as const satisfies readonly PaymentProviderName[];
+export type ProcessorName = (typeof PROCESSOR_NAMES)[number];
+
+/**
+ * what an operator-facing sentence calls each processor.
+ *
+ * an operator reads these sentences, and neither name is spelled the way the row's value is: the
+ * console's boxes say PayPal and Stripe.
+ *
+ * it is up here beside the names rather than with the refusals that were its first reader, because
+ * the two sides that produce those sentences stand differently to a processor and must not spell it
+ * differently: ./factory.ts knows which one it is building for, and ../donations/settle.ts learns it
+ * off `PaymentProvider.processor` on the provider that answered the delivery. a table total over
+ * `ProcessorName` is what makes a headline about a PayPal delivery unable to say Stripe.
+ */
+export const PROCESSOR_LABELS: Readonly<Record<ProcessorName, string>> = Object.freeze({
+	stripe: 'Stripe',
+	paypal: 'PayPal'
+});
+
+/**
+ * which processor a rail is quoted and settled on.
+ *
+ * the rail-to-processor table is `STRIPE_RAILS` and `PAYPAL_RAILS` in
+ * packages/form/src/embed/rails.ts and this reads it rather than restating it: those two lists are
+ * the split, ./rail-agreement.spec.ts holds them to partitioning `PAYMENT_METHODS`, and a second
+ * table here would be the one that disagrees the day a rail moves.
+ *
+ * total over `QuotedRail` because the two lists partition the vocabulary, so this never answers
+ * null and no caller writes a fallback for one. it is the whole of what makes a rail a donor picked
+ * select the adapter that can mint for it — `Processors.forRail` in ./factory.ts is the one reader,
+ * and a caller pairing a rail with a processor by hand is the drift it exists to prevent.
+ */
+export function processorOf(rail: QuotedRail): ProcessorName {
+	return isStripeRail(rail) ? 'stripe' : 'paypal';
+}
+
+/**
+ * whether a provider name off a row is one an adapter answers for.
+ *
+ * the one name it refuses is `manual`, which `PAYMENT_PROVIDERS` in ../db/schema.ts keeps for a
+ * staff entry: no processor moved that money, so there is nothing to call and nothing to build a
+ * client around. a caller holding a row's `provider` column narrows through this rather than
+ * asserting, because the column's type is the wider list.
+ */
+export function isProcessor(name: PaymentProviderName): name is ProcessorName {
+	return (PROCESSOR_NAMES as readonly PaymentProviderName[]).includes(name);
+}
 
 /**
  * the key the donation's id is written under, on whichever object at the processor this app created
@@ -164,9 +228,11 @@ export type { QuotedRail, SettledRail };
  *                      units, a currency that is not ISO-4217, an idempotency key reused against
  *                      different parameters. this is a bug in this app and repeating it changes
  *                      nothing.
- *   bad_signature    — `verifyEvent` only. the body did not match the signature under the
- *                      configured secret, or no signature was presented. the delivery is refused
- *                      and nothing is read out of it — an unverified event is anyone's event.
+ *   bad_signature    — `verifyEvent` only. the delivery did not verify: it carried no signature at
+ *                      all, or the processor would not vouch for the one it carried. the delivery
+ *                      is refused and nothing is read out of it — an unverified event is anyone's
+ *                      event. a verification that could not be *made* is `unreachable` below and
+ *                      never this: the two are a delivery lost and a delivery held open.
  *   not_found        — the processor has no such object on this account, or the object it has is not
  *                      one this app keeps books for. `readSettlement` is where it is expected, from
  *                      a delivery replayed against another account; `readRecurringGift` answers it
@@ -187,6 +253,13 @@ export type { QuotedRail, SettledRail };
  *   internal_error   — an adapter threw where its contract says it must not. a bug in this app
  *                      rather than anything about payments, and it exists so `sealed` below has
  *                      somewhere honest to put one.
+ *   unsupported      — this release does not build what the call asked for: no adapter for the
+ *                      processor at all, or an adapter whose processor has nothing behind that arm.
+ *                      nothing was asked of the processor and nothing can be. a member of its own
+ *                      because the two neighbours send an operator somewhere pointless:
+ *                      `not_configured` asks for a value to set, and there is none that changes
+ *                      this, while `internal_error` points at logs that hold nothing. what changes
+ *                      it is a release, which is the one thing a deployment cannot do to itself.
  */
 export const PAYMENT_FAILURE_REASONS = [
 	'not_configured',
@@ -197,7 +270,8 @@ export const PAYMENT_FAILURE_REASONS = [
 	'rate_limited',
 	'unreachable',
 	'provider_error',
-	'internal_error'
+	'internal_error',
+	'unsupported'
 ] as const;
 export type PaymentFailureReason = (typeof PAYMENT_FAILURE_REASONS)[number];
 
@@ -233,12 +307,19 @@ export const RETRYABLE_FAILURE_REASONS = [
 	'provider_error'
 ] as const satisfies readonly PaymentFailureReason[];
 
-/** the reasons whose answer is anything but the same call again. */
+/**
+ * the reasons whose answer is anything but the same call again.
+ *
+ * `unsupported` is terminal on the same argument `internal_error` is: the answer is identical every
+ * time and no window is long enough for a release to land inside it, so a delivery held open
+ * against one buys nothing but three days of noise.
+ */
 export const TERMINAL_FAILURE_REASONS = [
 	'invalid_request',
 	'bad_signature',
 	'not_found',
-	'internal_error'
+	'internal_error',
+	'unsupported'
 ] as const satisfies readonly PaymentFailureReason[];
 
 /**
@@ -513,8 +594,21 @@ export type WebhookDelivery = {
 	 * endpoint that owns it, and a hook that touches it breaks verification at runtime.
 	 */
 	readonly body: string;
-	/** the `stripe-signature` header, or null where the request carried none. */
-	readonly signature: string | null;
+	/**
+	 * every header the request arrived with, keyed lowercase.
+	 *
+	 * the whole set rather than one named field, because what a processor signs with differs in
+	 * *arity* and not only in spelling: one carries a single signature header, and another carries
+	 * the transmission's id, its time, the certificate's address, the algorithm and the signature as
+	 * five. a field per processor here would be four nulls on every delivery and a port that has to
+	 * grow one more the next time.
+	 *
+	 * lowercase because `Headers` iterates that way, so the route hands them over as they come and no
+	 * adapter case-folds a lookup. a header the request did not carry is absent rather than empty —
+	 * an adapter refusing over a missing one says so, and an empty string would be a value that
+	 * verifies nothing.
+	 */
+	readonly headers: Readonly<Record<string, string>>;
 };
 
 /**
@@ -555,13 +649,15 @@ export type RailCapabilityState = (typeof RAIL_CAPABILITY_STATES)[number];
  * approved, not working. every field here is a *necessary* condition for a rail and none of them is
  * sufficient — a rail reported `active` still refuses a donation over the currency it is charged
  * in, the amount, or where the donor's bank is. ./rail-chargeability.ts is the module that states
- * that in full and turns these three facts into the vocabulary a screen may use; nothing built on
- * this type may promise that a rail will work.
+ * that in full and turns these facts into the vocabulary a screen may use; nothing built on this
+ * type may promise that a rail will work.
  *
- * two rails and not the processor's whole capability hash, because two is what this app can mint an
- * intent for (`INTENT_METHODS` in ./stripe.ts). a field per capability the account happens to hold
- * would be a list to keep in step with somebody else's product catalogue, and no caller here has a
- * reader for one.
+ * keyed by rail rather than by the processor's own capability names, and that is what makes it a
+ * port type rather than one processor's object under a neutral name. each adapter holds its own
+ * mapping — which capability answers for which rail, and which rails it settles at all — so a
+ * consumer derives a standing without knowing whose account answered. named capabilities here, a
+ * second processor would have to either report its rails under the first one's field names or be
+ * refused a reading it can make.
  */
 export type AccountChargeability = {
 	/**
@@ -574,10 +670,19 @@ export type AccountChargeability = {
 	 * capability would report a rail as approved on a deployment that cannot take a cent.
 	 */
 	readonly chargesEnabled: boolean;
-	/** the state of the account's card capability. */
-	readonly cardPayments: RailCapabilityState;
-	/** the state of the account's US bank debit capability. */
-	readonly achPayments: RailCapabilityState;
+	/**
+	 * one state per rail the answering processor settles, and no entry for a rail it does not.
+	 *
+	 * partial over `QuotedRail` rather than total, the way `RailSwitchboard` below is and for the
+	 * same reason: a processor is asked only about its own rails (`STRIPE_RAILS` and `PAYPAL_RAILS`
+	 * in packages/form/src/embed/rails.ts), and an entry for another's would be an approval reported
+	 * off an account that holds none. an adapter keeps its own table total over its own list, so a
+	 * rail added to *that* list is still an adapter that no longer compiles.
+	 *
+	 * a rail this processor settles and cannot report an approval for is absent as well, which
+	 * ./rail-chargeability.ts reads as a rail with no standing rather than as a refusal.
+	 */
+	readonly rails: Readonly<Partial<Record<QuotedRail, RailCapabilityState>>>;
 };
 
 /**
@@ -599,18 +704,21 @@ export type RailSwitch = {
 };
 
 /**
- * what the operator has switched on, one entry per rail this app's form vocabulary holds.
+ * what the operator has switched on, one entry per rail the answering processor settles.
  *
- * total over `QuotedRail`, so a rail added to `PAYMENT_METHODS` in packages/form/src/v1.ts is an adapter
- * that no longer compiles rather than a rail silently missing from the answer. the wallets carry an
- * entry like anything else — the processor holds a switch for each of them — and what this
- * deployment can do with that is ./rail-chargeability.ts's decision rather than this type's.
+ * partial over `QuotedRail` rather than total, because a processor is asked only about its own
+ * rails: `STRIPE_RAILS` and `PAYPAL_RAILS` in packages/form/src/embed/rails.ts are that split, and
+ * an adapter answering for a rail it does not settle would be reporting a switch nobody holds. an
+ * adapter keeps its own table total over its own rails instead, so a rail added to *its* list is
+ * still an adapter that no longer compiles. the wallets carry an entry like anything else — the
+ * processor holds a switch for each of them — and what this deployment can do with that is
+ * ./rail-chargeability.ts's decision rather than this type's.
  *
  * nothing here says a rail will work. it is the same caveat `AccountChargeability` carries and for
  * the same reason: a rail switched on and approved still refuses a donation over the currency, the
  * amount, or where the donor's bank is.
  */
-export type RailSwitchboard = Readonly<Record<QuotedRail, RailSwitch>>;
+export type RailSwitchboard = Readonly<Partial<Record<QuotedRail, RailSwitch>>>;
 
 /**
  * one webhook endpoint registered on the processor's account, as a screen has to read it.
@@ -619,10 +727,10 @@ export type RailSwitchboard = Readonly<Record<QuotedRail, RailSwitch>>;
  * processor actually delivering to it, and is it subscribed to everything the handler settles on —
  * and nothing beyond that.
  *
- * no secret, and that is the shape of the thing rather than a field left off. an endpoint's signing
- * secret is handed over once, in the answer to the call that creates it, and no read of any kind
- * returns it afterwards — see `RegisteredWebhookEndpoint` below, which is the only type in this file
- * that carries one.
+ * no verification value, and that is the shape of the thing rather than a field left off. on the
+ * processor where that value is a secret it is handed over once, in the answer to the call that
+ * creates the endpoint, and no read of any kind returns it afterwards — see
+ * `RegisteredWebhookEndpoint` below, which is the only type in this file that carries one.
  */
 export type WebhookEndpointSummary = {
 	/** the processor's own id for the endpoint, and what `replaceWebhookEndpoint` names. */
@@ -657,20 +765,23 @@ export type WebhookEndpointSummary = {
 	 */
 	readonly apiVersion: string | null;
 	/**
-	 * the fingerprint of the signing secret this endpoint was created with, or null where it carries
-	 * none.
+	 * what this endpoint was stamped with when it was created, or null where it carries no stamp.
 	 *
-	 * the only fact on this type that can be compared against what the deployment holds. the secret
-	 * itself is returned once and never again — see `RegisteredWebhookEndpoint` below — so a
-	 * deployment holding a stale one reads exactly like a deployment holding the right one, and that
-	 * is a console saying the payments line is fine while every delivery fails verification.
-	 * `secretFingerprint` in `@better-giving/operator/stripe/secret-fingerprint` is what produces both
-	 * sides of the comparison.
+	 * the only fact on this type that can be compared against what the deployment holds, and the
+	 * adapter decides what goes in it — a digest of the signing secret where the processor's
+	 * verification turns on a secret, the endpoint's own id where it turns on an id. what it may
+	 * never be is the credential itself: a stamp crosses this port and a secret does not.
+	 *
+	 * the reason it exists is the same either way. what a delivery is verified against is returned
+	 * once at creation and by no read afterwards — see `RegisteredWebhookEndpoint` below — so a
+	 * deployment holding a stale value reads exactly like a deployment holding the right one, and
+	 * that is a console saying the payments line is fine while every delivery fails verification.
+	 * ./webhook-secret.ts is where the two halves meet and which stamp is which is decided.
 	 *
 	 * null is a third answer and not a mismatch: an endpoint registered in a dashboard or by
 	 * `stripe listen` was never stamped, so what can be said about it is nothing rather than no.
 	 */
-	readonly secretFingerprint: string | null;
+	readonly verificationStamp: string | null;
 };
 
 /**
@@ -693,25 +804,38 @@ export type WebhookEndpointRegistry = {
 };
 
 /**
- * an endpoint that has just been registered, with the only copy of its signing secret there is.
+ * an endpoint that has just been registered, with the value this deployment verifies its deliveries
+ * against.
  *
- * the secret is returned at creation and never again — no retrieve, no list and no update on either
- * of the processor's two APIs hands it back
+ * `verificationValue` and never `signingSecret`, because it is a secret on one processor and not on
+ * another: Stripe hands back a signing secret that exists in exactly this one answer — no retrieve,
+ * no list and no update returns it afterwards
  * (https://docs.stripe.com/api/webhook_endpoints/create — "Returns the webhook endpoint object with
- * the `secret` field populated" — against
- * https://docs.stripe.com/api/webhook_endpoints/list, whose objects carry none). so a caller that
- * loses this value has no way to ask for it: what replaces it is a new endpoint, which is what
- * `replaceWebhookEndpoint` is for.
+ * the `secret` field populated" — against https://docs.stripe.com/api/webhook_endpoints/list, whose
+ * objects carry none) — while PayPal hands back the endpoint's own id, which is public and readable
+ * again from any list. a field named for the first is a field the second's public id gets stored
+ * under by a reader who only had the name to go on, and where it is stored is the thing that
+ * differs.
  *
- * it is a credential and behaves like one: it is shown to an operator once so they can set
- * `STRIPE_WEBHOOK_SECRET` with it, and it is never logged, never echoed into a failure's `detail`
- * and never written to a row — secrets in this app are deploy-time and live only under
- * `src/lib/server/**` (CLAUDE.md).
+ * so its handling is the caller's decision rather than this type's, and the caller has the
+ * processor: `PaymentProvider.processor` on the value that answered says which of the two it is
+ * holding. what is true of both is that it is what a deployment's verification variable is set to,
+ * and that it is the only moment a caller can read one of them at all — which is why
+ * `replaceWebhookEndpoint` exists.
+ *
+ * treated as a credential unless the processor says otherwise: never logged, never echoed into a
+ * failure's `detail`, never written to a row. secrets in this app are deploy-time and live only
+ * under `src/lib/server/**` (CLAUDE.md).
  */
 export type RegisteredWebhookEndpoint = {
 	readonly endpoint: WebhookEndpointSummary;
-	/** the value `STRIPE_WEBHOOK_SECRET` is set to for this endpoint. */
-	readonly signingSecret: string;
+	/**
+	 * what this processor's verification variable is set to for this endpoint —
+	 * `STRIPE_WEBHOOK_SECRET` or `PAYPAL_WEBHOOK_ID`, whichever account answered.
+	 *
+	 * ./webhook-secret.ts is where the variable and the processor are paired.
+	 */
+	readonly verificationValue: string;
 };
 
 /**
@@ -1090,6 +1214,20 @@ export type RecurringGiftNotice = {
 
 export interface PaymentProvider {
 	/**
+	 * which processor answered.
+	 *
+	 * carried on the value so that no caller ever pairs a provider with a name of its own: what a
+	 * `payment` or a `recurring_plan` row is written with is this field, off the value that minted
+	 * the thing (../donations/record.ts, ../donations/collect.ts), and what a screen reports a
+	 * standing for is this field off the value it asked.
+	 *
+	 * it is set on a refusing provider too, because a refusal has to say which processor could not
+	 * answer — a deployment holding one processor's credentials and not the other's gets two
+	 * different sentences, and neither of them is the other's.
+	 */
+	readonly processor: ProcessorName;
+
+	/**
 	 * makes sure the processor's account holds what a repeating gift is charged against, and says
 	 * whether that call is what put it there. safe to call twice, and every arm below that needs it
 	 * calls it.
@@ -1264,10 +1402,11 @@ export interface PaymentProvider {
 	 * registers an endpoint for `url`, subscribed to exactly what this app acts on and pinned to the
 	 * API version this app reads events against.
 	 *
-	 * safe to call twice, and it has to be: the answer carries the endpoint's signing secret, which
-	 * exists in exactly one answer and cannot be asked for again, so a second call that quietly made
-	 * a second endpoint would leave the deployment holding a secret for whichever of them it happened
-	 * to keep — and an account may hold only sixteen. so an implementation looks first, and an
+	 * safe to call twice, and it has to be: the answer carries the endpoint's verification value,
+	 * which on Stripe exists in exactly one answer and cannot be asked for again, so a second call
+	 * that quietly made a second endpoint would leave the deployment holding a value for whichever of
+	 * them it happened to keep — and an account may hold only sixteen. so an implementation looks
+	 * first, and an
 	 * already-registered `url` is refused with a failure naming the endpoint that holds it rather
 	 * than silently duplicated.
 	 *
@@ -1398,6 +1537,7 @@ export interface PaymentProvider {
  */
 export function sealed(provider: PaymentProvider): PaymentProvider {
 	return {
+		processor: provider.processor,
 		prepareRecurringGifts: () => guard(() => provider.prepareRecurringGifts()),
 		readRecurringGiftProvision: () => guard(() => provider.readRecurringGiftProvision()),
 		createRecurringGift: (request) => guard(() => provider.createRecurringGift(request)),
@@ -1456,20 +1596,29 @@ function logProviderFault(context: string, error: unknown): void {
 }
 
 /**
- * a provider that does nothing and says why — Stripe variables that are not set, a credential in
- * the wrong slot, an adapter that could not be built at all.
+ * a provider that does nothing and says why — variables that are not set, a credential in the wrong
+ * slot, an adapter that could not be built at all, a processor this release ships no adapter for.
  *
  * one of these rather than a hand-rolled object per case, for the reason `refusing` in
  * ../email/provider.ts gives: a field added to `PaymentFailure` has to reach every arm, and the
  * compiler only catches a hand-written copy at the last one somebody remembers.
  *
  * it is the whole of the unconfigured-deployment path, which is a real state and not an edge: a
- * fresh fork has no Stripe variable set and still has to serve /admin. every arm of the port
- * therefore has an answer for it that is a value rather than an exception.
+ * fresh fork has no processor variable set at all and still has to serve /admin. every arm of the
+ * port therefore has an answer for it that is a value rather than an exception.
+ *
+ * `processor` is named first because it is what the refusal is about: a consumer reporting a
+ * standing reads it off the value it asked, so the sentence and the processor it is about can never
+ * come from two different places.
  */
-export function refusing(reason: PaymentFailureReason, detail: string): PaymentProvider {
+export function refusing(
+	processor: ProcessorName,
+	reason: PaymentFailureReason,
+	detail: string
+): PaymentProvider {
 	const refusal: PaymentFailure = { ok: false, reason, detail };
 	return {
+		processor,
 		async prepareRecurringGifts(): Promise<PaymentResult<RecurringGiftProvision>> {
 			return refusal;
 		},

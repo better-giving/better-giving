@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FREQUENCIES } from '@better-giving/form/v1';
 import type { PaymentProvider, PaymentResult, RecurringGiftStanding } from '../payments/provider';
+import { soleProcessor } from '../payments/processors.testing';
 import { offeredCadences, readOfferedCadences } from './offered-cadences';
 
 // how often a gift may repeat, away from anything that serves it.
@@ -22,6 +23,7 @@ function port(read: PaymentResult<RecurringGiftStanding>): PaymentProvider {
 		throw new Error(`${name} is not part of reading how often a gift may repeat`);
 	};
 	return {
+		processor: 'stripe',
 		async readRecurringGiftProvision() {
 			return read;
 		},
@@ -51,11 +53,11 @@ const REFUSAL = {
 
 describe('offeredCadences', () => {
 	it('offers every cadence the wire names where the account holds a usable product', () => {
-		expect(offeredCadences({ state: 'ready' })).toEqual([...FREQUENCIES]);
+		expect(offeredCadences({ stripe: { state: 'ready' } })).toEqual([...FREQUENCIES]);
 	});
 
 	it('offers one-time alone where the account holds nothing', () => {
-		expect(offeredCadences({ state: 'absent' })).toEqual(['one_time']);
+		expect(offeredCadences({ stripe: { state: 'absent' } })).toEqual(['one_time']);
 	});
 
 	/**
@@ -66,7 +68,7 @@ describe('offeredCadences', () => {
 	 * decided by whether a repeating gift can be collected, which is false on both.
 	 */
 	it('offers one-time alone where the account holds an archived product', () => {
-		expect(offeredCadences({ state: 'archived' })).toEqual(['one_time']);
+		expect(offeredCadences({ stripe: { state: 'archived' } })).toEqual(['one_time']);
 	});
 
 	/**
@@ -77,7 +79,9 @@ describe('offeredCadences', () => {
 	 * donor nothing they can tell.
 	 */
 	it('offers one-time alone where the standing could not be read', () => {
-		expect(offeredCadences({ state: 'unreadable', detail: REFUSAL.detail })).toEqual(['one_time']);
+		expect(offeredCadences({ stripe: { state: 'unreadable', detail: REFUSAL.detail } })).toEqual([
+			'one_time'
+		]);
 	});
 
 	/**
@@ -95,17 +99,44 @@ describe('offeredCadences', () => {
 			{ state: 'unreadable', detail: 'anything' }
 		] as const;
 		for (const provision of provisions) {
-			expect(offeredCadences(provision)).toContain('one_time');
+			expect(offeredCadences({ stripe: provision })).toContain('one_time');
 		}
+	});
+
+	/**
+	 * a deployment that can charge on no processor offers one-time alone.
+	 *
+	 * the fresh fork. the composition below is an intersection, and over no readings at all an
+	 * intersection is everything — which would be this module offering Monthly on a deployment with
+	 * no processor to collect it.
+	 */
+	it('offers one-time alone where no processor is configured', () => {
+		expect(offeredCadences({})).toEqual(['one_time']);
+	});
+
+	/**
+	 * every configured processor has to be able to collect a cadence before a donor is shown it.
+	 *
+	 * `FormConfig` in packages/form/src/v1.ts carries one flat list for the whole form and a donor
+	 * picks a cadence before a rail, so a cadence one processor cannot collect is one some donors
+	 * would pick and none of them could pay — and CLAUDE.md's repeating-gifts rule is that such a
+	 * cadence is not offered in the first place.
+	 */
+	it('offers a cadence only where every configured processor can collect it', () => {
+		expect(offeredCadences({ stripe: { state: 'ready' }, paypal: { state: 'absent' } })).toEqual([
+			'one_time'
+		]);
 	});
 });
 
 describe('readOfferedCadences', () => {
 	it('reads the account and offers every cadence where it is ready', async () => {
-		expect(await readOfferedCadences(port({ ok: true, value: 'ready' }))).toEqual([...FREQUENCIES]);
+		expect(await readOfferedCadences(soleProcessor(port({ ok: true, value: 'ready' })))).toEqual([
+			...FREQUENCIES
+		]);
 	});
 
 	it('offers one-time alone where the port refused', async () => {
-		expect(await readOfferedCadences(port(REFUSAL))).toEqual(['one_time']);
+		expect(await readOfferedCadences(soleProcessor(port(REFUSAL)))).toEqual(['one_time']);
 	});
 });
