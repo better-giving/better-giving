@@ -980,9 +980,14 @@ describe('what an order is minted with', () => {
 	/**
 	 * a rail this processor does not settle is refused rather than sent.
 	 *
-	 * the value is one a donor picked out of what the form offered, so an untyped caller is exactly
-	 * who this guard is for — and the refusal is a 4xx naming the value rather than a `TypeError` out
-	 * of the adapter on a public payment-initiating endpoint.
+	 * not a donor's doing: `OFFERED_METHOD.safeParse` in ../donations/quote-input.ts has already
+	 * narrowed what they picked to the offered set. what reaches here is this app's own routing —
+	 * `IntentRequest.method` on ./provider.ts is the whole quoted-rail union, so a gift routed through
+	 * `Processors.forRail` (../donations/quote.ts) to the wrong adapter arrives carrying a rail the
+	 * other processor settles.
+	 *
+	 * the refusal is a 4xx naming the value rather than a `TypeError` out of the adapter on a public
+	 * payment-initiating endpoint.
 	 */
 	it('refuses a rail another processor settles', async () => {
 		const { calls } = recording([]);

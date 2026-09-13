@@ -299,12 +299,13 @@ describe('createIntent', () => {
 	/**
 	 * a rail named after something every object inherits is refused, not looked up.
 	 *
-	 * the guard is written for an untyped caller — that is what the refusal above is for, since a
-	 * typed one cannot get here at all — and a caller assembling this from request data is exactly
-	 * the one that can carry `constructor`. read with `in`, the prototype chain answers yes: the
-	 * guard passes, the lookup returns `Object.prototype.constructor`, and spreading a function
-	 * throws a `TypeError` out of the adapter. that is a 500 on a public payment-initiating endpoint
-	 * in place of the 4xx this branch exists to write.
+	 * not a donor's doing: `OFFERED_METHOD.safeParse` in ../donations/quote-input.ts has already
+	 * narrowed what they picked to the offered set, and a typed caller reaching this guard carries a
+	 * rail the other processor settles — which is the refusal above. an inherited key is an untyped
+	 * caller inside this app, and read with `in` the prototype chain answers yes: the guard passes,
+	 * the lookup returns `Object.prototype.constructor`, and spreading a function throws a
+	 * `TypeError` out of the adapter. that is a 500 on a public payment-initiating endpoint in place
+	 * of the 4xx this branch exists to write.
 	 */
 	it.each([['constructor'], ['toString'], ['__proto__']])(
 		'refuses `%s` as a rail rather than finding it on the prototype chain',

@@ -122,7 +122,7 @@ const CURRENCY = /^[A-Z]{3}$/;
  * what a `payment` row calls it.
  *
  * one table read in both directions, because the two questions are one fact. `settles` below asks
- * whether a rail a donor picked is this adapter's; `railOf` asks which rail a payer actually used,
+ * whether a quoted rail is this adapter's; `railOf` asks which rail a payer actually used,
  * off the one key PayPal filled in. written as two tables the second would be the one that stops
  * agreeing with the first.
  *
@@ -137,7 +137,11 @@ const SETTLED_RAILS = Object.freeze({
 }) satisfies Record<PaypalRail, SettledRail>;
 
 /**
- * whether a rail a donor picked is one this adapter settles.
+ * whether a quoted rail is one this adapter settles.
+ *
+ * not a donor's value to get wrong — `OFFERED_METHOD` in ../donations/quote-input.ts narrows their
+ * pick to the offered set before a quote is minted — so what this catches is this app handing the
+ * gift to the wrong adapter, over the whole quoted-rail union `IntentRequest.method` carries.
  *
  * the write path narrows through this before its own lookup rather than calling a guard from inside
  * one, so the lookup behind the narrowing is total — the shape ./stripe.ts's `unsettledRail` keeps.
@@ -157,8 +161,9 @@ function unsettledRail(method: QuotedRail): PaymentFailure {
 		reason: 'invalid_request',
 		detail:
 			`method \`${redact(String(method))}\` is not a rail this adapter can mint an order for. ` +
-			`The rails are ${Object.keys(SETTLED_RAILS).join(', ')}, and the value is one a donor picked ` +
-			'from what the form offered.'
+			`The rails are ${Object.keys(SETTLED_RAILS).join(', ')}, and a value outside them is this app ` +
+			'handing the gift to the wrong adapter — `Processors.forRail` — rather than anything a donor ' +
+			'sent.'
 	};
 }
 
@@ -410,7 +415,7 @@ const RECURRING_EVENT_TYPES: readonly string[] = [
 
 /** the id the resource carries, or nothing where the delivery names no object this app can read. */
 function resourceIdOf(resource: unknown): string | null {
-	const object = typeof resource === 'object' && resource !== null ? (resource as Json) : undefined;
+	const object = json(resource);
 	return typeof object?.id === 'string' ? object.id : null;
 }
 
@@ -458,15 +463,28 @@ function unreadableResource(
  * which the caller reports rather than ignores.
  */
 function orderIdOf(type: string, resource: unknown): string | null {
-	const read = (value: unknown): string | null => (typeof value === 'string' ? value : null);
-	const object: Record<string, unknown> =
-		typeof resource === 'object' && resource !== null ? (resource as Record<string, unknown>) : {};
-	if (type.startsWith('CHECKOUT.ORDER.')) return read(object.id);
-	return read(((object.supplementary_data as Json)?.related_ids as Json)?.order_id);
+	const object = json(resource);
+	const found = type.startsWith('CHECKOUT.ORDER.')
+		? object?.id
+		: json(json(object?.supplementary_data)?.related_ids)?.order_id;
+	return typeof found === 'string' ? found : null;
 }
 
 /** an object read out of somebody else's JSON, indexed without asserting what is under a key. */
 type Json = Record<string, unknown> | undefined;
+
+/**
+ * a value as `Json`, where it is an object at all.
+ *
+ * the narrowing every read of a PayPal body goes through: a field a schema calls an object arrives
+ * as a string, a number or an array often enough that `Json` asserted straight onto `unknown` is a
+ * claim nothing checked — and the next reader indexing one gets no help from the compiler.
+ *
+ * `undefined` for everything else, which lands every caller on the branch an absent key already
+ * takes.
+ */
+const json = (value: unknown): Json =>
+	typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined;
 
 /**
  * why an amount or the currency it is denominated in may not be sent, or nothing.
@@ -1080,7 +1098,7 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 				);
 			}
 
-			if ((verification.body as Json)?.verification_status !== 'SUCCESS') {
+			if (json(verification.body)?.verification_status !== 'SUCCESS') {
 				return {
 					ok: false,
 					reason: 'bad_signature',
@@ -1824,7 +1842,7 @@ const SALE_STATUSES: Readonly<Record<string, PaymentStatus>> = Object.freeze({
  * carry rather than something missing.
  */
 function saleSettlementOf(sale: Record<string, unknown>, saleId: string): Settlement | null {
-	const amount = sale.amount as Json;
+	const amount = json(sale.amount);
 	const currency = String(amount?.currency ?? '').toUpperCase();
 	const amountMinor = minorOf(
 		typeof amount?.total === 'string' ? amount.total : undefined,
@@ -1833,7 +1851,7 @@ function saleSettlementOf(sale: Record<string, unknown>, saleId: string): Settle
 	if (amountMinor === null) return null;
 
 	// the fee in the charge's own currency or no fee at all, the rule `feeOf` above states in full.
-	const fee = sale.transaction_fee as Json;
+	const fee = json(sale.transaction_fee);
 	const feeMinor =
 		String(fee?.currency ?? '').toUpperCase() === currency
 			? minorOf(typeof fee?.value === 'string' ? fee.value : undefined, currency)
@@ -1908,9 +1926,8 @@ function settlementOf(order: Order, captured: CapturedPayment | null): Settlemen
  * row asserting none.
  */
 function railOf(order: Order): SettledRail | null {
-	const source = order.paymentSource ?? {};
-	for (const [key, rail] of Object.entries(SETTLED_RAILS)) {
-		if ((source as Json)?.[key] !== undefined) return rail;
+	for (const rail of PAYPAL_RAILS) {
+		if (order.paymentSource?.[rail] !== undefined) return SETTLED_RAILS[rail];
 	}
 	return null;
 }
@@ -1991,13 +2008,9 @@ const PROVIDER_QUOTE_MAX = 200;
  * log.
  */
 function quoteProvider(body: unknown): string {
-	const error = (typeof body === 'object' && body !== null ? body : {}) as Json;
-	const issues = Array.isArray(error?.details)
-		? error.details.flatMap((detail) =>
-				typeof (detail as Json)?.issue === 'string' ? [String((detail as Json)?.issue)] : []
-			)
-		: [];
-	const said = [error?.name, ...issues].filter((part) => typeof part === 'string').join(', ');
+	const said = [json(body)?.name, ...issuesOf(body)]
+		.filter((part) => typeof part === 'string')
+		.join(', ');
 	const sanitised = said.replace(/\s+/g, ' ').trim();
 	if (sanitised === '') return 'nothing this app could read';
 	return sanitised.length <= PROVIDER_QUOTE_MAX
@@ -2007,11 +2020,12 @@ function quoteProvider(body: unknown): string {
 
 /** every `issue` code on a PayPal error body, which is what one refusal is told apart by. */
 function issuesOf(body: unknown): readonly string[] {
-	const details = (typeof body === 'object' && body !== null ? (body as Json)?.details : []) ?? [];
+	const details = json(body)?.details;
 	if (!Array.isArray(details)) return [];
-	return details.flatMap((detail) =>
-		typeof (detail as Json)?.issue === 'string' ? [String((detail as Json)?.issue)] : []
-	);
+	return details.flatMap((detail: unknown) => {
+		const issue = json(detail)?.issue;
+		return typeof issue === 'string' ? [issue] : [];
+	});
 }
 
 /**

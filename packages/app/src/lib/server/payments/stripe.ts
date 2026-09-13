@@ -511,6 +511,11 @@ function quoteProvider(message: string): string {
  * and a check that answered only with a failure would leave the lookup behind it reaching for a key
  * the table cannot hold.
  *
+ * a rail outside those four is not a donor's value to get wrong — `OFFERED_METHOD` in
+ * ../donations/quote-input.ts narrows their pick to the offered set before a quote is minted — it is
+ * this app handing the gift to the wrong adapter, over the whole quoted-rail union
+ * `IntentRequest.method` in ./provider.ts carries and `Processors.forRail` in ./factory.ts routes.
+ *
  * neither path has a fallback behind that narrowing, and what an unsettled rail would cost differs
  * by path. an intent minted for no method is refused by the API; `payment_settings
  * .payment_method_types` takes an empty list as the field being unset, which is a commitment whose
@@ -520,7 +525,7 @@ function quoteProvider(message: string): string {
  * prototype chain, so `constructor` and `toString` pass it and the lookup behind hands back
  * something off `Object.prototype` — a function spread as a rail list, which throws a `TypeError`
  * out of the adapter. that is a 500 on a public payment-initiating endpoint in place of the 4xx
- * these guards are written to produce, and an untyped caller is precisely who they are for.
+ * these guards are written to produce, and an untyped caller is precisely who that read is for.
  */
 function unsettledRail(method: QuotedRail, attempt: string): PaymentFailure {
 	return {
@@ -528,8 +533,9 @@ function unsettledRail(method: QuotedRail, attempt: string): PaymentFailure {
 		reason: 'invalid_request',
 		detail:
 			`method \`${redact(String(method))}\` is not a rail this app can ${attempt}. ` +
-			`The rails are ${Object.keys(INTENT_METHODS).join(', ')}, and the value is one a ` +
-			'donor picked from what the form offered.'
+			`The rails are ${Object.keys(INTENT_METHODS).join(', ')}, and a value outside them is this ` +
+			'app handing the gift to the wrong adapter — `Processors.forRail` — rather than anything a ' +
+			'donor sent.'
 	};
 }
 
@@ -623,8 +629,9 @@ function unusableGift(request: RecurringGiftRequest): PaymentFailure | null {
 			reason: 'invalid_request',
 			detail:
 				`interval \`${redact(String(request.interval))}\` is not a cadence this app can charge. ` +
-				`The cadences are ${Object.keys(RECURRING_INTERVALS).join(', ')}, and the value is one a ` +
-				'donor picked from what the form offered.'
+				`The cadences are ${Object.keys(RECURRING_INTERVALS).join(', ')}, and a value outside them ` +
+				'is this app handing over a cadence `RecurringGiftRequest.interval` cannot hold rather ' +
+				'than anything a donor sent.'
 		};
 	}
 
