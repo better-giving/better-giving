@@ -11,6 +11,8 @@ import { flatRoutes } from '@react-router/fs-routes';
 // **no layout wraps them, because the console is one page and a page carries its own shell.** which
 // shell `/` draws is the whole of what it decides — a centred panel before there is a cloudflare
 // account, a bar of facts after one — and a layout above it would have to draw a frame around the
-// face that is deliberately drawn without one. every other file under ./routes/ is an address that
-// moved: a loader that redirects to `/` and no component at all.
+// face that is deliberately drawn without one. the two processor screens,
+// ./routes/payments_.stripe.tsx and ./routes/payments_.paypal.tsx, draw their own shell for the same
+// reason. every other file under ./routes/ is an address that moved: a loader that redirects to `/`
+// and no component at all.
 export default (await flatRoutes({ ignoredRouteFiles: ['**/*.spec.*'] })) satisfies RouteConfig;

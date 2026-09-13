@@ -42,7 +42,7 @@ export const FORM_READINESS_LABELS: Record<FormReadinessSeverity, string> = {
  * fact about a row this deployment holds, and the screen that writes that row is the one already
  * under the block, so a pointer would be a link from a screen to itself. what this deployment's own
  * capabilities are doing is not reported here at all: they are set and said back on the console
- * (`packages/console-ui/src/lib/payments-fold.tsx`).
+ * (`packages/console-ui/src/lib/stripe-section.tsx`).
  */
 export interface FormReadinessLine {
 	/** what the line is about, in the words the screen that writes the row calls it. */

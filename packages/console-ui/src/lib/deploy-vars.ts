@@ -4,7 +4,7 @@ import type { DeployVarName } from '../api/types';
 //
 // **no fold on this console draws a box for these four.** `STRIPE_PUBLISHABLE_KEY` has one of its
 // own beside the secret key, because one press pastes the pair and the chain writes both
-// (./payments-fold.tsx) — it is not in a group because that press is not a group's.
+// (./stripe-section.tsx) — it is not in a group because that press is not a group's.
 // `TURNSTILE_SITE_KEY` is minted with the widget on the first deploy out of the answer that made it
 // (`packages/console/internal/first`), so there is no value for an operator to paste. and
 // `BETTER_AUTH_URL` has a box on no screen at all: the app derives that origin per request, so

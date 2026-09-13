@@ -3,16 +3,21 @@ import { redirect } from 'react-router';
 // /payments — an address that moved, kept because it was one.
 //
 // what takes the money is the second of the four jobs a gift needs, which ./_index.tsx folds, and
-// what was on this screen is that fold's panel whole (../lib/payments-fold.tsx). it was the last of
-// the four to move, so this is the address most recently true — and the one an operator is likeliest to be
-// holding, because it is the only one they go looking for on somebody else's prompting: Stripe
-// writes to say an endpoint is failing, and this is where they came to read what it says about
-// their account.
+// that fold lists the processors (../lib/processor-rows.tsx), each of which has a screen of its own
+// under this address: ./payments_.stripe.tsx and ./payments_.paypal.tsx. a bare `/payments` names
+// neither, so it is the home page. it was the last of the four to move, so this is the address most
+// recently true — and the one an operator is likeliest to be holding, because it is the only one
+// they go looking for on somebody else's prompting: Stripe writes to say an endpoint is failing,
+// and this is where they came to read what it says about their account.
 //
-// the move is what puts the three Stripe values beside the site list the form loads on and the mail
-// that carries the receipt out. an operator who deployed, pasted two keys and then walked to a
-// second address to find out whether a card can be charged was reading two of the same four answers
-// on two pages.
+// the move is what puts the payments row beside the site list the form loads on and the mail that
+// carries the receipt out. an operator who deployed, pasted two keys and then walked to a second
+// address to find out whether a card can be charged was reading two of the same four answers on
+// two pages.
+//
+// **the two screens under this address are not its children.** a flat route named
+// `payments.stripe` would nest under this module and its redirect would run first; the trailing
+// underscore on theirs is what keeps them off it.
 //
 // **307 and not 301**, for ./connect.tsx's reason: a permanent redirect is one a browser caches
 // past the day it stops being true, and nothing here promises this address for good.

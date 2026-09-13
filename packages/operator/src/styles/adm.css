@@ -1378,6 +1378,75 @@
 		animation: adm-reveal var(--admin-dur-reveal) var(--admin-ease-reveal);
 	}
 
+	/* ---------- link rows --------------------------------------------------------------
+
+	   a list of rows each of which is a way to another screen: a name, a status word beside it
+	   where one applies, a sentence under it, and the caret at the far edge saying the row goes
+	   somewhere. the whole row is the link, so the target is the row and never the name alone.
+
+	   **no mark gutter and no inner indent.** a line of `.adm-status` keeps a gutter because its
+	   mark is a tone, and nothing here carries one — the word is the only state a row states, and
+	   it is said in the descriptive register. so a row's edges are the edges of whatever it stands
+	   in, and the rule between two rows is what says where one ends.
+
+	   the parts are the status line's own — label, word, note and caret — so a row reads in the
+	   same type as the ledger lines around it and nothing is spelled twice. only their placement is
+	   stated here, and the word's ink: a line takes it from its tone and a row has none.
+
+	   focus is the focused-link treatment ../styles/base.css draws for every anchor, left alone: a
+	   row sets no fill of its own for that tint to lose against, which is the case `.adm-dest`
+	   below restates a ring for. */
+	.adm-linkrows {
+		display: grid;
+	}
+
+	.adm-linkrows > li + li {
+		border-block-start: var(--admin-rule);
+	}
+
+	.adm-linkrows__row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: start;
+		gap: var(--admin-space-5);
+		min-block-size: var(--admin-touch-min);
+		padding-block: var(--admin-space-5);
+		color: inherit;
+		text-decoration: none;
+	}
+
+	/* the run's own edges sit on the container's content edge, top and bottom: the padding is the
+	   distance to the rule, and the first row has no rule above it and the last none below. */
+	.adm-linkrows > li:first-child > .adm-linkrows__row {
+		padding-block-start: 0;
+	}
+
+	.adm-linkrows > li:last-child > .adm-linkrows__row {
+		padding-block-end: 0;
+	}
+
+	.adm-linkrows__row .adm-status__body {
+		grid-column: 1;
+		display: grid;
+		gap: var(--admin-space-2);
+	}
+
+	.adm-linkrows__row .adm-status__word {
+		color: var(--admin-tone-note-ink);
+	}
+
+	.adm-linkrows__row .adm-status__caret {
+		grid-column: 2;
+		margin-inline-start: 0;
+	}
+
+	/* hover moves the caret and nothing else, for the section summary's reason above: the label is
+	   a name and the word a state, and neither changes under a pointer. */
+	.adm-linkrows__row:hover .adm-status__caret,
+	.adm-linkrows__row.is-hover .adm-status__caret {
+		color: var(--admin-link-hover);
+	}
+
 	/* ---------- the named block --------------------------------------------------------
 
 	   a section opens onto several blocks — what is set, a procedure to carry out, a form, a list

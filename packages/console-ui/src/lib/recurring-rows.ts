@@ -85,6 +85,22 @@ export function recurringRows(read: RecurringRead | null): RecurringRow[] {
 }
 
 /**
+ * one account's line on that processor's own screen, or `null` where it draws none.
+ *
+ * **named and pressed as the list names and presses it, with one difference: the press stands on
+ * this line wherever this account needs it.** the press acts on every account that needs it, so a
+ * screen showing one account's line puts the one press there whether or not another account's line,
+ * on another screen, would have carried it first.
+ */
+export function recurringRowOf(
+	read: RecurringRead | null,
+	processor: PaymentProcessor
+): RecurringRow | null {
+	const row = recurringRows(read).find((one) => one.processor === processor);
+	return row === undefined ? null : { ...row, press: row.standing === 'absent' };
+}
+
+/**
  * what one account answered, or `null` where this deployment holds no key for it.
  *
  * **`null` is not a failure and a screen may not draw it as one.** it is the deployment reporting a

@@ -1,4 +1,4 @@
-// what a press of ./payments-fold.tsx is doing, and what the last one was turned down for.
+// what a press of ./stripe-section.tsx is doing, and what the last one was turned down for.
 //
 // **a press is two router phases and the answer only lands between them.** the navigation carries
 // the posted intent through both — react router builds the loading navigation from the same

@@ -11,7 +11,7 @@ import { linkStanding, walletHostLines, walletRow, walletRows } from './wallet-r
 // Apple Pay is drawn on it.
 //
 // this package has no DOM pool (../../vite.config.ts), so nothing here is a claim about what
-// ./payments-fold.tsx draws. it is a claim about the values that fold draws from.
+// ./stripe-section.tsx draws. it is a claim about the values that fold draws from.
 
 /** one wallet drawn, and the account with nothing to say about it. */
 const active = { state: 'active', detail: null } as const;

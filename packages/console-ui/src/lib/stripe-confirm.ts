@@ -3,7 +3,7 @@ import type { StripeAsked, StripeKeyAct } from './stripe-keys';
 // what one press of the payments fold states before it is made, which is more than the two boxes
 // asked for.
 //
-// **it is a module rather than a closure inside ./payments-fold.tsx because nothing can render that
+// **it is a module rather than a closure inside ./stripe-section.tsx because nothing can render that
 // fold.** this package's pool is node-only and collects `*.spec.ts` (../../vite.config.ts), so a
 // decision left in a component is a decision no case can hold — and which lines a press states is
 // exactly the kind that goes wrong in silence: a removal itemised as the key alone reads as a press

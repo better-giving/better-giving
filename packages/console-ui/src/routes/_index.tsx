@@ -25,8 +25,9 @@ import { OrgFold } from '../lib/org-fold';
 import { NOTIFICATIONS_INTENT, ORG_INTENT, orgEdits } from '../lib/org-fields';
 import type { NotificationsFoldProps } from '../lib/notifications-fold';
 import { NotificationsFold } from '../lib/notifications-fold';
-import type { PaymentsFoldProps } from '../lib/payments-fold';
-import { PaymentsFold, RECURRING_INTENT } from '../lib/payments-fold';
+import type { ProcessorRowsProps } from '../lib/processor-rows';
+import { ProcessorRows } from '../lib/processor-rows';
+import { processorLinks } from '../lib/processor-links';
 import type { SmtpFoldProps } from '../lib/smtp-fold';
 import { SmtpFold, TEST_EMAIL_INTENT } from '../lib/smtp-fold';
 import { TEST_TO_FIELD } from '../lib/smtp-fold-state';
@@ -35,18 +36,14 @@ import { PasswordFold } from '../lib/password-fold';
 import { ProductFoot } from '../lib/product-foot';
 import { Said } from '../lib/said';
 import type { GroupReport } from '../lib/secret-group-form';
-import { CHARITY_INTENT, charityEdit } from '../lib/paypal-charity';
-import { PAYPAL_SETUP_INTENT, paypalPairPosted } from '../lib/paypal-setup';
 import { PAYPAL_GROUP, groupPosted, pressedNames } from '../lib/secret-groups';
 import { heldValues } from '../lib/held-values';
 import { FREE_INTENT } from '../lib/withheld-values';
-import { STRIPE_REMOVAL, stripeKeyEdits } from '../lib/stripe-edits';
-import { SET_UP_INTENT } from '../lib/stripe-keys';
 import { UNREAD_ANSWER_TITLE } from '../lib/unread-answer';
 import type { SitesFoldProps } from '../lib/sites-fold';
 import { SitesFold } from '../lib/sites-fold';
 import { SITES_INTENT, siteEdits } from '../lib/sites';
-import { WALLETS_INTENT } from '../lib/wallets-press';
+import { unreadHeld } from '../lib/unread-held';
 import {
 	closeConsole,
 	connect,
@@ -56,32 +53,22 @@ import {
 	homeShape,
 	levelWallets,
 	levelWidget,
-	paypalRun,
-	readPayments,
-	readRecurring,
 	saveOrgProfile,
 	saveSites,
 	setVars,
-	sendTestEmail,
-	setUpRecurring,
-	startPaypalSetup,
-	startStripeSetup,
-	stripeRun
+	sendTestEmail
 } from '../api/client';
 import type {
 	Blocked,
 	NoReport,
 	OrgWrite,
-	RecurringSetup,
-	VarsRead,
 	VarsWritten,
 	SitesPress,
 	TestSend,
-	WalletsLevel,
 	WidgetLevel
 } from '../api/types';
 import type { HomeSection, SectionId } from '../lib/home-sections';
-import { readSections } from '../lib/home-sections';
+import { heldNames, readSections } from '../lib/home-sections';
 import { orgBoxes } from '../lib/org-fields';
 import { storedOrg } from '../lib/org-form';
 import { secretEdits } from '../lib/secret-edits';
@@ -223,34 +210,16 @@ async function readConsole() {
 		// the same answer the six rows above were read from.
 		values: read.values,
 		sites: read.sites,
-		donatePage: read.donatePage
+		donatePage: read.donatePage,
+		// the payments fold's rows, which read the held values and nothing about either account: what
+		// each processor answers is read on its own screen (./payments_.stripe.tsx,
+		// ./payments_.paypal.tsx).
+		processors: processorLinks(heldNames(read.values.vars))
 	}));
-
-	/* what the deployment answers about the accounts it charges on, asked off the reading rather
-	   than beside it: both go through the console session, and every face before `ready` is one that
-	   has no session or draws no fold — so an answer kept on all of them would be two readings
-	   nothing draws.
-
-	   **both reads are made whatever this deployment holds.** each answers for every processor it
-	   holds the credentials for and carries nothing at all for one it does not (`ProcessorPayments`
-	   and `RecurringReport` in ../api/types.ts), so gating either on a Stripe key would leave a
-	   deployment set up on PayPal alone with no reading of the account it does charge on — and, on
-	   the recurring one, no press that could put what a repeating gift needs on it. */
-	const payments = reading.then((read) => (read.face.kind === 'ready' ? readPayments() : null));
-	const recurring = reading.then((read) => (read.face.kind === 'ready' ? readRecurring() : null));
-
-	/* the setup run the binary is holding, read on this face alone: it is what the payments fold
-	   draws its ledger from, and a reading taken on a face that draws no fold would consume a run
-	   that landed with nothing on screen to report it (../api/client.ts). */
-	const [stripe, paypal] = await Promise.all([stripeRun(), paypalRun()]);
 
 	return {
 		...shell,
-		reading,
-		payments,
-		recurring,
-		stripe,
-		paypal
+		reading
 	};
 }
 
@@ -275,26 +244,6 @@ const wrote = (at: 'organisation' | 'notifications', write: OrgWrite) => ({ writ
  * place. what a 200 would cost is a confirmation over a deployment nothing was written to.
  */
 /**
- * a read of what the deployment is holding that did not land, as the write it refused.
- *
- * in the binary's own write vocabulary rather than the read's, because what the operator pressed
- * was a write and the fold has a sentence and a way out for each of these already
- * (../lib/secret-trouble.tsx). the two that leave nowhere to write to are handed on as the address
- * that says which, which is what `SetVars` in `packages/console/internal/deployment` answers a
- * refused write with.
- */
-const unreadHeld = (read: Exclude<VarsRead, { kind: 'read' }>): VarsWritten =>
-	read.kind === 'not-deployed'
-		? { kind: 'nowhere', address: { kind: 'not-deployed' } }
-		: read.kind === 'no-credential'
-			? { kind: 'nowhere', address: { kind: 'no-credential', detail: read.detail } }
-			: read.kind === 'refused'
-				? { kind: 'refused', detail: read.detail }
-				: read.kind === 'unreachable'
-					? { kind: 'unreachable', detail: read.detail }
-					: { kind: 'failed', detail: read.detail };
-
-/**
  * how the site-list press went, at the control it was made from.
  *
  * the answer carries the press and nothing else. the boxes are the form layer's and no answer
@@ -304,7 +253,8 @@ const unreadHeld = (read: Exclude<VarsRead, { kind: 'read' }>): VarsWritten =>
 const stored = (press: SitesPress) => ({ sites: press });
 
 /**
- * every press on this page, and there is no other kind.
+ * every press on this page, and there is no other kind. each processor's presses are answered on
+ * that processor's own screen (./payments_.stripe.tsx, ./payments_.paypal.tsx).
  *
  * **the binary owns all of them**, which is why nothing here is served: each is one call on the
  * loopback address, and what a press carries is what the operator typed and what they asked for.
@@ -312,8 +262,8 @@ const stored = (press: SitesPress) => ({ sites: press });
  * read inside the binary and never posted — a name that travelled through a page is a value written
  * wherever that page said.
  *
- * **the session and the seven errands it carries are the binary's too.** re-connecting mints a
- * token, writes it onto the deployment and records it on this machine; the seven after it are
+ * **the session and the errands it carries are the binary's too.** re-connecting mints a
+ * token, writes it onto the deployment and records it on this machine; the presses after it are
  * posted to the deployment's own console surface over that session, and every one of them answers
  * with what the deployment said, at the box its key names.
  */
@@ -357,115 +307,6 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	if (intent === TEST_EMAIL_INTENT) {
 		const to = posted.get(TEST_TO_FIELD);
 		return { test: await sendTestEmail(typeof to === 'string' ? to : '') };
-	}
-
-	/**
-	 * asks the deployment to put what a repeating gift is charged against on every processor account
-	 * it holds the keys for.
-	 *
-	 * it is the one press in the payments fold that reaches a processor through the deployment rather
-	 * than with a key an operator has just pasted — by the time this is pressed the deployment holds
-	 * them, and asking it is what keeps a second processor client out of this console. nothing is
-	 * posted with it: what an account holds is found by an id the deployment derives.
-	 */
-	if (intent === RECURRING_INTENT) return { recurring: await setUpRecurring() };
-
-	/**
-	 * asks the deployment to register the hostnames a donor is drawn wallet buttons on.
-	 *
-	 * it answers exactly as the press above it does and for the same reason: the call goes through
-	 * the deployment with the key it holds, and nothing is posted with it — the hostnames are the
-	 * deployment's own address and its own site rows, settled inside the worker.
-	 *
-	 * it is the repair rather than the ordinary way one gets registered: the Stripe keys run levels
-	 * them as its last step and the sites press below levels them behind the list it stored, so what
-	 * this is for is a custom domain attached to the worker after a setup (../lib/wallets-press.ts).
-	 */
-	if (intent === WALLETS_INTENT) return { wallets: await levelWallets() };
-
-	/**
-	 * stores whether PayPal has approved this organisation for its charity rate, or takes the name
-	 * off.
-	 *
-	 * **it is one of the seventeen and goes through the same door every other value does**, so there
-	 * is nothing here but the two positions the switch can be in: the payload is composed from them
-	 * rather than from what the body claimed (`charityEdit` in ../lib/paypal-charity.ts), which is
-	 * what keeps a third spelling off a door that refuses one with a 400.
-	 *
-	 * it is a press of its own rather than a name in PayPal's group: the three credentials are one
-	 * errand off one PayPal app, and this is an answer about the organisation given months after
-	 * them (../lib/secret-groups.ts).
-	 */
-	if (intent === CHARITY_INTENT) return { charity: await setVars(charityEdit(posted)) };
-
-	/**
-	 * sets PayPal up from the pair: the binary checks it, settles the listener at this deployment's
-	 * address and writes the pair and that listener's id in one write (`packages/console/internal/paypal`).
-	 *
-	 * started rather than awaited, for the Stripe press's reason below, and the pair is read by the
-	 * boxes' own rule first so the binary is sent nothing it would turn down (../lib/paypal-setup.ts).
-	 */
-	if (intent === PAYPAL_SETUP_INTENT) {
-		const read = paypalPairPosted(posted);
-		if (!read.ok) return { paypal: { errors: read.errors } };
-		const pressed = await startPaypalSetup(read.pair);
-		if ('turnedDown' in pressed) return { paypal: { turnedDown: true as const } };
-		if ('unwritten' in pressed) return { paypal: { unwritten: pressed.unwritten } };
-		return { paypal: { started: true as const } };
-	}
-
-	/**
-	 * does to the processor whatever the two Stripe boxes asked for, which is one of three acts.
-	 *
-	 * **which act it is follows from the secret box and is settled before anything leaves this
-	 * machine** (../lib/stripe-edits.ts). a retyped secret key is the whole errand: the binary names
-	 * the account, registers the webhook endpoint, stores the signing secret that registration
-	 * returns, puts the item a repeating gift is collected against on the account and writes the
-	 * publishable key — the whole ordering is `packages/console/internal/stripe`'s. an untouched one
-	 * is that last step alone, since the press carries no key to reach the processor with. an
-	 * emptied one deletes both credentials and reaches the processor not at all.
-	 *
-	 * **what is held is asked of the account here and never taken off the form**, for the reason
-	 * the group press below states: a form claiming a key is stored turns an empty box into a
-	 * delete, and one claiming it is not runs the whole errand over a key nobody retyped. a read
-	 * that did not land is a press refused rather than a press guessed at.
-	 *
-	 * the two that are a run are started rather than awaited: the chain is several round trips
-	 * against three hosts, and a request held open for them is a page that cannot say which part is
-	 * running. what the fold reads afterwards is the run itself (../lib/payments-fold.tsx). the
-	 * removal is one call and seconds, so it is answered here.
-	 *
-	 * the account, the worker and the address the endpoint is registered at are all read inside the
-	 * binary and never posted: a name that travelled through a page is an endpoint registered, and a
-	 * credential written, wherever that page said.
-	 */
-	if (intent === SET_UP_INTENT) {
-		const read = await homeReading();
-		if (read.values.vars.kind !== 'read') {
-			return { stripe: { written: unreadHeld(read.values.vars) } };
-		}
-
-		const edits = stripeKeyEdits(posted, {
-			secretKey: heldValues(read.values.vars.vars).seeds.STRIPE_SECRET_KEY ?? ''
-		});
-		// nothing leaves this machine: no call to the processor, no credential stored, no var
-		// written. the boxes come back as names and sentences — what was typed in them is not in
-		// this answer.
-		if (!edits.ok) return { stripe: { errors: edits.errors } };
-
-		if (edits.act === 'remove') return { stripe: { written: await setVars(STRIPE_REMOVAL) } };
-
-		const pressed = await startStripeSetup(
-			edits.act === 'errand'
-				? { secret: edits.keys.secretKey, publishable: edits.keys.publishableKey }
-				: { secret: '', publishable: edits.publishableKey }
-		);
-		// the door keeps one reading about the published slot and no run begins where it refuses, so
-		// there is nothing to poll and the answer says so here (`StripeStarted` in ../api/types.ts).
-		if ('turnedDown' in pressed) return { stripe: { turnedDown: true as const } };
-		// a write that could not be made at all is the removal's refusal too, drawn at the same press.
-		if ('unwritten' in pressed) return { stripe: { written: pressed.unwritten } };
-		return { stripe: { started: true as const } };
 	}
 
 	/**
@@ -553,8 +394,8 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	 *
 	 * **the group is the posted intent read back against the enumeration**, so a body naming no group
 	 * reaches nothing and the names a payload may carry are the group's rather than the body's own
-	 * keys. every group is answered, because this page draws every one of them, each inside its own
-	 * fold — a list of ids here would be a second enumeration to keep level with
+	 * keys. every group is answered rather than the ones this page's folds draw — a list of ids here
+	 * would be a second enumeration to keep level with
 	 * ../lib/secret-groups.ts, and the way that fails is a control that posts and is answered by
 	 * nothing.
 	 *
@@ -567,8 +408,8 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	 * exactly as it is.
 	 *
 	 * **PayPal's group is drawn and never pressed.** its three names arrive only through the set-up
-	 * press above, which settles the listener its id names, and the binary refuses them on the values
-	 * door (`packages/console/internal/server/values.go`).
+	 * press on PayPal's screen (./payments_.paypal.tsx), which settles the listener its id names, and
+	 * the binary refuses them on the values door (`packages/console/internal/server/values.go`).
 	 */
 	const group = groupPosted(intent);
 	if (group !== null && group.id !== PAYPAL_GROUP) {
@@ -653,23 +494,15 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 	/* the router has this press's answer and is re-reading the page over it, which is the one thing
 	   the posted intent cannot say: it is carried through the re-read as well as through the request
 	   (`getLoadingNavigation` in the installed `react-router`), so during a press's own request what
-	   the page is holding is still the press before it. two folds read it: the payments fold, whose
-	   answer decides whether anything is running at all (../lib/stripe-press.ts), and the password
-	   fold, whose box stays open over the re-read of its own refusal
-	   (../lib/secret-group-form.tsx). */
+	   the page is holding is still the press before it. the password fold reads it: its box stays open
+	   over the re-read of its own refusal (../lib/secret-group-form.tsx). */
 	const revalidating = navigation.state === 'loading';
 	/* the reading this page is drawing, which is the last one that landed while a newer one is still
 	   being taken — the whole of what keeps a press from putting the glass up over the page it was
 	   made on (stated where it is drawn, at the `Suspense` below). it is read here because a hook
 	   cannot be, past the close branch that returns before it. */
 	const standing = useDeferredValue(loaderData.reading);
-	/* a Stripe setup run counts as this page writing, although no request is open for it: it writes
-	   two credentials and a var onto the deployment (`packages/console/internal/stripe`), and a
-	   second press made under it would be reading what this one is still changing. it is read off
-	   the reading rather than off a navigation, and the reading is taken again the moment the run
-	   stops (../lib/payments-fold.tsx). */
-	const setting = loaderData.stripe?.kind === 'running' || loaderData.paypal?.kind === 'running';
-	const busy = intent !== null || setting;
+	const busy = intent !== null;
 
 	/* whether the confirm over the close press is up. it is a parameter on the address rather than
 	   state, which is what makes the way out of it a link: a GET back to this page drops it, and that
@@ -791,41 +624,11 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 	const secrets: GroupReport | null =
 		actionData && 'secrets' in actionData ? actionData.secrets : null;
 	const test: TestSend | null = actionData && 'test' in actionData ? actionData.test : null;
-	/* which Stripe boxes the last press came back naming, and `null` on the press that started a run:
-	   how that one is getting on is read off the run rather than off this answer. */
-	const stripe = actionData && 'stripe' in actionData ? actionData.stripe : null;
-	const refused = stripe !== null && 'errors' in stripe ? stripe.errors : null;
-	/* and the press the binary's own door turned down before any run began, which is the same thing
-	   about the pair that a key Stripe refuses is — so the fold says it in the same sentence and in
-	   the same place (../lib/payments-fold.tsx). */
-	const turnedDownPair = stripe !== null && 'turnedDown' in stripe;
-	/* how the one act that is a single call went. the other two answer as a run rather than as a
-	   body, so this is `null` on both of them. */
-	const removed: VarsWritten | null =
-		stripe !== null && 'written' in stripe ? stripe.written : null;
 	/* how the press that frees a value held in a form nothing can read back went. one press frees
 	   every such name at once (`FreeWithheldVars` in `packages/console/internal/deployment`), so it
 	   is one answer handed to each fold that draws boxes: only a failure is drawn, and a press that
 	   landed takes the block off every one of them. */
 	const freed: VarsWritten | null = actionData && 'freed' in actionData ? actionData.freed : null;
-	const provision: RecurringSetup | null =
-		actionData && 'recurring' in actionData ? actionData.recurring : null;
-	/* PayPal's set-up press: its run off the loader, and the three answers that started none. */
-	const paypalAnswer = actionData && 'paypal' in actionData ? actionData.paypal : null;
-	const paypal: PaymentsFoldProps['paypal'] = {
-		run: loaderData.paypal,
-		refused: paypalAnswer !== null && 'errors' in paypalAnswer ? paypalAnswer.errors : null,
-		turnedDownPair: paypalAnswer !== null && 'turnedDown' in paypalAnswer,
-		unwritten: paypalAnswer !== null && 'unwritten' in paypalAnswer ? paypalAnswer.unwritten : null
-	};
-	/* how the press of PayPal's charity-rate switch went, which is one var written through the same
-	   door every other value goes through. */
-	const charity: VarsWritten | null =
-		actionData && 'charity' in actionData ? actionData.charity : null;
-	// the fold's own levelling press, which is the repair a site press and the keys run both stand in
-	// front of. the sites press's own levelling rides on its report and is read off `list` below.
-	const covered: WalletsLevel | null =
-		actionData && 'wallets' in actionData ? actionData.wallets : null;
 	const list = actionData && 'sites' in actionData ? actionData.sites : null;
 	const checked = actionData !== undefined && 'checked' in actionData;
 
@@ -925,26 +728,7 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 												pending: intent,
 												revalidating
 											}}
-											payments={{
-												address: home.address,
-												values: read.values,
-												payments: loaderData.payments,
-												recurring: loaderData.recurring,
-												workerName: loaderData.workerName,
-												accountName: loaderData.account,
-												refused,
-												turnedDownPair,
-												revalidating,
-												run: loaderData.stripe,
-												removed,
-												freed,
-												provision,
-												paypal,
-												charity,
-												wallets: covered,
-												busy,
-												pending: intent
-											}}
+											payments={{ rows: read.processors }}
 											sites={{
 												sites: read.sites,
 												donatePage: read.donatePage,
@@ -1426,7 +1210,7 @@ function ReadyFace({
 	/** each fold's panel whole, assembled by the page that took every read in it. */
 	password: PasswordFoldProps;
 	organisation: OrgFoldProps;
-	payments: PaymentsFoldProps;
+	payments: ProcessorRowsProps;
 	sites: SitesFoldProps;
 	smtp: SmtpFoldProps;
 	notifications: NotificationsFoldProps;
@@ -1514,7 +1298,7 @@ function ReadyFace({
 							) : section.id === 'organisation' ? (
 								<OrgFold {...organisation} />
 							) : section.id === 'payments' ? (
-								<PaymentsFold {...payments} />
+								<ProcessorRows {...payments} />
 							) : section.id === 'sites' ? (
 								<SitesFold {...sites} />
 							) : section.id === 'smtp' ? (

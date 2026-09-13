@@ -17,7 +17,6 @@ import { paypalRun } from '../api/client';
 import type {
 	AddressRead,
 	DeployedValues,
-	NoReport,
 	PaymentsRead,
 	PaypalFailure,
 	PaypalRunRead,
@@ -25,11 +24,12 @@ import type {
 	ProcessorPayments,
 	RecurringRead,
 	RecurringReading,
+	RecurringSetup,
 	ValuesRefusal,
 	VarsWritten
 } from '../api/types';
 import type { HeldValues } from './held-values';
-import { withheldAmong } from './held-values';
+import { heldValues, withheldAmong } from './held-values';
 import {
 	CHARITY_APPROVED,
 	CHARITY_FIELD,
@@ -52,6 +52,8 @@ import {
 import { REACHED_PAYPAL, pressStopped } from './press-stopped';
 import type { ConfiguredPayments } from './processor-payments';
 import { EVIDENCE_SAYS, STANDING, configuredStanding } from './processor-payments';
+import { keysTrouble, noAnswer, valuesGuard } from './processor-screen';
+import { recurringBlock } from './recurring-block';
 import { recurringReading } from './recurring-rows';
 import { useReseeded } from './reseed';
 import { Said } from './said';
@@ -72,11 +74,11 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 // the whole of PayPal on this deployment — what its account answered, the two keys that set it up,
 // and the one answer about the organisation that prices a gift.
 //
-// **it is a second section of the payments fold and not a fold of its own.** the two processors are
-// alternatives and a deployment set up on either is set up (`CHARGE_PAIRS` in
-// packages/app/src/lib/server/config/readiness.ts), so they answer to one row on the page above
-// (./home-sections.ts) and stand one above the other under it, divided by the rule
-// packages/operator/src/styles/adm.css draws between two sections in a panel.
+// **each processor has a screen, and this is PayPal's.** the two processors are alternatives and a
+// deployment set up on either is set up (`CHARGE_PAIRS` in
+// packages/app/src/lib/server/config/readiness.ts), so they answer to one row on the home page
+// (./home-sections.ts), whose panel lists them (./processor-rows.tsx) and links here and to
+// Stripe's (./stripe-section.tsx).
 //
 // **a processor nobody has configured draws no reading at all, and that is not a failure.** the
 // deployment answers `unconfigured` carrying the names it is short of and no reading whatever
@@ -90,8 +92,8 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 // never saved through the values door — a pair written with no listener behind it is a deployment
 // whose approved orders are never captured.
 //
-// **the run reports itself where it was pressed**, which is the Stripe half's arrangement
-// (./payments-fold.tsx) cut to what this press is: a card goes up on the press, draws one line per
+// **the run reports itself where it was pressed**, which is the Stripe screen's arrangement
+// (./stripe-section.tsx) cut to what this press is: a card goes up on the press, draws one line per
 // stage, and stands while the run goes. no confirm puts itself in front of it, because nothing is
 // deleted — a listener already here is kept. a run that lands is said by the button's own tick; a
 // pair PayPal turned down is said at the press and puts the operator back in the boxes; every other
@@ -106,9 +108,9 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 // after the keys are, and folding it into the set-up would make changing it a re-run of the whole
 // set-up (./paypal-charity.ts).
 //
-// **it is a component and not a screen.** every read it draws was taken by ../routes/_index.tsx and
-// the presses it makes are answered there. what it reaches for itself is the run while it goes,
-// which is the one reading that changes while it is on screen.
+// **it is the screen's body and not its route.** every read it draws was taken by the route that
+// mounts it and the presses it makes are answered there. what it reaches for itself is the run while
+// it goes, which is the one reading that changes while it is on screen.
 
 /** where PayPal's own credentials are made, one press off the heading. */
 const DASHBOARD = 'https://developer.paypal.com/dashboard/applications/live';
@@ -125,22 +127,22 @@ const PAYPAL_WRITES = SECRET_GROUPS.filter((group) => group.id === PAYPAL_GROUP)
  * what each box is called.
  *
  * PayPal's own words, with one departure: `Client secret` rather than the `Secret key` its dashboard
- * prints, because the Stripe boxes above on the same fold already draw a box called `Secret key`, and
- * two boxes sharing an accessible name on one screen are controls a reader cannot tell apart.
+ * prints, because the Stripe screen draws a box called `Secret key`, and two boxes sharing an
+ * accessible name across the two processors are controls a reader cannot tell apart by name.
  */
 const LABEL: Record<PaypalPairName, string> = {
 	PAYPAL_CLIENT_ID: 'Client ID',
 	PAYPAL_CLIENT_SECRET: 'Client secret'
 };
 
-/** how often the section asks how far the run has got. the Stripe half's interval. */
+/** how often the screen asks how far the run has got. the Stripe screen's interval. */
 const POLL_MS = 2500;
 
 /** the press, named so the card can put the reader back on it when it goes. */
 const SET_UP_PRESS = 'paypal-set-up-press';
 
 /**
- * what the last press of the set-up said, as ../routes/_index.tsx reads it off the action.
+ * what the last press of the set-up said, as the route reads it off the action.
  *
  * the run itself is read off the loader, and what this carries is the three ways a press started
  * none: boxes refused before anything left this machine, the binary's door turning the pair down,
@@ -158,23 +160,38 @@ export type PaypalPress = {
 };
 
 export type PaypalSectionProps = {
+	/** the seventeen as cloudflare answered for them, which is what the boxes are drawn with. */
+	values: DeployedValues;
 	/**
 	 * where every processor account stands, on the promise the loader handed down.
 	 *
-	 * the same promise the Stripe half above awaits: one read answers for both processors, so a
-	 * second request here would be two views of one deployment able to disagree by the time an
-	 * operator reads them.
+	 * the same promise the Stripe screen awaits: one read answers for both processors, so a second
+	 * request here would be two views of one deployment able to disagree.
 	 */
 	payments: Promise<PaymentsRead | null>;
-	/**
-	 * where every account stands on gifts that repeat, on the loader's other promise.
-	 *
-	 * awaited here for the one thing this section can say about it and the fold above cannot: a read
-	 * of the PayPal account that did not land draws no line in the fold's repeating-gift band
-	 * (`recurringRows` in ./recurring-rows.ts), so the sentence naming what to do about it stands
-	 * with this account's other failed readings or nowhere.
-	 */
+	/** where every account stands on gifts that repeat, on the loader's other promise. */
 	recurring: Promise<RecurringRead | null>;
+	workerName: string;
+	/** the cloudflare account every read is scoped to, named in every sentence about a refusal. */
+	accountName: string;
+	/** the set-up press and its run. */
+	paypal: PaypalPress;
+	/** how the last press of the charity-rate switch went, or `null`. */
+	charity: VarsWritten | null;
+	/** how the last press that frees a value held in a form nothing can read back went, or `null`. */
+	freed: VarsWritten | null;
+	/** how the last repeating-gifts press went, or `null` (./recurring-block.tsx). */
+	provision: RecurringSetup | null;
+	/** the router is re-reading the page over an answer it has already committed. */
+	revalidating: boolean;
+	/** something else on the page is writing, which holds every control on it closed. */
+	busy: boolean;
+	/** which intent is in flight, or `null` where none is. */
+	pending: string | null;
+};
+
+/** what the keys form and the charity switch read, derived once from the props above. */
+type Derived = {
 	/** what the deployment is holding, which is what the boxes are drawn with (./held-values.ts). */
 	values: HeldValues;
 	/**
@@ -184,57 +201,50 @@ export type PaypalSectionProps = {
 	 * is derived afresh at every render, so it cannot say that.
 	 */
 	reading: DeployedValues['vars'];
-	/** the set-up press and its run. */
-	press: PaypalPress;
-	/** how the last press of the charity-rate switch went, or `null`. */
-	charity: VarsWritten | null;
-	/** how the last press that frees a value held in a form nothing can read back went, or `null`. */
-	freed: VarsWritten | null;
-	/** what a failed write says, in the words the fold holding the account name has for it. */
+	/** what a failed write says (./processor-screen.tsx). */
 	trouble: (written: ValuesRefusal) => ReactNode;
-	/** what a deployment that answered nothing says, in the same fold's words. */
-	noAnswer: (read: NoReport, what: string) => ReactNode;
-	workerName: string;
-	/** the cloudflare account every read is scoped to, named in every sentence about a refusal. */
-	accountName: string;
-	/** something else on the page is writing, which holds every control on it closed. */
-	busy: boolean;
-	/** which intent is in flight, or `null` where none is. */
-	pending: string | null;
-	/** the router is re-reading the page over an answer it has already committed. */
-	revalidating: boolean;
 };
 
 export function PaypalSection({
+	values,
 	payments,
 	recurring,
-	values,
-	reading,
-	press,
-	charity,
-	freed,
-	trouble,
-	noAnswer,
 	workerName,
 	accountName,
+	paypal,
+	charity,
+	freed,
+	provision,
+	revalidating,
 	busy,
-	pending,
-	revalidating
+	pending
 }: PaypalSectionProps): ReactNode {
+	const guard = valuesGuard(values.vars, { workerName, accountName });
+	if (guard !== null || values.vars.kind !== 'read') return guard;
+	const held = heldValues(values.vars.vars);
+	const trouble = keysTrouble({ workerName, accountName });
 	/* the same sentence over both boundaries: what an operator is waiting on is one account's
 	   readings, and two waits worded apart would be two subjects where there is one. */
 	const asking = <p className="adm-hint">Asking this deployment…</p>;
 	return (
 		<Section>
 			{/* what the account answered, drawn above the boxes that change it for the reason the Stripe
-			    half states: the reading is what an operator opened the fold to find out, and the press
-			    that would rewrite it comes last. */}
+			    screen states: the reading is what an operator came to find out, and the press that
+			    would rewrite it comes last. */}
 			<Suspense fallback={asking}>
 				<Await resolve={payments}>
 					{(read) => (
 						<Suspense fallback={asking}>
 							<Await resolve={recurring}>
-								{(gifts) => <PaypalReadings read={read} gifts={gifts} noAnswer={noAnswer} />}
+								{(gifts) => (
+									<PaypalReadings
+										read={read}
+										gifts={gifts}
+										provision={provision}
+										busy={busy}
+										pending={pending}
+									/>
+								)}
 							</Await>
 						</Suspense>
 					)}
@@ -242,9 +252,9 @@ export function PaypalSection({
 			</Suspense>
 
 			<PaypalKeysForm
-				values={values}
-				reading={reading}
-				press={press}
+				values={held}
+				reading={values.vars}
+				press={paypal}
 				freed={freed}
 				trouble={trouble}
 				workerName={workerName}
@@ -255,7 +265,7 @@ export function PaypalSection({
 			/>
 
 			<CharityRate
-				values={values}
+				values={held}
 				written={charity}
 				freed={freed}
 				trouble={trouble}
@@ -269,18 +279,54 @@ export function PaypalSection({
 /**
  * what PayPal's own account answered, or nothing at all where it was never asked.
  *
- * **a deployment holding no PayPal credentials draws nothing up here**, exactly as the Stripe half
+ * **a deployment holding no PayPal credentials draws nothing up here**, exactly as the Stripe screen
  * draws nothing over a deployment holding no key: nothing was asked, so there is no row, no band and
  * no waiting sentence — and the boxes underneath are the whole truth of that state.
+ *
+ * **the repeating-gift block stands after the rails in a form of its own**: its one press posts an
+ * intent and nothing else, so standing it in the keys form would carry two credentials through a
+ * request that reads neither (./recurring-block.tsx).
  */
 function PaypalReadings({
 	read,
 	gifts,
-	noAnswer
+	provision,
+	busy,
+	pending
 }: {
 	read: PaymentsRead | null;
 	gifts: RecurringRead | null;
-	noAnswer: (read: NoReport, what: string) => ReactNode;
+	provision: RecurringSetup | null;
+	busy: boolean;
+	pending: string | null;
+}): ReactNode {
+	const repeats = recurringBlock({
+		processor: 'paypal',
+		gifts,
+		provision,
+		busy,
+		working: false,
+		pending
+	});
+	return (
+		<>
+			<PaypalAccount read={read} gifts={gifts} />
+			{repeats === null ? null : (
+				<Form method="post" preventScrollReset>
+					{repeats}
+				</Form>
+			)}
+		</>
+	);
+}
+
+/** the account's own readings: what could not be read, and the rails. */
+function PaypalAccount({
+	read,
+	gifts
+}: {
+	read: PaymentsRead | null;
+	gifts: RecurringRead | null;
 }): ReactNode {
 	if (read === null) return null;
 	if (read.kind === 'unread') {
@@ -302,7 +348,7 @@ function PaypalReadings({
 /**
  * the one thing to say about a read this deployment tried to make against PayPal and could not.
  *
- * **said once and never once per reading**, the same rule the Stripe half keeps: all three go
+ * **said once and never once per reading**, the same rule the Stripe screen keeps: all three go
  * through one port with one set of credentials, so several failing is one fact — drawn as a row in
  * each, an operator is told the same thing twice and has two places to look for the one sentence
  * that names what to do.
@@ -311,7 +357,7 @@ function PaypalReadings({
  * reading whatever, and this is only reached under one that does. so what stands here is a
  * deployment whose PayPal keys were rejected or whose PayPal did not answer, which is exactly the
  * state nothing else on the screen can say — a reading that did not land draws no block under this
- * and no line in the fold's repeating-gift band above it (`recurringRows` in ./recurring-rows.ts),
+ * and no line in the repeating-gift block after it (`recurringRows` in ./recurring-rows.ts),
  * and an operator reading that as nothing to do would leave a deployment taking no gift at all.
  *
  * the deployment's own detail goes underneath and is drawn rather than printed: it names the value
@@ -325,8 +371,7 @@ function Unreadable({
 	standing: ConfiguredPayments;
 	/**
 	 * where this account stands on gifts that repeat, and `null` where the report carries nothing for
-	 * it — including the read that did not land at all, which the fold above says once for both
-	 * accounts.
+	 * it — including the read that did not land at all, which the repeating-gift block says once.
 	 */
 	repeats: RecurringReading | null;
 }): ReactNode {
@@ -372,7 +417,7 @@ function Unreadable({
  * processor that starts publishing approvals is a ledger that gains its sentence here rather than
  * one that keeps drawing a green row with nothing over it.
  *
- * the ledger is drawn as columns for the reason the Stripe half's is: every row is the same two
+ * the ledger is drawn as columns for the reason the Stripe screen's is: every row is the same two
  * things, so an operator reads down a column rather than across a line.
  */
 function Rails({ standing }: { standing: ConfiguredPayments }): ReactNode {
@@ -419,20 +464,11 @@ function PaypalKeysForm({
 	busy,
 	pending,
 	revalidating
-}: Pick<
-	PaypalSectionProps,
-	| 'values'
-	| 'reading'
-	| 'press'
-	| 'freed'
-	| 'trouble'
-	| 'workerName'
-	| 'accountName'
-	| 'busy'
-	| 'pending'
-	| 'revalidating'
->): ReactNode {
-	/* how far the press has got, asked of the binary rather than of the page, for the Stripe half's
+}: Derived & { press: PaypalPress } & Pick<
+		PaypalSectionProps,
+		'freed' | 'workerName' | 'accountName' | 'busy' | 'pending' | 'revalidating'
+	>): ReactNode {
+	/* how far the press has got, asked of the binary rather than of the page, for the Stripe screen's
 	   reason: reading the page again is every round trip on it. */
 	const [polled, setPolled] = useState<PaypalRunRead | null | undefined>(undefined);
 	const answered = polled === undefined ? press.run : polled;
@@ -618,21 +654,6 @@ function PaypalKeysForm({
 		if (!landed) held.current = false;
 		setReporting(null);
 	}, [pressRefusal, landed, live]);
-
-	/* a fold put away is a fold at rest, for ./payments-fold.tsx's reason. */
-	useEffect(() => {
-		const fold = form.current === null ? null : form.current.closest('details');
-		if (fold === null) return;
-		const shut = () => {
-			if (fold.open) return;
-			setReporting(null);
-			setPressedHere(false);
-			setRememberedRefusal(null);
-			keys.reset();
-		};
-		fold.addEventListener('toggle', shut);
-		return () => fold.removeEventListener('toggle', shut);
-	}, [form, keys.reset]);
 
 	/**
 	 * why there was nowhere to register or write to, in the address read's own terms.
@@ -1034,7 +1055,7 @@ function CharityRate({
  * where PayPal's two keys come from.
  *
  * the one fact a box cannot carry — that both are on one app in PayPal's developer dashboard, and
- * which dashboard. ./payments-fold.tsx's `StripeKeys` says the same kind of thing about the other
+ * which dashboard. ./stripe-section.tsx's `StripeKeys` says the same kind of thing about the other
  * processor.
  */
 function PaypalKeys(): ReactNode {

@@ -93,7 +93,7 @@ describe('a fold seeding its boxes through the form layer says when they go back
 	it('finds the folds it is meant to be guarding', () => {
 		const mounted = folds.filter((file) => mounts(file, readFileSync(file, 'utf8')).length > 0);
 		expect(mounted).toContain('src/lib/sites-fold.tsx');
-		expect(mounted).toContain('src/lib/payments-fold.tsx');
+		expect(mounted).toContain('src/lib/stripe-section.tsx');
 		expect(mounted).toContain('src/lib/smtp-fold.tsx');
 	});
 

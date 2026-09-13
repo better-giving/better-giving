@@ -5,7 +5,7 @@ import type { Wallet, WalletHostLine, WalletsLevel, WalletsReading } from '../ap
 // own — what the whole list adds up to.
 //
 // **it is a module and not an expression in the fold**, for ./wallet-level.ts's reason: this package
-// has no DOM pool (../../vite.config.ts), so a reading written inside ./payments-fold.tsx is one
+// has no DOM pool (../../vite.config.ts), so a reading written inside ./stripe-section.tsx is one
 // nothing here can hold — and the readings below are the whole of what decides whether an operator
 // is told a wallet is missing from a site. ./wallet-rows.spec.ts is where they are asserted.
 //
@@ -16,7 +16,7 @@ import type { Wallet, WalletHostLine, WalletsLevel, WalletsReading } from '../ap
 // wallet the operator came to look at.
 //
 // nothing here writes a sentence. what each standing is called and what its note says is
-// ./payments-fold.tsx's, because those words are read beside the rest of that ledger.
+// ./stripe-section.tsx's, because those words are read beside the rest of that ledger.
 
 /**
  * where one site stands for one wallet.
@@ -57,7 +57,7 @@ export type WalletRow = {
  * sites, so a panel drawing both would draw each row twice.
  *
  * `null` is the account read that could not be made, which draws no panel anywhere: it is the same
- * one read of the same account the rails come through, and ./payments-fold.tsx says so once. it is
+ * one read of the same account the rails come through, and ./stripe-section.tsx says so once. it is
  * also the processor that draws no wallet anywhere — the reading is `null` on the wire for one of
  * those (`ProcessorPayments` in ../api/types.ts), and there is nothing to register and no panel to
  * open.
@@ -124,3 +124,20 @@ export function linkStanding(rows: readonly WalletRow[]): LinkStanding {
 	if (rows.length === 0) return 'not_everywhere';
 	return rows.every((row) => row.standing === 'showing') ? 'everywhere' : 'not_everywhere';
 }
+
+/**
+ * what each wallet is called on the page.
+ *
+ * the product names and never the processor's own keys: a fundraiser looking for the button they
+ * cannot find on their phone is looking for `Apple Pay`.
+ *
+ * **it is also which rails carry a panel.** two of its keys are rails the deployment reports on and
+ * the third is not, and `railPanel` in ./stripe-section.tsx reads a rail's own name against this
+ * record rather than against a second list — so a wallet named here and nowhere else is a row
+ * without the one thing that row is for.
+ */
+export const WALLET_NAMES: Record<Wallet, string> = {
+	apple_pay: 'Apple Pay',
+	google_pay: 'Google Pay',
+	link: 'Link'
+};

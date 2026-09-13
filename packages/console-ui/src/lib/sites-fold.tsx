@@ -187,7 +187,7 @@ export function SitesFold({ sites, donatePage, list, busy, pending }: SitesFoldP
 	/* a fold put away is a fold at rest: the boxes back to what the deployment holds. the element is
 	   found rather than handed down — what shuts is several components above this one, and a flag
 	   threaded through each of them would be a prop every fold states and nothing else reads.
-	   ./payments-fold.tsx and ./smtp-fold.tsx answer the same thing the same way. */
+	   ./stripe-section.tsx and ./smtp-fold.tsx answer the same thing the same way. */
 	const element = form.mount.ref;
 	const { reset } = form;
 	useEffect(() => {
@@ -434,7 +434,7 @@ function WidgetOutcome({ level }: { level: WidgetLevel }): ReactNode {
  * **the detail is marked and never quoted through {@link Said}.** {@link WidgetOutcome}'s detail is
  * Cloudflare's own words, which ./said.tsx prints raw for the reason its header states — but the
  * wallet levelling's detail is this deployment's own sentence about the hostname to fix
- * (`packages/app/src/lib/server/payments/wallet-domains.ts`), the same field `payments-fold.tsx`
+ * (`packages/app/src/lib/server/payments/wallet-domains.ts`), the same field `stripe-section.tsx`
  * draws through `MarkedText`, so a backtick in it is a mark and not a character to print.
  */
 function WalletsOutcome({ level }: { level: WalletsLevel | null }): ReactNode {

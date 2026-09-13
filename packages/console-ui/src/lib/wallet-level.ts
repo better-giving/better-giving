@@ -17,7 +17,7 @@ import { listed } from './org-form';
 // nothing, and tsc holds the covering — the switch below is exhaustive.
 //
 // **nothing here repairs anything, and every arm names the fold where a repair lives.** the press
-// stands inside the panel each wallet row opens on the payments fold (./payments-fold.tsx and
+// stands inside the panel each wallet row opens on the payments fold (./stripe-section.tsx and
 // ./wallets-press.ts), which is where the whole reading is: a second control here would be a press
 // on a fold that draws none of the sites it acts on. `no_key` is the one arm the press itself
 // cannot answer — that fold draws no ledger and no press for it either, so what points there
@@ -80,7 +80,7 @@ export function walletTrouble(level: WalletsLevel | null): WalletTrouble | null 
 			const report = level.report;
 			// the account read the press opens with, so nothing was attempted on any site. a
 			// deployment holding no key yet is not sent to Register: the payments fold draws no
-			// ledger and no press for `no_key`, for {@link rails}'s reason in ./payments-fold.tsx, so
+			// ledger and no press for `no_key`, for {@link rails}'s reason in ./stripe-section.tsx, so
 			// the deployment's own sentence — which already names the box to paste the key into — is
 			// what stands in the press's place.
 			if (report.state === 'unreadable') {

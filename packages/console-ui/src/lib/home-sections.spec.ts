@@ -2,7 +2,7 @@ import { JOB_NOTES, SETUP_JOBS } from '@better-giving/operator/setup-folds';
 import { describe, expect, it } from 'vitest';
 import type { DeployedVar, HomeReading } from '../api/types';
 import type { SectionId, SectionState } from './home-sections';
-import { readSections } from './home-sections';
+import { heldNames, readSections } from './home-sections';
 
 // what the six folds say, off the reading the binary answered with.
 //
@@ -329,5 +329,30 @@ describe('the six folds', () => {
 
 	it('read a missing mail credential as incomplete', () => {
 		expect(stateOf(without('SMTP_HOST'), 'smtp')).toBe('todo');
+	});
+});
+
+describe('the names a deployment holds', () => {
+	it('count a withheld value as held and an absent one as not', () => {
+		const read = without('SMTP_HOST');
+		const vars = read.values.vars;
+		const withheld: HomeReading['values'] =
+			vars.kind === 'read'
+				? {
+						vars: {
+							kind: 'read',
+							vars: vars.vars.map((row) =>
+								row.name === 'STRIPE_SECRET_KEY' ? { name: row.name, kind: 'withheld' } : row
+							)
+						}
+					}
+				: read.values;
+		const held = heldNames(withheld.vars);
+		expect(held.has('STRIPE_SECRET_KEY')).toBe(true);
+		expect(held.has('SMTP_HOST')).toBe(false);
+	});
+
+	it('hold nothing over a read that did not land', () => {
+		expect(heldNames({ kind: 'unreachable', detail: '' }).size).toBe(0);
 	});
 });

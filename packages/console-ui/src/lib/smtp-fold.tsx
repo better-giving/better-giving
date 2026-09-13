@@ -203,7 +203,7 @@ const mailLabel = (name: string): string => MAIL_LABELS[name] ?? name;
  * here and the spellings in that table are the same values said twice, so the two are changed
  * together.
  *
- * the key is elided rather than shaped, in the idiom ./payments-fold.tsx's two use: what an
+ * the key is elided rather than shaped, in the idiom ./stripe-section.tsx's two use: what an
  * operator compares is the prefix their provider issued, and the rest of a key is characters nobody
  * reads.
  *
@@ -743,7 +743,7 @@ function MailSettings({
 	 * sending, so they are the primary control
 	 * `packages/operator/src/components/shell/Dialog.jsx` draws where no `danger` is handed over. red
 	 * on a press that destroys nothing is a warning an operator learns to read past.
-	 * ./payments-fold.tsx's own press applies the same rule.
+	 * ./stripe-section.tsx's own press applies the same rule.
 	 */
 	const press =
 		confirming === null

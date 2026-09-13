@@ -9,7 +9,7 @@ import { stripeAsked } from './stripe-keys';
 // themselves and nothing here re-asserts it — every case below goes through `stripeAsked` so the
 // two stay one reading.
 
-/** the one name in the payments group nobody types, as ./payments-fold.tsx hands it in. */
+/** the one name in the payments group nobody types, as ./stripe-section.tsx hands it in. */
 const MINTED = ['STRIPE_WEBHOOK_SECRET'];
 
 const lines = (

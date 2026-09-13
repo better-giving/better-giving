@@ -173,7 +173,7 @@ export const RECURRING_EVENT_TYPES = [
  * deployment reports as `requiredEventTypes` when it reads the account back — so the day a member
  * is added here every already-registered endpoint reads as incomplete until an operator registers
  * it again. no screen draws that reading — the deployment computes it (../console/payments.ts) and
- * packages/console-ui/src/lib/payments-fold.tsx takes only the account's ways of paying off the
+ * packages/console-ui/src/lib/stripe-section.tsx takes only the account's ways of paying off the
  * report — so what an operator has is the fold's own press, which registers afresh.
  */
 export const SUBSCRIBED_EVENT_TYPES = [

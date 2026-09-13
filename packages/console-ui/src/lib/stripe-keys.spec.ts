@@ -13,7 +13,7 @@ import { KEY_FIELD, stripeAsked, stripeForm, stripeGap, stripeRefusals } from '.
 // `*.spec.ts` only (../../vite.config.ts), which is why the reading is a module here rather than a
 // function inside the fold.
 //
-// the seeds are what ./payments-fold.tsx draws the boxes with: both keys are plain vars and the
+// the seeds are what ./stripe-section.tsx draws the boxes with: both keys are plain vars and the
 // account hands each value back, so each box arrives holding the key the deployment is holding.
 
 const asked = (
@@ -237,7 +237,7 @@ describe('the box a press is turned down at', () => {
  * it is a key Stripe takes is Stripe's answer and not this console's guess. what is asserted is
  * that the one box a press would leave the pair without is named, and no other.
  *
- * the seeds are ./payments-fold.tsx's, as above: the mark over a stored credential and the
+ * the seeds are ./stripe-section.tsx's, as above: the mark over a stored credential and the
  * publishable key itself.
  */
 describe('stripeRefusals', () => {
@@ -311,7 +311,7 @@ describe('stripeRefusals', () => {
 });
 
 /**
- * the same reading as it reaches a box, which is the pass ./payments-fold.tsx's press runs before
+ * the same reading as it reaches a box, which is the pass ./stripe-section.tsx's press runs before
  * anything is sent (./use-console-form.ts).
  *
  * it is read through `parseWithZod` rather than off the schema, because the one thing between the

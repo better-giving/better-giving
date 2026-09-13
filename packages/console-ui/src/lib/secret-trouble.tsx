@@ -11,7 +11,7 @@ import { Said } from './said';
 // here. a call that never landed is kept off that sentence entirely, because what failed was
 // this machine's own request and cloudflare said none of it. where there was nowhere to write to,
 // the sentence has to name what the press was trying to do, and that is the caller's:
-// ../lib/sites-fold.tsx has nowhere to store a list, and ../lib/payments-fold.tsx has no address to
+// ../lib/sites-fold.tsx has nowhere to store a list, and ../lib/stripe-section.tsx has no address to
 // register with stripe. so `nowhere` is handed in.
 //
 // it is a function returning the renderer rather than a component because `SecretGroupForm` takes

@@ -33,7 +33,7 @@ const DRAWS = /SECRET_GROUPS\.filter\(\(group\) => group\.id === (\w+)\)/g;
    resolving is a rename rather than a missing gate — `readFileSync` throws and names it. */
 const SOURCES = [
 	'routes/_index.tsx',
-	'lib/payments-fold.tsx',
+	'lib/stripe-section.tsx',
 	'lib/paypal-section.tsx',
 	'lib/sites-fold.tsx',
 	'lib/smtp-fold.tsx',

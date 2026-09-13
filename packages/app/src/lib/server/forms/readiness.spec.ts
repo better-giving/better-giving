@@ -83,7 +83,7 @@ describe('formsReadiness', () => {
 	 *
 	 * the keys that take a card and the mail that sends the receipt are facts about the deployment
 	 * rather than about a record: they are settled on the console when the keys are pasted
-	 * (`packages/console-ui/src/lib/payments-fold.tsx`), and a screen here could only ever report them
+	 * (`packages/console-ui/src/lib/stripe-section.tsx`), and a screen here could only ever report them
 	 * and point somewhere else. so the block reports on rows and on nothing else, whatever this
 	 * deployment's environment holds.
 	 */

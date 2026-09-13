@@ -40,7 +40,7 @@ import { MarkedText } from '@better-giving/operator/marked-text.react';
 //
 // what this deployment itself can do — charge a card, send a receipt — is not reported here at all.
 // that is settled on the console at the moment the keys are pasted
-// (`packages/console-ui/src/lib/payments-fold.tsx`), which is the one place that can act on it.
+// (`packages/console-ui/src/lib/stripe-section.tsx`), which is the one place that can act on it.
 
 /**
  * this screen's three words, in the operator surfaces' three tones.

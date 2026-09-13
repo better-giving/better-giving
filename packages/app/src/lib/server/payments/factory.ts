@@ -91,7 +91,7 @@ type Processor = {
  *
  * neither omission makes a deployment ready to take donations, and neither is this module's claim
  * that it is. what a deployment is short of beyond this one is the console's to report, beside the
- * boxes those values are pasted into (`packages/console-ui/src/lib/payments-fold.tsx`).
+ * boxes those values are pasted into (`packages/console-ui/src/lib/stripe-section.tsx`).
  *
  * total over `ProcessorName`, so a processor named at the port without a credential list here is a
  * compile error rather than one this module reports as configured on a deployment holding nothing.

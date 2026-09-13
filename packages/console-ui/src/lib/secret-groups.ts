@@ -133,7 +133,7 @@ export const groupPosted = (intent: unknown): SecretGroup | null =>
  * `STRIPE_WEBHOOK_SECRET` is Stripe's, handed over once in the answer that registers the webhook
  * endpoint and readable from no call afterwards — so the press that registers is the only moment
  * one exists to store, and it stores it (`packages/console/internal/stripe`). a box for it would be a box
- * nobody can correctly fill. it does keep a row: ./payments-fold.tsx states whether the deployment
+ * nobody can correctly fill. it does keep a row: ./stripe-section.tsx states whether the deployment
  * is holding one, because an operator reading that fold is deciding whether payments are set up.
  *
  * it is a list here rather than a literal where it is drawn so that each name is written once.
@@ -218,7 +218,7 @@ export const pressedNames = (group: SecretGroup): readonly string[] =>
  * would be ceremony over nothing.
  *
  * the four are drawn by three different folds — ./password-fold.tsx through
- * ./secret-group-form.tsx, ./smtp-fold.tsx, and ./payments-fold.tsx with ./paypal-section.tsx — and
+ * ./secret-group-form.tsx, ./smtp-fold.tsx, and ./stripe-section.tsx with ./paypal-section.tsx — and
  * each takes its answer from here, so a fifth credential is decided once and not at whichever fold
  * draws it.
  */

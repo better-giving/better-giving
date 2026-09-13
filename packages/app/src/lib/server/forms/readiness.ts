@@ -10,7 +10,7 @@ import { identityMissing } from '../org/identity';
 // every line is a fact about a row this deployment holds, and that is the whole rule for what may
 // join them. whether the deployment can charge a card, send a receipt or turn away a bot is a fact
 // about the deployment and not about any record: it is settled on the console at the moment the
-// keys are pasted (`packages/console-ui/src/lib/payments-fold.tsx`), and it is not reported here at all.
+// keys are pasted (`packages/console-ui/src/lib/stripe-section.tsx`), and it is not reported here at all.
 // a screen that cannot repair a thing has nothing to offer about it but a pointer at the screen
 // that can, and the pointer is the half that goes stale.
 //

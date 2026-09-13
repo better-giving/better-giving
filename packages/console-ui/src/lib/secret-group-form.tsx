@@ -139,7 +139,7 @@ export function SecretGroupForm({
 	 * their deployment rather than boxes labelled by a guess. it is not what a screen should ship
 	 * with: a fundraiser meeting `SMTP_PASSWORD` has to work out that it is the password from their
 	 * mail provider, and the fold that knows which credential it is asking for can say so. so a
-	 * screen states its own — ./password-fold.tsx does, and ./smtp-fold.tsx and ./payments-fold.tsx
+	 * screen states its own — ./password-fold.tsx does, and ./smtp-fold.tsx and ./stripe-section.tsx
 	 * draw their boxes by hand under the same rule.
 	 */
 	boxLabel?: (name: string) => string;

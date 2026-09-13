@@ -5,6 +5,7 @@ import {
 	accountsOpening,
 	accountsSaid,
 	recurringReading,
+	recurringRowOf,
 	recurringRows
 } from './recurring-rows';
 
@@ -133,6 +134,44 @@ describe('recurringRows', () => {
 		expect(recurringRows({ kind: 'unread', read: { kind: 'unreachable', detail: 'No.' } })).toEqual(
 			[]
 		);
+	});
+});
+
+describe('recurringRowOf', () => {
+	/** the second account's line carries the press on its own screen, though the list puts it first. */
+	it('stands the press on this account wherever it has nothing', () => {
+		const both = read(
+			entry('stripe', 'Stripe', { state: 'absent' }),
+			entry('paypal', 'PayPal', { state: 'absent' })
+		);
+
+		expect(recurringRowOf(both, 'stripe')?.press).toBe(true);
+		expect(recurringRowOf(both, 'paypal')?.press).toBe(true);
+	});
+
+	it('keeps the name the list gives it', () => {
+		const both = read(
+			entry('stripe', 'Stripe', { state: 'ready' }),
+			entry('paypal', 'PayPal', { state: 'absent' })
+		);
+
+		expect(recurringRowOf(both, 'stripe')).toEqual({
+			processor: 'stripe',
+			account: 'Stripe',
+			label: `${RECURRING_LABEL} on Stripe`,
+			standing: 'ready',
+			press: false
+		});
+	});
+
+	it('draws nothing for an account with no line', () => {
+		const one = read(
+			entry('stripe', 'Stripe', { state: 'unreadable', detail: 'Stripe refused the key.' }),
+			entry('paypal', 'PayPal', { state: 'ready' })
+		);
+
+		expect(recurringRowOf(one, 'stripe')).toBeNull();
+		expect(recurringRowOf(null, 'paypal')).toBeNull();
 	});
 });
 

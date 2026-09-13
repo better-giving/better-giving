@@ -3,9 +3,10 @@ import type { MarkName } from '@better-giving/operator/components/status/Mark';
 import type { DeployValueName } from '@better-giving/operator/deploy-split';
 import type { SetupFoldId, SetupJobId, SetupJobState } from '@better-giving/operator/setup-folds';
 import { FOLD_LABELS, JOB_NOTES, JOB_WORDS } from '@better-giving/operator/setup-folds';
-import type { HomeReading } from '../api/types';
+import type { HomeReading, VarsRead } from '../api/types';
 import type { OrgBoxes } from './org-fields';
 import { IDENTITY_BOXES, NOTIFICATION_BOXES, orgBoxes, orgRequired } from './org-fields';
+import { CHARGE_PAIRS } from './processor-links';
 
 // what each of the six folds says, decided once, here.
 //
@@ -69,7 +70,7 @@ import { IDENTITY_BOXES, NOTIFICATION_BOXES, orgBoxes, orgRequired } from './org
  * the set is `@better-giving/operator/setup-folds`'s, because the deployment reads the jobs among
  * them under the same names. under this name here, because each id also names its own module on
  * this surface:
- * ./password-fold.tsx, ./org-fold.tsx, ./payments-fold.tsx, ./sites-fold.tsx, ./smtp-fold.tsx,
+ * ./password-fold.tsx, ./org-fold.tsx, ./processor-rows.tsx, ./sites-fold.tsx, ./smtp-fold.tsx,
  * ./notifications-fold.tsx. a run whose ids and modules stop matching is a page nobody can read the
  * order off.
  */
@@ -175,20 +176,29 @@ function sitesRow(sites: readonly string[], donatePage: string): HomeSection {
 }
 
 /**
+ * every name the deployment holds a value under, and none over a read that did not land.
+ *
+ * a name held in a form nothing can read back is a name that is set: its value cannot be drawn
+ * in a box, which is the one thing `withheld` says and the one thing this reading does not need.
+ * the payments fold's rows read the same set (./processor-links.ts), so its row word and the
+ * `Not set up` beside each processor cannot disagree.
+ */
+export function heldNames(read: VarsRead): ReadonlySet<string> {
+	const vars = read.kind === 'read' ? read.vars : [];
+	return new Set(vars.filter((row) => row.kind !== 'absent').map((row) => row.name));
+}
+
+/**
  * the six rows, from the reading the binary answered with.
  *
  * **a door that did not answer never reaches here.** the seventeen values come off the account in
  * one read that is scoped to no fold, so a console that could not take it draws no fold at all —
- * the face is `blocked` and this is not called. the empty fallback below is what that arm would
+ * the face is `blocked` and this is not called. `heldNames`'s empty fallback is what that arm would
  * read as, and it is stated rather than asserted because an assertion is a way for this to throw
  * inside a render.
  */
 export function readSections(read: HomeReading): readonly HomeSection[] {
-	const vars = read.values.vars.kind === 'read' ? read.values.vars.vars : [];
-
-	// a name held in a form nothing can read back is a name that is set: its value cannot be drawn
-	// in a box, which is the one thing `withheld` says and the one thing this reading does not need.
-	const held = new Set(vars.filter((row) => row.kind !== 'absent').map((row) => row.name));
+	const held = heldNames(read.values.vars);
 	const configured = (...names: readonly DeployValueName[]): SectionState =>
 		names.every((name) => held.has(name)) ? 'ready' : 'todo';
 
@@ -225,11 +235,8 @@ export function readSections(read: HomeReading): readonly HomeSection[] {
 		// **neither webhook value is on a pair.** without one a settled charge is never heard about,
 		// which is what stops a repeating gift being written down — but a one-off gift is still
 		// charged, and this row answers whether one can be. the payments fold is where the difference
-		// between the two is drawn and acted on (./payments-fold.tsx, ./paypal-section.tsx).
-		payments: either(
-			configured('STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY'),
-			configured('PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET')
-		),
+		// between the two is drawn and acted on (./stripe-section.tsx, ./paypal-section.tsx).
+		payments: either(configured(...CHARGE_PAIRS.stripe), configured(...CHARGE_PAIRS.paypal)),
 		// `SMTP_PORT` is deliberately not here. 465 is the only port the deployment dials and an
 		// absent one means 465, so there is nothing an operator sets — the fold states the value
 		// rather than asking for it (./smtp-fold.tsx), and a row waiting on the name would report a

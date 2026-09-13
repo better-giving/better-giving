@@ -11,7 +11,7 @@ import type { StatedForm } from './use-console-form';
 //
 // **no shape is read off either key, here or anywhere on this surface.** whether a value is a key
 // Stripe takes is Stripe's to answer: the press hands the pair over, the chain's first call asks,
-// and the answer comes back onto the boxes as one sentence about the pair (./payments-fold.tsx).
+// and the answer comes back onto the boxes as one sentence about the pair (./stripe-section.tsx).
 // what this module refuses is only a box standing empty that the press cannot go without, which is
 // the one thing a press can be turned down for before anything is sent.
 //
@@ -123,7 +123,7 @@ const edit = (name: StripeKeyName, act: StripeKeyAct): StripeKeyEdit => ({ name,
  * from its seed, so the press is armed and {@link stripeGap} is what turns it down.
  *
  * whether what was typed is a Stripe key at all is read nowhere on this surface: it is Stripe's
- * answer to the chain's first call, carried back onto the boxes by ./payments-fold.tsx.
+ * answer to the chain's first call, carried back onto the boxes by ./stripe-section.tsx.
  */
 function boxAct(value: string, seed: string, held: boolean): StripeKeyAct | null {
 	if (value === seed) return null;
@@ -253,7 +253,7 @@ export const KEY_BLANK = 'required';
  *
  * **it names the box the press is turned down at ({@link stripeGap}) and nothing else.** no
  * shape is read off a key: whether a value is one Stripe takes is Stripe's answer, made by the
- * chain's first call and carried back onto the boxes by ./payments-fold.tsx, and the binary's door
+ * chain's first call and carried back onto the boxes by ./stripe-section.tsx, and the binary's door
  * refuses only a slot holding nothing or a padded value (`asking` in
  * `packages/console/internal/server/stripe.go`). a sentence about a shape here would be this
  * console guessing at what only Stripe knows.

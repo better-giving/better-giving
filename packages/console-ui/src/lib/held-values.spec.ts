@@ -19,7 +19,7 @@ import {
 //
 // it is asserted here rather than seen on the page because this package has no DOM pool
 // (../../vite.config.ts is `node`). what each fold hands this is its own group, so the property
-// below is the one the blocks are drawn off — ./payments-fold.tsx reads the same property over the
+// below is the one the blocks are drawn off — ./stripe-section.tsx reads the same property over the
 // three names its press writes, since the publishable key it stores is in no group.
 //
 // **the spam group is named here and is drawn by no fold**, which ../every-group-drawn.spec.ts

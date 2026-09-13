@@ -50,7 +50,7 @@ type Press = { readonly where: string; readonly pattern: RegExp };
 
 const PRESSES: readonly Press[] = [
 	// the donation processor's save, whose word is a prop on the shared press.
-	{ where: 'lib/payments-fold.tsx', pattern: /<SaveButton\s[^<]*?\blabel="([^"]+)"/ }
+	{ where: 'lib/stripe-section.tsx', pattern: /<SaveButton\s[^<]*?\blabel="([^"]+)"/ }
 ];
 
 /** one drawn press: the word on it, and the line it is drawn at so a failure names where to go. */
