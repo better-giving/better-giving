@@ -118,12 +118,16 @@ func errandRoutes(routes *http.ServeMux, held func() (cf.Get, cf.Post)) {
 		answer(w, http.StatusOK, deployment.ReadRecurring(r.Context(), get))
 	})
 
-	// asks the deployment to put what a repeating gift is charged against on that account.
+	// asks the deployment to put what a repeating gift is charged against on every account it holds
+	// the credentials for.
 	//
-	// It carries no body: what the account holds is found by an id the deployment derives.
+	// It names none of them and carries no body at all: what an account holds is found by an id the
+	// deployment derives, and the operator's own press is about every account that deployment can
+	// reach. What names one is the Stripe run's own step, which presses seconds after it stored that
+	// account's key (internal/stripe/setup.go).
 	routes.HandleFunc("POST /api/deployment/recurring", func(w http.ResponseWriter, r *http.Request) {
 		_, post := held()
-		answer(w, http.StatusOK, deployment.SetUpRecurring(r.Context(), post))
+		answer(w, http.StatusOK, deployment.SetUpRecurring(r.Context(), post, ""))
 	})
 
 	// asks the deployment to register the hostnames a donor is drawn wallet buttons on.

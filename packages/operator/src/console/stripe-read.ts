@@ -1,10 +1,12 @@
-// why a read the deployment makes against its own Stripe account could not be made — named once for
-// both of the readings that carry one, ./payments.ts's rails and ./recurring.ts's standing.
+// why a read the deployment makes against its own Stripe account could not be made — named once,
+// for the one answer that carries it: the account read that opens the wallet-hostname press
+// (`WalletLevellingReport` in ./payments.ts).
 //
-// it is one union rather than one per contract because it is one fact: both reads go through the
-// same port with the same key, so the answer to "was anything asked at all" is the same answer for
-// both, and a console drawing them together has one decision to make rather than two that can
-// disagree.
+// **every reading beside it carries no reason, and that is the shape rather than an omission.** a
+// reading exists only under a processor the deployment holds the credentials for, so "nothing was
+// asked because no key is set" is a processor reported as unconfigured or left out of the report
+// altogether — which a console reads before it draws a row. this one is a press's own answer, taken
+// whatever the deployment holds, so it has nowhere else to say it.
 //
 // **it exists so that a console never has to read the sentence to find out which case it is in.**
 // the sentence beside it is prose written for an operator and is free to change wording; a console
@@ -15,7 +17,7 @@
 // decides it beside the variable a Stripe call cannot be made without
 // (`stripeUnreadableReason` in `packages/app/src/lib/server/payments/factory.ts`), so that "no key"
 // here and the refusal the port answers with can never mean different deployments. every other
-// reader gets the union out of the reading that embeds it.
+// reader gets the union out of the answer that embeds it.
 
 /**
  * why a reading of this deployment's Stripe account could not be made, as a closed set the console

@@ -142,8 +142,8 @@ export type RailEvidence = (typeof RAIL_EVIDENCE)[number];
  * nothing about the account. no rail is reported on that arm: a rail drawn as blocked would be a
  * statement about an answer nobody was given.
  *
- * it carries no reason beside `detail`, unlike the readings on the console's other two addresses.
- * a reading only exists under a processor this deployment is configured for
+ * it carries no reason beside `detail`, which every reading on this surface does without: a
+ * reading only exists under a processor this deployment is configured for
  * ({@link ProcessorPayments}), so the one thing a reason could say here — that nothing was asked
  * because no credential is set — is already the arm above this one, where a console reads it before
  * it draws a rail at all.

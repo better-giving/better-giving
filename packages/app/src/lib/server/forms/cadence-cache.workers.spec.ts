@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { PaymentProvider, PaymentResult, RecurringGiftStanding } from '../payments/provider';
-import { soleProcessor } from '../payments/processors.testing';
+import type {
+	PaymentProvider,
+	PaymentResult,
+	ProcessorName,
+	RecurringGiftStanding
+} from '../payments/provider';
+import { processorsOf, soleProcessor } from '../payments/processors.testing';
 import { cachedCadences } from './cadence-cache';
 
 // the edge cache in front of the repeating-gifts read, against workerd's own `caches`.
@@ -19,7 +24,10 @@ import { cachedCadences } from './cadence-cache';
  * not called — and `prepareRecurringGifts` throws, which pins that no path through here provisions
  * an operator's account.
  */
-function countingPort(read: PaymentResult<RecurringGiftStanding>): {
+function countingPort(
+	read: PaymentResult<RecurringGiftStanding>,
+	processor: ProcessorName = 'stripe'
+): {
 	provider: PaymentProvider;
 	reads: () => number;
 } {
@@ -30,7 +38,7 @@ function countingPort(read: PaymentResult<RecurringGiftStanding>): {
 	return {
 		reads: () => reads,
 		provider: {
-			processor: 'stripe',
+			processor,
 			async readRecurringGiftProvision() {
 				reads += 1;
 				return read;
@@ -146,6 +154,68 @@ describe('cachedCadences', () => {
 			'yearly'
 		]);
 		expect(reads()).toBe(1);
+	});
+
+	/**
+	 * the same cache on a deployment holding PayPal and no Stripe.
+	 *
+	 * the standing is read off whichever accounts the deployment configured, so a PayPal-only fork
+	 * has to reach the same entry on its second boot that a Stripe one does — a key that carried the
+	 * processor would give every form boot on it a miss.
+	 */
+	it('serves a PayPal deployment’s cadences from the cache on the second boot', async () => {
+		const { provider, reads } = countingPort({ ok: true, value: 'ready' }, 'paypal');
+		const origin = 'https://paypal-only-ready.example';
+		const paypal = soleProcessor(provider);
+
+		expect(await cachedCadences(paypal, origin)).toEqual(['one_time', 'monthly', 'yearly']);
+		expect(await cachedCadences(paypal, origin)).toEqual(['one_time', 'monthly', 'yearly']);
+		expect(reads()).toBe(1);
+	});
+
+	it('serves one-time alone where the PayPal account holds nothing', async () => {
+		const { provider } = countingPort({ ok: true, value: 'absent' }, 'paypal');
+		const origin = 'https://paypal-only-absent.example';
+
+		expect(await cachedCadences(soleProcessor(provider), origin)).toEqual(['one_time']);
+	});
+
+	/**
+	 * a deployment holding both, where one account can collect and the other cannot.
+	 *
+	 * what is kept is the narrowed answer rather than the ready processor's own — every configured
+	 * processor has to be able to collect a cadence before a donor is shown it, and this is the entry
+	 * every form boot reads that decision out of.
+	 */
+	it('keeps the narrower answer where one of two accounts cannot collect', async () => {
+		const stripe = countingPort({ ok: true, value: 'ready' });
+		const paypal = countingPort({ ok: true, value: 'absent' }, 'paypal');
+		const origin = 'https://one-of-two-absent.example';
+		const both = processorsOf(stripe.provider, paypal.provider);
+
+		expect(await cachedCadences(both, origin)).toEqual(['one_time']);
+		expect(await cachedCadences(both, origin)).toEqual(['one_time']);
+		expect(stripe.reads()).toBe(1);
+		expect(paypal.reads()).toBe(1);
+	});
+
+	/**
+	 * one processor nobody could reach is enough to keep the whole answer out of the store.
+	 *
+	 * the readable check is over every configured processor rather than over the answer: an entry
+	 * kept because Stripe replied would be minutes of a form that has stopped offering Monthly
+	 * because PayPal did not, with nothing on either side able to clear it early.
+	 */
+	it('stores nothing when one of two accounts could not be read', async () => {
+		const stripe = countingPort({ ok: true, value: 'ready' });
+		const paypal = countingPort(REFUSAL, 'paypal');
+		const origin = 'https://one-of-two-unreadable.example';
+		const both = processorsOf(stripe.provider, paypal.provider);
+
+		expect(await cachedCadences(both, origin)).toEqual(['one_time']);
+		expect(await cachedCadences(both, origin)).toEqual(['one_time']);
+		expect(stripe.reads()).toBe(2);
+		expect(paypal.reads()).toBe(2);
 	});
 
 	/**

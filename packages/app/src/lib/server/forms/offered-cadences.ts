@@ -10,11 +10,11 @@ import {
 // how often a gift may repeat on this deployment, which is a fact about the processor's account
 // and about no form.
 //
-// no column holds it and no screen sets it. what decides it is whether this deployment's own Stripe
-// account holds a usable product for repeating gifts — the Set up recurring gifts button on
-// the console is the one control there is — so every form this deployment serves offers the
-// same cadences, read from the same place. the same move ../../forms/offered-rails.ts made for the
-// rails, and its header is the reasoning this extends.
+// no column holds it and no screen sets it. what decides it is whether every processor this
+// deployment configured holds, on its own account, what a repeating gift is charged against — so
+// every form this deployment serves offers the same cadences, read from the same place. the same
+// move ../../forms/offered-rails.ts made for the rails, and its header is the reasoning this
+// extends.
 //
 // it lives under `$lib/server/**` rather than beside that file because the answer comes off the
 // payment port, which is server-only. what a screen states is carried to it as a prop by whichever
@@ -96,7 +96,7 @@ function cadencesOf(provision: RecurringProvision): readonly Frequency[] {
  *
  * it goes through the read arm and never `prepareRecurringGifts`, which is find-or-create: this
  * runs on a `load` and on the config every embedded form boots against, so the write arm here would
- * put a product on an operator's Stripe account as a side effect of a donor opening somebody else's
+ * put a product on an operator's account as a side effect of a donor opening somebody else's
  * website. the button on the console is where that write belongs.
  */
 export async function readOfferedCadences(processors: Processors): Promise<readonly Frequency[]> {

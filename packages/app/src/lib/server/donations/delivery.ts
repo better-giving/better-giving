@@ -2,7 +2,7 @@ import { adminAlert } from '@better-giving/emails';
 import { renderEmail } from '@better-giving/emails/render';
 import type { Db } from '../db/client';
 import type { EmailProvider } from '../email/provider';
-import type { PaymentProvider } from '../payments/provider';
+import { PROCESSOR_LABELS, type PaymentProvider } from '../payments/provider';
 import { readOrgProfile } from '../org/queries';
 
 // what one verified delivery may answer with, and the one way this app tells an operator about a
@@ -96,6 +96,20 @@ export type SettleDeps = {
 	/** the mail transport. its failures are reported and never raised — see ./settle.ts's header. */
 	readonly email: EmailProvider;
 };
+
+/**
+ * what an operator-facing sentence calls the processor that delivered this.
+ *
+ * off the provider that answered rather than off anything on the row or in the delivery, because it
+ * is the same fact the money path keys its lookups on — `PaymentProvider.processor` in
+ * ../payments/provider.ts — so a sentence and the row it is about cannot name different processors.
+ * every dashboard ./settle.ts and ./collect.ts send somebody to is named this way and none is
+ * spelled in place: one literal is all it takes to send an operator to the wrong company's
+ * dashboard for a payment it does not hold.
+ */
+export function processorLabel(deps: SettleDeps): string {
+	return PROCESSOR_LABELS[deps.provider.processor];
+}
 
 /**
  * one operational alert, to the address the console names.

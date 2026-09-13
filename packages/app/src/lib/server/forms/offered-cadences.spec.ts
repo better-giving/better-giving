@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { FREQUENCIES } from '@better-giving/form/v1';
-import type { PaymentProvider, PaymentResult, RecurringGiftStanding } from '../payments/provider';
-import { soleProcessor } from '../payments/processors.testing';
+import type {
+	PaymentProvider,
+	PaymentResult,
+	ProcessorName,
+	RecurringGiftStanding
+} from '../payments/provider';
+import { processorsOf, soleProcessor } from '../payments/processors.testing';
 import { offeredCadences, readOfferedCadences } from './offered-cadences';
 
 // how often a gift may repeat, away from anything that serves it.
@@ -18,12 +23,15 @@ import { offeredCadences, readOfferedCadences } from './offered-cadences';
  * module rests on: it is find-or-create, so a read that reached it would put a product on an
  * operator's account as a side effect of a donor loading a form.
  */
-function port(read: PaymentResult<RecurringGiftStanding>): PaymentProvider {
+function port(
+	read: PaymentResult<RecurringGiftStanding>,
+	processor: ProcessorName = 'stripe'
+): PaymentProvider {
 	const unused = (name: string) => () => {
 		throw new Error(`${name} is not part of reading how often a gift may repeat`);
 	};
 	return {
-		processor: 'stripe',
+		processor,
 		async readRecurringGiftProvision() {
 			return read;
 		},
@@ -138,5 +146,50 @@ describe('readOfferedCadences', () => {
 
 	it('offers one-time alone where the port refused', async () => {
 		expect(await readOfferedCadences(soleProcessor(port(REFUSAL)))).toEqual(['one_time']);
+	});
+
+	/**
+	 * the same read on a deployment holding PayPal and no Stripe, which is a whole fork of this
+	 * project rather than a variant of one.
+	 *
+	 * asserted through `readOfferedCadences` rather than through the composition above, because what
+	 * these cover is the part no value case can: the read maps over whichever processors the
+	 * deployment configured and asks each one's own adapter, so a PayPal-only deployment's answer
+	 * comes off PayPal's account and nothing else.
+	 */
+	it('offers every cadence on a PayPal deployment whose account holds a usable product', async () => {
+		const paypal = soleProcessor(port({ ok: true, value: 'ready' }, 'paypal'));
+
+		expect(await readOfferedCadences(paypal)).toEqual([...FREQUENCIES]);
+	});
+
+	it('offers one-time alone on a PayPal deployment whose account holds nothing', async () => {
+		const paypal = soleProcessor(port({ ok: true, value: 'absent' }, 'paypal'));
+
+		expect(await readOfferedCadences(paypal)).toEqual(['one_time']);
+	});
+
+	/**
+	 * a deployment holding both, where one account can collect and the other cannot.
+	 *
+	 * the intersection, read end to end: a donor picks a cadence before a rail, so a cadence one of
+	 * the two cannot collect is one some donors would pick and none of them could pay.
+	 */
+	it('offers one-time alone where one of two configured accounts cannot collect', async () => {
+		const both = processorsOf(
+			port({ ok: true, value: 'ready' }),
+			port({ ok: true, value: 'absent' }, 'paypal')
+		);
+
+		expect(await readOfferedCadences(both)).toEqual(['one_time']);
+	});
+
+	it('offers every cadence where both configured accounts can collect', async () => {
+		const both = processorsOf(
+			port({ ok: true, value: 'ready' }),
+			port({ ok: true, value: 'ready' }, 'paypal')
+		);
+
+		expect(await readOfferedCadences(both)).toEqual([...FREQUENCIES]);
 	});
 });

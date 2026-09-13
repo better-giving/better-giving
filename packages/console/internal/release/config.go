@@ -206,6 +206,9 @@ var (
 	RecurringStandings = []string{"ready", "absent", "archived"}
 	// RecurringSetupOutcomes is what one press to provision it did.
 	RecurringSetupOutcomes = []string{"set_up", "already_set_up", "failed"}
+	// RecurringSetupReasons is why one account's press did not land: a credential the deployment is
+	// not serving yet, or the processor refusing the call it was made with.
+	RecurringSetupReasons = []string{"no_key", "failed"}
 	// PaymentProcessors is every processor a deployment can be set up to charge on, which the
 	// payments reading carries one entry per whether or not the deployment holds its credentials.
 	PaymentProcessors = []string{"stripe", "paypal"}
@@ -234,6 +237,14 @@ var (
 	// WalletHostStandings is where one hostname stands for wallets on that account.
 	WalletHostStandings = []string{"drawing", "wallet_inactive", "switched_off", "unregistered"}
 )
+
+// StripeProcessor is what the processor list above calls the account this binary sets up, and is
+// what the run's own press names when it asks a deployment about that account alone.
+//
+// Held to that list by ./config_test.go rather than spelled wherever it is needed: a processor
+// renamed on the wire fails `go test` here rather than shipping a run that presses about an account
+// no deployment answers to, and is refused for a name no processor answers to.
+const StripeProcessor = "stripe"
 
 // what the deployment's webhook endpoint is: the path it answers on, the version its deliveries are
 // serialised in, and everything it subscribes to.

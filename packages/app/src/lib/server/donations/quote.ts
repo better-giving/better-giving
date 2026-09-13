@@ -1,6 +1,6 @@
 import { uuidv7 } from 'uuidv7';
 import { estimateFee } from '@better-giving/form/fee';
-import type { ApiErrorCode, Quote } from '@better-giving/form/v1';
+import type { ApiErrorCode, Frequency, Quote } from '@better-giving/form/v1';
 import type { TurnstileCheck, TurnstileResult } from '../api/turnstile';
 import type { Db } from '../db/client';
 import type { FormRecord } from '../forms/form-input';
@@ -9,14 +9,13 @@ import { readPublishedConfig } from '../forms/published-config';
 import { cachedRails } from '../forms/rail-cache';
 import { processorSetupFix, type Processors } from '../payments/factory';
 import {
-	CONTACT_METADATA_KEY,
+	commitmentMetadata,
 	DONATION_METADATA_KEY,
 	FEE_COVERED_METADATA_KEY,
 	FEE_RAIL_METADATA_KEY,
-	FORM_METADATA_KEY,
 	GIFT_MINOR_METADATA_KEY,
-	INTERVAL_METADATA_KEY,
 	processorOf,
+	PROCESSOR_LABELS,
 	type QuotedRail,
 	type RecurringInterval
 } from '../payments/provider';
@@ -64,10 +63,10 @@ import { recordAuthorizedGift, recordDonation } from './record';
 // both branches mint at the processor and then write the gift, and both record it before anything
 // has been collected: an unfinished gift is a gift the organisation can see and contact, whichever
 // cadence the donor picked. what separates them is one step in front. a repeating gift commits the
-// donor first, and the reason is `CONTACT_METADATA_KEY` (../payments/provider.ts): a commitment
-// carries that id to the processor and every charge it ever collects is attributed by it, so a
-// commitment created before the row it names is money collecting against a donor the webhook can
-// never find. a single gift's intent needs no such row in front of it.
+// donor first, because the gift row it writes afterwards names that donor and `donation.contact_id`
+// is a foreign key — and that row is the whole of what every later charge is attributed through
+// (`commitmentMetadata` in ../payments/provider.ts). a single gift's intent needs no such row in
+// front of it.
 //
 // what neither branch writes is the ledger and the `recurring_plan` row. no money has moved, so
 // nothing is in the books (./record.ts), and a commitment exists from its first charge that settles
@@ -94,24 +93,18 @@ export const QUOTE_REFUSALS = [
 	/** the posted body. see ./quote-input.ts. */
 	'invalid_request',
 	/**
-	 * a repeating gift this path could not carry out — and nothing here produces it.
+	 * a repeating gift the processor would not commit to, on a cadence this deployment offered.
 	 *
-	 * it is kept, and keeping it is the rule rather than an oversight. this array is the wire
-	 * vocabulary of a refusal, `v1` is add-never-rename (packages/form/src/v1.ts), and a member removed from
-	 * a vocabulary is a breaking change where a member with no producer is nothing at all. an
-	 * integrator holding a `switch` over these keeps a branch that no longer runs; delete it and they
-	 * hold a `switch` that no longer compiles.
+	 * `offeredCadences` in ../forms/offered-cadences.ts narrows the served list to what every
+	 * configured processor's account can collect, so the ordinary donor never picks a cadence that
+	 * reaches this. what does reach it is a page served while the account still held what a
+	 * repeating gift is charged against, posted after it stopped — ../forms/cadence-cache.ts keeps
+	 * that answer at the edge for minutes, and the donation path deliberately does not gate on the
+	 * capability a second time (CLAUDE.md, *Bans* → **Repeating gifts**), so the submission is
+	 * carried to the processor and refused there rather than turned away here.
 	 *
-	 * what would produce it is a path that mints a single payment through `createIntent` with no way
-	 * to collect a second time, while the form offers whatever cadences this deployment's processor
-	 * account can collect (`offeredCadences` in ../forms/offered-cadences.ts) — a donor picking
-	 * monthly and being refused. `mintQuote` creates a commitment through `createRecurringGift`
-	 * instead, and a cadence the account cannot collect is never offered in the first place, so
-	 * there is nothing left for this to refuse.
-	 *
-	 * the endpoint still answers it 503 (src/routes/api.v1.forms.$id.donations.ts). that
-	 * mapping is what makes the member re-usable rather than merely tolerated: a deployment that one
-	 * day cannot honour a cadence it offered has a code already minted and already answered.
+	 * answered 503 rather than 4xx (src/routes/api.v1.forms.$id.donations.ts): nothing the donor
+	 * sent is wrong, and a single gift on the same rail still goes through.
 	 */
 	'frequency_unsupported',
 	/** the token was not one Cloudflare would honour. a fresh challenge is the answer. */
@@ -359,7 +352,13 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 		}
 	});
 	if (!intent.ok) {
-		return paymentRefusal(form, submission.method, intent.reason, intent.detail);
+		return paymentRefusal(
+			form,
+			submission.method,
+			submission.frequency,
+			intent.reason,
+			intent.detail
+		);
 	}
 
 	const quote: Quote = {
@@ -430,22 +429,23 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
  * same arithmetic the single branch charges once. `RecurringGiftRequest` states the stake — a wrong
  * amount here is not one charge but every charge.
  *
- * the metadata is four pointers and two figures, every one of them this app's own: no name a donor
- * typed is on it. a repeat charge carries none of its own, so this is the whole of what ties charge
- * fifty back to the donor, the fund and the cadence it belongs to; ./collect.ts refuses a
- * collection it cannot read the donor and the form from, and treats a blank one as absent.
+ * the metadata is one pointer, a cadence and two figures, every one of them this app's own: no name
+ * a donor typed is on it, and the map is assembled by `commitmentMetadata` in ../payments/provider.ts
+ * rather than here, because what fits the field is that file's argument to make and every rail sends
+ * the same four.
  *
- * the split is `gift_minor` and `fee_covered`, written here for the same reason the single branch
- * writes them onto its intent and spent for one more: a collection reads what moved and nothing
- * else, so without them `donation.fee_minor` is zero on every charge under a commitment the donor
- * chose to cover the fee on — the fee is collected every interval and stated on no receipt.
- * `coveredFeeOf` in ./collect.ts is what reads them back.
+ * `donation_id` is the pointer, and the one this branch could not have carried before it wrote a
+ * gift. it names the row below, and the first charge that settles claims that row instead of opening
+ * a second one for money the donor is already recorded as giving — so the donor, the fund, the
+ * dedication, the note and the attributed origin all reach the opening charge and every later one
+ * through that row, without any of them being exported to the processor. ./collect.ts refuses a
+ * collection whose commitment names no gift, and treats a blank pointer as absent.
  *
- * `donation_id` is the fourth pointer and the one this branch could not have carried before it
- * wrote a gift. it names the row below, and the first charge that settles claims that row instead
- * of opening a second one for money the donor is already recorded as giving — so the dedication,
- * the note and the attributed origin all reach the opening charge without any of them being
- * exported to the processor.
+ * the split is `gift_minor` and `fee_covered`, carried for the same reason the single branch writes
+ * them onto its intent and spent for one more: a collection reads what moved and nothing else, so
+ * without them `donation.fee_minor` is zero on every charge under a commitment the donor chose to
+ * cover the fee on — the fee is collected every interval and stated on no receipt. `coveredFeeOf` in
+ * ./collect.ts is what reads them back.
  *
  * the write runs last, exactly as it does on the single branch and for the same reason: the
  * commitment exists at the processor by then, and a gift recorded against a commitment that was
@@ -492,18 +492,18 @@ async function mintCommitment(
 		// choice again every interval rather than once.
 		method: submission.method,
 		idempotencyKey: donationId,
-		metadata: {
-			[CONTACT_METADATA_KEY]: donor.value.contactId,
-			[FORM_METADATA_KEY]: form.id,
-			[INTERVAL_METADATA_KEY]: interval,
-			[DONATION_METADATA_KEY]: donationId,
+		metadata: commitmentMetadata({
+			donationId,
+			interval,
 			// the gift stated rather than the charge, exactly as the single branch states it: the
 			// charge is `amountMinor` above, and the donor's own figure is the difference.
-			[GIFT_MINOR_METADATA_KEY]: String(priced.chargeMinor - priced.feeMinor),
-			[FEE_COVERED_METADATA_KEY]: submission.coversFee ? 'true' : 'false'
-		}
+			giftMinor: priced.chargeMinor - priced.feeMinor,
+			coversFee: submission.coversFee
+		})
 	});
-	if (!gift.ok) return paymentRefusal(form, submission.method, gift.reason, gift.detail);
+	if (!gift.ok) {
+		return paymentRefusal(form, submission.method, interval, gift.reason, gift.detail);
+	}
 
 	const written = await recordAuthorizedGift(deps.db, {
 		donationId,
@@ -678,17 +678,23 @@ function readTurnstileSiteKey(env: unknown): string | undefined {
 /**
  * a `PaymentFailureReason` as one of this path's own.
  *
- * three of the nine are the processor being unable to answer well, and they are the ones a donor
+ * three of the ten are the processor being unable to answer well, and they are the ones a donor
  * acts on by trying again. `not_configured` is a deployment with keys unset, which is the same
  * finding the config ladder already reports under its own code. the rest — a malformed call, a
- * signature, an object that is not there, an adapter that threw — are ours, and a donation form has
- * no screen to render about our defect. `fee_not_ready` is on that list without belonging to it:
- * nothing minting an intent can produce it, since it is a settled charge's fee still being computed
- * and this path settles nothing.
+ * signature, an adapter that threw — are ours, and a donation form has no screen to render about
+ * our defect. `fee_not_ready` is on that list without belonging to it: nothing minting an intent
+ * can produce it, since it is a settled charge's fee still being computed and this path settles
+ * nothing.
+ *
+ * `frequency` is what splits the two remaining ones, and it is why this takes the cadence at all.
+ * on a single gift `unsupported` and `not_found` are ours — an arm no release builds, or an object
+ * `createIntent`'s own parameters named. on a commitment they are the account no longer holding
+ * what a repeating gift is charged against, which is the donor's cached page rather than a bug.
  */
 function paymentRefusal(
 	form: FormRecord,
 	rail: QuotedRail,
+	frequency: Frequency,
 	reason: string,
 	detail: string
 ): QuoteResult {
@@ -710,6 +716,18 @@ function paymentRefusal(
 			// happens to hold: a donor on a cached page may name a rail whose processor was cleared
 			// since, and the pair that is set is not the pair to go and re-check.
 			processorSetupFix([processorOf(rail)])
+		);
+	}
+	if (frequency !== 'one_time' && (reason === 'unsupported' || reason === 'not_found')) {
+		return refuse(
+			form,
+			'frequency_unsupported',
+			`A gift that repeats cannot be collected on ${PROCESSOR_LABELS[processorOf(rail)]} here, ` +
+				`and nothing was charged: ${detail}`,
+			// written for the donor reading it, who has no account to set up and no deployment to
+			// fix. a single gift needs nothing on the processor's account, so it is the one thing
+			// this deployment can always still take.
+			'Nothing was charged and nothing about the request is wrong. Give once instead.'
 		);
 	}
 	return refuse(

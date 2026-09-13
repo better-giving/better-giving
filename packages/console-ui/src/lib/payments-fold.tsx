@@ -37,6 +37,13 @@ import {
 	processorStanding,
 	STANDING
 } from './processor-payments';
+import {
+	accountsOpening,
+	accountsSaid,
+	recurringReading,
+	recurringRows,
+	type RecurringRow
+} from './recurring-rows';
 import type { GroupReport } from './secret-group-form';
 import { PAYMENTS_GROUP, SECRET_GROUPS, MINTED_BY_CONSOLE, isMasked } from './secret-groups';
 import { FREE_INTENT, WithheldValues } from './withheld-values';
@@ -270,19 +277,17 @@ const REREADS: readonly number[] = [1500, 3000, 5000, 8000, 12000];
  * whether both readings came back saying this deployment holds no Stripe key.
  *
  * `null` is the read nobody made — ../routes/_index.tsx asks for neither on a face that draws no
- * fold — and the deployment says it itself in two different shapes, one per address: the payments
- * report answers `unconfigured` for a processor it holds no credentials for
- * (`ProcessorPayments` in ../api/types.ts), and the recurring reading answers `no_key`
- * (`packages/operator/src/console/stripe-read.ts`). those are the whole of what this fold draws
- * nothing for, which is what makes them the thing to wait on: every other answer is one it has a
- * line for.
+ * fold — and the deployment says it itself in the same shape on both addresses: a processor it
+ * holds no credentials for is reported as `unconfigured` and carries no reading
+ * (`ProcessorPayments` in ../api/types.ts), and it carries no standing on the recurring report at
+ * all (./recurring-rows.ts). those are the whole of what this fold draws nothing for, which is what
+ * makes them the thing to wait on: every other answer is one it has a line for.
  */
 const withoutKey = (payments: PaymentsRead | null, gifts: RecurringRead | null): boolean => {
 	const stripe = processorStanding(payments, 'stripe');
-	const standing = gifts?.kind === 'read' ? gifts.reading : null;
 	return (
 		(payments === null || stripe?.state === 'unconfigured') &&
-		(gifts === null || (standing?.state === 'unreadable' && standing.reason === 'no_key'))
+		(gifts === null || recurringReading(gifts, 'stripe') === null)
 	);
 };
 
@@ -327,15 +332,6 @@ const LABEL: Record<string, string> = {
 	STRIPE_WEBHOOK_SECRET: 'Signing secret',
 	STRIPE_PUBLISHABLE_KEY: 'Publishable key'
 };
-
-/**
- * what the repeating-gifts line is called.
- *
- * a cadence rather than a product name: what a fundraiser has to know is that a donor can ask to
- * give again every month or every year, and the single item Stripe collects it against is the
- * mechanism under that.
- */
-const RECURRING_LABEL = 'Monthly and yearly';
 
 const DASHBOARD = 'https://dashboard.stripe.com/apikeys';
 
@@ -1325,17 +1321,24 @@ export function PaymentsFold({
 			if (outcome.setup.kind === 'unanswered') {
 				return noAnswer(outcome.setup.read, 'the repeating-gift item was not set up');
 			}
+			/* a press names one account or none at all — none acts on every account the deployment
+			   holds keys for — and the one this step makes names its own, the account the run has just
+			   stored a key for (`Repeating` in packages/console/internal/stripe/setup.go). so what
+			   could not be put on an account is named off the report rather than spelled here. */
+			const short = outcome.setup.report.processors.filter((one) => one.outcome === 'failed');
+			const said = short.find((one) => one.detail !== null)?.detail ?? null;
 			return (
 				<>
 					<FieldMessage>
-						This deployment could not put it on your Stripe account. The endpoint, both credentials
-						and the publishable key are done, so it serves a donation form and takes one-time gifts.
+						This deployment could not put it on {accountsSaid(short.map((one) => one.label))}. The
+						endpoint, both credentials and the publishable key are done, so it serves a donation
+						form and takes one-time gifts.
 					</FieldMessage>
 					{/* the port's own sentence, drawn rather than printed: it names the offending value and
 					    marks it (`@better-giving/operator/code-spans`). */}
-					{outcome.setup.report.detail === null ? null : (
+					{said === null ? null : (
 						<p className="adm-prose">
-							<MarkedText text={outcome.setup.report.detail} />
+							<MarkedText text={said} />
 						</p>
 					)}
 				</>
@@ -1491,34 +1494,51 @@ export function PaymentsFold({
 	 *
 	 * announced at the control that was pressed — see {@link nowhere} for why the region is written
 	 * here rather than taken from the shared `Field`.
+	 *
+	 * **one press over every account, and the accounts are named rather than collected into a
+	 * number.** the press acts on each of them and one can refuse while another lands, so what an
+	 * operator is owed is which account is which: a sentence saying nothing was changed over a
+	 * press that changed one of the two would be the one thing on this fold that is not true.
 	 */
 	const provisionOutcome = (): ReactNode => {
 		if (provision === null) return null;
 		if (provision.kind === 'unanswered') return noAnswer(provision.read, 'nothing was set up');
 
 		const report = provision.report;
-		if (report.outcome === 'failed') {
+		const failed = report.processors.filter((one) => one.outcome === 'failed');
+		const landed = report.processors.filter((one) => one.outcome !== 'failed');
+
+		if (failed.length > 0) {
+			const detail = failed.find((one) => one.detail !== null)?.detail ?? null;
 			return (
 				<>
 					<FieldMessage>
-						This deployment could not set it up on your Stripe account, and nothing was changed.
+						This deployment could not set it up on {accountsSaid(failed.map((one) => one.label))}
+						{landed.length === 0
+							? ', and nothing was changed.'
+							: `, and ${accountsSaid(landed.map((one) => one.label))} is set up.`}
 					</FieldMessage>
-					{report.detail === null ? null : (
+					{detail === null ? null : (
 						<p className="adm-prose">
-							<MarkedText text={report.detail} />
+							<MarkedText text={detail} />
 						</p>
 					)}
 				</>
 			);
 		}
+
 		// the two successes are drawn apart and both are the same finished state. an operator who
 		// pressed the button and changed nothing is owed that — without it, a second press reads as a
 		// second setup.
-		return (
-			<Banner tone="done" word={report.outcome === 'set_up' ? 'Set up' : 'Already set up'}>
-				{report.outcome === 'set_up'
-					? 'Your Stripe account can now collect gifts that repeat.'
-					: 'Your Stripe account already had this, so nothing was changed.'}
+		const created = report.processors.filter((one) => one.outcome === 'set_up');
+		return created.length > 0 ? (
+			<Banner tone="done" word="Set up">
+				{accountsOpening(created.map((one) => one.label))} can now collect gifts that repeat.
+			</Banner>
+		) : (
+			<Banner tone="done" word="Already set up">
+				{accountsOpening(report.processors.map((one) => one.label))} already had this, so nothing
+				was changed.
 			</Banner>
 		);
 	};
@@ -1533,10 +1553,16 @@ export function PaymentsFold({
 	 *
 	 * **and nothing at all where nothing was asked.** a deployment holding no Stripe key is what the
 	 * two empty boxes below this already say, and a row here would restate them and then send an
-	 * operator to a terminal for a key this fold has a box for. the payments report says so by
-	 * carrying no reading at all for such a processor (`ProcessorPayments` in ../api/types.ts) and the
-	 * recurring reading says it as `no_key` — each a fact rather than a sentence, which is what
-	 * decides it.
+	 * operator to a terminal for a key this fold has a box for. both readings say so by carrying
+	 * nothing for such a processor — no reading on the payments report (`ProcessorPayments` in
+	 * ../api/types.ts) and no standing on the recurring one — each a fact rather than a sentence,
+	 * which is what decides it.
+	 *
+	 * **it is the Stripe account's sentence and says nothing about the other.** an account whose
+	 * recurring read failed and whose rails read landed is drawn nowhere on this half, which is the
+	 * PayPal section's own to say (./paypal-section.tsx) — and it is left there rather than widened
+	 * here, because one sentence over two accounts would name a key an operator would go and check
+	 * for nothing.
 	 *
 	 * **it is drawn inside the awaited block and never outside it.** both readings are awaited (the
 	 * `Suspense` this stands in), and a sentence about them drawn outside that would hold every box
@@ -1550,14 +1576,14 @@ export function PaymentsFold({
 		const stripe = configuredStanding(processorStanding(payments, 'stripe'));
 		const railsRead = stripe?.rails ?? null;
 		const walletsRead = stripe?.wallets ?? null;
-		const giftsRead = gifts?.kind === 'read' ? gifts.reading : null;
+		const giftsRead = recurringReading(gifts, 'stripe');
 
 		const unread: { says: string; detail: string }[] = [];
 		if (railsRead?.state === 'unreadable')
 			unread.push({ says: 'which ways of paying it can take', detail: railsRead.detail });
 		if (walletsRead?.state === 'unreadable')
 			unread.push({ says: 'which sites draw wallet buttons', detail: walletsRead.detail });
-		if (giftsRead?.state === 'unreadable' && giftsRead.reason === 'failed')
+		if (giftsRead?.state === 'unreadable')
 			unread.push({ says: 'whether repeating gifts are set up', detail: giftsRead.detail });
 
 		const first = unread[0];
@@ -1899,10 +1925,16 @@ export function PaymentsFold({
 	};
 
 	/**
-	 * where the account stands on gifts that repeat, and the one press that changes it.
+	 * where each account stands on gifts that repeat, and the one press that changes it.
 	 *
 	 * one arm per state and no catch-all, so a state added to the reading draws nothing here rather
 	 * than the wrong sentence with confidence.
+	 *
+	 * **one line per account this deployment can reach, and the press stands on one of them.** it
+	 * acts on every account that needs it, because a donor is offered a gift that repeats only where
+	 * every configured processor can collect one — so a second control would be a second way to do
+	 * the one thing, and a choice between them would be a state that helps nobody. which line it
+	 * stands on is ./recurring-rows.ts.
 	 *
 	 * **not set up is not a fault and is never drawn as one.** a deployment that only ever wants
 	 * one-time gifts is complete, so the line takes the note tone rather than attention — the
@@ -1913,49 +1945,61 @@ export function PaymentsFold({
 	 * another one above.
 	 */
 	const repeating = (read: RecurringRead): ReactNode => {
-		const reading = read.kind === 'read' ? read.reading : null;
-		if (reading === null || reading.state === 'unreadable') return null;
+		const rows = recurringRows(read);
+		if (rows.length === 0) return null;
+		const wanting = rows.filter((row) => row.standing === 'absent').map((row) => row.account);
+		return rows.map((row) => repeatingLine(row, wanting));
+	};
 
+	/** one account's line, and the press where it stands. */
+	const repeatingLine = (row: RecurringRow, wanting: readonly string[]): ReactNode => {
 		/* in a fundraiser's words — what has to be known is that a donor can ask to give again every
-		   month, and that Stripe is what collects it. */
-		const explains =
-			'Stripe collects repeating gifts against a single item on your account, and it has to exist before the first one can be collected.';
+		   month, and which account collects it. */
+		const explains = `${row.account} collects repeating gifts against a single item on your account, and it has to exist before the first one can be collected.`;
 
-		if (reading.state === 'absent') {
+		if (row.standing === 'absent') {
 			return (
 				<StatusLine
+					key={row.processor}
 					labelAs="span"
-					label={RECURRING_LABEL}
+					label={row.label}
 					word="Not set up"
 					tone="note"
-					note={`${explains} Setting it up adds that one item to your Stripe account, and this deployment asks Stripe with the key it already holds. Nothing is typed here.`}
+					note={
+						row.press
+							? `${explains} Setting it up adds that one item to ${accountsSaid(wanting)}, and this deployment asks with the ${wanting.length > 1 ? 'keys' : 'key'} it already holds. Nothing is typed here.`
+							: explains
+					}
 				>
-					<div className="adm-status__attach adm-actions">
-						<Button
-							type="submit"
-							name="intent"
-							value={RECURRING_INTENT}
-							variant="primary"
-							disabled={busy || working}
-							aria-busy={pending === RECURRING_INTENT}
-						>
-							Set up recurring gifts
-						</Button>
-					</div>
+					{row.press ? (
+						<div className="adm-status__attach adm-actions">
+							<Button
+								type="submit"
+								name="intent"
+								value={RECURRING_INTENT}
+								variant="primary"
+								disabled={busy || working}
+								aria-busy={pending === RECURRING_INTENT}
+							>
+								Set up recurring gifts
+							</Button>
+						</div>
+					) : null}
 				</StatusLine>
 			);
 		}
-		if (reading.state === 'archived') {
+		if (row.standing === 'archived') {
 			// archived is neither set up nor missing, and the difference is what an operator has to be
 			// told: the press would be refused, and the way out is on a screen this product does not
 			// have.
 			return (
 				<StatusLine
+					key={row.processor}
 					labelAs="span"
-					label={RECURRING_LABEL}
+					label={row.label}
 					word="Archived"
 					tone="attention"
-					note={`${explains} Yours is archived, so nothing can be collected against it. Unarchive it in the Stripe dashboard, under Product catalogue.`}
+					note={`${explains} Yours is archived, so nothing can be collected against it. Unarchive it in the ${row.account} dashboard, under Product catalogue.`}
 				/>
 			);
 		}
@@ -1963,7 +2007,14 @@ export function PaymentsFold({
 		// account can take it. the word is stated and drawn nowhere — it is the mark's own name, so
 		// a state a reader could only get from a shape still reaches somebody being read to.
 		return (
-			<StatusLine labelAs="span" label={RECURRING_LABEL} word="Ready" wordOnMark tone="done" />
+			<StatusLine
+				key={row.processor}
+				labelAs="span"
+				label={row.label}
+				word="Ready"
+				wordOnMark
+				tone="done"
+			/>
 		);
 	};
 
@@ -1980,17 +2031,23 @@ export function PaymentsFold({
 	 * ask to give again.
 	 *
 	 * **it draws nothing at all, form included, where none of the three has anything to say.** that
-	 * is every deployment holding no Stripe key, which is every deployment being set up for the
-	 * first time — and an empty band standing over the boxes costs the fold a step of the section's
-	 * own and a boundary above the block below it, which is a heading given a rule that says a
-	 * subject ended when nothing came before it. so the form is inside this rather than around it:
-	 * a guard outside the awaited block cannot read what the readings resolved to.
+	 * is every deployment holding no processor credentials at all, which is every deployment being
+	 * set up for the first time — and an empty band standing over the boxes costs the fold a step of
+	 * the section's own and a boundary above the block below it, which is a heading given a rule that
+	 * says a subject ended when nothing came before it. so the form is inside this rather than around
+	 * it: a guard outside the awaited block cannot read what the readings resolved to.
+	 *
+	 * **the repeating-gift band is the one thing up here that is not the Stripe account's.** it draws
+	 * a line per account the deployment can reach, because the one press acts on all of them — so on
+	 * a deployment set up on PayPal alone it is the whole of what stands over the Stripe boxes, which
+	 * is the right place for it: what an operator is reading is whether a donor may ask to give
+	 * again, and that is one question however many accounts answer it.
 	 *
 	 * **the form holds two presses and both stand inside a block this function draws.** Register
 	 * sits in a wallet's own panel ({@link hostPanel}) — outside the form in the tree, and named back
 	 * on to it by {@link READINGS_FORM} — and the one that provisions what a repeating gift is
-	 * collected against stands in {@link repeating}'s `absent` arm. so a form with nothing drawn
-	 * provably holds neither.
+	 * collected against stands on the first line {@link repeating} draws with nothing on the
+	 * account. so a form with nothing drawn provably holds neither.
 	 */
 	const readings = (payments: PaymentsRead | null, gifts: RecurringRead | null): ReactNode => {
 		// what the block below has in it, decided before it is drawn: a read that could not be made
@@ -2004,8 +2061,8 @@ export function PaymentsFold({
 		const unread = unreadable(payments, gifts);
 		/* the one processor this half of the fold is about, taken out of the report that answers for
 		   both of them (./processor-payments.ts). a deployment holding no Stripe key is `unconfigured`
-		   and carries no reading at all, which is the same nothing this block drew for `no_key` before
-		   the report answered per processor. */
+		   and carries no reading at all, which is the same nothing the recurring report carries for
+		   such a processor. */
 		const stripe = configuredStanding(processorStanding(payments, 'stripe'));
 		/* the two readings the ledger is drawn from, narrowed here rather than inside {@link rails},
 		   because whether each of them landed is what decides where the press's own answer goes: the
@@ -2358,13 +2415,14 @@ export function PaymentsFold({
 			{/* the second processor, standing under the first as a section of its own: two sections in
 			    one panel are divided by the rule packages/operator/src/styles/adm.css draws between them,
 			    which is what says where one account's readings end and the other's begin. it awaits the
-			    same promise, because one read answers for both (./paypal-section.tsx).
+			    same two promises, because one read of each answers for both (./paypal-section.tsx).
 
 			    the values are read again rather than handed the derivation above: it is the same pure
 			    function over the same answer, and the alternative is a prop typed as the read that did
 			    not land, which the guard above has already returned for. */}
 			<PaypalSection
 				payments={payments}
+				recurring={recurring}
 				values={heldValues(values.vars.vars)}
 				secrets={secrets}
 				charity={charity}

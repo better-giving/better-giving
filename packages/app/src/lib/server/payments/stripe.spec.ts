@@ -2640,9 +2640,15 @@ function subscription(overrides: Record<string, unknown> = {}) {
 		status: 'incomplete',
 		start_date: 1_700_000_000,
 		created: 1_700_000_000,
-		// what this app wrote on the commitment when it made it, which is the only thing tying a
-		// collection back to a donor and a fund — see the metadata contract in ./provider.ts.
-		metadata: { contact_id: 'con_1', form_id: 'frm_1', interval: 'monthly' },
+		// the whole of what this app writes on a commitment — the pointer every later collection is
+		// attributed through, the cadence, and the split the donor agreed to. `commitmentMetadata` in
+		// ./provider.ts is what assembles it and argues why it carries nothing else.
+		metadata: {
+			donation_id: '01932f7c',
+			interval: 'monthly',
+			gift_minor: '2500',
+			fee_covered: 'false'
+		},
 		// one item at quantity one, which is what carrying the amount on the price buys — and the
 		// item is where this API version keeps the billing period.
 		items: {
@@ -3281,7 +3287,12 @@ describe('readRecurringGift', () => {
 				interval: 'monthly',
 				// the commitment's own metadata, which is what the first collection opens a
 				// `recurring_plan` row from — a collection's own intent carries none of it.
-				metadata: { contact_id: 'con_1', form_id: 'frm_1', interval: 'monthly' },
+				metadata: {
+					donation_id: '01932f7c',
+					interval: 'monthly',
+					gift_minor: '2500',
+					fee_covered: 'false'
+				},
 				nextChargeAt: new Date(1_772_000_000_000),
 				providerTxnId: 'pi_7',
 				endedAt: null
@@ -3585,7 +3596,12 @@ describe('readRecurringGift', () => {
 				providerCustomerId: 'cus_1',
 				state: 'ended',
 				interval: 'monthly',
-				metadata: { contact_id: 'con_1', form_id: 'frm_1', interval: 'monthly' },
+				metadata: {
+					donation_id: '01932f7c',
+					interval: 'monthly',
+					gift_minor: '2500',
+					fee_covered: 'false'
+				},
 				nextChargeAt: new Date(1_772_000_000_000),
 				providerTxnId: null,
 				endedAt: new Date(1_770_000_500_000)

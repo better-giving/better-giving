@@ -241,7 +241,21 @@ describe('keysStanding', () => {
 				sent: SENT,
 				run: ended({
 					kind: 'unrepeating',
-					setup: { kind: 'reported', report: { outcome: 'failed', detail: null } },
+					setup: {
+						kind: 'reported',
+						report: {
+							outcome: 'failed',
+							processors: [
+								{
+									processor: 'stripe',
+									label: 'Stripe',
+									outcome: 'failed',
+									detail: null,
+									reason: 'failed'
+								}
+							]
+						}
+					},
 					awaitingKey: false
 				}),
 				reread: false
@@ -356,7 +370,21 @@ describe('secretStored', () => {
 			secretStored(
 				ended({
 					kind: 'unrepeating',
-					setup: { kind: 'reported', report: { outcome: 'failed', detail: null } },
+					setup: {
+						kind: 'reported',
+						report: {
+							outcome: 'failed',
+							processors: [
+								{
+									processor: 'stripe',
+									label: 'Stripe',
+									outcome: 'failed',
+									detail: null,
+									reason: 'failed'
+								}
+							]
+						}
+					},
 					awaitingKey: false
 				})
 			)

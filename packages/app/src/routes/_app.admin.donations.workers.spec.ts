@@ -345,8 +345,8 @@ describe('/admin/donations load', () => {
 	});
 
 	it('names a PayPal gift and a Venmo gift apart, on one page', async () => {
-		// the pair this slice exists for: Venmo is a rail PayPal settles, so both rows carry
-		// `provider = 'paypal'` and only `method` tells them apart. a screen reading the provider
+		// the pair the schema's two columns keep apart: Venmo is a rail PayPal settles, so both rows
+		// carry `provider = 'paypal'`, and only `method` tells them apart. a screen reading the provider
 		// would call a Venmo gift PayPal, which is a processor the donor never saw — and both on
 		// one page is what makes that a difference the case can see.
 		const paypal = await gift({

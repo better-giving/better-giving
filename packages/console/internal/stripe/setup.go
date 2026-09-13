@@ -219,7 +219,10 @@ type Effects struct {
 	// Repeating and Covering are the two steps the deployment makes rather than this console, and the
 	// only ones that can be answered by a deployment whose edge has not caught up with the write
 	// below.
-	Repeating func(ctx context.Context) deployment.RecurringSetup
+	//
+	// Repeating takes the account it is about, because the deployment's press may be about one: the
+	// run names its own, and the call site below is where that is said.
+	Repeating func(ctx context.Context, processor string) deployment.RecurringSetup
 	Covering  func(ctx context.Context) deployment.WalletsLevel
 	// Publish writes vars, which is a read of the worker's bindings and one patch back. It is made
 	// twice on the whole errand: the two credentials, and then the publishable key.
@@ -424,7 +427,12 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 	}
 
 	at(Repeating)
-	repeated := effects.Repeating(ctx)
+	// the account this run has just stored a key for, named: which accounts the deployment counts as
+	// configured is read off the values it is serving, and this key is not among them until the edge
+	// catches up — so a press naming none would act on every account but this one and report a run
+	// that never asked about it. named, the answer is about this account alone, so another
+	// processor an operator has never set up cannot end a run that is about this one.
+	repeated := effects.Repeating(ctx, release.StripeProcessor)
 	if repeated.Kind != deployment.RecurringSetupReported ||
 		repeated.Report == nil || repeated.Report.Outcome == "failed" {
 		held := repeated

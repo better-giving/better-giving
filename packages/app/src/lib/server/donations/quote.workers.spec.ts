@@ -204,14 +204,16 @@ function provider(
  * the same scripted port under PayPal's name, answering for PayPal's own two rails.
  *
  * built on the port above rather than written out again: what differs between the two processors on
- * this path is which rails the account answers for, which one repeating gifts it can collect, and
- * the name a `payment` row is written under — everything else a quote asks of a port is the same
- * call. the answers below mirror what ../payments/paypal.ts really gives: both rails offered
- * (PayPal publishes no per-rail approval and no switchboard to read one off), and no repeating gift
- * at all, so this deployment offers one-time alone.
+ * this path is which rails the account answers for and the name a `payment` row is written under —
+ * everything else a quote asks of a port is the same call. the answers below mirror what
+ * ../payments/paypal.ts really gives: both rails offered, because PayPal publishes no per-rail
+ * approval and no switchboard to read one off.
  */
-function paypalProvider(answers: readonly PaymentResult<Intent>[] = []) {
-	const scripted = provider(answers);
+function paypalProvider(
+	answers: readonly PaymentResult<Intent>[] = [],
+	commitments: readonly PaymentResult<RecurringGift>[] = []
+) {
+	const scripted = provider(answers, commitments);
 	const both = { paypal: 'active', venmo: 'active' } as const;
 	const port: PaymentProvider = {
 		...scripted.port,
@@ -227,16 +229,9 @@ function paypalProvider(answers: readonly PaymentResult<Intent>[] = []) {
 					venmo: { offered: true, switchedOn: true }
 				}
 			} as const;
-		},
-		async readRecurringGiftProvision() {
-			return {
-				ok: false,
-				reason: 'unsupported',
-				detail: 'this release collects no repeating gift through PayPal.'
-			} as const;
 		}
 	};
-	return { port, requests: scripted.requests };
+	return { port, requests: scripted.requests, gifts: scripted.gifts };
 }
 
 /** a challenge check that answers as scripted, and records what it was handed. */
@@ -629,18 +624,19 @@ describe('mintQuote() — a repeating gift', () => {
 	});
 
 	it.each(['monthly', 'yearly'] as const)(
-		'commits the donor before it creates the %s commitment',
+		'files the %s commitment’s gift under the donor it committed first',
 		async (frequency) => {
 			const port = provider();
 
 			await mint(deps({ provider: port.port }), { frequency });
 
-			// `recurring_plan.contact_id` is a foreign key with no existence check in front of it, and
-			// it is the pointer every later charge is attributed by — so the row is here before the
-			// commitment naming it is.
+			// the donor is on no commitment and is reached through the gift it names, so this is the
+			// whole of the chain a collection walks back: `donation_id` on the commitment, the donor
+			// and the form on that row (`attribution` in ./collect.ts).
 			const [donor] = await db.select().from(contact);
-			expect(donor?.id).toBeTypeOf('string');
-			expect(port.gifts[0]?.metadata?.contact_id).toBe(donor?.id);
+			const [gift] = await db.select().from(donation);
+			expect(gift?.contactId).toBe(donor?.id);
+			expect(port.gifts[0]?.metadata?.donation_id).toBe(gift?.id);
 		}
 	);
 
@@ -650,13 +646,11 @@ describe('mintQuote() — a repeating gift', () => {
 		await mint(deps({ provider: port.port }), { frequency: 'monthly' });
 
 		// a repeat charge carries none of its own, so what the commitment holds is the only path from
-		// money that moved to the donor it came from. the keys are constants precisely so this and
-		// `attribution` in ./collect.ts cannot disagree about how they are spelled.
-		const [donor] = await db.select().from(contact);
+		// money that moved to the gift it belongs to. exactly these four, because PayPal's field holds
+		// 127 characters and a fifth is what stops the rail taking a repeating gift at all
+		// (`commitmentMetadata` in ../payments/provider.ts).
 		const [gift] = await db.select().from(donation);
 		expect(port.gifts[0]?.metadata).toEqual({
-			contact_id: donor?.id,
-			form_id: FORM_ID,
 			interval: 'monthly',
 			gift_minor: '10000',
 			fee_covered: 'false',
@@ -900,6 +894,31 @@ describe('mintQuote() — a repeating gift', () => {
 		// `createIntent` charges once; a repeating gift is a commitment and nothing else.
 		expect(port.requests).toHaveLength(0);
 	});
+
+	/**
+	 * the cadence a deployment stopped being able to collect, met by a donor who was still offered
+	 * it.
+	 *
+	 * reachable without anything going wrong: a page cached while the account held what a repeating
+	 * gift is charged against is served for minutes after it stops holding it
+	 * (`cachedCadences` in ../forms/cadence-cache.ts), and the submission off that page is charged
+	 * rather than refused up front — CLAUDE.md's repeating-gifts rule keeps the donation path from
+	 * gating on the capability. so the processor is the one that says no, and what it says has to
+	 * reach the donor as what happened.
+	 */
+	it.each(['unsupported', 'not_found'] as const)(
+		'tells a donor a repeating gift cannot be collected here when the processor answers %s',
+		async (reason) => {
+			const port = provider([], [{ ok: false, reason, detail: `the processor said ${reason}` }]);
+
+			const result = await mint(deps({ provider: port.port }), { frequency: 'monthly' });
+
+			expect(result.ok || result.reason).toBe('frequency_unsupported');
+			// and never as our defect: the catch-all sends a donor to this deployment's logs, which
+			// is an errand they cannot run and a diagnosis that is wrong.
+			expect(result.ok || result.fix).not.toContain('bug in this app');
+		}
+	);
 });
 
 describe('mintQuote() — the challenge', () => {
@@ -1248,6 +1267,51 @@ describe('mintQuote() — a gift on PayPal’s rails', () => {
 			totalMinor: expected?.totalMinor,
 			feeMinor: expected?.feeMinor
 		});
+	});
+
+	/**
+	 * a gift that repeats, committed on PayPal's own rail.
+	 *
+	 * the whole of what a PayPal deployment offering Monthly rests on: the cadence a donor picked
+	 * selects the commitment branch, the rail selects PayPal's adapter, and what comes back is what
+	 * the donor's window is opened on. a deployment whose account cannot collect never offers the
+	 * cadence in the first place (`offeredCadences` in ../forms/offered-cadences.ts).
+	 */
+	it('commits a repeating gift on PayPal and answers with what approves it', async () => {
+		const port = paypalProvider();
+
+		const result = await mint(paypalDeps(PAYPAL_ENV, port.port), {
+			method: 'paypal',
+			frequency: 'monthly'
+		});
+
+		expect(result.ok && result.quote.paymentToken).toBe('sub_secret_1');
+		expect(port.gifts[0]).toMatchObject({ interval: 'monthly', method: 'paypal' });
+		// and nothing minted through the single-gift arm, which charges once.
+		expect(port.requests).toHaveLength(0);
+	});
+
+	/**
+	 * the cadence a PayPal account stopped being able to collect, met by a donor still offered it.
+	 *
+	 * the same refusal ../donations/quote.ts maps for either processor, asserted here because the
+	 * account it is about is PayPal's: the plan a subscription names is found on the account, so a
+	 * product that has gone is the processor saying no rather than this app being wrong.
+	 */
+	it('tells a donor PayPal cannot collect a repeating gift, naming PayPal', async () => {
+		const port = paypalProvider(
+			[],
+			[{ ok: false, reason: 'not_found', detail: 'PayPal refused the call' }]
+		);
+
+		const result = await mint(paypalDeps(PAYPAL_ENV, port.port), {
+			method: 'paypal',
+			frequency: 'monthly'
+		});
+
+		expect(result.ok || result.reason).toBe('frequency_unsupported');
+		expect(result.ok || result.message).toContain('PayPal');
+		expect(result.ok || result.message).not.toContain('Stripe');
 	});
 
 	// a card rail on a deployment holding no Stripe key reaches no adapter at all, which is the

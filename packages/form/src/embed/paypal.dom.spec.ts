@@ -86,9 +86,9 @@ describe('how an attempt at PayPal’s window ends', () => {
 	});
 });
 
-// §3 of the measurement this module was written from, and the half a page this project does not
-// own decides: neither the loader nor the served core replaces an existing `window.paypal`, and the
-// package's own loader reads a bare `window[namespace]` knowing nothing of the nesting.
+// the half a page this project does not own decides: neither the loader nor the served core
+// replaces an existing `window.paypal`, and the package's own loader reads a bare
+// `window[namespace]` knowing nothing of the nesting.
 describe('which PayPal namespace this page already holds', () => {
 	const host = (fields: Record<string, unknown>): PaypalWindowLike =>
 		({ customElements: { get: () => undefined }, ...fields }) as PaypalWindowLike;
@@ -145,7 +145,7 @@ describe('which PayPal namespace this page already holds', () => {
 	});
 });
 
-// §2: the loader sets no nonce of its own, and the seam through which this repository's nonce
+// the loader sets no nonce of its own, and the seam through which this repository's nonce
 // discipline reaches PayPal is the loader's own adoption selector — it takes over any script
 // already on the page whose src carries the core path and which is marked pending.
 describe('the core script this module plants ahead of the loader', () => {

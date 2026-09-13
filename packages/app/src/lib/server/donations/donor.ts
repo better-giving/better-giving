@@ -14,11 +14,10 @@ import type { Db } from '../db/client';
 // same answer at different moments. a single gift writes the donor inside the one `batch()` that
 // writes the donation, its lines and its payment — nothing about that donor is worth keeping if
 // the gift is not — so ./record.ts takes a statement and commits it with the rest. a repeating gift
-// cannot: `recurring_plan.contact_id` is what every later charge is attributed by, and the
-// commitment carrying that id is created at the processor before any row of ours exists to be
-// written alongside it (`CONTACT_METADATA_KEY` in ../payments/provider.ts). so that path commits the
-// donor on their own, first, and a commitment naming a contact that is not here is the failure it
-// exists to make impossible.
+// cannot: the commitment is created at the processor in between, and a donor this deployment failed
+// to write has to refuse the gift before anything is committed to rather than after. so that path
+// commits the donor on their own, first, and a gift filed under a contact that is not here is the
+// failure it exists to make impossible.
 //
 // the two functions below are that split: `resolveDonor` decides and hands back a statement,
 // `commitDonor` decides and writes. matching a returning donor, and what a consent answer does to

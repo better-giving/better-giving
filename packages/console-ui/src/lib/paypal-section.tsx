@@ -14,6 +14,8 @@ import type {
 	NoReport,
 	PaymentsRead,
 	ProcessorPayments,
+	RecurringRead,
+	RecurringReading,
 	ValuesRefusal,
 	VarsWritten
 } from '../api/types';
@@ -33,6 +35,7 @@ import {
 	configuredStanding,
 	unmanagedEndpoint
 } from './processor-payments';
+import { recurringReading } from './recurring-rows';
 import type { GroupReport } from './secret-group-form';
 import { SecretGroupForm } from './secret-group-form';
 import { refusalIn } from './secret-trouble';
@@ -105,6 +108,15 @@ export type PaypalSectionProps = {
 	 * operator reads them.
 	 */
 	payments: Promise<PaymentsRead | null>;
+	/**
+	 * where every account stands on gifts that repeat, on the loader's other promise.
+	 *
+	 * awaited here for the one thing this section can say about it and the fold above cannot: a read
+	 * of the PayPal account that did not land draws no line in the fold's repeating-gift band
+	 * (`recurringRows` in ./recurring-rows.ts), so the sentence naming what to do about it stands
+	 * with this account's other failed readings or nowhere.
+	 */
+	recurring: Promise<RecurringRead | null>;
 	/** what the deployment is holding, which is what the boxes are drawn with (./held-values.ts). */
 	values: HeldValues;
 	/** how the last press over the credentials group went, or `null`. */
@@ -127,6 +139,7 @@ export type PaypalSectionProps = {
 
 export function PaypalSection({
 	payments,
+	recurring,
 	values,
 	secrets,
 	charity,
@@ -137,14 +150,23 @@ export function PaypalSection({
 	pending,
 	revalidating
 }: PaypalSectionProps): ReactNode {
+	/* the same sentence over both boundaries: what an operator is waiting on is one account's
+	   readings, and two waits worded apart would be two subjects where there is one. */
+	const asking = <p className="adm-hint">Asking this deployment…</p>;
 	return (
 		<Section>
 			{/* what the account answered, drawn above the boxes that change it for the reason the Stripe
 			    half states: the reading is what an operator opened the fold to find out, and the press
 			    that would rewrite it comes last. */}
-			<Suspense fallback={<p className="adm-hint">Asking this deployment…</p>}>
+			<Suspense fallback={asking}>
 				<Await resolve={payments}>
-					{(read) => <PaypalReadings read={read} noAnswer={noAnswer} />}
+					{(read) => (
+						<Suspense fallback={asking}>
+							<Await resolve={recurring}>
+								{(gifts) => <PaypalReadings read={read} gifts={gifts} noAnswer={noAnswer} />}
+							</Await>
+						</Suspense>
+					)}
 				</Await>
 			</Suspense>
 
@@ -207,9 +229,11 @@ export function PaypalSection({
  */
 function PaypalReadings({
 	read,
+	gifts,
 	noAnswer
 }: {
 	read: PaymentsRead | null;
+	gifts: RecurringRead | null;
 	noAnswer: (read: NoReport, what: string) => ReactNode;
 }): ReactNode {
 	if (read === null) return null;
@@ -223,7 +247,7 @@ function PaypalReadings({
 	if (standing === null) return null;
 	return (
 		<>
-			<Unreadable standing={standing} />
+			<Unreadable standing={standing} repeats={recurringReading(gifts, 'paypal')} />
 			<Rails standing={standing} />
 			<Endpoint standing={standing} />
 		</>
@@ -233,21 +257,34 @@ function PaypalReadings({
 /**
  * the one thing to say about a read this deployment tried to make against PayPal and could not.
  *
- * **said once and never once per reading**, the same rule the Stripe half keeps: both go through one
- * port with one pair of credentials, so both failing is one fact — drawn as a row in each, an
- * operator is told the same thing twice and has two places to look for the one sentence that names
- * what to do.
+ * **said once and never once per reading**, the same rule the Stripe half keeps: all three go
+ * through one port with one set of credentials, so several failing is one fact — drawn as a row in
+ * each, an operator is told the same thing twice and has two places to look for the one sentence
+ * that names what to do.
  *
  * **and nothing at all where nothing was asked**: a processor holding no credentials carries no
  * reading whatever, and this is only reached under one that does. so what stands here is a
  * deployment whose PayPal keys were rejected or whose PayPal did not answer, which is exactly the
- * state nothing else on this section can say — the blocks under it draw no rows and no address, and
- * an operator reading that as nothing to do would leave a deployment taking no gift at all.
+ * state nothing else on the screen can say — a reading that did not land draws no block under this
+ * and no line in the fold's repeating-gift band above it (`recurringRows` in ./recurring-rows.ts),
+ * and an operator reading that as nothing to do would leave a deployment taking no gift at all.
  *
  * the deployment's own detail goes underneath and is drawn rather than printed: it names the value
- * to fix and marks it (`@better-giving/operator/code-spans`).
+ * to fix and marks it (`@better-giving/operator/code-spans`). the account-level read's where more
+ * than one failed, since that is the one whose cause the others inherit.
  */
-function Unreadable({ standing }: { standing: ConfiguredPayments }): ReactNode {
+function Unreadable({
+	standing,
+	repeats
+}: {
+	standing: ConfiguredPayments;
+	/**
+	 * where this account stands on gifts that repeat, and `null` where the report carries nothing for
+	 * it — including the read that did not land at all, which the fold above says once for both
+	 * accounts.
+	 */
+	repeats: RecurringReading | null;
+}): ReactNode {
 	const unread: { says: string; detail: string }[] = [];
 	if (standing.rails.state === 'unreadable') {
 		unread.push({ says: 'which ways of paying it can take', detail: standing.rails.detail });
@@ -257,6 +294,9 @@ function Unreadable({ standing }: { standing: ConfiguredPayments }): ReactNode {
 			says: 'where PayPal has to report settlements',
 			detail: standing.subscription.detail
 		});
+	}
+	if (repeats?.state === 'unreadable') {
+		unread.push({ says: 'whether repeating gifts are set up', detail: repeats.detail });
 	}
 	const first = unread[0];
 	if (first === undefined) return null;

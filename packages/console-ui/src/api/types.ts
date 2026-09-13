@@ -448,8 +448,8 @@ export type RailEvidence = 'per_rail_approval' | 'credentials_only';
 /**
  * which ways of paying this deployment can take on one account, or that the read could not be made.
  *
- * it carries no reason beside `detail`, unlike the reading on the recurring address: a rails
- * reading exists only under a processor this deployment is configured for
+ * it carries no reason beside `detail`, which {@link RecurringReading} does without for the same
+ * reason: a rails reading exists only under a processor this deployment is configured for
  * ({@link ProcessorPayments}), so the one thing a reason could say here — that nothing was asked
  * because no credential is set — is already the arm above it.
  */
@@ -639,31 +639,85 @@ export type WalletsLevel =
 	| { kind: 'reported'; report: WalletLevellingReport }
 	| { kind: 'unanswered'; read: NoReport };
 
-/** what the processor account holds for gifts that repeat. */
+/** what one processor account holds for gifts that repeat. */
 export type RecurringStanding = 'ready' | 'absent' | 'archived';
 
 /**
- * what the deployment answered a read of that with.
+ * what the deployment answered a read of one account with.
  *
- * `unreadable` is the read that could not be made — no credentials, a rejected key, a processor that
- * did not reply — carried as a state rather than as a failure of the request, because it says
- * nothing about what the account holds. `reason` is the fact and `detail` the deployment's own
- * sentence: a console deciding between them off the prose would be a screen that changes what it
- * draws when somebody edits a string.
+ * `unreadable` is the read that could not be made — a rejected key, a processor that did not reply
+ * — carried as a state rather than as a failure of the request, because it says nothing about what
+ * the account holds. `detail` is the deployment's own sentence, which names the value to fix.
+ *
+ * it carries no reason beside `detail`, for the reason {@link RailsReading} carries none: a
+ * standing is reported only under a processor the deployment holds the credentials for, so the one
+ * thing a reason could say — that nothing was asked because no key is set — is a processor that is
+ * absent from the report altogether.
  */
 export type RecurringReading =
-	| { state: 'unreadable'; reason: StripeUnreadableReason; detail: string }
+	| { state: 'unreadable'; detail: string }
 	| { state: RecurringStanding };
 
+/** where one processor's account stands, under the name the fold draws it by. */
+export type ProcessorRecurring = {
+	processor: PaymentProcessor;
+	label: string;
+	reading: RecurringReading;
+};
+
+/**
+ * where every account this deployment can reach stands on gifts that repeat.
+ *
+ * one entry per processor the deployment holds the credentials for, in the deployment's own order.
+ * empty is an answer and not a read that failed: it is every fork before any processor is set up.
+ */
+export type RecurringReport = { processors: ProcessorRecurring[] };
+
 export type RecurringRead =
-	| { kind: 'read'; reading: RecurringReading }
+	| { kind: 'read'; report: RecurringReport }
 	| { kind: 'unread'; read: NoReport };
 
-/** what one press to provision it did. */
-export type RecurringSetupReport = {
+/**
+ * why one account's press did not land, as a closed set the fold switches on.
+ *
+ * `no_key` is the deployment holding none of the credentials that processor is called with, so
+ * nothing was asked of the account at all: the answer to a press naming a processor whose
+ * credentials were stored seconds ago, and the one worth making again in a moment. `failed` is the
+ * deployment holding them and the processor refusing the call, which answers the same way every
+ * time and where `detail` is what says what to do instead.
+ *
+ * a fact rather than a sentence read for one, for the reason {@link StripeUnreadableReason} is:
+ * the prose beside it is written for an operator and free to change wording, and a fragment naming
+ * one processor's variable can never match another's.
+ */
+export type RecurringSetupReason = 'no_key' | 'failed';
+
+/** what the one press did to one account. */
+export type ProcessorRecurringSetup = {
+	processor: PaymentProcessor;
+	label: string;
 	/** the two successes are the same finished state said differently, and both are worth saying. */
 	outcome: 'set_up' | 'already_set_up' | 'failed';
 	detail: string | null;
+	/**
+	 * the same failure as a fact rather than as a sentence, and `null` on both arms that worked.
+	 *
+	 * the deployment decides it off which credentials it holds rather than off the words its payment
+	 * port wrote (`packages/console/internal/deployment/recurring.go`, whose `AwaitsKey` is what
+	 * reads it).
+	 */
+	reason: RecurringSetupReason | null;
+};
+
+/**
+ * what one press to provision it did, per account it acted on.
+ *
+ * `outcome` is the worst of them: a donor is offered a gift that repeats only where every
+ * configured processor can collect one, so one account left short is the whole press left short.
+ */
+export type RecurringSetupReport = {
+	outcome: ProcessorRecurringSetup['outcome'];
+	processors: ProcessorRecurringSetup[];
 };
 
 export type RecurringSetup =

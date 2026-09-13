@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/better-giving/console/internal/cf"
+	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/session"
 	"github.com/better-giving/console/internal/state"
@@ -229,8 +230,28 @@ func TestTheFiveOtherErrandsReachTheirOwnAddress(t *testing.T) {
 				"unset": []any{"PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET"},
 			},
 		}},
-		"GET /console/recurring":       map[string]any{"state": "ready"},
-		"POST /console/recurring":      map[string]any{"outcome": "already_set_up"},
+		// one entry per processor the deployment holds the credentials for and none for one it does
+		// not, which is where this parts company with the report above it.
+		"GET /console/recurring": map[string]any{"processors": []any{
+			map[string]any{
+				"processor": "stripe", "label": "Stripe",
+				"reading": map[string]any{"state": "ready"},
+			},
+			map[string]any{
+				"processor": "paypal", "label": "PayPal",
+				"reading": map[string]any{"state": "absent"},
+			},
+		}},
+		// one press over every one of them, and the word over the whole is the worst of them.
+		"POST /console/recurring": map[string]any{
+			"outcome": "set_up",
+			"processors": []any{
+				map[string]any{
+					"processor": "stripe", "label": "Stripe", "outcome": "already_set_up",
+				},
+				map[string]any{"processor": "paypal", "label": "PayPal", "outcome": "set_up"},
+			},
+		},
 		"POST /console/sites":          reported(),
 		"POST /console/wallet-domains": map[string]any{"state": "levelled", "hosts": []any{}},
 	}, "here")
@@ -246,6 +267,14 @@ func TestTheFiveOtherErrandsReachTheirOwnAddress(t *testing.T) {
 	}
 	if _, answer := press(t, handler, "/api/deployment/recurring", `{}`); answer["kind"] != "reported" {
 		t.Errorf("the recurring press answered %v", answer)
+	}
+	// the operator's own press names no account and posts nothing: it is about every account the
+	// deployment holds credentials for. What names one is the Stripe run's own step, seconds after
+	// it stored that account's key (internal/stripe/setup.go).
+	for _, call := range asked() {
+		if call.path == deployment.RecurringPath && len(call.body) != 0 {
+			t.Errorf("the recurring press posted %v", call.body)
+		}
 	}
 	if _, answer := press(t, handler, "/api/deployment/sites", `{"sites":["https://hound-haven.org"]}`); answer["kind"] != "saved" {
 		t.Errorf("the sites write answered %v", answer)

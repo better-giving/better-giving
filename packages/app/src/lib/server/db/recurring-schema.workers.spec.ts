@@ -191,9 +191,8 @@ describe('a commitment names a processor the schema knows', () => {
 	it.each(['stripe', 'paypal'])(
 		'accepts %s, which is a processor that runs one',
 		async (provider) => {
-			// the positive control the rejection below is worth nothing without, and the whole of
-			// what this ticket widened on this table: a commitment carried by PayPal is a row here
-			// exactly as a Stripe one is.
+			// the positive control the rejection below is worth nothing without: a commitment
+			// carried by PayPal is a row here exactly as a Stripe one is.
 			await insertPlan({ id: `plan-${provider}`, provider });
 			const row = await env.DB.prepare('select provider as p from recurring_plan where id = ?')
 				.bind(`plan-${provider}`)

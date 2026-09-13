@@ -113,10 +113,9 @@ export function isProcessor(name: PaymentProviderName): name is ProcessorName {
  * test on either side goes on passing because neither knows what the other wrote. what it costs is a
  * settled gift with no donation attached to it, discovered when the books are read.
  *
- * a UUID this app minted and nothing else. it is a pointer rather than anything about the donor,
- * which is the rule `contact_id` below states and the reason the dedication is not up here beside
- * it: the honoree and the person to tell are written on the gift's own row and reach the processor
- * not at all.
+ * a UUID this app minted and nothing else, and on a commitment it is the only pointer there is
+ * ({@link commitmentMetadata} below): the donor, the fund, the honoree and the person to tell are
+ * all on the gift's own row, reached through this, and reach the processor not at all.
  *
  * it is a key on a third party's record, so renaming it does not migrate anything already written:
  * an object minted under the old spelling keeps it for as long as it can still be paid. add a key
@@ -144,11 +143,10 @@ export const DONATION_METADATA_KEY = 'donation_id';
  *                 actually computed from — `Settlement.method` below is the other one, and the two
  *                 are allowed to differ.
  *
- * the first two ride a commitment as well as a charge, written by `mintCommitment` in
- * ../donations/quote.ts beside the three keys below. a collection under a commitment reads what
- * moved and nothing else, so they are the only thing that can say how much of a grossed-up charge
- * the donor added — `coveredFeeOf` in ../donations/collect.ts derives `donation.fee_minor` from
- * them on every charge in the series.
+ * the first two ride a commitment as well as a charge ({@link commitmentMetadata} below). a
+ * collection under a commitment reads what moved and nothing else, so they are the only thing that
+ * can say how much of a grossed-up charge the donor added — `coveredFeeOf` in
+ * ../donations/collect.ts derives `donation.fee_minor` from them on every charge in the series.
  *
  * absence is "written before these keys shipped", and never "no" — a charge minted before this
  * carries only the donation id, and it can still settle, be refunded and be read for as long as the
@@ -164,39 +162,59 @@ export const FEE_COVERED_METADATA_KEY = 'fee_covered';
 export const FEE_RAIL_METADATA_KEY = 'fee_rail';
 
 /**
- * the three keys a commitment's metadata must carry, and the whole of what makes a repeating
- * gift's charges attributable to anything in this deployment.
+ * how often a commitment collects, in `RECURRING_INTERVALS`' own spelling (../db/schema.ts).
+ *
+ * this app's own word for a decision it made, carried rather than read back off the processor's
+ * schedule, so that what the commitment row records is what the gift was set up as. it is the one
+ * key on a commitment with a second source: the rail's own schedule says what it will actually do
+ * (`RecurringGiftNotice.interval` below), and a collection is refused only where neither can say.
+ *
+ * it is a key on a third party's record, so renaming it does not migrate anything already written:
+ * a commitment created under the old spelling keeps it for as long as it can still collect. add a
+ * key rather than rename this one.
+ */
+export const INTERVAL_METADATA_KEY = 'interval';
+
+/**
+ * the whole of what a commitment carries, and the whole of what makes a repeating gift's charges
+ * attributable to anything in this deployment.
  *
  * a collection under a commitment has no rows waiting for it and arrives naming nothing of ours:
- * the processor mints the collection's own intent and copies nothing onto it, so
- * `DONATION_METADATA_KEY` above names nothing on it and there is no donation to find. what the
- * commitment carries is therefore the only path from money that moved to the donor it came from —
- * and it is read on charge one and on charge fifty alike, because the commitment outlives every
- * browser that could have said.
+ * the processor mints the collection's own charge and copies nothing onto it, so what the commitment
+ * carries is the only path from money that moved to the donor it came from — read on charge one and
+ * on charge fifty alike, because the commitment outlives every browser that could have said.
  *
- * so `createRecurringGift` is called with all three set, and a commitment created without them
- * collects money this deployment can record against nobody. that is a refusal rather than a
- * guess — `readRecurringGift`'s notice carries the metadata back, and the settlement path answers
- * a collection it cannot attribute by telling an operator (../donations/collect.ts).
+ * **four values, and the ceiling is why.** a commitment's metadata is one field on the processor's
+ * object, and PayPal's is 127 characters (`SUBSCRIPTION_CUSTOM_ID_MAX` in ./paypal.ts) — so a map
+ * that grows is a rail that refuses every repeating gift this app mints. the donor and the fund were
+ * on it and are the two that left: they are UUIDs, they cost more of that field than anything else
+ * could, and `donation_id` already names a row of ours that holds both. ../donations/collect.ts
+ * reads them off that row, which is also the only copy of them that cannot go stale.
  *
- *   contact_id — the donor's row here. a pointer rather than a name or an address, because this is
- *                a third party's store and a field put here is a field exported from this
- *                deployment. it follows that the row exists before the commitment is created: the
- *                path that makes one mints the donor first and names them here.
- *   form_id    — the form the gift was made on, which is what makes a fund reachable for charge
- *                two. `recurring_plan.form_id` is NOT NULL for the same reason (../db/schema.ts).
- *   interval   — how often it collects, in `RECURRING_INTERVALS`' own spelling
- *                (../db/schema.ts). it is this app's own word for a decision it made, kept beside
- *                the other two rather than read back off the processor's schedule, so that what
- *                the commitment row records is what the gift was set up as.
+ * what is left is the pointer, the cadence, and the split the donor agreed to.
  *
- * they are keys on a third party's record, so renaming one does not migrate anything already
- * written: a commitment created under the old spelling keeps it for as long as it can still
- * collect. add a key rather than rename one.
+ * so a commitment is created with this map and nothing else — `mintCommitment` in
+ * ../donations/quote.ts is the one caller, for every rail — and a commitment created without the
+ * pointer collects money this deployment can record against nobody. that is a refusal rather than a
+ * guess: `readRecurringGift`'s notice carries the metadata back, and the settlement path answers a
+ * collection it cannot attribute by telling an operator (../donations/collect.ts).
  */
-export const CONTACT_METADATA_KEY = 'contact_id';
-export const FORM_METADATA_KEY = 'form_id';
-export const INTERVAL_METADATA_KEY = 'interval';
+export function commitmentMetadata(commitment: {
+	/** the gift this deployment recorded when the donor authorized the commitment. */
+	readonly donationId: string;
+	readonly interval: RecurringInterval;
+	/** the donor's own figure, before any fee they chose to add, in the charge's minor units. */
+	readonly giftMinor: number;
+	/** whether the charge was grossed up for the processor's fee. */
+	readonly coversFee: boolean;
+}): Readonly<Record<string, string>> {
+	return {
+		[DONATION_METADATA_KEY]: commitment.donationId,
+		[INTERVAL_METADATA_KEY]: commitment.interval,
+		[GIFT_MINOR_METADATA_KEY]: String(commitment.giftMinor),
+		[FEE_COVERED_METADATA_KEY]: commitment.coversFee ? 'true' : 'false'
+	};
+}
 
 /**
  * the two rail vocabularies this module holds at once, each under a name that says which it is.
@@ -1177,9 +1195,9 @@ export type RecurringGiftNotice = {
 	/**
 	 * what the commitment carries on the processor's copy of itself, read back.
 	 *
-	 * the three keys above are what this app writes there and the only reason this field exists:
-	 * every collection after the first arrives with no metadata of its own, so a handler that could
-	 * only find the donor by what the charge carried would have nothing at all. read off the
+	 * {@link commitmentMetadata} above is what this app writes there and the only reason this field
+	 * exists: every collection after the first arrives with no metadata of its own, so a handler that
+	 * could only find the gift by what the charge carried would have nothing at all. read off the
 	 * commitment rather than off the collection's own invoice, so charge one and charge fifty
 	 * resolve by the same means.
 	 */

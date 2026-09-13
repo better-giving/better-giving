@@ -168,9 +168,9 @@ describe('railNotes', () => {
 	 * every sentence names the processor it is about, and the gate is over the processor rather than
 	 * over the word.
 	 *
-	 * a deployment on one processor read a sentence naming another's dashboard for as long as these
-	 * sentences were written for one account: an operator holding no Stripe account was sent to the
-	 * Stripe dashboard over a PayPal rail, which is an errand with nowhere to arrive.
+	 * a sentence written for one account names another's dashboard on a deployment holding the
+	 * other: an operator with no Stripe account sent to the Stripe dashboard over a PayPal rail is
+	 * an errand with nowhere to arrive.
 	 */
 	it('names the processor every sentence is about', () => {
 		for (const value of SPEAKING) {

@@ -15,7 +15,7 @@ import (
 func held(gate chan struct{}) (*effects, Effects) {
 	one := working()
 	bound := one.bound()
-	bound.Repeating = func(context.Context) deployment.RecurringSetup {
+	bound.Repeating = func(context.Context, string) deployment.RecurringSetup {
 		<-gate
 		return one.repeating
 	}

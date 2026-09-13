@@ -7,20 +7,19 @@ import type { PostableAccountId } from '../db/postable';
 import { donation, entryGroup, ledgerEntry, lineItem, payment, recurringPlan } from '../db/schema';
 import type { EmailMessage, EmailProvider } from '../email/provider';
 import {
-	CONTACT_METADATA_KEY,
 	DONATION_METADATA_KEY,
 	FEE_COVERED_METADATA_KEY,
-	FORM_METADATA_KEY,
 	GIFT_MINOR_METADATA_KEY,
 	INTERVAL_METADATA_KEY,
 	type PaymentEvent,
 	type PaymentProvider,
 	type PaymentResult,
+	type ProcessorName,
 	type RecurringEvent,
 	type RecurringGiftNotice,
 	type Settlement
 } from '../payments/provider';
-import type { SettleDeps } from './delivery';
+import type { SettleDeps, SettleOutcome } from './delivery';
 import { recordAuthorizedGift, type AuthorizedGiftInput } from './record';
 import { settleDelivery } from './settle';
 
@@ -44,6 +43,8 @@ const CLEAN_WATER = '019fb700-0000-7000-8000-000000000001';
 const SCHOOL_MEALS = '019fb700-0000-7000-8000-000000000002';
 const GIFT_ID = 'sub_collect_1';
 const CUSTOMER_ID = 'cus_collect_1';
+/** the gift a donor authorized, which every commitment in this file names and claims. */
+const AUTHORIZED_ID = '019fb301-0000-7000-8000-000000000001';
 
 let db: Db;
 let revenueAccountId: PostableAccountId;
@@ -108,13 +109,16 @@ beforeEach(async () => {
 });
 
 /**
- * what the commitment carries on the processor's copy of itself — the three keys
- * ../payments/provider.ts states a commitment's metadata must carry, and the two the split is read
- * from, exactly as `mintCommitment` in ./quote.ts writes them.
+ * what the commitment carries on the processor's copy of itself — the four values
+ * `commitmentMetadata` in ../payments/provider.ts assembles, exactly as `mintCommitment` in
+ * ./quote.ts sends them.
+ *
+ * written out rather than built through that function, because half of what is under test here is a
+ * map it cannot produce: a blank pointer, a cadence this app does not spell, a commitment made
+ * before a key shipped.
  */
 const commitmentMetadata = (over: Record<string, string> = {}) => ({
-	[CONTACT_METADATA_KEY]: CONTACT_ID,
-	[FORM_METADATA_KEY]: FORM_ID,
+	[DONATION_METADATA_KEY]: AUTHORIZED_ID,
 	[INTERVAL_METADATA_KEY]: 'monthly',
 	[GIFT_MINOR_METADATA_KEY]: '2500',
 	[FEE_COVERED_METADATA_KEY]: 'false',
@@ -165,16 +169,19 @@ const settlement = (over: Partial<Settlement> = {}): Settlement => ({
 });
 
 /** the payment port, answering from a script. */
-function provider(script: {
-	verify?: PaymentResult<PaymentEvent>;
-	gift?: PaymentResult<RecurringGiftNotice>;
-	settled?: PaymentResult<Settlement>;
-}): PaymentProvider {
+function provider(
+	script: {
+		verify?: PaymentResult<PaymentEvent>;
+		gift?: PaymentResult<RecurringGiftNotice>;
+		settled?: PaymentResult<Settlement>;
+	},
+	processor: ProcessorName = 'stripe'
+): PaymentProvider {
 	const refuse = (name: string) => async () => {
 		throw new Error(`${name} is not part of the collection path`);
 	};
 	return {
-		processor: 'stripe',
+		processor,
 		createIntent: refuse('createIntent'),
 		async verifyEvent() {
 			return script.verify ?? { ok: true, value: collectionEvent() };
@@ -232,6 +239,12 @@ async function groupLines(sourceType: string, sourceId: string) {
 }
 
 describe('settleDelivery() — the first collection under a commitment', () => {
+	// the gift the donor authorized when they set the commitment up, which every commitment here
+	// names: the donor and the fund are on that row and on the commitment not at all.
+	beforeEach(async () => {
+		await authorizeGift();
+	});
+
 	it('opens the commitment the charge was made under', async () => {
 		const result = await settleDelivery(deps(), DELIVERY);
 
@@ -264,9 +277,9 @@ describe('settleDelivery() — the first collection under a commitment', () => {
 			totalMinor: 2500,
 			currency: 'USD',
 			recurringId: plan?.id,
-			// the business date of a collection is the day the money moved: there is no earlier
-			// moment at which this donor gave, unlike the one-off path's quote.
-			receivedAt: new Date('2026-08-03T12:00:00.000Z')
+			// the day the donor gave, which the claim leaves standing: somebody was at a browser for
+			// this charge, unlike every later collection in the series.
+			receivedAt: new Date('2026-08-01T09:00:00.000Z')
 		});
 		const [line] = await db.select().from(lineItem).where(eq(lineItem.donationId, gift!.id));
 		expect(line).toMatchObject({ revenueAccountId, lineTotalMinor: 2500 });
@@ -346,6 +359,7 @@ const secondCollection = {
 
 describe('settleDelivery() — a later collection under a commitment already open', () => {
 	beforeEach(async () => {
+		await authorizeGift();
 		const first = await settleDelivery(deps(), DELIVERY);
 		expect(first).toMatchObject({ ok: true, outcome: 'posted' });
 	});
@@ -385,8 +399,10 @@ describe('settleDelivery() — a later collection under a commitment already ope
 		// every charge in a series is its own donation pointing back at the commitment: there is no
 		// sequence number and no first-charge flag, because both are read off this column.
 		expect(gifts.every((row) => row.recurringId === plan?.id)).toBe(true);
+		// the opening charge keeps the day the donor gave, and a later one is dated by the day its
+		// money moved — nobody was at a browser for it.
 		expect(gifts.map((row) => row.receivedAt.toISOString()).sort()).toEqual([
-			'2026-08-03T12:00:00.000Z',
+			'2026-08-01T09:00:00.000Z',
 			'2026-09-03T12:00:00.000Z'
 		]);
 	});
@@ -462,6 +478,11 @@ describe('settleDelivery() — a later collection under a commitment already ope
 });
 
 describe('settleDelivery() — the receipt for a collection', () => {
+	// the gift the donor authorized, which the commitment names and the first collection claims.
+	beforeEach(async () => {
+		await authorizeGift();
+	});
+
 	/** the second collection, delivered exactly as the rail sends it. */
 	const collectAgain = (email: EmailProvider) =>
 		settleDelivery(
@@ -598,7 +619,7 @@ describe('settleDelivery() — the receipt for a collection', () => {
  * is the row the donation endpoint actually writes.
  */
 async function authorizeGift(over: Partial<AuthorizedGiftInput> = {}): Promise<string> {
-	const donationId = over.donationId ?? '019fb301-0000-7000-8000-000000000001';
+	const donationId = over.donationId ?? AUTHORIZED_ID;
 	const written = await recordAuthorizedGift(db, {
 		donationId,
 		contactId: CONTACT_ID,
@@ -773,40 +794,61 @@ describe('settleDelivery() — a first collection claiming the gift the donor au
 		expect(gifts[0]?.id).toBe(authorized);
 	});
 
-	it('opens a gift of its own where the commitment names none', async () => {
-		// a commitment made outside this app, or one whose metadata cannot be read: the money moved
-		// and the books take it, against a gift this delivery writes.
+	it('opens the commitment under the donor and the form that gift names', async () => {
+		// a second of each, so that the row the commitment opens can only have come from the gift: the
+		// commitment itself carries neither, and one donor and one form would agree by coincidence.
+		const otherDonor = '019fb300-0000-7000-8000-0000000000aa';
+		const otherForm = 'frm_collectpath0002';
+		const otherFund = await env.DB.prepare(
+			`select id from account where is_postable = 1 and code = '4120'`
+		).first<{ id: string }>();
+		await env.DB.prepare(
+			`insert into contact (id, kind, display_name, primary_email, created_at, updated_at)
+			 values (?, 'individual', 'Bea Nwosu', 'bea@example.org', 0, 0)`
+		)
+			.bind(otherDonor)
+			.run();
+		await env.DB.prepare(
+			`insert into form (id, name, status, revenue_account_id, currency, min_minor, max_minor,
+			                   suggested_amounts, allowed_origins, created_at, updated_at)
+			 values (?, 'Winter Appeal', 'live', ?, 'USD', 500, 1000000, '[]', '[]', 0, 0)`
+		)
+			.bind(otherForm, otherFund!.id)
+			.run();
+		await authorizeGift({ contactId: otherDonor, formId: otherForm });
+
 		const result = await settleDelivery(deps(), DELIVERY);
 
 		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
-		const gifts = await db.select().from(donation);
-		expect(gifts).toHaveLength(1);
-		expect(gifts[0]?.receivedAt).toEqual(new Date('2026-08-03T12:00:00.000Z'));
+		const [plan] = await db.select().from(recurringPlan);
+		expect(plan).toMatchObject({ contactId: otherDonor, formId: otherForm });
+		const [row] = await db.select().from(payment);
+		const charge = await groupLines('payment', row!.id);
+		expect(charge?.lines.some((l) => l.accountId === otherFund!.id)).toBe(true);
 	});
 
-	it('opens a gift of its own where the row the commitment names is not there', async () => {
+	it('claims nothing twice when a second commitment names the same gift', async () => {
+		const authorized = await authorizeGift();
+		const claimed = await settleDelivery(deps(), DELIVERY);
+		expect(claimed).toMatchObject({ ok: true, outcome: 'posted' });
+
+		// a second subscription carrying the same pointer, which is what a retried create that lost
+		// its answer produces. the row is spoken for, so this collection is told rather than written
+		// onto a gift another commitment already collects.
 		const result = await settleDelivery(
 			deps({
 				provider: provider({
-					gift: {
-						ok: true,
-						value: notice({
-							metadata: commitmentMetadata({
-								[DONATION_METADATA_KEY]: '019fb399-0000-7000-8000-000000000099'
-							})
-						})
-					}
+					gift: { ok: true, value: notice({ providerGiftId: 'sub_collect_2' }) }
 				})
 			}),
 			DELIVERY
 		);
 
-		// money that moved reaches the books whatever is missing: a pointer that resolves to nothing
-		// is not a reason to leave a collection unrecorded.
-		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
-		const gifts = await db.select().from(donation);
-		expect(gifts).toHaveLength(1);
-		expect(gifts[0]?.id).not.toBe('019fb399-0000-7000-8000-000000000099');
+		expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
+		const [gift] = await db.select().from(donation);
+		expect(gift?.id).toBe(authorized);
+		expect(await db.select().from(recurringPlan)).toHaveLength(1);
+		expect(await db.select().from(payment)).toHaveLength(1);
 	});
 });
 
@@ -910,17 +952,6 @@ describe('settleDelivery() — a dedication a donor made on a repeating gift', (
 		]);
 	});
 
-	it('records none on a series whose opening charge opened no gift of the donor’s', async () => {
-		// a commitment made outside this app: nothing ever said a dedication, so no charge in the
-		// series claims one.
-		const { gifts } = await collectTwice(commitmentMetadata());
-
-		expect(gifts.map((g) => [g.tributeKind, g.tributeHonoree])).toEqual([
-			[null, null],
-			[null, null]
-		]);
-	});
-
 	it('narrows what the opening gift stores rather than believing it', async () => {
 		// `donation.tribute_kind` carries no CHECK and cannot be given one, so a kind outside the
 		// vocabulary reaches a later collection through the one narrowing every surface shares.
@@ -992,13 +1023,6 @@ describe('settleDelivery() — the cause a repeating gift is credited to', () =>
 		expect(gifts.map((g) => g.programId)).toEqual([null, null]);
 	});
 
-	// a commitment made outside this app opens no gift of ours, so there is no cause to copy.
-	it('carries none on a series whose opening charge opened no gift of the donor’s', async () => {
-		const { gifts } = await collectTwice(commitmentMetadata());
-
-		expect(gifts.map((g) => g.programId)).toEqual([null, null]);
-	});
-
 	it('states the cause on the receipt for every collection in the series', async () => {
 		const authorized = await authorizeGift({ programId: CLEAN_WATER });
 
@@ -1014,6 +1038,11 @@ describe('settleDelivery() — the cause a repeating gift is credited to', () =>
 });
 
 describe('settleDelivery() — a collection the donor covered the fee on', () => {
+	// the gift the donor authorized, which the commitment names and the first collection claims.
+	beforeEach(async () => {
+		await authorizeGift();
+	});
+
 	/**
 	 * the commitment a donor who elected to cover the fee leaves behind: 25.00 chosen, 26.00 charged
 	 * every interval, and 1.03 of it kept by the processor.
@@ -1109,8 +1138,7 @@ describe('settleDelivery() — a collection the donor covered the fee on', () =>
 		await collectCovering(mail.port, {
 			notice: notice({
 				metadata: {
-					[CONTACT_METADATA_KEY]: CONTACT_ID,
-					[FORM_METADATA_KEY]: FORM_ID,
+					[DONATION_METADATA_KEY]: AUTHORIZED_ID,
 					[INTERVAL_METADATA_KEY]: 'monthly'
 				}
 			})
@@ -1129,6 +1157,11 @@ describe('settleDelivery() — a collection the donor covered the fee on', () =>
 });
 
 describe('settleDelivery() — a collection delivered twice', () => {
+	// the gift the donor authorized, which the commitment names and the first collection claims.
+	beforeEach(async () => {
+		await authorizeGift();
+	});
+
 	it('answers a redelivered first collection without opening a second commitment', async () => {
 		await settleDelivery(deps(), DELIVERY);
 
@@ -1196,6 +1229,11 @@ const collectionIntentEvent = (): PaymentEvent => ({
 });
 
 describe('settleDelivery() — the PaymentIntent behind a collection', () => {
+	// the gift the donor authorized, which the commitment names and the first collection claims.
+	beforeEach(async () => {
+		await authorizeGift();
+	});
+
 	it('posts nothing when it arrives after the collection was recorded', async () => {
 		await settleDelivery(deps(), DELIVERY);
 
@@ -1250,17 +1288,18 @@ describe('settleDelivery() — the PaymentIntent behind a collection', () => {
 });
 
 describe('settleDelivery() — a collection this deployment cannot attribute', () => {
-	/** every way a commitment can fail to say whose gift it is collecting. */
+	/**
+	 * every way a commitment can fail to say which gift it is collecting.
+	 *
+	 * the donor and the form are not among them and cannot be: they are columns on the gift this
+	 * pointer names, both of them foreign keys, so a gift that is there names a donor that is there.
+	 * the pointer is the whole of what can be missing.
+	 */
 	const unattributable: readonly [string, Record<string, string>][] = [
-		['no donor', commitmentMetadata({ [CONTACT_METADATA_KEY]: '' })],
-		['no form', commitmentMetadata({ [FORM_METADATA_KEY]: '' })],
+		['no gift named', commitmentMetadata({ [DONATION_METADATA_KEY]: '' })],
 		[
-			'a form that is not in this database',
-			commitmentMetadata({ [FORM_METADATA_KEY]: 'frm_gone' })
-		],
-		[
-			'a donor that is not in this database',
-			commitmentMetadata({ [CONTACT_METADATA_KEY]: '019fb300-0000-7000-8000-0000000000ff' })
+			'a gift that is not in this database',
+			commitmentMetadata({ [DONATION_METADATA_KEY]: '019fb399-0000-7000-8000-000000000099' })
 		]
 	];
 
@@ -1296,9 +1335,30 @@ describe('settleDelivery() — a collection this deployment cannot attribute', (
 		expect(await db.select().from(payment)).toHaveLength(0);
 		expect(await db.select().from(entryGroup)).toHaveLength(0);
 	});
+
+	it('answers a commitment whose gift names no form, and writes nothing', async () => {
+		// `donation.form_id` is nullable — a staff-entered gift names none — and the fund every
+		// charge in a series posts to is read off the form, so there is nowhere to put this money.
+		const authorized = await authorizeGift();
+		await env.DB.prepare(`update donation set form_id = null where id = ?`).bind(authorized).run();
+		const mail = mailer();
+
+		const result = await settleDelivery(deps({ email: mail.port }), DELIVERY);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
+		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+		expect(await db.select().from(recurringPlan)).toHaveLength(0);
+		expect(await db.select().from(payment)).toHaveLength(0);
+		expect(await db.select().from(entryGroup)).toHaveLength(0);
+	});
 });
 
 describe('settleDelivery() — a collection that did not succeed', () => {
+	// the gift the donor authorized, which the commitment names and the first collection claims.
+	beforeEach(async () => {
+		await authorizeGift();
+	});
+
 	it.each(['failed', 'cancelled', 'pending'] as const)(
 		'records nothing for a %s attempt',
 		async (status) => {
@@ -1315,12 +1375,14 @@ describe('settleDelivery() — a collection that did not succeed', () => {
 				DELIVERY
 			);
 
-			// nothing was collected, and unlike a one-off gift there is no row opened at quote time for
-			// a failed attempt to correct. the rail's own retry schedule is what tries again.
+			// nothing was collected, so the gift the donor authorized stays where it is and no
+			// commitment opens over it. the rail's own retry schedule is what tries again.
 			expect(result).toMatchObject({ ok: true, outcome: 'uncollected' });
 			expect(await db.select().from(recurringPlan)).toHaveLength(0);
-			expect(await db.select().from(donation)).toHaveLength(0);
+			expect(await db.select().from(payment)).toHaveLength(0);
 			expect(await db.select().from(entryGroup)).toHaveLength(0);
+			const [authorized] = await db.select().from(donation);
+			expect(authorized).toMatchObject({ id: AUTHORIZED_ID, recurringId: null });
 			// no mail to anyone: a donor whose card is merely expiring is not an incident, and this is
 			// the delivery a deployment would otherwise mail about every month.
 			expect(mail.sent).toHaveLength(0);
@@ -1361,6 +1423,11 @@ const standingEvent = (over: Partial<RecurringEvent> = {}): PaymentEvent => ({
 });
 
 describe('settleDelivery() — a commitment that has stopped', () => {
+	// the gift the donor authorized, which the commitment names and the first collection claims.
+	beforeEach(async () => {
+		await authorizeGift();
+	});
+
 	const ended = {
 		verify: { ok: true as const, value: standingEvent() },
 		gift: {
@@ -1462,6 +1529,11 @@ describe('settleDelivery() — a commitment that has stopped', () => {
 });
 
 describe('settleDelivery() — a commitment that starts collecting again', () => {
+	// the gift the donor authorized, which the commitment names and the first collection claims.
+	beforeEach(async () => {
+		await authorizeGift();
+	});
+
 	/** the delivery that lapsed it: the rail gave up while the donor's card was refusing. */
 	const lapse = async () => {
 		await settleDelivery(
@@ -1712,6 +1784,11 @@ describe('settleDelivery() — a collection the books cannot take', () => {
 });
 
 describe('settleDelivery() — a collection whose fee is unknown', () => {
+	// the gift the donor authorized, which the commitment names and the first collection claims.
+	beforeEach(async () => {
+		await authorizeGift();
+	});
+
 	it('posts the gift, posts no fee, and says so', async () => {
 		const mail = mailer();
 
@@ -1793,6 +1870,11 @@ describe('settleDelivery() — a collection whose fee is unknown', () => {
 });
 
 describe('settleDelivery() — a commitment whose cadence the metadata does not spell', () => {
+	// the gift the donor authorized, which the commitment names and the first collection claims.
+	beforeEach(async () => {
+		await authorizeGift();
+	});
+
 	it.each(['', 'weekly'] as const)(
 		'falls back to the rail’s own schedule when it is %s',
 		async (spelling) => {
@@ -1858,6 +1940,11 @@ describe('settleDelivery() — a commitment whose cadence the metadata does not 
 });
 
 describe('settleDelivery() — the notice that a repeating gift started', () => {
+	// the gift the donor authorized, which the commitment names and the first collection claims.
+	beforeEach(async () => {
+		await authorizeGift();
+	});
+
 	/** the operational mail, which is every message that went to the address the console names. */
 	const noticesIn = (sent: readonly EmailMessage[]) =>
 		sent.filter((m) => m.to === 'ops@hope.example');
@@ -1955,5 +2042,135 @@ describe('settleDelivery() — the notice that a repeating gift started', () => 
 		// the constraint that keeps the money out of the books twice keeps this out too.
 		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
 		expect(mail.sent).toHaveLength(0);
+	});
+});
+
+describe('the processor an operator is sent to', () => {
+	/**
+	 * every path in ./collect.ts that writes an operator a sentence, each run against one processor.
+	 *
+	 * a table rather than nine cases, because the claim is about the file and not about any one
+	 * alert: eight of these end at the same instruction — find the commitment and record the gift by
+	 * hand — so the way a wrong name gets written is a sentence added beside eight that already say
+	 * the right one, and an arm added here is the same decision being made again on purpose.
+	 *
+	 * the outcome is on the table rather than left implied, and it is what keeps every case honest:
+	 * an arm that stopped reaching its alert would still pass a "does not say Stripe" assertion.
+	 */
+	const alerting: readonly [
+		string,
+		SettleOutcome,
+		{
+			readonly script: Parameters<typeof provider>[0];
+			readonly prepare?: () => Promise<unknown>;
+		}
+	][] = [
+		[
+			'a repeating gift that could not be read',
+			'unactionable',
+			{
+				script: { gift: { ok: false, reason: 'invalid_request', detail: 'the call was malformed' } }
+			}
+		],
+		[
+			'a collection that carries no transaction',
+			'unmatched',
+			{ script: { gift: { ok: true, value: notice({ providerTxnId: null }) } } }
+		],
+		[
+			'a transaction that could not be read',
+			'unactionable',
+			{
+				script: { settled: { ok: false, reason: 'not_found', detail: 'no such object' } },
+				prepare: authorizeGift
+			}
+		],
+		[
+			'a settlement the books cannot take',
+			'unactionable',
+			{
+				script: { settled: { ok: true, value: settlement({ currency: 'usd' }) } },
+				prepare: authorizeGift
+			}
+		],
+		[
+			'a commitment that names no gift',
+			'unmatched',
+			{
+				script: {
+					gift: {
+						ok: true,
+						value: notice({ metadata: commitmentMetadata({ [DONATION_METADATA_KEY]: '' }) })
+					}
+				}
+			}
+		],
+		// no `prepare`, so the gift the commitment names was never authorized.
+		['a gift the commitment names that is not here', 'unmatched', { script: {} }],
+		[
+			'a commitment whose gift names no form',
+			'unmatched',
+			{
+				script: {},
+				prepare: async () => {
+					const authorized = await authorizeGift();
+					await env.DB.prepare(`update donation set form_id = null where id = ?`)
+						.bind(authorized)
+						.run();
+				}
+			}
+		],
+		[
+			'a commitment these tables will not hold',
+			'unmatched',
+			{
+				script: { gift: { ok: true, value: notice({ providerCustomerId: '' }) } },
+				prepare: authorizeGift
+			}
+		],
+		[
+			'a collection whose fee is unknown',
+			'posted',
+			{
+				script: { settled: { ok: true, value: settlement({ feeMinor: null }) } },
+				prepare: authorizeGift
+			}
+		]
+	];
+
+	/** every word this delivery put in front of a person, whichever message carried it. */
+	const operatorProse = (sent: readonly EmailMessage[]) =>
+		sent.map((m) => `${m.subject} ${m.text} ${m.html}`).join(' ');
+
+	it.each(alerting)('names PayPal and never Stripe for %s', async (_, outcome, arm) => {
+		await arm.prepare?.();
+		const mail = mailer();
+
+		const result = await settleDelivery(
+			deps({ email: mail.port, provider: provider(arm.script, 'paypal') }),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome });
+		// somewhere in the operational mail, because not every message on a path has a processor to
+		// name — the receipt a donor is sent is about their gift.
+		expect(operatorProse(mail.sent)).toContain('PayPal');
+		// and nowhere at all, donor mail included: an operator reading the wrong name goes to a
+		// dashboard the collection is not in.
+		expect(operatorProse(mail.sent)).not.toContain('Stripe');
+	});
+
+	it.each(alerting)('names Stripe and never PayPal for %s', async (_, outcome, arm) => {
+		await arm.prepare?.();
+		const mail = mailer();
+
+		const result = await settleDelivery(
+			deps({ email: mail.port, provider: provider(arm.script, 'stripe') }),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome });
+		expect(operatorProse(mail.sent)).toContain('Stripe');
+		expect(operatorProse(mail.sent)).not.toContain('PayPal');
 	});
 });

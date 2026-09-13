@@ -83,9 +83,9 @@ func stripeRoutes(
 			Address: func(ctx context.Context) deployment.Address {
 				return deployment.PublicAddress(ctx, door.Get, door.AccountID, door.WorkerName)
 			},
-			Repeating: func(ctx context.Context) deployment.RecurringSetup {
+			Repeating: func(ctx context.Context, processor string) deployment.RecurringSetup {
 				_, post := doors()
-				return deployment.SetUpRecurring(ctx, post)
+				return deployment.SetUpRecurring(ctx, post, processor)
 			},
 			// the session is read at the press rather than closed over once, which is
 			// internal/deployment's arrangement for every credential: a run outliving the request it

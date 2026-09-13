@@ -274,11 +274,10 @@ export type RecordResult = { readonly ok: true; readonly value: RecordedDonation
  * one gift a donor authorized a repeating commitment for, before anything has been collected.
  *
  * it takes a `contactId` where `RecordDonationInput` takes a `ParsedContact`, and that is the one
- * real difference between the two inputs. the donor is committed before the commitment is created
- * at the processor, because the commitment carries that id and every charge it ever collects is
- * attributed by it (`CONTACT_METADATA_KEY` in ../payments/provider.ts) — so by the time this runs
- * the row exists and re-resolving it would be a second answer to a question already settled. see
- * `mintCommitment` in ./quote.ts, the only caller.
+ * real difference between the two inputs. the donor is committed before the commitment is created at
+ * the processor, so that a donor this deployment cannot write refuses the gift with nothing charged —
+ * so by the time this runs the row exists and re-resolving it would be a second answer to a question
+ * already settled. see `mintCommitment` in ./quote.ts, the only caller.
  *
  * no `method` and no `providerTxnId`: both are facts about an attempt, and there is none.
  */

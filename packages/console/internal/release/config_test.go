@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -343,6 +344,10 @@ func TestTheAnswersTheDeploymentSendsAreTheOnesItStates(t *testing.T) {
 			"packages/operator/src/console/recurring.ts",
 			"RECURRING_SETUP_OUTCOMES", RecurringSetupOutcomes,
 		},
+		{
+			"packages/operator/src/console/recurring.ts",
+			"RECURRING_SETUP_REASONS", RecurringSetupReasons,
+		},
 		{"packages/operator/src/console/payments.ts", "PAYMENT_PROCESSORS", PaymentProcessors},
 		{"packages/operator/src/console/payments.ts", "RAIL_STANDINGS", RailStandings},
 		{"packages/operator/src/console/payments.ts", "RAIL_EVIDENCE", RailEvidence},
@@ -454,4 +459,13 @@ func counted(t *testing.T, source, constant string) int {
 		t.Fatalf("%s is %q, which is not a number", constant, match[1])
 	}
 	return value
+}
+
+// the account the run's press names is one the wire names: a processor spelled differently here is
+// a press the deployment refuses for a name no processor answers to, and a run that would report
+// the account it just stored a key for as one nobody could act on.
+func TestTheAccountTheRunPressesAboutIsOneTheWireNames(t *testing.T) {
+	if !slices.Contains(PaymentProcessors, StripeProcessor) {
+		t.Errorf("%q is no processor a deployment charges on: %v", StripeProcessor, PaymentProcessors)
+	}
 }

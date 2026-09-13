@@ -137,7 +137,7 @@ const PROCESSORS: Readonly<Record<ProcessorName, Processor>> = Object.freeze({
  * why a read this deployment made against its Stripe account could not be made, for the console
  * surface to carry beside the sentence.
  *
- * here rather than in the two routes that answer with it, because the fact it states is this
+ * here rather than in the route that answers with it, because the fact it states is this
  * module's: `no_key` has to mean exactly the deployment {@link Processors.for} refuses for want of
  * Stripe's entry in {@link PROCESSORS}, read through the same `readConfigEnv`. computed in a
  * route, it would be a second opinion about which deployments can call Stripe at all, and the day
@@ -147,7 +147,8 @@ const PROCESSORS: Readonly<Record<ProcessorName, Processor>> = Object.freeze({
  * slot is filled, so the boxes an operator is looking at say a key is set, and a console drawing
  * nothing there would leave the one screen that could tell them silent.
  *
- * Stripe's alone, because the console draws one processor's fold: `STRIPE_UNREADABLE_REASONS` in
+ * Stripe's alone, because the one answer that carries it is a press Stripe's account alone takes —
+ * the wallet hostnames (../../../routes/console.wallet-domains.ts). `STRIPE_UNREADABLE_REASONS` in
  * `packages/operator/src/console/stripe-read.ts` is the union it answers in and its members are
  * worded for that account.
  *

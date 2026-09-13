@@ -285,7 +285,7 @@ describe('the six folds', () => {
 
 	// the two processors are alternatives and neither is the one that counts: an organisation on
 	// PayPal alone holds no Stripe key and is set up, which is the reading the deployment makes and
-	// the one this row disagreed with.
+	// the one this row is read against.
 	it('read a deployment holding PayPal\u2019s pair and no Stripe key as done', () => {
 		expect(stateOf(onPaypalAlone(), 'payments')).toBe('ready');
 	});

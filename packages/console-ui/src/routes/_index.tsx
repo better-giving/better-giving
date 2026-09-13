@@ -264,8 +264,7 @@ async function readConsole() {
 		// the same answer the six rows above were read from.
 		values: read.values,
 		sites: read.sites,
-		donatePage: read.donatePage,
-		holdsStripeKey: read.holdsStripeKey
+		donatePage: read.donatePage
 	}));
 
 	/* what the deployment answers about the accounts it charges on, asked off the reading rather
@@ -273,16 +272,13 @@ async function readConsole() {
 	   has no session or draws no fold — so an answer kept on all of them would be two readings
 	   nothing draws.
 
-	   **the payments read is made whatever this deployment holds, and the recurring one is not.**
-	   the payments report answers for every processor and carries an arm for one this deployment
-	   holds no credentials for (`ProcessorPayments` in ../api/types.ts), so gating it on a Stripe
-	   key would leave a deployment set up on PayPal alone reporting nothing at all about the
-	   processor it does charge on — which is the disagreement this fold had with its own deployment.
-	   the recurring address is Stripe's alone: it reaches Stripe with the stored secret and answers
-	   in a shape that says there was none, which this console draws as an answer it could not read
-	   (../lib/unread-answer.ts). */
+	   **both reads are made whatever this deployment holds.** each answers for every processor it
+	   holds the credentials for and carries nothing at all for one it does not (`ProcessorPayments`
+	   and `RecurringReport` in ../api/types.ts), so gating either on a Stripe key would leave a
+	   deployment set up on PayPal alone with no reading of the account it does charge on — and, on
+	   the recurring one, no press that could put what a repeating gift needs on it. */
 	const payments = reading.then((read) => (read.face.kind === 'ready' ? readPayments() : null));
-	const recurring = reading.then((read) => (read.holdsStripeKey ? readRecurring() : null));
+	const recurring = reading.then((read) => (read.face.kind === 'ready' ? readRecurring() : null));
 
 	/* the setup run the binary is holding, read on this face alone: it is what the payments fold
 	   draws its ledger from, and a reading taken on a face that draws no fold would consume a run
@@ -409,12 +405,13 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	}
 
 	/**
-	 * asks the deployment to put what a repeating gift is charged against on its Stripe account.
+	 * asks the deployment to put what a repeating gift is charged against on every processor account
+	 * it holds the keys for.
 	 *
-	 * it is the one press in the payments fold that reaches Stripe through the deployment rather
+	 * it is the one press in the payments fold that reaches a processor through the deployment rather
 	 * than with a key an operator has just pasted — by the time this is pressed the deployment holds
-	 * one, and asking it is what keeps a second Stripe client out of this console. nothing is posted
-	 * with it: what the account holds is found by an id the deployment derives.
+	 * them, and asking it is what keeps a second processor client out of this console. nothing is
+	 * posted with it: what an account holds is found by an id the deployment derives.
 	 */
 	if (intent === RECURRING_INTENT) return { recurring: await setUpRecurring() };
 

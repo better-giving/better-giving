@@ -202,7 +202,7 @@ describe('createPaymentProviders', () => {
 	 * the refusal an operator in this state must not get is the other processor's: their PayPal boxes
 	 * are filled, so a sentence naming `STRIPE_SECRET_KEY` reads as this app having lost the values
 	 * they typed. the pair is named the other way round here — the deployment holds Stripe's keys and
-	 * not PayPal's — because that is now the state a fresh fork reaches by filling one fold in.
+	 * not PayPal's — because that is the state a fresh fork reaches by filling one fold in.
 	 *
 	 * the arm asked is one that refuses before anything is built, so this case makes no network call
 	 * on any deployment it describes.

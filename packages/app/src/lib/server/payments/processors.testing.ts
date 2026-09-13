@@ -14,28 +14,39 @@ import { requiredCredentials, type Processors } from './factory';
 /**
  * the set a deployment holding exactly one processor resolves to, over a port a spec built.
  *
- * the processor is read off the port rather than taken beside it, which is the same rule the app
- * follows: `PaymentProvider.processor` in ./provider.ts is what a row is written with and what a
- * standing is reported for, so a helper that let a case pair a port with some other name would make
- * a spec that cannot be wrong.
- *
  * asking it for a different processor gets a refusal rather than this port, because that is what a
  * deployment holding one processor's credentials answers — a helper that handed the same port back
  * under every name would turn the rail-to-processor table into something no case could catch.
  */
 export function soleProcessor(provider: PaymentProvider): Processors {
+	return processorsOf(provider);
+}
+
+/**
+ * the set a deployment holding one port per processor resolves to, in the order they are given.
+ *
+ * what {@link soleProcessor} is over more than one, and the one thing a case covering an
+ * intersection needs: `offeredCadences` in ../forms/offered-cadences.ts offers a cadence only where
+ * every configured processor can collect it, so a case about that claim has to hand over a set
+ * whose processors disagree.
+ *
+ * each port answers under its own `PaymentProvider.processor` and every other name gets a refusal,
+ * which is the rule the single-port case is written under and the reason neither takes a name
+ * beside the port: a helper that let a case pair a port with some other processor would make a spec
+ * that cannot be wrong.
+ */
+export function processorsOf(...providers: readonly PaymentProvider[]): Processors {
+	const held = new Map(providers.map((provider) => [provider.processor, provider]));
+	const portFor = (name: ProcessorName) => held.get(name) ?? absent(name);
 	return {
-		configured: [provider.processor],
-		for: (name) => (name === provider.processor ? provider : absent(name)),
-		forRail: (rail) => {
-			const name = processorOf(rail);
-			return name === provider.processor ? provider : absent(name);
-		},
-		// nothing is unset on the one processor this set holds a port for, and every credential is on
-		// any other — which is what a deployment holding one processor's keys answers. the names are
+		configured: [...held.keys()],
+		for: portFor,
+		forRail: (rail) => portFor(processorOf(rail)),
+		// nothing is unset on a processor this set holds a port for, and every credential is on any
+		// other — which is what a deployment holding those processors' keys answers. the names are
 		// the factory's and this helper reads none, so a case asserting on them is asserting on a
 		// deployment rather than on a spec's own list.
-		unset: (name) => (name === provider.processor ? [] : requiredCredentials(name))
+		unset: (name) => (held.has(name) ? [] : requiredCredentials(name))
 	};
 }
 

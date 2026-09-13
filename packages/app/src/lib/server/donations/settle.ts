@@ -20,13 +20,12 @@ import { readOrgProfile } from '../org/queries';
 import {
 	DONATION_METADATA_KEY,
 	isRetryable,
-	PROCESSOR_LABELS,
 	type ProcessorName,
 	type Settlement,
 	type WebhookDelivery
 } from '../payments/provider';
 import { collectRecurringGift } from './collect';
-import { alert, type SettleDeps, type SettleResult } from './delivery';
+import { alert, processorLabel, type SettleDeps, type SettleResult } from './delivery';
 import { chargeEntry, feeEntry, unpostable, type GiftRevenue, type RevenueShare } from './entries';
 import { sendReceipt } from './receipt';
 import { sendSettledNotice } from './settled-notice';
@@ -349,20 +348,6 @@ async function tellingFault(
 	} catch {
 		// nothing to report it to, and nothing on this path may throw.
 	}
-}
-
-/**
- * what an operator-facing sentence calls the processor that delivered this.
- *
- * off the provider that answered rather than off anything on the row or in the delivery, because it
- * is the same fact `findTarget` keys the lookup on — `PaymentProvider.processor` in
- * ../payments/provider.ts — so a sentence and the row it is about cannot name different processors.
- * every dashboard this file sends somebody to is named this way and none is spelled in place: one
- * literal is all it takes to send an operator to the wrong company's dashboard for a payment it
- * does not hold.
- */
-function processorLabel(deps: SettleDeps): string {
-	return PROCESSOR_LABELS[deps.provider.processor];
 }
 
 /** the gift a settlement belongs to, read once. */

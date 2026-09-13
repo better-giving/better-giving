@@ -8,6 +8,10 @@ import {
 	type WalletLevellingReport,
 	type WalletsReading
 } from '@better-giving/operator/console/payments';
+import type {
+	RecurringReport,
+	RecurringSetupReport
+} from '@better-giving/operator/console/recurring';
 import {
 	CONSOLE_SESSION_SECONDS,
 	CONSOLE_TOKEN_MIN_RANDOM,
@@ -20,6 +24,8 @@ import type {
 	PaymentResult,
 	ProcessorName,
 	RailSwitchboard,
+	RecurringGiftProvision,
+	RecurringGiftStanding,
 	WalletDomain,
 	WebhookEndpointRegistry
 } from '$lib/server/payments/provider';
@@ -66,7 +72,7 @@ const STRIPE_VALUES = {
  * describe. every processor left out of it goes on meeting the real adapter, which is what the
  * unconfigured arms below are about — so the file keeps both, and `beforeEach` puts it back.
  *
- * keyed by processor because the report is now a reading per processor: one port handed back under
+ * keyed by processor because the report is a reading per processor: one port handed back under
  * every name would make a case about one account answer for both, which is the exact mistake the
  * unconfigured arm exists to prevent.
  *
@@ -249,6 +255,27 @@ const setUpRecurring = (
 	vars: Record<string, string | undefined> = {},
 	token?: string | null
 ): Promise<Response> => act(recurringRoutes, '/console/recurring', vars, token);
+
+/**
+ * the same press, naming the one account it is about.
+ *
+ * `processor` is `unknown` because the refusals are half of what this body is: a name no processor
+ * answers to has to come back as a 4xx naming the value, rather than as a press on whatever the
+ * deployment happened to hold.
+ */
+function setUpRecurringOn(
+	processor: unknown,
+	vars: Record<string, string | undefined> = {}
+): Promise<Response> {
+	return recurringRoutes(
+		new Request('https://give.example.workers.dev/console/recurring', {
+			method: 'POST',
+			headers: bearer(TOKEN),
+			body: JSON.stringify({ processor })
+		}),
+		{ env: envWith({ ...DEPLOYMENT, ...vars }) }
+	);
+}
 
 /** the read beside that press: where the account stands, changing nothing. */
 function readRecurring(vars: Record<string, string | undefined> = {}): Promise<Response> {
@@ -752,44 +779,216 @@ describe('sending a test email', () => {
  * to ask.
  */
 describe('setting up repeating gifts', () => {
-	it('answers a deployment holding no Stripe key with what to set', async () => {
-		const response = await setUpRecurring(NO_STRIPE);
+	/** PayPal's two credentials, which is what makes the deployment configured for it. */
+	const PAYPAL_VALUES = {
+		PAYPAL_CLIENT_ID: 'notarealclientid',
+		PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
+	};
+
+	/** a deployment set up on PayPal and on nothing else, which is the fork this block is about. */
+	const PAYPAL_ONLY = { ...NO_STRIPE, ...PAYPAL_VALUES };
+
+	/** an account answering the two repeating-gift arms, and refusing everything else. */
+	function giftPort(
+		processor: ProcessorName,
+		script: {
+			read?: PaymentResult<RecurringGiftStanding>;
+			prepare?: PaymentResult<RecurringGiftProvision>;
+		}
+	): PaymentProvider {
+		return {
+			...refusing(processor, 'not_configured', 'no case here asks this arm'),
+			async readRecurringGiftProvision(): Promise<PaymentResult<RecurringGiftStanding>> {
+				return script.read ?? { ok: false, reason: 'internal_error', detail: 'not scripted' };
+			},
+			async prepareRecurringGifts(): Promise<PaymentResult<RecurringGiftProvision>> {
+				return script.prepare ?? { ok: false, reason: 'internal_error', detail: 'not scripted' };
+			}
+		};
+	}
+
+	const reportOf = async (response: Response): Promise<RecurringReport> =>
+		(await response.json()) as RecurringReport;
+
+	const setupOf = async (response: Response): Promise<RecurringSetupReport> =>
+		(await response.json()) as RecurringSetupReport;
+
+	/**
+	 * the deployment this block exists for: PayPal's boxes are full, Stripe's are empty, and the one
+	 * press has to reach the account the deployment actually holds.
+	 */
+	it('presses on the processor a deployment holding one of them holds', async () => {
+		stub.ports.paypal = giftPort('paypal', { prepare: { ok: true, value: { created: true } } });
+
+		const report = await setupOf(await setUpRecurring(PAYPAL_ONLY));
+
+		expect(report.outcome).toBe('set_up');
+		expect(report.processors.map((one) => one.processor)).toEqual(['paypal']);
+		expect(report.processors[0]?.label).toBe('PayPal');
+	});
+
+	/**
+	 * the deployment the naming exists for: PayPal is set up and Stripe's key was stored seconds ago,
+	 * too recently for the values this press reads to hold it.
+	 *
+	 * asked about the configured accounts alone, the press reaches PayPal, hears that it already has
+	 * what it needs, and reports the run finished having never asked Stripe about anything. named, the
+	 * account is asked, and what comes back is the refusal that says to press again — as a fact as
+	 * well as a sentence, because a caller matching a fragment of that sentence is matching one that
+	 * names this processor's variable and can never name another's.
+	 */
+	it('presses on the processor the body names, and not on the one it counts as configured', async () => {
+		stub.ports.paypal = giftPort('paypal', { prepare: { ok: true, value: { created: false } } });
+
+		const response = await setUpRecurringOn('stripe', PAYPAL_ONLY);
+		const report = await setupOf(response);
+
 		expect(response.status).toBe(500);
-		const body = (await response.json()) as { outcome: string; detail: string };
-		expect(body.outcome).toBe('failed');
-		expect(body.detail).toContain('STRIPE_SECRET_KEY');
-		expect(body.detail).toContain('better-giving open');
+		expect(report.processors.map((one) => one.processor)).toEqual(['stripe']);
+		expect(report.processors[0]?.reason).toBe('no_key');
+		expect(report.processors[0]?.detail).toContain('STRIPE_SECRET_KEY');
+	});
+
+	/**
+	 * and an account the deployment does hold the key for is the other member, whatever the sentence
+	 * says: the press was made, the processor answered, and pressing again answers the same way.
+	 */
+	it('names a refusal by the processor as one, on an account it holds the key for', async () => {
+		stub.ports.stripe = giftPort('stripe', {
+			prepare: {
+				ok: false,
+				reason: 'provider_error',
+				detail: 'Stripe would not create the product.'
+			}
+		});
+
+		const report = await setupOf(await setUpRecurringOn('stripe'));
+
+		expect(report.processors[0]?.reason).toBe('failed');
+		expect(report.processors[0]?.detail).toBe('Stripe would not create the product.');
+	});
+
+	/**
+	 * a body whose `processor` is null names none, which is the press an operator makes.
+	 *
+	 * a caller that sends the value it holds rather than leaving the name out is not making a
+	 * different request, and a null read as a name no processor answers to would refuse a press that
+	 * named nothing.
+	 */
+	it('reads a body naming no processor as the press that acts on every configured one', async () => {
+		stub.ports.paypal = giftPort('paypal', { prepare: { ok: true, value: { created: true } } });
+
+		const report = await setupOf(await setUpRecurringOn(null, PAYPAL_ONLY));
+
+		expect(report.processors.map((one) => one.processor)).toEqual(['paypal']);
+	});
+
+	/**
+	 * a name no processor answers to is refused rather than pressed on whatever the deployment holds.
+	 *
+	 * the refusal names the value and what it takes, because a 4xx on this surface is read by an agent
+	 * (CLAUDE.md).
+	 */
+	it('refuses a body naming a processor this release cannot charge on', async () => {
+		const response = await setUpRecurringOn('square');
+		const refusal = (await response.json()) as { error: string; message: string; fix: string };
+
+		expect(response.status).toBe(400);
+		expect(refusal.error).toBe('bad_processor');
+		expect(refusal.message).toContain('`processor`');
+		expect(refusal.fix).toContain('stripe');
+	});
+
+	/** and reads the same account, rather than reporting on one it holds no key for. */
+	it('reports a standing for the processor a deployment holds a key for', async () => {
+		stub.ports.paypal = giftPort('paypal', { read: { ok: true, value: 'ready' } });
+
+		const report = await reportOf(await readRecurring(PAYPAL_ONLY));
+
+		expect(report.processors).toEqual([
+			{ processor: 'paypal', label: 'PayPal', reading: { state: 'ready' } }
+		]);
+	});
+
+	/**
+	 * a standing only for the accounts this deployment can reach.
+	 *
+	 * a reading of an account nobody named would be a row an operator is asked to act on over keys
+	 * they have never set, and the boxes under it are already the whole truth of that state.
+	 */
+	it('reports nothing at all for a processor it holds no key for', async () => {
+		stub.ports.stripe = giftPort('stripe', { read: { ok: true, value: 'absent' } });
+
+		const report = await reportOf(await readRecurring());
+
+		expect(report.processors.map((one) => one.processor)).toEqual(['stripe']);
+	});
+
+	/** and nothing whatever on a fork holding neither processor's credentials. */
+	it('reports no standing at all where no processor is configured', async () => {
+		expect(await reportOf(await readRecurring(NO_STRIPE))).toEqual({ processors: [] });
+	});
+
+	/**
+	 * one press over both accounts, and neither one's answer stands for the other: a donor is
+	 * offered a repeating gift only where every configured processor can collect one, so an account
+	 * that is ready says nothing about the deployment while the other is short.
+	 */
+	it('reports every configured processor’s own outcome and answers with the worst', async () => {
+		stub.ports.stripe = giftPort('stripe', { prepare: { ok: true, value: { created: true } } });
+		stub.ports.paypal = giftPort('paypal', {
+			prepare: {
+				ok: false,
+				reason: 'provider_error',
+				detail: 'PayPal would not create the product.'
+			}
+		});
+
+		const response = await setUpRecurring(PAYPAL_VALUES);
+		const report = await setupOf(response);
+
+		expect(response.status).toBe(500);
+		expect(report.outcome).toBe('failed');
+		expect(report.processors).toEqual([
+			{ processor: 'stripe', label: 'Stripe', outcome: 'set_up', detail: null, reason: null },
+			{
+				processor: 'paypal',
+				label: 'PayPal',
+				outcome: 'failed',
+				detail: 'PayPal would not create the product.',
+				reason: 'failed'
+			}
+		]);
 	});
 
 	/**
 	 * the read is the port's read arm and never the find-or-create one: a console drawing a block
-	 * from `prepare` would add a product to an operator's Stripe account as a side effect of them
+	 * from `prepare` would add a product to an operator's processor account as a side effect of them
 	 * opening a page.
 	 */
 	it('answers a read with a standing rather than a refusal, and provisions nothing', async () => {
-		const response = await readRecurring(NO_STRIPE);
+		const response = await readRecurring();
+		const report = await reportOf(response);
+		const reading = report.processors[0]?.reading;
+
 		expect(response.status).toBe(200);
-		const body = (await response.json()) as { state: string; detail: string };
-		expect(body.state).toBe('unreadable');
-		expect(body.detail).toContain('STRIPE_SECRET_KEY');
+		expect(reading?.state).toBe('unreadable');
+		expect(reading?.state === 'unreadable' && reading.detail.length).toBeGreaterThan(0);
 	});
 
 	/**
-	 * which of the two ways a read fails, said as a fact rather than left in the sentence. a console
-	 * drawing this beside the box that sets the key has nothing to add over a deployment holding
-	 * none, and it must not be matching on prose to find that out
-	 * (`packages/operator/src/console/stripe-read.ts`).
+	 * a press carrying no body at all is the operator's, and it acts on every account this deployment
+	 * holds the credentials for — which on a deployment holding none is no account, and a refusal
+	 * naming where the credentials come from rather than a report about accounts nobody named.
 	 */
-	it('says a deployment holding no key asked nothing', async () => {
-		const body = (await (await readRecurring(NO_STRIPE)).json()) as { reason: string };
-		expect(body.reason).toBe('no_key');
-	});
+	it('answers a deployment holding no credentials at all with where to set them', async () => {
+		const response = await setUpRecurring(NO_STRIPE);
+		const refusal = (await response.json()) as { error: string; message: string; fix: string };
 
-	/** a key is held, so the read was attempted and came away without an answer. */
-	it('says a deployment holding a key the processor will not answer for failed', async () => {
-		const body = (await (await readRecurring()).json()) as { state: string; reason: string };
-		expect(body.state).toBe('unreadable');
-		expect(body.reason).toBe('failed');
+		expect(response.status).toBe(409);
+		expect(refusal.error).toBe('nothing_to_set_up');
+		expect(refusal.fix).toContain('STRIPE_SECRET_KEY');
+		expect(refusal.fix).toContain('PAYPAL_CLIENT_ID');
 	});
 
 	/**
@@ -865,9 +1064,9 @@ describe('the accounts this deployment charges on', () => {
 	/**
 	 * the deployment with no Stripe key at all, which is every fork before payments are set up.
 	 *
-	 * it used to arrive as a rails reading that could not be made, carrying a reason that said no key
-	 * was held. it is the arm above the readings now, and that is the whole improvement: `unreadable`
-	 * is a deployment with something wrong with it, and this one merely has not been set up yet.
+	 * it is the arm above the readings rather than a rails reading that could not be made:
+	 * `unreadable` is a deployment with something wrong with it, and this one merely has not been
+	 * set up yet.
 	 */
 	it('reports a deployment holding no Stripe key as unconfigured rather than unreadable', async () => {
 		const reading = await readingFor('stripe', NO_STRIPE);

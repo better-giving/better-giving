@@ -26,10 +26,8 @@ import type { ReceiptContribution } from '../email/receipt';
 import { readForm } from '../forms/queries';
 import { postingStatements } from '../ledger/posting';
 import {
-	CONTACT_METADATA_KEY,
 	DONATION_METADATA_KEY,
 	FEE_COVERED_METADATA_KEY,
-	FORM_METADATA_KEY,
 	GIFT_MINOR_METADATA_KEY,
 	INTERVAL_METADATA_KEY,
 	isRetryable,
@@ -38,7 +36,7 @@ import {
 	type RecurringGiftNotice,
 	type Settlement
 } from '../payments/provider';
-import { alert, type SettleDeps, type SettleResult } from './delivery';
+import { alert, processorLabel, type SettleDeps, type SettleResult } from './delivery';
 import { chargeEntry, feeEntry, unpostable } from './entries';
 import { sendReceipt, type ReceiptOutcome } from './receipt';
 import { sendSettledNotice, type Repeating } from './settled-notice';
@@ -64,8 +62,8 @@ import { sendTributeNotice } from './tribute-notice';
 // rail collects with nobody at a browser — so a later collection writes its own gift, its line, its
 // settled payment and both entry groups, and refreshes the commitment, in one `batch()`.
 //
-// the un-claimed arm stays and is not dead weight: a commitment made outside this app names no gift
-// of ours, and a pointer that resolves to nothing is not a reason to leave money out of the books.
+// a collection that cannot reach a gift of ours is not written at all. the money moved and an
+// operator is told, because the alternative is a gift filed under a donor this path guessed at.
 //
 // ---------------------------------------------------------------------------
 // how a charge finds the gift it belongs to, which is the only hard question here.
@@ -73,24 +71,26 @@ import { sendTributeNotice } from './tribute-notice';
 // a collection arrives naming an invoice. `readRecurringGift` resolves that to the commitment it
 // was raised under (../payments/provider.ts), and the commitment is the anchor for everything else:
 //
-//   which donor, which form, how often — off the commitment's metadata, which this app wrote when
-//   it created the commitment and which the processor hands back on every read of it. the three
-//   keys are `CONTACT_METADATA_KEY`, `FORM_METADATA_KEY` and `INTERVAL_METADATA_KEY`, and the
-//   contract they form is stated on them. a collection's own PaymentIntent carries nothing:
-//   Stripe mints it and copies nothing onto it, which is exactly why the invoice — not the
-//   intent — is what this app subscribes to for a repeating gift.
+//   which gift the donor was recorded as making when they authorized it — `DONATION_METADATA_KEY`,
+//   a pointer at a row of ours, and the only one the commitment carries. a collection's own charge
+//   carries nothing: the processor mints it and copies nothing onto it, which is exactly why the
+//   invoice — not the charge — is what this app subscribes to for a repeating gift.
+//
+//   which donor and which form — off that gift's own columns. they were on the commitment and left
+//   it, because the field a commitment's metadata encodes into is small enough that two UUIDs on it
+//   are what stops PayPal taking a repeating gift at all (`commitmentMetadata` in
+//   ../payments/provider.ts). the row the pointer names holds both, and holds them as one truth
+//   rather than as a copy that can disagree with it.
+//
+//   how often — `INTERVAL_METADATA_KEY`, with the rail's own schedule as the second answer where
+//   the metadata cannot say. `attribution` below argues why that one fact is allowed a fallback and
+//   the pointer is not.
 //
 //   and how much of the charge the donor chose to add — off the same metadata, through
 //   `GIFT_MINOR_METADATA_KEY` and `FEE_COVERED_METADATA_KEY`. a commitment a donor covered the fee
 //   on collects the grossed-up total every interval, so without those two the split is unreadable
 //   at every charge and the fee is collected monthly and stated on no receipt. `coveredFeeOf`
 //   below is what spends them.
-//
-//   and which gift the donor was recorded as making when they authorized it —
-//   `DONATION_METADATA_KEY`, a pointer at a row of ours and the one thing on the commitment that
-//   this app could not have carried before it wrote that row. it is optional where the other two
-//   are not: a commitment that names no gift is one made outside this app, and the money still
-//   reaches the books.
 //
 //   and who the gift was dedicated to, and which cause it went to — off that gift's own columns
 //   rather than off the commitment. a donor's honoree is a person's name and nothing donor-typed is
@@ -171,6 +171,7 @@ export async function collectRecurringGift(
 	deps: SettleDeps,
 	event: RecurringEvent
 ): Promise<SettleResult> {
+	const processor = processorLabel(deps);
 	const read = await deps.provider.readRecurringGift(event);
 	if (!read.ok) {
 		if (isRetryable(read.reason)) return { ok: false, reason: 'incomplete', detail: read.detail };
@@ -200,7 +201,7 @@ export async function collectRecurringGift(
 				{ label: 'Event type', value: event.type },
 				{ label: 'Reason', value: read.detail }
 			],
-			action: 'Find this subscription in the Stripe dashboard and reconcile it by hand.'
+			action: `Find this subscription in the ${processor} dashboard and reconcile it by hand.`
 		});
 		return { ok: true, outcome: 'unactionable', detail: read.detail };
 	}
@@ -223,13 +224,13 @@ export async function collectRecurringGift(
 			headline: 'A repeating gift collected money the processor did not carry',
 			body:
 				'A collection under a repeating gift was marked paid with no transaction behind it, ' +
-				'which is how an invoice settled outside Stripe arrives. Nothing was written: what the ' +
-				'gift was worth and what it cost are not on the invoice to read.',
+				`which is how a collection settled outside ${processor} arrives. Nothing was written: ` +
+				'what the gift was worth and what it cost are not on the collection to read.',
 			facts: [
 				{ label: 'Event', value: event.id },
 				{ label: 'Repeating gift', value: notice.providerGiftId }
 			],
-			action: 'Find this invoice in the Stripe dashboard and record the gift by hand.'
+			action: `Find this collection in the ${processor} dashboard and record the gift by hand.`
 		});
 		return {
 			ok: true,
@@ -254,7 +255,7 @@ export async function collectRecurringGift(
 				{ label: 'Transaction', value: notice.providerTxnId },
 				{ label: 'Reason', value: money.detail }
 			],
-			action: 'Find the payment in the Stripe dashboard and reconcile it by hand.'
+			action: `Find the payment in the ${processor} dashboard and reconcile it by hand.`
 		});
 		return { ok: true, outcome: 'unactionable', detail: money.detail };
 	}
@@ -290,7 +291,7 @@ export async function collectRecurringGift(
 				{ label: 'Transaction', value: settlement.providerTxnId },
 				{ label: 'Problem', value: refused }
 			],
-			action: 'Find this payment in the Stripe dashboard and record the gift by hand.'
+			action: `Find this payment in the ${processor} dashboard and record the gift by hand.`
 		});
 		return {
 			ok: true,
@@ -500,19 +501,25 @@ async function recordCharge(
  *   written    — the rows are committed.
  *   duplicate  — a UNIQUE index refused it, which on this path means two different things: see
  *                `recordCharge`.
- *   refused    — the database will not hold what the commitment says, and will not hold it on any
- *                redelivery either. two constraints reach it and both are deterministic: a foreign
- *                key, which is a commitment naming a donor or a form that is not in this database,
- *                and a check, which is a value one of the tables refuses outright — a blank
- *                customer id on `recurring_plan` being the one a processor can actually produce.
+ *   refused    — the database will not hold what this write says, and will not hold it on any
+ *                redelivery either. a check is what reaches it: a value one of the tables refuses
+ *                outright, a blank customer id on `recurring_plan` being the one a processor can
+ *                actually produce. a foreign key is not, on the arm that opens a commitment — the
+ *                donor and the form are read off a row that names both, so they are there by the
+ *                time this runs.
  *   failed     — refused for a reason this module does not classify, or the call faulted. nothing
  *                was written and the cause is in the logs.
  */
 type WriteOutcome = 'written' | 'duplicate' | 'refused' | 'failed';
 
 /**
- * the first collection: the commitment, the gift, its line, its payment and both entry groups, in
- * one `batch()` — with the gift claimed rather than inserted where the donor already has one.
+ * the first collection: the commitment, the gift it claims, that gift's line, its payment and both
+ * entry groups, in one `batch()`.
+ *
+ * every commitment this app makes names the gift the donor authorized, so this arm claims a row or
+ * it writes nothing at all — there is no arm that opens a gift of its own here. what the pointer
+ * names is also where the donor and the form come from, which is why a gift that cannot be claimed
+ * is money with nowhere to go rather than a missing label.
  *
  * the commitment is written here rather than when the donor set it up, which is `recurring_plan`'s
  * own rule: there is no status meaning "created at the rail, nothing charged yet", and a
@@ -527,6 +534,7 @@ async function openCommitment(
 	notice: RecurringGiftNotice,
 	settlement: Settlement
 ): Promise<SettleResult | 'duplicate'> {
+	const processor = processorLabel(deps);
 	const named = attribution(notice);
 	if (typeof named === 'string') {
 		await alert(deps, {
@@ -534,7 +542,7 @@ async function openCommitment(
 			body:
 				'A collection succeeded under a commitment whose record here could not be opened, so ' +
 				'the money is not in the books. Sending the delivery again cannot fix it: what is ' +
-				'missing is on the commitment at Stripe, not in this request.',
+				`missing is on the commitment at ${processor}, not in this request.`,
 			facts: [
 				{ label: 'Event', value: event.id },
 				{ label: 'Repeating gift', value: notice.providerGiftId },
@@ -545,7 +553,7 @@ async function openCommitment(
 				},
 				{ label: 'Problem', value: named }
 			],
-			action: 'Find this subscription in the Stripe dashboard and record the gift by hand.'
+			action: `Find this subscription in the ${processor} dashboard and record the gift by hand.`
 		});
 		return {
 			ok: true,
@@ -554,30 +562,70 @@ async function openCommitment(
 		};
 	}
 
+	// the gift the donor was already recorded as making, and the one read this arm resolves
+	// everything else through: the donor, the form and the cause are its columns, and the commitment
+	// carries none of them. read before the batch is built rather than gated on — the plan insert
+	// below is in the same commit and is what refuses a second delivery.
+	const authorized = await findAuthorizedGift(deps.db, named.authorizedGiftId);
+	if (authorized === null) {
+		await alert(deps, {
+			headline: 'A repeating gift collected money against a gift that is not here to claim',
+			body:
+				'A collection succeeded under a commitment naming a gift this deployment cannot claim: ' +
+				'no such row, or one already attached to another commitment. The donor, the fund and ' +
+				'the cause are all on that row, so there is nothing to record this money against and it ' +
+				'is not in the books.',
+			facts: [
+				{ label: 'Event', value: event.id },
+				{ label: 'Repeating gift', value: notice.providerGiftId },
+				{ label: 'Gift named by the commitment', value: named.authorizedGiftId },
+				{ label: 'Transaction', value: settlement.providerTxnId },
+				{
+					label: 'Amount',
+					value: `${settlement.amountMinor} ${settlement.currency} (minor units)`
+				}
+			],
+			action: `Find this subscription in the ${processor} dashboard and record the gift by hand.`
+		});
+		return {
+			ok: true,
+			outcome: 'unmatched',
+			detail: `the commitment ${notice.providerGiftId} names gift ${named.authorizedGiftId}, which is not a gift here this collection can claim.`
+		};
+	}
+	const gift = authorized.gift;
+
 	// `readForm` and not a query of its own, because it is the read that does not hide an archived
 	// row (../forms/queries.ts): a commitment outlives the form it was made on being retired, and a
 	// gift collected against a retired form still has to reach the books. the whole record because
 	// the fund is what the charge posts to and the name is what the organisation's own notice calls
 	// it (./settled-notice.ts) — one read for both.
-	const giving = await readForm(deps.db, named.formId);
-	if (giving === null) {
+	//
+	// `donation.form_id` is nullable — a staff-entered gift names no form (../db/schema.ts) — and a
+	// gift with none has no fund for this money to post to, which is the same answer as a form that
+	// is gone. `recurring_plan.form_id` is NOT NULL precisely so that every later charge has one.
+	const formId = gift.formId;
+	const giving = formId === null ? null : await readForm(deps.db, formId);
+	if (formId === null || giving === null) {
+		const stated = formId === null ? 'no form at all' : `form ${formId}`;
 		await alert(deps, {
 			headline: 'A repeating gift collected money against a form that is not here',
 			body:
-				'A collection succeeded under a commitment naming a form this deployment does not ' +
-				'have, so there is no fund to post it to and the money is not in the books.',
+				'A collection succeeded under a commitment whose gift names a form this deployment does ' +
+				'not have, so there is no fund to post it to and the money is not in the books.',
 			facts: [
 				{ label: 'Event', value: event.id },
 				{ label: 'Repeating gift', value: notice.providerGiftId },
-				{ label: 'Form named by the commitment', value: named.formId },
+				{ label: 'Gift named by the commitment', value: gift.id },
+				{ label: 'Form named by the gift', value: formId ?? 'none' },
 				{ label: 'Transaction', value: settlement.providerTxnId }
 			],
-			action: 'Find this subscription in the Stripe dashboard and record the gift by hand.'
+			action: `Find this subscription in the ${processor} dashboard and record the gift by hand.`
 		});
 		return {
 			ok: true,
 			outcome: 'unmatched',
-			detail: `the commitment ${notice.providerGiftId} names form ${named.formId}, which is not in this database.`
+			detail: `the commitment ${notice.providerGiftId} is for gift ${gift.id}, which names ${stated}, so there is no fund to post this money to.`
 		};
 	}
 
@@ -588,8 +636,11 @@ async function openCommitment(
 	const planId = uuidv7();
 	const planRow: NewRecurringPlan = {
 		id: planId,
-		contactId: named.contactId,
-		formId: named.formId,
+		// off the gift rather than off the commitment, which carries neither: one read answers who
+		// gave and which form they gave on, and the two cannot disagree with the row the charge is
+		// about because they are that row.
+		contactId: gift.contactId,
+		formId,
 		// what the first charge actually collected, rather than a figure carried on the commitment:
 		// the money that moved is the money the donor agreed to, and it is already read once here.
 		// an amount and an interval are fixed for a commitment's life (../db/schema.ts), so this
@@ -608,39 +659,16 @@ async function openCommitment(
 		endedAt: ending?.endedAt ?? null
 	};
 
-	// the gift the donor was already recorded as making, where the commitment names one and it is
-	// still claimable. read before the batch is built rather than gated on: the plan insert below is
-	// in the same commit and is what refuses a second delivery.
-	const authorized =
-		named.authorizedGiftId === null
-			? null
-			: await findAuthorizedGift(deps.db, named.authorizedGiftId, named.contactId);
-
-	const writes =
-		authorized === null
-			? chargeWrites(
-					deps.db,
-					deps.provider.processor,
-					planId,
-					named.contactId,
-					named.formId,
-					giving.revenueAccountId,
-					// a commitment naming no gift of ours was dedicated to nobody and given to no cause
-					// this app can know of.
-					{ dedication: null, program: null },
-					notice,
-					settlement
-				)
-			: claimWrites(
-					deps.db,
-					deps.provider.processor,
-					planId,
-					authorized.gift,
-					authorized.program,
-					giving.revenueAccountId,
-					notice,
-					settlement
-				);
+	const writes = claimWrites(
+		deps.db,
+		deps.provider.processor,
+		planId,
+		gift,
+		authorized.program,
+		giving.revenueAccountId,
+		notice,
+		settlement
+	);
 
 	const wrote = await attempt(deps.db, [
 		deps.db.insert(recurringPlan).values(planRow),
@@ -655,7 +683,7 @@ async function openCommitment(
 		charge: writes.charge,
 		// the charge that mints the commitment, which is the one the organisation hears about.
 		announce: { formName: giving.name, repeating: 'first' },
-		names: `donor ${named.contactId} and form ${named.formId}`
+		names: `donor ${gift.contactId} and form ${formId}`
 	});
 }
 
@@ -687,6 +715,7 @@ async function writeAgainstPlan(
 ): Promise<SettleResult> {
 	const giving = await readForm(deps.db, plan.formId);
 	if (giving === null) {
+		const processor = processorLabel(deps);
 		await alert(deps, {
 			headline: 'A repeating gift collected money against a form that is no longer here',
 			body:
@@ -698,7 +727,7 @@ async function writeAgainstPlan(
 				{ label: 'Form', value: plan.formId },
 				{ label: 'Transaction', value: settlement.providerTxnId }
 			],
-			action: 'Find this subscription in the Stripe dashboard and record the gift by hand.'
+			action: `Find this subscription in the ${processor} dashboard and record the gift by hand.`
 		});
 		return {
 			ok: true,
@@ -761,12 +790,11 @@ async function writeAgainstPlan(
  * it is only `announce.repeating` — which charge in the series this is, a thing the callers know
  * and nothing reachable from here does.
  *
- * the missing-reference arm is the one worth stating: a commitment naming a donor or a form this
- * database does not hold fails identically on every redelivery, so it is answered 200 with an
- * alert rather than held open for three days. that is the same reasoning `unmatched` in ./settle.ts
- * is written from — a delivery nothing can be done about is worse than useless in the processor's
- * retry queue, because it also puts the endpoint into the failing state that endangers the
- * deliveries that can be handled.
+ * the refused arm is the one worth stating: a write these tables will not hold fails identically on
+ * every redelivery, so it is answered 200 with an alert rather than held open for three days. that
+ * is the same reasoning `unmatched` in ./settle.ts is written from — a delivery nothing can be done
+ * about is worse than useless in the processor's retry queue, because it also puts the endpoint into
+ * the failing state that endangers the deliveries that can be handled.
  */
 async function answerTo(
 	deps: SettleDeps,
@@ -786,6 +814,7 @@ async function answerTo(
 		readonly names: string;
 	}
 ): Promise<SettleResult> {
+	const processor = processorLabel(deps);
 	if (wrote === 'written') {
 		// every send is behind the commit, so everything they touch is touched after the money is in
 		// the books. ./receipt.ts and ./settled-notice.ts report their own failures and raise none,
@@ -809,7 +838,7 @@ async function answerTo(
 					body:
 						'The charge is in the books at face value and the fee it was taken out of is not. ' +
 						'Undeposited funds is overstated by that amount until somebody posts it, and it ' +
-						'will happen again on the next collection. Stripe published no fee for this ' +
+						`will happen again on the next collection. ${processor} published no fee for this ` +
 						'payment in the currency the gift was charged in, which is the only currency the ' +
 						'entry could be posted in.',
 					facts: [
@@ -820,12 +849,12 @@ async function answerTo(
 					// dashboard posts a correcting entry, so the figure is all this alert can hand
 					// over.
 					action:
-						'Find this payment in the Stripe dashboard and keep the fee it states, in the ' +
-						'currency the gift was charged in. Keep only a figure Stripe states for this ' +
-						'payment: a fee reported in another currency is not one to convert, because Stripe ' +
-						'publishes no fee in the currency a donor was charged in. This deployment records ' +
-						'nothing for it, so carry that figure into the books your organisation keeps ' +
-						'outside it.'
+						`Find this payment in the ${processor} dashboard and keep the fee it states, in ` +
+						'the currency the gift was charged in. Keep only a figure ' +
+						`${processor} states for this payment: a fee reported in another currency is not ` +
+						'one to convert, because the converted figure is one nobody published. This ' +
+						'deployment records nothing for it, so carry that figure into the books your ' +
+						'organisation keeps outside it.'
 				});
 			}
 
@@ -860,26 +889,25 @@ async function answerTo(
 		await alert(deps, {
 			headline: 'A repeating gift collected money the database would not record',
 			body:
-				'A collection succeeded and the write was refused: the commitment names a donor or a ' +
-				'form this deployment does not have, or something on it is a value these tables will ' +
-				'not hold. The money is not in the books. Sending the delivery again cannot fix it. ' +
-				'The database refuses the same write every time.',
+				'A collection succeeded and the write was refused: something on it is a value these ' +
+				'tables will not hold. The money is not in the books. Sending the delivery again cannot ' +
+				'fix it. The database refuses the same write every time.',
 			facts: [
 				{ label: 'Event', value: about.event.id },
 				{ label: 'Repeating gift', value: about.notice.providerGiftId },
-				{ label: 'Named by the commitment', value: about.names },
+				{ label: 'Donor and form', value: about.names },
 				{ label: 'Transaction', value: about.settlement.providerTxnId },
 				{
 					label: 'Amount',
 					value: `${about.settlement.amountMinor} ${about.settlement.currency} (minor units)`
 				}
 			],
-			action: 'Find this subscription in the Stripe dashboard and record the gift by hand.'
+			action: `Find this subscription in the ${processor} dashboard and record the gift by hand.`
 		});
 		return {
 			ok: true,
 			outcome: 'unmatched',
-			detail: `the commitment ${about.notice.providerGiftId} names ${about.names}, and the database refused to record a gift against it.`
+			detail: `a collection under ${about.notice.providerGiftId} is for ${about.names}, and the database refused to record a gift against it.`
 		};
 	}
 
@@ -1096,10 +1124,10 @@ type OpeningGift = {
 /**
  * what a collection writes when it has no gift waiting for it: the gift and the money.
  *
- * every later charge in a series takes this path, and so does the opening charge of a commitment
- * this app did not authorize. `opening` is what the series was authorized with — the dedication and
- * the cause, which the opening charge kept and every later one copies (`openingGift` above) — and
- * both are null where the series names neither.
+ * every charge in a series but the one that opened it takes this path — the opening charge has a row
+ * waiting and `claimWrites` below is what corrects it. `opening` is what the series was authorized
+ * with — the dedication and the cause, which the opening charge kept and every later one copies
+ * (`openingGift` above) — and both are null where the series names neither.
  */
 function chargeWrites(
 	db: Db,
@@ -1227,8 +1255,8 @@ function chargeWrites(
 }
 
 /**
- * what the charge that opens a commitment writes when the gift it is paying is already there: the
- * gift corrected to what moved, its line with it, the money, and the postings.
+ * what the charge that opens a commitment writes: the gift it is paying corrected to what moved, its
+ * line with it, the money, and the postings.
  *
  * an UPDATE where `chargeWrites` is an INSERT, and the three columns it corrects are the three the
  * quote could only claim. `total_minor` and the line's two amounts take what actually settled, which
@@ -1370,52 +1398,41 @@ async function attempt(db: Db, writes: BatchItem<'sqlite'>[]): Promise<WriteOutc
 	}
 }
 
-/** who the commitment says this money is from, or what is wrong with what it says. */
+/** which gift the commitment says this money is for, or what is wrong with what it says. */
 type Attribution = {
-	readonly contactId: string;
-	readonly formId: string;
+	/** the gift this deployment recorded when the donor authorized the commitment. */
+	readonly authorizedGiftId: string;
 	readonly interval: RecurringInterval;
-	/**
-	 * the gift this deployment recorded when the donor authorized the commitment, or null.
-	 *
-	 * null on a commitment made outside this app and on one made before the key shipped, and neither
-	 * is a refusal: the money moved, and a gift written here holds it. `findAuthorizedGift` is what
-	 * decides whether the row it names is one this charge may claim.
-	 */
-	readonly authorizedGiftId: string | null;
 };
 
 /**
- * the three facts a commitment has to carry, read off its metadata — and, for the one of them that
+ * the two facts a commitment has to carry, read off its metadata — and, for the one of them that
  * has a second source, off the rail's own schedule where the metadata cannot say.
  *
  * a sentence rather than a null on failure, because the sentence is what reaches an operator, and
  * "this gift is not attributable" is only actionable if it says which fact is missing. the contract
- * itself is stated on the keys in ../payments/provider.ts.
+ * itself is stated on `commitmentMetadata` in ../payments/provider.ts.
  *
  * blank is treated as absent: a metadata value the processor holds as an empty string satisfies
  * every presence check and then fails at the foreign key, which is the same defect one step later
  * and with a worse message.
  *
- * the donor and the form have no second source and never will: a `contact_id` is this deployment's
- * own row and nothing at the processor knows it, so a collection that cannot name one is money with
- * nobody to file it under and is refused. the cadence is not like that. it is a label on money that
- * has already moved, the rail's own schedule states it (`RecurringGiftNotice.interval`), and
- * refusing a gift the books could otherwise hold over this app's preferred spelling of "monthly" is
- * the worse trade — so the metadata leads and the schedule answers when it cannot. it is refused
- * only when neither can say, which is a commitment collecting on a cadence this app does not model
- * at all and therefore cannot record honestly.
+ * the gift has no second source and never will: a `donation_id` is this deployment's own row and
+ * nothing at the processor knows it, so a collection that cannot name one is money with nobody to
+ * file it under and is refused — which is also what a commitment made outside this app looks like.
+ * the cadence is not like that. it is a label on money that has already moved, the rail's own
+ * schedule states it (`RecurringGiftNotice.interval`), and refusing a gift the books could otherwise
+ * hold over this app's preferred spelling of "monthly" is the worse trade — so the metadata leads
+ * and the schedule answers when it cannot. it is refused only when neither can say, which is a
+ * commitment collecting on a cadence this app does not model at all and therefore cannot record
+ * honestly.
  */
 function attribution(notice: RecurringGiftNotice): Attribution | string {
-	const contactId = (notice.metadata[CONTACT_METADATA_KEY] ?? '').trim();
-	const formId = (notice.metadata[FORM_METADATA_KEY] ?? '').trim();
-	const stated = (notice.metadata[INTERVAL_METADATA_KEY] ?? '').trim();
 	const authorized = (notice.metadata[DONATION_METADATA_KEY] ?? '').trim();
+	const stated = (notice.metadata[INTERVAL_METADATA_KEY] ?? '').trim();
 
-	if (contactId === '')
-		return `the commitment carries no \`${CONTACT_METADATA_KEY}\`, so there is no donor to file this gift under.`;
-	if (formId === '')
-		return `the commitment carries no \`${FORM_METADATA_KEY}\`, so there is no fund to post this gift to.`;
+	if (authorized === '')
+		return `the commitment carries no \`${DONATION_METADATA_KEY}\`, so there is no gift to file this money under.`;
 
 	const interval = (RECURRING_INTERVALS as readonly string[]).includes(stated)
 		? (stated as RecurringInterval)
@@ -1424,7 +1441,7 @@ function attribution(notice: RecurringGiftNotice): Attribution | string {
 		return `the commitment's \`${INTERVAL_METADATA_KEY}\` is ${JSON.stringify(stated)} and its schedule collects on a cadence this app does not model, so there is no interval to record it under. one of ${RECURRING_INTERVALS.join(', ')} is what a commitment here may be.`;
 	}
 
-	return { contactId, formId, interval, authorizedGiftId: authorized === '' ? null : authorized };
+	return { authorizedGiftId: authorized, interval };
 }
 
 /**
@@ -1439,35 +1456,27 @@ type AuthorizedGift = { readonly gift: Donation; readonly program: string | null
 /**
  * the gift a commitment names, where it is still one this charge may claim.
  *
- * three conditions, and each of them is the reason a row is not claimable rather than a defensive
+ * two conditions, and each of them is the reason a row is not claimable rather than a defensive
  * check. `recurring_id is null` is the whole idempotency of the claim as a statement: a gift already
  * attached to a commitment has been claimed, by this delivery's twin or by this delivery itself, and
- * claiming it again would put a second charge's money onto one row. the donor has to match because
- * the plan row is opened from the commitment's own `contact_id` and a gift filed under somebody else
- * would leave the two naming different people. and the id has to name a row at all — a commitment
- * made outside this app names none.
+ * claiming it again would put a second charge's money onto one row. and the id has to name a row at
+ * all — a commitment made outside this app names none.
+ *
+ * the donor is read off the row rather than matched against a second copy of itself. the commitment
+ * carries no `contact_id` (`commitmentMetadata` in ../payments/provider.ts), so this row is the only
+ * thing that says who gave, and the commitment it opens is filed under exactly whom the gift is.
  *
  * it is a lookup and never a gate. what makes the claim safe under a redelivery is
  * `recurring_plan_provider_subscription_idx` refusing the second commitment in the same `batch()`,
  * which is the shape CLAUDE.md's ban on read-then-write asks for; the `is null` above rides on the
  * statement so the read cannot go stale between here and the write either.
  */
-async function findAuthorizedGift(
-	db: Db,
-	donationId: string,
-	contactId: string
-): Promise<AuthorizedGift | null> {
+async function findAuthorizedGift(db: Db, donationId: string): Promise<AuthorizedGift | null> {
 	const [row] = await db
 		.select({ gift: donation, program: program.name })
 		.from(donation)
 		.leftJoin(program, eq(donation.programId, program.id))
-		.where(
-			and(
-				eq(donation.id, donationId),
-				eq(donation.contactId, contactId),
-				isNull(donation.recurringId)
-			)
-		)
+		.where(and(eq(donation.id, donationId), isNull(donation.recurringId)))
 		.limit(1);
 	return row ?? null;
 }

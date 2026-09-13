@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/better-giving/console/internal/cf"
+	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/stripe"
 )
@@ -55,11 +56,21 @@ func processor(t *testing.T, gate chan struct{}) (*httptest.Server, func() []str
 
 // a console signed in, holding an account, a session on a deployment that provisions the repeating
 // item and levels its wallet hostnames, and every one of its three doors bound to a fake.
-func setting(t *testing.T, chosen string, gate chan struct{}) (http.Handler, *httptest.Server, func() []string, func() []string) {
+//
+// The last return is every errand the deployment was sent, bodies and all, which is what says what
+// the run's own steps asked it for.
+func setting(t *testing.T, chosen string, gate chan struct{}) (http.Handler, *httptest.Server, func() []string, func() []string, func() []errand) {
 	t.Helper()
 	records, flow, accounts := machine(t, chosen)
 	surface, errands := deployed(t, map[string]any{
-		"POST /console/recurring":      map[string]any{"outcome": "set_up", "detail": nil},
+		// one account, because the press this run makes names the one it has just stored a key for:
+		// a deployment holding PayPal's keys as well answers about that account and no other.
+		"POST /console/recurring": map[string]any{
+			"outcome": "set_up",
+			"processors": []any{
+				map[string]any{"processor": "stripe", "label": "Stripe", "outcome": "set_up"},
+			},
+		},
 		"POST /console/wallet-domains": map[string]any{"state": "levelled", "hosts": []any{}},
 	})
 	connected(t, records, surface.URL)
@@ -94,7 +105,7 @@ func setting(t *testing.T, chosen string, gate chan struct{}) (http.Handler, *ht
 				read = append(read, one.method+" "+one.path)
 			}
 			return append(read, *cloudflare...)
-		}
+		}, errands
 }
 
 // one answer cloudflare's api wraps a result in.
@@ -127,7 +138,7 @@ func polled(t *testing.T, handler http.Handler, until func(map[string]any) bool)
 }
 
 func TestNothingIsSetUpForAMachineThatHasChosenNoAccount(t *testing.T) {
-	handler, _, asked, _ := setting(t, "", nil)
+	handler, _, asked, _, _ := setting(t, "", nil)
 
 	status, _ := press(t, handler, "/api/stripe/setup", pressed)
 	if status != http.StatusConflict {
@@ -152,7 +163,7 @@ func TestAnEmptyOrPaddedSlotIsRefusedBeforeAnythingLeavesThisMachine(t *testing.
 		{"a padded secret key", `{"secret":" sk_test_a","publishable":"pk_test_b"}`},
 	} {
 		t.Run(one.name, func(t *testing.T) {
-			handler, _, asked, _ := setting(t, "an-account", nil)
+			handler, _, asked, _, _ := setting(t, "an-account", nil)
 			status, answer := press(t, handler, "/api/stripe/setup", one.body)
 
 			if status != http.StatusBadRequest {
@@ -173,7 +184,7 @@ func TestAnEmptyOrPaddedSlotIsRefusedBeforeAnythingLeavesThisMachine(t *testing.
 
 // a pair of no recognisable shape reaches the chain, because the shape is Stripe's to judge.
 func TestAPairOfAnyShapeReachesTheProcessor(t *testing.T) {
-	handler, _, asked, _ := setting(t, "an-account", nil)
+	handler, _, asked, _, _ := setting(t, "an-account", nil)
 
 	status, answer := press(t, handler, "/api/stripe/setup", `{"secret":"not-a-key","publishable":"neither"}`)
 	if status != http.StatusOK {
@@ -188,7 +199,7 @@ func TestAPairOfAnyShapeReachesTheProcessor(t *testing.T) {
 }
 
 func TestTheWholeErrandRunsFromTheBinaryAndReachesNoDeploy(t *testing.T) {
-	handler, _, asked, wires := setting(t, "an-account", nil)
+	handler, _, asked, wires, _ := setting(t, "an-account", nil)
 
 	status, answer := press(t, handler, "/api/stripe/setup", pressed)
 	if status != http.StatusOK {
@@ -235,7 +246,7 @@ func TestTheWholeErrandRunsFromTheBinaryAndReachesNoDeploy(t *testing.T) {
 }
 
 func TestNeitherKeyReachesAnythingTheRunAnswersWith(t *testing.T) {
-	handler, _, _, _ := setting(t, "an-account", nil)
+	handler, _, _, _, _ := setting(t, "an-account", nil)
 	press(t, handler, "/api/stripe/setup", pressed)
 
 	landed := polled(t, handler, func(run map[string]any) bool {
@@ -256,7 +267,7 @@ func TestNeitherKeyReachesAnythingTheRunAnswersWith(t *testing.T) {
 func TestASecondPressWhileOneIsGoingIsTurnedDownCarryingTheOneAlreadyGoing(t *testing.T) {
 	// the processor holds the first call, so the run is still going for the length of the case.
 	gate := make(chan struct{})
-	handler, _, _, _ := setting(t, "an-account", gate)
+	handler, _, _, _, _ := setting(t, "an-account", gate)
 	t.Cleanup(func() { close(gate) })
 
 	press(t, handler, "/api/stripe/setup", pressed)
@@ -272,7 +283,7 @@ func TestASecondPressWhileOneIsGoingIsTurnedDownCarryingTheOneAlreadyGoing(t *te
 }
 
 func TestARunThatLandedIsConsumedByThePollThatObservedIt(t *testing.T) {
-	handler, _, _, _ := setting(t, "an-account", nil)
+	handler, _, _, _, _ := setting(t, "an-account", nil)
 	press(t, handler, "/api/stripe/setup", pressed)
 
 	polled(t, handler, func(run map[string]any) bool { return run != nil && run["kind"] == "ended" })
@@ -285,7 +296,7 @@ func TestARunThatLandedIsConsumedByThePollThatObservedIt(t *testing.T) {
 }
 
 func TestARunThatStoppedStaysUntilTheNextPressClearsIt(t *testing.T) {
-	handler, surface, _, wires := setting(t, "an-account", nil)
+	handler, surface, _, wires, _ := setting(t, "an-account", nil)
 	surface.Close()
 
 	press(t, handler, "/api/stripe/setup", pressed)
@@ -310,7 +321,7 @@ func TestARunThatStoppedStaysUntilTheNextPressClearsIt(t *testing.T) {
 }
 
 func TestAPressCarryingNoSecretKeyIsThePublishAloneAndReachesTheProcessorNotAtAll(t *testing.T) {
-	handler, _, asked, wires := setting(t, "an-account", nil)
+	handler, _, asked, wires, _ := setting(t, "an-account", nil)
 
 	status, _ := press(t, handler, "/api/stripe/setup", `{"secret":"","publishable":"pk_live_x"}`)
 	if status != http.StatusOK {
@@ -327,7 +338,7 @@ func TestAPressCarryingNoSecretKeyIsThePublishAloneAndReachesTheProcessorNotAtAl
 }
 
 func TestABodyThisConsoleWillNotActOnIsRefusedRatherThanRun(t *testing.T) {
-	handler, _, asked, _ := setting(t, "an-account", nil)
+	handler, _, asked, _, _ := setting(t, "an-account", nil)
 
 	for _, body := range []string{
 		`{"secret":"sk_test_a","publishable":"pk_test_b","worker":"someone-elses"}`,
@@ -345,4 +356,27 @@ func TestABodyThisConsoleWillNotActOnIsRefusedRatherThanRun(t *testing.T) {
 func said(answer map[string]any) string {
 	held, _ := answer["error"].(string)
 	return held
+}
+
+// the run's own step asks the deployment about the account it has just stored a key for, and says
+// which: the values that deployment is serving do not hold that key yet, so a press naming none
+// would act on every account but this one and come back reporting a run that never asked about it.
+func TestTheRunPressesTheDeploymentAboutTheAccountItJustStoredAKeyFor(t *testing.T) {
+	handler, _, _, _, errands := setting(t, "an-account", nil)
+	press(t, handler, "/api/stripe/setup", pressed)
+
+	polled(t, handler, func(run map[string]any) bool { return run != nil && run["kind"] == "ended" })
+
+	pressing := []errand{}
+	for _, one := range errands() {
+		if one.method == http.MethodPost && one.path == deployment.RecurringPath {
+			pressing = append(pressing, one)
+		}
+	}
+	if len(pressing) != 1 {
+		t.Fatalf("the deployment was pressed %d times, want once", len(pressing))
+	}
+	if pressing[0].body["processor"] != release.StripeProcessor {
+		t.Errorf("the press asked %v, want the account the run stored a key for", pressing[0].body)
+	}
 }

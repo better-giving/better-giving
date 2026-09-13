@@ -46,6 +46,9 @@ func answered(body map[string]any) cf.Answer {
 	return cf.Answer{Kind: cf.Answered, Status: 200, Body: body}
 }
 
+// one account's sentence, as the deployment's payment port writes it and the report carries it.
+func refusal(one string) *string { return &one }
+
 func turnedDown(status int, message string) cf.Answer {
 	return cf.Answer{Kind: cf.Answered, Status: status, Body: map[string]any{
 		"error": map[string]any{"message": message},
@@ -61,6 +64,9 @@ type effects struct {
 	addresses    []deployment.Address
 	addressReads int
 	repeating    deployment.RecurringSetup
+	// repeatings is what each press of the deployment's own step was named, in order: the run is
+	// about one account and the step says which.
+	repeatings []string
 	// covering is what the deployment says the wallet levelling did, and coverings counts the times
 	// it was asked — a step behind a stop is one nothing may reach.
 	covering  deployment.WalletsLevel
@@ -84,9 +90,21 @@ func working() *effects {
 				"id": "we_new", "secret": "whsec_new", "livemode": false,
 			}),
 		}},
-		address:   deployment.Address{Kind: deployment.Deployed, WorkersDev: address},
-		store:     deployment.Written{Kind: deployment.WriteSet},
-		repeating: deployment.RecurringSetup{Kind: deployment.RecurringSetupReported, Report: &deployment.RecurringSetupReport{Outcome: "set_up"}},
+		address: deployment.Address{Kind: deployment.Deployed, WorkersDev: address},
+		store:   deployment.Written{Kind: deployment.WriteSet},
+		// one account, because the press this step makes names the one the run is about: a deployment
+		// holding PayPal's keys too answers about that account and no other, and the word over the
+		// press is taken across it alone.
+		repeating: deployment.RecurringSetup{
+			Kind:  deployment.RecurringSetupReported,
+			Named: release.StripeProcessor,
+			Report: &deployment.RecurringSetupReport{
+				Outcome: "set_up",
+				Processors: []deployment.ProcessorRecurringSetup{
+					{Processor: "stripe", Label: "Stripe", Outcome: "set_up"},
+				},
+			},
+		},
 		covering: deployment.WalletsLevel{
 			Kind:   deployment.WalletsLevelReported,
 			Report: &deployment.WalletLevellingReport{State: "levelled"},
@@ -105,7 +123,10 @@ func (one *effects) bound() Effects {
 			}
 			return one.addresses[min(one.addressReads, len(one.addresses))-1]
 		},
-		Repeating: func(context.Context) deployment.RecurringSetup { return one.repeating },
+		Repeating: func(_ context.Context, processor string) deployment.RecurringSetup {
+			one.repeatings = append(one.repeatings, processor)
+			return one.repeating
+		},
 		Covering: func(context.Context) deployment.WalletsLevel {
 			one.coverings++
 			return one.covering
@@ -505,9 +526,19 @@ func TestARepeatingItemTheDeploymentCouldNotAddLeavesTheKeyPublished(t *testing.
 			Kind: deployment.RecurringSetupUnanswered,
 			Read: &deployment.NoReport{Kind: deployment.NoSession},
 		}},
-		{"the account refusing it", deployment.RecurringSetup{
-			Kind:   deployment.RecurringSetupReported,
-			Report: &deployment.RecurringSetupReport{Outcome: "failed"},
+		{"this account refusing it for something else", deployment.RecurringSetup{
+			Kind:  deployment.RecurringSetupReported,
+			Named: release.StripeProcessor,
+			Report: &deployment.RecurringSetupReport{
+				Outcome: "failed",
+				Processors: []deployment.ProcessorRecurringSetup{
+					{
+						Processor: "stripe", Label: "Stripe", Outcome: "failed",
+						Reason: reasoned("failed"),
+						Detail: refusal("Stripe holds an archived one, which cannot be charged against."),
+					},
+				},
+			},
 		}},
 	} {
 		t.Run(one.name, func(t *testing.T) {
@@ -518,7 +549,7 @@ func TestARepeatingItemTheDeploymentCouldNotAddLeavesTheKeyPublished(t *testing.
 			if outcome.Kind != Unrepeating || outcome.Setup == nil {
 				t.Fatalf("outcome = %+v", outcome)
 			}
-			// neither of these is the deployment saying it has no key, so the screen draws what the
+			// none of these is the Stripe account saying it has no key, so the screen draws what the
 			// deployment said rather than telling an operator to wait.
 			if outcome.AwaitingKey {
 				t.Errorf("outcome = %+v, want the deployment's own refusal reported as itself", outcome)
@@ -540,12 +571,21 @@ func TestARepeatingItemTheDeploymentCouldNotAddLeavesTheKeyPublished(t *testing.
 func TestADeploymentThatHasNotPickedTheKeyUpYetIsNotTheSameAsARefusal(t *testing.T) {
 	held := working()
 	// the write landed seconds earlier and has not reached the edge, so the deployment built its
-	// payment provider without the key and answered the press with the sentence that says so.
-	said := "This deployment cannot take a payment: `STRIPE_SECRET_KEY` is not set. Open the " +
-		"console (`better-giving open`) and set it under Donation processor."
+	// payment provider without the key and answered the press with `no_key` beside its sentence.
+	said := "This deployment cannot take a payment through Stripe: `STRIPE_SECRET_KEY` is not " +
+		"set. Open the console (`better-giving open`) and set it under Donation processor."
 	held.repeating = deployment.RecurringSetup{
-		Kind:   deployment.RecurringSetupReported,
-		Report: &deployment.RecurringSetupReport{Outcome: "failed", Detail: &said},
+		Kind:  deployment.RecurringSetupReported,
+		Named: release.StripeProcessor,
+		Report: &deployment.RecurringSetupReport{
+			Outcome: "failed",
+			Processors: []deployment.ProcessorRecurringSetup{
+				{
+					Processor: "stripe", Label: "Stripe", Outcome: "failed",
+					Reason: reasoned("no_key"), Detail: &said,
+				},
+			},
+		},
 	}
 	outcome := Chain(context.Background(), errand(), held.bound())
 
@@ -560,8 +600,14 @@ func TestADeploymentThatHasNotPickedTheKeyUpYetIsNotTheSameAsARefusal(t *testing
 func TestAnAccountAlreadyHoldingTheItemIsTheSameFinishedStateAsOneJustAdded(t *testing.T) {
 	held := working()
 	held.repeating = deployment.RecurringSetup{
-		Kind:   deployment.RecurringSetupReported,
-		Report: &deployment.RecurringSetupReport{Outcome: "already_set_up"},
+		Kind: deployment.RecurringSetupReported,
+		Report: &deployment.RecurringSetupReport{
+			Outcome: "already_set_up",
+			Processors: []deployment.ProcessorRecurringSetup{
+				{Processor: "stripe", Label: "Stripe", Outcome: "already_set_up"},
+				{Processor: "paypal", Label: "PayPal", Outcome: "already_set_up"},
+			},
+		},
 	}
 
 	if outcome := Chain(context.Background(), errand(), held.bound()); outcome.Kind != Done {
@@ -671,3 +717,21 @@ func TestADeploymentThatHasNotPickedTheKeyUpYetStopsTheLevellingTheSameWay(t *te
 		t.Fatalf("outcome = %+v, want uncovered over a deployment that has not picked the key up", outcome)
 	}
 }
+
+// the step the deployment makes is about the account this run has just stored a key for, and names
+// it: which accounts a deployment counts as configured is read off the values it is serving, and
+// the key stored seconds earlier is not among them yet — so a press naming none would act on every
+// account but this one and report a run that never asked about it.
+func TestTheDeploymentsOwnStepNamesTheAccountTheRunIsAbout(t *testing.T) {
+	held := working()
+
+	if outcome := Chain(context.Background(), errand(), held.bound()); outcome.Kind != Done {
+		t.Fatalf("outcome = %+v, want done", outcome)
+	}
+	if want := []string{release.StripeProcessor}; !slices.Equal(held.repeatings, want) {
+		t.Errorf("the deployment was pressed about %v, want %v", held.repeatings, want)
+	}
+}
+
+// a reason as the deployment states it beside its sentence.
+func reasoned(said string) *string { return &said }
