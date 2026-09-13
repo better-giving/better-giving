@@ -10,8 +10,8 @@ import { OrgWriteOutcome } from './org-write';
 import type { OrgWrite } from '../api/types';
 import type { OrgBoxes } from './org-fields';
 
-// the legal identity this deployment asks for gifts under, read and edited inside the first fold of
-// the one page.
+// the legal identity this deployment asks for gifts under, read and edited on the organisation page
+// (../routes/_sections.organisation.tsx).
 //
 // **it is a row on the deployment and this fold names no database.** the values are read out of the
 // report the deployment answers with and written back to its own endpoint over the console session
@@ -35,7 +35,7 @@ import type { OrgBoxes } from './org-fields';
 // and that is the whole of what says so; the sentence about a blank one arrives at the press
 // (CLAUDE.md, and the timing is the seam's for every fold at once). a warning drawn over a form
 // seeded from a record is a screen reporting a refusal nobody asked for, and the same words then
-// stand at the box, at the head of the panel and on the row above — one fact told three times, each
+// stand at the box, at the head of the panel and on the rail cell — one fact told three times, each
 // able to drift from the other two.
 //
 // **at the press, every box the rules turn down is answered at the box and nothing is sent.** a
@@ -64,9 +64,9 @@ import type { OrgBoxes } from './org-fields';
 // `ORG_PROFILE_FIELD_RULES`, refused blank by nothing), so an identity saved first is an identity
 // saved.
 //
-// it is a component and not a screen: the fold is one entry of the ledger ../routes/_index.tsx
-// draws, and everything about which fold this is — its label, its tone, the word beside it and what
-// stands between it and its job — is decided in ./home-sections.ts with the others.
+// it is a component and not a screen: ../routes/_sections.organisation.tsx mounts it and answers its
+// press, and everything about which section this is — its label, its tone, the word on its rail cell
+// and what stands between it and its job — is decided in ./home-sections.ts with the others.
 
 export type OrgFoldProps = {
 	/** the profile as the deployment holds it, which is what the boxes are seeded and read against. */

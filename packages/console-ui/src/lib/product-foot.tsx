@@ -12,8 +12,8 @@ import github from '../assets/social/github.webp';
 //
 // **it holds only what is true before there is anything to read.** neither end turns on a cloudflare
 // account, a deployment or a reading, which is what lets one strip stand under all of them — the
-// gate, the deploy card, the two running faces, the shell home and the page that says the console
-// has stopped.
+// document's waiting face, `/`'s faces and the page that says the console has stopped. the section
+// pages state the same two things in the rail's foot (../routes/_sections.tsx), under the account.
 //
 // it is a fragment rather than a box, because the box is the slot's: `.adm-footstrip` in
 // packages/operator/src/styles/adm.css stands two children at the two ends of a strip, and both
@@ -37,13 +37,10 @@ import github from '../assets/social/github.webp';
    own `alt` and names the destination rather than the company. the box it is drawn in is
    `.adm-footstrip__social` in packages/operator/src/styles/adm.css, and the two numbers here are
    that file's own pixels, which is what holds the row's height before the picture has loaded. */
+export const SOURCE_URL = 'https://github.com/better-giving/better-giving';
+
 const SOURCE = (
-	<a
-		className="adm-footstrip__social"
-		href="https://github.com/better-giving/better-giving"
-		target="_blank"
-		rel="noreferrer"
-	>
+	<a className="adm-footstrip__social" href={SOURCE_URL} target="_blank" rel="noreferrer">
 		<img src={github} alt="better.giving source on GitHub" width={128} height={128} />
 	</a>
 );
@@ -58,12 +55,17 @@ export type ProductFootProps = {
 	version: string;
 };
 
+/** the product's name, and the release where one is named. */
+export const PRODUCT_NAME = 'Better Giving';
+
+export function productLine(version: string): string {
+	return version === '' ? PRODUCT_NAME : `${PRODUCT_NAME} ver. ${version}`;
+}
+
 export function ProductFoot({ version }: ProductFootProps): ReactNode {
 	return (
 		<>
-			<span className="adm-caption">
-				{version === '' ? 'Better Giving' : `Better Giving ver. ${version}`}
-			</span>
+			<span className="adm-caption">{productLine(version)}</span>
 			{SOURCE}
 		</>
 	);

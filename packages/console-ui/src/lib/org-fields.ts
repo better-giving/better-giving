@@ -166,12 +166,12 @@ export const IDENTITY_BOXES: readonly OrgProfileField[] = ORG_PROFILE_FIELDS.fil
 );
 
 /**
- * the ledger row an operator opens to find one of the profile's boxes, in the words that row
+ * the section an operator opens to find one of the profile's boxes, in the words its rail cell
  * carries, re-exported from where both operator surfaces read them.
  *
- * a refusal on a box names the row to go and open, so the sentence and the row it names cannot come
- * apart — and the deployment reads the same rows under the same words, which is why they moved to
- * the leaf both surfaces dress from rather than staying here.
+ * a refusal on a box names the section to go and open, so the sentence and the cell it names cannot
+ * come apart — and the deployment reads the same sections under the same words, which is why they
+ * moved to the leaf both surfaces dress from rather than staying here.
  */
 export { IDENTITY_FOLD, NOTIFICATIONS_FOLD };
 

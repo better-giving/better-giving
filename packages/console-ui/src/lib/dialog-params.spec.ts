@@ -1,6 +1,6 @@
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { describe, expect, it } from 'vitest';
-import { opensOrDropsDialog } from './dialog-params';
+import { consoleRereads, opensOrDropsDialog } from './dialog-params';
 
 /** a link press between two addresses on this one page, which is every navigation but a submission. */
 const pressed = (from: string, to: string): ShouldRevalidateFunctionArgs => ({
@@ -54,5 +54,22 @@ describe('every other navigation', () => {
 
 	it('is one of them when what else the address carries is unchanged', () => {
 		expect(opensOrDropsDialog(pressed('/?fold=mail', '/?fold=mail&close'))).toBe(true);
+	});
+});
+
+describe('whether a console screen reads again', () => {
+	it('does not after the close press, which the binary stops behind', () => {
+		expect(consoleRereads(posted('/password', '/password', { closing: true }))).toBe(false);
+	});
+
+	it('does not over the close confirm opening on a section page', () => {
+		expect(consoleRereads(pressed('/payments/stripe', '/payments/stripe?close'))).toBe(false);
+	});
+
+	it('leaves every other navigation to the router', () => {
+		expect(consoleRereads(posted('/sites', '/sites', { sites: {} }))).toBe(true);
+		expect(consoleRereads({ ...pressed('/sites', '/smtp'), defaultShouldRevalidate: false })).toBe(
+			false
+		);
 	});
 });

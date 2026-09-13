@@ -1,11 +1,12 @@
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
+import { saidClosing } from './close-answer';
 
 // every address parameter that opens a dialog on this console, and the reading that keeps opening
 // one off the loader.
 //
 // **the dialogs are parameters on the address rather than component state**, which is what makes
 // the way out of each a link and what makes Escape and the browser's own back button answer the
-// same way (../routes/_index.tsx states the arrangement over the press it draws). the cost of that
+// same way (./close-confirm.tsx draws the one there is). the cost of that
 // is a link press being a navigation: without a word from `shouldRevalidate` the router re-reads
 // the page before the dialog can draw, and the whole of that read is loopback round trips — so the
 // press an operator made sits doing nothing for as long as the binary takes to answer.
@@ -44,4 +45,20 @@ export function opensOrDropsDialog({
 }: ShouldRevalidateFunctionArgs): boolean {
 	if (formMethod !== undefined) return false;
 	return withoutDialogs(currentUrl) === withoutDialogs(nextUrl);
+}
+
+/**
+ * the `shouldRevalidate` every console route with a loader states: every press re-reads, except the
+ * one that ends the process it would read, and no link that only opens or drops a dialog does.
+ *
+ * the binary answers the close and then stops, so a read after it cannot land: it reaches nothing,
+ * the loader rejects, and the operator meets the boundary that says the console crashed in place of
+ * the blank page closing it leaves. the answer carries the reading that stops it
+ * (./close-answer.ts), which is what the router hands `actionResult` over for — a fetcher's answer
+ * included, which is how the close is posted (./close-confirm.tsx).
+ */
+export function consoleRereads(args: ShouldRevalidateFunctionArgs): boolean {
+	if (saidClosing(args.actionResult)) return false;
+	if (opensOrDropsDialog(args)) return false;
+	return args.defaultShouldRevalidate;
 }

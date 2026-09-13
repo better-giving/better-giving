@@ -34,7 +34,8 @@ export type PressPhase = {
 };
 
 /**
- * what the last set-up answer said, as ../routes/_index.tsx reads it off the action's result.
+ * what the last set-up answer said, as ../routes/_sections.payments.stripe.tsx reads it off the
+ * action's result.
  *
  * neither member says which press it is about: that is {@link PressPhase}'s.
  */
@@ -231,9 +232,9 @@ function storedPair(run: StripeRunRead | null, sent: KeysSent | null): StripeKey
  * the pair the boxes are seeded from, and whether a write has put them back to it.
  *
  * **the press's own answer seeds them, and it does so before any reading of the deployment.** the
- * fold's reading is a promise the loader hands back unresolved (../routes/_index.tsx), so it lands
+ * page's reading is a promise the loader hands back unresolved (./processor-reading.ts), so it lands
  * a cloudflare round trip and the deployment's own answer after the run has ended — and the boxes
- * are held closed for the whole of that gap ({@link keysClosed}), which is a payments fold nothing
+ * are held closed for the whole of that gap ({@link keysClosed}), which is a wait nothing
  * on the screen says anything about. what the press sent is what the deployment is holding the
  * moment it says it stored it, so there is nothing left to wait for. `storedOrg` in ./org-form.ts
  * is the same seeding, from the same camp (./reseed.ts).

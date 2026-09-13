@@ -1,7 +1,8 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { AppShell } from '@better-giving/operator/components/shell/AppShell';
 import { Form, Outlet, useLocation } from 'react-router';
-import { currentDestination, DESTINATIONS } from '$lib/admin/destinations';
+import { ScreenCrumbs, useCrumbs } from '$lib/admin/crumbs';
+import { currentDestination, DESTINATION_GROUPS } from '$lib/admin/destinations';
 import { operatorLinks } from '$lib/admin/operator-links';
 import { RouterLink } from '$lib/admin/router-link';
 import { APP_NAME } from '$lib/admin/screen-title';
@@ -69,6 +70,8 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 	// a cell is which section the reader is in and a section is several routes deep
 	// ($lib/admin/destinations.ts).
 	const { pathname } = useLocation();
+	const at = currentDestination(pathname);
+	const crumbs = useCrumbs();
 
 	// the gate stands in place of the frame and the screen alike, so no child route renders and no
 	// rail offers a destination this deployment is not serving ($lib/admin/setup-gate.tsx). the
@@ -83,10 +86,20 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 			// shared with every screen's tab title, which falls back to the same one
 			// ($lib/admin/screen-title.ts).
 			org={loaderData.orgName ?? APP_NAME}
-			destinations={DESTINATIONS}
+			groups={DESTINATION_GROUPS}
 			link={RouterLink}
-			current={currentDestination(pathname)}
-			signOut={
+			current={at}
+			head={
+				// a screen under a section states its trail, and the strip carries it in place of the
+				// section's name, which is the trail's first crumb. a screen that is its destination's
+				// own page states none and is named by the destination.
+				crumbs.length >= 2 ? (
+					<ScreenCrumbs />
+				) : at ? (
+					<span className="adm-headstrip__title">{at.label}</span>
+				) : undefined
+			}
+			wayOut={
 				// a form and not a button that calls something: writes are form actions in this app
 				// and there are no client-side mutation paths in /admin (CLAUDE.md). the action is
 				// a route of its own (./_app.admin.sign-out.ts) rather than a named action on
@@ -94,11 +107,12 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 				// of them would have it.
 				//
 				// `.adm-signout` is what keeps two words from breaking across two lines when an
-				// organisation's long name contests the identity band's row; the shell renders
-				// this same node at the foot of the rail too, where the class reaches nothing.
+				// organisation's long name contests the identity band's row, and what the collapsed
+				// rail keys its foot off; `.adm-signout__word` is the word it hides there, leaving the
+				// mark.
 				<Form method="post" action="/admin/sign-out" className="adm-signout">
-					<Button variant="quiet" size="sm">
-						Sign out
+					<Button variant="quiet" size="sm" mark="log-out">
+						<span className="adm-signout__word">Sign out</span>
 					</Button>
 				</Form>
 			}

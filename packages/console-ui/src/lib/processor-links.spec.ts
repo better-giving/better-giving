@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { processorLinks } from './processor-links';
 
-// the donation processor list's rows, away from the list that draws them: this package has no DOM
+// the rail's processor cells, away from the rail that draws them: this package has no DOM
 // pool (../../vite.config.ts), so the reading is held here or nowhere.
 
 const STRIPE_PAIR = ['STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY'];
@@ -10,13 +10,8 @@ const PAYPAL_PAIR = ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET'];
 describe('processorLinks', () => {
 	it('draws both processors set up where the deployment holds both pairs', () => {
 		expect(processorLinks(new Set([...STRIPE_PAIR, ...PAYPAL_PAIR]))).toEqual([
-			{
-				name: 'Stripe',
-				href: '/payments/stripe',
-				notSetUp: false,
-				takes: 'Card, Bank account, Apple Pay, Google Pay, Link'
-			},
-			{ name: 'PayPal', href: '/payments/paypal', notSetUp: false, takes: 'PayPal, Venmo' }
+			{ processor: 'stripe', name: 'Stripe', href: '/payments/stripe', notSetUp: false },
+			{ processor: 'paypal', name: 'PayPal', href: '/payments/paypal', notSetUp: false }
 		]);
 	});
 

@@ -8,11 +8,11 @@ import { flatRoutes } from '@react-router/fs-routes';
 // over one: `flatRoutes` reads a `.ts` as readily as a `.tsx`, and every spec in this package sits
 // beside the module it is about.
 //
-// **no layout wraps them, because the console is one page and a page carries its own shell.** which
-// shell `/` draws is the whole of what it decides — a centred panel before there is a cloudflare
-// account, a bar of facts after one — and a layout above it would have to draw a frame around the
-// face that is deliberately drawn without one. the two processor screens,
-// ./routes/payments_.stripe.tsx and ./routes/payments_.paypal.tsx, draw their own shell for the same
-// reason. every other file under ./routes/ is an address that moved: a loader that redirects to `/`
-// and no component at all.
+// **one layout wraps the pages of a ready deployment, and `/` stands outside it.** ./routes/_sections.tsx
+// is pathless — the leading underscore — and draws the rail, the strip and the foot around every
+// `_sections.*` page, one per set-up section. `/` (./routes/_index.tsx) draws the faces that stand
+// before a deployment is ready on a shell of their own, because every fact the rail would carry is
+// read over a deployment this console cannot yet read, and sends a ready deployment into the layout.
+// every other file under ./routes/ is an address that moved: a loader that redirects to the page now
+// holding what it held, and no component at all.
 export default (await flatRoutes({ ignoredRouteFiles: ['**/*.spec.*'] })) satisfies RouteConfig;

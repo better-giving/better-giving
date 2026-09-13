@@ -7,7 +7,7 @@ import { getFormProps } from '@conform-to/react';
 import type { MouseEvent } from 'react';
 import { Form, href, Link, useNavigation } from 'react-router';
 import { ProgramFields } from '$lib/admin/programs/fields';
-import { type CrumbHandle, ScreenCrumbs } from '$lib/admin/crumbs';
+import type { CrumbHandle } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { useAdminForm } from '$lib/admin/use-admin-form';
 import { defineForm } from '$lib/forms/definition';
@@ -154,8 +154,7 @@ export default function NewProgram({ actionData }: Route.ComponentProps) {
 		// one column and the column is what spaces it: every block below carries no margin of its
 		// own, so one that is not rendered leaves no space behind it.
 		<Column>
-			{/* the trail to the section this screen sits under, stated by this module's `handle`. */}
-			<PageHeader title={SCREEN_TITLE} crumbs={<ScreenCrumbs />} />
+			<PageHeader title={SCREEN_TITLE} />
 
 			{/* no `action` attribute, so this posts to the current url. conform's `getFormProps` puts
 			    the form's own id on the element, which is what its focus move looks the form up by —

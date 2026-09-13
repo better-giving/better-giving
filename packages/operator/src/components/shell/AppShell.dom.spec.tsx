@@ -1,11 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { act } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '../render.testing';
 import { AppShell, PanelRoute } from './AppShell.jsx';
 import type { DestinationLinkProps } from './DestinationCell.jsx';
 
-// the two things about the shell no consumer can assert for it: what the rail claims about where
-// the reader is, and whether there is a way out at all. a surface can only see what its own screens
-// do with the part.
+// the things about the shell no consumer can assert for it: what the rail claims about where the
+// reader is, how its groups are divided, whether there is a way out and where it lands, what the
+// panel holds, and the collapse the shell keeps for itself. a surface can only see what its own
+// screens do with the part.
 //
 // the rail marks one cell and announces one cell, and the two are not the same statement.
 // ./DestinationCell.jsx takes the kind; this is the hop that hands it one, and a shell that drops
@@ -14,9 +16,13 @@ import type { DestinationLinkProps } from './DestinationCell.jsx';
 // a component spec is `.tsx` and both pools collect either extension — ../forms/Field.dom.spec.tsx
 // says why.
 
-const DESTINATIONS = [
-	{ label: 'Donation forms', short: 'Forms', href: '/admin/forms' },
-	{ label: 'Donors', short: 'Donors', href: '/admin/donors' }
+const GROUPS = [
+	{
+		destinations: [
+			{ label: 'Donation forms', short: 'Forms', href: '/admin/forms' },
+			{ label: 'Donors', short: 'Donors', href: '/admin/donors' }
+		]
+	}
 ];
 
 /** the rail cell reading `label`, by the word it draws at the wide width. */
@@ -28,10 +34,26 @@ function cell(root: HTMLElement, label: string): Element {
 	return found;
 }
 
+/** the rail's children in order, each as its first class and, for a cell, its full word. */
+function railRun(root: HTMLElement): string[] {
+	return [...(root.querySelector('.adm-rail__cells')?.children ?? [])].map((node) => {
+		if (node.matches('a')) {
+			const end = node.classList.contains('adm-dest--groupend') ? ' (end)' : '';
+			return `${node.querySelector('.adm-dest__full')?.textContent}${end}`;
+		}
+		if (node.matches('hr')) return node.className;
+		return `${node.className}: ${node.textContent}`;
+	});
+}
+
+beforeEach(() => {
+	localStorage.clear();
+});
+
 describe('a rail mounted into a document', () => {
 	it('announces the destination the reader is at as the page', () => {
 		const root = render(AppShell, {
-			destinations: DESTINATIONS,
+			groups: GROUPS,
 			current: { label: 'Donation forms', kind: 'page' as const }
 		});
 
@@ -40,7 +62,7 @@ describe('a rail mounted into a document', () => {
 
 	it('announces a destination that only contains the address as the current one of these', () => {
 		const root = render(AppShell, {
-			destinations: DESTINATIONS,
+			groups: GROUPS,
 			current: { label: 'Donation forms', kind: 'section' as const }
 		});
 
@@ -52,21 +74,21 @@ describe('a rail mounted into a document', () => {
 		// and the page itself. packages/app hands the first from its pathname, and
 		// packages/app/src/lib/admin/rail-navigates.dom.spec.tsx hands the second, so the looser
 		// form is reached by a caller rather than only by this file.
-		const root = render(AppShell, { destinations: DESTINATIONS, current: 'Donors' });
+		const root = render(AppShell, { groups: GROUPS, current: 'Donors' });
 
 		expect(cell(root, 'Donors').getAttribute('aria-current')).toBe('page');
 	});
 
 	it('marks the section exactly as it marks the page, so only what is read out differs', () => {
-		// the sheet draws the band off a bare `[aria-current]` and off `.is-current`, neither of
+		// the sheet draws the tint off a bare `[aria-current]` and off `.is-current`, neither of
 		// which reads the kind (packages/operator/src/styles/adm.css). a reader who can see the
 		// rail must lose nothing to the distinction.
 		const page = render(AppShell, {
-			destinations: DESTINATIONS,
+			groups: GROUPS,
 			current: { label: 'Donation forms', kind: 'page' as const }
 		});
 		const section = render(AppShell, {
-			destinations: DESTINATIONS,
+			groups: GROUPS,
 			current: { label: 'Donation forms', kind: 'section' as const }
 		});
 
@@ -77,7 +99,7 @@ describe('a rail mounted into a document', () => {
 	it('marks no cell at all where the reader is in no destination', () => {
 		// what a surface hands for an address under none of the destinations. the rail marks one of
 		// them or none, and a cell marked here would announce itself as the page the reader is on.
-		const root = render(AppShell, { destinations: DESTINATIONS, current: undefined });
+		const root = render(AppShell, { groups: GROUPS, current: undefined });
 
 		expect(root.querySelectorAll('.adm-rail__cells > a[aria-current]')).toHaveLength(0);
 		expect(root.querySelectorAll('.adm-rail__cells > a.is-current')).toHaveLength(0);
@@ -85,7 +107,7 @@ describe('a rail mounted into a document', () => {
 
 	it('claims nothing on the destinations the reader is not in', () => {
 		const root = render(AppShell, {
-			destinations: DESTINATIONS,
+			groups: GROUPS,
 			current: { label: 'Donation forms', kind: 'section' as const }
 		});
 
@@ -93,26 +115,126 @@ describe('a rail mounted into a document', () => {
 	});
 });
 
+describe('the groups a rail is divided into', () => {
+	it('rules between plain groups, and draws nothing before the first', () => {
+		const root = render(AppShell, {
+			groups: [
+				{ destinations: [{ label: 'Dashboard' }] },
+				{ destinations: [{ label: 'Donation forms' }, { label: 'Donors' }] },
+				{ destinations: [{ label: 'Members' }] }
+			]
+		});
+
+		expect(railRun(root)).toEqual([
+			'Dashboard',
+			'adm-rail__rule',
+			'Donation forms',
+			'Donors',
+			'adm-rail__rule',
+			'Members'
+		]);
+	});
+
+	it('stands a headed group under its heading, ends it, and rules nothing after it', () => {
+		// the console's rail: the headed group's last entry carries the step, so the group after
+		// it needs no rule of its own.
+		const root = render(AppShell, {
+			groups: [
+				{ destinations: [{ label: 'Dashboard password' }, { label: 'Organisation' }] },
+				{
+					heading: 'Donation processor',
+					destinations: [{ label: 'Stripe' }, { label: 'PayPal' }]
+				},
+				{ destinations: [{ label: 'Sites' }, { label: 'SMTP' }] }
+			]
+		});
+
+		expect(railRun(root)).toEqual([
+			'Dashboard password',
+			'Organisation',
+			'adm-rail__rule adm-rail__rule--group',
+			'adm-rail__heading: Donation processor',
+			'Stripe',
+			'PayPal (end)',
+			'Sites',
+			'SMTP'
+		]);
+	});
+
+	it('draws the heading as words, never as a link', () => {
+		const root = render(AppShell, {
+			groups: [
+				{ destinations: [{ label: 'Organisation' }] },
+				{ heading: 'Donation processor', destinations: [{ label: 'Stripe' }] }
+			]
+		});
+		const heading = root.querySelector('.adm-rail__heading');
+
+		expect(heading?.closest('a')).toBeNull();
+		expect(heading?.querySelector('a')).toBeNull();
+		expect(root.querySelectorAll('.adm-rail__cells > a')).toHaveLength(2);
+	});
+
+	it('draws a glyph mark as the glyph and a picture mark as an unnamed image', () => {
+		const root = render(AppShell, {
+			groups: [
+				{
+					destinations: [
+						{ label: 'Organisation', mark: 'building-2' as const },
+						{ label: 'Stripe', mark: { src: '/stripe.png' } }
+					]
+				}
+			]
+		});
+
+		expect(cell(root, 'Organisation').querySelector('svg.adm-mark')).not.toBeNull();
+		const image = cell(root, 'Stripe').querySelector('img.adm-mark');
+		expect(image?.getAttribute('src')).toBe('/stripe.png');
+		expect(image?.getAttribute('alt')).toBe('');
+	});
+
+	it('reads the status word out as part of the link', () => {
+		const root = render(AppShell, {
+			groups: [
+				{
+					destinations: [
+						{
+							label: 'Sites',
+							status: { tone: 'note' as const, mark: 'circle-dashed' as const, label: 'Not set up' }
+						}
+					]
+				}
+			]
+		});
+		const link = cell(root, 'Sites');
+
+		expect(link.querySelector('.adm-dest__status--note svg')?.getAttribute('aria-hidden')).toBe(
+			'true'
+		);
+		expect(link.querySelector('.adm-vh')?.textContent).toBe(', Not set up');
+	});
+});
+
 describe('the way out a shell draws', () => {
-	/** the sign-out controls the shell put on the page, at both of the widths it draws one for. */
+	/** the controls standing in the band and the foot, at both widths. */
 	function waysOut(root: HTMLElement): Element[] {
 		return [...root.querySelectorAll('.adm-identity > .adm-signout, .adm-rail__foot > *')];
 	}
 
 	it('draws the specimen its own button, at both widths', () => {
-		// a bare shell — no `signOut` override — is not mounted anywhere in this repository; the
+		// a bare shell — no `wayOut` override — is not mounted anywhere in this repository; the
 		// one caller (packages/app/src/routes/_app.tsx) always hands one in. this asserts the
 		// prop's own declared default regardless, since a prop with a fallback should draw one
 		// that works.
-		const root = render(AppShell, { destinations: DESTINATIONS });
+		const root = render(AppShell, { groups: GROUPS });
 
 		expect(waysOut(root).map((node) => node.textContent)).toEqual(['Sign out', 'Sign out']);
 	});
 
 	it('draws what a surface hands it, and the same node at both widths', () => {
 		const root = render(AppShell, {
-			destinations: DESTINATIONS,
-			signOut: (
+			groups: GROUPS,
+			wayOut: (
 				<button className="adm-signout" type="submit">
 					Leave
 				</button>
@@ -122,15 +244,130 @@ describe('the way out a shell draws', () => {
 		expect(waysOut(root).map((node) => node.textContent)).toEqual(['Leave', 'Leave']);
 	});
 
-	it('draws none at all where the surface states there is none', () => {
-		// the console has no session to end, and `undefined` cannot say so — it is the request for the
-		// specimen's button. the foot goes with the control rather than standing empty: the box draws
-		// its own rule and its own padding, so an empty one is a divider under nothing.
-		const root = render(AppShell, { destinations: DESTINATIONS, signOut: null });
+	it('stands a handed foot in the rail and keeps the way out in the band', () => {
+		const root = render(AppShell, {
+			groups: GROUPS,
+			wayOut: (
+				<a className="adm-signout" href="/close">
+					Close console
+				</a>
+			),
+			foot: <div className="adm-footaccount">Riverbank Trust's Account</div>
+		});
+
+		expect(root.querySelector('.adm-identity > .adm-signout')?.textContent).toBe('Close console');
+		expect(root.querySelector('.adm-rail__foot')?.textContent).toBe("Riverbank Trust's Account");
+	});
+
+	it('draws no foot where neither a foot nor a way out is handed', () => {
+		const root = render(AppShell, { groups: GROUPS, wayOut: null, foot: null });
 
 		expect(waysOut(root)).toHaveLength(0);
-		expect(root.querySelectorAll('button')).toHaveLength(0);
 		expect(root.querySelector('.adm-rail__foot')).toBeNull();
+	});
+
+	it('draws no foot where the way out is none and no foot is handed', () => {
+		// the foot goes with the control rather than standing empty: the box draws its own rule and
+		// its own padding, so an empty one is a divider under nothing.
+		const root = render(AppShell, { groups: GROUPS, wayOut: null });
+
+		expect(root.querySelector('.adm-rail__foot')).toBeNull();
+	});
+});
+
+describe('the identity a shell draws', () => {
+	it('draws what is handed under the name in the band and the rail head, and no tagline', () => {
+		const root = render(AppShell, {
+			groups: GROUPS,
+			org: 'Riverbank Trust',
+			under: <a href="https://example.org">example.org</a>
+		});
+
+		expect([...root.querySelectorAll('.adm-rail__who')].map((who) => who.textContent)).toEqual([
+			'Riverbank Trustexample.org',
+			'Riverbank Trustexample.org'
+		]);
+		expect(root.querySelector('.adm-identity__sub')).toBeNull();
+	});
+});
+
+describe('the panel a shell draws the page in', () => {
+	it('draws the strip over the page where a head is handed, and the page under it', () => {
+		const root = render(AppShell, {
+			groups: GROUPS,
+			head: <span className="adm-headstrip__title">Donors</span>,
+			children: <h1>Donors</h1>
+		});
+		const main = root.querySelector('.adm-main');
+
+		expect([...(main?.children ?? [])].map((node) => node.className)).toEqual([
+			'adm-head',
+			'adm-panelbody'
+		]);
+		expect(main?.querySelector('.adm-head > .adm-headstrip')?.textContent).toBe('Donors');
+		expect(main?.querySelector('.adm-panelbody > h1')?.textContent).toBe('Donors');
+	});
+
+	it('draws no strip where no head is handed', () => {
+		const root = render(AppShell, { groups: GROUPS, children: <h1>Donors</h1> });
+
+		expect(root.querySelector('.adm-head')).toBeNull();
+		expect(root.querySelector('.adm-main > .adm-panelbody > h1')).not.toBeNull();
+	});
+});
+
+describe('the collapse a shell keeps for itself', () => {
+	/** the shell's own element and its toggle. */
+	function parts(root: HTMLElement) {
+		const shell = root.querySelector('.adm-shell');
+		const toggle = root.querySelector<HTMLButtonElement>('.adm-rail__toggle');
+		if (shell === null || toggle === null) throw new Error('the shell drew no toggle');
+		return { shell, toggle };
+	}
+
+	it('starts expanded, and the toggle collapses the rail and says so', () => {
+		const root = render(AppShell, { groups: GROUPS });
+		const { shell, toggle } = parts(root);
+
+		expect(shell.classList.contains('adm-shell--collapsed')).toBe(false);
+		expect(toggle.getAttribute('aria-expanded')).toBe('true');
+		expect(toggle.getAttribute('aria-label')).toBe('Collapse sidebar');
+
+		act(() => toggle.click());
+
+		expect(shell.classList.contains('adm-shell--collapsed')).toBe(true);
+		expect(toggle.getAttribute('aria-expanded')).toBe('false');
+		expect(toggle.getAttribute('aria-label')).toBe('Expand sidebar');
+		expect(localStorage.getItem('bg-operator-rail')).toBe('collapsed');
+
+		act(() => toggle.click());
+
+		expect(shell.classList.contains('adm-shell--collapsed')).toBe(false);
+		expect(localStorage.getItem('bg-operator-rail')).toBe('expanded');
+	});
+
+	it('comes back collapsed where the choice was stored', () => {
+		localStorage.setItem('bg-operator-rail', 'collapsed');
+		const root = render(AppShell, { groups: GROUPS });
+
+		expect(parts(root).shell.classList.contains('adm-shell--collapsed')).toBe(true);
+	});
+
+	it('draws and toggles where storage refuses every access', () => {
+		vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+			throw new Error('refused');
+		});
+		vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+			throw new Error('refused');
+		});
+		const root = render(AppShell, { groups: GROUPS });
+		const { shell, toggle } = parts(root);
+
+		expect(shell.classList.contains('adm-shell--collapsed')).toBe(false);
+
+		act(() => toggle.click());
+
+		expect(shell.classList.contains('adm-shell--collapsed')).toBe(true);
 	});
 });
 
@@ -146,11 +383,9 @@ describe('the link a rail draws its cells as', () => {
 		// the hop the rail makes: ./DestinationCell.jsx takes the link and this is the only place
 		// that hands it one, so a shell that drops it on the way leaves a rail of full page loads
 		// that renders identically.
-		const root = render(AppShell, { destinations: DESTINATIONS, link: Handed });
+		const root = render(AppShell, { groups: GROUPS, link: Handed });
 
-		expect(root.querySelectorAll('.adm-rail__cells > a[data-handed]')).toHaveLength(
-			DESTINATIONS.length
-		);
+		expect(root.querySelectorAll('.adm-rail__cells > a[data-handed]')).toHaveLength(2);
 	});
 });
 

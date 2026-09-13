@@ -53,9 +53,9 @@ describe('no console screen mounts a form itself', () => {
 
 	it('finds the screens it is meant to be guarding', () => {
 		expect(screens.length).toBeGreaterThan(20);
-		// the page every fold is drawn inside, named rather than counted: it is where a form would be
-		// mounted if the glob were reaching the wrong tree entirely.
-		expect(screens).toContain('src/routes/_index.tsx');
+		// a page a form is drawn on, named rather than counted: it is where a form would be mounted if
+		// the glob were reaching the wrong tree entirely.
+		expect(screens).toContain('src/routes/_sections.organisation.tsx');
 	});
 
 	it('reports a screen that reaches for conform itself', () => {

@@ -10,7 +10,7 @@ import { useEffect, useRef } from 'react';
 import { data, Form, href, Link, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { ProgramFields } from '$lib/admin/programs/fields';
-import { type CrumbHandle, ScreenCrumbs } from '$lib/admin/crumbs';
+import type { CrumbHandle } from '$lib/admin/crumbs';
 import { buttonState } from '$lib/admin/save-button-state';
 import { savedSection } from '$lib/admin/saved-section';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -357,7 +357,6 @@ export default function Program({ loaderData, actionData }: Route.ComponentProps
 			    an archived cause's word is the quiet one: `secondary` is for a status that has run its
 			    course. */}
 			<header className="adm-pageheader">
-				<ScreenCrumbs />
 				<div className="adm-pageheader__row">
 					<h1>{name}</h1>
 					<StatusWord secondary={archived}>{PROGRAM_STATUS_LABELS[status]}</StatusWord>

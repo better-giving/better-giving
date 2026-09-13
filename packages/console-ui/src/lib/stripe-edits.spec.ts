@@ -14,7 +14,7 @@ import { STRIPE_REMOVAL, stripeKeyEdits } from './stripe-edits';
  * a press over a deployment holding neither key, which is the first setup.
  *
  * what is held is the deployment's own answer and never the form's, so it is handed in here the way
- * the press reads it (../routes/_index.tsx).
+ * the press reads it (../routes/_sections.payments.stripe.tsx).
  */
 const typed = (secret: string, publishable: string, heldSecret = '') => {
 	const posted = new FormData();

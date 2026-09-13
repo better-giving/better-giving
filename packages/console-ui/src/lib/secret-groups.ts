@@ -86,12 +86,12 @@ export const SECRET_GROUPS: readonly SecretGroup[] = [
 ];
 
 /**
- * the group the page's first fold draws, named here so that the fold picking it out of the
- * enumeration and the folds drawing the rest are not two spellings of one id.
+ * the group the password page draws, named here so that the page picking it out of the
+ * enumeration and the pages drawing the rest are not two spellings of one id.
  *
  * it is the one group that is not a job a gift needs, and that is what decides where its fold
  * stands rather than whether it has one: who may reach /admin is how the operator gets into the
- * dashboard at all, so it opens the ledger in front of the four rather than taking a position among
+ * dashboard at all, so it opens the rail in front of the four rather than taking a position among
  * them (./home-sections.ts). ./password-fold.tsx is the fold.
  */
 export const SIGN_IN_GROUP = 'sign-in';

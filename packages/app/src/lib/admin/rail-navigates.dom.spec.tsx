@@ -3,7 +3,7 @@ import { type ReactNode, act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
-import { DESTINATIONS } from './destinations';
+import { DESTINATION_GROUPS } from './destinations';
 import { RouterLink } from './router-link';
 
 // what a press on the rail has to do: hand the navigation to the router.
@@ -35,19 +35,16 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
+const [first] = DESTINATION_GROUPS[0].destinations;
+const [second] = DESTINATION_GROUPS[1].destinations;
+
 /** the frame ../../routes/_app.tsx draws, standing at the first destination. */
 function stub() {
-	const [first, second] = DESTINATIONS;
 	const Stub = createRoutesStub([
 		{
 			path: first.href,
 			Component: () => (
-				<AppShell
-					destinations={DESTINATIONS}
-					link={RouterLink}
-					current={first.label}
-					signOut={null}
-				>
+				<AppShell groups={DESTINATION_GROUPS} link={RouterLink} current={first.label} wayOut={null}>
 					<p>the screen</p>
 				</AppShell>
 			)
@@ -73,12 +70,12 @@ async function press(root: HTMLElement, label: string): Promise<boolean> {
 it('takes the press itself rather than letting the document navigate', async () => {
 	// `dispatchEvent` answers false when a listener called `preventDefault`, which is the router
 	// claiming the press. a plain anchor leaves it alone and the browser reloads the whole surface.
-	expect(await press(stub(), DESTINATIONS[1].label)).toBe(true);
+	expect(await press(stub(), second.label)).toBe(true);
 });
 
 it('arrives at the destination the cell names', async () => {
 	const root = stub();
-	await press(root, DESTINATIONS[1].label);
+	await press(root, second.label);
 
 	expect(root.textContent).toBe('arrived');
 });

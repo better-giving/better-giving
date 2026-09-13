@@ -16,7 +16,7 @@ import { FormOriginsFields } from '$lib/admin/forms/origins-fields';
 import { FormProgramFields } from '$lib/admin/forms/program-fields';
 import { FormsReadiness } from '$lib/admin/forms/readiness';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import { type CrumbHandle, ScreenCrumbs } from '$lib/admin/crumbs';
+import type { CrumbHandle } from '$lib/admin/crumbs';
 import { buttonState } from '$lib/admin/save-button-state';
 import { savedSection } from '$lib/admin/saved-section';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -918,9 +918,7 @@ export default function DonationForm({ loaderData, actionData }: Route.Component
 				</Banner>
 			) : null}
 
-			{/* the trail to the section this screen sits under, stated by this module's `handle`.
-
-			    the status qualifies the form this whole page is about, so it stands on the heading's
+			{/* the status qualifies the form this whole page is about, so it stands on the heading's
 			    own row rather than in the page under it. the header is written out of the classes
 			    packages/operator/src/styles/adm.css already draws rather than mounted from the
 			    library's `PageHeader`, which is the gap this route was reported against: that
@@ -932,7 +930,6 @@ export default function DonationForm({ loaderData, actionData }: Route.Component
 			    an archived form's word is the quiet one: `secondary` is for a status that has run its
 			    course, which is exactly what archived is. */}
 			<header className="adm-pageheader">
-				<ScreenCrumbs />
 				<div className="adm-pageheader__row">
 					<h1>{name}</h1>
 					<StatusWord secondary={archived}>{FORM_STATUS_LABELS[status]}</StatusWord>

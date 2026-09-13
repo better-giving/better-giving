@@ -15,11 +15,11 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * `.adm-shell` is `min-block-size: 100dvh` in packages/operator/src/styles/adm.css, because the page
  * is its `1fr` row and a short screen still has to fill the window. nothing in the system bounds it
  * to a smaller box and nothing should — so a gallery reader scrolls a window per specimen, and
- * there are four of them plus the panel for that reason rather than one of every combination.
+ * there are five of them plus the panel for that reason rather than one of every combination.
  *
  * **narrow the window past 64rem and every rail below becomes `position: fixed` at the foot of the
  * viewport**, one over another, because that is what a rail is at that width: a bar of tabs pinned
- * to the bottom of the screen. one shell on a page is one bar; four shells on a page is four bars
+ * to the bottom of the screen. one shell on a page is one bar; five shells on a page is five bars
  * in the same strip. it is the arrangement being correct rather than a defect in it, and it is the
  * one thing on this page a second specimen makes worse.
  *
@@ -29,19 +29,25 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  *
  * `current` is three states and all three are drawn. a bare string is the destination and the page;
  * the object form states the kind, and `section` is what a rail cell stands over a screen one level
- * down as — both take the same band and differ only in what is read out, so the pair is stated here
+ * down as — both take the same tint and differ only in what is read out, so the pair is stated here
  * rather than shown. **absent is the third**: the reader is under no destination and no cell is
  * marked, which is the only honest rail to draw there and is what the centred specimen has.
  *
- * `destinations` is drawn at three lengths — the component's own four, seven, one, and none. the
- * empty rail is a `nav` with no cells in it, which below the wide breakpoint is an empty strip
- * across the foot of the window. a tab is an equal share of the width whatever the count, so seven
- * is what says where the 375px floor puts the bound.
+ * `groups` is drawn as the component's own, as the dashboard's three groups with marks, as the
+ * console's run with a headed group, logos and status marks, as one entry, and as none. the empty
+ * rail is a `nav` with no cells in it, which below the wide breakpoint is an empty strip across the
+ * foot of the window. a tab is an equal share of the width whatever the count, and the bar is flat:
+ * a headed group's entries stand as tabs of their own.
  *
- * `signOut` reads absence as a request for the component's own quiet button and `null` as a surface
- * with no way out to draw at all — the console is one, since it runs on the operator's own machine
- * with no session to end. both are here, and `null` is the one that also drops the rail's foot
- * rather than standing an empty one.
+ * the toggle on the rail's head collapses it to an icon rail, and the choice is kept per browser,
+ * so every specimen on this page follows it once the page is reloaded.
+ *
+ * `wayOut` reads absence as a request for the component's own quiet button and `null` as none.
+ * `foot` stands in the rail in its place, which is the console's shape: its close in the band and
+ * its account in the foot. `null` for both drops the rail's foot rather than standing an empty one.
+ *
+ * `head` is the strip across the top of the panel, and `under` is a line under the organisation's
+ * name — the console's deployment address.
  *
  * `link` is what every cell is drawn as. a mounted rail states one — this package declares no
  * router and cannot (CLAUDE.md: the graph is `app → operator ← console`) — so the second shell
@@ -75,9 +81,9 @@ function StandInLink({ children, ...rest }: DestinationLinkProps) {
 export default function ShellAppShellPreview() {
 	return (
 		<div className="adm-stack">
-			{/* everything defaulted but the whereabouts: the four destinations the component names, the
-			    quiet way out, plain anchors, and a real screen in the page. */}
-			<AppShell org="Riverside Shelter" current="Forms">
+			{/* everything defaulted but the whereabouts: the groups the component names, the quiet way
+			    out, plain anchors, and a real screen in the page. */}
+			<AppShell org="Riverside Shelter" current="Donation forms">
 				<Column>
 					<PageHeader
 						title="Donation forms"
@@ -96,22 +102,32 @@ export default function ShellAppShellPreview() {
 				</Column>
 			</AppShell>
 
-			{/* the rail as a column of seven, the reader in a section rather than on its page, a name
-			    long enough to contest the identity row, and the cells drawn as the link the surface
-			    handed in. */}
+			{/* the dashboard's rail: three groups with a mark on every entry, the reader in a section
+			    rather than on its page, a name long enough to contest the identity row, a strip over
+			    the panel, and the cells drawn as the link the surface handed in. */}
 			<AppShell
 				org="The Wharfedale Riverside Community Kitchen and Night Shelter Trust"
-				tagline="better-giving"
-				current={{ label: 'Settings', kind: 'section' }}
-				destinations={[
-					{ label: 'Forms', short: 'Forms', href: '#' },
-					{ label: 'Donations', short: 'Gifts', href: '#' },
-					{ label: 'Donors', short: 'Donors', href: '#' },
-					{ label: 'Recurring', short: 'Monthly', href: '#' },
-					{ label: 'Receipts', short: 'Receipts', href: '#' },
-					{ label: 'Reports', short: 'Reports', href: '#' },
-					{ label: 'Settings', short: 'Set up', href: '#' }
+				current={{ label: 'Donors', kind: 'section' }}
+				groups={[
+					{
+						destinations: [
+							{ label: 'Dashboard', short: 'Dashboard', href: '#', mark: 'layout-dashboard' }
+						]
+					},
+					{
+						destinations: [
+							{ label: 'Donation forms', short: 'Forms', href: '#', mark: 'file-text' },
+							{ label: 'Programs', short: 'Programs', href: '#', mark: 'folder-heart' },
+							{ label: 'Donors', short: 'Donors', href: '#', mark: 'users' },
+							{ label: 'Gifts', short: 'Gifts', href: '#', mark: 'hand-heart' },
+							{ label: 'Recurring gifts', short: 'Recurring', href: '#', mark: 'repeat' }
+						]
+					},
+					{
+						destinations: [{ label: 'Members', short: 'Members', href: '#', mark: 'shield-check' }]
+					}
 				]}
+				head={<span className="adm-headstrip__title">Donors</span>}
 				link={StandInLink}
 			>
 				<Column>
@@ -132,14 +148,108 @@ export default function ShellAppShellPreview() {
 				</Column>
 			</AppShell>
 
-			{/* the waiting screen: one short block in the middle of the space under the head, nobody
-			    signed in to sign out, one destination, and no cell marked because the reader is under
-			    none of them. */}
+			{/* the console's rail: a headed group of processors drawn with pictures, a status mark on
+			    every entry, the address under the name, the close in the band and an account in the
+			    foot. */}
+			<AppShell
+				org="Riverside Shelter"
+				current="Sites"
+				under={
+					<a
+						className="adm-rail__address"
+						href="https://example.org"
+						target="_blank"
+						rel="noreferrer"
+					>
+						<span>https://better-giving.riverside.workers.dev/admin</span>
+					</a>
+				}
+				groups={[
+					{
+						destinations: [
+							{
+								label: 'Dashboard password',
+								short: 'Password',
+								href: '#',
+								mark: 'key-round',
+								status: { tone: 'done', mark: 'check', label: 'Configured' }
+							},
+							{
+								label: 'Organisation',
+								short: 'Organisation',
+								href: '#',
+								mark: 'building-2',
+								status: { tone: 'done', mark: 'check', label: 'Configured' }
+							}
+						]
+					},
+					{
+						heading: 'Donation processor',
+						destinations: [
+							{
+								label: 'PayPal',
+								short: 'PayPal',
+								href: '#',
+								mark: 'globe',
+								status: { tone: 'attention', mark: 'circle-dashed', label: 'Not set up' }
+							}
+						]
+					},
+					{
+						destinations: [
+							{
+								label: 'Sites',
+								short: 'Sites',
+								href: '#',
+								mark: 'globe',
+								status: { tone: 'note', mark: 'circle-dashed', label: 'None listed' }
+							},
+							{ label: 'SMTP', short: 'SMTP', href: '#', mark: 'mail' },
+							{ label: 'Notifications', short: 'Notifications', href: '#', mark: 'bell' }
+						]
+					}
+				]}
+				wayOut={
+					<Button
+						variant="quiet"
+						size="sm"
+						mark="unplug"
+						className="adm-signout"
+						aria-label="Close console"
+					/>
+				}
+				foot={
+					<div className="adm-footaccount">
+						<div className="adm-footaccount__row">
+							<span className="adm-footaccount__name">Riverside Shelter's Account</span>
+							<span className="adm-footaccount__out">
+								<Button
+									variant="quiet"
+									size="sm"
+									mark="unplug"
+									className="adm-signout"
+									aria-label="Close console"
+								/>
+							</span>
+						</div>
+						<span className="adm-footaccount__id">0f3c9a8b2d4e41f6a7b8c9d0e1f2a3b4</span>
+					</div>
+				}
+				head={<span className="adm-headstrip__title">Sites</span>}
+			>
+				<Column>
+					<PageHeader title="Sites" standfirst="Which sites your forms go on" />
+					<EmptyState>No site has been added yet.</EmptyState>
+				</Column>
+			</AppShell>
+
+			{/* the waiting screen: one short block in the middle of the panel, nobody signed in to sign
+			    out, one destination, and no cell marked because the reader is under none of them. */}
 			<AppShell
 				org="Riverside Shelter"
 				centred
-				signOut={null}
-				destinations={[{ label: 'Forms', short: 'Forms', href: '#' }]}
+				wayOut={null}
+				groups={[{ destinations: [{ label: 'Forms', short: 'Forms', href: '#' }] }]}
 			>
 				<Column>
 					<Banner word="Waiting for the first donation">
@@ -150,7 +260,7 @@ export default function ShellAppShellPreview() {
 			</AppShell>
 
 			{/* a rail with nothing in it. */}
-			<AppShell org="Riverside Shelter" destinations={[]}>
+			<AppShell org="Riverside Shelter" groups={[]}>
 				<Column>
 					<PageHeader title="No destinations" />
 					<EmptyState>

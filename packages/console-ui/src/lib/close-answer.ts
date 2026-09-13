@@ -1,9 +1,9 @@
 // whether the press the page just made was the one that ends the run.
 //
 // **it is a module rather than a field read where it is needed because one of its two readers is
-// handed an untyped value.** the page reads it off `actionData` (../routes/_index.tsx), where the
-// shape is the action's own and a field test would do; the router hands the same answer to
-// `shouldRevalidate` as `any`, and that is the reader whose mistake costs something — a revalidation
+// handed an untyped value.** a screen reads it off the close fetcher's answer (./close-confirm.tsx),
+// where the shape is the action's own and a field test would do; the router hands the same answer to
+// `shouldRevalidate` as `any` (./dialog-params.ts), and that is the reader whose mistake costs something — a revalidation
 // let through here reaches a binary that has stopped, and the operator meets the boundary that says
 // the console crashed over a press that ended the run on purpose.
 //

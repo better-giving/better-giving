@@ -95,7 +95,7 @@ The remote migration runs inside `pnpm run deploy`, after `build`, and it is a o
 
 - **Append `STRICT` by hand to every `CREATE TABLE`.** Drizzle cannot emit it, reports no drift, and there is no adding it to a shipped table. Without it `integer` is an affinity and a float reaches a money column. `strict.workers.spec.ts` gates it.
 - **Append new columns after `archived_at`, never reorder.** A column inserted mid-table makes drizzle emit a rebuild whose copy step `SELECT`s a column the old table lacks, and D1's double-quoted-literal fallback turns it into the *text* of the column name in every row, silently.
-- **A rebuild takes four hand-edits**: swap `PRAGMA foreign_keys` for `defer_foreign_keys` (the emitted one is a no-op inside the migration's transaction, and where a file holds two rebuilds drizzle wraps only the first — one deferral covers the file); put `STRICT` back on the `__new_` table; strip the `"__new_<table>".` qualifier off every `CHECK` it carries, which the rename does not rewrite and sqlite 3.43 then refuses; strip the outer backticks off a functional index.
+- **A rebuild takes four hand-edits**: swap `PRAGMA foreign_keys` for `defer_foreign_keys` (the emitted one is a no-op inside the migration's transaction, and where a file holds two rebuilds drizzle wraps only the first, and one deferral covers the file); put `STRICT` back on the `__new_` table; strip the `"__new_<table>".` qualifier off every `CHECK` it carries, which the rename does not rewrite and sqlite 3.43 then refuses; strip the outer backticks off a functional index.
 - **Never drop a `.sql` into `migrations/` by hand.** Unregistered in `meta/_journal.json`, the next `generate` collides with it. Data-only → `drizzle-kit generate --custom`; DDL → schema change + plain `generate`, then hand-edit.
 - **Reference data ships as an idempotent migration, never a seed script**: the migration is the only path that always reaches a fork.
 - **Never renumber or rename an applied migration.** wrangler records applied files by filename, no checksum. A rename re-runs an old file (`table … already exists`); reusing a recorded filename is worse: it no-ops, and the deployment silently keeps an unmigrated schema under a green deploy.
@@ -139,7 +139,7 @@ BETTER_GIVING_DOWNLOAD_BASE=http://127.0.0.1:8099 BETTER_GIVING_INSTALL_DIR=/tmp
 
 `BETTER_GIVING_INSTALL_ONLY` is what keeps that an install. Without it the script hands the run to
 the console it just installed, and `better-giving start` deploys against whatever Cloudflare
-credential the machine holds — which is a contributor's own account, from a recipe that reads like
+credential the machine holds, which is a contributor's own account, from a recipe that reads like
 a build step.
 
 Also exercise the refusal: flip a byte in an archive, and the run must install nothing.

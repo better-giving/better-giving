@@ -9,7 +9,7 @@ A donation app for a **single** nonprofit, deployed to your own Cloudflare accou
 Named separately everywhere in this repo:
 
 - **The dashboard** is `/admin` on a deployment. Donation forms, donations, donors, recurring gifts. The only thing a staff member opens.
-- **The console** is a program the operator runs on their own machine: `better-giving start` puts this release on the deployment in the terminal — standing one up where you have none, carrying the code onto one you already have — and then serves a page at `http://127.0.0.1:5320`, already connected, and on a deployment already on this release it goes straight there. Never deployed; the screens are built into the binary. Between the terminal half and the screens it sets the deployment up: the Cloudflare account, the D1 database, all seventeen configuration values, the payment processor keys, the site list, the org's legal identity.
+- **The console** is a program the operator runs on their own machine: `better-giving start` puts this release on the deployment in the terminal (standing one up where you have none, carrying the code onto one you already have), and then serves a page at `http://127.0.0.1:5320`, already connected, and on a deployment already on this release it goes straight there. Never deployed; the screens are built into the binary. Between the terminal half and the screens it sets the deployment up: the Cloudflare account, the D1 database, all seventeen configuration values, the payment processor keys, the site list, the org's legal identity.
 
 ## Get started
 
@@ -47,7 +47,7 @@ curl -fsSL https://github.com/better-giving/better-giving/releases/latest/downlo
 better-giving start
 ```
 
-The first line puts one file on your machine. The second asks its questions in the terminal, deploys, and opens the console at the result. macOS and Linux, both architectures; Windows is out of scope. Sign-in is Cloudflare's own page; the credential stays on your machine, renewed automatically, never shown, never typed. `better-giving update` is the other terminal command: it brings the console binary up to the newest release and leaves your deployment alone. `start` typed again is what carries that release onto a deployment you already have — offering it where the deployment is behind, naming the migrations it would apply before it applies them, and opening the console after it.
+The first line puts one file on your machine. The second asks its questions in the terminal, deploys, and opens the console at the result. macOS and Linux, both architectures; Windows is out of scope. Sign-in is Cloudflare's own page; the credential stays on your machine, renewed automatically, never shown, never typed. `better-giving update` is the other terminal command: it brings the console binary up to the newest release and leaves your deployment alone. `start` typed again is what carries that release onto a deployment you already have, and it names the migrations it would apply before it applies them.
 
 Setting a var writes to the Worker's settings in place, taking effect without a build or an upload.
 
@@ -55,7 +55,7 @@ Email and Turnstile are required. A deployment that cannot send cannot give a do
 
 **Test keys are keys.** A deployment holding `sk_test_…` reads _ready_, serves forms and takes cards, all against Stripe's test account, where no money moves and no screen says so. A local clone on the published `.dev.vars.example` keys does exactly this. A PayPal sandbox app's credentials do the same thing on that rail. To rehearse, see [`DEPLOY.md`](./DEPLOY.md)'s rehearsal deployment. Read its wallet paragraph before pasting any snippet it hands you.
 
-Seventeen values configure a deployment, and every one of them is a plain Worker **var**: readable back on the Worker and shown as a value in the console's own folds, so you can check what you pasted. [`DEPLOY.md`](./DEPLOY.md) has the details.
+Seventeen values configure a deployment, and every one of them is a plain Worker **var**: readable back on the Worker and shown as a value in the console, so you can check what you pasted. [`DEPLOY.md`](./DEPLOY.md) has the details.
 
 [`DEPLOY.md`](./DEPLOY.md) also covers the two `d1 create` placement flags you can never change afterwards, custom domains, backups, rehearsal deployments, and upgrades.
 
@@ -133,17 +133,17 @@ style-src    'unsafe-inline'
 
 **`frame-src https://hooks.stripe.com` is the second.** Stripe requires it for redirecting payment methods, including every card a bank challenges with 3-D Secure. Leave it out and the card path works until a bank asks a question, and that donor's gift dies with nothing on screen.
 
-**`frame-src https://www.paypal.com` is PayPal's equivalent.** PayPal opens its approval window as a browser popup, which no policy of yours governs — but when a donor's browser blocks that popup, PayPal falls back to an overlay inside your page, and that overlay is a frame. Leave this out and the form works until a donor has popups blocked, which is a great many of them. `https://history.paypal.com` and `https://account.venmo.com` are the same line for Venmo, and only a deployment offering Venmo needs them.
+**`frame-src https://www.paypal.com` is PayPal's equivalent.** PayPal opens its approval window as a browser popup, which no policy of yours governs, but when a donor's browser blocks that popup, PayPal falls back to an overlay inside your page, and that overlay is a frame. Leave this out and the form works until a donor has popups blocked, which is a great many of them. `https://history.paypal.com` and `https://account.venmo.com` are the same line for Venmo, and only a deployment offering Venmo needs them.
 
-**`img-src https://www.paypalobjects.com` is the one nobody predicts.** PayPal's buttons are drawn in your page rather than in a frame of PayPal's, so their wordmarks are images your policy has to allow. Leave it out and the PayPal button renders as a blank gold pill — a control that looks broken and that nobody presses. `'self' data:` rides with it because naming `img-src` at all stops images falling back to `default-src`, which would take the form's own art down.
+**`img-src https://www.paypalobjects.com` is the one nobody predicts.** PayPal's buttons are drawn in your page rather than in a frame of PayPal's, so their wordmarks are images your policy has to allow. Leave it out and the PayPal button renders as a blank gold pill: a control that looks broken and that nobody presses. `'self' data:` rides with it because naming `img-src` at all stops images falling back to `default-src`, which would take the form's own art down.
 
-**`connect-src https://api-m.paypal.com` is the one with the widest blast radius.** The form asks PayPal which methods this donor is eligible for before it draws anything, so a blocked read is not a missing Venmo button — it is no PayPal buttons at all, on every page load.
+**`connect-src https://api-m.paypal.com` is the one with the widest blast radius.** The form asks PayPal which methods this donor is eligible for before it draws anything, so a blocked read is not a missing Venmo button; it is no PayPal buttons at all, on every page load.
 
 `style-src 'unsafe-inline'`: the form writes inline styles while it measures your page's colors and builds its card. This is the form's own doing rather than a vendor requirement.
 
 Two more, if either applies:
 
-- **A nonce-based policy works if the nonce is on the snippet's own tag**: `<script src="…/embed.js" nonce="…" async>`. It propagates to the injected runtime and to every vendor script after it, PayPal's included — PayPal carries the nonce on to the pieces it loads in turn. No nonce on the pasted tag → nothing propagates and the runtime never loads.
+- **A nonce-based policy works if the nonce is on the snippet's own tag**: `<script src="…/embed.js" nonce="…" async>`. It propagates to the injected runtime and to every vendor script after it, PayPal's included, and PayPal carries the nonce on to the pieces it loads in turn. No nonce on the pasted tag → nothing propagates and the runtime never loads.
 - **A cross-origin-isolated page cannot run this form.** Stripe does not support cross-origin isolated sites: with `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` together, the form mounts and never becomes usable. `Cross-Origin-Opener-Policy: same-origin` on its own is enough to break the PayPal rail, and it breaks it in the way that is hardest to report: PayPal drives its approval window through the handle the popup keeps on your page, that header cuts the handle, and the form reads the window as gone. The donor is looking at PayPal's real login screen while the form has already decided they walked away.
 
 Vendor lists: Stripe's [integration security guide](https://docs.stripe.com/security/guide) and Cloudflare's [Turnstile CSP reference](https://developers.cloudflare.com/turnstile/reference/content-security-policy/).

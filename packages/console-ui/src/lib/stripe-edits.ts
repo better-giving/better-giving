@@ -75,8 +75,8 @@ export const STRIPE_REMOVAL: Readonly<Record<string, string | null>> = {
  * **`held` is the deployment's own answer and never the form's.** a form claiming a key is stored
  * would turn an empty box into a delete and an untouched box into a press that changes nothing
  * quietly; one claiming it is not would run the whole errand over a key nobody retyped. the press reads
- * it off the binary before this is called (../routes/_index.tsx), which is what the mail group does
- * for the same reason.
+ * it off the binary before this is called (../routes/_sections.payments.stripe.tsx), which is
+ * what the mail group does for the same reason.
  *
  * **a removal reads the other box not at all.** the press writes nothing to the published slot and
  * can write nothing, so a sentence about that box would be a refusal over a value this press does

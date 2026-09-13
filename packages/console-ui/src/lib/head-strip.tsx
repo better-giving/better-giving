@@ -1,13 +1,17 @@
 import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
+import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { Brand } from '@better-giving/operator/components/status/Brand';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import type { ReactNode } from 'react';
 
-// the one head this console draws, on every screen that has an identity to state.
+// the head `/` draws over the faces that stand before a deployment is ready: no deployment, a
+// deployment this console cannot read, and one cloudflare will not say anything about
+// (../routes/_index.tsx). a ready deployment's pages stand in the sections shell instead, whose rail
+// foot states the same account (../routes/_sections.tsx).
 //
 // **it is two ends and nothing between them: the account this console is working in at the leading
 // end, and at the trailing end the one press this console offers**, which ends the run this console
-// is (../routes/_index.tsx). the strip's own
+// is. the strip's own
 // `space-between` is the whole of what holds them apart — neither end is drawn inside the other,
 // and there is no card around the pair.
 //
@@ -77,18 +81,21 @@ export function HeadIdentity({
 	);
 }
 
-/* a line the head states under its strip.
+/* a line about this machine.
 
    both of the console's are about this machine rather than about anything on the screen, both stay
    true for as long as this console is open, and neither stops anything this session — so each is
    small print with a warning mark and never a `Banner`, which is a box that reads as something
-   holding the operator up. it is the standing-condition row a field states under a box, at the head
-   band's own inset: `.adm-headnote` in packages/operator/src/styles/adm.css is where that is drawn
-   and argued.
+   holding the operator up. it is the standing-condition row a field states under a box: in the head
+   band it takes the band's own inset (`.adm-headnote` in packages/operator/src/styles/adm.css), and
+   in a panel body, which already insets what it holds, it is that row itself — drawn by
+   packages/operator/src/components/forms/FieldMessage.jsx's `needed` tone, which carries the mark
+   and no live region, because ./announced-refusals.spec.ts refuses the row spelled by hand.
 
    the mark is decoration and takes no label: what it says is the tone of the line beside it, and a
    named one would be read out in front of every one of these sentences. */
-function HeadNote({ children }: { children: ReactNode }): ReactNode {
+function HeadNote({ inPanel, children }: { inPanel: boolean; children: ReactNode }): ReactNode {
+	if (inPanel) return <FieldMessage tone="needed">{children}</FieldMessage>;
 	return (
 		<p className="adm-headnote">
 			<Mark name="triangle-alert" />
@@ -132,15 +139,38 @@ export function ConsoleHead({
 			<div className="adm-headstrip">
 				<HeadIdentity name={account} note={accountId} control={control} />
 			</div>
+			<HeadNotes remembered={remembered} notKept={notKept} inPanel={false} />
+		</>
+	);
+}
+
+/** whether either line about this machine is true, which is whether any is drawn. */
+export const machineNoted = ({
+	remembered,
+	notKept
+}: Pick<ConsoleHeadProps, 'remembered' | 'notKept'>) => !remembered || notKept !== null;
+
+/**
+ * the lines about this machine, alone: what the head states under its strip, and what the sections
+ * layout (../routes/_sections.tsx) states at the top of each page's panel body (`inPanel`), where the
+ * shell's strip is the page's own.
+ */
+export function HeadNotes({
+	remembered,
+	notKept,
+	inPanel
+}: Pick<ConsoleHeadProps, 'remembered' | 'notKept'> & { inPanel: boolean }): ReactNode {
+	return (
+		<>
 			{notKept === null ? null : (
-				<HeadNote>
+				<HeadNote inPanel={inPanel}>
 					Couldn&rsquo;t save the renewed Cloudflare sign-in. <InlineCode>{notKept}</InlineCode>{' '}
 					couldn&rsquo;t be written to, so the console asks you to sign in again the next time it
 					starts.
 				</HeadNote>
 			)}
 			{remembered ? null : (
-				<HeadNote>
+				<HeadNote inPanel={inPanel}>
 					Won&rsquo;t remember this account. The console asks which one to use again the next time
 					it starts.
 				</HeadNote>

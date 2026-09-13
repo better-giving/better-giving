@@ -2,7 +2,8 @@ import type { AnchorHTMLAttributes } from 'react';
 import { Link } from 'react-router';
 
 // what a part of the dashboard that navigates is drawn as. ../../routes/_app.tsx hands it to every
-// cell of the shell's rail, and ./crumbs.tsx to the trail every screen under a section draws.
+// cell of the shell's rail, and ./crumbs.tsx to the trail the panel's top strip carries over every
+// screen under a section.
 //
 // it is here and not in `@better-giving/operator` because that package declares no router and
 // cannot — the graph is `app → operator ← console` and the leaf reaches neither surface (CLAUDE.md).

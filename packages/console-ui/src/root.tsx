@@ -35,8 +35,8 @@ import './app.css';
 // screen the press is on, and the connect panel standing where the shell was is the outcome.
 
 // the same mark the dashboard carries, and the two dev servers run side by side — so the icon says
-// which project a tab belongs to and the title says which of its two surfaces — the console is one
-// page and `TITLE` in ./routes/_index.tsx is the whole of it.
+// which project a tab belongs to and the title says which of its two surfaces: every page's title
+// ends with `TITLE` in ./routes/_index.tsx.
 //
 // ../public/favicon.ico is where the file is, and this package resolves it differently from the
 // other one: vite's `publicDir` defaults to `public` under the project root and ../vite.config.ts
@@ -87,17 +87,18 @@ export function Layout({ children }: { children: ReactNode }) {
  * (`ProgressBar` below). a bar taken away part full reports that the console gave up on the reading
  * rather than that it arrived.
  *
- * **it carries no head.** every head after this one is an identity with the one press across from
- * it (./lib/head-strip.tsx), and this screen has read neither — so there is nothing for a band to
- * hold, and an empty band over a bar reads worse than none: a rule drawn under nothing says the
- * page has already drawn a head and left it blank.
+ * **it carries no head and no rail.** every screen after this one states the account and the press
+ * that ends the console — in a head (./lib/head-strip.tsx) or at the rail's foot
+ * (./routes/_sections.tsx) — and this screen has read neither, so there is nothing for a band to
+ * hold, and an empty band over a bar reads worse than none: a rule drawn under nothing says the page
+ * has already drawn a head and left it blank.
  *
  * **bare**, because a bar is the whole of it and a box around it draws a boundary around nothing —
  * the state `bare` in packages/operator/src/components/shell/AppShell.jsx is written for.
  *
- * the foot stands here as it does on every screen after it, with no release in it: nothing has been
- * read yet, and a strip that appeared, vanished and came back over the first two paints would be the
- * one moving thing on a page that is otherwise still (./lib/product-foot.tsx).
+ * the foot stands here as it does under `/`'s faces, with no release in it: nothing has been read
+ * yet, and a strip that appeared, vanished and came back over the first two paints would be the one
+ * moving thing on a page that is otherwise still (./lib/product-foot.tsx).
  */
 export function HydrateFallback() {
 	return (

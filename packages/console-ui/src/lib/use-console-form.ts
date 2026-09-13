@@ -28,14 +28,14 @@ import type { z } from 'zod';
 // what did not:
 //
 //   - **`lastResult`, because there is nothing to feed it.** this console has no server half: a
-//     press goes through ../routes/_index.tsx's one `clientAction` to the binary and comes back as
-//     the binary's own json (../api/types.ts), not as a submission conform built. the seam is where
+//     press goes through its page's `clientAction` (../routes/_sections.*.tsx) to the binary and
+//     comes back as the binary's own json (../api/types.ts), not as a submission conform built. the seam is where
 //     that stops being a fold's problem, and the answer is below.
 //   - **matching a result to a form.** /admin's screens carry several forms under one action and
 //     have to pluck the right result out of it; here each fold is handed its own answer as a prop
 //     by the page, already narrowed, so there is nothing left to match.
 //   - **a box naming which form was submitted.** the console's presses are told apart by the
-//     `intent` each fold already posts, which ../routes/_index.tsx's `clientAction` branches on.
+//     `intent` each form already posts, which its page's `clientAction` branches on.
 //   - **a comparison of its own.** whether a form holds anything to save is conform's `dirty`,
 //     argued below.
 //

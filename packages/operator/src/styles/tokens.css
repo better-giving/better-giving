@@ -36,7 +36,7 @@
    the neutral ladder is read end to end. four more are unread outside colour:
    `--admin-text-xl`, `--admin-weight-bold`,
    `--admin-space-11` and `--admin-space-12`. the exemption is membership of a scale and never
-   a token that has merely not been reached for yet. those twenty-three are named again in packages/app/src/lib/admin/styles/conformance.spec.ts, which is what fails when the two
+   a token that has merely not been reached for yet. those twenty-four are named again in packages/app/src/lib/admin/styles/conformance.spec.ts, which is what fails when the two
    lists stop agreeing — in both directions, so a rung this paragraph calls unread that something
    has since reached for fails it as well.
 
@@ -268,8 +268,7 @@
 
 		   hue 247.3. the operator surfaces' only chromatic family that is not a severity, and
 		   it never means "this is fine". rungs 9 and 10 are the distribution's solid band and
-		   they are too bright to carry a label, so rung 9 goes unread and rung 10 draws only the
-		   rail's current edge; a primary button is filled from the darker band under this ladder
+		   they are too bright to carry a label, so both go unread; a primary button is filled from the darker band under this ladder
 		   instead. rungs 11 and 12 are the text pair a link and a done word are drawn in, and
 		   rung 11 is the first step of that band as well. */
 		--admin-accent-1: oklch(0.993 0.008 247.3);
@@ -584,27 +583,16 @@
 		/* ---- the rail's current destination -------------------------------------------
 
 		   current and hovered have to be unmistakably different, so current changes ground and
-		   ink; hover only fills. the `--admin-edge` band at the leading edge is drawn only where
-		   the rail is a vertical column — it is a column's device, and a row of cells wearing it
-		   reads as five things to act on. the weight is the same on every destination: the
-		   ground, the darker ink and, in the column, the band are what carry the distinction.
-
-		   the band is drawn inset over the current ground, so it is measured there: the accent's
-		   rung 9 reaches 2.78:1 on that ground and rung 10 reaches 3.25:1. */
+		   ink; hover only fills. no edge is drawn at either width: the tint is the whole of the
+		   mark. the weight is the same on every destination: the ground and the darker ink are
+		   what carry the distinction. */
 		--admin-rail-current-bg: var(--admin-accent-3);
 		/* the current destination under a pointer. rung 5 is the active-or-selected ground and
 		   this is exactly that — the selected destination being acted on — and the step it makes
 		   from rest is 1.19:1, which is what a destination that is not current moves by (1.18:1).
 		   rung 4, the hovered rung, moves by 1.08:1 and does not read as a pointer arriving.
-
-		   the band is drawn inset over this ground as well as over the resting one, and it is the
-		   one number here under 3:1: rung 10 reaches 3.25:1 on the resting ground and 2.75:1 on
-		   this one. it is not what identifies the current destination on its own — the ground's
-		   hue and `--admin-rail-current-ink` carry that and neither moves under the pointer — and
-		   which cell is current is not a question a reader asks of the cell they are pointing at.
 		   the ink over this ground is 9.64:1. */
 		--admin-rail-current-bg-hover: var(--admin-accent-5);
-		--admin-rail-current-edge: var(--admin-accent-10);
 		--admin-rail-current-ink: var(--admin-accent-12);
 
 		/* ---- type ---------------------------------------------------------------------
@@ -853,8 +841,8 @@
 		--admin-border-width-strong: 2px;
 		--admin-rule: var(--admin-border-width) solid var(--admin-divider);
 		--admin-hairline: var(--admin-border-width) solid var(--admin-border);
-		/* the band a current destination, a landed save and a card whose run is going carry at one
-		   edge, and at half, the console's line over a move to another page. it is the same number
+		/* the band a landed save and a card whose run is going carry at one edge, the strip over a
+		   rail tab's word, and at half, the console's line over a move to another page. it is the same number
 		   as `--admin-focus-bleed` below and means a different thing, so neither points at the
 		   other. */
 		--admin-edge: 3px;

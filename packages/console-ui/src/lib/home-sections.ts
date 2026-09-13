@@ -8,7 +8,9 @@ import type { OrgBoxes } from './org-fields';
 import { IDENTITY_BOXES, NOTIFICATION_BOXES, orgBoxes, orgRequired } from './org-fields';
 import { CHARGE_PAIRS } from './processor-links';
 
-// what each of the six folds says, decided once, here.
+// what each of the six set-up sections says about itself, decided once, here. the rail marks each
+// section's page with it (./console-pages.ts), and `/` reads it to pick the page a ready deployment
+// opens on.
 //
 // **which face is on screen is the binary's and what a fold says is this side's**, and the seam is
 // the words. the binary reads the account and the deployment and answers with a face and the values
@@ -25,12 +27,10 @@ import { CHARGE_PAIRS } from './processor-links';
 // job word over something that can never be outstanding is work reported against nobody. it states
 // what the list holds instead, which is what somebody deciding whether to open it wants.
 //
-// **there is no ordered path and no separate reading of it.** a fold already reports where its job
-// stands, so a ledger of the same reports beside them is the page read twice. what is left is the
-// six folds: the dashboard password, and then five more in the order of what has to be true before
-// the next thing can be — who the receipt is from, what takes the money, where else the form is
-// allowed to run, what carries the mail out, and where the mail this deployment sends *you*
-// lands. that last one is last because it is the only row worth nothing on its own: an address is
+// **the order is the rail's.** the dashboard password, and then five more in the order of what has
+// to be true before the next thing can be — who the receipt is from, what takes the money, where
+// else the form is allowed to run, what carries the mail out, and where the mail this deployment
+// sends *you* lands. that last one is last because it is the only row worth nothing on its own: an address is
 // where alerts arrive, and nothing arrives until something carries them.
 //
 // **the label and the word are the whole of an ordinary row, and a sentence is what a row adds when
@@ -65,14 +65,10 @@ import { CHARGE_PAIRS } from './processor-links';
 // all of it without a cloudflare account or a deployment.
 
 /**
- * one of the six things the page folds, in the order they are drawn.
+ * one of the six set-up sections, in the order the rail lists them.
  *
  * the set is `@better-giving/operator/setup-folds`'s, because the deployment reads the jobs among
- * them under the same names. under this name here, because each id also names its own module on
- * this surface:
- * ./password-fold.tsx, ./org-fold.tsx, ./processor-rows.tsx, ./sites-fold.tsx, ./smtp-fold.tsx,
- * ./notifications-fold.tsx. a run whose ids and modules stop matching is a page nobody can read the
- * order off.
+ * them under the same names. each id names its page (`SECTION_PAGES` in ./console-pages.ts).
  */
 export type SectionId = SetupFoldId;
 
@@ -85,7 +81,7 @@ export type SectionId = SetupFoldId;
 export type SectionState = SetupJobState;
 
 /**
- * the tones a fold's row takes, which is the closed set the shared ledger draws.
+ * the tones a section's status takes, which is the closed set a rail cell draws (./console-pages.ts).
  *
  * `note` is the one a job never takes: it is what the sites row reads under, because that row
  * states a fact rather than reporting an outcome, and nothing about it is owed. what shape it wears
@@ -119,8 +115,9 @@ export type HomeSection = {
 /**
  * what each fold is called, re-exported from where both operator surfaces read them.
  *
- * DEPLOY.md sends an operator to four of these names and ../every-fold-named.spec.ts holds those
- * two spellings together, reading the labels off the record rather than off any file's text.
+ * DEPLOY.md sends an operator to two of these names as rail pages and ../every-page-named.spec.ts
+ * holds those two spellings together, reading the labels off the record rather than off any file's
+ * text.
  */
 export { FOLD_LABELS };
 
@@ -140,11 +137,11 @@ const TONES: Record<SectionState, SectionTone> = {
  * donation page it serves at its own address, which is a state to leave alone as often as it is one
  * to change.
  *
- * **the ink says nothing is owed and the shape says nothing is finished.** the ledger has two
+ * **the ink says nothing is owed and the shape says nothing is finished.** the rail has two
  * shapes — a tick and an unfilled outline — and a third notation here would be one a reader has to
  * learn before the word beside it tells them the same thing, so the row wears the outline the
  * unfinished rows wear and keeps the `note` ink that says it is a statement rather than a job. it
- * wears that outline whether or not a site is listed: the fold is a way in and there is always
+ * wears that outline whether or not a site is listed: the section is a way in and there is always
  * another address an operator could add, so a tick over `3 listed` would report a job finished that
  * was never open.
  *
@@ -252,7 +249,7 @@ export function readSections(read: HomeReading): readonly HomeSection[] {
 		notifications: identity === 'ready' ? stated(NOTIFICATION_BOXES) : 'todo'
 	};
 
-	// the record's own order, which is the order the page draws and the one both surfaces list the
+	// the record's own order, which is the order the rail draws and the one both surfaces list the
 	// jobs in.
 	return (Object.keys(FOLD_LABELS) as SectionId[]).map((id) =>
 		id === 'sites'

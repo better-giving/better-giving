@@ -65,8 +65,9 @@ export function valuesGuard(
  *
  * these say to reload rather than offering a press of their own: a processor screen is reached from
  * the one face that already holds a session, so a deployment that stopped answering between the page
- * load and the press is a page whose next reading is the gate — which draws the press each of these
- * states needs, the connect for a session and the update for a surface (../routes/_index.tsx).
+ * load and the press is a page whose next reading is the gate at `/` (../routes/_sections.tsx's
+ * loader sends it there) — which draws the press each of these states needs, the connect for a
+ * session and the update for a surface (../routes/_index.tsx).
  */
 export const noAnswer = (read: NoReport, what: string): ReactNode => (
 	<>

@@ -9,18 +9,18 @@ import { listed } from './org-form';
 // (`packages/app/src/lib/server/payments/wallet-domains.ts`), so a site added and saved offers a
 // donor whatever is left and says nothing about the difference — which is the failure this module
 // exists to put on the screen. the save levels the registrations behind the list it stored
-// (../routes/_index.tsx), and every way that levelling did not happen lands here.
+// (../routes/_sections.sites.tsx), and every way that levelling did not happen lands here.
 //
 // **it is a module and not an expression in the fold**, for ./widget-level.ts's reason: this
 // package has no DOM pool (../../vite.config.ts), so a sentence written inside ./sites-fold.tsx is
 // one nothing here can hold. ./wallet-level.spec.ts asserts that no arm which is drawn says
 // nothing, and tsc holds the covering — the switch below is exhaustive.
 //
-// **nothing here repairs anything, and every arm names the fold where a repair lives.** the press
-// stands inside the panel each wallet row opens on the payments fold (./stripe-section.tsx and
+// **nothing here repairs anything, and every arm names the page where a repair lives.** the press
+// stands inside the panel each wallet row opens on the Stripe page (./stripe-section.tsx and
 // ./wallets-press.ts), which is where the whole reading is: a second control here would be a press
-// on a fold that draws none of the sites it acts on. `no_key` is the one arm the press itself
-// cannot answer — that fold draws no ledger and no press for it either, so what points there
+// on a page that draws none of the sites it acts on. `no_key` is the one arm the press itself
+// cannot answer — that page draws no wallet row and no press for it either, so what points there
 // instead is the deployment's own sentence, which already names the box the key goes in.
 
 /** what to say about a registration that did not happen, and the deployment's words where it has any. */

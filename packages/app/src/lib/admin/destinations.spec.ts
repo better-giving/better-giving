@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { currentDestination, DESTINATIONS } from './destinations';
+import { currentDestination, DESTINATION_GROUPS, DESTINATIONS } from './destinations';
 
 describe('the rail', () => {
 	it('opens on the dashboard, then goes to a bare path under /admin, one per section', () => {
@@ -11,6 +11,14 @@ describe('the rail', () => {
 			'/admin/donations',
 			'/admin/recurring',
 			'/admin/members'
+		]);
+	});
+
+	it('stands the dashboard alone, then the records of giving, then who can sign in', () => {
+		expect(DESTINATION_GROUPS.map((group) => group.destinations.map((d) => d.label))).toEqual([
+			['Dashboard'],
+			['Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
+			['Members']
 		]);
 	});
 });

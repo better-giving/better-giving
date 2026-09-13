@@ -16,7 +16,7 @@ import { unreadAnswer } from './unread-answer';
 // change with what was being asked. what does change is what this particular request cost, which is
 // `what`.
 //
-// it is a component and not vocabulary, so it sits beside the folds that draw it rather than beside
+// it is a component and not vocabulary, so it sits beside the screens that draw it rather than beside
 // the reading it is about: the answer it draws is classified in the binary
 // (`packages/console/internal/deployment/report.go`) and arrives as `NoReport` in ../api/types.ts.
 //
@@ -30,11 +30,11 @@ import { unreadAnswer } from './unread-answer';
 /**
  * where the connect control is, for a screen that is not the one it is on.
  *
- * one phrase for the screens that say it, so where the control lives is written once. the console
- * is one page and the control is on the face that page draws when a deployment is up and will not
- * answer this console (../routes/_index.tsx), which is exactly the state a screen saying this is
- * in. that page passes its own phrase instead: a page linking to a section of itself is not an
- * answer to where something is.
+ * one phrase for the section pages that say it, so where the control lives is written once. the
+ * control is on the face `/` draws when a deployment is up and will not answer this console
+ * (../routes/_index.tsx), which is exactly the state a page saying this is in — and the next reading
+ * of any section page sends it there (../routes/_sections.tsx). `/` passes its own phrase instead: a
+ * page linking to itself is not an answer to where something is.
  */
 export const CONNECT_ELSEWHERE: ReactNode = (
 	<>

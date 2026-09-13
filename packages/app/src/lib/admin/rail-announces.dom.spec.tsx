@@ -2,7 +2,7 @@ import { AppShell } from '@better-giving/operator/components/shell/AppShell';
 import { type ReactNode, act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, onTestFinished } from 'vitest';
-import { currentDestination, DESTINATIONS } from './destinations';
+import { currentDestination, DESTINATION_GROUPS } from './destinations';
 
 // the two halves of ../../routes/_app.tsx's rail, joined: this surface resolves the address and
 // the shell announces it. either half alone is answerable where it lives — ./destinations.spec.ts
@@ -44,7 +44,7 @@ function mount(tree: ReactNode): HTMLElement {
  */
 function railAt(pathname: string): HTMLElement {
 	return mount(
-		<AppShell destinations={DESTINATIONS} current={currentDestination(pathname)}>
+		<AppShell groups={DESTINATION_GROUPS} current={currentDestination(pathname)}>
 			screen
 		</AppShell>
 	);

@@ -1,5 +1,7 @@
 import {
 	ArrowLeft,
+	Bell,
+	Building2,
 	Check,
 	ChevronDown,
 	ChevronRight,
@@ -13,12 +15,20 @@ import {
 	ExternalLink,
 	Eye,
 	EyeOff,
+	FileText,
+	FolderHeart,
 	Globe,
 	GripVertical,
+	HandHeart,
 	Info,
+	KeyRound,
+	LayoutDashboard,
 	LogOut,
+	Mail,
+	PanelLeft,
 	Pencil,
 	Plus,
+	Repeat,
 	Search,
 	Server,
 	Settings,
@@ -26,6 +36,7 @@ import {
 	Trash2,
 	TriangleAlert,
 	Unplug,
+	Users,
 	X
 } from 'lucide-react';
 
@@ -47,6 +58,8 @@ import {
 // own that belong to no tone ladder. ./Brand.jsx draws that, from an image.
 export const GLYPHS = {
 	'arrow-left': ArrowLeft,
+	bell: Bell,
+	'building-2': Building2,
 	check: Check,
 	'chevron-down': ChevronDown,
 	'chevron-right': ChevronRight,
@@ -60,12 +73,20 @@ export const GLYPHS = {
 	'external-link': ExternalLink,
 	eye: Eye,
 	'eye-off': EyeOff,
+	'file-text': FileText,
+	'folder-heart': FolderHeart,
 	globe: Globe,
 	'grip-vertical': GripVertical,
+	'hand-heart': HandHeart,
 	info: Info,
+	'key-round': KeyRound,
+	'layout-dashboard': LayoutDashboard,
 	'log-out': LogOut,
+	mail: Mail,
+	'panel-left': PanelLeft,
 	pencil: Pencil,
 	plus: Plus,
+	repeat: Repeat,
 	search: Search,
 	server: Server,
 	settings: Settings,
@@ -73,5 +94,6 @@ export const GLYPHS = {
 	'trash-2': Trash2,
 	'triangle-alert': TriangleAlert,
 	unplug: Unplug,
+	users: Users,
 	x: X
 };

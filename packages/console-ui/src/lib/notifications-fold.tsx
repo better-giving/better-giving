@@ -19,13 +19,13 @@ import type { OrgBoxes } from './org-fields';
 //
 // **it is a column of the organisation's profile and is stored the way the other eight are.** the
 // deployment reads a profile whole, so this form carries those eight hidden at exactly what is held
-// (./org-fields.ts's `carriedBoxes`) and posts an intent of its own — which is what draws the
-// answer under this button rather than under the identity fold's (../routes/_index.tsx).
+// (./org-fields.ts's `carriedBoxes`) and posts an intent of its own, which is what its page's action
+// reads the press by (../routes/_sections.notifications.tsx).
 //
 // **the identity has to be stored before anything here can be**: the profile is stored whole, so a
 // press made over a deployment holding no identity is refused over boxes that are not on this
-// screen. the row says nothing about that (./home-sections.ts), and {@link OrgWriteOutcome} is what
-// sends the operator to the fold that draws them, at the press.
+// screen. the rail cell says nothing about that (./home-sections.ts), and {@link OrgWriteOutcome} is
+// what sends the operator to the page that draws them, at the press.
 //
 // **the box takes no `(optional)` marker and the save still takes it blank.** the column is
 // nullable and clearing it is something an operator may want; what a blank one costs is that a
@@ -45,9 +45,9 @@ import type { OrgBoxes } from './org-fields';
 // the moment the box is edited. the composition is the seam's and no fold restates it
 // (./use-console-form.ts).
 //
-// it is a component and not a screen: the fold is one entry of the ledger ../routes/_index.tsx
-// draws, and everything about which fold this is — its label, its tone, the word beside it and what
-// stands between it and its job — is decided in ./home-sections.ts with the others.
+// it is a component and not a screen: ../routes/_sections.notifications.tsx mounts it and answers
+// its press, and everything about which section this is — its label, its tone, the word on its rail
+// cell and what stands between it and its job — is decided in ./home-sections.ts with the others.
 
 export type NotificationsFoldProps = {
 	/** the profile as the deployment holds it, which is what the box is seeded and read against. */

@@ -9,11 +9,13 @@ import { handle as newProgramHandle } from '../../routes/_app.admin.programs.new
 import { handle as recurringHandle } from '../../routes/_app.admin.recurring.$id';
 import { ScreenCrumbs } from './crumbs';
 
-// the trail each screen standing under a section draws, and what a press on its way back does.
+// the trail each screen standing under a section states, and what a press on its way back does.
 //
 // the trail is read off the matched route's `handle` (./crumbs.tsx), so a case mounts each screen's
 // real `handle` under its real address with the loader data that screen reads, and asserts what a
-// reader meets: the section first and linked, the screen itself last and not.
+// reader meets: the section first and linked, the screen itself last and not. the screen draws none
+// of it — the layout's top strip does, and ../../routes/_app.dom.spec.tsx holds which screens it
+// carries a trail over.
 //
 // the press is the same argument as ./rail-navigates.dom.spec.tsx, one part along. `Breadcrumbs` is
 // packages/operator's and takes what it is drawn as as a prop; mounted without one it draws a plain
@@ -82,7 +84,7 @@ const FORM = {
 	section: '/admin/forms'
 };
 
-describe('the trail each screen draws', () => {
+describe('the trail each screen states', () => {
 	it('a donation form: the section, then the form by its name', async () => {
 		expect(trail(await screen(FORM))).toEqual([
 			{ label: 'Donation forms', href: '/admin/forms', current: false },

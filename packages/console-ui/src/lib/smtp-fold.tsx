@@ -55,8 +55,8 @@ import type { TestSend } from '../api/types';
 
 // everything a deployment needs before it can send mail at all — the receipt that proves a donor's
 // gift, the word to a donor whose gift could not be collected, and the notice to whoever runs the
-// deployment — and the one control that says whether any of it leaves, read and set inside one
-// fold of the one page.
+// deployment — and the one control that says whether any of it leaves, read and set on the mail
+// page (../routes/_sections.smtp.tsx).
 //
 // **it is one fold because it is one errand, and the credentials are one press because they are one
 // act.** four of the five come off one screen at the operator's mail provider and none of them does
@@ -64,13 +64,13 @@ import type { TestSend } from '../api/types';
 // does to them is finished until a message lands in an inbox, which is the last section and the
 // whole reason it is in this panel rather than a fold of its own.
 //
-// **the address the deployment reaches the operator at is not here, and is a fold of its own.**
+// **the address the deployment reaches the operator at is not here, and is a page of its own.**
 // ./notifications-fold.tsx draws it: a column of the organisation's profile stored on the
 // deployment's own database over the console session (../api/client.ts's `saveOrgProfile`), while
 // these four credentials are written into cloudflare over its own API
 // (`packages/console/internal/deployment/write.go`) — two stores, two write paths, and one panel
-// holding both would put a row about where mail is *sent* under the row about what carries it.
-// what is left in this fold is the transport and the one press that proves it.
+// holding both would put where mail is *sent* under what carries it. what is left here is the
+// transport and the one press that proves it.
 //
 // **the fifth is the port, and it is stated rather than asked for.** 465 is the only value this
 // deployment dials and every other one is refused (`parseSmtpEndpoint` in
@@ -78,11 +78,11 @@ import type { TestSend } from '../api/types';
 // decide — ../secret-groups.ts's `STATED_VALUES` is what holds it out of every reading of what a
 // press would do.
 //
-// **it is a component and not a screen.** every read it draws was taken by ../routes/_index.tsx's
-// `loader` and every press it makes is answered by that page's `action`; what this holds is the
-// boxes, the presses and the sentences each answer is said in. which fold this is — its label, its
-// tone, the word beside it and what stands between it and its job — is decided in ./home-sections.ts
-// with the others.
+// **it is a component and not a screen.** every read it draws was taken by the sections layout's
+// `clientLoader` (../routes/_sections.tsx) and every press it makes is answered by
+// ../routes/_sections.smtp.tsx's `clientAction`; what this holds is the boxes, the presses and the
+// sentences each answer is said in. which section this is — its label, its tone, the word on its rail
+// cell and what stands between it and its job — is decided in ./home-sections.ts with the others.
 //
 // **a credential is stored from here, and never through the browser.** what a box posts reaches
 // the binary on the loopback address, and the value goes from there into the body of one request
@@ -136,8 +136,9 @@ import type { TestSend } from '../api/types';
 // lead and never a tail, and no count of characters anywhere on this console.
 //
 // **no state about a sign-in.** a console whose cloudflare sign-in has gone draws a face of its own
-// and never the folds (`blocked` in ../api/types.ts's `HomeFace`) — so a fold restating it
-// would be a sentence about something the operator cannot be looking at.
+// at `/` and never a section page (`blocked` in ../api/types.ts's `HomeFace`, and
+// ../routes/_sections.tsx's loader) — so a page restating it would be a sentence about something the
+// operator cannot be looking at.
 
 /**
  * what the press that is neither a read nor a store posts.
@@ -290,8 +291,8 @@ const cut = (value: string): string =>
  * word is the last thing standing between them and it, so each names its errand — and a word
  * naming an errand nobody pressed is one an operator has to work out before agreeing to it.
  *
- * the words are the ones the ledger row for this job uses (`JOB_NOTES` in
- * `@better-giving/operator/setup-folds`), because it is the same errand named twice on one page.
+ * the words are the ones this job's note uses (`JOB_NOTES` in `@better-giving/operator/setup-folds`),
+ * because it is the same errand, and one name for it is what keeps the two from drifting.
  */
 const MAIL_ASKS: Record<MailAct, { title: string; press: string; consequence: string }> = {
 	starting: {
@@ -430,7 +431,7 @@ export function SmtpFold({
 	 *
 	 * the session states say to reload rather than offering a press: this fold is drawn on the one
 	 * face that already holds a session, so a session refused between the page load and the press is
-	 * a page whose next reading draws the connect press itself (../routes/_index.tsx). the two that
+	 * a page whose next reading is sent to the connect press at `/` (../routes/_index.tsx). the two that
 	 * are neither say the one thing this console genuinely does not know — the deployment may have
 	 * sent the message anyway, so the way out is an inbox rather than a second press.
 	 */

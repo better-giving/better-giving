@@ -5,7 +5,7 @@ import { useEffect, useRef } from 'react';
 // **the answer and the reading are two different moments here, in that order.** react router
 // publishes a press's answer as the re-read it sets off begins (`handleLoaders` in the installed
 // `react-router`), and the deployment's own reading lands when `clientLoader` returns, which is
-// where the navigation ends (../routes/_index.tsx). the answer does not say the seeds on the screen
+// where the navigation ends (../routes/_sections.tsx). the answer does not say the seeds on the screen
 // are the ones the write left behind — only a reading that was not there when the press went does.
 //
 // **what putting them back any earlier costs is a stored value nobody can see.** the boxes are

@@ -4,6 +4,7 @@ import { RouterLink } from './router-link';
 
 // the trail of pages above a dashboard screen, which each screen states through its route module's
 // `handle` (https://reactrouter.com/how-to/using-handle) and ./crumbs.dom.spec.tsx holds per screen.
+// the screen draws none of it: ../../routes/_app.tsx puts the trail in the panel's top strip.
 //
 // a screen's handle states its whole trail, section first, rather than only its own crumb: no list
 // screen is a route ancestor of its detail screen — there is no `_app.admin.forms.tsx` layout — so

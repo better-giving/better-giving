@@ -83,8 +83,8 @@ export const NOTIFICATIONS_FOLD = 'Notifications';
  * all six, because the console draws all six — the deployment reads its rows off
  * {@link SETUP_JOBS} and takes each label from here.
  *
- * DEPLOY.md sends an operator to four of these names, and
- * packages/console-ui/src/every-fold-named.spec.ts holds those two spellings together — reading the
+ * DEPLOY.md sends an operator to two of these names, as the console's rail pages, and
+ * packages/console-ui/src/every-page-named.spec.ts holds those two spellings together — reading the
  * labels off this record rather than off any file's text.
  */
 export const FOLD_LABELS: Record<SetupFoldId, string> = {

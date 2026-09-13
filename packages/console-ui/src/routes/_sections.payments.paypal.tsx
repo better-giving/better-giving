@@ -1,5 +1,6 @@
-import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
-import { useNavigation } from 'react-router';
+import { Column } from '@better-giving/operator/components/shell/Layout';
+import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
+import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import {
 	freeWithheldVars,
 	paypalRun,
@@ -8,29 +9,25 @@ import {
 	startPaypalSetup
 } from '../api/client';
 import type { RecurringSetup, VarsWritten } from '../api/types';
-import { ConsoleStopped } from '../lib/deployment-states';
+import { consoleRereads } from '../lib/dialog-params';
 import { CHARITY_INTENT, charityEdit } from '../lib/paypal-charity';
 import type { PaypalPress } from '../lib/paypal-section';
 import { PaypalSection } from '../lib/paypal-section';
 import { PAYPAL_SETUP_INTENT, paypalPairPosted } from '../lib/paypal-setup';
-import { ProcessorPage, processorHandle } from '../lib/processor-page';
 import { readProcessorScreen } from '../lib/processor-reading';
-import { ProductFoot } from '../lib/product-foot';
 import { RECURRING_INTENT } from '../lib/recurring-block';
+import { usePress } from '../lib/use-press';
 import { FREE_INTENT } from '../lib/withheld-values';
 import { TITLE as CONSOLE_TITLE } from './_index';
-import type { Route } from './+types/payments_.paypal';
+import type { Route } from './+types/_sections.payments.paypal';
 
-// /payments/paypal — PayPal's screen, one of the two rows the home page's payments fold lists
-// (../lib/processor-rows.tsx). what it draws is ../lib/paypal-section.tsx whole.
+// /payments/paypal — PayPal's page, one of the two under the rail's donation processor heading.
+// what it draws is ../lib/paypal-section.tsx whole.
 //
-// `payments_` and not `payments`, for ./payments_.stripe.tsx's reason: without the underscore this
-// is a child of ./payments.tsx, whose redirect would send it home. every read is
-// ../lib/processor-reading.ts's.
+// the account, the worker and the seventeen values are the sections layout's reading
+// (./_sections.tsx); what this page reads on top of them is ../lib/processor-reading.ts's.
 
 const TITLE = 'PayPal';
-
-export const handle = processorHandle(TITLE);
 
 export function meta(): Route.MetaDescriptors {
 	return [{ title: `${TITLE} · ${CONSOLE_TITLE}` }];
@@ -41,8 +38,8 @@ export function clientLoader({ request }: Route.ClientLoaderArgs) {
 }
 
 /**
- * every press this screen draws, and nothing else — each one call on the loopback address, for
- * ./_index.tsx's reason.
+ * every press this page draws, and nothing else — each one call on the loopback address, with the
+ * account, the worker and the address it is spent on read inside the binary and never posted.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
 	const posted = await request.formData();
@@ -50,8 +47,8 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 
 	/**
 	 * asks the deployment to put what a repeating gift is charged against on every processor account
-	 * it holds the keys for. nothing is posted with it, for the reason ./payments_.stripe.tsx states
-	 * over the same press.
+	 * it holds the keys for. nothing is posted with it, for the reason
+	 * ./_sections.payments.stripe.tsx states over the same press.
 	 */
 	if (intent === RECURRING_INTENT) return { recurring: await setUpRecurring() };
 
@@ -74,8 +71,8 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	 * sets PayPal up from the pair: the binary checks it, settles the listener at this deployment's
 	 * address and writes the pair and that listener's id in one write (`packages/console/internal/paypal`).
 	 *
-	 * started rather than awaited, for the Stripe press's reason (./payments_.stripe.tsx), and the
-	 * pair is read by the boxes' own rule first so the binary is sent nothing it would turn down
+	 * started rather than awaited, for the Stripe press's reason (./_sections.payments.stripe.tsx),
+	 * and the pair is read by the boxes' own rule first so the binary is sent nothing it would turn down
 	 * (../lib/paypal-setup.ts).
 	 */
 	if (intent === PAYPAL_SETUP_INTENT) {
@@ -89,28 +86,27 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 
 	/**
 	 * takes every value this deployment is holding in a form nothing can read back off it, so the
-	 * boxes beside the press can set them. the same press the home page's folds draw, answered the
-	 * same way (./_index.tsx says why the names are never posted).
+	 * boxes beside the press can set them. which names are freed is read inside the binary off
+	 * cloudflare's own answer and never posted.
 	 */
 	if (intent === FREE_INTENT) return { freed: await freeWithheldVars() };
 
-	// nothing on this screen posts anything else. a body naming nothing, or naming a press drawn
+	// nothing on this page posts anything else. a body naming nothing, or naming a press drawn
 	// elsewhere, is answered rather than run.
 	return { unknown: true as const };
 }
 
-export default function PaypalScreen({ loaderData, actionData }: Route.ComponentProps) {
-	const navigation = useNavigation();
-	const posted = navigation.formData?.get('intent');
-	const intent = typeof posted === 'string' ? posted : null;
-	/* the router has this press's answer and is re-reading the screen over it: the posted intent is
-	   carried through the re-read as well as through the request, so it cannot say this itself
-	   (../lib/stripe-press.ts). */
-	const revalidating = navigation.state === 'loading';
-	/* a setup run counts as this screen writing, although no request is open for it: it writes the
+export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean {
+	return consoleRereads(args);
+}
+
+export default function PaypalPage({ loaderData, actionData, matches }: Route.ComponentProps) {
+	const shell = matches[1].loaderData;
+	const press = usePress();
+	/* a setup run counts as this page writing, although no request is open for it: it writes the
 	   pair and the listener's id onto the deployment (`packages/console/internal/paypal`), and a
 	   second press made under it would be reading what this one is still changing. */
-	const busy = intent !== null || loaderData.run?.kind === 'running';
+	const busy = press.busy || loaderData.run?.kind === 'running';
 
 	/* the set-up press: its run off the loader, and the three answers that started none. */
 	const answer = actionData && 'paypal' in actionData ? actionData.paypal : null;
@@ -129,39 +125,22 @@ export default function PaypalScreen({ loaderData, actionData }: Route.Component
 		actionData && 'recurring' in actionData ? actionData.recurring : null;
 
 	return (
-		<ProcessorPage
-			title={TITLE}
-			version={loaderData.version}
-			account={loaderData.account}
-			accountId={loaderData.accountId}
-			remembered={loaderData.remembered}
-			notKept={loaderData.notKept}
-		>
+		<Column>
+			<PageHeader title={TITLE} />
 			<PaypalSection
-				values={loaderData.values}
+				values={shell.reading.values}
 				payments={loaderData.payments}
 				recurring={loaderData.recurring}
-				workerName={loaderData.workerName}
-				accountName={loaderData.account}
+				workerName={shell.workerName}
+				accountName={shell.account}
 				paypal={paypal}
 				charity={charity}
 				freed={freed}
 				provision={provision}
-				revalidating={revalidating}
+				revalidating={press.revalidating}
 				busy={busy}
-				pending={intent}
+				pending={press.intent}
 			/>
-		</ProcessorPage>
-	);
-}
-
-// the binary stopped answering, drawn in the home page's words and frame (./_index.tsx's own
-// boundary says why the strip stands with no release in it).
-export function ErrorBoundary() {
-	return (
-		<PanelRoute foot={<ProductFoot version="" />}>
-			<title>{CONSOLE_TITLE}</title>
-			<ConsoleStopped />
-		</PanelRoute>
+		</Column>
 	);
 }

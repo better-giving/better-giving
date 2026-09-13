@@ -7,8 +7,8 @@ import { DestinationCell } from '@better-giving/operator/components/shell/Destin
  *
  * out of the rail on purpose: `.adm-rail__cells > .adm-dest` in
  * packages/operator/src/styles/adm.css is what makes a cell a tab or a row, and everything the cell
- * owns by itself — the band, the accent edge, the hue and weight change — is drawn on the bare
- * `.adm-dest`. a specimen inside a rail shows the arrangement and hides the element.
+ * owns by itself — the tint and the ink change — is drawn on the bare `.adm-dest`. its mark and
+ * status mark are drawn only in the rail's column, so out of it they stand as they are. a specimen inside a rail shows the arrangement and hides the element.
  * ./shell-app-shell.tsx is where the arrangement is.
  *
  * `current` is three values and two of them are the same drawing. `page` and bare `true` are the
@@ -74,7 +74,30 @@ export default function ShellDestinationCellPreview() {
 			</DestinationCell>
 
 			<DestinationCell href="#" short="Forms" current="page" state="focus">
-				current and focused — the band and the ring are one property
+				current and focused: the ring over the tint
+			</DestinationCell>
+
+			{/* a glyph mark, a picture mark, and a status mark with the word it reads out. */}
+			<DestinationCell href="#" short="Forms" mark="file-text">
+				Donation forms
+			</DestinationCell>
+
+			<DestinationCell
+				href="#"
+				short="Sites"
+				mark="globe"
+				status={{ tone: 'note', mark: 'circle-dashed', label: 'None listed' }}
+			>
+				Sites
+			</DestinationCell>
+
+			<DestinationCell
+				href="#"
+				short="Organisation"
+				mark="building-2"
+				status={{ tone: 'done', mark: 'check', label: 'Configured' }}
+			>
+				Organisation
 			</DestinationCell>
 
 			{/* no `short`, so nothing is drawn below 64rem. */}

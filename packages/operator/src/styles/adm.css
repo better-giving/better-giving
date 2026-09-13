@@ -1434,75 +1434,6 @@
 		animation: adm-reveal var(--admin-dur-reveal) var(--admin-ease-reveal);
 	}
 
-	/* ---------- link rows --------------------------------------------------------------
-
-	   a list of rows each of which is a way to another screen: a name, a status word beside it
-	   where one applies, a sentence under it, and the caret at the far edge saying the row goes
-	   somewhere. the whole row is the link, so the target is the row and never the name alone.
-
-	   **no mark gutter and no inner indent.** a line of `.adm-status` keeps a gutter because its
-	   mark is a tone, and nothing here carries one — the word is the only state a row states, and
-	   it is said in the descriptive register. so a row's edges are the edges of whatever it stands
-	   in, and the rule between two rows is what says where one ends.
-
-	   the parts are the status line's own — label, word, note and caret — so a row reads in the
-	   same type as the ledger lines around it and nothing is spelled twice. only their placement is
-	   stated here, and the word's ink: a line takes it from its tone and a row has none.
-
-	   focus is the focused-link treatment ../styles/base.css draws for every anchor, left alone: a
-	   row sets no fill of its own for that tint to lose against, which is the case `.adm-dest`
-	   below restates a ring for. */
-	.adm-linkrows {
-		display: grid;
-	}
-
-	.adm-linkrows > li + li {
-		border-block-start: var(--admin-rule);
-	}
-
-	.adm-linkrows__row {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		align-items: start;
-		gap: var(--admin-space-5);
-		min-block-size: var(--admin-touch-min);
-		padding-block: var(--admin-space-5);
-		color: inherit;
-		text-decoration: none;
-	}
-
-	/* the run's own edges sit on the container's content edge, top and bottom: the padding is the
-	   distance to the rule, and the first row has no rule above it and the last none below. */
-	.adm-linkrows > li:first-child > .adm-linkrows__row {
-		padding-block-start: 0;
-	}
-
-	.adm-linkrows > li:last-child > .adm-linkrows__row {
-		padding-block-end: 0;
-	}
-
-	.adm-linkrows__row .adm-status__body {
-		grid-column: 1;
-		display: grid;
-		gap: var(--admin-space-2);
-	}
-
-	.adm-linkrows__row .adm-status__word {
-		color: var(--admin-tone-note-ink);
-	}
-
-	.adm-linkrows__row .adm-status__caret {
-		grid-column: 2;
-		margin-inline-start: 0;
-	}
-
-	/* hover moves the caret and nothing else, for the section summary's reason above: the label is
-	   a name and the word a state, and neither changes under a pointer. */
-	.adm-linkrows__row:hover .adm-status__caret,
-	.adm-linkrows__row.is-hover .adm-status__caret {
-		color: var(--admin-link-hover);
-	}
-
 	/* ---------- the named block --------------------------------------------------------
 
 	   a section opens onto several blocks — what is set, a procedure to carry out, a form, a list
@@ -3300,16 +3231,23 @@
 		grid-template-rows: auto 1fr auto;
 	}
 
-	/* below the wide breakpoint the identity is a band across the top and the sign-out sits
-	   in it; above, both move into the rail's own head and foot. */
+	/* the shell with a rail stands on a tinted ground and holds the page in an inset panel on it
+	   (`.adm-rail ~ .adm-main` below). the bare shell keeps the page's own ground: it has no panel
+	   for the tint to set off. */
+	.adm-shell:has(> .adm-rail) {
+		background: var(--admin-surface-sunken);
+	}
+
+	/* below the wide breakpoint the identity is a band across the top and the way out sits in it;
+	   above, both move into the rail's own head and foot. the band is the shell's ground and draws
+	   no edge of its own: the panel under it is the boundary. */
 	.adm-identity {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: var(--admin-space-5);
 		padding: var(--admin-space-5) var(--admin-space-6);
-		background: var(--admin-surface);
-		border-block-end: var(--admin-hairline);
+		background: transparent;
 	}
 
 	/* the tracking is the step and not a role's: the subhead role binds none, and this is the one
@@ -3324,12 +3262,29 @@
 		letter-spacing: var(--admin-track-tight);
 	}
 
-	/* carried-ok: .adm-identity__sub — the line under the org's name, which no screen in this app
-	   writes. the operator package's component library offers it as AppShell's `tagline`, at
-	   packages/operator/src/components/shell/AppShell.jsx. */
-	.adm-identity__sub {
+	/* the name and whatever a surface stands under it (AppShell's `under`), in the band and in the
+	   rail's head alike. */
+	.adm-rail__who {
+		display: grid;
+		gap: var(--admin-space-1);
+		min-inline-size: 0;
+	}
+
+	/* the console's deployment address under the org name, handed in as AppShell's `under` by
+	   packages/console-ui. one line, cut with an ellipsis. */
+	.adm-rail__address {
+		display: flex;
+		align-items: center;
+		gap: var(--admin-space-2);
+		min-inline-size: 0;
 		font-size: var(--admin-caption-size);
-		color: var(--admin-ink-muted);
+		line-height: var(--admin-caption-lh);
+	}
+
+	.adm-rail__address > span {
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
 	}
 
 	/* the other head a shell can carry, and it is not a rail: a run of stated facts — a label and
@@ -3529,13 +3484,20 @@
 		inset-block-end: 0;
 		inset-inline: 0;
 		z-index: 2;
-		background: var(--admin-surface);
-		border-block-start: var(--admin-hairline);
+		background: var(--admin-surface-sunken);
+		border-block-start: var(--admin-rule);
 		padding-block-end: env(safe-area-inset-bottom);
 	}
 
+	/* the bar is flat: a tab is a word, so the marks, the rules between groups, a group's heading
+	   and a destination's status mark are the column's alone, and a group's entries stand as tabs
+	   of their own. the status is still read out, off the cell's `.adm-vh` word. */
 	.adm-rail__identity,
-	.adm-rail__foot {
+	.adm-rail__foot,
+	.adm-rail__cells > .adm-dest > .adm-mark,
+	.adm-rail__rule,
+	.adm-rail__heading,
+	.adm-dest__status {
 		display: none;
 	}
 
@@ -3553,13 +3515,6 @@
 	   the column direction is what makes `justify-content` the block axis, so the word is centred
 	   between the two steps rather than along the width. one item, so no gap is set: the tab's
 	   other span is the full name, and the bar hides it.
-
-	   the top step is a strip plus the step: the current tab's band is an inset shadow, which
-	   paints inside the padding rather than above it, so a step alone is a step minus the band
-	   for one tab and the whole step for every other. the strip is on every tab and the band
-	   is what fills it on one — the word sits at the same height across the bar either way, and
-	   a bar whose words stand on two heights is a worse thing to look at than the gap this
-	   corrects.
 
 	   the line is set at `--admin-lh-heading` because the step under the word is the step under
 	   its ink, not under its line box: the body line height leaves a pixel and a half of empty
@@ -3617,15 +3572,12 @@
 	   edge of.
 
 	   the corner is stated, and it is square: a destination is always an anchor, and the focused
-	   link rule in ./base.css rounds one. the band this ring is drawn round has square edges at
-	   both widths and hover and current fill it corner to corner, so a rounded ring is a different
-	   shape from the thing it is on. it is stated in the ring's own rule, because the two are one
-	   decision.
+	   link rule in ./base.css rounds one. a tab is square and hover and current fill it corner to
+	   corner, so the ring hugs that shape; the column's rounded cell restates the corner at the
+	   wide breakpoint, later in this layer, and the ring follows it there.
 
 	   the same restatement `.adm-btn:focus-visible` makes, and not folded into it: this one
-	   carries a step that a button has no use for, and it belongs in this layer because the band
-	   a current destination draws is written here — a ring stated an earlier layer away would be
-	   the one thing in the pair a reader could not see the interaction of. */
+	   carries a step that a button has no use for. */
 	.adm-dest:focus-visible,
 	.adm-dest.is-focus {
 		border-radius: var(--admin-radius-0);
@@ -3633,34 +3585,19 @@
 		z-index: 1;
 	}
 
-	/* the current destination carries its band as a box-shadow, and a ring is the same property,
-	   so the focused current one restates both or arrives on the one destination in the rail that
-	   reports nothing to a keyboard — ./base.css would otherwise draw it as a focused link, in
-	   the accent tint it is already standing on. */
+	/* current and hovered have to be unmistakably different, so current changes ground and ink;
+	   hover only fills. the tint is the whole of the mark, at both widths — no edge, because a mark
+	   at the leading edge in /admin is the one it puts on a thing worth acting on, and being
+	   somewhere is not one. the weight stays where every other destination's is: one destination
+	   set heavier is one that changes width, and in a bar of equal tabs it is the word inside the
+	   tab that moves. */
 	/* carried-ok: .is-current — the pin for `[aria-current]`, which a destination in the rail sets
 	   for real. it stands beside the attribute here for the reason the state twins above stand
 	   beside their pseudo. */
-	.adm-dest[aria-current]:focus-visible,
-	.adm-dest[aria-current].is-focus,
-	.adm-dest.is-current:focus-visible,
-	.adm-dest.is-current.is-focus {
-		box-shadow:
-			inset 0 var(--admin-edge) 0 var(--admin-rail-current-edge),
-			0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
-	}
-
-	/* current and hovered have to be unmistakably different, so current changes ground and ink and
-	   gains a band along the top of the tab; hover only fills. the weight stays where every other
-	   destination's is: one destination set heavier is one that changes width, and in a bar of
-	   equal tabs it is the word inside the tab that moves. the band is at the top edge rather than
-	   the leading one — a mark at the leading edge in /admin is the one it puts on a thing worth
-	   acting on, and being somewhere is not one. the wide breakpoint moves it inline, where a
-	   vertical rail's own device is what it reads as. */
 	.adm-dest[aria-current],
 	.adm-dest.is-current {
 		background: var(--admin-rail-current-bg);
 		color: var(--admin-rail-current-ink);
-		box-shadow: inset 0 var(--admin-edge) 0 var(--admin-rail-current-edge);
 	}
 
 	.adm-dest[aria-current]:hover,
@@ -3680,45 +3617,82 @@
 		margin-inline-start: auto;
 	}
 
+	/* a way out carrying both a mark and a word shows the word, and only the icon rail trades it
+	   for the mark (the collapsed rules at the wide breakpoint). one node either way, so the
+	   control keeps one name. a way out that is a mark alone — the console's close — wears no word
+	   and keeps its mark everywhere. AppShell.jsx's specimen way out is the shape. */
+	.adm-signout:has(.adm-signout__word) .adm-mark {
+		display: none;
+	}
+
 	.adm-main {
 		padding: var(--admin-space-6);
 	}
 
-	/* the page reserves the strip the bar stands in, because the bar is out of the flow and would
-	   otherwise be laid over the end of it. the clearance is the bar's and the bar is the shell's,
-	   so the selector names the shell: a page with no shell around it — every screen
-	   packages/console-ui draws — has no bar under it and reserves nothing, without a modifier any of
-	   them could forget. the ancestor sits in `:where()` so the rule still weighs what a bare
-	   `.adm-main` does, which is what leaves the two widths below deciding on source order the way
-	   they did before: the middle one restates the other three sides and never this one, and the
-	   wide one clears it in a single `padding` shorthand.
+	/* the page of the shell with a rail: an inset panel on the shell's ground, its head and body
+	   padded from one inset. it is matched off the rail beside it because `.adm-main` is also the
+	   bare shell's page, which has no panel. two classes of weight, so the `.adm-main` padding the
+	   two widths below restate for the bare shell never reaches it.
 
-	   the terms are the tab's: the floor it is never shorter than, the strip its band stands in,
-	   the step it pads itself by at each end, whatever the platform holds back under it, and a
-	   step of air — the tab's own contents are shorter than that floor, so the sum can only
-	   overstate the bar and never leave the end of a page beneath it. the air is
-	   this step at every width below the wide breakpoint rather than the width's own, because
-	   one calc is one answer to how far above the bar a page ends. */
-	:where(.adm-shell) .adm-main {
-		padding-block-end: calc(
+	   the page reserves the strip the bar stands in, because below the wide breakpoint the bar is
+	   out of the flow and would otherwise be laid over the end of it. the terms are the tab's: the
+	   floor it is never shorter than, its taller top step, the step it pads itself by at each end,
+	   and whatever the platform holds back under it — then the step of air between panel and bar.
+	   the tab's own contents are shorter than that floor, so the sum can only overstate the bar. */
+	.adm-rail ~ .adm-main {
+		--_panel-inset: var(--admin-space-6);
+		display: flex;
+		flex-direction: column;
+		margin-inline: var(--admin-space-4);
+		margin-block-end: calc(
 			var(--admin-touch-min) +
 			var(--admin-edge) +
 			var(--admin-space-3) +
 			var(--admin-space-3) +
-			var(--admin-space-6) +
+			var(--admin-space-4) +
 			env(safe-area-inset-bottom)
 		);
+		padding: 0;
+		background: var(--admin-surface);
+		border: var(--admin-hairline);
+		border-radius: var(--admin-radius);
 	}
 
-	/* and a shell with no rail reserves nothing either, for the same reason a page with no shell
-	   does not: the strip the rule above clears is the rail's, and the bare shell has none standing
-	   in it. what it may have under the page is `.adm-footstrip`, which is a row of the shell's own
-	   grid rather than anything laid over the page, so there is nothing there to clear either.
-	   the modifier sits in `:where()` so it weighs exactly what the rule above weighs and the two
-	   widths below still decide on source order. given the weight its class would carry on its own
-	   it would beat the wide width's `padding` shorthand as well, and a bare page would end flush
-	   against the foot of the window at the width where it has the most room.
-	   packages/operator/src/components/shell/BareShell.jsx writes the class. */
+	.adm-rail ~ .adm-main > .adm-head {
+		padding-block: var(--admin-space-4);
+	}
+
+	/* one left edge for the panel: the strip's title, the page heading and the content all start
+	   at `--_panel-inset`. */
+	.adm-rail ~ .adm-main > .adm-head > .adm-headstrip {
+		min-block-size: var(--admin-touch-min);
+		padding-inline: var(--_panel-inset);
+	}
+
+	.adm-rail ~ .adm-main > .adm-head .adm-actions {
+		flex-wrap: nowrap;
+	}
+
+	/* the body grows into the panel's leftover height, which is what gives `.adm-main--centred` on
+	   it a height to centre in. */
+	.adm-panelbody {
+		flex-grow: 1;
+		padding: var(--admin-space-6) var(--_panel-inset);
+	}
+
+	/* the page's name on the panel's strip, written by the surfaces that hand AppShell a `head`. */
+	.adm-headstrip__title {
+		font-weight: var(--admin-value-weight);
+		color: var(--admin-ink);
+	}
+
+	/* a bare shell's page pads no block end: what may stand under it is `.adm-footstrip`, a row of
+	   the shell's own grid rather than anything laid over the page, so there is nothing to clear.
+	   the modifier sits in `:where()` so it weighs what `.adm-main` weighs and the two widths below
+	   still decide on source order — given its class's own weight it would beat the wide width's
+	   `padding` shorthand, and a bare page would end flush against the foot of the window at the
+	   width where it has the most room. packages/operator/src/components/shell/BareShell.jsx writes
+	   the class. */
 	:where(.adm-shell--bare) .adm-main {
 		padding-block-end: 0;
 	}
@@ -3730,8 +3704,8 @@
 	   like is stated.
 
 	   the modifier is the page's and not the column's, and the axis is what decides that: the page
-	   is the shell's `1fr` row and is therefore the only element here that has been given a height,
-	   where a column is as tall as whatever it holds and could centre nothing in the vertical. a
+	   is the shell's `1fr` row (or, in the shell with a rail, `.adm-panelbody` growing into its
+	   panel) and is therefore the only element here that has been given a height, where a column is as tall as whatever it holds and could centre nothing in the vertical. a
 	   modifier on the column would answer half the question and read as if it had answered both.
 
 	   `.adm-panelroute` below is not this and cannot be: it measures itself against the viewport,
@@ -4566,9 +4540,24 @@
 			grid-template-areas: 'top' 'main' 'foot';
 		}
 
+		/* the shell with a rail is the window's height and scrolls inside its panel, so the rail
+		   stands whole beside a page of any length. */
+		.adm-shell:has(> .adm-rail) {
+			block-size: 100dvh;
+		}
+
+		/* the icon rail: a column one target wide, inside the cells' inline step. AppShell writes
+		   the class off its own toggle. */
+		.adm-shell--collapsed {
+			grid-template-columns:
+				calc(var(--admin-touch-min) + var(--admin-space-4) + var(--admin-space-4))
+				minmax(0, 1fr);
+		}
+
 		/* the bar comes back into the flow as the shell's first column: a rail as tall as the page
 		   is one the eye reads down rather than across, and the head and the foot it grows here
-		   are what the identity band carries below this width. */
+		   are what the identity band carries below this width. it stands on the shell's ground
+		   with no edge: the panel beside it is the boundary. */
 		.adm-rail {
 			position: static;
 			display: grid;
@@ -4576,43 +4565,82 @@
 			grid-template-columns: 1fr;
 			grid-template-rows: auto 1fr auto;
 			align-content: start;
+			min-block-size: 0;
 			padding-block-end: 0;
+			background: transparent;
 			border-block-start: 0;
-			border-inline-end: var(--admin-hairline);
 		}
 
+		/* the name, and the toggle on the name's first line. */
 		.adm-rail__identity {
 			display: flex;
-			flex-direction: column;
-			gap: var(--admin-space-1);
-			padding: var(--admin-space-6) var(--admin-space-5);
-			border-block-end: var(--admin-rule);
+			align-items: start;
+			justify-content: space-between;
+			gap: var(--admin-space-4);
+			padding: var(--admin-space-6) var(--admin-space-4) var(--admin-space-5) var(--admin-space-5);
+		}
+
+		/* a box one line of the name tall, centring the toggle on that line. */
+		.adm-rail__togglebox {
+			display: flex;
+			align-items: center;
+			block-size: calc(var(--admin-subhead-size) * var(--admin-subhead-lh));
+			flex: none;
+		}
+
+		/* the toggle opens nothing that stands over the page, so the quiet rank's held-open fill for
+		   `aria-expanded` (the elements layer) is taken back: expanded is this control's resting
+		   state. the rank's own hover and press rungs are restated after it, since this layer
+		   outranks them. */
+		.adm-rail__toggle[aria-expanded='true'] {
+			background: transparent;
+			color: var(--admin-ink-2);
+		}
+
+		.adm-rail__toggle:hover,
+		.adm-rail__toggle.is-hover {
+			background: var(--admin-control-bg-hover);
+			color: var(--admin-ink);
+		}
+
+		.adm-rail__toggle:active,
+		.adm-rail__toggle.is-active {
+			background: var(--admin-control-bg-active);
+			color: var(--admin-ink);
 		}
 
 		.adm-rail__cells {
 			display: grid;
 			grid-auto-rows: min-content;
 			align-content: start;
+			gap: var(--admin-space-1);
+			padding-inline: var(--admin-space-4);
 		}
 
-		.adm-rail__foot {
-			display: block;
-			align-self: end;
-			padding: var(--admin-space-5);
-			border-block-start: var(--admin-rule);
-		}
-
-		/* a destination in the column is a row: the name on one line, at the inline padding that
-		   lines it up with `.adm-rail__identity` above it and `.adm-rail__foot` below — all three
-		   are `--admin-space-5`. a column wide enough for the whole name has the name, where the
-		   bar has the short word. */
+		/* a destination in the column is a row: its mark on the first line of the name, the name,
+		   and its status mark on the same first line. a column wide enough for the whole name has
+		   the name, where the bar has the short word. the corner is rounded and the focus ring
+		   (restated above with a square corner) follows it, because this rule is later. */
 		.adm-rail__cells > .adm-dest {
 			flex-direction: row;
 			justify-content: flex-start;
+			align-items: start;
 			gap: var(--admin-space-4);
-			padding: var(--admin-space-4) var(--admin-space-5);
+			min-block-size: var(--admin-control-height);
+			padding: var(--admin-space-3) var(--admin-space-4);
 			font-size: var(--admin-body-size);
 			line-height: var(--admin-body-lh);
+			border-radius: var(--admin-radius);
+		}
+
+		.adm-rail__cells > .adm-dest > .adm-mark {
+			display: inline-block;
+			margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
+			color: var(--admin-ink-muted);
+		}
+
+		.adm-rail__cells > .adm-dest:is([aria-current], .is-current) > .adm-mark {
+			color: inherit;
 		}
 
 		.adm-dest__short {
@@ -4623,27 +4651,242 @@
 			display: block;
 		}
 
-		/* the mark a vertical rail puts on where you are, moved to the leading edge from the top
-		   of a tab. it is a column's own device and reads as one only in a column, which is why
-		   it is written here and nowhere above. */
-		.adm-dest[aria-current],
-		.adm-dest.is-current {
-			box-shadow: inset var(--admin-edge) 0 0 var(--admin-rail-current-edge);
+		.adm-rail__cells > .adm-dest > .adm-dest__full {
+			flex: 1;
+			min-inline-size: 0;
 		}
 
-		/* the band and the ring are one property, so the focused current cell restates both. */
-		.adm-dest[aria-current]:focus-visible,
-		.adm-dest[aria-current].is-focus,
-		.adm-dest.is-current:focus-visible,
-		.adm-dest.is-current.is-focus {
-			box-shadow:
-				inset var(--admin-edge) 0 0 var(--admin-rail-current-edge),
-				0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
+		.adm-rail__cells > .adm-dest > .adm-dest__status {
+			display: flex;
+			align-items: center;
+			block-size: 1lh;
+			flex: none;
+		}
+
+		/* carried-ok: .adm-dest__status--done .adm-dest__status--note .adm-dest__status--attention —
+		   spelled by tone in packages/operator/src/components/shell/DestinationCell.jsx's template
+		   literal. StatusLine's glyph tones. */
+		.adm-dest__status--done {
+			color: var(--admin-tone-done-mark);
+		}
+
+		.adm-dest__status--note {
+			color: var(--admin-tone-note-mark);
+		}
+
+		.adm-dest__status--attention {
+			color: var(--admin-tone-attention-mark);
+		}
+
+		.adm-rail__rule {
+			display: block;
+			margin: var(--admin-space-4);
+			border: 0;
+			border-block-start: var(--admin-rule);
+		}
+
+		/* a group stands apart: a step of space above its rule and after its last entry, the
+		   heading tight to its first. the heading is small print, not a destination. */
+		.adm-rail__rule--group {
+			margin-block-start: var(--admin-space-6);
+		}
+
+		/* carried-ok: .adm-dest--groupend — in DestinationCell.jsx's derived class list, as `.adm-dest`. */
+		.adm-rail__cells > .adm-dest--groupend {
+			margin-block-end: var(--admin-space-6);
+		}
+
+		.adm-rail__heading {
+			display: block;
+			padding: 0 var(--admin-space-4) var(--admin-space-2);
+			font-size: var(--admin-caption-size);
+			line-height: var(--admin-caption-lh);
+			color: var(--admin-ink-muted);
+		}
+
+		.adm-rail__foot {
+			display: grid;
+			align-self: end;
+			gap: var(--admin-space-5);
+			margin-inline: var(--admin-space-4);
+			padding: var(--admin-space-5) var(--admin-space-1);
+			border-block-start: var(--admin-rule);
+		}
+
+		/* the console's rail foot, handed to AppShell's `foot` by packages/console-ui.
+
+		   the account: its mark on the name's first line, the name on one line, the id under it. */
+		.adm-footaccount {
+			display: grid;
+			gap: var(--admin-space-1);
+			min-inline-size: 0;
+			font-size: var(--admin-body-size);
+			line-height: var(--admin-lh-snug);
+		}
+
+		/* the mark, the name and the way out on one line; the id under all three, edge to edge. */
+		.adm-footaccount__row {
+			display: flex;
+			align-items: start;
+			gap: var(--admin-space-3);
+			min-inline-size: 0;
+		}
+
+		.adm-footaccount__mark,
+		.adm-footaccount__out {
+			display: flex;
+			align-items: center;
+			block-size: 1lh;
+			flex: none;
+		}
+
+		.adm-footaccount__out {
+			margin-inline-start: auto;
+		}
+
+		/* raw-length-ok: the logo sized to the letters it stands with, as
+		   `.adm-headstrip__who > .adm-brand` argues. */
+		.adm-footaccount__mark > .adm-brand {
+			block-size: 0.55em;
+		}
+
+		.adm-footaccount__name {
+			overflow: hidden;
+			white-space: nowrap;
+			text-overflow: ellipsis;
+			font-weight: var(--admin-value-weight);
+			color: var(--admin-ink);
+		}
+
+		.adm-footaccount__id {
+			font-size: var(--admin-caption-size);
+			line-height: var(--admin-caption-lh);
+			color: var(--admin-ink-muted);
+			overflow-wrap: anywhere;
+		}
+
+		.adm-footline {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: var(--admin-space-4);
+			font-size: var(--admin-caption-size);
+			line-height: var(--admin-caption-lh);
+			color: var(--admin-ink-muted);
+		}
+
+		/* a source mark toned as the version beside it and one line of it tall. the picture is the
+		   caller's: `--_source-mark` is a `url()` the surface sets, because this package owns no
+		   such asset. */
+		.adm-footline__source {
+			display: block;
+			inline-size: 1lh;
+			block-size: 1lh;
+			flex: none;
+			color: inherit;
+			background-color: currentColor;
+			mask: var(--_source-mark) center / contain no-repeat;
 		}
 
 		.adm-main {
 			grid-area: main;
 			padding: var(--admin-space-9) var(--admin-space-10);
+		}
+
+		/* the panel stands off the window's edges and the rail's, and scrolls inside itself. */
+		.adm-rail ~ .adm-main {
+			--_panel-inset: var(--admin-space-10);
+			min-block-size: 0;
+			margin: var(--admin-space-4) var(--admin-space-4) var(--admin-space-4) 0;
+			overflow: auto;
+		}
+
+		.adm-panelbody {
+			padding: var(--admin-space-9) var(--_panel-inset);
+		}
+
+		/* the icon rail: the words go, the marks stay, the current cell is a filled square. what is
+		   hidden by `display: none` is out of the tree as well; the destination's name is taken off
+		   the screen only, so the link keeps it. */
+		.adm-shell--collapsed .adm-rail__identity {
+			justify-content: center;
+			padding-inline: var(--admin-space-4);
+		}
+
+		.adm-shell--collapsed .adm-rail__identity > .adm-rail__who,
+		.adm-shell--collapsed .adm-rail__heading,
+		.adm-shell--collapsed .adm-rail__foot .adm-footline,
+		.adm-shell--collapsed .adm-footaccount__mark,
+		.adm-shell--collapsed .adm-footaccount__name,
+		.adm-shell--collapsed .adm-footaccount__id {
+			display: none;
+		}
+
+		/* `.adm-vh` in ./base.css, restated: the name and the sign-out word leave the screen and
+		   stay the control's name. */
+		.adm-shell--collapsed .adm-rail__cells > .adm-dest > .adm-dest__full,
+		.adm-shell--collapsed .adm-rail__foot .adm-signout__word {
+			position: absolute;
+			inline-size: 1px; /* raw-length-ok: as `.adm-vh`. */
+			block-size: 1px; /* raw-length-ok: as `.adm-vh`. */
+			margin: -1px; /* raw-length-ok: as `.adm-vh`. */
+			padding: 0;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
+			border: 0;
+		}
+
+		.adm-shell--collapsed .adm-rail__foot .adm-signout .adm-mark {
+			display: inline-block;
+		}
+
+		.adm-shell--collapsed .adm-rail__cells > .adm-dest {
+			position: relative;
+			justify-content: center;
+			align-items: center;
+			inline-size: var(--admin-touch-min);
+			min-block-size: var(--admin-touch-min);
+			padding: 0;
+		}
+
+		.adm-shell--collapsed .adm-rail__cells > .adm-dest > .adm-mark {
+			margin-block-start: 0;
+		}
+
+		/* the status becomes a badge at the cell's corner. */
+		.adm-shell--collapsed .adm-rail__cells > .adm-dest > .adm-dest__status {
+			position: absolute;
+			inset-block-start: var(--admin-space-1);
+			inset-inline-end: var(--admin-space-1);
+			block-size: auto;
+		}
+
+		.adm-shell--collapsed .adm-rail__rule {
+			margin-inline: var(--admin-space-2);
+		}
+
+		.adm-shell--collapsed .adm-rail__rule--group {
+			margin-block: var(--admin-space-6);
+		}
+
+		/* the foot keeps only the way out, and a foot with none is not drawn. */
+		.adm-shell--collapsed .adm-rail__foot {
+			justify-items: center;
+			padding-inline: 0;
+		}
+
+		.adm-shell--collapsed .adm-rail__foot:not(:has(.adm-signout)) {
+			display: none;
+		}
+
+		.adm-shell--collapsed .adm-footaccount {
+			justify-items: center;
+		}
+
+		.adm-shell--collapsed .adm-footaccount__out,
+		.adm-shell--collapsed .adm-rail__foot .adm-signout {
+			margin-inline: 0;
 		}
 
 		/* the one arrangement on a page that waits for this width rather than the middle one, and

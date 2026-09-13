@@ -7,7 +7,7 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
 import { useEffect, useRef } from 'react';
 import { data, Form, href, Link, useNavigation } from 'react-router';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import { type CrumbHandle, ScreenCrumbs } from '$lib/admin/crumbs';
+import type { CrumbHandle } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formatMinor } from '$lib/donations/money';
 import {
@@ -520,9 +520,7 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 			    produces. every other refusal is drawn at the foot with the button that carried it. */}
 			{asking ? null : refusal}
 
-			{/* the trail to the section this screen sits under, stated by this module's `handle`.
-
-			    the record is a person, and the person is who the staff member is holding an email
+			{/* the record is a person, and the person is who the staff member is holding an email
 			    from — so the heading is their name and the status qualifies it on its own baseline.
 			    the header is written out of the classes packages/operator/src/styles/adm.css already
 			    draws rather than mounted from the library's `PageHeader`, which has no slot for a
@@ -535,7 +533,6 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 			    to be writing about. it gets no red either: colour in /admin means "act on this", and
 			    this is descriptive. */}
 			<header className="adm-pageheader">
-				<ScreenCrumbs />
 				<div className="adm-pageheader__row">
 					<h1>{donorName}</h1>
 					<StatusWord secondary={stopped}>{RECURRING_STATUS_LABELS[status]}</StatusWord>

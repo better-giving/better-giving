@@ -31,8 +31,8 @@ import { describe, expect, it } from 'vitest';
 // holds is that a name already walked stays true afterwards.
 //
 // **what counts is the word a press carries at rest.** the word it says while it waits is not the
-// word anybody is told to look for, and neither is a heading over a reading — ./every-fold-named.spec.ts
-// holds the fold names, and says in its own header why the two are apart.
+// word anybody is told to look for, and neither is a heading over a reading — ./every-page-named.spec.ts
+// holds the page names, and says in its own header why the two are apart.
 //
 // **each pattern has to match its file exactly once.** one that stops matching reads as a gate that
 // passes forever, and one that starts matching a second press beside the one it is about is a gate

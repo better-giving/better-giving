@@ -85,10 +85,10 @@ import { WALLET_NAMES, linkStanding, walletHostLines, walletRows } from './walle
 // the whole of Stripe on this deployment — two boxes, one press, and what the account is approved
 // for — read and set on Stripe's own screen.
 //
-// **each processor has a screen, and this is Stripe's.** a deployment set up on either is set up,
-// so the two answer to one row on the home page (./home-sections.ts), whose panel lists them
-// (./processor-rows.tsx) and links here and to PayPal's (./paypal-section.tsx). every claim below is
-// about Stripe unless it says otherwise.
+// **each processor has a page, and this is Stripe's** (../routes/_sections.payments.stripe.tsx). a
+// deployment set up on either is set up, so the two answer to one payments job (./home-sections.ts),
+// and the rail lists them as two cells under one heading (./console-pages.ts), this one and PayPal's
+// (./paypal-section.tsx). every claim below is about Stripe unless it says otherwise.
 //
 // **it is one form and one press because there is one errand.** an operator holding the two keys off
 // one Stripe screen has already decided everything the rest of the setup needs, so the press does
@@ -156,8 +156,8 @@ import { WALLET_NAMES, linkStanding, walletHostLines, walletRows } from './walle
 //
 // **and the top layer is the only place it stands.** the ledger is a press reporting itself while it
 // runs, so it belongs to the press and goes with it: what the screen itself says is where this
-// deployment stands now — the two readings above the boxes, the endpoint below them, and the word
-// beside this processor's row on the home page. a run is the binary's own memory and survives a
+// deployment stands now — the two readings above the boxes, the endpoint below them, and the status
+// on this processor's rail cell. a run is the binary's own memory and survives a
 // reload, and drawn
 // under the boxes for that it is a progress list an operator arrives to over a press they did not
 // make and cannot finish, standing where the settled readings say the same thing better.
@@ -399,7 +399,7 @@ export type StripeSectionProps = {
 	/**
 	 * how the last press that registers the sites wallet buttons are drawn on went, or `null`.
 	 *
-	 * it is this screen's own press and never the sites fold's: that one levels the same registrations
+	 * it is this screen's own press and never the sites page's: that one levels the same registrations
 	 * behind the list it stores and reports it there. this is the repair for a custom domain attached
 	 * to the worker after a setup, which no earlier press can have known about
 	 * (../lib/wallets-press.ts).
@@ -632,7 +632,7 @@ export function StripeSection({
 	 *
 	 * so the box-level report of a run is this screen's own press reporting itself, and what a reload
 	 * arrives to instead is the settled readings: the two above the boxes, the endpoint below them,
-	 * and the word beside this processor's row on the home page.
+	 * and the status on this processor's rail cell.
 	 */
 	const [pressedHere, setPressedHere] = useState(false);
 	/**
@@ -1757,7 +1757,7 @@ export function StripeSection({
 	 * neither is a step in setting this deployment up, and that is why nothing collects them into a
 	 * word: an account Stripe never approved for bank payments is not a deployment left unfinished,
 	 * and one that only ever wants one-time gifts is complete. what says whether this screen's job is
-	 * done is its own row on the home page (./home-sections.ts).
+	 * done is its rail cell's status (./console-pages.ts).
 	 *
 	 * each is named by its own band, and the two names are the fundraiser's rather than the
 	 * account's: what an operator is reading is which ways a donor may give and whether a donor may

@@ -18,14 +18,13 @@ import { useConsoleForm } from './use-console-form';
 import { WALLET_LEAD, walletTrouble } from './wallet-level';
 import { WIDGET_LEAD, widgetTrouble } from './widget-level';
 
-// the sites this deployment's donation forms may be loaded on, edited inside one fold of the one
-// page.
+// the sites this deployment's donation forms may be loaded on, edited on the sites page.
 //
-// **it is a component and not a screen.** every read it draws was taken by ../routes/_index.tsx's
-// `loader` and the one press it makes is answered by that page's `action`; what this holds is the
-// boxes, the press and the sentences each answer is said in. which fold this is — its label, its
-// tone, the word beside it and what stands between it and its job — is decided in ./home-sections.ts
-// with the others.
+// **it is a component and not a screen.** every read it draws was taken by the sections layout's
+// `clientLoader` (../routes/_sections.tsx) and the one press it makes is answered by
+// ../routes/_sections.sites.tsx's `clientAction`; what this holds is the boxes, the press and the
+// sentences each answer is said in. which section this is — its label, the word on its rail cell and
+// what stands between it and its job — is decided in ./home-sections.ts with the others.
 //
 // **the spam widget has no standing panel here, and its levelling reports at the press.** the
 // widget and both of its keys are made by the first deploy (`packages/console/internal/first`), so
@@ -43,8 +42,8 @@ import { WIDGET_LEAD, widgetTrouble } from './widget-level';
 // account, so a site added here offers a donor none of them until it is
 // (`packages/app/src/lib/server/payments/wallet-domains.ts`) — and a save that says only "saved"
 // over a hostname the account holds nothing for is that same silence a second time. ./wallet-level.ts
-// is what each arm of it says, and the press that repairs it stands on the payments fold rather than
-// here: this fold draws none of those hostnames.
+// is what each arm of it says, and the press that repairs it stands on the Stripe page rather than
+// here: this page draws none of those hostnames.
 //
 // **the deployment's own donation page is the first row of the list and no press can take it off.**
 // every deployment serves one at its own address, and it is on no `site` row and on no form's
@@ -63,7 +62,7 @@ import { WIDGET_LEAD, widgetTrouble } from './widget-level';
 // rows is also the whole of how the list is emptied — a box emptied instead is refused under itself
 // (./sites.ts), so no press has two meanings. **a deployment holding no site opens on no editable
 // box either**: a blank row nobody added is a Remove offered over nothing and a refusal waiting at
-// the press, where the locked row above already says the fold is not empty.
+// the press, where the locked row above already says the list is not empty.
 //
 // **arranging the boxes is not a press, and the only press is Save sites.** adding and dropping a
 // row are the form's own list intents, applied in the browser and posted nowhere
@@ -97,7 +96,7 @@ import { WIDGET_LEAD, widgetTrouble } from './widget-level';
 // reading is the form layer's rather than a walk over the boxes. the
 // press that stores an empty list is an operator moving domains, made by dropping every row, and
 // the worker stores it: there is nothing to confirm, because the deployment goes on serving its own
-// donation page whatever this list holds and the fold draws that page above the boxes.
+// donation page whatever this list holds and this draws that page above the boxes.
 //
 // **the boxes go back to what the deployment holds on the reading that shows it, and the press is
 // not over until they have.** conform reads a changed `defaultValue` at a reset and nowhere else —
@@ -105,20 +104,20 @@ import { WIDGET_LEAD, widgetTrouble } from './widget-level';
 // fold whose seed decides how many boxes there are as well as what each holds. so a form put back on
 // its own answer, which commits two router phases ahead of the reading (./reseed.ts), is put back to
 // the list the press was made against and no reading after it reaches the boxes or the metadata
-// counting them: a site just stored is counted by the fold's own row and drawn in no box at all.
+// counting them: a site just stored is counted by the rail cell and drawn in no box at all.
 //
 // **no state about a sign-in.** a console whose cloudflare sign-in has gone draws a face of its own
-// and never the folds (`blocked` in ../api/types.ts's `HomeFace`) — so a fold restating it
-// would be a sentence about something the operator cannot be looking at. the deployment's own
-// report is the same: this fold is drawn only where it landed, so the list it seeds the boxes from
-// is always there.
+// at `/` and never a section page (`blocked` in ../api/types.ts's `HomeFace`, and
+// ../routes/_sections.tsx's loader) — so a page restating it would be a sentence about something the
+// operator cannot be looking at. the deployment's own report is the same: this is drawn only where
+// it landed, so the list it seeds the boxes from is always there.
 
 /**
  * where the connect control is, from inside the panel.
  *
- * the deployment not answering is a state whose next reading draws the connect press in place of
- * these folds (../routes/_index.tsx), so the way out is this page read again rather than a link to
- * a section of itself.
+ * the deployment not answering is a state whose next reading sends the operator to the connect
+ * press at `/` (../routes/_sections.tsx's loader), so the way out is this page read again rather than
+ * a link.
  */
 const RECONNECT_HERE: ReactNode = <>after reloading this page</>;
 
@@ -225,14 +224,14 @@ export function SitesFold({ sites, donatePage, list, busy, pending }: SitesFoldP
 
 	return (
 		<Section>
-			{/* no heading and no opening line: the fold's own row names this list on the way in
-			    (./home-sections.ts), and either one here would say a second time what an operator has
-			    just read. the naming is the row's, so nothing stands over the boxes at all. */}
+			{/* no heading and no opening line: the page's header names this list
+			    (../routes/_sections.sites.tsx), and either one here would say a second time what an
+			    operator has just read. the naming is the page's, so nothing stands over the boxes. */}
 			<Form {...form.mount} className="adm-stack" method="post" preventScrollReset>
 				<RepeatingRows
 					id={SITES_BOX}
-					// stated and not drawn. the fold's own row above already names this list
-					// (./home-sections.ts) and the boxes show they want an address, so a mark here would
+					// stated and not drawn. the page's header already names this list
+					// (../routes/_sections.sites.tsx) and the boxes show they want an address, so a mark here would
 					// say what the operator has just read on the way in. dropping it is a different thing
 					// and not this one: every box and every Remove takes its name from it.
 					legend="Site"
@@ -426,7 +425,7 @@ function WidgetOutcome({ level }: { level: WidgetLevel }): ReactNode {
  * press that failed at both has both to say.
  *
  * a registration that landed says nothing at all, for {@link WidgetOutcome}'s reason. what it names
- * instead is the fold the one repair press stands on, because this fold has none (./wallet-level.ts).
+ * instead is the page the one repair press stands on, because this page has none (./wallet-level.ts).
  *
  * it announces, and the region is written here rather than taken from the shared parts, for the
  * reason {@link SitesOutcome} states about its own.

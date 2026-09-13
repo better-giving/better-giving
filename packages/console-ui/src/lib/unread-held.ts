@@ -1,8 +1,8 @@
 import type { VarsRead, VarsWritten } from '../api/types';
 
-// a press read against what the deployment is holding, whose read did not land. the home page's
-// credentials groups and the Stripe screen's keys both decide their act against that read
-// (../routes/_index.tsx, ../routes/payments_.stripe.tsx), so both refuse the press in these words.
+// a press read against what the deployment is holding, whose read did not land. the credentials
+// groups and the Stripe page's keys both decide their act against that read (./group-press.ts,
+// ../routes/_sections.payments.stripe.tsx), so both refuse the press in these words.
 
 /**
  * a read of what the deployment is holding that did not land, as the write it refused.

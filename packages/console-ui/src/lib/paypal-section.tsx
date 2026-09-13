@@ -74,11 +74,11 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 // the whole of PayPal on this deployment — what its account answered, the two keys that set it up,
 // and the one answer about the organisation that prices a gift.
 //
-// **each processor has a screen, and this is PayPal's.** the two processors are alternatives and a
-// deployment set up on either is set up (`CHARGE_PAIRS` in
-// packages/app/src/lib/server/config/readiness.ts), so they answer to one row on the home page
-// (./home-sections.ts), whose panel lists them (./processor-rows.tsx) and links here and to
-// Stripe's (./stripe-section.tsx).
+// **each processor has a page, and this is PayPal's** (../routes/_sections.payments.paypal.tsx). the
+// two processors are alternatives and a deployment set up on either is set up (`CHARGE_PAIRS` in
+// packages/app/src/lib/server/config/readiness.ts), so they answer to one payments job
+// (./home-sections.ts), and the rail lists them as two cells under one heading (./console-pages.ts),
+// this one and Stripe's (./stripe-section.tsx).
 //
 // **a processor nobody has configured draws no reading at all, and that is not a failure.** the
 // deployment answers `unconfigured` carrying the names it is short of and no reading whatever

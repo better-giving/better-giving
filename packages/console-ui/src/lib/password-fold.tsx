@@ -12,10 +12,11 @@ import type { AddressRead, DeployedValues, VarsWritten } from '../api/types';
 
 /**
  * how the operator who set the deployment up reaches /admin: the credential that opens the
- * dashboard for them, changed in the first fold of the page. colleagues are invited from the
- * dashboard's own members screen and set their own password there; this fold names none of them.
+ * dashboard for them, changed on the password page (../routes/_sections.password.tsx). colleagues are
+ * invited from the dashboard's own members screen and set their own password there; this names none
+ * of them.
  *
- * **it opens the ledger and is not one of the five jobs under it.** those five are what a gift
+ * **it opens the rail and is not one of the five jobs under it.** those five are what a gift
  * needs, in the order they have to be true (./home-sections.ts holds the reading); this is how the
  * operator gets into the dashboard at all and answers to nothing in that run. so it stands in front
  * of the run rather than at a position inside it, where it would read as a step towards a donation.

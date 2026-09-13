@@ -4,9 +4,9 @@ import { describe, expect, it } from 'vitest';
 // every destination inside the console is reached through react router, and never through a bare
 // anchor.
 //
-// **what a bare anchor to an internal address costs is the console's whole state.** the console is
-// one page whose faces are how far set-up has got, and every one of those faces is loader data —
-// the connection, the account, the readings each fold draws. a full document load throws all of it
+// **what a bare anchor to an internal address costs is the console's whole state.** every screen
+// is loader data — the connection, the account, the readings each section page draws — and the rail
+// between the pages holds it across them. a full document load throws all of it
 // away and pays for it again, which reads to an operator as the console forgetting what it just
 // told them.
 //

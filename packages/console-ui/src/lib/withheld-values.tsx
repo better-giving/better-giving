@@ -15,19 +15,19 @@ import { refusalIn } from './secret-trouble';
 // binary refuses the write instead (`SetVars` in `packages/console/internal/deployment/write.go`).
 // so the only way on is to take the value off first.
 //
-// **it is one component because it is one act on three folds.** the mail values, the dashboard
-// password and the Stripe keys can each arrive in this state, and the press is the same press
+// **it is one component because it is one act on four pages.** the mail values, the dashboard
+// password and each processor's keys can arrive in this state, and the press is the same press
 // wherever it is drawn: it carries the intent alone and the binary frees every withheld name at
 // once off cloudflare's own answer, because a name that travelled through a page is a credential
-// deleted wherever that page said. what stays with each fold is which of the names its own press
-// writes are in this state — its boxes and whatever it writes without one — and what the fold stops
+// deleted wherever that page said. what stays with each page is which of the names its own press
+// writes are in this state — its boxes and whatever it writes without one — and what the page stops
 // doing until they are stored again ({@link consequence}). `withheldInGroup` in ./held-values.ts is
 // that reading, and argues why it is not the boxes alone.
 //
-// **so the sentence over the boxes is the fold's and the confirm is the deployment's.** the fold's
+// **so the sentence over the boxes is the page's and the confirm is the deployment's.** the page's
 // own boxes are what an operator is standing at, and they are what the sentence and the button are
 // scoped to; the card is the one place the press states what it will do, and what it does is every
-// withheld name on the deployment — itemised there, because a card headed with one fold's name that
+// withheld name on the deployment — itemised there, because a card headed with one page's name that
 // deletes a credential belonging to another is a press nobody agreed to.
 //
 // **the delete has to come first and the value is gone for good the moment it runs**, which is what
@@ -39,14 +39,15 @@ import { refusalIn } from './secret-trouble';
  * posts.
  *
  * it carries the intent and nothing else — which names are freed is read on this machine from what
- * cloudflare answered, and the arm for this intent in ../routes/_index.tsx is where that is argued.
+ * cloudflare answered, which `freeWithheldVars` in ../api/client.ts argues; each page that draws the
+ * press answers it in its own `clientAction` (../routes/_sections.password.tsx and the others).
  */
 export const FREE_INTENT = 'free';
 
 /**
  * the sentence over the boxes that cannot be typed, and the press that frees them.
  *
- * it draws nothing where the fold has no such box, so a caller states it unconditionally beside the
+ * it draws nothing where the page has no such box, so a caller states it unconditionally beside the
  * boxes it is about.
  */
 export function WithheldValues({
@@ -58,17 +59,17 @@ export function WithheldValues({
 	busy,
 	freeing
 }: {
-	/** the names this fold's own press writes that are in this state, in the enumeration's order. */
+	/** the names this page's own press writes that are in this state, in the enumeration's order. */
 	names: readonly DeployVarName[];
 	/**
 	 * every name on the deployment in this state, in the enumeration's order, which is what the one
 	 * press frees and what the card itemises.
 	 *
-	 * it carries {@link names} among it, and where the fold's boxes are the whole of it the two are
+	 * it carries {@link names} among it, and where the page's boxes are the whole of it the two are
 	 * the same list.
 	 */
 	all: readonly DeployVarName[];
-	/** what this deployment stops doing between the free and the next save, in the fold's own words. */
+	/** what this deployment stops doing between the free and the next save, in the page's own words. */
 	consequence: ReactNode;
 	/**
 	 * how the last free press went, or `null` where none has been made.
@@ -78,7 +79,7 @@ export function WithheldValues({
 	 * that caused it, in the strongest form there is.
 	 */
 	written: VarsWritten | null;
-	/** what a failed write says, in the words the fold holding the account name has for it. */
+	/** what a failed write says, in the words the page holding the account name has for it. */
 	trouble: (written: ValuesRefusal) => ReactNode;
 	/** something else on the page is writing, which holds this press closed with the rest. */
 	busy: boolean;

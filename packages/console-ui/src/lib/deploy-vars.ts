@@ -8,7 +8,7 @@ import type { DeployVarName } from '../api/types';
 // `TURNSTILE_SITE_KEY` is minted with the widget on the first deploy out of the answer that made it
 // (`packages/console/internal/first`), so there is no value for an operator to paste. and
 // `BETTER_AUTH_URL` has a box on no screen at all: the app derives that origin per request, so
-// asking for it would only be a way to be wrong (../routes/_index.tsx draws it as a reading).
+// asking for it would only be a way to be wrong (../routes/_index.tsx states why).
 //
 // `PAYPAL_CHARITY_RATE_APPROVED` is here for `STRIPE_PUBLISHABLE_KEY`'s reason and not for want of
 // somewhere to type it: the payments fold's PayPal section draws it, as a two-position switch with

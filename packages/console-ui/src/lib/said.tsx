@@ -16,7 +16,8 @@ import type { ReactNode } from 'react';
 // **the way out is marked, because it is a sentence written for a reader.** a deployment marks the
 // variable name and the command in it with paired backticks, and
 // printed raw it shows an operator the marks. it stands under the quotation because it is what to
-// do about it, which is the order ../routes/organisation.tsx draws a refusal's two sentences in.
+// do about it, which is the order `WhyNot` in ./deployment-states.tsx draws a refusal's two sentences
+// in.
 //
 // it stays in this package rather than moving to packages/operator: one operator surface draws
 // these, and a module arrives in that package by a second surface needing it (CLAUDE.md).

@@ -3,8 +3,8 @@ import { saidClosing } from './close-answer';
 
 // the reading that decides whether the console is on its way out.
 //
-// two callers read it and one of them is handed an `any` by the router (../routes/_index.tsx's
-// `shouldRevalidate`), so what is asserted here is that every answer the page's own action can
+// two callers read it and one of them is handed an `any` by the router (`consoleRereads` in
+// ./dialog-params.ts), so what is asserted here is that every answer the page's own action can
 // produce reads false, and that a thrown error does too: a false positive blanks the page over a
 // console that is still running, and a false negative sends the router at a binary that has
 // stopped.

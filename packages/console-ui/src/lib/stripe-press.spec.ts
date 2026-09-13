@@ -21,7 +21,7 @@ import type { StripeKeyBoxes } from './stripe-keys';
 // not necessarily this press's, and a refusal that stands is not necessarily still on the page.
 // every case below is one of those two crossings.
 
-/** the two phases of one press, as ../routes/_index.tsx reads them off the navigation. */
+/** the two phases of one press, as ./use-press.ts reads them off the navigation. */
 const SUBMITTING: PressPhase = { pending: true, revalidating: false };
 const LANDED: PressPhase = { pending: true, revalidating: true };
 const IDLE: PressPhase = { pending: false, revalidating: false };

@@ -1,6 +1,9 @@
+import { Mark } from '../status/Mark.jsx';
+
 /**
  * @import { ComponentType, ReactNode } from 'react'
  * @import { PointerState } from '../closed-sets.js'
+ * @import { MarkName } from '../status/Mark.jsx'
  *
  * what a cell hands whatever it is drawn as: the address, the class list the sheet draws off, and
  * the claim about where the reader is. everything the cell settles, and nothing a caller restates.
@@ -9,13 +12,33 @@
  *   href: string;
  *   className: string;
  *   'aria-current'?: 'page' | 'true' | undefined;
+ *   title?: string | undefined;
  *   children?: ReactNode | undefined;
  * }} DestinationLinkProps
+ *
+ * a glyph from ../status/glyphs.js, or a picture somebody else drew (a processor's logo), which
+ * carries no ink of this system's and is drawn as an image.
+ *
+ * @typedef {MarkName | { src: string }} DestinationMark
+ *
+ * where the destination stands, as StatusLine's glyph in StatusLine's tone. `label` is the word a
+ * reader hears after the destination's name; the glyph itself is out of the tree.
+ *
+ * @typedef {object} DestinationStatus
+ * @property {'done' | 'note' | 'attention'} tone
+ * @property {MarkName} mark
+ * @property {string} label
  *
  * @typedef {object} DestinationCellProps
  * @property {ReactNode} [children]
  * @property {string | undefined} [short]
  * @property {string | undefined} [href]
+ * @property {DestinationMark | undefined} [mark] drawn in the rail's column and not in the bar.
+ * @property {DestinationStatus | undefined} [status]
+ * @property {string | undefined} [title] the pointer's hint, for the icon rail where the name is
+ *   off the screen.
+ * @property {boolean | undefined} [groupEnd] the last entry of a headed group in the rail, which
+ *   the column stands a step apart from what follows.
  * @property {boolean | 'page' | 'section' | undefined} [current] where the reader is, and which
  *   kind of currency the cell announces. `page` — which bare `true` is — is the address itself;
  *   `section` is a destination that only contains it, which is every rail cell standing over a
@@ -30,11 +53,15 @@
  */
 
 /* five states: rest, hover, focus, current, current-and-hover.
-   current and hovered must be unmistakably different, so they differ on three axes at once:
-   current changes hue, changes weight, and gains an accent edge. hover only fills.
+   current and hovered must be unmistakably different: current changes ground and ink, hover only
+   fills. the current cell is marked by that tint alone — no edge, at either width.
    `short` is the word the rail reads across the top of a narrow window, where the full one does
    not fit. both are in the markup and the sheet chooses — a cell that swapped its own text would
    be a name changing under a reader between two widths.
+
+   the status word is `.adm-vh` and outside `.adm-dest__status`, because the sheet hides the glyph
+   in the bar and a status hidden with it would stop being read out there. its comma is what
+   separates it from the name in the link's accessible name.
 
    the ground is one thing and what is announced is another, which is why the caller states the
    kind. `aria-current="page"` is a claim that this cell is the address in the location bar, and a
@@ -42,8 +69,24 @@
    kind is `aria-current="true"` — the current one of these — so the section reads as containing
    where they are rather than as being it, and only one cell in the rail ever claims the page. */
 /** @param {DestinationCellProps} props */
-export function DestinationCell({ children, short, href = '#', current, state, link }) {
-	const cls = ['adm-dest', current ? 'is-current' : '', state ? `is-${state}` : '']
+export function DestinationCell({
+	children,
+	short,
+	href = '#',
+	mark,
+	status,
+	title,
+	groupEnd = false,
+	current,
+	state,
+	link
+}) {
+	const cls = [
+		'adm-dest',
+		groupEnd ? 'adm-dest--groupend' : '',
+		current ? 'is-current' : '',
+		state ? `is-${state}` : ''
+	]
 		.filter(Boolean)
 		.join(' ');
 	const Cell = link ?? 'a';
@@ -51,10 +94,24 @@ export function DestinationCell({ children, short, href = '#', current, state, l
 		<Cell
 			className={cls}
 			href={href}
+			title={title}
 			aria-current={current ? (current === 'section' ? 'true' : 'page') : undefined}
 		>
+			{mark === undefined ? null : typeof mark === 'string' ? (
+				<Mark name={mark} />
+			) : (
+				<img className="adm-mark" src={mark.src} alt="" />
+			)}
 			{short ? <span className="adm-dest__short">{short}</span> : null}
 			<span className="adm-dest__full">{children}</span>
+			{status ? (
+				<>
+					<span className={`adm-dest__status adm-dest__status--${status.tone}`}>
+						<Mark name={status.mark} />
+					</span>
+					<span className="adm-vh">, {status.label}</span>
+				</>
+			) : null}
 		</Cell>
 	);
 }

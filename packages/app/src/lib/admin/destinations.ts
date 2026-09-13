@@ -30,23 +30,52 @@
  * bare paths, as every address in this app is: nothing configures a base path, so a fork that ever
  * did would change every link and every server redirect at once rather than one call site at a
  * time.
+ *
+ * the rail's column draws the destinations in three groups, with a rule between each: the
+ * dashboard alone, the one destination stating figures; the records of giving; and Members, who
+ * can open the rest and record no gift. no
+ * group carries a heading: the rule is the whole of the separation. the groups are the shape
+ * `AppShell` takes as `groups`, and `DESTINATIONS` is the same entries flat, which is what a match
+ * against an address walks.
+ *
+ * `mark` is the glyph the column draws beside a label — a name from
+ * packages/operator/src/components/status/glyphs.js. the bar at a phone's width draws none, so a
+ * mark is never the only thing telling two destinations apart.
  */
-export const DESTINATIONS = [
-	// the surface's own address, and the one destination with nothing under it — `currentDestination`
-	// below matches it exactly for that reason.
-	{ href: '/admin', label: 'Dashboard', short: 'Dashboard' },
-	{ href: '/admin/forms', label: 'Donation forms', short: 'Forms' },
-	// directly after the forms, because a program is what a form asks a donor about: it is named
-	// here and then pinned or offered there, and neither screen means anything without the other.
-	{ href: '/admin/programs', label: 'Programs', short: 'Programs' },
-	{ href: '/admin/donors', label: 'Donors', short: 'Donors' },
-	{ href: '/admin/donations', label: 'Gifts', short: 'Gifts' },
-	{ href: '/admin/recurring', label: 'Recurring gifts', short: 'Recurring' },
-	// last, and the only destination that is not a record of giving: it is who can open the four
-	// above. what a deployment holds one of is set up on the console, and this is neither — a
-	// colleague is a row somebody adds and removes, which is what makes it a collection.
-	{ href: '/admin/members', label: 'Members', short: 'Members' }
+export const DESTINATION_GROUPS = [
+	{
+		destinations: [
+			// the surface's own address, and the one destination with nothing under it —
+			// `currentDestination` below matches it exactly for that reason.
+			{ href: '/admin', label: 'Dashboard', short: 'Dashboard', mark: 'layout-dashboard' }
+		]
+	},
+	{
+		destinations: [
+			{ href: '/admin/forms', label: 'Donation forms', short: 'Forms', mark: 'file-text' },
+			// directly after the forms, because a program is what a form asks a donor about: it is named
+			// here and then pinned or offered there, and neither screen means anything without the other.
+			{ href: '/admin/programs', label: 'Programs', short: 'Programs', mark: 'folder-heart' },
+			{ href: '/admin/donors', label: 'Donors', short: 'Donors', mark: 'users' },
+			{ href: '/admin/donations', label: 'Gifts', short: 'Gifts', mark: 'hand-heart' },
+			{ href: '/admin/recurring', label: 'Recurring gifts', short: 'Recurring', mark: 'repeat' }
+		]
+	},
+	{
+		destinations: [
+			// last, and the only destination that is not a record of giving: it is who can open the four
+			// above. what a deployment holds one of is set up on the console, and this is neither — a
+			// colleague is a row somebody adds and removes, which is what makes it a collection.
+			{ href: '/admin/members', label: 'Members', short: 'Members', mark: 'shield-check' }
+		]
+	}
 ] as const;
+
+type Destination = (typeof DESTINATION_GROUPS)[number]['destinations'][number];
+
+export const DESTINATIONS: readonly Destination[] = DESTINATION_GROUPS.flatMap(
+	(group): readonly Destination[] => group.destinations
+);
 
 /** the staff surface's own address, which is the dashboard's and is under no other destination. */
 const SURFACE = '/admin';

@@ -4,7 +4,7 @@ import type { DeployedVar, HomeReading } from '../api/types';
 import type { SectionId, SectionState } from './home-sections';
 import { heldNames, readSections } from './home-sections';
 
-// what the six folds say, off the reading the binary answered with.
+// what the six set-up sections say, off the reading the binary answered with.
 //
 // which face is on screen is the binary's and is asserted there
 // (`packages/console/internal/deployment`); every word a row carries is this side's, so all of it
@@ -104,7 +104,7 @@ const stateOf = (read: HomeReading, id: SectionId): SectionState | null | undefi
 const noteOf = (read: HomeReading, id: SectionId): string | null | undefined =>
 	readSections(read).find((section) => section.id === id)?.note;
 
-describe('the six folds', () => {
+describe('the six sections', () => {
 	// the order is the deploy's, not a preference: cloudflare holds a secret against a worker, so
 	// there is nothing to store a credential on until the first deploy has landed.
 	it('are drawn in the order what has to be true before the next thing can be', () => {

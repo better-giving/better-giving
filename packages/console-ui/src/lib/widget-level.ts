@@ -4,12 +4,12 @@ import type { WidgetLevel } from '../api/types';
 //
 // **saving the list is two writes and both of them are reported.** the list goes onto the
 // deployment, and cloudflare's copy of the hostnames — the one the spam protection checks a donor's
-// page against — is brought level with it behind that (`packages/console/internal/widget`). a fold
+// page against — is brought level with it behind that (`packages/console/internal/widget`). a page
 // drawing the first alone would leave every way the levelling did not happen landing nowhere: the
-// operator adds a site, the fold says saved, and a donor on that site meets a challenge issued for
+// operator adds a site, the page says saved, and a donor on that site meets a challenge issued for
 // a host the widget does not list.
 //
-// **it is a module and not an expression in the fold, so that the covering is a case rather than a
+// **it is a module and not an expression in the page, so that the covering is a case rather than a
 // reading.** every arm of `WidgetLevel` that is not level has somewhere to go and a different way
 // out, and this package has no DOM pool (../../vite.config.ts) — a sentence written inside
 // ./sites-fold.tsx is one nothing here can hold. ./widget-level.spec.ts is what asserts that no arm
@@ -30,9 +30,9 @@ export type WidgetTrouble = {
 };
 
 /**
- * what the fold says over every arm of a levelling, drawn once.
+ * what the sites page says over every arm of a levelling, drawn once.
  *
- * it names the consequence rather than the mechanism: an operator on this fold has just pressed
+ * it names the consequence rather than the mechanism: an operator on this page has just pressed
  * Save sites and is not thinking about a widget. the clause about a site just added is what keeps
  * it true of a press that only dropped one — a widget still covering a host nothing is served on
  * costs nothing, which is why the write goes in that order (`packages/console/internal/widget`).
@@ -68,8 +68,9 @@ export function widgetTrouble(level: WidgetLevel): WidgetTrouble | null {
 				detail: null
 			};
 
-		// worded as ../routes/_index.tsx words the same finding for a first deploy: two folds wording
-		// one fact differently is what sends two operators to two different places out of it.
+		// the same finding a first deploy reports in the terminal
+		// (`packages/console/internal/terminal/outcome.go`): two places wording one fact differently is
+		// what sends two operators to two different places out of it.
 		case 'many':
 			return {
 				said: 'Two or more widgets in this account carry this deployment’s name, so this console won’t guess which of them is its own. Delete the one that isn’t this deployment’s at dash.cloudflare.com under Turnstile, then save again.',

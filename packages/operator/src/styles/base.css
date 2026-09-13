@@ -252,25 +252,6 @@
 		color: var(--admin-link-visited);
 	}
 
-	/* a link to somewhere that is not ready to be used yet. it stays a link and stays reachable:
-	   whatever is at the other end answers for itself, and a destination nobody could press would
-	   hide that from an operator who wants to go and look anyway — so the tone is the whole of
-	   what says so.
-
-	   the attention tone has no link role of its own, so what is spent here is the tone's word
-	   rungs in the shape the link ladder above has: the word rung at rest, the deep rung under the
-	   pointer. the resting colour only — a focused link takes the accent from the rule below
-	   whatever tone it wears, because the ring says where the keyboard is and never what the thing
-	   under it is reporting. */
-	a.adm-link--attention {
-		color: var(--admin-tone-attention-ink);
-	}
-
-	a.adm-link--attention:hover,
-	a.adm-link--attention.is-hover {
-		color: var(--admin-tone-attention-deep);
-	}
-
 	/* one ring for the whole surface, on :focus-visible only — a mouse click on a button
 	   should not leave a ring behind it, and a keyboard tab must always leave one. the
 	   twin class beside each pseudo is what lets a state be pinned without a pointer.
