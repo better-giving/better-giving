@@ -80,7 +80,7 @@ func (one *working) bound() Effects {
 		Deploy: func(_ context.Context, databaseID string, report func(deploy.Progress)) deploy.Run {
 			one.databaseID = databaseID
 			for _, stage := range []deploy.Stage{
-				deploy.Migrating, deploy.Uploading, deploy.Pushing, deploy.Verifying,
+				deploy.Migrating, deploy.Uploading, deploy.Pushing, deploy.Addressing, deploy.Verifying,
 			} {
 				report(deploy.Progress{Stage: stage})
 			}
@@ -131,7 +131,7 @@ func TestAFirstDeployMakesTheDatabaseDeploysStoresRegistersAndConnects(t *testin
 	if outcome := ran(t, one); outcome.Kind != Deployed {
 		t.Fatalf("outcome = %+v", outcome)
 	}
-	want := "fetching checking database migrating uploading pushing verifying signing-in widget connecting"
+	want := "fetching checking database migrating uploading pushing addressing verifying signing-in widget connecting"
 	if said(one.stages) != want {
 		t.Errorf("stages = %v, want %q", one.stages, want)
 	}
@@ -391,7 +391,7 @@ func TestEveryStageTheDeployReportsIsOneTheChainNames(t *testing.T) {
 	}
 	for _, stage := range []deploy.Stage{
 		deploy.Fetching, deploy.Checking, deploy.Migrating, deploy.Uploading, deploy.Pushing,
-		deploy.Verifying,
+		deploy.Addressing, deploy.Verifying,
 	} {
 		if !named[Stage(stage)] {
 			t.Errorf("the deploy reports %q and the chain names no such stage", stage)

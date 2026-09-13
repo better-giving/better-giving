@@ -111,9 +111,9 @@ func TestTheTwoStagesInFrontOfTheOneWayDoorSayNothingWasChanged(t *testing.T) {
 }
 
 func TestEveryStageOfTheDeploySaysWhatItLeftStanding(t *testing.T) {
-	// the six are four different states of one account, and the migration is the line between them:
-	// a deploy stopped anywhere in the upload left a database that was migrated, and one stopped in
-	// front of it left nothing.
+	// the seven are four different states of one account, and the migration is the line between
+	// them: a deploy stopped anywhere in the upload left a database that was migrated, and one
+	// stopped in front of it left nothing.
 	seen := map[string]deploy.Stage{}
 	for _, at := range DeployStages {
 		said := Outcome(first.Outcome{Kind: first.NotDeployed, Ran: &deploy.Run{At: deploy.Stage(at)}})
@@ -139,7 +139,7 @@ func oneState(one, other deploy.Stage) bool {
 		// in front of the one-way door: nothing written anywhere.
 		{deploy.Fetching: true, deploy.Checking: true},
 		// past it and short of a deployment: the files, the code and where it answers alike.
-		{deploy.Uploading: true, deploy.Pushing: true},
+		{deploy.Uploading: true, deploy.Pushing: true, deploy.Addressing: true},
 	} {
 		if group[one] && group[other] {
 			return true

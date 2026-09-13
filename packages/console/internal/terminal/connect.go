@@ -21,6 +21,16 @@ import (
 var ReplacingOtherConsoles = "connecting this console to your deployment, which signs out any " +
 	"other console connected to it"
 
+// WaitingForTheConnection is what stands over the connect, drawn by the caller while it makes it
+// (./waiting.go), under ./ReplacingOtherConsoles.
+//
+// the connect reports nothing until the deployment accepts the session it wrote, which takes
+// seconds (../deployment/connect.go's SessionBound), and a terminal silent through those reads as a
+// console that has hung.
+func WaitingForTheConnection() string {
+	return "waiting for your deployment to accept this console"
+}
+
 // Unconnected is a connect that did not land, in one sentence ending in what to do about it.
 //
 // `dir` is the folder this machine keeps what it remembers in, named where the session reached the

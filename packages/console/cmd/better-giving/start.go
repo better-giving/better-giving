@@ -1315,6 +1315,8 @@ func finishAt(
 // `dir` is this machine's state folder, which a session written and not kept is repaired through.
 func connecting(to io.Writer, connect func() deployment.Connection, dir string) error {
 	terminal.Say(to, terminal.ReplacingOtherConsoles)
+	silence := terminal.WaitingOn(to, terminal.WaitingForTheConnection())
+	defer silence.Done()
 	made := connect()
 	if made.Kind == deployment.Connected {
 		return nil

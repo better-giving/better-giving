@@ -92,13 +92,13 @@ const (
 
 // Stages is every stage in the order the chain reaches them.
 //
-// Six of them are the deploy engine's own, reported through as they arrive rather than summarised:
+// Seven of them are the deploy engine's own, reported through as they arrive rather than summarised:
 // what an operator cannot tell apart from a hung process is a line that says the same sentence for
 // the minutes an upload takes. ./first_test.go holds this list to internal/deploy's, so a stage the
 // engine gained and this did not is a failing case rather than a line lit for nothing.
 //
 // **the database is made between the engine's second stage and its third**, which is why these are
-// not the engine's six in a row. the order this file heads with is why.
+// not the engine's seven in a row. the order this file heads with is why.
 var Stages = []Stage{
 	Stage(deploy.Fetching),
 	Stage(deploy.Checking),
@@ -106,6 +106,7 @@ var Stages = []Stage{
 	Stage(deploy.Migrating),
 	Stage(deploy.Uploading),
 	Stage(deploy.Pushing),
+	Stage(deploy.Addressing),
 	Stage(deploy.Verifying),
 	SigningIn,
 	Widget,

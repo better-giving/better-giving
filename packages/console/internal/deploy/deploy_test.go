@@ -16,7 +16,7 @@ func TestADeployFetchesMigratesUploadsPushesAndVerifies(t *testing.T) {
 	if run.Kind != Deployed {
 		t.Fatalf("kind = %q at %q (%s)", run.Kind, run.At, run.Detail)
 	}
-	if strings.Join(stagesAsText(stages), " ") != "fetching checking migrating uploading pushing verifying" {
+	if strings.Join(stagesAsText(stages), " ") != "fetching checking migrating uploading pushing addressing verifying" {
 		t.Errorf("stages = %v, want each one as the run reached it", stages)
 	}
 	if strings.Join(run.Applied, ",") != "0000_a.sql" {
@@ -262,7 +262,7 @@ func TestADeploymentThatCameBackWithoutABindingIsNotDeployed(t *testing.T) {
 func TestARunTheOperatorStoppedWaitingOnSaysSoAndNotThatItFailed(t *testing.T) {
 	// a stopped run is not a broken one: the migrations it applied are applied, and what the screen
 	// says about it is different from what it says about a cloudflare that turned something down.
-	for _, at := range []Stage{Fetching, Checking, Migrating, Uploading, Pushing} {
+	for _, at := range []Stage{Fetching, Checking, Migrating, Uploading, Pushing, Addressing} {
 		held := &account{}
 		run, _ := deployedStopping(t, held, packed(t, baked()), at)
 
@@ -378,8 +378,34 @@ func TestADeploymentThatCouldNotBeGivenAnAddressSaysSo(t *testing.T) {
 	held := &account{neverDeployed: true, refusesSubdomain: true}
 	run, _ := deployed(t, held, packed(t, baked()))
 
-	if run.Kind != Refused || run.At != Pushing {
+	if run.Kind != Refused || run.At != Addressing {
 		t.Fatalf("kind = %q at %q (%s)", run.Kind, run.At, run.Detail)
+	}
+}
+
+func TestEveryCheckADeployMakesIsAStageOfItsOwnAndNamesNothingBesideIt(t *testing.T) {
+	// each check is a row an operator watches light and tick (../terminal/lines.go), so the stage is
+	// the whole of what it says: a note beside it would be a second wording of the row's own words.
+	held := &account{neverDeployed: true}
+	run, reported := deployedReporting(t, held, packed(t, baked()))
+	if run.Kind != Deployed {
+		t.Fatalf("kind = %q (%s)", run.Kind, run.Detail)
+	}
+
+	passed := []Stage{}
+	for _, progress := range reported {
+		if len(passed) == 0 || passed[len(passed)-1] != progress.Stage {
+			passed = append(passed, progress.Stage)
+		}
+	}
+	want := "fetching checking migrating uploading pushing addressing verifying"
+	if got := strings.Join(stagesAsText(passed), " "); got != want {
+		t.Errorf("stages = %q, want %q", got, want)
+	}
+	for _, check := range []Stage{Checking, Addressing, Verifying} {
+		if said := detailed(reportedAt(reported, check)); strings.Join(said, "|") != "" {
+			t.Errorf("%q said %q, want the stage opening and nothing else", check, said)
+		}
 	}
 }
 
@@ -579,9 +605,8 @@ func TestTheFilesAndTheCodeAreTwoStagesEachCountingItsOwnParts(t *testing.T) {
 	// the code's own line carries its byte count, which is why it is matched by what a run of this
 	// size cannot vary: what a packed bundle weighs is not this case's claim (./arrivedOf).
 	said := detailed(reportedAt(reported, Pushing))
-	if len(said) != 3 || said[0] != "" || !strings.Contains(said[1], " of ") ||
-		said[2] != "where the deployment answers" {
-		t.Errorf("the code said %q, want the stage opening, then its bytes, then where it will answer", said)
+	if len(said) != 2 || said[0] != "" || !strings.Contains(said[1], " of ") {
+		t.Errorf("the code said %q, want the stage opening and then its bytes", said)
 	}
 }
 

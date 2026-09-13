@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/better-giving/console/internal/deploy"
 	"github.com/better-giving/console/internal/first"
 	"github.com/better-giving/console/internal/release"
 )
@@ -42,8 +43,42 @@ func TestTheChainsRowsCoverEveryStageItReachesExactlyOnceAndInOrder(t *testing.T
 	same(t, "the chain's covering", stages(covering(ChainRows)), stages(first.Stages))
 }
 
-func TestTheRedeploysRowsCoverTheDeployEnginesOwnSixExactlyOnceAndInOrder(t *testing.T) {
-	same(t, "the redeploy's covering", stages(covering(UpdateRows)), stages(DeployStages))
+func TestTheRedeploysRowsCoverEveryDeployStageButAddressingExactlyOnceAndInOrder(t *testing.T) {
+	// the redeploy draws no row for `addressing` (./lines.go's toCloudflare).
+	want := []first.Stage{}
+	for _, stage := range DeployStages {
+		if stage != first.Stage(deploy.Addressing) {
+			want = append(want, stage)
+		}
+	}
+	same(t, "the redeploy's covering", stages(covering(UpdateRows)), stages(want))
+}
+
+func TestTheDeployEngineReachesSevenStages(t *testing.T) {
+	// the redeploy's rows are checked against this list less one, so a list that shrank would shrink
+	// what they are held to with it.
+	if len(DeployStages) != 7 {
+		t.Errorf("DeployStages holds %v, want the engine's seven", DeployStages)
+	}
+}
+
+func TestEachCheckADeployMakesIsARowOfItsOwn(t *testing.T) {
+	// a check is a thing the operator watches light and tick, so a line covering it and anything
+	// else as well would tick it unseen inside a wait it is not part of.
+	checks := map[first.Stage]bool{
+		first.Stage(deploy.Checking):   true,
+		first.Stage(deploy.Addressing): true,
+		first.Stage(deploy.Verifying):  true,
+	}
+	for _, rows := range [][]Row{ChainRows, UpdateRows} {
+		for _, row := range drawable(rows) {
+			for _, stage := range row.Stages {
+				if checks[stage] && len(row.Stages) != 1 {
+					t.Errorf("the row saying %q covers %v, want %q alone", row.Running, row.Stages, stage)
+				}
+			}
+		}
+	}
 }
 
 func TestEveryRowSaysSomethingInBothOfItsStatesAndSaysDifferentThings(t *testing.T) {
@@ -94,7 +129,7 @@ func TestTheDownloadAndTheUploadNameThisDeploymentInBothOfTheirStates(t *testing
 	// the picker two screens earlier marked the account this deployment is already on by the name
 	// this binary was baked with (./account.go), so a row calling it something else is a second word
 	// for the one thing the operator is watching go up.
-	for _, row := range []Row{assets, cloudflare} {
+	for _, row := range []Row{assets, cloudflareChain, cloudflareUpdate} {
 		if !strings.Contains(row.Running, release.Baked.Name) {
 			t.Errorf("a row runs saying %q, want the deployment named as the picker named it", row.Running)
 		}

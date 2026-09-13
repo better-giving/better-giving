@@ -279,8 +279,10 @@ func turningSpinner() spinner.Model {
 
 // folds one report into the line the run is in.
 //
-// A stage no row covers is ignored, which is what a ledger of the redeploy's three rows does with
-// the stages the chain runs around them. So is a stage behind the line already drawn.
+// A stage no row covers is ignored, and so is a stage behind the line already drawn. The first is
+// what a ledger of the redeploy's four rows does with the stages the chain runs around them, and
+// with `addressing` between two of the upload's children, where the line the run is on stays lit
+// until a stage that has a row arrives.
 //
 // A line the run has just reached starts its timer, and a second stage inside the line it is
 // already on does not: what the timer says is how long the operator has been waiting on that line.
@@ -497,8 +499,8 @@ func (drawn *Ledger) At(stage first.Stage, detail string, step, steps int) {
 	drawn.program.Send(reached{stage: stage, detail: detail, step: step, steps: steps})
 }
 
-// Reporting is At in the shape internal/deploy hands a watcher, so the redeploy's three rows are
-// drawn by the same ledger the chain's six are.
+// Reporting is At in the shape internal/deploy hands a watcher, so the redeploy's four rows are
+// drawn by the same ledger the chain's seven are.
 func (drawn *Ledger) Reporting(progress deploy.Progress) {
 	drawn.At(first.Stage(progress.Stage), progress.Detail, progress.Step, progress.Steps)
 }

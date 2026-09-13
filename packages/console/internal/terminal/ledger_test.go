@@ -38,33 +38,34 @@ func marks(held []Mark) string {
 	return strings.Join(words, " ")
 }
 
-func TestAChainRunClosesItsSixRowsOneAtATimeInTheChainsOrder(t *testing.T) {
+func TestAChainRunClosesItsSevenRowsOneAtATimeInTheChainsOrder(t *testing.T) {
 	// the first stage lights the first row and closes nothing.
 	same(t, "the chain at its first stage",
 		marks(after(ChainRows, Underway, at(first.Stages[0]))),
-		"working waiting waiting waiting waiting waiting")
+		"working waiting waiting waiting waiting waiting waiting")
 
-	// the database is the second row, and the row in front of it is closed by the run being past it.
+	// the database is the third row, and the rows in front of it are closed by the run being past
+	// them.
 	same(t, "the chain at its database",
 		marks(after(ChainRows, Underway, at(first.Stages[0]), at(first.Database))),
-		"closed working waiting waiting waiting waiting")
+		"closed closed working waiting waiting waiting waiting")
 
-	// every stage in turn ends on the last row running and the five before it closed.
+	// every stage in turn ends on the last row running and the six before it closed.
 	reported := []reached{}
 	for _, stage := range first.Stages {
 		reported = append(reported, at(stage))
 	}
 	same(t, "the chain at its last stage", marks(after(ChainRows, Underway, reported...)),
-		"closed closed closed closed closed working")
+		"closed closed closed closed closed closed working")
 }
 
-func TestARedeployRunDrawsItsThreeRows(t *testing.T) {
+func TestARedeployRunDrawsItsFourRows(t *testing.T) {
 	reported := []reached{}
 	for _, stage := range DeployStages {
 		reported = append(reported, at(stage))
 	}
 	same(t, "the redeploy at its last stage", marks(after(UpdateRows, Underway, reported...)),
-		"closed closed working")
+		"closed closed closed working")
 }
 
 func TestAStageThatSkippedForwardClosesEveryRowBehindIt(t *testing.T) {
@@ -73,7 +74,7 @@ func TestAStageThatSkippedForwardClosesEveryRowBehindIt(t *testing.T) {
 	same(t, "a skipped ledger",
 		marks(after(ChainRows, Underway,
 			at(first.Stage(deploy.Fetching)), at(first.Stage(deploy.Uploading)))),
-		"closed closed working waiting waiting waiting")
+		"closed closed closed working waiting waiting waiting")
 }
 
 func TestAStageReportedBehindTheRowAlreadyDrawnChangesNothing(t *testing.T) {
@@ -85,25 +86,55 @@ func TestAStageReportedBehindTheRowAlreadyDrawnChangesNothing(t *testing.T) {
 		at(first.Database))
 
 	same(t, "the ledger after a late report", marks(drawn),
-		"closed closed working waiting waiting waiting")
+		"closed closed closed working waiting waiting waiting")
 }
 
 func TestAStageNoRowCoversChangesNothing(t *testing.T) {
-	// the redeploy's three rows cover the deploy engine's six, and the chain runs four more around
+	// the redeploy's four rows cover the deploy engine's seven, and the chain runs four more around
 	// them that this ledger is not drawing.
 	same(t, "the ledger for a stage no row covers",
 		marks(after(UpdateRows, Underway, at(first.SigningIn))),
-		"waiting waiting waiting")
+		"waiting waiting waiting waiting")
 
 	// and a stage no row covers does not un-draw the row the run is on either.
 	same(t, "the ledger after a stage no row covers",
 		marks(after(UpdateRows, Underway, at(first.Stage(deploy.Uploading)), at(first.Widget))),
-		"closed closed working")
+		"closed closed closed working")
+}
+
+func TestARedeploysAddressCheckKeepsTheCodeLitUntilTheLinkCheckLightsNext(t *testing.T) {
+	// the redeploy draws no row for `addressing`, which the engine reports between the code and the
+	// link check: the ledger stays on the code's line through it rather than blanking or skipping.
+	upload := len(UpdateRows) - 1
+	children := UpdateRows[upload].Children
+	pushed := drawing(UpdateRows).
+		folding(at(first.Stage(deploy.Uploading))).
+		folding(at(first.Stage(deploy.Pushing)))
+	addressed := pushed.folding(at(first.Stage(deploy.Addressing)))
+
+	if addressed.at != pushed.at {
+		t.Errorf("the address check moved the ledger from %v to %v", pushed.at, addressed.at)
+	}
+	same(t, "the children through the address check",
+		marks(Marks(children, addressed.at.child, Underway)), "closed working waiting")
+
+	verifying := addressed.folding(at(first.Stage(deploy.Verifying)))
+	same(t, "the children at the link check",
+		marks(Marks(children, verifying.at.child, Underway)), "closed closed working")
+	said := verifying.View()
+	for _, words := range []string{children[1].Done, children[2].Running} {
+		if !strings.Contains(said, words) {
+			t.Errorf("the ledger at the link check says %q, want %q", said, words)
+		}
+	}
+	if strings.Contains(said, "web address") {
+		t.Errorf("the redeploy draws a line about its address: %q", said)
+	}
 }
 
 func TestARunThatLandedClosesEveryRow(t *testing.T) {
 	same(t, "a landed ledger", marks(after(ChainRows, Landed, at(first.Stage(deploy.Fetching)))),
-		"closed closed closed closed closed closed")
+		"closed closed closed closed closed closed closed")
 }
 
 func TestAStoppedRunLeavesTheRowItStoppedOnUnclosed(t *testing.T) {
@@ -112,12 +143,12 @@ func TestAStoppedRunLeavesTheRowItStoppedOnUnclosed(t *testing.T) {
 	same(t, "a stopped ledger",
 		marks(after(ChainRows, Stopped,
 			at(first.Stage(deploy.Fetching)), at(first.Stage(deploy.Uploading)))),
-		"closed closed working waiting waiting waiting")
+		"closed closed closed working waiting waiting waiting")
 }
 
 func TestARunThatStoppedBeforeReportingAnythingClosesNoRow(t *testing.T) {
 	same(t, "a ledger nothing was reported to", marks(after(ChainRows, Stopped)),
-		"waiting waiting waiting waiting waiting waiting")
+		"waiting waiting waiting waiting waiting waiting waiting")
 }
 
 func TestARowIsDrawnInTheWordsItsMarkPutsItIn(t *testing.T) {
@@ -126,7 +157,7 @@ func TestARowIsDrawnInTheWordsItsMarkPutsItIn(t *testing.T) {
 	drawn := drawing(ChainRows).folding(at(first.Database))
 	said := drawn.View()
 	for _, words := range []string{
-		ChainRows[0].Done, ChainRows[1].Running, ChainRows[2].Running,
+		ChainRows[0].Done, ChainRows[1].Done, ChainRows[2].Running, ChainRows[3].Running,
 	} {
 		if !strings.Contains(said, words) {
 			t.Errorf("the ledger does not say %q: %q", words, said)
@@ -155,10 +186,18 @@ func TestARowCarriesTheShareTheStageCountsAndNoneWhereItCountsNothing(t *testing
 	}
 }
 
+// one row over two stages, the first counting and the second not — which no row in ./lines.go is,
+// and which a row is free to be.
+var twoStages = []Row{{
+	Stages:  []first.Stage{first.Stage(deploy.Fetching), first.Stage(deploy.Checking)},
+	Running: "Downloading and reading",
+	Done:    "Downloaded and read",
+}}
+
 func TestAStageThatCountsNothingClearsTheShareTheStageBeforeItCarried(t *testing.T) {
-	// the download and the account read share one row: the first counts bytes and the second counts
-	// nothing, so a share left standing would be the download's last reading under the read's words.
-	drawn := drawing(ChainRows).
+	// the first stage counts bytes and the second counts nothing, so a share left standing would be
+	// the first's last reading under the second's words.
+	drawn := drawing(twoStages).
 		folding(reached{stage: first.Stage(deploy.Fetching), step: 5, steps: 10}).
 		folding(at(first.Stage(deploy.Checking)))
 	if strings.Contains(drawn.View(), "%") {
@@ -237,19 +276,19 @@ func uploading() ledger {
 }
 
 func TestTheChildrenOfTheRowTheRunIsInsideAreDrawnUnderItEachInItsOwnState(t *testing.T) {
-	upload := ChainRows[2]
+	upload := ChainRows[3]
 	said := lines(uploading())
 
 	// the row itself and never one of its children: a child is drawn in from ./nested and carries
 	// a mark of its own, and this one is at the margin with the mark column blank (./line).
-	if !strings.HasPrefix(said[2], unmarked+" "+upload.Running) {
-		t.Fatalf("the row the run is inside is drawn as %q", said[2])
+	if !strings.HasPrefix(said[3], unmarked+" "+upload.Running) {
+		t.Fatalf("the row the run is inside is drawn as %q", said[3])
 	}
-	if !strings.HasPrefix(said[3], nested) || !strings.Contains(said[3], upload.Children[0].Done) {
-		t.Errorf("the wait that is behind the run is drawn as %q", said[3])
+	if !strings.HasPrefix(said[4], nested) || !strings.Contains(said[4], upload.Children[0].Done) {
+		t.Errorf("the wait that is behind the run is drawn as %q", said[4])
 	}
-	if !strings.HasPrefix(said[4], nested) || !strings.Contains(said[4], upload.Children[1].Running) {
-		t.Errorf("the wait the run is inside is drawn as %q", said[4])
+	if !strings.HasPrefix(said[5], nested) || !strings.Contains(said[5], upload.Children[1].Running) {
+		t.Errorf("the wait the run is inside is drawn as %q", said[5])
 	}
 }
 
@@ -259,17 +298,17 @@ func TestARowWithChildrenSaysNothingBesideItsOwnWordsAndTheWorkingChildSaysItAll
 	said := lines(uploading())
 
 	for _, beside := range []string{"4.1 MB of 9.0 MB", "44%", barFull, barEmpty} {
-		if strings.Contains(said[2], beside) {
-			t.Errorf("the row with children says %q beside its own words", said[2])
+		if strings.Contains(said[3], beside) {
+			t.Errorf("the row with children says %q beside its own words", said[3])
 		}
-		if !strings.Contains(said[4], beside) {
-			t.Errorf("the working child says %q, want %q beside its words", said[4], beside)
+		if !strings.Contains(said[5], beside) {
+			t.Errorf("the working child says %q, want %q beside its words", said[5], beside)
 		}
 	}
 	// and the child that is done says nothing beside its words either: it is closed, and a closed
 	// row is its done words and the mark in front of them.
-	if strings.Contains(said[3], "%") {
-		t.Errorf("the child the run is past still carries a share: %q", said[3])
+	if strings.Contains(said[4], "%") {
+		t.Errorf("the child the run is past still carries a share: %q", said[4])
 	}
 }
 
@@ -280,10 +319,10 @@ func TestTheChildrenGoWhenTheirParentClosesSoTheLedgerEndsOneLinePerThingWaitedO
 	if len(said) != len(ChainRows) {
 		t.Fatalf("a ledger past the upload draws %d lines, want one per row: %q", len(said), said)
 	}
-	if !strings.Contains(said[2], ChainRows[2].Done) {
-		t.Errorf("the row the run is past is drawn as %q", said[2])
+	if !strings.Contains(said[3], ChainRows[3].Done) {
+		t.Errorf("the row the run is past is drawn as %q", said[3])
 	}
-	for _, child := range ChainRows[2].Children {
+	for _, child := range ChainRows[3].Children {
 		if strings.Contains(closed.View(), child.Done) {
 			t.Errorf("a child outlived the row it was drawn under: %q", said)
 		}
@@ -309,15 +348,15 @@ func TestAChildIsCountedAndTimedAsARowIsAndItsTimerIsItsOwn(t *testing.T) {
 
 	ticking.at = started.Add(45 * time.Second)
 	said := lines(drawn)
-	if !strings.Contains(said[1], ChainRows[1].Running) || strings.Contains(said[1], "5s") {
-		t.Errorf("the row the run is inside is drawn as %q", said[1])
+	if !strings.Contains(said[2], ChainRows[2].Running) || strings.Contains(said[2], "5s") {
+		t.Errorf("the row the run is inside is drawn as %q", said[2])
 	}
-	if !strings.HasPrefix(said[2], nested) || !strings.Contains(said[2], ChainRows[1].Children[0].Done) {
-		t.Errorf("the database itself is drawn as %q", said[2])
+	if !strings.HasPrefix(said[3], nested) || !strings.Contains(said[3], ChainRows[2].Children[0].Done) {
+		t.Errorf("the database itself is drawn as %q", said[3])
 	}
-	for _, beside := range []string{ChainRows[1].Children[1].Running, "0003_gifts.sql", "75%", "5s"} {
-		if !strings.Contains(said[3], beside) {
-			t.Errorf("the tables are drawn as %q, want %q beside their own words", said[3], beside)
+	for _, beside := range []string{ChainRows[2].Children[1].Running, "0003_gifts.sql", "75%", "5s"} {
+		if !strings.Contains(said[4], beside) {
+			t.Errorf("the tables are drawn as %q, want %q beside their own words", said[4], beside)
 		}
 	}
 }
@@ -399,7 +438,7 @@ func TestAStageReportedUnderTheRowAlreadyDrawnLeavesItsTimerAlone(t *testing.T) 
 	// has been waiting on it rather than the time since its last stage.
 	started := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
 	ticking := &clock{at: started}
-	drawn := drawing(UpdateRows)
+	drawn := drawing(twoStages)
 	drawn.now = ticking.read
 	drawn = drawn.folding(at(first.Stage(deploy.Fetching)))
 
@@ -649,18 +688,18 @@ func TestEveryWaitTurnsOnTheSameBrailleCycle(t *testing.T) {
 func TestARowWithChildrenTurnsNothingAndTheChildTheRunIsInsideTurns(t *testing.T) {
 	// two marks turning a line apart read as two jobs where there is one, and the one the run is
 	// actually inside is the child. the parent keeps its running words and loses only the motion.
-	upload := ChainRows[2]
+	upload := ChainRows[3]
 	said := lines(uploading())
 	turning := drawing(ChainRows).spin.View()
 
-	if !strings.HasPrefix(said[2], unmarked+" ") {
-		t.Errorf("the row with children is drawn as %q, want the mark column left blank", said[2])
+	if !strings.HasPrefix(said[3], unmarked+" ") {
+		t.Errorf("the row with children is drawn as %q, want the mark column left blank", said[3])
 	}
-	if !strings.Contains(said[2], upload.Running) {
-		t.Errorf("the row with children lost its running words: %q", said[2])
+	if !strings.Contains(said[3], upload.Running) {
+		t.Errorf("the row with children lost its running words: %q", said[3])
 	}
-	if !strings.Contains(said[4], turning) {
-		t.Errorf("the child the run is inside is drawn as %q, want it turning", said[4])
+	if !strings.Contains(said[5], turning) {
+		t.Errorf("the child the run is inside is drawn as %q, want it turning", said[5])
 	}
 }
 

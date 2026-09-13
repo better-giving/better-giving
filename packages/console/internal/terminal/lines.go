@@ -9,20 +9,22 @@ import (
 // the rows an operator waits on while a press runs, the words each of them is drawn in, and the
 // sentence over the one wait past them that draws no row at all (./WaitingForTheAddress).
 //
-// **a row is the thing an operator is waiting on, and a check the binary runs inside it is not a
-// second thing.** the chain reports ten stages and the deploy engine six, but `checking` is one
-// read of the cloudflare account made in front of the migration and `verifying` is the read back of
-// what cloudflare is now holding — neither is anything an operator waits on apart from the download
-// and the upload they belong to. so a row covers one or more stages — or the children that do — and
-// both halves of `start` draw fewer rows than the binary reports stages.
+// **a row is the thing an operator is waiting on, and a check the binary makes is one of those
+// things.** the chain reports eleven stages and the deploy engine seven, and three of the seven are
+// checks: `checking` reads the cloudflare account in front of the migration, `addressing` makes sure
+// the uploaded worker answers somewhere, and `verifying` reads back what cloudflare is now holding.
+// each lights and ticks on a row of its own, so an operator sees every check pass — bar `addressing`
+// on a redeploy, whose header already names the address (./toCloudflare). a row covers one or more
+// stages — or the children that do.
 //
-// **a row whose stages are two waits of its own carries them as children, and that is the whole of
-// what earns one.** the two waits are told apart by what they count: the static files end at every
-// bucket cloudflare asked for and the app's code then starts again at none of its bytes sent, so
-// one line drawn over both has to take a bar to full and back to nothing while rewording its own
-// trailing note as it goes. a child is a row of the same kind — its own stages, its own two
-// wordings, its own note, bar and share — drawn indented under its parent. `checking` and
-// `verifying` earn none: neither counts anything and neither is a wait beside the one it closes.
+// **a row made of more than one thing to watch carries them as children.** the upload's two waits
+// are told apart by what they count: the static files end at every bucket cloudflare asked for and
+// the app's code then starts again at none of its bytes sent, so one line drawn over both has to
+// take a bar to full and back to nothing while rewording its own trailing note as it goes. a child
+// is a row of the same kind — its own stages, its own two wordings, its own note, bar and share —
+// drawn indented under its parent. `addressing` and `verifying` are children for the reason a check
+// is a row: each is a thing the parent's deployment is made of, watched on a line of its own, and
+// neither counts anything.
 //
 // **a row either covers stages itself or has children that do, and never both.** a parent with
 // children draws no note, no bar and no timer of its own: the children carry the counting and the
@@ -62,20 +64,25 @@ type Row struct {
 	Children []Row
 }
 
-// the download, with the account read that stands behind it.
+// the download. what came down is held against this binary's own baked config inside `fetching`
+// itself (../deploy), so the check that stands behind it is not of the download at all.
 //
-// `checking` is the cloudflare read and not a check of the download: what came down is held against
-// this binary's own baked config inside `fetching` (../deploy). it is one get of the worker's
-// settings on this sign-in, put in front of the migration so that a credential that stopped
-// reaching the account is found in front of the one-way door — and by the time it runs the operator
-// has signed in and chosen the account, so there is nothing for a row of its own to tell them.
-//
-// both halves of `start` draw this one row: the two stages are the same two and the words are the
-// same words, because it is the same engine doing the same thing.
+// both halves of `start` draw this row and ./deploysToAccount after it: the stages are the same
+// and the words are the same words, because it is the same engine doing the same thing.
 var assets = Row{
-	Stages:  []first.Stage{first.Stage(deploy.Fetching), first.Stage(deploy.Checking)},
+	Stages:  []first.Stage{first.Stage(deploy.Fetching)},
 	Running: "Downloading " + release.Baked.Name + " assets",
 	Done:    release.Baked.Name + " assets downloaded",
+}
+
+// `checking`, which is one get of the worker's settings on this sign-in, put in front of the
+// migration so that a credential that stopped reaching the account is found in front of the one-way
+// door. it is a row of its own because the operator watches it pass: a sign-in that reads the
+// account is the first thing a press proves before it changes anything.
+var deploysToAccount = Row{
+	Stages:  []first.Stage{first.Stage(deploy.Checking)},
+	Running: "Making sure this sign-in can deploy to your account",
+	Done:    "Sign-in can deploy to your account",
 }
 
 // the upload, which is two waits and carries them as children.
@@ -86,28 +93,50 @@ var assets = Row{
 // again at none of its bytes sent. one line over the two is a bar that fills, empties and fills
 // again under a note reworded as it goes, which is why they are two lines here.
 //
-// `verifying` is a read of what cloudflare is holding and not of the deployment answering: a get of
-// the worker's settings, checked for the bindings that went up (../deploy). it is the tail of the
-// code going up rather than a thing beside it, so it is drawn as the tail of that child — the same
-// reading ./assets makes of `checking`, one line further in.
+// the checks after the code are children of their own, in the order the engine makes them:
+// `addressing` makes sure the worker answers somewhere, and `verifying` is a read of what cloudflare
+// is holding rather than of the deployment answering — a get of the worker's settings, checked for
+// the bindings that went up (../deploy).
 //
-// drawn by both halves of `start`, as assets is and for the same reason.
-var cloudflare = Row{
-	Running: "Deploying " + release.Baked.Name + " to Cloudflare",
-	Done:    release.Baked.Name + " deployed to Cloudflare",
-	Children: []Row{
-		{
-			Stages:  []first.Stage{first.Stage(deploy.Uploading)},
-			Running: "Uploading the static files",
-			Done:    "Static files uploaded",
-		},
-		{
-			Stages:  []first.Stage{first.Stage(deploy.Pushing), first.Stage(deploy.Verifying)},
-			Running: "Uploading the app's code",
-			Done:    "The app's code uploaded",
-		},
-	},
+// **only the first deploy draws `addressing`.** a redeploy's header has already named the address
+// before any row lights, so a line making sure there is one contradicts the screen above it; the
+// engine still makes the check and reports the stage, and a ledger with no row for it stays on the
+// code's line until `verifying` lights (./ledger.go's folding).
+func toCloudflare(children ...Row) Row {
+	return Row{
+		Running:  "Deploying " + release.Baked.Name + " to Cloudflare",
+		Done:     release.Baked.Name + " deployed to Cloudflare",
+		Children: children,
+	}
 }
+
+var (
+	uploadingFiles = Row{
+		Stages:  []first.Stage{first.Stage(deploy.Uploading)},
+		Running: "Uploading the static files",
+		Done:    "Static files uploaded",
+	}
+	pushingCode = Row{
+		Stages:  []first.Stage{first.Stage(deploy.Pushing)},
+		Running: "Uploading the app's code",
+		Done:    "The app's code uploaded",
+	}
+	addressing = Row{
+		Stages:  []first.Stage{first.Stage(deploy.Addressing)},
+		Running: "Making sure your deployment has a web address",
+		Done:    "Deployment has a web address",
+	}
+	verifying = Row{
+		Stages:  []first.Stage{first.Stage(deploy.Verifying)},
+		Running: "Making sure the app is linked to its database",
+		Done:    "App linked to its database",
+	}
+)
+
+var (
+	cloudflareChain  = toCloudflare(uploadingFiles, pushingCode, addressing, verifying)
+	cloudflareUpdate = toCloudflare(uploadingFiles, pushingCode, verifying)
+)
 
 // ChainRows are the rows the first deploy draws, in the order the chain reaches them.
 //
@@ -122,6 +151,7 @@ var cloudflare = Row{
 // and neither is a value to print at somebody while it is in use.
 var ChainRows = []Row{
 	assets,
+	deploysToAccount,
 	// the migration is inside the row because an operator waiting for a place to keep donations is
 	// waiting for one thing, and a database with none of its tables in it is not that thing yet —
 	// and it is a child of it because it is the second of two waits: the database is found or made
@@ -146,7 +176,7 @@ var ChainRows = []Row{
 			},
 		},
 	},
-	cloudflare,
+	cloudflareChain,
 	{
 		Stages:  []first.Stage{first.SigningIn},
 		Running: "Storing dashboard password",
@@ -171,8 +201,9 @@ var ChainRows = []Row{
 //
 // the press that carries this repository's code onto a deployment already standing is that engine
 // and nothing else — no database made, no widget, no value written — so what it draws is the
-// download, the migration and the upload, sharing the first and the last with ChainRows because it
-// is the same engine being watched.
+// download, the account check, the migration and the upload, sharing the download, the account
+// check and the upload's words with ChainRows because it is the same engine being watched. the
+// upload draws no line for `addressing` (./toCloudflare).
 //
 // **the migration is its own row here and is folded into the database row there, because the two
 // halves of `start` run it over different databases.** the chain's is one made seconds earlier
@@ -183,25 +214,28 @@ var ChainRows = []Row{
 // the password is not among them: this press stores nothing.
 var UpdateRows = []Row{
 	assets,
+	deploysToAccount,
 	{
 		Stages:  []first.Stage{first.Stage(deploy.Migrating)},
 		Running: "Updating database tables",
 		Done:    "Database tables updated",
 	},
-	cloudflare,
+	cloudflareUpdate,
 }
 
-// DeployStages are the deploy engine's own six, in the order it reaches them, spelled as the chain
+// DeployStages are the deploy engine's own seven, in the order it reaches them, spelled as the chain
 // names them so that one renderer draws both halves of `start`.
 //
 // a list of its own rather than a slice of ../first's `Stages`, so that a stage added to the chain
-// outside the deploy cannot quietly join it. ./lines_test.go holds it to the six UpdateRows cover.
+// outside the deploy cannot quietly join it. ./lines_test.go holds UpdateRows to all seven but
+// `addressing`.
 var DeployStages = []first.Stage{
 	first.Stage(deploy.Fetching),
 	first.Stage(deploy.Checking),
 	first.Stage(deploy.Migrating),
 	first.Stage(deploy.Uploading),
 	first.Stage(deploy.Pushing),
+	first.Stage(deploy.Addressing),
 	first.Stage(deploy.Verifying),
 }
 

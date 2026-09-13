@@ -231,10 +231,10 @@ func bundleStopped(at deploy.Stage, fix Repair) string {
 		return "The deploy stopped in the step that sets up how records are kept, so part of that " +
 			"may have been applied. Nothing was uploaded. " + fix.Alone +
 			" It applies what is still pending rather than starting over."
-	case deploy.Uploading, deploy.Pushing:
-		// one sentence for the two halves of the upload: the static files and the app's code are
-		// two waits to watch and one state to be left in, since a deployment is what the code
-		// arriving makes and neither stage got that far.
+	case deploy.Uploading, deploy.Pushing, deploy.Addressing:
+		// one sentence for the upload and the address after it: the static files, the app's code and
+		// somewhere for it to answer are three rows to watch and one state to be left in, since a
+		// deployment is what a worker answering somewhere makes and none of them got that far.
 		return "How records are kept was set up and the upload then stopped, so there may be " +
 			"nothing deployed. " + fix.Alone
 	case deploy.Verifying:

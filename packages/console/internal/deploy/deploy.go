@@ -1,13 +1,13 @@
 // Package deploy is this repository's worker put onto a cloudflare account with no wrangler, no
 // node and no checkout on the machine that presses the button.
 //
-// **six stages, and their order is the one-way door packages/app's own deploy script keeps.**
+// **seven stages, and their order is the one-way door packages/app's own deploy script keeps.**
 // everything able to fail runs in front of the migration and the migration runs before the upload
 // (CLAUDE.md), so: the bundle is fetched and held against what this binary was baked for, the
 // account's own workers are read to see this credential reaches them, then the pending migrations
 // are applied, then the static files go up, then the script that names them, then the deployment is
-// read back. a stage that fails ends the run where it is — nothing rolls back, and the migrations a
-// stopped run applied stay applied.
+// given somewhere to answer, then it is read back. a stage that fails ends the run where it is —
+// nothing rolls back, and the migrations a stopped run applied stay applied.
 //
 // **the files and the script are two stages because they are two waits.** the assets session opens,
 // asks for as many buckets as it wants and ends in a completion token; the script is one long PUT
@@ -64,13 +64,15 @@ const (
 	// Uploading is the static files, sent in the buckets cloudflare asks for.
 	Uploading Stage = "uploading"
 	// Pushing is the app's own code, sent in the one request that names those files and replaces
-	// the worker — and then somewhere for that worker to answer.
+	// the worker.
 	//
 	// its own stage rather than the tail of ./Uploading because the two are two waits: the files go
 	// up in as many requests as cloudflare asked for and the code in one long one, each counting
 	// its own parts, and a screen drawing them under one name has to reword a single line as it
 	// goes (../terminal/lines.go).
 	Pushing Stage = "pushing"
+	// Addressing is somewhere for the worker just uploaded to answer, made where it answers nowhere.
+	Addressing Stage = "addressing"
 	// Verifying is the deployment read back, to see it carries what went up.
 	Verifying Stage = "verifying"
 )
@@ -79,8 +81,8 @@ const (
 type Progress struct {
 	Stage Stage
 	// Detail is what the stage is on: how much of the download or of the code has moved, the
-	// migration being applied, the bucket going up, the read a stage is making. It is empty on the
-	// report that opens a stage, before there is anything for it to be on.
+	// migration being applied, the bucket going up. It is empty on the report that opens a stage,
+	// before there is anything for it to be on, and on every report of a stage that counts nothing.
 	Detail string
 	// Step and Steps are which part of how many, where the stage counts them, and both 0 where it
 	// does not. What counts them is the stage's own arithmetic and never this package's: the buckets
@@ -279,15 +281,16 @@ func Prepare(ctx context.Context, options Options) (Prepared, Run) {
 		return Prepared{}, Run{Kind: Cancelled, At: Fetching, Detail: ctx.Err().Error()}
 	}
 
-	say(Progress{Stage: Checking, Detail: "this account's workers"})
+	say(Progress{Stage: Checking})
 	if failure := reaches(ctx, options); failure.Kind != "" {
 		return Prepared{}, Run{Kind: failure.Kind, At: Checking, Detail: failure.Detail}
 	}
 	return Prepared{held: read.Bundle}, Run{}
 }
 
-// Apply is the four stages from the one-way door on: every pending migration, then the static
-// files, then the script that names them, then the deployment read back.
+// Apply is the five stages from the one-way door on: every pending migration, then the static
+// files, then the script that names them, then somewhere for it to answer, then the deployment read
+// back.
 //
 // `prepared` is what Prepare answered with, and the migrations it applies are the ones that
 // bundle carries — so what goes through the door is what was checked in front of it.
@@ -330,21 +333,20 @@ func Apply(ctx context.Context, options Options, prepared Prepared) Run {
 		return run
 	}
 
-	// somewhere for the worker just uploaded to answer, which is part of putting the code up rather
-	// than a stage of its own: a screen naming it would be naming a step every deploy after the
-	// first skips.
-	say(Progress{Stage: Pushing, Detail: "where the deployment answers"})
+	// reported on every deploy, including the ones where the worker already answers and nothing is
+	// made: the operator watches the check itself tick, whatever it turned out to need.
+	say(Progress{Stage: Addressing})
 	if failure := address(ctx, options); failure.Kind != "" {
-		run.Kind, run.At, run.Detail = failure.Kind, Pushing, failure.Detail
+		run.Kind, run.At, run.Detail = failure.Kind, Addressing, failure.Detail
 		return run
 	}
 
 	if ctx.Err() != nil {
-		run.Kind, run.At, run.Detail = Cancelled, Pushing, ctx.Err().Error()
+		run.Kind, run.At, run.Detail = Cancelled, Addressing, ctx.Err().Error()
 		return run
 	}
 
-	say(Progress{Stage: Verifying, Detail: "the deployment's bindings"})
+	say(Progress{Stage: Verifying})
 	if failure := verify(ctx, options); failure.Kind != "" {
 		run.Kind, run.At, run.Detail = failure.Kind, Verifying, failure.Detail
 		return run
