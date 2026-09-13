@@ -13,9 +13,9 @@ import type {
 // against the signing secret this deployment holds — made here rather than in the console because
 // the value that verifies a delivery is the one the running version holds, and the account can be
 // ahead of it for as long as a new version takes to roll. the two repairs stand and are called by
-// nothing: the console registers and replaces the endpoint against Stripe itself, in one press that
-// also stores the secret (`packages/console/internal/stripe`, whose header argues why it registers
-// afresh rather than repairing one in place). they stand because whether
+// nothing: the console registers each processor's endpoint itself, in one press that also stores what
+// verifies it (`packages/console/internal/stripe`, whose header argues why it registers afresh rather
+// than repairing one in place, and `packages/console/internal/paypal`). they stand because whether
 // this deployment goes on answering for its own endpoint is a question about its surface rather
 // than about the screen that used to ask.
 //
@@ -39,19 +39,10 @@ import type {
  *                  not reply. `detail` is the port's own sentence, which names the value to fix. it
  *                  is a state of this block and never of the page — every other capability goes
  *                  on rendering.
- *   unmanaged    — this release manages no endpoint on the answering processor, so there was never
- *                  anything to ask. `detail` is the port's own sentence, which says how the endpoint
- *                  is registered instead.
  *   unregistered — the account holds nothing at this address. the fresh-fork state, and the one the
  *                  setup button belongs to.
  *   registered   — the account holds one here. `complete` is whether it is actually doing the job;
  *                  what it is short of is on the two fields under it.
- *
- * **`unmanaged` is told from `unreadable` by the reason the port refused with and by nothing else.**
- * `unsupported` is the one reason that is a fact about this release rather than about the account or
- * the credentials (`PAYMENT_FAILURE_REASONS` in ./provider.ts), and it is terminal for that reason.
- * folded into `unreadable` it would put a deployment that is working as intended under the sentence
- * written for one that is not, and send an operator to check credentials that are fine.
  *
  * no endpoint id on any arm. every call that acts on the endpoint finds it by URL on this side, so
  * an id has no reader in a browser — and one that travelled there would be a value a form could post
@@ -60,7 +51,6 @@ import type {
  */
 export type WebhookRegistration =
 	| { readonly state: 'unreadable'; readonly detail: string }
-	| { readonly state: 'unmanaged'; readonly detail: string }
 	| { readonly state: 'unregistered' }
 	| {
 			readonly state: 'registered';
@@ -116,12 +106,7 @@ export async function readWebhookRegistration(
 	url: string
 ): Promise<WebhookRegistration> {
 	const registry = await provider.listWebhookEndpoints();
-	if (!registry.ok) {
-		return {
-			state: registry.reason === 'unsupported' ? 'unmanaged' : 'unreadable',
-			detail: registry.detail
-		};
-	}
+	if (!registry.ok) return { state: 'unreadable', detail: registry.detail };
 
 	const { endpoints, requiredEventTypes } = registry.value;
 	// matched on the URL and on nothing else, because that is the only fact this deployment holds

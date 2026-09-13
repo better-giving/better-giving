@@ -20,9 +20,6 @@ var onDeployment = Deployment{
 
 const carried = "1.4.0"
 
-// a release that would move the live database, which is the door with a list on it.
-var oneMigration = []string{"0007_donors.sql"}
-
 // the door driven over a reader, which is what its answers are asserted through.
 //
 // the keystrokes are the list's own: it opens on the row the door stands on, `k` and `j` move off
@@ -34,34 +31,19 @@ var oneMigration = []string{"0007_donors.sql"}
 // the guard in front of it is its own case below. what each door stands on is ./carrying's and
 // ./install.go's updatingConsole's, held to a case of its own.
 
-func TestTheConfirmNamesEveryPendingMigrationInTheOrderItWouldApplyThem(t *testing.T) {
-	held := &bytes.Buffer{}
-	ConfirmCarry(strings.NewReader("n"), held, onDeployment, carried,
-		[]string{"0007_donors.sql", "0008_gifts.sql"}, nil, "")
-
-	first := strings.Index(held.String(), "0007_donors.sql")
-	second := strings.Index(held.String(), "0008_gifts.sql")
-	if first < 0 || second < 0 {
-		t.Fatalf("the pending migrations were not named: %q", held.String())
-	}
-	if first > second {
-		t.Errorf("the migrations were named out of the order they apply in: %q", held.String())
-	}
-}
-
-func TestTheDoorOpensOnlyWhereTheOperatorChoseToApplyThem(t *testing.T) {
+func TestTheDoorOpensOnlyWhereTheOperatorChoseTheUpdate(t *testing.T) {
 	held := &bytes.Buffer{}
 	if said := deciding(
-		strings.NewReader("k\r"), held, carrying(carried, oneMigration),
+		strings.NewReader("k\r"), held, carrying(carried),
 	); said != Confirmed {
-		t.Errorf("applying them = %q, want %q", said, Confirmed)
+		t.Errorf("choosing the update = %q, want %q", said, Confirmed)
 	}
 
 	// a return pressed at the door takes the row it stands on, and the carry stands on the refusal: a
-	// hand resting on the keyboard is how a one-way door is opened by accident.
+	// hand resting on the keyboard is how an update, and the migrations in it, go through by accident.
 	held = &bytes.Buffer{}
 	if said := deciding(
-		strings.NewReader("\r"), held, carrying(carried, oneMigration),
+		strings.NewReader("\r"), held, carrying(carried),
 	); said != Declined {
 		t.Errorf("a return at the door = %q, want %q", said, Declined)
 	}
@@ -69,7 +51,7 @@ func TestTheDoorOpensOnlyWhereTheOperatorChoseToApplyThem(t *testing.T) {
 
 func TestAConfirmStandingOnItsOwnActIsTakenByAReturn(t *testing.T) {
 	// installing a console can be undone and an older console deploys older code, so that question
-	// stands on the act rather than on leaving it (./install.go). the door in front of the database
+	// stands on the act rather than on leaving it (./install.go). the door in front of a deployment
 	// is the other way round, and the case above holds it there.
 	held := &bytes.Buffer{}
 	if said := confirming(strings.NewReader("\r"), held, updatingConsole("0.9.0")); said != Confirmed {
@@ -79,12 +61,12 @@ func TestAConfirmStandingOnItsOwnActIsTakenByAReturn(t *testing.T) {
 
 func TestAFormThatFailedIsNoDecisionAndNeverTheRefusal(t *testing.T) {
 	// a door that could not be drawn at a terminal is the state ./Unattended exists for: reported as
-	// the refusal, it would be a command exiting 0 on "the database was left alone" — a decision
+	// the refusal, it would be a command exiting 0 on "left on its current version" — a decision
 	// nobody made, which is the one thing this door may never say (../../cmd/better-giving/start.go).
 	held := &bytes.Buffer{}
 	if said := deciding(
 		iotest.ErrReader(errors.New("the keyboard went away")), held,
-		carrying(carried, oneMigration),
+		carrying(carried),
 	); said != Unattended {
 		t.Errorf("a form that failed = %q, want %q", said, Unattended)
 	}
@@ -92,10 +74,10 @@ func TestAFormThatFailedIsNoDecisionAndNeverTheRefusal(t *testing.T) {
 
 func TestADoorTheOperatorClosedIsTheRefusalTheyChose(t *testing.T) {
 	// ctrl-c at the door is a press not made and every prompt in this package reads one that way
-	// (./prompt.go): the operator was standing at it, and what they left is the database alone.
+	// (./prompt.go): the operator was standing at it, and what they left is the deployment as it is.
 	held := &bytes.Buffer{}
 	if said := deciding(
-		strings.NewReader("\x03"), held, carrying(carried, oneMigration),
+		strings.NewReader("\x03"), held, carrying(carried),
 	); said != Declined {
 		t.Errorf("a door the operator closed = %q, want %q", said, Declined)
 	}
@@ -106,24 +88,22 @@ func TestADeploymentAheadOfThisBinaryIsRefusedWithNothingAsked(t *testing.T) {
 	// the app backwards while leaving that file's schema in place. it is not a thing to confirm.
 	held := &bytes.Buffer{}
 	said := ConfirmCarry(strings.NewReader("y"), held, onDeployment, carried,
-		[]string{"0007_donors.sql"}, []string{"0009_pledges.sql"}, "")
+		[]string{"0009_pledges.sql"}, "")
 	if said != Ahead {
 		t.Errorf("ConfirmCarry = %q, want %q", said, Ahead)
 	}
 	if !strings.Contains(held.String(), "0009_pledges.sql") {
 		t.Errorf("the migration this binary does not carry was never named: %q", held.String())
 	}
-	if strings.Contains(held.String(), "Apply them") {
+	if strings.Contains(held.String(), "Update deployment") {
 		t.Errorf("a door was offered on a deployment ahead of this binary: %q", held.String())
 	}
 }
 
-func TestACarryWithNothingToApplyStillNamesItsObjectAndAsks(t *testing.T) {
-	// `start` carries onto a deployment that is already standing whether or not this release moves
-	// the database, so the operator answers for the upload on that path too — and the account and
-	// the address are on the door's own screen, because no other screen names them.
+func TestACarryNamesItsObjectAndAsks(t *testing.T) {
+	// the account and the address are on the door's own screen, because no other screen names them.
 	held := &bytes.Buffer{}
-	said := ConfirmCarry(strings.NewReader("y"), held, onDeployment, carried, nil, nil, "")
+	said := ConfirmCarry(strings.NewReader("y"), held, onDeployment, carried, nil, "")
 
 	if said != Unattended {
 		t.Errorf("ConfirmCarry over a reader nobody is at = %q, want %q", said, Unattended)
@@ -135,54 +115,44 @@ func TestACarryWithNothingToApplyStillNamesItsObjectAndAsks(t *testing.T) {
 	}
 }
 
-func TestAScreenWithNothingToApplySaysNothingAboutTheDatabase(t *testing.T) {
-	// a sentence about the database on a screen where nothing touches the database reads as a
-	// warning and is not one.
+func TestTheQuestionScreenSaysNothingAboutMigrations(t *testing.T) {
+	// the operator answers for the update and its migrations apply as part of it, so the screen
+	// names none of them and says nothing about the database.
 	held := &bytes.Buffer{}
-	ConfirmCarry(strings.NewReader("y"), held, onDeployment, carried, nil, nil, "")
+	ConfirmCarry(strings.NewReader("y"), held, onDeployment, carried, nil, "")
 
-	if strings.Contains(held.String(), "database") {
-		t.Errorf("said %q, want nothing said about a database this deploy leaves alone",
-			held.String())
+	for _, unwanted := range []string{"database", "migration", "undone"} {
+		if strings.Contains(held.String(), unwanted) {
+			t.Errorf("said %q, want nothing about %q on the question screen", held.String(), unwanted)
+		}
 	}
 }
 
-func TestTheQuestionIsAboutTheUploadWhereThereIsNothingToApply(t *testing.T) {
-	// a title about the live database over a release that applies nothing to it is a question about
-	// something that is not happening.
-	empty, pending := carrying(carried, nil),
-		carrying(carried, oneMigration)
+func TestTheQuestionIsTheUpdateAndStandsOnKeepingTheCurrentVersion(t *testing.T) {
+	put := carrying(carried)
 
-	if strings.Contains(empty.title, "database") {
-		t.Errorf("the title is %q, want the deployment rather than the database", empty.title)
+	if put.title != "update your deployment?" {
+		t.Errorf("the title is %q, want the update", put.title)
 	}
-	if !strings.Contains(pending.title, "database") {
-		t.Errorf("the title is %q, want what the migrations are applied to", pending.title)
-	}
-	if empty.opens || pending.opens {
-		t.Error("a carry stands on the act, and every keystroke that is not the operator choosing " +
-			"it leaves the deployment as it stands")
+	if put.opens {
+		t.Error("a carry stands on keeping the current version, and every keystroke that is not the " +
+			"operator choosing the update leaves the deployment as it stands")
 	}
 }
 
-func TestAConfirmNobodyIsAtNamesTheListAndLeavesTheDatabaseAlone(t *testing.T) {
+func TestAConfirmNobodyIsAtDrawsNoForm(t *testing.T) {
 	// a command run over a pipe reaches the door like every other and is refused at it: a form
-	// drawn at a reader nobody is at is one nobody answers, and the answer that opens a one-way
-	// door is never the one nobody gave. what still goes out is the list, so a piped run says what
-	// it would have applied.
+	// drawn at a reader nobody is at is one nobody answers, and the answer that runs an update is
+	// never the one nobody gave.
 	//
 	// it is its own answer and not the refusal: nobody shut this door, so a command that reported
 	// it as one an operator shut would be reporting a decision nobody made.
 	held := &bytes.Buffer{}
-	said := ConfirmCarry(strings.NewReader("y"), held, onDeployment, carried,
-		[]string{"0007_donors.sql"}, nil, "")
+	said := ConfirmCarry(strings.NewReader("y"), held, onDeployment, carried, nil, "")
 	if said != Unattended {
 		t.Errorf("ConfirmCarry over a reader nobody is at = %q, want %q", said, Unattended)
 	}
-	if !strings.Contains(held.String(), "0007_donors.sql") {
-		t.Errorf("the migration was never named: %q", held.String())
-	}
-	if strings.Contains(held.String(), "Apply them") {
+	if strings.Contains(held.String(), "Update deployment") {
 		t.Errorf("a form was drawn at nobody: %q", held.String())
 	}
 }
@@ -198,11 +168,10 @@ const newerConsole = "version 0.9.0 of this console is out"
 
 func TestTheNewerConsoleIsNamedOnTheScreenTheDoorIsDrawnOn(t *testing.T) {
 	held := &bytes.Buffer{}
-	ConfirmCarry(strings.NewReader("n"), held, onDeployment, carried,
-		[]string{"0007_donors.sql"}, nil, newerConsole)
+	ConfirmCarry(strings.NewReader("n"), held, onDeployment, carried, nil, newerConsole)
 
 	line := strings.Index(held.String(), newerConsole)
-	door := strings.Index(held.String(), "0007_donors.sql")
+	door := strings.Index(held.String(), onDeployment.Account)
 	if line < 0 {
 		t.Fatalf("the newer console was never named: %q", held.String())
 	}
@@ -216,7 +185,7 @@ func TestTheNewerConsoleIsNamedWhereThisBinaryIsBehindTheDeploymentToo(t *testin
 	// forward that a newer console already moved.
 	held := &bytes.Buffer{}
 	ConfirmCarry(strings.NewReader("y"), held, onDeployment, carried,
-		[]string{"0007_donors.sql"}, []string{"0009_pledges.sql"}, newerConsole)
+		[]string{"0009_pledges.sql"}, newerConsole)
 
 	line := strings.Index(held.String(), newerConsole)
 	block := strings.Index(held.String(), "newer console:")
@@ -231,9 +200,9 @@ func TestTheNewerConsoleIsNamedWhereThisBinaryIsBehindTheDeploymentToo(t *testin
 	}
 }
 
-func TestTheNewerConsoleIsNamedWhereThereIsNothingToApplyEither(t *testing.T) {
+func TestTheNewerConsoleIsNamedWhereNobodyIsAtTheDoor(t *testing.T) {
 	held := &bytes.Buffer{}
-	said := ConfirmCarry(strings.NewReader(""), held, onDeployment, carried, nil, nil, newerConsole)
+	said := ConfirmCarry(strings.NewReader(""), held, onDeployment, carried, nil, newerConsole)
 	if said != Unattended {
 		t.Errorf("ConfirmCarry = %q, want %q", said, Unattended)
 	}
@@ -244,44 +213,33 @@ func TestTheNewerConsoleIsNamedWhereThereIsNothingToApplyEither(t *testing.T) {
 
 func TestNothingIsDrawnAboveTheDoorWhereThisConsoleIsTheCurrentOne(t *testing.T) {
 	held := &bytes.Buffer{}
-	ConfirmCarry(strings.NewReader(""), held, onDeployment, carried, nil, nil, "")
+	ConfirmCarry(strings.NewReader(""), held, onDeployment, carried, nil, "")
 	if strings.Contains(held.String(), "of this console is out") {
 		t.Errorf("said %q, want nothing to install said as nothing", held.String())
 	}
 }
 
-// what the door is about, which is a deployment and not "the live database".
+// what the door is about, which is a deployment.
 //
 // the screen was cleared a line before the count, so nothing the command printed earlier is on it:
 // an operator whose machine has ever operated two deployments, or whose remembered account is not
 // the one they have in mind, answers this off what is in front of them or not at all.
 
-func TestTheDoorNamesTheAccountAndTheDeploymentAboveTheCount(t *testing.T) {
+func TestTheDoorNamesTheAccountAndTheDeployment(t *testing.T) {
 	held := &bytes.Buffer{}
-	ConfirmCarry(strings.NewReader("n"), held, onDeployment, carried,
-		[]string{"0007_donors.sql"}, nil, "")
+	ConfirmCarry(strings.NewReader("n"), held, onDeployment, carried, nil, "")
 
-	account := strings.Index(held.String(), onDeployment.Account)
-	address := strings.Index(held.String(), onDeployment.Address)
-	count := strings.Index(held.String(), "1 migration")
-	if account < 0 {
-		t.Fatalf("the account the deploy would write into was never named: %q", held.String())
+	if !strings.Contains(held.String(), onDeployment.Account) {
+		t.Errorf("the account the deploy would write into was never named: %q", held.String())
 	}
-	if address < 0 {
-		t.Fatalf("the deployment the migration would be applied to was never named: %q", held.String())
-	}
-	if count < 0 {
-		t.Fatalf("the count was never drawn: %q", held.String())
-	}
-	if account > count || address > count {
-		t.Errorf("the object was named under the count rather than above it: %q", held.String())
+	if !strings.Contains(held.String(), onDeployment.Address) {
+		t.Errorf("the deployment the update would reach was never named: %q", held.String())
 	}
 }
 
 func TestADeploymentAnsweringOnNoAddressIsSaidRatherThanLeftBlank(t *testing.T) {
 	held := &bytes.Buffer{}
-	ConfirmCarry(strings.NewReader("n"), held, Deployment{Account: "Acme Giving"}, carried,
-		[]string{"0007_donors.sql"}, nil, "")
+	ConfirmCarry(strings.NewReader("n"), held, Deployment{Account: "Acme Giving"}, carried, nil, "")
 
 	if !strings.Contains(held.String(), "no address this console can read") {
 		t.Errorf("said %q, want a deployment with no readable address said as one", held.String())
@@ -293,32 +251,22 @@ func TestADeploymentAnsweringOnNoAddressIsSaidRatherThanLeftBlank(t *testing.T) 
 // the parenthetical plural was the one in the program, and it was at the one screen that has to be
 // read carefully.
 
-func TestTheCountInflectsItsOwnNounAtBothDoors(t *testing.T) {
+func TestTheCountInflectsItsOwnNounOnTheRefusal(t *testing.T) {
 	for _, held := range []struct {
-		names []string
+		ahead []string
 		want  string
 	}{
-		{[]string{"0007_donors.sql"}, "1 migration to"},
-		{[]string{"0007_donors.sql", "0008_gifts.sql"}, "2 migrations to"},
+		{[]string{"0009_pledges.sql"}, "1 migration this"},
+		{[]string{"0009_pledges.sql", "0010_funds.sql"}, "2 migrations this"},
 	} {
 		said := &bytes.Buffer{}
-		ConfirmCarry(strings.NewReader("n"), said, onDeployment, carried, held.names, nil, "")
+		ConfirmCarry(strings.NewReader("y"), said, onDeployment, carried, held.ahead, "")
 		if !strings.Contains(flowing(said.String()), held.want) {
 			t.Errorf("said %q, want %q", said.String(), held.want)
 		}
 		if strings.Contains(said.String(), "migration(s)") {
 			t.Errorf("said %q, want a plural chosen from the count", said.String())
 		}
-	}
-
-	said := &bytes.Buffer{}
-	ConfirmCarry(strings.NewReader("y"), said, onDeployment, carried,
-		[]string{"0007_donors.sql"}, []string{"0009_pledges.sql"}, "")
-	if !strings.Contains(flowing(said.String()), "1 migration") {
-		t.Errorf("said %q, want the count inflected on the refusal too", said.String())
-	}
-	if strings.Contains(said.String(), "migration(s)") {
-		t.Errorf("said %q, want a plural chosen from the count", said.String())
 	}
 }
 
@@ -329,8 +277,7 @@ func TestTheCountInflectsItsOwnNounAtBothDoors(t *testing.T) {
 
 func TestTheDoorNamesTheReleaseOnOfferAndTheOneTheDeploymentIsOn(t *testing.T) {
 	held := &bytes.Buffer{}
-	ConfirmCarry(strings.NewReader("n"), held, onDeployment, carried,
-		[]string{"0007_donors.sql"}, nil, "")
+	ConfirmCarry(strings.NewReader("n"), held, onDeployment, carried, nil, "")
 
 	for _, want := range []string{carried, onDeployment.Release} {
 		if !strings.Contains(held.String(), want) {
@@ -341,7 +288,7 @@ func TestTheDoorNamesTheReleaseOnOfferAndTheOneTheDeploymentIsOn(t *testing.T) {
 
 func TestTheDoorStatesBothReleasesOnOneLineUnderWhereItAnswers(t *testing.T) {
 	held := &bytes.Buffer{}
-	ConfirmCarry(strings.NewReader("n"), held, onDeployment, carried, nil, nil, "")
+	ConfirmCarry(strings.NewReader("n"), held, onDeployment, carried, nil, "")
 
 	want := "version: " + onDeployment.Release + " \u2192 " + carried
 	pair := strings.Index(held.String(), want)
@@ -360,7 +307,7 @@ func TestADeploymentThisConsoleReadNoReleaseOffIsSaidAsUnknown(t *testing.T) {
 	held := &bytes.Buffer{}
 	ConfirmCarry(strings.NewReader("n"), held,
 		Deployment{Account: onDeployment.Account, Address: onDeployment.Address}, carried,
-		nil, nil, "")
+		nil, "")
 
 	if !strings.Contains(held.String(), "version: unknown \u2192 "+carried) {
 		t.Errorf("said %q, want the release this console could not read said as unknown",
@@ -372,21 +319,20 @@ func TestNoScreenPutsTheOfferedReleaseAsNewsOfItsOwn(t *testing.T) {
 	// the version pair is the news and the question under it is the act, so a sentence announcing
 	// the release over them is the same fact a third time.
 	for _, held := range []struct {
-		what           string
-		at             Deployment
-		offering       string
-		pending, ahead []string
-		newer          string
+		what     string
+		at       Deployment
+		offering string
+		ahead    []string
+		newer    string
 	}{
-		{"a carry with nothing to apply", onDeployment, carried, nil, nil, ""},
-		{"a carry with a migration on it", onDeployment, carried, oneMigration, nil, newerConsole},
-		{"a deployment ahead of this binary", onDeployment, carried, oneMigration,
+		{"a carry", onDeployment, carried, nil, ""},
+		{"a carry under a newer console", onDeployment, carried, nil, newerConsole},
+		{"a deployment ahead of this binary", onDeployment, carried,
 			[]string{"0009_pledges.sql"}, ""},
-		{"a binary naming no release", onDeployment, "dev", oneMigration, nil, ""},
+		{"a binary naming no release", onDeployment, "dev", nil, ""},
 	} {
 		said := &bytes.Buffer{}
-		ConfirmCarry(strings.NewReader("n"), said, held.at, held.offering,
-			held.pending, held.ahead, held.newer)
+		ConfirmCarry(strings.NewReader("n"), said, held.at, held.offering, held.ahead, held.newer)
 		if strings.Contains(said.String(), "A new version") {
 			t.Errorf("%s said %q, want the version line to carry the news alone",
 				held.what, said.String())
@@ -397,7 +343,7 @@ func TestNoScreenPutsTheOfferedReleaseAsNewsOfItsOwn(t *testing.T) {
 func TestTheTwoAnswersAreTheActsThemselvesAndNameNoRelease(t *testing.T) {
 	// both releases are on the version line above the question (./object), so an answer that named
 	// one again would be the same number twice on one screen.
-	put := carrying(carried, nil)
+	put := carrying(carried)
 
 	if put.apply != "Update deployment" || put.leave != "Keep current version" {
 		t.Errorf("the answers are %q / %q, want the two acts", put.apply, put.leave)
@@ -413,8 +359,7 @@ func TestABinaryThatNamesNoReleaseOffersNoneAndPointsAtNoNotes(t *testing.T) {
 	// `dev` is what a `go build` in this repository leaves (../../cmd/better-giving/main.go): there
 	// is no tag on the releases page for it, so the door is the carry it has always been.
 	held := &bytes.Buffer{}
-	ConfirmCarry(strings.NewReader("n"), held, onDeployment, "dev",
-		[]string{"0007_donors.sql"}, nil, "")
+	ConfirmCarry(strings.NewReader("n"), held, onDeployment, "dev", nil, "")
 
 	for _, unwanted := range []string{"dev", "version:", "release notes"} {
 		if strings.Contains(held.String(), unwanted) {
@@ -422,14 +367,14 @@ func TestABinaryThatNamesNoReleaseOffersNoneAndPointsAtNoNotes(t *testing.T) {
 				held.String(), unwanted)
 		}
 	}
-	if !strings.Contains(held.String(), "0007_donors.sql") {
-		t.Errorf("said %q, want what it would apply named all the same", held.String())
+	if put := carrying(""); put.title != "carry this release onto the deployment?" {
+		t.Errorf("the title is %q, want the carry asked without a release to name", put.title)
 	}
 }
 
 func TestTheNotesTheDoorPointsAtAreTheOfferedReleasesOwnPage(t *testing.T) {
 	held := &bytes.Buffer{}
-	ConfirmCarry(strings.NewReader("n"), held, onDeployment, carried, nil, nil, "")
+	ConfirmCarry(strings.NewReader("n"), held, onDeployment, carried, nil, "")
 
 	if !strings.Contains(held.String(), release.Notes(carried)) {
 		t.Errorf("said %q, want %q", held.String(), release.Notes(carried))
@@ -442,27 +387,6 @@ func TestTheNotesTheDoorPointsAtAreTheOfferedReleasesOwnPage(t *testing.T) {
 	}
 }
 
-func TestAScreenWithMigrationsOnItSaysWhatItAppliesAndThatItCannotBeUndone(t *testing.T) {
-	// naming the releases is the friendlier half and it softens nothing: a remote migration cannot be
-	// taken back and nothing here rolls one back (CLAUDE.md).
-	held := &bytes.Buffer{}
-	ConfirmCarry(strings.NewReader("n"), held, onDeployment, carried,
-		[]string{"0007_donors.sql", "0008_gifts.sql"}, nil, "")
-
-	for _, want := range []string{
-		"live database", "cannot be", "undone", "0007_donors.sql", "0008_gifts.sql",
-	} {
-		if !strings.Contains(held.String(), want) {
-			t.Errorf("said %q, want %q on a screen with migrations on it", held.String(), want)
-		}
-	}
-	put := carrying(carried, []string{"0007_donors.sql"})
-	if !strings.Contains(put.title, "live database") || put.apply != "Apply them" {
-		t.Errorf("the question is %q / %q, want the one the migration is applied on",
-			put.title, put.apply)
-	}
-}
-
 // the two answers, and that there is no third.
 //
 // the list stands on the refusal and comes round to the act from it, so the row under the refusal
@@ -471,9 +395,8 @@ func TestAScreenWithMigrationsOnItSaysWhatItAppliesAndThatItCannotBeUndone(t *te
 
 func TestEveryDoorPutsTwoAnswersAndNothingUnderThem(t *testing.T) {
 	for _, put := range []question{
-		carrying(carried, nil),
-		carrying(carried, oneMigration),
-		carrying("", nil),
+		carrying(carried),
+		carrying(""),
 	} {
 		held := &bytes.Buffer{}
 		if said := deciding(strings.NewReader("j\r"), held, put); said != Confirmed {
@@ -484,17 +407,17 @@ func TestEveryDoorPutsTwoAnswersAndNothingUnderThem(t *testing.T) {
 }
 
 func TestTheDoorsBlocksStandOneBlankLineApart(t *testing.T) {
-	// the line about the console, the facts, the sentence about the database and the files it names
-	// are four blocks, and a screen that ran them together is the wall this measure exists against.
+	// the line about the console and the facts are two blocks, and a screen that ran them together is
+	// the wall this measure exists against.
 	said := &bytes.Buffer{}
-	ConfirmCarry(strings.NewReader(""), said, onDeployment, carried,
-		[]string{"0013_pledges.sql"}, nil, "version 0.4.0 of this console is out")
+	ConfirmCarry(strings.NewReader(""), said, onDeployment, carried, nil,
+		"version 0.4.0 of this console is out")
 
 	if strings.Contains(said.String(), "\n\n\n") {
 		t.Errorf("said %q, want blocks one blank line apart", said.String())
 	}
-	if blocks := strings.Count(said.String(), "\n\n"); blocks != 4 {
-		t.Errorf("said %q, which is %d blocks and not the four this door draws", said.String(),
+	if blocks := strings.Count(said.String(), "\n\n"); blocks != 2 {
+		t.Errorf("said %q, which is %d blocks and not the two this door draws", said.String(),
 			blocks)
 	}
 }

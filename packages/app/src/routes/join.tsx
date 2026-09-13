@@ -114,7 +114,7 @@ const ALREADY_A_MEMBER = 'This address is already a member here. Sign in instead
  */
 const UNAVAILABLE =
 	'Your password could not be set: something is wrong with this deployment rather than with ' +
-	'what you typed. Ask whoever invited you to check the console (`better-giving open`); the ' +
+	'what you typed. Ask whoever invited you to check the console (`better-giving start`); the ' +
 	'exact cause is in the deployment’s logs, which the console does not read.';
 
 /**
@@ -125,7 +125,7 @@ const UNAVAILABLE =
  */
 const NOT_MIGRATED =
 	'Your password could not be set: this deployment’s database has not been set up. Ask whoever ' +
-	'invited you to open the console (`better-giving open`) and update the deployment.';
+	'invited you to open the console (`better-giving start`) and update the deployment.';
 
 export const links = operatorLinks;
 

@@ -26,7 +26,7 @@ Before changing code, read [`CLAUDE.md`](./.claude/CLAUDE.md) for the invariants
 
 **Console**: the Vite server proxies `/api` to `go run ./cmd/better-giving` (Go 1.24.2+, needed only by `packages/console` contributors; the commit hook skips `go-test` where Go is absent). The console operates a *deployed* Worker resolved off its Cloudflare sign-in, never your dev server.
 
-**The deploy commands need a bundle you packed.** The binary a checkout builds is version `dev`, and there is no release under that name to fetch from, so `console:api` names a local one instead:
+**The deploy commands need a bundle you packed.** The binary a checkout builds is version `dev`, and there is no release under that name to fetch from, so `pnpm console` (`scripts/console.sh`) names a local one instead:
 
 ```sh
 pnpm run bundle    # a couple of minutes
@@ -54,7 +54,7 @@ rm -rf packages/console/ui/dist && cp -R packages/console-ui/build/client packag
 cd packages/console && go build ./cmd/better-giving
 ```
 
-The copy deletes a tracked placeholder. Restore it with `git checkout packages/console/ui/dist`. A locally built binary carries no version and deploys nothing until `BETTER_GIVING_BUNDLE` names a bundle you packed, so run it with the variable set the way `console:api` does, against what `pnpm run bundle` writes ([Dev servers](#dev-servers)).
+The copy deletes a tracked placeholder. Restore it with `git checkout packages/console/ui/dist`. A locally built binary carries no version and deploys nothing until `BETTER_GIVING_BUNDLE` names a bundle you packed, so run it with the variable set the way `scripts/console.sh` does, against what `pnpm run bundle` writes ([Dev servers](#dev-servers)).
 
 ## The workspace
 

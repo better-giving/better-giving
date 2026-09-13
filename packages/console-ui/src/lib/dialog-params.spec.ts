@@ -19,17 +19,11 @@ describe('a navigation that does nothing but open or drop a dialog', () => {
 	it('reads the close confirm being left', () => {
 		expect(opensOrDropsDialog(pressed('/?close', '/'))).toBe(true);
 	});
-
-	it('reads the sign-out confirm opening and being left', () => {
-		expect(opensOrDropsDialog(pressed('/', '/?signin'))).toBe(true);
-		expect(opensOrDropsDialog(pressed('/?signin', '/'))).toBe(true);
-	});
 });
 
 /**
  * the answer the router hands the page after a press, which carries the submission whichever
- * address it lands on: the sign-out posts at `/?signin` and answers with a redirect to `/`, and the
- * router carries that submission through the redirect it followed.
+ * address it lands on: the router carries a submission through any redirect it followed.
  */
 const posted = (from: string, to: string, answer?: unknown): ShouldRevalidateFunctionArgs => ({
 	...pressed(from, to),
@@ -42,7 +36,7 @@ const posted = (from: string, to: string, answer?: unknown): ShouldRevalidateFun
 
 describe("a navigation carrying a press's answer", () => {
 	it('is never one of them, however the dialog parameter moved', () => {
-		expect(opensOrDropsDialog(posted('/?signin', '/'))).toBe(false);
+		expect(opensOrDropsDialog(posted('/?close', '/'))).toBe(false);
 		expect(opensOrDropsDialog(posted('/?close', '/?close', { closing: true }))).toBe(false);
 	});
 });

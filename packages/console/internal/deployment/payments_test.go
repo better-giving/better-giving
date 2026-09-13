@@ -327,24 +327,6 @@ func TestASigningSecretStandingNothingIsDrawnForIsNoReport(t *testing.T) {
 	}
 }
 
-// the address is the one thing on this wire an operator retypes: an endpoint this release does not
-// register is registered by hand in the processor's own dashboard, and no hostname is committed to
-// this repository — so a reading that dropped it leaves them pointing a listener at nothing.
-func TestTheAddressAnUnmanagedEndpointIsRegisteredAtIsCarriedWhole(t *testing.T) {
-	read := answered(t, report(readRails(), verifying, map[string]any{
-		"state":   "unmanaged",
-		"detail":  "Register this address in your PayPal dashboard.",
-		"address": "https://hound-haven.org/api/paypal/webhook",
-	}, nil))
-	held := varied(t, read).Subscription
-	if held.State != "unmanaged" || held.Address != "https://hound-haven.org/api/paypal/webhook" {
-		t.Fatalf("subscription %+v", held)
-	}
-	if held.Detail != "Register this address in your PayPal dashboard." {
-		t.Fatalf("the sentence beside it was dropped: %+v", held)
-	}
-}
-
 // the two faults are the whole reason the screen can say which one an operator is looking at: a
 // missing `delivering` defaulted to true would draw a switched-off endpoint as one merely short of
 // an event.
@@ -371,12 +353,6 @@ func TestASubscriptionReadingThisConsoleCannotDrawIsNoReport(t *testing.T) {
 	for what, subscription := range map[string]any{
 		"an unreadable arm with no sentence": map[string]any{"state": "unreadable"},
 		"a state nothing is drawn for":       map[string]any{"state": "pending"},
-		"an unmanaged arm with no address": map[string]any{
-			"state": "unmanaged", "detail": "Register it by hand.",
-		},
-		"an unmanaged arm with no sentence": map[string]any{
-			"state": "unmanaged", "address": "https://hound-haven.org/api/paypal/webhook",
-		},
 		"an incomplete arm missing whether it delivers": map[string]any{
 			"state": "incomplete", "missingEventTypes": []any{},
 		},

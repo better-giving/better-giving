@@ -215,18 +215,10 @@ export interface WebhookSecretReading {
  *
  *   unreadable   — the deployment could not ask its processor. `detail` is its own sentence, which
  *                  names the value to fix. it says nothing about the endpoint.
- *   unmanaged    — this release manages no endpoint on this processor, so there is nothing to ask
- *                  and nothing a press could repair. the operator registers it by hand and carries
- *                  its id back, and `address` is what they point it at.
  *   unregistered — the account holds nothing at this deployment's address, so nothing is delivered
  *                  anywhere. the fresh-fork state, and the one the setup press belongs to.
  *   complete     — switched on and subscribed to everything this app records. nothing to do.
  *   incomplete   — the endpoint is the right one and is not doing the whole job.
- *
- * **`unmanaged` is not `unreadable` and a console must not word it as one.** a read that did not
- * land is a deployment with something wrong with it and a press to try again; this is a deployment
- * working exactly as this release intends, waiting on a registration only a person can make. drawn
- * as a failure it sends an operator to check credentials that are fine.
  *
  * **the two faults `incomplete` carries are kept apart and both are true at once.** an endpoint
  * switched off delivers nothing at all; an endpoint delivering while short of an event drops
@@ -242,19 +234,6 @@ export interface WebhookSecretReading {
  */
 export type WebhookSubscriptionReading =
 	| { readonly state: 'unreadable'; readonly detail: string }
-	| {
-			readonly state: 'unmanaged';
-			readonly detail: string;
-			/**
-			 * the address the operator has to point the endpoint at, which only the deployment knows.
-			 *
-			 * no hostname is committed to this repository (CLAUDE.md), so the deployment learns its own
-			 * off the request that reached it and this is the only place it is ever said. an operator
-			 * who is not told it registers nothing, and a processor with nowhere to deliver settles
-			 * gifts that never reach the books.
-			 */
-			readonly address: string;
-	  }
 	| { readonly state: 'unregistered' }
 	| { readonly state: 'complete' }
 	| {

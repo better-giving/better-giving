@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { PaymentProvider, PaymentResult, WebhookEndpointRegistry } from './provider';
 import { STRIPE_WEBHOOK_PATH } from '@better-giving/operator/stripe/webhook-endpoint';
 import { createPaymentProviders } from './factory';
@@ -247,6 +247,19 @@ describe('readWebhookRegistration', () => {
 	});
 
 	/**
+	 * every processor's endpoint is registered by the console, so a port declining to list one is a
+	 * read that did not land like any other — no arm says an endpoint is somebody else's to register.
+	 */
+	it('reads an unsupported refusal as unreadable', async () => {
+		const registration = await readWebhookRegistration(
+			port({ ok: false, reason: 'unsupported', detail: 'No endpoint list here.' }),
+			URL_HERE
+		);
+
+		expect(registration).toEqual({ state: 'unreadable', detail: 'No endpoint list here.' });
+	});
+
+	/**
 	 * the endpoint's own id is not part of what this reports, and that is the shape rather than an
 	 * omission.
 	 *
@@ -387,50 +400,60 @@ describe('replaceWebhookRegistration', () => {
 });
 
 /**
- * the same module asked about a deployment on a processor whose endpoint this release does not
- * manage.
+ * the same module asked about a PayPal deployment, whose listener the console registers.
  *
- * the URL it looks for is that processor's own address, so this is the arm that has to keep
- * answering with a state: a console drawing the webhook block for such a deployment needs a
- * sentence, not an exception.
+ * the adapter underneath is the real one over a stubbed `fetch`, because what is asserted is that
+ * PayPal's listener list lands in the same states Stripe's endpoint list does — the port is where the
+ * two processors meet, and a fake port would assert nothing about the second.
  */
 describe('readWebhookRegistration on a PayPal deployment', () => {
-	const paypal = (): PaymentProvider =>
-		createPaymentProviders({
+	const paypal = (webhooks: readonly unknown[]): PaymentProvider => {
+		vi.stubGlobal('fetch', async (input: Request | string | URL) => {
+			const url = input instanceof Request ? input.url : String(input);
+			if (url.endsWith('/v1/oauth2/token')) {
+				return Response.json({
+					access_token: 'A21AA-token',
+					token_type: 'Bearer',
+					expires_in: 32400
+				});
+			}
+			return Response.json({ webhooks });
+		});
+		return createPaymentProviders({
 			PAYPAL_CLIENT_ID: 'notarealclientid',
 			PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
 		}).for('paypal');
+	};
+	const PAYPAL_HERE = 'https://give.example.workers.dev/api/paypal/webhook';
 
-	/**
-	 * a refusal that says this release manages no endpoint here is not a read that failed, and the
-	 * two send an operator to opposite places: one is credentials to check, the other is a
-	 * registration to make by hand. reported as `unreadable` it reads as a deployment with something
-	 * wrong with it, on a deployment working exactly as intended.
-	 */
-	it('reports the registration as unmanaged rather than unreadable', async () => {
+	it('reads a listener at this address as registered, carrying its id as the stamp', async () => {
 		const registration = await readWebhookRegistration(
-			paypal(),
-			'https://give.example.workers.dev/api/paypal/webhook'
+			paypal([
+				{ id: 'WH-HERE', url: PAYPAL_HERE, event_types: [{ name: 'CHECKOUT.ORDER.APPROVED' }] }
+			]),
+			PAYPAL_HERE
 		);
 
-		expect(registration.state).toBe('unmanaged');
+		expect(registration.state === 'registered' && registration.verificationStamp).toBe('WH-HERE');
+		expect(registration.state === 'registered' && registration.complete).toBe(false);
 	});
 
-	it('carries the port’s own sentence, in PayPal’s own name', async () => {
+	it('reads an app with no listener at this address as unregistered', async () => {
 		const registration = await readWebhookRegistration(
-			paypal(),
-			'https://give.example.workers.dev/api/paypal/webhook'
+			paypal([
+				{ id: 'WH-ELSE', url: 'https://other.example.org/api/paypal/webhook', event_types: [] }
+			]),
+			PAYPAL_HERE
 		);
 
-		expect(registration.state === 'unmanaged' && registration.detail).toContain('PayPal');
+		expect(registration.state).toBe('unregistered');
 	});
 
 	/**
-	 * a read that could not be made keeps answering `unreadable` on this processor too: the state is
-	 * about what the port refused with rather than about which processor answered, so a PayPal
+	 * a read that could not be made keeps answering `unreadable` on this processor too, so a PayPal
 	 * deployment short of its credentials is still a deployment with something to set.
 	 */
-	it('keeps unreadable for a refusal that is not this release declining to manage one', async () => {
+	it('keeps unreadable for a refusal on this processor', async () => {
 		const registration = await readWebhookRegistration(
 			port({
 				ok: false,

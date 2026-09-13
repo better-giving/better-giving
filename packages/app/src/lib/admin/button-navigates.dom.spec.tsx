@@ -8,8 +8,8 @@ import { expect, it, onTestFinished } from 'vitest';
 //
 // the part lives in packages/operator, which declares no router and must not. so the element type
 // arrives from the caller, and the only place that seam can be put in front of a router is a
-// surface that has one. this is one of the two; packages/console-ui/src/lib/connect-panel.tsx is the
-// other, with one call site.
+// surface that has one. this is one of the two; packages/console-ui/src/routes/_index.tsx is the
+// other.
 //
 // what is asserted is the press, not the markup. a bare `<a href>` renders the same attributes and
 // reads the same to anyone diffing the output — the difference is only ever visible in what

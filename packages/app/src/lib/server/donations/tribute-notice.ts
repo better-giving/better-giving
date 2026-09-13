@@ -128,7 +128,7 @@ export async function sendTributeNotice(
 					{ label: 'Reason', value: rendered.detail }
 				],
 				action:
-					'Open the console (`better-giving open`) and fill in the organisation’s details under Organisation.'
+					'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.'
 			});
 			return 'not_sent';
 		}
@@ -151,7 +151,7 @@ export async function sendTributeNotice(
 					{ label: 'May have sent anyway', value: sent.indeterminate ? 'yes' : 'no' }
 				],
 				action:
-					'Check the SMTP settings on the console (`better-giving open`) and send a test message.'
+					'Check the SMTP settings on the console (`better-giving start`) and send a test message.'
 			});
 			return 'not_sent';
 		}
@@ -201,7 +201,7 @@ async function faulted(deps: SettleDeps, donationId: string, error: unknown): Pr
 				{ label: 'Reason', value: error instanceof Error ? error.message : String(error) }
 			],
 			action:
-				'Check the SMTP settings on the console (`better-giving open`) and send a test message. The ' +
+				'Check the SMTP settings on the console (`better-giving start`) and send a test message. The ' +
 				'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
 				'checkout).'
 		});

@@ -416,7 +416,7 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 			`This deployment has not saved the identity a gift is solicited under: ` +
 				`${absent.join(' and ')} ${absent.length === 1 ? 'is' : 'are'} not set. A form that ` +
 				'asks for a tax-deductible gift may not omit them.',
-			'Open the console (`better-giving open`). The registered name and the EIN are under ' +
+			'Open the console (`better-giving start`). The registered name and the EIN are under ' +
 				'Organisation.'
 		);
 	}
@@ -589,7 +589,7 @@ export function renderableConfig(result: PublishedConfigResult): PublishedConfig
 		'payments_not_configured',
 		`This deployment cannot serve a donation form: ${labels} ${one ? 'is' : 'are'} approved for ` +
 			`none of the rails ${one ? 'it settles' : 'they settle'} (${rails.join(', ')}).`,
-		'Open the console (`better-giving open`), read the standing shown against each rail, and clear ' +
+		'Open the console (`better-giving start`), read the standing shown against each rail, and clear ' +
 			'it where the processor’s own dashboard says to. A rail switched off there is one switch; ' +
 			'a capability never requested has to be asked for.'
 	);

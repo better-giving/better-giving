@@ -97,7 +97,7 @@ export type ConsoleAccess =
 	| { readonly ok: false; readonly refusal: ConsoleRefusal };
 
 /** the one command that connects a console, named in every refusal that has a repair. */
-const CONNECT = 'Run `better-giving open` to connect a session to this deployment.';
+const CONNECT = 'Run `better-giving start` to connect a session to this deployment.';
 
 /**
  * may this request read and write this deployment's singletons?

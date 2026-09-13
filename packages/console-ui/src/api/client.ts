@@ -5,14 +5,15 @@ import type {
 	HomeShape,
 	OrgWrite,
 	PaymentsRead,
+	PaypalRunRead,
+	PaypalStarted,
 	RecurringRead,
 	RecurringSetup,
-	SignInStatus,
 	SitesWrite,
-	Started,
 	StripeRunRead,
 	StripeStarted,
 	TestSend,
+	ValuesRefusal,
 	VarsWritten,
 	WalletsLevel,
 	WidgetLevel
@@ -76,31 +77,6 @@ function refusal(body: unknown, status: number): string {
 	return `the console answered ${status}`;
 }
 
-/** how this machine is signed in, and what a sign-in opened in a browser is doing. */
-export const signInStatus = (): Promise<SignInStatus> => ask('/sign-in', 'GET');
-
-/**
- * opens cloudflare's own allow page in the operator's browser.
- *
- * `started` is false where one is already open: the binary answers the press rather than opening a
- * second browser, and the panel reports it at the control that was pressed.
- */
-export async function startSignIn(): Promise<{ started: boolean }> {
-	const answer = await fetch('/api/sign-in', {
-		method: 'POST',
-		headers: { accept: 'application/json' }
-	});
-	if (answer.status === 409) return { started: false };
-	if (!answer.ok) throw new Error(refusal(await parsed(answer), answer.status));
-	return { started: true };
-}
-
-/** ends a sign-in the operator no longer wants to finish. */
-export const stopSignIn = (): Promise<Started> => ask('/sign-in/stop', 'POST');
-
-/** gives up the sign-in this machine holds, at cloudflare and on disk. */
-export const signOut = (): Promise<Started> => ask('/sign-out', 'POST');
-
 /**
  * ends the run this console is inside.
  *
@@ -115,7 +91,8 @@ export const signOut = (): Promise<Started> => ask('/sign-out', 'POST');
 export const closeConsole = (): Promise<{ closing: boolean }> => ask('/console/close', 'POST');
 
 /**
- * whether a shell is drawn at all, and the two names every screen under it is about.
+ * the account this console was started in, the two names every screen under it is about, and a
+ * sign-in the binary could not write down.
  *
  * the immediate half of the home screen: everything in it is the binary's own memory and the
  * release it was baked from, so it answers within a loopback round trip and the bar goes up before
@@ -146,8 +123,8 @@ export const homeReading = (): Promise<HomeReading> => ask('/home/reading', 'GET
  *
  * **every way it did not happen comes back as a value rather than thrown**, because each is a state
  * the fold draws at the control that was pressed. the binary refuses a name that is not one of the
- * seventeen before cloudflare is asked, and that refusal is thrown: no control on this page can make
- * one.
+ * seventeen, and PayPal's three credentials, which only {@link startPaypalSetup} writes, before
+ * cloudflare is asked — and that refusal is thrown: no control on this page can make one.
  */
 export const setVars = (values: Record<string, string | null>): Promise<VarsWritten> =>
 	post('/values/vars', { values });
@@ -163,15 +140,18 @@ export const freeWithheldVars = (): Promise<VarsWritten> => ask('/values/vars/fr
 /**
  * mints this console's session, writes it onto the deployment and records it on this machine.
  *
- * **the address it is written at is read inside the binary and never posted**, for the reason the
- * account is: a host that travelled through a page is a credential written wherever that page said.
- * the account and the worker are the binary's own too — the recorded choice and the baked release.
+ * `better-giving start` connects before this page is served, so this is the re-connect alone: the
+ * press on the gate a session that dropped mid-use leaves (../routes/_index.tsx).
+ *
+ * **the address it is written at is read inside the binary and never posted**: a host that
+ * travelled through a page is a credential written wherever that page said. the account and the
+ * worker are the binary's own too — the recorded choice and the baked release.
  *
  * **one press at a time.** a second while one is in flight joins the first's outcome rather than
  * minting a second session: two writes would leave this console holding whichever token it recorded
  * last while the deployment holds whichever was written last.
  *
- * every way it did not happen comes back as a value, because each is a state the panel draws at the
+ * every way it did not happen comes back as a value, because each is a state the gate draws at the
  * control that was pressed.
  */
 export const connect = (): Promise<Connection> => ask('/session', 'POST');
@@ -244,9 +224,8 @@ export const saveSites = (sites: readonly string[]): Promise<SitesWrite> =>
  * hosts, so a request held open for it is a page that cannot say which part is running: how far it
  * has got is {@link stripeRun}, asked over and over while it goes.
  *
- * **a press already going is a value rather than a throw**, the way a sign-in already open is: the
- * binary answers with the run it is holding rather than starting a second, and the fold draws that
- * run either way.
+ * **a press already going is a value rather than a throw**: the binary answers with the run it is
+ * holding rather than starting a second, and the fold draws that run either way.
  *
  * **the two keys leave this page in this one body and reach nothing else.** neither is in what
  * comes back, neither is in the address, and the account and the worker they are spent on are read
@@ -272,7 +251,18 @@ export async function startStripeSetup(keys: {
 	   — which draws a console that has stopped over a console that is answering. */
 	if (answer.status === 400) return { started: false, turnedDown: true };
 	if (!answer.ok) throw new Error(refusal(body, answer.status));
-	return { started: true, run: (body as { run: StripeRunRead }).run };
+	return startedOrUnwritten<StripeRunRead>(body);
+}
+
+/* a 200 carrying no run is the write door answering that this machine holds no sign-in, in the same
+   body a values write gets (`writing` in packages/console/internal/server/values.go). */
+function startedOrUnwritten<Run>(
+	body: unknown
+): { started: true; run: Run } | { started: false; unwritten: ValuesRefusal } {
+	if (typeof body === 'object' && body !== null && 'run' in body) {
+		return { started: true, run: (body as { run: Run }).run };
+	}
+	return { started: false, unwritten: body as ValuesRefusal };
 }
 
 /**
@@ -288,12 +278,45 @@ export const stripeRun = async (): Promise<StripeRunRead | null> =>
 	(await ask<{ run: StripeRunRead | null }>('/stripe/run', 'GET')).run;
 
 /**
+ * sets PayPal up from the pair, and answers as soon as the chain is under way.
+ *
+ * {@link startStripeSetup}'s arrangement: how far it has got is {@link paypalRun}, a press already
+ * going is a value, and the pair leaves this page in this one body and reaches nothing else. the
+ * listener, its address and the id stored beside the pair are all the binary's to settle.
+ */
+export async function startPaypalSetup(pair: {
+	clientId: string;
+	secret: string;
+}): Promise<PaypalStarted> {
+	const answer = await fetch('/api/paypal/setup', {
+		method: 'POST',
+		headers: { accept: 'application/json', 'content-type': 'application/json' },
+		body: JSON.stringify(pair)
+	});
+	const body = await parsed(answer);
+	if (answer.status === 409) {
+		return { started: false, run: (body as { run: PaypalRunRead }).run };
+	}
+	if (answer.status === 400) return { started: false, turnedDown: true };
+	if (!answer.ok) throw new Error(refusal(body, answer.status));
+	return startedOrUnwritten<PaypalRunRead>(body);
+}
+
+/**
+ * how far that press has got, or `null` where there is nothing to report.
+ *
+ * a run that landed is consumed by the reading that observed it, for {@link stripeRun}'s reason.
+ */
+export const paypalRun = async (): Promise<PaypalRunRead | null> =>
+	(await ask<{ run: PaypalRunRead | null }>('/paypal/run', 'GET')).run;
+
+/**
  * the release this binary was built as, out of what it was baked with.
  *
  * **empty is an answer here and never a throw**, which is this module's one departure from the rule
- * above: it is read for the strip over the page before there is a page, and nothing on that page
- * depends on it — so a reading nobody could take is that end of the strip standing empty rather
- * than a route that will not draw (../lib/connect-panel.tsx). a binary built from a checkout rather
+ * above: it is read for the strip at the foot of every screen, and nothing on any of them depends on
+ * it — so a reading nobody could take is that end of the strip standing empty rather than a route
+ * that will not draw (../lib/product-foot.tsx). a binary built from a checkout rather
  * than a tagged release names none and lands in the same place.
  */
 export async function consoleVersion(): Promise<ConsoleVersion> {

@@ -40,18 +40,18 @@ func TestClearingKeepsTheScrollback(t *testing.T) {
 	}
 }
 
-func TestTheMigrationsAreNamedIntoARecordWithoutClearingIt(t *testing.T) {
-	// the confirm draws its list on the question's own screen, and the same list goes into a record
-	// nobody is standing at — that one is a file somebody reads afterwards and holds no escape.
+func TestTheDeploymentIsNamedIntoARecordWithoutClearingIt(t *testing.T) {
+	// the confirm draws its object on the question's own screen, and the same object goes into a
+	// record nobody is standing at — that one is a file somebody reads afterwards and holds no escape.
 	var held bytes.Buffer
 	if answered := ConfirmCarry(strings.NewReader(""), &held, onDeployment, carried,
-		[]string{"0014_thing.sql"}, nil, ""); answered != Unattended {
+		nil, ""); answered != Unattended {
 		t.Errorf("ConfirmCarry at a pipe = %q, want %q", answered, Unattended)
 	}
 	if strings.Contains(held.String(), "\033") {
 		t.Errorf("the record carries an escape sequence: %q", held.String())
 	}
-	if !strings.Contains(held.String(), "0014_thing.sql") {
-		t.Errorf("the record does not name what would have been applied: %q", held.String())
+	if !strings.Contains(held.String(), onDeployment.Address) {
+		t.Errorf("the record does not name the deployment it would have updated: %q", held.String())
 	}
 }

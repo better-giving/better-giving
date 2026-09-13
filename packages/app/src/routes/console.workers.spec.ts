@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEPLOY_VARS } from '@better-giving/operator/deploy-split';
+import { SUBSCRIBED_EVENT_TYPES } from '@better-giving/operator/paypal/webhook-listener';
 import {
 	PAYMENT_PROCESSORS,
 	type PaymentsReport,
@@ -1149,15 +1150,15 @@ describe('the accounts this deployment charges on', () => {
 });
 
 /**
- * the same reading of a processor that answers differently on three of its four members.
+ * the same reading of a processor that answers differently on two of its four members.
  *
  * the port is stood in for rather than met, which is what keeps every case here off the network: the
  * account arms answer what the adapter asserts (`readAccountChargeability` in
- * $lib/server/payments/paypal.ts argues why it asserts), and the two arms this release does not
- * manage refuse the way the adapter refuses them. that the real adapter refuses those two with
- * `unsupported` is held where the real adapter is used —
- * $lib/server/payments/webhook-registration.spec.ts and
- * $lib/server/payments/wallet-domains.spec.ts — so what is left here is the mapping onto the wire,
+ * $lib/server/payments/paypal.ts argues why it asserts), the listener list answers with the one
+ * the console registers, and the wallet arm PayPal draws nothing for refuses the way the adapter
+ * refuses it. what the real adapter answers is held where the real adapter is used —
+ * $lib/server/payments/webhook-registration.spec.ts and $lib/server/payments/wallet-domains.spec.ts
+ * — so what is left here is the mapping onto the wire,
  * which is this route's own.
  */
 describe('a deployment set up on a processor that publishes no per-rail approval', () => {
@@ -1165,6 +1166,8 @@ describe('a deployment set up on a processor that publishes no per-rail approval
 		PAYPAL_CLIENT_ID: 'notarealclientid',
 		PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
 	};
+	/** the id PayPal minted for the listener the console registered at this deployment's address. */
+	const LISTENER_ID = '7YN47048TX2895013';
 
 	/** the two rails PayPal settles, asserted active the way the adapter asserts them. */
 	function paypalPort(): PaymentProvider {
@@ -1185,11 +1188,20 @@ describe('a deployment set up on a processor that publishes no per-rail approval
 			},
 			async listWebhookEndpoints(): Promise<PaymentResult<WebhookEndpointRegistry>> {
 				return {
-					ok: false,
-					reason: 'unsupported',
-					detail:
-						'This release does not manage PayPal’s listeners. The listener for this deployment’s ' +
-						'address is created on the PayPal developer dashboard.'
+					ok: true,
+					value: {
+						endpoints: [
+							{
+								id: LISTENER_ID,
+								url: `https://${OWN_HOST}/api/paypal/webhook`,
+								enabled: true,
+								eventTypes: [...SUBSCRIBED_EVENT_TYPES],
+								apiVersion: null,
+								verificationStamp: LISTENER_ID
+							}
+						],
+						requiredEventTypes: SUBSCRIBED_EVENT_TYPES
+					}
 				};
 			},
 			async listWalletDomains(): Promise<PaymentResult<readonly WalletDomain[]>> {
@@ -1231,17 +1243,27 @@ describe('a deployment set up on a processor that publishes no per-rail approval
 	});
 
 	/**
-	 * an endpoint this release does not manage is not an endpoint nobody could read, and the two send
-	 * an operator to opposite places. this one is a registration to make by hand, so the arm carries
-	 * the address it has to be pointed at — which nothing else in this tree ever tells them.
+	 * the listener the console registered reads the way a Stripe endpoint does: subscribed to
+	 * everything, and verifying where the id this deployment holds is that listener's.
 	 */
-	it('reports the endpoint as unmanaged and says where deliveries have to arrive', async () => {
-		const reading = await configuredReading('paypal', PAYPAL_VALUES);
+	it('reports the listener at this address as complete and verifying against the id it holds', async () => {
+		const reading = await configuredReading('paypal', {
+			...PAYPAL_VALUES,
+			PAYPAL_WEBHOOK_ID: LISTENER_ID
+		});
 
-		expect(reading.subscription.state).toBe('unmanaged');
-		expect(reading.subscription.state === 'unmanaged' && reading.subscription.address).toBe(
-			`https://${OWN_HOST}/api/paypal/webhook`
-		);
+		expect(reading.subscription).toEqual({ state: 'complete' });
+		expect(reading.webhook).toEqual({ state: 'verifying', detail: null });
+	});
+
+	/** an id that is another listener's is the stale arm, which no other member of the reading shows. */
+	it('reports an id that is not this listener’s as stale', async () => {
+		const reading = await configuredReading('paypal', {
+			...PAYPAL_VALUES,
+			PAYPAL_WEBHOOK_ID: 'WH-OTHER'
+		});
+
+		expect(reading.webhook.state).toBe('stale');
 	});
 
 	/** the listener id has the same lifecycle as a signing secret, and an unset one is a hole. */
@@ -1286,7 +1308,7 @@ describe('bringing the webhook endpoint level', () => {
 		const body = (await response.json()) as { outcome: string; detail: string };
 		expect(body.outcome).toBe('failed');
 		expect(body.detail).toContain('STRIPE_SECRET_KEY');
-		expect(body.detail).toContain('better-giving open');
+		expect(body.detail).toContain('better-giving start');
 	});
 
 	/**

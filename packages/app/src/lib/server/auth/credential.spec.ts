@@ -27,7 +27,7 @@ describe('readStaffCredential', () => {
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.message).toContain('ADMIN_PASSWORD is not set');
-		expect(result.message).toContain('better-giving open');
+		expect(result.message).toContain('better-giving start');
 		expect(result.message).toContain('Dashboard password');
 		expect(result.message).not.toContain('wrangler');
 		expect(result.message).toContain('.dev.vars');

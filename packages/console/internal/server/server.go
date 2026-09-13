@@ -25,6 +25,7 @@ import (
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/oauth"
+	"github.com/better-giving/console/internal/paypal"
 	"github.com/better-giving/console/internal/state"
 	"github.com/better-giving/console/internal/stripe"
 )
@@ -36,7 +37,8 @@ type Options struct {
 	// Version and Commit are what this binary was built at, which /api/version answers with.
 	Version string
 	Commit  string
-	// Flow is the cloudflare sign-in this machine holds, and the browser flow that changes it.
+	// Flow is the cloudflare sign-in this machine holds, which `better-giving start` made in the
+	// terminal before this server was built.
 	Flow *oauth.Flow
 	// Reads is how a cloudflare read is made on a credential. Nil is cloudflare's own API.
 	Reads func(cf.Credential) cf.Get
@@ -56,6 +58,9 @@ type Options struct {
 	// carries, so a case can run the whole setup chain without a processor account. Nil is the
 	// processor's own API.
 	Processor func(secretKey string) stripe.Call
+	// Paypal is how a call to PayPal is bound to the client id and secret one press carries, so a case
+	// can run the whole setup chain without a PayPal app. Nil is PayPal's own API.
+	Paypal func(clientID, secret string) paypal.Binding
 	// Accounts is which cloudflare account this deployment is in, as this machine remembers it.
 	Accounts *account.Store
 	// Records is what this machine remembers between runs, which the session is read out of and
@@ -93,6 +98,10 @@ func New(options Options) http.Handler {
 	if processor == nil {
 		processor = stripe.Bind
 	}
+	bindPaypal := options.Paypal
+	if bindPaypal == nil {
+		bindPaypal = paypal.Bind
+	}
 	sends := options.Sends
 	if sends == nil {
 		sends = cf.APISend
@@ -104,8 +113,6 @@ func New(options Options) http.Handler {
 	doors := surfaceDoors(options.Records, surface)
 
 	routes := http.NewServeMux()
-	signIn(routes, options.Flow, reads, options.Records)
-	accountRoutes(routes, options.Flow, reads, options.Accounts)
 	homeRoutes(routes, options.Flow, reads, options.Accounts, options.Records, surface)
 	valuesRoutes(routes, options.Flow, reads, patches, settings, options.Accounts)
 	sessionRoutes(routes, options.Flow, reads, patches, options.Accounts, options.Records)
@@ -113,6 +120,7 @@ func New(options Options) http.Handler {
 	widgetRoutes(routes, options.Flow, reads, sends, options.Accounts)
 	stripeRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, doors, processor,
 		presses)
+	paypalRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, bindPaypal, presses)
 	closeRoutes(routes, options.Close)
 	routes.HandleFunc("GET /api/version", func(w http.ResponseWriter, _ *http.Request) {
 		// a placeholder while the folds are still the react app's own: what it says is true, and

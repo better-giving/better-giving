@@ -21,6 +21,7 @@
 		"./console/stripe-read": "./src/console/stripe-read.ts",
 		"./console/test-send": "./src/console/test-send.ts",
 		"./console/token": "./src/console/token.ts",
+		"./paypal/webhook-listener": "./src/paypal/webhook-listener.ts",
 		"./stripe/secret-fingerprint": "./src/stripe/secret-fingerprint.ts",
 		"./stripe/webhook-endpoint": "./src/stripe/webhook-endpoint.ts",
 		"./save-state": "./src/save-state.ts",

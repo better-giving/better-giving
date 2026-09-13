@@ -58,8 +58,8 @@ import { sendTributeNotice } from './tribute-notice';
 // for this payment is recognised exactly once" the thing the database enforces.
 //
 // keying on the delivery's event id instead would enforce something weaker and wrong: every one of
-// `SETTLEMENT_EVENT_TYPES` — the constant each adapter declares, ../payments/stripe.ts and
-// ../payments/paypal.ts alike — re-reads the transaction rather than trusting what arrived,
+// `SETTLEMENT_EVENT_TYPES` — each processor's, stated in packages/operator/src/stripe/ and
+// packages/operator/src/paypal/ alike — re-reads the transaction rather than trusting what arrived,
 // precisely because deliveries carry no ordering guarantee. so two different events about one
 // charge can both read `succeeded`, and under distinct event ids both would post; the gift would be
 // in the books twice, with every row reading clean.
@@ -341,7 +341,7 @@ async function tellingFault(
 				{ label: 'Reason', value: error instanceof Error ? error.message : String(error) }
 			],
 			action:
-				'Check the SMTP settings on the console (`better-giving open`) and send a test message. The ' +
+				'Check the SMTP settings on the console (`better-giving start`) and send a test message. The ' +
 				'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
 				'checkout).'
 		});
@@ -734,7 +734,7 @@ async function tellDonorNothingWasCollected(
 				{ label: 'Reason', value: rendered.detail }
 			],
 			action:
-				'Open the console (`better-giving open`) and fill in the organisation’s details under Organisation.'
+				'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.'
 		});
 		return;
 	}
@@ -755,7 +755,7 @@ async function tellDonorNothingWasCollected(
 				{ label: 'May have sent anyway', value: sent.indeterminate ? 'yes' : 'no' }
 			],
 			action:
-				'Check the SMTP settings on the console (`better-giving open`) and send a test message.'
+				'Check the SMTP settings on the console (`better-giving start`) and send a test message.'
 		});
 	}
 }

@@ -107,7 +107,7 @@ function notConfiguredMessage(reason: string): string {
 	return (
 		`No session-cookie signing key is available: \`auth_signing_key\` could not be read because ${reason}. ` +
 		`The row is minted by an idempotent migration, so the fix is almost always to apply ` +
-		`migrations to this database: the console (\`better-giving open\`) applies them to the ` +
+		`migrations to this database: the console (\`better-giving start\`) applies them to the ` +
 		`deployed D1 when it updates this deployment, and ` +
 		`\`pnpm wrangler d1 migrations apply DB --local\` applies them to a local one. ` +
 		`As an override you can instead set the \`BETTER_AUTH_SECRET\` secret, which takes precedence ` +

@@ -274,6 +274,27 @@ var (
 	}
 )
 
+// what the deployment's PayPal listener is: the path it answers on and everything it subscribes to.
+//
+// **stated here and gated rather than trusted, the way the Stripe endpoint above is.** the source is
+// packages/operator/src/paypal/webhook-listener.ts, and ./config_test.go holds these to it. the
+// subscription is flattened in that module's composition and goes up as `event_types`, so a member
+// missing here is a delivery PayPal never sends.
+var (
+	PaypalWebhookPath = "/api/paypal/webhook"
+	PaypalEventTypes  = []string{
+		"CHECKOUT.ORDER.APPROVED",
+		"PAYMENT.CAPTURE.COMPLETED",
+		"PAYMENT.CAPTURE.DENIED",
+		"PAYMENT.SALE.COMPLETED",
+		"BILLING.SUBSCRIPTION.PAYMENT.FAILED",
+		"BILLING.SUBSCRIPTION.ACTIVATED",
+		"BILLING.SUBSCRIPTION.CANCELLED",
+		"BILLING.SUBSCRIPTION.EXPIRED",
+		"BILLING.SUBSCRIPTION.SUSPENDED",
+	}
+)
+
 // MinAdminPasswordLength is the shortest dashboard password a deployment will authenticate
 // against.
 //

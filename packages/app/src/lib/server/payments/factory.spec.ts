@@ -46,7 +46,7 @@ describe('the provider one processor resolves to', () => {
 		expect(result.ok === false && result.reason).toBe('not_configured');
 		const detail = result.ok === false ? result.detail : '';
 		expect(detail).toContain('STRIPE_SECRET_KEY');
-		expect(detail).toContain('better-giving open');
+		expect(detail).toContain('better-giving start');
 		expect(detail).toContain('Donation processor');
 	});
 
@@ -77,7 +77,7 @@ describe('the provider one processor resolves to', () => {
 		expect(result.ok === false && result.reason).toBe('not_configured');
 		const detail = result.ok === false ? result.detail : '';
 		expect(detail).toContain('STRIPE_WEBHOOK_SECRET');
-		expect(detail).toContain('better-giving open');
+		expect(detail).toContain('better-giving start');
 	});
 
 	/**

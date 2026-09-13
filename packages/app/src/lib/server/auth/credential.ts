@@ -109,7 +109,7 @@ export function readStaffCredential(env: AuthEnv): StaffCredentialConfig {
 			message:
 				`Staff sign-in is refused because this deployment is misconfigured: ${reading.problem} ` +
 				`ADMIN_PASSWORD is a deploy-time secret, not a settings row: open the console ` +
-				`(\`better-giving open\`) and set it under Dashboard password, which takes effect ` +
+				`(\`better-giving start\`) and set it under Dashboard password, which takes effect ` +
 				`immediately on this deployment, or add it to \`.dev.vars\` ` +
 				`for local development (copy \`.dev.vars.example\`). There is no default credential, ` +
 				`an empty password never matches, and no password is stored anywhere in the database.`

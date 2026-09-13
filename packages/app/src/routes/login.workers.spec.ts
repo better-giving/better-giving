@@ -517,7 +517,7 @@ describe('POST /login — what the browser gets back', () => {
 		});
 
 		expect(answer.init?.status).toBe(500);
-		expect(banner(answer)).toContain('better-giving open');
+		expect(banner(answer)).toContain('better-giving start');
 		expect(JSON.stringify(answer.data)).not.toContain('ADMIN_PASSWORD is shorter');
 		expect(JSON.stringify(answer.data)).not.toContain('(it is 5)');
 	});

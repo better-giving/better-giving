@@ -238,12 +238,12 @@ func bundleStopped(at deploy.Stage, fix Repair) string {
 		return "How records are kept was set up and the upload then stopped, so there may be " +
 			"nothing deployed. " + fix.Alone
 	case deploy.Verifying:
-		// the press again is not the act here: `start` weighs what the deployment says about
-		// itself before it offers to carry, so a worker that went up and answers on this release
-		// is one a second run uploads nothing onto (../../cmd/better-giving/start.go's
+		// `start` again uploads nothing here: it weighs what the deployment says about itself
+		// before it offers to carry, so a worker that went up and answers on this release is one a
+		// second run opens the console at instead (../../cmd/better-giving/start.go's
 		// alreadyCarrying). what is left is looking at what it is holding.
 		return "It was uploaded and came back missing something it needs, so it is deployed and " +
-			"may not serve anything. Run " + Cmd("open") + ": the console reads what the " +
+			"may not serve anything. Run " + Cmd("start") + ": the console reads what the " +
 			"deployment says about itself."
 	default:
 		return nowhereNamed(fix)
@@ -254,7 +254,7 @@ func bundleStopped(at deploy.Stage, fix Repair) string {
 func noSignIn(written *deployment.Written) string {
 	if withheld(written) {
 		return release.Baked.Name + " is deployed, and nobody can sign in to the dashboard yet: " +
-			heldBack(written.Names) + " Run " + Cmd("open") + ": the value is named where it is " +
+			heldBack(written.Names) + " Run " + Cmd("start") + ": the value is named where it is " +
 			"used, with a Remove press beside it."
 	}
 	return release.Baked.Name + " is deployed, and the password wasn't stored, so nobody can sign " +

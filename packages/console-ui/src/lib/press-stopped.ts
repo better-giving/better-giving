@@ -39,3 +39,12 @@ export const REACHED_CLOUDFLARE =
 /** what a press that sets the processor up had reached, which is the Stripe account itself. */
 export const REACHED_STRIPE =
 	'What reached Stripe before it stopped is what your account holds now.';
+
+/**
+ * what a press that sets PayPal up had reached, which is the PayPal app's webhooks.
+ *
+ * the deployment is written last and in one write, so what could be part-way is the app — and the
+ * next press finds a webhook already at this address and keeps it rather than adding a second.
+ */
+export const REACHED_PAYPAL =
+	'What reached PayPal before it stopped is what your PayPal app holds now.';

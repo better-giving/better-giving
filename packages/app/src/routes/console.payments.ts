@@ -207,7 +207,7 @@ async function processorPayments(
 		// so the variable compared is the one that verifies the deliveries this registration is a
 		// reading of.
 		webhook: await webhookSecretStanding(env, processor, registration),
-		subscription: subscriptionReading(registration, url),
+		subscription: subscriptionReading(registration),
 		wallets: walletsReading(domains, asked.own)
 	};
 }
@@ -242,25 +242,13 @@ function walletsReading(domains: WalletDomainsReading, own: string): WalletsRead
  * console draws — $lib/server/payments/webhook-registration.ts states why the id never leaves this
  * side, and the stamp is half of the comparison `webhookSecretStanding` above already made.
  *
- * **`unmanaged` is the one arm that carries an address, and it is the only place this deployment
- * ever says it.** an endpoint this release does not register is one an operator registers by hand,
- * and they can only do that if they are told where deliveries have to arrive — which no console can
- * work out, because no hostname is committed to this repository (CLAUDE.md) and the path is this
- * app's. left off, an operator sets `PAYPAL_WEBHOOK_ID` to the id of a listener pointed at nothing.
- *
  * `complete` is the registration's own reading of both faults at once and is not recomputed: what
  * counts as a usable endpoint is decided where the required list is read, and a second opinion here
  * is one to keep in step.
  */
-function subscriptionReading(
-	registration: WebhookRegistration,
-	url: string
-): WebhookSubscriptionReading {
+function subscriptionReading(registration: WebhookRegistration): WebhookSubscriptionReading {
 	if (registration.state === 'unreadable') {
 		return { state: 'unreadable', detail: registration.detail };
-	}
-	if (registration.state === 'unmanaged') {
-		return { state: 'unmanaged', detail: registration.detail, address: url };
 	}
 	if (registration.state === 'unregistered') return { state: 'unregistered' };
 	if (registration.complete) return { state: 'complete' };

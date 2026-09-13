@@ -28,14 +28,7 @@ import (
 //
 // **nothing in this console repairs an endpoint, and this file least of all.** it reads and nothing
 // else. an endpoint this release registers and that is short of an event or switched off is put
-// right by the press that registers it afresh against the two keys; an endpoint this release
-// registers on no processor is the unmanaged arm, which no press reaches at all.
-//
-// **the address on that arm is the one thing here an operator retypes and it is carried whole.**
-// an unmanaged endpoint is registered by hand in the processor's own dashboard, and no hostname is
-// committed to this repository (CLAUDE.md) — so the deployment learning its own off the request is
-// the only place it is ever said, and a reading that dropped it leaves an operator pointing a
-// listener at nothing.
+// right by the press that registers it afresh against the two keys.
 //
 // **a reading this console cannot draw is the whole report unread.** part of it drawn as a whole
 // one is a screen that is confidently wrong about the rest.
@@ -93,14 +86,10 @@ type WebhookSecretReading struct {
 
 // WebhookSubscriptionReading is what this deployment's endpoint is subscribed to.
 //
-// Delivering and MissingEventTypes are the incomplete arm's alone; Detail is the unreadable and
-// unmanaged arms', and Address the unmanaged arm's.
+// Delivering and MissingEventTypes are the incomplete arm's alone; Detail is the unreadable arm's.
 type WebhookSubscriptionReading struct {
 	State  string `json:"state"`
 	Detail string `json:"detail"`
-	// Address is where an operator has to point an endpoint this release registers on no processor,
-	// which only the deployment knows.
-	Address string `json:"address"`
 	// Delivering is whether the processor is delivering to it at all.
 	Delivering        bool     `json:"delivering"`
 	MissingEventTypes []string `json:"missingEventTypes"`
@@ -404,18 +393,6 @@ func subscriptionReading(value any) *WebhookSubscriptionReading {
 		}
 		return &WebhookSubscriptionReading{
 			State: state, Detail: *detail, MissingEventTypes: []string{},
-		}
-	case "unmanaged":
-		// the sentence and the address both, because neither stands without the other: the sentence
-		// is what says nothing is wrong, and the address is the whole of what an operator does about
-		// it. one without the other is a fold telling somebody to register an endpoint somewhere.
-		detail := text(held["detail"])
-		address := text(held["address"])
-		if detail == nil || address == nil {
-			return nil
-		}
-		return &WebhookSubscriptionReading{
-			State: state, Detail: *detail, Address: *address, MissingEventTypes: []string{},
 		}
 	case "unregistered", "complete":
 		return &WebhookSubscriptionReading{State: state, MissingEventTypes: []string{}}

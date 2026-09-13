@@ -19,7 +19,7 @@ describe('loadFailure', () => {
 		for (const subject of ['This page', 'This recurring gift']) {
 			const sentence = loadFailure(subject);
 			expect(sentence).toContain('pnpm wrangler d1 migrations apply DB --local');
-			expect(sentence).toContain('better-giving open');
+			expect(sentence).toContain('better-giving start');
 			expect(sentence).toContain('Cloudflare dashboard');
 			expect(sentence).toContain('pnpm run logs');
 		}

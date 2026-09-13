@@ -1767,7 +1767,7 @@ export function createStripeProvider(
 						'This deployment cannot check that a payment notification came from Stripe: ' +
 						'`STRIPE_WEBHOOK_SECRET` is not set, so the delivery was refused and its body was not ' +
 						'read. The value is minted by registering this deployment’s endpoint — set payment ' +
-						'notifications up on the console (`better-giving open`), which stores it in the same ' +
+						'notifications up on the console (`better-giving start`), which stores it in the same ' +
 						'press.'
 				};
 			}

@@ -998,7 +998,7 @@ async function receiptFault(
 				{ label: 'Reason', value: error instanceof Error ? error.message : String(error) }
 			],
 			action:
-				'Check the SMTP settings on the console (`better-giving open`) and send a test message. The ' +
+				'Check the SMTP settings on the console (`better-giving start`) and send a test message. The ' +
 				'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
 				'checkout).'
 		});

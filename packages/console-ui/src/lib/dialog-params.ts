@@ -5,11 +5,10 @@ import type { ShouldRevalidateFunctionArgs } from 'react-router';
 //
 // **the dialogs are parameters on the address rather than component state**, which is what makes
 // the way out of each a link and what makes Escape and the browser's own back button answer the
-// same way (../routes/_index.tsx and ./connect-panel.tsx each state the arrangement over the press
-// they draw). the cost of that is a link press being a navigation: without a word from
-// `shouldRevalidate` the router re-reads the page before the dialog can draw, and the whole of that
-// read is loopback round trips — so the press an operator made sits doing nothing for as long as
-// the binary takes to answer.
+// same way (../routes/_index.tsx states the arrangement over the press it draws). the cost of that
+// is a link press being a navigation: without a word from `shouldRevalidate` the router re-reads
+// the page before the dialog can draw, and the whole of that read is loopback round trips — so the
+// press an operator made sits doing nothing for as long as the binary takes to answer.
 //
 // **the set has one home because the reading below is over all of it at once.** what it asks is
 // whether an address differs from the one before it in nothing but these, so a parameter minted at
@@ -20,15 +19,7 @@ import type { ShouldRevalidateFunctionArgs } from 'react-router';
 /** what the address carries while the head's close confirm is up, which is the whole of what draws it. */
 export const CLOSE_PARAM = 'close';
 
-/**
- * what the address carries while the connect panel's confirm over leaving cloudflare is up.
- *
- * it is spelled for the sign-in the dialog is about and not for the press that ends it, which is
- * the spelling an operator's address bar carries (./connect-panel.tsx).
- */
-export const SIGNIN_PARAM = 'signin';
-
-const DIALOG_PARAMS = [CLOSE_PARAM, SIGNIN_PARAM];
+const DIALOG_PARAMS = [CLOSE_PARAM];
 
 /** an address with every dialog parameter taken off it, which is what two of them are compared by. */
 function withoutDialogs(url: URL): string {
@@ -40,12 +31,11 @@ function withoutDialogs(url: URL): string {
 /**
  * whether this navigation does nothing but open or drop a dialog, and so has nothing to re-read.
  *
- * **a submission is never one of these however the address moves**, and that is the arm that
- * matters: the connect panel's sign-out posts and answers with a redirect from `/?signin` to `/`,
- * which is a pair of addresses this would otherwise read as the dialog being dropped — and a page
- * that skipped the read there would go on drawing the cloudflare account it has just signed out of.
- * `formMethod` is what separates the two: the router carries the submission through the redirect it
- * followed (`getLoadingNavigation` in the installed `react-router`), and a link press has none.
+ * **a submission is never one of these however the address moves**: a press made from inside a
+ * dialog posts at that dialog's address, and a page that skipped the read over it would go on
+ * drawing what the press has just changed. `formMethod` is what separates the two: the router
+ * carries the submission through any redirect it followed (`getLoadingNavigation` in the installed
+ * `react-router`), and a link press has none.
  */
 export function opensOrDropsDialog({
 	currentUrl,

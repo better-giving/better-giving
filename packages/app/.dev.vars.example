@@ -246,14 +246,13 @@ TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"
 # real gift. Rehearsing is a second deployment, as it is for Stripe.
 #
 # PAYPAL_WEBHOOK_ID comes back from PayPal rather than being chosen: the
-# endpoint is registered by hand in PayPal's own developer dashboard, at this
-# deployment's address followed by /api/paypal/webhook, and the id PayPal gives
-# that registration is what goes here. Nothing in this app creates or deletes a
-# PayPal endpoint, which is where it differs from Stripe's. Without the id, a
-# delivery verifies against nothing and is refused — the donor approved a
-# payment that is never captured and never reaches your books. The events to
-# subscribe it to are the three in
-# src/lib/server/payments/paypal.ts's SETTLEMENT_EVENT_TYPES.
+# console's PayPal press registers the listener at this deployment's address
+# followed by /api/paypal/webhook, subscribed to SUBSCRIBED_EVENT_TYPES in
+# packages/operator/src/paypal/webhook-listener.ts, and stores the id PayPal
+# gives it. Without the id, a delivery verifies against nothing and is refused —
+# the donor approved a payment that is never captured and never reaches your
+# books. A local dev server has no https address PayPal can reach, so this stays
+# unset here unless a tunnel's listener id is pasted in by hand.
 #
 # PAYPAL_CHARITY_RATE_APPROVED is the one value here that is an answer rather
 # than a credential: `true` if PayPal has approved this organisation for its

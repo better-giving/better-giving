@@ -116,15 +116,29 @@ func Chain(
 			return deployment.SetVars(ctx, door, deployment.Stored(values))
 		},
 		Connect: func(ctx context.Context) deployment.Connection {
-			return deployment.Connect(ctx, deployment.ConnectInputs{
-				Door:       door,
-				Credential: credential,
-				Record:     func(mine session.Session) error { return session.Record(records, mine) },
-				Now:        time.Now(),
-			})
+			return Connect(ctx, door, credential, records)
 		},
 		At: at,
 	}
+}
+
+// Connect is this console's session minted, written to the deployment and kept on this machine.
+//
+// one binding for the chain's last stage and for `start` over a deployment already standing
+// (../../cmd/better-giving/start.go's connecting), so a first run and every run after it connect the
+// same way.
+func Connect(
+	ctx context.Context,
+	door deployment.Door,
+	credential cf.Credential,
+	records state.Store,
+) deployment.Connection {
+	return deployment.Connect(ctx, deployment.ConnectInputs{
+		Door:       door,
+		Credential: credential,
+		Record:     func(mine session.Session) error { return session.Record(records, mine) },
+		Now:        time.Now(),
+	})
 }
 
 // OwnAddress is where this deployment answers, read off the account under the worker's own name.

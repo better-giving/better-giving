@@ -77,7 +77,7 @@ describe('resolveAuthSecret', () => {
 		expect(result.message).toContain('auth_signing_key');
 		expect(result.message).toContain('no `default` row exists');
 		expect(result.message).toContain('pnpm wrangler d1 migrations apply DB --local');
-		expect(result.message).toContain('better-giving open');
+		expect(result.message).toContain('better-giving start');
 		expect(result.message).toContain('BETTER_AUTH_SECRET');
 	});
 

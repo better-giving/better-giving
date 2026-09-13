@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PaymentsRead, ProcessorPayments } from '../api/types';
-import {
-	EVIDENCE_SAYS,
-	configuredStanding,
-	processorStanding,
-	unmanagedEndpoint
-} from './processor-payments';
+import { EVIDENCE_SAYS, configuredStanding, processorStanding } from './processor-payments';
 
 // where one processor stands, off the report that answers for both of them.
 //
@@ -70,33 +65,6 @@ describe('the readings a configured processor answered with', () => {
 
 	it('is nothing where there is no entry', () => {
 		expect(configuredStanding(null)).toBe(null);
-	});
-});
-
-describe('the endpoint this release registers for nobody', () => {
-	it('carries the sentence and the address together', () => {
-		const entry: ProcessorPayments = {
-			...CONFIGURED,
-			processor: 'paypal',
-			label: 'PayPal',
-			subscription: {
-				state: 'unmanaged',
-				detail: 'Register a webhook on your PayPal account.',
-				address: 'https://give.example.org/api/v1/webhooks/paypal'
-			}
-		};
-		expect(unmanagedEndpoint(entry)).toEqual({
-			detail: 'Register a webhook on your PayPal account.',
-			address: 'https://give.example.org/api/v1/webhooks/paypal'
-		});
-	});
-
-	it('is nothing on an endpoint this release does register', () => {
-		expect(unmanagedEndpoint(CONFIGURED)).toBe(null);
-	});
-
-	it('is nothing on a processor that holds no credentials', () => {
-		expect(unmanagedEndpoint(UNCONFIGURED)).toBe(null);
 	});
 });
 

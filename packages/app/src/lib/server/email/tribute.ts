@@ -54,7 +54,7 @@ export async function renderTributeNotice(input: TributeNoticeInput): Promise<Tr
 				'No notice was written: the organisation has no registered name saved, and this message ' +
 				'goes to somebody who never gave this deployment an address, about somebody they have ' +
 				'lost. An organisation that cannot name itself is indistinguishable from a stranger. ' +
-				'Open the console (`better-giving open`) and fill in your organisation details under ' +
+				'Open the console (`better-giving start`) and fill in your organisation details under ' +
 				'Organisation.'
 		};
 	}

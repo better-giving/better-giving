@@ -29,8 +29,8 @@ export function SetupGate({ lines }: { lines: readonly SetupLine[] }) {
 			<h1>Finish setting up this deployment</h1>
 			<p className="adm-prose">
 				Your dashboard isn&rsquo;t served until every line below is done. Open the console (
-				<InlineCode>better-giving open</InlineCode>) on the machine you set this deployment up from,
-				and each one has the control that finishes it.
+				<InlineCode>better-giving start</InlineCode>) on the machine you set this deployment up
+				from, and each one has the control that finishes it.
 			</p>
 
 			{/* polite rather than assertive: the list is what the reader came for and it changes only

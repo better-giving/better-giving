@@ -207,15 +207,6 @@ export default function ShellAppShellPreview() {
 				<Field id="shell-app-shell-barred-password" type="password" label="Staff password" />
 				<Button variant="primary">Sign in</Button>
 			</PanelRoute>
-
-			{/* the same route with nothing for a box to hold together: one control on the page's own
-			    ground, centred in both axes with no card around it. what stands here is the caller's,
-			    as in the two above — a single press is the whole of what the state is for. */}
-			<PanelRoute bare>
-				<div className="adm-actions adm-actions--centred">
-					<Button>Connect to Cloudflare</Button>
-				</div>
-			</PanelRoute>
 		</div>
 	);
 }

@@ -9,7 +9,7 @@ A donation app for a **single** nonprofit, deployed to your own Cloudflare accou
 Named separately everywhere in this repo:
 
 - **The dashboard** is `/admin` on a deployment. Donation forms, donations, donors, recurring gifts. The only thing a staff member opens.
-- **The console** is a program the operator runs on their own machine: `better-giving start` puts this release on the deployment in the terminal — standing one up where you have none, carrying the code onto one you already have — and then serves a page at `http://127.0.0.1:5320`, and `better-giving open` serves that page against a deployment already standing. Never deployed; the screens are built into the binary. Between the terminal half and the screens it sets the deployment up: the Cloudflare account, the D1 database, all seventeen configuration values, the payment processor keys, the site list, the org's legal identity.
+- **The console** is a program the operator runs on their own machine: `better-giving start` puts this release on the deployment in the terminal — standing one up where you have none, carrying the code onto one you already have — and then serves a page at `http://127.0.0.1:5320`, already connected, and on a deployment already on this release it goes straight there. Never deployed; the screens are built into the binary. Between the terminal half and the screens it sets the deployment up: the Cloudflare account, the D1 database, all seventeen configuration values, the payment processor keys, the site list, the org's legal identity.
 
 ## Get started
 

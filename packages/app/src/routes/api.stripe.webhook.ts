@@ -90,7 +90,7 @@ function methodNotAllowed(method: string): Response {
 	return Response.json(
 		{
 			message: `This endpoint takes a Stripe delivery by POST. ${method} is not a method it answers.`,
-			fix: 'Point the endpoint in the Stripe dashboard at this address. The console (`better-giving open`) is where this deployment registers it.'
+			fix: 'Stripe posts deliveries here. Saving Stripe’s keys in the console (`better-giving start`, under Donation processor) registers this address as the endpoint.'
 		},
 		{ status: 405, headers: { allow: 'POST', 'cache-control': 'no-store' } }
 	);

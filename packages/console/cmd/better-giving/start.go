@@ -71,11 +71,19 @@ import (
 // read that did not land, an envelope naming no version — is a deployment this console cannot call
 // current, and the operator answers for the upload at ./carryingOver's door.
 //
-// **that door is where the migration is named, and there is no flag that skips it.** what a deploy
-// would apply to the live database is read and named and answered before anything reaches
-// cloudflare, and this is the only press that reaches it: ./update.go installs a console and
-// deploys nothing. a door the operator shut still opens the console, because the deployment is
-// standing and that is what they typed this command for.
+// **that door is where the update is agreed to, and there is no flag that skips it.** the operator
+// answers for the update and never for its migrations: what it would apply to the live database is
+// read before anything reaches cloudflare and applied as part of an update agreed to, in front of
+// the upload, and an update declined moves neither. this is the only press that reaches it:
+// ./update.go installs a console and deploys nothing. a door the operator shut still opens the
+// console, because the deployment is standing and that is what they typed this command for.
+//
+// **the console opens already connected, and every way to it connects in front of it.** the first
+// run's chain connects as its last stage; the up-to-date path, a door the operator shut and a carry
+// that landed are all a deployment standing with no session this run wrote, so each connects past
+// its own acts (./connecting). the session replaces any other console's on that deployment and
+// running this command is the agreement to it, so it is said as a line and asked as nothing. a
+// connect that did not land ends the run: every console screen is a reading taken over it.
 //
 // **what a first run never landed is finished on the way to the console, whichever way that door
 // was answered.** a run that stopped past the deploy left a deployment standing, so every press
@@ -103,9 +111,9 @@ func start(args []string, to, wrong io.Writer) error {
 	// only where a console another one installed still reads a release past its own.
 	//
 	// **the line is held rather than printed here, because the paths put it in three places.** the
-	// confirm erases the visible screen before it names what it would apply
+	// confirm erases the visible screen before it draws its question
 	// (../../internal/terminal/clear.go), so a line printed above this run is gone from the screen
-	// at the moment the operator answers the one-way door: the carry hands it to the door and it is
+	// at the moment the operator answers the carry door: the carry hands it to the door and it is
 	// drawn over it. the path that stands a deployment up has no door to draw it over and says it in
 	// front of the chain, and a run whose console question could not be put has already said it
 	// where that question was (./main.go's aboutTheConsole).
@@ -187,7 +195,7 @@ func start(args []string, to, wrong io.Writer) error {
 					},
 					func(at terminal.Deployment, read effects.Migrations) terminal.Confirmation {
 						return terminal.ConfirmCarry(
-							os.Stdin, os.Stdout, at, version, read.Names, read.Ahead, newerConsole)
+							os.Stdin, os.Stdout, at, version, read.Ahead, newerConsole)
 					},
 					func() (effects.Carried, bool) {
 						return carryAt(ctx, effects.Carrying{
@@ -203,8 +211,13 @@ func start(args []string, to, wrong io.Writer) error {
 					},
 					func() string { return nowLevel(standing) },
 					func() string { return finishAt(ctx, door, credential, records, in) },
+					func() error {
+						return connecting(to, func() deployment.Connection {
+							return effects.Connect(ctx, door, credential, records)
+						}, records.Dir())
+					},
 					func(bound net.Listener, named bool) error {
-						return serve(records, flow, *port, !*noOpen, to, bound, !named)
+						return serve(records, store, flow, *port, !*noOpen, to, bound, !named)
 					})
 			}
 			// **the wait stands until this pass's last read and is given up in front of the first
@@ -246,7 +259,7 @@ func start(args []string, to, wrong io.Writer) error {
 				},
 				func() string { return workingAt(ctx, up.Origin()) },
 				func(bound net.Listener) error {
-					return serve(records, flow, *port, !*noOpen, to, bound, true)
+					return serve(records, store, flow, *port, !*noOpen, to, bound, true)
 				})
 		})
 }
@@ -434,7 +447,7 @@ func standingUp(
 //
 // `settled` gives up the wait standing over this pass's reads (../../internal/terminal's
 // ReadingTheDeployment), and it is called in front of the first thing either path here draws: the
-// door erases the visible screen before it names what it would apply, so a spinner still turning is
+// door erases the visible screen before it draws its question, so a spinner still turning is
 // written into the screen the operator answers on, and the up-to-date path's two lines would be
 // drawn over one.
 //
@@ -446,6 +459,12 @@ func standingUp(
 // the door (./finishing): the carry may be the press that brings the deployment level in the first
 // place. it is one call over both paths because there is one rule — the console is served past it
 // whatever the door answered — and its line is drawn under whatever the pass has already said.
+//
+// `connect` is this console's session written to the deployment, last in front of the console on
+// every way to it, for ./connecting's reason: the first run's chain connects as its last stage, and
+// a deployment this pass found standing holds no session this run wrote. a connect that did not land
+// ends the run with the port given back, and a carry a stop waited out reaches no console and so
+// connects nothing.
 func catchingUp(
 	to io.Writer,
 	onto terminal.Deployment,
@@ -459,6 +478,7 @@ func catchingUp(
 	running func() (effects.Carried, bool),
 	where func() string,
 	finish func() string,
+	connect func() error,
 	console func(net.Listener, bool) error,
 ) error {
 	// whether the account is already on the screen the console's own line lands under. the door
@@ -487,6 +507,9 @@ func catchingUp(
 			return serving, err
 		}
 		terminal.Say(to, finish())
+		if err := connect(); err != nil {
+			return false, err
+		}
 		return true, nil
 	}, func(bound net.Listener) error { return console(bound, named) })
 }
@@ -1021,12 +1044,12 @@ var aheadOfThisBinary = "this deployment's database records migrations this bina
 
 // what a run nobody is standing at is answered with, which is the rule this whole command keeps:
 // this console is interactive or it does not run.
-var noOneAtTheDoor = "this console asks before it applies a migration to the live database, so " +
-	"nothing was applied and nothing was uploaded: run " + terminal.Cmd("start") + " at a " +
+var noOneAtTheDoor = "this console asks before it updates your deployment and couldn't ask here, " +
+	"so nothing was applied and nothing was uploaded: run " + terminal.Cmd("start") + " at a " +
 	"terminal the question can be answered at"
 
-// the order a carry onto a deployment already standing runs in: what a deploy would apply read and
-// named, the door answered, the carry itself, and where it left the deployment.
+// the order a carry onto a deployment already standing runs in: what a deploy would apply read, the
+// door answered, the carry itself, and where it left the deployment.
 //
 // **it is its own function because the order is the thing able to be wrong**, which is
 // ./standingUp's argument for the identical arrangement: every act is a value the caller binds and
@@ -1115,19 +1138,19 @@ const (
 // operator shut is a press not made (../../internal/terminal/prompt.go) and has a line and no
 // error — and it has a line at all because a run that went on to the console saying nothing would
 // read as a deployment now carrying this release. a door that was never put to anybody is the
-// other one: the list was named, nobody was there to answer it, and a command that ended cleanly
-// on that would be reporting a decision nobody made.
+// other one: the deployment was named, nobody was there to answer it, and a command that ended
+// cleanly on that would be reporting a decision nobody made.
 //
 // **one answer opens the door and every other shuts it, the ones nobody named included.**
 // ../../internal/terminal's Confirmation is a bare string and nothing checks that this switch names
-// every value of it, so a default that went on would be a migration applied on an answer this
-// console could not read — and that one cannot be undone (CLAUDE.md).
+// every value of it, so a default that went on would be an update, and the migrations in it, run
+// on an answer this console could not read — and a migration cannot be undone (CLAUDE.md).
 func atTheDoor(answered terminal.Confirmation) (said string, went doorway, err error) {
 	switch answered {
 	case terminal.Confirmed:
 		return "", through, nil
 	case terminal.Declined:
-		return "the database was left alone and nothing was uploaded", shut, nil
+		return "your deployment was left on its current version and nothing was uploaded", shut, nil
 	case terminal.Unattended:
 		return "", shut, errors.New(noOneAtTheDoor)
 	case terminal.Ahead:
@@ -1275,6 +1298,28 @@ func finishAt(
 				version, records))
 		},
 		func() string { return workingAt(ctx, effects.OwnAddress(ctx, door).Origin()) })
+}
+
+// this console connected to the deployment, said in front of the connect and ended on where it did not
+// land.
+//
+// **the console opens already connected, and nothing on its page connects it.** every screen is a
+// reading taken over the session this writes, so a console served without one is a page of
+// failures — and connecting there would be a tab opening that signs another console out with nobody
+// having pressed anything (../../internal/deployment/connect.go).
+//
+// **running `start` is the agreement, so what is said is a line and never a question.** the session
+// replaces any other console's on the deployment, and the line says so while it happens
+// (../../internal/terminal/connect.go).
+//
+// `dir` is this machine's state folder, which a session written and not kept is repaired through.
+func connecting(to io.Writer, connect func() deployment.Connection, dir string) error {
+	terminal.Say(to, terminal.ReplacingOtherConsoles)
+	made := connect()
+	if made.Kind == deployment.Connected {
+		return nil
+	}
+	return reported(terminal.Unconnected(made.Kind, dir), made.Detail)
 }
 
 // runs the carry while the ledger holds the terminal, and answers how it ended and whether a signal

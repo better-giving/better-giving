@@ -1,8 +1,8 @@
 // Command better-giving is the operator console: one binary holding the ui, run on the operator's
 // own machine against a deployment that already exists.
 //
-// **it serves nothing to anybody else and is never deployed.** `start` and `open` both end by
-// binding the loopback address and opening a tab at it; packages/console/internal/server states what
+// **it serves nothing to anybody else and is never deployed.** `start` ends by binding the
+// loopback address and opening a tab at a console already connected to the deployment; packages/console/internal/server states what
 // that server refuses and why.
 // packages/console-ui/src/never-deployed.spec.ts holds the absences on the react side.
 package main
@@ -49,7 +49,7 @@ var (
 	commit  = "none"
 )
 
-// where `open` listens unless told otherwise.
+// where `start` serves the console unless told otherwise.
 //
 // below the four vite dev servers this repository runs (5321 the app's, 5322 the console's ui,
 // 5323 the gallery's, 5324 the form's), so a contributor with any of them up meets no collision.
@@ -85,7 +85,7 @@ var errSaid = errors.New("this command has already said what went wrong")
 // they hold (../../internal/terminal/prompt.go); the ledger draws over that screen and un-draws it
 // again, taking the line it settles on and the diagnostic beside it with it
 // (../../internal/terminal/ledger.go); the confirm in front of the one-way door erases the
-// screen before it names what it would apply (../../internal/terminal/confirm.go); and the waits
+// screen before it draws its question (../../internal/terminal/confirm.go); and the waits
 // draw a spinner over the reads a screen stands on and un-draw it again — the ones behind the
 // account picker's marks, and the ones between the account being picked and the screen after it
 // (../../internal/terminal/waiting.go). none of the four is a thing an arbitrary writer could be, so
@@ -104,8 +104,6 @@ func run(args []string, to, wrong io.Writer) error {
 		return start(args[1:], to, wrong)
 	case "update":
 		return update(args[1:], to, wrong)
-	case "open":
-		return open(args[1:], to, wrong)
 	case "login":
 		return login(args[1:], to, wrong)
 	case "logout":
@@ -128,7 +126,6 @@ var commands = []struct{ takes, does string }{
 	{"start [--port N] [--no-open]",
 		"put this release on your deployment, then open the console at it"},
 	{"update", "install the newest console on this machine"},
-	{"open [--port N] [--no-open]", "serve the console and open it in a browser"},
 	{"login", "sign in to Cloudflare, and choose the account this machine operates"},
 	{"logout", "give up the sign-in this machine holds"},
 	{"version", "what this binary is, and what it was baked for"},
@@ -172,11 +169,8 @@ type options struct {
 var (
 	startTakes = terminal.Cmd("start") + " puts this release on your deployment and opens the " +
 		"console at it: it stands one up where there is none, and offers to carry this release " +
-		"onto one that is already behind. Before it carries it names every migration it would " +
-		"apply to the live database and waits for your answer, and there is no flag that answers " +
-		"for you: a migration cannot be undone. It takes:"
-	openTakes = terminal.Cmd("open") + " serves the console against the deployment you already " +
-		"have. It takes:"
+		"onto one that is already behind, and waits for your answer before it updates: no flag " +
+		"answers for you. It takes:"
 	updateTakes = terminal.Cmd("update") + " takes no options. It installs the newest console on " +
 		"this machine and deploys nothing: what puts a release on your deployment is " +
 		terminal.Cmd("start") + "."
@@ -233,56 +227,9 @@ func (taken *options) say(to io.Writer) {
 	taken.flags.PrintDefaults()
 }
 
-// what an operator with nothing deployed is told, which is never a console.
-var nothingToOpen = "nothing is deployed under the name " + release.Baked.Name +
-	" in this account, so there is nothing for the console to read: run " + terminal.Cmd("start")
-
-// the console served against the deployment this machine operates.
-//
-// **it refuses only where it is certain nothing is deployed**: a sign-in held, an account chosen,
-// and cloudflare saying plainly that no worker of this deployment's name is in it. every screen
-// under the bar is a reading of that worker, so what would be served is a page about nothing.
-//
-// **a read that did not land still serves, and that is the opposite of ./start.go.** that press
-// refuses there because a remote migration is behind it and a door that does not close again is not
-// one to walk through blind. this command puts nothing on the account
-// at all, and the console is the screen an operator opens when something is wrong — so refusing on
-// a cloudflare that would not answer would shut them out of the very thing that explains it.
-//
-// **signed out, or no account chosen, serves too.** the connect panel is what the page draws then,
-// and reaching it is the whole reason for opening the console at that point.
-func open(args []string, to, wrong io.Writer) error {
-	taken := taking("open", openTakes)
-	port := taken.flags.Int("port", defaultPort, "the loopback port to serve on")
-	noOpen := taken.flags.Bool("no-open", false, "serve without opening a browser")
-	if on, err := taken.read(args, to, wrong); err != nil || !on {
-		return err
-	}
-
-	records, err := state.Open()
-	if err != nil {
-		return noStore(err)
-	}
-	flow := signIn(records)
-	// a console closed mid-sign-in leaves no listener on the callback port behind.
-	defer flow.Stop()
-
-	ctx := context.Background()
-	credential := flow.Credential(ctx)
-	if certainlyNotDeployed(ctx, credential, account.New(records).Chosen(), cf.APIGet(credential)) {
-		return errors.New(nothingToOpen)
-	}
-
-	// beside the address rather than at the top of the command: this one creates nothing and there
-	// is nothing for the operator to stop, so the line is worth most standing next to the address
-	// they are left looking at for the life of the run.
-	sayNewer(ctx, to, releases.Source())
-	return serve(records, flow, *port, !*noOpen, to, nil, true)
-}
-
 // what a machine with nowhere to keep what this console remembers is told.
 //
-// **one sentence for all five commands**, because it is one state: the account this machine
+// **one sentence for all four commands**, because it is one state: the account this machine
 // operates, the Cloudflare sign-in and the session held open to the deployment all live in that
 // directory, so a machine that has none is one no command here can run on.
 //
@@ -295,49 +242,10 @@ func noStore(err error) error {
 		"it may write to, then run the command again: %v", terminal.Code(state.HomeVar), err)
 }
 
-// whether cloudflare says plainly that no worker of this deployment's name is in the account.
-//
-// **anything short of that definite no is false**, which is the whole of open's rule above: a
-// machine holding no sign-in, one with no account chosen, and a read cloudflare did not answer are
-// all consoles that go on being served.
-// `reads` is bound to `credential` by the caller rather than taken from it here, which is what lets
-// a case answer for an account without a cloudflare (./main_test.go).
-func certainlyNotDeployed(
-	ctx context.Context,
-	credential cf.Credential,
-	chosen *account.Choice,
-	reads cf.Get,
-) bool {
-	if credential.Kind == cf.NoCredential || chosen == nil {
-		return false
-	}
-
-	standing := effects.OwnAddress(ctx, deployment.Door{
-		AccountID:  chosen.Account.ID,
-		WorkerName: release.Baked.Name,
-		Get:        reads,
-	})
-	return standing.Kind == deployment.NotDeployed
-}
-
-// names a console newer than this one, where there is one.
-//
-// **it can only print.** ../../internal/update bounds the read and answers every way it could go
-// wrong with a value, so there is no path out of here that ends a command or holds it long: a
-// github that is not answering is worth less than the command the operator typed.
-//
-// **it is `open`'s alone.** `start` puts the question and hands the run to what it installs
-// (./carried), because a binary carries the bundle from its own bake and no other, and `update` is
-// that install as a press of its own (./update.go); `open` deploys nothing, so naming where the
-// newer console comes from is the whole of what it can do about one.
-func sayNewer(ctx context.Context, to io.Writer, get cf.Get) {
-	terminal.Say(to, newer(releases.Latest(ctx, get, version)))
-}
-
-// the same line as a value, or empty where this console is the current one.
+// the line naming a console newer than this one, or empty where this console is the current one.
 //
 // **it is a value because one caller does not print it at all.** the confirm in front of the
-// one-way door erases the visible screen before it names what it would apply
+// carry erases the visible screen before it draws its question
 // (../../internal/terminal/confirm.go), so a line printed ahead of that call is off the screen at
 // the moment the operator answers — which is the moment it exists to inform. that caller draws it
 // over the door instead (./start.go's carryingOver).
@@ -345,7 +253,7 @@ func sayNewer(ctx context.Context, to io.Writer, get cf.Get) {
 // **`start` reaches it in the two cases where the question is over**: a console another console
 // installed and ran, still reading a release past its own (./nameIt), and a question this run could
 // not put to anybody. every other newer reading leaves this process, is declined, or ends the
-// command (./aboutTheConsole). `open` deploys nothing and draws it whenever there is one.
+// command (./aboutTheConsole).
 func newer(read releases.Read) string {
 	if read.Kind != releases.Newer {
 		return ""
@@ -508,17 +416,16 @@ func asNewer(console string, fix terminal.Repair) error {
 
 // serves the console on the loopback port and holds this process there until the operator stops it.
 //
-// One statement of what serving is, because two commands end in it: `open` is this and nothing
-// else, and `start` is this once the deployment it opens on carries this release — stood up by that
-// command, or found already standing and carried onto. The state directory and the sign-in are
-// handed in rather than opened again, so one run holds one of each.
+// It is where `start` ends once the deployment it opens on is standing and this console is
+// connected to it (./start.go's connecting). The state directory, the account store and the sign-in
+// are handed in rather than opened again, so one run holds one of each — and an account this machine
+// could not write down, held by that store for this run alone, is still the account this server
+// answers under.
 //
-// `taken` is a loopback listener the caller already holds, and nil is this run taking one here.
-// `start` takes its own in front of the deploy, on both the path that stands a deployment up and
-// the path that carries this release onto one (./start.go's beforeTheDeploy), because a port
-// something else is answering on is a failure that belongs in front of the one-way door rather than
-// on the far side of it; every other way in has nothing to deploy and takes the port at the moment
-// it serves.
+// `taken` is the loopback listener `start` claimed in front of the deploy, on both the path that
+// stands a deployment up and the path that carries this release onto one (./start.go's
+// beforeTheDeploy), because a port something else is answering on is a failure that belongs in
+// front of the one-way door rather than on the far side of it.
 //
 // `naming` is whether this run's own line says whose cloudflare account the console is operating.
 // False is the one way in that has just said it: a carry draws the account at the head of the
@@ -527,6 +434,7 @@ func asNewer(console string, fix terminal.Repair) error {
 // whether a door was drawn at all.
 func serve(
 	records state.Store,
+	accounts *account.Store,
 	flow *oauth.Flow,
 	port int,
 	opening bool,
@@ -547,7 +455,7 @@ func serve(
 		Version:  version,
 		Commit:   commit,
 		Flow:     flow,
-		Accounts: account.New(records),
+		Accounts: accounts,
 		Records:  records,
 		Presses:  presses,
 		Close:    func() { once.Do(func() { close(closed) }) },
@@ -563,24 +471,15 @@ func serve(
 		browser = nil
 	}
 	whose := ""
-	if held := account.New(records).Chosen(); naming && held != nil {
+	if held := accounts.Chosen(); naming && held != nil {
 		whose = held.Account.Name
 	}
-	bound := taken
-	if bound == nil {
-		var err error
-		if bound, err = bind(to, listening.Addr, whose, browser); err != nil {
-			return err
-		}
-	} else {
-		saying(to, bound, whose, browser)
-	}
+	saying(to, taken, whose, browser)
 
 	served := make(chan error, 1)
-	// Serve and not ListenAndServe: the port is already this process's — taken above, or handed in
-	// by a caller that took it earlier still — so that nothing claims the console is there until it
-	// is.
-	go func() { served <- listening.Serve(bound) }()
+	// Serve and not ListenAndServe: the port is already this process's, handed in by a caller that
+	// took it in front of the deploy, so that nothing claims the console is there until it is.
+	go func() { served <- listening.Serve(taken) }()
 
 	select {
 	case err := <-served:
@@ -606,47 +505,15 @@ func serve(
 	}
 }
 
-// takes the address this run serves on, and says where the console is once it is this process's.
-//
-// **the order is the whole of this function.** the address and the browser are this console's claim
-// that it is there, so neither is spent until this process holds the port: a port something else is
-// answering on would otherwise be that claim above a raw go net string, with a tab opened at
-// whatever console is already there.
-//
-// **`at` is the address ../../internal/server's Listen states and this run spells none of its own.**
-// that package declares the loopback-only binding its Guard rests on, and a second spelling here
-// would be the live one with the declaration doing nothing.
-//
-// **what is said is read back off the listener rather than composed from `at`.** port 0 is the ask
-// for whatever port is free, so the number this run is answering on is the kernel's answer to it
-// and an address built from the ask names nothing at all.
-//
-// **the account is named in this line rather than in one of its own.** it is remembered between
-// runs and drawn on no screen of a run that asks nothing, so `open` — which makes nothing — would
-// otherwise serve every screen of a console without ever saying whose account those screens are
-// about.
-//
-// **`whose` is empty where nothing is to be said, which is two different states.** this machine has
-// chosen no account, which `open` serves on purpose; or the screen this line lands under has just
-// named it, which is the carry door (./serve's `naming`). the line is the same either way — the
-// account said once on a screen or not at all.
-//
-// `openAt` is nil where the run was told not to open a browser, which is the same claim without the
-// tab.
-func bind(to io.Writer, at, whose string, openAt func(string)) (net.Listener, error) {
-	bound, err := claim(at)
-	if err != nil {
-		return nil, err
-	}
-	saying(to, bound, whose, openAt)
-	return bound, nil
-}
-
-// takes the port and nothing else, which is what a caller that is not about to serve on it wants.
+// takes the port and nothing else, which is the first half of a console being there.
 //
 // ./start.go takes its listener in front of the deploy chain and hands it to ./serve minutes later,
 // so the claim and the saying are two acts: the address said at the moment the port is taken would
 // be a console that is not there for the length of a deploy.
+//
+// **`at` is the address ../../internal/server's Listen states and this run spells none of its own.**
+// that package declares the loopback-only binding its Guard rests on, and a second spelling here
+// would be the live one with the declaration doing nothing.
 func claim(at string) (net.Listener, error) {
 	bound, err := net.Listen("tcp", at)
 	if err != nil {
@@ -656,6 +523,21 @@ func claim(at string) (net.Listener, error) {
 }
 
 // says where the console is, once this process holds the port it is answering on.
+//
+// **the address and the browser are this console's claim that it is there**, so neither is spent
+// until this process holds the port: a port something else is answering on would otherwise be that
+// claim above a raw go net string, with a tab opened at whatever console is already there.
+//
+// **what is said is read back off the listener rather than composed from the ask.** port 0 is the
+// ask for whatever port is free, so the number this run is answering on is the kernel's answer to it
+// and an address built from the ask names nothing at all.
+//
+// **the account is named in this line rather than in one of its own**, and `whose` is empty where
+// the screen this line lands under has just named it, which is the carry door (./serve's `naming`):
+// the account said once on a screen or not at all.
+//
+// `openAt` is nil where the run was told not to open a browser, which is the same claim without the
+// tab.
 func saying(to io.Writer, bound net.Listener, whose string, openAt func(string)) {
 	where := "http://" + bound.Addr().String()
 	operating := ""
@@ -701,11 +583,11 @@ func endRun(to io.Writer, listening *http.Server, presses *server.Presses) error
 
 // what a stop leaves behind, which is a deployment this process was never holding up.
 //
-// the relationship rather than a claim that a deployment is there: `open` serves a console on a
-// machine that could not read the account at all (./open), so a line asserting a standing
-// deployment would be a reading this run never took.
+// the relationship rather than a claim that a deployment is there: the run that served this console
+// read it minutes or days ago, and a line asserting it is standing now would be a reading this stop
+// never took.
 var stillUp = "your deployment runs on Cloudflare and stopping this console left it alone. " +
-	"run " + terminal.Cmd("open") + " to bring the console back"
+	"run " + terminal.Cmd("start") + " to bring the console back"
 
 // how often a stop asks again whether the press it is waiting for has ended.
 const waited = 500 * time.Millisecond
@@ -753,7 +635,7 @@ func signIn(records state.Store) *oauth.Flow {
 // **the browser is opened only where there is a sign-in to take**, which is ./insteadOfABrowser: a
 // credential in the environment is one no browser sign-in could replace, and a sign-in this machine
 // already holds is one there is no reason to take again. either way the picker is the whole of what
-// this press still does, which is what the connect panel sends an operator here for.
+// this press still does.
 //
 // **it says what it recorded on the way out.** the picker erases the visible screen
 // (../../internal/terminal/clear.go) and the sign-in's own line is printed above it, so a press
@@ -802,8 +684,8 @@ func login(args []string, to, wrong io.Writer) error {
 // operator told it worked and every call after it, the account list included, made as the token.
 // its Out refuses the same case, names the same variable, and this follows it.
 //
-// **a sign-in this machine already holds is not taken again either.** the connect panel sends an
-// operator here to record an account, and re-authorising in a browser to change one remembered
+// **a sign-in this machine already holds is not taken again either.** an operator comes here to
+// record an account, and re-authorising in a browser to change one remembered
 // value is bookkeeping this console can do without. what changes which identity is held is
 // `logout`, and that is what the line names.
 //

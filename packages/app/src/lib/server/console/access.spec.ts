@@ -129,7 +129,7 @@ describe('a deployment nobody has connected a console to', () => {
 		const access = consoleAccess({}, bearer(LIVE_TOKEN), NOW);
 		expect(access).toMatchObject({ ok: false, refusal: { status: 401, error: 'no_session' } });
 		expect(access.ok === false && access.refusal.message).toContain('CONSOLE_TOKEN');
-		expect(access.ok === false && access.refusal.fix).toContain('better-giving open');
+		expect(access.ok === false && access.refusal.fix).toContain('better-giving start');
 	});
 
 	/**
@@ -168,7 +168,7 @@ describe('a session value nobody minted', () => {
 	])('is refused when CONSOLE_TOKEN is $what', ({ value }) => {
 		const access = consoleAccess({ CONSOLE_TOKEN: value }, bearer(LIVE_TOKEN), NOW);
 		expect(access).toMatchObject({ ok: false, refusal: { error: 'session_malformed' } });
-		expect(access.ok === false && access.refusal.fix).toContain('better-giving open');
+		expect(access.ok === false && access.refusal.fix).toContain('better-giving start');
 	});
 
 	/** the shape is right and there is nothing in it: `bg1.1.test` is not a credential. */

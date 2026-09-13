@@ -148,7 +148,7 @@ const INVITE_REFUSALS = {
  * because that is where this deployment's mail settings are typed and where the send test is.
  */
 const SEND_FAILED =
-	'The invitation could not be sent. Open the console (`better-giving open`) and check this ' +
+	'The invitation could not be sent. Open the console (`better-giving start`) and check this ' +
 	'deployment’s mail settings, then send it again.';
 
 /**
@@ -168,7 +168,7 @@ const NOT_THE_DEPLOYER =
 /** what a body aimed at the deployer's own row is answered with, for the same reason. */
 const STAFF_KEPT =
 	'The deployer is the deployment rather than a member and cannot be removed. The sign-in ' +
-	'password is set on the console (`better-giving open`).';
+	'password is set on the console (`better-giving start`).';
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];

@@ -42,7 +42,7 @@ export async function renderUncollectedNotice(input: UncollectedInput): Promise<
 			detail:
 				'No notice was written: the organisation has no registered name saved, and a donor ' +
 				'cannot be told a payment failed by somebody they cannot identify. Open the console ' +
-				'(`better-giving open`) and fill in your organisation details under Organisation.'
+				'(`better-giving start`) and fill in your organisation details under Organisation.'
 		};
 	}
 

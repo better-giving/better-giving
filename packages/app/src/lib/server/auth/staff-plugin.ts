@@ -194,7 +194,7 @@ async function upsertStaffUser(db: Db): Promise<AuthUser> {
 		throw new APIError('INTERNAL_SERVER_ERROR', {
 			code: 'STAFF_USER_UPSERT_FAILED',
 			message:
-				'Signed in, but the auth_user row could not be written. Check that migrations have been applied to this database: the console (`better-giving open`) applies them to the deployed D1 when it updates this deployment, and `pnpm wrangler d1 migrations apply DB --local` applies them to a local one.'
+				'Signed in, but the auth_user row could not be written. Check that migrations have been applied to this database: the console (`better-giving start`) applies them to the deployed D1 when it updates this deployment, and `pnpm wrangler d1 migrations apply DB --local` applies them to a local one.'
 		});
 	}
 	return user;

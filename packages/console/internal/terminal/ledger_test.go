@@ -568,7 +568,6 @@ func TestEveryPressIsSpelledTheOneWay(t *testing.T) {
 		{"start", "better-giving start"},
 		{"update", "better-giving update"},
 		{"login", "better-giving login"},
-		{"open", "better-giving open"},
 	} {
 		if drawn := toneless.ReplaceAllString(Cmd(one.sub), ""); drawn != one.said {
 			t.Errorf("Cmd(%q) = %q, want %q", one.sub, drawn, one.said)

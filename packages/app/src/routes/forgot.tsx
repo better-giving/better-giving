@@ -116,7 +116,7 @@ const SENT =
  */
 const UNAVAILABLE =
 	'A reset link could not be sent: something is wrong with this deployment rather than with ' +
-	'what you typed. Ask whoever runs it to check the console (`better-giving open`); the exact ' +
+	'what you typed. Ask whoever runs it to check the console (`better-giving start`); the exact ' +
 	'cause is in the deployment’s logs, which the console does not read.';
 
 /**
@@ -127,7 +127,7 @@ const UNAVAILABLE =
  */
 const NOT_MIGRATED =
 	'A reset link could not be sent: this deployment’s database has not been set up. Ask whoever ' +
-	'runs it to open the console (`better-giving open`) and update the deployment.';
+	'runs it to open the console (`better-giving start`) and update the deployment.';
 
 export const links = operatorLinks;
 

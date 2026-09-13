@@ -409,6 +409,30 @@ func TestTheEndpointIsSpelledTheWayBothEndsSpellIt(t *testing.T) {
 	}
 }
 
+// the PayPal listener's spelling, against the module both ends of it read.
+//
+// gated for the reason the Stripe endpoint's is: the console registers the listener and the
+// deployment serves it and reads the subscription back, so a path or an event list that differs is a
+// listener that reads as absent or incomplete to the reader it was registered for.
+func TestTheListenerIsSpelledTheWayBothEndsSpellIt(t *testing.T) {
+	source := read(t, "packages/operator/src/paypal/webhook-listener.ts")
+	if stated := quoted(t, source, "PAYPAL_WEBHOOK_PATH"); stated != PaypalWebhookPath {
+		t.Errorf("PAYPAL_WEBHOOK_PATH states %q and this binary holds %q", stated, PaypalWebhookPath)
+	}
+
+	stated := []string{}
+	for _, constant := range []string{
+		"SETTLEMENT_EVENT_TYPES",
+		"RECURRING_COLLECTION_EVENT_TYPES",
+		"RECURRING_COMMITMENT_EVENT_TYPES",
+	} {
+		stated = append(stated, namesIn(t, source, constant)...)
+	}
+	if strings.Join(stated, ",") != strings.Join(PaypalEventTypes, ",") {
+		t.Errorf("the listener subscribes to %v and this binary holds %v", stated, PaypalEventTypes)
+	}
+}
+
 // the stamp's key, against the module both ends read it from.
 //
 // The chain stamps an endpoint's fingerprint under it at creation and the deployment compares its

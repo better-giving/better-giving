@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { consoleVersion, levelWallets } from './client';
+import { consoleVersion, levelWallets, startStripeSetup } from './client';
 
 // what the page does with each way the binary answers a press.
 //
@@ -50,6 +50,28 @@ describe('the release this binary was built as', () => {
 		answering(200, { version: 41, commit: null });
 
 		await expect(consoleVersion()).resolves.toEqual({ version: '', commit: '' });
+	});
+});
+
+describe('the press that sets stripe up from the two keys', () => {
+	const keys = { secret: 'sk_live_x', publishable: 'pk_live_x' };
+
+	it('answers a run the binary started as started', async () => {
+		answering(200, { run: { kind: 'running' } });
+
+		await expect(startStripeSetup(keys)).resolves.toEqual({
+			started: true,
+			run: { kind: 'running' }
+		});
+	});
+
+	it('answers a write the binary could not make as unwritten rather than as a run', async () => {
+		// a machine holding no cloudflare sign-in gets the values door's own body back at 200, and
+		// no run began, so there is nothing to poll.
+		const nowhere = { kind: 'nowhere', address: { kind: 'no-credential', detail: '' } };
+		answering(200, nowhere);
+
+		await expect(startStripeSetup(keys)).resolves.toEqual({ started: false, unwritten: nowhere });
 	});
 });
 

@@ -30,6 +30,7 @@ import { REACHED_STRIPE, pressStopped } from './press-stopped';
 import { Said } from './said';
 import { refusalIn, secretTrouble } from './secret-trouble';
 import { heldValues, withheldAmong } from './held-values';
+import type { PaypalPress } from './paypal-section';
 import { PaypalSection } from './paypal-section';
 import {
 	configuredStanding,
@@ -44,7 +45,6 @@ import {
 	recurringRows,
 	type RecurringRow
 } from './recurring-rows';
-import type { GroupReport } from './secret-group-form';
 import { PAYMENTS_GROUP, SECRET_GROUPS, MINTED_BY_CONSOLE, isMasked } from './secret-groups';
 import { FREE_INTENT, WithheldValues } from './withheld-values';
 import type {
@@ -112,9 +112,8 @@ import { linkStanding, walletHostLines, walletRows } from './wallet-rows';
 // them to.** the endpoint, the events it is subscribed to and the secret that proves a delivery came
 // from Stripe are all things the press establishes from the two keys, so none of them is a row, a
 // reading or a repair press here. what an operator is told about them is one line in the confirm, at
-// the moment it changes whether they press. the other processor is the opposite and cannot be made
-// to be this one: this release registers no endpoint on it, so the operator registers one by hand
-// and the section says where (./paypal-section.tsx).
+// the moment it changes whether they press. the other processor's section is set up the same way,
+// by one press over its pair (./paypal-section.tsx).
 //
 // **the boxes arrive holding what the deployment holds.** both keys are plain vars and the account
 // hands each value back (`DEPLOY_VARS` in packages/operator/src/deploy-split.ts), so an operator
@@ -409,18 +408,18 @@ export type PaymentsFoldProps = {
 	/** the setup run the binary is holding, as the page load read it. */
 	run: StripeRunRead | null;
 	/**
-	 * how the press that takes the two credentials off the deployment went, or `null`.
+	 * how a press over the two credentials answered in one call, or `null`.
 	 *
-	 * only the removal answers here. the other two acts are read a stage at a time off the run
-	 * above, so this carries the one act that is a single call.
+	 * the removal answers here, and so does a set-up press that began no run because the binary could
+	 * not write at all. the acts that did begin are read a stage at a time off the run above.
 	 */
 	removed: VarsWritten | null;
 	/** how the last press that frees a value held in a form nothing can read back went, or `null`. */
 	freed: VarsWritten | null;
 	/** how the last repeating-gifts press went, or `null`. */
 	provision: RecurringSetup | null;
-	/** how the last press over a group of credentials went, or `null` (./secret-group-form.tsx). */
-	secrets: GroupReport | null;
+	/** PayPal's set-up press and the run it started (./paypal-section.tsx). */
+	paypal: PaypalPress;
 	/** how the last press of PayPal's charity-rate switch went, or `null` (./paypal-charity.ts). */
 	charity: VarsWritten | null;
 	/**
@@ -452,7 +451,7 @@ export function PaymentsFold({
 	removed,
 	freed,
 	provision,
-	secrets,
+	paypal,
 	charity,
 	wallets,
 	busy,
@@ -1125,13 +1124,19 @@ export function PaymentsFold({
 		return (
 			<>
 				<p className="adm-prose">
-					{read.kind === 'refused'
-						? `Cloudflare won't tell this sign-in what ${accountName} is holding.`
-						: read.kind === 'no-credential'
-							? "This machine isn't signed in to Cloudflare any more, so nothing here could be read. Reload this page to sign in again."
-							: read.kind === 'unreachable'
-								? "Cloudflare didn't answer, so nothing was found out either way."
-								: "Cloudflare answered in a way this console couldn't read."}
+					{read.kind === 'refused' ? (
+						`Cloudflare won't tell this sign-in what ${accountName} is holding.`
+					) : read.kind === 'no-credential' ? (
+						<>
+							This machine isn&rsquo;t signed in to Cloudflare any more, so nothing here could be
+							read. Close the console and run <InlineCode>better-giving start</InlineCode> again to
+							sign in.
+						</>
+					) : read.kind === 'unreachable' ? (
+						"Cloudflare didn't answer, so nothing was found out either way."
+					) : (
+						"Cloudflare answered in a way this console couldn't read."
+					)}
 				</p>
 				<Said answer={read} />
 			</>
@@ -2424,11 +2429,14 @@ export function PaymentsFold({
 				payments={payments}
 				recurring={recurring}
 				values={heldValues(values.vars.vars)}
-				secrets={secrets}
+				reading={values.vars}
+				press={paypal}
 				charity={charity}
 				freed={freed}
 				trouble={wrote}
 				noAnswer={noAnswer}
+				workerName={workerName}
+				accountName={accountName}
 				busy={busy || working}
 				pending={pending}
 				revalidating={revalidating}

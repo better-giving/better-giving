@@ -50,23 +50,6 @@ export const configuredStanding = (entry: ProcessorPayments | null): ConfiguredP
 	entry?.state === 'configured' ? entry : null;
 
 /**
- * the endpoint this release registers on nobody's behalf: the deployment's own sentence about it,
- * and the address an operator points one at. `null` on every other arm.
- *
- * the two travel together because neither stands without the other — the sentence is what says
- * nothing is wrong, and the address is the whole of what an operator does about it. no hostname is
- * committed to this repository (CLAUDE.md), so this arm is the only place either surface ever
- * learns it.
- */
-export function unmanagedEndpoint(
-	entry: ProcessorPayments | null
-): { readonly detail: string; readonly address: string } | null {
-	const configured = configuredStanding(entry);
-	if (configured === null || configured.subscription.state !== 'unmanaged') return null;
-	return { detail: configured.subscription.detail, address: configured.subscription.address };
-}
-
-/**
  * the sentence over a rails ledger, or `null` where the rows already carry it.
  *
  * **two processors report `Approved` and it means two different things, so what is said over a

@@ -178,7 +178,7 @@ var ChainRows = []Row{
 // halves of `start` run it over different databases.** the chain's is one made seconds earlier
 // where every migration is part of standing it up; this one is a database in use, where a pending
 // migration changes records that are already there — which is the whole of what the operator is
-// waiting on and the whole of what they answered a confirm to allow (./ConfirmCarry).
+// waiting on, and part of the update they answered a confirm to allow (./ConfirmCarry).
 //
 // the password is not among them: this press stores nothing.
 var UpdateRows = []Row{

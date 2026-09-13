@@ -143,7 +143,7 @@ const WRONG_CURRENT = 'does not match your password';
  */
 const NOT_A_MEMBER =
 	'The deployer’s sign-in password is a deploy-time secret rather than an account on this ' +
-	'deployment, and is not changed here. Open the console (`better-giving open`) and set ' +
+	'deployment, and is not changed here. Open the console (`better-giving start`) and set ' +
 	'`ADMIN_PASSWORD`.';
 
 /**

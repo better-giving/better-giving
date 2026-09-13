@@ -5,15 +5,14 @@ import type { ReactNode } from 'react';
 
 // the one head this console draws, on every screen that has an identity to state.
 //
-// **it is two ends and nothing between them: who this machine is signed in as at the leading end,
-// and at the trailing end the one press this console offers.** what that press does differs by
-// screen: on ./connect-panel.tsx it acts on the identity across the strip from it, and on the
-// connected screen it ends the run this console is (../routes/_index.tsx). the strip's own
+// **it is two ends and nothing between them: the account this console is working in at the leading
+// end, and at the trailing end the one press this console offers**, which ends the run this console
+// is (../routes/_index.tsx). the strip's own
 // `space-between` is the whole of what holds them apart — neither end is drawn inside the other,
 // and there is no card around the pair.
 //
 // **the press is its mark and no word.** its `aria-label` is the whole of its name — `Close
-// console` on one screen, `Sign out of Cloudflare` on the other — and nothing stands in for the
+// console` — and nothing stands in for the
 // word it does not carry: no heading over it, no label beside it, no tooltip. what places it is
 // the one head it is ever drawn in, which carries one press and never two.
 //
@@ -27,11 +26,8 @@ import type { ReactNode } from 'react';
 // the account reads as a claim about the deployment rather than about the machine the console is
 // running on, and this strip is about the machine.
 //
-// **both surfaces draw it from here.** ../routes/_index.tsx stands it on
-// packages/operator/src/components/shell/BareShell.jsx's head slot and ./connect-panel.tsx stands
-// it in `PanelRoute`'s, and each of those slots is the same `.adm-head` band — so what differs
-// between the two screens is what the identity is, and nothing else. two copies is how the console
-// came to have two different heads in the first place.
+// ../routes/_index.tsx stands it on packages/operator/src/components/shell/BareShell.jsx's head
+// slot, which is the `.adm-head` band.
 
 /** the strip's two ends: the identity, and the press standing opposite it. */
 export function HeadIdentity({
@@ -39,29 +35,24 @@ export function HeadIdentity({
 	note,
 	control
 }: {
-	/** what the identity is called — an account's name, the address a sign-in is held under. */
+	/** what the identity is called — the account's name. */
 	name: ReactNode;
 	/** the id beside that name, where the name is not what anything is resolved by. */
 	note?: ReactNode;
-	/**
-	 * the one press at the trailing end. what it acts on is the screen's — the identity on one, the
-	 * run this console is on the other — and where it stands is this module's. `null` on a screen
-	 * that offers none.
-	 */
+	/** the one press at the trailing end, or `null` where none is offered. */
 	control: ReactNode;
 }): ReactNode {
 	return (
 		<>
 			{/* the leading end, and it is drawn whether or not it says anything: the strip stands its
 			    two children at its two ends, so an end that returned nothing would hand the press the
-			    leading one. cloudflare gives no address for some browser sign-ins, and empty this is a
-			    box of no size holding that end open. */}
+			    leading one. empty, this is a box of no size holding that end open. */}
 			<span className="adm-headstrip__who">
 				{name === null ? null : (
 					<>
 						{/* cloudflare's logo stands in front of the name, because what it names is whose
 						    account this is and the name never says the word: `Riverside Shelter's Account`
-						    and a bare email address are both silent about the company holding them. so it
+						    is silent about the company holding it. so it
 						    takes its label — packages/operator/src/components/status/Brand.jsx lets a logo
 						    go without one only where the company is already in the text it is drawn with,
 						    and this is not that. */}

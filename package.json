@@ -14,9 +14,7 @@
 		"bundle": "node scripts/pack-bundle.mjs",
 		"start": "sh scripts/console-start.sh",
 		"preview": "pnpm --filter @better-giving/app preview",
-		"console": "pnpm -w run --parallel \"/^console:(ui|api)$/\"",
-		"console:ui": "pnpm --filter @better-giving/console-ui dev",
-		"console:api": "cd packages/console && BETTER_GIVING_BUNDLE=bundle/worker-dev.tar.gz go run ./cmd/better-giving open --no-open --port 5325",
+		"console": "sh scripts/console.sh",
 
 		"gallery": "pnpm --filter @better-giving/gallery dev",
 		"emails": "pnpm --filter @better-giving/emails-preview dev",

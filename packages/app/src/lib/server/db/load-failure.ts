@@ -19,7 +19,7 @@ import { data } from 'react-router';
 export function loadFailure(subject: string): string {
 	return (
 		`${subject} could not be loaded. If this deployment is new, check that migrations have been ` +
-		'applied to its database: the console (`better-giving open`) applies them to the deployed D1 ' +
+		'applied to its database: the console (`better-giving start`) applies them to the deployed D1 ' +
 		'when it updates this deployment, and `pnpm wrangler d1 migrations apply DB --local` applies ' +
 		'them to a local one. Then check this deployment’s logs (the Cloudflare dashboard, or ' +
 		'`pnpm run logs` from a checkout).'

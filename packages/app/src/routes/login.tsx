@@ -144,7 +144,7 @@ const WRONG_CREDENTIAL =
  * reading that did not land.
  */
 const UNAVAILABLE =
-	'Sign-in is unavailable. The console (`better-giving open`) says whether this deployment’s ' +
+	'Sign-in is unavailable. The console (`better-giving start`) says whether this deployment’s ' +
 	'sign-in password is set. The exact cause is in the deployment’s logs, which the console does ' +
 	'not read: the Cloudflare dashboard has them, and `pnpm run logs` reads them from a checkout.';
 
@@ -157,7 +157,7 @@ const UNAVAILABLE =
  */
 const NOT_MIGRATED =
 	'Sign-in is unavailable. If this deployment is new, check that migrations have been ' +
-	'applied to its database: the console (`better-giving open`) applies them to the deployed D1 ' +
+	'applied to its database: the console (`better-giving start`) applies them to the deployed D1 ' +
 	'when it updates this deployment, and `pnpm wrangler d1 migrations apply DB --local` applies ' +
 	'them to a local one. Then read this deployment’s logs (the Cloudflare dashboard, or ' +
 	'`pnpm run logs` from a checkout).';
@@ -520,7 +520,7 @@ function SignInScreen({
 						    reach announces to nobody. a second press while the first is in flight is
 						    the router's to coalesce rather than something to buy by taking the
 						    control away. the console's submits are the same shape
-						    (packages/console-ui/src/lib/connect-panel.tsx). */}
+						    (packages/console-ui/src/routes/_index.tsx). */}
 						<Button variant="primary" aria-busy={signingIn}>
 							{SCREEN_TITLE}
 						</Button>

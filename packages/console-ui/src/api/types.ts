@@ -10,94 +10,12 @@ import type { DEPLOY_VARS } from '@better-giving/operator/deploy-split';
 //
 // **no answer here carries a credential and none may.** the token this console signs in with stays
 // in the binary — it travels into a cloudflare header and reaches nothing a browser reads — so what
-// crosses this boundary is a phase, an address the operator is being sent to, an email and a list of
-// accounts. a field carrying a token would be a token in the document, in the browser's memory and
-// in whatever a page extension can read.
+// crosses this boundary about it is an account id, a name and a folder on this machine. a field
+// carrying a token would be a token in the document, in the browser's memory and in whatever a page
+// extension can read.
 
-/** one cloudflare account this sign-in can be scoped to. */
+/** the cloudflare account this deployment is in. */
 export type Account = { id: string; name: string };
-
-/**
- * how this machine is signed in to cloudflare, and which accounts that sign-in carries.
- *
- * flat rather than a union per kind, because that is what the wire is: the binary writes every
- * field on every answer, and `email`, `accounts` and `detail` are empty on the kinds they say
- * nothing about.
- */
-export type SignIn = {
-	kind: 'oauth' | 'token' | 'signed-out' | 'refused' | 'unreachable';
-	/** the address the sign-in belongs to, or `null` where cloudflare would not say. */
-	email: string | null;
-	accounts: Account[];
-	/** cloudflare's own words about a refusal or a read that did not land. */
-	detail: string;
-};
-
-/** how a sign-in opened in a browser ended without one. */
-export type Unfinished = 'timed-out' | 'refused' | 'nothing-back' | 'not-kept';
-
-/**
- * what the sign-in is doing right now.
- *
- * `signed-in` is not a phase of the flow: it is a credential being held, whichever way it arrived,
- * and it outranks a flow that ended unfinished.
- */
-export type Phase = 'idle' | 'waiting' | 'unfinished' | 'signed-in';
-
-/** everything the connect panel is drawn from that is not this repository's own config. */
-export type SignInStatus = {
-	phase: Phase;
-	/** the allow page a waiting flow opened, and empty on every other phase. */
-	address: string;
-	/**
-	 * how a flow that ended without a credential ended, and empty where none did.
-	 *
-	 * **it is read beside `signed-in` as well as beside `unfinished`.** a sign-in cloudflare allowed
-	 * and this machine could not write down leaves a credential in hand and nothing for the next
-	 * launch, and the credential outranks the flow — so that one answers `signed-in` with
-	 * `not-kept` here (`packages/console/internal/oauth/flow.go`'s `kept`), and a screen reading
-	 * this only on `unfinished` never draws it.
-	 */
-	why: Unfinished | '';
-	/**
-	 * the folder a sign-in that could not be written down would have gone in, and empty on every
-	 * other state — whichever phase that sign-in left behind.
-	 *
-	 * the binary is the only half that knows it — the directory is the operating system's own
-	 * config home — and a sentence sending an operator to make a folder writable without naming it
-	 * is one they cannot act on.
-	 */
-	detail: string;
-	/**
-	 * whether the credential came from the environment the console was started in.
-	 *
-	 * it decides two controls: signing in again is refused while it is set, and there is nothing on
-	 * this machine to sign out of.
-	 */
-	tokenSet: boolean;
-	signIn: SignIn;
-};
-
-/** what a press that changed the sign-in answers with, which is the phase it left behind. */
-export type Started = { phase: Phase; address: string };
-
-/** what the operator has said is this deployment's inside the account it is in. */
-export type Claims = {
-	database: { name: string; uuid: string } | null;
-	widget: { name: string; sitekey: string } | null;
-};
-
-/**
- * which cloudflare account this deployment is in, as the binary remembers it.
- *
- * `remembered` is whether this machine will still know it after a restart: it is false where the
- * state directory could not be written, and the choice then holds for the run the console is in.
- */
-export type Chosen = {
-	account: Account | null;
-	remembered: boolean;
-	claims: Claims;
-};
 
 /** why there is no workers.dev address, where there is none. */
 export type NoWorkersDev = 'turned-off' | 'unregistered' | 'unknown';
@@ -148,10 +66,10 @@ export type NoReport =
 	| { kind: 'unreadable'; detail: string; fix: string | null };
 
 /**
- * the one face on screen once an account is settled.
+ * the one face on screen.
  *
- * the face before these is ../lib/connect-face.ts's, which is about having an account at all: this
- * reading is scoped to one, so an answer saying there is none is a shape the binary never writes.
+ * the account is settled before the page is served (`better-giving start`), so every face is scoped
+ * to one and an answer saying there is none is a shape the binary never writes.
  */
 export type HomeFace =
 	/** nothing after the bar can be read. */
@@ -203,18 +121,30 @@ export type VarsRead =
 export type DeployedValues = { vars: VarsRead };
 
 /**
- * whether a shell is drawn at all, and the two names every screen under it is about.
+ * the account this console was started in, and the two names every screen under it is about.
  *
  * it answers within a loopback round trip because everything in it is this machine's own memory and
- * the release the binary was baked from: the bar states the account, and there is nothing true to
- * put on one until there is an account to state.
+ * the release the binary was baked from. `better-giving start` records the account before the page
+ * is served, so there is always one to state.
+ *
+ * `remembered` is whether this machine will still know the account after a restart: it is false
+ * where the state directory could not be written, and the choice then holds for this run.
  */
 export type HomeShape = {
-	shape: 'connect' | 'shell';
 	workerName: string;
 	databaseName: string;
-	account: Account | null;
+	account: Account;
 	remembered: boolean;
+	/**
+	 * the folder a sign-in this machine could not write down would have gone in, and `null` where
+	 * nothing failed to keep.
+	 *
+	 * the credential in hand is good either way and the loss shows at the next launch
+	 * (`packages/console/internal/oauth/flow.go`'s `kept`). the binary is the only half that knows
+	 * the folder — it is the operating system's own config home — and a sentence sending an operator
+	 * to make a folder writable without naming it is one they cannot act on.
+	 */
+	notKept: string | null;
 };
 
 /**
@@ -466,19 +396,12 @@ export type WebhookSecretReading = {
 /**
  * what this deployment's endpoint is subscribed to.
  *
- * **`unmanaged` is not `unreadable` and a screen must not word it as one.** it is a processor whose
- * endpoint this release registers on nobody's behalf, so there is nothing to ask and no press could
- * repair it: the operator registers one by hand in the processor's own dashboard and carries its id
- * back, and `address` is what they point it at. drawn as a failure it sends an operator to check
- * credentials that are fine.
- *
  * the two faults the incomplete arm holds are the whole reason a screen can say which one an
  * operator is looking at: a missing `delivering` read as `true` would draw a switched-off endpoint
  * as one merely short of an event.
  */
 export type WebhookSubscriptionReading =
 	| { state: 'unreadable'; detail: string }
-	| { state: 'unmanaged'; detail: string; address: string }
 	| { state: 'unregistered' }
 	| { state: 'complete' }
 	| { state: 'incomplete'; delivering: boolean; missingEventTypes: string[] };
@@ -943,7 +866,98 @@ export type StripeStarted =
 	 * all, so what a screen has to say about it is the same sentence a key Stripe turns down gets
 	 * and there are no words of Stripe's to quote.
 	 */
-	| { started: false; turnedDown: true };
+	| { started: false; turnedDown: true }
+	/**
+	 * the binary could not write at all — this machine holds no cloudflare sign-in — so no run
+	 * began (`writing` in `packages/console/internal/server/values.go`).
+	 */
+	| { started: false; unwritten: ValuesRefusal };
+
+/** one webhook listener on a PayPal app, in the facts the console acts on. */
+export type PaypalListener = { id: string; url: string; eventTypes: string[] };
+
+/**
+ * the ways a call to PayPal did not answer.
+ *
+ * `refused` is a pair PayPal would not accept or an app it would not let do this, and the way out
+ * is the boxes the pair was typed in; `rejected` is a request it understood and would not carry
+ * out; `unreachable` is nothing found out either way, a 5xx included.
+ */
+export type PaypalFailure = {
+	kind: 'refused' | 'rejected' | 'unreachable' | 'unreadable';
+	detail: string;
+};
+
+/**
+ * which part of the PayPal chain is running (`packages/console/internal/paypal/setup.go`).
+ *
+ * `registering` is the address derived, the app's listeners read and the one here settled;
+ * `storing` is the pair and that listener's id written onto the deployment in one write.
+ */
+export type PaypalStage = 'authorizing' | 'registering' | 'storing';
+
+/**
+ * what the press did about the listener at this deployment's address.
+ *
+ * `kept` and `resubscribed` are both a listener already here: a PayPal delivery is verified by the
+ * listener's own id, which every list hands back, so one already here is kept rather than replaced.
+ */
+export type PaypalRegistration = { kind: 'created' | 'kept' | 'resubscribed'; id: string };
+
+export type PaypalFacts = {
+	registration: PaypalRegistration | null;
+	/** listeners on this app carrying this deployment's path at another address, named and never touched. */
+	elsewhere: PaypalListener[];
+};
+
+/**
+ * how the PayPal chain ended.
+ *
+ * the wire is flat — every field on every answer, empty where a kind says nothing about it — and
+ * this is it read per kind. **every stop in front of `storing` wrote nothing**: the pair and the
+ * listener id are one write at the end, so a deployment is never left holding a pair with no
+ * listener behind it.
+ */
+export type PaypalSetup =
+	| { kind: 'done' }
+	/** the pair minted no token, so nothing was read, registered or stored. */
+	| { kind: 'unauthorized'; failure: PaypalFailure }
+	/** there is nowhere to register against, and the address read says why. */
+	| { kind: 'nowhere'; address: AddressRead }
+	/** the deployment's address is not https, which PayPal delivers to nothing but. */
+	| { kind: 'insecure'; origin: string }
+	/** the app's listeners could not be read. */
+	| { kind: 'unlisted'; failure: PaypalFailure }
+	/** the app already holds PayPal's ten listeners, none of them here; `listeners` is all ten. */
+	| { kind: 'full'; listeners: PaypalListener[] }
+	/** PayPal refused the create, so nothing listens here. */
+	| { kind: 'uncreated'; failure: PaypalFailure }
+	/** PayPal refused to bring the listener here to the list; it is still subscribed as it was. */
+	| { kind: 'unresubscribed'; listenerId: string; failure: PaypalFailure }
+	/** the listener is settled and the write did not land; the next press finds and keeps it. */
+	| { kind: 'unstored'; listenerId: string; written: VarsUnwritten }
+	/** the console failed part way through, and how far it got was not observed. carries nothing. */
+	| { kind: 'console-stopped' };
+
+/** what the section reads off the PayPal run. on an ended run `stage` is the one it stopped at. */
+export type PaypalRunRead =
+	| { kind: 'running'; stage: PaypalStage; facts: PaypalFacts; outcome: null }
+	| { kind: 'ended'; stage: PaypalStage; facts: PaypalFacts; outcome: PaypalSetup };
+
+/**
+ * what a press to set PayPal up was answered with.
+ *
+ * `started` is false where a run is already going, and that run is the one to draw.
+ */
+export type PaypalStarted =
+	| { started: boolean; run: PaypalRunRead }
+	/** the binary's door would not take the pair, so no run began. */
+	| { started: false; turnedDown: true }
+	/**
+	 * the binary could not write at all — this machine holds no cloudflare sign-in — so no run
+	 * began (`writing` in `packages/console/internal/server/values.go`).
+	 */
+	| { started: false; unwritten: ValuesRefusal };
 
 /**
  * which way the account's own turnstile widgets were not read.
@@ -1018,7 +1032,8 @@ export type SitesPress = {
  *
  * **it is the one fact the console holds that is true without a cloudflare account.** everything
  * else here is scoped to one — the database, the worker, the address, the session — so this is what
- * the strip above the connect panel carries and the only thing it may (../lib/connect-panel.tsx).
+ * the foot carries on every screen, the one that says the console has stopped included
+ * (../lib/product-foot.tsx).
  *
  * both are empty on a binary built from a checkout rather than a tagged release, and empty is also
  * what a reading nobody could take answers with (../api/client.ts): the strip draws no line for

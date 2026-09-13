@@ -573,7 +573,7 @@ func TestADeploymentThatHasNotPickedTheKeyUpYetIsNotTheSameAsARefusal(t *testing
 	// the write landed seconds earlier and has not reached the edge, so the deployment built its
 	// payment provider without the key and answered the press with `no_key` beside its sentence.
 	said := "This deployment cannot take a payment through Stripe: `STRIPE_SECRET_KEY` is not " +
-		"set. Open the console (`better-giving open`) and set it under Donation processor."
+		"set. Open the console (`better-giving start`) and set it under Donation processor."
 	held.repeating = deployment.RecurringSetup{
 		Kind:  deployment.RecurringSetupReported,
 		Named: release.StripeProcessor,

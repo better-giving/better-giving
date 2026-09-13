@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"net"
+	"slices"
 	"strings"
 	"testing"
 
@@ -429,7 +430,11 @@ type standingDeployment struct {
 	// finished is what the finish said, and finishes whether it was reached at all.
 	finished string
 	finishes bool
-	served   net.Listener
+	// unconnected is what the connect answered with, nil being a session written; connects whether
+	// it was reached at all.
+	unconnected error
+	connects    bool
+	served      net.Listener
 	// naming is what the run told the console about the account: whether the screen above its line
 	// already names it, which is the door's doing and nothing else's.
 	naming bool
@@ -484,6 +489,11 @@ func (onto *standingDeployment) run(t *testing.T) error {
 			onto.order = append(onto.order, "finished")
 			return onto.finished
 		},
+		func() error {
+			onto.connects = true
+			onto.order = append(onto.order, "connected")
+			return onto.unconnected
+		},
 		func(bound net.Listener, named bool) error {
 			onto.served, onto.naming = bound, named
 			return nil
@@ -493,6 +503,112 @@ func (onto *standingDeployment) run(t *testing.T) error {
 // the line a run holds where a console another console installed still reads a release past its
 // own, which the door draws over its own screen and the up-to-date path has to draw itself.
 const newerConsoleLine = "version 0.9.0 of this console is out"
+
+// the console opens already connected, whichever way the pass reached it: the up-to-date path, a
+// door the operator shut and a carry that landed are all a deployment standing with no session this
+// run wrote.
+
+func TestEveryWayToTheConsoleConnectsInFrontOfIt(t *testing.T) {
+	for _, one := range []struct {
+		what  string
+		shape func(*standingDeployment)
+	}{
+		{"a deployment already on this release", func(onto *standingDeployment) {
+			onto.deployed = onto.carrying
+		}},
+		{"a door the operator shut", func(onto *standingDeployment) {
+			onto.answered = terminal.Declined
+		}},
+		{"a carry that landed", func(*standingDeployment) {}},
+	} {
+		onto := aCarryThatLands(t)
+		one.shape(onto)
+
+		if err := onto.run(t); err != nil {
+			t.Fatalf("%s: catchingUp = %v, want the console", one.what, err)
+		}
+		if !onto.connects {
+			t.Errorf("%s served a console this run never connected", one.what)
+		}
+		if onto.served != onto.bound {
+			t.Errorf("%s: a connected run did not end at the console", one.what)
+		}
+		finished := slices.Index(onto.order, "finished")
+		connected := slices.Index(onto.order, "connected")
+		if finished < 0 || connected < finished {
+			t.Errorf("%s ran %v, want the connect last in front of the console", one.what, onto.order)
+		}
+	}
+}
+
+func TestAConnectThatDidNotLandEndsStartAndServesNoConsole(t *testing.T) {
+	bound, handedBack := aPortHeld(t)
+	onto := aCarryThatLands(t)
+	onto.bound, onto.deployed = bound, onto.carrying
+	onto.unconnected = errors.New("cloudflare didn't store the session")
+
+	err := onto.run(t)
+
+	if err == nil || err.Error() != onto.unconnected.Error() {
+		t.Fatalf("catchingUp = %v, want what the connect answered with", err)
+	}
+	if onto.served != nil {
+		t.Error("a console was opened with no session to read the deployment over")
+	}
+	if !handedBack() {
+		t.Error("the port this run took was still held on the way out")
+	}
+}
+
+func TestACarryAStopWaitedOutConnectsNothing(t *testing.T) {
+	onto := aCarryThatLands(t)
+	onto.halted = true
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v, want a stop the operator asked for read as no failure", err)
+	}
+	if onto.connects {
+		t.Error("a run the operator stopped went on to replace the session on their deployment")
+	}
+}
+
+// the connect itself: the line in front of it, and what a connect that did not land ends on.
+
+func TestTheConnectSaysItSignsOtherConsolesOutBeforeItConnects(t *testing.T) {
+	var said strings.Builder
+	saidFirst := false
+
+	err := connecting(&said, func() deployment.Connection {
+		saidFirst = strings.Contains(flowing(said.String()), terminal.ReplacingOtherConsoles)
+		return deployment.Connection{Kind: deployment.Connected}
+	}, "/home/op/.config/better-giving")
+
+	if err != nil {
+		t.Fatalf("connecting = %v, want a session written read as no failure", err)
+	}
+	if !saidFirst {
+		t.Errorf("said %q by the time the session was written, want the line in front of it",
+			said.String())
+	}
+}
+
+func TestAConnectThatDidNotLandSaysWhatToDoAndWhatCloudflareSaid(t *testing.T) {
+	var said strings.Builder
+
+	err := connecting(&said, func() deployment.Connection {
+		return deployment.Connection{Kind: deployment.ConnectRefused, Detail: "code 10000"}
+	}, "/home/op/.config/better-giving")
+
+	if err == nil {
+		t.Fatal("a connect cloudflare refused ended cleanly, which reads as a console connected")
+	}
+	if !strings.Contains(err.Error(), terminal.Unconnected(deployment.ConnectRefused, "")) {
+		t.Errorf("said %v, want the sentence for a refused connect", err)
+	}
+	if !strings.Contains(err.Error(), "code 10000") {
+		t.Errorf("said %v, want what cloudflare said", err)
+	}
+}
 
 // a carry that lands over a deployment already standing, for a case to vary one act of.
 func aCarryThatLands(t *testing.T) *standingDeployment {
@@ -729,7 +845,7 @@ func TestADoorTheOperatorOpenedCarriesThisReleaseAndOpensTheConsole(t *testing.T
 
 func TestADoorTheOperatorShutUploadsNothingAndStillOpensTheConsole(t *testing.T) {
 	// the deployment is standing and opening the console at it is what the operator typed this
-	// command for, so a database left alone on purpose ends at the console rather than at an exit.
+	// command for, so an update declined on purpose ends at the console rather than at an exit.
 	onto := aCarryThatLands(t)
 	onto.answered = terminal.Declined
 
@@ -789,8 +905,8 @@ func TestADeploymentAheadOfThisBinaryEndsStartAndServesNoConsole(t *testing.T) {
 }
 
 func TestAPendingReadThatDidNotLandPutsNoDoorAndServesNoConsole(t *testing.T) {
-	// a confirm in front of a list nobody read would be a confirmation of nothing, and the door
-	// behind it is one way (CLAUDE.md).
+	// a confirm over a database nobody read would agree to an update whose migrations nobody knows,
+	// and a migration is one way (CLAUDE.md).
 	bound, handedBack := aPortHeld(t)
 	onto := aCarryThatLands(t)
 	onto.bound, onto.read = bound, effects.Migrations{Absent: "none"}
@@ -870,10 +986,10 @@ func TestAPortAnotherConsoleHoldsStopsAStandingCarryBeforeTheDoor(t *testing.T) 
 	}
 }
 
-// what this command does about the answer the one-way door came back with.
+// what this command does about the answer the carry door came back with.
 //
-// the two that are not failures are told apart from each other: an operator who chose to leave the
-// database alone made a decision and is told what it cost, and a run nobody was standing at made
+// the two that are not failures are told apart from each other: an operator who chose to keep the
+// current version made a decision and is told what it cost, and a run nobody was standing at made
 // none — and a command that ended cleanly on the second reads as a deployment now carrying this
 // release.
 
@@ -883,7 +999,7 @@ func TestADoorTheOperatorShutSaysWhatWasLeftAloneAndEndsTheCarryCleanly(t *testi
 	if went != shut || err != nil {
 		t.Errorf("a door shut on purpose = %v, %v, want a press not made", went, err)
 	}
-	if !strings.Contains(said, "database") || !strings.Contains(said, "nothing was uploaded") {
+	if !strings.Contains(said, "current version") || !strings.Contains(said, "nothing was uploaded") {
 		t.Errorf("said %q, want both halves of what did not happen", said)
 	}
 }
@@ -944,7 +1060,7 @@ func TestAnAnswerThisConsoleDidNotUnderstandLeavesTheOneWayDoorShut(t *testing.T
 			t.Errorf("%q opened a one-way door this console could not read the answer to", answered)
 		}
 		if err == nil {
-			t.Fatalf("%q ended the command cleanly, which reads as a database left alone on purpose",
+			t.Fatalf("%q ended the command cleanly, which reads as an update declined on purpose",
 				answered)
 		}
 		if said != "" {
@@ -1256,7 +1372,7 @@ func TestAPassOverAnAddressNothingCanBeToldFromDrawsNoWait(t *testing.T) {
 // where the wait over this pass's own reads is given up, which is in front of the first thing the
 // pass draws and never behind it.
 //
-// the door erases the visible screen before it names what it would apply
+// the door erases the visible screen before it draws its question
 // (../../internal/terminal/clear.go), so a spinner still turning when it draws is written into the
 // screen the operator answers on. the reads themselves are the whole of what the wait is for, so it
 // stands until the last of them has landed (../../internal/terminal's ReadingTheDeployment).
@@ -1267,7 +1383,7 @@ func TestTheWaitOverTheReadsIsGivenUpBetweenTheLastReadAndTheDoor(t *testing.T) 
 	if err := onto.run(t); err != nil {
 		t.Fatalf("catchingUp = %v", err)
 	}
-	if ran := strings.Join(onto.order, " "); ran != "weighed read settled named drew finished" {
+	if ran := strings.Join(onto.order, " "); ran != "weighed read settled named drew finished connected" {
 		t.Errorf("a carry ran %q, want the wait given up between the last read and the door", ran)
 	}
 }
@@ -1281,7 +1397,7 @@ func TestTheWaitOverTheReadsIsGivenUpBeforeADeploymentAlreadyCarryingIsNamed(t *
 	if err := onto.run(t); err != nil {
 		t.Fatalf("catchingUp = %v", err)
 	}
-	if ran := strings.Join(onto.order, " "); ran != "weighed settled drew drew finished" {
+	if ran := strings.Join(onto.order, " "); ran != "weighed settled drew drew finished connected" {
 		t.Errorf("an up-to-date pass ran %q, want the wait given up in front of both lines", ran)
 	}
 }
@@ -1765,7 +1881,7 @@ func TestAFinishWithNothingToSayDrawsNoLine(t *testing.T) {
 	if err := onto.run(t); err != nil {
 		t.Fatalf("catchingUp = %v", err)
 	}
-	if ran := strings.Join(onto.order, " "); ran != "weighed settled drew drew finished" {
+	if ran := strings.Join(onto.order, " "); ran != "weighed settled drew drew finished connected" {
 		t.Errorf("an up-to-date pass ran %q, want no line drawn for a finish that said nothing", ran)
 	}
 }

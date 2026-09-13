@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { API_BASE_PATH } from '$lib/server/api/surface';
 import { CONSOLE_BASE_PATH } from '$lib/server/console/surface';
-import { PAYPAL_WEBHOOK_PATH } from '$lib/server/payments/webhook-address';
+import { PAYPAL_WEBHOOK_PATH } from '@better-giving/operator/paypal/webhook-listener';
 import { STRIPE_WEBHOOK_PATH } from '@better-giving/operator/stripe/webhook-endpoint';
 import {
 	matchedFileAt,

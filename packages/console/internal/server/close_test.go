@@ -1,7 +1,10 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/better-giving/console/internal/account"
@@ -15,9 +18,9 @@ import (
 // run around this server is what goes away, and a case here holds no run — what it can hold is that
 // the run was asked, and that a server built without one still answers.
 //
-// **the account cannot be disconnected**, and the case for that is here rather than beside the
-// choosing because this route is what stands beside the account name on the page: that press closes
-// the console, and a disconnect would change nothing in cloudflare either way.
+// **the account cannot be disconnected**, and the case for that is here because this route is what
+// stands beside the account name on the page: that press closes the console, and a disconnect would
+// change nothing in cloudflare either way.
 
 // one console the run around it can be asked to stop through.
 func closable(t *testing.T, asked func()) http.Handler {
@@ -75,8 +78,24 @@ func TestAConsoleWithNoRunAroundItStillAnswersTheClose(t *testing.T) {
 	}
 }
 
+// one press, as the page makes it.
+func post(t *testing.T, console http.Handler, path, body string) (int, map[string]any, string) {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	request.Host = loopback
+	request.Header.Set("Content-Type", "application/json")
+	answer := httptest.NewRecorder()
+	console.ServeHTTP(answer, request)
+
+	var read map[string]any
+	if err := json.Unmarshal(answer.Body.Bytes(), &read); err != nil {
+		t.Fatalf("POST %s answered something that is not json: %v", path, err)
+	}
+	return answer.Code, read, answer.Body.String()
+}
+
 func TestTheAccountCanNoLongerBeDisconnected(t *testing.T) {
-	console, _ := chooser(t, state.At(t.TempDir()), administered)
+	console := closable(t, nil)
 
 	gone, goneBody, _ := post(t, console, "/api/account/disconnect", "")
 	// what this console answers an `/api` path that fell through, read rather than assumed.

@@ -19,11 +19,12 @@ import (
 // and removing are one door because they are one patch of the worker's bindings — internal/deployment
 // is where that is argued.
 //
-// **a body is refused in three cases.** internal/release holds the seventeen, and a name off that
+// **a body is refused in four cases.** internal/release holds the seventeen, and a name off that
 // list is refused here rather than written under whatever the page said — the console's own session
-// credential is on no enumeration and is not reachable through this door. the second is a name
-// carrying a blank, which is neither a value the deployment reads nor the removal `null` is. the
-// third is the charity-rate switch carrying anything but its one word, argued at ./charityRate.
+// credential is on no enumeration and is not reachable through this door. the second is PayPal's
+// three credentials, argued at ./paypalSetUpOnly. the third is a name carrying a blank, which is
+// neither a value the deployment reads nor the removal `null` is. the fourth is the charity-rate
+// switch carrying anything but its one word, argued at ./charityRate.
 //
 // **every one of them answers 200 carrying how the write went.** each way a write did not happen is
 // a state the fold draws at the control that was pressed, with a sentence and a way out of its own,
@@ -53,6 +54,13 @@ const (
 	charityRateApproved = "true"
 )
 
+// the names PayPal's set-up press writes (./paypal.go), and that press alone.
+//
+// the id names the listener that press settled at this deployment's address against the pair, so a
+// write or a removal of any of the three here leaves the pair and the listener disagreeing, and
+// deliveries stop verifying with nothing on the screen having said so.
+var paypalSetUpOnly = []string{"PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_WEBHOOK_ID"}
+
 // how much of a press's body is read before it is a request nobody made.
 //
 // The whole enumeration is the largest thing posted here — seventeen names and their values — and
@@ -79,6 +87,13 @@ func valuesRoutes(
 		for name, value := range posted.Values {
 			if !enumerated(release.DeployVars, name) {
 				refuseName(w, name)
+				return
+			}
+			if enumerated(paypalSetUpOnly, name) {
+				answer(w, http.StatusBadRequest, map[string]string{
+					"error": "this console writes " + name + " only through PayPal's set-up press " +
+						"(POST /api/paypal/setup), which settles the webhook listener beside the pair",
+				})
 				return
 			}
 			if value == nil {
@@ -162,14 +177,22 @@ func operating(
 ) (string, cf.Credential, bool) {
 	chosen := store.Chosen()
 	if chosen == nil {
-		// every press here is scoped to an account, so there is nowhere to write rather than a write
-		// that failed. the page draws the panel that chooses one.
-		answer(w, http.StatusConflict, map[string]string{
-			"error": "this console has not been told which Cloudflare account this deployment is in",
-		})
+		noAccount(w)
 		return "", cf.Credential{}, false
 	}
 	return chosen.Account.ID, flow.Credential(r.Context()), true
+}
+
+// what a server holding no account answers anything scoped to one.
+//
+// `better-giving start` records the account before it builds this server
+// (../../cmd/better-giving/main.go's serve), so this is a server built some other way: there is
+// nowhere to read or write rather than a read or a write that failed.
+func noAccount(w http.ResponseWriter) {
+	answer(w, http.StatusConflict, map[string]string{
+		"error": "this console has not been told which Cloudflare account this deployment is in: " +
+			"run better-giving start",
+	})
 }
 
 // the door a press writes through, or the answer it got instead.

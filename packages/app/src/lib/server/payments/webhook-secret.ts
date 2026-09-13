@@ -145,7 +145,7 @@ export async function webhookSecretStanding(
 		detail:
 			`The stored \`${variable}\` is not the one this deployment’s webhook endpoint was created ` +
 			'with, so the processor’s deliveries are failing verification and no gift is reaching the ' +
-			'books. Open the console (`better-giving open`) and set the processor up again under ' +
+			'books. Open the console (`better-giving start`) and set the processor up again under ' +
 			'Donation processor: that press registers the endpoint and stores what it is handed, ' +
 			'which is the only moment the value is readable.'
 	};

@@ -16,8 +16,8 @@ import (
 // the two the home screen is drawn from, and they are two because they answer at two speeds.
 //
 // **the first is this machine's own memory and the baked names**, so the page knows within a
-// loopback round trip whether there is a shell to draw at all — the bar states the account, and
-// there is nothing true to put on one until there is an account to state.
+// loopback round trip what the bar states — the account, the two names, and the two notes about
+// what this machine could not write down.
 //
 // **the second is every cloudflare round trip and the deployment's own answer, as one answer.** the
 // face is a function of every read on the page: nothing about it can be drawn before the slowest of
@@ -26,20 +26,20 @@ import (
 //
 // **neither carries a credential and neither may.** the cloudflare sign-in stays in internal/oauth
 // and the session stays in internal/session; what crosses to the browser is an account id, a name,
-// an address and what the deployment said about itself.
+// an address, a folder on this machine and what the deployment said about itself.
 
-// shape is what the page reads to find out whether a shell is drawn.
-type shape struct {
-	// Shape is `connect` while nothing has been chosen, and `shell` once something has.
-	Shape string `json:"shape"`
-	// WorkerName and DatabaseName are the release's, stated on both shapes: the panel in front of
-	// the shell names the deployment it is about before there is an account to scope anything to.
-	WorkerName   string `json:"workerName"`
-	DatabaseName string `json:"databaseName"`
-	// Account is null while nothing has been chosen.
-	Account *account.Account `json:"account"`
+// home is what the page reads to draw the bar.
+type home struct {
+	// WorkerName and DatabaseName are the release's.
+	WorkerName   string          `json:"workerName"`
+	DatabaseName string          `json:"databaseName"`
+	Account      account.Account `json:"account"`
 	// Remembered is whether this machine will still know the account after a restart.
 	Remembered bool `json:"remembered"`
+	// NotKept is the folder a sign-in this machine could not write down would have gone in, and null
+	// where nothing failed to keep. the credential in hand is good either way; what is lost is the
+	// next launch's, and a note that does not name the folder is one the operator cannot act on.
+	NotKept *string `json:"notKept"`
 }
 
 func homeRoutes(
@@ -51,15 +51,20 @@ func homeRoutes(
 	surface func(origin, token string) cf.Send,
 ) {
 	routes.HandleFunc("GET /api/home", func(w http.ResponseWriter, _ *http.Request) {
-		read := shape{
-			Shape:        "connect",
+		held := store.Chosen()
+		if held == nil {
+			noAccount(w)
+			return
+		}
+		read := home{
 			WorkerName:   release.Baked.Name,
 			DatabaseName: release.Baked.DatabaseName,
+			Account:      held.Account,
+			Remembered:   held.Remembered,
 		}
-		if held := store.Chosen(); held != nil {
-			read.Shape = "shell"
-			read.Account = &held.Account
-			read.Remembered = held.Remembered
+		if flow.Phase().Why == oauth.NotKept {
+			dir := records.Dir()
+			read.NotKept = &dir
 		}
 		answer(w, http.StatusOK, read)
 	})
@@ -67,11 +72,7 @@ func homeRoutes(
 	routes.HandleFunc("GET /api/home/reading", func(w http.ResponseWriter, r *http.Request) {
 		held := store.Chosen()
 		if held == nil {
-			// every read below is scoped to an account, so there is nothing to read rather than a
-			// reading that came back empty. the page draws the panel that chooses one.
-			answer(w, http.StatusConflict, map[string]string{
-				"error": "this console has not been told which Cloudflare account this deployment is in",
-			})
+			noAccount(w)
 			return
 		}
 

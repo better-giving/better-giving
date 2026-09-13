@@ -101,6 +101,29 @@ func TestANameOffTheEnumerationIsRefusedBeforeCloudflareIsAsked(t *testing.T) {
 	}
 }
 
+// paypal's three are written only by its set-up press, which settles the listener the id names, so a
+// write or a removal of one here would leave the pair and that listener disagreeing.
+func TestPaypalsCredentialsAreRefusedAndTheRefusalNamesThePressThatSetsThem(t *testing.T) {
+	for _, body := range []string{
+		`{"values":{"PAYPAL_CLIENT_ID":"an-id"}}`,
+		`{"values":{"PAYPAL_CLIENT_SECRET":"a-secret"}}`,
+		`{"values":{"PAYPAL_WEBHOOK_ID":null}}`,
+	} {
+		api, asked := writes(t, nil)
+		handler := pressing(t, "an-account", api)
+
+		status, answer := press(t, handler, "/api/values/vars", body)
+		said, _ := answer["error"].(string)
+		if status != http.StatusBadRequest || !strings.Contains(said, "PAYPAL_") ||
+			!strings.Contains(said, "/api/paypal/setup") {
+			t.Errorf("%s: %d %v", body, status, answer)
+		}
+		if len(*asked) != 0 {
+			t.Errorf("%s: cloudflare was asked %v", body, *asked)
+		}
+	}
+}
+
 // no press stores a configuration value as a credential: the door that wrote them is gone, and a
 // page still asking for it is a page against an older binary.
 func TestThereIsNoDoorThatStoresAValueAsACredential(t *testing.T) {

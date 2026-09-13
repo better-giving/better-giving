@@ -466,7 +466,7 @@ function build(env: ConfigEnv, name: ProcessorName): PaymentProvider {
 		'not_configured',
 		`This deployment cannot take a payment through ${PROCESSOR_LABELS[name]}: ` +
 			`\`${unset.join('` and `')}\` ${one ? 'is' : 'are'} not set. Open the console ` +
-			`(\`better-giving open\`) and set ${one ? 'it' : 'them'} under Donation processor.`
+			`(\`better-giving start\`) and set ${one ? 'it' : 'them'} under Donation processor.`
 	);
 }
 

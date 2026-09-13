@@ -12,12 +12,12 @@ import github from '../assets/social/github.webp';
 //
 // **it holds only what is true before there is anything to read.** neither end turns on a cloudflare
 // account, a deployment or a reading, which is what lets one strip stand under all of them — the
-// panel the operator connects on, the gate, the deploy card, the two running faces, the shell home
-// and the page that says the console has stopped.
+// gate, the deploy card, the two running faces, the shell home and the page that says the console
+// has stopped.
 //
 // it is a fragment rather than a box, because the box is the slot's: `.adm-footstrip` in
 // packages/operator/src/styles/adm.css stands two children at the two ends of a strip, and both
-// ../routes/_index.tsx's shells and the panel route ./connect-panel.tsx draws take that slot on the
+// ../routes/_index.tsx's shells and the panel route its error boundary draws take that slot on the
 // same terms.
 
 /* where the code this console is running is, for an operator standing on a deployment made from it.

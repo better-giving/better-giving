@@ -485,9 +485,10 @@ describe('verifyEvent', () => {
 	 *
 	 * the first four this app created itself and nothing here revises either object; a refund is a
 	 * `payment` row of its own with its own id, which is another kind and another read
-	 * (`SETTLEMENT_EVENT_TYPES` in ./paypal.ts says the same about a refunded capture). `ignored` is
-	 * a success — the route answers 2xx and PayPal stops — where a refusal would buy days of
-	 * redelivery for a no-op.
+	 * (`SUBSCRIBED_EVENT_TYPES` in packages/operator/src/paypal/webhook-listener.ts names what is
+	 * acted on).
+	 * `ignored` is a success — the route answers 2xx and PayPal stops — where a refusal would buy days
+	 * of redelivery for a no-op.
 	 */
 	it.each([
 		'BILLING.SUBSCRIPTION.CREATED',
@@ -2100,6 +2101,80 @@ describe('what a donor typed', () => {
 	});
 });
 
+describe('the listeners the app holds', () => {
+	/**
+	 * one read of the app's listeners, each summarised with its own id as the stamp.
+	 *
+	 * the id is what `PAYPAL_WEBHOOK_ID` holds and what a delivery is verified against, so it is the
+	 * whole of what ./webhook-secret.ts compares — and it is public, so nothing is digested.
+	 */
+	it('summarises every listener with its id as the stamp and the whole subscription as required', async () => {
+		const { calls } = recording([
+			{
+				status: 200,
+				json: {
+					webhooks: [
+						{
+							id: '7YN47048TX2895013',
+							url: 'https://give.example.org/api/paypal/webhook',
+							event_types: [
+								{ name: 'CHECKOUT.ORDER.APPROVED', description: 'x', status: 'ENABLED' },
+								{ name: 'PAYMENT.CAPTURE.COMPLETED', description: 'x', status: 'ENABLED' }
+							]
+						}
+					]
+				}
+			}
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).listWebhookEndpoints();
+
+		expect(apiCall(calls)?.method).toBe('GET');
+		expect(path(apiCall(calls))).toBe('/v1/notifications/webhooks');
+		expect(result.ok && result.value).toEqual({
+			endpoints: [
+				{
+					id: '7YN47048TX2895013',
+					url: 'https://give.example.org/api/paypal/webhook',
+					enabled: true,
+					eventTypes: ['CHECKOUT.ORDER.APPROVED', 'PAYMENT.CAPTURE.COMPLETED'],
+					apiVersion: null,
+					verificationStamp: '7YN47048TX2895013'
+				}
+			],
+			requiredEventTypes: [
+				'CHECKOUT.ORDER.APPROVED',
+				'PAYMENT.CAPTURE.COMPLETED',
+				'PAYMENT.CAPTURE.DENIED',
+				'PAYMENT.SALE.COMPLETED',
+				'BILLING.SUBSCRIPTION.PAYMENT.FAILED',
+				'BILLING.SUBSCRIPTION.ACTIVATED',
+				'BILLING.SUBSCRIPTION.CANCELLED',
+				'BILLING.SUBSCRIPTION.EXPIRED',
+				'BILLING.SUBSCRIPTION.SUSPENDED'
+			]
+		});
+	});
+
+	/** an app holding no listener is an empty list, which is what reads as unregistered. */
+	it('reads an app with no listener as an empty list', async () => {
+		recording([{ status: 200, json: {} }]);
+
+		const result = await createPaypalProvider(CREDENTIALS).listWebhookEndpoints();
+
+		expect(result.ok && result.value.endpoints).toEqual([]);
+	});
+
+	/** a refused read is the credentials' sentence, never an app holding nothing. */
+	it('refuses the read where PayPal does not accept the credentials', async () => {
+		recording([{ status: 401, json: { name: 'AUTHENTICATION_FAILURE' } }]);
+
+		const result = await createPaypalProvider(CREDENTIALS).listWebhookEndpoints();
+
+		expect(result.ok === false && result.reason).toBe('not_configured');
+	});
+});
+
 describe('the arms this release does not build', () => {
 	/**
 	 * every unbuilt arm refuses with a member of the closed set, and none of them throws.
@@ -2110,7 +2185,6 @@ describe('the arms this release does not build', () => {
 	 * operator to set a value would send them somewhere that changes nothing.
 	 */
 	it.each([
-		['listWebhookEndpoints', (p: PaymentProvider) => p.listWebhookEndpoints()],
 		['registerWebhookEndpoint', (p: PaymentProvider) => p.registerWebhookEndpoint('https://x.org')],
 		['resubscribeWebhookEndpoint', (p: PaymentProvider) => p.resubscribeWebhookEndpoint('WH-1')],
 		[

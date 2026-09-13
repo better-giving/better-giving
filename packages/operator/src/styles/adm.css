@@ -4265,14 +4265,6 @@
 		gap: var(--admin-space-4);
 	}
 
-	/* the row on a screen that is one press and nothing else. a row of actions stands under what it
-	   acts on and reads from the same edge as that, which is why the rule above starts them — and a
-	   face carrying a single control over no content has nothing to line up with, so the control
-	   stands in the middle of the space instead of against the start of a line that is not there. */
-	.adm-actions--centred {
-		justify-content: center;
-	}
-
 	/* a box on the row with the press that acts on it — one destination and one send, rather than a
 	   save under a column of boxes. the box takes the line's remainder and may shrink past its
 	   content, which is what keeps the pair on one line until the row's own floor wraps them: a box

@@ -69,70 +69,6 @@ func TestAStopWithNoPressGoingWaitsForNothingAndSaysNothing(t *testing.T) {
 	}
 }
 
-// what `open` refuses on, and what it goes on serving through.
-//
-// the console is the screen an operator opens when something is wrong, so the only refusal is a
-// cloudflare that answered plainly that no worker of this deployment's name is in the account.
-
-// cloudflare answering every read with one status and one of its own error codes.
-func cloudflareSaying(t *testing.T, status, code int) cf.Get {
-	t.Helper()
-	answering := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"success": false,
-			"errors":  []any{map[string]any{"code": code, "message": "said"}},
-		})
-	}))
-	t.Cleanup(answering.Close)
-	return cf.JSONGet(answering.URL, nil)
-}
-
-// a machine holding a sign-in, and the account it chose.
-var (
-	signedIn    = cf.BearerCredential("a-token")
-	inAnAccount = &account.Choice{Account: account.Account{ID: "an-account"}}
-)
-
-func TestOpenRefusesWhereCloudflareSaysNoWorkerOfThisNameIsThere(t *testing.T) {
-	if !certainlyNotDeployed(t.Context(), signedIn, inAnAccount, cloudflareSaying(t, 404, 10007)) {
-		t.Error("a definite no from cloudflare is the one reading open refuses on")
-	}
-}
-
-func TestOpenServesOnAReadThatDidNotLand(t *testing.T) {
-	// the opposite of start and update, which refuse here: a remote migration stands behind those
-	// two, and nothing at all stands behind this one.
-	unreachable := func(context.Context, string) cf.Answer {
-		return cf.Answer{Kind: cf.Unreachable, Detail: "no route"}
-	}
-
-	if certainlyNotDeployed(t.Context(), signedIn, inAnAccount, unreachable) {
-		t.Error("a cloudflare that did not answer is not a deployment that is not there")
-	}
-	if certainlyNotDeployed(t.Context(), signedIn, inAnAccount, cloudflareSaying(t, 403, 10000)) {
-		t.Error("a sign-in cloudflare turned down is not a deployment that is not there")
-	}
-}
-
-func TestOpenServesAMachineSignedOutAndOneWithNoAccountChosen(t *testing.T) {
-	asked := 0
-	counting := func(context.Context, string) cf.Answer {
-		asked++
-		return cf.Answer{Kind: cf.Unreachable}
-	}
-
-	if certainlyNotDeployed(t.Context(), cf.Credential{Kind: cf.NoCredential}, inAnAccount, counting) {
-		t.Error("signed out is the connect panel and never a refusal")
-	}
-	if certainlyNotDeployed(t.Context(), signedIn, nil, counting) {
-		t.Error("no account chosen is the connect panel and never a refusal")
-	}
-	if asked != 0 {
-		t.Errorf("cloudflare was asked %d times about a machine with nothing to ask it about", asked)
-	}
-}
-
 // the one line a newer console is named on, and the silence every other reading is.
 
 // github answering with one release.
@@ -153,11 +89,11 @@ func built(t *testing.T, as string) {
 	t.Cleanup(func() { version = held })
 }
 
-func TestALaunchNamesAConsoleNewerThanThisOneOnceAndSaysWhereItComesFrom(t *testing.T) {
+func TestTheNewerConsoleLineNamesItOnceAndSaysWhereItComesFrom(t *testing.T) {
 	built(t, "0.3.0")
 	var said strings.Builder
 
-	sayNewer(t.Context(), &said, releasing(t, "v0.4.0"))
+	said.WriteString(newer(releases.Latest(t.Context(), releasing(t, "v0.4.0"), version)))
 
 	if !strings.Contains(said.String(), "0.4.0") {
 		t.Errorf("said %q, want the release that is newer named", said.String())
@@ -170,11 +106,11 @@ func TestALaunchNamesAConsoleNewerThanThisOneOnceAndSaysWhereItComesFrom(t *test
 	}
 }
 
-func TestALaunchHoldingTheLatestReleaseSaysNothing(t *testing.T) {
+func TestTheNewerConsoleLineIsEmptyOnTheLatestRelease(t *testing.T) {
 	built(t, "0.4.0")
 	var said strings.Builder
 
-	sayNewer(t.Context(), &said, releasing(t, "v0.4.0"))
+	said.WriteString(newer(releases.Latest(t.Context(), releasing(t, "v0.4.0"), version)))
 
 	if said.String() != "" {
 		t.Errorf("said %q, want nothing to install said as nothing", said.String())
@@ -185,9 +121,9 @@ func TestAGithubThatWouldNotAnswerSaysNothingAndEndsNoCommand(t *testing.T) {
 	built(t, "0.3.0")
 	var said strings.Builder
 
-	sayNewer(t.Context(), &said, func(context.Context, string) cf.Answer {
+	said.WriteString(newer(releases.Latest(t.Context(), func(context.Context, string) cf.Answer {
 		return cf.Answer{Kind: cf.Unreachable, Detail: "no route"}
-	})
+	}, version)))
 
 	if said.String() != "" {
 		t.Errorf("said %q, want a host this console can do without to cost the command nothing",
@@ -413,9 +349,7 @@ func TestAPortAnotherConsoleIsHoldingIsNamedAndNothingIsSaidOrOpened(t *testing.
 	t.Cleanup(func() { _ = held.Close() })
 	at := held.Addr().String()
 
-	var said strings.Builder
-	opened := 0
-	bound, err := bind(&said, at, "", func(string) { opened++ })
+	bound, err := claim(at)
 
 	if bound != nil {
 		t.Error("a port another process is holding was answered with a listener")
@@ -429,36 +363,36 @@ func TestAPortAnotherConsoleIsHoldingIsNamedAndNothingIsSaidOrOpened(t *testing.
 	if !strings.Contains(err.Error(), "already running") {
 		t.Errorf("said %q, want the likely cause named", err)
 	}
-	if said.String() != "" {
-		t.Errorf("said %q before the port was taken, want nothing", said.String())
-	}
-	if opened != 0 {
-		t.Errorf("a browser was opened %d times at a console that is not there", opened)
-	}
 }
 
-func TestAPortThisRunCanTakeIsHeldBeforeTheAddressIsSaid(t *testing.T) {
+// the port taken, as ./start.go's beforeTheDeploy takes it, and handed back when the case ends.
+func claimed(t *testing.T, at string) net.Listener {
+	t.Helper()
+	bound, err := claim(at)
+	if err != nil {
+		t.Fatalf("claim = %v, want the port taken", err)
+	}
+	t.Cleanup(func() { _ = bound.Close() })
+	return bound
+}
+
+func TestTheAddressSaidIsTheOneTheServerStates(t *testing.T) {
 	// the address is the one internal/server states, which is where the loopback-only guarantee
 	// its Guard rests on is declared: this run spells it nowhere of its own.
 	stated := server.Listen(nil, freePort(t)).Addr
 	var said strings.Builder
 	at := ""
 
-	bound, err := bind(&said, stated, "Acme Giving", func(address string) { at = address })
+	saying(&said, claimed(t, stated), "Acme Giving", func(address string) { at = address })
 
-	if err != nil {
-		t.Fatalf("bind = %v, want the port taken", err)
-	}
-	t.Cleanup(func() { _ = bound.Close() })
 	if !strings.Contains(said.String(), "http://"+stated) {
 		t.Errorf("said %q, want the address the console is at", said.String())
 	}
 	if !strings.Contains(said.String(), "ctrl-c") {
 		t.Errorf("said %q, want how the operator stops it", said.String())
 	}
-	// the account is remembered between runs and drawn on no screen after the first, so `open` —
-	// which asks nothing and makes nothing — would otherwise serve a console of readings without
-	// ever saying whose account they are about.
+	// the up-to-date path draws no door, so nothing else on its screen names the account the
+	// console's readings are about.
 	if !strings.Contains(flowing(said.String()), "Acme Giving") {
 		t.Errorf("said %q, want the account this console is operating", said.String())
 	}
@@ -469,18 +403,13 @@ func TestAPortThisRunCanTakeIsHeldBeforeTheAddressIsSaid(t *testing.T) {
 
 func TestAConsoleOpenedUnderAScreenThatNamedTheAccountSaysItNoSecondTime(t *testing.T) {
 	// the carry door draws the account at the head of the screen this line lands under, and ./serve
-	// hands nothing on that path (../../internal/terminal/confirm.go's object). the same empty is a
-	// machine that has chosen no account, which `open` serves on purpose: one line either way, and
-	// the account said once on a screen or not at all.
+	// hands nothing on that path (../../internal/terminal/confirm.go's object): the account said
+	// once on a screen or not at all.
 	at := net.JoinHostPort("127.0.0.1", strconv.Itoa(freePort(t)))
 	var said strings.Builder
 
-	bound, err := bind(&said, at, "", nil)
+	saying(&said, claimed(t, at), "", nil)
 
-	if err != nil {
-		t.Fatalf("bind = %v, want the port taken", err)
-	}
-	t.Cleanup(func() { _ = bound.Close() })
 	if strings.Contains(said.String(), "operating Cloudflare account") {
 		t.Errorf("said %q, want the account left to the screen that already named it", said.String())
 	}
@@ -493,12 +422,8 @@ func TestANoOpenRunSaysTheAddressAndOpensNothing(t *testing.T) {
 	at := net.JoinHostPort("127.0.0.1", strconv.Itoa(freePort(t)))
 	var said strings.Builder
 
-	bound, err := bind(&said, at, "", nil)
+	saying(&said, claimed(t, at), "", nil)
 
-	if err != nil {
-		t.Fatalf("bind = %v, want the port taken", err)
-	}
-	t.Cleanup(func() { _ = bound.Close() })
 	if !strings.Contains(said.String(), "http://"+at) {
 		t.Errorf("said %q, want the address the console is at", said.String())
 	}
@@ -512,7 +437,6 @@ func TestAnArgumentNoSubcommandTakesIsRefusedRatherThanPassedOver(t *testing.T) 
 		typed      []string
 	}{
 		{"start", startTakes, []string{"now"}},
-		{"open", openTakes, []string{"now"}},
 		{"update", updateTakes, []string{"--", "--yes"}},
 	} {
 		var help, wrong strings.Builder
@@ -548,12 +472,9 @@ func TestAPortTheKernelChoseIsSaidAndOpenedAsTheOneItChose(t *testing.T) {
 	var said strings.Builder
 	at := ""
 
-	bound, err := bind(&said, "127.0.0.1:0", "", func(address string) { at = address })
+	bound := claimed(t, "127.0.0.1:0")
+	saying(&said, bound, "", func(address string) { at = address })
 
-	if err != nil {
-		t.Fatalf("bind = %v, want a free port taken", err)
-	}
-	t.Cleanup(func() { _ = bound.Close() })
 	where := "http://" + bound.Addr().String()
 	if !strings.Contains(said.String(), where) {
 		t.Errorf("said %q, want %q — the port this run took", said.String(), where)
@@ -632,7 +553,7 @@ func TestStoppingTheConsoleSaysTheDeploymentIsUntouchedAndHowToComeBack(t *testi
 	if !strings.Contains(stillUp, "Cloudflare") {
 		t.Errorf("said %q, want where the deployment actually runs", stillUp)
 	}
-	if !strings.Contains(stillUp, "better-giving open") {
+	if !strings.Contains(stillUp, "better-giving start") {
 		t.Errorf("said %q, want the press that serves the console again", stillUp)
 	}
 }
@@ -919,7 +840,6 @@ func TestTheHelpBlockDrawsEveryDescriptionInTheSameColumn(t *testing.T) {
 
   start [--port N] [--no-open]  put this release on your deployment, then open the console at it
   update                        install the newest console on this machine
-  open [--port N] [--no-open]   serve the console and open it in a browser
   login                         sign in to Cloudflare, and choose the account this machine operates
   logout                        give up the sign-in this machine holds
   version                       what this binary is, and what it was baked for

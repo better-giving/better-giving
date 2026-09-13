@@ -45,7 +45,7 @@ const PROBE_PASSWORD = 'doctor-probe-not-a-real-password';
 const TIMEOUT_MS = 15_000;
 
 /** where a password is put right, in the words the console draws it under. */
-const FIX = 'the console (`better-giving open`), under Dashboard password';
+const FIX = 'the console (`better-giving start`), under Dashboard password';
 
 process.exit(await main());
 

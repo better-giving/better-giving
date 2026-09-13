@@ -35,10 +35,9 @@ import type { Route } from './+types/api.paypal.webhook';
 // layout above it and that no route but the three surface layouts exports a `middleware` at all,
 // and ./api.paypal.webhook.workers.spec.ts holds that the bytes arrive unread and are read once.
 //
-// **this address is registered by hand and this app never constructs it.** the listener is created
-// on PayPal's developer dashboard and its id is what `PAYPAL_WEBHOOK_ID` holds, so nothing in this
-// deployment builds this URL the way `webhookEndpointUrl` builds Stripe's — the file name is the
-// whole of where the address is decided.
+// **the console registers this address, and its id is what `PAYPAL_WEBHOOK_ID` holds.** the path is
+// `PAYPAL_WEBHOOK_PATH` in packages/operator/src/paypal/webhook-listener.ts, which the binary's copy is
+// gated against, and ../routes.spec.ts pins this file's name to it.
 //
 // what is decided here and what is not. everything the delivery does is `settleDelivery`'s
 // ($lib/server/donations/settle.ts); this file owns which status each outcome answers with, which
@@ -78,8 +77,8 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
  *
  * written rather than left out: a route module with no `loader` answers a `GET` with the
  * framework's own 400, whose body names the route id and asks the reader to add one. this address
- * is typed into PayPal's developer dashboard by hand, so it is one an operator will open in a
- * browser to check they got it right, and what they should read there is that it takes a `POST`.
+ * is listed on PayPal's developer dashboard beside the listener, so it is one an operator will open
+ * in a browser, and what they should read there is that it takes a `POST`.
  *
  * no preflight branch, unlike the endpoints on `/api/v1`: there is no browser on this surface, so
  * there is no origin to echo and nothing to grant.
@@ -98,7 +97,7 @@ function methodNotAllowed(method: string): Response {
 	return Response.json(
 		{
 			message: `This endpoint takes a PayPal delivery by POST. ${method} is not a method it answers.`,
-			fix: 'Register a webhook listener at this address on the PayPal developer dashboard, under the app this deployment’s credentials belong to, and set PAYPAL_WEBHOOK_ID to the listener id it mints. The console (`better-giving open`) is where that value is stored.'
+			fix: 'PayPal posts deliveries here. Saving PayPal’s credentials in the console (`better-giving start`, under Donation processor) registers this address as the listener and stores its id as PAYPAL_WEBHOOK_ID.'
 		},
 		{ status: 405, headers: { allow: 'POST', 'cache-control': 'no-store' } }
 	);

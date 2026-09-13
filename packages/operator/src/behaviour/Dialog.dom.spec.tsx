@@ -20,7 +20,7 @@ import { Modal } from './Dialog';
 // top layer, so the restoration `close()` would have done never runs. a dialog arriving open in the
 // server's markup has no opener to go back to and that case asserts nothing; the one below is the
 // other kind, a card a control on the page put up — packages/console-ui/src/lib/smtp-fold.tsx's
-// confirm, and packages/console-ui/src/lib/connect-panel.tsx's.
+// confirm, and packages/console-ui/src/routes/_index.tsx's close confirm.
 
 /** the element the shell put on the page. */
 function dialogIn(root: HTMLElement): HTMLDialogElement {

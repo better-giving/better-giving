@@ -9,7 +9,7 @@ import { Link } from 'react-router';
 // so the surface that has a router writes the hop, and this is that hop for the whole dashboard.
 //
 // it exists at all because a part that settles its own address hands `href` and react router's link
-// reads `to`. a part that settles no address needs none: packages/console-ui/src/lib/connect-panel.tsx
+// reads `to`. a part that settles no address needs none: packages/console-ui/src/routes/_index.tsx
 // hands `Link` straight into `Button`'s `as` and writes `to` at the call site.
 //
 // one hop rather than one per part: every part taking a `link` states its own props typedef and all

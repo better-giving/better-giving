@@ -54,7 +54,7 @@ describe('webhookSecretStanding', () => {
 			registered('362db036820ee774')
 		);
 		expect(standing.state).toBe('stale');
-		expect(standing.detail).toContain('better-giving open');
+		expect(standing.detail).toContain('better-giving start');
 		expect(standing.detail).toContain('Donation processor');
 	});
 

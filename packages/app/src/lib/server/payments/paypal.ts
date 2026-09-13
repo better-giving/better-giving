@@ -20,6 +20,12 @@ import type {
 	Subscription
 } from '@paypal/paypal-server-sdk';
 import { PAYPAL_RAILS, type PaypalRail } from '@better-giving/form/embed/rails';
+import {
+	RECURRING_COLLECTION_EVENT_TYPES,
+	RECURRING_EVENT_TYPES,
+	SETTLEMENT_EVENT_TYPES,
+	SUBSCRIBED_EVENT_TYPES
+} from '@better-giving/operator/paypal/webhook-listener';
 import type { PaymentStatus } from '../db/schema';
 import { majorText, readAmount } from '../../forms/amounts';
 import { redact, redactPublicId } from '../../redact';
@@ -59,9 +65,11 @@ import type {
 // its own SDK for the same stated reason: so the contract has exactly one place to be stated.
 // everything else takes `PaymentProvider` from ./provider.ts.
 //
-// **it answers the one-off gift and the repeating one, and refuses the webhook-management and
-// wallet arms** — `unsupported`, exactly as ./factory.ts answers for a processor with no adapter at
-// all, and argued at each of them.
+// **it answers the one-off gift, the repeating one and the listener read, and refuses the listener
+// repairs and the wallet arms** — `unsupported`, exactly as ./factory.ts answers for a processor with
+// no adapter at all, and argued at each of them. the listener is registered by the console's binary
+// (`packages/console/internal/paypal`), so the repairs have no caller here
+// (./webhook-registration.ts).
 //
 // a gift that repeats is three objects on PayPal's side. the catalog product is what
 // `prepareRecurringGifts` provisions and `readRecurringGiftProvision` reads; a plan is per amount
@@ -343,76 +351,6 @@ const SIGNING_HEADERS: Readonly<Record<string, string>> = Object.freeze({
 	'paypal-auth-algo': 'auth_algo'
 });
 
-/**
- * the deliveries this adapter acts on, and which of them says a payment moved.
- *
- * three rather than PayPal's whole catalogue, because three is what the one-off path has a read for.
- * `CHECKOUT.ORDER.APPROVED` is the payer having authorised the order and is what the capture is made
- * from; the two capture events are the money having moved or having been refused. everything else
- * verifies, reports `ignored`, and is answered — a listener subscribed to more than this is noisy
- * rather than broken.
- *
- * **an event name is not unique to one API generation**, which is why membership of this list is not
- * the whole of what a delivery is read on. `PAYMENT.CAPTURE.COMPLETED` is published under Payments
- * v2 and under Payments v1, and the two carry different resources under the same name — so
- * `orderIdOf` below looks for the order where the shape this app reads puts it, and a delivery that
- * carries none is refused rather than reconciled against whatever id happened to be readable.
- */
-const SETTLEMENT_EVENT_TYPES = [
-	'CHECKOUT.ORDER.APPROVED',
-	'PAYMENT.CAPTURE.COMPLETED',
-	'PAYMENT.CAPTURE.DENIED'
-] as const;
-
-/**
- * the deliveries about a repeating gift that say money was meant to move.
- *
- * two, and the second is not a mistake: `BILLING.SUBSCRIPTION.PAYMENT.FAILED` is a collection with
- * nothing behind it — a charge was due and did not happen — which is the same reading
- * `RECURRING_COLLECTION_EVENT_TYPES` in packages/operator/src/stripe/webhook-endpoint.ts gives the
- * failed half of its own pair. read as the commitment's standing instead, a gift whose card failed
- * once would be recorded as having stopped.
- *
- * **their resources are not the same object.** the charge event carries a v1 sale and the failure
- * event carries the subscription, which is what {@link createPaypalProvider}'s recurring read
- * branches on — and it is the reason a caller is handed the delivery rather than an id.
- *
- * **no retry is built on the failure.** PayPal retries a failed collection twice per cycle on its
- * own and suspends the commitment when its threshold is reached
- * (https://developer.paypal.com/docs/subscriptions/customize/failed-payments/), so a retry here
- * would be a donor charged twice for one missed month.
- */
-const RECURRING_COLLECTION_EVENT_TYPES = [
-	'PAYMENT.SALE.COMPLETED',
-	'BILLING.SUBSCRIPTION.PAYMENT.FAILED'
-] as const;
-
-/**
- * the deliveries about a commitment's own standing, each naming the subscription.
- *
- * four rather than PayPal's seven `BILLING.SUBSCRIPTION.*` names. `CREATED` and `UPDATED` are not
- * here: this app records the gift from its own create call, and nothing in this product revises a
- * subscription — so both would be a read that changes nothing.
- *
- * **every one of these names is published twice**, under the live Subscriptions set and under the
- * deprecated Billing Agreements set, carrying a different resource each time
- * (https://developer.paypal.com/api/rest/webhooks/event-names). the listener this deployment
- * registers subscribes to the Subscriptions set, and a delivery whose resource this app cannot read
- * is refused rather than reconciled against whatever id happened to be readable.
- */
-const RECURRING_COMMITMENT_EVENT_TYPES = [
-	'BILLING.SUBSCRIPTION.ACTIVATED',
-	'BILLING.SUBSCRIPTION.CANCELLED',
-	'BILLING.SUBSCRIPTION.EXPIRED',
-	'BILLING.SUBSCRIPTION.SUSPENDED'
-] as const;
-
-/** every delivery about a repeating gift, in one list because they share one kind and one read. */
-const RECURRING_EVENT_TYPES: readonly string[] = [
-	...RECURRING_COLLECTION_EVENT_TYPES,
-	...RECURRING_COMMITMENT_EVENT_TYPES
-];
-
 /** the id the resource carries, or nothing where the delivery names no object this app can read. */
 function resourceIdOf(resource: unknown): string | null {
 	const object = json(resource);
@@ -618,10 +556,10 @@ function unusableGift(request: RecurringGiftRequest): PaymentFailure | null {
  * one sentence per group rather than one per arm, because every arm in a group is refused for the
  * same reason and a reader who saw two wordings would go looking for the difference.
  */
-const NO_LISTENER_MANAGEMENT =
-	'This release does not manage PayPal\u2019s listeners. The listener for this deployment\u2019s ' +
-	'address is created on the PayPal developer dashboard, under the app these credentials belong to, ' +
-	'and its id is what `PAYPAL_WEBHOOK_ID` is set to.';
+const NO_LISTENER_REPAIR =
+	'This deployment does not change its PayPal listener. The console registers it and brings its ' +
+	'subscription level in the press that saves PayPal\u2019s credentials (`better-giving start`, under ' +
+	'Donation processor), and stores its id as `PAYPAL_WEBHOOK_ID`.';
 
 const NO_WALLET_DOMAINS =
 	'PayPal registers no hostname for wallets. Its funding sources are drawn inside PayPal\u2019s own ' +
@@ -1023,9 +961,9 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 					detail:
 						'This deployment cannot check that a payment notification came from PayPal: ' +
 						'`PAYPAL_WEBHOOK_ID` is not set, so the delivery was refused and nothing was read ' +
-						'out of it. The value is the id of the listener registered for this deployment’s ' +
-						'address, which is on the PayPal developer dashboard under the app these ' +
-						'credentials belong to.'
+						'out of it. Open the console (`better-giving start`) and save PayPal’s credentials under ' +
+						'Donation processor: that press registers the listener for this deployment’s address ' +
+						'and stores its id.'
 				};
 			}
 
@@ -1105,8 +1043,8 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 					detail:
 						'PayPal did not vouch for this delivery, so its body was not read. If this ' +
 						'deployment’s own listener is failing, `PAYPAL_WEBHOOK_ID` is not the id of the ' +
-						'listener these deliveries are being sent to — the ids are on the PayPal developer ' +
-						'dashboard under the app these credentials belong to.'
+						'listener these deliveries are being sent to. Saving PayPal’s credentials again in ' +
+						'the console (`better-giving start`) finds that listener and stores its id.'
 				};
 			}
 
@@ -1138,7 +1076,7 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 				return { ok: true, value: { id, kind: 'settlement', type, providerTxnId, occurredAt } };
 			}
 
-			if (RECURRING_EVENT_TYPES.includes(type)) {
+			if ((RECURRING_EVENT_TYPES as readonly string[]).includes(type)) {
 				const providerNoticeId = resourceIdOf(event.resource);
 				if (providerNoticeId === null) {
 					return unreadableResource(
@@ -1454,20 +1392,70 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 			return readCommitment(giftId, 'collection', event.providerNoticeId);
 		},
 
+		/**
+		 * the listeners the app these credentials belong to holds.
+		 *
+		 * one read and no paging: PayPal lists an app's listeners whole and caps an app at ten
+		 * (https://developer.paypal.com/docs/api/webhooks/v1/).
+		 *
+		 * **`enabled` is always true, because a listener carries no switch.** the `webhook` object is
+		 * an id, a url and its event types (`notifications_webhooks_v1.json` in
+		 * https://github.com/paypal/paypal-rest-api-specifications), so the only way a listener stops
+		 * receiving a delivery is not being subscribed to it — which is what `missingEventTypes` reads.
+		 *
+		 * **the stamp is the listener's own id**, which is what `PAYPAL_WEBHOOK_ID` holds and what a
+		 * delivery is verified against — public, so nothing is digested (`VERIFICATION` in
+		 * ./webhook-secret.ts).
+		 */
 		async listWebhookEndpoints(): Promise<PaymentResult<WebhookEndpointRegistry>> {
-			return unsupported(NO_LISTENER_MANAGEMENT);
+			let answer: { status: number; body: unknown };
+			try {
+				answer = await call('GET', '/v1/notifications/webhooks');
+			} catch (error) {
+				return classify(error);
+			}
+			if (answer.status < 200 || answer.status >= 300) {
+				return classifyStatus(
+					answer.status,
+					answer.body,
+					'PayPal could not be asked which listeners this app holds'
+				);
+			}
+
+			const listed = json(answer.body)?.webhooks;
+			const endpoints = (Array.isArray(listed) ? listed : []).flatMap(
+				(one: unknown): WebhookEndpointSummary[] => {
+					const listener = json(one);
+					if (typeof listener?.id !== 'string' || typeof listener.url !== 'string') return [];
+					const types = Array.isArray(listener.event_types) ? listener.event_types : [];
+					return [
+						{
+							id: listener.id,
+							url: listener.url,
+							enabled: true,
+							eventTypes: types.flatMap((type: unknown) => {
+								const name = json(type)?.name;
+								return typeof name === 'string' ? [name] : [];
+							}),
+							apiVersion: null,
+							verificationStamp: listener.id
+						}
+					];
+				}
+			);
+			return { ok: true, value: { endpoints, requiredEventTypes: SUBSCRIBED_EVENT_TYPES } };
 		},
 
 		async registerWebhookEndpoint(): Promise<PaymentResult<RegisteredWebhookEndpoint>> {
-			return unsupported(NO_LISTENER_MANAGEMENT);
+			return unsupported(NO_LISTENER_REPAIR);
 		},
 
 		async resubscribeWebhookEndpoint(): Promise<PaymentResult<WebhookEndpointSummary>> {
-			return unsupported(NO_LISTENER_MANAGEMENT);
+			return unsupported(NO_LISTENER_REPAIR);
 		},
 
 		async replaceWebhookEndpoint(): Promise<PaymentResult<RegisteredWebhookEndpoint>> {
-			return unsupported(NO_LISTENER_MANAGEMENT);
+			return unsupported(NO_LISTENER_REPAIR);
 		},
 
 		async listWalletDomains(): Promise<PaymentResult<readonly WalletDomain[]>> {

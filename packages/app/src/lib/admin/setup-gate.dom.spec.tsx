@@ -71,7 +71,7 @@ it('says what is outstanding and says nothing under a job that is done', () => {
 
 it('sends the reader to the console and offers nothing that would repair a job here', () => {
 	const root = screen();
-	expect(root.querySelector('code.adm-code')?.textContent).toBe('better-giving open');
+	expect(root.querySelector('code.adm-code')?.textContent).toBe('better-giving start');
 	// one control on the whole screen. a press per line would be the console built a second time,
 	// over a deployment that by definition is not finished ($lib/admin/setup-gate.tsx).
 	expect(root.querySelectorAll('button')).toHaveLength(1);

@@ -18,13 +18,11 @@ import type { Route } from './+types/console.webhook-repair';
 // deploy-time and lives under `$lib/server/**` (CLAUDE.md) — the same asymmetry ./console.recurring.ts
 // states.
 //
-// **it names Stripe because Stripe is the only processor whose endpoint this release manages.** the
-// PayPal adapter refuses every endpoint arm as `unsupported` ($lib/server/payments/paypal.ts), so a
-// press here on a PayPal deployment could only report that refusal back — and there is no press to
-// offer, because the listener is created by hand on PayPal's own dashboard and its id is what
-// `PAYPAL_WEBHOOK_ID` is set to. what an operator is told instead is the `unmanaged` arm of the
-// reading beside this (./console.payments.ts), which carries the address to point it at. this file
-// grows a processor the day an adapter manages one, and not before.
+// **it names Stripe because no other processor's listener is repaired from this deployment.** the
+// PayPal adapter refuses the repair arms as `unsupported` ($lib/server/payments/paypal.ts): the
+// console's own PayPal press finds the listener at this deployment's address and brings its
+// subscription level itself (`packages/console/internal/paypal`), so a press here could only report
+// that refusal back.
 //
 // **it is the repair and never the replacement.** replacing deletes the endpoint and creates
 // another, which mints a new signing secret and leaves this deployment verifying nothing until

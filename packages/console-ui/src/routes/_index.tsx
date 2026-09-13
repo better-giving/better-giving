@@ -11,24 +11,14 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import type { ReactNode } from 'react';
-import { Suspense, useCallback, useDeferredValue, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useDeferredValue, useRef, useState } from 'react';
 import { readOriginList } from '@better-giving/operator/origins';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import {
-	Await,
-	Form,
-	Link,
-	redirect,
-	useNavigate,
-	useNavigation,
-	useRevalidator,
-	useSearchParams
-} from 'react-router';
+import { Await, Form, Link, useNavigate, useNavigation, useSearchParams } from 'react-router';
 import { saidClosing } from '../lib/close-answer';
 import { CLOSE_PARAM, opensOrDropsDialog } from '../lib/dialog-params';
 import { finishStartingBar } from '../lib/starting-bar';
 import { ConsoleStopped } from '../lib/deployment-states';
-import { ConnectPanel } from '../lib/connect-panel';
 import { ConsoleHead } from '../lib/head-strip';
 import type { OrgFoldProps } from '../lib/org-fold';
 import { OrgFold } from '../lib/org-fold';
@@ -46,7 +36,8 @@ import { ProductFoot } from '../lib/product-foot';
 import { Said } from '../lib/said';
 import type { GroupReport } from '../lib/secret-group-form';
 import { CHARITY_INTENT, charityEdit } from '../lib/paypal-charity';
-import { groupPosted, pressedNames } from '../lib/secret-groups';
+import { PAYPAL_SETUP_INTENT, paypalPairPosted } from '../lib/paypal-setup';
+import { PAYPAL_GROUP, groupPosted, pressedNames } from '../lib/secret-groups';
 import { heldValues } from '../lib/held-values';
 import { FREE_INTENT } from '../lib/withheld-values';
 import { STRIPE_REMOVAL, stripeKeyEdits } from '../lib/stripe-edits';
@@ -65,6 +56,7 @@ import {
 	homeShape,
 	levelWallets,
 	levelWidget,
+	paypalRun,
 	readPayments,
 	readRecurring,
 	saveOrgProfile,
@@ -72,11 +64,8 @@ import {
 	setVars,
 	sendTestEmail,
 	setUpRecurring,
-	signInStatus,
-	signOut,
-	startSignIn,
+	startPaypalSetup,
 	startStripeSetup,
-	stopSignIn,
 	stripeRun
 } from '../api/client';
 import type {
@@ -91,7 +80,6 @@ import type {
 	WalletsLevel,
 	WidgetLevel
 } from '../api/types';
-import { connectFace } from '../lib/connect-face';
 import type { HomeSection, SectionId } from '../lib/home-sections';
 import { readSections } from '../lib/home-sections';
 import { orgBoxes } from '../lib/org-fields';
@@ -102,12 +90,16 @@ import type { Route } from './+types/_index';
 // the console, which is this one page.
 //
 // **it has four faces and which one is drawn is decided by how far set-up has got.** the governing
-// rule is that a screen depending on something unconfigured is not drawn at all: no shell before
-// there is a cloudflare account, no ledger of jobs before there is a deployment, and no job's panel
-// before this console can read the deployment it is about. so the operator is never handed a
-// control over a thing that does not exist yet, and never has to work out which of two findings
-// comes first. ../lib/connect-face.ts decides the first face and the binary the three after it
+// rule is that a screen depending on something unconfigured is not drawn at all: no ledger of jobs
+// before there is a deployment, and no job's panel before this console can read the deployment it
+// is about. so the operator is never handed a control over a thing that does not exist yet, and
+// never has to work out which of two findings comes first. the binary decides which face
 // (`packages/console/internal/deployment`); nothing about which face is on screen is decided here.
+//
+// **the page opens connected, and nothing on it signs in, chooses an account or finds a
+// deployment.** `better-giving start` does all three, and connects, before it serves this page
+// (`packages/console/cmd/better-giving/start.go`), so there is no face before the shell: the account
+// is settled by the time anything here is read.
 //
 // **there is no rail and no status screen, and neither is coming back.** a rail of cells over the
 // folds and a screen summarising them are two ways to read the same facts, and a folded row already
@@ -130,10 +122,12 @@ import type { Route } from './+types/_index';
 // is the first fold (../lib/password-fold.tsx). the account is the only thing true on every face of
 // this console, which is what earns it the line the page is headed by.
 //
-// **connecting is an act behind a control and never a page load.** writing the session secret
-// deploys a new version of the worker and replaces whatever session was on it, so a console that
-// connected because a tab opened would revoke another operator's session with nobody having asked —
-// `packages/console/internal/deployment/connect.go` holds the whole of it.
+// **the one connection state this page draws is the re-connect gate, and re-connecting is a press
+// and never a page load.** a session that drops mid-use leaves the deployment unreadable, and
+// writing the session secret again deploys a new version of the worker and replaces whatever session
+// was on it — so a console that re-connected because a tab reloaded would revoke another operator's
+// session with nobody having asked. `packages/console/internal/deployment/connect.go` holds the
+// whole of it.
 //
 // **`BETTER_AUTH_URL` has no box and no press.** the app falls back to the origin a request arrived
 // on when nothing is pinned (`packages/app/src/lib/server/auth/index.ts`), so a box would only
@@ -156,16 +150,13 @@ import type { Route } from './+types/_index';
 // failure is a value: nothing here throws, because a rejected promise in a loader is a 500 in place
 // of the state that explains it.
 
-/** what the session press on the unreachable face posts. */
+/** what the re-connect press on the unreachable face posts. */
 const CONNECT_INTENT = 'connect';
 
 /** what the head's one control posts, from the confirm the control opens. */
 const CLOSE_INTENT = 'close';
 
-/** what the connect panel's way out of a wrong cloudflare sign-in posts. */
-const SIGN_OUT_INTENT = 'signOut';
-
-/** what the connect press is described by, which is what pressing it costs somebody else. */
+/** what the re-connect press is described by, which is what pressing it costs somebody else. */
 const COLLEAGUE_COST = 'colleague-cost';
 
 /**
@@ -185,12 +176,11 @@ export function meta(): Route.MetaDescriptors {
  *
  * **nothing here is served, and there is no loader to serve it**: the sign-in, the account and
  * every reading of the deployment are the binary's, answered on the loopback address, so the
- * decision is made in the browser where all of them are in hand. ../lib/connect-face.ts is the
- * first of them and reads nothing.
+ * decision is made in the browser where all of them are in hand.
  *
- * the three asked for at once: each is a loopback round trip, so none is worth waiting on before
- * another is started. the slow reading is asked for only once there is a shell to draw it under,
- * which is what keeps a page with a press running from paying for every round trip in it.
+ * the two quick reads are asked for at once: each is a loopback round trip, so neither is worth
+ * waiting on before the other is started. the slow reading is handed back as a promise, which is
+ * what lets the head go up before anything has been asked of cloudflare.
  *
  * **the bar the document is drawing is finished before this hands anything back.** ../root.tsx's
  * fallback is on the screen while the first of these passes runs, and every bar on this console
@@ -206,48 +196,17 @@ export async function clientLoader() {
 
 /** every reading the page is a function of, which is the whole of what the loader above hands back. */
 async function readConsole() {
-	const [status, home, release] = await Promise.all([
-		signInStatus(),
-		homeShape(),
-		consoleVersion()
-	]);
-	const face = connectFace({
-		signIn: status.signIn,
-		login: status,
-		chosen: home.account === null ? null : { account: home.account, remembered: home.remembered },
-		tokenSet: status.tokenSet
-	});
-
-	/* the release rides with every shape, because the strip that prints it stands under every screen
-	   (../lib/product-foot.tsx). it is asked for beside the other two rather than after them for
-	   their own reason — it is a loopback round trip and nothing waits on another. */
-	if (face.kind !== 'connected') {
-		return { shape: 'connect' as const, face, version: release.version };
-	}
-	if (home.shape !== 'shell' || home.account === null) {
-		// unreachable, and stated rather than checked: `connectFace` answers `connected` only where
-		// an account is recorded, which is exactly what the binary answers `shell` for — a narrowing
-		// the type system cannot make on its own.
-		return {
-			shape: 'connect' as const,
-			face: { kind: 'unreachable' as const },
-			version: release.version
-		};
-	}
+	const [home, release] = await Promise.all([homeShape(), consoleVersion()]);
 
 	const shell = {
+		// the release, printed by the strip that stands under every screen (../lib/product-foot.tsx).
 		version: release.version,
-		// the name is the sign-in's rather than the record's, for ../lib/connect-face.ts's reason: a
-		// cloudflare account can be renamed, and the record is how the id is remembered.
-		account: face.account.name,
+		account: home.account.name,
 		// what cloudflare resolves that name by. the head states it beside the name because the name
 		// is not unique and this is.
 		accountId: home.account.id,
-		remembered: face.remembered,
-		/* the folder a renewed sign-in could not be written to, and null where it was. it is a state
-		   of being signed in rather than a way of not being (../lib/connect-face.ts), so it rides
-		   with the account it was read over rather than sending the page to the panel. */
-		notKept: face.notKept,
+		remembered: home.remembered,
+		notKept: home.notKept,
 		workerName: home.workerName,
 		databaseName: home.databaseName
 	};
@@ -283,15 +242,15 @@ async function readConsole() {
 	/* the setup run the binary is holding, read on this face alone: it is what the payments fold
 	   draws its ledger from, and a reading taken on a face that draws no fold would consume a run
 	   that landed with nothing on screen to report it (../api/client.ts). */
-	const stripe = await stripeRun();
+	const [stripe, paypal] = await Promise.all([stripeRun(), paypalRun()]);
 
 	return {
-		shape: 'shell' as const,
 		...shell,
 		reading,
 		payments,
 		recurring,
-		stripe
+		stripe,
+		paypal
 	};
 }
 
@@ -353,21 +312,17 @@ const stored = (press: SitesPress) => ({ sites: press });
  * read inside the binary and never posted — a name that travelled through a page is a value written
  * wherever that page said.
  *
- * **the sign-in is the binary's whole job**: it opens cloudflare's own allow page, catches the
- * callback on a loopback port of its own and keeps what comes back — so what this posts is intent,
- * and what it is told is a phase. no credential reaches the page.
- *
- * **the session and the seven errands it carries are the binary's too.** connecting mints a token,
- * writes it onto the deployment and records it on this machine; the seven after it are posted to
- * the deployment's own console surface over that session, and every one of them answers with what
- * the deployment said, at the box its key names.
+ * **the session and the seven errands it carries are the binary's too.** re-connecting mints a
+ * token, writes it onto the deployment and records it on this machine; the seven after it are
+ * posted to the deployment's own console surface over that session, and every one of them answers
+ * with what the deployment said, at the box its key names.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
 	const posted = await request.formData();
 	const intent = posted.get('intent');
 
 	/**
-	 * mints a session and writes it to the deployment.
+	 * mints a session and writes it to the deployment, from the gate a dropped session leaves.
 	 *
 	 * the address it is written at is read inside the binary and never posted: a host that travelled
 	 * through a page is a credential written wherever that page said. one press at a time — a second
@@ -444,6 +399,22 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	if (intent === CHARITY_INTENT) return { charity: await setVars(charityEdit(posted)) };
 
 	/**
+	 * sets PayPal up from the pair: the binary checks it, settles the listener at this deployment's
+	 * address and writes the pair and that listener's id in one write (`packages/console/internal/paypal`).
+	 *
+	 * started rather than awaited, for the Stripe press's reason below, and the pair is read by the
+	 * boxes' own rule first so the binary is sent nothing it would turn down (../lib/paypal-setup.ts).
+	 */
+	if (intent === PAYPAL_SETUP_INTENT) {
+		const read = paypalPairPosted(posted);
+		if (!read.ok) return { paypal: { errors: read.errors } };
+		const pressed = await startPaypalSetup(read.pair);
+		if ('turnedDown' in pressed) return { paypal: { turnedDown: true as const } };
+		if ('unwritten' in pressed) return { paypal: { unwritten: pressed.unwritten } };
+		return { paypal: { started: true as const } };
+	}
+
+	/**
 	 * does to the processor whatever the two Stripe boxes asked for, which is one of three acts.
 	 *
 	 * **which act it is follows from the secret box and is settled before anything leaves this
@@ -492,6 +463,8 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 		// the door keeps one reading about the published slot and no run begins where it refuses, so
 		// there is nothing to poll and the answer says so here (`StripeStarted` in ../api/types.ts).
 		if ('turnedDown' in pressed) return { stripe: { turnedDown: true as const } };
+		// a write that could not be made at all is the removal's refusal too, drawn at the same press.
+		if ('unwritten' in pressed) return { stripe: { written: pressed.unwritten } };
 		return { stripe: { started: true as const } };
 	}
 
@@ -542,7 +515,7 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 		return stored({ written, widget, wallets: await levelWallets() });
 	}
 
-	/** runs the whole check again, which is what every blocker's way out on the connect panel does. */
+	/** runs the whole check again, which is what the gate's and the ready face's check press does. */
 	if (intent === 'check') {
 		// nothing is asked of the binary here: what the press does is send the page through its own
 		// reading again, and that reading is where every one of those blockers is decided.
@@ -570,23 +543,6 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 		return { closing: true as const };
 	}
 
-	if (intent === 'signIn') {
-		// the refusal is a second press while one is already open in a browser: the binary answers
-		// it rather than opening a second, and the panel reports that at the control.
-		return (await startSignIn()).started ? { signingIn: true } : { alreadySigningIn: true };
-	}
-	if (intent === 'stopSignIn') {
-		await stopSignIn();
-		return { stopped: true };
-	}
-	if (intent === SIGN_OUT_INTENT) {
-		/* signs this machine out of cloudflare, which is why the control that reaches here is behind
-		   a dialog saying so in those words (../lib/connect-panel.tsx). the recorded account is left
-		   alone: what it names still exists and is still where this deployment belongs — what has
-		   gone is the sign-in that could reach it. */
-		await signOut();
-		return redirect('/', 303);
-	}
 	/**
 	 * stores and clears a group of credentials, in one request to cloudflare.
 	 *
@@ -609,9 +565,13 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	 *
 	 * no lock: a write that loses a race here leaves a credential the rows in the block report
 	 * exactly as it is.
+	 *
+	 * **PayPal's group is drawn and never pressed.** its three names arrive only through the set-up
+	 * press above, which settles the listener its id names, and the binary refuses them on the values
+	 * door (`packages/console/internal/server/values.go`).
 	 */
 	const group = groupPosted(intent);
-	if (group !== null) {
+	if (group !== null && group.id !== PAYPAL_GROUP) {
 		const read = await homeReading();
 		if (read.values.vars.kind !== 'read') {
 			return { secrets: { group: group.id, written: unreadHeld(read.values.vars) } };
@@ -686,14 +646,6 @@ const unasked: WidgetLevel = {
 	detail: ''
 };
 
-/**
- * how long the page leaves between asks while a cloudflare sign-in is open in a browser.
- *
- * one spender, the effect below: a sign-in finished away in cloudflare's own tab reaches this one
- * by asking, because nothing tells it.
- */
-const POLL_MS = 2500;
-
 export default function Console({ loaderData, actionData }: Route.ComponentProps) {
 	const navigation = useNavigation();
 	const posted = navigation.formData?.get('intent');
@@ -709,34 +661,20 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 	/* the reading this page is drawing, which is the last one that landed while a newer one is still
 	   being taken — the whole of what keeps a press from putting the glass up over the page it was
 	   made on (stated where it is drawn, at the `Suspense` below). it is read here because a hook
-	   cannot be, past the faces that return before it. */
-	const standing = useDeferredValue(loaderData.shape === 'shell' ? loaderData.reading : undefined);
+	   cannot be, past the close branch that returns before it. */
+	const standing = useDeferredValue(loaderData.reading);
 	/* a Stripe setup run counts as this page writing, although no request is open for it: it writes
 	   two credentials and a var onto the deployment (`packages/console/internal/stripe`), and a
 	   second press made under it would be reading what this one is still changing. it is read off
 	   the reading rather than off a navigation, and the reading is taken again the moment the run
 	   stops (../lib/payments-fold.tsx). */
-	const setting = loaderData.shape === 'shell' && loaderData.stripe?.kind === 'running';
+	const setting = loaderData.stripe?.kind === 'running' || loaderData.paypal?.kind === 'running';
 	const busy = intent !== null || setting;
-
-	const revalidator = useRevalidator();
-	/* a sign-in finished away in cloudflare's own tab reaches this one by asking, because nothing
-	   tells it. it is a bounded window rather than an open-ended pulse: the binary gives up after
-	   two minutes (packages/console/internal/oauth), and a flow that ended moves the face to
-	   `unfinished`, which stops the asking. it is the one beat this page keeps: nothing else on it
-	   changes without a press. */
-	const waitingOnSignIn = loaderData.shape === 'connect' && loaderData.face.kind === 'waiting';
-	useEffect(() => {
-		if (!waitingOnSignIn || revalidator.state !== 'idle') return;
-		const timer = setTimeout(() => void revalidator.revalidate(), POLL_MS);
-		return () => clearTimeout(timer);
-	}, [waitingOnSignIn, revalidator]);
 
 	/* whether the confirm over the close press is up. it is a parameter on the address rather than
 	   state, which is what makes the way out of it a link: a GET back to this page drops it, and that
 	   is what Escape answers with too — `Modal` hands the request back rather than closing the
-	   element, so the address and what is on the screen cannot disagree (../lib/connect-panel.tsx
-	   states the whole of the arrangement, over the press it draws the same way). */
+	   element, so the address and what is on the screen cannot disagree (../lib/dialog-params.ts). */
 	const [params] = useSearchParams();
 	const navigate = useNavigate();
 	const asking = params.has(CLOSE_PARAM);
@@ -752,17 +690,6 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 	   for this reason. a page saying it again afterwards is a page restating a press the operator
 	   just made. */
 	if (saidClosing(actionData)) return null;
-
-	if (loaderData.shape === 'connect') {
-		return (
-			<ConnectPanel
-				face={loaderData.face}
-				version={loaderData.version}
-				pending={intent}
-				alreadySigningIn={actionData !== undefined && 'alreadySigningIn' in actionData}
-			/>
-		);
-	}
 
 	/* the same strip under every screen below, settled once so no face can be the one that forgets
 	   it. what stands in it turns on nothing any of them read (../lib/product-foot.tsx). */
@@ -809,8 +736,7 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 	   a link, so it posts nothing and the form around it is inert for that press.
 
 	   it takes the `danger` slot rather than the exit one: that slot draws the confirm ahead of the
-	   way out, and this is the consequential control on the card the way the sign-out on
-	   ../lib/connect-panel.tsx is. */
+	   way out, and this is the consequential control on the card. */
 	const confirm = (
 		<Form method="post">
 			<Modal
@@ -884,6 +810,14 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 	const freed: VarsWritten | null = actionData && 'freed' in actionData ? actionData.freed : null;
 	const provision: RecurringSetup | null =
 		actionData && 'recurring' in actionData ? actionData.recurring : null;
+	/* PayPal's set-up press: its run off the loader, and the three answers that started none. */
+	const paypalAnswer = actionData && 'paypal' in actionData ? actionData.paypal : null;
+	const paypal: PaymentsFoldProps['paypal'] = {
+		run: loaderData.paypal,
+		refused: paypalAnswer !== null && 'errors' in paypalAnswer ? paypalAnswer.errors : null,
+		turnedDownPair: paypalAnswer !== null && 'turnedDown' in paypalAnswer,
+		unwritten: paypalAnswer !== null && 'unwritten' in paypalAnswer ? paypalAnswer.unwritten : null
+	};
 	/* how the press of PayPal's charity-rate switch went, which is one var written through the same
 	   door every other value goes through. */
 	const charity: VarsWritten | null =
@@ -901,20 +835,10 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 	const waiting = (
 		<BareShell head={head} foot={foot} centred>
 			<div className="adm-stack adm-stack--tight adm-stack--centred">
-				{/* no heading: the glass is what stands where one would, and it says the one thing a
-				    heading here could — that the looking is still going on. it is `.adm-seek` off
-				    packages/operator/src/styles/adm.css, wandering a small path rather than spinning,
-				    because what the binary is doing is looking for something and not working on it.
-				    it carries no label: the sentence under it says what the looking is for. */}
+				{/* no heading and no sentence: the terminal found the deployment before this page was
+				    served, so all the glass waits on is the reading. it is `.adm-seek` off
+				    packages/operator/src/styles/adm.css, wandering a small path rather than spinning. */}
 				<Mark name="search" size="lg" className="adm-seek" />
-				{/* polite: the line changes on its own and nothing is being asked of the reader. a
-				    plain sentence and not a status line, because a running mark on it would be a
-				    second moving thing under the glass, pulling the eye two ways.
-
-				    "this account" and not its name: the head over the line already states which one,
-				    and every read behind the line is scoped to it — nothing here is deciding
-				    between accounts. */}
-				<p role="status">Looking for a Better Giving deployment in this account.</p>
 			</div>
 		</BareShell>
 	);
@@ -953,8 +877,7 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 							return <NotDeployedFace foot={foot} head={head} />;
 						}
 						/* the gate stands in the middle of the space under the head rather than at the top of a
-					   column, which is what ../lib/connect-panel.tsx does one step earlier: one question
-					   and one way out is not a page anybody reads from the top. */
+					   column: one question and one way out is not a page anybody reads from the top. */
 						if (home.kind === 'unreachable') {
 							return (
 								<BareShell head={head} foot={foot} centred>
@@ -1016,7 +939,7 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 												removed,
 												freed,
 												provision,
-												secrets,
+												paypal,
 												charity,
 												wallets: covered,
 												busy,
@@ -1081,7 +1004,8 @@ function BlockedFace({
 			<>
 				<PageHeader title="This machine isn't signed in to Cloudflare" />
 				<Banner tone="blocker" word="Nothing in this account was read">
-					The console is holding no Cloudflare sign-in for this machine. Reload to sign in again.
+					The console is holding no Cloudflare sign-in for this machine. Close the console and run{' '}
+					<InlineCode>better-giving start</InlineCode> again to sign in.
 				</Banner>
 				{why.detail === '' ? null : (
 					<p className="adm-hint">
@@ -1180,10 +1104,9 @@ const DASHBOARD = 'https://dash.cloudflare.com';
 /**
  * no worker of this deployment's name is in the account, and the command that puts one there.
  *
- * **it is a card and not a page**, the same card ../lib/connect-panel.tsx draws: one finding, one
- * way out, centred in the window. a shell, a bar and a page header around a single sentence is
- * furniture standing in for content, and every fact a bar would carry is read over a deployment
- * that does not exist yet.
+ * **it is a card and not a page**: one finding, one way out, centred in the window. a shell, a bar
+ * and a page header around a single sentence is furniture standing in for content, and every fact a
+ * bar would carry is read over a deployment that does not exist yet.
  *
  * **it carries no press, because standing a deployment up is `better-giving start` in a terminal.**
  * that chain makes a database, applies a remote migration and uploads a worker — minutes behind a
@@ -1192,8 +1115,7 @@ const DASHBOARD = 'https://dash.cloudflare.com';
  * browser and a bare command name is one they have nowhere to put.
  *
  * **the heading says what is missing and the sentence says what to do**, which is the whole of the
- * card. cloudflare's own name is nowhere on it either, because the panel that stands before it is
- * headed `Connect Cloudflare` and a second telling explains nothing (../lib/connect-panel.tsx).
+ * card. cloudflare's own name is nowhere on it either: the head over it already states the account.
  */
 function NotDeployedFace({
 	foot,
@@ -1222,12 +1144,13 @@ function NotDeployedFace({
 /**
  * deployed, and this console cannot read it: the gate standing in front of every fold.
  *
- * **it is the card ../lib/connect-panel.tsx draws, one step later.** that panel stands under a head
- * naming a sign-in and never an account, because nothing it holds is true before an account is
- * settled. here the account is settled, so it stays on the head and everything the gate makes
- * unreadable comes off — the ledger, the folds, and
- * the heading that names the address they are all read over. what is left is one question and one
- * press, which is what a gate is.
+ * **the account stays on the head and everything the gate makes unreadable comes off** — the
+ * ledger, the folds, and the heading that names the address they are all read over. what is left is
+ * one question and one press, which is what a gate is.
+ *
+ * **it is the one connection state this page draws.** `better-giving start` connects before the page
+ * is served, so no session and a session turned away are both a session that dropped mid-use — the
+ * other operator's press on their own console, or twelve hours running out.
  *
  * **the address is a literal here and a link on the ready face.** there it is a destination and an
  * operator working on the deployment follows it; here it is the thing being named, and a link out
@@ -1270,14 +1193,12 @@ function UnreachableFace({
 	connected: Awaited<ReturnType<typeof connect>> | null;
 }): ReactNode {
 	// each state's own heading, so that a press which removes the control the operator was standing
-	// on leaves them somewhere rather than nowhere — ../lib/connect-panel.tsx's treatment, for its
-	// reasons.
+	// on leaves them somewhere rather than nowhere.
 	//
-	// what is held is the state last drawn and not a count of draws, which is where this face and
-	// that panel differ: the panel is returned straight from the route and mounts once, and this one
-	// is inside the page's `Await`, whose subtree attaches twice on a first load — a count reads the
-	// second of those as a state change and takes focus off the page nobody asked it to. a state
-	// that has not changed cannot be a press's outcome however many times it is drawn.
+	// what is held is the state last drawn and not a count of draws: this face is inside the page's
+	// `Await`, whose subtree attaches twice on a first load — a count reads the second of those as a
+	// state change and takes focus off the page nobody asked it to. a state that has not changed
+	// cannot be a press's outcome however many times it is drawn.
 	const drawn = useRef<NoReport['kind'] | null>(null);
 	const heading = useCallback(
 		(node: HTMLElement | null) => {
@@ -1391,8 +1312,7 @@ function UnreachableFace({
 			<p className="adm-prose">Nothing about it can be shown until you do.</p>
 			{rows}
 			{/* a paragraph the button points at rather than a hint under it: it is a third party's cost
-			    that a fast reader skips, which is the one thing ../lib/connect-panel.tsx describes its
-			    own press by. */}
+			    that a fast reader skips. */}
 			<p className="adm-prose" id={COLLEAGUE_COST}>
 				If a colleague has this console open on the same deployment, connecting here stops theirs
 				and they'll need to connect again.

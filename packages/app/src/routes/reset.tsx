@@ -112,7 +112,7 @@ const LINK_DEAD = 'This link has expired or was already used.';
  */
 const UNAVAILABLE =
 	'Your password could not be changed: something is wrong with this deployment rather than ' +
-	'with what you typed. Ask whoever runs it to check the console (`better-giving open`); the ' +
+	'with what you typed. Ask whoever runs it to check the console (`better-giving start`); the ' +
 	'exact cause is in the deployment’s logs, which the console does not read.';
 
 /**
@@ -123,7 +123,7 @@ const UNAVAILABLE =
  */
 const NOT_MIGRATED =
 	'Your password could not be changed: this deployment’s database has not been set up. Ask ' +
-	'whoever runs it to open the console (`better-giving open`) and update the deployment.';
+	'whoever runs it to open the console (`better-giving start`) and update the deployment.';
 
 export const links = operatorLinks;
 

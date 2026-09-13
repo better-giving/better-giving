@@ -181,8 +181,8 @@ func (flow *Flow) Start() (Phase, bool, error) {
 // Stop ends a sign-in the operator no longer wants to finish, leaving nothing to report.
 //
 // Nothing rather than `unfinished`: what happened is that they pressed stop, which the screen they
-// are looking at already says. It is also what `open` calls on the way down, so a console that is
-// closed mid-sign-in leaves no listener behind.
+// are looking at already says. It is also what `start` and `login` call on the way down, so a
+// console that is closed mid-sign-in leaves no listener behind.
 func (flow *Flow) Stop() {
 	flow.mutex.Lock()
 	ending := flow.waiting

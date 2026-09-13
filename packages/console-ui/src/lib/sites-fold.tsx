@@ -108,7 +108,7 @@ import { WIDGET_LEAD, widgetTrouble } from './widget-level';
 // counting them: a site just stored is counted by the fold's own row and drawn in no box at all.
 //
 // **no state about a sign-in.** a console whose cloudflare sign-in has gone draws a face of its own
-// and never the folds (./connect-face.ts, and the binary's own reading) — so a fold restating it
+// and never the folds (`blocked` in ../api/types.ts's `HomeFace`) — so a fold restating it
 // would be a sentence about something the operator cannot be looking at. the deployment's own
 // report is the same: this fold is drawn only where it landed, so the list it seeds the boxes from
 // is always there.
