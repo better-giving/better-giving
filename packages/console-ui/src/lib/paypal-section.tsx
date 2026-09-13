@@ -514,7 +514,7 @@ function PaypalKeys(): ReactNode {
 				Apps &amp; Credentials &rarr; Live
 			</a>
 			. The client ID and the secret key are on that app, and so is the webhook you add at the
-			address above — its ID is the third box.
+			address above. Its ID is the third box.
 		</p>
 	);
 }

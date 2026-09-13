@@ -1967,7 +1967,7 @@ export function PaymentsFold({
 					tone="note"
 					note={
 						row.press
-							? `${explains} Setting it up adds that one item to ${accountsSaid(wanting)}, and this deployment asks with the ${wanting.length > 1 ? 'keys' : 'key'} it already holds. Nothing is typed here.`
+							? `${explains} Setting it up adds that one item to ${accountsSaid(wanting)}, and this deployment asks with the ${wanting.length > 1 ? 'keys' : 'key'} it already holds.`
 							: explains
 					}
 				>
@@ -2011,7 +2011,7 @@ export function PaymentsFold({
 				key={row.processor}
 				labelAs="span"
 				label={row.label}
-				word="Ready"
+				word="Set up"
 				wordOnMark
 				tone="done"
 			/>
