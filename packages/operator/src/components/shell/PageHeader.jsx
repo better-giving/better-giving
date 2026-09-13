@@ -11,7 +11,7 @@
  * @property {ReactNode} [standfirst]
  * @property {ReactNode} [pageAction] one action, and it acts on the page rather than on anything
  *   in it.
- * @property {ReactNode} [back]
+ * @property {ReactNode} [crumbs] the trail of pages above this one, read before the heading.
  */
 
 /* a title, a word beside it, a standfirst, and one slot for an action that acts on the page rather
@@ -33,10 +33,10 @@
    and be reported as D1 and the stripe client in the bundle a visitor downloads. that spec's case
    "mounts the page header on a route that exports an action, and reaches nothing" holds it. */
 /** @param {PageHeaderProps} props */
-export function PageHeader({ title, beside, standfirst, pageAction, back }) {
+export function PageHeader({ title, beside, standfirst, pageAction, crumbs }) {
 	return (
 		<header className="adm-pageheader">
-			{back}
+			{crumbs}
 			<div className="adm-pageheader__row">
 				<div className="adm-pageheader__title">
 					<div className="adm-pageheader__name">

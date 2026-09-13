@@ -750,10 +750,10 @@
 		--admin-fineprint-size: var(--admin-text-2xs);
 		/* a control's own label, in the two sizes a control comes in. the `-sm` spelling follows
 		   `--admin-control-height-sm` below, the box the small label usually stands in — usually
-		   rather than always: `.adm-back` reads this rank and is a bare link with no box at all,
-		   a run of words standing where a small control would, so re-pointing the rank moves the
-		   back link with the buttons. the line height is the label's rather than the box's: a
-		   control whose label wraps is read as a short run of lines. */
+		   rather than always: `.adm-crumbs__list` reads this rank and is a trail of bare links with
+		   no box at all, runs of words standing where a small control would, so re-pointing the
+		   rank moves the breadcrumbs with the buttons. the line height is the label's rather than
+		   the box's: a control whose label wraps is read as a short run of lines. */
 		--admin-control-size: var(--admin-text-base);
 		--admin-control-size-sm: var(--admin-text-sm);
 		--admin-control-weight: var(--admin-weight-medium);
@@ -854,8 +854,9 @@
 		--admin-rule: var(--admin-border-width) solid var(--admin-divider);
 		--admin-hairline: var(--admin-border-width) solid var(--admin-border);
 		/* the band a current destination, a landed save and a card whose run is going carry at one
-		   edge. it is the same number as `--admin-focus-bleed` below and means a different thing, so
-		   neither points at the other. */
+		   edge, and at half, the console's line over a move to another page. it is the same number
+		   as `--admin-focus-bleed` below and means a different thing, so neither points at the
+		   other. */
 		--admin-edge: 3px;
 
 		--admin-focus-width: 2px;
@@ -937,12 +938,12 @@
 		             dot's whole cycle, which is also the circuit: ./adm.css delays each dot by
 		             a sixth of it, so a re-pointing here moves the stagger with the loop and
 		             the dots cannot come to lap each other.
-		   braille-bar - the console's progress bar, on its start-up screen and over a move to
-		             another page while the destination reads: a line of twenty braille cells
-		             filling the way a terminal draws a bar. it fills fast to a third, slower to
-		             two thirds, then crawls to eighteen cells and holds,
+		   braille-bar - the console's progress bar: twenty braille cells on its start-up screen,
+		             the way a terminal draws a bar, and a line along the viewport's top edge over a
+		             move to another page while the destination reads. both fill fast to a third,
+		             slower to two thirds, then crawl to nine tenths and hold,
 		             because nothing is measured — it says only that the screen is still on its way.
-		             the twentieth cell is the state duration's, not this one's: ./adm.css rushes
+		             the last tenth is the state duration's, not this one's: ./adm.css rushes
 		             the bar out to full when the screen is done and holds it there for the dwell
 		             below, and the screen waits for the hold rather than for the rush.
 		   dwell   - the beat a finished thing is seen for before the screen it stands on is

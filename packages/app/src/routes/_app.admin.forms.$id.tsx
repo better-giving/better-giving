@@ -1,5 +1,4 @@
 import { formSnippet } from '@better-giving/form/embed/snippet';
-import { BackLink } from '@better-giving/operator/components/controls/BackLink';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { CodeChip, CodeSlab } from '@better-giving/operator/components/data/CodeSlab';
 import { DestructiveConfirm } from '@better-giving/operator/components/shell/DestructiveConfirm';
@@ -17,7 +16,7 @@ import { FormOriginsFields } from '$lib/admin/forms/origins-fields';
 import { FormProgramFields } from '$lib/admin/forms/program-fields';
 import { FormsReadiness } from '$lib/admin/forms/readiness';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import { RouterLink } from '$lib/admin/router-link';
+import { type CrumbHandle, ScreenCrumbs } from '$lib/admin/crumbs';
 import { buttonState } from '$lib/admin/save-button-state';
 import { savedSection } from '$lib/admin/saved-section';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -375,8 +374,15 @@ export function programChanged(seed: unknown, held: unknown): boolean {
 	return was.program_mode !== now.program_mode || was.program_id !== now.program_id;
 }
 
-/** the section this screen sits under, named on the way back and in the tab. */
+/** the section this screen sits under, named first in the trail and in the tab. */
 const SECTION = 'Donation forms';
+
+export const handle = {
+	crumbs: ({ loaderData, pathname }) => [
+		{ href: href('/admin/forms'), label: SECTION },
+		{ href: pathname, label: loaderData?.name ?? SECTION }
+	]
+} satisfies CrumbHandle<Route.ComponentProps['loaderData']>;
 
 export function meta({ loaderData, matches }: Route.MetaArgs): Route.MetaDescriptors {
 	// the form's own name, and the section's word where there is no form to name — a mistyped id,
@@ -912,8 +918,7 @@ export default function DonationForm({ loaderData, actionData }: Route.Component
 				</Banner>
 			) : null}
 
-			{/* the way back to the section this screen sits under, and one link rather than a trail:
-			    the second half of a "Donation forms / Spring appeal" trail is the heading beneath it.
+			{/* the trail to the section this screen sits under, stated by this module's `handle`.
 
 			    the status qualifies the form this whole page is about, so it stands on the heading's
 			    own row rather than in the page under it. the header is written out of the classes
@@ -927,9 +932,7 @@ export default function DonationForm({ loaderData, actionData }: Route.Component
 			    an archived form's word is the quiet one: `secondary` is for a status that has run its
 			    course, which is exactly what archived is. */}
 			<header className="adm-pageheader">
-				<BackLink href={href('/admin/forms')} link={RouterLink}>
-					{SECTION}
-				</BackLink>
+				<ScreenCrumbs />
 				<div className="adm-pageheader__row">
 					<h1>{name}</h1>
 					<StatusWord secondary={archived}>{FORM_STATUS_LABELS[status]}</StatusWord>

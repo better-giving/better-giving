@@ -12,7 +12,7 @@ import {
 import type { RecurringSetup, VarsWritten, WalletsLevel } from '../api/types';
 import { ConsoleStopped } from '../lib/deployment-states';
 import { heldValues } from '../lib/held-values';
-import { ProcessorPage } from '../lib/processor-page';
+import { ProcessorPage, processorHandle } from '../lib/processor-page';
 import { readProcessorScreen } from '../lib/processor-reading';
 import { ProductFoot } from '../lib/product-foot';
 import { RECURRING_INTENT } from '../lib/recurring-block';
@@ -36,6 +36,8 @@ import type { Route } from './+types/payments_.stripe';
 // every read is ../lib/processor-reading.ts's, which also says why any face but ready is `/`.
 
 const TITLE = 'Stripe';
+
+export const handle = processorHandle(TITLE);
 
 export function meta(): Route.MetaDescriptors {
 	return [{ title: `${TITLE} · ${CONSOLE_TITLE}` }];

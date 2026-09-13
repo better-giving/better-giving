@@ -1,4 +1,3 @@
-import { BackLink } from '@better-giving/operator/components/controls/BackLink';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { DestructiveConfirm } from '@better-giving/operator/components/shell/DestructiveConfirm';
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
@@ -11,7 +10,7 @@ import { useEffect, useRef } from 'react';
 import { data, Form, href, Link, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { ProgramFields } from '$lib/admin/programs/fields';
-import { RouterLink } from '$lib/admin/router-link';
+import { type CrumbHandle, ScreenCrumbs } from '$lib/admin/crumbs';
 import { buttonState } from '$lib/admin/save-button-state';
 import { savedSection } from '$lib/admin/saved-section';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -118,8 +117,15 @@ function isTextField(field: string): field is (typeof PROGRAM_TEXT_FIELDS)[numbe
 	return (PROGRAM_TEXT_FIELDS as readonly string[]).includes(field);
 }
 
-/** the section this screen sits under, named on the way back and in the tab. */
+/** the section this screen sits under, named first in the trail and in the tab. */
 const SECTION = 'Programs';
+
+export const handle = {
+	crumbs: ({ loaderData, pathname }) => [
+		{ href: href('/admin/programs'), label: SECTION },
+		{ href: pathname, label: loaderData?.name ?? SECTION }
+	]
+} satisfies CrumbHandle<Route.ComponentProps['loaderData']>;
 
 export function meta({ loaderData, matches }: Route.MetaArgs): Route.MetaDescriptors {
 	// the cause's own name, and the section's word where there is none to name — a mistyped id, a
@@ -351,9 +357,7 @@ export default function Program({ loaderData, actionData }: Route.ComponentProps
 			    an archived cause's word is the quiet one: `secondary` is for a status that has run its
 			    course. */}
 			<header className="adm-pageheader">
-				<BackLink href={href('/admin/programs')} link={RouterLink}>
-					{SECTION}
-				</BackLink>
+				<ScreenCrumbs />
 				<div className="adm-pageheader__row">
 					<h1>{name}</h1>
 					<StatusWord secondary={archived}>{PROGRAM_STATUS_LABELS[status]}</StatusWord>

@@ -122,7 +122,7 @@ const HAND_DRAWN = 'adm-save';
  * its refusal and its closed rung all move under it, which is what a region around one narrates.
  */
 const CONTROLS = new Set([
-	'BackLink',
+	'Breadcrumbs',
 	'Button',
 	'CopyControl',
 	'SaveButton',

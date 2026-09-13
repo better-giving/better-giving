@@ -13,7 +13,7 @@ import { CHARITY_INTENT, charityEdit } from '../lib/paypal-charity';
 import type { PaypalPress } from '../lib/paypal-section';
 import { PaypalSection } from '../lib/paypal-section';
 import { PAYPAL_SETUP_INTENT, paypalPairPosted } from '../lib/paypal-setup';
-import { ProcessorPage } from '../lib/processor-page';
+import { ProcessorPage, processorHandle } from '../lib/processor-page';
 import { readProcessorScreen } from '../lib/processor-reading';
 import { ProductFoot } from '../lib/product-foot';
 import { RECURRING_INTENT } from '../lib/recurring-block';
@@ -29,6 +29,8 @@ import type { Route } from './+types/payments_.paypal';
 // ../lib/processor-reading.ts's.
 
 const TITLE = 'PayPal';
+
+export const handle = processorHandle(TITLE);
 
 export function meta(): Route.MetaDescriptors {
 	return [{ title: `${TITLE} · ${CONSOLE_TITLE}` }];

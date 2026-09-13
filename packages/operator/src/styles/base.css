@@ -302,13 +302,8 @@
 	   below — so a focused link takes the accent tint bled `--admin-focus-bleed` past its own
 	   box plus a heavier underline. the same accent, learned once, spent as emphasis instead
 	   of as a frame. */
-	/* carried-ok: .adm-back — spelled in the derived class list in
-	   packages/operator/src/components/controls/BackLink.jsx rather than in a `class`
-	   attribute. */
 	a:focus-visible,
-	a.is-focus,
-	.adm-back:focus-visible,
-	.adm-back.is-focus {
+	a.is-focus {
 		border-radius: var(--admin-radius);
 		box-shadow: 0 0 0 var(--admin-focus-bleed) var(--admin-accent-tint);
 		background: var(--admin-accent-tint);

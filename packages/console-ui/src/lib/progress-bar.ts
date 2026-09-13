@@ -51,9 +51,20 @@ export function progressBarLanded(): void {
 /** the pathname of the page on the screen, and `null` before the first one has been drawn. */
 let drawn: string | null = null;
 
-/** ../root.tsx's side: the page at this pathname is the one on the screen now. */
+/**
+ * ../root.tsx's side: the page at this pathname is the one on the screen now.
+ *
+ * the bar that finished for it went when this page replaced the one it stood over, so the finish is
+ * put down here. the next bar mounts on the press, before its reading takes a pass (`holdBar`) — the
+ * route module loads first — and a finish still up would open that bar at its rush and drop it back
+ * to filling.
+ */
 export function pageDrawn(pathname: string): void {
 	drawn = pathname;
+	if (finishing) {
+		finishing = false;
+		tell();
+	}
 }
 
 /**
@@ -69,8 +80,8 @@ export function movesPage(to: string, on: string | null): boolean {
 
 /**
  * the history state a link carries to name what the bar over its move says, written beside the
- * link — `<Link state={opening('Opening Stripe')}>`. the words are both what the bar shows and what
- * its status region is read as.
+ * link — `<Link state={opening('Opening Stripe')}>`. the words are what the bar's status region is
+ * read as; the bar over a move shows none.
  */
 export const opening = (label: string) => ({ opening: label });
 

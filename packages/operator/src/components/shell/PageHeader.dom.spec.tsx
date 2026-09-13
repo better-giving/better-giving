@@ -107,6 +107,19 @@ describe('a page header mounted into a document', () => {
 		expect([...nameRow(root).children].map((child) => child.tagName)).toEqual(['H1']);
 		expect(root.querySelector('.adm-standfirst')).toBeNull();
 	});
+
+	it('draws the crumbs above the row, as the header’s first block', () => {
+		// the trail names the pages above this one and the heading names this one, so the trail is
+		// read first. inside the row it would be spaced apart from the title like anything else there.
+		const root = render(PageHeader, {
+			title: 'Sites',
+			crumbs: <nav aria-label="Breadcrumb" />
+		});
+		const header = root.querySelector('.adm-pageheader');
+
+		expect([...(header?.children ?? [])].map((child) => child.tagName)).toEqual(['NAV', 'DIV']);
+		expect(header?.lastElementChild?.className).toBe('adm-pageheader__row');
+	});
 });
 
 describe('the page header’s slots', () => {

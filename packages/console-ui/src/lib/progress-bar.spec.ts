@@ -65,16 +65,30 @@ describe('the bar a reading is taken behind', () => {
 		expect(await stillHeld(waited)).toBe(false);
 	});
 
-	it('starts the next navigation on a filling bar, not on the last one finished', async () => {
+	it('opens the next bar filling, before the reading behind it has taken a pass', async () => {
+		// the bar over a move mounts on the press, and the destination's loader takes its pass only
+		// once the route module has loaded — the bar reads this in between.
 		const bar = await fresh();
 		bar.pageDrawn('/');
 		void bar.holdBar('/payments/stripe').finish();
 		bar.progressBarLanded();
-		bar.pageDrawn('/payments/stripe');
 		const told = vi.fn();
 		bar.subscribeProgressBar(told);
 
-		bar.holdBar('/');
+		bar.pageDrawn('/payments/stripe');
+
+		expect(bar.progressBarFinishing()).toBe(false);
+		expect(told).toHaveBeenCalledTimes(1);
+	});
+
+	it('puts a bar still rushing back to filling when a later navigation takes a pass', async () => {
+		const bar = await fresh();
+		bar.pageDrawn('/');
+		void bar.holdBar('/payments/stripe').finish();
+		const told = vi.fn();
+		bar.subscribeProgressBar(told);
+
+		bar.holdBar('/payments/paypal');
 
 		expect(bar.progressBarFinishing()).toBe(false);
 		expect(told).toHaveBeenCalledTimes(1);

@@ -1,4 +1,4 @@
-import { BackLink } from '@better-giving/operator/components/controls/BackLink';
+import { Breadcrumbs } from '@better-giving/operator/components/controls/Breadcrumbs';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
@@ -17,8 +17,8 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  * one specimen carries both, with the word on the heading's baseline and the control across the
  * page from it.
  *
- * `back` stands above the row rather than in it, which only shows against a header that also has a
- * standfirst: three blocks down a grid, in the order a reader meets them.
+ * `crumbs` stands above the row rather than in it, which only shows against a header that also has
+ * a standfirst: three blocks down a grid, in the order a reader meets them.
  *
  * the long specimens are the point of the row wrapping. a title long enough to run past the
  * control is what pushes that control onto its own line, and the header is capped at the measured
@@ -46,17 +46,31 @@ export default function ShellPageHeaderPreview() {
 				beside={<StatusWord>Published</StatusWord>}
 				standfirst="Live on two sites since 12 November 2025."
 				pageAction={<Button>Archive the form</Button>}
-				back={<BackLink href="#">Back to donation forms</BackLink>}
+				crumbs={
+					<Breadcrumbs
+						items={[
+							{ href: '#forms', label: 'Donation forms' },
+							{ href: '#winter', label: 'Winter appeal' }
+						]}
+					/>
+				}
 			/>
 
 			{/* the word beside the name with nothing acting on the page: the far end of the row is
 			    empty and the word stays on the heading's own baseline rather than moving to it. */}
 			<PageHeader title="Kitchen fund" beside={<StatusWord unset>Draft</StatusWord>} />
 
-			{/* a way back with no standfirst under the name, which is the header at two blocks. */}
+			{/* a trail with no standfirst under the name, which is the header at two blocks. */}
 			<PageHeader
 				title="Margarethe Van Der Aalst-Whitmore"
-				back={<BackLink href="#">Back to donors</BackLink>}
+				crumbs={
+					<Breadcrumbs
+						items={[
+							{ href: '#donors', label: 'Donors' },
+							{ href: '#donor', label: 'Margarethe Van Der Aalst-Whitmore' }
+						]}
+					/>
+				}
 				pageAction={<Button>Download the receipts</Button>}
 			/>
 
@@ -73,7 +87,14 @@ export default function ShellPageHeaderPreview() {
 				}
 				standfirst="A collection fails when the card behind the commitment expires, is reported lost, or is refused by the bank. The donor keeps the commitment and the next attempt runs on the usual day."
 				pageAction={<Button variant="primary">Email the three donors</Button>}
-				back={<BackLink href="#">Back to recurring gifts</BackLink>}
+				crumbs={
+					<Breadcrumbs
+						items={[
+							{ href: '#recurring', label: 'Recurring gifts' },
+							{ href: '#failed', label: 'Recurring gifts that could not be collected this month' }
+						]}
+					/>
+				}
 			/>
 		</div>
 	);

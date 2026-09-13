@@ -104,7 +104,7 @@ export function HydrateFallback() {
 		<PanelRoute bare foot={<ProductFoot version="" />}>
 			<title>{TITLE}</title>
 			<div className="adm-stack adm-stack--tight adm-stack--centred">
-				<ProgressBar label="Starting" shown={false} />
+				<ProgressBar label="Starting" overMove={false} />
 			</div>
 		</PanelRoute>
 	);
@@ -114,16 +114,17 @@ export function HydrateFallback() {
  * the console's one progress bar, wherever it stands: filling while a reading is in flight, and
  * rushing to its end once the reading has landed.
  *
- * the rush puts the twentieth cell on its own last instant, so its end is the bar arriving and the
- * dwell after it is the bar being seen. ./lib/progress-bar.ts is the signal between this and the
- * loader waiting on it, because the screen the reading is for has not rendered and there are no
- * props between them.
+ * it takes two shapes, off packages/operator/src/styles/adm.css: the braille cells on the document's
+ * own screen, and over a move (`overMove`) a thin line along the viewport's top edge, which the
+ * page being left keeps its whole layout under. the rush puts the bar at full on its own last
+ * instant, so its end is the bar arriving and the dwell after it is the bar being seen.
+ * ./lib/progress-bar.ts is the signal between this and the loader waiting on it, because the screen
+ * the reading is for has not rendered and there are no props between them.
  *
- * `label` is what is loading. over a move it is written beside the bar as well as read as the status
- * region, one string for both; the document's own bar has nothing on the screen to name, so there it
- * is the status region's alone.
+ * `label` is what is loading, and it is the status region's alone in both shapes: the line has no
+ * room for words, and the document's own bar has nothing on the screen to name.
  */
-function ProgressBar({ label, shown }: { label: string; shown: boolean }) {
+function ProgressBar({ label, overMove }: { label: string; overMove: boolean }) {
 	const finishing = useSyncExternalStore(
 		subscribeProgressBar,
 		progressBarFinishing,
@@ -164,18 +165,18 @@ function ProgressBar({ label, shown }: { label: string; shown: boolean }) {
 	return (
 		/* polite, and the label is the one thing a reader of the tree gets: what the bar's rush
 		   reports is that the wait is over, which the screen it is replaced by states in its own
-		   words a moment later. the bar itself is decorative — its cells are drawn by the sheet and
-		   say nothing a reader could read — so it is hidden from the tree and the wrapper speaks
+		   words a moment later. the bar itself is decorative — its cells or its line are drawn by the
+		   sheet and say nothing a reader could read — so it is hidden from the tree and the wrapper speaks
 		   for it. */
 		<div
 			role="status"
-			aria-label={shown ? undefined : label}
-			className={shown ? 'adm-navigation-bar' : undefined}
+			aria-label={overMove ? undefined : label}
+			className={overMove ? 'adm-navigation-bar' : undefined}
 		>
-			{shown ? <span className="adm-navigation-bar__label">{label}</span> : null}
+			{overMove ? <span className="adm-vh">{label}</span> : null}
 			<span
 				ref={bar}
-				className={finishing ? 'adm-braille-bar is-finishing' : 'adm-braille-bar'}
+				className={`${overMove ? 'adm-navigation-bar__line' : 'adm-braille-bar'}${finishing ? ' is-finishing' : ''}`}
 				aria-hidden="true"
 			/>
 		</div>
@@ -204,7 +205,7 @@ export default function App() {
 
 	return (
 		<>
-			{moving ? <ProgressBar label={openingLabel(navigation.location?.state)} shown /> : null}
+			{moving ? <ProgressBar label={openingLabel(navigation.location?.state)} overMove /> : null}
 			<Outlet />
 		</>
 	);

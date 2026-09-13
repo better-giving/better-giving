@@ -586,14 +586,44 @@
 		}
 	}
 
+	/* the fill of `.adm-navigation-bar__line`, on the schedule `adm-braille-bar` above keeps in
+	   cells: a tenth of the width at once, seven twentieths by a tenth of the run, thirteen by a
+	   third of it, then the crawl to nine tenths, where the class's `forwards` holds it. no frame
+	   reaches the full width, for the reason that list gives, and each stop is its cell count as a
+	   share of twenty. `linear` on the class, because the stops are the curve. */
+	@keyframes adm-navigation-line {
+		0% {
+			transform: scaleX(0.1);
+		}
+		10% {
+			transform: scaleX(0.35);
+		}
+		34% {
+			transform: scaleX(0.65);
+		}
+		100% {
+			transform: scaleX(0.9);
+		}
+	}
+
+	/* the finish of `.adm-navigation-bar__line`: the rush out to the full width. it has no `from`,
+	   so it starts at the value under it — the fill, still running beneath it in the class's
+	   animation list — rather than at a fixed stop, and the line never drops back before it grows.
+	   the rest is `adm-braille-bar-finish`'s argument: complete, and seen complete. */
+	@keyframes adm-navigation-line-finish {
+		to {
+			transform: none;
+		}
+	}
+
 	/* the beat a finished bar is seen for, and it declares nothing on purpose: what is being held
 	   is already drawn, so a property here would either repaint it or fight the `forwards` holding
 	   it. it runs for `--admin-dur-dwell` and changes nothing across it.
 
 	   **it exists to be waited on, and `adm-dwell` is the name that is waited for.** the animation
 	   fires an `animationend` whose `animationName` is this string, and that event is what says the
-	   screen may go: packages/console-ui/src/root.tsx holds the start-up screen on it and
-	   packages/console-ui/src/lib/run-bar.tsx hands a finished run over on it. renaming it is a
+	   screen may go: packages/console-ui/src/root.tsx holds the start-up screen and a page being
+	   left on it, and packages/console-ui/src/lib/run-bar.tsx hands a finished run over on it. renaming it is a
 	   change to both of those files in the same commit. */
 	@keyframes adm-dwell {
 		from {
@@ -993,10 +1023,11 @@
 		animation-delay: calc(var(--admin-dur-dots) / 6 * 5);
 	}
 
-	/* the console's one progress bar: on its start-up screen before the app bundle has read
-	   anything, and in `.adm-navigation-bar` over a page being left while the next is read. it is
-	   twenty braille cells in the mono face, full `⣿` and empty `⣀`, the way a terminal draws a
-	   bar, and one ink for both because a terminal bar is one colour — no second
+	/* the console's progress bar on its start-up screen, before the app bundle has read anything;
+	   over a page being left while the next is read the same bar is a line instead
+	   (`.adm-navigation-bar` below). it is twenty braille cells in the mono face, full `⣿` and empty
+	   `⣀`, the way a terminal draws a bar, and one ink for both because a terminal bar is one colour
+	   — no second
 	   element and nothing in the accent. the fill is `adm-braille-bar` above and the pace is that
 	   keyframe list's; the class only spells the duration, holds the last frame and stops the flip
 	   landing halfway between frames. the element is empty and decorative — an `aria-hidden` span —
@@ -1043,16 +1074,20 @@
 	}
 
 	/* the bar over a move to another page, drawn from the press until the destination has read.
-	   packages/console-ui/src/root.tsx draws it: the label names what is loading, and the cells are
-	   `.adm-braille-bar` above.
+	   packages/console-ui/src/root.tsx draws it: a line along the top edge of the viewport, and the
+	   label naming what is loading is in the tree for a reader of it (`.adm-vh`) and nowhere on the
+	   screen.
 
 	   fixed to the top of the viewport and out of the flow, so the page being left beneath it does
-	   not shift by the bar's height as it appears and again as it goes. the ground is what lets it
-	   read over whatever that page has drawn at its top, and the hairline under it is the edge the
-	   rail draws for the same reason. it takes step 2 of the ladder stated at `.adm-rail`, over a
-	   pinned column; an open modal is in the top layer and stands over it with no step. the rail
-	   holds the same step and the two never meet: the rail is the dashboard's and at the foot,
-	   this is the console's and at the head.
+	   not shift as it appears and again as it goes. no ground, no rule and no padding: it is the
+	   line and nothing else, and it takes no pointer, so the strip of page it lies over stays
+	   pressable. it takes step 2 of the ladder stated at `.adm-rail`, over a pinned column; an open
+	   modal is in the top layer and stands over it with no step. the rail holds the same step and
+	   the two never meet: the rail is the dashboard's and at the foot, this is the console's and at
+	   the head.
+
+	   half the band a current destination carries at its edge: over a page it is a signal and not a
+	   mark, so it reads thinner than anything the page draws.
 
 	   no fade in or out, for the reason `.adm-braille-bar` gives. */
 	.adm-navigation-bar {
@@ -1060,23 +1095,44 @@
 		inset-block-start: 0;
 		inset-inline: 0;
 		z-index: 2;
-		display: flex;
-		align-items: baseline;
-		justify-content: center;
-		gap: var(--admin-space-4);
-		padding-block: var(--admin-space-3);
-		padding-inline: var(--admin-space-6);
-		background: var(--admin-surface);
-		border-block-end: var(--admin-hairline);
+		block-size: calc(var(--admin-edge) / 2);
+		pointer-events: none;
 	}
 
-	/* the cells' own type and ink, so the label and the bar read as one terminal line in one
-	   colour rather than a caption beside a graphic. */
-	.adm-navigation-bar__label {
-		font-family: var(--admin-font-mono);
-		font-size: var(--admin-code-size);
-		line-height: var(--admin-code-lh);
-		color: var(--admin-ink-2);
+	/* the line's fill, on `::before` for the same reason the braille cells are: the finish below
+	   and the dwell after it dispatch their `animationend` at the span, and root.tsx reads the
+	   hold's timing off this pseudo-element. it is the accent fill a plotted count is drawn in
+	   (`.adm-series__fill`), and it grows from the inline start by `transform` alone, so the fill
+	   is the compositor's and never a layout. the element is empty and `aria-hidden`.
+
+	   the pace is `adm-navigation-line` and it slows under reduced motion by the same re-pointing
+	   `.adm-braille-bar` is slowed by: the two are one bar in two shapes. */
+	.adm-navigation-bar__line {
+		display: block;
+		block-size: 100%;
+	}
+
+	.adm-navigation-bar__line::before {
+		content: '';
+		display: block;
+		block-size: 100%;
+		background: var(--admin-accent-solid-1);
+		transform-origin: 0 50%;
+		animation: adm-navigation-line var(--admin-dur-braille-bar) linear forwards;
+	}
+
+	/* carried-ok: .is-finishing — the same done state, put on this span by the same component.
+
+	   three animations on the one pseudo-element. the fill stays first in the list, so it goes on
+	   running rather than restarting: the rush's `from` is left out and reads the fill's live
+	   value under it, which is what lets the rush start from wherever the line had reached. the
+	   dwell's delay is the rush's own duration, so it opens at the instant the line is full, and it
+	   is last because root.tsx's backstop reads the last entry of the list. */
+	.adm-navigation-bar__line.is-finishing::before {
+		animation:
+			adm-navigation-line var(--admin-dur-braille-bar) linear forwards,
+			adm-navigation-line-finish var(--admin-dur-state) var(--admin-ease-state) forwards,
+			adm-dwell var(--admin-dur-dwell) var(--admin-dur-state);
 	}
 
 	/* the state a line takes while its subject does not exist yet.
@@ -3755,7 +3811,7 @@
 
 	   the step is the one `.adm-field` spends between a label and its box, and it is a step under
 	   the header's own `--admin-space-4` on purpose: what is inside a unit reads as inside it only
-	   while it is tighter than what is around it. at the header's gap the back link, the title and
+	   while it is tighter than what is around it. at the header's gap the trail, the title and
 	   the standfirst would be three evenly spaced lines with nothing saying which two are one
 	   thing.
 
@@ -3806,25 +3862,50 @@
 		margin-inline-start: calc(-1 * (var(--admin-space-4) + var(--admin-border-width)));
 	}
 
-	/* one back link per child screen, and never a breadcrumb trail: the second half of a
-	   trail is always the heading directly beneath it. its focus treatment is the link's, in
-	   ./base.css — a run of words takes no ring. */
-	/* carried-ok: .adm-back — spelled in the derived class list in
-	   packages/operator/src/components/controls/BackLink.jsx rather than in a `class`
-	   attribute. */
-	.adm-back {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--admin-space-3);
+	/* the trail of pages above this one, drawn by
+	   packages/operator/src/components/controls/Breadcrumbs.jsx at a small control's label rank and
+	   the secondary ink. its links are runs of words with no underline until the pointer is on
+	   one, and take the focus treatment of ./base.css's link. the page being looked at is the one item
+	   in full ink, because it is the one that is not a link.
+
+	   the list wraps between items and a label wraps inside its own item, so a trail longer than
+	   the column breaks onto a second line rather than pushing the column wider. no row gap: a
+	   wrapped trail is read as a short run of lines, and the line height already spaces those. */
+	.adm-crumbs__list {
+		display: flex;
+		flex-wrap: wrap;
+		column-gap: var(--admin-space-3);
 		font-size: var(--admin-control-size-sm);
+		line-height: var(--admin-control-lh);
 		color: var(--admin-ink-2);
+	}
+
+	.adm-crumbs__item {
+		display: flex;
+		align-items: start;
+		gap: var(--admin-space-3);
+		min-inline-size: 0;
+		overflow-wrap: anywhere;
+	}
+
+	/* the separator centres on the first line of the label after it, which may wrap. */
+	.adm-crumbs__sep {
+		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
+	}
+
+	.adm-crumbs__link {
+		color: inherit;
 		text-decoration: none;
 	}
 
-	.adm-back:hover,
-	.adm-back.is-hover {
+	.adm-crumbs__link:hover,
+	.adm-crumbs__link.is-hover {
 		color: var(--admin-link-hover);
 		text-decoration: underline;
+	}
+
+	.adm-crumbs__current {
+		color: var(--admin-ink);
 	}
 
 	.adm-section {

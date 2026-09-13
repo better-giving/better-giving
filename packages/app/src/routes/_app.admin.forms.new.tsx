@@ -1,4 +1,3 @@
-import { BackLink } from '@better-giving/operator/components/controls/BackLink';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
 import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
@@ -12,7 +11,7 @@ import { FormOriginsFields } from '$lib/admin/forms/origins-fields';
 import { FormProgramFields } from '$lib/admin/forms/program-fields';
 import { FormsReadiness } from '$lib/admin/forms/readiness';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import { RouterLink } from '$lib/admin/router-link';
+import { type CrumbHandle, ScreenCrumbs } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { insertWhenValid, useAdminForm } from '$lib/admin/use-admin-form';
 import { FORM_CURRENCY } from '$lib/forms/amounts';
@@ -160,6 +159,13 @@ function isTextField(field: string): field is (typeof FORM_TEXT_FIELDS)[number] 
 
 /** the screen's name, rendered as the document title and as the heading. */
 const SCREEN_TITLE = 'Add a donation form';
+
+export const handle = {
+	crumbs: ({ pathname }) => [
+		{ href: href('/admin/forms'), label: 'Donation forms' },
+		{ href: pathname, label: SCREEN_TITLE }
+	]
+} satisfies CrumbHandle;
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
@@ -386,18 +392,9 @@ export default function NewDonationForm({ loaderData, actionData }: Route.Compon
 		// one column and the column is what spaces it: every block below carries no margin of its
 		// own, so one that is not rendered leaves no space behind it.
 		<Column>
-			{/* the way back to the section this screen sits under, and one link rather than a trail:
-			    the second half of a "Donation forms / Add a donation form" trail is the heading
-			    directly beneath it. it stays on the page in every state, including the one where no
-			    form is drawn. */}
-			<PageHeader
-				title={SCREEN_TITLE}
-				back={
-					<BackLink href={href('/admin/forms')} link={RouterLink}>
-						Donation forms
-					</BackLink>
-				}
-			/>
+			{/* the trail to the section this screen sits under, stated by this module's `handle`. it
+			    stays on the page in every state, including the one where no form is drawn. */}
+			<PageHeader title={SCREEN_TITLE} crumbs={<ScreenCrumbs />} />
 
 			{/* first thing under the heading, because the status box on this screen offers Live: a form
 			    published in the click that creates it, while any line in this block is unresolved, is

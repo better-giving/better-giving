@@ -2,7 +2,7 @@ import type { AnchorHTMLAttributes } from 'react';
 import { Link } from 'react-router';
 
 // what a part of the dashboard that navigates is drawn as. ../../routes/_app.tsx hands it to every
-// cell of the shell's rail, and every screen standing under a section hands it to its back link.
+// cell of the shell's rail, and ./crumbs.tsx to the trail every screen under a section draws.
 //
 // it is here and not in `@better-giving/operator` because that package declares no router and
 // cannot — the graph is `app → operator ← console` and the leaf reaches neither surface (CLAUDE.md).
@@ -17,7 +17,7 @@ import { Link } from 'react-router';
 // part settles the address, the class list and anything it announces, and this only turns the
 // address into the prop react router's link reads. a plain `<a>` in its place renders the same
 // attributes and takes the whole document with it — ./rail-navigates.dom.spec.tsx and
-// ./back-navigates.dom.spec.tsx are where the difference is asserted, because nothing in the markup
+// ./crumbs.dom.spec.tsx are where the difference is asserted, because nothing in the markup
 // shows it.
 
 type Addressed = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href'> & { href: string };

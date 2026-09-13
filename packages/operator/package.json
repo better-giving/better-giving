@@ -28,7 +28,7 @@
 		"./save-state.react": "./src/save-state.react.ts",
 		"./saved-form-state.react": "./src/saved-form-state.react.ts",
 		"./components/closed-sets": "./src/components/closed-sets.js",
-		"./components/controls/BackLink": "./src/components/controls/BackLink.jsx",
+		"./components/controls/Breadcrumbs": "./src/components/controls/Breadcrumbs.jsx",
 		"./components/controls/Button": "./src/components/controls/Button.jsx",
 		"./components/controls/CopyControl": "./src/components/controls/CopyControl.jsx",
 		"./components/controls/SaveButton": "./src/components/controls/SaveButton.jsx",

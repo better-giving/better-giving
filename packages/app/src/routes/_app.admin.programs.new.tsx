@@ -1,4 +1,3 @@
-import { BackLink } from '@better-giving/operator/components/controls/BackLink';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
@@ -8,7 +7,7 @@ import { getFormProps } from '@conform-to/react';
 import type { MouseEvent } from 'react';
 import { Form, href, Link, useNavigation } from 'react-router';
 import { ProgramFields } from '$lib/admin/programs/fields';
-import { RouterLink } from '$lib/admin/router-link';
+import { type CrumbHandle, ScreenCrumbs } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { useAdminForm } from '$lib/admin/use-admin-form';
 import { defineForm } from '$lib/forms/definition';
@@ -73,6 +72,13 @@ function isTextField(field: string): field is (typeof PROGRAM_TEXT_FIELDS)[numbe
 
 /** the screen's name, rendered as the document title and as the heading. */
 const SCREEN_TITLE = 'Add a program';
+
+export const handle = {
+	crumbs: ({ pathname }) => [
+		{ href: href('/admin/programs'), label: 'Programs' },
+		{ href: pathname, label: SCREEN_TITLE }
+	]
+} satisfies CrumbHandle;
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
@@ -148,17 +154,8 @@ export default function NewProgram({ actionData }: Route.ComponentProps) {
 		// one column and the column is what spaces it: every block below carries no margin of its
 		// own, so one that is not rendered leaves no space behind it.
 		<Column>
-			{/* the way back to the section this screen sits under, and one link rather than a trail:
-			    the second half of a "Programs / Add a program" trail is the heading directly beneath
-			    it. */}
-			<PageHeader
-				title={SCREEN_TITLE}
-				back={
-					<BackLink href={href('/admin/programs')} link={RouterLink}>
-						Programs
-					</BackLink>
-				}
-			/>
+			{/* the trail to the section this screen sits under, stated by this module's `handle`. */}
+			<PageHeader title={SCREEN_TITLE} crumbs={<ScreenCrumbs />} />
 
 			{/* no `action` attribute, so this posts to the current url. conform's `getFormProps` puts
 			    the form's own id on the element, which is what its focus move looks the form up by —

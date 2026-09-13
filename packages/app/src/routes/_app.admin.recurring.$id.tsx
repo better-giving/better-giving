@@ -1,5 +1,4 @@
 import { FREQUENCY_LABELS } from '@better-giving/form/v1';
-import { BackLink } from '@better-giving/operator/components/controls/BackLink';
 import { CodeChip } from '@better-giving/operator/components/data/CodeSlab';
 import { DestructiveConfirm } from '@better-giving/operator/components/shell/DestructiveConfirm';
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
@@ -8,7 +7,7 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
 import { useEffect, useRef } from 'react';
 import { data, Form, href, Link, useNavigation } from 'react-router';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import { RouterLink } from '$lib/admin/router-link';
+import { type CrumbHandle, ScreenCrumbs } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formatMinor } from '$lib/donations/money';
 import {
@@ -159,8 +158,15 @@ function screen(id: string): string {
 	return href('/admin/recurring/:id', { id });
 }
 
-/** the section this screen sits under, named on the way back and in the tab. */
+/** the section this screen sits under, named first in the trail and in the tab. */
 const SECTION = 'Recurring gifts';
+
+export const handle = {
+	crumbs: ({ loaderData, pathname }) => [
+		{ href: href('/admin/recurring'), label: SECTION },
+		{ href: pathname, label: loaderData?.donorName ?? SECTION }
+	]
+} satisfies CrumbHandle<Route.ComponentProps['loaderData']>;
 
 export function meta({ loaderData, matches }: Route.MetaArgs): Route.MetaDescriptors {
 	// the donor's name, and the section's word where there is no commitment to name — an old link,
@@ -514,9 +520,7 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 			    produces. every other refusal is drawn at the foot with the button that carried it. */}
 			{asking ? null : refusal}
 
-			{/* the way back to the section this screen sits under, and one link rather than a trail:
-			    the second half of a "Recurring gifts / Ada Okafor" trail is the heading directly
-			    beneath.
+			{/* the trail to the section this screen sits under, stated by this module's `handle`.
 
 			    the record is a person, and the person is who the staff member is holding an email
 			    from — so the heading is their name and the status qualifies it on its own baseline.
@@ -531,9 +535,7 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 			    to be writing about. it gets no red either: colour in /admin means "act on this", and
 			    this is descriptive. */}
 			<header className="adm-pageheader">
-				<BackLink href={href('/admin/recurring')} link={RouterLink}>
-					{SECTION}
-				</BackLink>
+				<ScreenCrumbs />
 				<div className="adm-pageheader__row">
 					<h1>{donorName}</h1>
 					<StatusWord secondary={stopped}>{RECURRING_STATUS_LABELS[status]}</StatusWord>
