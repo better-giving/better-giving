@@ -26,6 +26,12 @@ import (
 // **the address is read here and never posted.** what a browser sends is intent, and a host that
 // travelled through a page is a credential written wherever that page said.
 //
+// **it answers once the deployment takes the session, and the write alone is not that.** a secret
+// stored a moment ago is not yet what every copy of the worker reads, so a console served straight
+// off the write is refused by the deployment it just connected to — and its gate's one press writes
+// a fresh value that is refused the same way. the wait is bounded and ends connected either way:
+// the write landed and is recorded, and what the deployment says after the bound is the reading's.
+//
 // **the token reaches no answer.** what crosses back is when the session ends and where it was
 // written; the credential goes into one request body and into the record on this machine.
 //
@@ -80,8 +86,23 @@ type ConnectInputs struct {
 	// Record is what keeps the session on this machine. It is handed in so that the whole press can
 	// be looked at without a state directory.
 	Record func(session.Session) error
-	Now    time.Time
+	// Surface is how the deployment's own surface is read over the session just written, which is
+	// what a connect waits on. Within bounds that wait and Every is how often it asks inside it.
+	Surface func(origin, token string) cf.Get
+	Within  time.Duration
+	Every   time.Duration
+	Now     time.Time
 }
+
+// SessionBound is how long a connect waits for the deployment to take the session it wrote, and
+// SessionAsked how often it asks inside that.
+//
+// the bound sits inside the console server's own write timeout (../server/server.go's Listen),
+// which the page's connect press is answered under.
+const (
+	SessionBound = 30 * time.Second
+	SessionAsked = time.Second
+)
 
 // Connect mints a session, writes it to the deployment, and records it — or says why it did not.
 func Connect(ctx context.Context, inputs ConnectInputs) Connection {
@@ -117,6 +138,7 @@ func Connect(ctx context.Context, inputs ConnectInputs) Connection {
 	}); err != nil {
 		return Connection{Kind: ConnectUnkept, Origin: origin, Detail: err.Error()}
 	}
+	takes(ctx, inputs, inputs.Surface(origin, token))
 
 	return Connection{
 		Kind:      Connected,
@@ -144,4 +166,24 @@ func unconnected(written Written) Connection {
 		return Connection{Kind: ConnectUnreachable, Detail: written.Detail}
 	}
 	return Connection{Kind: ConnectFailed, Detail: written.Detail}
+}
+
+// waits until the deployment takes the session it was just written, or the bound elapses.
+//
+// only a refusal is not yet: any other answer — the report, a deployment older than the surface, one
+// nothing reached — is a state the reading draws, and waiting longer would change none of them.
+func takes(ctx context.Context, inputs ConnectInputs, get cf.Get) {
+	bound, stop := context.WithTimeout(ctx, inputs.Within)
+	defer stop()
+
+	for {
+		if Report(bound, get).Kind != NoReportRefused {
+			return
+		}
+		select {
+		case <-bound.Done():
+			return
+		case <-time.After(inputs.Every):
+		}
+	}
 }

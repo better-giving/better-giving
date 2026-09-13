@@ -39,6 +39,7 @@ func sessionRoutes(
 	patches func(cf.Credential) cf.Send,
 	store *account.Store,
 	records state.Store,
+	surface func(origin, token string) cf.Send,
 ) {
 	presses := &connectPresses{}
 
@@ -62,7 +63,10 @@ func sessionRoutes(
 				Record: func(mine session.Session) error {
 					return session.Record(records, mine)
 				},
-				Now: time.Now(),
+				Surface: deployment.Reads(surface),
+				Within:  deployment.SessionBound,
+				Every:   deployment.SessionAsked,
+				Now:     time.Now(),
 			})
 		}))
 	})

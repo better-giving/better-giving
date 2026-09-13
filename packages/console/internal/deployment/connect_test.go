@@ -23,6 +23,23 @@ func answering() map[string]any {
 
 func connecting(t *testing.T, answers map[string]any, patch cf.Send) (Connection, *session.Session) {
 	t.Helper()
+	return connectingOver(t, answers, patch, accepting)
+}
+
+// a deployment that reads the session it was just written straight back.
+func accepting(string, string) cf.Get {
+	return func(context.Context, string) cf.Answer {
+		return cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: map[string]any{}}
+	}
+}
+
+func connectingOver(
+	t *testing.T,
+	answers map[string]any,
+	patch cf.Send,
+	surface func(origin, token string) cf.Get,
+) (Connection, *session.Session) {
+	t.Helper()
 	var kept *session.Session
 	held := Connect(context.Background(), ConnectInputs{
 		Door: Door{
@@ -37,9 +54,65 @@ func connecting(t *testing.T, answers map[string]any, patch cf.Send) (Connection
 			recordedToken = mine.Token
 			return nil
 		},
-		Now: time.Unix(1_700_000_000, 0),
+		Surface: surface,
+		Within:  time.Second,
+		Every:   time.Millisecond,
+		Now:     time.Unix(1_700_000_000, 0),
 	})
 	return held, kept
+}
+
+// a secret written a moment ago is not what every copy of the worker reads yet, so the press answers
+// once the deployment takes the session it recorded rather than on the write alone.
+func TestAConnectAnswersOnceTheDeploymentTakesTheSession(t *testing.T) {
+	asked := 0
+	var at, bearer string
+	held, kept := connectingOver(t, answering(), stored(http.StatusOK), func(origin, token string) cf.Get {
+		return func(_ context.Context, path string) cf.Answer {
+			asked++
+			at, bearer = origin+path, token
+			if asked < 3 {
+				return cf.Answer{Kind: cf.Answered, Status: http.StatusUnauthorized, Body: map[string]any{"error": "session_mismatch"}}
+			}
+			return cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: map[string]any{}}
+		}
+	})
+	if held.Kind != Connected || kept == nil {
+		t.Fatalf("connection %+v", held)
+	}
+	if asked != 3 {
+		t.Fatalf("asked the deployment %d times, want until it took the session", asked)
+	}
+	if at != held.Origin+ConsolePath || bearer != kept.Token {
+		t.Fatalf("asked %q with a token other than the one recorded", at)
+	}
+}
+
+// the wait is bounded: a deployment that never takes the session is the reading's to draw, and the
+// write it answers for did land.
+func TestAConnectStopsWaitingOnADeploymentThatNeverTakesTheSession(t *testing.T) {
+	var kept *session.Session
+	held := Connect(context.Background(), ConnectInputs{
+		Door: Door{
+			AccountID:  "acc",
+			WorkerName: "better-giving",
+			Get:        fake(t, answering()),
+			Patch:      stored(http.StatusOK),
+		},
+		Credential: cf.Credential{Kind: cf.BearerToken},
+		Record:     func(mine session.Session) error { kept = &mine; return nil },
+		Surface: func(string, string) cf.Get {
+			return func(context.Context, string) cf.Answer {
+				return cf.Answer{Kind: cf.Answered, Status: http.StatusUnauthorized, Body: map[string]any{}}
+			}
+		},
+		Within: 50 * time.Millisecond,
+		Every:  time.Millisecond,
+		Now:    time.Unix(1_700_000_000, 0),
+	})
+	if held.Kind != Connected || kept == nil {
+		t.Fatalf("connection %+v", held)
+	}
 }
 
 // a machine with nowhere to keep what it remembers.

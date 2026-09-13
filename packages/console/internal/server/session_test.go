@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -55,6 +56,7 @@ func connecting(t *testing.T, chosen string, api *httptest.Server) (http.Handler
 		Records:  records,
 		Reads:    func(cf.Credential) cf.Get { return cf.JSONGet(api.URL, nil) },
 		Patches:  func(cf.Credential) cf.Send { return cf.JSONSend(api.URL, nil) },
+		Surface:  func(string, string) cf.Send { return cf.JSONSend(api.URL, nil) },
 	}), records
 }
 
@@ -89,6 +91,42 @@ func TestAConnectPressMintsAndStoresASession(t *testing.T) {
 	}
 }
 
+// the press answers once the deployment reads the session it recorded back, so the reading the page
+// takes after it is not refused by a worker still holding the value before it.
+func TestAConnectPressWaitsOnTheDeploymentTakingTheSession(t *testing.T) {
+	var writes atomic.Int64
+	api := connectable(t, &writes)
+	records, flow, accounts := machine(t, "an-account")
+	var asked atomic.Int64
+	var bearer atomic.Value
+	handler := New(Options{
+		UI: http.NotFoundHandler(), Flow: flow, Accounts: accounts, Records: records,
+		Reads:   func(cf.Credential) cf.Get { return cf.JSONGet(api.URL, nil) },
+		Patches: func(cf.Credential) cf.Send { return cf.JSONSend(api.URL, nil) },
+		Surface: func(_, token string) cf.Send {
+			return func(context.Context, string, string, any) cf.Answer {
+				bearer.Store(token)
+				if asked.Add(1) < 2 {
+					return cf.Answer{Kind: cf.Answered, Status: http.StatusUnauthorized, Body: map[string]any{}}
+				}
+				return cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: map[string]any{}}
+			}
+		},
+	})
+
+	status, _ := press(t, handler, "/api/session", `{}`)
+	if status != http.StatusOK {
+		t.Fatalf("status %d", status)
+	}
+	held := session.Held(records, release.Baked.Name, time.Now())
+	if held == nil {
+		t.Fatal("nothing was recorded on this machine")
+	}
+	if asked.Load() != 2 || bearer.Load() != held.Token {
+		t.Fatalf("asked the deployment %d times, not until it took the recorded session", asked.Load())
+	}
+}
+
 // two presses in flight are one session: two writes would leave this console holding whichever
 // token it recorded last while the deployment holds whichever was written last.
 func TestTwoConnectPressesInFlightProduceOneSession(t *testing.T) {
@@ -119,6 +157,7 @@ func TestTwoConnectPressesInFlightProduceOneSession(t *testing.T) {
 		UI: http.NotFoundHandler(), Flow: flow, Accounts: accounts, Records: records,
 		Reads:   func(cf.Credential) cf.Get { return cf.JSONGet(api.URL, nil) },
 		Patches: func(cf.Credential) cf.Send { return cf.JSONSend(api.URL, nil) },
+		Surface: func(string, string) cf.Send { return cf.JSONSend(api.URL, nil) },
 	})
 
 	answers := make([]map[string]any, 2)

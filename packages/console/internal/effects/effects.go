@@ -137,6 +137,9 @@ func Connect(
 		Door:       door,
 		Credential: credential,
 		Record:     func(mine session.Session) error { return session.Record(records, mine) },
+		Surface:    deployment.Reads(deployment.Calls),
+		Within:     deployment.SessionBound,
+		Every:      deployment.SessionAsked,
 		Now:        time.Now(),
 	})
 }
