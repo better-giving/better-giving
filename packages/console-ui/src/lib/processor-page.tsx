@@ -4,10 +4,13 @@ import { BareShell } from '@better-giving/operator/components/shell/BareShell';
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import type { ReactNode } from 'react';
+import type { LinkProps } from 'react-router';
 import { Link } from 'react-router';
 import { CLOSE_PARAM } from './dialog-params';
 import { ConsoleHead } from './head-strip';
 import { ProductFoot } from './product-foot';
+import { opening } from './progress-bar';
+import type { RouterLinkProps } from './router-link';
 import { RouterLink } from './router-link';
 
 // the frame a processor screen stands in: the head and the strip every screen of this console
@@ -16,6 +19,19 @@ import { RouterLink } from './router-link';
 // **the head is the home page's head**, for the reason ../routes/_index.tsx states over its own: the
 // account is true on every screen. its one press is the same link to the close confirm, which is the
 // home page's to draw — so pressing it here goes to `/` with that confirm up.
+
+/** what the bar says over both ways off this screen, which both land on the home page. */
+const HOME = opening('Back to your deployment');
+
+/** the back link's anchor: `BackLink` hands its link an address and a class and nothing else. */
+function BackHome(props: RouterLinkProps): ReactNode {
+	return <RouterLink {...props} state={HOME} />;
+}
+
+/** the close press's anchor: `Button` spends a `state` prop of its own, so the link carries this one. */
+function LinkHome(props: LinkProps): ReactNode {
+	return <Link {...props} state={HOME} />;
+}
 
 export type ProcessorPageProps = {
 	/** the processor's name, which is the whole heading. */
@@ -43,7 +59,7 @@ export function ProcessorPage({
 			accountId={accountId}
 			control={
 				<Button
-					as={Link}
+					as={LinkHome}
 					to={`/?${CLOSE_PARAM}`}
 					variant="soft"
 					size="sm"
@@ -61,7 +77,7 @@ export function ProcessorPage({
 				<PageHeader
 					title={title}
 					back={
-						<BackLink href="/" link={RouterLink}>
+						<BackLink href="/" link={BackHome}>
 							Your deployment
 						</BackLink>
 					}

@@ -11,13 +11,13 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import type { ReactNode } from 'react';
-import { Suspense, useCallback, useDeferredValue, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { readOriginList } from '@better-giving/operator/origins';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { Await, Form, Link, useNavigate, useNavigation, useSearchParams } from 'react-router';
+import { Form, Link, useNavigate, useNavigation, useSearchParams } from 'react-router';
 import { saidClosing } from '../lib/close-answer';
 import { CLOSE_PARAM, opensOrDropsDialog } from '../lib/dialog-params';
-import { finishStartingBar } from '../lib/starting-bar';
+import { holdBar } from '../lib/progress-bar';
 import { ConsoleStopped } from '../lib/deployment-states';
 import { ConsoleHead } from '../lib/head-strip';
 import type { OrgFoldProps } from '../lib/org-fold';
@@ -165,25 +165,25 @@ export function meta(): Route.MetaDescriptors {
  * every reading of the deployment are the binary's, answered on the loopback address, so the
  * decision is made in the browser where all of them are in hand.
  *
- * the two quick reads are asked for at once: each is a loopback round trip, so neither is worth
- * waiting on before the other is started. the slow reading is handed back as a promise, which is
- * what lets the head go up before anything has been asked of cloudflare.
+ * the three reads are asked for at once, and all of them are awaited: the face is a function of the
+ * slowest, and the bar under ../root.tsx is the one waiting face this console draws.
  *
- * **the bar the document is drawing is finished before this hands anything back.** ../root.tsx's
- * fallback is on the screen while the first of these passes runs, and every bar on this console
- * completes and is seen complete before the screen it stands on is replaced — so the pass that
- * hydrates the app flips that bar to its rush and waits for it to land (../lib/starting-bar.ts).
- * every pass after it is a revalidation with the page itself on the screen and returns at once.
+ * **the bar over the screen being replaced is finished before this hands anything back.** the
+ * document's bar stands while the app starts and ../root.tsx's stands over a page being left, and
+ * every bar on this console completes and is seen complete before the screen it stands on is
+ * replaced — so this flips that bar to its rush and waits for it to land (../lib/progress-bar.ts).
+ * a re-read of this page with the page itself on the screen has no bar over it and returns at once.
  */
-export async function clientLoader() {
+export async function clientLoader({ request }: Route.ClientLoaderArgs) {
+	const bar = holdBar(new URL(request.url).pathname);
 	const read = await readConsole();
-	await finishStartingBar();
+	await bar.finish();
 	return read;
 }
 
 /** every reading the page is a function of, which is the whole of what the loader above hands back. */
 async function readConsole() {
-	const [home, release] = await Promise.all([homeShape(), consoleVersion()]);
+	const [home, release, read] = await Promise.all([homeShape(), consoleVersion(), homeReading()]);
 
 	const shell = {
 		// the release, printed by the strip that stands under every screen (../lib/product-foot.tsx).
@@ -198,10 +198,7 @@ async function readConsole() {
 		databaseName: home.databaseName
 	};
 
-	// the whole reading as one promise, because the face is a function of every read in it: nothing
-	// about it can be drawn before the slowest of them lands, and one promise is one `Checking`
-	// rather than a page that resolves three times under the reader.
-	const reading = homeReading().then((read) => ({
+	const reading = {
 		face: read.face,
 		sections: readSections(read),
 		// the seed both folds that edit the profile read.
@@ -215,7 +212,7 @@ async function readConsole() {
 		// each processor answers is read on its own screen (./payments_.stripe.tsx,
 		// ./payments_.paypal.tsx).
 		processors: processorLinks(heldNames(read.values.vars))
-	}));
+	};
 
 	return {
 		...shell,
@@ -497,11 +494,6 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 	   the page is holding is still the press before it. the password fold reads it: its box stays open
 	   over the re-read of its own refusal (../lib/secret-group-form.tsx). */
 	const revalidating = navigation.state === 'loading';
-	/* the reading this page is drawing, which is the last one that landed while a newer one is still
-	   being taken — the whole of what keeps a press from putting the glass up over the page it was
-	   made on (stated where it is drawn, at the `Suspense` below). it is read here because a hook
-	   cannot be, past the close branch that returns before it. */
-	const standing = useDeferredValue(loaderData.reading);
 	const busy = intent !== null;
 
 	/* whether the confirm over the close press is up. it is a parameter on the address rather than
@@ -632,136 +624,104 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 	const list = actionData && 'sites' in actionData ? actionData.sites : null;
 	const checked = actionData !== undefined && 'checked' in actionData;
 
-	/* what stands over the slow reading: the first thing this console draws, and the one screen on it
-	   with nothing to act on. the read has not landed, so there is no ledger under this to be read
-	   from the top and the block stands in the middle of the page instead. */
-	const waiting = (
-		<BareShell head={head} foot={foot} centred>
-			<div className="adm-stack adm-stack--tight adm-stack--centred">
-				{/* no heading and no sentence: the terminal found the deployment before this page was
-				    served, so all the glass waits on is the reading. it is `.adm-seek` off
-				    packages/operator/src/styles/adm.css, wandering a small path rather than spinning. */}
-				<Mark name="search" size="lg" className="adm-seek" />
-			</div>
-		</BareShell>
-	);
+	const read = loaderData.reading;
+	const home = read.face;
+	/* what the two folds that edit the profile are seeded from, and what the test send reads its
+	   destination off. taken from the press's own answer from the moment one stores a profile — the
+	   reading is taken again after every press, but it commits a render later than the answer does,
+	   and a landed write puts the boxes back to whatever they were seeded with at that moment
+	   (../lib/org-form.ts). */
+	const stored = storedOrg(read.stored, profile?.write ?? null);
 
-	/* the glass stands while there is no reading to draw, and never over one that is already on
-	   the screen. every press on this page sets off a re-read, and each re-read is a new promise:
-	   resolved straight, the whole shell would suspend on every save — the glass in its place, the
-	   document shrunk to that one panel, and the reader's place on the page gone with it. what
-	   `useDeferredValue` does instead is keep drawing the reading that stands while the next one
-	   is in flight, because a re-read is a background render and react does not fall a boundary
-	   back to its fallback for one. the folds are then never unmounted or hidden across a press,
-	   which is what lets a form put its boxes back when its own re-read lands (../lib/reseed.ts).
+	/* the gate stands in the middle of the space under the head rather than at the top of a column:
+	   one question and one way out is not a page anybody reads from the top. the card face is not
+	   the shell either: everything a deployment is read over is still nothing there, so what stands
+	   is one sentence, centred. */
+	const face =
+		home.kind === 'deploy' ? (
+			<NotDeployedFace foot={foot} head={head} />
+		) : home.kind === 'unreachable' ? (
+			<BareShell head={head} foot={foot} centred>
+				<UnreachableFace
+					read={home.read}
+					address={home.address}
+					workerName={loaderData.workerName}
+					accountName={loaderData.account}
+					busy={busy}
+					intent={intent}
+					connected={connected}
+				/>
+			</BareShell>
+		) : (
+			<BareShell head={head} foot={foot}>
+				<Column>
+					{home.kind === 'blocked' ? (
+						<BlockedFace
+							why={home.why}
+							account={loaderData.account}
+							workerName={loaderData.workerName}
+						/>
+					) : (
+						<ReadyFace
+							address={home.address}
+							sections={read.sections}
+							busy={busy}
+							intent={intent}
+							checked={checked}
+							organisation={{
+								stored,
+								write: wroteOrg,
+								busy,
+								pending: intent === ORG_INTENT
+							}}
+							password={{
+								values: read.values,
+								secrets,
+								freed,
+								workerName: loaderData.workerName,
+								accountName: loaderData.account,
+								busy,
+								pending: intent,
+								revalidating
+							}}
+							payments={{ rows: read.processors }}
+							sites={{
+								sites: read.sites,
+								donatePage: read.donatePage,
+								list,
+								busy,
+								pending: intent
+							}}
+							smtp={{
+								values: read.values,
+								workerName: loaderData.workerName,
+								accountName: loaderData.account,
+								// the profile, because the test send is seeded from the notification
+								// address rather than from a value of its own.
+								stored,
+								secrets,
+								freed,
+								test,
+								pending: intent
+							}}
+							notifications={{
+								stored,
+								write: wroteNotifications,
+								busy,
+								pending: intent === NOTIFICATIONS_INTENT
+							}}
+						/>
+					)}
+				</Column>
+			</BareShell>
+		);
 
-	   `??` is the arrival at this face rather than a re-read: the deferred value is a render
-	   behind, so the first reading of all is one this has none of — and a boundary mounting for
-	   the first time does draw its fallback, which is the glass this face is met with.
-
-	   the confirm stands beside the whole of it rather than inside any one face: the press that
-	   opens it is on the head, which every face under this shell draws, and a copy per face is how
-	   two of them come to ask differently. */
+	/* the confirm stands beside the face rather than inside any one: the press that opens it is on
+	   the head, which every face draws, and a copy per face is how two of them come to ask
+	   differently. */
 	return (
 		<>
-			<Suspense fallback={waiting}>
-				<Await resolve={standing ?? loaderData.reading}>
-					{(read) => {
-						const home = read.face;
-						/* what the two folds that edit the profile are seeded from, and what the test send
-					   reads its destination off. taken from the press's own answer from the moment one
-					   stores a profile — the reading below is taken again after every press, but it
-					   commits a render later than the answer does, and a landed write puts the boxes
-					   back to whatever they were seeded with at that moment (../lib/org-form.ts). */
-						const stored = storedOrg(read.stored, profile?.write ?? null);
-						// the card face and not the shell: everything a deployment is read over is still
-						// nothing here, so what stands is one sentence, centred.
-						if (home.kind === 'deploy') {
-							return <NotDeployedFace foot={foot} head={head} />;
-						}
-						/* the gate stands in the middle of the space under the head rather than at the top of a
-					   column: one question and one way out is not a page anybody reads from the top. */
-						if (home.kind === 'unreachable') {
-							return (
-								<BareShell head={head} foot={foot} centred>
-									<UnreachableFace
-										read={home.read}
-										address={home.address}
-										workerName={loaderData.workerName}
-										accountName={loaderData.account}
-										busy={busy}
-										intent={intent}
-										connected={connected}
-									/>
-								</BareShell>
-							);
-						}
-						return (
-							<BareShell head={head} foot={foot}>
-								<Column>
-									{home.kind === 'blocked' ? (
-										<BlockedFace
-											why={home.why}
-											account={loaderData.account}
-											workerName={loaderData.workerName}
-										/>
-									) : (
-										<ReadyFace
-											address={home.address}
-											sections={read.sections}
-											busy={busy}
-											intent={intent}
-											checked={checked}
-											organisation={{
-												stored,
-												write: wroteOrg,
-												busy,
-												pending: intent === ORG_INTENT
-											}}
-											password={{
-												values: read.values,
-												secrets,
-												freed,
-												workerName: loaderData.workerName,
-												accountName: loaderData.account,
-												busy,
-												pending: intent,
-												revalidating
-											}}
-											payments={{ rows: read.processors }}
-											sites={{
-												sites: read.sites,
-												donatePage: read.donatePage,
-												list,
-												busy,
-												pending: intent
-											}}
-											smtp={{
-												values: read.values,
-												workerName: loaderData.workerName,
-												accountName: loaderData.account,
-												// the profile, because the test send is seeded from the notification
-												// address rather than from a value of its own.
-												stored,
-												secrets,
-												freed,
-												test,
-												pending: intent
-											}}
-											notifications={{
-												stored,
-												write: wroteNotifications,
-												busy,
-												pending: intent === NOTIFICATIONS_INTENT
-											}}
-										/>
-									)}
-								</Column>
-							</BareShell>
-						);
-					}}
-				</Await>
-			</Suspense>
+			{face}
 			{asking ? confirm : null}
 		</>
 	);
@@ -979,10 +939,10 @@ function UnreachableFace({
 	// each state's own heading, so that a press which removes the control the operator was standing
 	// on leaves them somewhere rather than nowhere.
 	//
-	// what is held is the state last drawn and not a count of draws: this face is inside the page's
-	// `Await`, whose subtree attaches twice on a first load — a count reads the second of those as a
-	// state change and takes focus off the page nobody asked it to. a state that has not changed
-	// cannot be a press's outcome however many times it is drawn.
+	// what is held is the state last drawn and not a count of draws: a ref callback runs again
+	// whenever the heading is attached again, and a count reads that as a state change and takes
+	// focus nobody asked for. a state that has not changed cannot be a press's outcome however many
+	// times it is drawn.
 	const drawn = useRef<NoReport['kind'] | null>(null);
 	const heading = useCallback(
 		(node: HTMLElement | null) => {

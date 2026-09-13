@@ -916,9 +916,9 @@
 
 		/* ---- motion ---------------------------------------------------------------------
 
-		   seven motions and each is motivated in one sentence. nothing else in /admin may
+		   six motions and each is motivated in one sentence. nothing else in /admin may
 		   animate, and nothing fades in in front of a sentence somebody is trying to read. the
-		   dwell at the foot is the eighth entry and is none of the seven: it holds and does not
+		   dwell at the foot is the seventh entry and is none of the six: it holds and does not
 		   move, which is why it is the one entry here that does not collapse below.
 
 		   state   - a control's fill answering something and its border with it: the pointer, so a
@@ -937,13 +937,10 @@
 		             dot's whole cycle, which is also the circuit: ./adm.css delays each dot by
 		             a sixth of it, so a re-pointing here moves the stagger with the loop and
 		             the dots cannot come to lap each other.
-		   seek    - the glass on the console's waiting screen, wandering a small closed path
-		             while the binary asks cloudflare whether this deployment's worker exists yet.
-		             it says only that the looking is still going on; the sentence beside it says
-		             what for.
-		   braille-bar - the console's start-up screen, before the app bundle has read anything: a
-		             line of twenty braille cells filling the way a terminal draws a bar. it fills
-		             fast to a third, slower to two thirds, then crawls to eighteen cells and holds,
+		   braille-bar - the console's progress bar, on its start-up screen and over a move to
+		             another page while the destination reads: a line of twenty braille cells
+		             filling the way a terminal draws a bar. it fills fast to a third, slower to
+		             two thirds, then crawls to eighteen cells and holds,
 		             because nothing is measured — it says only that the screen is still on its way.
 		             the twentieth cell is the state duration's, not this one's: ./adm.css rushes
 		             the bar out to full when the screen is done and holds it there for the dwell
@@ -960,7 +957,6 @@
 		--admin-dur-confirm: 180ms;
 		--admin-dur-pulse: 1.4s;
 		--admin-dur-dots: 720ms;
-		--admin-dur-seek: 2.6s;
 		--admin-dur-braille-bar: 6s;
 		/* three of `--admin-dur-state`, which is a quarter of a second and is the length of both
 		   moves this holds after — the bar's rush and the run bar's fill each run at that step, so
@@ -973,10 +969,6 @@
 		/* symmetric: each dot leaves its dim and arrives at its lit at rest, so the three read as one
 		   light passing along the row rather than three lamps switching. */
 		--admin-ease-pulse: cubic-bezier(0.42, 0, 0.58, 1);
-		/* eases in and out of every waypoint of the seek, so the glass settles before it moves on
-		   and reads as looking at each stop. the three above all leave at speed, and confirm's
-		   overshoot is confirm's alone. */
-		--admin-ease-seek: cubic-bezier(0.45, 0, 0.55, 1);
 		--admin-transition-state:
 			background-color var(--admin-dur-state) var(--admin-ease-state),
 			border-color var(--admin-dur-state) var(--admin-ease-state),
@@ -999,10 +991,10 @@
 	   reader who asked for less of it while a hand-maintained list of selectors quietly stops
 	   being complete. packages/app/src/lib/admin/styles/conformance.spec.ts is what holds every duration to coming from a token.
 
-	   the three loops and the start-up bar slow rather than stopping. dots standing still over a
-	   control that is still working, a still ledger under a deployment that is still deploying, a
-	   glass standing still while the console is still asking, or a bar that has stopped filling
-	   while the console is still starting, is a lie about what is happening.
+	   the two loops and the progress bar slow rather than stopping. dots standing still over a
+	   control that is still working, a still ledger under a deployment that is still deploying, or
+	   a bar that has stopped filling while the console is still reading, is a lie about what is
+	   happening.
 
 	   the dwell is restated at its own value, which is the one entry here that does not move. a
 	   hold is not motion: what collapses to nothing is the move under it, and a full bar taken
@@ -1017,7 +1009,6 @@
 			--admin-dur-confirm: 0ms;
 			--admin-dur-pulse: 4.2s;
 			--admin-dur-dots: 2.4s;
-			--admin-dur-seek: 6s;
 			--admin-dur-braille-bar: 12s;
 			--admin-dur-dwell: 240ms;
 			--admin-transition-state: none;

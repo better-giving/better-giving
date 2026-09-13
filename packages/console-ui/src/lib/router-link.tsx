@@ -1,4 +1,4 @@
-import type { AnchorHTMLAttributes } from 'react';
+import type { LinkProps } from 'react-router';
 import { Link } from 'react-router';
 
 // what an operator part that settles its own address is drawn as on this console — the back link on
@@ -10,8 +10,8 @@ import { Link } from 'react-router';
 // attributes and loads the whole document again, which throws away every reading this console holds
 // (../internal-links.spec.ts).
 
-type Addressed = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href'> & { href: string };
+export type RouterLinkProps = Omit<LinkProps, 'to'> & { href: string };
 
-export function RouterLink({ href, ...rest }: Addressed) {
+export function RouterLink({ href, ...rest }: RouterLinkProps) {
 	return <Link to={href} {...rest} />;
 }

@@ -2,6 +2,7 @@ import { Mark } from '@better-giving/operator/components/status/Mark';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { ProcessorLink } from './processor-links';
+import { opening } from './progress-bar';
 
 // the donation processor fold's panel: one row per processor, each the way to that processor's own
 // screen (./stripe-section.tsx, ./paypal-section.tsx).
@@ -23,7 +24,14 @@ export function ProcessorRows({ rows }: ProcessorRowsProps): ReactNode {
 		<ul role="list" className="adm-linkrows">
 			{rows.map((row) => (
 				<li key={row.href}>
-					<Link to={row.href} className="adm-linkrows__row">
+					{/* `intent` loads the screen's code on hover or focus, which is all a prefetch reaches on
+					    this console: its reading is a `clientLoader`, taken at the press and never early. */}
+					<Link
+						to={row.href}
+						className="adm-linkrows__row"
+						prefetch="intent"
+						state={opening(`Opening ${row.name}`)}
+					>
 						<span className="adm-status__body">
 							<span className="adm-status__head">
 								<span className="adm-status__label">{row.name}</span>

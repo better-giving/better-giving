@@ -164,10 +164,10 @@ describe('the states the operator components assemble', () => {
 				// the destination a reader is on. it is a boolean on ./shell/DestinationCell.jsx rather
 				// than a member of a state union, because a cell can be current and hovered at once.
 				'current',
-				// the start-up bar's done state. no component in this package draws that bar — it is a
-				// class string in packages/console-ui/src/root.tsx — so there is no union for it to be
-				// a member of and the sheet's own
-				// `carried-ok:` note is what stands for its call site.
+				// the console progress bar's done state. no component in this package draws that bar —
+				// it is a class string in packages/console-ui/src/root.tsx — so there is no union for
+				// it to be a member of and the sheet's own `carried-ok:` note is what stands for its
+				// call site.
 				'finishing'
 			])
 		).toEqual([...statesDefinedIn(SHEETS)].sort());

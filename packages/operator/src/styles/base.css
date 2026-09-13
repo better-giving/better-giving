@@ -429,8 +429,8 @@
 	/* the mark, which is the <svg> lucide renders and which
 	   packages/operator/src/components/status/Mark.jsx puts this class straight onto. it strokes
 	   with `currentColor`, so a mark takes its ink from the text it stands with exactly as text
-	   does and every rule that tones one only sets `color` — the seek glass and the disclosure caret
-	   move the same element.
+	   does and every rule that tones one only sets `color` — the disclosure caret moves the same
+	   element.
 
 	   the size is stated here and never passed down: lucide takes a `size` number, and a length
 	   written into a component is what ../raw-values.ts refuses. it beats the `width` and `height`

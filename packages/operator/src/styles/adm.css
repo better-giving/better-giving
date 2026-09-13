@@ -490,31 +490,6 @@
 		}
 	}
 
-	/* the glass of `.adm-seek` wanders: five stops on a closed path that is neither a ring nor a
-	   line, so it reads as looking about rather than orbiting, and a tilt of a few degrees that leans
-	   the way it is travelling. every offset is a share of the glyph's own box, so the same wander
-	   fits both mark sizes and never leaves the gutter the mark stands in; the whole excursion stays
-	   inside a third of the box in either axis. the easing between stops is `--admin-ease-seek`,
-	   which lands and leaves every stop at rest — the settle is what makes each stop a look. */
-	@keyframes adm-seek {
-		0%,
-		100% {
-			transform: translate(0, 0) rotate(0deg);
-		}
-		22% {
-			transform: translate(28%, -18%) rotate(5deg);
-		}
-		45% {
-			transform: translate(10%, 22%) rotate(-4deg);
-		}
-		68% {
-			transform: translate(-26%, 4%) rotate(-6deg);
-		}
-		86% {
-			transform: translate(-8%, -24%) rotate(3deg);
-		}
-	}
-
 	/* the fill of `.adm-braille-bar`, cell by cell. every frame is the whole twenty-cell string at
 	   that fill, because `content` cannot be interpolated and steps as a discrete value, and the
 	   percentages are the schedule: the bar opens at two cells, reaches a third of its length by a
@@ -1018,22 +993,10 @@
 		animation-delay: calc(var(--admin-dur-dots) / 6 * 5);
 	}
 
-	/* the mark that stands in for a heading while the console is asking cloudflare something it
-	   cannot answer itself — whether a worker of this deployment's name exists in the chosen
-	   account. it is worn by a `search` mark the same way `.adm-dots` is worn by a `grip-vertical`
-	   one, and like it carries no meaning of its own: the sentence beside it says what is being
-	   looked for, and the caller hides the mark or wraps it in a live region as that sentence
-	   needs. the mark moves whole, so unlike `.adm-dots` nothing here reaches inside the glyph.
-
-	   it slows under reduced motion rather than stopping: a glass standing still while the console
-	   is still asking is the lie ./tokens.css names, and it re-points `--admin-dur-seek` there. */
-	.adm-seek {
-		animation: adm-seek var(--admin-dur-seek) var(--admin-ease-seek) infinite;
-	}
-
-	/* the progress bar of the console's start-up screen, drawn before the app bundle has read
-	   anything. it is twenty braille cells in the mono face, full `⣿` and empty `⣀`, the way a
-	   terminal draws a bar, and one ink for both because a terminal bar is one colour — no second
+	/* the console's one progress bar: on its start-up screen before the app bundle has read
+	   anything, and in `.adm-navigation-bar` over a page being left while the next is read. it is
+	   twenty braille cells in the mono face, full `⣿` and empty `⣀`, the way a terminal draws a
+	   bar, and one ink for both because a terminal bar is one colour — no second
 	   element and nothing in the accent. the fill is `adm-braille-bar` above and the pace is that
 	   keyframe list's; the class only spells the duration, holds the last frame and stops the flip
 	   landing halfway between frames. the element is empty and decorative — an `aria-hidden` span —
@@ -1051,7 +1014,7 @@
 	   on Linux. every cell falls to the same font, so the bar stays one width and one weight.
 
 	   it slows under reduced motion rather than stopping, for the reason ./tokens.css gives every
-	   loop: a bar that stopped filling while the console is still starting is a lie about what is
+	   loop: a bar that stopped filling while the console is still reading is a lie about what is
 	   happening. ./tokens.css re-points `--admin-dur-braille-bar` there. */
 	.adm-braille-bar {
 		font-family: var(--admin-font-mono);
@@ -1065,10 +1028,10 @@
 		animation: adm-braille-bar var(--admin-dur-braille-bar) step-end forwards;
 	}
 
-	/* carried-ok: .is-finishing — packages/console-ui/src/root.tsx puts it on the span once the app
-	   bundle has read, and holds the screen until the dwell ends. it stands in no component's
-	   union, so packages/operator/src/components/closed-sets.spec.ts carries it as a name of its
-	   own.
+	/* carried-ok: .is-finishing — packages/console-ui/src/root.tsx puts it on the span once the
+	   reading the bar stands for has landed, and holds the screen until the dwell ends. it stands
+	   in no component's union, so packages/operator/src/components/closed-sets.spec.ts carries it
+	   as a name of its own.
 
 	   two animations on the one pseudo-element, run in sequence: the dwell's delay is the rush's
 	   own duration, so it opens at the instant the rush arrives at twenty cells. it sets no
@@ -1077,6 +1040,43 @@
 		animation:
 			adm-braille-bar-finish var(--admin-dur-state) step-end forwards,
 			adm-dwell var(--admin-dur-dwell) var(--admin-dur-state);
+	}
+
+	/* the bar over a move to another page, drawn from the press until the destination has read.
+	   packages/console-ui/src/root.tsx draws it: the label names what is loading, and the cells are
+	   `.adm-braille-bar` above.
+
+	   fixed to the top of the viewport and out of the flow, so the page being left beneath it does
+	   not shift by the bar's height as it appears and again as it goes. the ground is what lets it
+	   read over whatever that page has drawn at its top, and the hairline under it is the edge the
+	   rail draws for the same reason. it takes step 2 of the ladder stated at `.adm-rail`, over a
+	   pinned column; an open modal is in the top layer and stands over it with no step. the rail
+	   holds the same step and the two never meet: the rail is the dashboard's and at the foot,
+	   this is the console's and at the head.
+
+	   no fade in or out, for the reason `.adm-braille-bar` gives. */
+	.adm-navigation-bar {
+		position: fixed;
+		inset-block-start: 0;
+		inset-inline: 0;
+		z-index: 2;
+		display: flex;
+		align-items: baseline;
+		justify-content: center;
+		gap: var(--admin-space-4);
+		padding-block: var(--admin-space-3);
+		padding-inline: var(--admin-space-6);
+		background: var(--admin-surface);
+		border-block-end: var(--admin-hairline);
+	}
+
+	/* the cells' own type and ink, so the label and the bar read as one terminal line in one
+	   colour rather than a caption beside a graphic. */
+	.adm-navigation-bar__label {
+		font-family: var(--admin-font-mono);
+		font-size: var(--admin-code-size);
+		line-height: var(--admin-code-lh);
+		color: var(--admin-ink-2);
 	}
 
 	/* the state a line takes while its subject does not exist yet.
@@ -3460,10 +3460,11 @@
 	   it paints over whatever scrolls beneath it, and the step is what settles that rather than
 	   the order of the markup: a pinned table column takes `z-index: 1` in this sheet and stands
 	   later in the document, so a bar at the same step would pass under the first column of every
-	   table. the whole ladder is that column at 1, this bar at 2, and the anchored panel and note
-	   at 3 — each of those is opened over the bar and is portalled to the body, so they too are
-	   settled by their step and not by where they stand in the document. a modal is in the top
-	   layer and is over all three without asking for a step at all.
+	   table. the whole ladder is that column at 1, this bar and the console's `.adm-navigation-bar`
+	   at 2, and the anchored panel and note at 3 — each of those is opened over the bar and is
+	   portalled to the body, so they too are settled by their step and not by where they stand in
+	   the document. a modal is in the top layer and is over all three without asking for a step at
+	   all.
 
 	   the platform's own inset at the foot of the screen sits under the tabs rather than inside
 	   them, so a tab keeps the whole of its height wherever it is drawn. */

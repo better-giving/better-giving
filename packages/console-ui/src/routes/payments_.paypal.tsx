@@ -34,8 +34,8 @@ export function meta(): Route.MetaDescriptors {
 	return [{ title: `${TITLE} · ${CONSOLE_TITLE}` }];
 }
 
-export function clientLoader() {
-	return readProcessorScreen(paypalRun);
+export function clientLoader({ request }: Route.ClientLoaderArgs) {
+	return readProcessorScreen(request, paypalRun);
 }
 
 /**

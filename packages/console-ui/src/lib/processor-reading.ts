@@ -1,6 +1,6 @@
 import { redirect } from 'react-router';
 import { consoleVersion, homeReading, homeShape, readPayments, readRecurring } from '../api/client';
-import { finishStartingBar } from './starting-bar';
+import { holdBar } from './progress-bar';
 
 // what both processor screens are read off (../routes/payments_.stripe.tsx,
 // ../routes/payments_.paypal.tsx): the account the head states, the seventeen values, and the two
@@ -8,18 +8,19 @@ import { finishStartingBar } from './starting-bar';
 //
 // **a processor screen exists only on the ready face.** every section under it is drawn over a
 // deployment whose address was read and whose session answers, so any other face is `/`, which is
-// where that face is drawn and where its way out is. the reading is awaited for that reason, where
-// the home page hands it on as a promise: a redirect is decided before anything renders.
+// where that face is drawn and where its way out is. the reading is awaited, so a redirect is decided
+// before anything renders.
 //
 // **the setup run is read after that decision and never before it.** a run that landed is consumed
 // by the reading that observed it (../api/client.ts), so a read on a face that redirects is a report
 // thrown away with nothing on screen to give it.
 //
-// **the bar the document is drawing is finished here too**, for ../routes/_index.tsx's reason: a
-// processor screen is an address an operator can reload, and that pass hydrates the app under
-// ../root.tsx's fallback exactly as a load of `/` does (./starting-bar.ts).
+// **the bar over the screen being replaced is finished here too**, for ../routes/_index.tsx's reason:
+// a processor screen is opened from the home page's rows and is an address an operator can reload,
+// and both put a bar on the screen until this reading is in (./progress-bar.ts).
 
-export async function readProcessorScreen<Run>(readRun: () => Promise<Run>) {
+export async function readProcessorScreen<Run>(request: Request, readRun: () => Promise<Run>) {
+	const bar = holdBar(new URL(request.url).pathname);
 	const [home, release, read] = await Promise.all([homeShape(), consoleVersion(), homeReading()]);
 	if (read.face.kind !== 'ready') throw redirect('/', 307);
 
@@ -34,7 +35,7 @@ export async function readProcessorScreen<Run>(readRun: () => Promise<Run>) {
 	const payments = readPayments();
 	const recurring = readRecurring();
 	const run = await readRun();
-	await finishStartingBar();
+	await bar.finish();
 
 	return {
 		version: release.version,
