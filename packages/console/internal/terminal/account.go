@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/signin"
@@ -198,6 +199,9 @@ type choice struct {
 	// carries the tone its check is drawn in, and a filter read against that would be matched
 	// against escape codes rather than against a name (./matching).
 	named string
+	// an account row's three parts: the name, the id telling it apart, and the mark. ./fitted cuts
+	// the name first, then drops the mark, and never cuts the id. said is the three of them whole.
+	name, told, mark string
 }
 
 // the model this screen is drawn from: the accounts, whether the sign-out is offered, where the
@@ -217,6 +221,9 @@ type chooser struct {
 	answer string
 	// left is the screen given up rather than answered, which is the ending a closed picker has.
 	left bool
+	// width is the window's in cells as bubbletea last reported it, and 0 before any report — which
+	// draws every row whole, as the renderer truncates nothing at 0 either.
+	width int
 }
 
 // the model the screen opens on: the accounts labelled, and the cursor on the one this machine
@@ -297,6 +304,10 @@ func (drawn chooser) Init() tea.Cmd { return textinput.Blink }
 // the length of the question, so the keystroke arrives here rather than at the process — and what
 // it ends is the question, which is the ending a picker they closed has always had (./AskAccount).
 func (drawn chooser) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	if window, resized := message.(tea.WindowSizeMsg); resized {
+		drawn.width = window.Width
+		return drawn, nil
+	}
 	key, pressed := message.(tea.KeyMsg)
 	if !pressed {
 		return drawn, nil
@@ -417,16 +428,47 @@ func (drawn chooser) block() string {
 	if len(standing) == 0 {
 		said.WriteString("\n" + noCursor + dimmed.Render(noneMatching))
 	}
+	room := drawn.room()
 	for at, one := range standing {
 		if drawn.at == drawn.accountsFrom()+at {
 			said.WriteString("\n" + dressing.Focused.SelectSelector.String() +
-				dressing.Focused.SelectedOption.Render(one.said))
+				dressing.Focused.SelectedOption.Render(one.fitted(room)))
 			continue
 		}
-		said.WriteString("\n" + noCursor + dressing.Focused.UnselectedOption.Render(one.said))
+		said.WriteString("\n" + noCursor + dressing.Focused.UnselectedOption.Render(one.fitted(room)))
 	}
 	return said.String()
 }
+
+// the cells a row's words have inside the block's frame and behind its cursor, and 0 where no
+// window has been reported.
+func (drawn chooser) room() int {
+	if drawn.width <= 0 {
+		return 0
+	}
+	return max(drawn.width-dressing.Focused.Base.GetHorizontalFrameSize()-ansi.StringWidth(noCursor), 1)
+}
+
+// an account row in `room` cells, or whole where room is 0.
+//
+// **the name gives up cells first, then the mark, and the id never.** the id and the mark are the
+// two facts ./labelled draws to settle which row to press, and of the two the id is the one that
+// tells a row apart — a row whose id is cut is one an operator cannot match against the dashboard.
+// a row the id alone overflows is drawn whole here and cut at the window's edge by the renderer, so
+// below about 40 columns two rows can show the same cut id.
+func (one choice) fitted(room int) string {
+	if room <= 0 || ansi.StringWidth(one.said) <= room {
+		return one.said
+	}
+	mark := one.mark
+	if ansi.StringWidth(cut+one.told+mark) > room {
+		mark = ""
+	}
+	return ansi.Truncate(one.name, max(room-ansi.StringWidth(one.told+mark), 1), cut) + one.told + mark
+}
+
+// what stands where a name was cut short.
+const cut = "…"
 
 // what stands at the top of the block: the question, or the filter while one is being typed.
 //
@@ -443,9 +485,13 @@ func (drawn chooser) asking() string {
 //
 // it starts in the column the block's words start in, so the three parts of the screen read as one
 // screen rather than as a list with two strays beside it.
+//
+// **the act a return would land on carries a mark as well as a tone.** a terminal with no colour
+// draws the two tones alike, and a screen whose cursor is on an act would then carry no cursor
+// anywhere. the mark is drawn under every profile, so there is one drawing to read.
 func act(one choice, resting bool) string {
 	if resting {
-		return noCursor + onAct.Render(one.said)
+		return onAct.Render(actCursor + one.said)
 	}
 	return noCursor + dimmed.Render(one.said)
 }
@@ -458,7 +504,18 @@ func act(one choice, resting bool) string {
 // program. so the block, the cursor, the rows and the help line are huh's own theme, which
 // ./confirm.go, ./password.go and ./placement.go are all drawn in; the mark on a row is
 // ./ledger.go's check, which is the green every closed row of this console carries.
-var dressing = huh.ThemeCharm()
+//
+// **a confirm's focused answer carries ./actCursor's mark, and the other an equal blank.** the theme
+// tells the two apart by colour alone, which a terminal with no colour draws alike; lipgloss draws a
+// style's set string in front of what it renders, so the mark sits inside the answer's own padding.
+var dressing = func() *huh.Theme {
+	theme := huh.ThemeCharm()
+	for _, styles := range []*huh.FieldStyles{&theme.Focused, &theme.Blurred} {
+		styles.FocusedButton = styles.FocusedButton.SetString(strings.TrimSpace(actCursor))
+		styles.BlurredButton = styles.BlurredButton.SetString(" ")
+	}
+	return theme
+}()
 
 // what an act the cursor is resting on is drawn in: the tone the cursor carries on the rows, with
 // the "> " that tone sets taken off, because an act is not a row of the list.
@@ -485,6 +542,10 @@ func helping() string {
 // what stands where the cursor does not, so every row's words start in the same column, and what
 // the acts are drawn in from.
 const noCursor = "  "
+
+// what stands in front of the act the cursor rests on, as wide as ./noCursor so nothing moves. it is
+// not the rows' "> ", which an act does not carry (./onAct).
+const actCursor = "› "
 
 // the question the block puts, and the whole of what it says about itself.
 //
@@ -591,18 +652,23 @@ func labelled(accounts []signin.Account, deployed []string) []choice {
 	}
 	offered := make([]choice, 0, len(accounts))
 	for _, one := range accounts {
-		named := one.Name
-		if shared[one.Name] > 1 && named != one.ID {
-			named += " (" + one.ID + ")"
+		row := choice{value: one.ID, name: one.Name}
+		switch {
+		// a row named by its id is its id, which ./fitted never cuts.
+		case one.Name == one.ID:
+			row.name, row.told = "", one.ID
+		case shared[one.Name] > 1:
+			row.told = " (" + one.ID + ")"
 		}
-		said := named
 		if found[one.ID] {
 			// the worker as this binary was baked to name it (../release), because that is the name
 			// on the cloudflare dashboard the operator would go looking at, and the check ./ledger.go
 			// closes a row with, because it is the same claim: this one is done.
-			said += "  (" + release.Baked.Name + " " + check.String() + ")"
+			row.mark = "  (" + release.Baked.Name + " " + check.String() + ")"
 		}
-		offered = append(offered, choice{said: said, value: one.ID, named: named})
+		row.named = row.name + row.told
+		row.said = row.named + row.mark
+		offered = append(offered, row)
 	}
 	return offered
 }

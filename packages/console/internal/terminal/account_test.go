@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/signin"
@@ -337,6 +339,91 @@ func screen(drawn chooser) string {
 	return strings.Join(said, "\n")
 }
 
+// a window too narrow for a row, and account names cloudflare holds in any script.
+//
+// the id and the mark are the two facts that settle which row to press, so a narrow window takes
+// cells off the name before either of them — and a name is operator data, so the cells are
+// measured rather than counted in runes.
+
+// two accounts sharing a name of wide ideographs and an emoji, the first found holding the
+// deployment. the emoji carries no variation selector, whose width terminals disagree on.
+var (
+	tokyo       = signin.Account{ID: "0123456789abcdef0123456789abcdef", Name: "東京の募金団体 🎁"}
+	tokyoToo    = signin.Account{ID: "fedcba9876543210fedcba9876543210", Name: "東京の募金団体 🎁"}
+	tokyoMarked = Picker{Deployed: []string{tokyo.ID}, SignOut: true}
+)
+
+// the picker after bubbletea has reported a window `width` cells wide.
+func windowed(drawn chooser, width int) chooser {
+	next, _ := drawn.Update(tea.WindowSizeMsg{Width: width, Height: 40})
+	return next.(chooser)
+}
+
+// the lines of the screen that draw an account, in order.
+func accountLines(said string, accounts ...signin.Account) []string {
+	held := []string{}
+	for _, one := range strings.Split(said, "\n") {
+		for _, account := range accounts {
+			if strings.Contains(one, account.ID) {
+				held = append(held, one)
+			}
+		}
+	}
+	return held
+}
+
+func TestANarrowWindowTakesCellsOffTheNameAndLeavesTheIDAndMarkWhole(t *testing.T) {
+	suffix := ansi.StringWidth(" (" + tokyo.ID + ")  (" + release.Baked.Name + " ✓)")
+	// the frame and cursor in front of a row, and six cells of name: the name cannot fit whole.
+	width := 4 + suffix + 6
+	drawn := windowed(choosing(holding(tokyo, tokyoToo), tokyoMarked), width)
+
+	said := screen(drawn)
+	for _, line := range strings.Split(said, "\n") {
+		if ansi.StringWidth(line) > width {
+			t.Errorf("a line is %d cells in a window %d wide: %q", ansi.StringWidth(line), width, line)
+		}
+	}
+	rows := accountLines(said, tokyo, tokyoToo)
+	if len(rows) != 2 {
+		t.Fatalf("the accounts are drawn as %q", rows)
+	}
+	if !strings.HasSuffix(rows[0], "("+tokyo.ID+")  ("+release.Baked.Name+" ✓)") {
+		t.Errorf("the marked row is drawn as %q, want its id and mark whole at its end", rows[0])
+	}
+	if !strings.HasSuffix(rows[1], "("+tokyoToo.ID+")") {
+		t.Errorf("the unmarked row is drawn as %q, want its own id at its end", rows[1])
+	}
+	if strings.Contains(rows[0], tokyo.Name) {
+		t.Errorf("the marked row draws its name whole in a window too narrow for it: %q", rows[0])
+	}
+
+	filtered := pressing(drawn, runes("/"))
+	filtered.filter.SetValue(tokyo.Name)
+	if len(filtered.matching()) != 2 {
+		t.Errorf("the filter matched %v against the whole name, want both accounts",
+			values(filtered.matching()))
+	}
+}
+
+func TestAWindowTooNarrowForTheIDDropsTheMarkAndStillDrawsTheIDWhole(t *testing.T) {
+	unnamed := signin.Account{ID: "00112233445566778899aabbccddeeff", Name: "00112233445566778899aabbccddeeff"}
+	said := screen(windowed(choosing(holding(tokyo, tokyoToo, unnamed), tokyoMarked), 20))
+
+	rows := accountLines(said, tokyo, tokyoToo, unnamed)
+	if len(rows) != 3 {
+		t.Fatalf("the accounts are drawn as %q", rows)
+	}
+	for at, id := range []string{"(" + tokyo.ID + ")", "(" + tokyoToo.ID + ")", unnamed.ID} {
+		if !strings.HasSuffix(rows[at], id) {
+			t.Errorf("row %d is drawn as %q, want %s whole at its end", at, rows[at], id)
+		}
+	}
+	if strings.Contains(rows[0], release.Baked.Name) {
+		t.Errorf("the marked row kept its mark where its id alone overflows: %q", rows[0])
+	}
+}
+
 func TestTheSignOutIsDrawnAboveTheAccountsAndTheWayOutBelowThem(t *testing.T) {
 	// the two acts are not accounts and are not drawn as rows of the list: the sign-out stands
 	// above the question and the way out under the block, each with a line of its own around it.
@@ -385,6 +472,37 @@ func TestACursorRestingOnAnActIsOnNoAccountAtAll(t *testing.T) {
 	said := screen(drawn)
 	if strings.Contains(said, "> ") {
 		t.Errorf("the cursor rests on an act and an account row still carries it: %q", said)
+	}
+}
+
+func TestTheActTheCursorRestsOnIsMarkedWithNoColourToTellItBy(t *testing.T) {
+	// under NO_COLOR the tone that says a return lands on an act is gone, so the mark is a glyph —
+	// and drawn under every profile, so there is one drawing to read.
+	for _, profile := range []termenv.Profile{termenv.Ascii, termenv.ANSI256} {
+		pinned(t, profile)
+		drawn := choosing(holding(acme, other), Picker{SignOut: true})
+		for _, act := range []struct {
+			at   int
+			said string
+		}{
+			{0, signOutSaid}, {len(drawn.ring()) - 1, exitSaid},
+		} {
+			drawn.at = act.at
+			lines := strings.Split(screen(drawn), "\n")
+			marked := []string{}
+			for _, line := range lines {
+				if strings.Contains(line, actCursor) {
+					marked = append(marked, line)
+				}
+			}
+			if len(marked) != 1 || marked[0] != actCursor+act.said {
+				t.Errorf("profile %v, cursor on %s: marked lines %q", profile, act.said, marked)
+			}
+			if strings.Contains(strings.Join(lines, "\n"), "> ") {
+				t.Errorf("profile %v, cursor on %s: an account row carries the cursor too", profile,
+					act.said)
+			}
+		}
 	}
 }
 

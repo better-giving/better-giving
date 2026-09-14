@@ -7,6 +7,9 @@ import (
 	"testing"
 	"testing/iotest"
 
+	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
+
 	"github.com/better-giving/console/internal/release"
 )
 
@@ -419,5 +422,38 @@ func TestTheDoorsBlocksStandOneBlankLineApart(t *testing.T) {
 	if blocks := strings.Count(said.String(), "\n\n"); blocks != 2 {
 		t.Errorf("said %q, which is %d blocks and not the two this door draws", said.String(),
 			blocks)
+	}
+}
+
+func TestAConfirmShowsWhichAnswerIsFocusedWithNoColourToTellItBy(t *testing.T) {
+	// huh's theme tells the focused answer from the other by colour alone, so under NO_COLOR both
+	// draw alike and the arrows move focus nobody can see. the mark is drawn under every profile.
+	put := updatingConsole("0.9.0")
+	for _, profile := range []termenv.Profile{termenv.Ascii, termenv.ANSI256} {
+		pinned(t, profile)
+		drawn := map[bool]string{}
+		for _, opens := range []bool{true, false} {
+			answered := opens
+			field := asked(put, &answered)
+			field.Focus()
+			drawn[opens] = strings.TrimRight(toneless.ReplaceAllString(field.View(), ""), " \n")
+
+			focused, blurred := put.apply, put.leave
+			if !opens {
+				focused, blurred = blurred, focused
+			}
+			if !strings.Contains(drawn[opens], "› "+focused) {
+				t.Errorf("profile %v, focused on %q: drawn %q, want the mark on it", profile, focused,
+					drawn[opens])
+			}
+			if strings.Contains(drawn[opens], "› "+blurred) {
+				t.Errorf("profile %v, focused on %q: drawn %q, want no mark on %q", profile, focused,
+					drawn[opens], blurred)
+			}
+		}
+		if ansi.StringWidth(drawn[true]) != ansi.StringWidth(drawn[false]) {
+			t.Errorf("profile %v: the two focuses draw %q and %q, want nothing moving", profile,
+				drawn[true], drawn[false])
+		}
 	}
 }

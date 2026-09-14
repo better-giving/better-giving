@@ -304,13 +304,7 @@ func deciding(in io.Reader, to io.Writer, put question) Confirmation {
 // they left is the deployment alone, which is the refusal.
 func confirming(in io.Reader, to io.Writer, put question) Confirmation {
 	answered := put.opens
-	asking := huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().
-			Title(put.title).
-			Affirmative(put.apply).
-			Negative(put.leave).
-			Value(&answered),
-	)).WithInput(in).WithOutput(to)
+	asking := huh.NewForm(huh.NewGroup(asked(put, &answered))).WithInput(in).WithOutput(to)
 
 	switch err := asking.Run(); {
 	case errors.Is(err, huh.ErrUserAborted):
@@ -321,6 +315,17 @@ func confirming(in io.Reader, to io.Writer, put question) Confirmation {
 		return Declined
 	}
 	return Confirmed
+}
+
+// the confirm ./confirming puts, drawn in ./dressing so the answer it is focused on carries a mark
+// and not a colour alone.
+func asked(put question, answered *bool) huh.Field {
+	return huh.NewConfirm().
+		Title(put.title).
+		Affirmative(put.apply).
+		Negative(put.leave).
+		Value(answered).
+		WithTheme(dressing)
 }
 
 func list(to io.Writer, names []string) {

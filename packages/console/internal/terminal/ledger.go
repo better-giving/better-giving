@@ -14,6 +14,8 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/term"
 
 	"github.com/better-giving/console/internal/deploy"
 	"github.com/better-giving/console/internal/first"
@@ -240,6 +242,9 @@ type ledger struct {
 	now  func() time.Time
 	end  End
 	spin spinner.Model
+	// width is the window's in cells as bubbletea last reported it, and 0 before any report — which
+	// draws every line whole, as the renderer truncates nothing at 0 either.
+	width int
 }
 
 // the model a ledger opens on: no row reached, and every stage looked up to the line that draws it.
@@ -309,6 +314,9 @@ func (drawn ledger) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case ending:
 		drawn.end = message.end
 		return drawn, tea.Quit
+	case tea.WindowSizeMsg:
+		drawn.width = message.Width
+		return drawn, nil
 	case spinner.TickMsg:
 		spun, next := drawn.spin.Update(message)
 		drawn.spin = spun
@@ -329,66 +337,108 @@ func (drawn ledger) View() string {
 		held := drawn.rows[row]
 		// a row with children says nothing beside its own words: the children carry the counting,
 		// and the same reading drawn on both would be one claim made twice, a line apart.
-		beside := ""
-		if mark == Working && len(held.Children) == 0 {
-			beside = drawn.beside()
-		}
-		said.WriteString(drawn.line(held, mark, "", beside))
+		said.WriteString(drawn.line(held, mark, "", len(held.Children) == 0))
 		said.WriteByte('\n')
 		if mark != Working {
 			continue
 		}
 		for under, childMark := range Marks(held.Children, drawn.at.child, drawn.end) {
-			beside := ""
-			if childMark == Working {
-				beside = drawn.beside()
-			}
-			said.WriteString(drawn.line(held.Children[under], childMark, nested, beside))
+			said.WriteString(drawn.line(held.Children[under], childMark, nested, true))
 			said.WriteByte('\n')
 		}
 	}
 	return said.String()
 }
 
-// what the line the run is inside says beside its own words, in the tones each reading is drawn in.
+// what the line the run is inside says beside its own words, in the tones each reading is drawn in,
+// in no more than `room` cells — or whole where `room` is negative, which is a window not yet
+// measured.
 //
 // each note in its own tone rather than the block in one, so that the line's own words lead and
 // everything the run says beside them reads as a note on it. the bar carries two tones of its own
 // and could not be nested inside a third: a style ends at its own reset, which would take the
 // dimming off everything drawn after it.
-func (drawn ledger) beside() string {
-	return notes(
-		toned(dimmed, drawn.detail),
-		counting(drawn.step, drawn.steps),
-		toned(dimmed, drawn.timer()),
-	)
+//
+// **a note that does not fit is dropped whole, and never cut.** the renderer cuts a line at the
+// window's edge, and a bar cut part way reads as a stage part done. they go in the order they say
+// least about the row: the timer, then the bar the share already states, then the share, and the
+// detail last, since it is the one naming which file or how many bytes the row is on.
+func (drawn ledger) beside(room int) string {
+	detail, timer := toned(dimmed, drawn.detail), toned(dimmed, drawn.timer())
+	counted := counting(drawn.step, drawn.steps)
+	figure := toned(dimmed, share(drawn.step, drawn.steps))
+	for _, said := range []string{
+		notes(detail, counted, timer),
+		notes(detail, counted),
+		notes(detail, figure),
+		notes(detail),
+	} {
+		if room < 0 || ansi.StringWidth(said) <= room {
+			return said
+		}
+	}
+	return ""
 }
 
 // one line: the mark its state puts in front of it, the words that state puts it in, and what the
-// run says beside them where it is the line the run is inside.
+// run says beside them where it is the line the run is inside and `noted` says it carries notes.
 //
 // `under` is what the line is drawn in from, which is nothing for a row and ./nested for a child.
-func (drawn ledger) line(row Row, mark Mark, under, beside string) string {
+func (drawn ledger) line(row Row, mark Mark, under string, noted bool) string {
 	switch mark {
 	case Closed:
-		return under + check.String() + " " + row.Done
+		said, _ := drawn.fitted(under+check.String()+" ", under, row.Done)
+		return said
 	case Working:
-		said := row.Running + beside
 		// the mark turns only where the run is really inside this row. a run that ended inside one
 		// makes no claim about that row either way, so the mark it carried while the run was live
 		// goes with the run; and a row with children hands the motion down for the reason ./View
-		// gives above its own beside, the child being the thing the run is actually inside. the
+		// gives where it draws the row, the child being the thing the run is actually inside. the
 		// words are untouched either way: the row is still the one being waited on.
+		opening := under + drawn.spin.View() + " "
 		if drawn.end != Underway || len(row.Children) > 0 {
-			return under + unmarked + " " + said
+			opening = under + unmarked + " "
 		}
-		return under + drawn.spin.View() + " " + said
+		said, room := drawn.fitted(opening, under, row.Running)
+		if !noted {
+			return said
+		}
+		return said + drawn.beside(room)
 	default:
-		return dimmed.Render(under + unmarked + " " + row.Running)
+		said, _ := drawn.fitted(under+unmarked+" ", under, row.Running)
+		// toned a line at a time: a style rendered over several lines pads each to the widest.
+		folds := strings.Split(said, "\n")
+		for at, one := range folds {
+			folds[at] = dimmed.Render(one)
+		}
+		return strings.Join(folds, "\n")
 	}
 }
 
+// a line's words behind `opening` at the window's width, and the cells left beside them — -1 where
+// the window is not yet measured, which is room for everything.
+//
+// **the words are never cut.** where they do not fit they are folded (./say.go's folded), each line
+// after the first set under the first word so the mark column stays the mark's, and nothing is drawn
+// beside them. the renderer cuts every line at the window's width, so words not folded here would be
+// words the operator never sees.
+//
+// `under` is what the line is drawn in from, as ./line takes it.
+func (drawn ledger) fitted(opening, under, words string) (string, int) {
+	whole := opening + words
+	if drawn.width <= 0 {
+		return whole, -1
+	}
+	if room := drawn.width - ansi.StringWidth(whole); room >= 0 {
+		return whole, room
+	}
+	return folded(strings.Fields(words), opening, under+unmarked+" ", drawn.width), 0
+}
+
 // Ledger is one press's rows, drawn as the run reports where it is.
+//
+// The zero value is a ledger nothing draws, which is what ./Draw hands a run whose output is not a
+// terminal: every call on it answers at once and puts nothing anywhere, as ./waiting.go's Wait does.
 type Ledger struct {
 	program *tea.Program
 	// stopped is whether the drawing ended on a signal rather than on the run saying how it ended,
@@ -396,12 +446,19 @@ type Ledger struct {
 	stopped bool
 }
 
-// Draw is a ledger of `rows`, drawn to `to`.
+// Draw is a ledger of `rows`, drawn to `to`, and nothing at all where `to` is not a terminal.
 //
 // It reads no input at all. What an operator presses while waiting on a run is the terminal's own
 // interrupt, and a ledger holding the keyboard would put the terminal in raw mode and take that
 // keystroke instead of the process.
-func Draw(rows []Row, to io.Writer) *Ledger {
+func Draw(rows []Row, to io.Writer) *Ledger { return draw(rows, to, term.IsTerminal) }
+
+// the same ledger with what says whether `to` is a terminal handed in, because a test process is not
+// running at one (./prompt.go's bothEnds).
+func draw(rows []Row, to io.Writer, isTerminal func(uintptr) bool) *Ledger {
+	if !terminalEnd(to, isTerminal) {
+		return &Ledger{}
+	}
 	return &Ledger{
 		program: tea.NewProgram(drawing(rows), tea.WithOutput(to), tea.WithInput(nil)),
 	}
@@ -416,6 +473,9 @@ func Draw(rows []Row, to io.Writer) *Ledger {
 // hears about it.** the library's own words for one name the program rather than the press, and
 // what an operator at that terminal has to be told is that the run is still going.
 func (drawn *Ledger) Show() error {
+	if drawn.program == nil {
+		return nil
+	}
 	final, err := drawn.program.Run()
 	drawn.stopped = halted(final, err)
 	if drawn.stopped {
@@ -496,7 +556,7 @@ func Settled(shown error, halted bool, press string) (said, wrong string) {
 // `steps` are which part of how many where the stage counts them and both 0 where it does not — the
 // deploy engine's own arithmetic, carried through rather than recomputed here.
 func (drawn *Ledger) At(stage first.Stage, detail string, step, steps int) {
-	drawn.program.Send(reached{stage: stage, detail: detail, step: step, steps: steps})
+	drawn.sent(reached{stage: stage, detail: detail, step: step, steps: steps})
 }
 
 // Reporting is At in the shape internal/deploy hands a watcher, so the redeploy's four rows are
@@ -507,10 +567,18 @@ func (drawn *Ledger) Reporting(progress deploy.Progress) {
 
 // Landed closes every row and ends the ledger, which is what a press that reached its end has done
 // to all of them.
-func (drawn *Ledger) Landed() { drawn.program.Send(ending{end: Landed}) }
+func (drawn *Ledger) Landed() { drawn.sent(ending{end: Landed}) }
 
 // Stopped ends the ledger where the run ended, leaving the row it was inside in its running words.
-func (drawn *Ledger) Stopped() { drawn.program.Send(ending{end: Stopped}) }
+func (drawn *Ledger) Stopped() { drawn.sent(ending{end: Stopped}) }
+
+// hands one message to the program, and to nowhere on a ledger nothing draws.
+func (drawn *Ledger) sent(message tea.Msg) {
+	if drawn.program == nil {
+		return
+	}
+	drawn.program.Send(message)
+}
 
 // what a running row says beside its own words, each of them left out where the run has not said it.
 //
@@ -565,7 +633,8 @@ func timed(taken time.Duration) string {
 // how many cells a row's bar is drawn from.
 //
 // it stands among ./notes beside a row's own words rather than on a line of its own, so it is short
-// enough to leave the detail and the timer beside it on one line of an ordinary terminal.
+// enough to leave the detail and the timer beside it on most lines, and dropped whole on a line
+// short of room for it (./beside).
 const barCells = 12
 
 // the cells a bar is drawn from: the ones the run is past, and the ones it is not.
@@ -584,7 +653,8 @@ const (
 //
 // **the bar and the share are one note and not two**, because how far into the row the run has got
 // is one claim: the figure states it and the bar is the same claim at a glance. what they are drawn
-// from is ./share alone, so neither can say what the other does not.
+// from is ./share alone, so neither can say what the other does not — which is also why a line short
+// of room drops the bar and keeps the figure (./beside).
 func counting(step, steps int) string {
 	said := share(step, steps)
 	if said == "" {

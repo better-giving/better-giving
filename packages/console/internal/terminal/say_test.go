@@ -119,6 +119,25 @@ func TestAStyledSpanIsMeasuredInCellsAndNotInBytes(t *testing.T) {
 	}
 }
 
+func TestAMarkedSpanWrittenAwayFromATerminalArrivesAsPlainText(t *testing.T) {
+	// a buffer is not a terminal, as a stderr redirected into a file is not (./say.go's plain).
+	const said = "\x1b[1mbetter-giving\x1b[0m: something failed"
+	for name, write := range map[string]func(*bytes.Buffer){
+		"Say":   func(to *bytes.Buffer) { Say(to, said) },
+		"Lines": func(to *bytes.Buffer) { Lines(to, said) },
+		"Line":  func(to *bytes.Buffer) { Line(to, said) },
+	} {
+		var held bytes.Buffer
+		write(&held)
+		if strings.Contains(held.String(), "\x1b") {
+			t.Errorf("%s wrote %q, which carries an escape", name, held.String())
+		}
+		if !strings.Contains(held.String(), "better-giving: something failed") {
+			t.Errorf("%s wrote %q, which lost the words", name, held.String())
+		}
+	}
+}
+
 func TestALongBulletWrapsAndItsContinuationSitsPastTheMarker(t *testing.T) {
 	// a bullet is prose in a list and not a row anybody copies, so it is broken like a sentence —
 	// and the marker stays the only thing in the left channel.

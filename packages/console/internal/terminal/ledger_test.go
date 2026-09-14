@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/better-giving/console/internal/deploy"
 	"github.com/better-giving/console/internal/first"
@@ -220,13 +221,56 @@ func TestTheLedgerNamesNothingTheOperatorTyped(t *testing.T) {
 	}
 }
 
+// a writer carrying a descriptor, which is what a terminal and a file both are; whether it is a
+// terminal is the reading handed to ./draw beside it.
+type descriptor struct{ bytes.Buffer }
+
+func (*descriptor) Fd() uintptr { return 1 }
+
+func onATerminal(uintptr) bool { return true }
+func inAFile(uintptr) bool     { return false }
+
+func TestALedgerWhoseOutputIsNoTerminalDrawsNothingAndAnswersEveryCall(t *testing.T) {
+	// a run redirected into a file keeps its prose, its outcome and any failure, and a ledger
+	// repainting itself in one is an animation nothing renders (./waiting.go's WaitingOn).
+	held := &descriptor{}
+	drawn := draw(ChainRows, held, inAFile)
+
+	shown := make(chan error, 1)
+	go func() {
+		drawn.At(first.Database, "", 0, 0)
+		drawn.Reporting(deploy.Progress{Stage: deploy.Fetching, Step: 2, Steps: 4})
+		drawn.Landed()
+		drawn.Stopped()
+		shown <- drawn.Show()
+	}()
+	select {
+	case err := <-shown:
+		if err != nil {
+			t.Errorf("Show = %v, want an undrawn ledger to answer at once", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("an undrawn ledger held the run up")
+	}
+
+	if drawn.Halted() {
+		t.Error("an undrawn ledger was read as one a signal took")
+	}
+	if said, wrong := Settled(nil, drawn.Halted(), "a deploy"); said != "" || wrong != "" {
+		t.Errorf("Settled = %q, %q, want nothing said over an undrawn ledger", said, wrong)
+	}
+	if held.Len() != 0 {
+		t.Errorf("a ledger drawn into a file wrote %q", held.String())
+	}
+}
+
 func TestTheProgramTakesEveryReportOnTheRunsOwnGoroutineAndEndsWhereItDoes(t *testing.T) {
 	// what the pure marks above cannot say is that a report ever reaches them: the chain is
 	// sequential and blocking on a goroutine of its own, and ./Ledger's At is the one call across
 	// that seam. no sleep is needed to drive it — a report is handed to the program's own loop and
 	// holds the run up until it is taken, which is what ../first says a watcher does.
-	held := &bytes.Buffer{}
-	drawn := Draw(ChainRows, held)
+	held := &descriptor{}
+	drawn := draw(ChainRows, held, onATerminal)
 	go func() {
 		drawn.Reporting(deploy.Progress{Stage: deploy.Fetching, Step: 2, Steps: 4})
 		for _, stage := range first.Stages {
@@ -728,5 +772,189 @@ func TestARunThatStoppedInsideARowLeavesNothingTurningOnIt(t *testing.T) {
 	}
 	if !strings.Contains(said[0], ChainRows[0].Running) {
 		t.Errorf("the row the run stopped inside lost its running words: %q", said[0])
+	}
+}
+
+// a running row at the width the window reports: the words always, and what is beside them only
+// where it fits.
+
+// the ledger after the window has said how wide it is, which is the message bubbletea sends at the
+// start of a drawing and again on every resize.
+func widened(drawn ledger, width int) ledger {
+	resized, _ := drawn.Update(tea.WindowSizeMsg{Width: width, Height: 24})
+	return resized.(ledger)
+}
+
+// the chain a minute into its first migration, which is the widest running line a first deploy
+// draws: the child's words, the filename, a bar and share, and a timer.
+func migrating() ledger {
+	started := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
+	ticking := &clock{at: started}
+	drawn := drawing(ChainRows)
+	drawn.now = ticking.read
+	drawn = drawn.folding(at(first.Database)).folding(reached{
+		stage:  first.Stage(deploy.Migrating),
+		detail: "0001_paypal_provider_and_rails.sql", step: 1, steps: 2,
+	})
+	ticking.at = started.Add(64 * time.Second)
+	return drawn
+}
+
+// every line wider than `width`, measured in cells.
+func overflowing(said []string, width int) []string {
+	over := []string{}
+	for _, one := range said {
+		if ansi.StringWidth(one) > width {
+			over = append(over, one)
+		}
+	}
+	return over
+}
+
+func TestAtEightyColumnsTheMigrationRowKeepsItsWordsAndFilenameAndDropsWhatDoesNotFit(t *testing.T) {
+	said := lines(widened(migrating(), 80))
+
+	if over := overflowing(said, 80); len(over) > 0 {
+		t.Errorf("lines past 80 cells: %q", over)
+	}
+	tables := said[4]
+	for _, kept := range []string{ChainRows[2].Children[1].Running, "0001_paypal_provider_and_rails.sql"} {
+		if !strings.Contains(tables, kept) {
+			t.Errorf("the migration row is drawn as %q, want %q kept", tables, kept)
+		}
+	}
+	// a bar cut off part way reads as a stage part done; one that does not fit is not drawn at all.
+	for _, cell := range []string{barFull, barEmpty} {
+		if strings.Contains(tables, cell) {
+			t.Errorf("the migration row carries a bar it has no room for: %q", tables)
+		}
+	}
+}
+
+func TestANoteThatDoesNotFitGoesWholeTimerFirstThenBarThenShareThenDetail(t *testing.T) {
+	started := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
+	ticking := &clock{at: started}
+	drawn := drawing(UpdateRows)
+	drawn.now = ticking.read
+	drawn = drawn.folding(reached{
+		stage: first.Stage(deploy.Fetching), detail: "12.3 MB of 45.6 MB", step: 12, steps: 45,
+	})
+	ticking.at = started.Add(64 * time.Second)
+	words := ansi.StringWidth(drawn.spin.View() + " " + UpdateRows[0].Running)
+
+	// "  12.3 MB of 45.6 MB" is 20 cells, "  " + a 12-cell bar + " 26%" is 18, "  1m 04s" is 8.
+	for _, one := range []struct {
+		what  string
+		room  int
+		drawn []string
+		gone  []string
+	}{
+		{"room for every note", 46, []string{"12.3 MB of 45.6 MB", barFull, "26%", "1m 04s"}, nil},
+		{"a cell short of the timer", 45, []string{"12.3 MB of 45.6 MB", barFull, "26%"},
+			[]string{"1m 04s"}},
+		{"a cell short of the bar", 37, []string{"12.3 MB of 45.6 MB", "26%"},
+			[]string{"1m 04s", barFull, barEmpty}},
+		{"a cell short of the share", 24, []string{"12.3 MB of 45.6 MB"},
+			[]string{"1m 04s", barFull, barEmpty, "26%"}},
+		{"a cell short of the detail", 19, nil,
+			[]string{"1m 04s", barFull, barEmpty, "26%", "12.3 MB"}},
+	} {
+		said := lines(widened(drawn, words+one.room))[0]
+		if !strings.Contains(said, UpdateRows[0].Running) {
+			t.Errorf("%s: the row lost its words: %q", one.what, said)
+		}
+		for _, kept := range one.drawn {
+			if !strings.Contains(said, kept) {
+				t.Errorf("%s: %q, want %q drawn", one.what, said, kept)
+			}
+		}
+		for _, dropped := range one.gone {
+			if strings.Contains(said, dropped) {
+				t.Errorf("%s: %q, want %q dropped", one.what, said, dropped)
+			}
+		}
+	}
+}
+
+func TestAWindowNotYetMeasuredDrawsTheWholeRow(t *testing.T) {
+	// the first frame can be drawn before bubbletea has reported the window's size, and the
+	// renderer cuts nothing then either.
+	said := lines(migrating())[4]
+	for _, whole := range []string{"0001_paypal_provider_and_rails.sql", barFull, "50%", "1m 04s"} {
+		if !strings.Contains(said, whole) {
+			t.Errorf("an unmeasured window draws the migration row as %q, want %q", said, whole)
+		}
+	}
+}
+
+// a row whose words carry CJK and an emoji, each two cells wide, which no row in ./lines.go does and
+// a row is free to.
+var gifts = []Row{{
+	Stages:  []first.Stage{first.Stage(deploy.Fetching)},
+	Running: "Sending 東京の募金団体 records 🎁 to the database",
+	Done:    "Sent 東京の募金団体 records 🎁 to the database",
+}}
+
+// the gifts row a minute into a counted download.
+func sending() ledger {
+	started := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
+	ticking := &clock{at: started}
+	drawn := drawing(gifts)
+	drawn.now = ticking.read
+	drawn = drawn.folding(reached{
+		stage: first.Stage(deploy.Fetching), detail: "12.3 MB of 45.6 MB", step: 12, steps: 45,
+	})
+	ticking.at = started.Add(64 * time.Second)
+	return drawn
+}
+
+// whether `words` are drawn in order across `said`, however the lines fold them.
+func foldedIn(said []string, words string) bool {
+	spaced := func(one string) string { return " " + strings.Join(strings.Fields(one), " ") + " " }
+	return strings.Contains(spaced(strings.Join(said, " ")), spaced(words))
+}
+
+func TestAtEightyColumnsARowOfWideCharactersIsMeasuredInCells(t *testing.T) {
+	said := lines(widened(sending(), 80))
+
+	if over := overflowing(said, 80); len(over) > 0 {
+		t.Errorf("lines past 80 cells: %q", over)
+	}
+	if len(said) != 1 || !strings.Contains(said[0], gifts[0].Running) ||
+		!strings.Contains(said[0], "12.3 MB of 45.6 MB") {
+		t.Errorf("the row is drawn as %q, want its words and detail on one line", said)
+	}
+}
+
+func TestAtTheSmallestWindowEveryLineFitsAndEveryWordIsDrawn(t *testing.T) {
+	const narrow = 20
+
+	chain := lines(widened(migrating(), narrow))
+	if over := overflowing(chain, narrow); len(over) > 0 {
+		t.Errorf("chain lines past %d cells: %q", narrow, over)
+	}
+	database := ChainRows[2]
+	for _, words := range []string{
+		ChainRows[0].Done, ChainRows[1].Done, database.Running,
+		database.Children[0].Done, database.Children[1].Running,
+		ChainRows[3].Running, ChainRows[4].Running, ChainRows[5].Running, ChainRows[6].Running,
+	} {
+		if !foldedIn(chain, words) {
+			t.Errorf("the chain at %d cells does not say %q: %q", narrow, words, chain)
+		}
+	}
+
+	wide := lines(widened(sending(), narrow))
+	if over := overflowing(wide, narrow); len(over) > 0 {
+		t.Errorf("gift lines past %d cells: %q", narrow, over)
+	}
+	if !foldedIn(wide, gifts[0].Running) {
+		t.Errorf("the gifts row at %d cells does not say %q: %q", narrow, gifts[0].Running, wide)
+	}
+	// a folded line is set under the row's first word, so the mark column stays the mark's alone.
+	for _, folded := range wide[1:] {
+		if !strings.HasPrefix(folded, unmarked+" ") || strings.HasPrefix(folded, unmarked+"  ") {
+			t.Errorf("a folded line is drawn as %q, want it under the row's first word", folded)
+		}
 	}
 }

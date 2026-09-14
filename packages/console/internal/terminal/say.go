@@ -51,7 +51,7 @@ func Say(to io.Writer, said string) {
 	if said == "" {
 		return
 	}
-	_, _ = io.WriteString(to, wrap(said, measure(to))+"\n\n")
+	_, _ = io.WriteString(to, wrap(plain(to, said), measure(to))+"\n\n")
 }
 
 // Lines writes one block of layout at `to` — rows exactly as they stand, and a blank line under
@@ -75,7 +75,19 @@ func Line(to io.Writer, said string) {
 	if said == "" {
 		return
 	}
-	_, _ = io.WriteString(to, said+"\n")
+	_, _ = io.WriteString(to, plain(to, said)+"\n")
+}
+
+// plain is `said` with its escapes taken out where `to` is not a terminal.
+//
+// ./ledger.go's Code and Cmd render through lipgloss, which picks its colour profile once, off
+// stdout alone — so a failure ../../cmd/better-giving/main.go writes to a stderr redirected into a
+// file would carry the escapes of a stdout that is still a terminal.
+func plain(to io.Writer, said string) string {
+	if onScreen(to) {
+		return said
+	}
+	return ansi.Strip(said)
 }
 
 // measure is how wide a block written at `to` may be.
