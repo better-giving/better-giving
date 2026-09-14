@@ -61,6 +61,7 @@ func update(args []string, to, wrong io.Writer) error {
 	if on, err := taken.read(args, to, wrong); err != nil || !on {
 		return err
 	}
+	terminal.Clear(to)
 
 	ctx := context.Background()
 	return updating(releases.Latest(ctx, releases.Source(), version), to,

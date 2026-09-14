@@ -35,9 +35,9 @@ func TestANameCloudflareWouldNotTakeIsRefusedAtTheBoxAndNeverSent(t *testing.T) 
 }
 
 func TestNoNameIsAskedForWhereThereIsNobodyToAskIt(t *testing.T) {
-	typed, given, err := AskWorkersDevName(strings.NewReader("hound-haven\n"), io.Discard, "")
-	if given || typed != "" {
-		t.Errorf("AskWorkersDevName = %q, %v", typed, given)
+	typed, err := AskWorkersDevName(strings.NewReader("hound-haven\n"), io.Discard, "")
+	if typed != "" {
+		t.Errorf("AskWorkersDevName = %q", typed)
 	}
 	if !errors.Is(err, ErrNoTerminal) {
 		t.Errorf("AskWorkersDevName refused a pipe with %v, want %v", err, ErrNoTerminal)
@@ -54,11 +54,8 @@ func TestWhyTheNameIsBeingAskedForIsDrawnOnTheQuestionsOwnScreen(t *testing.T) {
 	held := &bytes.Buffer{}
 	preamble := "Cloudflare will not take hound-haven: it is another account's"
 
-	_, given, err := AskWorkersDevName(strings.NewReader("anything\n"), held, preamble)
+	_, err := AskWorkersDevName(strings.NewReader("anything\n"), held, preamble)
 
-	if given {
-		t.Error("a pipe was asked for a name")
-	}
 	if !errors.Is(err, ErrNoTerminal) {
 		t.Errorf("AskWorkersDevName = %v, want %v", err, ErrNoTerminal)
 	}

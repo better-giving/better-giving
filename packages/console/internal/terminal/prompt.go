@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
-// what the two prompts share: where a question may be put, and what an answer that never came is.
+// what the prompts share: where a question may be put, and what an answer that never came is.
 //
 // **a question is put to an operator or it is not put at all.** a prompt draws over a terminal it
 // holds for the length of the question, and a reader that is a pipe, a file or a closed descriptor
@@ -21,11 +21,12 @@ import (
 // keystroke for a question the operator was never shown. ./clear.go's onScreen is the other end of
 // the same reading, and ./attended is where the two meet.
 //
-// **an operator who closed the prompt gave no value and is not a failure to report.** ../first
-// reports every failure as a value, and a prompt nobody answered is a press not made: that is false
-// and no error. an error is the other thing — a question this console could not ask at all — and it
-// is separate because a caller that meets one has something to say rather than something to end
-// quietly.
+// **an operator's ctrl-c at a prompt ends the command, and it is neither a refusal nor a failure.**
+// it comes back as ./quit.go's ErrQuit, which the caller ends the run on with a line saying how to
+// pick it up again. a question this console could not ask at all is the other error, and it is
+// separate because a caller that meets one has something to say about why. a prompt that ends
+// unanswered any other way — the picker's escape or its way out — is a press not made, which is no
+// error at all.
 
 // **the sentence names the question it could not put.** the caller prints it as the whole of what
 // that run said, so a pronoun standing for the question — "this console asks for that" — is a

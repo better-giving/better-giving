@@ -1,7 +1,6 @@
 package terminal
 
 import (
-	"errors"
 	"io"
 
 	"github.com/charmbracelet/huh"
@@ -47,26 +46,24 @@ var placements = []huh.Option[string]{
 
 // AskPlacement takes where the database should keep its records, from the nine.
 //
-// False with no error is the operator closing the prompt, as ./AskPassword's is.
-func AskPlacement(in io.Reader, to io.Writer) (string, bool, error) {
+// ./ErrQuit is the operator's ctrl-c, which ends the command (./quit.go).
+func AskPlacement(in io.Reader, to io.Writer) (string, error) {
 	if !attended(in, to) {
-		return "", false, noTerminal{"where the database keeps its records"}
+		return "", noTerminal{"where the database keeps its records"}
 	}
 	clear(to)
 	var where string
-	asking := huh.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().
-			Title("where the database keeps its records").
-			Description("it cannot be changed once the database exists").
-			Options(placements...).
-			Value(&where),
-	)).WithInput(in).WithOutput(to)
-
-	switch err := asking.Run(); {
-	case errors.Is(err, huh.ErrUserAborted):
-		return "", false, nil
-	case err != nil:
-		return "", false, err
+	if err := ran(formFor(placementList(&where), in, to)); err != nil {
+		return "", err
 	}
-	return where, true, nil
+	return where, nil
+}
+
+// the list ./AskPlacement puts, bound to `where`.
+func placementList(where *string) huh.Field {
+	return huh.NewSelect[string]().
+		Title("where the database keeps its records").
+		Description("it cannot be changed once the database exists").
+		Options(placements...).
+		Value(where)
 }

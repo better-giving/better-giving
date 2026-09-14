@@ -37,7 +37,7 @@ const carried = "1.4.0"
 func TestTheDoorOpensOnlyWhereTheOperatorChoseTheUpdate(t *testing.T) {
 	held := &bytes.Buffer{}
 	if said := deciding(
-		strings.NewReader("k\r"), held, carrying(carried),
+		strings.NewReader("k\r"), held, carrying(),
 	); said != Confirmed {
 		t.Errorf("choosing the update = %q, want %q", said, Confirmed)
 	}
@@ -46,7 +46,7 @@ func TestTheDoorOpensOnlyWhereTheOperatorChoseTheUpdate(t *testing.T) {
 	// hand resting on the keyboard is how an update, and the migrations in it, go through by accident.
 	held = &bytes.Buffer{}
 	if said := deciding(
-		strings.NewReader("\r"), held, carrying(carried),
+		strings.NewReader("\r"), held, carrying(),
 	); said != Declined {
 		t.Errorf("a return at the door = %q, want %q", said, Declined)
 	}
@@ -69,20 +69,9 @@ func TestAFormThatFailedIsNoDecisionAndNeverTheRefusal(t *testing.T) {
 	held := &bytes.Buffer{}
 	if said := deciding(
 		iotest.ErrReader(errors.New("the keyboard went away")), held,
-		carrying(carried),
+		carrying(),
 	); said != Unattended {
 		t.Errorf("a form that failed = %q, want %q", said, Unattended)
-	}
-}
-
-func TestADoorTheOperatorClosedIsTheRefusalTheyChose(t *testing.T) {
-	// ctrl-c at the door is a press not made and every prompt in this package reads one that way
-	// (./prompt.go): the operator was standing at it, and what they left is the deployment as it is.
-	held := &bytes.Buffer{}
-	if said := deciding(
-		strings.NewReader("\x03"), held, carrying(carried),
-	); said != Declined {
-		t.Errorf("a door the operator closed = %q, want %q", said, Declined)
 	}
 }
 
@@ -132,7 +121,7 @@ func TestTheQuestionScreenSaysNothingAboutMigrations(t *testing.T) {
 }
 
 func TestTheQuestionIsTheUpdateAndStandsOnKeepingTheCurrentVersion(t *testing.T) {
-	put := carrying(carried)
+	put := carrying()
 
 	if put.title != "update your deployment?" {
 		t.Errorf("the title is %q, want the update", put.title)
@@ -346,7 +335,7 @@ func TestNoScreenPutsTheOfferedReleaseAsNewsOfItsOwn(t *testing.T) {
 func TestTheTwoAnswersAreTheActsThemselvesAndNameNoRelease(t *testing.T) {
 	// both releases are on the version line above the question (./object), so an answer that named
 	// one again would be the same number twice on one screen.
-	put := carrying(carried)
+	put := carrying()
 
 	if put.apply != "Update deployment" || put.leave != "Keep current version" {
 		t.Errorf("the answers are %q / %q, want the two acts", put.apply, put.leave)
@@ -358,20 +347,22 @@ func TestTheTwoAnswersAreTheActsThemselvesAndNameNoRelease(t *testing.T) {
 	}
 }
 
-func TestABinaryThatNamesNoReleaseOffersNoneAndPointsAtNoNotes(t *testing.T) {
+func TestABinaryThatNamesNoReleaseStatesTheMoveOntoThisBuildAndPointsAtNoNotes(t *testing.T) {
 	// `dev` is what a `go build` in this repository leaves (../../cmd/better-giving/main.go): there
-	// is no tag on the releases page for it, so the door is the carry it has always been.
+	// is no tag on the releases page for it, so the move is stated onto this build and no notes are
+	// pointed at.
 	held := &bytes.Buffer{}
 	ConfirmCarry(strings.NewReader("n"), held, onDeployment, "dev", nil, "")
 
-	for _, unwanted := range []string{"dev", "version:", "release notes"} {
+	for _, unwanted := range []string{"dev", "release notes"} {
 		if strings.Contains(held.String(), unwanted) {
-			t.Errorf("said %q, want no version and no notes over a binary that names none: %q",
+			t.Errorf("said %q, want no release named and no notes over a binary that names none: %q",
 				held.String(), unwanted)
 		}
 	}
-	if put := carrying(""); put.title != "carry this release onto the deployment?" {
-		t.Errorf("the title is %q, want the carry asked without a release to name", put.title)
+	if want := "version: " + onDeployment.Release + " \u2192 this build"; !strings.Contains(
+		held.String(), want) {
+		t.Errorf("said %q, want %q", held.String(), want)
 	}
 }
 
@@ -397,15 +388,10 @@ func TestTheNotesTheDoorPointsAtAreTheOfferedReleasesOwnPage(t *testing.T) {
 // holding the wrong account quits and runs the command again.
 
 func TestEveryDoorPutsTwoAnswersAndNothingUnderThem(t *testing.T) {
-	for _, put := range []question{
-		carrying(carried),
-		carrying(""),
-	} {
-		held := &bytes.Buffer{}
-		if said := deciding(strings.NewReader("j\r"), held, put); said != Confirmed {
-			t.Errorf("%q: the row under the refusal = %q, want the list come round to the act",
-				put.title, said)
-		}
+	put := carrying()
+	if said := deciding(strings.NewReader("j\r"), &bytes.Buffer{}, put); said != Confirmed {
+		t.Errorf("%q: the row under the refusal = %q, want the list come round to the act",
+			put.title, said)
 	}
 }
 

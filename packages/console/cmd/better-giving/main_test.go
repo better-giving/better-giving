@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -601,7 +602,7 @@ func TestACommandThisMachineDoesHoldIsOne(t *testing.T) {
 func TestAStopSaysWhatItLeftBehindWhereTheAnswersGo(t *testing.T) {
 	var said strings.Builder
 
-	if err := endRun(&said, &http.Server{}, &server.Presses{}); err != nil {
+	if err := endRun(&said, &http.Server{}, &server.Presses{}, stillUp); err != nil {
 		t.Fatalf("endRun = %v, want a server that was never serving shut cleanly", err)
 	}
 	if !strings.Contains(flowing(said.String()), flowing(stillUp)) {
@@ -889,5 +890,68 @@ func TestEveryPressThisPackageNamesIsComposedRatherThanSpelled(t *testing.T) {
 	if !maps.Equal(spelled, want) {
 		t.Errorf("this package spells %v, want the two ./allow takes and every other press "+
 			"composed with terminal.Cmd", spelled)
+	}
+}
+
+// a ctrl-c at a prompt ends the command, says how to pick it up again, and exits the way a shell's
+// own interrupt does.
+
+func TestAQuitAtAPromptSaysHowToPickTheRunUpAndExits130(t *testing.T) {
+	// start and login are the two commands that put a prompt; update is wrapped the same way and
+	// puts none.
+	for _, command := range []string{"start", "login"} {
+		var said, wrong strings.Builder
+
+		err := pickingUp(&said, command, fmt.Errorf("asking: %w", terminal.ErrQuit))
+
+		want := "stopped. run " + terminal.Cmd(command) + " to pick up where you left off"
+		if got := strings.TrimSpace(said.String()); got != want {
+			t.Errorf("%s said %q, want %q", command, got, want)
+		}
+		if code := exitCode(&wrong, err); code != 130 {
+			t.Errorf("%s exited %d, want 130", command, code)
+		}
+		if wrong.Len() != 0 {
+			t.Errorf("%s said %q on the way out as well, want the one line", command, wrong.String())
+		}
+	}
+}
+
+func TestAnythingButAQuitPassesThePickUpLineBy(t *testing.T) {
+	for _, ended := range []error{nil, errors.New("cloudflare didn't answer")} {
+		var said strings.Builder
+		if err := pickingUp(&said, "start", ended); err != ended {
+			t.Errorf("pickingUp(%v) = %v, want it handed back untouched", ended, err)
+		}
+		if said.Len() != 0 {
+			t.Errorf("pickingUp(%v) said %q, want nothing", ended, said.String())
+		}
+	}
+}
+
+func TestAQuitAtTheConsoleQuestionEndsTheRunAndInstallsNothing(t *testing.T) {
+	run := aNewerConsoleRead()
+	run.answered = terminal.Quit
+
+	line, err := run.run()
+
+	if !errors.Is(err, terminal.ErrQuit) {
+		t.Errorf("aboutTheConsole = %v, want the quit handed back", err)
+	}
+	if run.installs != 0 || line != "" || run.said.Len() != 0 {
+		t.Errorf("installed %d, held %q and said %q past a quit", run.installs, line,
+			run.said.String())
+	}
+}
+
+func TestACtrlCOnTheServedConsoleSaysItStoppedAndHowToOpenItAgain(t *testing.T) {
+	var said strings.Builder
+
+	if err := interrupted(&said, &http.Server{}, &server.Presses{}); err != nil {
+		t.Fatalf("interrupted = %v, want a server that was never serving shut cleanly", err)
+	}
+	want := "the console has stopped. run " + terminal.Cmd("start") + " to open it again"
+	if !strings.Contains(flowing(said.String()), want) {
+		t.Errorf("said %q, want %q", said.String(), want)
 	}
 }

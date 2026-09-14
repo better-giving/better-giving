@@ -37,21 +37,24 @@ import (
 // every one of those but the deploy is a thing they would otherwise have to be told to do in order.
 //
 // **both questions are asked in front of everything that creates anything.** the password and the
-// placement are taken before the first cloudflare write, so a prompt the operator closes costs
+// placement are taken before the first cloudflare write, so a prompt the operator quits costs
 // nothing and leaves the account as it was found — which is the same argument the chain's own order
 // rests on (CLAUDE.md's one-way door).
 //
-// **a closed prompt ends this command on a clean exit and one line.** it is a press not made rather
-// than a failure to report (../../internal/terminal/prompt.go), so the exit is zero; the line says
-// nothing was created, because a command that exited saying nothing would read as a deployment now
-// standing — which is the argument ./atTheDoor makes for the identical act (./closed). a question
-// this console could not ask at all is the other thing and is an error.
+// **a ctrl-c at any prompt ends this command, and nothing past the prompt runs.** no console opens
+// and no deploy starts; ./main.go's pickingUp says how to pick the run up again and exits 130
+// (../../internal/terminal/quit.go).
 //
-// **the console question above is the one exception and it is the reason it stands first.** closing
-// it leaves the operator on this binary rather than ending the run: what they declined can be had
-// again by typing this command, and nothing had been opened, claimed or created to abandon. every
-// prompt past it is in front of something that would be, which is what makes a closed one the end
-// of the run there.
+// **a picker closed, or left by its way out, ends this command on a clean exit and one line.** it is
+// a press not made rather than a failure to report (../../internal/terminal/prompt.go), so the exit
+// is zero; the line says nothing was created, because a command that exited saying nothing would
+// read as a deployment now standing — which is the argument ./atTheDoor makes for the identical act
+// (./closed). a question this console could not ask at all is the other thing and is an error.
+//
+// **the console question above is the one refusal that carries on, and it is the reason it stands
+// first.** declining it leaves the operator on this binary rather than ending the run: what they
+// declined can be had again by typing this command, and nothing had been opened, claimed or created
+// to abandon.
 //
 // **neither the password nor the placement is a flag.** ../../internal/deployment/write.go states
 // that no value reaches a path, an argument list or a sentence, and a password in argv is in the
@@ -101,6 +104,9 @@ func start(args []string, to, wrong io.Writer) error {
 	if on, err := taken.read(args, to, wrong); err != nil || !on {
 		return err
 	}
+	// after the arguments are read, so `start --help` answers under what was typed rather than on an
+	// erased screen.
+	terminal.Clear(to)
 
 	ctx := context.Background()
 	// **in front of the store, the sign-in, the port and every prompt, which is while nothing has
@@ -210,7 +216,7 @@ func start(args []string, to, wrong io.Writer) error {
 						})
 					},
 					func() string { return nowLevel(standing) },
-					func() string { return finishAt(ctx, door, credential, records, in) },
+					func() (string, error) { return finishAt(ctx, door, credential, records, in) },
 					func() error {
 						return connecting(to, func() deployment.Connection {
 							return effects.Connect(ctx, door, credential, records)
@@ -233,7 +239,7 @@ func start(args []string, to, wrong io.Writer) error {
 			// **the account's workers.dev name is read here and registered later.** the read creates
 			// nothing, so it stands in front of the two questions and the first question's screen
 			// names what this run would register (./aboutToMake); the act that registers one goes
-			// past both of them, where closing either has still made nothing (./naming).
+			// past both of them, where quitting either has still made nothing (./naming).
 			named := deployment.AccountName(ctx, door.Get, in.ID)
 			silence.Done()
 
@@ -246,8 +252,8 @@ func start(args []string, to, wrong io.Writer) error {
 			terminal.Say(to, newerConsole)
 			return standingUp(to,
 				func() (net.Listener, error) { return beforeTheDeploy(*port) },
-				func() (first.Asked, bool, error) { return ask(aboutToMake(in, named)) },
-				func() (settledName, bool, error) {
+				func() (first.Asked, error) { return ask(aboutToMake(in, named)) },
+				func() (settledName, error) {
 					return nameAt(ctx, door, credential, in, named, nothingMade)
 				},
 				func(asked first.Asked) (first.Outcome, bool) {
@@ -383,22 +389,22 @@ func onThePortItTook(
 func standingUp(
 	to io.Writer,
 	claiming func() (net.Listener, error),
-	asking func() (first.Asked, bool, error),
-	named func() (settledName, bool, error),
+	asking func() (first.Asked, error),
+	named func() (settledName, error),
 	running func(first.Asked) (first.Outcome, bool),
 	where func() string,
 	working func() string,
 	console func(net.Listener) error,
 ) error {
 	return onThePortItTook(claiming, func() (bool, error) {
-		asked, made, err := asking()
-		if err != nil || !made {
-			return false, closed(to, err)
+		asked, err := asking()
+		if err != nil {
+			return false, err
 		}
 
-		name, settled, err := named()
-		if err != nil || !settled {
-			return false, closed(to, err)
+		name, err := named()
+		if err != nil {
+			return false, err
 		}
 		terminal.Say(to, name.Said)
 
@@ -458,7 +464,8 @@ func standingUp(
 // `finish` is what a first run never landed, made on the way to the console and never in front of
 // the door (./finishing): the carry may be the press that brings the deployment level in the first
 // place. it is one call over both paths because there is one rule — the console is served past it
-// whatever the door answered — and its line is drawn under whatever the pass has already said.
+// whatever the door answered — and its line is drawn under whatever the pass has already said. the
+// one way it ends the run is the operator's ctrl-c at the name question it may put.
 //
 // `connect` is this console's session written to the deployment, last in front of the console on
 // every way to it, for ./connecting's reason: the first run's chain connects as its last stage, and
@@ -477,7 +484,7 @@ func catchingUp(
 	asking func(terminal.Deployment, effects.Migrations) terminal.Confirmation,
 	running func() (effects.Carried, bool),
 	where func() string,
-	finish func() string,
+	finish func() (string, error),
 	connect func() error,
 	console func(net.Listener, bool) error,
 ) error {
@@ -506,7 +513,11 @@ func catchingUp(
 		if err != nil || !serving {
 			return serving, err
 		}
-		terminal.Say(to, finish())
+		finished, err := finish()
+		if err != nil {
+			return false, err
+		}
+		terminal.Say(to, finished)
 		if err := connect(); err != nil {
 			return false, err
 		}
@@ -562,7 +573,7 @@ func beforeTheDeploy(port int) (net.Listener, error) {
 // changed once it exists (../../internal/terminal/placement.go).
 //
 // **it is a statement and not a door.** the two questions it is drawn above create nothing and
-// closing either ends this command having made nothing (./start.go's header), so what already
+// quitting either ends this command having made nothing (./start.go's header), so what already
 // stands in front of the first write is a press the operator has to make rather than one they have
 // to stop.
 //
@@ -607,7 +618,8 @@ func workersDevRow(in account.Account, held deployment.Named) string {
 		"this Cloudflare account answers under it\n"
 }
 
-// what a prompt the operator closed leaves on the screen, and the same nil it ended on.
+// what a picker the operator closed, or a sign-in they turned down, leaves on the screen, and the same
+// nil it ended on.
 //
 // ./atTheDoor argues the line for the identical act: a press that exited saying nothing would read
 // as a deployment now standing. the exit stays clean, because a press not made is not a failure
@@ -693,24 +705,24 @@ var noSessionKey = "this console could not generate the key that signs a staff s
 // `preamble` is what this press is about to make, drawn on the first question's own screen because
 // that is the screen the operator is looking at while they answer it.
 //
-// False with no error is either prompt closed.
-func ask(preamble string) (first.Asked, bool, error) {
-	password, given, err := terminal.AskPassword(os.Stdin, os.Stdout, preamble)
-	if err != nil || !given {
-		return first.Asked{}, false, err
+// terminal.ErrQuit is the operator's ctrl-c at either.
+func ask(preamble string) (first.Asked, error) {
+	password, err := terminal.AskPassword(os.Stdin, os.Stdout, preamble)
+	if err != nil {
+		return first.Asked{}, err
 	}
-	placement, chose, err := terminal.AskPlacement(os.Stdin, os.Stdout)
-	if err != nil || !chose {
-		return first.Asked{}, false, err
+	placement, err := terminal.AskPlacement(os.Stdin, os.Stdout)
+	if err != nil {
+		return first.Asked{}, err
 	}
 	// minted here rather than inside the chain so that a machine whose randomness does not work is
 	// a press never started rather than one that stopped having made a database
 	// (../../internal/first).
 	secret, err := first.SessionSecret()
 	if err != nil {
-		return first.Asked{}, false, errors.New(noSessionKey)
+		return first.Asked{}, errors.New(noSessionKey)
 	}
-	return first.Asked{Password: password, SessionSecret: secret, Placement: placement}, true, nil
+	return first.Asked{Password: password, SessionSecret: secret, Placement: placement}, nil
 }
 
 // what the name act settled, which is the line the run draws and whether this run is the one that
@@ -736,10 +748,10 @@ type settledName struct {
 // deployment up and reachable by nobody.
 //
 // **it is the first thing this run creates and it stands ahead of the two questions' answers being
-// used, not ahead of the questions.** closing either of those ends the command having made nothing
+// used, not ahead of the questions.** quitting either of those ends the command having made nothing
 // (./aboutToMake), so the one act that makes something goes after both of them and in front of the
-// chain — where nothing else has been created either, which is what lets the question below end the
-// run as a press not made.
+// chain — where nothing else has been created either, which is what lets a quit at the question
+// below end the run with nothing to undo.
 //
 // **the derived name is tried without asking.** an account named for the organisation operating it
 // derives the address donors are sent to, and a question nobody had to answer is one that cannot be
@@ -753,21 +765,21 @@ type settledName struct {
 // has the answer to.
 //
 // `cannot` is what the press this belongs to loses where the account cannot be named
-// (./nothingMade). False with no error is the question closed.
+// (./nothingMade). terminal.ErrQuit is the operator's ctrl-c at the question.
 func naming(
 	held deployment.Named,
 	register func(name string) deployment.Named,
 	derived string,
-	ask func(why string) (string, bool, error),
+	ask func(why string) (string, error),
 	cannot string,
-) (settledName, bool, error) {
+) (settledName, error) {
 	switch held.Kind {
 	case deployment.NameHeld:
-		return settledName{}, true, nil
+		return settledName{}, nil
 	case deployment.NameNone:
 		// the one state this act is for, and the only one it creates anything on.
 	default:
-		return settledName{}, false, unnamed(held, cannot)
+		return settledName{}, unnamed(held, cannot)
 	}
 
 	name, why := derived, ""
@@ -776,20 +788,20 @@ func naming(
 	}
 	for {
 		if name == "" {
-			typed, given, err := ask(why)
-			if err != nil || !given {
-				return settledName{}, false, err
+			typed, err := ask(why)
+			if err != nil {
+				return settledName{}, err
 			}
 			name = typed
 		}
 		registered := register(name)
 		switch registered.Kind {
 		case deployment.NameRegistered:
-			return settledName{Said: nowNamed(registered.Name), Registered: true}, true, nil
+			return settledName{Said: nowNamed(registered.Name), Registered: true}, nil
 		case deployment.NameTaken:
 			name, why = "", takenName(name, registered.Detail)
 		default:
-			return settledName{}, false, unnamed(registered, cannot)
+			return settledName{}, unnamed(registered, cannot)
 		}
 	}
 }
@@ -806,14 +818,14 @@ func nameAt(
 	in account.Account,
 	held deployment.Named,
 	cannot string,
-) (settledName, bool, error) {
+) (settledName, error) {
 	return naming(
 		held,
 		func(name string) deployment.Named {
 			return deployment.RegisterName(ctx, cf.APISend(credential), in.ID, name)
 		},
 		deployment.DerivedName(in.Name),
-		func(why string) (string, bool, error) {
+		func(why string) (string, error) {
 			return terminal.AskWorkersDevName(os.Stdin, os.Stdout, why)
 		},
 		cannot)
@@ -996,8 +1008,7 @@ func workingAt(ctx context.Context, where string) string {
 // what a run whose address had not come up by the bound says, which is a line and never an exit.
 //
 // **the deployment is standing and the console opens on this run either way**, so what the line
-// names is why that console may not reach it for another minute rather than a press that failed
-// (./noNameToRegisterAgainst's reading of the identical act).
+// names is why that console may not reach it for another minute rather than a press that failed.
 //
 // it names the address as new rather than as unreachable: this run is the one that registered the
 // name it is made of, and an operator told their deployment cannot be reached goes looking at a
@@ -1134,12 +1145,17 @@ const (
 
 // what this command does about the answer the door came back with.
 //
-// **the line and the error are separate because two of the four ends are not failures.** a door an
-// operator shut is a press not made (../../internal/terminal/prompt.go) and has a line and no
-// error — and it has a line at all because a run that went on to the console saying nothing would
-// read as a deployment now carrying this release. a door that was never put to anybody is the
-// other one: the deployment was named, nobody was there to answer it, and a command that ended
-// cleanly on that would be reporting a decision nobody made.
+// **the line and the error are separate because a door the operator shut is not a failure.** it is
+// a press not made (../../internal/terminal/prompt.go) and has a line and no error — and it has a
+// line at all because a run that went on to the console saying nothing would read as a deployment
+// now carrying this release. a door that was never put to anybody is a failure: the deployment was
+// named, nobody was there to answer it, and a command that ended cleanly on that would be reporting
+// a decision nobody made.
+//
+// **the error a ctrl-c comes back with is the quit and not a failure.** terminal.ErrQuit ends the
+// command there, with nothing uploaded and no console opened, and ./main.go's pickingUp says how to
+// pick the run up again rather than naming anything that went wrong
+// (../../internal/terminal/quit.go).
 //
 // **one answer opens the door and every other shuts it, the ones nobody named included.**
 // ../../internal/terminal's Confirmation is a bare string and nothing checks that this switch names
@@ -1151,6 +1167,8 @@ func atTheDoor(answered terminal.Confirmation) (said string, went doorway, err e
 		return "", through, nil
 	case terminal.Declined:
 		return "your deployment was left on its current version and nothing was uploaded", shut, nil
+	case terminal.Quit:
+		return "", shut, terminal.ErrQuit
 	case terminal.Unattended:
 		return "", shut, errors.New(noOneAtTheDoor)
 	case terminal.Ahead:
@@ -1183,6 +1201,9 @@ func atTheDoor(answered terminal.Confirmation) (said string, went doorway, err e
 // **a finish with nothing to do says nothing**, which is every run after the first: a line about
 // work that did not happen is noise on all of them.
 //
+// **the operator's ctrl-c at the name question is the one thing it hands back**, because that ends
+// the command rather than the finish (../../internal/terminal/quit.go).
+//
 // `named` is the account's workers.dev name settled, which is what the widget's host is derived
 // from; `registering` the widget stage itself; `working` the wait over the address a name this run
 // registered makes, made past the widget and only where this run is the one that made it
@@ -1190,20 +1211,20 @@ func atTheDoor(answered terminal.Confirmation) (said string, went doorway, err e
 // being a finish there was nothing for.
 func finishing(
 	reading func() deployment.VarsRead,
-	named func() (settledName, bool, error),
+	named func() (settledName, error),
 	registering func() first.Outcome,
 	working func() string,
-) string {
+) (string, error) {
 	if !deployment.HoldsNoSpamPair(reading()) {
-		return ""
+		return "", nil
 	}
 
-	name, settled, err := named()
+	name, err := named()
 	switch {
+	case errors.Is(err, terminal.ErrQuit):
+		return "", err
 	case err != nil:
-		return err.Error()
-	case !settled:
-		return noNameToRegisterAgainst
+		return err.Error(), nil
 	}
 
 	widget := spamRegistered
@@ -1213,9 +1234,9 @@ func finishing(
 
 	said := beside(name.Said, widget)
 	if !name.Registered {
-		return said
+		return said, nil
 	}
-	return beside(said, working())
+	return beside(said, working()), nil
 }
 
 // the lines a finish may say as one, and either of them alone where the other was never said.
@@ -1235,13 +1256,6 @@ func beside(said, tail string) string {
 // state of their deployment, and a run that failed before this one is this console's business
 // rather than theirs.
 const spamRegistered = "spam protection is set up"
-
-// what a finish the operator closed the name question on says.
-//
-// the deployment is standing either way, so what the line names is the one thing that is still
-// missing rather than a press that failed (./atTheDoor's reading of the identical act).
-var noNameToRegisterAgainst = "spam protection wasn't registered, so nothing is turning bots away " +
-	"on your donation page. Run " + terminal.Cmd("start") + " again."
 
 // what a run that could not name this account says it cost, which is whatever the press it belongs
 // to had not made yet.
@@ -1281,12 +1295,12 @@ func finishAt(
 	credential cf.Credential,
 	records state.Store,
 	in account.Account,
-) string {
+) (string, error) {
 	return finishing(
 		func() deployment.VarsRead {
 			return deployment.DeployedVars(ctx, door.Get, door.AccountID, door.WorkerName)
 		},
-		func() (settledName, bool, error) {
+		func() (settledName, error) {
 			return nameAt(ctx, door, credential, in,
 				deployment.AccountName(ctx, door.Get, in.ID), nothingRegistered)
 		},

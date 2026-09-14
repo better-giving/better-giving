@@ -437,7 +437,7 @@ func TestTheSignOutIsDrawnAboveTheAccountsAndTheWayOutBelowThem(t *testing.T) {
 			"",
 			"  [ exit ]",
 			"",
-			"↑ up • ↓ down • / filter • enter submit",
+			"↑ up • ↓ down • / filter • enter submit • ctrl+c quit",
 		}, "\n"))
 }
 
@@ -449,7 +449,7 @@ func TestAPickerOfferingNoSignOutDrawsNothingAboveTheAccounts(t *testing.T) {
 			"",
 			"  [ exit ]",
 			"",
-			"↑ up • ↓ down • / filter • enter submit",
+			"↑ up • ↓ down • / filter • enter submit • ctrl+c quit",
 		}, "\n"))
 }
 
@@ -614,12 +614,10 @@ func TestAReturnAnswersWithTheRowTheCursorIsOn(t *testing.T) {
 
 func TestAScreenTheOperatorLeftCarriesNoAnswerAtAll(t *testing.T) {
 	// a picker given up is a press not made, which is the ending ./picked never sees: the answer is
-	// empty and the caller ends the run quietly.
-	for _, key := range []tea.KeyMsg{pressEsc, pressStop} {
-		left := pressing(choosing(holding(acme), Picker{SignOut: true}), key)
-		if !left.left || left.answer != "" {
-			t.Errorf("a screen given up by %v carries %q", key, left.answer)
-		}
+	// empty and the caller ends the run quietly. a ctrl-c is the quit instead (./quit_test.go).
+	left := pressing(choosing(holding(acme), Picker{SignOut: true}), pressEsc)
+	if !left.left || left.quit || left.answer != "" {
+		t.Errorf("a screen given up by an escape carries %q, quit %v", left.answer, left.quit)
 	}
 }
 

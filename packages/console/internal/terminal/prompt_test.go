@@ -54,13 +54,13 @@ func TestEveryPromptNobodyIsAtNamesTheQuestionItCouldNotPut(t *testing.T) {
 
 func passwordRefusal(t *testing.T) error {
 	t.Helper()
-	_, _, err := AskPassword(strings.NewReader("anything\n"), io.Discard, "")
+	_, err := AskPassword(strings.NewReader("anything\n"), io.Discard, "")
 	return err
 }
 
 func placementRefusal(t *testing.T) error {
 	t.Helper()
-	_, _, err := AskPlacement(strings.NewReader("weur\n"), io.Discard)
+	_, err := AskPlacement(strings.NewReader("weur\n"), io.Discard)
 	return err
 }
 

@@ -49,12 +49,12 @@ import (
 // neither.
 //
 // **it states the move as one line of two releases, and that line is the news.** what is being
-// asked for is a deployment moved from the release it is on to the release this binary carries, and
-// neither number is on any other screen of the run — so the pair is drawn as the move itself, with
-// ../release's Notes under it saying what the offered one carries. a release this console could not
-// read off the deployment is the word `unknown` on the left of it (./object), and the one thing not
-// drawn at all is a binary a plain `go build` left: it carries no release, so there is no move to
-// state.
+// asked for is a deployment moved from the release it is on to what this binary carries, and neither
+// is on any other screen of the run — so the pair is drawn as the move itself, with ../release's
+// Notes under it saying what the offered one carries. a release this console could not read off the
+// deployment is the word `unknown` on the left of it, and a binary a plain `go build` left is `this
+// build` on the right of it (./object): it names no release, so there are no notes to point at, but
+// the move is still one the operator is answering for.
 
 // Confirmation is how the door was answered.
 type Confirmation string
@@ -62,8 +62,11 @@ type Confirmation string
 const (
 	// Confirmed is the door opened on purpose.
 	Confirmed Confirmation = "confirmed"
-	// Declined is the door shut on purpose: the refusal chosen, or the form closed.
+	// Declined is the door shut on purpose: the refusal chosen.
 	Declined Confirmation = "declined"
+	// Quit is the operator's ctrl-c at the door, which ends the command rather than shutting the
+	// door and carrying on past it (./quit.go).
+	Quit Confirmation = "quit"
 	// Ahead is a deployment put up by a newer console, which is refused outright.
 	Ahead Confirmation = "ahead"
 	// Unattended is the door nobody was put in front of: an end of the prompt that is not a
@@ -118,22 +121,26 @@ func ConfirmCarry(
 	if !attended(in, to) {
 		return Unattended
 	}
-	return deciding(in, to, carrying(named))
+	return deciding(in, to, carrying())
 }
 
 // the release this binary would put on the deployment, as this screen names it: the version itself,
 // and where that release states what it carries.
 //
-// **a version with no release behind it is named nowhere on the screen.** `dev` is what a plain `go
-// build` in this repository leaves (../../cmd/better-giving/main.go): the releases page carries no
-// tag for it, so an operator offered it reads a number that answers nothing and a link to a page
-// that is not there. what they get instead is the door as it stands without one.
+// **a version with no release behind it is named as this build, and its notes nowhere.** `dev` is
+// what a plain `go build` in this repository leaves (../../cmd/better-giving/main.go): the releases
+// page carries no tag for it, so the number answers nothing and a link to its page points at a page
+// that is not there. what is being put on the deployment is still something, and `this build` is
+// what the operator can know it as.
 func offered(version string) (named, notes string) {
 	if notes = release.Notes(version); notes == "" {
-		return "", ""
+		return thisBuild, ""
 	}
 	return version, notes
 }
+
+// what the version line calls a binary that names no release.
+const thisBuild = "this build"
 
 // the question this door puts, which is the update and nothing past it.
 //
@@ -147,21 +154,13 @@ func offered(version string) (named, notes string) {
 // of them again is the same number twice — and the act is the whole of what is being chosen
 // between.
 //
-// **a release this binary cannot name asks the question it always asked.** `offering` is empty for
-// exactly that binary (./offered), so there is no version line above these answers and the words
-// that name the deployment are what is left to choose between.
+// **a binary that names no release is asked the same question.** the version line above it states
+// the move onto `this build` (./offered).
 //
 // both stand on leaving the deployment as it is: the migrations in the update for the reason this
 // file opens on, and the upload because a `start` that carries nothing still opens the console at a
 // deployment that is already serving (../../cmd/better-giving/start.go).
-func carrying(offering string) question {
-	if offering == "" {
-		return question{
-			title: "carry this release onto the deployment?",
-			apply: "Carry it over",
-			leave: "Leave the deployment alone",
-		}
-	}
+func carrying() question {
 	return question{
 		title: "update your deployment?",
 		apply: "Update deployment",
@@ -195,19 +194,17 @@ func above(to io.Writer, line string) {
 // OwnRelease answers empty for every way of not finding out, and an operator weighing an offer
 // against a blank half has to be told which half is blank.
 //
-// `offering` and `notes` are ./offered's pair: the release this binary would put on and where it
+// `offering` and `notes` are ./offered's pair: what this binary would put on, and where that release
 // states what it carries, drawn under the address because it is the one line here an operator can
-// leave the terminal and read. Both are empty for a binary that names no release, and the version
-// line goes with them — there is no move to state when one end of it does not exist.
+// leave the terminal and read. `offering` is never empty, so the version line is always drawn;
+// `notes` is empty for a binary that names no release, and that line goes.
 func object(to io.Writer, at Deployment, offering, notes string) {
 	rows := make([]string, 0, 4)
 	if at.Account != "" {
 		rows = append(rows, "Cloudflare account: "+at.Account)
 	}
 	rows = append(rows, "deployment: "+answering(at))
-	if offering != "" {
-		rows = append(rows, "version: "+onRelease(at)+" \u2192 "+offering)
-	}
+	rows = append(rows, "version: "+onRelease(at)+" \u2192 "+offering)
 	if notes != "" {
 		rows = append(rows, "release notes: "+Code(notes))
 	}
@@ -266,29 +263,30 @@ type question struct {
 // what `opens` says and nothing else does (./account.go takes the same reading).
 //
 // ./confirming's two failures are read the same way here and for the same reasons: a form that could
-// not be drawn is no answer and never the refusal, and the operator's own ctrl-c is the refusal.
+// not be drawn is no answer and never the refusal, and the operator's own ctrl-c is the quit.
 func deciding(in io.Reader, to io.Writer, put question) Confirmation {
 	answered := Declined
 	if put.opens {
 		answered = Confirmed
 	}
-	asking := huh.NewForm(huh.NewGroup(
-		huh.NewSelect[Confirmation]().
-			Title(put.title).
-			Options(
-				huh.NewOption(put.apply, Confirmed),
-				huh.NewOption(put.leave, Declined),
-			).
-			Value(&answered),
-	)).WithInput(in).WithOutput(to)
-
-	switch err := asking.Run(); {
-	case errors.Is(err, huh.ErrUserAborted):
-		return Declined
+	switch err := ran(formFor(choosingBetween(put, &answered), in, to)); {
+	case errors.Is(err, ErrQuit):
+		return Quit
 	case err != nil:
 		return Unattended
 	}
 	return answered
+}
+
+// the list ./deciding puts, bound to `answered`.
+func choosingBetween(put question, answered *Confirmation) huh.Field {
+	return huh.NewSelect[Confirmation]().
+		Title(put.title).
+		Options(
+			huh.NewOption(put.apply, Confirmed),
+			huh.NewOption(put.leave, Declined),
+		).
+		Value(answered)
 }
 
 // the two-answer confirm, which is the question in front of an act that can be undone
@@ -299,16 +297,13 @@ func deciding(in io.Reader, to io.Writer, put question) Confirmation {
 // it would be ../../cmd/better-giving/start.go exiting 0 on "left on its current version", which is
 // a decision nobody made. the door stays shut either way and only the sentence differs.
 //
-// **the one failure that is an answer is the operator's own.** ctrl-c at the form is a press not
-// made, which every prompt in this package reads as the value not given (./prompt.go) — and what
-// they left is the deployment alone, which is the refusal.
+// **the one failure that is an answer is the operator's own.** ctrl-c at the form ends the command
+// (./quit.go), so it is ./Quit and never the refusal: a refusal carries the run on past the question.
 func confirming(in io.Reader, to io.Writer, put question) Confirmation {
 	answered := put.opens
-	asking := huh.NewForm(huh.NewGroup(asked(put, &answered))).WithInput(in).WithOutput(to)
-
-	switch err := asking.Run(); {
-	case errors.Is(err, huh.ErrUserAborted):
-		return Declined
+	switch err := ran(formFor(asked(put, &answered), in, to)); {
+	case errors.Is(err, ErrQuit):
+		return Quit
 	case err != nil:
 		return Unattended
 	case !answered:

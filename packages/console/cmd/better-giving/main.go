@@ -68,6 +68,9 @@ func exitCode(to io.Writer, err error) int {
 	if err == nil {
 		return 0
 	}
+	if errors.Is(err, errQuit) {
+		return interruptedExit
+	}
 	if !errors.Is(err, errSaid) {
 		terminal.Say(to, fmt.Sprintf("%s: %v", terminal.Cmd(), err))
 	}
@@ -76,6 +79,27 @@ func exitCode(to io.Writer, err error) int {
 
 // errSaid is a failure the command that met it has already put on the screen.
 var errSaid = errors.New("this command has already said what went wrong")
+
+// errQuit is a command the operator ended at a prompt, whose line ./pickingUp has already said.
+var errQuit = errors.New("the operator quit this command at a prompt")
+
+// what a command ended by ctrl-c exits with: a shell's own for a process its interrupt ended, 128 and
+// the signal's number.
+const interruptedExit = 128 + int(syscall.SIGINT)
+
+// what a command that met the operator's ctrl-c at a prompt says on the way out, and the error the
+// exit is read off.
+//
+// **it names the command they ran and nothing about what did not happen.** every prompt stands in
+// front of what it asks about (../../internal/terminal/quit.go), so the run ended where nothing past
+// the question had started, and the command again is the whole of the way back to it.
+func pickingUp(to io.Writer, command string, err error) error {
+	if !errors.Is(err, terminal.ErrQuit) {
+		return err
+	}
+	terminal.Say(to, "stopped. run "+terminal.Cmd(command)+" to pick up where you left off")
+	return errQuit
+}
 
 // `to` is where a command's own answer goes and `wrong` where a failure does, so that an operator
 // who asked this binary a question can redirect the answer.
@@ -101,11 +125,11 @@ func run(args []string, to, wrong io.Writer) error {
 	}
 	switch args[0] {
 	case "start":
-		return start(args[1:], to, wrong)
+		return pickingUp(to, "start", start(args[1:], to, wrong))
 	case "update":
-		return update(args[1:], to, wrong)
+		return pickingUp(to, "update", update(args[1:], to, wrong))
 	case "login":
-		return login(args[1:], to, wrong)
+		return pickingUp(to, "login", login(args[1:], to, wrong))
 	case "logout":
 		return logout(args[1:], to, wrong)
 	case "version":
@@ -293,6 +317,9 @@ func carried(ctx context.Context, to io.Writer) (string, error) {
 // has three lines above them saying an install was happening, so a run that went on is the
 // out-of-date code onto the deployment that this whole path exists to prevent.
 //
+// **a ctrl-c at the question ends the command**, with nothing installed and nothing past it run
+// (../../internal/terminal/quit.go).
+//
 // **a question nobody was standing at carries on and is not a failure.** it is the one prompt in
 // this binary whose act can be undone — the operator installs the console they had back and nothing
 // on their account moved — so a run ended here would cost them the press they typed to spare them
@@ -314,6 +341,8 @@ func aboutTheConsole(
 			return "", install()
 		case terminal.Declined:
 			return "", nil
+		case terminal.Quit:
+			return "", terminal.ErrQuit
 		default:
 			terminal.Say(to, newer(read))
 			return "", nil
@@ -495,13 +524,13 @@ func serve(
 		// is diverted here every later interrupt is swallowed, and the second ctrl-c is the only way
 		// out of a press that never ends.
 		stop()
-		return endRun(to, listening, presses)
+		return interrupted(to, listening, presses)
 	case <-closed:
 		// the same end, asked for from the page rather than from this window: the operator closed
 		// the console they were looking at, and this is the terminal that has to say so.
 		terminal.Say(to, "the console was closed from its page, stopping")
 		stop()
-		return endRun(to, listening, presses)
+		return endRun(to, listening, presses, stillUp)
 	}
 }
 
@@ -569,19 +598,34 @@ func unbound(at string, err error) error {
 // one statement of it because two things end a run — a ctrl-c in this terminal and the close press
 // on the page — and what they wait for and how long they give the server are the same either way.
 //
-// **what survives the stop is said last of all.** DEPLOY.md tells the operator to leave the console
-// running, which is the sentence that makes stopping it read as consequential — and the terminal is
-// the only place that can say the deployment did not go with it.
-func endRun(to io.Writer, listening *http.Server, presses *server.Presses) error {
+// **what is said once the server is down is said last of all**, and the caller hands it in as `last`
+// because the two ways of ending say different things: the close press is the one that leaves this terminal
+// wondering what went with the page, and a ctrl-c is the operator in this terminal asking to stop
+// the command they typed here.
+func endRun(to io.Writer, listening *http.Server, presses *server.Presses, last string) error {
 	waitForPress(to, presses.Going, waited)
 	closing, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	shut := listening.Shutdown(closing)
-	terminal.Say(to, stillUp)
+	terminal.Say(to, last)
 	return shut
 }
 
-// what a stop leaves behind, which is a deployment this process was never holding up.
+// the run ended by a ctrl-c in this terminal, which is where the operator typed the command and so
+// where the way to open the console again is said.
+func interrupted(to io.Writer, listening *http.Server, presses *server.Presses) error {
+	return endRun(to, listening, presses, consoleStopped)
+}
+
+// what a ctrl-c on the served console leaves on the screen once the server is down: that it stopped,
+// and the command that opens it again.
+var consoleStopped = "the console has stopped. run " + terminal.Cmd("start") + " to open it again"
+
+// what a close from the page leaves behind, which is a deployment this process was never holding up.
+//
+// **it is said because the stop was not pressed here.** DEPLOY.md tells the operator to leave the
+// console running, which is the sentence that makes stopping it read as consequential — and the
+// terminal is the only place that can say the deployment did not go with it.
 //
 // the relationship rather than a claim that a deployment is there: the run that served this console
 // read it minutes or days ago, and a line asserting it is standing now would be a reading this stop

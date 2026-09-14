@@ -47,9 +47,9 @@ func TestEveryPlacementSaysWhichOfTheTwoFieldsItIs(t *testing.T) {
 }
 
 func TestNoPlacementIsAskedForWhereThereIsNobodyToAskIt(t *testing.T) {
-	where, given, err := AskPlacement(strings.NewReader("weur\n"), io.Discard)
-	if given || where != "" {
-		t.Errorf("AskPlacement = %q, %v", where, given)
+	where, err := AskPlacement(strings.NewReader("weur\n"), io.Discard)
+	if where != "" {
+		t.Errorf("AskPlacement = %q", where)
 	}
 	if !errors.Is(err, ErrNoTerminal) {
 		t.Errorf("AskPlacement refused a pipe with %v, want %v", err, ErrNoTerminal)

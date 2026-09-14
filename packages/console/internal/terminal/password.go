@@ -45,23 +45,18 @@ import (
 // a chain they have to start from the beginning.
 //
 // `preamble` is what the caller has to say above the question, drawn on this prompt's own screen and
-// empty where it has nothing. False with no error is the operator closing the prompt, which
-// ./prompt.go argues is a press not made rather than a failure to report.
-func AskPassword(in io.Reader, to io.Writer, preamble string) (string, bool, error) {
+// empty where it has nothing. ./ErrQuit is the operator's ctrl-c, which ends the command
+// (./quit.go).
+func AskPassword(in io.Reader, to io.Writer, preamble string) (string, error) {
 	_, _ = io.WriteString(to, heading(onScreen(to), preamble, measure(to)))
 	if !attended(in, to) {
-		return "", false, noTerminal{"a password for the dashboard"}
+		return "", noTerminal{"a password for the dashboard"}
 	}
 	var typed string
-	asking := huh.NewForm(huh.NewGroup(passwordBox(&typed))).WithInput(in).WithOutput(to)
-
-	switch err := asking.Run(); {
-	case errors.Is(err, huh.ErrUserAborted):
-		return "", false, nil
-	case err != nil:
-		return "", false, err
+	if err := ran(formFor(passwordBox(&typed), in, to)); err != nil {
+		return "", err
 	}
-	return typed, true, nil
+	return typed, nil
 }
 
 // the box itself: what it asks for, what it will not take, and what it shows of the value.

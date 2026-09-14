@@ -17,6 +17,15 @@ func TestNothingIsClearedWhereNobodyIsWatching(t *testing.T) {
 	}
 }
 
+func TestACommandClearsNothingWhereNobodyIsWatching(t *testing.T) {
+	// the erase a command opens on is the prompts' own, and a redirected run keeps its record clean.
+	var held bytes.Buffer
+	Clear(&held)
+	if held.Len() != 0 {
+		t.Errorf("Clear wrote %q at a buffer", held.String())
+	}
+}
+
 func TestAnFdIsNotOnItsOwnAScreen(t *testing.T) {
 	// the check is the terminal and not the descriptor: a pipe carries an Fd exactly as a terminal
 	// does, and a run redirected into one is the ordinary way this console's output is kept.

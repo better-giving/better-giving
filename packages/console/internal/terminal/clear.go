@@ -25,6 +25,9 @@ import (
 // the scrollback, and this clears what is drawn and not what was said.
 const clearScreen = "\033[H\033[2J"
 
+// Clear is that erase for a command opening on a screen of its own, under the rules above.
+func Clear(to io.Writer) { clear(to) }
+
 // clear puts the next thing drawn at the top of an empty screen.
 func clear(to io.Writer) {
 	if !onScreen(to) {

@@ -28,29 +28,27 @@ import (
 // AskWorkersDevName takes the workers.dev name this account will answer under.
 //
 // `why` is what stands above the question — the refusal that led to it being put — drawn on this
-// prompt's own screen for ./password.go's reason. False with no error is the operator closing the
-// prompt, which ./prompt.go argues is a press not made rather than a failure to report.
-func AskWorkersDevName(in io.Reader, to io.Writer, why string) (string, bool, error) {
+// prompt's own screen for ./password.go's reason. ./ErrQuit is the operator's ctrl-c, which ends the
+// command (./quit.go).
+func AskWorkersDevName(in io.Reader, to io.Writer, why string) (string, error) {
 	_, _ = io.WriteString(to, heading(onScreen(to), why, measure(to)))
 	if !attended(in, to) {
-		return "", false, noTerminal{"a workers.dev name for this Cloudflare account"}
+		return "", noTerminal{"a workers.dev name for this Cloudflare account"}
 	}
 	var typed string
-	asking := huh.NewForm(huh.NewGroup(
-		huh.NewInput().
-			Title("a workers.dev name for this Cloudflare account").
-			Description("your deployment answers at " + release.Baked.Name + ".<name>.workers.dev").
-			Validate(namingRefusal).
-			Value(&typed),
-	)).WithInput(in).WithOutput(to)
-
-	switch err := asking.Run(); {
-	case errors.Is(err, huh.ErrUserAborted):
-		return "", false, nil
-	case err != nil:
-		return "", false, err
+	if err := ran(formFor(nameBox(&typed), in, to)); err != nil {
+		return "", err
 	}
-	return typed, true, nil
+	return typed, nil
+}
+
+// the box ./AskWorkersDevName puts, bound to `typed`.
+func nameBox(typed *string) huh.Field {
+	return huh.NewInput().
+		Title("a workers.dev name for this Cloudflare account").
+		Description("your deployment answers at " + release.Baked.Name + ".<name>.workers.dev").
+		Validate(namingRefusal).
+		Value(typed)
 }
 
 // what the box refuses a name with, or nil where cloudflare would take it.

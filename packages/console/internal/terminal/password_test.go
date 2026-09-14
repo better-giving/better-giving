@@ -80,9 +80,9 @@ func TestAPasswordIsCountedTheWayTheDeploymentCountsIt(t *testing.T) {
 func TestNoPasswordIsAskedForWhereThereIsNobodyToAskIt(t *testing.T) {
 	// a test binary's own input is a pipe, which is exactly the state this refuses: a box drawn at
 	// one is a box nothing is ever typed into, so the prompt says so rather than standing there.
-	typed, given, err := AskPassword(strings.NewReader("anything\n"), io.Discard, "")
-	if given || typed != "" {
-		t.Errorf("AskPassword = %q, %v", typed, given)
+	typed, err := AskPassword(strings.NewReader("anything\n"), io.Discard, "")
+	if typed != "" {
+		t.Errorf("AskPassword = %q", typed)
 	}
 	if !errors.Is(err, ErrNoTerminal) {
 		t.Errorf("AskPassword refused a pipe with %v, want %v", err, ErrNoTerminal)
@@ -99,11 +99,8 @@ func TestThePreambleIsDrawnOnTheQuestionsOwnScreen(t *testing.T) {
 	held := &bytes.Buffer{}
 	preamble := "deploying into your Cloudflare account Acme Giving (ac1). this makes:"
 
-	_, given, err := AskPassword(strings.NewReader("anything\n"), held, preamble)
+	_, err := AskPassword(strings.NewReader("anything\n"), held, preamble)
 
-	if given {
-		t.Error("a pipe was asked for a password")
-	}
 	if !errors.Is(err, ErrNoTerminal) {
 		t.Errorf("AskPassword = %v, want %v", err, ErrNoTerminal)
 	}
@@ -136,7 +133,7 @@ func TestTheScreenIsErasedBeforeThePreambleIsDrawnOnIt(t *testing.T) {
 
 func TestNothingIsDrawnAboveTheQuestionWhereTheCallerHasNothingToSay(t *testing.T) {
 	held := &bytes.Buffer{}
-	_, _, _ = AskPassword(strings.NewReader("anything\n"), held, "")
+	_, _ = AskPassword(strings.NewReader("anything\n"), held, "")
 	if held.String() != "" {
 		t.Errorf("said %q, want a caller with nothing to say drawn as nothing", held.String())
 	}

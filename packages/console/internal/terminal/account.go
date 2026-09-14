@@ -151,7 +151,8 @@ var ErrNoAccounts = errors.New("this Cloudflare sign-in is a member of no accoun
 
 // AskAccount takes which of the accounts `held` carries this deployment is in.
 //
-// PickerClosed with no error is the operator closing the picker, as ./AskPassword's false is.
+// PickerClosed with no error is the operator closing the picker. ./ErrQuit is their ctrl-c, which
+// ends the command (./quit.go).
 func AskAccount(
 	in io.Reader,
 	to io.Writer,
@@ -174,19 +175,30 @@ func AskAccount(
 
 	drawn, err := tea.NewProgram(
 		choosing(held, asked), tea.WithInput(in), tea.WithOutput(to)).Run()
+	return ended(drawn, err, held.Accounts)
+}
+
+// what the picker's run is worth, out of the model it ended on and the error it ended with.
+//
+// an interrupt that reached the program rather than the screen is the same ctrl-c, and quits the
+// same way.
+func ended(drawn tea.Model, err error, accounts []signin.Account) (signin.Account, Answered, error) {
 	switch {
 	case errors.Is(err, tea.ErrInterrupted):
-		return signin.Account{}, PickerClosed, nil
+		return signin.Account{}, PickerClosed, ErrQuit
 	case err != nil:
 		return signin.Account{}, PickerClosed, err
 	}
 	answered, ours := drawn.(chooser)
+	switch {
+	case ours && answered.quit:
+		return signin.Account{}, PickerClosed, ErrQuit
 	// a screen the operator left carries no answer at all, and that is the ending a closed picker
 	// has always had: a press not made, which the caller ends the run on quietly.
-	if !ours || answered.left {
+	case !ours || answered.left:
 		return signin.Account{}, PickerClosed, nil
 	}
-	return picked(answered.answer, held.Accounts)
+	return picked(answered.answer, accounts)
 }
 
 // a row the cursor can rest on: an account, or one of the two acts.
@@ -221,6 +233,8 @@ type chooser struct {
 	answer string
 	// left is the screen given up rather than answered, which is the ending a closed picker has.
 	left bool
+	// quit is the operator's ctrl-c, which ends the command rather than the question (./quit.go).
+	quit bool
 	// width is the window's in cells as bubbletea last reported it, and 0 before any report — which
 	// draws every row whole, as the renderer truncates nothing at 0 either.
 	width int
@@ -302,7 +316,7 @@ func (drawn chooser) Init() tea.Cmd { return textinput.Blink }
 //
 // **the interrupt is an ending this screen answers itself.** it holds the terminal in raw mode for
 // the length of the question, so the keystroke arrives here rather than at the process — and what
-// it ends is the question, which is the ending a picker they closed has always had (./AskAccount).
+// it ends is the command, which is every prompt's ctrl-c (./quit.go).
 func (drawn chooser) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if window, resized := message.(tea.WindowSizeMsg); resized {
 		drawn.width = window.Width
@@ -314,7 +328,7 @@ func (drawn chooser) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	switch key.String() {
 	case "ctrl+c":
-		drawn.left = true
+		drawn.quit = true
 		return drawn, tea.Quit
 	case "esc":
 		if drawn.filtering {
@@ -524,12 +538,14 @@ var onAct = dressing.Focused.SelectSelector.UnsetString()
 // the keys this screen answers to, drawn along the bottom of it.
 //
 // the words are the ones huh's own select put there and the keys are the same keys, so an operator
-// who has run `start` before reads the line they have always read.
+// who has run `start` before reads the line they have always read — and the quit last, as every form
+// in this package draws it (./quit.go).
 var helpSaid = helping()
 
 func helping() string {
 	pressing := []struct{ key, does string }{
 		{"↑", "up"}, {"↓", "down"}, {"/", "filter"}, {"enter", "submit"},
+		{quitKey.Help().Key, quitKey.Help().Desc},
 	}
 	said := make([]string, 0, len(pressing))
 	for _, one := range pressing {
