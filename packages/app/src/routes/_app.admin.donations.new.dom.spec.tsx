@@ -379,7 +379,7 @@ it('says nothing on a plain visit', () => {
 
 it('says a write failed without calling the gift not added, and keeps the ids', async () => {
 	const WRITE_FAILED_SENTENCE =
-		'Adding this donation failed, and it may have been recorded anyway. Press again with nothing changed — that cannot record it twice. Check Gifts before pressing with changed details.';
+		'Adding this donation failed, and it may have been recorded anyway. Press again with nothing changed, which cannot record it twice. Check Gifts before pressing with changed details.';
 	const { root } = liveScreen(() =>
 		data(
 			{

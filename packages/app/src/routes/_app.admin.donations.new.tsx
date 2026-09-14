@@ -46,8 +46,7 @@ import type { loader as searchLoader } from './_app.admin.donors.search';
 // adding a donation that arrived in hand — cash or a cheque — filed under a donor the operator
 // searches for or creates on the spot, posted to the books, and receipted only if they tick the box.
 //
-// a page of its own reached from Gifts: a create form above a list makes the first thing on the
-// list's page a form.
+// a page of its own, reached from Gifts, so the gifts page opens on the list.
 //
 // **the ids are minted in the loader and carried hidden**, so one press is one gift: a second press
 // of the same ids is refused at the database by `recordGiftInHand`. every answer that stays on this
@@ -63,8 +62,8 @@ import type { loader as searchLoader } from './_app.admin.donors.search';
 // the operator types, and the matches as choices), a donor attached, and creating one. which arm is
 // showing is this component's state, and `donor` in the body is what tells the action.
 //
-// this file is deliberately thin. what a box may hold is `$lib/donations/input-schema.ts`, which name
-// a new donor needs is `parseContact`, and what a gift in hand writes is
+// the rules are not here: what a box may hold is `$lib/donations/input-schema.ts`, which name a new
+// donor needs is `parseContact`, and what a gift in hand writes is
 // `$lib/server/donations/record-in-hand.ts`.
 
 /** the form, stated once for the action that reads a body against it and the screen that submits to it. */
@@ -82,7 +81,7 @@ const SCREEN_TITLE = 'Add a donation';
  * a fresh pair, which nothing refuses — so it sends the operator to Gifts first.
  */
 const WRITE_FAILED =
-	'Adding this donation failed, and it may have been recorded anyway. Press again with nothing changed — that cannot record it twice. Check Gifts before pressing with changed details.';
+	'Adding this donation failed, and it may have been recorded anyway. Press again with nothing changed, which cannot record it twice. Check Gifts before pressing with changed details.';
 
 /**
  * what a press is told when the ids it carried already stand for a different gift.
@@ -939,7 +938,7 @@ export default function AddDonation({ loaderData, actionData }: Route.ComponentP
 					<Field
 						label={GIFT_FIELD_LABELS.source}
 						optional
-						hint="How the gift came in — an appeal, an event, a cheque number."
+						hint="How the gift came in: an appeal, an event, a cheque number."
 						{...boxProps(fields.source)}
 					/>
 

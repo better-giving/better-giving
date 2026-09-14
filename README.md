@@ -6,17 +6,15 @@ A donation app for a **single** nonprofit, deployed to your own Cloudflare accou
 
 ## Two operator surfaces
 
-Named separately everywhere in this repo:
-
 - **The dashboard** is `/admin` on a deployment. Donation forms, donations, donors, recurring gifts. The only thing a staff member opens.
-- **The console** is a program the operator runs on their own machine: `better-giving start` puts this release on the deployment in the terminal (standing one up where you have none, carrying the code onto one you already have), and then serves a page at `http://127.0.0.1:5320`, already connected, and on a deployment already on this release it goes straight there. Never deployed; the screens are built into the binary. Between the terminal half and the screens it sets the deployment up: the Cloudflare account, the D1 database, all seventeen configuration values, the payment processor keys, the site list, the org's legal identity.
+- **The console** is a program the operator runs on their own machine: `better-giving start` puts this release on the deployment from the terminal, then serves the console's screens at `http://127.0.0.1:5320`. Never deployed; the screens are built into the binary. Between the terminal half and the screens it sets the deployment up: the Cloudflare account, the D1 database, all seventeen configuration values, the payment processor keys, the site list, the org's legal identity.
 
 ## Get started
 
 ### Requirements
 
 - **Node ≥ 22** and **pnpm** (`corepack enable`), for running locally and for the checkout deploy
-- **a Cloudflare account** (the Free plan runs it), **a Stripe or PayPal account** (either alone is enough, and both may be set), **an SMTP account on port 465**, for deploying and taking money. [`DEPLOY.md`](./DEPLOY.md) has the details
+- **a Cloudflare account on a paid Workers plan** (the Free plan runs it, but its rate limits on the public donation endpoint silently do not enforce), **a Stripe or PayPal account** (either alone is enough, and both may be set), **an SMTP account on port 465**, for deploying and taking money. [`DEPLOY.md`](./DEPLOY.md) has the details
 
 ### Run it locally
 
@@ -47,15 +45,13 @@ curl -fsSL https://github.com/better-giving/better-giving/releases/latest/downlo
 better-giving start
 ```
 
-The first line puts one file on your machine. The second asks its questions in the terminal, deploys, and opens the console at the result. macOS and Linux, both architectures; Windows is out of scope. Sign-in is Cloudflare's own page; the credential stays on your machine, renewed automatically, never shown, never typed. `better-giving update` is the other terminal command: it brings the console binary up to the newest release and leaves your deployment alone. `start` typed again is what carries that release onto a deployment you already have, and it names the migrations it would apply before it applies them.
+macOS and Linux, both architectures; Windows is out of scope. Sign-in is Cloudflare's own page; the credential stays on your machine, renewed automatically, never shown, never typed. `better-giving update` is the other terminal command: it brings the console binary up to the newest release and leaves your deployment alone. `start` typed again is what carries that release onto a deployment you already have, and it names the migrations it would apply before it applies them.
 
 Setting a var writes to the Worker's settings in place, taking effect without a build or an upload.
 
 Email and Turnstile are required. A deployment that cannot send cannot give a donor the receipt they file with a tax authority, and `/api/v1` is an unauthenticated, cross-origin, payment-initiating endpoint, exactly what card-testing bots hunt, and the org eats the disputes.
 
 **Test keys are keys.** A deployment holding `sk_test_…` reads _ready_, serves forms and takes cards, all against Stripe's test account, where no money moves and no screen says so. A local clone on the published `.dev.vars.example` keys does exactly this. A PayPal sandbox app's credentials do the same thing on that rail. To rehearse, see [`DEPLOY.md`](./DEPLOY.md)'s rehearsal deployment. Read its wallet paragraph before pasting any snippet it hands you.
-
-Seventeen values configure a deployment, and every one of them is a plain Worker **var**: readable back on the Worker and shown as a value in the console, so you can check what you pasted. [`DEPLOY.md`](./DEPLOY.md) has the details.
 
 [`DEPLOY.md`](./DEPLOY.md) also covers the two `d1 create` placement flags you can never change afterwards, custom domains, backups, rehearsal deployments, and upgrades.
 
@@ -164,7 +160,7 @@ One custom property, set on the element or anything above it:
 
 From a checkout, the root commands operate a deployment. All run from any directory, because the root `package.json` forwards each into `packages/app`; `pnpm run` on its own lists them. Use them over raw `wrangler`: they carry the flags that matter, like `db:create`'s `--no-update-config`, and resolve the exact wrangler version this app was tested against. Anything you append still reaches wrangler.
 
-The console covers the same jobs without a checkout: every credential, every var, the site list, the org identity. New code reaches the deployment with `better-giving start`, which offers you a newer console before it carries anything; `better-giving update` installs that console on its own and deploys nothing.
+The console covers the same jobs without a checkout: every credential, every var, the site list, the org identity.
 
 An append-only ledger is corrected by posting a compensating entry rather than by restoring. Tearing a rehearsal deployment down is two raw wrangler commands; [`DEPLOY.md`](./DEPLOY.md) gives them in full.
 
