@@ -156,7 +156,7 @@ export const FUTURE_DATE = 'must not be in the future';
  * correction against a closed period is dated in that period — so the only thing a ceiling can
  * refuse is a typo, and a typed year is years out rather than days.
  */
-function latestAccountingDay(): number {
+export function latestAccountingDay(): number {
 	const now = new Date();
 	return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
 }

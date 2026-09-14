@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Route } from '../../routes/+types/_app.admin.donations';
+import type { Route } from '../../routes/+types/_app.admin.donations._index';
 import { APP_NAME, screenTitle } from './screen-title';
 
 // the layout's match as react router hands it to a screen's `meta`, taken off a real screen's
@@ -31,7 +31,7 @@ describe('a screen title', () => {
 	});
 
 	it('still names something where the layout is not among the matches', () => {
-		expect(screenTitle('Gifts', [{ id: 'routes/_app.admin.donations' as const }])).toBe(
+		expect(screenTitle('Gifts', [{ id: 'routes/_app.admin.donations._index' as const }])).toBe(
 			`Gifts · ${APP_NAME}`
 		);
 	});

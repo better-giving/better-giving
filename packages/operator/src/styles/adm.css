@@ -1628,12 +1628,19 @@
 	   nothing — neither done nor refused. */
 	.adm-momentary {
 		display: inline-flex;
-		align-items: center;
+		align-items: start;
 		gap: var(--admin-space-3);
 		font-size: var(--admin-aside-size);
 		font-weight: var(--admin-aside-weight);
 		line-height: var(--admin-aside-lh);
 		color: var(--admin-accent-ink);
+	}
+
+	/* centred on the word's first line rather than on the row: an outcome long enough to wrap keeps
+	   its mark beside the line it starts on. the mark inherits the word's size and leading, so `1lh`
+	   is that line box. */
+	.adm-momentary > .adm-mark {
+		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
 	}
 
 	.adm-momentary--blocked {
@@ -1879,14 +1886,22 @@
 
 	/* refused, on all three box types. a save that would not take what is in a box says so on the
 	   box, and a multi-line box is refused for the same reasons a single-line one is — so the rung
-	   is written across the trio the way the resting, hover and disabled rungs above are. */
+	   is written across the trio the way the resting, hover and disabled rungs above are. the hover
+	   twins are named with it so the refusal outranks the hover rung, which on touch stays on a box
+	   after a tap. */
 	/* carried-ok: .adm-input--invalid .adm-textarea--invalid .adm-select--invalid — put on the box
 	   by the derived class list in packages/operator/src/components/forms/Field.jsx and
 	   packages/operator/src/components/forms/SelectWithNote.jsx, off either the message that
 	   control holds or an `aria-invalid` something larger than the one box marked it with. */
 	.adm-input--invalid,
+	.adm-input--invalid:hover,
+	.adm-input--invalid.is-hover,
 	.adm-select--invalid,
-	.adm-textarea--invalid {
+	.adm-select--invalid:hover,
+	.adm-select--invalid.is-hover,
+	.adm-textarea--invalid,
+	.adm-textarea--invalid:hover,
+	.adm-textarea--invalid.is-hover {
 		border-color: var(--admin-field-border-invalid);
 		border-width: var(--admin-border-width-strong);
 	}
@@ -2016,8 +2031,13 @@
 	   one head and stand as close as a label does to its own box. what the head names stands off at
 	   the group's own step and needs no third: the legend is set a rank above a label below, so
 	   nothing is asked of the space to say which of the two is the name of the other. */
+	/* the column's floor is zero: an implicit track sizes to its widest item's min-content, so one
+	   unbroken word inside — a search echoed back — would widen the group, and the page, past the
+	   viewport. that same floor is the fieldset's own min-content, so its user-agent
+	   `min-inline-size: min-content` holds nothing open either. */
 	.adm-fieldset {
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 	}
 
 	.adm-fieldset > * + * {

@@ -38,8 +38,9 @@ import { createCookie, redirect } from 'react-router';
 /**
  * the outcome of a write that reports on the screen it was performed on.
  *
- * taken by that screen's own `loader` — `/admin/forms/<id>` and `/admin/members` — and by no
- * other, because the destination is in the value and every screen is sent the cookie.
+ * taken by that screen's own `loader` — `/admin/forms/<id>`, `/admin/members` and
+ * `/admin/donations/new` among them — and by no other, because the destination is in the value and
+ * every screen is sent the cookie.
  */
 export const SAVED_FLASH = 'admin_saved';
 

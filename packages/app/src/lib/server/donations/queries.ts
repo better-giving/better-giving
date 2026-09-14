@@ -1,7 +1,7 @@
 import type { TributeKind } from '@better-giving/form/v1';
 import { and, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
-import { readContactNames } from '../contacts/queries';
+import { readContactNames, readContactSummaries } from '../contacts/queries';
 import type { Db } from '../db/client';
 import { donation, payment, program, type Donation, type Payment } from '../db/schema';
 import type { DonationStatus } from '../../donations/statuses';
@@ -274,7 +274,7 @@ export type DonationListRow = Omit<
 	 *
 	 * derived, never stored — see `projectRail`. both halves cross this boundary because this type
 	 * is the read's answer rather than a browser payload; which of them a screen may name is the
-	 * screen's own narrowing (src/routes/_app.admin.donations.tsx).
+	 * screen's own narrowing (src/routes/_app.admin.donations._index.tsx).
 	 */
 	rail: GiftRail | null;
 	/**
@@ -432,4 +432,58 @@ export async function readGiftsByMonth(db: Db): Promise<GiftMonth[]> {
 		.select({ month: month.as('month'), gifts: count() })
 		.from(collected)
 		.groupBy(month);
+}
+
+/**
+ * a gift as the screen that recorded it reads it back: to report it once it lands, and to tell a
+ * second press of the same ids from a press of different boxes under them.
+ */
+export type RecordedGift = Pick<
+	Donation,
+	'totalMinor' | 'currency' | 'receivedAt' | 'contactId' | 'programId' | 'source'
+> & {
+	readonly donorName: string;
+	readonly donorEmail: string | null;
+	/** how the money arrived, off the gift's first payment row, or `null` where it has none. */
+	readonly method: Payment['method'] | null;
+};
+
+/**
+ * one gift's figure, day, donor, cause, source and method, or `null` where no gift has the id.
+ *
+ * read back by the id the flash or the press carried rather than carried itself: a cookie holds a
+ * marker and never a sentence (`$lib/server/flash.ts`).
+ */
+export async function findRecordedGift(db: Db, id: string): Promise<RecordedGift | null> {
+	const [row] = await db
+		.select({
+			totalMinor: donation.totalMinor,
+			currency: donation.currency,
+			receivedAt: donation.receivedAt,
+			contactId: donation.contactId,
+			programId: donation.programId,
+			source: donation.source
+		})
+		.from(donation)
+		.where(eq(donation.id, id))
+		.limit(1);
+	if (row === undefined) return null;
+
+	const [summaries, [attempt]] = await Promise.all([
+		readContactSummaries(db, [row.contactId]),
+		db
+			.select({ method: payment.method })
+			.from(payment)
+			.where(eq(payment.donationId, id))
+			.orderBy(payment.id)
+			.limit(1)
+	]);
+	const summary = summaries.get(row.contactId);
+	return {
+		...row,
+		// the donor row cannot be missing — see `listDonations` above for why, and for the word.
+		donorName: summary?.displayName ?? 'Unknown donor',
+		donorEmail: summary?.primaryEmail ?? null,
+		method: attempt?.method ?? null
+	};
 }

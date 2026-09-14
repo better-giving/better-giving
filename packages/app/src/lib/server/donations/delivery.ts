@@ -84,11 +84,9 @@ export type SettleFailure = (typeof SETTLE_FAILURES)[number];
 /**
  * everything the webhook's modules need that they may not build for themselves, all per request.
  *
- * three consumers: ./settle.ts and ./collect.ts, which produce the answers above, and ./receipt.ts,
- * which both of them end at and which produces none. the third reads the database and sends mail
- * and asks the processor nothing, so it is handed a `provider` it never calls — one bag rather than
- * a narrower shape per consumer, because all three are reached from the one route that builds it
- * and a second shape would be a second thing to keep in step with that route.
+ * ./settle.ts and ./collect.ts produce the answers above and read all three. what they end at —
+ * ./receipt.ts and `alert` below — reads the database and sends mail and asks the processor nothing,
+ * so it takes `MailDeps`, which a bag of these satisfies as it is.
  */
 export type SettleDeps = {
 	readonly db: Db;
@@ -96,6 +94,12 @@ export type SettleDeps = {
 	/** the mail transport. its failures are reported and never raised — see ./settle.ts's header. */
 	readonly email: EmailProvider;
 };
+
+/**
+ * the part of `SettleDeps` that reads the database and sends mail — all a receipt or an alert needs,
+ * so a gift no processor took (./record-in-hand.ts) can be receipted without a `PaymentProvider`.
+ */
+export type MailDeps = Pick<SettleDeps, 'db' | 'email'>;
 
 /**
  * what an operator-facing sentence calls the processor that delivered this.
@@ -118,7 +122,7 @@ export function processorLabel(deps: SettleDeps): string {
  * nullable and a fresh deployment has none. the sentence still reaches the logs either way, which
  * is the floor: an alert nobody configured must not become an exception on the money path.
  */
-export async function alert(deps: SettleDeps, input: adminAlert.AdminAlertData): Promise<void> {
+export async function alert(deps: MailDeps, input: adminAlert.AdminAlertData): Promise<void> {
 	try {
 		console.error(`${input.headline}:`, JSON.stringify(input.facts));
 	} catch {

@@ -759,3 +759,27 @@ it('draws the hidden box’s refusal as the form’s own, since it has no contro
 
 	expect(unboxed(root).join(' ')).toContain('This page did not submit an id.');
 });
+
+it('opens both account boxes on their blank, and sends them, after the date fills in', async () => {
+	// the day is filled in by an effect after mount, which changes the form's seed and resets it: a
+	// select the seed names nothing for is left with nothing chosen and submits no value at all.
+	const { root, posted } = screen();
+
+	for (const name of ['out_of', 'into']) {
+		expect(box<HTMLSelectElement>(root, name).selectedIndex).toBe(0);
+	}
+	await act(async () => {
+		fill(box(root, 'amount'), '4.75');
+		fill(box(root, 'note'), 'Stripe fee that never posted.');
+	});
+	await pressPost(root);
+
+	// refused in the browser for the two unchosen accounts, and never posted — but refused as blank
+	// boxes, which only a select still holding its blank can be.
+	const form = root.querySelector('form');
+	if (form === null) throw new Error('no form');
+	const body = new FormData(form);
+	expect(body.get('out_of')).toBe('');
+	expect(body.get('into')).toBe('');
+	expect(posted).toHaveLength(0);
+});

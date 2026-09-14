@@ -51,7 +51,8 @@ export function StatusWord({
 				}
 			>
 				<Mark name={mark || (neutral ? 'info' : 'check')} />
-				{children}
+				{/* one flex item: a message mixing text and elements would otherwise split into columns. */}
+				<span>{children}</span>
 			</span>
 		);
 	}

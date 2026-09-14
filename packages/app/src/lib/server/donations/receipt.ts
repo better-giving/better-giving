@@ -4,7 +4,7 @@ import type { Db } from '../db/client';
 import { donation } from '../db/schema';
 import { renderReceipt, type ReceiptContribution } from '../email/receipt';
 import { readOrgProfile } from '../org/queries';
-import { alert, type SettleDeps } from './delivery';
+import { alert, type MailDeps } from './delivery';
 
 // the donor's receipt, sent once per gift that reached the books, whichever path put it there.
 //
@@ -109,10 +109,7 @@ export type ReceiptTarget = {
  * ./settled-notice.ts is the one that does. the answer is a courtesy to callers and never a
  * signal to act on: every arm that needed an operator has already told one.
  */
-export async function sendReceipt(
-	deps: SettleDeps,
-	target: ReceiptTarget
-): Promise<ReceiptOutcome> {
+export async function sendReceipt(deps: MailDeps, target: ReceiptTarget): Promise<ReceiptOutcome> {
 	if (target.donorEmail === null) return 'no_address';
 
 	try {
@@ -207,7 +204,7 @@ async function release(db: Db, donationId: string): Promise<void> {
  * goes out over a transport that may be the very thing that faulted, and `alert` logs its headline
  * and facts before it reaches that transport (./delivery.ts), so the sentence lands either way.
  */
-async function faulted(deps: SettleDeps, donationId: string, error: unknown): Promise<void> {
+async function faulted(deps: MailDeps, donationId: string, error: unknown): Promise<void> {
 	try {
 		await release(deps.db, donationId);
 	} catch {

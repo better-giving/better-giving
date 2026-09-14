@@ -3,10 +3,12 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { rejectionCode } from '../db/rejection.testing';
 import { contact, type Contact } from '../db/schema';
+import { MAX_DONOR_SEARCH } from '../../contacts/input-schema';
 import type { RecurringPlanStatus } from '../../recurring/statuses';
 import { parseContact, type ContactFormValues, type ParsedContact } from './contact-input';
 import {
 	CONTACT_LIST_LIMIT,
+	DONOR_SEARCH_LIMIT,
 	createContact,
 	findContactByEmail,
 	findContactById,
@@ -14,6 +16,7 @@ import {
 	readContactSummaries,
 	readDonorSummary,
 	readDonorViewCounts,
+	searchDonors,
 	type ContactOrder
 } from './queries';
 
@@ -958,3 +961,69 @@ async function bypassingParse(
 ): Promise<ParsedContact> {
 	return { ...(await parsedIndividual()), ...over } as unknown as ParsedContact;
 }
+
+describe('searchDonors', () => {
+	it('finds a donor by any part of their name, in any case', async () => {
+		const ada = await create(individual({ primary_email: 'ada@example.org' }));
+		await create(individual({ first_name: 'Grace', last_name: 'Hopper' }));
+
+		expect(await searchDonors(db, 'okaf')).toEqual([
+			{ id: ada.id, displayName: 'Ada Okafor', primaryEmail: 'ada@example.org' }
+		]);
+	});
+
+	it('finds a donor by their address, and tells two of one name apart by it', async () => {
+		await create(individual({ primary_email: 'ada@home.example' }));
+		const work = await create(individual({ primary_email: 'Ada@Work.example' }));
+
+		const found = await searchDonors(db, 'work.EXAMPLE');
+
+		expect(found.map((m) => [m.id, m.primaryEmail])).toEqual([[work.id, 'Ada@Work.example']]);
+	});
+
+	it('matches a typed % or _ as itself', async () => {
+		await create(individual({ first_name: 'Percy' }));
+		const literal = await create(individual({ primary_email: 'ada_100%@example.org' }));
+
+		expect((await searchDonors(db, '_100%')).map((m) => m.id)).toEqual([literal.id]);
+		expect(await searchDonors(db, '%')).toEqual([expect.objectContaining({ id: literal.id })]);
+	});
+
+	it(`answers a search as long as the box allows (${MAX_DONOR_SEARCH} characters)`, async () => {
+		await create(individual());
+
+		expect(await searchDonors(db, 'a'.repeat(MAX_DONOR_SEARCH))).toEqual([]);
+	});
+
+	it('finds a donor by a long run of their name', async () => {
+		const long = await create(individual({ first_name: 'Bartholomew'.repeat(10) }));
+
+		const found = await searchDonors(db, `${'bartholomew'.repeat(10)} okafor`);
+
+		expect(found.map((m) => m.id)).toEqual([long.id]);
+	});
+
+	it('offers nobody for blank text', async () => {
+		await create(individual());
+
+		expect(await searchDonors(db, '   ')).toEqual([]);
+	});
+
+	it('never offers an archived donor', async () => {
+		const archived = await create(individual({ first_name: 'Zora' }));
+		await env.DB.prepare('update contact set archived_at = 1 where id = ?').bind(archived.id).run();
+
+		expect(await searchDonors(db, 'zora')).toEqual([]);
+	});
+
+	it(`answers with at most ${DONOR_SEARCH_LIMIT}, in name order`, async () => {
+		for (let i = 0; i <= DONOR_SEARCH_LIMIT; i += 1) {
+			await create(individual({ first_name: `Ada${String(i).padStart(2, '0')}` }));
+		}
+
+		const found = await searchDonors(db, 'okafor');
+
+		expect(found).toHaveLength(DONOR_SEARCH_LIMIT);
+		expect(found[0]?.displayName).toBe('Ada00 Okafor');
+	});
+});

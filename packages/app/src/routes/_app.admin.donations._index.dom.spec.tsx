@@ -1,12 +1,13 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { createRoutesStub } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
-import Donations from './_app.admin.donations';
+import Donations from './_app.admin.donations._index';
 
 // the dedication cell, drawn.
 //
 // what it covers: the one sentence this screen composes rather than looks up. every other cell is a
-// value the loader already turned into a string, and ./_app.admin.donations.workers.spec.ts is
+// value the loader already turned into a string, and ./_app.admin.donations._index.workers.spec.ts is
 // where those are asserted — but `In memory of Margaret Chen` is the phrase and the honoree joined
 // here, in the page, and a join that lost the space or put the name first would ship with every
 // workers case green.
@@ -62,19 +63,24 @@ function gift(over: Partial<Gift> = {}): Gift {
 /**
  * the screen, drawn over the gifts given.
  *
- * mounted directly rather than inside a `createRoutesStub`, which is what ./_app.admin.forms.new
- * .dom.spec.tsx needs and this does not: nothing on this screen navigates or submits, so there is
- * no router state for a stub to hold. `params` and `matches` are what the generated props type
- * still asks for, and the cast is that spec's — the props under test are `loaderData` alone.
+ * inside a `createRoutesStub`, because the Add donation link is a router `Link` and has nothing to
+ * resolve against without one. `params` and `matches` are what the generated props type still asks
+ * for, and the cast is ./_app.admin.forms.new.dom.spec.tsx's — the props under test are `loaderData`
+ * alone.
  */
 function screen(donations: Gift[]): HTMLElement {
-	return mount(
-		createElement(Donations as never, {
-			loaderData: { donations, limit: 50, hasMore: false },
-			params: {},
-			matches: []
-		})
-	);
+	const Stub = createRoutesStub([
+		{
+			path: '/admin/donations',
+			Component: () =>
+				createElement(Donations as never, {
+					loaderData: { donations, limit: 50, hasMore: false },
+					params: {},
+					matches: []
+				})
+		}
+	]);
+	return mount(createElement(Stub, { initialEntries: ['/admin/donations'] }));
 }
 
 /**
@@ -95,6 +101,11 @@ function cell(root: HTMLElement, label: string): string {
 
 it('draws no heading of its own: the frame names the page', () => {
 	expect(screen([gift({})]).querySelector('h1')).toBe(null);
+});
+
+it('links to adding a donation that arrived in hand', () => {
+	const link = [...screen([]).querySelectorAll('a')].find((a) => a.textContent === 'Add donation');
+	expect(link?.getAttribute('href')).toBe('/admin/donations/new');
 });
 
 it('states the dedication as the sentence a fundraiser says', () => {

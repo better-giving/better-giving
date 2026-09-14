@@ -1,19 +1,23 @@
 import { TRIBUTE_KIND_LABELS } from '@better-giving/form/v1';
 import { DataTable } from '@better-giving/operator/components/data/DataTable';
+import { Button } from '@better-giving/operator/components/controls/Button';
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { href, Link } from 'react-router';
 import { screenTitle } from '$lib/admin/screen-title';
+import { IN_HAND_METHOD_LABELS } from '$lib/donations/methods';
 import { formatMinor } from '$lib/donations/money';
 import { DONATION_STATUS_LABELS } from '$lib/donations/statuses';
 import { loadFailed } from '$lib/server/db/load-failure';
 import type { PaymentMethod } from '$lib/server/db/schema';
 import { DONATION_LIST_LIMIT, listDonations } from '$lib/server/donations/queries';
 import { database } from '../context';
-import type { Route } from './+types/_app.admin.donations';
+import type { Route } from './+types/_app.admin.donations._index';
 
 // the gifts a deployment has taken: a `loader` and nothing else. there is no write on this screen —
-// a gift is recorded by the public endpoint under `/api/v1` and settled by the payment
-// processor's webhook, and /admin reads the result.
+// a gift given online is recorded by the public endpoint under `/api/v1` and settled by the payment
+// processor's webhook, and one that arrived in hand is added on ./_app.admin.donations.new.tsx,
+// which this screen links to. /admin reads the result of all three.
 //
 // this file is deliberately thin. what a gift's state is lives in
 // `$lib/server/donations/queries.ts`, what each state is called lives in
@@ -95,10 +99,12 @@ const COLUMNS = [
  * exactly the initialism CLAUDE.md keeps off a screen. `PayPal` and `Venmo` are the two a donor
  * read on the button they pressed, so they are what a staff member holding that donor's email
  * hears — and `Venmo` is never `PayPal` here, though PayPal is what settled it.
+ *
+ * the two rails money arrives on in hand are `IN_HAND_METHOD_LABELS`' words, spread rather than
+ * spelled again, so a cheque reads `Cheque` here and on the screen that adds one.
  */
 const RAIL_LABELS: Record<PaymentMethod, string> = {
-	cash: 'Cash',
-	check: 'Check',
+	...IN_HAND_METHOD_LABELS,
 	card: 'Card',
 	ach: 'Bank transfer',
 	paypal: 'PayPal',
@@ -198,6 +204,17 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 		// own, so one that is not rendered leaves no space behind it. the wide measure, because a
 		// table plane is what it exists for.
 		<Column wide>
+			{/* the page's one press, where `PageHeader` draws its trailing slot, in the shape
+			    ./_app.admin.programs._index.tsx draws Add program: the strip over the page carries the
+			    name, so the header draws no title. a link dressed as a button, because it navigates. */}
+			<header className="adm-pageheader">
+				<div className="adm-pageheader__row">
+					<Button as={Link} to={href('/admin/donations/new')}>
+						Add donation
+					</Button>
+				</div>
+			</header>
+
 			{/* the table sits in the column directly, and nothing wraps it. a grid item's automatic
 			    minimum size is its min-content size, so a plain element between the column and the
 			    plane is one the column can never make narrower than the whole table: the page then

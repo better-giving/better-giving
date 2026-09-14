@@ -3,7 +3,9 @@ import type { PostableAccountId } from '../db/postable';
 import { post, type PostingLine } from '../ledger/posting';
 import type { Settlement } from '../payments/provider';
 
-// the two entry groups a charge that succeeded makes, stated once for both halves of the webhook.
+// the entry groups a gift that reached the organisation makes: the two a charge that succeeded makes,
+// stated once for both halves of the webhook, and the one a gift received in hand makes
+// (`receivedInHandEntry`, for ./record-in-hand.ts).
 //
 // ./settle.ts posts a one-off gift against the payment row a quote minted, and ./collect.ts posts
 // a collection under a standing commitment. the accounting is the same accounting — a gift
@@ -177,6 +179,41 @@ export function feeEntry(gift: ChargedGift, settlement: Settlement) {
 		lines: [
 			{ accountId: postableId('processorFees'), amountMinor: fee },
 			{ accountId: postableId('undepositedFunds'), amountMinor: -fee }
+		]
+	});
+}
+
+/** a gift an operator entered by hand, as its one entry group needs it. */
+export type GiftReceivedInHand = {
+	/** the payment the operator recorded — `entry_group.source_id`, the card path's grain. */
+	readonly paymentId: string;
+	readonly donationId: string;
+	/** the fund the gift's one line names. */
+	readonly revenueAccountId: PostableAccountId;
+	/** minor units, positive. */
+	readonly amountMinor: number;
+	readonly currency: string;
+	/** the gift's own date, which decides the period this lands in. */
+	readonly dated: Date;
+};
+
+/**
+ * the gift recognised, for cash or a cheque received in hand.
+ *
+ * the debit is `1010 Bank / Cash` rather than `1020`, because no processor stands between the donor
+ * and the organisation: the money is in hand, and it is what ties to the bank statement. no fee
+ * entry goes beside it — nothing was withheld.
+ */
+export function receivedInHandEntry(gift: GiftReceivedInHand) {
+	return post({
+		sourceType: 'payment',
+		sourceId: gift.paymentId,
+		currency: gift.currency,
+		occurredAt: gift.dated,
+		memo: `donation ${gift.donationId}`,
+		lines: [
+			{ accountId: postableId('bankCash'), amountMinor: gift.amountMinor },
+			{ accountId: gift.revenueAccountId, amountMinor: -gift.amountMinor }
 		]
 	});
 }

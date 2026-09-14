@@ -380,7 +380,7 @@ export default function Donors({ loaderData }: Route.ComponentProps) {
 			</nav>
 
 			{/* the table sits in the column directly, and nothing wraps it — the reason is on the
-			    same call in ./_app.admin.donations.tsx: a plain element between the column and the
+			    same call in ./_app.admin.donations._index.tsx: a plain element between the column and the
 			    plane is one the column can never make narrower than the whole table, so the page
 			    scrolls sideways instead of the plane and the pinned first column goes with it. */}
 			<DataTable

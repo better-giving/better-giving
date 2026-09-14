@@ -462,7 +462,11 @@ export default function Books({ loaderData, actionData }: Route.ComponentProps) 
 		//
 		// the posting id is deliberately not seeded here — see `postingId` below for why a form
 		// layer is the wrong thing to hold it.
-		defaultValue: { occurred_on: today }
+		//
+		// the two pickers are seeded blank because the day filling in is a seed change, and the reset
+		// it causes writes nothing-chosen into a select the seed does not name — which then submits no
+		// value at all rather than its blank.
+		defaultValue: { occurred_on: today, out_of: '', into: '' }
 	});
 
 	const outcome = actionData && 'outcome' in actionData ? actionData.outcome : null;
@@ -713,7 +717,7 @@ export default function Books({ loaderData, actionData }: Route.ComponentProps) 
 			) : (
 				// the table sits in the column directly, and nothing wraps it: a plain element between
 				// the column and the plane is one the column can never make narrower than the whole
-				// table (./_app.admin.donations.tsx argues it at length).
+				// table (./_app.admin.donations._index.tsx argues it at length).
 				<DataTable
 					captionId={CAPTION_ID}
 					// with rows, the sentence that says what the table holds and is what names it. with

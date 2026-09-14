@@ -35,6 +35,12 @@ export const MAX_EMAIL = 320;
 export const MAX_PHONE = 40;
 
 /**
+ * how much of what was typed a donor search reads. the box and the search route both cut to it, so
+ * an answer is always about the text the box compares it with.
+ */
+export const MAX_DONOR_SEARCH = 200;
+
+/**
  * deliberately weak: something, `@`, something, no whitespace.
  *
  * a stricter pattern rejects addresses that deliver — quoted locals, new TLDs, `+` tags —
@@ -45,6 +51,20 @@ export const MAX_PHONE = 40;
  * that the mail arrives.
  */
 export const EMAIL = /^[^\s@]+@[^\s@]+$/;
+
+/**
+ * what a screen writes over each box; the create arm of `src/routes/_app.admin.donations.new.tsx`
+ * draws from these.
+ */
+export const CONTACT_FIELD_LABELS = {
+	kind: 'Kind',
+	first_name: 'First name',
+	last_name: 'Last name',
+	legal_name: 'Legal name',
+	display_name: 'Household name',
+	primary_email: 'Email',
+	primary_phone: 'Phone'
+} as const;
 
 /**
  * what a required box left blank is told, in the shape `REQUIRED` in ../forms/input-schema.ts

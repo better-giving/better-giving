@@ -8,6 +8,7 @@ import {
 	getTableColumns,
 	inArray,
 	isNull,
+	or,
 	sql
 } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
@@ -559,6 +560,49 @@ export async function findContactByEmail(db: Db, email: string): Promise<Contact
 		.limit(1);
 
 	return row ?? null;
+}
+
+/** how many donors one search answers with — enough to pick from, and never the file. */
+export const DONOR_SEARCH_LIMIT = 10;
+
+/** a donor as a picker offers them: the address beneath the name is what tells two Ada Okafors apart. */
+export type DonorMatch = Pick<Contact, 'id' | 'displayName' | 'primaryEmail'>;
+
+/**
+ * the donors whose name or primary email contains what was typed, for choosing who a gift is filed
+ * under.
+ *
+ * `instr` over both sides lowered, never `like`: D1 refuses a `like` pattern past 50 bytes, far
+ * short of what the search box allows, and `instr` has no wildcards, so a typed `%` or `_` is itself.
+ * both sides go through sqlite's `lower`, which folds ASCII only, so the two cannot fold differently.
+ * it reads every unarchived contact, which no index can serve; the limit bounds the answer, not the
+ * scan.
+ *
+ * blank text answers with nobody and no query, and archived contacts are never offered: a gift filed
+ * under a donor staff have hidden is a gift that disappears from the donor file.
+ */
+export async function searchDonors(db: Db, text: string): Promise<DonorMatch[]> {
+	const typed = text.trim();
+	if (typed.length === 0) return [];
+
+	return db
+		.select({
+			id: contact.id,
+			displayName: contact.displayName,
+			primaryEmail: contact.primaryEmail
+		})
+		.from(contact)
+		.where(
+			and(
+				isNull(contact.archivedAt),
+				or(
+					sql`instr(lower(${contact.displayName}), lower(${typed})) > 0`,
+					sql`instr(lower(${contact.primaryEmail}), lower(${typed})) > 0`
+				)
+			)
+		)
+		.orderBy(sql`${contact.displayName} collate nocase`, desc(contact.id))
+		.limit(DONOR_SEARCH_LIMIT);
 }
 
 /**

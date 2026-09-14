@@ -5,7 +5,7 @@ import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { createDb, type Db } from '$lib/server/db/client';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as layout from './_app';
-import * as donations from './_app.admin.donations';
+import * as donations from './_app.admin.donations._index';
 
 // a workers spec rather than a node one because every case here reads a row, and CLAUDE.md splits
 // the pools by what a spec needs. the screen has no action: nothing on it writes.
@@ -388,7 +388,7 @@ describe('/admin/donations load', () => {
 		const id = await gift();
 		await attempt(id, { method: 'check', provider: null });
 		const { donations } = await runLoad();
-		expect(donations[0]?.paidWith).toBe('Check');
+		expect(donations[0]?.paidWith).toBe('Cheque');
 		expect(JSON.stringify(donations)).not.toContain('manual');
 	});
 

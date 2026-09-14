@@ -72,7 +72,7 @@ function mailer(ok = true) {
  * the payment port, which this module never calls.
  *
  * every method refuses, so a receipt that reached the processor for anything would fail here rather
- * than pass quietly — which is the claim `SettleDeps` in ./delivery.ts makes about this consumer.
+ * than pass quietly — which is the claim `MailDeps` in ./delivery.ts makes about this consumer.
  */
 const provider = new Proxy({} as PaymentProvider, {
 	get: (_, name) => async () => {
@@ -120,6 +120,15 @@ describe('sendReceipt()', () => {
 		expect(outcome).toBe('sent');
 		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org']);
 		expect(await stampOf()).not.toBeNull();
+	});
+
+	it('sends with only the database and the mail transport, for a gift no processor took', async () => {
+		const mail = mailer();
+
+		const outcome = await sendReceipt({ db, email: mail.port }, target());
+
+		expect(outcome).toBe('sent');
+		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org']);
 	});
 
 	it('sends nothing for a gift already receipted, and keeps the stamp it had', async () => {
