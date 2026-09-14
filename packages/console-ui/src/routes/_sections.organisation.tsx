@@ -7,6 +7,7 @@ import { consoleRereads } from '../lib/dialog-params';
 import { ORG_INTENT, orgEdits } from '../lib/org-fields';
 import { OrgFold } from '../lib/org-fold';
 import { storedOrg } from '../lib/org-form';
+import { forgetReadings } from '../lib/processor-cache';
 import { usePress } from '../lib/use-press';
 import { TITLE } from './_index';
 import type { Route } from './+types/_sections.organisation';
@@ -29,6 +30,7 @@ export function meta(): Route.MetaDescriptors {
  * one reading of the body serves both pages.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	await forgetReadings();
 	const posted = await request.formData();
 	if (posted.get('intent') === ORG_INTENT) return { write: await saveOrgProfile(orgEdits(posted)) };
 	return { unknown: true as const };

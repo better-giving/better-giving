@@ -1,11 +1,11 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { FOLD_LABELS } from '@better-giving/operator/setup-folds';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { freeWithheldVars } from '../api/client';
 import { consoleRereads } from '../lib/dialog-params';
 import { groupPress } from '../lib/group-press';
 import { PasswordFold } from '../lib/password-fold';
+import { forgetReadings } from '../lib/processor-cache';
 import { usePress } from '../lib/use-press';
 import { FREE_INTENT } from '../lib/withheld-values';
 import { TITLE } from './_index';
@@ -28,6 +28,7 @@ export function meta(): Route.MetaDescriptors {
  * the binary off cloudflare's own answer.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');
 
@@ -48,7 +49,7 @@ export default function PasswordPage({ actionData, matches }: Route.ComponentPro
 	const { intent, busy, revalidating } = usePress();
 	return (
 		<Column>
-			<PageHeader title={FOLD_LABELS.password} />
+			{/* no page title: it would say the box's own label directly over it. */}
 			<PasswordFold
 				values={shell.reading.values}
 				secrets={actionData && 'secrets' in actionData ? actionData.secrets : null}

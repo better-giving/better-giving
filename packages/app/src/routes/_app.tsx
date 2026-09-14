@@ -1,6 +1,9 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { AppShell } from '@better-giving/operator/components/shell/AppShell';
-import { Form, Outlet, useLocation } from 'react-router';
+import { ProgressBar } from '@better-giving/operator/components/status/ProgressBar';
+import { holdBar, movesPage, openingLabel, pageDrawn } from '@better-giving/operator/progress-bar';
+import { useEffect } from 'react';
+import { Form, Outlet, useLocation, useNavigation } from 'react-router';
 import { ScreenCrumbs, useCrumbs } from '$lib/admin/crumbs';
 import { currentDestination, DESTINATION_GROUPS } from '$lib/admin/destinations';
 import { operatorLinks } from '$lib/admin/operator-links';
@@ -31,8 +34,30 @@ import type { Route } from './+types/_app';
 // each screen, so a screen under this route is a screen and nothing else. every part of that frame
 // is `@better-giving/operator`'s and is dressed by packages/operator/src/styles/adm.css — this
 // file states no arrangement, no breakpoint and no count.
+//
+// and it draws the bar over a move to another screen, held by `clientMiddleware` below. the rule
+// that bar keeps is packages/operator/src/progress-bar.ts's header.
 
 export const middleware: Route.MiddlewareFunction[] = [staffGate];
+
+/** whether the frame, and with it the bar over a move, is on the screen. */
+let framed = false;
+
+// the hold on that bar. middleware rather than this route's loader, because it wraps the reading
+// of whichever child is being entered, and this loader does not run again on a move between two of
+// them; the router commits the new page only once this resolves.
+//
+// **a move from outside the frame holds nothing** — the sign-in screen's redirect in, or a move off
+// the set-up gate: no bar is drawn there, and a hold would wait out the bar's cap for a rush nobody
+// can see (packages/operator/src/motion-end.ts).
+export const clientMiddleware: Route.ClientMiddlewareFunction[] = [
+	async ({ request }, next) => {
+		if (!framed) return;
+		const bar = holdBar(new URL(request.url).pathname);
+		await next();
+		await bar.finish();
+	}
+];
 
 // the sheet every screen beneath this layout wears, linked once here rather than by each of them.
 export const links = operatorLinks;
@@ -72,6 +97,17 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 	const { pathname } = useLocation();
 	const at = currentDestination(pathname);
 	const crumbs = useCrumbs();
+	const navigation = useNavigation();
+	useEffect(() => pageDrawn(pathname), [pathname]);
+	const ready = loaderData.shape === 'ready';
+	useEffect(() => {
+		framed = ready;
+		return () => {
+			framed = false;
+		};
+	}, [ready]);
+	const moving =
+		navigation.location !== undefined && movesPage(navigation.location.pathname, pathname);
 
 	// the gate stands in place of the frame and the screen alike, so no child route renders and no
 	// rail offers a destination this deployment is not serving ($lib/admin/setup-gate.tsx). the
@@ -80,44 +116,51 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 	if (loaderData.shape === 'setup') return <SetupGate lines={loaderData.lines} />;
 
 	return (
-		<AppShell
-			// before anyone has saved the organisation's details on the console there is no name to
-			// show, so it says what the software is rather than printing an empty band. the word is
-			// shared with every screen's tab title, which falls back to the same one
-			// ($lib/admin/screen-title.ts).
-			org={loaderData.orgName ?? APP_NAME}
-			groups={DESTINATION_GROUPS}
-			link={RouterLink}
-			current={at}
-			head={
-				// a screen under a section states its trail, and the strip carries it in place of the
-				// section's name, which is the trail's first crumb. a screen that is its destination's
-				// own page states none and is named by the destination.
-				crumbs.length >= 2 ? (
-					<ScreenCrumbs />
-				) : at ? (
-					<span className="adm-headstrip__title">{at.label}</span>
-				) : undefined
-			}
-			wayOut={
-				// a form and not a button that calls something: writes are form actions in this app
-				// and there are no client-side mutation paths in /admin (CLAUDE.md). the action is
-				// a route of its own (./_app.admin.sign-out.ts) rather than a named action on
-				// whichever screen is mounted, because the way out is on every screen and only one
-				// of them would have it.
-				//
-				// `.adm-signout` is what keeps two words from breaking across two lines when an
-				// organisation's long name contests the identity band's row, and what the collapsed
-				// rail keys its foot off; `.adm-signout__word` is the word it hides there, leaving the
-				// mark.
-				<Form method="post" action="/admin/sign-out" className="adm-signout">
-					<Button variant="quiet" size="sm" mark="log-out">
-						<span className="adm-signout__word">Sign out</span>
-					</Button>
-				</Form>
-			}
-		>
-			<Outlet />
-		</AppShell>
+		<>
+			{moving ? <ProgressBar label={openingLabel(navigation.location?.state)} overMove /> : null}
+			<AppShell
+				// before anyone has saved the organisation's details on the console there is no name to
+				// show, so it says what the software is rather than printing an empty band. the word is
+				// shared with every screen's tab title, which falls back to the same one
+				// ($lib/admin/screen-title.ts).
+				org={loaderData.orgName ?? APP_NAME}
+				groups={DESTINATION_GROUPS}
+				link={RouterLink}
+				current={at}
+				head={
+					// a screen under a section states its trail, and the strip carries it in place of the
+					// section's name, which is the trail's first crumb. a screen that is its destination's
+					// own page states none and is named by the destination, and that name is the page's one
+					// `h1`: the screen draws no title of its own. a screen under a section with no trail
+					// states its own heading, so the section's name over it is no heading.
+					crumbs.length >= 2 ? (
+						<ScreenCrumbs />
+					) : at?.kind === 'page' ? (
+						<h1 className="adm-headstrip__title">{at.label}</h1>
+					) : at ? (
+						<span className="adm-headstrip__title">{at.label}</span>
+					) : undefined
+				}
+				wayOut={
+					// a form and not a button that calls something: writes are form actions in this app
+					// and there are no client-side mutation paths in /admin (CLAUDE.md). the action is
+					// a route of its own (./_app.admin.sign-out.ts) rather than a named action on
+					// whichever screen is mounted, because the way out is on every screen and only one
+					// of them would have it.
+					//
+					// `.adm-signout` is what keeps two words from breaking across two lines when an
+					// organisation's long name contests the identity band's row, and what the collapsed
+					// rail keys its foot off; `.adm-signout__word` is the word it hides there, leaving the
+					// mark.
+					<Form method="post" action="/admin/sign-out" className="adm-signout">
+						<Button variant="quiet" size="sm" mark="log-out">
+							<span className="adm-signout__word">Sign out</span>
+						</Button>
+					</Form>
+				}
+			>
+				<Outlet />
+			</AppShell>
+		</>
 	);
 }

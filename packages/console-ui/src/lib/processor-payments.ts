@@ -58,10 +58,10 @@ export const configuredStanding = (entry: ProcessorPayments | null): ConfiguredP
  * (`STANDING_NOTE.approved` in packages/app/src/lib/server/forms/rail-notes.ts), and this is the
  * only place the ledger can say what an approval is not.
  *
- * **`credentials_only` says it under every row instead, so nothing is said over them.** there the
- * word means the credentials authenticated and nothing whatever about the rail beside it, and the
- * deployment writes that sentence as the note on each such rail — so a paragraph here would be the
- * same sentence a third time on one screen, over rows that are already carrying it.
+ * **`credentials_only` says it in the rows' own notes instead, so nothing is written here.** there
+ * the word means the credentials authenticated and nothing whatever about the rail beside it, and the
+ * deployment writes that sentence as the note on each such rail — which `hoistSharedNote` below then
+ * draws once over the ledger, so a sentence here would be the same one twice.
  *
  * keyed by `RailEvidence` and not by processor, because that is the fact the deployment answers
  * with: a console picking the sentence off a processor's name is a second list to keep level.
@@ -70,6 +70,24 @@ export const EVIDENCE_SAYS: Record<RailEvidence, string | null> = {
 	per_rail_approval:
 		"Approved is Stripe's permission and not a promise. A gift can still be refused over the currency, the amount, or the donor's own bank.",
 	credentials_only: null
+};
+
+/**
+ * one sentence the rows all carry, lifted over the ledger, and the rows left with no note of it.
+ *
+ * lifted only where two or more rows carry a note and every one of those notes is the same string —
+ * the deployment writes `CREDENTIALS_ONLY_NOTE` (packages/app/src/lib/server/forms/rail-notes.ts)
+ * into every approved rail of a PayPal account, and under each row it is one long sentence read
+ * twice. a row with no note neither joins nor breaks the match. notes that differ, or a single noted
+ * row, come back exactly as they arrived, since there each note is about its own row.
+ */
+export const hoistSharedNote = <Row extends { readonly note: string | null }>(
+	rows: readonly Row[]
+): { shared: string | null; rows: readonly Row[] } => {
+	const notes = rows.flatMap((row) => (row.note === null ? [] : [row.note]));
+	const [first] = notes;
+	if (notes.length < 2 || notes.some((note) => note !== first)) return { shared: null, rows };
+	return { shared: first ?? null, rows: rows.map((row) => ({ ...row, note: null })) };
 };
 
 /**

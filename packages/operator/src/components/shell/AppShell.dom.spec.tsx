@@ -276,17 +276,35 @@ describe('the way out a shell draws', () => {
 });
 
 describe('the identity a shell draws', () => {
-	it('draws what is handed under the name in the band and the rail head, and no tagline', () => {
-		const root = render(AppShell, {
-			groups: GROUPS,
-			org: 'Riverbank Trust',
-			under: <a href="https://example.org">example.org</a>
-		});
+	/** the band's row and the rail head's, in that order. */
+	function heads(root: HTMLElement): Element[] {
+		return [...root.querySelectorAll('.adm-identity, .adm-rail__identity')];
+	}
 
-		expect([...root.querySelectorAll('.adm-rail__who')].map((who) => who.textContent)).toEqual([
-			'Riverbank Trustexample.org',
-			'Riverbank Trustexample.org'
-		]);
+	it('leads the name with a link to the site in the band and the rail head, and prints no address', () => {
+		const site = 'https://better-giving.riverside.workers.dev/admin';
+		const root = render(AppShell, { groups: GROUPS, org: 'Riverbank Trust', site });
+
+		for (const head of heads(root)) {
+			const link = head.firstElementChild?.querySelector('a');
+			expect(link?.getAttribute('href')).toBe(site);
+			expect(link?.getAttribute('aria-label')).toBe('Open dashboard');
+			expect(link?.getAttribute('title')).toBe(site);
+			expect(link?.getAttribute('target')).toBe('_blank');
+			expect(link?.getAttribute('rel')).toBe('noreferrer');
+			expect(head.querySelector('.adm-identity__name')?.textContent).toBe('Riverbank Trust');
+			expect(head.textContent).not.toContain(site);
+		}
+		expect(heads(root)).toHaveLength(2);
+	});
+
+	it('draws the name alone where no site is handed', () => {
+		const root = render(AppShell, { groups: GROUPS, org: 'Riverbank Trust' });
+
+		for (const head of heads(root)) {
+			expect(head.querySelector('a')).toBeNull();
+			expect(head.querySelector('.adm-identity__name')?.textContent).toBe('Riverbank Trust');
+		}
 		expect(root.querySelector('.adm-identity__sub')).toBeNull();
 	});
 });
@@ -295,8 +313,8 @@ describe('the panel a shell draws the page in', () => {
 	it('draws the strip over the page where a head is handed, and the page under it', () => {
 		const root = render(AppShell, {
 			groups: GROUPS,
-			head: <span className="adm-headstrip__title">Donors</span>,
-			children: <h1>Donors</h1>
+			head: <h1 className="adm-headstrip__title">Donors</h1>,
+			children: <p>the list</p>
 		});
 		const main = root.querySelector('.adm-main');
 
@@ -305,7 +323,7 @@ describe('the panel a shell draws the page in', () => {
 			'adm-panelbody'
 		]);
 		expect(main?.querySelector('.adm-head > .adm-headstrip')?.textContent).toBe('Donors');
-		expect(main?.querySelector('.adm-panelbody > h1')?.textContent).toBe('Donors');
+		expect(main?.querySelector('.adm-panelbody > p')?.textContent).toBe('the list');
 	});
 
 	it('draws no strip where no head is handed', () => {

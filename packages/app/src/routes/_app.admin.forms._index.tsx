@@ -4,7 +4,6 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { CodeChip, CodeSlab, InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { EmptyState } from '@better-giving/operator/components/data/EmptyState';
 import { Column, List } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { useEffect, useRef } from 'react';
@@ -48,7 +47,7 @@ import type { Route } from './+types/_app.admin.forms._index';
 // `$lib/server/forms/queries.ts`; the only job here is a projection. neither `D1Database` nor the
 // `form` table object is named anywhere in this route, and neither may be.
 
-/** the screen's name, rendered as the document title and as the heading. */
+/** the screen's name in the document title. the frame's strip names the page (./_app.tsx). */
 const SCREEN_TITLE = 'Donation forms';
 
 /** the address this screen answers on, which is also where its own question is asked and dropped. */
@@ -202,26 +201,27 @@ export default function DonationForms({ loaderData }: Route.ComponentProps) {
 		// one column and the column is what spaces it: every block below carries no margin of its
 		// own, so one that is not rendered leaves no space behind it.
 		<Column>
-			<PageHeader
-				title={SCREEN_TITLE}
-				pageAction={
-					// a link dressed as a button, and it stays a link: this navigates, it does not write,
-					// and the markup is where that difference should be readable.
-					//
-					// it is never switched off. whatever would block adding a form — an organisation
-					// with no registered name and no EIN saved, keys that cannot charge — is a
-					// gate on the screen that adds one, which is the screen that writes and the screen
-					// carrying the ledger that says which blocker stands. a control disabled here would
-					// be a second answer to a question this page never asks.
-					//
-					// "Add" is the dashboard's one word for bringing a record into being, here and on the
-					// donors list, and it is the word on the button, the page it opens and the banner
-					// that reports the write.
+			{/* the page's one press, where `PageHeader` draws its trailing slot. the strip over the
+			    page carries the name, so the header draws no title of its own. */}
+			<header className="adm-pageheader">
+				<div className="adm-pageheader__row">
+					{/* a link dressed as a button, and it stays a link: this navigates, it does not write,
+					    and the markup is where that difference should be readable.
+
+					    it is never switched off. whatever would block adding a form — an organisation
+					    with no registered name and no EIN saved, keys that cannot charge — is a
+					    gate on the screen that adds one, which is the screen that writes and the screen
+					    carrying the ledger that says which blocker stands. a control disabled here would
+					    be a second answer to a question this page never asks.
+
+					    "Add" is the dashboard's one word for bringing a record into being, here and on the
+					    donors list, and it is the word on the button, the page it opens and the banner
+					    that reports the write. */}
 					<Button as={Link} to={href('/admin/forms/new')}>
 						Add donation form
 					</Button>
-				}
-			/>
+				</div>
+			</header>
 
 			{/* the outcome of the create next door, which redirected here with the new form's id. it
 			    is the only outcome this page reports and the only one it can: this page writes

@@ -152,13 +152,10 @@ export function OrgFold({ stored, write, busy, pending }: OrgFoldProps): ReactNo
 			{carriedBoxes(IDENTITY_BOXES).map((field) => (
 				<input key={field} type="hidden" name={field} value={stored[field]} readOnly />
 			))}
-			<fieldset className="adm-fieldset">
-				<legend className="adm-fieldset__legend">Who the organisation is</legend>
-				<div className="adm-pair adm-pair--side">
-					{box('legal_name')}
-					{box('tax_id')}
-				</div>
-			</fieldset>
+			<div className="adm-pair adm-pair--side">
+				{box('legal_name')}
+				{box('tax_id')}
+			</div>
 
 			<fieldset className="adm-fieldset">
 				<legend className="adm-fieldset__legend">Address on receipts</legend>

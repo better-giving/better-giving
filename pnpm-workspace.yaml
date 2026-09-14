@@ -37,6 +37,11 @@ catalog:
   # version-locked to `@conform-to/react`, and both are read against the `zod` major — packages/app
   # and packages/console-ui declaring them is what makes the deployment's form layer and the
   # console's the same validator rather than two.
+  #
+  # `remix-client-cache` peers `react-router: ^7.0.0`; this workspace is on 8.3.0. its published
+  # dist imports only `Await`, `useLoaderData`, `useNavigate` from `react-router`, all present in 8,
+  # so the peerDependencyRules entry below allows 8 for that one peer of that one package, rather
+  # than loosening what any other package may peer on react-router.
   '@ark-ui/react': 5.23.0
   '@conform-to/react': 1.21.1
   '@conform-to/zod': 1.21.1
@@ -49,8 +54,12 @@ catalog:
   react: 19.2.8
   react-dom: 19.2.8
   react-router: 8.3.0
+  remix-client-cache: 3.0.0
   typescript: 6.0.3
   vite: 8.1.5
   vitest: 4.1.10
   xstate: 5.32.5
   zod: 4.4.3
+peerDependencyRules:
+  allowedVersions:
+    'remix-client-cache>react-router': '8'

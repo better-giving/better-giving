@@ -88,8 +88,11 @@ type effects struct {
 	address   deployment.Address
 	store     deployment.Written
 	published []map[string]string
-	stages    []Stage
-	facts     []Facts
+	repeating deployment.RecurringSetup
+	// repeatings is what each press of the deployment's own step was named, in order.
+	repeatings []string
+	stages     []Stage
+	facts      []Facts
 }
 
 func working() *effects {
@@ -103,6 +106,16 @@ func working() *effects {
 		},
 		address: deployment.Address{Kind: deployment.Deployed, WorkersDev: address},
 		store:   deployment.Written{Kind: deployment.WriteSet},
+		repeating: deployment.RecurringSetup{
+			Kind:  deployment.RecurringSetupReported,
+			Named: release.PaypalProcessor,
+			Report: &deployment.RecurringSetupReport{
+				Outcome: "set_up",
+				Processors: []deployment.ProcessorRecurringSetup{
+					{Processor: "paypal", Label: "PayPal", Outcome: "set_up"},
+				},
+			},
+		},
 	}
 }
 
@@ -114,6 +127,10 @@ func (one *effects) bound() Effects {
 		Publish: func(_ context.Context, values map[string]string) deployment.Written {
 			one.published = append(one.published, values)
 			return one.store
+		},
+		Repeating: func(_ context.Context, processor string) deployment.RecurringSetup {
+			one.repeatings = append(one.repeatings, processor)
+			return one.repeating
 		},
 		At:    func(stage Stage) { one.stages = append(one.stages, stage) },
 		Found: func(facts Facts) { one.facts = append(one.facts, facts) },
@@ -141,7 +158,7 @@ func TestAnAppWithNoListenerHereGetsOneAndTheDeploymentStoresAllThreeValues(t *t
 			t.Errorf("a call was bound to %q rather than the minted token", token)
 		}
 	}
-	if want := []Stage{Registering, Storing}; !slices.Equal(held.stages, want) {
+	if want := []Stage{Registering, Storing, Repeating}; !slices.Equal(held.stages, want) {
 		t.Errorf("stages = %v, want %v after the authorizing the run starts at", held.stages, want)
 	}
 	if len(held.published) != 1 {
@@ -426,5 +443,89 @@ func TestAListenerOnThisPathAtAnotherAddressIsNamedAndLeftAlone(t *testing.T) {
 		if strings.Contains(key, "WH-FORK") {
 			t.Errorf("another deployment's listener was acted on: %s", key)
 		}
+	}
+}
+
+// a reason as the deployment states it beside its sentence.
+func reasoned(said string) *string { return &said }
+
+func TestARepeatingSetupTheDeploymentCouldNotMakeLeavesThePairStored(t *testing.T) {
+	for _, one := range []struct {
+		name  string
+		setup deployment.RecurringSetup
+	}{
+		{"the deployment answering nothing that says", deployment.RecurringSetup{
+			Kind: deployment.RecurringSetupUnanswered,
+			Read: &deployment.NoReport{Kind: deployment.NoSession},
+		}},
+		{"this account refusing it for something else", deployment.RecurringSetup{
+			Kind:  deployment.RecurringSetupReported,
+			Named: release.PaypalProcessor,
+			Report: &deployment.RecurringSetupReport{
+				Outcome: "failed",
+				Processors: []deployment.ProcessorRecurringSetup{
+					{Processor: "paypal", Label: "PayPal", Outcome: "failed", Reason: reasoned("failed")},
+				},
+			},
+		}},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			held := working()
+			held.repeating = one.setup
+			outcome := Chain(context.Background(), pressed(), held.bound())
+
+			if outcome.Kind != Unrepeating || outcome.Setup == nil {
+				t.Fatalf("outcome = %+v, want unrepeating carrying the setup", outcome)
+			}
+			if outcome.AwaitingKey {
+				t.Errorf("outcome = %+v, want the deployment's own refusal reported as itself", outcome)
+			}
+			if len(held.published) != 1 {
+				t.Errorf("published %v, want the pair written before the deployment was asked", held.published)
+			}
+		})
+	}
+}
+
+func TestADeploymentThatHasNotPickedThePairUpYetIsNotTheSameAsARefusal(t *testing.T) {
+	held := working()
+	held.repeating = deployment.RecurringSetup{
+		Kind:  deployment.RecurringSetupReported,
+		Named: release.PaypalProcessor,
+		Report: &deployment.RecurringSetupReport{
+			Outcome: "failed",
+			Processors: []deployment.ProcessorRecurringSetup{
+				{Processor: "paypal", Label: "PayPal", Outcome: "failed", Reason: reasoned("no_key")},
+			},
+		},
+	}
+	outcome := Chain(context.Background(), pressed(), held.bound())
+
+	if outcome.Kind != Unrepeating || !outcome.AwaitingKey {
+		t.Fatalf("outcome = %+v, want unrepeating over a deployment that has not picked the pair up", outcome)
+	}
+}
+
+func TestAWriteThatDidNotLandAsksTheDeploymentNothing(t *testing.T) {
+	held := working()
+	held.store = deployment.Written{Kind: deployment.WriteRefused}
+	Chain(context.Background(), pressed(), held.bound())
+
+	if len(held.repeatings) != 0 {
+		t.Errorf("the deployment was pressed about %v over a pair it does not hold", held.repeatings)
+	}
+	if slices.Contains(held.stages, Repeating) {
+		t.Errorf("stages = %v, want the run stopped at storing", held.stages)
+	}
+}
+
+func TestTheDeploymentsOwnStepNamesThePaypalAccount(t *testing.T) {
+	held := working()
+
+	if outcome := Chain(context.Background(), pressed(), held.bound()); outcome.Kind != Done {
+		t.Fatalf("outcome = %+v, want done", outcome)
+	}
+	if want := []string{release.PaypalProcessor}; !slices.Equal(held.repeatings, want) {
+		t.Errorf("the deployment was pressed about %v, want %v", held.repeatings, want)
 	}
 }

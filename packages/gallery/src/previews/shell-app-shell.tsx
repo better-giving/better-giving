@@ -46,8 +46,8 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * `foot` stands in the rail in its place, which is the console's shape: its close in the band and
  * its account in the foot. `null` for both drops the rail's foot rather than standing an empty one.
  *
- * `head` is the strip across the top of the panel, and `under` is a line under the organisation's
- * name — the console's deployment address.
+ * `head` is the strip across the top of the panel, and `site` is the globe leading the
+ * organisation's name — the console's link to its deployment's dashboard.
  *
  * `link` is what every cell is drawn as. a mounted rail states one — this package declares no
  * router and cannot (CLAUDE.md: the graph is `app → operator ← console`) — so the second shell
@@ -149,21 +149,12 @@ export default function ShellAppShellPreview() {
 			</AppShell>
 
 			{/* the console's rail: a headed group of processors drawn with pictures, a status mark on
-			    every entry, the address under the name, the close in the band and an account in the
-			    foot. */}
+			    every entry, the site's globe before the name, the close in the band and an account in
+			    the foot. */}
 			<AppShell
 				org="Riverside Shelter"
 				current="Sites"
-				under={
-					<a
-						className="adm-rail__address"
-						href="https://example.org"
-						target="_blank"
-						rel="noreferrer"
-					>
-						<span>https://better-giving.riverside.workers.dev/admin</span>
-					</a>
-				}
+				site="https://better-giving.riverside.workers.dev/admin"
 				groups={[
 					{
 						destinations: [
@@ -220,19 +211,21 @@ export default function ShellAppShellPreview() {
 				}
 				foot={
 					<div className="adm-footaccount">
-						<div className="adm-footaccount__row">
-							<span className="adm-footaccount__name">Riverside Shelter's Account</span>
-							<span className="adm-footaccount__out">
-								<Button
-									variant="quiet"
-									size="sm"
-									mark="unplug"
-									className="adm-signout"
-									aria-label="Close console"
-								/>
-							</span>
-						</div>
-						<span className="adm-footaccount__id">0f3c9a8b2d4e41f6a7b8c9d0e1f2a3b4</span>
+						<span className="adm-rail__lead">
+							<Brand name="cloudflare" label="Cloudflare" />
+						</span>
+						<span className="adm-footaccount__name" title="0f3c9a8b2d4e41f6a7b8c9d0e1f2a3b4">
+							Riverside Shelter's Account
+						</span>
+						<span className="adm-footaccount__out">
+							<Button
+								variant="quiet"
+								size="sm"
+								mark="unplug"
+								className="adm-signout"
+								aria-label="Close console"
+							/>
+						</span>
 					</div>
 				}
 				head={<span className="adm-headstrip__title">Sites</span>}

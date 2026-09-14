@@ -7,6 +7,8 @@ import { CheckboxGroup } from '@better-giving/operator/components/forms/Checkbox
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { Section } from '@better-giving/operator/components/shell/Layout';
+import { Banner } from '@better-giving/operator/components/status/Banner';
+import { LedgerSkeleton } from '@better-giving/operator/components/status/LedgerSkeleton';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { useSavedFormState } from '@better-giving/operator/saved-form-state.react';
@@ -51,14 +53,15 @@ import {
 } from './paypal-setup';
 import { REACHED_PAYPAL, pressStopped } from './press-stopped';
 import type { ConfiguredPayments } from './processor-payments';
-import { EVIDENCE_SAYS, STANDING, configuredStanding } from './processor-payments';
+import { EVIDENCE_SAYS, STANDING, configuredStanding, hoistSharedNote } from './processor-payments';
 import { keysTrouble, noAnswer, valuesGuard } from './processor-screen';
 import { recurringBlock } from './recurring-block';
-import { recurringReading } from './recurring-rows';
+import { accountsSaid, recurringReading } from './recurring-rows';
 import { useReseeded } from './reseed';
 import { Said } from './said';
 import { refusalIn } from './secret-trouble';
 import { PAYPAL_GROUP, SECRET_GROUPS, isMasked } from './secret-groups';
+import { pollOutlived, runKind, standingRun } from './run-poll';
 import type { PressAnswer, PressPhase, PressRefusal } from './stripe-press';
 import {
 	answerLanded,
@@ -88,9 +91,10 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 // **one press sets PayPal up, and the webhook is nothing an operator types or visits.** the press
 // starts a run in the binary (`packages/console/internal/paypal/setup.go`): it checks the pair,
 // finds or registers the listener at this deployment's address, and writes the pair and that
-// listener's id onto the deployment in one write. so `PAYPAL_WEBHOOK_ID` has no box, and the pair is
-// never saved through the values door — a pair written with no listener behind it is a deployment
-// whose approved orders are never captured.
+// listener's id onto the deployment in one write, then has the deployment set repeating gifts up on
+// the account. so `PAYPAL_WEBHOOK_ID` has no box, and the pair is never saved through the values door
+// — a pair written with no listener behind it is a deployment whose approved orders are never
+// captured.
 //
 // **the run reports itself where it was pressed**, which is the Stripe screen's arrangement
 // (./stripe-section.tsx) cut to what this press is: a card goes up on the press, draws one line per
@@ -223,9 +227,11 @@ export function PaypalSection({
 	if (guard !== null || values.vars.kind !== 'read') return guard;
 	const held = heldValues(values.vars.vars);
 	const trouble = keysTrouble({ workerName, accountName });
-	/* the same sentence over both boundaries: what an operator is waiting on is one account's
-	   readings, and two waits worded apart would be two subjects where there is one. */
-	const asking = <p className="adm-hint">Asking this deployment…</p>;
+	/* the same wait over both boundaries: what an operator is waiting on is one account's readings,
+	   and two waits worded apart would be two subjects where there is one. it is shaped as they
+	   resolve — the rails' two lines, PayPal and Venmo, and the repeating-gift block's one — so the
+	   page does not move when they land. */
+	const asking = <LedgerSkeleton label="Asking this deployment…" blocks={[2, 1]} />;
 	return (
 		<Section>
 			{/* what the account answered, drawn above the boxes that change it for the reason the Stripe
@@ -281,7 +287,7 @@ export function PaypalSection({
  *
  * **a deployment holding no PayPal credentials draws nothing up here**, exactly as the Stripe screen
  * draws nothing over a deployment holding no key: nothing was asked, so there is no row, no band and
- * no waiting sentence — and the boxes underneath are the whole truth of that state.
+ * no waiting placeholder — and the boxes underneath are the whole truth of that state.
  *
  * **the repeating-gift block stands after the rails in a form of its own**: its one press posts an
  * intent and nothing else, so standing it in the keys form would carry two credentials through a
@@ -409,8 +415,9 @@ function Unreadable({
  * **a green row here says the credentials work and says nothing about the rail beside it.** PayPal
  * publishes no per-rail approval to a merchant holding only its own credentials, so every rail comes
  * back `approved` on the strength of the pair authenticating — and the deployment writes that in
- * words as each row's own note, which is why nothing is said over the ledger
- * (`EVIDENCE_SAYS` in ./processor-payments.ts).
+ * words as each row's own note, the same sentence in every row. so `EVIDENCE_SAYS` says nothing
+ * over the ledger, and `hoistSharedNote` (both in ./processor-payments.ts) draws that sentence there
+ * once and takes it out of the rows; notes that differ stay under their own rows.
  *
  * **so it reads the evidence the deployment sent and never the processor it is drawing.** the two
  * are the same answer today and the evidence is on the wire because they need not stay so: a
@@ -423,12 +430,18 @@ function Unreadable({
 function Rails({ standing }: { standing: ConfiguredPayments }): ReactNode {
 	if (standing.rails.state !== 'read') return null;
 	const says = EVIDENCE_SAYS[standing.rails.evidence];
+	const { shared, rows } = hoistSharedNote(standing.rails.rails);
 	return (
 		<div className="adm-named">
 			<h3>PayPal donation methods</h3>
 			{says === null ? null : <p className="adm-prose">{says}</p>}
+			{shared === null ? null : (
+				<p className="adm-prose">
+					<MarkedText text={shared} />
+				</p>
+			)}
 			<StatusLedger aligned>
-				{standing.rails.rails.map((line) => (
+				{rows.map((line) => (
 					<StatusLine
 						key={line.rail}
 						labelAs="span"
@@ -471,15 +484,14 @@ function PaypalKeysForm({
 	/* how far the press has got, asked of the binary rather than of the page, for the Stripe screen's
 	   reason: reading the page again is every round trip on it. */
 	const [polled, setPolled] = useState<PaypalRunRead | null | undefined>(undefined);
-	const answered = polled === undefined ? press.run : polled;
 	/* the last thing either reading said: a run that landed is consumed by the reading that observed
 	   it, so the answer after that is `null` and the report would go off the screen under it. */
 	const [remembered, setRemembered] = useState<PaypalRunRead | null>(null);
+	const { answered, live } = standingRun({ run: press.run, polled, remembered });
 	useEffect(() => {
 		if (answered === null) return;
 		setRemembered(answered);
 	}, [answered]);
-	const live = answered ?? remembered;
 	const working = live?.kind === 'running';
 	const landed = live?.kind === 'ended' && live.outcome.kind === 'done';
 
@@ -534,14 +546,22 @@ function PaypalKeysForm({
 	const [sent, setSent] = useState<PaypalPairBoxes | null>(null);
 	/** whether a press was made from this page, which is what a box-level report of a run is about. */
 	const [pressedHere, setPressedHere] = useState(false);
-	/* and the poll's answer dropped with the next press, or the last press's stopped run would mask
-	   the one this press starts and nothing would ask after it again. */
+	/* and the poll's answer dropped with the next press, or whenever the page's reading moves to a run
+	   the poll cannot speak for (`pollOutlived` in ./run-poll.ts) — otherwise an earlier stopped run
+	   would mask the one a press here or anywhere else starts, and nothing would ask after it again. */
 	useEffect(() => {
 		if (pending !== PAYPAL_SETUP_INTENT) return;
 		setPolled(undefined);
 		setPressedHere(true);
 		setSent(typed.current);
 	}, [pending]);
+	const loaded = runKind(press.run);
+	const seen = useRef(loaded);
+	useEffect(() => {
+		if (!pollOutlived(seen.current, loaded)) return;
+		seen.current = loaded;
+		setPolled(undefined);
+	}, [loaded]);
 
 	/* what the press was turned down for, kept past the revalidations this section sets off itself —
 	   the router drops the answer on each, and the boxes still hold exactly what was turned down. */
@@ -708,6 +728,42 @@ function PaypalKeysForm({
 		switch (outcome.kind) {
 			case 'done':
 				return null;
+			case 'unrepeating': {
+				/* the deployment not serving the pair it was handed seconds ago is this press's own write a
+				   moment behind the edge, not anything to fix. its sentence names a value this press has
+				   already set, so it is not drawn — the press that finishes it is, in the recurring donation
+				   block above the boxes. */
+				if (outcome.awaitingKey) {
+					return (
+						<Banner tone="note" word="Your PayPal keys are saved">
+							This deployment takes one-time gifts through PayPal. It hasn’t picked the keys up yet,
+							so repeating gifts are not set up. Press <strong>Set up recurring gifts</strong> above
+							in a moment.
+						</Banner>
+					);
+				}
+				if (outcome.setup.kind === 'unanswered') {
+					return noAnswer(outcome.setup.read, 'repeating gifts were not set up');
+				}
+				const short = outcome.setup.report.processors.filter((one) => one.outcome === 'failed');
+				const said = short.find((one) => one.detail !== null)?.detail ?? null;
+				return (
+					<>
+						<FieldMessage>
+							This deployment could not set up repeating gifts on{' '}
+							{accountsSaid(short.map((one) => one.label))}. Your keys and the webhook are saved, so
+							it takes one-time gifts through PayPal.
+						</FieldMessage>
+						{/* the port's own sentence, drawn rather than printed: it names the offending value and
+						    marks it (`@better-giving/operator/code-spans`). */}
+						{said === null ? null : (
+							<p className="adm-prose">
+								<MarkedText text={said} />
+							</p>
+						)}
+					</>
+				);
+			}
 			case 'console-stopped':
 				return <FieldMessage>{pressStopped(REACHED_PAYPAL)}</FieldMessage>;
 			case 'unauthorized':

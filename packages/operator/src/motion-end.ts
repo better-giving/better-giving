@@ -1,10 +1,10 @@
 // how long a screen holds on for a transition or an animation it has to see the end of.
 //
-// **no duration is written here, and none may be.** every one of them is
-// packages/operator/src/styles/tokens.css's, spent by the rules in that package's adm.css, and a
-// number copied into typescript is a second place to re-point a step — one that no sheet is read
-// against and nothing here would notice going stale. what a caller does instead is read the
-// duration off the element it is waiting on, through `getComputedStyle`, and hand it here.
+// **no duration is written here, and none may be.** every one of them is ./styles/tokens.css's,
+// spent by the rules in ./styles/adm.css, and a number copied into typescript is a second place to
+// re-point a step — one that no sheet is read against and nothing here would notice going stale.
+// what a caller does instead is read the duration off the element it is waiting on, through
+// `getComputedStyle`, and hand it here.
 //
 // the wait is a backstop and not the mechanism: what says a piece of motion ended is the
 // `animationend` of `adm-dwell`, the beat a finished bar is seen for, and this is what stops a
@@ -28,8 +28,8 @@ const GRACE_MS = 50;
  *
  * a computed `animation-duration` or `animation-delay` is a list, one entry per animation name, in
  * the order the shorthand declared them. the last is the one taken: the rules waited on here run
- * their hold last (packages/operator/src/styles/adm.css), so the entry that ends the run is the
- * entry at the end of the list.
+ * their hold last (./styles/adm.css), so the entry that ends the run is the entry at the end of the
+ * list.
  */
 function lastMs(list: string): number {
 	const parts = list.split(',');

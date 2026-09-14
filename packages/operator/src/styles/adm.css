@@ -910,6 +910,61 @@
 		margin-block-start: var(--admin-space-8);
 	}
 
+	/* the bar packages/operator/src/components/status/LedgerSkeleton.jsx draws in place of a mark, a
+	   heading, a label or a sentence that has not arrived. it is set in the classes of the part it
+	   stands in for, so each bar is as tall as the type there and is centred in that type's line box:
+	   the leading around it is the line's own, and the row it stands in takes the room the resolved
+	   row will.
+
+	   the widths are borrowed measures rather than a scale of their own: the rail's for a heading
+	   and a label, which is about the length of the headings these blocks carry, and the sentence's
+	   own measure for a note, which `.adm-status__note` above already caps. */
+	.adm-skeleton {
+		display: block;
+		max-inline-size: 100%;
+		background: var(--admin-surface-sunken);
+		border-radius: var(--admin-radius);
+	}
+
+	.adm-skeleton--mark {
+		display: inline-block;
+		vertical-align: baseline;
+		inline-size: var(--admin-mark-size);
+		block-size: var(--admin-mark-size);
+	}
+
+	.adm-skeleton--heading {
+		inline-size: var(--admin-measure-rail);
+		block-size: var(--admin-subhead-size);
+		margin-block: calc(
+			(var(--admin-subhead-size) * var(--admin-subhead-lh) - var(--admin-subhead-size)) /
+			2
+		);
+	}
+
+	.adm-skeleton--label {
+		inline-size: var(--admin-measure-rail);
+		block-size: var(--admin-body-size);
+		margin-block: calc(
+			(var(--admin-body-size) * var(--admin-lh-snug) - var(--admin-body-size)) /
+			2
+		);
+	}
+
+	/* the bar's top margin would collapse into the note's own step and the line would come up short
+	   of a resolved one; a formatting root on the host keeps the two apart. */
+	.adm-status__note:has(> .adm-skeleton--note) {
+		display: flow-root;
+	}
+
+	.adm-skeleton--note {
+		block-size: var(--admin-hint-size);
+		margin-block: calc(
+			(var(--admin-hint-size) * var(--admin-hint-lh) - var(--admin-hint-size)) /
+			2
+		);
+	}
+
 	/* the same capability word takes a different tone on a different screen, chosen by the
 	   consequence there rather than by the capability. the mark takes the word's own ink on a
 	   line, because a line stands on the page rather than on a tint. */
@@ -1074,17 +1129,16 @@
 	}
 
 	/* the bar over a move to another page, drawn from the press until the destination has read.
-	   packages/console-ui/src/root.tsx draws it: a line along the top edge of the viewport, and the
-	   label naming what is loading is in the tree for a reader of it (`.adm-vh`) and nowhere on the
-	   screen.
+	   packages/console-ui/src/root.tsx and packages/app/src/routes/_app.tsx draw it: a line along
+	   the top edge of the viewport, and the label naming what is loading is in the tree for a
+	   reader of it (`.adm-vh`) and nowhere on the screen.
 
 	   fixed to the top of the viewport and out of the flow, so the page being left beneath it does
 	   not shift as it appears and again as it goes. no ground, no rule and no padding: it is the
 	   line and nothing else, and it takes no pointer, so the strip of page it lies over stays
 	   pressable. it takes step 2 of the ladder stated at `.adm-rail`, over a pinned column; an open
 	   modal is in the top layer and stands over it with no step. the rail holds the same step and
-	   the two never meet: the rail is the dashboard's and at the foot, this is the console's and at
-	   the head.
+	   the two never meet: the rail is at the foot and this is at the head.
 
 	   half the band a current destination carries at its edge: over a page it is a signal and not a
 	   mark, so it reads thinner than anything the page draws.
@@ -1100,7 +1154,7 @@
 	}
 
 	/* the line's fill, on `::before` for the same reason the braille cells are: the finish below
-	   and the dwell after it dispatch their `animationend` at the span, and root.tsx reads the
+	   and the dwell after it dispatch their `animationend` at the span, and ProgressBar.jsx reads the
 	   hold's timing off this pseudo-element. it is the accent fill a plotted count is drawn in
 	   (`.adm-series__fill`), and it grows from the inline start by `transform` alone, so the fill
 	   is the compositor's and never a layout. the element is empty and `aria-hidden`.
@@ -1490,6 +1544,15 @@
 	   so takes it, which is right: an attachment carrying a heading opens a subject rather than
 	   continuing the sentence it hangs from. */
 	* + .adm-named {
+		margin-block-start: var(--admin-space-8);
+	}
+
+	/* the same boundary where the named block opens a form of its own rather than standing beside
+	   what precedes it. a block whose press posts an intent is wrapped in the form that press submits
+	   (packages/console-ui/src/lib/paypal-section.tsx), which leaves it first in its parent with no
+	   sibling for the rule above to key on — and the heading then sits the container's gap under the
+	   block before it, closer than two lines of that block's ledger sit to each other. */
+	* + form > .adm-named:first-child {
 		margin-block-start: var(--admin-space-8);
 	}
 
@@ -3231,7 +3294,7 @@
 		grid-template-rows: auto 1fr auto;
 	}
 
-	/* the shell with a rail stands on a tinted ground and holds the page in an inset panel on it
+	/* the shell with a rail stands on a tinted ground and the page is a full-bleed panel on it
 	   (`.adm-rail ~ .adm-main` below). the bare shell keeps the page's own ground: it has no panel
 	   for the tint to set off. */
 	.adm-shell:has(> .adm-rail) {
@@ -3240,11 +3303,14 @@
 
 	/* below the wide breakpoint the identity is a band across the top and the way out sits in it;
 	   above, both move into the rail's own head and foot. the band is the shell's ground and draws
-	   no edge of its own: the panel under it is the boundary. */
+	   no edge of its own: the panel under it is the boundary. one row at either width — the site's
+	   globe, the name, the control — so the name is cut to one line rather than wrapped. the row is a
+	   grid item of the shell, and at the default minimum an uncut name would widen the shell's track
+	   to its own length; at zero the track holds and the name takes its ellipsis. */
 	.adm-identity {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		min-inline-size: 0;
 		gap: var(--admin-space-5);
 		padding: var(--admin-space-5) var(--admin-space-6);
 		background: transparent;
@@ -3256,35 +3322,37 @@
 	   name the shell repeats, in the band across the top and again in the rail's head.
 	   ./tokens.css argues that at `--admin-subhead-size`. */
 	.adm-identity__name {
+		flex: 1;
+		min-inline-size: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
 		font-size: var(--admin-subhead-size);
 		font-weight: var(--admin-subhead-weight);
 		line-height: var(--admin-subhead-lh);
 		letter-spacing: var(--admin-track-tight);
 	}
 
-	/* the name and whatever a surface stands under it (AppShell's `under`), in the band and in the
-	   rail's head alike. */
-	.adm-rail__who {
-		display: grid;
-		gap: var(--admin-space-1);
-		min-inline-size: 0;
-	}
-
-	/* the console's deployment address under the org name, handed in as AppShell's `under` by
-	   packages/console-ui. one line, cut with an ellipsis. */
-	.adm-rail__address {
+	/* the mark leading a row of the rail's head or foot — the site's globe, the account's logo, the
+	   source link — in a box one small icon-only button wide, so a logo standing where a button
+	   would sits in the same column. */
+	.adm-rail__lead {
 		display: flex;
 		align-items: center;
-		gap: var(--admin-space-2);
-		min-inline-size: 0;
-		font-size: var(--admin-caption-size);
-		line-height: var(--admin-caption-lh);
+		flex: none;
+		inline-size: calc(
+			2 *
+			(var(--admin-border-width) + var(--admin-space-4)) +
+			var(--admin-mark-size)
+		);
 	}
 
-	.adm-rail__address > span {
-		overflow: hidden;
-		white-space: nowrap;
-		text-overflow: ellipsis;
+	/* a logo is no button, so it is set in by the button's border and padding to stand where a
+	   button's mark does. raw-length-ok: the logo sized to the letters it stands with, as
+	   `.adm-headstrip__who > .adm-brand` argues. */
+	.adm-rail__lead > .adm-brand {
+		margin-inline-start: calc(var(--admin-border-width) + var(--admin-space-4));
+		block-size: 0.55em;
 	}
 
 	/* the other head a shell can carry, and it is not a rail: a run of stated facts — a label and
@@ -3610,8 +3678,7 @@
 
 	/* the way out never shrinks: it is two words and a flex item, and an item free to shrink
 	   breaks them across two lines the moment an organisation's name is long enough to contest
-	   the row. the name is what takes the squeeze — it has spaces in it and wraps, and a name
-	   over two lines is still read. */
+	   the row. the name is what takes the squeeze, cut to one line. */
 	.adm-signout {
 		flex-shrink: 0;
 		margin-inline-start: auto;
@@ -3629,33 +3696,31 @@
 		padding: var(--admin-space-6);
 	}
 
-	/* the page of the shell with a rail: an inset panel on the shell's ground, its head and body
-	   padded from one inset. it is matched off the rail beside it because `.adm-main` is also the
-	   bare shell's page, which has no panel. two classes of weight, so the `.adm-main` padding the
-	   two widths below restate for the bare shell never reaches it.
+	/* the page of the shell with a rail: a panel running edge to edge across the window, its head
+	   and body padded from one inset. below the wide breakpoint the document is its scroller, and
+	   its one edge is the hairline under the identity band. it is matched off the rail beside it
+	   because `.adm-main` is also the bare shell's page, which has no panel. two classes of weight,
+	   so the `.adm-main` padding the two widths below restate for the bare shell never reaches it.
 
 	   the page reserves the strip the bar stands in, because below the wide breakpoint the bar is
 	   out of the flow and would otherwise be laid over the end of it. the terms are the tab's: the
 	   floor it is never shorter than, its taller top step, the step it pads itself by at each end,
-	   and whatever the platform holds back under it — then the step of air between panel and bar.
-	   the tab's own contents are shorter than that floor, so the sum can only overstate the bar. */
+	   and whatever the platform holds back under it. the tab's own contents are shorter than that
+	   floor, so the sum can only overstate the bar. */
 	.adm-rail ~ .adm-main {
 		--_panel-inset: var(--admin-space-6);
 		display: flex;
 		flex-direction: column;
-		margin-inline: var(--admin-space-4);
-		margin-block-end: calc(
+		padding: 0;
+		padding-block-end: calc(
 			var(--admin-touch-min) +
 			var(--admin-edge) +
 			var(--admin-space-3) +
 			var(--admin-space-3) +
-			var(--admin-space-4) +
 			env(safe-area-inset-bottom)
 		);
-		padding: 0;
 		background: var(--admin-surface);
-		border: var(--admin-hairline);
-		border-radius: var(--admin-radius);
+		border-block-start: var(--admin-hairline);
 	}
 
 	.adm-rail ~ .adm-main > .adm-head {
@@ -3680,8 +3745,17 @@
 		padding: var(--admin-space-6) var(--_panel-inset);
 	}
 
-	/* the page's name on the panel's strip, written by the surfaces that hand AppShell a `head`. */
+	/* the page's name on the panel's strip, and the page's `h1` over a screen that states none of its
+	   own: packages/app/src/routes/_app.tsx writes it. it is set as the strip's own line and not
+	   as a title, so it states the body type ./base.css's `body` hands the rest of the strip — every
+	   one of the `h1` rank's declarations there would otherwise reach it — and `text-wrap` goes back
+	   to what the strip inherits from the same rule rather than the headings' balance. */
 	.adm-headstrip__title {
+		font-family: var(--admin-font-sans);
+		font-size: var(--admin-body-size);
+		line-height: var(--admin-body-lh);
+		letter-spacing: normal;
+		text-wrap: inherit;
 		font-weight: var(--admin-value-weight);
 		color: var(--admin-ink);
 	}
@@ -3756,9 +3830,9 @@
 	   follows opens with whatever boundary it has of its own — a ledger's first rule, a fieldset, a
 	   banner — and a line of the header's above one of those is a single boundary drawn twice. every
 	   boundary in /admin belongs to the thing it is around, and what separates the header from the
-	   page is the space. that space is this step and the column's own gap together — the screens
-	   stand their blocks in `.adm-stack`, which gaps them, so a step set here at the whole of what
-	   the eye should see is that much again on every one of them. */
+	   page is the space. in a `.adm-stack` that space is the stack's gap and nothing else, so the
+	   margin below comes off there (the rule after this one); it is what a header outside a stack
+	   stands off the page by. */
 	.adm-pageheader {
 		display: grid;
 		gap: var(--admin-space-4);
@@ -3769,12 +3843,26 @@
 		max-inline-size: var(--admin-measure-column);
 	}
 
+	/* the screens stand their header in `.adm-stack`, which already gaps it from the first block; a
+	   margin here as well would be that step twice. */
+	.adm-stack > .adm-pageheader {
+		margin-block-end: 0;
+	}
+
 	.adm-pageheader__row {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: start;
 		justify-content: space-between;
 		gap: var(--admin-space-5);
+	}
+
+	/* a row may carry only what acts on the page, where the page's name is the strip's title
+	   (`.adm-headstrip__title` above) rather than a heading of its own. with no name at its start
+	   the spread would stand the actions at the start instead, so they go to the far end, where
+	   they sit on every row that has one. */
+	.adm-pageheader__row:not(:has(h1)) {
+		justify-content: end;
 	}
 
 	/* the page's name and the sentence that qualifies it are one block, and the step between them
@@ -3892,6 +3980,14 @@
 		border-block-start: var(--admin-rule);
 	}
 
+	/* the padding above opens a section away from a rule or an edge. under the page's header there
+	   is neither, and the space between them is already spent — the stack's gap, or the header's own
+	   margin where it stands outside one (`.adm-pageheader` above) — so a section there opens on its
+	   first line. */
+	.adm-pageheader + .adm-section {
+		padding-block-start: 0;
+	}
+
 	/* a fold's body is a section mounted straight into a status panel
 	   (packages/operator/src/components/shell/Layout.jsx, drawn by
 	   packages/operator/src/components/status/StatusLine.jsx). the padding above is what a section
@@ -3932,10 +4028,11 @@
 	}
 
 	/* the step a run of cards takes under whatever is not one. the column gaps everything it holds
-	   by one step, and at that step a sentence standing above the first card is nearer the box than
-	   it is to the heading block it belongs to. `--admin-space-6` on top of the gap is what
-	   `.adm-pageheader` above already spends under itself, so the heading block stands off that
-	   sentence by exactly what the sentence stands off the first card.
+	   by one step, and at that step a sentence between the heading block and the first card stands
+	   as near the box as it does the heading it belongs to. `--admin-space-6` on top of the gap puts
+	   the sentence with the heading: one step above it, two below. the header itself takes no such
+	   step — it stands off whatever opens the page by the gap alone (`.adm-stack > .adm-pageheader`
+	   above), a card included, which is the rule after this one.
 
 	   a card inside the `<form>` that saves it is still a card, which is what the `:has` is for: an
 	   editor draws one form per card, so what the column holds as a sibling is the form. between two
@@ -3943,6 +4040,11 @@
 	   each of them draws is what says where one ends. */
 	.adm-stack > :not(.adm-card, :has(> .adm-card)) + :is(.adm-card, :has(> .adm-card)) {
 		margin-block-start: var(--admin-space-6);
+	}
+
+	/* weighs what the rule above does and follows it, so it wins. */
+	.adm-stack > .adm-pageheader + :is(.adm-card, :has(> .adm-card)) {
+		margin-block-start: 0;
 	}
 
 	.adm-stack {
@@ -4540,8 +4642,8 @@
 			grid-template-areas: 'top' 'main' 'foot';
 		}
 
-		/* the shell with a rail is the window's height and scrolls inside its panel, so the rail
-		   stands whole beside a page of any length. */
+		/* the shell with a rail is the window's height and the panel is its one scroller, so the
+		   rail stands whole beside a page of any length and the document never scrolls. */
 		.adm-shell:has(> .adm-rail) {
 			block-size: 100dvh;
 		}
@@ -4571,21 +4673,28 @@
 			border-block-start: 0;
 		}
 
-		/* the name, and the toggle on the name's first line. */
+		/* the globe, the name and the toggle on one line, inside the cells' inline step: the toggle's
+		   edge is a cell's edge. the zero minimum is `.adm-identity`'s, for the rail's own track. */
 		.adm-rail__identity {
 			display: flex;
-			align-items: start;
-			justify-content: space-between;
+			align-items: center;
+			min-inline-size: 0;
 			gap: var(--admin-space-4);
-			padding: var(--admin-space-6) var(--admin-space-4) var(--admin-space-5) var(--admin-space-5);
+			padding: var(--admin-space-6) var(--admin-space-4) var(--admin-space-5);
 		}
 
-		/* a box one line of the name tall, centring the toggle on that line. */
-		.adm-rail__togglebox {
-			display: flex;
-			align-items: center;
-			block-size: calc(var(--admin-subhead-size) * var(--admin-subhead-lh));
-			flex: none;
+		/* the head's and the foot's leading marks on the cells' mark column: pulled out by the
+		   button's border so its mark lands where a cell's does, and in by the row's gap less the
+		   focus ring's width, so a focused globe's ring stops short of the name's first letter. */
+		.adm-rail__identity > .adm-rail__lead,
+		.adm-rail__foot .adm-rail__lead {
+			margin-inline: calc(-1 * var(--admin-border-width))
+				calc(var(--admin-focus-width) - var(--admin-space-4));
+		}
+
+		/* a head with no globe starts its name on that same column. */
+		.adm-rail__identity > .adm-identity__name:first-child {
+			padding-inline-start: var(--admin-space-4);
 		}
 
 		/* the toggle opens nothing that stands over the page, so the quiet rank's held-open fill for
@@ -4709,48 +4818,30 @@
 			align-self: end;
 			gap: var(--admin-space-5);
 			margin-inline: var(--admin-space-4);
-			padding: var(--admin-space-5) var(--admin-space-1);
+			padding-block: var(--admin-space-5);
 			border-block-start: var(--admin-rule);
 		}
 
-		/* the console's rail foot, handed to AppShell's `foot` by packages/console-ui.
-
-		   the account: its mark on the name's first line, the name on one line, the id under it. */
+		/* the console's rail foot, handed to AppShell's `foot` by packages/console-ui. two rows on
+		   the head's columns: the account's logo, its name cut to one line and the way out; then the
+		   source link and the release. */
 		.adm-footaccount {
-			display: grid;
-			gap: var(--admin-space-1);
+			display: flex;
+			align-items: center;
+			gap: var(--admin-space-4);
 			min-inline-size: 0;
 			font-size: var(--admin-body-size);
 			line-height: var(--admin-lh-snug);
 		}
 
-		/* the mark, the name and the way out on one line; the id under all three, edge to edge. */
-		.adm-footaccount__row {
-			display: flex;
-			align-items: start;
-			gap: var(--admin-space-3);
-			min-inline-size: 0;
-		}
-
-		.adm-footaccount__mark,
 		.adm-footaccount__out {
 			display: flex;
-			align-items: center;
-			block-size: 1lh;
 			flex: none;
-		}
-
-		.adm-footaccount__out {
 			margin-inline-start: auto;
 		}
 
-		/* raw-length-ok: the logo sized to the letters it stands with, as
-		   `.adm-headstrip__who > .adm-brand` argues. */
-		.adm-footaccount__mark > .adm-brand {
-			block-size: 0.55em;
-		}
-
 		.adm-footaccount__name {
+			min-inline-size: 0;
 			overflow: hidden;
 			white-space: nowrap;
 			text-overflow: ellipsis;
@@ -4758,30 +4849,21 @@
 			color: var(--admin-ink);
 		}
 
-		.adm-footaccount__id {
-			font-size: var(--admin-caption-size);
-			line-height: var(--admin-caption-lh);
-			color: var(--admin-ink-muted);
-			overflow-wrap: anywhere;
-		}
-
 		.adm-footline {
 			display: flex;
 			align-items: center;
-			justify-content: space-between;
 			gap: var(--admin-space-4);
 			font-size: var(--admin-caption-size);
 			line-height: var(--admin-caption-lh);
 			color: var(--admin-ink-muted);
 		}
 
-		/* a source mark toned as the version beside it and one line of it tall. the picture is the
-		   caller's: `--_source-mark` is a `url()` the surface sets, because this package owns no
-		   such asset. */
+		/* the source mark, drawn in its button's ink and a mark's size. the picture is the caller's:
+		   `--_source-mark` is a `url()` the surface sets, because this package owns no such asset. */
 		.adm-footline__source {
 			display: block;
-			inline-size: 1lh;
-			block-size: 1lh;
+			inline-size: var(--admin-mark-size);
+			block-size: var(--admin-mark-size);
 			flex: none;
 			color: inherit;
 			background-color: currentColor;
@@ -4793,12 +4875,19 @@
 			padding: var(--admin-space-9) var(--admin-space-10);
 		}
 
-		/* the panel stands off the window's edges and the rail's, and scrolls inside itself. */
+		/* the panel runs to the window's top, right and bottom edges, with one hairline against the
+		   rail, and scrolls inside itself. `position: relative` makes it the containing block of the
+		   absolutely positioned boxes it holds (`.adm-vh` in ./base.css among them): without it
+		   their containing block is the viewport, the panel's `overflow` clips none of them, and one
+		   standing far down a long page stretches the document into a second scroller. */
 		.adm-rail ~ .adm-main {
 			--_panel-inset: var(--admin-space-10);
+			position: relative;
 			min-block-size: 0;
-			margin: var(--admin-space-4) var(--admin-space-4) var(--admin-space-4) 0;
+			padding-block-end: 0;
 			overflow: auto;
+			border-block-start: 0;
+			border-inline-start: var(--admin-hairline);
 		}
 
 		.adm-panelbody {
@@ -4813,12 +4902,11 @@
 			padding-inline: var(--admin-space-4);
 		}
 
-		.adm-shell--collapsed .adm-rail__identity > .adm-rail__who,
+		.adm-shell--collapsed .adm-rail__lead,
+		.adm-shell--collapsed .adm-identity__name,
 		.adm-shell--collapsed .adm-rail__heading,
 		.adm-shell--collapsed .adm-rail__foot .adm-footline,
-		.adm-shell--collapsed .adm-footaccount__mark,
-		.adm-shell--collapsed .adm-footaccount__name,
-		.adm-shell--collapsed .adm-footaccount__id {
+		.adm-shell--collapsed .adm-footaccount__name {
 			display: none;
 		}
 
@@ -4873,7 +4961,6 @@
 		/* the foot keeps only the way out, and a foot with none is not drawn. */
 		.adm-shell--collapsed .adm-rail__foot {
 			justify-items: center;
-			padding-inline: 0;
 		}
 
 		.adm-shell--collapsed .adm-rail__foot:not(:has(.adm-signout)) {
@@ -4881,7 +4968,7 @@
 		}
 
 		.adm-shell--collapsed .adm-footaccount {
-			justify-items: center;
+			justify-content: center;
 		}
 
 		.adm-shell--collapsed .adm-footaccount__out,

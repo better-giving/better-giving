@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { PaymentsRead, ProcessorPayments } from '../api/types';
-import { EVIDENCE_SAYS, configuredStanding, processorStanding } from './processor-payments';
+import {
+	EVIDENCE_SAYS,
+	configuredStanding,
+	hoistSharedNote,
+	processorStanding
+} from './processor-payments';
 
 // where one processor stands, off the report that answers for both of them.
 //
@@ -75,9 +80,40 @@ describe('what a rails ledger says over its rows', () => {
 		expect(EVIDENCE_SAYS.per_rail_approval).toContain('not a promise');
 	});
 
-	it('says nothing where the deployment writes it under every row', () => {
-		// the case this record exists for: a processor publishing no approval sends its own sentence
-		// down as each rail's note, so a paragraph here is that sentence a third time on one screen.
+	it('says nothing where the deployment writes it into every row', () => {
+		// a processor publishing no approval sends its own sentence down as each rail's note, which
+		// `hoistSharedNote` already draws over the ledger once.
 		expect(EVIDENCE_SAYS.credentials_only).toBe(null);
+	});
+});
+
+describe('a note every row carries', () => {
+	const row = (rail: string, note: string | null) => ({ rail, note });
+	const SAME = 'PayPal accepted this deployment’s credentials.';
+
+	it('is said once over the ledger and under no row', () => {
+		const rows = [row('paypal', SAME), row('venmo', SAME)];
+		expect(hoistSharedNote(rows)).toEqual({
+			shared: SAME,
+			rows: [row('paypal', null), row('venmo', null)]
+		});
+	});
+
+	it('stays under each row where the notes differ', () => {
+		const rows = [row('paypal', SAME), row('venmo', 'Venmo is in review.')];
+		expect(hoistSharedNote(rows)).toEqual({ shared: null, rows });
+	});
+
+	it('stays under its row where only one row carries a note', () => {
+		const rows = [row('paypal', SAME), row('venmo', null)];
+		expect(hoistSharedNote(rows)).toEqual({ shared: null, rows });
+	});
+
+	it('ignores rows with no note when matching the rest', () => {
+		const rows = [row('paypal', SAME), row('card', null), row('venmo', SAME)];
+		expect(hoistSharedNote(rows)).toEqual({
+			shared: SAME,
+			rows: [row('paypal', null), row('card', null), row('venmo', null)]
+		});
 	});
 });

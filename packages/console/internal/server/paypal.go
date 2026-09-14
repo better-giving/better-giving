@@ -18,10 +18,10 @@ import (
 // observed it, and a stopped one stays until the next press.
 //
 // **it is the only way the PayPal pair reaches a deployment from a screen.** the pair and the
-// listener's id are one write made at the end of the chain, so a deployment is never holding a pair
-// with no listener behind it — a deployment whose approved orders are never captured. POST
-// /api/values/vars refuses the three names (./values.go's paypalSetUpOnly), so no fold can skip the
-// listener.
+// listener's id are one write made after the listener is settled, and the deployment is then asked
+// to set up repeating gifts on that account, so a deployment is never holding a pair with no
+// listener behind it — a deployment whose approved orders are never captured. POST /api/values/vars
+// refuses the three names (./values.go's paypalSetUpOnly), so no fold can skip the listener.
 //
 // **both halves are values for the length of one press**, handed straight to internal/paypal and
 // reaching no answer, no log line and no argument list; ./paypal_test.go asserts their absence from
@@ -42,6 +42,7 @@ func paypalRoutes(
 	patches func(cf.Credential) cf.Send,
 	settings func(cf.Credential) cf.MultipartUpload,
 	store *account.Store,
+	doors func() (cf.Get, cf.Post),
 	bind func(clientID, secret string) paypal.Binding,
 	presses *Presses,
 ) {
@@ -90,6 +91,12 @@ func paypalRoutes(
 				},
 				Publish: func(ctx context.Context, values map[string]string) deployment.Written {
 					return deployment.SetVars(ctx, door, deployment.Stored(values))
+				},
+				// the session is read at the press rather than closed over once, for the reason
+				// ./stripe.go's own Repeating states.
+				Repeating: func(ctx context.Context, processor string) deployment.RecurringSetup {
+					_, post := doors()
+					return deployment.SetUpRecurring(ctx, post, processor)
 				},
 			})
 		if !going {

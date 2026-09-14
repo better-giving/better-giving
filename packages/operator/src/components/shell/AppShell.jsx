@@ -44,8 +44,9 @@ import { Button } from '../controls/Button.jsx';
 /**
  * @typedef {object} AppShellProps
  * @property {ReactNode} [org] the operating organisation's legal name. there is no logo.
- * @property {ReactNode} [under] drawn under the name, in the narrow band and the rail's head alike.
- * the console hands its deployment's address; the dashboard hands nothing.
+ * @property {string | undefined} [site] the address of the deployment's dashboard. drawn as a globe
+ * leading the name, in the narrow band and the rail's head alike, opening in a new tab: the address
+ * is its `title` and never printed. the console hands it; the dashboard hands nothing.
  * @property {string | Whereabouts | undefined} [current] the destination the reader is in: a bare
  * word is the `label`, and the page itself. absent, the reader is in none of them and no cell is
  * marked — which is what a surface hands for an address under no destination, and is the only
@@ -104,12 +105,12 @@ const RAIL_STORAGE_KEY = 'bg-operator-rail';
    many the bar holds is the share each is left with at the 375px floor rather than a number
    written anywhere. the bar is flat: groups, marks and headings are the column's. above it: a
    left column with the identity and the collapse toggle at its head, the grouped destinations,
-   and the foot; the page is an inset panel beside it.
+   and the foot; the page is a panel filling the rest of the window beside it.
    the identity slot renders the operating organisation's legal name — there is no logo. */
 /** @param {AppShellProps} props */
 export function AppShell({
 	org = 'Riverbank Trust',
-	under,
+	site,
 	current,
 	groups = [
 		{ destinations: [{ label: 'Dashboard', short: 'Dashboard', mark: 'layout-dashboard' }] },
@@ -181,33 +182,52 @@ export function AppShell({
 	/** @type {ReactNode} */
 	const footing = foot === undefined ? out : foot;
 
+	/* one row at both widths: the site's globe, the name cut to one line, and the control at the far
+	   end. the name's `title` is the whole of it wherever the cut takes the end off. */
+	/** @type {ReactNode} */
+	const lead =
+		site === undefined ? null : (
+			<span className="adm-rail__lead">
+				<Button
+					as="a"
+					href={site}
+					target="_blank"
+					rel="noreferrer"
+					variant="quiet"
+					size="sm"
+					mark="globe"
+					aria-label="Open dashboard"
+					title={site}
+				/>
+			</span>
+		);
+	const name = (
+		<div className="adm-identity__name" title={typeof org === 'string' ? org : undefined}>
+			{org}
+		</div>
+	);
+
 	return (
 		<div className={collapsed ? 'adm-shell adm-shell--collapsed' : 'adm-shell'}>
 			<div className="adm-identity">
-				<div className="adm-rail__who">
-					<div className="adm-identity__name">{org}</div>
-					{under}
-				</div>
+				{lead}
+				{name}
 				{out}
 			</div>
 			<nav className="adm-rail" aria-label="Sections">
 				<div className="adm-rail__identity">
-					<div className="adm-rail__who">
-						<div className="adm-identity__name">{org}</div>
-						{under}
-					</div>
-					<span className="adm-rail__togglebox">
-						<Button
-							type="button"
-							variant="quiet"
-							size="sm"
-							mark="panel-left"
-							className="adm-rail__toggle"
-							aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-							aria-expanded={!collapsed}
-							onClick={toggle}
-						/>
-					</span>
+					{lead}
+					{name}
+					<Button
+						type="button"
+						variant="quiet"
+						size="sm"
+						mark="panel-left"
+						className="adm-rail__toggle"
+						aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+						aria-expanded={!collapsed}
+						onClick={toggle}
+					/>
 				</div>
 				<div className="adm-rail__cells">
 					{groups.map((group, index) => (

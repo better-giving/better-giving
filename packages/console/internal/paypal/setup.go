@@ -16,7 +16,8 @@ import (
 //
 // **one press, because once the pair is in hand nothing is left to ask.** the listener at this
 // deployment's address is found or registered, its subscription is brought to exactly what the
-// deployment reads, and the pair and the listener's id are written as vars in one write. the operator
+// deployment reads, the pair and the listener's id are written as vars in one write, and the
+// deployment is asked to put what a repeating gift is collected against on the account. the operator
 // never opens PayPal's dashboard for the listener and never types its id.
 //
 // **a listener already here is kept, which is where this differs from ../stripe.** Stripe hands a
@@ -56,6 +57,9 @@ const (
 	Registering Stage = "registering"
 	// Storing is writing the pair and the listener's id onto the deployment, as vars.
 	Storing Stage = "storing"
+	// Repeating is asking the deployment to put what a repeating gift is collected against on the
+	// PayPal account.
+	Repeating Stage = "repeating"
 )
 
 // Registration is what the press did about the listener.
@@ -100,6 +104,10 @@ const (
 	// Unstored is the listener settled and the write not landing. ListenerID is the listener, which
 	// the next press finds and keeps, and Written is the write.
 	Unstored OutcomeKind = "unstored"
+	// Unrepeating is the deployment not putting the repeating-gift plan on the account. Everything in
+	// front of it landed, so what it leaves is a deployment taking one-time gifts on PayPal, with the
+	// repeating-gifts press on the same fold to finish it.
+	Unrepeating OutcomeKind = "unrepeating"
 	// ConsoleStopped is the chain dying on this console's own goroutine, which says the press failed
 	// part way through and never what the app now holds. It carries no member, ./run.go states why.
 	ConsoleStopped OutcomeKind = "console-stopped"
@@ -123,6 +131,13 @@ type Outcome struct {
 	ListenerID string `json:"listenerId"`
 	// Written is the write that did not land, on Unstored alone.
 	Written *deployment.Written `json:"written"`
+	// Setup is what the deployment said about the repeating-gift plan, on Unrepeating alone.
+	Setup *deployment.RecurringSetup `json:"setup"`
+	// AwaitingKey is that refusal being the deployment not serving the pair yet, on Unrepeating. The
+	// write landed seconds earlier and its edge has not caught up, so what the screen has to say is
+	// that this finishes itself on the next press — and never the deployment's own sentence, which
+	// names a value this press has already set.
+	AwaitingKey bool `json:"awaitingKey"`
 }
 
 // Asked is what a press asked for. Both halves are values for the length of the run and reach no
@@ -141,6 +156,10 @@ type Effects struct {
 	Address   func(ctx context.Context) deployment.Address
 	// Publish writes vars, which is a read of the worker's bindings and one patch back.
 	Publish func(ctx context.Context, values map[string]string) deployment.Written
+	// Repeating is the step the deployment makes rather than this console, and the one that can be
+	// answered by a deployment whose edge has not caught up with the write in front of it. It takes
+	// the account it is about, which the call site below names.
+	Repeating func(ctx context.Context, processor string) deployment.RecurringSetup
 	// At and Found are how the chain says where it is and what it has found out. Both are called on
 	// the goroutine the run is on, so a call that blocks holds the run up.
 	At    func(stage Stage)
@@ -156,7 +175,11 @@ const listenersPath = "/v1/notifications/webhooks"
 // Chain is the whole press, from the effects and what was asked.
 //
 // the order is not interchangeable: a pair that mints no token can list nothing, a listener cannot be
-// matched without the address, and the write carries the id the listener step settled on.
+// matched without the address, the write carries the id the listener step settled on, and the
+// deployment builds its PayPal client out of the pair that write put there.
+//
+// a stop at that last step leaves a deployment that works: it takes one-time gifts on PayPal, and
+// the repeating-gifts press on the same fold finishes it without the pair being pasted again.
 func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 	facts := Facts{Elsewhere: []Listener{}}
 	found := func() {
@@ -237,6 +260,17 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 	})
 	if written.Kind != deployment.WriteSet && written.Kind != deployment.WriteUnchanged {
 		return Outcome{Kind: Unstored, ListenerID: registration.ID, Written: &written}
+	}
+
+	at(Repeating)
+	// the account this run has just stored a pair for, named: which accounts the deployment counts as
+	// configured is read off the values it is serving, and this pair is not among them until the edge
+	// catches up — so a press naming none would act on every account but this one.
+	repeated := effects.Repeating(ctx, release.PaypalProcessor)
+	if repeated.Kind != deployment.RecurringSetupReported ||
+		repeated.Report == nil || repeated.Report.Outcome == "failed" {
+		held := repeated
+		return Outcome{Kind: Unrepeating, Setup: &held, AwaitingKey: held.AwaitsKey()}
 	}
 	return Outcome{Kind: Done}
 }

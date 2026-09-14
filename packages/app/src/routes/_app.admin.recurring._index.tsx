@@ -1,7 +1,6 @@
 import { FREQUENCY_LABELS } from '@better-giving/form/v1';
 import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Column } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { href, Link } from 'react-router';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -51,7 +50,7 @@ const COLUMNS = [
 	{ key: 'next', label: 'Next charge', kind: 'date', width: '14%' }
 ] as const;
 
-/** the screen's name, rendered as the document title and as the heading. */
+/** the screen's name in the document title. the frame's strip names the page (./_app.tsx). */
 const SCREEN_TITLE = 'Recurring gifts';
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
@@ -126,9 +125,6 @@ export default function RecurringGifts({ loaderData }: Route.ComponentProps) {
 		// own, so one that is not rendered leaves no space behind it. the wide measure, because a
 		// table plane is what it exists for.
 		<Column wide>
-			{/* no action slot — nothing on this page creates anything. */}
-			<PageHeader title={SCREEN_TITLE} />
-
 			{/* the table sits in the column directly, and nothing wraps it: `.adm-plane` is a scroll
 			    box, which is the one kind of grid item whose automatic minimum size is zero, so as
 			    the column's own child it shrinks and scrolls at every width. a plain element between

@@ -12,6 +12,7 @@ import { FieldMessage } from '@better-giving/operator/components/forms/FieldMess
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
 import { Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
+import { LedgerSkeleton } from '@better-giving/operator/components/status/LedgerSkeleton';
 import {
 	StatusLedger,
 	StatusLine,
@@ -32,6 +33,7 @@ import { refusalIn } from './secret-trouble';
 import { heldValues, withheldAmong } from './held-values';
 import { keysTrouble, noAnswer, valuesGuard } from './processor-screen';
 import { recurringBlock } from './recurring-block';
+import { pollOutlived, runKind, standingRun } from './run-poll';
 import {
 	configuredStanding,
 	EVIDENCE_SAYS,
@@ -183,7 +185,7 @@ import { WALLET_NAMES, linkStanding, walletHostLines, walletRows } from './walle
 // disclosure an operator has to open to find out there was nothing behind it.
 //
 // **a screen with neither of them draws nothing up there at all** — no band, no empty form, no
-// waiting sentence. that is every deployment being set up for the first time, which is the state
+// waiting placeholder. that is every deployment being set up for the first time, which is the state
 // where the space above the boxes is worth most.
 //
 // **and they are asked for again after a run that stored the key.** the store reaches cloudflare's
@@ -432,18 +434,17 @@ export function StripeSection({
 	/* how far the press has got, asked of the binary rather than of the page: reading the page again
 	   is every round trip on it, one of them against the deployment this run is setting up. */
 	const [polled, setPolled] = useState<StripeRunRead | null | undefined>(undefined);
-	const answered = polled === undefined ? run : polled;
 
 	/* the last thing either reading said, kept here rather than read off whichever answered last.
 	   a run that landed is consumed by the reading that observed it, so the answer after that is
 	   `null` on both doors — and the report an operator is looking at would go off the screen under
-	   them. what clears this is the next press, which arrives as a run that is running again. */
+	   them. what clears this is the next run, which arrives running again. */
 	const [remembered, setRemembered] = useState<StripeRunRead | null>(null);
+	const { answered, live } = standingRun({ run, polled, remembered });
 	useEffect(() => {
 		if (answered === null) return;
 		setRemembered(answered);
 	}, [answered]);
-	const live = answered ?? remembered;
 	const working = live?.kind === 'running';
 	/* where the router is with this screen's own press, and what it answered. the two are only
 	   meaningful together (./stripe-press.ts), and they are held as one value each so that the
@@ -484,13 +485,22 @@ export function StripeSection({
 		// again and the poll goes on for as long as the run does.
 	}, [working, polled]);
 
-	/* and dropped the moment another press is made. a poll's answer stands in front of the run prop
-	   for as long as it is held, so the last press's stopped run would mask the one this press
-	   starts — and with nothing reading as running, nothing would ever ask after it again. */
+	/* and dropped the moment another press is made, or the page's reading moves to a run the poll
+	   cannot speak for (`pollOutlived` in ./run-poll.ts). a poll's answer stands in front of the run
+	   prop for as long as it is held, so an earlier stopped run would mask the one a press here or
+	   anywhere else starts — and with nothing reading as running, nothing would ever ask after it
+	   again. */
 	useEffect(() => {
 		if (pending !== SET_UP_INTENT) return;
 		setPolled(undefined);
 	}, [pending]);
+	const loaded = runKind(run);
+	const seen = useRef(loaded);
+	useEffect(() => {
+		if (!pollOutlived(seen.current, loaded)) return;
+		seen.current = loaded;
+		setPolled(undefined);
+	}, [loaded]);
 
 	/* the page read again once, when the run stops. what it is read for is the reading at the head
 	   of the screen: the account this press just set up is one only the deployment can report on, and
@@ -575,16 +585,19 @@ export function StripeSection({
 	);
 
 	/**
-	 * the sentence that stands while the deployment is being asked, and nothing where it was not
+	 * the placeholder that stands while the deployment is being asked, and nothing where it was not
 	 * asked at all.
+	 *
+	 * it is shaped as the readings resolve — the rails' lines and the repeating-gift block's one — so
+	 * the page does not move when they land.
 	 *
 	 * the route that mounts this resolves both readings to `null` without a round trip where this
 	 * deployment holds no secret key, and it decides that off this same list of secrets — so on
-	 * that path the promises are settled before the screen is drawn, and a waiting sentence would be
+	 * that path the promises are settled before the screen is drawn, and a waiting placeholder would be
 	 * one render of a screen saying it is asking after something it asked nobody about.
 	 */
 	const asking = stored?.has('STRIPE_SECRET_KEY') ? (
-		<p className="adm-hint">Asking this deployment…</p>
+		<LedgerSkeleton label="Asking this deployment…" blocks={[4, 1]} />
 	) : null;
 
 	/** what the two boxes are holding right now, in the shape `stripeAsked` reads them in. */

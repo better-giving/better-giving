@@ -5,6 +5,7 @@ import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { freeWithheldVars, sendTestEmail } from '../api/client';
 import { consoleRereads } from '../lib/dialog-params';
 import { groupPress } from '../lib/group-press';
+import { forgetReadings } from '../lib/processor-cache';
 import { SmtpFold, TEST_EMAIL_INTENT } from '../lib/smtp-fold';
 import { TEST_TO_FIELD } from '../lib/smtp-fold-state';
 import { usePress } from '../lib/use-press';
@@ -22,6 +23,7 @@ export function meta(): Route.MetaDescriptors {
 }
 
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');
 

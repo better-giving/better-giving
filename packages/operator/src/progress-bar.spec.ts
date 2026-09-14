@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MOTION_CAP_MS } from './motion-end';
 
-// the signal between the console's one progress bar and the reading that replaces the screen it
-// stands over.
+// the signal between an operator screen's one progress bar and the reading that replaces the
+// screen it stands over. the pathnames are the console's.
 //
 // every case takes the module again: what it holds is per-page rather than per-call — the page on
 // the screen, and the one bar standing over it — so a case running against the state the case
@@ -119,6 +119,33 @@ describe('the bar a reading is taken behind', () => {
 		bar.holdBar('/payments/paypal');
 
 		expect(await stillHeld(waited)).toBe(false);
+	});
+
+	it('finishes nothing for a move a later one that reads nothing took the place of', async () => {
+		const bar = await fresh();
+		bar.pageDrawn('/');
+		const left = bar.holdBar('/payments/stripe');
+		const waiting = left.finish();
+
+		bar.passOver('/payments/paypal');
+
+		expect(await stillHeld(waiting)).toBe(false);
+		expect(await stillHeld(left.finish())).toBe(false);
+		expect(bar.progressBarFinishing()).toBe(false);
+	});
+
+	it('leaves the pass of the same move standing when one of its readings reads nothing', async () => {
+		// the console's sections layout and the page under it are two loaders of one move, run side
+		// by side.
+		const bar = await fresh();
+		bar.pageDrawn('/');
+		const layout = bar.holdBar('/payments/stripe');
+
+		bar.passOver('/payments/stripe');
+
+		const waited = layout.finish();
+		expect(bar.progressBarFinishing()).toBe(true);
+		expect(await stillHeld(waited)).toBe(true);
 	});
 
 	it('gives the screen up rather than waiting on a bar nobody drew', async () => {

@@ -2,28 +2,26 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { AppShell, PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { Brand } from '@better-giving/operator/components/status/Brand';
 import { Column, Stack } from '@better-giving/operator/components/shell/Layout';
-import { Mark } from '@better-giving/operator/components/status/Mark';
-import type { CSSProperties, ReactNode } from 'react';
+import { holdBar } from '@better-giving/operator/progress-bar';
+import type { CSSProperties } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { Link, Outlet, redirect, useFetcher, useLocation, useSearchParams } from 'react-router';
+import { Link, Outlet, redirect, useLocation, useSearchParams } from 'react-router';
 import paypalLogo from '../assets/processors/paypal.png';
 import stripeLogo from '../assets/processors/stripe.png';
 import github from '../assets/social/github.webp';
-import { CHECK_INTENT, CloseConfirm, SHELL_ACTION, useClosed } from '../lib/close-confirm';
+import { CloseConfirm, useClosed } from '../lib/close-confirm';
 import { railGroups } from '../lib/console-pages';
 import { readConsole } from '../lib/console-reading';
 import { ConsoleStopped } from '../lib/deployment-states';
 import { CLOSE_PARAM, consoleRereads } from '../lib/dialog-params';
 import { HeadNotes, machineNoted } from '../lib/head-strip';
 import { PRODUCT_NAME, ProductFoot, SOURCE_URL, productLine } from '../lib/product-foot';
-import { holdBar } from '../lib/progress-bar';
 import { RailLabelsProvider, RouterLink } from '../lib/router-link';
-import { usePress } from '../lib/use-press';
 import { TITLE } from './_index';
 import type { Route } from './+types/_sections';
 
-// the shell every section page of a ready deployment stands in: the rail of pages, the strip over
-// each one, and the foot naming the account and the release.
+// the shell every section page of a ready deployment stands in: the rail of pages and the foot naming
+// the account and the release. no strip stands over a page: a page's heading, where it has one, is its own.
 //
 // **there is no home page, and the rail is the overview.** every cell carries where its section
 // stands (../lib/console-pages.ts), so a screen summarising the sections would be the rail read
@@ -44,8 +42,7 @@ import type { Route } from './+types/_sections';
 // stands around it.
 //
 // **no press is answered here.** this route is pathless, so no address posts to it: each page answers
-// its own presses, and the two over every page — check again, and close — are answered by `/`
-// (../lib/close-confirm.tsx).
+// its own presses, and the close over every page is answered by `/` (../lib/close-confirm.tsx).
 //
 // **nothing on a page reaches cloudflare and nothing could**: cloudflare's API sends no cross-origin
 // headers, and the credential it is reached with is held by the binary on this machine. what a press
@@ -57,8 +54,8 @@ import type { Route } from './+types/_sections';
  * page loader under it (../lib/console-reading.ts).
  *
  * **the bar over the screen being replaced is finished before this hands anything back**, the rule
- * every bar on this console follows (../lib/progress-bar.ts). a re-read of a page already drawn has
- * no bar over it and returns at once.
+ * every bar on this console follows (packages/operator/src/progress-bar.ts). a re-read of a page
+ * already drawn has no bar over it and returns at once.
  */
 export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 	const bar = holdBar(new URL(request.url).pathname);
@@ -111,30 +108,36 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 	const foot = (
 		<>
 			<div className="adm-footaccount">
-				<div className="adm-footaccount__row">
-					<span className="adm-footaccount__mark">
-						<Brand name="cloudflare" label="Cloudflare" />
-					</span>
-					<span className="adm-footaccount__name">{loaderData.account}</span>
-					<span className="adm-footaccount__out">{closeControl}</span>
-				</div>
-				{/* what cloudflare resolves that name by: the name is not unique and this is. */}
-				<span className="adm-footaccount__id">{loaderData.accountId}</span>
+				<span className="adm-rail__lead">
+					<Brand name="cloudflare" label="Cloudflare" />
+				</span>
+				{/* the title is what cloudflare resolves that name by: the name is not unique and the id is. */}
+				<span className="adm-footaccount__name" title={loaderData.accountId}>
+					{loaderData.account}
+				</span>
+				<span className="adm-footaccount__out">{closeControl}</span>
 			</div>
 			<div className="adm-footline">
+				<span className="adm-rail__lead">
+					{/* github's trademark, used to point at that repository and for nothing else. the
+					    sheet draws it as a mask off `--_source-mark`, so the picture is set here, where the
+					    asset is. */}
+					<Button
+						as="a" // full-load-ok: github's address, never this console's.
+						href={SOURCE_URL}
+						target="_blank"
+						rel="noreferrer"
+						variant="quiet"
+						size="sm"
+						aria-label="better.giving source on GitHub"
+					>
+						<span
+							className="adm-footline__source"
+							style={{ '--_source-mark': `url(${github})` } as CSSProperties}
+						/>
+					</Button>
+				</span>
 				<span className="adm-caption">{productLine(loaderData.version)}</span>
-				{/* github's trademark, used to point at that repository and for nothing else. the
-				    sheet draws it as a mask off `--_source-mark`, so the picture is set here, where the
-				    asset is. */}
-				<a
-					className="adm-footline__source"
-					href={SOURCE_URL}
-					target="_blank"
-					rel="noreferrer"
-					style={{ '--_source-mark': `url(${github})` } as CSSProperties}
-				>
-					<span className="adm-vh">better.giving source on GitHub</span>
-				</a>
 			</div>
 		</>
 	);
@@ -145,23 +148,12 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 				// before the organisation's legal name is saved there is no name to show, so it says what
 				// the software is rather than printing an empty band.
 				org={reading.stored.legal_name === '' ? PRODUCT_NAME : reading.stored.legal_name}
-				under={
-					<a className="adm-rail__address" href={dashboard} target="_blank" rel="noreferrer">
-						<span>{dashboard}</span>
-						<Mark name="external-link" />
-					</a>
-				}
+				site={dashboard}
 				groups={groups}
 				link={RouterLink}
 				current={here?.label}
 				wayOut={closeControl}
 				foot={foot}
-				head={
-					<>
-						<span className="adm-headstrip__title">{here?.label}</span>
-						<CheckAgain key={pathname} />
-					</>
-				}
 			>
 				<Stack>
 					{/* the lines about this machine stand in the page's column, a step above the page. */}
@@ -181,38 +173,6 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 				{params.has(CLOSE_PARAM) ? <CloseConfirm back={pathname} /> : null}
 			</AppShell>
 		</RailLabelsProvider>
-	);
-}
-
-/**
- * what another hand can change between loads — what cloudflare is holding for this deployment —
- * read again, from the strip over every page.
- *
- * the soft rank, because it re-reads the page it stands on and changes nothing on the deployment. it
- * posts through a fetcher (../lib/close-confirm.tsx says why), and the fetcher's answer is what says
- * the read was taken; keyed on the page by its caller, so the answer is the page's own and leaving
- * the page drops it.
- */
-function CheckAgain(): ReactNode {
-	const check = useFetcher();
-	const { busy } = usePress();
-	return (
-		<check.Form className="adm-actions" method="post" action={SHELL_ACTION} preventScrollReset>
-			<Button
-				type="submit"
-				name="intent"
-				value={CHECK_INTENT}
-				variant="soft"
-				size="sm"
-				disabled={busy}
-				aria-busy={check.state !== 'idle'}
-			>
-				Check again
-			</Button>
-			{check.state === 'idle' && check.data !== undefined ? (
-				<p className="adm-momentary">Checked just now.</p>
-			) : null}
-		</check.Form>
 	);
 }
 

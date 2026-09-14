@@ -67,6 +67,15 @@ function screen(
 	return mount(createElement(Stub, { initialEntries: ['/admin/forms'] }));
 }
 
+it('draws no heading of its own, and keeps the add press: the frame names the page', () => {
+	const root = screen();
+
+	expect(root.querySelector('h1')).toBe(null);
+	expect(root.querySelector('.adm-pageheader a[href="/admin/forms/new"]')?.textContent).toBe(
+		'Add donation form'
+	);
+});
+
 it('leaves the snippet off the card: it is behind the Embed control now', () => {
 	const root = screen();
 

@@ -93,6 +93,10 @@ function cell(root: HTMLElement, label: string): string {
 	return held?.textContent ?? '';
 }
 
+it('draws no heading of its own: the frame names the page', () => {
+	expect(screen([gift({})]).querySelector('h1')).toBe(null);
+});
+
 it('states the dedication as the sentence a fundraiser says', () => {
 	const root = screen([gift({ tribute: { kind: 'memory', honoree: 'Margaret Chen' } })]);
 	expect(cell(root, 'Dedication')).toBe('In memory of Margaret Chen');

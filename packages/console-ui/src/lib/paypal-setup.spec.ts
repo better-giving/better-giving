@@ -4,6 +4,7 @@ import {
 	LINES,
 	PAIR_BLANK,
 	PAIR_FIELD,
+	lineAt,
 	pairStanding,
 	pairTurnedDown,
 	paypalPairPosted,
@@ -42,7 +43,17 @@ describe('the pair a press posts', () => {
 
 describe('the ledger lines', () => {
 	it('draws one line per stage, in the order the chain reaches them', () => {
-		expect(LINES.map((line) => line.stage)).toEqual(['authorizing', 'registering', 'storing']);
+		expect(LINES.map((line) => line.stage)).toEqual([
+			'authorizing',
+			'registering',
+			'storing',
+			'repeating'
+		]);
+	});
+
+	it('draws repeating gifts as the last line, so the store reads done while it runs', () => {
+		expect(lineAt('repeating')).toBe(3);
+		expect(lineAt('storing')).toBeLessThan(lineAt('repeating'));
 	});
 });
 
@@ -65,6 +76,15 @@ describe('where a stopped run reports', () => {
 	it('keeps a ledger for PayPal not answering at the key check, which is not the pair', () => {
 		expect(pairTurnedDown(unreachable)).toBe(false);
 		expect(reportStands(unreachable, false)).toBe(true);
+	});
+
+	it('keeps a ledger for repeating gifts that did not get set up', () => {
+		const unrepeating = ended('repeating', {
+			kind: 'unrepeating',
+			setup: { kind: 'unanswered', read: { kind: 'unreachable', detail: 'timeout' } },
+			awaitingKey: true
+		});
+		expect(reportStands(unrepeating, false)).toBe(true);
 	});
 
 	it('stands under the boxes only while no card is up', () => {
@@ -102,6 +122,20 @@ describe('what the boxes are seeded from', () => {
 			seeded: reported,
 			spent: true
 		});
+	});
+
+	it('is the pair sent where repeating gifts stopped, which is past the store', () => {
+		const unrepeating = (awaitingKey: boolean) =>
+			ended('repeating', {
+				kind: 'unrepeating',
+				setup: { kind: 'unanswered', read: { kind: 'unreachable', detail: 'timeout' } },
+				awaitingKey
+			});
+		for (const awaitingKey of [true, false]) {
+			expect(
+				pairStanding({ reported, sent, run: unrepeating(awaitingKey), reread: false })
+			).toEqual({ seeded: sent, spent: true });
+		}
 	});
 
 	it('is what the deployment reported where the write did not land', () => {

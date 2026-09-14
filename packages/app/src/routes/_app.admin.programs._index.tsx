@@ -1,7 +1,6 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { EmptyState } from '@better-giving/operator/components/data/EmptyState';
 import { Column, List } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { useEffect, useRef } from 'react';
@@ -27,7 +26,7 @@ import type { Route } from './+types/_app.admin.programs._index';
 // `$lib/server/programs/queries.ts`; the only job here is a projection. neither `D1Database` nor
 // the `program` table object is named anywhere in this route, and neither may be.
 
-/** the screen's name, rendered as the document title and as the heading. */
+/** the screen's name in the document title. the frame's strip names the page (./_app.tsx). */
 const SCREEN_TITLE = 'Programs';
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
@@ -104,17 +103,18 @@ export default function Programs({ loaderData }: Route.ComponentProps) {
 		// one column and the column is what spaces it: every block below carries no margin of its
 		// own, so one that is not rendered leaves no space behind it.
 		<Column>
-			<PageHeader
-				title={SCREEN_TITLE}
-				pageAction={
-					// a link dressed as a button, and it stays a link: this navigates, it does not write.
-					// "Add" is the dashboard's one word for bringing a record into being, and it is the
-					// word on the button, the page it opens and the banner that reports the write.
+			{/* the page's one press, where `PageHeader` draws its trailing slot. the strip over the
+			    page carries the name, so the header draws no title of its own. */}
+			<header className="adm-pageheader">
+				<div className="adm-pageheader__row">
+					{/* a link dressed as a button, and it stays a link: this navigates, it does not write.
+					    "Add" is the dashboard's one word for bringing a record into being, and it is the
+					    word on the button, the page it opens and the banner that reports the write. */}
 					<Button as={Link} to={href('/admin/programs/new')}>
 						Add program
 					</Button>
-				}
-			/>
+				</div>
+			</header>
 
 			{/* the outcome of the create next door, which redirected here with the new cause's id. it
 			    is the only outcome this page reports and the only one it can: this page writes

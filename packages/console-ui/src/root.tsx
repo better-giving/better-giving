@@ -1,5 +1,7 @@
 import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
-import { type ReactNode, useEffect, useRef, useSyncExternalStore } from 'react';
+import { ProgressBar } from '@better-giving/operator/components/status/ProgressBar';
+import { movesPage, openingLabel, pageDrawn } from '@better-giving/operator/progress-bar';
+import { type ReactNode, useEffect } from 'react';
 import {
 	Links,
 	Meta,
@@ -10,16 +12,7 @@ import {
 	useNavigation
 } from 'react-router';
 import type { Route } from './+types/root';
-import { endsWithin } from './lib/motion-end';
 import { ProductFoot } from './lib/product-foot';
-import {
-	movesPage,
-	openingLabel,
-	pageDrawn,
-	progressBarFinishing,
-	progressBarLanded,
-	subscribeProgressBar
-} from './lib/progress-bar';
 import { TITLE } from './routes/_index';
 // the one place the console's stylesheet enters the app, and it must stay singular: a route
 // rendering outside this document is a route with no styles at all. one import, because
@@ -84,8 +77,8 @@ export function Layout({ children }: { children: ReactNode }) {
  * **it finishes, and is seen finished, before this screen is replaced.** the reading landing is
  * what says the wait is over, so the route's `clientLoader` flips the bar to its rush and waits
  * until all twenty cells have stood on screen for the beat a full bar is seen for
- * (`ProgressBar` below). a bar taken away part full reports that the console gave up on the reading
- * rather than that it arrived.
+ * (packages/operator/src/components/status/ProgressBar.jsx). a bar taken away part full reports
+ * that the console gave up on the reading rather than that it arrived.
  *
  * **it carries no head and no rail.** every screen after this one states the account and the press
  * that ends the console — in a head (./lib/head-strip.tsx) or at the rail's foot
@@ -112,87 +105,14 @@ export function HydrateFallback() {
 }
 
 /**
- * the console's one progress bar, wherever it stands: filling while a reading is in flight, and
- * rushing to its end once the reading has landed.
- *
- * it takes two shapes, off packages/operator/src/styles/adm.css: the braille cells on the document's
- * own screen, and over a move (`overMove`) a thin line along the viewport's top edge, which the
- * page being left keeps its whole layout under. the rush puts the bar at full on its own last
- * instant, so its end is the bar arriving and the dwell after it is the bar being seen.
- * ./lib/progress-bar.ts is the signal between this and the loader waiting on it, because the screen
- * the reading is for has not rendered and there are no props between them.
- *
- * `label` is what is loading, and it is the status region's alone in both shapes: the line has no
- * room for words, and the document's own bar has nothing on the screen to name.
- */
-function ProgressBar({ label, overMove }: { label: string; overMove: boolean }) {
-	const finishing = useSyncExternalStore(
-		subscribeProgressBar,
-		progressBarFinishing,
-		// the build renders this document once to write index.html, where nothing has read and
-		// nothing can have finished (../vite.config.ts).
-		progressBarFinishing
-	);
-	const bar = useRef<HTMLSpanElement>(null);
-
-	useEffect(() => {
-		const cells = bar.current;
-		if (!finishing || cells === null) return;
-		let landed = false;
-		const land = () => {
-			if (landed) return;
-			landed = true;
-			progressBarLanded();
-		};
-		/* the rush and the dwell after it are both drawn on `::before` and both dispatch their
-		   `animationend` at the span, so the name is what tells them apart. `adm-dwell` is the
-		   hold, and its end is the one that says the bar has been seen full
-		   (packages/operator/src/styles/adm.css). */
-		const ended = (e: AnimationEvent) => {
-			if (e.animationName === 'adm-dwell') land();
-		};
-		cells.addEventListener('animationend', ended);
-		/* the backstop, for a hold no sheet reached this pseudo-element to run. it covers the rush
-		   in front of the dwell as well as the dwell itself, which is why the delay is read beside
-		   the duration (./lib/motion-end.ts). */
-		const step = getComputedStyle(cells, '::before');
-		const capped = setTimeout(land, endsWithin(step.animationDuration, step.animationDelay));
-		return () => {
-			cells.removeEventListener('animationend', ended);
-			clearTimeout(capped);
-		};
-	}, [finishing]);
-
-	return (
-		/* polite, and the label is the one thing a reader of the tree gets: what the bar's rush
-		   reports is that the wait is over, which the screen it is replaced by states in its own
-		   words a moment later. the bar itself is decorative — its cells or its line are drawn by the
-		   sheet and say nothing a reader could read — so it is hidden from the tree and the wrapper speaks
-		   for it. */
-		<div
-			role="status"
-			aria-label={overMove ? undefined : label}
-			className={overMove ? 'adm-navigation-bar' : undefined}
-		>
-			{overMove ? <span className="adm-vh">{label}</span> : null}
-			<span
-				ref={bar}
-				className={`${overMove ? 'adm-navigation-bar__line' : 'adm-braille-bar'}${finishing ? ' is-finishing' : ''}`}
-				aria-hidden="true"
-			/>
-		</div>
-	);
-}
-
-/**
  * every screen, and the bar over the one being left while the next one is read.
  *
  * **a move to another page is drawn under the bar from the moment it is asked for**, and the page
  * being left stays drawn beneath it: the destination's `clientLoader` holds it back until the bar
  * has finished and been seen full, the rule the document's own bar above follows. a press or a
- * dialog on the page already drawn is not a move (`movesPage` in ./lib/progress-bar.ts) — a press
- * reports at its own control. what it says is loading is carried by the link that was pressed
- * (`opening` there).
+ * dialog on the page already drawn is not a move (`movesPage` in
+ * packages/operator/src/progress-bar.ts) — a press reports at its own control. what it says is
+ * loading is carried by the link that was pressed (`opening` there).
  *
  * **it stands exactly as long as the router is moving**, so a move that lands on an error boundary
  * or is taken over by a second press leaves no bar behind: both end the navigation this reads.

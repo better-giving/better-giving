@@ -7,6 +7,7 @@ import { BareShell } from '@better-giving/operator/components/shell/BareShell';
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { Banner } from '@better-giving/operator/components/status/Banner';
+import { holdBar } from '@better-giving/operator/progress-bar';
 import type { ReactNode } from 'react';
 import { useCallback, useRef } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
@@ -19,8 +20,8 @@ import { handOver, readConsole } from '../lib/console-reading';
 import { ConsoleStopped } from '../lib/deployment-states';
 import { CLOSE_PARAM, consoleRereads } from '../lib/dialog-params';
 import { ConsoleHead } from '../lib/head-strip';
+import { forgetReadings } from '../lib/processor-cache';
 import { ProductFoot } from '../lib/product-foot';
-import { holdBar } from '../lib/progress-bar';
 import { Said } from '../lib/said';
 import { UNREAD_ANSWER_TITLE } from '../lib/unread-answer';
 import type { Route } from './+types/_index';
@@ -94,7 +95,8 @@ export function meta(): Route.MetaDescriptors {
  * (../lib/console-reading.ts).
  *
  * **the bar over the screen being replaced is finished before a face is handed back**
- * (../lib/progress-bar.ts). a redirect finishes nothing: the navigation it starts takes the bar.
+ * (packages/operator/src/progress-bar.ts). a redirect finishes nothing: the navigation it starts
+ * takes the bar.
  */
 export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 	const bar = holdBar(new URL(request.url).pathname);
@@ -126,6 +128,7 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
  * travelled through a page is a value written wherever that page said.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');
 

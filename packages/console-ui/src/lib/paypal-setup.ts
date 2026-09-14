@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { PaypalRunRead, PaypalStage } from '../api/types';
+import type { PaypalRunRead, PaypalSetup, PaypalStage } from '../api/types';
 import type { StatedForm } from './use-console-form';
 
 // what one press of ./paypal-section.tsx carries, the rule its two boxes are read against, and the
@@ -79,7 +79,7 @@ export function paypalPairPosted(
 }
 
 /**
- * the three things one press establishes, one per stage and in the chain's order.
+ * the four things one press establishes, one per stage and in the chain's order.
  *
  * one line per stage, so no line draws steps under it: `StatusLine` folds a single step into its
  * line (packages/operator/src/components/status/StatusLine.jsx). **a line's label is its subject
@@ -100,6 +100,11 @@ export const LINES: readonly { stage: PaypalStage; label: string; note: string }
 		stage: 'storing',
 		label: 'Saving to your deployment',
 		note: 'The keys and the webhook go onto your deployment together.'
+	},
+	{
+		stage: 'repeating',
+		label: 'Setting up repeating gifts',
+		note: 'PayPal collects a monthly or yearly gift against a billing plan on your account.'
 	}
 ];
 
@@ -133,13 +138,16 @@ export function reportStands(live: PaypalRunRead | null, cardUp: boolean): boole
 	return !pairTurnedDown(live);
 }
 
+/** the stops a run reaches with the pair written, which is every one past `storing`. */
+const STORED: readonly PaypalSetup['kind'][] = ['done', 'unrepeating'];
+
 /**
  * the pair the boxes are seeded from, and whether a write has put them back to it.
  *
- * `storing` is the last step and one write, so `done` is the only stop that leaves the pair on the
- * deployment. what the press sent seeds the boxes from that answer until the reading after it
- * lands, which reports the same two values — `keysStanding` in ./stripe-press.ts is the same
- * seeding and argues it.
+ * `storing` is one write and the only one, so the stops past it — `done`, and `unrepeating` after
+ * it — are the pair on the deployment. what the press sent seeds the boxes from that answer until
+ * the reading after it lands, which reports the same two values — `keysStanding` in
+ * ./stripe-press.ts is the same seeding and argues it.
  */
 export function pairStanding(press: {
 	readonly reported: PaypalPairBoxes;
@@ -148,7 +156,7 @@ export function pairStanding(press: {
 	readonly reread: boolean;
 }): { readonly seeded: PaypalPairBoxes; readonly spent: boolean } {
 	const { sent, run } = press;
-	if (sent === null || run?.kind !== 'ended' || run.outcome.kind !== 'done') {
+	if (sent === null || run?.kind !== 'ended' || !STORED.includes(run.outcome.kind)) {
 		return { seeded: press.reported, spent: press.reread };
 	}
 	return { seeded: press.reread ? press.reported : sent, spent: true };

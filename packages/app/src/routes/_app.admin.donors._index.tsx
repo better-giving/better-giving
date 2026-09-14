@@ -3,7 +3,6 @@ import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Series } from '@better-giving/operator/components/data/Series';
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
 import { Column } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { href, Link } from 'react-router';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -127,7 +126,7 @@ const MONTH_LABEL = new Intl.DateTimeFormat('en-US', {
 	timeZone: 'UTC'
 });
 
-/** the screen's name, rendered as the document title and as the heading. */
+/** the screen's name in the document title. the frame's strip names the page (./_app.tsx). */
 const SCREEN_TITLE = 'Donors';
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
@@ -328,8 +327,6 @@ export default function Donors({ loaderData }: Route.ComponentProps) {
 		// own, so one that is not rendered leaves no space behind it. the wide measure, because a
 		// table plane is what it exists for.
 		<Column wide>
-			<PageHeader title={SCREEN_TITLE} />
-
 			{/* the summary, composed here rather than mounted: `.adm-summary` is a modifier on the
 			    record card and the card's own part draws a head, which three blocks standing side
 			    by side have none of — packages/operator/src/styles/adm.css argues it at the rule.

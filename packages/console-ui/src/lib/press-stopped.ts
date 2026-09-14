@@ -43,8 +43,9 @@ export const REACHED_STRIPE =
 /**
  * what a press that sets PayPal up had reached, which is the PayPal app's webhooks.
  *
- * the deployment is written last and in one write, so what could be part-way is the app — and the
- * next press finds a webhook already at this address and keeps it rather than adding a second.
+ * the deployment's values are one write, and what comes either side of it is on PayPal — the app's
+ * webhooks before, the billing plan after — and the next press finds each already there and keeps
+ * it rather than adding a second.
  */
 export const REACHED_PAYPAL =
 	'What reached PayPal before it stopped is what your PayPal app holds now.';

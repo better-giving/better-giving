@@ -33,7 +33,7 @@ export const CHARGE_PAIRS: Record<PaymentProcessor, readonly DeployVarName[]> = 
 };
 
 /** what each processor is called and where its page is. */
-const PROCESSORS: Record<PaymentProcessor, { name: string; href: string }> = {
+export const PROCESSORS: Record<PaymentProcessor, { name: string; href: string }> = {
 	stripe: { name: 'Stripe', href: '/payments/stripe' },
 	paypal: { name: 'PayPal', href: '/payments/paypal' }
 };

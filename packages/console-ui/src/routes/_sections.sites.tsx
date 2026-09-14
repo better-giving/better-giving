@@ -7,6 +7,7 @@ import { levelWallets, levelWidget, saveSites } from '../api/client';
 import type { SitesPress, WidgetLevel } from '../api/types';
 import { SITES_TITLE } from '../lib/console-pages';
 import { consoleRereads } from '../lib/dialog-params';
+import { forgetReadings } from '../lib/processor-cache';
 import { SITES_INTENT, siteEdits } from '../lib/sites';
 import { SitesFold } from '../lib/sites-fold';
 import { usePress } from '../lib/use-press';
@@ -75,6 +76,7 @@ const stored = (press: SitesPress) => ({ sites: press });
  * it has just stored (../lib/wallets-press.ts).
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	await forgetReadings();
 	const posted = await request.formData();
 	if (posted.get('intent') !== SITES_INTENT) return { unknown: true as const };
 

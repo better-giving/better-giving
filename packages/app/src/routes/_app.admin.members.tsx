@@ -6,7 +6,6 @@ import { SaveButton } from '@better-giving/operator/components/controls/SaveButt
 import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
@@ -51,7 +50,7 @@ import type { Route } from './+types/_app.admin.members';
 // address ($lib/server/flash.ts), which the loader matches against the rows it has already read —
 // the same shape ./_app.admin.forms._index.tsx uses for the form a create just made.
 
-/** the screen's name, rendered as the document title and as the heading. */
+/** the screen's name in the document title. the frame's strip names the page (./_app.tsx). */
 const SCREEN_TITLE = 'Members';
 
 /** the address this screen answers on, and the one a write redirects back to. */
@@ -352,7 +351,6 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
 		// never make narrower than the whole table, so the page scrolls sideways instead of the
 		// plane and the pinned column goes with it.
 		<Column wide>
-			<PageHeader title={SCREEN_TITLE} />
 			{loaderData.mayManage ? (
 				<InviteSection sentTo={loaderData.sentTo} actionData={actionData} />
 			) : (

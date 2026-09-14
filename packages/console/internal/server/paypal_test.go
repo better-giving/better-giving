@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/better-giving/console/internal/cf"
+	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/paypal"
 	"github.com/better-giving/console/internal/release"
 )
@@ -52,11 +53,21 @@ func paypalApp(t *testing.T) (*httptest.Server, func() []string) {
 	}
 }
 
-// a console signed in and holding an account, with PayPal and cloudflare bound to fakes. the third
-// return is every cloudflare call and its body.
-func settingPaypal(t *testing.T, chosen string) (http.Handler, func() []string, *[]string) {
+// a console signed in, holding an account and a session on a deployment that provisions the repeating
+// plan, with PayPal, cloudflare and that deployment bound to fakes. the third return is every
+// cloudflare call and its body, and the last every errand the deployment was sent.
+func settingPaypal(t *testing.T, chosen string) (http.Handler, func() []string, *[]string, *httptest.Server, func() []errand) {
 	t.Helper()
 	records, flow, accounts := machine(t, chosen)
+	surface, errands := deployed(t, map[string]any{
+		"POST /console/recurring": map[string]any{
+			"outcome": "set_up",
+			"processors": []any{
+				map[string]any{"processor": "paypal", "label": "PayPal", "outcome": "set_up"},
+			},
+		},
+	})
+	connected(t, records, surface.URL)
 	api, cloudflare := writes(t, map[string]any{
 		"GET " + settingsOf(release.Baked.Name): resulting(map[string]any{"bindings": []any{}}),
 		"GET /accounts/an-account/workers/scripts/" + release.Baked.Name + "/subdomain": resulting(
@@ -76,7 +87,7 @@ func settingPaypal(t *testing.T, chosen string) (http.Handler, func() []string, 
 		Paypal: func(clientID, secret string) paypal.Binding {
 			return paypal.BindAt(app.URL, clientID, secret)
 		},
-	}), asked, cloudflare
+	}), asked, cloudflare, surface, errands
 }
 
 const paypalPressed = `{"clientId":"Aa-client-typed","secret":"EL-secret-typed"}`
@@ -99,7 +110,7 @@ func polledPaypal(t *testing.T, handler http.Handler) map[string]any {
 }
 
 func TestThePaypalPressRegistersTheListenerAndWritesThePairAndItsIdAsVars(t *testing.T) {
-	handler, asked, cloudflare := settingPaypal(t, "an-account")
+	handler, asked, cloudflare, _, _ := settingPaypal(t, "an-account")
 
 	status, answer := press(t, handler, "/api/paypal/setup", paypalPressed)
 	if status != http.StatusOK {
@@ -133,7 +144,7 @@ func TestThePaypalPressRegistersTheListenerAndWritesThePairAndItsIdAsVars(t *tes
 }
 
 func TestNeitherHalfOfThePairReachesAnythingThePaypalRunAnswersWith(t *testing.T) {
-	handler, _, _ := settingPaypal(t, "an-account")
+	handler, _, _, _, _ := settingPaypal(t, "an-account")
 	press(t, handler, "/api/paypal/setup", paypalPressed)
 
 	written, err := json.Marshal(polledPaypal(t, handler))
@@ -155,7 +166,7 @@ func TestAnEmptyOrPaddedPaypalSlotIsRefusedBeforeAnythingLeavesThisMachine(t *te
 		`{"clientId":"Aa-a","secret":"EL-b "}`,
 	} {
 		t.Run(body, func(t *testing.T) {
-			handler, asked, _ := settingPaypal(t, "an-account")
+			handler, asked, _, _, _ := settingPaypal(t, "an-account")
 			status, answer := press(t, handler, "/api/paypal/setup", body)
 
 			if status != http.StatusBadRequest {
@@ -174,12 +185,61 @@ func TestAnEmptyOrPaddedPaypalSlotIsRefusedBeforeAnythingLeavesThisMachine(t *te
 }
 
 func TestNothingIsSetUpOnPaypalForAMachineThatHasChosenNoAccount(t *testing.T) {
-	handler, asked, _ := settingPaypal(t, "")
+	handler, asked, _, _, _ := settingPaypal(t, "")
 
 	if status, _ := press(t, handler, "/api/paypal/setup", paypalPressed); status != http.StatusConflict {
 		t.Fatalf("the press answered %d", status)
 	}
 	if len(asked()) != 0 {
 		t.Errorf("PayPal was asked %v", asked())
+	}
+}
+
+// the run's own step asks the deployment about the PayPal account it has just stored a pair for, and
+// says which.
+func TestThePaypalRunPressesTheDeploymentAboutThePaypalAccount(t *testing.T) {
+	handler, _, _, _, errands := settingPaypal(t, "an-account")
+	press(t, handler, "/api/paypal/setup", paypalPressed)
+
+	landed := polledPaypal(t, handler)
+	if outcome, _ := landed["outcome"].(map[string]any); outcome == nil || outcome["kind"] != "done" {
+		t.Fatalf("the run ended %v", landed)
+	}
+
+	pressing := []errand{}
+	for _, one := range errands() {
+		if one.method == http.MethodPost && one.path == deployment.RecurringPath {
+			pressing = append(pressing, one)
+		}
+	}
+	if len(pressing) != 1 {
+		t.Fatalf("the deployment was pressed %d times, want once", len(pressing))
+	}
+	if pressing[0].body["processor"] != release.PaypalProcessor {
+		t.Errorf("the press asked %v, want the PayPal account", pressing[0].body)
+	}
+}
+
+func TestAPaypalRunThatStoppedAtTheRepeatingPlanStaysUntilTheNextPress(t *testing.T) {
+	handler, _, cloudflare, surface, _ := settingPaypal(t, "an-account")
+	surface.Close()
+
+	press(t, handler, "/api/paypal/setup", paypalPressed)
+	stopped := polledPaypal(t, handler)
+	outcome, _ := stopped["outcome"].(map[string]any)
+	if outcome == nil || outcome["kind"] != "unrepeating" || outcome["setup"] == nil {
+		t.Fatalf("the run ended %v", stopped)
+	}
+	if _, carried := outcome["awaitingKey"].(bool); !carried {
+		t.Errorf("the outcome carries no awaitingKey: %v", outcome)
+	}
+	// the write stands in front of the deployment's step, so the pair is stored whatever it answered.
+	if !strings.Contains(strings.Join(*cloudflare, ","), "PATCH "+settingsOf(release.Baked.Name)) {
+		t.Errorf("the pair was not written; the run made %v", *cloudflare)
+	}
+
+	_, again := ask(t, handler, "/api/paypal/run")
+	if again["run"] == nil {
+		t.Error("a run that stopped was dropped by the reading that observed it")
 	}
 }

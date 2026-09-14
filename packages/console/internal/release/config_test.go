@@ -489,7 +489,9 @@ func counted(t *testing.T, source, constant string) int {
 // a press the deployment refuses for a name no processor answers to, and a run that would report
 // the account it just stored a key for as one nobody could act on.
 func TestTheAccountTheRunPressesAboutIsOneTheWireNames(t *testing.T) {
-	if !slices.Contains(PaymentProcessors, StripeProcessor) {
-		t.Errorf("%q is no processor a deployment charges on: %v", StripeProcessor, PaymentProcessors)
+	for _, named := range []string{StripeProcessor, PaypalProcessor} {
+		if !slices.Contains(PaymentProcessors, named) {
+			t.Errorf("%q is no processor a deployment charges on: %v", named, PaymentProcessors)
+		}
 	}
 }

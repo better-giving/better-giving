@@ -1,7 +1,8 @@
 import { AppShell } from '@better-giving/operator/components/shell/AppShell';
 import { type ReactNode, act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub } from 'react-router';
+import { openingLabel } from '@better-giving/operator/progress-bar';
+import { createRoutesStub, useLocation } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { DESTINATION_GROUPS } from './destinations';
 import { RouterLink } from './router-link';
@@ -49,7 +50,11 @@ function stub() {
 				</AppShell>
 			)
 		},
-		{ path: second.href, Component: () => <p>arrived</p> }
+		{
+			path: second.href,
+			// the words the bar over the move read, off the history state the cell's link carried.
+			Component: () => <p data-opening={openingLabel(useLocation().state)}>arrived</p>
+		}
 	]);
 	return mount(<Stub initialEntries={[first.href]} />);
 }
@@ -78,4 +83,13 @@ it('arrives at the destination the cell names', async () => {
 	await press(root, second.label);
 
 	expect(root.textContent).toBe('arrived');
+});
+
+it('names the destination to the bar over the move', async () => {
+	const root = stub();
+	await press(root, second.label);
+
+	expect(root.querySelector('[data-opening]')?.getAttribute('data-opening')).toBe(
+		`Opening ${second.label}`
+	);
 });

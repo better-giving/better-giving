@@ -152,8 +152,8 @@ export const machineNoted = ({
 
 /**
  * the lines about this machine, alone: what the head states under its strip, and what the sections
- * layout (../routes/_sections.tsx) states at the top of each page's panel body (`inPanel`), where the
- * shell's strip is the page's own.
+ * layout (../routes/_sections.tsx) states at the top of each page's panel body (`inPanel`), where no
+ * strip is drawn.
  */
 export function HeadNotes({
 	remembered,

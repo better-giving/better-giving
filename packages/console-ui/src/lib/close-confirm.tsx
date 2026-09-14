@@ -4,20 +4,20 @@ import type { ReactNode } from 'react';
 import { Link, useFetcher, useNavigate } from 'react-router';
 import { saidClosing } from './close-answer';
 
-// the two presses that stand over every screen rather than on one — reading everything again, and
-// ending this console — and the confirm the second asks through.
+// the press that stands over every screen rather than on one — ending this console — and the confirm
+// it asks through, beside the intent `/`'s check-again press posts.
 //
-// **both are answered by `/`'s `clientAction` (../routes/_index.tsx), wherever they are pressed.**
+// **the close is answered by `/`'s `clientAction` (../routes/_index.tsx), wherever it is pressed.**
 // a press is answered by the route whose address it posts to, and the sections layout has no address
-// of its own to post to (../routes/_sections.tsx): it is pathless, so no address names it. so both
-// post to `/?index` through a fetcher, which answers without navigating off the page the operator
+// of its own to post to (../routes/_sections.tsx): it is pathless, so no address names it. so it
+// posts to `/?index` through a fetcher, which answers without navigating off the page the operator
 // is on — the `?index` is what names that route rather than the root above it
 // (https://reactrouter.com/explanation/index-query-param).
 //
 // **the close is one fetcher under one key**, so the screen that draws the confirm and the screen
 // that goes blank once it is answered read the same answer without handing it between them.
 
-/** where both presses post. */
+/** where the close posts. */
 export const SHELL_ACTION = '/?index';
 
 /** what the press that reads everything again posts. */

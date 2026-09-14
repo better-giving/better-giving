@@ -246,6 +246,12 @@ var (
 // no deployment answers to, and is refused for a name no processor answers to.
 const StripeProcessor = "stripe"
 
+// PaypalProcessor is what the processor list above calls the PayPal account this binary sets up, and
+// is what that run's own press names when it asks a deployment about that account alone.
+//
+// Held to that list by ./config_test.go for the reason StripeProcessor is.
+const PaypalProcessor = "paypal"
+
 // what the deployment's webhook endpoint is: the path it answers on, the version its deliveries are
 // serialised in, and everything it subscribes to.
 //

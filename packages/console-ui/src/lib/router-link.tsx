@@ -1,9 +1,10 @@
 import type { DestinationGroup } from '@better-giving/operator/components/shell/AppShell';
+import { opening } from '@better-giving/operator/progress-bar';
 import type { LinkProps } from 'react-router';
 import { Link } from 'react-router';
 import type { ReactNode } from 'react';
 import { createContext, useContext } from 'react';
-import { opening } from './progress-bar';
+import { warmProcessorPage } from './processor-cache';
 
 // what the rail's cells are drawn as on this console: the `link` ../routes/_sections.tsx hands
 // `AppShell`.
@@ -15,8 +16,14 @@ import { opening } from './progress-bar';
 // (../internal-links.spec.ts).
 //
 // **a move names the page it opens.** the bar over a move reads its words off the link's history
-// state (./progress-bar.ts), and a cell hands its link only the address — so the rail's labels stand
-// in a context over the shell, keyed by that address, and a cell with none there moves as `Opening`.
+// state (packages/operator/src/progress-bar.ts), and a cell hands its link only the address — so the
+// rail's labels stand in a context over the shell, keyed by that address, and a cell with none there
+// moves as `Opening`.
+//
+// **a cell pointed at loads its page ahead of the press**: the route's module on hover or focus
+// (`prefetch="intent"`), and for a processor page the reading too (`warmProcessorPage` in
+// ./processor-cache.ts), so the press that follows draws at once. no other page reads anything the
+// sections layout above it has not already read.
 
 export type RouterLinkProps = Omit<LinkProps, 'to'> & { href: string };
 
@@ -37,13 +44,23 @@ export function RailLabelsProvider({
 	return <RailLabels.Provider value={labels}>{children}</RailLabels.Provider>;
 }
 
-export function RouterLink({ href, ...rest }: RouterLinkProps) {
+export function RouterLink({ href, onMouseEnter, onFocus, ...rest }: RouterLinkProps) {
 	const label = useContext(RailLabels).get(href);
+	const warm = () => warmProcessorPage(href, window.location.origin);
 	return (
 		<Link
 			to={href}
+			prefetch="intent"
 			state={label === undefined ? undefined : opening(`Opening ${label}`)}
 			{...rest}
+			onMouseEnter={(event) => {
+				onMouseEnter?.(event);
+				warm();
+			}}
+			onFocus={(event) => {
+				onFocus?.(event);
+				warm();
+			}}
 		/>
 	);
 }

@@ -76,6 +76,10 @@ function press(root: HTMLElement): HTMLButtonElement {
 	return found as HTMLButtonElement;
 }
 
+it('draws no heading of its own: the frame names the page', () => {
+	expect(screen({ sentTo: null }).querySelector('h1')).toBe(null);
+});
+
 it('reports the invitation at the press that sent it, with nothing left to press', () => {
 	const button = press(screen({ sentTo: 'sam@riverbanktrust.org' }));
 

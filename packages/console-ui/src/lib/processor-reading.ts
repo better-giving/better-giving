@@ -1,7 +1,6 @@
 import { redirect } from 'react-router';
 import { readPayments, readRecurring } from '../api/client';
 import { readConsole } from './console-reading';
-import { holdBar } from './progress-bar';
 
 // what both processor pages are read off (../routes/_sections.payments.stripe.tsx,
 // ../routes/_sections.payments.paypal.tsx): the console's reading, which the sections layout above
@@ -17,12 +16,10 @@ import { holdBar } from './progress-bar';
 // by the reading that observed it (../api/client.ts), so a read on a face that redirects is a report
 // thrown away with nothing on screen to give it.
 //
-// **the bar over the screen being replaced is finished here too**: a processor page is opened from
-// the rail, which reads nothing again above it, and is an address an operator can reload — both put a
-// bar on the screen until this reading is in (./progress-bar.ts).
+// no bar is held here: whether this reading stands behind one is ./processor-cache.ts's to say, since
+// a reading taken ahead of a press on the rail stands behind none.
 
 export async function readProcessorScreen<Run>(request: Request, readRun: () => Promise<Run>) {
-	const bar = holdBar(new URL(request.url).pathname);
 	const { reading } = await readConsole(request);
 	if (reading.face.kind !== 'ready') throw redirect('/', 307);
 
@@ -37,7 +34,6 @@ export async function readProcessorScreen<Run>(request: Request, readRun: () => 
 	const payments = readPayments();
 	const recurring = readRecurring();
 	const run = await readRun();
-	await bar.finish();
 
 	return {
 		address: reading.face.address,

@@ -1,20 +1,14 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import {
-	freeWithheldVars,
-	paypalRun,
-	setUpRecurring,
-	setVars,
-	startPaypalSetup
-} from '../api/client';
+import { freeWithheldVars, setUpRecurring, setVars, startPaypalSetup } from '../api/client';
 import type { RecurringSetup, VarsWritten } from '../api/types';
 import { consoleRereads } from '../lib/dialog-params';
 import { CHARITY_INTENT, charityEdit } from '../lib/paypal-charity';
 import type { PaypalPress } from '../lib/paypal-section';
 import { PaypalSection } from '../lib/paypal-section';
 import { PAYPAL_SETUP_INTENT, paypalPairPosted } from '../lib/paypal-setup';
-import { readProcessorScreen } from '../lib/processor-reading';
+import { forgetReadings, readProcessorPage } from '../lib/processor-cache';
 import { RECURRING_INTENT } from '../lib/recurring-block';
 import { usePress } from '../lib/use-press';
 import { FREE_INTENT } from '../lib/withheld-values';
@@ -25,7 +19,8 @@ import type { Route } from './+types/_sections.payments.paypal';
 // what it draws is ../lib/paypal-section.tsx whole.
 //
 // the account, the worker and the seventeen values are the sections layout's reading
-// (./_sections.tsx); what this page reads on top of them is ../lib/processor-reading.ts's.
+// (./_sections.tsx); what this page reads on top of them is ../lib/processor-reading.ts's, kept between
+// visits by ../lib/processor-cache.ts.
 
 const TITLE = 'PayPal';
 
@@ -33,8 +28,8 @@ export function meta(): Route.MetaDescriptors {
 	return [{ title: `${TITLE} · ${CONSOLE_TITLE}` }];
 }
 
-export function clientLoader({ request }: Route.ClientLoaderArgs) {
-	return readProcessorScreen(request, paypalRun);
+export function clientLoader(args: Route.ClientLoaderArgs) {
+	return readProcessorPage(args, 'paypal');
 }
 
 /**
@@ -42,6 +37,7 @@ export function clientLoader({ request }: Route.ClientLoaderArgs) {
  * account, the worker and the address it is spent on read inside the binary and never posted.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');
 

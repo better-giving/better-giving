@@ -7,13 +7,12 @@ import {
 	levelWallets,
 	setUpRecurring,
 	setVars,
-	startStripeSetup,
-	stripeRun
+	startStripeSetup
 } from '../api/client';
 import type { RecurringSetup, VarsWritten, WalletsLevel } from '../api/types';
 import { consoleRereads } from '../lib/dialog-params';
 import { heldValues } from '../lib/held-values';
-import { readProcessorScreen } from '../lib/processor-reading';
+import { forgetReadings, readProcessorPage } from '../lib/processor-cache';
 import { RECURRING_INTENT } from '../lib/recurring-block';
 import { STRIPE_REMOVAL, stripeKeyEdits } from '../lib/stripe-edits';
 import { SET_UP_INTENT } from '../lib/stripe-keys';
@@ -30,7 +29,7 @@ import type { Route } from './+types/_sections.payments.stripe';
 //
 // the account, the worker and the seventeen values are the sections layout's reading
 // (./_sections.tsx); what this page reads on top of them is ../lib/processor-reading.ts's, which also
-// says why any face but ready is `/`.
+// says why any face but ready is `/`, and it is kept between visits by ../lib/processor-cache.ts.
 
 const TITLE = 'Stripe';
 
@@ -38,8 +37,8 @@ export function meta(): Route.MetaDescriptors {
 	return [{ title: `${TITLE} · ${CONSOLE_TITLE}` }];
 }
 
-export function clientLoader({ request }: Route.ClientLoaderArgs) {
-	return readProcessorScreen(request, stripeRun);
+export function clientLoader(args: Route.ClientLoaderArgs) {
+	return readProcessorPage(args, 'stripe');
 }
 
 /**
@@ -49,6 +48,7 @@ export function clientLoader({ request }: Route.ClientLoaderArgs) {
  * worker and the address a press is spent on are read inside the binary and never posted.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');
 

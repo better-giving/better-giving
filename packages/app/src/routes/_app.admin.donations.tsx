@@ -1,7 +1,6 @@
 import { TRIBUTE_KIND_LABELS } from '@better-giving/form/v1';
 import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Column } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formatMinor } from '$lib/donations/money';
@@ -106,7 +105,7 @@ const RAIL_LABELS: Record<PaymentMethod, string> = {
 	venmo: 'Venmo'
 };
 
-/** the screen's name, rendered as the document title and as the heading. */
+/** the screen's name in the document title. the frame's strip names the page (./_app.tsx). */
 const SCREEN_TITLE = 'Gifts';
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
@@ -199,8 +198,6 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 		// own, so one that is not rendered leaves no space behind it. the wide measure, because a
 		// table plane is what it exists for.
 		<Column wide>
-			<PageHeader title={SCREEN_TITLE} />
-
 			{/* the table sits in the column directly, and nothing wraps it. a grid item's automatic
 			    minimum size is its min-content size, so a plain element between the column and the
 			    plane is one the column can never make narrower than the whole table: the page then

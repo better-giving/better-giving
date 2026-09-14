@@ -892,9 +892,10 @@ export type PaypalFailure = {
  * which part of the PayPal chain is running (`packages/console/internal/paypal/setup.go`).
  *
  * `registering` is the address derived, the app's listeners read and the one here settled;
- * `storing` is the pair and that listener's id written onto the deployment in one write.
+ * `storing` is the pair and that listener's id written onto the deployment in one write;
+ * `repeating` is the deployment asked to set up repeating gifts on that account.
  */
-export type PaypalStage = 'authorizing' | 'registering' | 'storing';
+export type PaypalStage = 'authorizing' | 'registering' | 'storing' | 'repeating';
 
 /**
  * what the press did about the listener at this deployment's address.
@@ -915,8 +916,8 @@ export type PaypalFacts = {
  *
  * the wire is flat — every field on every answer, empty where a kind says nothing about it — and
  * this is it read per kind. **every stop in front of `storing` wrote nothing**: the pair and the
- * listener id are one write at the end, so a deployment is never left holding a pair with no
- * listener behind it.
+ * listener id are one write once the listener is settled, so a deployment is never left holding a
+ * pair with no listener behind it.
  */
 export type PaypalSetup =
 	| { kind: 'done' }
@@ -936,6 +937,17 @@ export type PaypalSetup =
 	| { kind: 'unresubscribed'; listenerId: string; failure: PaypalFailure }
 	/** the listener is settled and the write did not land; the next press finds and keeps it. */
 	| { kind: 'unstored'; listenerId: string; written: VarsUnwritten }
+	/**
+	 * the deployment could not set up repeating gifts on the PayPal account.
+	 *
+	 * everything in front of it landed, so what it leaves is a deployment taking one-time gifts on
+	 * PayPal.
+	 *
+	 * `awaitingKey` is that refusal being the deployment not serving the pair yet: the store landed
+	 * seconds earlier and its edge has not caught up. `setup` still carries what the deployment
+	 * said, and on that arm it is not drawn — the sentence names a value this press has already set.
+	 */
+	| { kind: 'unrepeating'; setup: RecurringSetup; awaitingKey: boolean }
 	/** the console failed part way through, and how far it got was not observed. carries nothing. */
 	| { kind: 'console-stopped' };
 

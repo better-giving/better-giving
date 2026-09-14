@@ -120,7 +120,8 @@ func New(options Options) http.Handler {
 	widgetRoutes(routes, options.Flow, reads, sends, options.Accounts)
 	stripeRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, doors, processor,
 		presses)
-	paypalRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, bindPaypal, presses)
+	paypalRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, doors, bindPaypal,
+		presses)
 	closeRoutes(routes, options.Close)
 	routes.HandleFunc("GET /api/version", func(w http.ResponseWriter, _ *http.Request) {
 		// a placeholder while the folds are still the react app's own: what it says is true, and
