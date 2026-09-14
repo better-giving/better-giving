@@ -230,12 +230,13 @@ export type RaisedMonth = {
  * no special case here.
  *
  * **the subtree is walked rather than listed**, and that is the whole reason this is raw SQL: the
- * chart of accounts has two revenue children today and gains one per program, so a read naming
- * `4110` and `4120` would stop counting the moment a program's own account is posted to — silently,
- * because every row still reads clean. `account_parent_not_self_check` in ../db/schema.ts is what
- * makes the walk terminate; drizzle has no `with recursive` builder, so the statement is
- * written out and the table and column names come off the schema objects rather than being spelled
- * again.
+ * chart of accounts has two revenue children today, and a migration adding another anywhere under
+ * `4100` is all a fork needs to change that — a program is its own `program` row and adds none. a
+ * read naming `4110` and `4120` would stop counting the moment that account is posted to —
+ * silently, because every row still reads clean. `account_parent_not_self_check` in
+ * ../db/schema.ts is what makes the walk terminate; drizzle has no `with recursive` builder, so
+ * the statement is written out and the table and column names come off the schema objects rather
+ * than being spelled again.
  *
  * the rollup itself is inside the walk and contributes nothing: `is_postable = 0` on it, and
  * `ledger_entry`'s composite foreign key is what makes a line naming it unwritable.

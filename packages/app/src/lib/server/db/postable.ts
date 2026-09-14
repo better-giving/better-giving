@@ -36,10 +36,12 @@
  * `revenue_account_id`, because schema.ts stamps that column — reading one is not a way in,
  * it is the brand arriving intact.
  *
- * an id crossing back in from outside the process would need a third door: a read of
- * `account` by that id, handing the row to (2). no screen posts one — no operator surface
- * names an account at all — so the door does not exist rather than sitting unused. a third
- * door that casts needs a third entry in that allowlist, which is a diff a reviewer sees.
+ * an id crossing back in from outside the process — the account a correction names — goes
+ * through (1): `postableIdFromSubmitted` in ./accounts.ts finds the key that seeds the id and
+ * hands back `postableId(key)`, and `null` for anything no key seeds. it does not cast, so it is
+ * not a third door. an operator-added account would need one — a read of `account` by that id,
+ * handing the row to (2) — and a third door that casts needs a third entry in that allowlist,
+ * which is a diff a reviewer sees.
  * ---------------------------------------------------------------------------
  */
 export type PostableAccountId = string & { readonly __postable: unique symbol };

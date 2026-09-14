@@ -6,19 +6,29 @@ import { Mark } from './Mark.jsx';
  *
  * @typedef {'descriptive' | 'momentary'} StatusRegister
  *
- * @typedef {object} StatusWordProps
+ * @typedef {object} StatusWordBase
  * @property {ReactNode} [children]
  * @property {StatusRegister | undefined} [register]
  * @property {boolean | undefined} [unset] no value at all, which says something different from `secondary`.
  * @property {boolean | undefined} [secondary]
  * @property {MarkName | undefined} [mark]
+ *
+ * @typedef {object} StatusWordBlocked
  * @property {boolean | undefined} [blocked] a momentary word reporting that the thing could not be done.
+ * @property {undefined} [neutral]
+ *
+ * @typedef {object} StatusWordNeutral
+ * @property {boolean | undefined} [neutral] a momentary word reporting that the press changed nothing: neither done nor refused.
+ * @property {undefined} [blocked]
+ *
+ * @typedef {StatusWordBase & (StatusWordBlocked | StatusWordNeutral)} StatusWordProps
  */
 
 /* three registers, and the register is carried by position and accompaniment, not by hue.
    descriptive — a fact. an ink word with a flat neutral underscore, no mark, no colour,
                  uniform across every value so nothing ranks.
-   momentary   — this just happened, on this control. accent, with a mark, transient. */
+   momentary   — this just happened, on this control. accent, with a mark, transient; attention
+                 when `blocked`, and ink with the info mark when `neutral`. */
 /** @param {StatusWordProps} props */
 export function StatusWord({
 	children,
@@ -26,12 +36,21 @@ export function StatusWord({
 	unset = false,
 	secondary = false,
 	mark,
-	blocked = false
+	blocked = false,
+	neutral = false
 }) {
 	if (register === 'momentary') {
 		return (
-			<span className={`adm-momentary${blocked ? ' adm-momentary--blocked' : ''}`}>
-				<Mark name={mark || 'check'} />
+			<span
+				className={
+					blocked
+						? 'adm-momentary adm-momentary--blocked'
+						: neutral
+							? 'adm-momentary adm-momentary--neutral'
+							: 'adm-momentary'
+				}
+			>
+				<Mark name={mark || (neutral ? 'info' : 'check')} />
 				{children}
 			</span>
 		);

@@ -561,8 +561,8 @@ export const account = sqliteTable(
  * `entry_group_source_idx` below, which is the constraint it is part of.
  *
  * declared here rather than in a leaf, which is the default this file's `enums` rule states: no
- * module this file imports needs it, and no component renders it — nothing in /admin lists a
- * journal entry.
+ * module this file imports needs it. /admin/books lists journal entries and draws a word for each
+ * source from ../../ledger/sources.ts, which takes only this type.
  */
 export const ENTRY_SOURCE_TYPES = ['payment', 'donation', 'refund', 'fee', 'adjustment'] as const;
 export type EntrySourceType = (typeof ENTRY_SOURCE_TYPES)[number];

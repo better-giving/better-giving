@@ -248,10 +248,10 @@ describe('readRaisedByMonth()', () => {
 	});
 
 	it('counts a gift posted to a revenue account this codebase does not name', async () => {
-		// the chart gains a child under 4110 per program, and none of them is in
+		// a revenue account a fork's migration adds under the donations subtree, and not in
 		// ../db/accounts.ts's map. a read that named the two seeded revenue accounts would stop
-		// counting the moment the first program's own account was posted to — silently, because
-		// every row still reads clean. the walk is what makes this pass.
+		// counting the moment it was posted to — silently, because every row still reads clean.
+		// the walk is what makes this pass.
 		const id = uuidv7();
 		await env.DB.prepare(
 			`insert into account (id, code, name, type, is_deductible, is_tax, is_postable,

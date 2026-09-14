@@ -10,15 +10,17 @@ describe('the rail', () => {
 			'/admin/donors',
 			'/admin/donations',
 			'/admin/recurring',
-			'/admin/members'
+			'/admin/members',
+			'/admin/books'
 		]);
 	});
 
-	it('stands the dashboard alone, then the records of giving, then who can sign in', () => {
+	it('stands the dashboard alone, then the records of giving, then who can sign in, then the books', () => {
 		expect(DESTINATION_GROUPS.map((group) => group.destinations.map((d) => d.label))).toEqual([
 			['Dashboard'],
 			['Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
-			['Members']
+			['Members'],
+			['Books']
 		]);
 	});
 });
@@ -32,6 +34,9 @@ describe('what a destination is called', () => {
 		// and the people who can sign in are members, never users or accounts.
 		expect(DESTINATIONS.find((d) => d.href === '/admin/members')?.label).toBe('Members');
 		expect(DESTINATIONS.map((d) => d.label)).not.toContain('Users');
+		// and the journal entries are the books, never the ledger.
+		expect(DESTINATIONS.find((d) => d.href === '/admin/books')?.label).toBe('Books');
+		expect(DESTINATIONS.map((d) => d.label)).not.toContain('Ledger');
 	});
 });
 

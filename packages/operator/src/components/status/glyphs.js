@@ -1,6 +1,7 @@
 import {
 	ArrowLeft,
 	Bell,
+	BookOpen,
 	Building2,
 	Check,
 	ChevronDown,
@@ -59,6 +60,7 @@ import {
 export const GLYPHS = {
 	'arrow-left': ArrowLeft,
 	bell: Bell,
+	'book-open': BookOpen,
 	'building-2': Building2,
 	check: Check,
 	'chevron-down': ChevronDown,

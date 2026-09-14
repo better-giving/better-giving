@@ -1,9 +1,9 @@
 /**
  * every destination the staff surface has, in the order an operator works: the state of giving in
- * one look, then the forms that take the money, the donors it came from, the gifts themselves, and
- * the ones that repeat. the dashboard is first because it is the surface's own address and what an
- * operator opens on, and each one after it is a step further from the form that produced the
- * record.
+ * one look, then the forms that take the money, the donors it came from, the gifts themselves, the
+ * ones that repeat, who may sign in, and the books all of it lands in. the dashboard is first
+ * because it is the surface's own address and what an operator opens on, and each record after it
+ * is a step further from the form that produced it.
  *
  * the dashboard states figures and every other one is a collection. what a deployment holds one of
  * — payments, mail, spam protection, the site list, the organisation's legal identity — is set up
@@ -31,9 +31,9 @@
  * did would change every link and every server redirect at once rather than one call site at a
  * time.
  *
- * the rail's column draws the destinations in three groups, with a rule between each: the
- * dashboard alone, the one destination stating figures; the records of giving; and Members, who
- * can open the rest and record no gift. no
+ * the rail's column draws the destinations in four groups, with a rule between each: the
+ * dashboard alone, the one destination stating figures; the records of giving; Members, who can
+ * open the rest and record no gift; and the books, which everything above writes into. no
  * group carries a heading: the rule is the whole of the separation. the groups are the shape
  * `AppShell` takes as `groups`, and `DESTINATIONS` is the same entries flat, which is what a match
  * against an address walks.
@@ -63,10 +63,17 @@ export const DESTINATION_GROUPS = [
 	},
 	{
 		destinations: [
-			// last, and the only destination that is not a record of giving: it is who can open the four
-			// above. what a deployment holds one of is set up on the console, and this is neither — a
+			// who can open every destination on this rail, and the one that is not a record of giving.
+			// what a deployment holds one of is set up on the console, and this is neither — a
 			// colleague is a row somebody adds and removes, which is what makes it a collection.
 			{ href: '/admin/members', label: 'Members', short: 'Members', mark: 'shield-check' }
+		]
+	},
+	{
+		destinations: [
+			// last, in a group of its own: the journal entries every record above posts, and where a
+			// correction is posted against them. neither a record of giving nor a way in.
+			{ href: '/admin/books', label: 'Books', short: 'Books', mark: 'book-open' }
 		]
 	}
 ] as const;

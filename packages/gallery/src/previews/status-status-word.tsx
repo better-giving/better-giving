@@ -10,13 +10,14 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  * packages/operator/src/styles/adm.css rather than anything either prop states.
  *
  * momentary is the other register and it discards three of the props. `unset` and `secondary` are
- * read only on the descriptive path (packages/operator/src/components/status/StatusWord.jsx:41),
+ * read only on the descriptive path (packages/operator/src/components/status/StatusWord.jsx:60),
  * so a momentary word handed either is the plain momentary word — drawn here beside one that was
  * not, because the two are identical and that is the finding.
  *
  * `mark` is the momentary register's only variable and defaults to the tick. `blocked` is the
  * momentary word that reports the thing could not be done, and it is the whole of the second
- * drawing: same shape, attention ink.
+ * drawing: same shape, attention ink. `neutral` is the third: a press that changed nothing, in ink
+ * with the info mark, and it cannot be handed alongside `blocked`.
  *
  * a word with no children is the last specimen in each register, because `children` is optional in
  * both. descriptive draws an empty inline box and momentary draws its mark with nothing after it —
@@ -71,6 +72,11 @@ export default function StatusStatusWordPreview() {
 			<p>
 				<StatusWord register="momentary" blocked mark="triangle-alert">
 					Could not save
+				</StatusWord>
+			</p>
+			<p>
+				<StatusWord register="momentary" neutral>
+					Already in the books, from the earlier press
 				</StatusWord>
 			</p>
 			<p>

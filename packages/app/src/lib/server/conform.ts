@@ -87,8 +87,8 @@ import {
 //
 // **a schema that runs in the browser cannot live under `src/lib/server/**`.** the same rules
 // validate in the browser before a screen submits, and a component cannot import from here at
-// all. the shared schema modules sit at `$lib/forms/` and `$lib/contacts/`, next to the vocabulary
-// they already share; `$lib/forms/input-schema.ts` is where that is argued. the
+// all. the shared schema modules sit at `$lib/forms/`, `$lib/contacts/` and `$lib/ledger/`, next to
+// the vocabulary they already share; `$lib/forms/input-schema.ts` is where that is argued. the
 // browser's half of this seam is `$lib/admin/use-admin-form.ts`, which mounts the form the screen
 // stated and is the only module in this app that calls conform's `useForm`.
 //
@@ -245,8 +245,9 @@ export function invalid<E extends object = object>(
 	/**
 	 * anything else the page needs that is not a field error and not a banner.
 	 *
-	 * no caller today. what it is for is an answer belonging to no box — a sentence that sits over a
-	 * fieldset rather than under either input in it, or a value that is not a message at all — and it
+	 * what it is for is an answer belonging to no box — a sentence that sits over a fieldset rather
+	 * than under either input in it, or a value that is not a message at all, which is the books
+	 * screen's `freshId` (`src/routes/_app.admin.books.tsx`) — and it
 	 * rides alongside the form rather than inside it for the reason `./contacts/contact-input.ts`
 	 * gives about growing the parser a second channel: the placement is the screen's, and the shape
 	 * every other screen returns must not change to make room for it.

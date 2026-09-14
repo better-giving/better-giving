@@ -21,6 +21,7 @@ import type { Account } from './schema';
 type AccountRow = {
 	id: string;
 	code: string;
+	name: string;
 	type: string;
 	is_postable: number;
 	parent_id: string | null;
@@ -28,13 +29,17 @@ type AccountRow = {
 
 async function seededAccounts(): Promise<AccountRow[]> {
 	const { results } = await env.DB.prepare(
-		'select id, code, type, is_postable, parent_id from account order by code'
+		'select id, code, name, type, is_postable, parent_id from account order by code'
 	).all<AccountRow>();
 	return results;
 }
 
-/** the identity a ledger entry actually depends on. */
-const identity = (a: { id: string; code: string; type: string }) => `${a.code}|${a.type}|${a.id}`;
+/**
+ * the identity a ledger entry depends on, and the name the account picker shows beside its code —
+ * a name out of step with the seed would put one account's label on another's figures.
+ */
+const identity = (a: { id: string; code: string; name: string; type: string }) =>
+	`${a.code}|${a.type}|${a.id}|${a.name}`;
 
 describe('seeded chart of accounts', () => {
 	// read once, in a hook rather than in the describe body: the rows now arrive over an
@@ -48,7 +53,7 @@ describe('seeded chart of accounts', () => {
 	const rollups = Object.values(ROLLUPS);
 	const declared = [...posting, ...rollups];
 
-	it('matches accounts.ts exactly on (code, type, id), with no extra rows on either side', () => {
+	it('matches accounts.ts exactly on (code, type, id, name), with no extra rows on either side', () => {
 		expect(rows.map(identity).sort()).toEqual(declared.map(identity).sort());
 	});
 

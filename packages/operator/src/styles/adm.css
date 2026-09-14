@@ -1623,8 +1623,9 @@
 	}
 
 	/* the momentary register: this just happened, on this control. it reports beside the
-	   control that caused it, in the accent, and is never a toast and never a banner at the
-	   head of the page. */
+	   control that caused it and is never a toast and never a banner at the head of the page.
+	   three tones: the accent for done, attention for blocked, and ink for a press that changed
+	   nothing — neither done nor refused. */
 	.adm-momentary {
 		display: inline-flex;
 		align-items: center;
@@ -1637,6 +1638,10 @@
 
 	.adm-momentary--blocked {
 		color: var(--admin-tone-attention-ink);
+	}
+
+	.adm-momentary--neutral {
+		color: var(--admin-ink-2);
 	}
 
 	/* ---------- banner ----------------------------------------------------------------
