@@ -1,14 +1,16 @@
-import { AnchoredNote } from '@better-giving/operator/behaviour/AnchoredCard';
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import type { Tone } from '@better-giving/operator/components/closed-sets';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
-import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
+import { CodeChip, InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
-import { LedgerSkeleton } from '@better-giving/operator/components/status/LedgerSkeleton';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
+import {
+	CHARIOT_EVENT_CATEGORY,
+	CHARIOT_WEBHOOK_PATH
+} from '@better-giving/operator/chariot/webhook-subscription';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
@@ -46,8 +48,7 @@ import type { HeldValues } from './held-values';
 import { heldValues, withheldAmong } from './held-values';
 import { useKeptPress } from './kept-press';
 import { REACHED_CHARIOT, pressStopped } from './press-stopped';
-import type { ConfiguredPayments } from './processor-payments';
-import { EVIDENCE_SAYS, STANDING, configuredStanding, hoistSharedNote } from './processor-payments';
+import { configuredStanding } from './processor-payments';
 import { keysTrouble, noAnswer, valuesGuard } from './processor-screen';
 import { useReseeded } from './reseed';
 import { pollOutlived, runKind, standingRun } from './run-poll';
@@ -91,11 +92,14 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 // mounts it and the press it makes is answered there; what it reaches for itself is the run while it
 // goes.
 
-/** where Chariot's own keys are made, one press off the heading. */
-const DASHBOARD = 'https://dashboard.givechariot.com';
-
-/** where an organisation missing from Chariot's directory asks to be added. */
+/**
+ * where a sandbox key is asked for, and where an organisation missing from Chariot's directory asks
+ * to be added.
+ */
 const SUPPORT = 'support@givechariot.com';
+
+/** where a live key is asked for, once Chariot has reviewed the donation form. */
+const INTEGRATIONS = 'integrations@givechariot.com';
 
 /**
  * the group this section's press writes: the three boxes' values and the two the run settles beside
@@ -107,8 +111,19 @@ const CHARIOT_WRITES = SECRET_GROUPS.filter((group) => group.id === CHARIOT_GROU
 
 /** what each box is called. */
 const LABEL: Record<ChariotBox, string> = {
-	apiKey: 'Chariot API key',
-	address: 'Chariot address'
+	apiKey: 'API key',
+	address: 'API address'
+};
+
+/** where a box's value comes from, for the boxes whose label cannot say it. */
+const HINT: Partial<Record<ChariotBox, ReactNode>> = {
+	apiKey: (
+		<>
+			Chariot issues keys by email. Ask <a href={`mailto:${SUPPORT}`}>{SUPPORT}</a> for a sandbox
+			key. A live key comes from <a href={`mailto:${INTEGRATIONS}`}>{INTEGRATIONS}</a> once Chariot
+			has reviewed your donation form.
+		</>
+	)
 };
 
 /** the two boxes' names, which a refusal about the key at this address is about together. */
@@ -173,16 +188,22 @@ export function ChariotSection({
 }: ChariotSectionProps): ReactNode {
 	const guard = valuesGuard(values.vars, { workerName, accountName });
 	if (guard !== null || values.vars.kind !== 'read') return guard;
+	const holding = heldValues(values.vars.vars);
 	return (
 		<Section>
-			{/* what the account answered, above the boxes that change it, for the Stripe screen's reason.
-			    shaped as it resolves — the one rail's line — so the page does not move when it lands. */}
-			<Suspense fallback={<LedgerSkeleton label="Asking this deployment…" blocks={[1]} />}>
+			{/* what the account could not answer, above the boxes that change it, for the Stripe screen's
+			    reason. no skeleton while it is asked: what usually lands is nothing, and a placeholder
+			    that resolves to nothing moves the page for no reading. */}
+			<Suspense fallback={null}>
 				<Await resolve={payments}>{(read) => <ChariotAccount read={read} />}</Await>
 			</Suspense>
 
+			{/* once the press has stored the signing secret, which it mints in the same run that creates
+			    the subscription — the placement and the gate are ./stripe-section.tsx's `Webhooks`. */}
+			{holding.held.has('CHARIOT_WEBHOOK_SECRET') ? <Webhooks /> : null}
+
 			<ChariotKeysForm
-				values={heldValues(values.vars.vars)}
+				values={holding}
 				reading={values.vars}
 				press={chariot}
 				freed={freed}
@@ -198,10 +219,13 @@ export function ChariotSection({
 }
 
 /**
- * what the deployment answered about Chariot, or nothing at all where it was never asked.
+ * what the deployment could not answer about Chariot, and nothing where it answered.
  *
- * **only the rails are read here.** the subscription and signing-secret readings are Chariot's normal
- * state and never drawn (the header states why), so what could not be read is the rails alone.
+ * **only the rails are read here, and only a rail that could not be read draws.** the subscription
+ * and signing-secret readings are Chariot's normal state and never drawn (the header states why). a
+ * rail that was read is always approved — a key Chariot accepts is the whole of what the deployment
+ * reports (`readAccountChargeability` in packages/app/src/lib/server/payments/chariot.ts) — and a
+ * rail is taken to work unless something says otherwise, so a read rail draws no row.
  */
 function ChariotAccount({ read }: { read: PaymentsRead | null }): ReactNode {
 	if (read === null) return null;
@@ -212,55 +236,53 @@ function ChariotAccount({ read }: { read: PaymentsRead | null }): ReactNode {
 		(one) => one.processor === 'chariot'
 	);
 	const standing = configuredStanding(entry ?? null);
-	if (standing === null) return null;
-	if (standing.rails.state === 'unreadable') {
-		return (
-			<div className="adm-stack">
-				<FieldMessage>
-					This deployment couldn’t reach Chariot, so it can’t say whether gifts from donor-advised
-					funds can be taken.
-				</FieldMessage>
-				<p className="adm-prose">
-					<MarkedText text={standing.rails.detail} />
-				</p>
-			</div>
-		);
-	}
-	return <Rails standing={standing} />;
+	if (standing?.rails.state !== 'unreadable') return null;
+	return (
+		<div className="adm-stack">
+			<FieldMessage>
+				This deployment couldn’t reach Chariot, so it can’t say whether gifts from donor-advised
+				funds can be taken.
+			</FieldMessage>
+			<p className="adm-prose">
+				<MarkedText text={standing.rails.detail} />
+			</p>
+		</div>
+	);
 }
 
 /**
- * the ways of paying this deployment takes through Chariot.
+ * what this deployment's set-up told Chariot to report to it, and where.
  *
- * ./paypal-section.tsx's `Rails`, read off the evidence the deployment sent: Chariot publishes no
- * per-rail approval either, so the shared note is hoisted over the ledger rather than repeated in it.
+ * `Webhooks` in ./stripe-section.tsx cut to one event: a reading and never a control, every fact
+ * packages/operator/src/chariot/webhook-subscription.ts's, and the path rather than the address, and
+ * the heading and its sentence as one `hgroup`, for that component's reasons. one identifier is
+ * shorter than any count of it, so it stands open and is no list.
+ *
+ * the event is a line of a ledger rather than a bare chip, so what the press left standing reads as
+ * the same tick the run's own lines end on. the word rides the mark: the identifier is the whole
+ * subject, and `Subscribed` beside it would say the tick a second time.
  */
-function Rails({ standing }: { standing: ConfiguredPayments }): ReactNode {
-	if (standing.rails.state !== 'read') return null;
-	const says = EVIDENCE_SAYS[standing.rails.evidence];
-	const { shared, rows } = hoistSharedNote(standing.rails.rails);
+function Webhooks(): ReactNode {
 	return (
 		<div className="adm-named">
-			<h3>Chariot donation methods</h3>
-			{says === null ? null : <p className="adm-prose">{says}</p>}
-			{shared === null ? null : (
-				<p className="adm-prose">
-					<MarkedText text={shared} />
-				</p>
-			)}
-			<StatusLedger aligned>
-				{rows.map((line) => (
+			<div className="adm-stack">
+				<hgroup>
+					<h3>Webhooks</h3>
+					<p className="adm-prose">
+						Chariot reports this event to this deployment, at{' '}
+						<InlineCode>{CHARIOT_WEBHOOK_PATH}</InlineCode>.
+					</p>
+				</hgroup>
+				<StatusLedger>
 					<StatusLine
-						key={line.rail}
 						labelAs="span"
-						label={line.label}
-						word={STANDING[line.standing].word}
-						wordOnMark={STANDING[line.standing].tone === 'done'}
-						tone={STANDING[line.standing].tone}
-						note={line.note === null ? undefined : <MarkedText text={line.note} />}
+						label={<CodeChip>{CHARIOT_EVENT_CATEGORY}</CodeChip>}
+						tone="done"
+						word="Subscribed"
+						wordOnMark
 					/>
-				))}
-			</StatusLedger>
+				</StatusLedger>
+			</div>
 		</div>
 	);
 }
@@ -705,21 +727,18 @@ function ChariotKeysForm({
 	};
 
 	return (
+		/* the boundary `.adm-named` stands between blocks (packages/operator/src/styles/adm.css), with
+		   no heading: the page's title already names what the boxes set, and without the step the form
+		   reads as the tail of the block above it. a div rather than the class on the form, which is
+		   already a `.adm-stack` and would have the two contest one gap. */
 		<div className="adm-named">
-			<h3>
-				Your Chariot key{' '}
-				<AnchoredNote mark="info" label="Where to get your Chariot key">
-					<ChariotKey />
-				</AnchoredNote>
-			</h3>
-
 			<Form
 				{...keys.mount}
 				className="adm-stack"
 				method="post"
 				preventScrollReset
 				/* the seam goes first and answers both ways a press starts nothing; a press past it keeps
-				   the boxes it sent and puts up the card that reports the run. */
+			   the boxes it sent and puts up the card that reports the run. */
 				onSubmit={(event) => {
 					keys.mount.onSubmit(event);
 					if (event.defaultPrevented) return;
@@ -734,6 +753,7 @@ function ChariotKeysForm({
 							id={bound[box].id}
 							name={bound[box].name}
 							label={LABEL[box]}
+							hint={HINT[box]}
 							code
 							masked={box === 'apiKey' && isMasked('CHARIOT_API_KEY')}
 							autoComplete="off"
@@ -756,7 +776,7 @@ function ChariotKeysForm({
 				</div>
 
 				{/* the key turned down, at the press that asked and gone the moment either box is edited:
-				    `standing` is the answer cut down to the boxes nobody has typed in since. */}
+			    `standing` is the answer cut down to the boxes nobody has typed in since. */}
 				{(keyRefused || doorTurnedDown) &&
 				keys.standing?.[CHARIOT_FIELD('apiKey')] !== undefined ? (
 					<FieldMessage>{doorTurnedDown ? doorSentence : keySentence}</FieldMessage>
@@ -776,7 +796,7 @@ function ChariotKeysForm({
 				</div>
 
 				{/* a Connect Chariot holds switched off, at the press that stored it: the card that drew the
-				    run has gone by the time it lands. */}
+			    run has gone by the time it lands. */}
 				{connectWaiting(live) && reporting === null ? (
 					<Banner tone="note" word="Chariot hasn’t switched on your fund gifts yet" />
 				) : null}
@@ -807,18 +827,5 @@ function ChariotKeysForm({
 				)}
 			</Form>
 		</div>
-	);
-}
-
-/** where the key comes from: the one fact a box cannot carry. */
-function ChariotKey(): ReactNode {
-	return (
-		<p>
-			Make an API key in your{' '}
-			<a href={DASHBOARD} target="_blank" rel="noreferrer">
-				Chariot dashboard
-			</a>
-			. A sandbox key answers at <InlineCode>https://sandboxapi.givechariot.com</InlineCode>.
-		</p>
 	);
 }

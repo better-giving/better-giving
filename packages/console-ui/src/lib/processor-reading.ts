@@ -36,7 +36,6 @@ export async function readProcessorScreen<Run>(request: Request, readRun: () => 
 	const run = await readRun();
 
 	return {
-		address: reading.face.address,
 		payments,
 		recurring,
 		run

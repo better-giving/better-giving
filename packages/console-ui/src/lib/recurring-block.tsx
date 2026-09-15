@@ -7,7 +7,13 @@ import type { ReactNode } from 'react';
 import type { PaymentProcessor, RecurringRead, RecurringSetup } from '../api/types';
 import { noAnswer } from './processor-screen';
 import type { RecurringRow } from './recurring-rows';
-import { accountsOpening, accountsSaid, recurringRowOf, recurringRows } from './recurring-rows';
+import {
+	CADENCES,
+	accountsOpening,
+	accountsSaid,
+	recurringRowOf,
+	recurringRows
+} from './recurring-rows';
 
 // where one account stands on gifts that repeat, and the one press that changes it — drawn on each
 // processor's own screen for that processor's account alone (./stripe-section.tsx,
@@ -55,9 +61,9 @@ export type RecurringBlockInput = {
  * form around it draws at all.
  *
  * **not set up is not a fault and is never drawn as one.** a deployment that only ever wants
- * one-time gifts is complete, so the line takes the note tone rather than attention.
+ * one-time gifts is complete, so the lines take the note tone rather than attention.
  *
- * **a read that could not be made draws no line**: it is the same read failing that the screen says
+ * **a read that could not be made draws no lines**: it is the same read failing that the screen says
  * once above, among that account's other unreadable readings.
  */
 export function recurringBlock({
@@ -73,7 +79,8 @@ export function recurringBlock({
 		return noAnswer(gifts.read, "it can't say whether repeating gifts are set up");
 	}
 	/* the press's own outcome keeps the block on its own, because an outcome reports at the control
-	   that caused it and the press that failed is very often the press whose next read fails too. */
+	   that caused it and the press that failed is very often the press whose next read fails too. it
+	   is drawn last, under the press. */
 	const outcome = busy ? null : provisionOutcome(provision);
 	const row = recurringRowOf(gifts, processor);
 	if (row === null && outcome === null) return null;
@@ -82,42 +89,52 @@ export function recurringBlock({
 		.map((one) => one.account);
 	return (
 		<div className="adm-named">
-			<h3>Recurring donation</h3>
+			<h3>Recurring donations</h3>
+			{row === null ? null : repeatingLines(row, wanting, busy || working, pending)}
 			{outcome}
-			{row === null ? null : (
-				<StatusLedger>{repeatingLine(row, wanting, busy || working, pending)}</StatusLedger>
-			)}
 		</div>
 	);
 }
 
-/** one account's line, and the press where it stands. */
-function repeatingLine(
+/**
+ * one line per cadence, and the sentence and the press where the account stands short.
+ *
+ * both cadences stand on the one item, so both lines take the one standing, and what is said about
+ * that standing and the press that changes it are drawn once under the pair rather than under each.
+ * the account is named in no label: the block stands on that processor's own page, which already
+ * says whose account it is.
+ */
+function repeatingLines(
 	row: RecurringRow,
 	wanting: readonly string[],
 	closed: boolean,
 	pending: string | null
 ): ReactNode {
-	/* in a fundraiser's words — what has to be known is that a donor can ask to give again every
-	   month, and which account collects it. */
-	const explains = `${row.account} collects repeating gifts against a single item on your account, and it has to exist before the first one can be collected.`;
+	/* in a fundraiser's words — what has to be known is that a donor can ask to give again, and that
+	   the account needs one item before that. the account is not named: the page already is. */
+	const explains = `Recurring gifts are collected against one item on your account, and it has to exist before the first one is.`;
 
 	if (row.standing === 'absent') {
 		return (
-			<StatusLine
-				key={row.processor}
-				labelAs="span"
-				label={row.label}
-				word="Not set up"
-				tone="note"
-				note={
-					row.press
-						? `${explains} Setting it up adds that one item to ${accountsSaid(wanting)}, and this deployment asks with the ${wanting.length > 1 ? 'keys' : 'key'} it already holds.`
-						: explains
-				}
-			>
+			<>
+				<StatusLedger>
+					{CADENCES.map((cadence) => (
+						<StatusLine
+							key={cadence}
+							labelAs="span"
+							label={cadence}
+							word="Not set up"
+							tone="note"
+						/>
+					))}
+				</StatusLedger>
+				<p className="adm-prose">
+					{row.press
+						? `${explains} Setting it up adds that item to ${accountsSaid(wanting)}.`
+						: explains}
+				</p>
 				{row.press ? (
-					<div className="adm-status__attach adm-actions">
+					<div className="adm-actions">
 						<Button
 							type="submit"
 							name="intent"
@@ -130,7 +147,7 @@ function repeatingLine(
 						</Button>
 					</div>
 				) : null}
-			</StatusLine>
+			</>
 		);
 	}
 	if (row.standing === 'archived') {
@@ -138,28 +155,40 @@ function repeatingLine(
 		// told: the press would be refused, and the way out is on a screen this product does not
 		// have.
 		return (
-			<StatusLine
-				key={row.processor}
-				labelAs="span"
-				label={row.label}
-				word="Archived"
-				tone="attention"
-				note={`${explains} Yours is archived, so nothing can be collected against it. Unarchive it in the ${row.account} dashboard, under Product catalogue.`}
-			/>
+			<>
+				<StatusLedger>
+					{CADENCES.map((cadence) => (
+						<StatusLine
+							key={cadence}
+							labelAs="span"
+							label={cadence}
+							word="Archived"
+							tone="attention"
+						/>
+					))}
+				</StatusLedger>
+				<p className="adm-prose">
+					{`${explains} Yours is archived, so nothing can be collected against it. Unarchive it in the ${row.account} dashboard, under Product catalogue.`}
+				</p>
+			</>
 		);
 	}
 	// the finished state, and the whole of it: the label says what repeats and the tick says the
 	// account can take it. the word is stated and drawn nowhere — it is the mark's own name, so
 	// a state a reader could only get from a shape still reaches somebody being read to.
 	return (
-		<StatusLine
-			key={row.processor}
-			labelAs="span"
-			label={row.label}
-			word="Set up"
-			wordOnMark
-			tone="done"
-		/>
+		<StatusLedger>
+			{CADENCES.map((cadence) => (
+				<StatusLine
+					key={cadence}
+					labelAs="span"
+					label={cadence}
+					word="Set up"
+					wordOnMark
+					tone="done"
+				/>
+			))}
+		</StatusLedger>
 	);
 }
 

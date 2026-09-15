@@ -86,7 +86,7 @@ describe('a processor page read between visits', () => {
 		const again = await visit('/payments/stripe');
 
 		expect(binary.runs).toBe(1);
-		expect(again.address).toBe('https://a.example');
+		expect(again.run).toBe(binary.run);
 	});
 
 	it('draws no bar over a visit answered from the last one', async () => {

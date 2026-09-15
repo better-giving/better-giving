@@ -179,7 +179,6 @@ export default function StripePage({ loaderData, actionData, matches }: Route.Co
 		<Column>
 			<PageHeader title={TITLE} />
 			<StripeSection
-				address={loaderData.address}
 				values={shell.reading.values}
 				payments={loaderData.payments}
 				recurring={loaderData.recurring}

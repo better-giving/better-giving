@@ -443,6 +443,10 @@ func TestTheSubscriptionIsSpelledTheWayBothEndsSpellIt(t *testing.T) {
 	if stated := quoted(t, path, "CHARIOT_WEBHOOK_PATH"); stated != ChariotWebhookPath {
 		t.Errorf("CHARIOT_WEBHOOK_PATH states %q and this binary holds %q", stated, ChariotWebhookPath)
 	}
+	// the console's screen draws the category from here, so it is held to the same spelling.
+	if stated := quoted(t, path, "CHARIOT_EVENT_CATEGORY"); stated != ChariotEventCategory {
+		t.Errorf("CHARIOT_EVENT_CATEGORY states %q and this binary holds %q", stated, ChariotEventCategory)
+	}
 	category := read(t, "packages/app/src/lib/server/payments/chariot.ts")
 	if stated := quoted(t, category, "SETTLEMENT_CATEGORY"); stated != ChariotEventCategory {
 		t.Errorf("SETTLEMENT_CATEGORY states %q and this binary holds %q", stated, ChariotEventCategory)

@@ -1,4 +1,3 @@
-import { AnchoredNote } from '@better-giving/operator/behaviour/AnchoredCard';
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import type { Tone } from '@better-giving/operator/components/closed-sets';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
@@ -55,7 +54,7 @@ import {
 } from './paypal-setup';
 import { REACHED_PAYPAL, pressStopped } from './press-stopped';
 import type { ConfiguredPayments } from './processor-payments';
-import { EVIDENCE_SAYS, STANDING, configuredStanding, hoistSharedNote } from './processor-payments';
+import { STANDING, configuredStanding, hoistSharedNote } from './processor-payments';
 import { keysTrouble, noAnswer, valuesGuard } from './processor-screen';
 import { recurringBlock } from './recurring-block';
 import { accountsSaid, recurringReading } from './recurring-rows';
@@ -118,7 +117,7 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 // mounts it and the presses it makes are answered there. what it reaches for itself is the run while
 // it goes, which is the one reading that changes while it is on screen.
 
-/** where PayPal's own credentials are made, one press off the heading. */
+/** where PayPal's own credentials are made, linked from the sentence under the keys heading. */
 const DASHBOARD = 'https://developer.paypal.com/dashboard/applications/live';
 
 /**
@@ -234,9 +233,9 @@ export function PaypalSection({
 	const trouble = keysTrouble({ workerName, accountName });
 	/* the same wait over both boundaries: what an operator is waiting on is one account's readings,
 	   and two waits worded apart would be two subjects where there is one. it is shaped as they
-	   resolve — the rails' two lines, PayPal and Venmo, and the repeating-gift block's one — so the
+	   resolve — the rails' two lines, PayPal and Venmo, and the repeating-gift block's two — so the
 	   page does not move when they land. */
-	const asking = <LedgerSkeleton label="Asking this deployment…" blocks={[2, 1]} />;
+	const asking = <LedgerSkeleton label="Asking this deployment…" blocks={[2, 2]} />;
 	return (
 		<Section>
 			{/* what the account answered, drawn above the boxes that change it for the reason the Stripe
@@ -368,7 +367,7 @@ function PaypalAccount({
  * reading whatever, and this is only reached under one that does. so what stands here is a
  * deployment whose PayPal keys were rejected or whose PayPal did not answer, which is exactly the
  * state nothing else on the screen can say — a reading that did not land draws no block under this
- * and no line in the repeating-gift block after it (`recurringRows` in ./recurring-rows.ts),
+ * and no lines in the repeating-gift block after it (`recurringRows` in ./recurring-rows.ts),
  * and an operator reading that as nothing to do would leave a deployment taking no gift at all.
  *
  * the deployment's own detail goes underneath and is drawn rather than printed: it names the value
@@ -420,31 +419,19 @@ function Unreadable({
  * **a green row here says the credentials work and says nothing about the rail beside it.** PayPal
  * publishes no per-rail approval to a merchant holding only its own credentials, so every rail comes
  * back `approved` on the strength of the pair authenticating — and the deployment writes that in
- * words as each row's own note, the same sentence in every row. so `EVIDENCE_SAYS` says nothing
- * over the ledger, and `hoistSharedNote` (both in ./processor-payments.ts) draws that sentence there
- * once and takes it out of the rows; notes that differ stay under their own rows.
- *
- * **so it reads the evidence the deployment sent and never the processor it is drawing.** the two
- * are the same answer today and the evidence is on the wire because they need not stay so: a
- * processor that starts publishing approvals is a ledger that gains its sentence here rather than
- * one that keeps drawing a green row with nothing over it.
+ * words as each row's own note, the same sentence in every row. a rail is taken to work unless
+ * something says otherwise, so `hoistSharedNote` (./processor-payments.ts) takes that sentence out
+ * of the rows and nothing draws it; notes that differ stay under their own rows.
  *
  * the ledger is drawn as columns for the reason the Stripe screen's is: every row is the same two
  * things, so an operator reads down a column rather than across a line.
  */
 function Rails({ standing }: { standing: ConfiguredPayments }): ReactNode {
 	if (standing.rails.state !== 'read') return null;
-	const says = EVIDENCE_SAYS[standing.rails.evidence];
-	const { shared, rows } = hoistSharedNote(standing.rails.rails);
+	const { rows } = hoistSharedNote(standing.rails.rails);
 	return (
 		<div className="adm-named">
-			<h3>PayPal donation methods</h3>
-			{says === null ? null : <p className="adm-prose">{says}</p>}
-			{shared === null ? null : (
-				<p className="adm-prose">
-					<MarkedText text={shared} />
-				</p>
-			)}
+			<h3>Donation methods</h3>
 			<StatusLedger aligned>
 				{rows.map((line) => (
 					<StatusLine
@@ -743,9 +730,9 @@ function PaypalKeysForm({
 				   block above the boxes. */
 				if (outcome.awaitingKey) {
 					return (
-						<Banner tone="note" word="Your PayPal keys are saved">
+						<Banner tone="note" word="Your keys are saved">
 							This deployment takes one-time gifts through PayPal. It hasn’t picked the keys up yet,
-							so repeating gifts are not set up. Press <strong>Set up recurring gifts</strong> above
+							so recurring gifts are not set up. Press <strong>Set up recurring gifts</strong> above
 							in a moment.
 						</Banner>
 					);
@@ -902,104 +889,113 @@ function PaypalKeysForm({
 
 	return (
 		<div className="adm-named">
-			<h3>
-				Your PayPal keys{' '}
-				<AnchoredNote mark="info" label="Where to get your PayPal keys">
-					<PaypalKeys />
-				</AnchoredNote>
-			</h3>
+			<div className="adm-stack">
+				<hgroup>
+					<h3>Your keys</h3>
+					{/* the one fact a box cannot carry — that both keys are on one app in PayPal's developer
+					    dashboard, and which dashboard. ./stripe-section.tsx says the same kind of thing about the
+					    other processor, under its keys heading. */}
+					<p className="adm-prose">
+						Both are on one app in your PayPal developer dashboard:{' '}
+						<a href={DASHBOARD} target="_blank" rel="noreferrer">
+							Apps &amp; Credentials &rarr; Live
+						</a>
+						.
+					</p>
+				</hgroup>
 
-			<Form
-				{...keys.mount}
-				className="adm-stack"
-				method="post"
-				preventScrollReset
-				/* the seam goes first and answers both ways a press starts nothing — the rules over the
-				   boxes, and an answer still standing over one. a press past it runs on the press itself
-				   and puts up the card that reports it. */
-				onSubmit={(event) => {
-					keys.mount.onSubmit(event);
-					if (event.defaultPrevented) return;
-					typed.current = form.current === null ? null : boxes(form.current);
-					setReporting('pressed');
-				}}
-			>
-				<div className="adm-stack">
-					{PAYPAL_PAIR_NAMES.map((name) => {
-						const box = name === 'PAYPAL_CLIENT_ID' ? clientId : secret;
-						return (
-							<Field
-								key={name}
-								id={box.id}
-								name={box.name}
-								label={LABEL[name]}
-								code
-								masked={isMasked(name)}
-								autoComplete="off"
-								spellCheck={false}
-								defaultValue={box.defaultValue}
-								disabled={closed}
-								onInput={box.onInput}
-								error={box.message}
-							/>
-						);
-					})}
-					<WithheldValues
-						names={withheldAmong(values, PAYPAL_WRITES)}
-						all={values.withheld}
-						consequence="Until these are saved again, this deployment takes no gift through PayPal."
-						written={freed}
-						trouble={trouble}
-						busy={busy || working}
-						freeing={pending === FREE_INTENT}
-					/>
-				</div>
+				<Form
+					{...keys.mount}
+					className="adm-stack"
+					method="post"
+					preventScrollReset
+					/* the seam goes first and answers both ways a press starts nothing — the rules over the
+					   boxes, and an answer still standing over one. a press past it runs on the press itself
+					   and puts up the card that reports it. */
+					onSubmit={(event) => {
+						keys.mount.onSubmit(event);
+						if (event.defaultPrevented) return;
+						typed.current = form.current === null ? null : boxes(form.current);
+						setReporting('pressed');
+					}}
+				>
+					<div className="adm-stack">
+						{PAYPAL_PAIR_NAMES.map((name) => {
+							const box = name === 'PAYPAL_CLIENT_ID' ? clientId : secret;
+							return (
+								<Field
+									key={name}
+									id={box.id}
+									name={box.name}
+									label={LABEL[name]}
+									code
+									masked={isMasked(name)}
+									autoComplete="off"
+									spellCheck={false}
+									defaultValue={box.defaultValue}
+									disabled={closed}
+									onInput={box.onInput}
+									error={box.message}
+								/>
+							);
+						})}
+						<WithheldValues
+							names={withheldAmong(values, PAYPAL_WRITES)}
+							all={values.withheld}
+							consequence="Until these are saved again, this deployment takes no gift through PayPal."
+							written={freed}
+							trouble={trouble}
+							busy={busy || working}
+							freeing={pending === FREE_INTENT}
+						/>
+					</div>
 
-				{/* the pair turned down, at the press that asked and gone the moment either box is edited:
-				    `standing` is the answer cut down to the boxes nobody has typed in since. */}
-				{refusedPair && keys.standing?.[PAIR_FIELD('PAYPAL_CLIENT_ID')] !== undefined ? (
-					<FieldMessage>{pairSentence}</FieldMessage>
-				) : null}
+					{/* the pair turned down, at the press that asked and gone the moment either box is edited:
+					    `standing` is the answer cut down to the boxes nobody has typed in since. */}
+					{refusedPair && keys.standing?.[PAIR_FIELD('PAYPAL_CLIENT_ID')] !== undefined ? (
+						<FieldMessage>{pairSentence}</FieldMessage>
+					) : null}
 
-				<div className="adm-actions">
-					<SaveButton
-						id={SET_UP_PRESS}
-						type="submit"
-						name="intent"
-						value={PAYPAL_SETUP_INTENT}
-						state={keys.state}
-						label="Save"
-						doneLabel="Set up"
-						disabled={closed || undefined}
-					/>
-				</div>
+					<div className="adm-actions">
+						<SaveButton
+							id={SET_UP_PRESS}
+							type="submit"
+							name="intent"
+							value={PAYPAL_SETUP_INTENT}
+							state={keys.state}
+							label="Save"
+							doneLabel="Set up"
+							disabled={closed || undefined}
+						/>
+					</div>
 
-				{/* a press the binary could not write at all, at the button that made it. */}
-				{unwritten === null || phase.pending ? null : trouble(unwritten)}
+					{/* a press the binary could not write at all, at the button that made it. */}
+					{unwritten === null || phase.pending ? null : trouble(unwritten)}
 
-				{/* a run that stopped, standing as the report of the press once no card is up — the one a
-				    reload brings back included. */}
-				{reportStands(live, reporting !== null) ? ledger(live) : null}
+					{/* a run that stopped, standing as the report of the press once no card is up — the one a
+					    reload brings back included. */}
+					{reportStands(live, reporting !== null) ? ledger(live) : null}
 
-				{reporting === null ? null : (
-					<Modal
-						title="Setting up PayPal"
-						// a run that is going cannot be left: this card is its only report.
-						onDismiss={() => {
-							if (underway) return;
-							setReporting(null);
-						}}
-						exit="Close"
-						exitProps={{
-							type: 'button' as const,
-							disabled: underway || undefined,
-							onClick: () => setReporting(null)
-						}}
-					>
-						{ledger(reporting === 'reading' ? live : null)}
-					</Modal>
-				)}
-			</Form>
+					{reporting === null ? null : (
+						<Modal
+							title="Setting up PayPal"
+							// a run that is going cannot be left: this card is its only report.
+							onDismiss={() => {
+								if (underway) return;
+								setReporting(null);
+							}}
+							exit="Close"
+							exitProps={{
+								type: 'button' as const,
+								disabled: underway || undefined,
+								onClick: () => setReporting(null)
+							}}
+						>
+							{ledger(reporting === 'reading' ? live : null)}
+						</Modal>
+					)}
+				</Form>
+			</div>
 		</div>
 	);
 }
@@ -1058,7 +1054,7 @@ function CharityRate({
 
 	return (
 		<div className="adm-named">
-			<h3>PayPal’s charity rate</h3>
+			<h3>Charity rate</h3>
 			<Form
 				className="adm-stack"
 				method="post"
@@ -1074,7 +1070,7 @@ function CharityRate({
 							id: box,
 							name: CHARITY_FIELD,
 							value: CHARITY_APPROVED,
-							label: 'PayPal has approved this organisation for its charity rate',
+							label: 'PayPal has approved this organisation',
 							// the consequence of getting it wrong, which is the one thing the label cannot
 							// carry and the one direction that costs the organisation money: the two tables
 							// are asymmetric, and `paypalFeeRules` in
@@ -1112,24 +1108,5 @@ function CharityRate({
 				{failure === null ? null : trouble(failure)}
 			</Form>
 		</div>
-	);
-}
-
-/**
- * where PayPal's two keys come from.
- *
- * the one fact a box cannot carry — that both are on one app in PayPal's developer dashboard, and
- * which dashboard. ./stripe-section.tsx's `StripeKeys` says the same kind of thing about the other
- * processor.
- */
-function PaypalKeys(): ReactNode {
-	return (
-		<p>
-			Make a live app in your PayPal developer dashboard:{' '}
-			<a href={DASHBOARD} target="_blank" rel="noreferrer">
-				Apps &amp; Credentials &rarr; Live
-			</a>
-			. The client ID and the secret key are both on that app.
-		</p>
 	);
 }

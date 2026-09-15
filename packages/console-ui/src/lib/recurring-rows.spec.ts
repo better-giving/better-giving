@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProcessorRecurring, RecurringRead } from '../api/types';
 import {
-	RECURRING_LABEL,
 	accountsOpening,
 	accountsSaid,
 	recurringReading,
@@ -27,39 +26,12 @@ const read = (...processors: ProcessorRecurring[]): RecurringRead => ({
 });
 
 describe('recurringRows', () => {
-	/**
-	 * the deployment holding one processor, which is every fork set up on one of them.
-	 *
-	 * the line is named for the cadence alone: there is one account, the block's own heading says
-	 * what the subject is, and an account's name on the line would be a distinction with nothing on
-	 * the other side of it.
-	 */
-	it('names the line for the cadence alone where the deployment holds one account', () => {
+	/** one entry per account, carrying which account it is and where it stands. */
+	it('takes an account’s standing out of the report', () => {
 		const rows = recurringRows(read(entry('paypal', 'PayPal', { state: 'ready' })));
 
 		expect(rows).toEqual([
-			{
-				processor: 'paypal',
-				account: 'PayPal',
-				label: RECURRING_LABEL,
-				standing: 'ready',
-				press: false
-			}
-		]);
-	});
-
-	/** and names each account where there is more than one, or neither line says which it is about. */
-	it('names each account where the deployment holds more than one', () => {
-		const rows = recurringRows(
-			read(
-				entry('stripe', 'Stripe', { state: 'ready' }),
-				entry('paypal', 'PayPal', { state: 'absent' })
-			)
-		);
-
-		expect(rows.map((row) => row.label)).toEqual([
-			`${RECURRING_LABEL} on Stripe`,
-			`${RECURRING_LABEL} on PayPal`
+			{ processor: 'paypal', account: 'PayPal', standing: 'ready', press: false }
 		]);
 	});
 
@@ -115,18 +87,6 @@ describe('recurringRows', () => {
 		expect(rows.map((row) => row.processor)).toEqual(['paypal']);
 	});
 
-	/** but the account that could not be read still counts for how the other line is named. */
-	it('goes on naming the accounts where one of two could not be read', () => {
-		const rows = recurringRows(
-			read(
-				entry('stripe', 'Stripe', { state: 'unreadable', detail: 'Stripe refused the key.' }),
-				entry('paypal', 'PayPal', { state: 'absent' })
-			)
-		);
-
-		expect(rows[0]?.label).toBe(`${RECURRING_LABEL} on PayPal`);
-	});
-
 	/** a deployment holding no key at all, and the read nobody made: both draw nothing. */
 	it('draws nothing where the deployment holds no processor and where nothing was read', () => {
 		expect(recurringRows(read())).toEqual([]);
@@ -149,7 +109,7 @@ describe('recurringRowOf', () => {
 		expect(recurringRowOf(both, 'paypal')?.press).toBe(true);
 	});
 
-	it('keeps the name the list gives it', () => {
+	it('keeps the standing the list gives it', () => {
 		const both = read(
 			entry('stripe', 'Stripe', { state: 'ready' }),
 			entry('paypal', 'PayPal', { state: 'absent' })
@@ -158,7 +118,6 @@ describe('recurringRowOf', () => {
 		expect(recurringRowOf(both, 'stripe')).toEqual({
 			processor: 'stripe',
 			account: 'Stripe',
-			label: `${RECURRING_LABEL} on Stripe`,
 			standing: 'ready',
 			press: false
 		});

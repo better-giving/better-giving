@@ -11,10 +11,10 @@ import { StatusLedger, StatusLine } from '@better-giving/operator/components/sta
 export default function StatusLedgerSkeletonPreview() {
 	return (
 		<div className="adm-stack">
-			<LedgerSkeleton label="Asking this deployment…" blocks={[2, 1]} />
+			<LedgerSkeleton label="Asking this deployment…" blocks={[2, 2]} />
 			<div className="adm-stack">
 				<div className="adm-named">
-					<h3>PayPal donation methods</h3>
+					<h3>Donation methods</h3>
 					<StatusLedger aligned>
 						<StatusLine
 							labelAs="span"
@@ -35,16 +35,10 @@ export default function StatusLedgerSkeletonPreview() {
 					</StatusLedger>
 				</div>
 				<div className="adm-named">
-					<h3>Recurring donation</h3>
+					<h3>Recurring donations</h3>
 					<StatusLedger>
-						<StatusLine
-							labelAs="span"
-							label="PayPal"
-							word="Set up"
-							wordOnMark
-							tone="done"
-							note="Donors can choose to give every month."
-						/>
+						<StatusLine labelAs="span" label="Monthly" word="Set up" wordOnMark tone="done" />
+						<StatusLine labelAs="span" label="Yearly" word="Set up" wordOnMark tone="done" />
 					</StatusLedger>
 				</div>
 			</div>

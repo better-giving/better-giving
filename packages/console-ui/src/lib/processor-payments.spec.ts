@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PaymentsRead, ProcessorPayments } from '../api/types';
-import {
-	EVIDENCE_SAYS,
-	configuredStanding,
-	hoistSharedNote,
-	processorStanding
-} from './processor-payments';
+import { configuredStanding, hoistSharedNote, processorStanding } from './processor-payments';
 
 // where one processor stands, off the report that answers for both of them.
 //
@@ -70,20 +65,6 @@ describe('the readings a configured processor answered with', () => {
 
 	it('is nothing where there is no entry', () => {
 		expect(configuredStanding(null)).toBe(null);
-	});
-});
-
-describe('what a rails ledger says over its rows', () => {
-	it('says what an approval is not, where the processor publishes one per rail', () => {
-		// the rows are silent under an approved rail there (`STANDING_NOTE.approved` in
-		// packages/app/src/lib/server/forms/rail-notes.ts), so this is the only place it is said.
-		expect(EVIDENCE_SAYS.per_rail_approval).toContain('not a promise');
-	});
-
-	it('says nothing where the deployment writes it into every row', () => {
-		// a processor publishing no approval sends its own sentence down as each rail's note, which
-		// `hoistSharedNote` already draws over the ledger once.
-		expect(EVIDENCE_SAYS.credentials_only).toBe(null);
 	});
 });
 

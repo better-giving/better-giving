@@ -23,49 +23,36 @@ import type {
 // nothing here reaches a network.
 
 /**
- * what the repeating-gifts line is called.
+ * the lines the repeating-gifts block draws, one per cadence.
  *
- * a cadence rather than a product name: what a fundraiser has to know is that a donor can ask to
+ * cadences rather than a product name: what a fundraiser has to know is that a donor can ask to
  * give again every month or every year, and the single item a processor collects it against is the
- * mechanism under that.
+ * mechanism under that. both stand on that one item, so they always share a standing.
  */
-export const RECURRING_LABEL = 'Monthly and yearly';
+export const CADENCES = ['Monthly', 'Yearly'] as const;
 
-/** one account's line: what it is called, where it stands, and whether the press stands on it. */
+/** one account's standing, and whether the press stands on it. */
 export type RecurringRow = {
 	readonly processor: PaymentProcessor;
 	/** what an operator is shown that processor as, which the deployment decides. */
 	readonly account: string;
-	/**
-	 * the name on the line.
-	 *
-	 * the cadence alone where this deployment holds one account — the block's own heading says what
-	 * the subject is, and naming the account there would be a distinction with nothing on the other
-	 * side of it — and the cadence under the account's name where it holds more, or neither line
-	 * says which account it is about.
-	 */
-	readonly label: string;
 	readonly standing: RecurringStanding;
 	/** whether the one press stands on this line. */
 	readonly press: boolean;
 };
 
 /**
- * one line per account this deployment can reach and has a standing for.
+ * one entry per account this deployment can reach and has a standing for.
  *
  * **an account whose read could not be made draws no line.** it is the same read failing that the
  * fold says once above the boxes, and a row here would be the same sentence in two places with two
  * places to look for the one that names what to do.
- *
- * **and it still counts for how the other lines are named**, because what decides that is how many
- * accounts this deployment holds rather than how many answered.
  *
  * the press stands on the first account holding nothing, and on no other: it acts on every one of
  * them, so a second control would be a second way to do the one thing.
  */
 export function recurringRows(read: RecurringRead | null): RecurringRow[] {
 	const held = read !== null && read.kind === 'read' ? read.report.processors : [];
-	const named = held.length > 1;
 
 	let pressed = false;
 	return held.flatMap((entry): RecurringRow[] => {
@@ -76,7 +63,6 @@ export function recurringRows(read: RecurringRead | null): RecurringRow[] {
 			{
 				processor: entry.processor,
 				account: entry.label,
-				label: named ? `${RECURRING_LABEL} on ${entry.label}` : RECURRING_LABEL,
 				standing: entry.reading.state,
 				press
 			}
@@ -85,10 +71,10 @@ export function recurringRows(read: RecurringRead | null): RecurringRow[] {
 }
 
 /**
- * one account's line on that processor's own screen, or `null` where it draws none.
+ * one account's standing on that processor's own screen, or `null` where it draws none.
  *
- * **named and pressed as the list names and presses it, with one difference: the press stands on
- * this line wherever this account needs it.** the press acts on every account that needs it, so a
+ * **pressed as the list presses it, with one difference: the press stands on this account wherever
+ * it needs it.** the press acts on every account that needs it, so a
  * screen showing one account's line puts the one press there whether or not another account's line,
  * on another screen, would have carried it first.
  */

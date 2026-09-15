@@ -1,4 +1,3 @@
-import { AnchoredNote } from '@better-giving/operator/behaviour/AnchoredCard';
 import { AnchoredPanel } from '@better-giving/operator/behaviour/AnchoredPanel';
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import type { Tone } from '@better-giving/operator/components/closed-sets';
@@ -20,8 +19,8 @@ import {
 } from '@better-giving/operator/components/status/StatusLine';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import {
-	SUBSCRIBED_EVENT_TYPES,
-	webhookEndpointUrl
+	STRIPE_WEBHOOK_PATH,
+	SUBSCRIBED_EVENT_TYPES
 } from '@better-giving/operator/stripe/webhook-endpoint';
 import type { ReactNode } from 'react';
 import { Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -34,12 +33,7 @@ import { heldValues, withheldAmong } from './held-values';
 import { keysTrouble, noAnswer, valuesGuard } from './processor-screen';
 import { recurringBlock } from './recurring-block';
 import { pollOutlived, runKind, standingRun } from './run-poll';
-import {
-	configuredStanding,
-	EVIDENCE_SAYS,
-	processorStanding,
-	STANDING
-} from './processor-payments';
+import { configuredStanding, processorStanding, STANDING } from './processor-payments';
 import { accountsSaid, recurringReading } from './recurring-rows';
 import { PAYMENTS_GROUP, SECRET_GROUPS, MINTED_BY_CONSOLE, isMasked } from './secret-groups';
 import { FREE_INTENT, WithheldValues } from './withheld-values';
@@ -351,22 +345,6 @@ export type StripeSectionProps = {
 	workerName: string;
 	/** the cloudflare account every read is scoped to, named in every sentence about a refusal. */
 	accountName: string;
-	/**
-	 * where this deployment answers, which is the origin the webhook address is built from.
-	 *
-	 * **it is never empty here, and that is why nothing below draws a state for an absent one.** the
-	 * address is read off the cloudflare account under the worker's own name and the reading is what
-	 * decides which face the page draws: an origin that came back empty, and every read of it that
-	 * did not land, are the blocked face and no processor screen at all
-	 * (`assemble` in `packages/console/internal/deployment/home.go`). a processor screen drawn is a
-	 * deployment whose address was read.
-	 *
-	 * it is the address as it stands now rather than the one the last registration used, and the two
-	 * part company where a domain is attached after a set-up — which the press above repairs, since
-	 * it derives the address afresh and registers again (`webhookEndpointUrl` in
-	 * `packages/operator/src/stripe/webhook-endpoint.ts`).
-	 */
-	address: string;
 	/** which boxes the last press came back naming, or `null`. nothing left this machine. */
 	refused: Record<string, string> | null;
 	/**
@@ -421,7 +399,6 @@ export function StripeSection({
 	recurring,
 	workerName,
 	accountName,
-	address,
 	refused,
 	turnedDownPair,
 	revalidating,
@@ -590,7 +567,7 @@ export function StripeSection({
 	 * the placeholder that stands while the deployment is being asked, and nothing where it was not
 	 * asked at all.
 	 *
-	 * it is shaped as the readings resolve — the rails' lines and the repeating-gift block's one — so
+	 * it is shaped as the readings resolve — the rails' lines and the repeating-gift block's two — so
 	 * the page does not move when they land.
 	 *
 	 * the route that mounts this resolves both readings to `null` without a round trip where this
@@ -599,7 +576,7 @@ export function StripeSection({
 	 * one render of a screen saying it is asking after something it asked nobody about.
 	 */
 	const asking = stored?.has('STRIPE_SECRET_KEY') ? (
-		<LedgerSkeleton label="Asking this deployment…" blocks={[4, 1]} />
+		<LedgerSkeleton label="Asking this deployment…" blocks={[4, 2]} />
 	) : null;
 
 	/** what the two boxes are holding right now, in the shape `stripeAsked` reads them in. */
@@ -965,9 +942,7 @@ export function StripeSection({
 	 * carries no account name — so a screen drawn on a page load has nothing to draw here. making it
 	 * permanent is a reading to add to what the deployment answers, which is a decision of its own.
 	 */
-	const named = (who: StripeNamed) => (
-		<StatedValue label="Stripe account" value={who.account.name} />
-	);
+	const named = (who: StripeNamed) => <StatedValue label="Account" value={who.account.name} />;
 
 	/**
 	 * why there was nowhere to register, in the address read's own terms.
@@ -1213,7 +1188,7 @@ export function StripeSection({
 				return (
 					<Banner tone="note" word="The keys are stored and published">
 						This deployment serves a donation form and takes one-time gifts. It hasn’t picked the
-						secret key up yet, so repeating gifts are not set up. Press{' '}
+						secret key up yet, so recurring gifts are not set up. Press{' '}
 						<strong>Set up recurring gifts</strong> below in a moment.
 					</Banner>
 				);
@@ -1456,12 +1431,9 @@ export function StripeSection({
 	 * sentences are the deployment's own and are not shortened here — each names the one door out of
 	 * its state, and three of the six lead to a Stripe screen this console does not have.
 	 *
-	 * **the one sentence over them says what `Approved` is not, and the evidence is what decides
-	 * whether there is one.** nothing on any screen may claim a rail works
-	 * (`packages/app/src/lib/server/payments/rail-chargeability.ts`), and approval is the closest
-	 * reading this console has to one — so what it is is said where it is read, and only where there
-	 * are lines to read. `EVIDENCE_SAYS` in ./processor-payments.ts is which sentence, and where it is
-	 * `null` every row is already carrying it.
+	 * **an approved row says approved and nothing more.** nothing on any screen may claim a rail works
+	 * (`packages/app/src/lib/server/payments/rail-chargeability.ts`), and a rail is taken to work
+	 * unless something says otherwise, so no sentence over the ledger speaks to an approval.
 	 *
 	 * **the wallets are rows of this ledger and not a block under it.** Apple Pay, Google Pay and
 	 * Link are ways of paying a donor is offered, so an operator reading down what their form takes
@@ -1505,14 +1477,10 @@ export function StripeSection({
 		outcome: ReactNode
 	): ReactNode => {
 		if (read === null) return null;
-		const says = EVIDENCE_SAYS[read.evidence];
 		return (
 			<div className="adm-named">
-				{/* the processor is named, because PayPal's screen draws a ledger of the same shape and two headings
-				    reading the same words over two accounts is a reader working out which one they are
-				    looking at. */}
-				<h3>Stripe donation methods</h3>
-				{says === null ? null : <p className="adm-prose">{says}</p>}
+				{/* the processor is not named: the page is Stripe's alone, and its title already says so. */}
+				<h3>Donation methods</h3>
 				<StatusLedger aligned>
 					{read.rails.map((line) => (
 						<StatusLine
@@ -1788,13 +1756,13 @@ export function StripeSection({
 	 * says a subject ended when nothing came before it. so the form is inside this rather than around
 	 * it: a guard outside the awaited block cannot read what the readings resolved to.
 	 *
-	 * **the repeating-gift band draws the Stripe account's line alone**, and the press on it acts on
+	 * **the repeating-gift band draws the Stripe account's lines alone**, and the press on it acts on
 	 * every account that needs it (./recurring-block.tsx).
 	 *
 	 * **the form holds two presses and both stand inside a block this function draws.** Register
 	 * sits in a wallet's own panel ({@link hostPanel}) — outside the form in the tree, and named back
 	 * on to it by {@link READINGS_FORM} — and the one that provisions what a repeating gift is
-	 * collected against stands on the Stripe line where that account has nothing
+	 * collected against stands under the Stripe lines where that account has nothing
 	 * (./recurring-block.tsx). so a form with nothing drawn provably holds neither.
 	 */
 	const readings = (payments: PaymentsRead | null, gifts: RecurringRead | null): ReactNode => {
@@ -1883,28 +1851,41 @@ export function StripeSection({
 			    form is what the deployment holds, and the form is the one thing on the screen to act on.
 			    a reading drawn under it would be a fact an operator meets after the press they came
 			    here to make. */}
-			{stored?.has('STRIPE_WEBHOOK_SECRET') ? <Webhooks address={address} /> : null}
+			{stored?.has('STRIPE_WEBHOOK_SECRET') ? <Webhooks /> : null}
 
 			{/* the heading names the boxes under it, and the block is what binds it to them:
-			    `.adm-named` in packages/operator/src/styles/adm.css is a heading, the close step under
-			    it, and a boundary above wide enough that what stands over it and the keys read as two
-			    subjects at a squint. a plain div rather than the class on the form itself, because the
-			    heading has to stand inside the block and a `<form>` inside a `<form>` is not a tree the
-			    parser keeps — everything above stays its own sibling. */}
-			<div className="adm-named">
-				<h3>
-					Your Stripe keys{' '}
-					<AnchoredNote mark="info" label="Where to get your two Stripe keys">
-						<StripeKeys />
-					</AnchoredNote>
-				</h3>
+			    `.adm-named` in packages/operator/src/styles/adm.css is the boundary above wide enough
+			    that what stands over it and the keys read as two subjects at a squint. a plain div
+			    rather than the class on the form itself, because the heading has to stand inside the
+			    block and a `<form>` inside a `<form>` is not a tree the parser keeps — everything above
+			    stays its own sibling.
 
-				<Form
-					{...keys.mount}
-					className="adm-stack"
-					method="post"
-					preventScrollReset
-					/* every press on this form comes through here, whichever control carries it — the
+			    the sentence qualifies the heading, so the two are one `hgroup` at its tight step
+			    (packages/operator/src/styles/base.css), and the stack puts that head a field's own
+			    distance above the first box — the same step the boxes take from each other, so the
+			    sentence is never read as the first label's. */}
+			<div className="adm-named">
+				<div className="adm-stack">
+					<hgroup>
+						<h3>Your keys</h3>
+						{/* the one fact a box cannot carry — that both keys are on one screen, and which screen.
+				    what the press does is the confirm's to say, against the operator's own boxes.
+				    ./smtp-fold.tsx's `MailProviders` says the same kind of thing about a mail provider. */}
+						<p className="adm-prose">
+							Both are on one page in your Stripe dashboard:{' '}
+							<a href={DASHBOARD} target="_blank" rel="noreferrer">
+								Developers &rarr; API keys
+							</a>
+							.
+						</p>
+					</hgroup>
+
+					<Form
+						{...keys.mount}
+						className="adm-stack"
+						method="post"
+						preventScrollReset
+						/* every press on this form comes through here, whichever control carries it — the
 					   button below, or the one inside the card it puts up — and what it decides is which
 					   of those two this press is.
 
@@ -1914,265 +1895,249 @@ export function StripeSection({
 					   no run to report, no question worth asking, and the button never draws `Setting up`
 					   over a press that was never made — which is what the branching below is arranged
 					   around. */
-					onSubmit={(event) => {
-						keys.mount.onSubmit(event);
-						if (event.defaultPrevented) return;
-						// the submit inside the card, which is the press the card was put up to ask about:
-						// the question has been asked and answered, so it goes.
-						if (confirming !== null) return;
-						const element = form.current;
-						const held = element === null ? null : boxes(element);
-						const ask = held === null ? null : stripeAsked(held, holds);
-						/* and the pair as it stands at the press, kept for the answer that says the
+						onSubmit={(event) => {
+							keys.mount.onSubmit(event);
+							if (event.defaultPrevented) return;
+							// the submit inside the card, which is the press the card was put up to ask about:
+							// the question has been asked and answered, so it goes.
+							if (confirming !== null) return;
+							const element = form.current;
+							const held = element === null ? null : boxes(element);
+							const ask = held === null ? null : stripeAsked(held, holds);
+							/* and the pair as it stands at the press, kept for the answer that says the
 						   deployment took it ({@link sent}). the card the branch below may put up cannot be
 						   typed behind, so the press that goes from inside it carries exactly this. */
-						typed.current =
-							held === null || ask === null || ask.act === null
-								? null
-								: { act: ask.act, boxes: held };
-						const lines =
-							ask === null ? [] : confirmLines(ask, MINTED, (name) => stored?.has(name) ?? false);
-						/* the first set-up runs on this press and asks nothing. it takes nothing away —
+							typed.current =
+								held === null || ask === null || ask.act === null
+									? null
+									: { act: ask.act, boxes: held };
+							const lines =
+								ask === null ? [] : confirmLines(ask, MINTED, (name) => stored?.has(name) ?? false);
+							/* the first set-up runs on this press and asks nothing. it takes nothing away —
 						   every value it touches is stated `Set` — so a card between the press and the run
 						   would ask the operator to agree to the press they just made. what no row can
 						   carry is the other errand: a re-save deletes the endpoint Stripe is already
 						   delivering to, which is what `remakesSetup` reads (./stripe-confirm.ts). */
-						if (ask?.act === 'errand' && !remakesSetup(lines)) {
-							// the run still reports in the top layer: this press puts no question up, so the
-							// card it puts up is the report itself.
-							setReporting('pressed');
-							return;
-						}
-						event.preventDefault();
-						if (ask === null || ask.act === null) return;
-						setConfirming({ act: ask.act, lines, pressed: false });
-					}}
-				>
-					{/* the fields stand apart at the group's own step, which is what says where one label,
+							if (ask?.act === 'errand' && !remakesSetup(lines)) {
+								// the run still reports in the top layer: this press puts no question up, so the
+								// card it puts up is the report itself.
+								setReporting('pressed');
+								return;
+							}
+							event.preventDefault();
+							if (ask === null || ask.act === null) return;
+							setConfirming({ act: ask.act, lines, pressed: false });
+						}}
+					>
+						{/* the fields stand apart at the group's own step, which is what says where one label,
 					    its sentence and its box end and the next one begins — the step inside a field is
 					    narrower on purpose (`.adm-field` in packages/operator/src/styles/adm.css). */}
-					<div className="adm-stack">
-						<Field
-							id={secret.id}
-							name={secret.name}
-							label="Secret key"
-							placeholder="sk_live_…"
-							// the code face. these are literals an operator checks character for character
-							// against the page they were copied from.
-							code
-							// which of the twenty-one arrive masked, the publishable key below among the ones
-							// that do not, is ./secret-groups.ts's.
-							masked={isMasked('STRIPE_SECRET_KEY')}
-							autoComplete="off"
-							spellCheck={false}
-							defaultValue={secret.defaultValue}
-							// closed while this form's own press is sending them, while a run is going, while
-							// another press on the page writes, and while a write that landed has not yet put
-							// them back — and never while a refusal to this form's own press is being
-							// re-read, which is the answer an operator has to type over ({@link closed}).
-							disabled={closed}
-							// the far end's sentence about this box ended by the keystroke that changes it
-							// (./use-console-form.ts).
-							onInput={secret.onInput}
-							error={secret.message}
-						/>
-						<Field
-							id={published.id}
-							name={published.name}
-							label="Publishable key"
-							placeholder="pk_live_…"
-							code
-							autoComplete="off"
-							spellCheck={false}
-							defaultValue={published.defaultValue}
-							disabled={closed}
-							onInput={published.onInput}
-							error={published.message}
-						/>
-						{withheldBlock(holding === null ? [] : withheldAmong(holding, PAYMENTS_WRITES))}
-					</div>
+						<div className="adm-stack">
+							<Field
+								id={secret.id}
+								name={secret.name}
+								label="Secret key"
+								placeholder="sk_live_…"
+								// the code face. these are literals an operator checks character for character
+								// against the page they were copied from.
+								code
+								// which of the twenty-one arrive masked, the publishable key below among the ones
+								// that do not, is ./secret-groups.ts's.
+								masked={isMasked('STRIPE_SECRET_KEY')}
+								autoComplete="off"
+								spellCheck={false}
+								defaultValue={secret.defaultValue}
+								// closed while this form's own press is sending them, while a run is going, while
+								// another press on the page writes, and while a write that landed has not yet put
+								// them back — and never while a refusal to this form's own press is being
+								// re-read, which is the answer an operator has to type over ({@link closed}).
+								disabled={closed}
+								// the far end's sentence about this box ended by the keystroke that changes it
+								// (./use-console-form.ts).
+								onInput={secret.onInput}
+								error={secret.message}
+							/>
+							<Field
+								id={published.id}
+								name={published.name}
+								label="Publishable key"
+								placeholder="pk_live_…"
+								code
+								autoComplete="off"
+								spellCheck={false}
+								defaultValue={published.defaultValue}
+								disabled={closed}
+								onInput={published.onInput}
+								error={published.message}
+							/>
+							{withheldBlock(holding === null ? [] : withheldAmong(holding, PAYMENTS_WRITES))}
+						</div>
 
-					{/* what Stripe turned the pair down for, standing over the press that asked and going the
+						{/* what Stripe turned the pair down for, standing over the press that asked and going the
 					    moment either box is edited — `standing` is the same answer cut down to the boxes
 					    nobody has typed in since (./use-console-form.ts). the row is a field's, drawn
 					    outside a field on purpose: it is one sentence with a mark, and what it is about is
 					    the two boxes above it rather than either one. */}
-					{keys.standing?.[KEY_FIELD('STRIPE_SECRET_KEY')] === undefined ||
-					keyRefusal === undefined ? null : (
-						<FieldMessage>{keyRefusal}</FieldMessage>
-					)}
+						{keys.standing?.[KEY_FIELD('STRIPE_SECRET_KEY')] === undefined ||
+						keyRefusal === undefined ? null : (
+							<FieldMessage>{keyRefusal}</FieldMessage>
+						)}
 
-					<div className="adm-actions">
-						{/* the submit of this form, which also makes it the button Enter in either box
+						<div className="adm-actions">
+							{/* the submit of this form, which also makes it the button Enter in either box
 						    presses. a press that asks first is stopped at the form above rather than here:
 						    what such a press takes away is stated in the card, and the submit carrying it is
 						    the control in there. */}
-						<SaveButton
-							id={SET_UP_PRESS}
-							type="submit"
-							name="intent"
-							value={SET_UP_INTENT}
-							state={keys.state}
-							label="Save"
-							doneLabel="Set up"
-							// closed for exactly what closes the boxes above it ({@link closed}): a press made
-							// while they are shut posts a form the browser leaves those two boxes out of,
-							// which the far end reads as the pair being taken away. the other half — the
-							// boxes having nothing to send — is the state's own and is composed with this
-							// one by packages/operator/src/components/controls/SaveButton.jsx.
-							disabled={closed || undefined}
-						/>
-					</div>
+							<SaveButton
+								id={SET_UP_PRESS}
+								type="submit"
+								name="intent"
+								value={SET_UP_INTENT}
+								state={keys.state}
+								label="Save"
+								doneLabel="Set up"
+								// closed for exactly what closes the boxes above it ({@link closed}): a press made
+								// while they are shut posts a form the browser leaves those two boxes out of,
+								// which the far end reads as the pair being taken away. the other half — the
+								// boxes having nothing to send — is the state's own and is composed with this
+								// one by packages/operator/src/components/controls/SaveButton.jsx.
+								disabled={closed || undefined}
+							/>
+						</div>
 
-					{/* the removal answers here and the other two acts answer in the ledger below: an
+						{/* the removal answers here and the other two acts answer in the ledger below: an
 					    outcome reports at the control that caused it. a write that landed is the button's
 					    own `Set up`, so what is left is the ways it did not happen. */}
-					{removedFailure === null ? null : wrote(removedFailure)}
+						{removedFailure === null ? null : wrote(removedFailure)}
 
-					{/* the run that stopped, standing as the report of the press above it — the one that
+						{/* the run that stopped, standing as the report of the press above it — the one that
 					    came with the page load as much as this page's own once its card is closed. not a
 					    card, because no card is keyed on it: both go up on the press and only the page that
 					    pressed has that. no heading, because the stopped line carries the sentence naming
 					    what to do. it goes when the next press puts a card up, and the running run that
 					    follows replaces the stopped one in the binary. */}
-					{live !== null && reportStands(live, reporting !== null || confirming !== null)
-						? ledger(live)
-						: null}
+						{live !== null && reportStands(live, reporting !== null || confirming !== null)
+							? ledger(live)
+							: null}
 
-					{confirming === null ? null : (
-						<Modal
-							title={ASKS[confirming.act].title}
-							/* a run that is going cannot be left: Escape and a press on the ground are the two
+						{confirming === null ? null : (
+							<Modal
+								title={ASKS[confirming.act].title}
+								/* a run that is going cannot be left: Escape and a press on the ground are the two
 							   ways out of the top layer and both come through here, and either would take the
 							   only report of a chain still running against three hosts off the screen. */
-							onDismiss={() => {
-								if (underway) return;
-								setConfirming(null);
-							}}
-							danger={press?.destroys ? press.label : undefined}
-							dangerProps={press?.destroys ? press.props : undefined}
-							exit={press !== null && !press.destroys ? press.label : undefined}
-							exitProps={press !== null && !press.destroys ? press.props : undefined}
-							/* `Go back` is only true while nothing has happened. once the press is made it is made,
+								onDismiss={() => {
+									if (underway) return;
+									setConfirming(null);
+								}}
+								danger={press?.destroys ? press.label : undefined}
+								dangerProps={press?.destroys ? press.props : undefined}
+								exit={press !== null && !press.destroys ? press.label : undefined}
+								exitProps={press !== null && !press.destroys ? press.props : undefined}
+								/* `Go back` is only true while nothing has happened. once the press is made it is made,
 							   and the way out says so — the run it started is not undone by leaving. */
-							cancel={confirming.pressed ? 'Close' : 'Go back'}
-							cancelProps={{
-								type: 'button',
-								disabled: underway || undefined,
-								onClick: () => setConfirming(null)
-							}}
-						>
-							{/* one line per value the press touches and nothing about the rest: an operator
+								cancel={confirming.pressed ? 'Close' : 'Go back'}
+								cancelProps={{
+									type: 'button',
+									disabled: underway || undefined,
+									onClick: () => setConfirming(null)
+								}}
+							>
+								{/* one line per value the press touches and nothing about the rest: an operator
 							    reading this is deciding whether to make it, and a value they left alone is not
 							    part of that decision. all three words are drawn in the descriptive register —
 							    packages/operator/src/styles/tokens.css states that such a state carries no
 							    mark and no tone, so nothing here colours the removal. the word carries it, and
 							    the destructive rank on the confirm carries the rest. */}
-							<div>
-								{confirming.lines.map((line) => (
-									<SettingRow
-										key={line.name}
-										label={LABEL[line.name] ?? line.name}
-										value={line.act}
-									/>
-								))}
-							</div>
-							{/* the rest of what the press does, which no row can carry — drawn only for the act
+								<div>
+									{confirming.lines.map((line) => (
+										<SettingRow
+											key={line.name}
+											label={LABEL[line.name] ?? line.name}
+											value={line.act}
+										/>
+									))}
+								</div>
+								{/* the rest of what the press does, which no row can carry — drawn only for the act
 							    it belongs to. it is the whole reason an errand puts a card up at all: a first
 							    set-up is made at the button and reaches this only where there is a working
 							    set-up to remake (./stripe-confirm.ts). */}
-							{confirming.act === 'errand' && remakesSetup(confirming.lines) ? (
-								<p className="adm-prose">
-									The endpoint Stripe already sends payments to is deleted and registered again.
-								</p>
-							) : null}
-							{confirming.act === 'remove' ? (
-								<p className="adm-prose">
-									No card can be charged on this deployment afterwards, and the signing secret
-									Stripe issued goes with the key. Nothing can read that one back, so keep your own
-									copy if you still need it.
-								</p>
-							) : null}
-							{/* the run this card's own press started, reported where that press was made. a
+								{confirming.act === 'errand' && remakesSetup(confirming.lines) ? (
+									<p className="adm-prose">
+										The endpoint Stripe already sends payments to is deleted and registered again.
+									</p>
+								) : null}
+								{confirming.act === 'remove' ? (
+									<p className="adm-prose">
+										No card can be charged on this deployment afterwards, and the signing secret
+										Stripe issued goes with the key. Nothing can read that one back, so keep your
+										own copy if you still need it.
+									</p>
+								) : null}
+								{/* the run this card's own press started, reported where that press was made. a
 							    removal makes no run at all and answers at the button, so it draws none. */}
-							{confirming.pressed && live !== null && !landed ? ledger(live) : null}
-						</Modal>
-					)}
+								{confirming.pressed && live !== null && !landed ? ledger(live) : null}
+							</Modal>
+						)}
 
-					{/* the card goes up on the press itself, before there is any reading of the run to
+						{/* the card goes up on the press itself, before there is any reading of the run to
 					    draw it from: the first stage is the console handing the secret key to Stripe, and
 					    those seconds are exactly the wait the card exists to report. what it draws until
 					    the first reading lands is that stage ({@link ledger}), and never the run this screen
 					    is holding — a stopped run stays in the binary until the next press clears it, so it
 					    is the press before this one ({@link reporting}). */}
-					{reporting === null ? null : (
-						<Modal
-							/* the errand the card is about, which is what it goes on saying once the run
+						{reporting === null ? null : (
+							<Modal
+								/* the errand the card is about, which is what it goes on saying once the run
 							   stops: not every stop is a failure — a set-up whose keys are stored and
 							   published and whose repeating gifts are not is one — so a heading that read as
 							   a verdict would be wrong on the half of them the ledger below states exactly. */
-							title="Setting up Stripe"
-							/* a run that is going cannot be left, for the reason the confirm above states:
+								title="Setting up Stripe"
+								/* a run that is going cannot be left, for the reason the confirm above states:
 							   this card is the only report of a chain still running against three hosts. */
-							onDismiss={() => {
-								if (underway) return;
-								setReporting(null);
-							}}
-							/* one way out and no press to make. it is stated rather than left to the default,
+								onDismiss={() => {
+									if (underway) return;
+									setReporting(null);
+								}}
+								/* one way out and no press to make. it is stated rather than left to the default,
 							   which is an unnamed control that would submit the form this card stands inside
 							   (packages/operator/src/components/shell/Dialog.jsx). */
-							exit="Close"
-							exitProps={{
-								type: 'button' as const,
-								disabled: underway || undefined,
-								onClick: () => setReporting(null)
-							}}
-						>
-							{ledger(reporting === 'reading' ? live : null)}
-						</Modal>
-					)}
-				</Form>
+								exit="Close"
+								exitProps={{
+									type: 'button' as const,
+									disabled: underway || undefined,
+									onClick: () => setReporting(null)
+								}}
+							>
+								{ledger(reporting === 'reading' ? live : null)}
+							</Modal>
+						)}
+					</Form>
+				</div>
 			</div>
 		</Section>
 	);
 }
 
 /**
- * where the two keys come from, one press off the heading.
- *
- * it is the last of what was a paragraph inside the form, and it is the only part of it worth
- * keeping: everything else that paragraph said is what the press does, which the confirm now says
- * against the operator's own boxes. what is left is the one fact a box cannot carry — that both keys
- * are on one screen, and which screen. ./smtp-fold.tsx's `MailProviders` says the same kind of thing
- * about a mail provider, standing above its boxes rather than behind a mark.
- */
-function StripeKeys(): ReactNode {
-	return (
-		<p>
-			Both are on one page in your Stripe dashboard:{' '}
-			<a href={DASHBOARD} target="_blank" rel="noreferrer">
-				Developers &rarr; API keys
-			</a>
-			. Copy the secret key and the publishable key from the same page, so the pair belongs to one
-			account.
-		</p>
-	);
-}
-
-/**
  * what this deployment has told Stripe to report to it, and where.
  *
- * **it is a reading and never a control.** nothing here is a choice: the address follows from where
- * the deployment answers and the list is what the code handles, so a tick box beside an event would
+ * **it is a reading and never a control.** nothing here is a choice: the path is the one the
+ * deployment serves and the list is what the code handles, so a tick box beside an event would
  * offer a press that changes nothing. the form under it establishes all of it from the two keys,
  * and this is where an operator finds out what that press left standing.
  *
  * **every fact is `packages/operator/src/stripe/webhook-endpoint.ts`'s and none is retyped.** the
- * address is joined by the function the console registers with, so a screen and a registration
- * cannot spell one differently; the list is the module's own, so an event added there is a line here
- * without anybody remembering to add one.
+ * path is the constant the console's registration joins onto the origin, so a screen and a
+ * registration cannot spell one differently; the list is the module's own, so an event added there
+ * is a line here without anybody remembering to add one.
  *
- * the address is drawn in a sentence rather than as a chip, because it is read as part of one — the
+ * **the path and not the whole address.** the sentence already says whose origin it is — this
+ * deployment's — and a hostname in a line of prose wraps mid-word on any narrow column.
+ *
+ * the heading and its sentence are one `hgroup`, for the reason the keys block above states.
+ *
+ * the path is drawn in a sentence rather than as a chip, because it is read as part of one — the
  * chip is the face a value takes when it stands on its own, which is what every event below is
  * (`.adm-code` and `.adm-chip` in packages/operator/src/styles/base.css and adm.css).
  *
@@ -2192,27 +2157,31 @@ function StripeKeys(): ReactNode {
  * `.adm-list` stands the items in a grid, and either on its own stops a browser reporting how many
  * there are.
  */
-function Webhooks({ address }: { address: string }): ReactNode {
+function Webhooks(): ReactNode {
 	const events = `${useId()}-webhook-events`;
 	return (
 		<div className="adm-named">
-			<h3>Stripe webhooks</h3>
-			<p className="adm-prose">
-				Stripe reports these events to this deployment, at{' '}
-				<InlineCode>{webhookEndpointUrl(address)}</InlineCode>.
-			</p>
-			<Disclosure summary={<span id={events}>{SUBSCRIBED_EVENT_TYPES.length} Events</span>}>
-				{/* biome-ignore lint/a11y/noRedundantRoles: not redundant here, for the two reasons above
+			<div className="adm-stack">
+				<hgroup>
+					<h3>Webhooks</h3>
+					<p className="adm-prose">
+						Stripe reports these events to this deployment, at{' '}
+						<InlineCode>{STRIPE_WEBHOOK_PATH}</InlineCode>.
+					</p>
+				</hgroup>
+				<Disclosure summary={<span id={events}>{SUBSCRIBED_EVENT_TYPES.length} events</span>}>
+					{/* biome-ignore lint/a11y/noRedundantRoles: not redundant here, for the two reasons above
 				    — no marker and a grid, either of which stops a browser reporting this as a list.
 				    removing the attribute re-opens the defect. */}
-				<ul role="list" aria-labelledby={events} className="adm-list">
-					{SUBSCRIBED_EVENT_TYPES.map((event) => (
-						<li key={event}>
-							<CodeChip>{event}</CodeChip>
-						</li>
-					))}
-				</ul>
-			</Disclosure>
+					<ul role="list" aria-labelledby={events} className="adm-list">
+						{SUBSCRIBED_EVENT_TYPES.map((event) => (
+							<li key={event}>
+								<CodeChip>{event}</CodeChip>
+							</li>
+						))}
+					</ul>
+				</Disclosure>
+			</div>
 		</div>
 	);
 }

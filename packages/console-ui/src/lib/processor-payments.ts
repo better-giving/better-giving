@@ -1,11 +1,5 @@
 import type { Tone } from '@better-giving/operator/components/closed-sets';
-import type {
-	PaymentProcessor,
-	PaymentsRead,
-	ProcessorPayments,
-	RailEvidence,
-	RailStanding
-} from '../api/types';
+import type { PaymentProcessor, PaymentsRead, ProcessorPayments, RailStanding } from '../api/types';
 
 // where one processor stands, taken out of the report that answers for every one of them, and what
 // the standings under a rails reading are worth in words.
@@ -50,30 +44,7 @@ export const configuredStanding = (entry: ProcessorPayments | null): ConfiguredP
 	entry?.state === 'configured' ? entry : null;
 
 /**
- * the sentence over a rails ledger, or `null` where the rows already carry it.
- *
- * **two processors report `Approved` and it means two different things, so what is said over a
- * ledger is decided off the evidence rather than off the ledger.** where the processor publishes an
- * approval per rail the word is that approval read back, the rows themselves say nothing under it
- * (`STANDING_NOTE.approved` in packages/app/src/lib/server/forms/rail-notes.ts), and this is the
- * only place the ledger can say what an approval is not.
- *
- * **`credentials_only` says it in the rows' own notes instead, so nothing is written here.** there
- * the word means the credentials authenticated and nothing whatever about the rail beside it, and the
- * deployment writes that sentence as the note on each such rail — which `hoistSharedNote` below then
- * draws once over the ledger, so a sentence here would be the same one twice.
- *
- * keyed by `RailEvidence` and not by processor, because that is the fact the deployment answers
- * with: a console picking the sentence off a processor's name is a second list to keep level.
- */
-export const EVIDENCE_SAYS: Record<RailEvidence, string | null> = {
-	per_rail_approval:
-		"Approved is Stripe's permission and not a promise. A gift can still be refused over the currency, the amount, or the donor's own bank.",
-	credentials_only: null
-};
-
-/**
- * one sentence the rows all carry, lifted over the ledger, and the rows left with no note of it.
+ * one sentence the rows all carry, lifted out once, and the rows left with no note of it.
  *
  * lifted only where two or more rows carry a note and every one of those notes is the same string —
  * the deployment writes `CREDENTIALS_ONLY_NOTE` (packages/app/src/lib/server/forms/rail-notes.ts)
