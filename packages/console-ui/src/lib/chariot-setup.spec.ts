@@ -9,12 +9,10 @@ import type {
 } from '../api/types';
 import {
 	CHARIOT_BLANK,
-	CHARIOT_CONTACT_FORM,
 	CHARIOT_FIELD,
 	CHARIOT_FORM,
 	CHARIOT_LIVE,
 	CHARIOT_NOT_ADDRESS,
-	CHARIOT_NOT_EMAIL,
 	LINES,
 	boxesStanding,
 	chariotPosted,
@@ -45,11 +43,10 @@ const ended = (
 
 const failure = (kind: ChariotFailure['kind']): ChariotFailure => ({ kind, detail: 'said' });
 
-const body = (apiKey: string, address: string, contactEmail: string): FormData => {
+const body = (apiKey: string, address: string): FormData => {
 	const posted = new FormData();
 	posted.set(CHARIOT_FIELD('apiKey'), apiKey);
 	posted.set(CHARIOT_FIELD('address'), address);
-	posted.set(CHARIOT_FIELD('contactEmail'), contactEmail);
 	return posted;
 };
 
@@ -75,34 +72,23 @@ describe('the address box', () => {
 
 describe('the boxes a press posts', () => {
 	it('trims every box rather than sending the binary a value it turns down', () => {
-		expect(
-			chariotPosted(body(' key ', ' https://sandboxapi.givechariot.com ', ' a@b.org\n'))
-		).toEqual({
+		expect(chariotPosted(body(' key ', ' https://sandboxapi.givechariot.com '))).toEqual({
 			ok: true,
-			boxes: {
-				apiKey: 'key',
-				address: 'https://sandboxapi.givechariot.com',
-				contactEmail: 'a@b.org'
-			}
+			boxes: { apiKey: 'key', address: 'https://sandboxapi.givechariot.com' }
 		});
 	});
 
 	it('takes an emptied address, which the binary reads as live', () => {
-		expect(chariotPosted(body('key', '', 'a@b.org')).ok).toBe(true);
+		expect(chariotPosted(body('key', '')).ok).toBe(true);
 	});
 
 	it('refuses each box by its own field', () => {
-		expect(chariotPosted(body(' ', 'https://example.org/path', ''))).toEqual({
+		expect(chariotPosted(body(' ', 'https://example.org/path'))).toEqual({
 			ok: false,
 			errors: {
 				[CHARIOT_FIELD('apiKey')]: CHARIOT_BLANK,
-				[CHARIOT_FIELD('address')]: CHARIOT_NOT_ADDRESS,
-				[CHARIOT_FIELD('contactEmail')]: CHARIOT_BLANK
+				[CHARIOT_FIELD('address')]: CHARIOT_NOT_ADDRESS
 			}
-		});
-		expect(chariotPosted(body('key', '', 'Name <a@b.org>'))).toEqual({
-			ok: false,
-			errors: { [CHARIOT_FIELD('contactEmail')]: CHARIOT_NOT_EMAIL }
 		});
 	});
 
@@ -114,19 +100,6 @@ describe('the boxes a press posts', () => {
 			[CHARIOT_FIELD('apiKey'), CHARIOT_BLANK],
 			[CHARIOT_FIELD('address'), CHARIOT_NOT_ADDRESS]
 		]);
-	});
-
-	it('asks the contact email by the same rule the press is read with', () => {
-		const schema = CHARIOT_CONTACT_FORM.schema;
-		const said = (typed?: string) =>
-			schema
-				.safeParse(typed === undefined ? {} : { [CHARIOT_FIELD('contactEmail')]: typed })
-				.error?.issues.map((issue) => issue.message);
-		expect(schema.parse({ [CHARIOT_FIELD('contactEmail')]: ' a@b.org\n' })).toEqual({
-			[CHARIOT_FIELD('contactEmail')]: 'a@b.org'
-		});
-		expect(said()).toEqual([CHARIOT_BLANK]);
-		expect(said('Name <a@b.org>')).toEqual([CHARIOT_NOT_EMAIL]);
 	});
 });
 
@@ -209,6 +182,10 @@ describe('how each way a run ends reads', () => {
 			kind: 'ambiguous',
 			candidates
 		});
+	});
+
+	it('sends a missing contact email to the organisation', () => {
+		expect(chariotStop({ kind: 'no-contact' }, NO_FACTS)).toEqual({ kind: 'no-contact' });
 	});
 
 	it('names the ineligible organisation the facts found', () => {
@@ -302,8 +279,8 @@ describe('what the boxes are seeded from', () => {
 		}
 	});
 
-	it('is what the deployment reported where the write did not land', () => {
-		const run = ended('storing', {
+	it('is what was sent where the run stopped before anything was stored, so a press again needs no retyping', () => {
+		const unstored = ended('storing', {
 			kind: 'unstored',
 			written: { kind: 'unreachable', detail: 'timeout' } as Extract<
 				ChariotSetup,
@@ -311,7 +288,37 @@ describe('what the boxes are seeded from', () => {
 			>['written'],
 			left: []
 		});
+		const ineligible = ended('finding', { kind: 'ineligible' }, { ...NO_FACTS, organisation });
+		for (const run of [unstored, ineligible]) {
+			expect(boxesStanding({ reported, sent, run, reread: false })).toEqual({
+				seeded: sent,
+				spent: false
+			});
+		}
+	});
+
+	it('is what was sent while the run is still going', () => {
+		const run: ChariotRunRead = {
+			kind: 'running',
+			stage: 'finding',
+			facts: NO_FACTS,
+			outcome: null
+		};
 		expect(boxesStanding({ reported, sent, run, reread: false })).toEqual({
+			seeded: sent,
+			spent: false
+		});
+	});
+
+	it('is what the deployment reported on a page loaded with no press behind it, stopped run or none', () => {
+		const ineligible = ended('finding', { kind: 'ineligible' });
+		for (const run of [ineligible, null]) {
+			expect(boxesStanding({ reported, sent: null, run, reread: false })).toEqual({
+				seeded: reported,
+				spent: false
+			});
+		}
+		expect(boxesStanding({ reported, sent, run: null, reread: false })).toEqual({
 			seeded: reported,
 			spent: false
 		});

@@ -148,6 +148,9 @@ const STORED: readonly PaypalSetup['kind'][] = ['done', 'unrepeating'];
  * it — are the pair on the deployment. what the press sent seeds the boxes from that answer until
  * the reading after it lands, which reports the same two values — `keysStanding` in
  * ./stripe-press.ts is the same seeding and argues it.
+ *
+ * a run the press started that has not stored the pair keeps the boxes holding what was sent,
+ * `boxesStanding` in ./chariot-setup.ts's rule and reason.
  */
 export function pairStanding(press: {
 	readonly reported: PaypalPairBoxes;
@@ -156,8 +159,17 @@ export function pairStanding(press: {
 	readonly reread: boolean;
 }): { readonly seeded: PaypalPairBoxes; readonly spent: boolean } {
 	const { sent, run } = press;
-	if (sent === null || run?.kind !== 'ended' || !STORED.includes(run.outcome.kind)) {
-		return { seeded: press.reported, spent: press.reread };
+	if (sent === null || run === null) return { seeded: press.reported, spent: press.reread };
+	if (run.kind === 'running' || !STORED.includes(run.outcome.kind)) {
+		return { seeded: sent, spent: press.reread };
 	}
 	return { seeded: press.reread ? press.reported : sent, spent: true };
 }
+
+/**
+ * whether Save is armed over boxes nobody has changed: a run that stopped before the pair was stored,
+ * whose repair is the same press over the same boxes. a stop past the write is not — `unrepeating`
+ * is finished by the recurring donation block's own press.
+ */
+export const pairArmed = (run: PaypalRunRead | null): boolean =>
+	run?.kind === 'ended' && !STORED.includes(run.outcome.kind);

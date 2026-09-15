@@ -23,6 +23,7 @@
 
 import type { StripeRunRead, StripeSetup } from '../api/types';
 import type { StripeAct, StripeKeyBoxes } from './stripe-keys';
+import { stripeAsked } from './stripe-keys';
 import { REACHED } from './stripe-run-lines';
 
 /** where the router is with this press, which is the pair rather than either flag alone. */
@@ -210,10 +211,18 @@ export type KeysSent = {
 	readonly boxes: StripeKeyBoxes;
 };
 
-/** what the two key boxes are drawn holding, and whether they have been put back to it. */
+/** what the two key boxes are drawn holding, what a press of them is asked against, and the press. */
 export type KeysStanding = {
 	readonly seeded: StripeKeyBoxes;
+	/**
+	 * the pair the deployment holds, which is what a press is read against (`stripeAsked` and
+	 * `stripeForm` in ./stripe-keys.ts) — never what the boxes were refilled with, or a press again
+	 * over a kept pair would ask for nothing.
+	 */
+	readonly holds: StripeKeyBoxes;
 	readonly spent: boolean;
+	/** the press is armed over boxes nobody has changed: they hold a pair a stopped run never stored. */
+	readonly armed: boolean;
 };
 
 /**
@@ -229,7 +238,8 @@ function storedPair(run: StripeRunRead | null, sent: KeysSent | null): StripeKey
 }
 
 /**
- * the pair the boxes are seeded from, and whether a write has put them back to it.
+ * the pair the boxes are seeded from, what the deployment holds under them, and whether a write has
+ * put them back to it.
  *
  * **the press's own answer seeds them, and it does so before any reading of the deployment.** the
  * page's reading is a promise the loader hands back unresolved (./processor-reading.ts), so it lands
@@ -243,25 +253,40 @@ function storedPair(run: StripeRunRead | null, sent: KeysSent | null): StripeKey
  * of the twenty-one is a plain var and the account hands each back (`heldValues` in ./held-values.ts)
  * — so nothing moves under the operator when it does.
  *
- * **the one stop past the store that puts nothing back is `not-published`.** it is the publishable
- * var write refusing (`publish` in `packages/console/internal/stripe/setup.go`), so the deployment
- * is holding one of the two — and the press is left exactly as the operator made it, both boxes and
- * all, because pressing it again is the retry of the write that did not land. the pair is read as
- * one here: the charging box is holding the string that was stored anyway, so nothing is lost by it.
+ * **a press whose run has not stored the pair keeps the boxes holding what it sent**, going or
+ * stopped — `boxesStanding` in ./chariot-setup.ts's rule and reason. `sent` outlives the page
+ * (./kept-press.ts), so leaving to fix what a stop names costs no retyping. what the press is asked
+ * against stays the reading ({@link KeysStanding.holds}), so the same press over the same boxes is
+ * the same errand, armed while the run is stopped. `not-published` is one of these: it is the
+ * publishable var write refusing (`publish` in `packages/console/internal/stripe/setup.go`), so the
+ * deployment is holding one of the two, and the reading after it asks again for the publish alone.
+ * with no press behind them, a removal, or no run held, the boxes are the reading.
  */
 export function keysStanding(press: {
 	/** the two names as the deployment reported them, which is what a box holds with no press behind it. */
 	readonly reported: StripeKeyBoxes;
-	/** what the last press of this form carried, or `null` where this page has made none. */
+	/** what the last press of this form carried, or `null` where none is kept (./kept-press.ts). */
 	readonly sent: KeysSent | null;
 	/** the run this fold is holding, which is where that press's own answer is read. */
 	readonly run: StripeRunRead | null;
 	/** whether the reading this press set off has landed (./reseed.ts). */
 	readonly reread: boolean;
 }): KeysStanding {
-	const stored = storedPair(press.run, press.sent);
-	if (stored === null) return { seeded: press.reported, spent: press.reread };
-	return { seeded: press.reread ? press.reported : stored, spent: true };
+	const { sent, run, reported, reread } = press;
+	const stored = storedPair(run, sent);
+	if (stored !== null) {
+		const seeded = reread ? reported : stored;
+		return { seeded, holds: seeded, spent: true, armed: false };
+	}
+	if (sent === null || sent.act === 'remove' || run === null) {
+		return { seeded: reported, holds: reported, spent: reread, armed: false };
+	}
+	return {
+		seeded: sent.boxes,
+		holds: reported,
+		spent: reread,
+		armed: run.kind === 'ended' && stripeAsked(sent.boxes, reported).act !== null
+	};
 }
 
 /**

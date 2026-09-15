@@ -81,10 +81,10 @@ describe('the press that sets stripe up from the two keys', () => {
 	});
 });
 
-describe('the press that sets chariot up from the key, the address and a contact email', () => {
-	const boxes = { apiKey: 'ck_x', address: '', contactEmail: 'ops@example.org' };
+describe('the press that sets chariot up from the key and the address', () => {
+	const boxes = { apiKey: 'ck_x', address: '' };
 
-	it('posts the three boxes to the binary and answers the run it started', async () => {
+	it('posts the two boxes to the binary and answers the run it started', async () => {
 		const calls = recording({ run: { kind: 'running', stage: 'checking' } });
 
 		await expect(startChariotSetup(boxes)).resolves.toEqual({
@@ -106,7 +106,7 @@ describe('the press that sets chariot up from the key, the address and a contact
 	});
 
 	it('answers boxes the door would not take as turned down', async () => {
-		answering(400, { error: 'the contact email slot holds no single email address' });
+		answering(400, { error: 'the api key slot holds nothing, or a value with space around it' });
 
 		await expect(startChariotSetup(boxes)).resolves.toEqual({ started: false, turnedDown: true });
 	});

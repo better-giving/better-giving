@@ -1037,6 +1037,8 @@ export type ChariotSetup =
 	| { kind: 'unprofiled'; read: NoReport }
 	/** the organisation's profile holds no EIN, or none that is nine digits. */
 	| { kind: 'no-ein' }
+	/** the organisation's profile holds no notification email, which the Connect is made with. */
+	| { kind: 'no-contact' }
 	/** Chariot's directory did not answer the search. */
 	| { kind: 'unsearched'; failure: ChariotFailure }
 	/** no organisation in Chariot's directory carries the EIN; `ein` is the nine digits searched. */

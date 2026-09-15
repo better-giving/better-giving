@@ -40,9 +40,9 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	const intent = posted.get('intent');
 
 	/**
-	 * sets Chariot up from the two boxes and the contact email the press asked for: the binary checks
-	 * the key, finds the organisation, settles its Connect and the subscription here, and writes the
-	 * four values in one write (`packages/console/internal/chariot`).
+	 * sets Chariot up from the two boxes: the binary checks the key, finds the organisation, settles
+	 * its Connect and the subscription here, and writes the four values in one write
+	 * (`packages/console/internal/chariot`).
 	 *
 	 * started rather than awaited, for the Stripe press's reason (./_sections.payments.stripe.tsx), and
 	 * the boxes are read by their own rules first so the binary is sent nothing it would turn down

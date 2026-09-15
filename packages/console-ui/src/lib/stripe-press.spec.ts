@@ -13,6 +13,7 @@ import {
 	writingElsewhere
 } from './stripe-press';
 import type { StripeKeyBoxes } from './stripe-keys';
+import { stripeAsked } from './stripe-keys';
 
 // what a Stripe press is doing and what it was turned down for, read from the router's phase rather
 // than from the answer alone.
@@ -218,7 +219,7 @@ describe('keysStanding', () => {
 	it('puts the boxes back to the pair the press sent, on the answer that stored it', () => {
 		expect(
 			keysStanding({ reported: REPORTED, sent: SENT, run: ended({ kind: 'done' }), reread: false })
-		).toEqual({ seeded: SENT.boxes, spent: true });
+		).toEqual({ seeded: SENT.boxes, holds: SENT.boxes, spent: true, armed: false });
 	});
 
 	/**
@@ -229,7 +230,7 @@ describe('keysStanding', () => {
 		const read: StripeKeyBoxes = { ...SENT.boxes };
 		expect(
 			keysStanding({ reported: read, sent: SENT, run: ended({ kind: 'done' }), reread: true })
-		).toEqual({ seeded: read, spent: true });
+		).toEqual({ seeded: read, holds: read, spent: true, armed: false });
 	});
 
 	// a run that stored the pair and failed further down stored it all the same, and the fold is
@@ -260,7 +261,7 @@ describe('keysStanding', () => {
 				}),
 				reread: false
 			})
-		).toEqual({ seeded: SENT.boxes, spent: true });
+		).toEqual({ seeded: SENT.boxes, holds: SENT.boxes, spent: true, armed: false });
 	});
 
 	// the wallet hostnames are the last step of the chain and the published key went up two steps in
@@ -277,26 +278,29 @@ describe('keysStanding', () => {
 				}),
 				reread: false
 			})
-		).toEqual({ seeded: SENT.boxes, spent: true });
+		).toEqual({ seeded: SENT.boxes, holds: SENT.boxes, spent: true, armed: false });
 	});
 
 	/**
-	 * the one stop past the store that left the published slot alone, and the whole press is left as
-	 * the operator made it: both boxes hold what they held and the press is armed over them, so
-	 * pressing again retries the one write that did not land.
+	 * the one stop past the store that left the published slot alone: the boxes hold what was sent
+	 * and the press is armed over them. read again, the deployment holds the new secret key beside the
+	 * old publishable one, so the same boxes ask for the publish alone.
 	 */
-	it('puts nothing back where the press stored the key and did not publish', () => {
-		expect(
-			keysStanding({
-				reported: REPORTED,
-				sent: SENT,
-				run: ended({ kind: 'not-published', published: { kind: 'unreachable', detail: '' } }),
-				reread: false
-			})
-		).toEqual({ seeded: REPORTED, spent: false });
+	it('keeps the pair sent where the press stored the key and did not publish', () => {
+		const run = ended({ kind: 'not-published', published: { kind: 'unreachable', detail: '' } });
+		expect(keysStanding({ reported: REPORTED, sent: SENT, run, reread: false })).toEqual({
+			seeded: SENT.boxes,
+			holds: REPORTED,
+			spent: false,
+			armed: true
+		});
+		const reread: StripeKeyBoxes = { ...REPORTED, STRIPE_SECRET_KEY: SENT.boxes.STRIPE_SECRET_KEY };
+		const standing = keysStanding({ reported: reread, sent: SENT, run, reread: true });
+		expect(standing).toEqual({ seeded: SENT.boxes, holds: reread, spent: true, armed: true });
+		expect(stripeAsked(standing.seeded, standing.holds).act).toBe('publish');
 	});
 
-	it('seeds nothing from a run still going, whose press has stored nothing yet', () => {
+	it('keeps the pair sent under a run still going, unarmed while it goes', () => {
 		expect(
 			keysStanding({
 				reported: REPORTED,
@@ -304,20 +308,37 @@ describe('keysStanding', () => {
 				run: { kind: 'running', act: 'errand', stage: 'storing', facts },
 				reread: false
 			})
-		).toEqual({ seeded: REPORTED, spent: false });
+		).toEqual({ seeded: SENT.boxes, holds: REPORTED, spent: false, armed: false });
 	});
 
-	// the key named no account, so the chain stopped in front of the store and the boxes still hold
-	// what has to change.
-	it('seeds nothing from a run that stopped short of the store', () => {
-		expect(
-			keysStanding({
+	/**
+	 * the key named no account, so the chain stopped in front of the store: the boxes hold what was
+	 * sent, and what a press of them asks is read against what the deployment holds — so pressing
+	 * again over them is the same errand, where read against the refill it would be nothing at all.
+	 */
+	it('keeps the pair sent where the run stopped short of the store, and asks the same errand again', () => {
+		for (const reread of [false, true]) {
+			const standing = keysStanding({
 				reported: REPORTED,
 				sent: SENT,
 				run: ended({ kind: 'unnamed', failure: { kind: 'refused', detail: 'no such key' } }),
-				reread: false
+				reread
+			});
+			expect(standing).toEqual({ seeded: SENT.boxes, holds: REPORTED, spent: reread, armed: true });
+			expect(stripeAsked(standing.seeded, standing.holds).act).toBe('errand');
+			expect(stripeAsked(standing.seeded, standing.seeded).act).toBeNull();
+		}
+	});
+
+	it('arms nothing over a stopped publish whose pair the deployment already holds', () => {
+		expect(
+			keysStanding({
+				reported: SENT.boxes,
+				sent: { act: 'publish', boxes: SENT.boxes },
+				run: ended({ kind: 'not-published', published: { kind: 'unreachable', detail: '' } }),
+				reread: true
 			})
-		).toEqual({ seeded: REPORTED, spent: false });
+		).toEqual({ seeded: SENT.boxes, holds: SENT.boxes, spent: true, armed: false });
 	});
 
 	/**
@@ -333,7 +354,7 @@ describe('keysStanding', () => {
 				run: ended({ kind: 'done' }),
 				reread: false
 			})
-		).toEqual({ seeded: REPORTED, spent: false });
+		).toEqual({ seeded: REPORTED, holds: REPORTED, spent: false, armed: false });
 	});
 
 	// a run outlives the page it was pressed on, so a fold drawn over a reload holds an answer to a
@@ -341,13 +362,32 @@ describe('keysStanding', () => {
 	it('reads no pair where this page made no press', () => {
 		expect(
 			keysStanding({ reported: REPORTED, sent: null, run: ended({ kind: 'done' }), reread: false })
-		).toEqual({ seeded: REPORTED, spent: false });
+		).toEqual({ seeded: REPORTED, holds: REPORTED, spent: false, armed: false });
+	});
+
+	// a reload drops what was kept, so a stopped run on a fresh page seeds and arms nothing.
+	it('reads the deployment on a page with nothing kept, whatever run stopped', () => {
+		const run = ended({ kind: 'unnamed', failure: { kind: 'refused', detail: 'no such key' } });
+		expect(keysStanding({ reported: REPORTED, sent: null, run, reread: false })).toEqual({
+			seeded: REPORTED,
+			holds: REPORTED,
+			spent: false,
+			armed: false
+		});
+		expect(keysStanding({ reported: REPORTED, sent: SENT, run: null, reread: false })).toEqual({
+			seeded: REPORTED,
+			holds: REPORTED,
+			spent: false,
+			armed: false
+		});
 	});
 
 	it('still spends the boxes on the reading, for a press the run says nothing about', () => {
 		expect(keysStanding({ reported: REPORTED, sent: null, run: null, reread: true })).toEqual({
 			seeded: REPORTED,
-			spent: true
+			holds: REPORTED,
+			spent: true,
+			armed: false
 		});
 	});
 });

@@ -15,11 +15,13 @@ import type { StatedForm } from './use-console-form';
 // what this module refuses is only a box standing empty that the press cannot go without, which is
 // the one thing a press can be turned down for before anything is sent.
 //
-// **the boxes are seeded, and a press is decided against the seed.** both keys are plain vars and
-// the account hands each value back (`heldValues` in ./held-values.ts), so each box is drawn
-// holding what the deployment holds: the seed coming back unchanged is the box nobody went near, an
-// emptied box is a value taken away, and anything else is a value to set — the reading the mail
-// form beside it makes, stated once in {@link stripeAsked} because both ends make it.
+// **the boxes are seeded, and a press is decided against what the deployment holds.** both keys are
+// plain vars and the account hands each value back (`heldValues` in ./held-values.ts), so each box
+// is drawn holding what the deployment holds: the seed coming back unchanged is the box nobody went
+// near, an emptied box is a value taken away, and anything else is a value to set — the reading the
+// mail form beside it makes, stated once in {@link stripeAsked} because both ends make it. a box
+// refilled with a press that never stored (`keysStanding` in ./stripe-press.ts) is still read
+// against the deployment, so pressing again over it is the same errand.
 //
 // **the publishable box has no removal, and an emptied one is refused rather than performed.** the
 // press that publishes a key names it with a value, and a deployment serving a donation form
@@ -193,10 +195,11 @@ export function stripeGap(boxes: StripeKeyBoxes, seeds: StripeKeyBoxes): StripeK
 /**
  * what the two boxes are asking for, and which of the three acts that makes the press.
  *
- * **the seeds are what the boxes were drawn with and never what a body claimed.** the screen holds
- * them from the reading the page took off the account, for the reason `secretEdits` in
- * ./secret-edits.ts states — a body claiming a credential is stored would turn an empty box into a
- * delete, and one claiming it is not would turn an untouched box into a save.
+ * **the seeds are what the deployment holds and never what a body claimed, or what the boxes were
+ * refilled with.** the screen holds them from the reading the page took off the account, for the
+ * reason `secretEdits` in ./secret-edits.ts states — a body claiming a credential is stored would
+ * turn an empty box into a delete, and one claiming it is not would turn an untouched box into a
+ * save. seeds taken off a refill would read a press again over it as asking for nothing.
  *
  * **the secret box decides, and on a removal the other one is not read.** a press that takes the
  * secret key away publishes nothing and can publish nothing, so a publishable edit stated beside it
@@ -299,9 +302,9 @@ const keyBoxes = z.object({
  * box it is about — a second spelling here is how a screen comes to disagree with itself about one
  * value.
  *
- * **it is a factory because the reading is made against the seeds**, which are what the boxes were
- * drawn with rather than anything a body claims: a box holding its seed is one nobody went near,
- * and the same box empty is a value taken away ({@link stripeAsked}).
+ * **it is a factory because the reading is made against the seeds**, which are what the deployment
+ * holds rather than anything a body claims: a box holding its seed is one nobody went near, and the
+ * same box empty is a value taken away ({@link stripeAsked}).
  *
  * **the boxes are keyed by what they post** ({@link KEY_FIELD}), which is what ./stripe-edits.ts
  * reads the body back by — so the name a sentence is keyed to is the name the box carries and the

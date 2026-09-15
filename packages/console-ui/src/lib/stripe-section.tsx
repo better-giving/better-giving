@@ -63,6 +63,7 @@ import type {
 } from '../api/types';
 import type { ConfirmLine } from './stripe-confirm';
 import { confirmLines, remakesSetup } from './stripe-confirm';
+import { useKeptPress } from './kept-press';
 import { useReseeded } from './reseed';
 import type { KeysSent, PressAnswer, PressPhase, PressRefusal } from './stripe-press';
 import {
@@ -122,7 +123,8 @@ import { WALLET_NAMES, linkStanding, walletHostLines, walletRows } from './walle
 // reading (./use-console-form.ts) and not the act above: an emptied publishable box asks for a
 // removal this console has no errand for, so it is no act at all — and a button armed off the acts
 // rests closed over it with nothing on the screen saying why. armed, the press reaches this form's
-// own rules and is turned down under the box itself.
+// own rules and is turned down under the box itself. a run stopped short of the store arms it too,
+// over the pair it kept in the boxes (`keysStanding` in ./stripe-press.ts).
 //
 // **a press that takes something away asks before it does any of it, and the question is where the
 // whole explanation is.** what such a press costs is stated against the operator's own boxes at the
@@ -650,14 +652,15 @@ export function StripeSection({
 	const [pressedHere, setPressedHere] = useState(false);
 	/**
 	 * and what that press carried, which is what the deployment is holding the moment it says it
-	 * stored it ({@link seeded}).
+	 * stored it, and what the boxes keep holding until it does ({@link seeded}). it outlives the page
+	 * (./kept-press.ts).
 	 *
 	 * taken when the navigation carrying the intent begins rather than when the form is submitted: a
 	 * press that asks first is stopped at the form and goes from inside the card, and one the
 	 * operator answers by closing that card never goes at all — so the submit is where the pair is
 	 * read and the press going into flight is where it is kept.
 	 */
-	const [sent, setSent] = useState<KeysSent | null>(null);
+	const [sent, setSent] = useKeptPress<KeysSent>(SET_UP_INTENT);
 	const typed = useRef<KeysSent | null>(null);
 	useEffect(() => {
 		if (pending !== SET_UP_INTENT) return;
@@ -755,18 +758,19 @@ export function StripeSection({
 	   — the request, and then the run it started. */
 	const reread = useReseeded({ landed: keysLanded, pending: underway, reading: values.vars });
 	/* what the two boxes hold and whether they have been put back to it: this press's own answer
-	   where it says the deployment took the pair, and the reading after it otherwise
-	   (`keysStanding` in ./stripe-press.ts). the answer is seconds ahead of that reading — the
-	   deployment's own is a promise the loader hands back unresolved by the route that mounts this — and a
-	   screen waiting for it is one an operator meets with both boxes and the press under them shut. */
-	const { seeded, spent } = useMemo(
+	   where it says the deployment took the pair, what it sent where its run has not stored it, and
+	   the reading after it otherwise (`keysStanding` in ./stripe-press.ts). the answer is seconds
+	   ahead of that reading — the deployment's own is a promise the loader hands back unresolved by
+	   the route that mounts this — and a screen waiting for it is one an operator meets with both
+	   boxes and the press under them shut. `holds` is what a press of them is asked against. */
+	const { seeded, holds, spent, armed } = useMemo(
 		() => keysStanding({ reported, sent, run: live, reread }),
 		[reported, sent, live, reread]
 	);
 
 	/* this form's own rules, which are what the boxes are read against before anything is sent —
-	   `stripeRefusals` whole, mounted for these seeds (./stripe-keys.ts). */
-	const stated = useMemo(() => stripeForm(seeded), [seeded]);
+	   `stripeRefusals` whole, mounted for what the deployment holds (./stripe-keys.ts). */
+	const stated = useMemo(() => stripeForm(holds), [holds]);
 	/* what closes the two boxes and the press under them, which is not the page's own `busy`: that
 	   flag is true of this form's own press as well, so read straight it shuts the boxes over this
 	   form's own answer — and a refusal an operator cannot type over is a sentence naming the one
@@ -790,7 +794,8 @@ export function StripeSection({
 			[KEY_FIELD('STRIPE_PUBLISHABLE_KEY')]: seeded.STRIPE_PUBLISHABLE_KEY
 		},
 		busy: elsewhere,
-		pending: underway
+		pending: underway,
+		armed
 	});
 	/** this form's own element, which several readings below are taken off. */
 	const form = keys.mount.ref;
@@ -1917,7 +1922,7 @@ export function StripeSection({
 						if (confirming !== null) return;
 						const element = form.current;
 						const held = element === null ? null : boxes(element);
-						const ask = held === null ? null : stripeAsked(held, seeded);
+						const ask = held === null ? null : stripeAsked(held, holds);
 						/* and the pair as it stands at the press, kept for the answer that says the
 						   deployment took it ({@link sent}). the card the branch below may put up cannot be
 						   typed behind, so the press that goes from inside it carries exactly this. */

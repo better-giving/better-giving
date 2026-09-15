@@ -53,6 +53,9 @@ type host struct {
 	page          int
 	// listFails answers every read of the list but the key's check with a gateway error.
 	listFails bool
+	// unwrappedCreate answers a create in the reference's shape, a bare subscription, rather than the
+	// `event_subscription` wrapper the sandbox answers with.
+	unwrappedCreate bool
 }
 
 func (one *host) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +100,11 @@ func (one *host) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"id": "sub-new", "url": body["url"], "category": body["category"], "status": "active",
 		}
 		one.subs = append(one.subs, made)
-		reply(201, made)
+		if one.unwrappedCreate {
+			reply(201, made)
+			return
+		}
+		reply(200, map[string]any{"event_subscription": made})
 	case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/v1/event_subscriptions/"):
 		id := strings.TrimPrefix(r.URL.Path, "/v1/event_subscriptions/")
 		for _, sub := range one.subs {
@@ -158,11 +165,13 @@ func working(t *testing.T) *press {
 		t: t,
 		profile: deployment.ReportRead{
 			NoReport: deployment.NoReport{Kind: deployment.Reported},
-			Org:      map[string]any{"legal_name": "Red Cross", "tax_id": "53-0196605"},
+			Org: map[string]any{
+				"legal_name": "Red Cross", "tax_id": "53-0196605", "notification_email": "alerts@example.org",
+			},
 		},
 		address: deployment.Address{Kind: deployment.Deployed, WorkersDev: origin},
 		store:   deployment.Written{Kind: deployment.WriteSet},
-		asked:   Asked{APIKey: key, Address: API, ContactEmail: "ops@example.org"},
+		asked:   Asked{APIKey: key, Address: API},
 	}
 	one.chariot = &host{
 		log:           &one.log,
@@ -253,7 +262,7 @@ func TestAPressWithNothingHereCreatesTheSubscriptionAndWritesAllFour(t *testing.
 		t.Fatalf("connects = %+v", connects)
 	}
 	contact, _ := connects[0].body["contact"].(map[string]any)
-	if connects[0].body["organization_id"] != orgID || contact["email"] != "ops@example.org" || len(connects[0].body) != 2 {
+	if connects[0].body["organization_id"] != orgID || contact["email"] != "alerts@example.org" || len(connects[0].body) != 2 {
 		t.Errorf("the Connect was asked for with %v", connects[0].body)
 	}
 	made := one.chariot.asked(http.MethodPost, "/v1/event_subscriptions")
@@ -284,6 +293,17 @@ func TestAPressWithNothingHereCreatesTheSubscriptionAndWritesAllFour(t *testing.
 		t.Errorf("connect = %+v", facts.Connect)
 	}
 	if facts.Subscription == nil || *facts.Subscription != (Subscription{Kind: "created", ID: "sub-new"}) {
+		t.Errorf("subscription = %+v", facts.Subscription)
+	}
+}
+
+func TestASubscriptionAnsweredInTheReferenceShapeReadsAsWellAsTheWrappedOne(t *testing.T) {
+	one := working(t)
+	one.chariot.unwrappedCreate = true
+	if outcome := one.run(); outcome.Kind != Done {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	if facts := one.lastFacts(); facts.Subscription == nil || facts.Subscription.ID != "sub-new" {
 		t.Errorf("subscription = %+v", facts.Subscription)
 	}
 }
@@ -343,6 +363,23 @@ func TestAProfileWithNoEINStopsTheSearch(t *testing.T) {
 		}
 		if len(one.chariot.asked(http.MethodGet, "/v1/organizations/search")) != 0 {
 			t.Errorf("%v: a malformed EIN was searched as a name", profile)
+		}
+	}
+}
+
+func TestAProfileWithNoNotificationEmailStopsTheSearch(t *testing.T) {
+	for _, email := range []any{nil, "", " ", 7} {
+		one := working(t)
+		profile := one.profile.Org.(map[string]any)
+		delete(profile, "notification_email")
+		if email != nil {
+			profile["notification_email"] = email
+		}
+		if outcome := one.run(); outcome.Kind != NoContact {
+			t.Errorf("%v: outcome = %+v", email, outcome)
+		}
+		if len(one.chariot.calls) != 1 || len(one.published) != 0 {
+			t.Errorf("%v: Chariot was asked %d times past the key's check", email, len(one.chariot.calls)-1)
 		}
 	}
 }

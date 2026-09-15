@@ -147,6 +147,23 @@ describe('stripeAsked', () => {
 	});
 });
 
+/**
+ * a stopped run keeps its boxes holding what was sent (`keysStanding` in ./stripe-press.ts), and the
+ * press over them is read against what the deployment holds: against the refill it asks for nothing.
+ */
+describe('a press again over the boxes a stopped run kept', () => {
+	const SENT = { secret: 'sk_live_51new', publishable: 'pk_live_51new' };
+
+	it('is the same errand, read against what the deployment holds', () => {
+		expect(asked(SENT.secret, SENT.publishable, HOLDING).act).toBe('errand');
+		expect(asked(SENT.secret, SENT.publishable, NOTHING).act).toBe('errand');
+	});
+
+	it('would ask for nothing, read against the refill', () => {
+		expect(asked(SENT.secret, SENT.publishable, SENT)).toEqual({ act: null, edits: [] });
+	});
+});
+
 describe('the box a press is turned down at', () => {
 	const gap = (
 		secret: string,

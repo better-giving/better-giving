@@ -13,14 +13,15 @@ import (
 	"github.com/better-giving/console/internal/release"
 )
 
-// setting Chariot up from the screen: the key, the address and a contact email handed in, and one
-// chain that leaves the organisation's Connect, the event subscription at this deployment's address
-// and the deployment in the state that key implies.
+// setting Chariot up from the screen: the key and the address handed in, and one chain that leaves
+// the organisation's Connect, the event subscription at this deployment's address and the deployment
+// in the state that key implies.
 //
 // **one press, because once the key is in hand nothing is left to ask.** the organisation is found
-// by the EIN the deployment's own profile holds, its Connect is fetched or made, the subscription is
-// settled, and the four values are one write. the operator never types a Connect id and never opens
-// Chariot's dashboard for the subscription.
+// by the EIN the deployment's own profile holds, its Connect is fetched or made with the profile's
+// notification email as the contact, the subscription is settled, and the four values are one write.
+// the operator never types a Connect id or an email, and never opens Chariot's dashboard for the
+// subscription.
 //
 // **the Connect is asked for rather than listed.** Chariot answers a create for an organisation that
 // has one with that one (https://docs.givechariot.com/api/connects/create), so a repeated press
@@ -54,7 +55,8 @@ type Stage string
 const (
 	// Checking is asking Chariot whether the key answers at the address.
 	Checking Stage = "checking"
-	// Finding is reading the EIN off the deployment's profile and finding the organisation by it.
+	// Finding is reading the EIN and the notification email off the deployment's profile and finding
+	// the organisation by the EIN.
 	Finding Stage = "finding"
 	// Connecting is fetching or making the organisation's Connect.
 	Connecting Stage = "connecting"
@@ -108,6 +110,8 @@ const (
 	Unprofiled OutcomeKind = "unprofiled"
 	// NoEIN is the profile holding no EIN, or none that is nine digits.
 	NoEIN OutcomeKind = "no-ein"
+	// NoContact is the profile holding no notification email, which the Connect is made with.
+	NoContact OutcomeKind = "no-contact"
 	// Unsearched is Chariot's directory not answering the search.
 	Unsearched OutcomeKind = "unsearched"
 	// Unlisted is no organisation in Chariot's directory carrying the EIN, which EIN names.
@@ -170,8 +174,7 @@ type Outcome struct {
 type Asked struct {
 	APIKey string
 	// Address is what Address made of the typed one, API where it was blank.
-	Address      string
-	ContactEmail string
+	Address string
 }
 
 // Effects is every effect the chain has, handed in, so every stage and failure above is reachable in
@@ -257,6 +260,10 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 	if !held {
 		return Outcome{Kind: NoEIN}
 	}
+	contact, held := contactOf(profile.Org)
+	if !held {
+		return Outcome{Kind: NoContact}
+	}
 	organisation, stopped := find(ctx, call, ein)
 	if stopped != nil {
 		return *stopped
@@ -273,7 +280,7 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 		Path:   "/v1/connects",
 		Body: map[string]any{
 			"organization_id": organisation.ID,
-			"contact":         map[string]string{"email": asked.ContactEmail},
+			"contact":         map[string]string{"email": contact},
 		},
 	}))
 	if made.Kind != Value {
@@ -328,7 +335,8 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 		// `signing_secret` is the member Chariot's API reference names
 		// (https://docs.givechariot.com/api/event-subscriptions/create), and a member it does not know
 		// is ignored for a random secret nobody holds. what proves the spelling is a real delivery
-		// verifying at a deployment.
+		// verifying at a deployment. the answer is not the reference's: the sandbox answers 200 with
+		// the subscription wrapped in `event_subscription`, and createdID reads both.
 		Body: map[string]string{
 			"url":            endpoint,
 			"category":       release.ChariotEventCategory,
@@ -338,7 +346,7 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 	if created.Kind != Value {
 		return Outcome{Kind: Unsubscribed, Failure: created.Turned()}
 	}
-	id := text(created.Value["id"])
+	id := createdID(created.Value)
 	if id == "" {
 		return Outcome{Kind: Unsubscribed, Failure: unreadable(
 			"Chariot answered the subscription in a shape this console was not written against.")}
@@ -447,6 +455,15 @@ func einOf(org any) (string, bool) {
 	return ein, true
 }
 
+// the notification email the profile holds, which Chariot keeps as the Connect's contact.
+//
+// the profile is the only source: Chariot's organisation objects carry no email.
+func contactOf(org any) (string, bool) {
+	profile, _ := org.(map[string]any)
+	email := text(profile["notification_email"])
+	return email, strings.TrimSpace(email) != ""
+}
+
 // the Connect in a create's answer, or nil where it is not one.
 func readConnect(value map[string]any) *Connect {
 	id := text(value["id"])
@@ -455,6 +472,15 @@ func readConnect(value map[string]any) *Connect {
 		return nil
 	}
 	return &Connect{ID: id, Active: active}
+}
+
+// the id of the subscription a create made, off the `event_subscription` wrapper the sandbox answers
+// with or off the bare subscription the reference shows, and "" where neither carries one.
+func createdID(value map[string]any) string {
+	if wrapped, ok := value["event_subscription"].(map[string]any); ok {
+		return text(wrapped["id"])
+	}
+	return text(value["id"])
 }
 
 // one subscription as the list hands it back.

@@ -53,7 +53,9 @@ import { refusalStanding } from './refusal-standing';
 // a row added or dropped moves it with no keystroke to read at, which is the one case a reading
 // taken off the boxes at every input cannot see. the seed is `defaultValue` below, which every fold
 // on this console states because every one of them opens on what the deployment holds; a form
-// seeded from nothing is changed by holding anything at all, which is the same reading.
+// seeded from nothing is changed by holding anything at all, which is the same reading. a fold may
+// still arm the press over boxes that match their seed (`armed` below), which says the press is
+// worth making again and never that a box changed.
 //
 // **only the boxes the form states count toward it** (`shouldDirtyConsider`). a fold carries
 // controls the schema names nothing about — the eight profile boxes the notifications fold posts
@@ -184,6 +186,12 @@ type Options<S extends z.ZodObject> = Omit<SavedFormInputs, 'press' | 'changed'>
 	 * each sentence is about its own box.
 	 */
 	readonly together?: readonly string[] | null;
+	/**
+	 * the press is worth making again over boxes nobody has changed, so the button is armed as
+	 * though they had been — a run that stopped short, whose repair is the same press over the same
+	 * boxes. absent where only an edit arms it.
+	 */
+	readonly armed?: boolean;
 };
 
 /**
@@ -318,7 +326,11 @@ export function useConsoleForm<S extends z.ZodObject>(
 	   at every render rather than sampled at an event, which is what makes a row added or dropped an
 	   edit the button is armed over: those presses are the form's own intents and fire nothing to
 	   sample at. */
-	const save = useSavedFormState({ ...options, changed: conform.dirty, press });
+	const save = useSavedFormState({
+		...options,
+		changed: conform.dirty || options.armed === true,
+		press
+	});
 
 	return {
 		fields,

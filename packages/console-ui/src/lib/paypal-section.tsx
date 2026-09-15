@@ -32,6 +32,7 @@ import type {
 } from '../api/types';
 import type { HeldValues } from './held-values';
 import { heldValues, withheldAmong } from './held-values';
+import { useKeptPress } from './kept-press';
 import {
 	CHARITY_APPROVED,
 	CHARITY_FIELD,
@@ -47,6 +48,7 @@ import {
 	PAYPAL_PAIR_NAMES,
 	PAYPAL_SETUP_INTENT,
 	lineAt,
+	pairArmed,
 	pairStanding,
 	pairTurnedDown,
 	reportStands
@@ -544,9 +546,10 @@ function PaypalKeysForm({
 	}, [settled, revalidate]);
 
 	/* the pair as it stood at the submit, kept once the press is in flight: that is what the deployment
-	   holds the moment the run says it stored it (`pairStanding` in ./paypal-setup.ts). */
+	   holds the moment the run says it stored it (`pairStanding` in ./paypal-setup.ts). it outlives
+	   the page (./kept-press.ts). */
 	const typed = useRef<PaypalPairBoxes | null>(null);
-	const [sent, setSent] = useState<PaypalPairBoxes | null>(null);
+	const [sent, setSent] = useKeptPress<PaypalPairBoxes>(PAYPAL_SETUP_INTENT);
 	/** whether a press was made from this page, which is what a box-level report of a run is about. */
 	const [pressedHere, setPressedHere] = useState(false);
 	/* and the poll's answer dropped with the next press, or whenever the page's reading moves to a run
@@ -621,7 +624,8 @@ function PaypalKeysForm({
 			[PAIR_FIELD('PAYPAL_CLIENT_SECRET')]: seeded.PAYPAL_CLIENT_SECRET
 		},
 		busy: elsewhere,
-		pending: underway
+		pending: underway,
+		armed: pairArmed(live)
 	});
 	const form = keys.mount.ref;
 

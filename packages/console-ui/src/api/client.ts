@@ -314,18 +314,16 @@ export const paypalRun = async (): Promise<PaypalRunRead | null> =>
 	(await ask<{ run: PaypalRunRead | null }>('/paypal/run', 'GET')).run;
 
 /**
- * sets Chariot up from the key, the address and a contact email, and answers as soon as the chain is
- * under way.
+ * sets Chariot up from the key and the address, and answers as soon as the chain is under way.
  *
  * {@link startPaypalSetup}'s arrangement: how far it has got is {@link chariotRun}, a press already
  * going is a value, and the key leaves this page in this one body and reaches nothing else. an empty
- * address is live. the organisation, its Connect, the subscription and its secret are all the
- * binary's to settle.
+ * address is live. the organisation, its Connect and the contact it is made with, the subscription
+ * and its secret are all the binary's to settle.
  */
 export async function startChariotSetup(boxes: {
 	apiKey: string;
 	address: string;
-	contactEmail: string;
 }): Promise<ChariotStarted> {
 	const answer = await fetch('/api/chariot/setup', {
 		method: 'POST',

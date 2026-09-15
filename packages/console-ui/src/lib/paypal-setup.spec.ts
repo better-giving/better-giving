@@ -5,6 +5,7 @@ import {
 	PAIR_BLANK,
 	PAIR_FIELD,
 	lineAt,
+	pairArmed,
 	pairStanding,
 	pairTurnedDown,
 	paypalPairPosted,
@@ -138,15 +139,75 @@ describe('what the boxes are seeded from', () => {
 		}
 	});
 
-	it('is what the deployment reported where the write did not land', () => {
+	it('is the pair sent where the run stopped before the write landed', () => {
 		const unstored = ended('storing', {
 			kind: 'unstored',
 			listenerId: 'WH-1',
 			written: { kind: 'unreachable', detail: 'timeout' }
 		});
-		expect(pairStanding({ reported, sent, run: unstored, reread: false })).toEqual({
+		const unauthorized = ended('authorizing', {
+			kind: 'unauthorized',
+			failure: { kind: 'unreachable', detail: 'timeout' }
+		} as PaypalSetup);
+		for (const run of [unstored, unauthorized]) {
+			expect(pairStanding({ reported, sent, run, reread: false })).toEqual({
+				seeded: sent,
+				spent: false
+			});
+		}
+	});
+
+	it('is what the deployment reported on a page that pressed nothing, whatever run it holds', () => {
+		const unstored = ended('storing', {
+			kind: 'unstored',
+			listenerId: 'WH-1',
+			written: { kind: 'unreachable', detail: 'timeout' }
+		});
+		for (const run of [unstored, null]) {
+			expect(pairStanding({ reported, sent: null, run, reread: false })).toEqual({
+				seeded: reported,
+				spent: false
+			});
+		}
+		expect(pairStanding({ reported, sent, run: null, reread: false })).toEqual({
 			seeded: reported,
 			spent: false
 		});
+	});
+});
+
+describe('whether Save is armed over unchanged boxes', () => {
+	it('is, after any stop before the pair was stored', () => {
+		const stops: PaypalRunRead[] = [
+			ended('authorizing', {
+				kind: 'unauthorized',
+				failure: { kind: 'refused', detail: 'invalid_client' }
+			}),
+			ended('registering', { kind: 'full', listeners: [] }),
+			ended('storing', {
+				kind: 'unstored',
+				listenerId: 'WH-1',
+				written: { kind: 'unreachable', detail: 'timeout' }
+			}),
+			ended('storing', { kind: 'console-stopped' })
+		];
+		for (const run of stops) expect(pairArmed(run), run.outcome?.kind).toBe(true);
+	});
+
+	it('is not once the pair is stored, while a run is going, or with no run held', () => {
+		const unrepeating = ended('repeating', {
+			kind: 'unrepeating',
+			setup: { kind: 'unanswered', read: { kind: 'unreachable', detail: 'timeout' } },
+			awaitingKey: false
+		});
+		const running: PaypalRunRead = {
+			kind: 'running',
+			stage: 'registering',
+			facts: { registration: null, elsewhere: [] },
+			outcome: null
+		};
+		for (const run of [ended('storing', { kind: 'done' }), unrepeating, running, null]) {
+			expect(pairArmed(run)).toBe(false);
+		}
 	});
 });

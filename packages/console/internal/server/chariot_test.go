@@ -58,7 +58,8 @@ func chariotAccount(t *testing.T) (*httptest.Server, func() []string) {
 }
 
 // a console signed in, holding an account and a session on a deployment whose profile carries an
-// EIN, with Chariot and cloudflare bound to fakes. `bound` is every address the key was bound to.
+// EIN and a notification email, with Chariot and cloudflare bound to fakes. `bound` is every address
+// the key was bound to.
 func settingChariot(t *testing.T, chosen string) (http.Handler, func() []string, *[]string, *[]string) {
 	t.Helper()
 	records, flow, accounts := machine(t, chosen)
@@ -66,7 +67,9 @@ func settingChariot(t *testing.T, chosen string) (http.Handler, func() []string,
 		"GET /console": map[string]any{
 			"sites":   []any{},
 			"session": map[string]any{"expiresAt": "2099-01-01T00:00:00Z"},
-			"org":     map[string]any{"legal_name": "Red Cross", "tax_id": "53-0196605"},
+			"org": map[string]any{
+				"legal_name": "Red Cross", "tax_id": "53-0196605", "notification_email": "alerts@example.org",
+			},
 		},
 	})
 	connected(t, records, surface.URL)
@@ -94,7 +97,7 @@ func settingChariot(t *testing.T, chosen string) (http.Handler, func() []string,
 	}), asked, cloudflare, &bound
 }
 
-const chariotPressed = `{"apiKey":"ck-typed-key","address":"","contactEmail":"ops@example.org"}`
+const chariotPressed = `{"apiKey":"ck-typed-key","address":""}`
 
 func polledChariot(t *testing.T, handler http.Handler) map[string]any {
 	t.Helper()
@@ -169,13 +172,10 @@ func TestTheKeyReachesNothingTheChariotRunAnswersWith(t *testing.T) {
 
 func TestAnEmptyOrMalformedChariotSlotIsRefusedBeforeAnythingLeavesThisMachine(t *testing.T) {
 	for _, body := range []string{
-		`{"apiKey":"","address":"","contactEmail":"ops@example.org"}`,
-		`{"apiKey":" ck-a","address":"","contactEmail":"ops@example.org"}`,
-		`{"apiKey":"ck-a","address":"http://api.givechariot.com","contactEmail":"ops@example.org"}`,
-		`{"apiKey":"ck-a","address":"https://api.givechariot.com/v1","contactEmail":"ops@example.org"}`,
-		`{"apiKey":"ck-a","address":"","contactEmail":""}`,
-		`{"apiKey":"ck-a","address":"","contactEmail":"not an address"}`,
-		`{"apiKey":"ck-a","address":"","contactEmail":"Ops <ops@example.org>"}`,
+		`{"apiKey":"","address":""}`,
+		`{"apiKey":" ck-a","address":""}`,
+		`{"apiKey":"ck-a","address":"http://api.givechariot.com"}`,
+		`{"apiKey":"ck-a","address":"https://api.givechariot.com/v1"}`,
 	} {
 		t.Run(body, func(t *testing.T) {
 			handler, asked, _, _ := settingChariot(t, "an-account")
@@ -197,7 +197,7 @@ func TestAnEmptyOrMalformedChariotSlotIsRefusedBeforeAnythingLeavesThisMachine(t
 func TestATypedSandboxAddressIsWhereTheKeyIsSent(t *testing.T) {
 	handler, _, _, bound := settingChariot(t, "an-account")
 	press(t, handler, "/api/chariot/setup",
-		`{"apiKey":"ck-typed-key","address":"https://sandboxapi.givechariot.com/","contactEmail":"ops@example.org"}`)
+		`{"apiKey":"ck-typed-key","address":"https://sandboxapi.givechariot.com/"}`)
 	polledChariot(t, handler)
 	if len(*bound) != 1 || (*bound)[0] != "https://sandboxapi.givechariot.com" {
 		t.Errorf("the key was bound to %v", *bound)

@@ -12,15 +12,14 @@ import type {
 } from '../api/types';
 import type { StatedForm } from './use-console-form';
 
-// what one press of ./chariot-section.tsx carries, the rules its two boxes and the contact email it
-// asks for are read against, the lines its run is drawn as, and where each way the run can end
-// reports.
+// what one press of ./chariot-section.tsx carries, the rules its two boxes are read against, the
+// lines its run is drawn as, and where each way the run can end reports.
 //
 // **one press, two boxes, and nothing about the Connect or the notifications to type.** the binary
-// finds the organisation by the EIN the deployment's profile holds, fetches or makes its Connect,
-// settles the subscription at this deployment's address and writes the four values in one write
-// (`packages/console/internal/chariot/setup.go`), so neither the Connect id nor the signing secret
-// has a box.
+// finds the organisation by the EIN the deployment's profile holds, fetches or makes its Connect with
+// the profile's notification email as its contact, settles the subscription at this deployment's
+// address and writes the four values in one write (`packages/console/internal/chariot/setup.go`), so
+// neither the Connect id, the contact nor the signing secret has a box.
 //
 // a module beside the section rather than expressions inside it, for ./paypal-setup.ts's reason:
 // ../../vite.config.ts pins one node pool and no dom, so this is the part a suite here can hold.
@@ -44,27 +43,14 @@ export type ChariotBox = (typeof CHARIOT_BOXES)[number];
 /** what the two boxes hold. */
 export type ChariotBoxes = Readonly<Record<ChariotBox, string>>;
 
-/**
- * what the press posts: the two boxes and the contact email.
- *
- * the email has no box on the page. Chariot holds it on the Connect it creates and the deployment
- * stores none, so a box could only be seeded from what this page last sent and would be empty after
- * a reload — it is asked for at the press instead (./chariot-contact-prompt.tsx).
- */
-export type ChariotSetupBody = ChariotBoxes & { readonly contactEmail: string };
-
-/** the field one posted value goes under. */
-export const CHARIOT_FIELD = <B extends keyof ChariotSetupBody>(box: B): `chariot:${B}` =>
-	`chariot:${box}`;
+/** the field one box is posted under. */
+export const CHARIOT_FIELD = <B extends ChariotBox>(box: B): `chariot:${B}` => `chariot:${box}`;
 
 /** what a box left empty says under it. */
 export const CHARIOT_BLANK = 'required';
 
 /** what an address box holding something other than an address says under it. */
 export const CHARIOT_NOT_ADDRESS = 'an https:// address with nothing after the domain';
-
-/** what an email box holding something other than one address says under it. */
-export const CHARIOT_NOT_EMAIL = 'one email address';
 
 /**
  * whether a typed address is one the binary calls, already trimmed.
@@ -77,8 +63,6 @@ export function isChariotAddress(typed: string): boolean {
 	// no path, query, fragment or user in front of the host: any of them is past the origin.
 	return /^https:\/\/[^/?#@\s]+$/.test(bare) && URL.canParse(bare);
 }
-
-const email = z.email(CHARIOT_NOT_EMAIL);
 
 /*
  * the message sits on each type because conform hands an empty box over as `undefined`, and the trim
@@ -98,10 +82,6 @@ const chariotBoxes = z.object({
 		)
 });
 
-const chariotContact = z.object({
-	[CHARIOT_FIELD('contactEmail')]: z.string(CHARIOT_BLANK).trim().min(1, CHARIOT_BLANK).pipe(email)
-});
-
 /**
  * the section's form: its id and the rules its press runs first.
  *
@@ -114,12 +94,6 @@ export const CHARIOT_FORM: StatedForm<typeof chariotBoxes> = {
 	schema: chariotBoxes
 };
 
-/** the card the press asks the contact email in: its id and its one rule. */
-export const CHARIOT_CONTACT_FORM: StatedForm<typeof chariotContact> = {
-	id: 'chariot-contact',
-	schema: chariotContact
-};
-
 /**
  * the boxes a press posted, read by the same rules the boxes were, or the boxes it refuses by field.
  *
@@ -129,25 +103,20 @@ export const CHARIOT_CONTACT_FORM: StatedForm<typeof chariotContact> = {
 export function chariotPosted(
 	posted: FormData
 ):
-	| { readonly ok: true; readonly boxes: ChariotSetupBody }
+	| { readonly ok: true; readonly boxes: ChariotBoxes }
 	| { readonly ok: false; readonly errors: Record<string, string> } {
-	const read = (box: keyof ChariotSetupBody) => {
+	const read = (box: ChariotBox) => {
 		const value = posted.get(CHARIOT_FIELD(box));
 		return typeof value === 'string' ? value.trim() : '';
 	};
-	const boxes: ChariotSetupBody = {
+	const boxes: ChariotBoxes = {
 		apiKey: read('apiKey'),
-		address: read('address'),
-		contactEmail: read('contactEmail')
+		address: read('address')
 	};
 	const errors: Record<string, string> = {};
 	if (boxes.apiKey === '') errors[CHARIOT_FIELD('apiKey')] = CHARIOT_BLANK;
 	if (boxes.address !== '' && !isChariotAddress(boxes.address)) {
 		errors[CHARIOT_FIELD('address')] = CHARIOT_NOT_ADDRESS;
-	}
-	if (boxes.contactEmail === '') errors[CHARIOT_FIELD('contactEmail')] = CHARIOT_BLANK;
-	else if (!email.safeParse(boxes.contactEmail).success) {
-		errors[CHARIOT_FIELD('contactEmail')] = CHARIOT_NOT_EMAIL;
 	}
 	if (Object.keys(errors).length > 0) return { ok: false, errors };
 	return { ok: true, boxes };
@@ -221,6 +190,7 @@ export type ChariotStop =
 	| { readonly kind: 'failure'; readonly call: FailedCall; readonly failure: ChariotFailure }
 	| { readonly kind: 'unprofiled'; readonly read: NoReport }
 	| { readonly kind: 'no-ein' }
+	| { readonly kind: 'no-contact' }
 	| { readonly kind: 'unlisted'; readonly ein: string }
 	| { readonly kind: 'ambiguous'; readonly candidates: readonly ChariotOrganisation[] }
 	/** `name` is the organisation the facts found, or `null` where they carry none. */
@@ -243,6 +213,8 @@ export function chariotStop(outcome: ChariotSetup, facts: ChariotFacts): Chariot
 			return { kind: 'unprofiled', read: outcome.read };
 		case 'no-ein':
 			return { kind: 'no-ein' };
+		case 'no-contact':
+			return { kind: 'no-contact' };
 		case 'unsearched':
 			return { kind: 'failure', call: 'search', failure: outcome.failure };
 		case 'unlisted':
@@ -314,6 +286,12 @@ const STORED: readonly ChariotSetup['kind'][] = ['done', 'unretired'];
  *
  * `pairStanding` in ./paypal-setup.ts, over two boxes: what the press sent seeds them from the
  * answer that says it stored them until the reading after it lands.
+ *
+ * **a run the press started that has not stored them keeps them holding what was sent**, going or
+ * stopped: the deployment holds nothing new, and the repair a stop names is the same press over the
+ * same boxes. `sent` outlives the page (./kept-press.ts), so leaving to fix what the stop names
+ * costs no retyping. with no press behind them, or no run held, the boxes are what the deployment
+ * reported.
  */
 export function boxesStanding(press: {
 	readonly reported: ChariotBoxes;
@@ -322,8 +300,9 @@ export function boxesStanding(press: {
 	readonly reread: boolean;
 }): { readonly seeded: ChariotBoxes; readonly spent: boolean } {
 	const { sent, run } = press;
-	if (sent === null || run?.kind !== 'ended' || !STORED.includes(run.outcome.kind)) {
-		return { seeded: press.reported, spent: press.reread };
+	if (sent === null || run === null) return { seeded: press.reported, spent: press.reread };
+	if (run.kind === 'running' || !STORED.includes(run.outcome.kind)) {
+		return { seeded: sent, spent: press.reread };
 	}
 	return { seeded: press.reread ? press.reported : sent, spent: true };
 }

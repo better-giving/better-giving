@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"net/http"
-	"net/mail"
 
 	"github.com/better-giving/console/internal/account"
 	"github.com/better-giving/console/internal/cf"
@@ -29,11 +28,10 @@ import (
 // what the poll hands back. what is read at this door is shape alone: whether the key answers at the
 // address is Chariot's to say, and the chain's first call asks it.
 
-// the three boxes, as the page posts them. an empty address is live.
+// the two boxes, as the page posts them. an empty address is live.
 type chariotPress struct {
-	APIKey       string `json:"apiKey"`
-	Address      string `json:"address"`
-	ContactEmail string `json:"contactEmail"`
+	APIKey  string `json:"apiKey"`
+	Address string `json:"address"`
 }
 
 func chariotRoutes(
@@ -75,15 +73,6 @@ func chariotRoutes(
 			})
 			return
 		}
-		// one bare address, exactly as typed: Chariot keeps it as the Connect's contact, and a name
-		// or angle brackets around it would be stored as part of it.
-		if parsed, err := mail.ParseAddress(posted.ContactEmail); err != nil ||
-			parsed.Name != "" || parsed.Address != posted.ContactEmail {
-			answer(w, http.StatusBadRequest, map[string]string{
-				"error": "the contact email slot holds no single email address",
-			})
-			return
-		}
 
 		door, held := writing(w, r, flow, reads, patches, settings, store)
 		if !held {
@@ -93,7 +82,7 @@ func chariotRoutes(
 		// the run outlives this request by design, so it is given a context of its own; each call
 		// carries a deadline of its own (internal/cf), which is what bounds the run.
 		started, going := runs.Start(context.Background(),
-			chariot.Asked{APIKey: posted.APIKey, Address: address, ContactEmail: posted.ContactEmail},
+			chariot.Asked{APIKey: posted.APIKey, Address: address},
 			chariot.Effects{
 				Call: bind(address, posted.APIKey),
 				// the session is read at the press rather than closed over once, for the reason
