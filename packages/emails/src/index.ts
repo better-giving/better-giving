@@ -4,6 +4,8 @@
 export { formatDate, formatMoney } from './format';
 export type { EmailTemplate } from './template';
 export * as adminAlert from './templates/admin-alert';
+export * as grantReceived from './templates/grant-received';
+export * as grantRequested from './templates/grant-requested';
 export * as invitation from './templates/invitation';
 export * as passwordReset from './templates/password-reset';
 export * as receipt from './templates/receipt';

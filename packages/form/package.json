@@ -20,6 +20,7 @@
 		"./embed/api": "./src/embed/api.ts",
 		"./embed/stripe": "./src/embed/stripe.ts",
 		"./embed/paypal": "./src/embed/paypal.ts",
+		"./embed/chariot": "./src/embed/chariot.ts",
 		"./embed/surface": "./src/embed/surface.ts",
 		"./embed/turnstile": "./src/embed/turnstile.ts",
 		"./embed/resume": "./src/embed/resume.ts",

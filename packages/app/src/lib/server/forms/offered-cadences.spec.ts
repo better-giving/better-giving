@@ -184,6 +184,26 @@ describe('readOfferedCadences', () => {
 		expect(await readOfferedCadences(both)).toEqual(['one_time']);
 	});
 
+	/**
+	 * Chariot takes one-time grants only, so it is no member of the intersection: the DAF option is
+	 * absent from a repeating gift's payment step, and what a deployment holding Chariot beside a
+	 * card processor offers is that processor's answer alone.
+	 */
+	const CHARIOT = port(
+		{ ok: false, reason: 'unsupported', detail: 'one-time grants only' },
+		'chariot'
+	);
+
+	it('offers every cadence where Stripe can collect, whatever Chariot answers', async () => {
+		const held = processorsOf(port({ ok: true, value: 'ready' }), CHARIOT);
+
+		expect(await readOfferedCadences(held)).toEqual([...FREQUENCIES]);
+	});
+
+	it('offers one-time alone on a deployment holding only Chariot', async () => {
+		expect(await readOfferedCadences(soleProcessor(CHARIOT))).toEqual(['one_time']);
+	});
+
 	it('offers every cadence where both configured accounts can collect', async () => {
 		const both = processorsOf(
 			port({ ok: true, value: 'ready' }),

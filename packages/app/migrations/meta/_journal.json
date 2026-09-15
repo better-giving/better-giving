@@ -15,6 +15,13 @@
       "when": 1789204278429,
       "tag": "0001_paypal_provider_and_rails",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789403610098,
+      "tag": "0002_chariot_provider_and_daf",
+      "breakpoints": true
     }
   ]
 }

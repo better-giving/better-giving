@@ -29,7 +29,8 @@ const FEE_RULES: FeeRules = {
 	google_pay: { percent: 0.029, fixedMinor: 30 },
 	ach: { percent: 0.008, fixedMinor: 0, capMinor: 500 },
 	paypal: { percent: 0.0349, fixedMinor: 49 },
-	venmo: { percent: 0.0349, fixedMinor: 49 }
+	venmo: { percent: 0.0349, fixedMinor: 49 },
+	daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
 };
 
 const CONFIG: FormConfig = {
@@ -218,6 +219,32 @@ it('claims nothing where nobody read the outcome, and names who is still holding
 		expect(shown(root, '.prose')).toContain('Nothing here will charge you a second time.');
 		expect(controls(root)).toEqual([]);
 	}
+});
+
+// a fund grants rather than charges, and the fund is the donor's own rather than a processor's —
+// so no screen a fund's donor waits under names a charge or a label from the rail vocabulary.
+it('words every screen a fund’s donor waits under as a grant from their own fund', () => {
+	const processing = takeoverFor({ step: 'processing', method: 'daf' }, CONFIG, money);
+	expect(processing.totalLabel).toBe('Grant requested');
+	expect(processing.receiptNote).toBe('Your fund has not paid this grant yet.');
+
+	const settling = draw({ step: 'processing', method: 'daf' });
+	expect(heading(settling)).toBe(copy.PROCESSING_HEADING);
+	expect(shown(settling, '.prose')).toBe(
+		'Your fund has your grant request and pays Helping Hands directly. Helping Hands has been told your gift is coming.'
+	);
+
+	const unread = draw({ step: 'indeterminate', method: 'daf' });
+	expect(shown(unread, '.prose')).toContain('Your gift has been sent to your fund for approval.');
+
+	for (const root of [settling, unread]) {
+		expect(shown(root, '.prose')).not.toContain('charged');
+		expect(controls(root)).toEqual([]);
+	}
+	// every other rail's settling total is still a charge.
+	expect(takeoverFor({ step: 'processing', method: 'card' }, CONFIG, money).totalLabel).toBe(
+		copy.TO_BE_CHARGED
+	);
 });
 
 // the two outcomes only the bank rail reaches: `outcomeOfTermination` in

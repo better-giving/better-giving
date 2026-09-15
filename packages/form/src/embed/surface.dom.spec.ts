@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Failure } from '../checkout.machine';
+import type { FundReports } from '../ports';
 import type { FormConfig, PaymentMethod, Quote, QuoteRequest } from '../v1';
+import { CHARIOT_TAG } from './chariot';
 import type {
 	EligibilityLike,
 	PaypalNamespaceLike,
@@ -34,7 +36,8 @@ const CONFIG: FormConfig = {
 		apple_pay: { percent: 0.029, fixedMinor: 30 },
 		google_pay: { percent: 0.029, fixedMinor: 30 },
 		paypal: { percent: 0.0349, fixedMinor: 49 },
-		venmo: { percent: 0.0349, fixedMinor: 49 }
+		venmo: { percent: 0.0349, fixedMinor: 49 },
+		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -67,7 +70,7 @@ type Kit = {
 	readonly elementUpdates: Record<string, unknown>[];
 	readonly paypalSessions: SessionOptionsLike[];
 	readonly paypalStarts: Promise<{ orderId: string }>[];
-	readonly seams: Parameters<typeof createPaymentSurface>[4];
+	readonly seams: Parameters<typeof createPaymentSurface>[5];
 };
 
 type Answers = {
@@ -159,9 +162,21 @@ function kit(answers: Answers = {}): Kit {
 		},
 		seams: {
 			stripe: { load: answers.stripe ?? (() => Promise.resolve(stripe)), delay: () => () => {} },
-			paypal: { load: answers.paypal ?? (() => Promise.resolve(namespace)), delay: () => () => {} }
+			paypal: { load: answers.paypal ?? (() => Promise.resolve(namespace)), delay: () => () => {} },
+			chariot: { load: () => Promise.resolve(true) }
 		}
 	};
+}
+
+const NO_FUND: FundReports = { opened: () => null, approved: () => {}, closed: () => {} };
+
+if (customElements.get(CHARIOT_TAG) === undefined) {
+	customElements.define(
+		CHARIOT_TAG,
+		class extends HTMLElement {
+			onDonationRequest(): void {}
+		}
+	);
 }
 
 async function composed(k: Kit, config: FormConfig = CONFIG) {
@@ -170,6 +185,7 @@ async function composed(k: Kit, config: FormConfig = CONFIG) {
 		k.mount,
 		(rail) => k.rails.push(rail),
 		(failure) => k.unavailable.push(failure),
+		NO_FUND,
 		k.seams
 	);
 	for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
@@ -290,5 +306,25 @@ describe('one payment surface over however many processors a config names', () =
 		}).not.toThrow();
 		for (let turn = 0; turn < 4; turn += 1) await Promise.resolve();
 		expect(k.mount.querySelector('paypal-button')).toBeNull();
+	});
+
+	// the fund's own button stands only while the flow offers a fund, and the composer is where that
+	// reading reaches the one adapter that draws it.
+	it('stands the fund’s own button in its node while the flow offers a fund', async () => {
+		const k = kit();
+		const surface = await composed(k, {
+			...CONFIG,
+			providers: [...CONFIG.providers, { name: 'chariot', publishableKey: 'cid_x' }],
+			paymentMethods: ['card', 'paypal', 'daf']
+		});
+		expect(k.mount.children).toHaveLength(3);
+		expect(k.mount.querySelector(CHARIOT_TAG)).toBeNull();
+
+		surface.offerFund(true);
+		expect(k.mount.children[2]?.querySelector(CHARIOT_TAG)).not.toBeNull();
+
+		surface.offerFund(false);
+		expect(k.mount.querySelector(CHARIOT_TAG)).toBeNull();
+		surface.stop();
 	});
 });

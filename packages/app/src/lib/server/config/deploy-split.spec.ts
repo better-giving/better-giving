@@ -12,10 +12,10 @@ import { CONFIG_VAR_NAMES } from './env';
 // deployment keeps working, and the value they went looking for is not where the console reads it.
 // so it is asserted instead of reviewed.
 //
-// every one of the seventeen is a plain var, and `packages/operator/src/deploy-split.ts` argues why.
-// what is left to hold is that nothing anywhere still tells an operator to store one as a secret: a
-// value written that way is a value the console cannot read back, which is the whole of what that
-// module's rule exists to prevent.
+// every one of the twenty-one is a plain var, and `packages/operator/src/deploy-split.ts` argues
+// why. what is left to hold is that nothing anywhere still tells an operator to store one as a
+// secret: a value written that way is a value the console cannot read back, which is the whole of
+// what that module's rule exists to prevent.
 //
 // two halves, and neither covers the other. the first holds
 // `packages/operator/src/deploy-split.ts`, which is where every instruction either surface builds
@@ -92,7 +92,7 @@ function setAsSecret(name: string): RegExp {
  *
  * the bare wrangler form is deliberately not swept for here: `wrangler secret put` is still the way
  * `CONSOLE_TOKEN` is set by hand, and prose about that prompt is true. what would be wrong is one of
- * the seventeen names after it, which the pattern above does catch.
+ * the twenty-one names after it, which the pattern above does catch.
  */
 const SECRET_COMMANDS = new RegExp(SCRIPT_FORM, 'g');
 

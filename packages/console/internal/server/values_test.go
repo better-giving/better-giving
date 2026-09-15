@@ -15,7 +15,7 @@ import (
 	"github.com/better-giving/console/internal/state"
 )
 
-// the two presses that set the seventeen, and what each of them refuses.
+// the two presses that set the twenty-one, and what each of them refuses.
 
 // a cloudflare that answers everything and remembers what it was asked.
 func writes(t *testing.T, answers map[string]any) (*httptest.Server, *[]string) {
@@ -86,7 +86,7 @@ func TestNothingIsWrittenForAMachineThatHasChosenNoAccount(t *testing.T) {
 }
 
 // **the names a press may carry are the enumeration's and never the body's own keys.** a name off
-// that list is a value written under whatever a page said, and the seventeen are what this console
+// that list is a value written under whatever a page said, and the twenty-one are what this console
 // is for — the console's own session credential among the names it refuses.
 func TestANameOffTheEnumerationIsRefusedBeforeCloudflareIsAsked(t *testing.T) {
 	api, asked := writes(t, nil)
@@ -116,6 +116,31 @@ func TestPaypalsCredentialsAreRefusedAndTheRefusalNamesThePressThatSetsThem(t *t
 		said, _ := answer["error"].(string)
 		if status != http.StatusBadRequest || !strings.Contains(said, "PAYPAL_") ||
 			!strings.Contains(said, "/api/paypal/setup") {
+			t.Errorf("%s: %d %v", body, status, answer)
+		}
+		if len(*asked) != 0 {
+			t.Errorf("%s: cloudflare was asked %v", body, *asked)
+		}
+	}
+}
+
+// Chariot's four are the set-up press's alone: the connect id is fetched with the key and the secret
+// minted for the subscription it made, so a write of any of them here leaves the key, the Connect
+// and the subscription disagreeing.
+func TestChariotsValuesAreRefusedAndTheRefusalNamesThePressThatSetsThem(t *testing.T) {
+	for _, body := range []string{
+		`{"values":{"CHARIOT_API_KEY":"a-key"}}`,
+		`{"values":{"CHARIOT_API_URL":"https://sandboxapi.givechariot.com"}}`,
+		`{"values":{"CHARIOT_CONNECT_ID":"live_typed"}}`,
+		`{"values":{"CHARIOT_WEBHOOK_SECRET":null}}`,
+	} {
+		api, asked := writes(t, nil)
+		handler := pressing(t, "an-account", api)
+
+		status, answer := press(t, handler, "/api/values/vars", body)
+		said, _ := answer["error"].(string)
+		if status != http.StatusBadRequest || !strings.Contains(said, "CHARIOT_") ||
+			!strings.Contains(said, "/api/chariot/setup") {
 			t.Errorf("%s: %d %v", body, status, answer)
 		}
 		if len(*asked) != 0 {

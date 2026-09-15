@@ -6,7 +6,7 @@ import { donation } from '../db/schema';
 import type { EmailMessage, EmailProvider } from '../email/provider';
 import type { PaymentProvider } from '../payments/provider';
 import type { SettleDeps } from './delivery';
-import { sendReceipt } from './receipt';
+import { sendGrantReceived, sendReceipt } from './receipt';
 
 // the one sender, against a real D1: what it sends, what it stamps, and what a second call for a
 // gift already receipted does.
@@ -223,6 +223,40 @@ describe('sendReceipt()', () => {
 		// fault faults. neither may raise: the caller has already committed the gift to the books.
 		await expect(sendReceipt(deps(broken), target())).resolves.toBe('not_sent');
 		expect(await stampOf()).toBeNull();
+	});
+});
+
+describe('sendGrantReceived()', () => {
+	beforeEach(orgProfile);
+
+	const grantTarget = () => ({
+		donationId: DONATION_ID,
+		donorName: 'Ada Okafor',
+		donorEmail: 'ada@example.org',
+		amountMinor: 2500,
+		currency: 'USD',
+		tribute: null
+	});
+
+	it('thanks the donor and stamps the gift', async () => {
+		const mail = mailer();
+
+		const outcome = await sendGrantReceived(deps(mail.port), grantTarget());
+
+		expect(outcome).toBe('sent');
+		expect(mail.sent.map((m) => [m.to, m.subject])).toEqual([
+			['ada@example.org', 'Hope Foundation received your gift']
+		]);
+		expect(await stampOf()).not.toBeNull();
+	});
+
+	it('leaves nothing for a receipt to send afterwards', async () => {
+		await sendGrantReceived(deps(mailer().port), grantTarget());
+		const later = mailer();
+
+		await sendReceipt(deps(later.port), target());
+
+		expect(later.sent).toHaveLength(0);
 	});
 });
 

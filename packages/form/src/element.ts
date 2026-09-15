@@ -21,7 +21,14 @@
 // and does not require a DOM. only calling `defineDonateForm` does.
 
 import { createActor, type Actor } from 'xstate';
-import { checkoutMachine, type CheckoutInput, type Failure } from './checkout.machine';
+import {
+	checkoutMachine,
+	fundIsOffered,
+	openFund,
+	type CheckoutEvent,
+	type CheckoutInput,
+	type Failure
+} from './checkout.machine';
 import { connect, type State } from './connect';
 import { readFormConfig } from './config';
 import { SLOT_NAMES } from './parts';
@@ -33,6 +40,7 @@ import {
 	domPropTypes,
 	put
 } from './views';
+import type { FundReports } from './ports';
 import type { FormConfig, Frequency, PaymentMethod } from './v1';
 import tokens from './styles/tokens.css?inline';
 import partStyles from './styles/parts.css?inline';
@@ -86,6 +94,13 @@ export type FormCheckout = {
 	 * told a schedule is what it is collecting for.
 	 */
 	readonly cadence: (frequency: Frequency | undefined) => void;
+	/**
+	 * whether a donor-advised fund's own button stands on the card, told on every reading.
+	 *
+	 * `fundIsOffered` in ./checkout.machine.ts is the answer; the button is the fund's option, and
+	 * its press chooses the rail and opens the fund's window in one go.
+	 */
+	readonly offerFund: (offered: boolean) => void;
 	/**
 	 * takes the provider's own fields down, which removing the node they were mounted into does not
 	 * do.
@@ -182,15 +197,20 @@ export type FormRuntime = {
 	 * `PAYMENT_UNAVAILABLE`, which is how a form with no card fields on it stops being a form that
 	 * silently does nothing.
 	 *
-	 * `boot` is the last thing the element states and the only one about itself: `FormBoot` above
-	 * says what a runtime does with it, and `#start` below says how this element knows the answer.
+	 * `boot` is the last thing the element states about itself: `FormBoot` above says what a runtime
+	 * does with it, and `#start` below says how this element knows the answer.
+	 *
+	 * `fund` is what a donor-advised fund's window reports into the flow, and like the two reports
+	 * above it travels the other way. `FundReports` in ./ports.ts says why its first answer is given
+	 * in the same call as the press.
 	 */
 	readonly checkout: (
 		config: FormConfig,
 		mount: HTMLElement,
 		onRail: (method: PaymentMethod | null) => void,
 		onUnavailable: (failure: Failure) => void,
-		boot: FormBoot
+		boot: FormBoot,
+		fund: FundReports
 	) => FormCheckout;
 
 	/**
@@ -999,6 +1019,8 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 			let stop: (failure: Failure) => void = () => {};
 			let minted: (token: string) => void = () => {};
 			let unchallengeable: (failure: Failure) => void = () => {};
+			let fundSays: (event: CheckoutEvent) => void = () => {};
+			let opened: FundReports['opened'] = () => null;
 			// the boot this element is on, said once and latched here: from this call on, every boot
 			// this element runs is a second one, whatever asked for it.
 			const boot: FormBoot = this.#booted ? 'again' : 'first';
@@ -1008,7 +1030,12 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 				mount,
 				(method) => report(method),
 				(failure) => stop(failure),
-				boot
+				boot,
+				{
+					opened: () => opened(),
+					approved: (authorization) => fundSays({ type: 'FUND_APPROVED', ...authorization }),
+					closed: () => fundSays({ type: 'FUND_CLOSED' })
+				}
 			);
 			this.#checkout = checkout;
 			const actor = createActor(checkoutMachine, { input: checkout.input });
@@ -1023,6 +1050,8 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 			minted = (token) =>
 				connect(actor.getSnapshot(), actor.send, domPropTypes).setTurnstileToken(token);
 			unchallengeable = (failure) => actor.send({ type: 'CHALLENGE_UNAVAILABLE', failure });
+			fundSays = (event) => actor.send(event);
+			opened = () => openFund(actor);
 
 			/** the step the last reading was on, which is what makes a reading a transition. */
 			let previous: State['step'] | null = null;
@@ -1031,8 +1060,10 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 			// every reading rather than on a change: this element holds no memory of what it last
 			// said, and the surface is where a reading that changes nothing stops.
 			const render = () => {
-				const api = connect(actor.getSnapshot(), actor.send, domPropTypes);
+				const snapshot = actor.getSnapshot();
+				const api = connect(snapshot, actor.send, domPropTypes);
 				checkout.cadence(committedFrequency(api.state));
+				checkout.offerFund(fundIsOffered(snapshot));
 				view.update(api);
 				const { step } = api.state;
 

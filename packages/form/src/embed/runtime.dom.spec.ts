@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DONATE_FORM_TAG, type FormBoot } from '../element';
+import type { FundReports } from '../ports';
 import { RUNTIME_MARK } from './loader';
 import { configUrl, createFormRuntime, runtimeOrigin, startRuntime } from './runtime';
 
@@ -10,6 +11,9 @@ import { configUrl, createFormRuntime, runtimeOrigin, startRuntime } from './run
 // do — a custom element name may be defined once per document, and that file needs a different
 // runtime per case. here there is one runtime and it is the shipped one, and a spec file gets its
 // own document, so the real name is the honest thing to assert against.
+
+/** a fund's window nobody opens, for the checkouts here that are not about one. */
+const NO_FUND: FundReports = { opened: () => null, approved: () => {}, closed: () => {} };
 
 const DEPLOYMENT = 'https://donate.example';
 const HOST_PAGE = 'https://acme.org';
@@ -255,7 +259,8 @@ describe('the clock the shipped ports read', () => {
 				document.createElement('div'),
 				() => {},
 				() => {},
-				'first'
+				'first',
+				NO_FUND
 			)
 			.input.ports.now();
 
@@ -423,7 +428,8 @@ describe('the quote port the element is handed', () => {
 			document.createElement('div'),
 			() => {},
 			() => {},
-			'first'
+			'first',
+			NO_FUND
 		).input.ports.quote;
 	}
 
@@ -456,7 +462,8 @@ describe('the rails a runtime offers', () => {
 			document.createElement('div'),
 			() => {},
 			() => {},
-			'first'
+			'first',
+			NO_FUND
 		);
 
 	const inputFor = (paymentMethods: readonly string[]) => checkoutFor(paymentMethods).input;
@@ -566,7 +573,8 @@ describe('a donor coming back from their bank', () => {
 			document.createElement('div'),
 			() => {},
 			() => {},
-			boot
+			boot,
+			NO_FUND
 		).input;
 
 	const bootedWith = (search: string) => {

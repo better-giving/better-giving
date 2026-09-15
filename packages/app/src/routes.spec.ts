@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { API_BASE_PATH } from '$lib/server/api/surface';
 import { CONSOLE_BASE_PATH } from '$lib/server/console/surface';
+import { CHARIOT_WEBHOOK_PATH } from '@better-giving/operator/chariot/webhook-subscription';
 import { PAYPAL_WEBHOOK_PATH } from '@better-giving/operator/paypal/webhook-listener';
 import { STRIPE_WEBHOOK_PATH } from '@better-giving/operator/stripe/webhook-endpoint';
 import {
@@ -83,15 +84,14 @@ const API_LAYOUT = 'routes/api.v1.ts';
 const ROOT_ROUTE = 'root.tsx';
 
 /**
- * the payment processors' callbacks, with the address each answers on — the two routes in this app
- * that owe their position.
+ * the payment processors' callbacks, with the address each answers on — the routes in this app that
+ * owe their position.
  *
  * every other route's placement decides what it inherits; theirs decides what they do not. the
  * delivery is verified against the raw body exactly as sent, and the body is read exactly once by
- * the handler that owns it (CLAUDE.md) — so a `middleware` anywhere above either of them that
- * touched the request would break verification in production and nowhere else. they are named here
- * so the case at the foot of `where middleware is mounted` can hold that neither has a layout above
- * it.
+ * the handler that owns it (CLAUDE.md) — so a `middleware` anywhere above any of them that touched
+ * the request would break verification in production and nowhere else. they are named here so the
+ * case at the foot of `where middleware is mounted` can hold that none has a layout above it.
  *
  * the address is here beside the file rather than left to the name, because it is what an operator
  * pastes into a processor's dashboard: Stripe's is registered by this app and PayPal's is typed in
@@ -105,7 +105,8 @@ const ROOT_ROUTE = 'root.tsx';
  */
 const PROCESSOR_CALLBACKS: Readonly<Record<string, string>> = {
 	'routes/api.stripe.webhook.ts': STRIPE_WEBHOOK_PATH,
-	'routes/api.paypal.webhook.ts': PAYPAL_WEBHOOK_PATH
+	'routes/api.paypal.webhook.ts': PAYPAL_WEBHOOK_PATH,
+	'routes/api.chariot.webhook.ts': CHARIOT_WEBHOOK_PATH
 };
 
 /**
@@ -172,10 +173,10 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// record rather than taken from the body.
 	'routes/api.v1.forms.$id.donations.ts',
 	// the payment processors' callbacks, delivered by machines belonging to somebody else. they are
-	// unauthenticated because there is no session a processor could hold and no page either is
+	// unauthenticated because there is no session a processor could hold and no page any of them is
 	// answering: no origin to echo, no visitor to challenge, no form id in the path. what stands
 	// in for all of it is the delivery being verified against the raw body, checked before anything
-	// is parsed — which is also why neither is under a layout at all, held below.
+	// is parsed — which is also why none is under a layout at all, held below.
 	...Object.keys(PROCESSOR_CALLBACKS),
 	// the donor's page, opened from a link the organisation published. it is unauthenticated
 	// because a donor holds no session and never could — there is nobody for a gate here to ask
@@ -633,7 +634,7 @@ describe('where middleware is mounted', () => {
 	 * where a `middleware` may be, this one says the callbacks are under no layout that could hold
 	 * one — asserted against the route config react router serves rather than against the file
 	 * names that produced them, because `flatRoutes` nests by name and a layout added at
-	 * `routes/api.ts` would adopt both routes without a character of either changing.
+	 * `routes/api.ts` would adopt every callback without a character of any of them changing.
 	 *
 	 * what breaks if it does is in each callback's own header and is invisible in every other
 	 * place: verification fails in production on every delivery, and the processor's own dashboard

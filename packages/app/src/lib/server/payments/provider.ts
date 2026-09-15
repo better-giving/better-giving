@@ -1,4 +1,4 @@
-import { isStripeRail } from '@better-giving/form/embed/rails';
+import { isPaypalRail, isStripeRail } from '@better-giving/form/embed/rails';
 import type { Frequency, PaymentMethod as QuotedRail } from '@better-giving/form/v1';
 import type {
 	PaymentMethod as SettledRail,
@@ -11,12 +11,12 @@ import type {
 //
 // payments go through this port, never a processor's SDK directly (CLAUDE.md). one module imports
 // each SDK and no other may — ./stripe.ts for `stripe` and ./paypal.ts for
-// `@paypal/paypal-server-sdk`, gated by ./sole-importer.spec.ts — which is the same shape
-// ../db/client.ts holds over D1, and for the same stated reason: so the contract has one place to be
-// stated rather than one per call site.
+// `@paypal/paypal-server-sdk`, gated by ./sole-importer.spec.ts; ./chariot.ts imports none and speaks
+// Chariot's API over `fetch` — which is the same shape ../db/client.ts holds over D1, and for the
+// same stated reason: so the contract has one place to be stated rather than one per call site.
 //
-// **the port names two processors and both have an adapter, and neither answers every arm.** an
-// adapter this release ships refuses the arms its processor has nothing behind — a gift that
+// **the port names three processors, and no adapter answers every arm.** an adapter this release
+// ships refuses the arms its processor has nothing behind — a gift that
 // repeats, a capability read the API does not publish — with `unsupported`, exactly as ./factory.ts
 // answers for a processor with no adapter at all. so a method being present here is never a claim
 // that every deployment can reach it, and a caller's answer to any of them is `if (!result.ok)`.
@@ -47,14 +47,15 @@ import type {
  */
 export const PROCESSOR_NAMES = [
 	'stripe',
-	'paypal'
+	'paypal',
+	'chariot'
 ] as const satisfies readonly PaymentProviderName[];
 export type ProcessorName = (typeof PROCESSOR_NAMES)[number];
 
 /**
  * what an operator-facing sentence calls each processor.
  *
- * an operator reads these sentences, and neither name is spelled the way the row's value is: the
+ * an operator reads these sentences, and no name is spelled the way the row's value is: the
  * console's boxes say PayPal and Stripe.
  *
  * it is up here beside the names rather than with the refusals that were its first reader, because
@@ -65,24 +66,38 @@ export type ProcessorName = (typeof PROCESSOR_NAMES)[number];
  */
 export const PROCESSOR_LABELS: Readonly<Record<ProcessorName, string>> = Object.freeze({
 	stripe: 'Stripe',
-	paypal: 'PayPal'
+	paypal: 'PayPal',
+	chariot: 'Chariot'
 });
+
+/**
+ * whether a gift that repeats is taken through this processor at all.
+ *
+ * Chariot's is not: a grant through it is one-time, and its adapter refuses every
+ * repeating arm (./chariot.ts). so it is asked nothing about repeating gifts and has no say in which
+ * cadences a form offers — ./recurring-provision.ts reads this before it asks any account, and
+ * a deployment holding Chariot beside a card processor offers what that processor can collect.
+ */
+export function takesRepeatingGifts(name: ProcessorName): boolean {
+	return name !== 'chariot';
+}
 
 /**
  * which processor a rail is quoted and settled on.
  *
- * the rail-to-processor table is `STRIPE_RAILS` and `PAYPAL_RAILS` in
- * packages/form/src/embed/rails.ts and this reads it rather than restating it: those two lists are
- * the split, ./rail-agreement.spec.ts holds them to partitioning `PAYMENT_METHODS`, and a second
+ * the rail-to-processor table is `STRIPE_RAILS`, `PAYPAL_RAILS` and `CHARIOT_RAILS` in
+ * packages/form/src/embed/rails.ts and this reads it rather than restating it: those three lists
+ * are the split, ./rail-agreement.spec.ts holds them to partitioning `PAYMENT_METHODS`, and a second
  * table here would be the one that disagrees the day a rail moves.
  *
- * total over `QuotedRail` because the two lists partition the vocabulary, so this never answers
+ * total over `QuotedRail` because the three lists partition the vocabulary, so this never answers
  * null and no caller writes a fallback for one. it is the whole of what makes a rail a donor picked
  * select the adapter that can mint for it — `Processors.forRail` in ./factory.ts is the one reader,
  * and a caller pairing a rail with a processor by hand is the drift it exists to prevent.
  */
 export function processorOf(rail: QuotedRail): ProcessorName {
-	return isStripeRail(rail) ? 'stripe' : 'paypal';
+	if (isStripeRail(rail)) return 'stripe';
+	return isPaypalRail(rail) ? 'paypal' : 'chariot';
 }
 
 /**
@@ -257,6 +272,11 @@ export type { QuotedRail, SettledRail };
  *                      for an invoice no repeating gift raised, which is what a hand-made invoice on
  *                      the same account arrives as; `createIntent` can also produce it, for an
  *                      object its parameters named.
+ *   authorization_expired
+ *                    — `createIntent` only, on a rail whose payer authorizes before the call
+ *                      (`IntentRequest.authorizedSessionId`). the authorization it names is past
+ *                      the processor's window, so nothing was created and no retry brings it back:
+ *                      the payer authorizes again.
  *   fee_not_ready    — `readSettlement` only. the money moved and the processor has not published
  *                      what it took out of it yet. the read is worth making again and nothing else
  *                      is: the transaction is fine, the gift is fine, and the one figure the ledger
@@ -265,7 +285,8 @@ export type { QuotedRail, SettledRail };
  *                      its fee and a gift posted permanently without one — see `Settlement.feeMinor`
  *                      below, whose null is the ordinary absence this is not.
  *   rate_limited     — the processor is shedding load. the same call is worth making again.
- *   unreachable      — no answer came back at all: a connection that failed, or a timeout.
+ *   unreachable      — no answer settled whether the call took effect: a connection that failed,
+ *                      a timeout, or a processor still working on the call when the wait ran out.
  *   provider_error   — the processor answered with a fault of its own, or answered with something
  *                      this app cannot read.
  *   internal_error   — an adapter threw where its contract says it must not. a bug in this app
@@ -284,6 +305,7 @@ export const PAYMENT_FAILURE_REASONS = [
 	'invalid_request',
 	'bad_signature',
 	'not_found',
+	'authorization_expired',
 	'fee_not_ready',
 	'rate_limited',
 	'unreachable',
@@ -336,6 +358,7 @@ export const TERMINAL_FAILURE_REASONS = [
 	'invalid_request',
 	'bad_signature',
 	'not_found',
+	'authorization_expired',
 	'internal_error',
 	'unsupported'
 ] as const satisfies readonly PaymentFailureReason[];
@@ -432,6 +455,21 @@ export type IntentRequest = {
 	 */
 	readonly idempotencyKey: string;
 	/**
+	 * the session in which the donor already authorized this payment in the processor's own window,
+	 * on a rail where that authorization comes first and the server's call is what creates the
+	 * payment.
+	 *
+	 * the `daf` rail is that rail: Chariot's window hands the donor's browser a workflow session, and
+	 * a grant is created from it and from nothing else (`createChariotProvider` in ./chariot.ts). every
+	 * other rail runs the other way round — this call mints, and the browser confirms — so it is
+	 * absent there and no adapter for those rails reads it.
+	 *
+	 * an id and never an amount. what the donor chose in that window is an input the caller checks
+	 * against the form record before `amountMinor` is built, for the reason every number on this type
+	 * is the server's.
+	 */
+	readonly authorizedSessionId?: string;
+	/**
 	 * what this app needs written on the processor's copy of the record.
 	 *
 	 * the donation id belongs here. an event can reach the webhook before the row that caused it
@@ -519,6 +557,14 @@ export type Settlement = {
 	 * in its own database would lose exactly the race the metadata was written for.
 	 */
 	readonly metadata: Readonly<Record<string, string>>;
+	/**
+	 * the id an organisation matches the arriving money by in its processor's own dashboard.
+	 *
+	 * read back on every settlement rather than stored, because the processor holds it for as long
+	 * as it holds the transaction. absent where the processor gives the organisation no such id to
+	 * match by.
+	 */
+	readonly reference?: string;
 	/** business time: when the money moved, as the ledger's `occurred_at` wants it. */
 	readonly occurredAt: Date;
 };

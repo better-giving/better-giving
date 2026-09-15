@@ -115,17 +115,26 @@ function providers(value: unknown): readonly Provider[] {
  * defaulted to zero would price every uncapped rail at its flat charge alone; present it is a
  * whole non-negative amount or the whole rule goes, because a rule kept with a malformed cap
  * stripped quotes the uncapped rate, which is the over-collection the field exists to prevent.
+ *
+ * the rounding step is read the same way, as a whole positive amount: a step of nothing rounds to
+ * nothing, and a rule kept with its step stripped quotes under the rounded fee the rail charges.
  */
 function feeRule(value: unknown): FeeRule | null {
 	const source = record(value);
 	if (source === null) return null;
-	const { percent, fixedMinor, capMinor } = source;
+	const { percent, fixedMinor, capMinor, roundUpMinor } = source;
 	if (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0) return null;
 	const fixed = wholeAtLeast(fixedMinor, 0);
 	if (fixed === null) return null;
-	if (capMinor === undefined) return { percent, fixedMinor: fixed };
-	const cap = wholeAtLeast(capMinor, 0);
-	return cap === null ? null : { percent, fixedMinor: fixed, capMinor: cap };
+	const cap = capMinor === undefined ? undefined : wholeAtLeast(capMinor, 0);
+	const step = roundUpMinor === undefined ? undefined : wholeAtLeast(roundUpMinor, 1);
+	if (cap === null || step === null) return null;
+	return {
+		percent,
+		fixedMinor: fixed,
+		...(cap === undefined ? {} : { capMinor: cap }),
+		...(step === undefined ? {} : { roundUpMinor: step })
+	};
 }
 
 /**

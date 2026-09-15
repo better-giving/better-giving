@@ -153,7 +153,7 @@ export function takeoverFor(
 				...BLANK,
 				heading: copy.PROCESSING_HEADING,
 				receipt: 'pending',
-				totalLabel: copy.TO_BE_CHARGED,
+				totalLabel: copy.processingTotalLabel(state.method),
 				receiptNote: copy.processingNote(state.method),
 				body: copy.processingBody(org, state.method)
 			};

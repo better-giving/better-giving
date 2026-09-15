@@ -21,7 +21,7 @@ export interface ConfigEnv {
 	 * not a credential: it is designed to sit in public HTML, and `/api/v1/forms/:id/config`
 	 * serves it to any browser that asks. so an operator sets it as a Worker var and can read
 	 * it back, where the secret key beside it is a secret and cannot be — DEPLOY.md draws that
-	 * split for all seventeen. either arrives here as a string on the platform env, which is why
+	 * split for all twenty-one. either arrives here as a string on the platform env, which is why
 	 * nothing below this line distinguishes them.
 	 */
 	readonly STRIPE_PUBLISHABLE_KEY?: string;
@@ -56,6 +56,22 @@ export interface ConfigEnv {
 	 * types is ever a number.
 	 */
 	readonly PAYPAL_CHARITY_RATE_APPROVED?: string;
+	/** the API key of the org's own Chariot account, which donor-advised fund gifts are taken on. */
+	readonly CHARIOT_API_KEY?: string;
+	/**
+	 * the address Chariot's API answers on. unset is the live one, `https://api.givechariot.com`;
+	 * the sandbox is `https://sandboxapi.givechariot.com`.
+	 */
+	readonly CHARIOT_API_URL?: string;
+	/**
+	 * the Connect id the donor's page opens Chariot's picker with.
+	 *
+	 * not a credential, for `STRIPE_PUBLISHABLE_KEY`'s reason: `<chariot-connect>` carries it as an
+	 * attribute in the donor's page.
+	 */
+	readonly CHARIOT_CONNECT_ID?: string;
+	/** the signing secret of the org's own Chariot webhook subscription. */
+	readonly CHARIOT_WEBHOOK_SECRET?: string;
 	/** the mail host's submission hostname, e.g. `smtp.resend.com`. */
 	readonly SMTP_HOST?: string;
 	/**
@@ -151,7 +167,11 @@ export const CONFIG_VAR_NAMES = [
 	'PAYPAL_CLIENT_ID',
 	'PAYPAL_CLIENT_SECRET',
 	'PAYPAL_WEBHOOK_ID',
-	'PAYPAL_CHARITY_RATE_APPROVED'
+	'PAYPAL_CHARITY_RATE_APPROVED',
+	'CHARIOT_API_KEY',
+	'CHARIOT_API_URL',
+	'CHARIOT_CONNECT_ID',
+	'CHARIOT_WEBHOOK_SECRET'
 ] as const satisfies readonly (keyof ConfigEnv)[];
 
 /**

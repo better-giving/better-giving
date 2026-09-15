@@ -2,19 +2,19 @@
 
 A donation app for a **single** nonprofit, deployed to your own Cloudflare account. One deployment, one org: a donation form embedded on their own site, a staff back office, donor records, and an append-only double-entry ledger underneath. React Router on Workers, D1 for storage.
 
-**Bring your own processor.** Charges go directly to the org's own account at Stripe, PayPal, or both: the app holds their keys and never custodies funds.
+**Bring your own processor.** Charges go directly to the org's own account at Stripe, PayPal, Chariot (gifts from a donor-advised fund), or any mix: the app holds their keys and never custodies funds.
 
 ## Two operator surfaces
 
 - **The dashboard** is `/admin` on a deployment. Donation forms, donations, donors, recurring gifts. The only thing a staff member opens.
-- **The console** is a program the operator runs on their own machine: `better-giving start` puts this release on the deployment from the terminal, then serves the console's screens at `http://127.0.0.1:5320`. Never deployed; the screens are built into the binary. Between the terminal half and the screens it sets the deployment up: the Cloudflare account, the D1 database, all seventeen configuration values, the payment processor keys, the site list, the org's legal identity.
+- **The console** is a program the operator runs on their own machine: `better-giving start` puts this release on the deployment from the terminal, then serves the console's screens at `http://127.0.0.1:5320`. Never deployed; the screens are built into the binary. Between the terminal half and the screens it sets the deployment up: the Cloudflare account, the D1 database, all twenty-one configuration values, the payment processor keys, the site list, the org's legal identity.
 
 ## Get started
 
 ### Requirements
 
 - **Node ≥ 22** and **pnpm** (`corepack enable`), for running locally and for the checkout deploy
-- **a Cloudflare account on a paid Workers plan** (the Free plan runs it, but its rate limits on the public donation endpoint silently do not enforce), **a Stripe or PayPal account** (either alone is enough, and both may be set), **an SMTP account on port 465**, for deploying and taking money. [`DEPLOY.md`](./DEPLOY.md) has the details
+- **a Cloudflare account on a paid Workers plan** (the Free plan runs it, but its rate limits on the public donation endpoint silently do not enforce), **a Stripe, PayPal or Chariot account** (any one alone is enough, and more than one may be set), **an SMTP account on port 465**, for deploying and taking money. [`DEPLOY.md`](./DEPLOY.md) has the details
 
 ### Run it locally
 
@@ -64,7 +64,7 @@ pnpm run db:create        # once (placement flags in DEPLOY.md)
 pnpm run deploy
 ```
 
-Then the values in `packages/app/.deploy.vars`, deployed in one press with `pnpm run deploy:vars`, and the console screens (the Stripe webhook, PayPal's webhook, the Turnstile widget, the site list) served from the checkout by `pnpm console`. [`DEPLOY.md`](./DEPLOY.md) is the operator's file and walks all of it, in order.
+Then the values in `packages/app/.deploy.vars`, deployed in one press with `pnpm run deploy:vars`, and the console screens (the Stripe webhook, PayPal's webhook, Chariot's set-up, the Turnstile widget, the site list) served from the checkout by `pnpm console`. [`DEPLOY.md`](./DEPLOY.md) is the operator's file and walks all of it, in order.
 
 ## Embed the form
 
@@ -97,9 +97,9 @@ A child carrying `slot="loading"` (`<p slot="loading">Loading…</p>`, or a bloc
 
 ## If your site sends a Content-Security-Policy
 
-The form needs six directives, and the one most often missing is your own deployment.
+The form needs seven directives, and the one most often missing is your own deployment.
 
-Which vendor lines you need follows the processors your deployment holds: the Stripe lines matter to a deployment taking cards, the PayPal ones to a deployment taking PayPal or Venmo, and a deployment holding both needs both. Naming all of them is harmless on a deployment that uses one.
+Which vendor lines you need follows the processors your deployment holds: the Stripe lines matter to a deployment taking cards, the PayPal ones to a deployment taking PayPal or Venmo, the Chariot ones to a deployment taking gifts from a donor-advised fund, and a deployment holding more than one needs each. Naming all of them is harmless on a deployment that uses one.
 
 Write `<your deployment origin>` as the origin the snippet's `src` points at, scheme and host, no path.
 
@@ -107,6 +107,7 @@ Write `<your deployment origin>` as the origin the snippet's `src` points at, sc
 script-src   <your deployment origin>
              https://js.stripe.com https://*.js.stripe.com
              https://www.paypal.com https://c.paypal.com
+             https://cdn.givechariot.com
              https://challenges.cloudflare.com
 
 connect-src  <your deployment origin>
@@ -117,10 +118,14 @@ frame-src    https://js.stripe.com https://*.js.stripe.com
              https://hooks.stripe.com
              https://www.paypal.com
              https://history.paypal.com https://account.venmo.com
+             https://secure.dafpay.com
              https://challenges.cloudflare.com
 
 img-src      'self' data:
              https://www.paypalobjects.com
+             https://cdn.givechariot.com
+
+font-src     https://cdn.givechariot.com
 
 style-src    'unsafe-inline'
 ```
@@ -134,6 +139,8 @@ style-src    'unsafe-inline'
 **`img-src https://www.paypalobjects.com` is the one nobody predicts.** PayPal's buttons are drawn in your page rather than in a frame of PayPal's, so their wordmarks are images your policy has to allow. Leave it out and the PayPal button renders as a blank gold pill: a control that looks broken and that nobody presses. `'self' data:` rides with it because naming `img-src` at all stops images falling back to `default-src`, which would take the form's own art down.
 
 **`connect-src https://api-m.paypal.com` is the one with the widest blast radius.** The form asks PayPal which methods this donor is eligible for before it draws anything, so a blocked read is not a missing Venmo button; it is no PayPal buttons at all, on every page load.
+
+**Chariot's lines are the fund option's alone.** Chariot's button loads from `https://cdn.givechariot.com`, writes its fonts and inline `<style>` into your page, and draws the fund's window in a frame on `https://secure.dafpay.com` or in a popup. Leave one out and the donor-advised fund option fails on that page while every other way to give keeps working.
 
 `style-src 'unsafe-inline'`: the form writes inline styles while it measures your page's colors and builds its card. This is the form's own doing rather than a vendor requirement.
 
@@ -164,7 +171,7 @@ The console covers the same jobs without a checkout: every credential, every var
 
 An append-only ledger is corrected by posting a compensating entry rather than by restoring. Tearing a rehearsal deployment down is two raw wrangler commands; [`DEPLOY.md`](./DEPLOY.md) gives them in full.
 
-Every configuration value is a plain Worker var, stored from the console and read back there as a value. The console runs on your own Cloudflare session, so masking a credential from the person holding the account bought nothing and cost them the ability to check it. Deleting a Worker deletes all seventeen; from a checkout `pnpm run deploy:vars` re-arms them from a local gitignored `.deploy.vars` in one deploy. [`DEPLOY.md`](./DEPLOY.md) has the file's shape and its one escaping trap. The Worker's Variables and Secrets page is the other place to read or change one.
+Every configuration value is a plain Worker var, stored from the console and read back there as a value. The console runs on your own Cloudflare session, so masking a credential from the person holding the account bought nothing and cost them the ability to check it. Deleting a Worker deletes all twenty-one; from a checkout `pnpm run deploy:vars` re-arms them from a local gitignored `.deploy.vars` in one deploy. [`DEPLOY.md`](./DEPLOY.md) has the file's shape and its one escaping trap. The Worker's Variables and Secrets page is the other place to read or change one.
 
 ## Contributing
 

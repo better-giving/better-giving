@@ -75,6 +75,22 @@ export type ParsedQuoteRequest = {
 	readonly programId: string | undefined;
 	/** whatever was presented as a challenge token, checked by nothing here. */
 	readonly turnstileToken: string | undefined;
+	/**
+	 * what the fund's window handed back, on a donor-advised fund gift and on no other rail.
+	 *
+	 * the grant is created from `id` and the gift recorded from `authorizedMinor`, which the donor may
+	 * have changed from `amountMinor` in that window; ./quote.ts splits it and checks the gift portion
+	 * against the form's bounds.
+	 */
+	readonly authorization: DafAuthorization | null;
+};
+
+/** a donor-advised fund gift's authorization, both halves present and well formed. */
+export type DafAuthorization = {
+	/** Chariot's workflow session, trimmed. */
+	readonly id: string;
+	/** the whole-dollar total the donor authorized, in minor units. */
+	readonly authorizedMinor: number;
 };
 
 /**
@@ -207,6 +223,78 @@ const OFFERED_METHOD = z.enum(OFFERED_PAYMENT_METHODS, {
 	error: (issue) =>
 		`\`method\` is ${describe(issue.input)}, which is not a rail this deployment offers.`
 });
+
+/** the fund window's session id, bounded because it is a stranger's string on a public path. */
+const AUTHORIZATION_ID = z
+	.string({
+		error: (issue) => `\`authorizationId\` is ${describe(issue.input)}, which is not a string.`
+	})
+	.trim()
+	.min(1, { error: '`authorizationId` is empty.' })
+	.max(200, { error: '`authorizationId` is over the 200-character maximum.' });
+
+/** a positive whole-dollar total in minor units — the only kind a fund grants. */
+const AUTHORIZED_MINOR = z
+	.int({
+		error: (issue) =>
+			`\`authorizedMinor\` is ${describe(issue.input)}, which is not a whole number of minor units.`
+	})
+	.positive({
+		error: (issue) => `\`authorizedMinor\` is ${String(issue.input)}, which is not positive.`
+	})
+	.multipleOf(100, {
+		error: (issue) =>
+			`\`authorizedMinor\` is ${String(issue.input)}, which is not a whole-dollar amount, and a fund grants only whole dollars.`
+	});
+
+const AUTHORIZATION_FIELDS = ['authorizationId', 'authorizedMinor'] as const;
+
+const AUTHORIZATION_FIX =
+	'Send `authorizationId` as the `workflowSessionId` and `authorizedMinor` as the grant amount the ' +
+	'fund’s window returned on `CHARIOT_SUCCESS`, both on `method` `daf` and on no other.';
+
+/**
+ * the two fields a donor-advised fund gift carries, held to that rail in both directions.
+ *
+ * both on `daf` because the grant is created from the one and recorded from the other, and neither on
+ * any other rail because nothing reads them there — a card body carrying a fund session is a client
+ * that has confused two flows, and taking it silently would hide that.
+ */
+function parseAuthorization(
+	posted: Record<string, unknown>,
+	method: PaymentMethod,
+	frequency: Frequency
+): { readonly ok: true; readonly value: DafAuthorization | null } | Refusal {
+	if (method !== 'daf') {
+		const stray = AUTHORIZATION_FIELDS.find((field) => posted[field] !== undefined);
+		if (stray === undefined) return { ok: true, value: null };
+		return refusal(
+			`\`${stray}\` was sent with \`method\` \`${method}\`, and only a donor-advised fund gift carries one.`,
+			AUTHORIZATION_FIX
+		);
+	}
+
+	if (frequency !== 'one_time') {
+		return refusal(
+			`\`frequency\` is \`${frequency}\`, and a donor-advised fund gift is one-time.`,
+			'Send `frequency` `one_time` on `method` `daf`. A gift that repeats is given on another rail.'
+		);
+	}
+
+	const missing = AUTHORIZATION_FIELDS.find((field) => posted[field] === undefined);
+	if (missing !== undefined) {
+		return refusal(
+			`\`${missing}\` is missing, and a donor-advised fund gift is created from what the fund’s window returned.`,
+			AUTHORIZATION_FIX
+		);
+	}
+	const id = AUTHORIZATION_ID.safeParse(posted.authorizationId);
+	if (!id.success) return refusal(first(id.error), AUTHORIZATION_FIX);
+	const total = AUTHORIZED_MINOR.safeParse(posted.authorizedMinor);
+	if (!total.success) return refusal(first(total.error), AUTHORIZATION_FIX);
+
+	return { ok: true, value: { id: id.data, authorizedMinor: total.data } };
+}
 
 /** whether the donor is paying the processing fee. a real boolean, never a string spelling one. */
 const COVERS_FEE = z.boolean({
@@ -497,6 +585,9 @@ export function parseQuoteRequest(body: unknown, config: FormConfig): QuoteInput
 		);
 	}
 
+	const authorization = parseAuthorization(posted, method.data, frequency.data);
+	if (!authorization.ok) return authorization;
+
 	const coversFee = COVERS_FEE.safeParse(posted.coversFee);
 	if (!coversFee.success) {
 		return refusal(
@@ -597,7 +688,8 @@ export function parseQuoteRequest(body: unknown, config: FormConfig): QuoteInput
 			note: message === '' ? undefined : message,
 			tribute: tribute.value,
 			programId: program.value,
-			turnstileToken: turnstileToken.data
+			turnstileToken: turnstileToken.data,
+			authorization: authorization.value
 		}
 	};
 }

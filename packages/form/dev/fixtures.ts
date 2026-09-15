@@ -68,7 +68,8 @@ const RULES: Record<PaymentMethod, FeeRule> = {
 	apple_pay: { percent: 0.029, fixedMinor: 30 },
 	google_pay: { percent: 0.029, fixedMinor: 30 },
 	paypal: { percent: 0.0349, fixedMinor: 49 },
-	venmo: { percent: 0.0349, fixedMinor: 49 }
+	venmo: { percent: 0.0349, fixedMinor: 49 },
+	daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
 };
 
 const IDENTITY = {
@@ -372,7 +373,12 @@ export function devRuntime(): FormRuntime {
 			// after the caller has finished starting the flow, the way a provider's own report always
 			// arrives: a rail named inside this call would reach a machine that does not exist yet.
 			queueMicrotask(() => onRail(config.paymentMethods[0] ?? null));
-			return { input: { config, ports: ports(config) }, cadence: () => {}, stop: () => {} };
+			return {
+				input: { config, ports: ports(config) },
+				cadence: () => {},
+				offerFund: () => {},
+				stop: () => {}
+			};
 		},
 		challenge: () => ({ reset: () => {}, stop: () => {} })
 	};

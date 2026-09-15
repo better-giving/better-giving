@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { consoleVersion, levelWallets, startStripeSetup } from './client';
+import {
+	chariotRun,
+	consoleVersion,
+	levelWallets,
+	startChariotSetup,
+	startStripeSetup
+} from './client';
 
 // what the page does with each way the binary answers a press.
 //
@@ -72,6 +78,51 @@ describe('the press that sets stripe up from the two keys', () => {
 		answering(200, nowhere);
 
 		await expect(startStripeSetup(keys)).resolves.toEqual({ started: false, unwritten: nowhere });
+	});
+});
+
+describe('the press that sets chariot up from the key, the address and a contact email', () => {
+	const boxes = { apiKey: 'ck_x', address: '', contactEmail: 'ops@example.org' };
+
+	it('posts the three boxes to the binary and answers the run it started', async () => {
+		const calls = recording({ run: { kind: 'running', stage: 'checking' } });
+
+		await expect(startChariotSetup(boxes)).resolves.toEqual({
+			started: true,
+			run: { kind: 'running', stage: 'checking' }
+		});
+		expect(calls[0]?.[0]).toBe('/api/chariot/setup');
+		expect(calls[0]?.[1]?.method).toBe('POST');
+		expect(JSON.parse(String(calls[0]?.[1]?.body))).toEqual(boxes);
+	});
+
+	it('answers a run already going as not started, carrying that run', async () => {
+		answering(409, { run: { kind: 'running', stage: 'finding' } });
+
+		await expect(startChariotSetup(boxes)).resolves.toEqual({
+			started: false,
+			run: { kind: 'running', stage: 'finding' }
+		});
+	});
+
+	it('answers boxes the door would not take as turned down', async () => {
+		answering(400, { error: 'the contact email slot holds no single email address' });
+
+		await expect(startChariotSetup(boxes)).resolves.toEqual({ started: false, turnedDown: true });
+	});
+
+	it('answers a write the binary could not make as unwritten rather than as a run', async () => {
+		const nowhere = { kind: 'nowhere', address: { kind: 'no-credential', detail: '' } };
+		answering(200, nowhere);
+
+		await expect(startChariotSetup(boxes)).resolves.toEqual({ started: false, unwritten: nowhere });
+	});
+
+	it('reads the run off the binary, and null where nothing was pressed', async () => {
+		const calls = recording({ run: null });
+
+		await expect(chariotRun()).resolves.toBeNull();
+		expect(calls[0]?.[0]).toBe('/api/chariot/run');
 	});
 });
 

@@ -82,20 +82,21 @@ const allSet = (config: ConfigEnv, names: readonly (keyof ConfigEnv)[]): boolean
 /**
  * the pair of keys each processor charges on, and a deployment holding either pair can take a gift.
  *
- * **neither webhook value is on a pair, and that is the distinction this list is about rather than
- * an omission.** without one a settled charge is never heard about, which is what stops a recurring
+ * **no webhook value is on a pair, and that is the distinction this list is about rather than an
+ * omission.** without one a settled charge is never heard about, which is what stops a recurring
  * gift being written down — but a one-off gift is still charged, and this line answers whether one
  * can be. the console's payments fold is where the difference between the two is drawn and acted
  * on. `PAYPAL_CHARITY_RATE_APPROVED` is off them for a reason of its own: it picks which published
  * fee table a donor covering fees is quoted from (../payments/fees.ts), and unset is an answer
- * rather than a gap.
+ * rather than a gap. `CHARIOT_API_URL` is off for the same reason: unset is Chariot's live address.
  *
- * a pair rather than a flat list of everything payments needs, because the two are alternatives:
- * an organisation on PayPal alone holds no Stripe key and is set up, and the same in reverse.
+ * a pair rather than a flat list of everything payments needs, because the three are alternatives:
+ * an organisation on any one of them alone holds no key for the other two and is set up.
  */
 const CHARGE_PAIRS: readonly (readonly (keyof ConfigEnv)[])[] = [
 	['STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY'],
-	['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET']
+	['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET'],
+	['CHARIOT_API_KEY', 'CHARIOT_CONNECT_ID']
 ];
 
 /** whether each of the five is done, from the facts alone. */

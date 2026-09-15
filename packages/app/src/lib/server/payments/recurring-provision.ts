@@ -1,6 +1,11 @@
 import type { RecurringSetupReason } from '@better-giving/operator/console/recurring';
 import type { Processors } from './factory';
-import type { PaymentProvider, ProcessorName, RecurringGiftStanding } from './provider';
+import {
+	takesRepeatingGifts,
+	type PaymentProvider,
+	type ProcessorName,
+	type RecurringGiftStanding
+} from './provider';
 
 // what this app asks the payment port about repeating gifts on a processor's own account, and the
 // one thing it can ask for. two callers: ../forms/offered-cadences.ts, which reads every configured
@@ -184,7 +189,7 @@ export async function setUpRecurringGiftsOn(
 	processors: Processors,
 	named: ProcessorName | null
 ): Promise<RecurringSetupRun> {
-	const asked = named === null ? processors.configured : [named];
+	const asked = named === null ? processors.configured.filter(takesRepeatingGifts) : [named];
 	if (asked.length === 0) return { acted: false };
 
 	const configured = new Set(processors.configured);
@@ -212,8 +217,10 @@ export async function setUpRecurringGiftsOn(
  * each reading carries its own sentence naming its own value to fix, and one processor nobody could
  * reach must not be reported as an answer about another.
  *
- * partial over `ProcessorName` because only the configured processors are asked — an entry for a
- * processor this deployment cannot charge on would be a reading of an account nobody named.
+ * partial over `ProcessorName` because only the configured processors that take repeating gifts are
+ * asked — an entry for a processor this deployment cannot charge on would be a reading of an account
+ * nobody named, and one for a processor taking one-time gifts only would be a refusal narrowing every
+ * form to one-time (`takesRepeatingGifts` in ./provider.ts).
  */
 export type RecurringProvisions = Readonly<Partial<Record<ProcessorName, RecurringProvision>>>;
 
@@ -229,9 +236,9 @@ export async function readRecurringProvisions(
 	processors: Processors
 ): Promise<RecurringProvisions> {
 	const readings = await Promise.all(
-		processors.configured.map(
-			async (name) => [name, await readRecurringProvision(processors.for(name))] as const
-		)
+		processors.configured
+			.filter(takesRepeatingGifts)
+			.map(async (name) => [name, await readRecurringProvision(processors.for(name))] as const)
 	);
 	return Object.fromEntries(readings);
 }

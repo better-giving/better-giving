@@ -49,3 +49,13 @@ export const REACHED_STRIPE =
  */
 export const REACHED_PAYPAL =
 	'What reached PayPal before it stopped is what your PayPal app holds now.';
+
+/**
+ * what a press that sets Chariot up had reached, which is the organisation's Connect and the
+ * account's event subscriptions.
+ *
+ * the next press asks for the Connect Chariot already holds and replaces every subscription at this
+ * deployment's address with a new one (`packages/console/internal/chariot/setup.go`).
+ */
+export const REACHED_CHARIOT =
+	'What reached Chariot before it stopped is what your Chariot account holds now.';

@@ -6,6 +6,7 @@ import {
 } from '$lib/server/api/rate-limit';
 import { verifyTurnstile } from '$lib/server/api/turnstile';
 import { mintQuote, refusalCode, type QuoteRefusal } from '$lib/server/donations/quote';
+import { createEmailProvider } from '$lib/server/email/factory';
 import { readFormOrigins } from '$lib/server/forms/queries';
 import { createPaymentProviders } from '$lib/server/payments/factory';
 import { database, platform } from '../context';
@@ -53,9 +54,9 @@ import type { Route } from './+types/api.v1.forms.$id.donations';
 // still refuse.
 //
 // nothing here is a module-scope singleton. the D1 handle and the deploy-time values arrive on the
-// request context, which src/request-context.ts seeds per request, and the payment provider is
-// built from that env on the call — never assigned at module scope, and never handed onward to
-// anything that returns a value to a browser.
+// request context, which src/request-context.ts seeds per request, and the payment and mail
+// providers are built from that env on the call — never assigned at module scope, and never handed
+// onward to anything that returns a value to a browser.
 
 /**
  * the submission.
@@ -68,7 +69,7 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 	if (request.method !== 'POST') return methodNotAllowed(request.method);
 
 	const db = context.get(database);
-	const { env } = context.get(platform);
+	const { env, ctx } = context.get(platform);
 
 	// this endpoint's own bucket, charged before anything else runs.
 	//
@@ -103,7 +104,9 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 			db,
 			env,
 			processors: createPaymentProviders(env),
-			verifyChallenge: verifyTurnstile
+			verifyChallenge: verifyTurnstile,
+			email: createEmailProvider(env),
+			defer: (task) => ctx.waitUntil(task)
 		},
 		{ formId: params.id, body: await readJsonBody(request), request }
 	);
@@ -203,6 +206,10 @@ async function readJsonBody(request: Request): Promise<unknown> {
  *   what the `challenge_failed` code exists to tell it.
  * - 404 / 410 / 409, the form: an id this deployment never had, one permanently retired, or one
  *   whose own stored state stops it. as the config route argues at length.
+ * - 409 / 422, a donor-advised fund's answer: an approval in the fund's window that expired before
+ *   the grant was created, or an amount the fund will not grant. 409 rather than Chariot's own 410,
+ *   which on this surface already means a retired form; both are the donor's to act on in the
+ *   fund's window, and nothing about the deployment is wrong.
  * - 500, a defect of ours. no code, because no screen fixes it: `API_ERROR_CODES` in
  *   `packages/form/src/v1.ts` is a permanent vocabulary whose members each name one, and a member for our
  *   own bug would ask a donation form to render a screen about it. this is also where a gift that
@@ -232,5 +239,7 @@ const REFUSAL_STATUS = {
 	challenge_failed: 403,
 	challenge_unavailable: 503,
 	payments_unavailable: 503,
+	daf_authorization_expired: 409,
+	daf_grant_declined: 422,
 	internal_error: 500
 } as const satisfies Record<QuoteRefusal, number>;

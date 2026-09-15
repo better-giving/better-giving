@@ -345,7 +345,8 @@ const QUOTED_RAIL_METHODS: Readonly<Record<QuotedRail, SettledRail>> = Object.fr
 	google_pay: 'card',
 	ach: 'ach',
 	paypal: 'paypal',
-	venmo: 'venmo'
+	venmo: 'venmo',
+	daf: 'daf'
 });
 
 /**

@@ -696,7 +696,7 @@ describe('the enum CHECKs', () => {
 		);
 	});
 
-	it('refuses a payment method outside the six the schema models', async () => {
+	it('refuses a payment method outside the seven the schema models', async () => {
 		await rejects(
 			'payment.method',
 			`insert into payment (id, donation_id, amount_minor, currency, direction, method,
@@ -729,6 +729,24 @@ describe('the enum CHECKs', () => {
 		}
 	);
 
+	it('admits daf carried by chariot, the grant id standing in the txn id column', async () => {
+		// a grant from a donor-advised fund is its own way money arrives, and chariot is the
+		// processor that carries it — the pair a DAF gift's row is written with.
+		await env.DB.prepare(
+			`insert into payment (id, donation_id, amount_minor, currency, direction, method,
+			                      status, provider, provider_txn_id, occurred_at, created_at)
+			 values ('p-daf', ?, 10000, 'USD', 'inbound', 'daf', 'pending', 'chariot', 'grant_1', 0, 0)`
+		)
+			.bind(DONATION_ID)
+			.run();
+		const row = await env.DB.prepare(
+			'select method as m, provider as p, provider_txn_id as t from payment where id = ?'
+		)
+			.bind('p-daf')
+			.first();
+		expect(row).toEqual({ m: 'daf', p: 'chariot', t: 'grant_1' });
+	});
+
 	it('refuses a payment status outside the four', async () => {
 		// 'canceled' is Stripe's spelling of `cancelled`, so this is the near-miss that
 		// actually arrives rather than a made-up one.
@@ -742,7 +760,7 @@ describe('the enum CHECKs', () => {
 		);
 	});
 
-	it('refuses a payment provider outside stripe/paypal/manual, while still allowing none', async () => {
+	it('refuses a payment provider outside stripe/paypal/chariot/manual, while still allowing none', async () => {
 		await rejects(
 			'payment.provider',
 			`insert into payment (id, donation_id, amount_minor, currency, direction, method,
@@ -931,7 +949,7 @@ describe('payment-grain idempotency', () => {
 	// Stripe charge becoming a second settlement event, and both of its columns are
 	// nullable, with NULLs DISTINCT in a sqlite unique index.
 
-	it.each(['stripe', 'paypal'])(
+	it.each(['stripe', 'paypal', 'chariot'])(
 		'refuses a %s payment with no txn id — the pair would not collide',
 		async (provider) => {
 			// without this check (provider, null) inserts twice: two settlement events for one

@@ -1,7 +1,7 @@
-import { checkoutMachine } from '@better-giving/form/machine';
-import type { Failure } from '@better-giving/form/machine';
+import { checkoutMachine, fundIsOffered, openFund } from '@better-giving/form/machine';
+import type { CheckoutEvent, Failure } from '@better-giving/form/machine';
 import { toState, type CheckoutSnapshot, type State } from '@better-giving/form/connect';
-import type { CheckoutPorts } from '@better-giving/form/ports';
+import type { CheckoutPorts, FundReports } from '@better-giving/form/ports';
 import { createPaymentSurface, type PaymentSeams } from '@better-giving/form/embed/surface';
 import { createChallenge, type ChallengeSeam } from '@better-giving/form/embed/turnstile';
 import type { FormConfig, PaymentMethod } from '@better-giving/form/v1';
@@ -104,7 +104,10 @@ export type Checkout = {
  * screen to finish in.
  *
  * every report either provider makes becomes an event rather than a call: the rail the donor picked,
- * the fields never coming up, a token minted, a challenge that could not be shown. the token goes
+ * the fields never coming up, a fund's window approving or closing, a token minted, a challenge that
+ * could not be shown. the one report that is answered is a fund's press — its script asks for the
+ * gift and opens its window in the same call — so `openFund` in @better-giving/form/machine sends
+ * the press and reads the answer back with nothing awaited between. the token goes
  * through the projection's own setter rather than at the actor, so the one this page collects and
  * the one a headless integrator would hand in travel one path.
  */
@@ -116,12 +119,19 @@ export function startCheckout(config: FormConfig, mounts: CheckoutMounts): Check
 	// script, which is later than both.
 	let rail: (method: PaymentMethod | null) => void = () => {};
 	let unavailable: (failure: Failure) => void = () => {};
+	let fundSays: (event: CheckoutEvent) => void = () => {};
+	let opened: FundReports['opened'] = () => null;
 
 	const surface = createPaymentSurface(
 		config,
 		paymentMount,
 		(method) => rail(method),
 		(failure) => unavailable(failure),
+		{
+			opened: () => opened(),
+			approved: (authorization) => fundSays({ type: 'FUND_APPROVED', ...authorization }),
+			closed: () => fundSays({ type: 'FUND_CLOSED' })
+		},
 		seams?.payment
 	);
 
@@ -135,16 +145,20 @@ export function startCheckout(config: FormConfig, mounts: CheckoutMounts): Check
 
 	rail = (method) => actor.send({ type: 'SET_METHOD', method });
 	unavailable = (failure) => actor.send({ type: 'PAYMENT_UNAVAILABLE', failure });
+	fundSays = (event) => actor.send(event);
+	opened = () => openFund(actor);
 
 	let challenge: { reset(): void; stop(): void } | null = null;
 	/** the step the last reading was on, which is what makes a reading a transition. */
 	let previous: State['step'] | null = null;
 
 	const read = (): void => {
-		const state = toState(actor.getSnapshot());
+		const snapshot = actor.getSnapshot();
+		const state = toState(snapshot);
 		// told on every reading rather than on a change: nothing here holds a memory of what it last
 		// said, and the surface is where a reading that changes nothing stops.
 		surface.cadence('fv' in state ? state.fv?.frequency : undefined);
+		surface.offerFund(fundIsOffered(snapshot));
 
 		if (state.step === 'details' && challenge === null) {
 			challenge = createChallenge(

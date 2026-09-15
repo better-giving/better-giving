@@ -10,6 +10,7 @@ import {
 	type PaymentProvider,
 	type ProcessorName
 } from './provider';
+import { CHARIOT_LIVE_API_URL, createChariotProvider } from './chariot';
 import { createPaypalProvider } from './paypal';
 import { createStripeProvider } from './stripe';
 import type { StripeUnreadableReason } from '@better-giving/operator/console/stripe-read';
@@ -130,6 +131,21 @@ const PROCESSORS: Readonly<Record<ProcessorName, Processor>> = Object.freeze({
 				webhookId: env.PAYPAL_WEBHOOK_ID ?? null
 			});
 		}
+	},
+	chariot: {
+		requires: ['CHARIOT_API_KEY'],
+		build: (env) => {
+			const apiKey = env.CHARIOT_API_KEY;
+			if (apiKey === undefined) return null;
+			// `CHARIOT_API_URL` is off the list because unset is an answer — the live address — and
+			// `CHARIOT_WEBHOOK_SECRET` for Stripe's signing secret's reason above: `verifyEvent` in
+			// ./chariot.ts is the one arm that reads it.
+			return createChariotProvider({
+				apiKey,
+				apiUrl: env.CHARIOT_API_URL ?? CHARIOT_LIVE_API_URL,
+				webhookSecret: env.CHARIOT_WEBHOOK_SECRET ?? null
+			});
+		}
 	}
 });
 
@@ -184,7 +200,8 @@ export function requiredCredentials(name: ProcessorName): readonly (keyof Config
  */
 const BROWSER_VARS: Readonly<Record<ProcessorName, keyof ConfigEnv>> = Object.freeze({
 	stripe: 'STRIPE_PUBLISHABLE_KEY',
-	paypal: 'PAYPAL_CLIENT_ID'
+	paypal: 'PAYPAL_CLIENT_ID',
+	chariot: 'CHARIOT_CONNECT_ID'
 });
 
 /** which processors a donation form may be served on here, and what to say where there are none. */
@@ -292,20 +309,26 @@ const SETUP_FIXES: Readonly<Record<ProcessorName, string>> = Object.freeze({
 	paypal:
 		'In the org’s own PayPal developer dashboard, take the client id and the secret from the ' +
 		`same app, then run \`${setCommand('PAYPAL_CLIENT_ID')}\` and ` +
-		`\`${setCommand('PAYPAL_CLIENT_SECRET')}\` against this deployment.`
+		`\`${setCommand('PAYPAL_CLIENT_SECRET')}\` against this deployment.`,
+	// no commands: the console refuses Chariot's values one at a time, because a key set that way
+	// leaves no event subscription and no signing secret behind it.
+	chariot:
+		'Chariot issues the org’s API key by email. Open the console (`better-giving start`) and set ' +
+		'Chariot up on its page under Donation processor, which stores the key, fetches the Connect ' +
+		'id and creates the event subscription with its secret.'
 });
 
 /**
  * the sentence naming where these processors are set up from.
  *
  * more than one is prefaced rather than merely concatenated: two sets of instructions with nothing
- * between them read as two things to do, and either pair on its own is what actually finishes the
- * job.
+ * between them read as several things to do, and any one set on its own is what actually finishes
+ * the job.
  */
 export function processorSetupFix(names: readonly ProcessorName[]): string {
 	const fixes = names.map((name) => SETUP_FIXES[name]);
 	return fixes.length > 1
-		? `Either processor is enough on its own. ${fixes.join(' ')}`
+		? `Any one processor is enough on its own. ${fixes.join(' ')}`
 		: fixes.join(' ');
 }
 
@@ -452,7 +475,6 @@ function unbuildable(name: ProcessorName): PaymentProvider {
 
 function build(env: ConfigEnv, name: ProcessorName): PaymentProvider {
 	const { requires, build: adapter } = PROCESSORS[name];
-
 	const built = adapter(env);
 	if (built !== null) return built;
 

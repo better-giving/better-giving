@@ -6,12 +6,14 @@ import { processorLinks } from './processor-links';
 
 const STRIPE_PAIR = ['STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY'];
 const PAYPAL_PAIR = ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET'];
+const CHARIOT_PAIR = ['CHARIOT_API_KEY', 'CHARIOT_CONNECT_ID'];
 
 describe('processorLinks', () => {
-	it('draws both processors set up where the deployment holds both pairs', () => {
-		expect(processorLinks(new Set([...STRIPE_PAIR, ...PAYPAL_PAIR]))).toEqual([
+	it('draws every processor set up where the deployment holds every pair', () => {
+		expect(processorLinks(new Set([...STRIPE_PAIR, ...PAYPAL_PAIR, ...CHARIOT_PAIR]))).toEqual([
 			{ processor: 'stripe', name: 'Stripe', href: '/payments/stripe', notSetUp: false },
-			{ processor: 'paypal', name: 'PayPal', href: '/payments/paypal', notSetUp: false }
+			{ processor: 'paypal', name: 'PayPal', href: '/payments/paypal', notSetUp: false },
+			{ processor: 'chariot', name: 'Chariot', href: '/payments/chariot', notSetUp: false }
 		]);
 	});
 
@@ -19,7 +21,8 @@ describe('processorLinks', () => {
 		const rows = processorLinks(new Set(PAYPAL_PAIR));
 		expect(rows.map((row) => [row.name, row.notSetUp])).toEqual([
 			['Stripe', true],
-			['PayPal', false]
+			['PayPal', false],
+			['Chariot', true]
 		]);
 	});
 
@@ -29,7 +32,13 @@ describe('processorLinks', () => {
 		expect(rows[0]?.notSetUp).toBe(true);
 	});
 
-	it('marks both where the deployment holds neither pair', () => {
-		expect(processorLinks(new Set()).map((row) => row.notSetUp)).toEqual([true, true]);
+	/** the connect id is what the key fetched, so a key alone takes no gift either. */
+	it('marks Chariot holding its key without its connect id as not set up', () => {
+		const rows = processorLinks(new Set(['CHARIOT_API_KEY', 'CHARIOT_API_URL']));
+		expect(rows[2]?.notSetUp).toBe(true);
+	});
+
+	it('marks every processor where the deployment holds no pair', () => {
+		expect(processorLinks(new Set()).map((row) => row.notSetUp)).toEqual([true, true, true]);
 	});
 });

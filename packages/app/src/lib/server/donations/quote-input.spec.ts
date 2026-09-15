@@ -41,6 +41,12 @@ const body = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
 	...over
 });
 
+/** what the fund's window hands back on a donor-advised fund gift. */
+const AUTHORIZED = {
+	authorizationId: 'cfe09e64-6a74-4dab-a565-361185a6f248',
+	authorizedMinor: 10_300
+};
+
 /** the parse, required to have been refused — hands back the sentence and the fix. */
 function refusal(over: Record<string, unknown> = {}) {
 	const result = parseQuoteRequest(body(over), CONFIG);
@@ -166,7 +172,8 @@ describe('parseQuoteRequest() — the choices the form offers', () => {
 	 */
 	it.each(OFFERED_PAYMENT_METHODS)('accepts %s over a config naming neither', (method) => {
 		const disagreeing: FormConfig = { ...CONFIG, paymentMethods: ['apple_pay'] };
-		expect(parseQuoteRequest(body({ method }), disagreeing).ok).toBe(true);
+		const rail = method === 'daf' ? { method, ...AUTHORIZED } : { method };
+		expect(parseQuoteRequest(body(rail), disagreeing).ok).toBe(true);
 	});
 
 	it('refuses a rail no list names, whatever the config it was handed says', () => {
@@ -180,6 +187,67 @@ describe('parseQuoteRequest() — the choices the form offers', () => {
 	it.each(['coversFee', 'consentedToContact'] as const)('refuses a non-boolean %s', (field) => {
 		expect(refusal({ [field]: 'yes' }).message).toContain(field);
 	});
+});
+
+describe('parseQuoteRequest() — a donor-advised fund gift', () => {
+	it('carries the fund window’s session and the total the donor authorized in it', () => {
+		const result = parseQuoteRequest(body({ method: 'daf', ...AUTHORIZED }), CONFIG);
+
+		expect(result.ok && result.value.authorization).toEqual({
+			id: AUTHORIZED.authorizationId,
+			authorizedMinor: 10_300
+		});
+	});
+
+	it('carries no authorization on any other rail', () => {
+		const result = parseQuoteRequest(body(), CONFIG);
+
+		expect(result.ok && result.value.authorization).toBeNull();
+	});
+
+	// the grant is created from the session and recorded at the authorized total, so a gift missing
+	// either has nothing to create or nothing to record.
+	it.each(['authorizationId', 'authorizedMinor'] as const)(
+		'refuses a donor-advised fund gift without %s, naming it',
+		(missing) => {
+			const { [missing]: _, ...rest } = AUTHORIZED;
+
+			expect(refusal({ method: 'daf', ...rest }).message).toContain(missing);
+		}
+	);
+
+	it.each(['authorizationId', 'authorizedMinor'] as const)(
+		'refuses %s sent on a rail that is not a donor-advised fund',
+		(field) => {
+			const result = refusal({ method: 'card', [field]: AUTHORIZED[field] });
+
+			expect(result.message).toContain(field);
+			expect(result.message).toContain('card');
+		}
+	);
+
+	it('refuses a blank session', () => {
+		expect(refusal({ method: 'daf', ...AUTHORIZED, authorizationId: '  ' }).message).toContain(
+			'authorizationId'
+		);
+	});
+
+	// a fund grants whole dollars, so a total with cents on it is not one the fund's window produced.
+	it.each([10_350, 0, -100, 100.5])('refuses an authorized total of %s', (authorizedMinor) => {
+		expect(refusal({ method: 'daf', ...AUTHORIZED, authorizedMinor }).message).toContain(
+			'authorizedMinor'
+		);
+	});
+
+	it.each(['monthly', 'yearly'] as const)(
+		'refuses a %s donor-advised fund gift, saying such gifts are one-time',
+		(frequency) => {
+			const result = refusal({ method: 'daf', frequency, ...AUTHORIZED });
+
+			expect(result.message).toContain('one-time');
+			expect(result.fix).not.toContain('Give once instead');
+		}
+	);
 });
 
 describe('parseQuoteRequest() — the donor', () => {

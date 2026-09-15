@@ -23,8 +23,8 @@ import type { ProcessorName } from './provider';
 /**
  * what this release's adapter for one processor can actually find out about its rails.
  *
- * total over `ProcessorName`, so a third processor is a compile error rather than one whose
- * standings are drawn as approvals nobody read.
+ * total over `ProcessorName`, so a processor added without an entry is a compile error rather than
+ * one whose standings are drawn as approvals nobody read.
  *
  * `credentials_only` is the safe member to be wrong in only one direction: a processor that starts
  * publishing approvals and is left on it has a console under-claiming, where the other way round is
@@ -32,7 +32,9 @@ import type { ProcessorName } from './provider';
  */
 const EVIDENCE: Readonly<Record<ProcessorName, RailEvidence>> = Object.freeze({
 	stripe: 'per_rail_approval',
-	paypal: 'credentials_only'
+	paypal: 'credentials_only',
+	// a DAF grant is approved by the donor's fund, per gift; no account read reports a rail standing.
+	chariot: 'credentials_only'
 });
 
 /** what a rails reading made against this processor's account is worth. */

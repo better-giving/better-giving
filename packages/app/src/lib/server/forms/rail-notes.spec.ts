@@ -67,7 +67,8 @@ describe('railNotes', () => {
 			apple_pay: null,
 			google_pay: null,
 			paypal: null,
-			venmo: null
+			venmo: null,
+			daf: null
 		});
 	});
 

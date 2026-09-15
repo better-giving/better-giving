@@ -226,6 +226,22 @@ describe('setUpRecurringGiftsOn', () => {
 		});
 	});
 
+	/**
+	 * Chariot takes no gift that repeats, so a press naming nothing acts on the processors that do
+	 * and never on it: asked, its refusal would fail every run on a deployment that holds it.
+	 */
+	it('acts on no processor that takes one-time gifts only', async () => {
+		const held = processorsOf(
+			port({ prepare: { ok: true, value: { created: true } } }),
+			port({}, 'chariot')
+		);
+
+		const run = acted(await setUpRecurringGiftsOn(held, null));
+
+		expect(run.setups).toEqual({ stripe: { outcome: 'set_up', detail: null, reason: null } });
+		expect(run.outcome).toBe('set_up');
+	});
+
 	/** one account that moved is what an operator is owed hearing about, over one that had nothing to do. */
 	it('answers with set_up where one account was provisioned and the other already held it', async () => {
 		const both = processorsOf(

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { estimateFee } from '@better-giving/form/fee';
-import { PAYPAL_RAILS, STRIPE_RAILS } from '@better-giving/form/embed/rails';
+import { CHARIOT_RAILS, PAYPAL_RAILS, STRIPE_RAILS } from '@better-giving/form/embed/rails';
 import { PAYMENT_METHODS, WALLET_METHODS } from '@better-giving/form/v1';
 import {
+	CHARIOT_FEE_RULES,
 	PAYPAL_US_FEE_RULES_CHARITY,
 	PAYPAL_US_FEE_RULES_STANDARD,
 	paypalFeeRules,
@@ -158,6 +159,23 @@ describe('the two PayPal tables', () => {
 	);
 });
 
+describe('the Chariot table', () => {
+	// a grant is whole dollars, so the covered fee is 2.9% of the grossed-up gift rounded up to one:
+	// $50.00 grosses up to $1.50 and is quoted $2.00.
+	it('quotes a covered $50.00 grant a $2.00 fee', () => {
+		expect(estimateFee(5000, CHARIOT_FEE_RULES.daf)).toEqual({ feeMinor: 200, totalMinor: 5200 });
+	});
+
+	it('prices this processor’s rails and no others', () => {
+		expect(Object.keys(CHARIOT_FEE_RULES).sort()).toEqual([...CHARIOT_RAILS].sort());
+	});
+
+	it('cannot be rewritten in place, at either level', () => {
+		expect(Object.isFrozen(CHARIOT_FEE_RULES)).toBe(true);
+		for (const rail of CHARIOT_RAILS) expect(Object.isFrozen(CHARIOT_FEE_RULES[rail])).toBe(true);
+	});
+});
+
 describe('the table a config is served', () => {
 	/**
 	 * every rail the wire vocabulary holds, priced.
@@ -173,7 +191,7 @@ describe('the table a config is served', () => {
 		expect(Object.keys(served).sort()).toEqual([...PAYMENT_METHODS].sort());
 	});
 
-	// each processor's own rules and nothing composed over them: the two tables price disjoint
+	// each processor's own rules and nothing composed over them: the tables price disjoint
 	// rails, so neither can overwrite the other's price however they are spread together.
 	it('takes each rail’s price from the processor that settles it', () => {
 		const served = servedFeeRules(PAYPAL_US_FEE_RULES_CHARITY);
@@ -182,6 +200,7 @@ describe('the table a config is served', () => {
 		for (const rail of PAYPAL_RAILS) {
 			expect(served[rail]).toBe(PAYPAL_US_FEE_RULES_CHARITY[rail]);
 		}
+		for (const rail of CHARIOT_RAILS) expect(served[rail]).toBe(CHARIOT_FEE_RULES[rail]);
 	});
 
 	// the charity switch is a fact about the org's PayPal account, so the two answers have to be two

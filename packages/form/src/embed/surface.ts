@@ -2,14 +2,14 @@
 //
 // the seam the rest of this package is written against is a single `PaymentSurface` — ./stripe.ts
 // declares it, ../element.ts holds exactly one, and `deploymentPorts` on the deployment's own
-// donation page holds exactly one. a deployment taking gifts through two processors does not move
-// any of that: this module is where the two adapters become one surface, and everything above it
+// donation page holds exactly one. a deployment taking gifts through several processors does not
+// move any of that: this module is where the adapters become one surface, and everything above it
 // keeps taking one.
 //
 // what it owns is therefore three decisions and no more. **which adapters exist at all**, off the
-// rails the config offers rather than off the processors it names — `STRIPE_RAILS` and
-// `PAYPAL_RAILS` in ./rails.ts cover the vocabulary exactly once, so a config offering a rail is a
-// config needing that rail's adapter, and an adapter whose own processor the config does not name
+// rails the config offers rather than off the processors it names — `STRIPE_RAILS`, `PAYPAL_RAILS`
+// and `CHARIOT_RAILS` in ./rails.ts cover the vocabulary exactly once, so a config offering a rail
+// is a config needing that rail's adapter, and an adapter whose own processor the config does not name
 // reports that for itself. **which adapter a reading belongs to** — a confirmation by the rail its
 // order was minted on, a rail report by the box the donor pressed in, a re-read by whichever
 // processor can answer for the token. and **stopping all of them**, which is the one thing a caller
@@ -26,10 +26,11 @@
 // ./runtime.ts does here.
 
 import type { Failure } from '../checkout.machine';
-import type { CheckoutPorts, ConfirmOutcome } from '../ports';
+import type { CheckoutPorts, ConfirmOutcome, FundReports } from '../ports';
 import type { FormConfig, PaymentMethod } from '../v1';
+import { createPaymentSurface as createChariotSurface, type ChariotSeam } from './chariot';
 import { createPaymentSurface as createPaypalSurface, type PaypalSeam } from './paypal';
-import { isPaypalRail, isStripeRail } from './rails';
+import { isChariotRail, isPaypalRail, isStripeRail } from './rails';
 import {
 	createPaymentSurface as createStripeSurface,
 	type PaymentSeam,
@@ -45,6 +46,7 @@ import {
 export type PaymentSeams = {
 	readonly stripe?: PaymentSeam;
 	readonly paypal?: PaypalSeam;
+	readonly chariot?: ChariotSeam;
 };
 
 /**
@@ -59,6 +61,14 @@ type Part = {
 	/** whether this page load is a return from this processor's own window. */
 	claimsReturn(): Promise<boolean>;
 };
+
+/**
+ * the composed surface, plus the one reading only a fund's button is drawn from.
+ *
+ * `offerFund` is `fundIsOffered` in ../checkout.machine.ts, told on every reading; a form offering no
+ * fund has nothing to tell it to.
+ */
+export type ComposedPaymentSurface = PaymentSurface & { offerFund(offered: boolean): void };
 
 /**
  * the geometry a node in this document has to be pinned to, because a host page's own stylesheet
@@ -102,8 +112,9 @@ export function createPaymentSurface(
 	mount: HTMLElement,
 	onRail: (rail: PaymentMethod | null) => void,
 	onUnavailable: (failure: Failure) => void,
+	fund: FundReports,
 	seams?: PaymentSeams
-): PaymentSurface {
+): ComposedPaymentSurface {
 	const doc = mount.ownerDocument;
 	const parts: Part[] = [];
 
@@ -183,12 +194,26 @@ export function createPaymentSurface(
 		parts.push(part);
 	}
 
+	// last, because a fund's rail is listed last. it reports no rail: its own button's press is the
+	// rail chosen and the window opened in one go, and that press reaches the flow through `fund`.
+	let offerFund: (offered: boolean) => void = () => {};
+	if (config.paymentMethods.some(isChariotRail)) {
+		const chariot = createChariotSurface(config, open(), held, fund, seams?.chariot);
+		parts.push({
+			owns: isChariotRail,
+			surface: chariot,
+			// a grant id is nothing a browser can read back, and no window of the fund's returns here.
+			claimsReturn: () => Promise.resolve(false)
+		});
+		offerFund = (offered) => chariot.offer(offered);
+	}
+
 	/** whichever processor last took a confirmation, which is whose order a re-read is about. */
 	let confirmed: Part | null = null;
 
 	const confirm: CheckoutPorts['confirm'] = async (input): Promise<ConfirmOutcome> => {
 		const part = parts.find((candidate) => candidate.owns(input.method));
-		// the two lists in ./rails.ts cover the rail vocabulary exactly once and an adapter is built
+		// the lists in ./rails.ts cover the rail vocabulary exactly once and an adapter is built
 		// for every rail the config offers, so a rail with no adapter is a rail no button ever drew.
 		// answered as an answer nobody has rather than as a refusal, which is the direction that costs
 		// a re-read rather than a Retry against an order that may exist.
@@ -219,6 +244,7 @@ export function createPaymentSurface(
 	return {
 		confirm,
 		resume,
+		offerFund: (offered) => offerFund(offered),
 		quoted(request, quote) {
 			for (const part of parts) part.surface.quoted(request, quote);
 		},

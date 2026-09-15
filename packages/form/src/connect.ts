@@ -92,8 +92,9 @@ export type GenericProps = Record<string, unknown>;
  * three, because the three say different things to a donor who is not looking at the card: an
  * intent is being minted, a card is being charged, or a page that remembers nothing is finding out
  * what already happened. `boot` rides with the minting, being a frame nobody observes.
+ * `authorizing` is a fund's open window, which is its own indicator and has nothing said over it.
  */
-export type WorkingPhase = 'quoting' | 'confirming' | 'resuming';
+export type WorkingPhase = 'quoting' | 'authorizing' | 'confirming' | 'resuming';
 
 /**
  * the normalizer a consumer supplies, one function per shape of node the flow describes.
@@ -231,16 +232,30 @@ export type State =
 			/**
 			 * which beat of the press this is, and the only thing it is read for.
 			 *
-			 * one press spans the mint and the charge, and the collapse of four machine states into
-			 * one screen would otherwise leave a donor who cannot see the spinner hearing the same
-			 * four words for the whole of it.
+			 * one press spans the mint and the charge — or, on a fund's rail, the fund's window and
+			 * the mint — and the collapse of several machine states into one screen would otherwise leave
+			 * a donor who cannot see the spinner hearing the same four words for the whole of it.
 			 * it names the beat and nothing gates on it — the screen a busy flow stays on is still
 			 * the last one shown (./views.ts).
 			 */
 			readonly phase: WorkingPhase;
 	  } & CommittedRail)
 	| ({ readonly step: 'redirecting' } & CommittedRail)
-	| ({ readonly step: 'processing' } & CommittedRail)
+	| ({
+			readonly step: 'processing';
+			/**
+			 * what a donor-advised fund granted, on the ending of a fund's gift and nowhere else.
+			 *
+			 * the server's figures rather than the form's: the donor may change the amount inside the
+			 * fund's window, and the grant is recorded from what the fund approved. `giftMinor` is the
+			 * total less the covered fee, which is what the org receives.
+			 */
+			readonly granted?: {
+				readonly giftMinor: number;
+				readonly feeMinor: number;
+				readonly totalMinor: number;
+			};
+	  } & CommittedRail)
 	| ({ readonly step: 'indeterminate' } & CommittedRail)
 	| { readonly step: 'awaitingVerification'; readonly deadline: number | null }
 	| { readonly step: 'verificationExpired' }
@@ -345,6 +360,8 @@ export const TOP_LEVEL_STATES = [
 	'amount',
 	'details',
 	'give',
+	'authorizing',
+	'resending',
 	'quoting',
 	'quoted',
 	'confirm',
@@ -376,11 +393,11 @@ function topLevelStateOf(snapshot: CheckoutSnapshot): TopLevelState {
  * this switches over `TOP_LEVEL_STATES` and the unreachable arm is typed `never`, which turns
  * an unprojected state into a `pnpm check` failure.
  *
- * the `working` collapses are deliberate rather than incidental: `boot`, `quoting`, `quoted`,
- * `confirming` and `resuming` are one screen to a donor — something is happening — and giving each
- * its own step would be five identical spinners a layout has to keep in sync. what survives the
- * collapse is `phase`, because the words said out loud over a mint and over a charge are not the
- * same words. `indeterminate` is pointedly not among them; it is a different thing to say.
+ * the `working` collapses are deliberate rather than incidental: `boot`, `authorizing`, `resending`,
+ * `quoting`, `quoted`, `confirming` and `resuming` are one screen to a donor — something is
+ * happening — and giving each its own step would be seven identical spinners a layout has to keep in sync. what
+ * survives the collapse is `phase`, because the words said out loud over a mint and a charge are
+ * not the same words. `indeterminate` is pointedly not among them; it is a different thing to say.
  */
 export function toState(snapshot: CheckoutSnapshot): State {
 	const { context } = snapshot;
@@ -403,7 +420,17 @@ export function toState(snapshot: CheckoutSnapshot): State {
 		case 'redirecting':
 			return { step: 'redirecting', ...rail };
 		case 'processing':
-			return { step: 'processing', ...rail };
+			return context.authorization === null || context.quote === null
+				? { step: 'processing', ...rail }
+				: {
+						step: 'processing',
+						...rail,
+						granted: {
+							giftMinor: context.quote.totalMinor - context.quote.feeMinor,
+							feeMinor: context.quote.feeMinor,
+							totalMinor: context.quote.totalMinor
+						}
+					};
 		case 'indeterminate':
 			return { step: 'indeterminate', ...rail };
 		case 'verificationExpired':
@@ -445,9 +472,12 @@ export function toState(snapshot: CheckoutSnapshot): State {
 						method: context.payer.method
 					};
 		case 'boot':
+		case 'resending':
 		case 'quoting':
 		case 'quoted':
 			return working('quoting');
+		case 'authorizing':
+			return working('authorizing');
 		case 'confirming':
 			return working('confirming');
 		case 'resuming':

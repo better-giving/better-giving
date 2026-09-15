@@ -1,4 +1,6 @@
 import type {
+	ChariotRunRead,
+	ChariotStarted,
 	Connection,
 	ConsoleVersion,
 	HomeReading,
@@ -112,7 +114,7 @@ export const homeReading = (): Promise<HomeReading> => ask('/home/reading', 'GET
 /**
  * sets and clears the values a fold's boxes carry, in one request to cloudflare.
  *
- * every one of the seventeen is a plain var, so this is the one door every press on the page writes
+ * every one of the twenty-one is a plain var, so this is the one door every press on the page writes
  * through — a read of the worker's bindings and one patch back. seconds and no deploy: the binary
  * replaces the named bindings and sends every other one back up as inherited, so the deployment's
  * database and its rate limiters are untouched.
@@ -123,7 +125,8 @@ export const homeReading = (): Promise<HomeReading> => ask('/home/reading', 'GET
  *
  * **every way it did not happen comes back as a value rather than thrown**, because each is a state
  * the fold draws at the control that was pressed. the binary refuses a name that is not one of the
- * seventeen, and PayPal's three credentials, which only {@link startPaypalSetup} writes, before
+ * twenty-one, PayPal's three credentials, which only {@link startPaypalSetup} writes, and Chariot's
+ * four values, which only {@link startChariotSetup} writes, before
  * cloudflare is asked — and that refusal is thrown: no control on this page can make one.
  */
 export const setVars = (values: Record<string, string | null>): Promise<VarsWritten> =>
@@ -309,6 +312,42 @@ export async function startPaypalSetup(pair: {
  */
 export const paypalRun = async (): Promise<PaypalRunRead | null> =>
 	(await ask<{ run: PaypalRunRead | null }>('/paypal/run', 'GET')).run;
+
+/**
+ * sets Chariot up from the key, the address and a contact email, and answers as soon as the chain is
+ * under way.
+ *
+ * {@link startPaypalSetup}'s arrangement: how far it has got is {@link chariotRun}, a press already
+ * going is a value, and the key leaves this page in this one body and reaches nothing else. an empty
+ * address is live. the organisation, its Connect, the subscription and its secret are all the
+ * binary's to settle.
+ */
+export async function startChariotSetup(boxes: {
+	apiKey: string;
+	address: string;
+	contactEmail: string;
+}): Promise<ChariotStarted> {
+	const answer = await fetch('/api/chariot/setup', {
+		method: 'POST',
+		headers: { accept: 'application/json', 'content-type': 'application/json' },
+		body: JSON.stringify(boxes)
+	});
+	const body = await parsed(answer);
+	if (answer.status === 409) {
+		return { started: false, run: (body as { run: ChariotRunRead }).run };
+	}
+	if (answer.status === 400) return { started: false, turnedDown: true };
+	if (!answer.ok) throw new Error(refusal(body, answer.status));
+	return startedOrUnwritten<ChariotRunRead>(body);
+}
+
+/**
+ * how far that press has got, or `null` where there is nothing to report.
+ *
+ * a run that landed is consumed by the reading that observed it, for {@link stripeRun}'s reason.
+ */
+export const chariotRun = async (): Promise<ChariotRunRead | null> =>
+	(await ask<{ run: ChariotRunRead | null }>('/chariot/run', 'GET')).run;
 
 /**
  * the release this binary was built as, out of what it was baked with.

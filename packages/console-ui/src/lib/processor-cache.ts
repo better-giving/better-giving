@@ -2,12 +2,12 @@ import { holdBar, isDrawn, passOver } from '@better-giving/operator/progress-bar
 import type { LoaderFunctionArgs } from 'react-router';
 import type { CacheAdapter } from 'remix-client-cache';
 import { cache, cacheClientLoader } from 'remix-client-cache';
-import { paypalRun, stripeRun } from '../api/client';
+import { chariotRun, paypalRun, stripeRun } from '../api/client';
 import type { PaymentProcessor } from '../api/types';
 import { PROCESSORS } from './processor-links';
 import { readProcessorScreen } from './processor-reading';
 
-// what a processor page was last read as, kept between visits, so opening Stripe or PayPal from the
+// what a processor page was last read as, kept between visits, so opening a processor's page from the
 // rail a second time draws at once rather than making the round trips of ./processor-reading.ts
 // again.
 //
@@ -44,8 +44,8 @@ import { readProcessorScreen } from './processor-reading';
 // that page asks after its own run (./stripe-section.tsx), and a reading ahead that got to the landed
 // run first would leave its poll holding a run that is going forever — the page frozen busy.
 
-/** each processor page's setup run, which is the one reading the two pages differ by. */
-const RUNS = { stripe: stripeRun, paypal: paypalRun } satisfies Record<
+/** each processor page's setup run, which is the one reading the pages differ by. */
+const RUNS = { stripe: stripeRun, paypal: paypalRun, chariot: chariotRun } satisfies Record<
 	PaymentProcessor,
 	() => Promise<unknown>
 >;

@@ -1,4 +1,4 @@
-import type { PaypalRail, StripeRail } from '@better-giving/form/embed/rails';
+import type { ChariotRail, PaypalRail, StripeRail } from '@better-giving/form/embed/rails';
 import type { FeeRule, FeeRules } from '@better-giving/form/v1';
 import type { ConfigEnv } from '../config/env';
 
@@ -27,13 +27,13 @@ import type { ConfigEnv } from '../config/env';
 // defending: every number is in the tree, reviewed, and no operator can mistype one.
 //
 // one processor's table prices that processor's own rails and no others, which is the split
-// `STRIPE_RAILS` and `PAYPAL_RAILS` in packages/form/src/embed/rails.ts hold. `servedFeeRules`
-// below is what a config is served: the two composed, since `FeeRules` on the wire is total over
-// every rail and a deployment serving one processor still serves a table a donor's form can price
-// any offered rail against.
+// `STRIPE_RAILS`, `PAYPAL_RAILS` and `CHARIOT_RAILS` in packages/form/src/embed/rails.ts hold.
+// `servedFeeRules` below is what a config is served: the three composed, since `FeeRules` on the
+// wire is total over every rail and a deployment serving one processor still serves a table a
+// donor's form can price any offered rail against.
 //
-// the numbers are the processors' published US rates: https://stripe.com/pricing and
-// https://www.paypal.com/us/webapps/mpp/merchant-fees
+// the numbers are the processors' published US rates: https://stripe.com/pricing,
+// https://www.paypal.com/us/webapps/mpp/merchant-fees and https://www.givechariot.com/pricing
 
 /**
  * the card price, and every rail that settles as a card carries it by reference below.
@@ -130,10 +130,27 @@ export function paypalFeeRules(env: ConfigEnv): Readonly<Record<PaypalRail, FeeR
 }
 
 /**
+ * what a DAF grant through Chariot costs the organisation, which is one table because Chariot
+ * prices every organisation alike.
+ *
+ * 2.9% with no flat charge, and `roundUpMinor` because a grant is whole dollars: a covered fee that
+ * left cents on the total is an amount the fund refuses. `estimateFee` in packages/form/src/fee.ts
+ * rounds the solved fee up to the step, so the gift still arrives whole.
+ *
+ * the cheque surcharge the fund's network adds on a paper grant is not in it — this deployment
+ * cannot know which funds pay by cheque, and a donor covering the fee covers the rate alone.
+ *
+ * frozen at both levels for `CARD`'s reason.
+ */
+export const CHARIOT_FEE_RULES: Readonly<Record<ChariotRail, FeeRule>> = Object.freeze({
+	daf: Object.freeze({ percent: 0.029, fixedMinor: 0, roundUpMinor: 100 })
+});
+
+/**
  * the table `/api/v1/forms/:id/config` serves, covering every rail the wire vocabulary holds.
  *
- * composed from each processor's own rules rather than picked whole: the two tables price
- * disjoint rails, so the composition is total and neither can overwrite the other's price. a
+ * composed from each processor's own rules rather than picked whole: the tables price disjoint
+ * rails, so the composition is total and none can overwrite another's price. a
  * deployment holding one processor serves this same table — `paymentMethods` on the served config
  * is what says which of these rails a donor is actually offered, and a price carried for a rail
  * nobody is offered prices nothing.
@@ -143,8 +160,8 @@ export function paypalFeeRules(env: ConfigEnv): Readonly<Record<PaypalRail, FeeR
  *
  * frozen, because this object is handed by reference into every `FormConfig` served from an
  * isolate that outlives the request — `CARD` above states what one caller writing to it in place
- * would cost. the rules inside it are the frozen ones the two tables already hold.
+ * would cost. the rules inside it are the frozen ones the three tables already hold.
  */
 export function servedFeeRules(paypal: Readonly<Record<PaypalRail, FeeRule>>): FeeRules {
-	return Object.freeze({ ...STRIPE_US_FEE_RULES, ...paypal });
+	return Object.freeze({ ...STRIPE_US_FEE_RULES, ...paypal, ...CHARIOT_FEE_RULES });
 }

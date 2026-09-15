@@ -12,6 +12,7 @@ import type {
 	PaymentLoadErrorLike,
 	StripeLike
 } from '@better-giving/form/embed/stripe';
+import { CHARIOT_TAG } from '@better-giving/form/embed/chariot';
 import type { TurnstileLike } from '@better-giving/form/embed/turnstile';
 import type { FeeRules, FormConfig } from '@better-giving/form/v1';
 import { expect, it, onTestFinished, vi } from 'vitest';
@@ -41,7 +42,8 @@ const FEE_RULES: FeeRules = {
 	google_pay: { percent: 0.029, fixedMinor: 30 },
 	ach: { percent: 0.008, fixedMinor: 0, capMinor: 500 },
 	paypal: { percent: 0.0349, fixedMinor: 49 },
-	venmo: { percent: 0.0349, fixedMinor: 49 }
+	venmo: { percent: 0.0349, fixedMinor: 49 },
+	daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
 };
 
 const CONFIG: FormConfig = {
@@ -68,6 +70,22 @@ const PAYPAL_ONLY: FormConfig = {
 	providers: [{ name: 'paypal', publishableKey: 'live_client_id' }],
 	paymentMethods: ['paypal']
 };
+
+/** the same deployment, holding Chariot's key beside the card processor's. */
+const WITH_FUND: FormConfig = {
+	...CONFIG,
+	providers: [...CONFIG.providers, { name: 'chariot', publishableKey: 'cid_spec' }],
+	paymentMethods: ['card', 'daf']
+};
+
+/** Chariot's element, standing in: it keeps the one callback it is handed and nothing else. */
+class StubConnect extends HTMLElement {
+	donationRequest: (() => unknown) | null = null;
+	onDonationRequest(callback: () => unknown): void {
+		this.donationRequest = callback;
+	}
+}
+if (customElements.get(CHARIOT_TAG) === undefined) customElements.define(CHARIOT_TAG, StubConnect);
 
 /** every deadline either provider armed, and whether it is still standing. */
 type Armed = { readonly run: () => void; readonly ms: number; live: boolean };
@@ -421,4 +439,124 @@ it('tells the flow the rail a donor pressed, on whichever processor’s box they
 
 	paymentMount.querySelector('paypal-button')?.dispatchEvent(new Event('click'));
 	expect(checkout.actor.getSnapshot().context.payerDraft.method).toBe('paypal');
+});
+
+// the fund's own button is the rail picker and the window's opener in one press, and its window's
+// endings are reports rather than a confirmation — so this page hands the surface a third kind of
+// report, and tells it on every reading whether the button stands.
+it('stands a fund’s button on the review step alone, and carries its window’s reports into the flow', async () => {
+	const { paymentMount, challengeMount } = boxes();
+	const payment = paymentProvider();
+	const challenge = challengeProvider();
+	const timer = clock();
+	const posted: unknown[] = [];
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (_url: string, init: RequestInit) => {
+			posted.push(JSON.parse(String(init.body)));
+			// the donor raised the grant inside the window, so the server's figures are not the form's.
+			return new Response(
+				JSON.stringify({ paymentToken: 'grant_1', feeMinor: 200, totalMinor: 5200 }),
+				{ status: 200, headers: { 'content-type': 'application/json' } }
+			);
+		})
+	);
+
+	const checkout = startCheckout(WITH_FUND, {
+		paymentMount,
+		challengeMount,
+		resumeToken: null,
+		seams: {
+			payment: {
+				stripe: { load: payment.load, delay: timer.delay },
+				chariot: { load: async () => true, delay: timer.delay }
+			},
+			challenge: { load: challenge.load, delay: timer.delay }
+		}
+	});
+	onTestFinished(() => checkout.stop());
+	await settle();
+
+	const fund = () => paymentMount.querySelector(CHARIOT_TAG);
+	expect(fund()).toBeNull();
+
+	const { actor } = checkout;
+	actor.send({ type: 'CONTINUE' });
+	await settle();
+	actor.send({ type: 'SET_CONTACT', email: 'donor@example.org' });
+	actor.send({ type: 'SET_CONTACT', firstName: 'Ada' });
+	actor.send({ type: 'SET_CONTACT', lastName: 'Lovelace' });
+	actor.send({ type: 'CONTINUE' });
+	expect(toState(actor.getSnapshot()).step).toBe('give');
+
+	const button = fund();
+	if (!(button instanceof StubConnect)) throw new Error('no fund button on the review step');
+	expect(button.donationRequest?.()).toMatchObject({
+		email: 'donor@example.org',
+		firstName: 'Ada',
+		lastName: 'Lovelace',
+		frequency: 'ONE_TIME'
+	});
+	expect(toState(actor.getSnapshot())).toMatchObject({ step: 'working', phase: 'authorizing' });
+	// the window is open, and a second press is not one the flow takes.
+	expect(button.donationRequest?.()).toBe(false);
+
+	actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'token-1' });
+	button.dispatchEvent(
+		new CustomEvent('CHARIOT_SUCCESS', {
+			detail: { workflowSessionId: 'wfs_1', grantIntent: { amount: 5200 } }
+		})
+	);
+	for (let turn = 0; turn < 20; turn += 1) await settle();
+
+	expect(posted).toHaveLength(1);
+	expect(posted[0]).toMatchObject({ method: 'daf', authorizationId: 'wfs_1' });
+	expect(toState(actor.getSnapshot())).toMatchObject({
+		step: 'processing',
+		granted: { giftMinor: 5000, feeMinor: 200, totalMinor: 5200 }
+	});
+	// off the review step the button is taken down, which is `fundIsOffered` read on this reading.
+	expect(fund()).toBeNull();
+});
+
+it('puts a donor who closed the fund’s window back on the review step with nothing sent', async () => {
+	const { paymentMount, challengeMount } = boxes();
+	const payment = paymentProvider();
+	const challenge = challengeProvider();
+	const timer = clock();
+	const fetched = vi.fn();
+	vi.stubGlobal('fetch', fetched);
+
+	const checkout = startCheckout(WITH_FUND, {
+		paymentMount,
+		challengeMount,
+		resumeToken: null,
+		seams: {
+			payment: {
+				stripe: { load: payment.load, delay: timer.delay },
+				chariot: { load: async () => true, delay: timer.delay }
+			},
+			challenge: { load: challenge.load, delay: timer.delay }
+		}
+	});
+	onTestFinished(() => checkout.stop());
+	await settle();
+
+	const { actor } = checkout;
+	actor.send({ type: 'CONTINUE' });
+	await settle();
+	actor.send({ type: 'SET_CONTACT', email: 'donor@example.org' });
+	actor.send({ type: 'SET_CONTACT', firstName: 'Ada' });
+	actor.send({ type: 'SET_CONTACT', lastName: 'Lovelace' });
+	actor.send({ type: 'CONTINUE' });
+
+	const button = paymentMount.querySelector(CHARIOT_TAG);
+	if (!(button instanceof StubConnect)) throw new Error('no fund button on the review step');
+	button.donationRequest?.();
+	button.dispatchEvent(new CustomEvent('CHARIOT_EXIT'));
+	await settle();
+
+	expect(toState(actor.getSnapshot()).step).toBe('give');
+	expect(fetched).not.toHaveBeenCalled();
+	expect(paymentMount.querySelector(CHARIOT_TAG)).toBe(button);
 });

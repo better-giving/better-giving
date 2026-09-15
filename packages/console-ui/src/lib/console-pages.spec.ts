@@ -52,7 +52,7 @@ describe('the page `/` opens on', () => {
 	});
 });
 
-const LOGOS = { stripe: '/stripe.png', paypal: '/paypal.png' };
+const LOGOS = { stripe: '/stripe.png', paypal: '/paypal.png', chariot: '/chariot.png' };
 
 /** every cell of the rail, flat, as `label → href`. */
 const cells = (groups: ReturnType<typeof railGroups>) =>
@@ -66,6 +66,7 @@ describe('the rail', () => {
 			'Organisation → /organisation',
 			'Stripe → /payments/stripe',
 			'PayPal → /payments/paypal',
+			'Chariot → /payments/chariot',
 			'Sites → /sites',
 			'SMTP → /smtp',
 			'Notifications → /notifications'
@@ -82,11 +83,13 @@ describe('the rail', () => {
 		const [, processors] = railGroups(rows(), processorLinks(held), LOGOS);
 		expect(processors?.destinations.map((d) => d.status)).toEqual([
 			{ tone: 'attention', mark: 'circle-dashed', label: 'Not set up' },
-			{ tone: 'done', mark: 'check', label: 'Configured' }
+			{ tone: 'done', mark: 'check', label: 'Configured' },
+			{ tone: 'attention', mark: 'circle-dashed', label: 'Not set up' }
 		]);
 		expect(processors?.destinations.map((d) => d.mark)).toEqual([
 			{ src: '/stripe.png' },
-			{ src: '/paypal.png' }
+			{ src: '/paypal.png' },
+			{ src: '/chariot.png' }
 		]);
 	});
 

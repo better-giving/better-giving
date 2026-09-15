@@ -1,8 +1,9 @@
 import { env } from 'cloudflare:test';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { createDb, type Db } from '$lib/server/db/client';
+import { TRACKING_ID_BUDGET_MS } from '$lib/server/donations/tracking-ids';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as layout from './_app';
 import * as donations from './_app.admin.donations._index';
@@ -20,6 +21,12 @@ import * as donations from './_app.admin.donations._index';
 
 /** the origin every request in this file arrives on. not loopback, so the cookie is `__Secure-`. */
 const ORIGIN = 'https://give.example';
+
+/** the deploy-time values that make Chariot a processor this deployment can call. */
+const CHARIOT_CONFIGURED = {
+	CHARIOT_API_KEY: 'notarealchariotkey',
+	CHARIOT_API_URL: 'https://sandboxapi.givechariot.com'
+};
 
 /** the deployment's staff password, long enough for `readStaffCredential` to accept it. */
 const PASSWORD = 'a-long-enough-password';
@@ -67,6 +74,56 @@ beforeEach(async () => {
 		.bind(donorId)
 		.run();
 });
+
+afterEach(() => {
+	vi.unstubAllGlobals();
+	vi.useRealTimers();
+});
+
+/**
+ * the pool's env with a case's deploy-time values. a proxy, for the reason `envWith` in
+ * ./api.paypal.webhook.workers.spec.ts gives.
+ */
+function envWith(values: Record<string, string>): Env {
+	return new Proxy(env, {
+		get(target, property) {
+			if (typeof property === 'string' && property in values) return values[property];
+			return Reflect.get(target, property);
+		}
+	}) as Env;
+}
+
+/**
+ * Get Grant, answered by `answer` for every grant asked for, and the paths asked.
+ *
+ * `answer` returning a promise that never settles is Chariot hanging.
+ */
+function chariotAnswers(answer: (grantId: string) => Response | Promise<Response>): {
+	readonly reads: string[];
+} {
+	const reads: string[] = [];
+	vi.stubGlobal('fetch', async (input: Request | string | URL, init?: RequestInit) => {
+		const request = input instanceof Request ? input : new Request(String(input), init);
+		const path = new URL(request.url).pathname;
+		reads.push(`${request.method} ${path}`);
+		return answer(decodeURIComponent(path.split('/').at(-1) ?? ''));
+	});
+	return { reads };
+}
+
+/** a grant still on its way, as Get Grant answers it. */
+function pendingGrant(id: string, trackingId: string) {
+	return {
+		id,
+		workflowSessionId: 'cfe09e64-6a74-4dab-a565-361185a6f248',
+		fundId: 'daf-id',
+		amount: 12_300,
+		trackingId,
+		createdAt: '2026-09-14T12:00:00.000Z',
+		updatedAt: '2026-09-14T12:00:00.000Z',
+		status: 'Initiated'
+	};
+}
 
 /** a real session, as the `Cookie` header a browser would send back. */
 async function signIn(): Promise<string> {
@@ -181,8 +238,11 @@ async function commitment() {
  * same serialization a browser receives, which is what makes the key sweep below a claim about
  * what crosses rather than about what was constructed.
  */
-async function runLoad() {
-	const response = await request(new Request(`${ORIGIN}/admin/donations`, { headers: { cookie } }));
+async function runLoad(configEnv?: Env) {
+	const response = await request(
+		new Request(`${ORIGIN}/admin/donations`, { headers: { cookie } }),
+		configEnv === undefined ? undefined : { env: configEnv }
+	);
 	expect(response.status).toBe(200);
 	return (await response.json()) as {
 		donations: {
@@ -197,6 +257,7 @@ async function runLoad() {
 			repeating: boolean;
 			tribute: { kind: string; honoree: string } | null;
 			program: string | null;
+			trackingId: string | null;
 		}[];
 		limit: number;
 		hasMore: boolean;
@@ -260,6 +321,7 @@ describe('/admin/donations load', () => {
 			'repeating',
 			'source',
 			'status',
+			'trackingId',
 			'tribute'
 		]);
 	});
@@ -397,6 +459,61 @@ describe('/admin/donations load', () => {
 		// and the page draws the absence rather than a rail nobody used, the same as a cause.
 		await gift();
 		expect((await runLoad()).donations[0]?.paidWith).toBeNull();
+	});
+
+	it('reads the tracking id of a grant still on its way from Chariot', async () => {
+		// the organisation marks a grant received in Chariot's dashboard, matching the fund's payment
+		// by this id. the id is not stored: the processor holds it for as long as it holds the grant.
+		const id = await gift();
+		await attempt(id, { method: 'daf', provider: 'chariot', status: 'pending' });
+		const { reads } = chariotAnswers((grantId) =>
+			Response.json(pendingGrant(grantId, 'L9E182VBGP'))
+		);
+
+		const { donations } = await runLoad(envWith(CHARIOT_CONFIGURED));
+		expect(donations[0]?.trackingId).toBe('L9E182VBGP');
+		expect(reads).toEqual(['GET /v1/grants/txn_019fb300-0000-7000-8000-000000000009']);
+	});
+
+	it('draws the page without the id when Chariot refuses', async () => {
+		const id = await gift();
+		await attempt(id, { method: 'daf', provider: 'chariot', status: 'pending' });
+		chariotAnswers(() => Response.json({ title: 'Internal Server Error' }, { status: 500 }));
+
+		const { donations } = await runLoad(envWith(CHARIOT_CONFIGURED));
+		expect(donations[0]?.status).toBe('pending');
+		expect(donations[0]?.trackingId).toBeNull();
+	});
+
+	it('draws the page without the id when Chariot does not answer in time', async () => {
+		const id = await gift();
+		await attempt(id, { method: 'daf', provider: 'chariot', status: 'pending' });
+		chariotAnswers(() => new Promise<Response>(() => {}));
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+		const loading = runLoad(envWith(CHARIOT_CONFIGURED));
+		await vi.waitUntil(() => vi.getTimerCount() > 0);
+		await vi.advanceTimersByTimeAsync(TRACKING_ID_BUDGET_MS);
+		const { donations } = await loading;
+		expect(donations[0]?.trackingId).toBeNull();
+	});
+
+	it('asks Chariot nothing about a gift that is not a grant still on its way', async () => {
+		const card = await gift({ id: '019fb300-0000-7000-8000-00000000000b' });
+		await attempt(card, { id: '019fb300-0000-7000-8000-00000000000c', status: 'pending' });
+		const received = await gift({ id: '019fb300-0000-7000-8000-00000000000d' });
+		await attempt(received, {
+			id: '019fb300-0000-7000-8000-00000000000e',
+			method: 'daf',
+			provider: 'chariot'
+		});
+		const { reads } = chariotAnswers((grantId) =>
+			Response.json(pendingGrant(grantId, 'L9E182VBGP'))
+		);
+
+		const { donations } = await runLoad(envWith(CHARIOT_CONFIGURED));
+		expect(reads).toEqual([]);
+		expect(donations.map((d) => d.trackingId)).toEqual([null, null]);
 	});
 
 	it('reports the cap so the page can say the list is one', async () => {

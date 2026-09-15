@@ -188,7 +188,7 @@ export function heldNames(read: VarsRead): ReadonlySet<string> {
 /**
  * the six rows, from the reading the binary answered with.
  *
- * **a door that did not answer never reaches here.** the seventeen values come off the account in
+ * **a door that did not answer never reaches here.** the twenty-one values come off the account in
  * one read that is scoped to no fold, so a console that could not take it draws no fold at all —
  * the face is `blocked` and this is not called. `heldNames`'s empty fallback is what that arm would
  * read as, and it is stated rather than asserted because an assertion is a way for this to throw
@@ -223,17 +223,21 @@ export function readSections(read: HomeReading): readonly HomeSection[] {
 		// as a job an operator had left undone.
 		password: configured('ADMIN_PASSWORD'),
 		organisation: identity,
-		// the pair one processor charges on, and a deployment holding either pair can take a gift.
+		// the pair one processor charges on, and a deployment holding any one pair can take a gift.
 		// **it is the same reading the deployment makes** (`CHARGE_PAIRS` in
 		// packages/app/src/lib/server/config/readiness.ts), because the two sides report one job: a
 		// console holding a longer list is a screen saying `Incomplete` over a deployment that has
 		// already served the gate aside and is taking gifts.
 		//
-		// **neither webhook value is on a pair.** without one a settled charge is never heard about,
+		// **no webhook value is on a pair.** without one a settled charge is never heard about,
 		// which is what stops a repeating gift being written down — but a one-off gift is still
 		// charged, and this row answers whether one can be. the payments fold is where the difference
 		// between the two is drawn and acted on (./stripe-section.tsx, ./paypal-section.tsx).
-		payments: either(configured(...CHARGE_PAIRS.stripe), configured(...CHARGE_PAIRS.paypal)),
+		payments: either(
+			configured(...CHARGE_PAIRS.stripe),
+			configured(...CHARGE_PAIRS.paypal),
+			configured(...CHARGE_PAIRS.chariot)
+		),
 		// `SMTP_PORT` is deliberately not here. 465 is the only port the deployment dials and an
 		// absent one means 465, so there is nothing an operator sets — the fold states the value
 		// rather than asking for it (./smtp-fold.tsx), and a row waiting on the name would report a

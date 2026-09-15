@@ -20,6 +20,7 @@ import { readOrgProfile } from '../org/queries';
 import {
 	DONATION_METADATA_KEY,
 	isRetryable,
+	takesRepeatingGifts,
 	type ProcessorName,
 	type Settlement,
 	type WebhookDelivery
@@ -27,7 +28,7 @@ import {
 import { collectRecurringGift } from './collect';
 import { alert, processorLabel, type SettleDeps, type SettleResult } from './delivery';
 import { chargeEntry, feeEntry, unpostable, type GiftRevenue, type RevenueShare } from './entries';
-import { sendReceipt } from './receipt';
+import { sendGrantReceived, sendReceipt } from './receipt';
 import { sendSettledNotice } from './settled-notice';
 import { sendTributeNotice } from './tribute-notice';
 
@@ -88,6 +89,11 @@ import { sendTributeNotice } from './tribute-notice';
 // second posting as well (`entry_group_source_idx`, keyed on that payment row's id), so this is
 // belt and braces rather than the only guard; what it buys over the constraint alone is that the
 // order the two deliveries arrive in stops mattering.
+//
+// a processor that takes no repeating gift is outside that rule, because the rule's whole reason is
+// a collection (`takesRepeatingGifts` in ../payments/provider.ts). Chariot is that processor, and a
+// grant carries nothing this app wrote — Create Grant takes no metadata, and what a browser put on
+// it is never read — so a Chariot settlement finds its gift by the grant id on the row alone.
 //
 // ---------------------------------------------------------------------------
 // the fund a gift lands in is the one its own lines name, and no other.
@@ -230,9 +236,12 @@ export async function settleDelivery(
 
 	// the gift this transaction is for, as the intent itself names it. absent means this app did
 	// not mint the intent, which every collection under a repeating gift is — see the metadata
-	// paragraph in the header, which is where the reason this refuses rather than looks lives.
-	const named = settlement.metadata[DONATION_METADATA_KEY];
-	if (named === undefined || named.trim() === '') {
+	// paragraph in the header, which is where the reason this refuses rather than looks lives. a
+	// processor taking no repeating gift has no collection to confuse with a gift, and names its gift
+	// by nothing but the transaction id on the row.
+	const processor = deps.provider.processor;
+	const named = settlement.metadata[DONATION_METADATA_KEY]?.trim() || null;
+	if (named === null && takesRepeatingGifts(processor)) {
 		return {
 			ok: true,
 			outcome: 'unnamed',
@@ -240,8 +249,18 @@ export async function settleDelivery(
 		};
 	}
 
-	const target = await findTarget(deps.db, deps.provider.processor, settlement.providerTxnId);
-	if (target === null) return unmatched(deps, event.id, settlement);
+	const target = await findTarget(deps.db, processor, settlement.providerTxnId);
+	if (target === null) {
+		// named, it is a gift this deployment minted and lost, which a person has to record. unnamed,
+		// nothing says it was ever this deployment's: a Chariot grant on the org's account can come
+		// from any of the org's Chariot pages, and telling an operator about each would be noise.
+		if (named !== null) return unmatched(deps, event.id, settlement);
+		return {
+			ok: true,
+			outcome: 'unmatched',
+			detail: `no payment row for ${settlement.providerTxnId}, and nothing names it as this deployment’s; nothing was written.`
+		};
+	}
 
 	// what the gift's own lines say this money is for — read only where money moved, since a
 	// settlement that did not succeed posts nothing and its read would be a query spent on nothing.
@@ -659,6 +678,8 @@ async function somethingWasCollected(db: Db, donationId: string): Promise<boolea
  *            the failure is the cheaper mistake than silence on a gift they believe they made.
  *   venmo  — the balance transfer is instant and the donor is still in that window when it is
  *            refused, so it fails the way card does.
+ *   daf    — a grant the fund cancels reads cancelled on the gift and sends the donor nothing:
+ *            they were already told the grant request was sent and that it comes from their fund.
  *   cash,
  *   check  — staff entry: there is no donor session, no processor and no attempt the donor made.
  *            a failure here is a correction to a record, and the person who typed it is the person
@@ -675,6 +696,7 @@ export function failureIsNewsToTheDonor(rail: PaymentMethod): boolean {
 			return true;
 		case 'card':
 		case 'venmo':
+		case 'daf':
 		case 'cash':
 		case 'check':
 			return false;
@@ -852,30 +874,44 @@ async function tellPeople(deps: SettleDeps, target: Target, settlement: Settleme
 		});
 	}
 
-	const receipt = await sendReceipt(deps, {
-		donationId: target.donation.id,
-		donorName: target.donorName,
-		donorEmail: target.donorEmail,
-		contribution: {
-			totalMinor: target.donation.totalMinor,
-			nonDeductibleMinor: target.donation.nonDeductibleMinor,
-			// the fee the donor was quoted and agreed to, off the gift's own row — never
-			// `settlement.feeMinor`, which is what the processor took and reaches this file a few
-			// lines above. the receipt states what the donor pressed; ./entries.ts is where the two
-			// figures are kept apart on the ledger's side.
-			coveredFeeMinor: target.donation.feeMinor,
-			currency: target.donation.currency,
-			receivedAt: target.donation.receivedAt
-		},
-		// off the gift's own two columns, narrowed rather than passed through: `tribute_kind` has no
-		// CHECK and cannot be given one, so `projectTribute` (../../donations/tributes.ts) is what
-		// decides whether what is stored is a dedication at all. the two columns naming who to tell
-		// stay where they are — this document goes to the donor.
-		tribute: projectTribute(target.donation.tributeKind, target.donation.tributeHonoree),
-		// the cause's name, joined with the gift rather than looked up here: a receipt is
-		// reproducible from what is on it, and a pointer is not something a donor reads.
-		program: target.programName
-	});
+	// a donor-advised fund gift was deducted when the donor funded their account, so the grant gets
+	// a thank-you in place of a receipt, stamped on the same column (./receipt.ts).
+	const rail = settlement.method ?? target.payment.method;
+	const receipt =
+		rail === 'daf'
+			? await sendGrantReceived(deps, {
+					donationId: target.donation.id,
+					donorName: target.donorName,
+					donorEmail: target.donorEmail,
+					// the gift portion, never the grant total with a covered fee in it.
+					amountMinor: target.donation.totalMinor - target.donation.feeMinor,
+					currency: target.donation.currency,
+					tribute: projectTribute(target.donation.tributeKind, target.donation.tributeHonoree)
+				})
+			: await sendReceipt(deps, {
+					donationId: target.donation.id,
+					donorName: target.donorName,
+					donorEmail: target.donorEmail,
+					contribution: {
+						totalMinor: target.donation.totalMinor,
+						nonDeductibleMinor: target.donation.nonDeductibleMinor,
+						// the fee the donor was quoted and agreed to, off the gift's own row — never
+						// `settlement.feeMinor`, which is what the processor took and reaches this file a few
+						// lines above. the receipt states what the donor pressed; ./entries.ts is where the two
+						// figures are kept apart on the ledger's side.
+						coveredFeeMinor: target.donation.feeMinor,
+						currency: target.donation.currency,
+						receivedAt: target.donation.receivedAt
+					},
+					// off the gift's own two columns, narrowed rather than passed through: `tribute_kind` has no
+					// CHECK and cannot be given one, so `projectTribute` (../../donations/tributes.ts) is what
+					// decides whether what is stored is a dedication at all. the two columns naming who to tell
+					// stay where they are — this document goes to the donor.
+					tribute: projectTribute(target.donation.tributeKind, target.donation.tributeHonoree),
+					// the cause's name, joined with the gift rather than looked up here: a receipt is
+					// reproducible from what is on it, and a pointer is not something a donor reads.
+					program: target.programName
+				});
 
 	// the person the donor asked us to tell, after the donor's own receipt and before the
 	// organisation's notice. it decides for itself whether there is anybody to tell and stamps its

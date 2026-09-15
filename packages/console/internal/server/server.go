@@ -23,6 +23,7 @@ import (
 
 	"github.com/better-giving/console/internal/account"
 	"github.com/better-giving/console/internal/cf"
+	"github.com/better-giving/console/internal/chariot"
 	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/oauth"
 	"github.com/better-giving/console/internal/paypal"
@@ -61,6 +62,10 @@ type Options struct {
 	// Paypal is how a call to PayPal is bound to the client id and secret one press carries, so a case
 	// can run the whole setup chain without a PayPal app. Nil is PayPal's own API.
 	Paypal func(clientID, secret string) paypal.Binding
+	// Chariot is how a call to Chariot is bound to the address and api key one press carries, so a
+	// case can run the whole setup chain without a Chariot account. Nil is Chariot itself, at the
+	// address the press named.
+	Chariot func(address, apiKey string) chariot.Call
 	// Accounts is which cloudflare account this deployment is in, as this machine remembers it.
 	Accounts *account.Store
 	// Records is what this machine remembers between runs, which the session is read out of and
@@ -102,6 +107,10 @@ func New(options Options) http.Handler {
 	if bindPaypal == nil {
 		bindPaypal = paypal.Bind
 	}
+	bindChariot := options.Chariot
+	if bindChariot == nil {
+		bindChariot = chariot.BindAt
+	}
 	sends := options.Sends
 	if sends == nil {
 		sends = cf.APISend
@@ -121,6 +130,8 @@ func New(options Options) http.Handler {
 	stripeRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, doors, processor,
 		presses)
 	paypalRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, doors, bindPaypal,
+		presses)
+	chariotRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, doors, bindChariot,
 		presses)
 	closeRoutes(routes, options.Close)
 	routes.HandleFunc("GET /api/version", func(w http.ResponseWriter, _ *http.Request) {

@@ -69,8 +69,8 @@ function sum(attempts: readonly SettlementAttempt[]): number {
  * whatever order the rows arrived in, and a gift would read `failed` on one load and `cancelled` on
  * the next.
  */
-function latestOf(attempts: readonly SettlementAttempt[]): SettlementAttempt | undefined {
-	return attempts.reduce<SettlementAttempt | undefined>((latest, a) => {
+function latestOf<T extends SettlementAttempt>(attempts: readonly T[]): T | undefined {
+	return attempts.reduce<T | undefined>((latest, a) => {
 		if (!latest) return a;
 		const at = a.occurredAt.getTime();
 		const best = latest.occurredAt.getTime();
@@ -150,9 +150,14 @@ export type GiftRail = {
  * settled this is what was tried, which is the whole of what anybody knows.
  */
 export function projectRail(attempts: readonly SettlementAttempt[]): GiftRail | null {
-	const inbound = attempts.filter((a) => a.direction === 'inbound');
-	const deciding = latestOf(inbound.filter((a) => a.status === 'succeeded')) ?? latestOf(inbound);
+	const deciding = decidingAttempt(attempts);
 	return deciding ? { method: deciding.method, provider: deciding.provider } : null;
+}
+
+/** the attempt `projectRail` reads the rail off, whole. */
+function decidingAttempt<T extends SettlementAttempt>(attempts: readonly T[]): T | undefined {
+	const inbound = attempts.filter((a) => a.direction === 'inbound');
+	return latestOf(inbound.filter((a) => a.status === 'succeeded')) ?? latestOf(inbound);
 }
 
 /**
@@ -234,17 +239,21 @@ const DONATION_COLUMNS = {
 	programName: program.name
 } satisfies Record<keyof DonationSelection, SQLiteColumn>;
 
-/** an attempt with the gift it settles, which is the only extra column the grouping needs. */
-type AttemptRow = SettlementAttempt & Pick<Payment, 'donationId'>;
+/**
+ * an attempt with the gift it settles, which the grouping needs, and the processor's own id for the
+ * charge, which is what a screen asks the processor about the deciding attempt by.
+ */
+type AttemptRow = SettlementAttempt & Pick<Payment, 'donationId' | 'providerTxnId'>;
 
 /**
  * the columns of `payment` the two projections read.
  *
  * `method` and `provider` are selected deliberately and not by widening a `select()`: they are what
  * `projectRail` answers with, and a rail nothing selects is the reason no screen could say how a
- * gift arrived. the rest of the row stays out on the argument `DONATION_COLUMNS` above makes —
- * `provider_txn_id` is the processor's own id for the charge and `created_at` is when the row was
- * written, and no list asks either.
+ * gift arrived. `provider_txn_id` is selected for the one question this app cannot answer from its
+ * own rows — the reference a processor holds for the charge (`Settlement.reference` in
+ * ../payments/provider.ts) — and stops at the loader that asks it. the rest of the row stays out on
+ * the argument `DONATION_COLUMNS` above makes.
  *
  * these rows never cross to a browser: they are read here and collapsed into `DonationListRow`
  * below, which is where the narrowing a browser payload gets is stated.
@@ -257,6 +266,7 @@ const ATTEMPT_COLUMNS = {
 	amountMinor: payment.amountMinor,
 	method: payment.method,
 	provider: payment.provider,
+	providerTxnId: payment.providerTxnId,
 	occurredAt: payment.occurredAt
 } satisfies Record<keyof AttemptRow, SQLiteColumn>;
 
@@ -277,6 +287,12 @@ export type DonationListRow = Omit<
 	 * screen's own narrowing (src/routes/_app.admin.donations._index.tsx).
 	 */
 	rail: GiftRail | null;
+	/**
+	 * the processor's own id for the attempt `rail` is read off, or `null` where nothing has been
+	 * attempted or no processor stands behind it. a pointer for a server read and never for a
+	 * browser payload.
+	 */
+	providerTxnId: Payment['providerTxnId'];
 	/**
 	 * whether this charge was collected under a standing commitment.
 	 *
@@ -382,6 +398,7 @@ export async function listDonations(db: Db): Promise<DonationPage> {
 			donorName: names.get(contactId) ?? 'Unknown donor',
 			status: projectStatus(byDonation.get(row.id) ?? []),
 			rail: projectRail(byDonation.get(row.id) ?? []),
+			providerTxnId: decidingAttempt(byDonation.get(row.id) ?? [])?.providerTxnId ?? null,
 			repeating: recurringId !== null,
 			tribute: projectTribute(tributeKind, tributeHonoree)
 		})),

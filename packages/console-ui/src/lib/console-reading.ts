@@ -44,7 +44,7 @@ async function takeReading() {
 			sections: readSections(read),
 			// the seed both pages that edit the profile read.
 			stored: orgBoxes(read.org),
-			// the seventeen as cloudflare answered for them: the pages draw the rows and the boxes out
+			// the twenty-one as cloudflare answered for them: the pages draw the rows and the boxes out
 			// of the same answer the rail's statuses were read from.
 			values: read.values,
 			sites: read.sites,

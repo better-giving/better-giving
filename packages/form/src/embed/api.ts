@@ -37,11 +37,27 @@ export function quoteUrl(origin: string, formId: string): string {
  */
 export class EmbedFailure extends Error {
 	readonly fix: string;
+	/**
+	 * the `error` an api refusal carried (`API_ERROR_CODES` in ../v1.ts), where it carried one.
+	 *
+	 * read by `errorCode` in ../checkout.machine.ts for the refusal whose screen the words cannot
+	 * pick, and by nothing else.
+	 */
+	readonly code?: string;
+	/**
+	 * the request left and no answer came back, so the endpoint may have acted on it.
+	 *
+	 * read by `wentUnanswered` in ../checkout.machine.ts, which keeps a fund's approval for a resend
+	 * where this is set, since the grant may already exist.
+	 */
+	readonly unanswered?: true;
 
-	constructor(message: string, fix: string) {
+	constructor(message: string, fix: string, code?: string, unanswered?: true) {
 		super(message);
 		this.name = 'EmbedFailure';
 		this.fix = fix;
+		if (code !== undefined) this.code = code;
+		if (unanswered !== undefined) this.unanswered = unanswered;
 	}
 }
 
@@ -58,6 +74,13 @@ export function clamp(sentence: string): string {
 	return sentence.length <= MAX_API_SENTENCE
 		? sentence
 		: `${sentence.slice(0, MAX_API_SENTENCE - 1)}…`;
+}
+
+/** the `error` code an api error carries, where it carries one. */
+function apiCode(body: unknown): string | undefined {
+	if (typeof body !== 'object' || body === null) return undefined;
+	const { error } = body as { error?: unknown };
+	return typeof error === 'string' && error.length > 0 ? error : undefined;
 }
 
 /** the sentence and the fix an api error carries, where it carries them. */
@@ -133,7 +156,9 @@ export function createQuote(origin: string | null): CheckoutPorts['quote'] {
 		} catch {
 			throw new EmbedFailure(
 				UNCHARGED,
-				`POST ${url} could not be reached from this page. The form is embedded on another origin, so check that this deployment serves that route and answers this page's origin with an Access-Control-Allow-Origin header — a request refused by the browser reports no status here.`
+				`POST ${url} could not be reached from this page. The form is embedded on another origin, so check that this deployment serves that route and answers this page's origin with an Access-Control-Allow-Origin header — a request refused by the browser reports no status here.`,
+				undefined,
+				true
 			);
 		}
 
@@ -142,7 +167,8 @@ export function createQuote(origin: string | null): CheckoutPorts['quote'] {
 			const words = parsed.ok ? apiWords(parsed.value) : null;
 			throw new EmbedFailure(
 				words?.message ?? UNCHARGED,
-				words?.fix ?? `POST ${url} answered ${response.status}.`
+				words?.fix ?? `POST ${url} answered ${response.status}.`,
+				parsed.ok ? apiCode(parsed.value) : undefined
 			);
 		}
 

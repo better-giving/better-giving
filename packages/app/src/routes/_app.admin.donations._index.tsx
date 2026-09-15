@@ -11,7 +11,9 @@ import { DONATION_STATUS_LABELS } from '$lib/donations/statuses';
 import { loadFailed } from '$lib/server/db/load-failure';
 import type { PaymentMethod } from '$lib/server/db/schema';
 import { DONATION_LIST_LIMIT, listDonations } from '$lib/server/donations/queries';
-import { database } from '../context';
+import { readTrackingIds } from '$lib/server/donations/tracking-ids';
+import { createPaymentProviders } from '$lib/server/payments/factory';
+import { database, platform } from '../context';
 import type { Route } from './+types/_app.admin.donations._index';
 
 // the gifts a deployment has taken: a `loader` and nothing else. there is no write on this screen —
@@ -108,7 +110,8 @@ const RAIL_LABELS: Record<PaymentMethod, string> = {
 	card: 'Card',
 	ach: 'Bank transfer',
 	paypal: 'PayPal',
-	venmo: 'Venmo'
+	venmo: 'Venmo',
+	daf: 'Donor-advised fund'
 };
 
 /** the screen's name in the document title. the frame's strip names the page (./_app.tsx). */
@@ -130,6 +133,10 @@ export async function loader({ context }: Route.LoaderArgs) {
 		console.error('listing donations failed:', e);
 		loadFailed('The gifts list');
 	}
+
+	const trackingIds = await readTrackingIds(donations, () =>
+		createPaymentProviders(context.get(platform).env)
+	);
 
 	return {
 		// an explicit projection rather than the row. the read already narrows `donation` to the
@@ -159,8 +166,8 @@ export async function loader({ context }: Route.LoaderArgs) {
 			// settlement attempt at all, which the table dashes itself.
 			//
 			// the rail and never the processor behind it, which is where the provider the read
-			// hands over stops: nothing on this screen sends an operator to a processor's
-			// dashboard, and a gift given on Venmo is settled by PayPal — so a screen naming the
+			// hands over stops: nothing on this screen names a processor, and a gift given on
+			// Venmo is settled by PayPal — so a screen naming the
 			// provider would name a processor the donor never saw, on the rows it is least
 			// entitled to. the projection keeps both because `payment` keeps them apart
 			// (`projectRail` in `$lib/server/donations/queries.ts`); this is the boundary that
@@ -182,7 +189,11 @@ export async function loader({ context }: Route.LoaderArgs) {
 			// what the cause is called, which is what the read hands over — `program_id` is not
 			// selected at all, so there is no pointer here to pass on. no lookup and no locale in it,
 			// so the name crosses as the string it is stored as.
-			program: d.programName
+			program: d.programName,
+			// what the organisation matches a pending grant's arriving payment by in Chariot's
+			// dashboard, read live (`readTrackingIds`), and null on every other gift and on one
+			// Chariot did not answer for in time. the grant id it was asked by stays here.
+			trackingId: trackingIds.get(d.id) ?? null
 		})),
 		// so the page can say the list is capped rather than silently showing a prefix.
 		limit: DONATION_LIST_LIMIT,
@@ -263,7 +274,17 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 									)
 								}
 							: d.amount,
-						status: <StatusWord>{DONATION_STATUS_LABELS[d.status]}</StatusWord>,
+						// a pending grant carries the id the organisation marks it received by in
+						// Chariot's dashboard, beside the state it would change. code, because an
+						// operator retypes it.
+						status: d.trackingId ? (
+							<>
+								<StatusWord>{DONATION_STATUS_LABELS[d.status]}</StatusWord> Tracking ID{' '}
+								<code className="adm-code adm-code--unbroken">{d.trackingId}</code>
+							</>
+						) : (
+							<StatusWord>{DONATION_STATUS_LABELS[d.status]}</StatusWord>
+						),
 						// the word the loader resolved, printed. a gift with nothing attempted hands
 						// over nothing and the table dashes the cell itself.
 						paidWith: d.paidWith,

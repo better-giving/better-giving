@@ -150,9 +150,10 @@ export type FeeCoverage = (typeof FEE_COVERAGE_MODES)[number];
  *
  * more than one processor's rails, and no rail is offered by two of them: `card`, `ach` and the
  * wallets are settled by the processor whose fields the card draws inline, `paypal` and `venmo` by
- * the processor whose own window collects them. `STRIPE_RAILS` and `PAYPAL_RAILS` in
- * ./embed/rails.ts are that split written down, and `providers` on `FormConfig` below is the field
- * that lets one config name both.
+ * the processor whose own window collects them, and `daf` by the processor whose window asks the
+ * donor's fund for a grant. `STRIPE_RAILS`, `PAYPAL_RAILS` and `CHARIOT_RAILS` in ./embed/rails.ts
+ * are that split written down, and `providers` on `FormConfig` below is the field that lets one
+ * config name more than one.
  */
 export const PAYMENT_METHODS = [
 	'card',
@@ -160,7 +161,8 @@ export const PAYMENT_METHODS = [
 	'apple_pay',
 	'google_pay',
 	'paypal',
-	'venmo'
+	'venmo',
+	'daf'
 ] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
@@ -179,7 +181,8 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 	apple_pay: 'Apple Pay',
 	google_pay: 'Google Pay',
 	paypal: 'PayPal',
-	venmo: 'Venmo'
+	venmo: 'Venmo',
+	daf: 'Donor-advised fund'
 };
 
 /**
@@ -236,6 +239,13 @@ export type FeeRule = {
 	 * org's.
 	 */
 	readonly capMinor?: number;
+	/**
+	 * the step the whole fee is rounded up to, absent where the rail charges to the minor unit.
+	 *
+	 * applied last, to `min(proportional, capMinor) + fixedMinor`: a DAF grant's price is
+	 * `{ percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }`, 2.9% rounded up to a whole dollar.
+	 */
+	readonly roundUpMinor?: number;
 };
 
 /**
@@ -380,6 +390,31 @@ export type QuoteRequest = {
 	readonly frequency: Frequency;
 	readonly method: PaymentMethod;
 	readonly coversFee: boolean;
+	/**
+	 * the processor's id for the authorization the donor already gave in its own window.
+	 *
+	 * a `daf` gift is quoted after the donor finishes in the fund's window, not before, so the
+	 * request carries what that window produced. named for what it does rather than for what one
+	 * provider calls it, as `Quote.paymentToken` is, and meaningful only to the adapter behind the
+	 * payment port.
+	 *
+	 * present exactly when `method` is `'daf'` and absent on every other method, and it travels with
+	 * `authorizedMinor` below: the endpoint refuses one without the other. optional for the reason
+	 * every addition to this file is, so no published snippet's request changes meaning.
+	 */
+	readonly authorizationId?: string;
+	/**
+	 * the total the donor authorized in that window, paired with `authorizationId` above.
+	 *
+	 * it may differ from `amountMinor`, which keeps meaning what the donor chose on the form: the
+	 * fund's window lets the donor change the figure, and what the fund grants is what the gift is
+	 * recorded from. with `coversFee` the fee is recomputed on this total and the gift is the rest,
+	 * and the form's bounds are checked against that gift portion rather than against the total.
+	 *
+	 * the `Quote` a `daf` request mints is the same shape as any other: its `paymentToken` is the
+	 * grant, and nothing is confirmed after it.
+	 */
+	readonly authorizedMinor?: number;
 	readonly email: string;
 	readonly firstName: string;
 	readonly lastName: string;
@@ -481,18 +516,19 @@ export type ApiError = {
  * switches on, so renaming one breaks an integration that already handles it, and the only way to
  * add or merge a member is to edit the file whose header says that.
  *
- * eight, and the count is held down deliberately. a code answers "which screen", the message
+ * ten, and the count is held down deliberately. a code answers "which screen", the message
  * answers "which value" — so two codes carrying a byte-identical `fix` were one code all along
  * and are merged rather than kept as synonyms, and a new value worth naming is a new sentence in
- * an existing member's message before it is a ninth member.
+ * an existing member's message before it is an eleventh member.
  *
- * six of the eight are decided before anything is charged, from this deployment's own
- * configuration and the form record. the two that are not are the two the donation form can do
+ * six of the ten are decided before anything is charged, from this deployment's own
+ * configuration and the form record. the four that are not are the four the donation form can do
  * something about, and that is what earns each of them a member: `payments_unavailable` is the
- * processor answering badly, and `challenge_failed` is a token the challenge service would not
- * honour. every other failure of the payment path is either a hole an operator fills, which the
- * six already say, or a bug of ours, which is a 500 and no code at all: a member for one would ask
- * a donation form to render a screen about our defect.
+ * processor answering badly, `challenge_failed` is a token the challenge service would not
+ * honour, and the two `daf_` members are a donor-advised fund's own answer to a grant. every other
+ * failure of the payment path is either a hole an operator fills, which the six already say, or a
+ * bug of ours, which is a 500 and no code at all: a member for one would ask a donation form to
+ * render a screen about our defect.
  *
  * `error` stays typed `string` and is not narrowed to this union. narrowing the type of a shipped
  * field is itself the breaking change this file exists to prevent — a pinned client must still
@@ -528,6 +564,24 @@ export const API_ERROR_CODES = [
 	 * the second is a value an operator sets, so both answer 503 with no code at all, the way every
 	 * other unfinished-deployment and outage answer on this surface does.
 	 */
-	'challenge_failed'
+	'challenge_failed',
+	/**
+	 * the donor's approval in the fund's own window expired before the grant was created, so no
+	 * grant exists.
+	 *
+	 * a member of its own because the action behind it is the donation form's alone: reopen the
+	 * fund's window so the donor approves again. retrying the same submission sends the same
+	 * expired approval, which is why it is not `payments_unavailable`.
+	 */
+	'daf_authorization_expired',
+	/**
+	 * the fund refused the grant under its own rules — a minimum, a balance, a policy of the fund's —
+	 * so no grant exists.
+	 *
+	 * `message` carries the fund's reason, because only the fund knows it and the donor settles it
+	 * with the fund or a different amount. neither a fresh approval nor a retry moves it, which is
+	 * what keeps it apart from `daf_authorization_expired` and `payments_unavailable`.
+	 */
+	'daf_grant_declined'
 ] as const;
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

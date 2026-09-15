@@ -152,7 +152,7 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	 * ends the run this console is inside, and asks the browser for the tab back.
 	 *
 	 * nothing on cloudflare and nothing on the deployment changes: what stops is the process on this
-	 * machine, and the account, the session and the seventeen values are exactly where they were.
+	 * machine, and the account, the session and the twenty-one values are exactly where they were.
 	 *
 	 * **`window.close()` is a request the browser is free to refuse**, and chrome refuses it on a tab
 	 * no script opened — this one was opened by the binary. so the answer below is what the screen is
@@ -340,7 +340,7 @@ function BlockedFace({
 		);
 	}
 	if (why.kind === 'no-values') {
-		/* the deployment is up and answering, and one of the two doors its seventeen values come
+		/* the deployment is up and answering, and one of the two doors its twenty-one values come
 		   through is not (`packages/console/internal/deployment/values.go`). every section page reads
 		   them, so there is nothing to draw — and nothing here to repair by hand either: the way out
 		   is the read taken again, which is what a reload is.

@@ -26,20 +26,25 @@ export type ProcessorLink = {
 /**
  * the pair each processor charges on, which is the deployment's own reading of whether it can take
  * a gift there. ./home-sections.ts reads the fold's word off the same pairs.
+ *
+ * Chariot's pair is the key and the Connect id the key fetched, rather than the key and the address:
+ * a blank address is live, so the address is no half of anything.
  */
 export const CHARGE_PAIRS: Record<PaymentProcessor, readonly DeployVarName[]> = {
 	stripe: ['STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY'],
-	paypal: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET']
+	paypal: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET'],
+	chariot: ['CHARIOT_API_KEY', 'CHARIOT_CONNECT_ID']
 };
 
 /** what each processor is called and where its page is. */
 export const PROCESSORS: Record<PaymentProcessor, { name: string; href: string }> = {
 	stripe: { name: 'Stripe', href: '/payments/stripe' },
-	paypal: { name: 'PayPal', href: '/payments/paypal' }
+	paypal: { name: 'PayPal', href: '/payments/paypal' },
+	chariot: { name: 'Chariot', href: '/payments/chariot' }
 };
 
 /** the order the cells stand in, which is the order the deployment reports processors in. */
-const ORDER: readonly PaymentProcessor[] = ['stripe', 'paypal'];
+const ORDER: readonly PaymentProcessor[] = ['stripe', 'paypal', 'chariot'];
 
 /**
  * one cell per processor.

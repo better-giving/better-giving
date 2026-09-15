@@ -8,7 +8,7 @@ import {
 	type FormRuntime
 } from './element';
 import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from './parts';
-import type { CheckoutPorts } from './ports';
+import type { CheckoutPorts, FundReports } from './ports';
 import type { Failure } from './checkout.machine';
 import {
 	PAYMENT_METHODS,
@@ -53,7 +53,8 @@ const CONFIG: FormConfig = {
 		apple_pay: { percent: 0.029, fixedMinor: 30 },
 		google_pay: { percent: 0.029, fixedMinor: 30 },
 		paypal: { percent: 0.0349, fixedMinor: 49 },
-		venmo: { percent: 0.0349, fixedMinor: 49 }
+		venmo: { percent: 0.0349, fixedMinor: 49 },
+		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -90,11 +91,13 @@ type Mounted = {
 	token(value: string): void;
 	/** the challenge widget reporting that it will never mint one. */
 	challengeUnavailable(failure: Failure): void;
+	/** what a donor-advised fund's window reports, as the runtime was handed it. */
+	fund(): FundReports;
 };
 
 function view(
 	host: HTMLElement
-): Omit<Mounted, 'rail' | 'unavailable' | 'token' | 'challengeUnavailable'> {
+): Omit<Mounted, 'rail' | 'unavailable' | 'token' | 'challengeUnavailable' | 'fund'> {
 	const shadow = host.shadowRoot;
 	if (shadow === null) throw new Error('the element has not upgraded');
 	const find = (selector: string): HTMLElement => {
@@ -136,6 +139,8 @@ type Options = {
 	readonly stopped?: () => void;
 	/** every cadence the card reported to the payment surface, in the order it reported them. */
 	readonly cadences?: (frequency: Frequency | undefined) => void;
+	/** every reading of whether a fund is offered, in the order the card told the payment surface. */
+	readonly offers?: (offered: boolean) => void;
 	readonly attributes?: Readonly<Record<string, string>>;
 	readonly children?: string;
 };
@@ -147,6 +152,7 @@ async function mount(options: Options = {}): Promise<Mounted> {
 	let stop: (failure: Failure) => void = () => {};
 	let minted: (token: string) => void = () => {};
 	let unchallengeable: (failure: Failure) => void = () => {};
+	let reports: FundReports | null = null;
 	defineDonateForm(
 		{
 			loadConfig: options.loadConfig ?? (async () => options.config ?? CONFIG),
@@ -159,7 +165,8 @@ async function mount(options: Options = {}): Promise<Mounted> {
 					stop: () => options.stopped?.()
 				};
 			},
-			checkout: (config, mount, onRail, onUnavailable, boot) => {
+			checkout: (config, mount, onRail, onUnavailable, boot, fund) => {
+				reports = fund;
 				options.mounted?.(mount);
 				options.boots?.(boot);
 				report = onRail;
@@ -171,6 +178,7 @@ async function mount(options: Options = {}): Promise<Mounted> {
 						...(options.resume === undefined ? {} : { resume: options.resume })
 					},
 					cadence: (frequency) => options.cadences?.(frequency),
+					offerFund: (offered) => options.offers?.(offered),
 					stop: () => options.torn?.()
 				};
 			}
@@ -189,7 +197,11 @@ async function mount(options: Options = {}): Promise<Mounted> {
 		rail: (method) => report(method),
 		unavailable: (failure) => stop(failure),
 		token: (value) => minted(value),
-		challengeUnavailable: (failure) => unchallengeable(failure)
+		challengeUnavailable: (failure) => unchallengeable(failure),
+		fund: () => {
+			if (reports === null) throw new Error('the runtime was never asked for a checkout');
+			return reports;
+		}
 	};
 }
 
@@ -252,7 +264,12 @@ function placed(attributes: Readonly<Record<string, string>> = { form: 'frm_a8x2
 					},
 					checkout: (config, mount) => {
 						groups.push(mount);
-						return { input: { config, ports: PORTS }, cadence: () => {}, stop: () => {} };
+						return {
+							input: { config, ports: PORTS },
+							cadence: () => {},
+							offerFund: () => {},
+							stop: () => {}
+						};
 					},
 					challenge: () => ({ reset: () => {}, stop: () => {} })
 				},
@@ -917,6 +934,7 @@ describe('the live region', () => {
 				checkout: (config) => ({
 					input: { config, ports: PORTS },
 					cadence: () => {},
+					offerFund: () => {},
 					stop: () => {}
 				}),
 				challenge: () => ({ reset: () => {}, stop: () => {} })
@@ -4982,5 +5000,78 @@ describe('the anti-abuse challenge', () => {
 		await settle();
 
 		expect(stopped).toBe(1);
+	});
+});
+
+describe('a donor-advised fund’s window', () => {
+	const DAF_CONFIG: FormConfig = {
+		...CONFIG,
+		providers: [...CONFIG.providers, { name: 'chariot', publishableKey: 'cid_x' }],
+		paymentMethods: [...CONFIG.paymentMethods, 'daf']
+	};
+
+	// the fund's script asks for the gift on the donor's press and opens its window straight after,
+	// so the element tells the flow of the press and answers in the same call — and the approval the
+	// window closes on is what the gift is quoted with.
+	it('answers the press in the same call and quotes the gift on the fund’s approval', async () => {
+		const quoted: QuoteRequest[] = [];
+		const card = await atReviewBeforeRail({
+			config: DAF_CONFIG,
+			ports: {
+				quote: async (request) => {
+					quoted.push(request);
+					return { paymentToken: 'grant_1', feeMinor: 100, totalMinor: 2600 };
+				}
+			}
+		});
+		const request = card.fund().opened();
+
+		expect(request).toMatchObject({ email: expect.any(String), amountMinor: expect.any(Number) });
+		expect(card.fund().opened()).toBeNull();
+
+		card.fund().approved({ authorizationId: 'wfs_1', authorizedMinor: 2600 });
+		await settle();
+
+		expect(quoted).toHaveLength(1);
+		expect(quoted[0]).toMatchObject({ method: 'daf', authorizationId: 'wfs_1' });
+	});
+
+	// the donor may change the amount inside the fund's window, and the grant is what the fund
+	// approved — so the ending states the server's figures for it, not the form's, and names the fund
+	// rather than a charge.
+	it('states the granted figures on the ending, not the ones the form showed', async () => {
+		const card = await atReviewBeforeRail({
+			config: DAF_CONFIG,
+			ports: { quote: async () => ({ paymentToken: 'grant_1', feeMinor: 200, totalMinor: 5200 }) }
+		});
+		card.fund().opened();
+		card.fund().approved({ authorizationId: 'wfs_1', authorizedMinor: 5200 });
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Your gift is on its way');
+		expect(card.text('.row.total .figure')).toBe('$52.00');
+		expect(card.text('.row.total .row-label')).toBe('Grant requested');
+		expect(shows(card, '.takeover .prose')).toContain('Your fund has your grant request');
+		expect(shows(card, '.takeover .prose')).not.toContain('charge');
+	});
+
+	// the fund's own button is drawn off the flow's own reading, told on every patch: on the review
+	// step of a one-time gift, and not once the donor has left it.
+	it('tells the payment surface whether a fund is offered on every reading', async () => {
+		const offers: boolean[] = [];
+		const card = await atReviewBeforeRail({
+			config: DAF_CONFIG,
+			offers: (offered) => offers.push(offered)
+		});
+		expect(offers.at(-1)).toBe(true);
+		expect(offers).toContain(false);
+
+		press(dot(card, 1));
+		expect(offers.at(-1)).toBe(false);
+	});
+
+	it('keeps the window shut on a form offering no fund', async () => {
+		const card = await atReview();
+		expect(card.fund().opened()).toBeNull();
 	});
 });

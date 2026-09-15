@@ -1,8 +1,12 @@
+import { and, eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
-import { estimateFee } from '@better-giving/form/fee';
-import type { ApiErrorCode, Frequency, Quote } from '@better-giving/form/v1';
+import { estimateDeductedFee, estimateFee } from '@better-giving/form/fee';
+import type { ApiErrorCode, FormConfig, Frequency, Quote } from '@better-giving/form/v1';
+import { majorText } from '../../forms/amounts';
 import type { TurnstileCheck, TurnstileResult } from '../api/turnstile';
 import type { Db } from '../db/client';
+import { donation, payment } from '../db/schema';
+import type { EmailProvider } from '../email/provider';
 import type { FormRecord } from '../forms/form-input';
 import { cachedCadences } from '../forms/cadence-cache';
 import { readPublishedConfig } from '../forms/published-config';
@@ -10,6 +14,8 @@ import { cachedRails } from '../forms/rail-cache';
 import { processorSetupFix, type Processors } from '../payments/factory';
 import {
 	commitmentMetadata,
+	type Intent,
+	type ProcessorName,
 	DONATION_METADATA_KEY,
 	FEE_COVERED_METADATA_KEY,
 	FEE_RAIL_METADATA_KEY,
@@ -19,8 +25,10 @@ import {
 	type QuotedRail,
 	type RecurringInterval
 } from '../payments/provider';
+import { alert } from './delivery';
 import { commitDonor } from './donor';
-import { parseQuoteRequest, type ParsedQuoteRequest } from './quote-input';
+import { sendGrantRequested } from './grant-requested';
+import { parseQuoteRequest, type DafAuthorization, type ParsedQuoteRequest } from './quote-input';
 import { recordAuthorizedGift, recordDonation } from './record';
 
 // one donation attempt, from a posted body to a payment token — the server half of
@@ -76,8 +84,9 @@ import { recordAuthorizedGift, recordDonation } from './record';
 /**
  * why a quote was not minted, as a closed set.
  *
- * six of the twelve are `readPublishedConfig`'s own, carried through under their own names so that
- * a caller answering both endpoints answers them the same way. the other six are this path's.
+ * the members through `payments_not_configured` are `readPublishedConfig`'s own, carried through
+ * under their own names so that a caller answering both endpoints answers them the same way. the
+ * rest are this path's.
  *
  * not every member is a wire code, and `QUOTE_REFUSAL_CODES` below is the subset that is. the ones
  * that are not name no screen: an integrator's malformed body is fixed in their own code, and an
@@ -119,6 +128,17 @@ export const QUOTE_REFUSALS = [
 	'challenge_unavailable',
 	/** the processor refused, shed load, or did not answer. */
 	'payments_unavailable',
+	/**
+	 * a donor-advised fund gift whose approval in the fund's window is more than 15 minutes old, so
+	 * Chariot no longer holds it and no grant was created. the donor reopens the fund's window.
+	 */
+	'daf_authorization_expired',
+	/**
+	 * a donor-advised fund gift the fund will not grant — below its minimum, above the donor's
+	 * balance — carrying Chariot's reason. nothing about the deployment is wrong; the donor gives a
+	 * different amount.
+	 */
+	'daf_grant_declined',
 	/** a defect of ours. nothing about the request or the deployment fixes it. */
 	'internal_error'
 ] as const;
@@ -139,7 +159,9 @@ export const QUOTE_REFUSAL_CODES = [
 	'org_profile_incomplete',
 	'payments_not_configured',
 	'challenge_failed',
-	'payments_unavailable'
+	'payments_unavailable',
+	'daf_authorization_expired',
+	'daf_grant_declined'
 ] as const satisfies readonly ApiErrorCode[];
 
 /** whether a refusal carries an `error` code on the wire, or only a sentence. */
@@ -191,6 +213,20 @@ export type QuoteDeps = {
 	 * inside the test runner, which is a test that passes or fails on somebody else's uptime.
 	 */
 	readonly verifyChallenge: (check: TurnstileCheck) => Promise<TurnstileResult>;
+	/**
+	 * the mail transport, for a donor-advised fund gift's messages: the donor's notice that the grant
+	 * request went (./grant-requested.ts), and the alerts for a grant that may exist with no gift
+	 * recorded against it. its failures are reported and never change the answer.
+	 */
+	readonly email: EmailProvider;
+	/**
+	 * work that finishes after the answer: the Worker's `ctx.waitUntil`.
+	 *
+	 * the donor's grant notice and the operator's alerts go here, since slow mail would otherwise
+	 * count against the form's 30-second wait on a gift already recorded or already refused.
+	 * required for `verifyChallenge`'s reason.
+	 */
+	readonly defer: (task: Promise<unknown>) => void;
 };
 
 /** the request this is minting a quote for. */
@@ -289,6 +325,14 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 					'Nothing about the request is wrong and nothing was charged. Try again shortly; if it ' +
 						'persists, this deployment’s Turnstile keys need checking.'
 				);
+	}
+
+	// a donor-advised fund gift has been authorized in the fund's window already, so its figures
+	// come from that authorization rather than from the form's amount. after the challenge, like
+	// every other mint, and before the fee below, which prices a gift the donor has not yet been
+	// charged for.
+	if (submission.authorization !== null) {
+		return mintGrant(deps, form, config, submission, submission.authorization, attempt);
 	}
 
 	// the authoritative numbers, both of them the server's own. the donor's amount is an input that
@@ -555,6 +599,280 @@ async function mintCommitment(
 }
 
 /**
+ * the donor-advised fund half: the authorized total split and checked, the grant created from the
+ * donor's session, then the gift written against it.
+ *
+ * the figures are the fund window's rather than the form's. the donor may change the amount there,
+ * and what the fund grants is what the gift is recorded as: with the fee covered the fee is
+ * Chariot's rate on that total and the gift is the rest, and the form's bounds hold the gift
+ * portion rather than the total. a gift portion outside them creates no grant.
+ *
+ * the grant is created before the write, as the single branch mints before it writes, and for more
+ * than its reason: a `payment` row attributed to a processor carries that processor's id
+ * (`payment_processor_needs_txn_id_check` in ../db/schema.ts), so the gift and its payment are one
+ * `batch()` once the grant id exists. Create Grant answers the grant it already holds for a session,
+ * so a second submission of the same session is `duplicate_intent` below and answers that grant.
+ *
+ * a write that fails against a created grant is told to an operator with the grant id, and a Create
+ * Grant whose outcome is unknown with the session id. the grant is a pledge the fund will pay, and
+ * the settlement path answers a grant no row names quietly (./settle.ts), so this is the one place
+ * its loss is visible.
+ */
+async function mintGrant(
+	deps: QuoteDeps,
+	form: FormRecord,
+	config: FormConfig,
+	submission: ParsedQuoteRequest,
+	authorization: DafAuthorization,
+	attempt: QuoteAttempt
+): Promise<QuoteResult> {
+	if (config.currency !== 'USD') {
+		return refuse(
+			form,
+			'invalid_request',
+			`A donor-advised fund gift is granted in USD, and this form is priced in ${config.currency}.`,
+			'Offer the donor-advised fund option on a form priced in USD.'
+		);
+	}
+
+	const total = authorization.authorizedMinor;
+	const split = splitGrant(total, submission.coversFee, config.feeRules.daf);
+	const gift = split === null ? 0 : total - split.feeMinor;
+	if (split === null || gift < config.minAmountMinor || gift > config.maxAmountMinor) {
+		const range = `$${majorText(config.minAmountMinor, 'USD')} to $${majorText(config.maxAmountMinor, 'USD')}`;
+		return refuse(
+			form,
+			'invalid_request',
+			`The fund approved $${majorText(total, 'USD')}, which leaves a gift of ` +
+				`$${majorText(gift, 'USD')}, outside this form’s range of ${range}. No grant was created.`,
+			`Give again through the fund’s window with an amount whose gift is between ${range}.`
+		);
+	}
+
+	const donationId = uuidv7();
+	const provider = deps.processors.forRail('daf');
+	const created = await provider.createIntent({
+		amountMinor: total,
+		currency: config.currency,
+		method: 'daf',
+		idempotencyKey: donationId,
+		authorizedSessionId: authorization.id
+	});
+	if (!created.ok) {
+		// no answer settled whether Chariot created the grant. a donor who tries again records it,
+		// since the same session answers the grant it holds; one who leaves does not, and the
+		// settlement path answers a grant no row names quietly (./settle.ts).
+		if (created.reason === 'unreachable') {
+			later(
+				deps,
+				alert(deps, {
+					headline:
+						'A donor-advised fund grant may have been created with no gift recorded against it',
+					body:
+						'Chariot did not say whether it created the grant, so the donor was asked to try again. ' +
+						'If they did, the gift is recorded and nothing more is needed. If not, the grant may ' +
+						'exist in Chariot, and when the fund pays it this deployment will not know which gift ' +
+						'it is.',
+					facts: [
+						{ label: 'Session', value: authorization.id },
+						{ label: 'Amount', value: `$${majorText(total, 'USD')}` },
+						{ label: 'Reason', value: created.detail }
+					],
+					action:
+						'Look for a grant on this session in the Chariot dashboard. If one is there and no gift ' +
+						'for it is in the dashboard here, record the gift by hand.'
+				})
+			);
+		}
+		return grantRefusal(form, created.reason, created.detail);
+	}
+
+	const quote: Quote = {
+		paymentToken: created.value.paymentToken,
+		feeMinor: split.feeMinor,
+		totalMinor: total
+	};
+
+	const written = await recordDonation(deps.db, {
+		donationId,
+		donor: submission.donor,
+		formId: form.id,
+		origin: attributedOrigin(attempt.request, form.allowedOrigins),
+		currency: config.currency,
+		totalMinor: total,
+		feeMinor: split.feeMinor,
+		lines: [{ label: LINE_LABEL, revenueAccountId: form.revenueAccountId, amountMinor: total }],
+		method: 'daf',
+		processor: provider.processor,
+		providerTxnId: created.value.providerTxnId,
+		occurredAt: new Date(),
+		consentedToContact: submission.consentedToContact,
+		note: submission.note,
+		tribute: submission.tribute,
+		programId: creditedProgram(form, submission)
+	});
+	if (written.ok) {
+		later(
+			deps,
+			sendGrantRequested(deps, {
+				donationId,
+				donorName: submission.donor.displayName,
+				donorEmail: submission.donor.primaryEmail,
+				// the gift portion the form's bounds held, never the total with a covered fee in it.
+				amountMinor: gift,
+				currency: config.currency,
+				tribute: submission.tribute
+			})
+		);
+		return { ok: true, quote, form };
+	}
+	// the session's grant already has its gift, and its donor was told when that gift was written.
+	// the answer is that gift's figures: a resend may carry another split of the same total.
+	if (written.reason === 'duplicate_intent') {
+		const recorded = await recordedQuote(deps.db, provider.processor, created.value);
+		if (recorded !== null) return { ok: true, quote: recorded, form };
+		return refuse(
+			form,
+			'internal_error',
+			'The gift for this grant is recorded and could not be read back.',
+			'This is a fault in this deployment rather than anything about the request. The cause is in ' +
+				'this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a checkout).'
+		);
+	}
+
+	later(
+		deps,
+		alert(deps, {
+			headline: 'A donor-advised fund grant was created with no gift recorded against it',
+			body:
+				'Chariot created the grant and the gift could not be written here, so the donor was told ' +
+				'it did not go through. The fund will still pay the grant, and nothing in this deployment ' +
+				'will record it when it does.',
+			facts: [
+				{ label: 'Grant', value: created.value.providerTxnId },
+				{ label: 'Amount', value: `$${majorText(total, 'USD')}` },
+				{ label: 'Reason', value: written.detail }
+			],
+			action: 'Find the grant in the Chariot dashboard and record the gift by hand.'
+		})
+	);
+	return refuse(
+		form,
+		'internal_error',
+		`The gift could not be recorded: ${written.detail}`,
+		'This is a fault in this deployment rather than anything about the request, and an operator ' +
+			'has been told. The cause is in this deployment’s logs (the Cloudflare dashboard, or ' +
+			'`pnpm run logs` from a checkout).'
+	);
+}
+
+/** the figures of the gift already recorded against this intent, or `null` where none reads back. */
+async function recordedQuote(
+	db: Db,
+	processor: ProcessorName,
+	intent: Intent
+): Promise<Quote | null> {
+	try {
+		const [row] = await db
+			.select({ totalMinor: donation.totalMinor, feeMinor: donation.feeMinor })
+			.from(payment)
+			.innerJoin(donation, eq(payment.donationId, donation.id))
+			.where(and(eq(payment.provider, processor), eq(payment.providerTxnId, intent.providerTxnId)))
+			.limit(1);
+		return row === undefined
+			? null
+			: { paymentToken: intent.paymentToken, totalMinor: row.totalMinor, feeMinor: row.feeMinor };
+	} catch (error) {
+		console.error('a recorded gift could not be read back:', error);
+		return null;
+	}
+}
+
+/**
+ * an authorized grant total as the gift and the fee in it, or `null` where the fee would be the whole
+ * of it.
+ *
+ * covered, the fee is `estimateDeductedFee` on the total — Chariot's rate rounded up to a whole
+ * dollar — which is the inverse of the gross-up the form showed: a total `estimateFee` produced for
+ * a gift splits back into that gift and that fee exactly, and a total the donor changed splits at the
+ * same rate. not covered, the whole total is the gift and the fee recorded is zero, as `price` below
+ * records it.
+ */
+function splitGrant(
+	totalMinor: number,
+	coversFee: boolean,
+	rule: Parameters<typeof estimateDeductedFee>[1]
+): { readonly feeMinor: number } | null {
+	if (!coversFee) return { feeMinor: 0 };
+	const deducted = estimateDeductedFee(totalMinor, rule);
+	return deducted === null ? null : { feeMinor: deducted.feeMinor };
+}
+
+/**
+ * a Create Grant failure as one of this path's own.
+ *
+ * the three a donor acts on are the fund's: an approval past its window (`authorization_expired`,
+ * from Chariot's 410), an approval Chariot holds nothing for (`not_found`, its 404 — a body naming
+ * the wrong session, so `invalid_request` and never a claim that it expired), and an amount the fund
+ * will not grant (`invalid_request`, carrying Chariot's reason — the adapter's own local refusals
+ * cannot reach it, because the parser and the checks above refuse those figures first). a call whose
+ * outcome is unknown (`unreachable`) is retryable, and never says nothing was given. everything else
+ * is what any single gift's processor failure answers.
+ */
+function grantRefusal(form: FormRecord, reason: string, detail: string): QuoteResult {
+	if (reason === 'authorization_expired') {
+		return refuse(
+			form,
+			'daf_authorization_expired',
+			'The approval in the fund’s window expired before the grant could be created, so nothing ' +
+				'was given.',
+			'Open the fund’s window again and approve the gift; an approval is good for 15 minutes.'
+		);
+	}
+	if (reason === 'not_found') {
+		return refuse(
+			form,
+			'invalid_request',
+			'The fund’s approval for this gift couldn’t be found, so nothing was given.',
+			'Approve the gift again in the fund’s window.'
+		);
+	}
+	if (reason === 'unreachable') {
+		return refuse(
+			form,
+			'payments_unavailable',
+			detail,
+			'Your fund may already have the grant request. Try again in a moment — the same approval ' +
+				'sends it at most once.'
+		);
+	}
+	if (reason === 'invalid_request') {
+		const said = fundsReason(detail);
+		return refuse(
+			form,
+			'daf_grant_declined',
+			said === null
+				? 'Your fund didn’t approve this gift, so nothing was given.'
+				: `Your fund didn’t approve this gift: ${said}`,
+			'Give an amount the fund allows — at least its minimum and no more than the balance ' +
+				'available — through the fund’s window.'
+		);
+	}
+	return paymentRefusal(form, 'daf', 'one_time', reason, detail);
+}
+
+/**
+ * the fund's own words out of the adapter's sentence, which names the processor and is written for
+ * the deployment's log. `classifyStatus` in ../payments/chariot.ts ends every failure it sorts with
+ * this marker and the quoted problem body.
+ */
+function fundsReason(detail: string): string | null {
+	const marker = 'Chariot said: ';
+	const at = detail.lastIndexOf(marker);
+	return at === -1 ? null : detail.slice(at + marker.length);
+}
+
+/**
  * the cause a gift is credited to, decided from the form record and the body together.
  *
  * the two halves are asymmetric on purpose, and it is the asymmetry `Program` in
@@ -678,7 +996,7 @@ function readTurnstileSiteKey(env: unknown): string | undefined {
 /**
  * a `PaymentFailureReason` as one of this path's own.
  *
- * three of the ten are the processor being unable to answer well, and they are the ones a donor
+ * three of them are the processor being unable to answer well, and they are the ones a donor
  * acts on by trying again. `not_configured` is a deployment with keys unset, which is the same
  * finding the config ladder already reports under its own code. the rest — a malformed call, a
  * signature, an adapter that threw — are ours, and a donation form has no screen to render about
@@ -737,6 +1055,15 @@ function paymentRefusal(
 		'This is a bug in this app rather than anything about the request or the deployment. The ' +
 			'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
 			'checkout).'
+	);
+}
+
+/** hands a send to `deps.defer`, logging a throw there is nobody left to answer. */
+function later(deps: QuoteDeps, task: Promise<void>): void {
+	deps.defer(
+		task.catch((error: unknown) => {
+			console.error('a message after a donation could not be sent:', error);
+		})
 	);
 }
 

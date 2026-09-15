@@ -68,8 +68,20 @@ export function readReceipt(
 	const fv = 'fv' in state ? state.fv : undefined;
 	if (fv === undefined) {
 		if (last === null) return null;
+		// the one ending that restates its figures rather than keeping them: a fund may grant a
+		// different amount from the one the review step showed, and the grant is what was made.
+		const granted =
+			state.step === 'processing' && state.granted !== undefined
+				? {
+						giftFigure: money(state.granted.giftMinor),
+						feeRowShown: state.granted.feeMinor > 0,
+						feeFigure: state.granted.feeMinor > 0 ? `+ ${money(state.granted.feeMinor)}` : '',
+						totalFigure: money(state.granted.totalMinor)
+					}
+				: {};
 		return {
 			...last,
+			...granted,
 			totalLabel: screen.totalLabel === '' ? last.totalLabel : screen.totalLabel,
 			receiptNote: screen.receiptNote,
 			// no screen reached without a gift value is one the flow answers a fee decision on, so the

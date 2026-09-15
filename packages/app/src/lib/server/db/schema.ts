@@ -1388,8 +1388,11 @@ export type PaymentDirection = (typeof PAYMENT_DIRECTIONS)[number];
  * rails indistinguishable on the row afterwards. there is no third answer available — the column
  * is NOT NULL, and `Settlement.method`'s null in ../payments/provider.ts means "the settlement
  * named no rail", which leaves the row keeping whatever opened it rather than recording nothing.
+ *
+ * `daf` is how money arrives from a donor-advised fund: a grant the fund pays out, not a charge
+ * on anything the donor holds.
  */
-export const PAYMENT_METHODS = ['cash', 'check', 'card', 'ach', 'paypal', 'venmo'] as const;
+export const PAYMENT_METHODS = ['cash', 'check', 'card', 'ach', 'paypal', 'venmo', 'daf'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 /**
@@ -1402,8 +1405,11 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
  * the two columns answer different questions — who moved the money, and how it arrived — and a
  * member here would give one processor two spellings, which is what `payment_provider_txn_idx`
  * below would then be keyed on.
+ *
+ * `chariot` is the processor that carries a `daf` gift; the grant id it mints is the row's
+ * `provider_txn_id`.
  */
-export const PAYMENT_PROVIDERS = ['stripe', 'paypal', 'manual'] as const;
+export const PAYMENT_PROVIDERS = ['stripe', 'paypal', 'chariot', 'manual'] as const;
 export type PaymentProviderName = (typeof PAYMENT_PROVIDERS)[number];
 
 /**

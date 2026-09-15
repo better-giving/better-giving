@@ -150,17 +150,17 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 
 	return {
 		loadConfig: createLoadConfig(origin),
-		checkout: (config, mount, onRail, onUnavailable, boot) => {
+		checkout: (config, mount, onRail, onUnavailable, boot, fund) => {
 			// the return this gift is resuming, where this form is the one that sent the donor away.
 			// read here rather than where `post` is built, because the answer is per form and per
 			// boot, and neither is known until an element asks.
 			const resumeToken = returned(config.formId, boot);
-			// the two reports the payment surface makes, passed straight through. nothing is decided
+			// the three reports the payment surface makes, passed straight through. nothing is decided
 			// here — the adapter behind ./surface.ts has already turned its own processor's word into
 			// one of this deployment's rails or into `null`, and the sentence a donor reads when
 			// nothing came up is written there too, next to what it knows about why.
 			// ../element.ts is what turns each report into an event the flow accepts.
-			const surface = createPaymentSurface(config, mount, onRail, onUnavailable);
+			const surface = createPaymentSurface(config, mount, onRail, onUnavailable, fund);
 			// the quote port, wrapped so the provider's own fields learn what the server just
 			// decided. nothing is decided here: the total is the server's and the payer is the one
 			// the request was made for, and both are handed on exactly as they came back.
@@ -184,6 +184,8 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 				// donor committed to it and each adapter behind ./surface.ts is what turns it into
 				// the shape its own processor's surface is drawn in.
 				cadence: surface.cadence,
+				// the fund's reading, passed straight through for the reason the cadence is.
+				offerFund: surface.offerFund,
 				// the card letting go of the surface built for this configuration, and it is this
 				// surface's own: a second gift is a second call here, so a door shared between them
 				// would stop the live one on the orphan's behalf.

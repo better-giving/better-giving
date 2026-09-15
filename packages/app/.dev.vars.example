@@ -4,7 +4,7 @@
 # `pnpm preview` read it; a deployed Worker never does, and no command here
 # uploads it. Setting a value on a deployment is a separate act.
 #
-# All seventeen are set the same way there: each is a plain Worker var. Type it
+# All twenty-one are set the same way there: each is a plain Worker var. Type it
 # on a console fold, read it back or change it on the Worker's Variables and
 # Secrets page in the Cloudflare dashboard, or set it from a terminal by
 # appending `--var NAME:value` to `pnpm run deploy` — `pnpm run deploy:vars`
@@ -14,10 +14,10 @@
 # None of them is a Worker secret, and that is deliberate: Cloudflare never
 # returns a secret's value, so a console fold could only draw a mask over one
 # and an operator could never check what they pasted. Anyone who can open this
-# Cloudflare account can read all seventeen, which was already true of the
+# Cloudflare account can read all twenty-one, which was already true of the
 # account holding them.
 #
-# An eighteenth name exists and is not below: CONSOLE_TOKEN, the operator
+# A twenty-second name exists and is not below: CONSOLE_TOKEN, the operator
 # console's session. It is a secret, and nothing you do sets it — `pnpm run
 # console` mints one and writes it to a deployment as a Worker secret,
 # it lasts twelve hours, and connecting a second console replaces it, which is
@@ -232,7 +232,7 @@ TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"
 # STRIPE_WEBHOOK_SECRET=""
 
 # PayPal — the org's own account, and the second processor a deployment may
-# be configured with. Either processor's pair finishes the Payments job on its
+# be configured with. Any processor's pair finishes the Payments job on its
 # own: a deployment holding these two and no Stripe key is set up, and the same
 # in reverse (src/lib/server/config/readiness.ts).
 #
@@ -264,3 +264,23 @@ TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"
 # PAYPAL_CLIENT_SECRET=""
 # PAYPAL_WEBHOOK_ID=""
 # PAYPAL_CHARITY_RATE_APPROVED=""
+
+# Chariot — the org's own account, and how a donor gives from a donor-advised
+# fund. Its pair finishes the Payments job on its own, as either other
+# processor's does: CHARIOT_API_KEY and CHARIOT_CONNECT_ID, with no Stripe or
+# PayPal key at all (src/lib/server/config/readiness.ts).
+#
+# CHARIOT_API_URL unset means the live address, https://api.givechariot.com.
+# Chariot's sandbox is https://sandboxapi.givechariot.com, and a sandbox key
+# needs it set.
+#
+# CHARIOT_CONNECT_ID and CHARIOT_WEBHOOK_SECRET are not typed: the console's
+# Chariot section writes both. The Connect id is not a credential — the donor's
+# page carries it, exactly as STRIPE_PUBLISHABLE_KEY. Without the webhook
+# secret, a grant the fund pays is never heard about and never reaches your
+# books. A local dev server has no https address Chariot can reach, so it stays
+# unset here.
+# CHARIOT_API_KEY=""
+# CHARIOT_API_URL=""
+# CHARIOT_CONNECT_ID=""
+# CHARIOT_WEBHOOK_SECRET=""

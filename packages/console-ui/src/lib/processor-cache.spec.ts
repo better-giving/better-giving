@@ -23,6 +23,10 @@ vi.mock('../api/client', () => ({
 		binary.runs += 1;
 		return binary.run;
 	},
+	chariotRun: async () => {
+		binary.runs += 1;
+		return binary.run;
+	},
 	readPayments: () => {
 		binary.payments += 1;
 		return binary.failPayments ? Promise.reject(new Error('unanswered')) : Promise.resolve({});

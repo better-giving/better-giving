@@ -47,6 +47,12 @@ const paypalPair: ConfigEnv = {
 	PAYPAL_CLIENT_SECRET: 'EC-client-secret'
 };
 
+/** the pair a donor-advised fund's gift is taken on. */
+const chariotPair: ConfigEnv = {
+	CHARIOT_API_KEY: 'chariot-api-key',
+	CHARIOT_CONNECT_ID: 'live_connect-id'
+};
+
 const facts = (over: Partial<SetupFacts> = {}): SetupFacts => ({
 	password: true,
 	profile: { ...filledIn, notificationEmail: 'alerts@example.org' } as OrgProfile,
@@ -107,6 +113,17 @@ describe('one job at a time left undone', () => {
 		const { PAYPAL_CLIENT_SECRET: _secret, ...noSecret } = paypalPair;
 		expect(line({ config: { ...mailSet, ...noId } }, 'payments').state).toBe('todo');
 		expect(line({ config: { ...mailSet, ...noSecret } }, 'payments').state).toBe('todo');
+	});
+
+	it("reads payments done on Chariot's pair with neither other processor's key", () => {
+		// no webhook secret and no address: the address unset is the live one, and the secret is
+		// what hears a grant settle rather than what creates one.
+		expect(line({ config: { ...mailSet, ...chariotPair } }, 'payments').state).toBe('ready');
+	});
+
+	it("holds payments incomplete on Chariot's key without its connect id", () => {
+		const { CHARIOT_CONNECT_ID: _connect, ...noConnect } = chariotPair;
+		expect(line({ config: { ...mailSet, ...noConnect } }, 'payments').state).toBe('todo');
 	});
 
 	it('holds payments incomplete where neither processor holds a whole pair', () => {

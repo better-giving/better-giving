@@ -18,6 +18,9 @@ const CARD: FeeRule = { percent: 0.029, fixedMinor: 30 };
 /** Stripe's US bank-debit price at the time of writing: 0.8% capped at $5.00, no flat charge. */
 const ACH: FeeRule = { percent: 0.008, fixedMinor: 0, capMinor: 500 };
 
+/** a donor-advised fund grant through Chariot: 2.9%, no flat charge, rounded up to a whole dollar. */
+const DAF: FeeRule = { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 };
+
 /** unwraps an estimate that must have been computable, reporting the rule if it was not. */
 function estimated(amountMinor: number, rule: FeeRule) {
 	const estimate = estimateFee(amountMinor, rule);
@@ -155,6 +158,13 @@ describe('estimateFee', () => {
 		});
 	});
 
+	it('rounds a covered fee up to the rule’s step', () => {
+		// $50.00 grosses up to $51.50, a $1.50 fee, which the fund's processor rounds to $2.00.
+		expect(estimated(5000, DAF)).toEqual({ feeMinor: 200, totalMinor: 5200 });
+		// $100.00 grosses up to $102.99.
+		expect(estimated(10_000, DAF)).toEqual({ feeMinor: 300, totalMinor: 10_300 });
+	});
+
 	it('reports no estimate rather than a number when the rule cannot be grossed up', () => {
 		// a processor that takes 100% has no gross-up: the equation's denominator is zero and
 		// every larger percentage inverts the sign, which would put a negative fee on the screen
@@ -234,6 +244,35 @@ describe('estimateDeductedFee', () => {
 		expect(estimateDeductedFee(5000, CARD)).toEqual({ feeMinor: 175, netMinor: 4825 });
 	});
 
+	it('rounds a deducted fee up to the rule’s step', () => {
+		// 2.9% of $50.00 is $1.45 and of $100.00 is $2.90; each goes up to the next whole dollar.
+		expect(estimateDeductedFee(5000, DAF)).toEqual({ feeMinor: 200, netMinor: 4800 });
+		expect(estimateDeductedFee(10_000, DAF)).toEqual({ feeMinor: 300, netMinor: 9700 });
+		// 2.9% of $3448.28 is $100.00012: a fraction of a cent past a step is still past it.
+		expect(estimateDeductedFee(344_828, DAF)).toEqual({ feeMinor: 10_100, netMinor: 334_728 });
+	});
+
+	it('leaves a fee already on a step where it is, on both readings', () => {
+		// 20% of $4.00 grosses up to exactly $1.00, and 2% of $100.00 deducts exactly $2.00.
+		const stepped: FeeRule = { percent: 0.2, fixedMinor: 0, roundUpMinor: 100 };
+		expect(estimateFee(400, stepped)).toEqual({ feeMinor: 100, totalMinor: 500 });
+		expect(estimateFee(401, stepped)).toEqual({ feeMinor: 200, totalMinor: 601 });
+		expect(estimateDeductedFee(10_000, { ...stepped, percent: 0.02 })).toEqual({
+			feeMinor: 200,
+			netMinor: 9800
+		});
+	});
+
+	it('charges a covered total no more than the gift it was grossed up from', () => {
+		// the covered total is itself a gift the processor prices, and what it keeps of that total
+		// must be the gift the donor chose — a rounded fee that crossed another step on the larger
+		// total would leave the org short by a whole step.
+		for (let amountMinor = 100; amountMinor <= 20_000; amountMinor += 37) {
+			const { totalMinor } = estimated(amountMinor, DAF);
+			expect(estimateDeductedFee(totalMinor, DAF)?.netMinor).toBe(amountMinor);
+		}
+	});
+
 	it('stops the proportional part at the cap, and leaves it alone below one', () => {
 		// the same bound the gross-up honours, applied to the gift rather than to a total: 0.8% of
 		// $1000.00 is $8.00 and the rail takes $5.00. read as a bound on the whole fee it would also
@@ -301,7 +340,11 @@ describe('estimateDeductedFee', () => {
 			[5000, { percent: MAX_FEE_PERCENT * 1.02, fixedMinor: 0 }],
 			[5000, { percent: 0.029, fixedMinor: 30.5 }],
 			[5000, { percent: 0.008, fixedMinor: 0, capMinor: 500.5 }],
-			[5000, { percent: 0.008, fixedMinor: 0, capMinor: -500 }]
+			[5000, { percent: 0.008, fixedMinor: 0, capMinor: -500 }],
+			[5000, { percent: 0.029, fixedMinor: 0, roundUpMinor: 0 }],
+			[5000, { percent: 0.029, fixedMinor: 0, roundUpMinor: -100 }],
+			[5000, { percent: 0.029, fixedMinor: 0, roundUpMinor: 0.5 }],
+			[5000, { percent: 0.029, fixedMinor: 0, roundUpMinor: Number.NaN }]
 		] as const) {
 			expect(estimateDeductedFee(amountMinor, rule)).toBeNull();
 			expect(estimateFee(amountMinor, rule)).toBeNull();

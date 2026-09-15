@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { UNGROUPED_VARS } from './deploy-vars';
 import type { SecretGroup } from './secret-groups';
 import {
+	CHARIOT_GROUP,
 	MAIL_GROUP,
 	MASKED_VALUES,
 	MINTED_BY_CONSOLE,
@@ -52,6 +53,15 @@ describe('the names a group is typed through', () => {
 	});
 });
 
+describe('the values the console mints or fetches', () => {
+	it('leaves the Chariot group with the key and the address to type', () => {
+		// the connect id is fetched with the key and the secret minted for the subscription the press
+		// made, so neither has a box.
+		const chariot = SECRET_GROUPS.find((one) => one.id === CHARIOT_GROUP) as SecretGroup;
+		expect(typedNames(chariot, MINTED_BY_CONSOLE)).toEqual(['CHARIOT_API_KEY', 'CHARIOT_API_URL']);
+	});
+});
+
 describe('the names a press carries a value for', () => {
 	it('leaves the sign-in group with the password alone, which is the one box it draws', () => {
 		// the reading this exists for. `BETTER_AUTH_SECRET` is minted by the console and gets no box
@@ -85,7 +95,7 @@ describe('the names a press carries a value for', () => {
 	});
 });
 
-describe('the groups the seventeen are set in', () => {
+describe('the groups the twenty-one are set in', () => {
 	it('covers the enumeration exactly, each name in one group or named as having none', () => {
 		const grouped = SECRET_GROUPS.flatMap((group) => group.names);
 		expect([...grouped, ...UNGROUPED_VARS].sort()).toEqual([...DEPLOY_VARS].sort());
@@ -94,7 +104,7 @@ describe('the groups the seventeen are set in', () => {
 });
 
 describe('the boxes that arrive masked', () => {
-	it('is the four values reading over a shoulder is enough to take, and no others', () => {
+	it('is the five values reading over a shoulder is enough to take, and no others', () => {
 		// what makes a value one of these is what somebody could do with it after reading it off the
 		// screen, and the only place that judgement is recorded is the list itself — so this case is
 		// what makes changing the list deliberate.
@@ -102,17 +112,19 @@ describe('the boxes that arrive masked', () => {
 			'ADMIN_PASSWORD',
 			'SMTP_PASSWORD',
 			'STRIPE_SECRET_KEY',
-			'PAYPAL_CLIENT_SECRET'
+			'PAYPAL_CLIENT_SECRET',
+			'CHARIOT_API_KEY'
 		]);
 	});
 
-	it('leaves the other thirteen of the seventeen legible, the two public halves among them', () => {
-		// held over the enumeration, so an eighteenth value lands unmasked and this case is where that
-		// shows. the two named are the ones worth asserting: each stands beside a masked box in the
+	it('leaves the other sixteen of the twenty-one legible, the three public halves among them', () => {
+		// held over the enumeration, so a twenty-second value lands unmasked and this case is where that
+		// shows. the three named are the ones worth asserting: each stands beside a masked box in the
 		// same fold and carries a word that reads like a credential, and ./secret-groups.ts argues why
-		// neither is one.
+		// none is one.
 		expect([...DEPLOY_VARS].filter(isMasked).sort()).toEqual([...MASKED_VALUES].sort());
 		expect(isMasked('STRIPE_PUBLISHABLE_KEY')).toBe(false);
 		expect(isMasked('PAYPAL_CLIENT_ID')).toBe(false);
+		expect(isMasked('CHARIOT_CONNECT_ID')).toBe(false);
 	});
 });

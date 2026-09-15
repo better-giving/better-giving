@@ -10,6 +10,12 @@ const PAYPAL_CONFIGURED = {
 	PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
 };
 
+const CHARIOT_HELD = {
+	CHARIOT_API_KEY: 'notarealchariotkey',
+	CHARIOT_CONNECT_ID: 'notarealconnectid',
+	CHARIOT_WEBHOOK_SECRET: 'notarealsigningsecret'
+};
+
 const CONFIGURED = {
 	STRIPE_SECRET_KEY: 'sk_test_notarealkey',
 	STRIPE_WEBHOOK_SECRET: 'whsec_notarealsecret'
@@ -191,7 +197,8 @@ describe('createPaymentProviders', () => {
 		['neither', {}, []],
 		['Stripe alone', CONFIGURED, ['stripe']],
 		['PayPal alone', PAYPAL_CONFIGURED, ['paypal']],
-		['both', { ...CONFIGURED, ...PAYPAL_CONFIGURED }, ['stripe', 'paypal']]
+		['both', { ...CONFIGURED, ...PAYPAL_CONFIGURED }, ['stripe', 'paypal']],
+		['Chariot’s values alone', CHARIOT_HELD, ['chariot']]
 	])('names what a deployment holding %s can charge on', (_label, source, expected) => {
 		expect(createPaymentProviders(source).configured).toEqual(expected);
 	});
@@ -239,7 +246,7 @@ describe('createPaymentProviders', () => {
 	/**
 	 * a rail selects its own processor's adapter and no caller says which.
 	 *
-	 * the table is `processorOf` at the port, which reads the two lists in
+	 * the table is `processorOf` at the port, which reads the three lists in
 	 * packages/form/src/embed/rails.ts. a caller choosing by hand is a caller holding a second copy
 	 * of it, and the copy is what offers a donor a rail the adapter that answers cannot mint.
 	 */
@@ -287,6 +294,95 @@ describe('createPaymentProviders', () => {
  * usable processor at all, which is the only arm `publishedConfig` in ../forms/published-config.ts
  * reads it on.
  */
+describe('Chariot', () => {
+	/** a Create Grant the adapter answers, recording the address it was sent to. */
+	function grantAddress(): string[] {
+		const urls: string[] = [];
+		vi.stubGlobal('fetch', async (input: Request | string | URL) => {
+			urls.push(input instanceof Request ? input.url : String(input));
+			return Response.json({ id: 'grant-1' }, { status: 201 });
+		});
+		return urls;
+	}
+
+	const GRANT = {
+		amountMinor: 5000,
+		currency: 'USD',
+		method: 'daf',
+		idempotencyKey: 'attempt-1',
+		authorizedSessionId: 'session-1'
+	} as const;
+
+	it('hands the DAF rail to Chariot’s adapter, on the live address where none is set', async () => {
+		const urls = grantAddress();
+
+		const result = await createPaymentProviders(CHARIOT_HELD).forRail('daf').createIntent(GRANT);
+
+		expect(result.ok && result.value.providerTxnId).toBe('grant-1');
+		expect(urls).toEqual(['https://api.givechariot.com/v1/grants']);
+	});
+
+	it('calls the address the deployment holds', async () => {
+		const urls = grantAddress();
+
+		await createPaymentProviders({
+			...CHARIOT_HELD,
+			CHARIOT_API_URL: 'https://sandboxapi.givechariot.com'
+		})
+			.for('chariot')
+			.createIntent(GRANT);
+
+		expect(urls).toEqual(['https://sandboxapi.givechariot.com/v1/grants']);
+	});
+
+	it('refuses Chariot as unconfigured without its key, naming it', async () => {
+		const { CHARIOT_API_KEY: _, ...short } = CHARIOT_HELD;
+
+		const result = await createPaymentProviders(short).for('chariot').createIntent(GRANT);
+
+		expect(result.ok === false && result.reason).toBe('not_configured');
+		expect(result.ok === false ? result.detail : '').toContain('CHARIOT_API_KEY');
+		expect(createPaymentProviders(short).configured).toEqual([]);
+	});
+
+	// the signing secret is read by the one arm that verifies, as Stripe's and PayPal's are.
+	it('refuses to verify a delivery with the signing secret named when it is unset', async () => {
+		const { CHARIOT_WEBHOOK_SECRET: _, ...unsigned } = CHARIOT_HELD;
+
+		const result = await createPaymentProviders(unsigned)
+			.for('chariot')
+			.verifyEvent({
+				body: '{}',
+				headers: { 'chariot-webhook-signature': 't=2024-01-19T18:48:56Z,v1=00' }
+			});
+
+		expect(result.ok === false && result.reason).toBe('not_configured');
+		expect(result.ok === false ? result.detail : '').toContain('CHARIOT_WEBHOOK_SECRET');
+	});
+
+	it('serves a form on Chariot’s values, handing the browser the Connect id', () => {
+		expect(servedProcessors(CHARIOT_HELD).providers).toEqual([
+			{ name: 'chariot', publishableKey: 'notarealconnectid' }
+		]);
+	});
+
+	it('names Chariot for a deployment part-way through Chariot’s values', () => {
+		const fix = servedProcessors({ CHARIOT_API_KEY: 'notarealchariotkey' }).fix;
+
+		expect(fix).toContain('Chariot');
+		expect(fix).not.toContain('Stripe');
+	});
+
+	// the console refuses Chariot's values by command, since a key set that way holds no event
+	// subscription and no signing secret; the fix sends an operator to the page that makes both.
+	it('sends an operator setting Chariot up to the console, and names no command', () => {
+		const fix = servedProcessors({ CHARIOT_API_KEY: 'notarealchariotkey' }).fix;
+
+		expect(fix).toContain('better-giving start');
+		expect(fix).not.toContain('pnpm run deploy --var');
+	});
+});
+
 describe('servedProcessors — the fix', () => {
 	// the operator who filled one of PayPal's two boxes is setting PayPal up, whatever else is
 	// unset. a sentence naming Stripe's dashboard sends them somewhere they have no account.
@@ -314,6 +410,6 @@ describe('servedProcessors — the fix', () => {
 
 		expect(fix).toContain('Stripe');
 		expect(fix).toContain('PayPal');
-		expect(fix).toContain('Either processor is enough on its own.');
+		expect(fix).toContain('Any one processor is enough on its own.');
 	});
 });

@@ -40,6 +40,20 @@ function stripeOnly(rails: Partial<Record<PaymentMethod, RailStanding>> = {}): R
 }
 
 describe('offeredRails', () => {
+	/**
+	 * a DAF grant is offered only on a Chariot reading, and a deployment holding the other two holds
+	 * none. the unreadable PayPal account is the case that matters — it widens its own rails whole,
+	 * and `daf` must not be one of them.
+	 */
+	it('offers no DAF grant on the other processors’ readings, read or not', () => {
+		const both: RailChargeabilities = {
+			stripe: read({}),
+			paypal: { state: 'unreadable', detail: 'PayPal could not be reached.' }
+		};
+
+		expect(offeredRails(both)).not.toContain('daf');
+	});
+
 	it('offers every rail this account answered for where it is approved for each', () => {
 		expect(offeredRails(stripeOnly())).toEqual([...STRIPE_RAILS]);
 	});

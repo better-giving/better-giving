@@ -6,10 +6,12 @@ import type {
 } from '@better-giving/operator/console/recurring';
 import { consoleJson } from '$lib/server/console/surface';
 import { createPaymentProviders, processorSetupFix } from '$lib/server/payments/factory';
+import type { PaymentProcessor } from '@better-giving/operator/console/payments';
+import { CONSOLE_PROCESSORS } from '$lib/server/console/processors';
 import {
 	PROCESSOR_LABELS,
 	PROCESSOR_NAMES,
-	type ProcessorName
+	takesRepeatingGifts
 } from '$lib/server/payments/provider';
 import {
 	readRecurringProvisions,
@@ -31,13 +33,15 @@ import type { Route } from './+types/console.recurring';
 // pasted, because there is nothing on the deployment yet to ask; by the time this one is pressed
 // there is.
 //
-// **the read answers for every processor this deployment holds a key for, and for no other**, and
-// so does a press that names none. both adapters take the repeating arms, so a press fixed on
-// one processor would leave a deployment set up on the other with nothing that could move its real
-// account — and a standing reported for an account this deployment holds no key for would be a row
-// drawn over boxes nobody has filled. which of the two a processor is in is `Processors.configured`
-// in $lib/server/payments/factory.ts, read through the same entry point the port's own refusal is
-// decided by, so the two can never mean different deployments.
+// **the read answers for every processor this deployment holds a key for that takes repeating
+// gifts, and for no other**, and so does a press that names none. Stripe and PayPal both take the
+// repeating arms, so a press fixed on one would leave a deployment set up on the other with nothing
+// that could move its real account — and a standing reported for an account this deployment holds
+// no key for would be a row drawn over boxes nobody has filled. whether a processor holds a key is
+// `Processors.configured` in $lib/server/payments/factory.ts, read through the same entry point the
+// port's own refusal is decided by, so the two can never mean different deployments. Chariot takes
+// no repeating gifts (`takesRepeatingGifts` in $lib/server/payments/provider.ts), so it has no line
+// on the read and a press naming it is refused like any other name.
 //
 // **the press is one press, and the body it takes is the one account it is about.** a press naming
 // nothing sets up every configured processor that needs it, because a donor is offered a repeating
@@ -103,7 +107,7 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 
 	const report: RecurringSetupReport = {
 		outcome: run.outcome,
-		processors: PROCESSOR_NAMES.flatMap((processor): ProcessorRecurringSetup[] => {
+		processors: CONSOLE_PROCESSORS.flatMap((processor): ProcessorRecurringSetup[] => {
 			const setup = run.setups[processor];
 			if (setup === undefined) return [];
 			return [{ processor, label: PROCESSOR_LABELS[processor], ...setup }];
@@ -131,7 +135,7 @@ export async function loader({ context }: Route.LoaderArgs): Promise<Response> {
 	const provisions = await readRecurringProvisions(processors);
 
 	const report: RecurringReport = {
-		processors: PROCESSOR_NAMES.flatMap((processor): ProcessorRecurring[] => {
+		processors: CONSOLE_PROCESSORS.flatMap((processor): ProcessorRecurring[] => {
 			const reading = provisions[processor];
 			if (reading === undefined) return [];
 			return [{ processor, label: PROCESSOR_LABELS[processor], reading }];
@@ -143,7 +147,7 @@ export async function loader({ context }: Route.LoaderArgs): Promise<Response> {
 
 /** what the press names, or why the body naming it could not be read. */
 type NamedProcessor =
-	| { readonly ok: true; readonly processor: ProcessorName | null }
+	| { readonly ok: true; readonly processor: PaymentProcessor | null }
 	| { readonly ok: false; readonly error: string; readonly message: string };
 
 /** where a caller reads what this press takes, on every refusal of a body. */
@@ -178,7 +182,7 @@ async function namedProcessor(request: Request): Promise<NamedProcessor> {
 	const named = (body as Record<string, unknown>).processor;
 	if (named === undefined || named === null) return { ok: true, processor: null };
 
-	const processor = PROCESSOR_NAMES.find((name) => name === named);
+	const processor = CONSOLE_PROCESSORS.filter(takesRepeatingGifts).find((name) => name === named);
 	if (processor === undefined)
 		return {
 			ok: false,

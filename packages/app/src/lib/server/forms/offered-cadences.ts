@@ -69,10 +69,12 @@ const STANDING_CADENCES: Readonly<Record<RecurringGiftStanding, readonly Frequen
  * them nothing they can tell. so a processor nobody could reach narrows the form rather than
  * widening it.
  *
- * every configured processor has to offer a cadence for a donor to be shown it, and a deployment
- * that can charge on none offers one-time alone. that is the same direction: `FormConfig` in
- * packages/form/src/v1.ts carries one flat list for the whole form, a donor picks a cadence before
- * a rail, and CLAUDE.md's repeating-gifts rule is that a cadence this deployment cannot charge is
+ * every configured processor that takes a repeating gift has to offer a cadence for a donor to be
+ * shown it, and a deployment that can charge on none of those offers one-time alone — Chariot is not
+ * one and is never asked (`takesRepeatingGifts` in ../payments/provider.ts), so a deployment holding
+ * only Chariot offers one-time and one holding it beside Stripe offers what Stripe can collect. that
+ * is the same direction: `FormConfig` in packages/form/src/v1.ts carries one flat list for the whole
+ * form, a donor picks a cadence before a rail, and CLAUDE.md's repeating-gifts rule is that a cadence this deployment cannot charge is
  * not offered in the first place — so the narrow reading is the one that can honour it.
  */
 export function offeredCadences(provisions: RecurringProvisions): readonly Frequency[] {

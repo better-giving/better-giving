@@ -28,7 +28,9 @@ import { readOrgProfile } from '../org/queries';
  *   already_posted — the books already hold this payment. a redelivery, refused by the database.
  *   unmatched      — a verified settlement for a transaction this deployment has no payment row
  *                    for, or a collection whose commitment cannot be opened here. nothing was
- *                    written and an operator was told.
+ *                    written, and an operator was told wherever the transaction names a gift of
+ *                    this deployment's — a Chariot grant names none, so one that is not this
+ *                    deployment's is answered quietly.
  *   unactionable   — a delivery that verified and cannot be finished, where repeating it reaches
  *                    the same answer: the processor could not be read, or money moved and what is
  *                    known about it is not something the ledger can hold — a settlement carrying

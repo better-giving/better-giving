@@ -1,3 +1,4 @@
+import { CHARIOT_WEBHOOK_PATH } from '@better-giving/operator/chariot/webhook-subscription';
 import { PAYPAL_WEBHOOK_PATH } from '@better-giving/operator/paypal/webhook-listener';
 import { webhookEndpointUrl } from '@better-giving/operator/stripe/webhook-endpoint';
 import type { ProcessorName } from './provider';
@@ -15,12 +16,13 @@ import type { ProcessorName } from './provider';
 // learned from the request that reached it. a default would be a wrong answer wearing a right one.
 
 /**
- * how each processor's address is built, total over `ProcessorName` — so a third processor is a
- * compile error rather than an address a caller falls back to guessing.
+ * how each processor's address is built, total over `ProcessorName` — so a processor added without
+ * an entry is a compile error rather than an address a caller falls back to guessing.
  */
 const ADDRESS: Readonly<Record<ProcessorName, (origin: string) => string>> = Object.freeze({
 	stripe: webhookEndpointUrl,
-	paypal: (origin) => `${origin}${PAYPAL_WEBHOOK_PATH}`
+	paypal: (origin) => `${origin}${PAYPAL_WEBHOOK_PATH}`,
+	chariot: (origin) => `${origin}${CHARIOT_WEBHOOK_PATH}`
 });
 
 /** the address this deployment answers one processor's deliveries on. */

@@ -138,7 +138,7 @@ export interface ReceiptContribution {
  * the donor was asked in; a lookup here would be a second copy of it, one word apart, printing a
  * true document for half of them.
  *
- * shared with ./tribute.tsx, so the receipt and the notice cannot word one gift two ways.
+ * shared with ./tribute.tsx and ./grant.ts, so no two mails about one gift can word it two ways.
  */
 export interface Dedication {
 	readonly label: string;

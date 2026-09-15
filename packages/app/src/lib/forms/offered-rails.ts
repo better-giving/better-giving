@@ -43,10 +43,10 @@ import type { PaymentMethod } from '@better-giving/form/v1';
  * members are in it: a reader that branched on `card` being here would have to be reopened the day
  * a rail leaves, and the two consumers both take the list whole.
  *
- * more than one processor's rails, and being on this list says nothing about which: `STRIPE_RAILS`
- * and `PAYPAL_RAILS` in `packages/form/src/embed/rails.ts` are where that is written, and a
- * deployment holding one processor narrows to that processor's own rails through the read
- * `offeredRails` in `$lib/server/forms/offered-rails.ts` makes.
+ * more than one processor's rails, and being on this list says nothing about which: `STRIPE_RAILS`,
+ * `PAYPAL_RAILS` and `CHARIOT_RAILS` in `packages/form/src/embed/rails.ts` are where that is
+ * written, and a deployment holding one processor narrows to that processor's own rails through the
+ * read `offeredRails` in `$lib/server/forms/offered-rails.ts` makes.
  */
 export const OFFERED_PAYMENT_METHODS: readonly PaymentMethod[] = [
 	'card',
@@ -54,5 +54,6 @@ export const OFFERED_PAYMENT_METHODS: readonly PaymentMethod[] = [
 	'apple_pay',
 	'google_pay',
 	'paypal',
-	'venmo'
+	'venmo',
+	'daf'
 ];

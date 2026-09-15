@@ -7,24 +7,26 @@ import (
 
 	"github.com/better-giving/console/internal/account"
 	"github.com/better-giving/console/internal/cf"
+	"github.com/better-giving/console/internal/chariot"
 	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/oauth"
 	"github.com/better-giving/console/internal/release"
 )
 
-// the two presses over the seventeen values this deployment is configured with: one sets them and
+// the two presses over the twenty-one values this deployment is configured with: one sets them and
 // takes them off, and one frees a name the deployment is holding as a credential.
 //
 // **what a browser posts is names and values, and a name mapped to `null` is a removal.** setting
 // and removing are one door because they are one patch of the worker's bindings — internal/deployment
 // is where that is argued.
 //
-// **a body is refused in four cases.** internal/release holds the seventeen, and a name off that
+// **a body is refused in four cases.** internal/release holds the twenty-one, and a name off that
 // list is refused here rather than written under whatever the page said — the console's own session
 // credential is on no enumeration and is not reachable through this door. the second is PayPal's
-// three credentials, argued at ./paypalSetUpOnly. the third is a name carrying a blank, which is
-// neither a value the deployment reads nor the removal `null` is. the fourth is the charity-rate
-// switch carrying anything but its one word, argued at ./charityRate.
+// three credentials and Chariot's four values, argued at ./paypalSetUpOnly and ./chariotSetUpOnly.
+// the third is a name carrying a blank, which is neither a value the deployment reads nor the
+// removal `null` is. the fourth is the charity-rate switch carrying anything but its one word,
+// argued at ./charityRate.
 //
 // **every one of them answers 200 carrying how the write went.** each way a write did not happen is
 // a state the fold draws at the control that was pressed, with a sentence and a way out of its own,
@@ -61,9 +63,14 @@ const (
 // deliveries stop verifying with nothing on the screen having said so.
 var paypalSetUpOnly = []string{"PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_WEBHOOK_ID"}
 
+// the names Chariot's set-up press writes (./chariot.go), and that press alone: the Connect id is
+// fetched with the key at the address, and the secret is minted for the subscription the press made,
+// so a write of any of the four here leaves them disagreeing and grants never reading received.
+var chariotSetUpOnly = chariot.SetUpOnly
+
 // how much of a press's body is read before it is a request nobody made.
 //
-// The whole enumeration is the largest thing posted here — seventeen names and their values — and
+// The whole enumeration is the largest thing posted here — twenty-one names and their values — and
 // anything past that is not this page.
 const writtenBytes = 32 << 10
 
@@ -93,6 +100,14 @@ func valuesRoutes(
 				answer(w, http.StatusBadRequest, map[string]string{
 					"error": "this console writes " + name + " only through PayPal's set-up press " +
 						"(POST /api/paypal/setup), which settles the webhook listener beside the pair",
+				})
+				return
+			}
+			if enumerated(chariotSetUpOnly, name) {
+				answer(w, http.StatusBadRequest, map[string]string{
+					"error": "this console writes " + name + " only through Chariot's set-up press " +
+						"(POST /api/chariot/setup), which fetches the Connect and settles the subscription " +
+						"beside the key",
 				})
 				return
 			}
@@ -237,7 +252,7 @@ func enumerated(enumeration []string, name string) bool {
 
 func refuseName(w http.ResponseWriter, name string) {
 	answer(w, http.StatusBadRequest, map[string]string{
-		"error": "this console sets the seventeen values a deployment is configured with, and " +
+		"error": "this console sets the twenty-one values a deployment is configured with, and " +
 			name + " is not one of them",
 	})
 }

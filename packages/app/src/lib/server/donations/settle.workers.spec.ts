@@ -111,7 +111,7 @@ function donor(over: { email?: string | null } = {}): ParsedContact {
 /** the pending gift a quote leaves behind, written by the module that writes it in production. */
 async function pendingGift(
 	over: {
-		method?: 'card' | 'apple_pay' | 'ach' | 'paypal';
+		method?: 'card' | 'apple_pay' | 'ach' | 'paypal' | 'daf';
 		/**
 		 * which processor minted the intent, written onto the row exactly as ./record.ts writes it.
 		 *
@@ -914,12 +914,13 @@ describe('settleDelivery() — what the donor’s message cannot do', () => {
 });
 
 describe('failureIsNewsToTheDonor()', () => {
-	// the whole of the rule, stated as the four rails rather than as the two answers: a rail added
+	// the whole of the rule, stated rail by rail rather than as the two answers: a rail added
 	// to `PAYMENT_METHODS` is a decision somebody has to make here, and an `it.each` over the list
 	// is where they will be made to make it.
 	it.each([
 		{ rail: 'ach', news: true, why: 'it fails days later, with the donor long gone' },
 		{ rail: 'card', news: false, why: 'the decline was on screen in the donor’s browser' },
+		{ rail: 'daf', news: false, why: 'the donor was told the grant request went to their fund' },
 		{ rail: 'cash', news: false, why: 'staff entered it and no donor session existed' },
 		{ rail: 'check', news: false, why: 'staff entered it and no donor session existed' }
 	] as const)('is $news for $rail — $why', ({ rail, news }) => {
@@ -958,6 +959,138 @@ describe('settleDelivery() — a settlement with no gift behind it', () => {
 		// on the money path.
 		expect(result.ok).toBe(true);
 		expect(mail.sent).toHaveLength(0);
+	});
+});
+
+/**
+ * a grant through Chariot, which names no gift on itself.
+ *
+ * nothing this app sends reaches a grant's metadata, and what a browser wrote there in Chariot's
+ * window is never read back (`readSettlement` in ../payments/chariot.ts answers `{}`), so the grant
+ * id on the row the server bound it to is the whole of how a delivery finds its gift.
+ */
+describe('settleDelivery() — a grant through Chariot', () => {
+	const GRANT_ID = 'grant-settle-1';
+
+	const grant = (over: Partial<Settlement> = {}) =>
+		provider(
+			{ ok: true, value: settledEvent({ providerTxnId: GRANT_ID, type: 'grant.updated' }) },
+			{
+				ok: true,
+				value: settlement({
+					providerTxnId: GRANT_ID,
+					method: 'daf',
+					feeMinor: 290,
+					metadata: {},
+					...over
+				})
+			},
+			'chariot'
+		);
+
+	const pendingGrant = () =>
+		pendingGift({ method: 'daf', processor: 'chariot', providerTxnId: GRANT_ID });
+
+	it('settles the gift the grant id is bound to, with no gift named on the grant', async () => {
+		const gift = await pendingGrant();
+
+		const result = await settleDelivery(deps({ provider: grant() }), DELIVERY);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		const [row] = await db.select().from(payment).where(eq(payment.id, gift.paymentId));
+		expect(row).toMatchObject({ status: 'succeeded', method: 'daf' });
+	});
+
+	it('posts Chariot’s fee after the gift', async () => {
+		const gift = await pendingGrant();
+
+		await settleDelivery(deps({ provider: grant() }), DELIVERY);
+
+		const fee = await groupLines('fee', gift.paymentId);
+		expect(fee?.lines.map((l) => [l.accountId, l.amountMinor]).sort()).toEqual(
+			[
+				[POSTING_ACCOUNTS.processorFees.id, 290],
+				[POSTING_ACCOUNTS.undepositedFunds.id, -290]
+			].sort()
+		);
+	});
+
+	/**
+	 * a grant on the organisation's Chariot account that this deployment never recorded — one given
+	 * through another of the org's Chariot pages — is none of these books' business: answered, and
+	 * asked for again never, since no redelivery makes a row appear.
+	 */
+	it('answers a grant no gift here is bound to, writing nothing and telling nobody', async () => {
+		const mail = mailer();
+
+		const result = await settleDelivery(deps({ email: mail.port, provider: grant() }), DELIVERY);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
+		const [groups] = await db.select({ n: sql<number>`count(*)` }).from(entryGroup);
+		expect(groups?.n).toBe(0);
+		expect(mail.sent).toHaveLength(0);
+	});
+
+	it('posts a redelivered grant update once', async () => {
+		await pendingGrant();
+		await settleDelivery(deps({ provider: grant() }), DELIVERY);
+
+		const again = await settleDelivery(deps({ provider: grant() }), DELIVERY);
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		const [groups] = await db.select({ n: sql<number>`count(*)` }).from(entryGroup);
+		expect(groups?.n).toBe(2);
+	});
+
+	it('thanks the donor for the gift the fund granted, sends no tax receipt, and records that it went', async () => {
+		const gift = await pendingGrant();
+		const mail = mailer();
+
+		await settleDelivery(deps({ email: mail.port, provider: grant() }), DELIVERY);
+
+		const donorMail = mail.sent.filter((m) => m.to === 'ada@example.org');
+		expect(donorMail.map((m) => m.subject)).toEqual(['Hope Foundation received your gift']);
+		// the fixture gift is $100.00 with $3.30 of it the covered fee.
+		expect(donorMail[0]?.text).toContain('96.70');
+		const [row] = await db.select().from(donation).where(eq(donation.id, gift.donationId));
+		expect(row?.receiptSentAt).not.toBeNull();
+	});
+
+	it('reads a cancelled grant cancelled, posting nothing and writing to nobody', async () => {
+		const gift = await pendingGrant();
+		const mail = mailer();
+
+		const result = await settleDelivery(
+			deps({ email: mail.port, provider: grant({ status: 'cancelled', feeMinor: null }) }),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'updated' });
+		const [row] = await db.select().from(payment).where(eq(payment.id, gift.paymentId));
+		expect(row?.status).toBe('cancelled');
+		const [groups] = await db.select({ n: sql<number>`count(*)` }).from(entryGroup);
+		expect(groups?.n).toBe(0);
+		expect(mail.sent).toHaveLength(0);
+	});
+});
+
+/**
+ * a card transaction still has to name its gift, whatever row its id matches: a collection under a
+ * repeating gift carries the same kind of id and names none — the metadata paragraph in
+ * ./settle.ts's header.
+ */
+describe('settleDelivery() — a card transaction that names no gift', () => {
+	it('is answered unnamed, even where a row carries its id', async () => {
+		await pendingGift();
+
+		const result = await settleDelivery(
+			deps({ provider: provider(undefined, { ok: true, value: settlement({ metadata: {} }) }) }),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unnamed' });
+		const [groups] = await db.select({ n: sql<number>`count(*)` }).from(entryGroup);
+		expect(groups?.n).toBe(0);
 	});
 });
 

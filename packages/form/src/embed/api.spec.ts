@@ -114,6 +114,25 @@ describe('minting a quote', () => {
 		expect(failure.fix).toContain('Reset the widget');
 	});
 
+	// the code is what a flow switches on where the words cannot say which screen: an expired fund
+	// approval is answered by opening the fund's window again rather than by the endpoint's sentence.
+	it('carries the endpoint’s own code with the refusal', async () => {
+		stubFetch(
+			json(
+				{
+					error: 'daf_authorization_expired',
+					message: 'Grant session wfs_1 is past its window.',
+					fix: 'Open the fund window again.'
+				},
+				409
+			)
+		);
+
+		const failure = await refusal(createQuote(DEPLOYMENT)(SUBMISSION));
+
+		expect((failure as { code?: string }).code).toBe('daf_authorization_expired');
+	});
+
 	it('says nothing was charged when the endpoint answers no sentence at all', async () => {
 		stubFetch(new Response('<html>502</html>', { status: 502 }));
 
@@ -135,6 +154,23 @@ describe('minting a quote', () => {
 
 		expect(failure.message).toContain('nothing was charged');
 		expect(failure.fix).toContain('Access-Control-Allow-Origin');
+	});
+
+	// a fund's approval is sent again only where the endpoint may have acted without its answer
+	// arriving, and an answer that arrived — however garbled — is not that.
+	it('marks a request that heard nothing back, and only that one', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				throw new TypeError('Failed to fetch');
+			})
+		);
+		const unreached = await refusal(createQuote(DEPLOYMENT)(SUBMISSION));
+		expect((unreached as { unanswered?: boolean }).unanswered).toBe(true);
+
+		stubFetch(new Response('<html>502</html>', { status: 502 }));
+		const answered = await refusal(createQuote(DEPLOYMENT)(SUBMISSION));
+		expect((answered as { unanswered?: boolean }).unanswered).toBeUndefined();
 	});
 
 	it('refuses a 200 whose body is not JSON', async () => {

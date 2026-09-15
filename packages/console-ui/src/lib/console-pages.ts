@@ -20,9 +20,9 @@ import type { ProcessorLink } from './processor-links';
 /**
  * the page each section is drawn on.
  *
- * `payments` is two pages, one per processor, and names Stripe's: a deployment holding either
- * processor's pair takes a gift (./home-sections.ts), so a payments job left undone is one neither
- * page has finished, and Stripe is the first of the two in the rail.
+ * `payments` is a page per processor, and names Stripe's: a deployment holding any processor's pair
+ * takes a gift (./home-sections.ts), so a payments job left undone is one no processor's page has
+ * finished, and Stripe is the first of them in the rail.
  */
 export const SECTION_PAGES: Record<SectionId, string> = {
 	password: '/password',

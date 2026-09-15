@@ -52,7 +52,7 @@ const reading = (over: Partial<HomeReading> = {}): HomeReading => ({
 	...over
 });
 
-/** the same reading with some of the seventeen unset. */
+/** the same reading with some of the twenty-one unset. */
 const without = (...names: readonly string[]): HomeReading =>
 	reading({
 		values: {
@@ -72,13 +72,8 @@ const STRIPE_VALUES = [
 	'STRIPE_WEBHOOK_SECRET'
 ] as const;
 
-/** the same reading with PayPal's own set stored and Stripe's gone, less whatever is named. */
-const onPaypalAlone = (...short: readonly string[]): HomeReading => {
-	const paypal: DeployedVar[] = [
-		{ name: 'PAYPAL_CLIENT_ID', kind: 'value', value: 'A21aa' },
-		{ name: 'PAYPAL_CLIENT_SECRET', kind: 'value', value: 'EKx7' },
-		{ name: 'PAYPAL_WEBHOOK_ID', kind: 'value', value: '1TE12345' }
-	];
+/** the same reading with `rows` stored and Stripe's gone, less whatever is named. */
+const onAlone = (rows: readonly DeployedVar[], short: readonly string[]): HomeReading => {
 	const read = without(...STRIPE_VALUES);
 	const vars = read.values.vars;
 	return {
@@ -88,12 +83,34 @@ const onPaypalAlone = (...short: readonly string[]): HomeReading => {
 				vars.kind === 'read'
 					? {
 							kind: 'read',
-							vars: [...vars.vars, ...paypal.filter((row) => !short.includes(row.name))]
+							vars: [...vars.vars, ...rows.filter((row) => !short.includes(row.name))]
 						}
 					: vars
 		}
 	};
 };
+
+/** the same reading with PayPal's own set stored and Stripe's gone, less whatever is named. */
+const onPaypalAlone = (...short: readonly string[]): HomeReading =>
+	onAlone(
+		[
+			{ name: 'PAYPAL_CLIENT_ID', kind: 'value', value: 'A21aa' },
+			{ name: 'PAYPAL_CLIENT_SECRET', kind: 'value', value: 'EKx7' },
+			{ name: 'PAYPAL_WEBHOOK_ID', kind: 'value', value: '1TE12345' }
+		],
+		short
+	);
+
+/** the same reading with Chariot's own set stored and Stripe's gone, less whatever is named. */
+const onChariotAlone = (...short: readonly string[]): HomeReading =>
+	onAlone(
+		[
+			{ name: 'CHARIOT_API_KEY', kind: 'value', value: 'ch_key' },
+			{ name: 'CHARIOT_CONNECT_ID', kind: 'value', value: 'live_cid' },
+			{ name: 'CHARIOT_WEBHOOK_SECRET', kind: 'value', value: 'whsec' }
+		],
+		short
+	);
 
 const rowOf = (read: HomeReading, id: SectionId) =>
 	readSections(read).find((section) => section.id === id);
@@ -283,7 +300,7 @@ describe('the six sections', () => {
 		expect(stateOf(without('STRIPE_WEBHOOK_SECRET'), 'payments')).toBe('ready');
 	});
 
-	// the two processors are alternatives and neither is the one that counts: an organisation on
+	// the three processors are alternatives and none is the one that counts: an organisation on
 	// PayPal alone holds no Stripe key and is set up, which is the reading the deployment makes and
 	// the one this row is read against.
 	it('read a deployment holding PayPal\u2019s pair and no Stripe key as done', () => {
@@ -292,6 +309,14 @@ describe('the six sections', () => {
 
 	it('read PayPal\u2019s client id without its secret as not done', () => {
 		expect(stateOf(onPaypalAlone('PAYPAL_CLIENT_SECRET'), 'payments')).toBe('todo');
+	});
+
+	it('read a deployment holding Chariot\u2019s pair and no Stripe key as done', () => {
+		expect(stateOf(onChariotAlone(), 'payments')).toBe('ready');
+	});
+
+	it('read Chariot\u2019s key without its connect id as not done', () => {
+		expect(stateOf(onChariotAlone('CHARIOT_CONNECT_ID'), 'payments')).toBe('todo');
 	});
 
 	// the webhook id is the same kind of value the signing secret is: without it a settled charge is

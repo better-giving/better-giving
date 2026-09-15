@@ -4,8 +4,8 @@ import { createPaymentProviders } from '$lib/server/payments/factory';
 import { database, platform } from '../context';
 import type { Route } from './+types/api.paypal.webhook';
 
-// where a settled PayPal payment becomes a gift in the books: the processor's own callback, and the
-// second of the two routes in this app whose caller is a machine belonging to somebody else.
+// where a settled PayPal payment becomes a gift in the books: the processor's own callback, and one
+// of the routes in this app whose caller is a machine belonging to somebody else.
 //
 // it is ./api.stripe.webhook.ts's shape, deliberately and down to the status table, because the two
 // routes make the same decision for two processors and the whole of what differs is which adapter

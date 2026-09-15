@@ -9,15 +9,11 @@ import type {
 import { PAYMENT_METHOD_LABELS } from '@better-giving/form/v1';
 import { webhookSecretStanding } from '$lib/server/payments/webhook-secret';
 import { consoleJson, consoleMethodNotAllowed } from '$lib/server/console/surface';
-import type { Agreed, SameNames } from '$lib/server/console/report';
+import { CONSOLE_PROCESSORS } from '$lib/server/console/processors';
 import { walletHostLine, walletHosts, type WalletHosts } from '$lib/server/console/wallet-hosts';
 import { OFFERED_PAYMENT_METHODS } from '$lib/forms/offered-rails';
 import { createPaymentProviders, type Processors } from '$lib/server/payments/factory';
-import {
-	PROCESSOR_LABELS,
-	PROCESSOR_NAMES,
-	type ProcessorName
-} from '$lib/server/payments/provider';
+import { PROCESSOR_LABELS } from '$lib/server/payments/provider';
 import { railNotes } from '$lib/server/forms/rail-notes';
 import { railEvidence } from '$lib/server/payments/rail-evidence';
 import { readRailChargeability } from '$lib/server/payments/rail-chargeability';
@@ -35,8 +31,8 @@ import type { Route } from './+types/console.payments';
 // ./console.ts and this file makes no decision about who may read — see the header there, and
 // $lib/server/console/surface.ts for what this surface owes.
 //
-// **one reading per processor, and a deployment holding one processor's keys says nothing about the
-// other.** a processor this deployment is not configured for is reported as exactly that and
+// **one reading per processor, and a deployment holding one processor's keys says nothing about
+// another.** a processor this deployment is not configured for is reported as exactly that and
 // carries no reading at all — no rails, no webhook, no wallets — because a read that was never
 // attempted has no state to report and a blank one is what a console colours in as a failure.
 // `PROCESSORS` in $lib/server/payments/factory.ts is what decides which of the two it is, so that
@@ -81,7 +77,7 @@ import type { Route } from './+types/console.payments';
 // nothing to do with it: what a press changes is one member of one processor's reading, and the rest
 // are not what it moves.
 //
-// **the wallets are one processor's alone and the other's reading carries `null` rather than an
+// **the wallets are one processor's alone and every other's reading carries `null` rather than an
 // empty one.** a processor whose funding sources are drawn in its own window on its own domain
 // registers no hostname anywhere, so there is nothing to read, nothing to press and no section to
 // draw — $lib/server/payments/wallet-domains.ts is where that is told from a read that failed, and
@@ -95,19 +91,6 @@ import type { Route } from './+types/console.payments';
 // nothing is written down. every one of these facts lives on somebody else's account, so a copy in a
 // row would be a claim about a third party's state that nothing in this deployment could ever be
 // told had changed.
-
-/**
- * one processor vocabulary at both ends of the wire, held the way $lib/server/console/report.ts
- * holds the organisation's.
- *
- * `packages/operator` reaches nothing of this app's (CLAUDE.md), so the console's copy is declared
- * there and this is where the two meet. each has to extend the other, because either direction alone
- * lets one list grow a member the other has never heard of: a processor this deployment reports on
- * and no console can name, or a fold drawn for a processor nothing here answers for.
- *
- * a type and not a value, so it costs the worker nothing.
- */
-export type ProcessorWireNames = Agreed<SameNames<ProcessorName, PaymentProcessor>>;
 
 /**
  * where every processor stands, changing nothing.
@@ -134,7 +117,7 @@ export async function loader({ context, request }: Route.LoaderArgs): Promise<Re
 
 	const report: PaymentsReport = {
 		processors: await Promise.all(
-			PROCESSOR_NAMES.map((name) => processorPayments(env, processors, name, origin, asked))
+			CONSOLE_PROCESSORS.map((name) => processorPayments(env, processors, name, origin, asked))
 		)
 	};
 
@@ -151,7 +134,7 @@ export async function loader({ context, request }: Route.LoaderArgs): Promise<Re
 async function processorPayments(
 	env: unknown,
 	processors: Processors,
-	processor: ProcessorName,
+	processor: PaymentProcessor,
 	origin: string,
 	asked: WalletHosts
 ): Promise<ProcessorPayments> {

@@ -4,7 +4,7 @@
 
 - **Node ≥ 22** and **pnpm** (`corepack enable`; version pinned in `package.json`)
 - **A Cloudflare account on a paid Workers plan** with its email verified. The Free plan runs it, but the rate limits on `/api/v1` and sign-in silently do not enforce. An unverified account works in the dashboard but refuses the first Worker deploy
-- **A payment processor account: Stripe, PayPal, or both.** Either one on its own finishes set-up: Stripe takes cards, bank debits and the wallets; PayPal takes PayPal and Venmo. A deployment holding both offers both to the donor
+- **A payment processor account: Stripe, PayPal, Chariot, or any mix.** Any one on its own finishes set-up: Stripe takes cards, bank debits and the wallets; PayPal takes PayPal and Venmo; Chariot takes one-time gifts from a donor-advised fund. A deployment holding more than one offers each to the donor
 - **An SMTP account on port 465**, for receipts. [Email](#email) has a provider table
 
 ```sh
@@ -21,7 +21,7 @@ Run operator commands from the repo root, never raw `wrangler`: the scripts carr
 
 ## 1. Configuration values
 
-Seventeen values, all of them plain Worker **vars**: readable on the Worker (**Workers & Pages → your Worker → Settings → Variables and Secrets**) and shown as values in the console, so you can check what you pasted. `packages/app/.dev.vars.example` describes every one.
+Twenty-one values, all of them plain Worker **vars**: readable on the Worker (**Workers & Pages → your Worker → Settings → Variables and Secrets**) and shown as values in the console, so you can check what you pasted. `packages/app/.dev.vars.example` describes every one.
 
 ```sh
 # packages/app/.deploy.vars (gitignored, single-quote every value)
@@ -34,8 +34,10 @@ SMTP_HOST='smtp.resend.com'
 SMTP_USERNAME='resend'
 SMTP_PASSWORD='re_xxxxxxxx'
 MAIL_FROM='donations@example.org'
-# one processor's block or the other finishes the Payments job, and both may be
-# set. leave out the block for a processor this deployment does not take money on
+# any one processor's block finishes the Payments job, and more than one may be
+# set. leave out the block for a processor this deployment does not take money on.
+# Chariot has no block: its four values are stored by the console's Chariot press,
+# in step 2 below
 STRIPE_SECRET_KEY='sk_live_xxxxxxxx'
 STRIPE_PUBLISHABLE_KEY='pk_live_xxxxxxxx'
 STRIPE_WEBHOOK_SECRET='whsec_xxxxxxxx'
@@ -56,14 +58,14 @@ pnpm run deploy:vars      # one deploy, carrying every line of the file as a var
 - **Take each processor's pair from one place too.** Stripe's two keys are one pair from one dashboard page, and PayPal's client id and secret are one pair from one app in PayPal's developer dashboard. A mismatched pair is refused by the processor at the first charge, and nothing here checks it for you.
 - Single-quote every value: quoting keeps a `#` or backslash in a password from being read as syntax.
 - `wrangler.jsonc` carries `keep_vars: true`, so every value survives every later deploy. A deploy therefore cannot remove one. Clear it on the Variables and Secrets page, or set it to an empty string.
-- Anyone who can open this Cloudflare account can read all seventeen, and that is the trade: the console shows you a stored processor key and a stored SMTP password rather than four dots, because it already runs on your Cloudflare session. Treat account access as credential access.
+- Anyone who can open this Cloudflare account can read all twenty-one, and that is the trade: the console shows you a stored processor key and a stored SMTP password rather than four dots, because it already runs on your Cloudflare session. Treat account access as credential access.
 - `.deploy.vars` is not `.dev.vars`, which feeds `pnpm dev` and is never uploaded.
-- `CONSOLE_TOKEN` sits beside the seventeen and is not one of them: a Worker secret holding the console's session, minted when a console connects, twelve hours, replaced by the next connect. `pnpm run secret:list` names it, and `pnpm run secret:delete CONSOLE_TOKEN` closes the console surface until a console connects again.
-- `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are escape hatches, not setup steps: the first revokes every session, the second pins a canonical origin (read the caveat in `.dev.vars.example` first). `SMTP_PORT` is the third of the seventeen that is usually left unset; the app refuses every port but 465.
+- `CONSOLE_TOKEN` sits beside the twenty-one and is not one of them: a Worker secret holding the console's session, minted when a console connects, twelve hours, replaced by the next connect. `pnpm run secret:list` names it, and `pnpm run secret:delete CONSOLE_TOKEN` closes the console surface until a console connects again.
+- `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are escape hatches, not setup steps: the first revokes every session, the second pins a canonical origin (read the caveat in `.dev.vars.example` first). `SMTP_PORT` is the third of the twenty-one that is usually left unset; the app refuses every port but 465.
 
 ## 2. The console jobs
 
-Four jobs have no checkout command (the Stripe webhook, PayPal's webhook, the Turnstile widget, and the site list):
+Five jobs have no checkout command (the Stripe webhook, PayPal's webhook, Chariot's set-up, the Turnstile widget, and the site list):
 
 ```sh
 pnpm console              # http://localhost:5322
@@ -74,6 +76,8 @@ pnpm console              # http://localhost:5322
 **PayPal webhook**: saving the client id and secret on the console's **PayPal** page registers the listener at the Worker's address on the PayPal app those credentials belong to, subscribed to the nine events this deployment reads, and stores its id as `PAYPAL_WEBHOOK_ID` in the same run. **Without a listener, a donor is charged and no gift reaches your books**: `CHECKOUT.ORDER.APPROVED` is what the capture is made from, and a repeating gift is collected by PayPal on its own schedule whether this deployment hears about it or not. A listener already at this address is kept and its subscription brought level, so the same press is the repair after an upgrade adds an event. Two refusals need something from you: a Worker address that is not `https://` (PayPal delivers to nothing else), and an app already holding PayPal's cap of ten listeners: delete one you no longer use in PayPal's developer dashboard, or use another app's credentials.
 
 **PayPal's charity rate**: PayPal reports on no call which rate an account is on, so the console's **PayPal** page asks. Answer yes only if PayPal has approved this organisation for that rate. Ticked wrongly, a donor covering fees is quoted less than the gift costs and the org nets less than the donor gave; left unticked on an approved account, the surplus reaches the org. Untick it and the answer goes back to unset.
+
+**Chariot**: gifts from a donor-advised fund, one-time only. Chariot issues keys by email: sandbox keys from support@givechariot.com, and live keys after Chariot reviews a test form's address and a recording of a gift made on it. The console's **Chariot** page stores all four values in one press, and finds the organisation at Chariot by the EIN on the **Organisation** page, so fill that in first. A rehearsal deployment holding sandbox keys takes the sandbox address, `https://sandboxapi.givechariot.com`. **Without the notification address the press registers, a grant never reads received**, so the same press is the repair. A gift reads pending until the fund pays: the organisation matches the arriving payment by the tracking id `/admin` Gifts shows beside it and marks the grant received in Chariot's dashboard, and only then does it reach the books, with Chariot's fee. The donor gets an email when the grant request is sent and a thank-you when it is received; neither is a tax receipt, because the fund's sponsor receipted the donor's contribution to the fund. A grant the fund cancels reads cancelled and emails nobody.
 
 **Bank debits**: a donor whose bank could not be verified instantly is sent two small deposits, and Stripe itself emails them the link to confirm the amounts, at the address the form hands it. This deployment sends nothing for that step, so leave Stripe's customer emails switched on (dashboard.stripe.com → Settings → Emails); switched off, nobody tells the donor, and the gift expires unverified after ten days.
 
@@ -161,7 +165,7 @@ pnpm run deploy:test
 pnpm run deploy:test --var <NAME>:<value>
 ```
 
-`deploy:test` sets `CLOUDFLARE_ENV=test` on the build, which is where the environment is decided; `--env test` on the upload alone cannot, which is why you run the script. Result: `better-giving-test` Worker and database, holding none of the seventeen. `deploy:vars` deploys the real one, so a rehearsal is configured a value at a time.
+`deploy:test` sets `CLOUDFLARE_ENV=test` on the build, which is where the environment is decided; `--env test` on the upload alone cannot, which is why you run the script. Result: `better-giving-test` Worker and database, holding none of the twenty-one. `deploy:vars` deploys the real one, so a rehearsal is configured a value at a time.
 
 The app has no test mode and cannot tell which deployment it runs as. **Do not paste a rehearsal snippet where real donors reach**: a typed card declines loudly, but an Apple Pay / Google Pay gift *succeeds*: Stripe substitutes a test token by design, the success state renders, the receipt sends, and no money moved. Nothing in this repository guards that; you knowing is the guard.
 
@@ -187,14 +191,14 @@ Upstream owns every file, so a clean fork merges fast-forward; a conflict means 
 
 ## Without a checkout
 
-The console binary does the whole job (deploy, all seventeen values, webhook, widget, sites, org identity) for an operator who holds no source:
+The console binary does the whole job (deploy, all twenty-one values, webhooks, widget, sites, org identity) for an operator who holds no source:
 
 ```sh
 curl -fsSL https://github.com/better-giving/better-giving/releases/latest/download/install.sh | sh
 better-giving start
 ```
 
-Typed again on a deployment behind this console's release, `start` offers to carry the release onto it, and applies its migrations only once you agree. Connecting signs out any other console connected to that deployment. Everything after that (the seventeen values, Stripe, the widget, the site list, the org identity) is a screen in that console.
+Typed again on a deployment behind this console's release, `start` offers to carry the release onto it, and applies its migrations only once you agree. Connecting signs out any other console connected to that deployment. Everything after that (the twenty-one values, Stripe, PayPal, Chariot, the widget, the site list, the org identity) is a screen in that console.
 
 Three more you will want later. **`better-giving update`** brings this console binary up to the newest release and touches your deployment for nothing. `start` is the only command that carries code onto a deployment, and it offers you the newer console itself before it does anything else: a binary deploys the release it was built with, so an out-of-date console would otherwise carry out-of-date code onto your deployment. Accept and it installs that console and carries on as it; decline and it goes on with the binary you ran. **`better-giving login`** signs this machine in to Cloudflare in a browser and asks which account this deployment is in; `start` takes both itself, and the other commands send you here when this machine holds neither. **`better-giving logout`** gives that sign-in up, at Cloudflare and on this machine.
 

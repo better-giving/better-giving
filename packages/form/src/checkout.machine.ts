@@ -41,6 +41,11 @@
 //         │
 //         └─► resuming
 //
+// a donor-advised fund's rail is `give ─► authorizing ─► quoting ─► processing`, the other way
+// round the press: its window authorizes first, the approval rides on the quote, and the server
+// creates the grant inside that request, so a usable answer is the gift made and nothing is
+// confirmed after it. closing the window unapproved goes back to `give`.
+//
 // `quoted` is a junction rather than a screen. it routes to `confirm` where the total moved and
 // to `mandate` where the rail wants an authorization; both of those lead on to `confirming`, and
 // everything else goes straight there. what `confirming` ends in:
@@ -67,7 +72,7 @@
 // resume (a cold page load that finds out what happened while nobody was watching) and the
 // indeterminate (a confirmation with no answer, which re-reads rather than re-charges).
 
-import { assign, fromPromise, not, setup } from 'xstate';
+import { assign, fromPromise, not, setup, type Actor } from 'xstate';
 import {
 	estimateDeductedFee,
 	estimateFee,
@@ -77,9 +82,16 @@ import {
 	type FeeEstimate,
 	type Reconciliation
 } from './fee';
-import type { CheckoutPorts, ConfirmInput, ConfirmOutcome } from './ports';
+import type {
+	CheckoutPorts,
+	ConfirmInput,
+	ConfirmOutcome,
+	FundAuthorization,
+	FundRequest
+} from './ports';
 import {
 	completeAmount,
+	completeFundPayer,
 	completePayer,
 	missingPayerFields,
 	payerCoversFee,
@@ -89,6 +101,7 @@ import {
 	type Payer,
 	type PayerDraft
 } from './value';
+import { isChariotRail } from './embed/rails';
 import {
 	FREQUENCIES,
 	PAYMENT_METHODS,
@@ -205,6 +218,30 @@ export type CheckoutContext = {
 	readonly verificationDeadline: number | null;
 	readonly failure: Failure | null;
 	/**
+	 * what a donor-advised fund's own window approved, held from its close to the grant it creates.
+	 *
+	 * the one rail authorized before it is quoted rather than after, so it is carried into the
+	 * request rather than confirmed behind it. a send worth repeating keeps it (`keepsFundApproval`),
+	 * and a Try again sends it again (`resending`); every other answer spends it, and so does every
+	 * way back onto an editable step (`beginAttempt`), where the next press opens the window again.
+	 */
+	readonly authorization: FundAuthorization | null;
+	/**
+	 * the rail the donor stood on before pressing a fund's own button, which is where they stand again
+	 * when that attempt is over.
+	 *
+	 * the press is the fund's rail being chosen and its window opening in one go, so the rail it
+	 * displaced is still the one picked in the other boxes on the card — a donor who closes the window
+	 * is back in front of those boxes, and nothing in them reports the pick a second time.
+	 */
+	readonly railBeforeFund: PaymentMethod | undefined;
+	/**
+	 * the challenge token the last quote was sent with, which a resend may not spend again.
+	 *
+	 * a token is valid once, whether the endpoint honoured it or refused it.
+	 */
+	readonly sentToken: string | null;
+	/**
 	 * a challenge report that arrived where the flow could not answer it, kept until it can.
 	 *
 	 * the widget reports whenever its own script gets around to it, which may be the one window
@@ -313,6 +350,21 @@ export type CheckoutEvent =
 	| { readonly type: 'SET_CONSENT'; readonly consented: boolean }
 	| { readonly type: 'SET_TURNSTILE_TOKEN'; readonly token: string }
 	| { readonly type: 'SUBMIT' }
+	/**
+	 * the donor pressing a fund's own button, which opens the fund's window in the same task.
+	 *
+	 * the press that stands in for `SUBMIT` on the daf rail, and the one that chooses that rail: the
+	 * fund's own button is the fund's option on the card, so nothing reports the rail ahead of it.
+	 * the window is opened by the fund's own script on that press, so this event is how the flow
+	 * learns it happened — and the reading straight after it is how the adapter learns whether to let
+	 * it open at all (`openFund` below). nothing is awaited between the two: a window opened more than a moment
+	 * after the press is a popup the browser blocks.
+	 */
+	| { readonly type: 'OPEN_FUND' }
+	/** the fund's window closing on an approval, carrying what it approved. */
+	| ({ readonly type: 'FUND_APPROVED' } & FundAuthorization)
+	/** the fund's window closing on anything else, which approved nothing. */
+	| { readonly type: 'FUND_CLOSED' }
 	| { readonly type: 'CONFIRM' }
 	| { readonly type: 'ACCEPT_MANDATE' }
 	| { readonly type: 'DECLINE_MANDATE' }
@@ -366,6 +418,57 @@ export const PORT_TIMEOUT_MS = 30_000;
  */
 const GENERIC_FAILURE = 'This gift was not started, and nothing was charged. Please try again.';
 
+/**
+ * what a donor is told when their fund's approval expired before the grant was created.
+ *
+ * the server's own sentence names the session and is written for whoever reads the log; this one
+ * names the donor's next move, which is to approve again in the fund's window.
+ */
+const FUND_APPROVAL_EXPIRED =
+	'Your fund’s approval expired before the gift was sent, and no grant was made. Press Try again, then open your fund’s window and approve the gift again.';
+
+/**
+ * what a donor is told when a send of their fund's approval may have created the grant before its
+ * answer was lost.
+ *
+ * the server answers the same approval sent again with the grant it already holds, which is what
+ * lets this promise that the request is not sent twice.
+ */
+const FUND_REQUEST_MAY_BE_SENT =
+	'We could not confirm this gift, and your fund may already have the grant request. Press Try again to finish; your fund will not be sent the request twice.';
+
+/** the `ApiError` code a rejected port carried, where it carried one (`EmbedFailure` in ./embed/api.ts). */
+function errorCode(error: unknown): string | undefined {
+	if (typeof error !== 'object' || error === null) return undefined;
+	const { code } = error as { code?: unknown };
+	return typeof code === 'string' ? code : undefined;
+}
+
+/** whether a rejected port never heard back from the endpoint (`EmbedFailure` in ./embed/api.ts). */
+function wentUnanswered(error: unknown): boolean {
+	return (
+		typeof error === 'object' &&
+		error !== null &&
+		(error as { unanswered?: unknown }).unanswered === true
+	);
+}
+
+/** a failed send of a fund's approval after which the grant may nonetheless exist. */
+function maybeSentGrant(error: unknown): boolean {
+	return errorCode(error) === 'payments_unavailable' || wentUnanswered(error);
+}
+
+/**
+ * whether a fund's approval is kept for a Try again after a send that failed.
+ *
+ * only where the same approval can be answered differently next time; every other refusal answers
+ * it the same way again, and a resend would hold the donor in front of that refusal with no way back
+ * to the fund's window short of a reload.
+ */
+function keepsFundApproval(error: unknown): boolean {
+	return maybeSentGrant(error) || errorCode(error) === 'challenge_failed';
+}
+
 /** the request the quote port is handed, assembled from everything decided so far. */
 function quoteRequest(context: CheckoutContext, payer: Payer): QuoteRequest {
 	const fv = context.fv;
@@ -386,6 +489,12 @@ function quoteRequest(context: CheckoutContext, payer: Payer): QuoteRequest {
 		// written from the form record and nothing on such a card writes an id onto the draft.
 		...(fv.programId === null ? {} : { programId: fv.programId }),
 		...flatTribute(fv.tribute),
+		...(context.authorization === null
+			? {}
+			: {
+					authorizationId: context.authorization.authorizationId,
+					authorizedMinor: context.authorization.authorizedMinor
+				}),
 		...(context.turnstileToken === null ? {} : { turnstileToken: context.turnstileToken })
 	};
 }
@@ -509,6 +618,63 @@ export function declinedFee(context: CheckoutContext): DeductedFee | null {
  */
 export function shownTotalMinor(context: CheckoutContext): number | null {
 	return context.estimate?.totalMinor ?? context.fv?.amountMinor ?? null;
+}
+
+/**
+ * the rail the donor stands on once a fund's attempt is over: a fund's rail is held only between its
+ * button's press and the end of that attempt, and gives way to the rail it displaced.
+ */
+function standingRail(context: CheckoutContext): PaymentMethod | undefined {
+	const { method } = context.payerDraft;
+	return method !== undefined && isChariotRail(method) ? context.railBeforeFund : method;
+}
+
+/**
+ * the donor's press of a fund's own button, told to the flow, and what the fund's window is opened
+ * on — or `null` where the flow did not take the press.
+ *
+ * one call for both halves, with nothing awaited between them: the fund's script asks for this
+ * synchronously on the press and opens its window straight after, so a `null` here is the window
+ * kept shut. exported for both surfaces that run this flow, so neither holds a second reading of
+ * which press was taken. the figure is the total the donor was shown — the gift and any fee they chose
+ * to cover — because that is what the fund is asked to grant.
+ */
+export function openFund(
+	actor: Pick<Actor<typeof checkoutMachine>, 'send' | 'getSnapshot'>
+): FundRequest | null {
+	// a second press while the window is already open is not a press the flow took.
+	if (actor.getSnapshot().value === 'authorizing') return null;
+	actor.send({ type: 'OPEN_FUND' });
+	const { context, value } = actor.getSnapshot();
+	const { payer } = context;
+	const amountMinor = shownTotalMinor(context);
+	if (value !== 'authorizing' || payer === null || amountMinor === null) return null;
+	return {
+		amountMinor,
+		email: payer.email,
+		firstName: payer.firstName,
+		lastName: payer.lastName
+	};
+}
+
+/**
+ * whether a fund's own button stands on the card: the review step of a one-time gift on a form
+ * offering the fund's rail, and the fund's window opened from it.
+ *
+ * the window is included because its endings are heard on that element, and an element taken off
+ * the page while its window is open drops the approval the donor is giving in it. exported for both
+ * surfaces that run this flow, which tell their payment surface on every reading.
+ */
+export function fundIsOffered(snapshot: {
+	readonly context: CheckoutContext;
+	readonly value: unknown;
+}): boolean {
+	const { context, value } = snapshot;
+	return (
+		(value === 'give' || value === 'authorizing') &&
+		context.fv?.frequency === 'one_time' &&
+		context.config.paymentMethods.some(isChariotRail)
+	);
 }
 
 /** everything the amount step exists to decide has been decided. */
@@ -699,6 +865,32 @@ export const checkoutMachine = setup({
 		/** the donor has filled in everything a typed rail needs before an intent can be minted. */
 		payerIsComplete: ({ context }) => completePayer(context.payerDraft, context.config) !== null,
 
+		/**
+		 * the donor on a fund's rail may open its window: a one-time gift and every field the receipt
+		 * needs. a fund's grant repeats nowhere this deployment can match, so a repeating gift never
+		 * reaches the window.
+		 */
+		fundCanOpen: ({ context }) =>
+			context.fv?.frequency === 'one_time' &&
+			completeFundPayer({ ...context.payerDraft, method: 'daf' }, context.config) !== null,
+
+		/**
+		 * a quote minted on a fund's approval, which is the gift made rather than an intent to confirm.
+		 *
+		 * measured against its own fee rather than against the form's amount: the donor may change the
+		 * figure inside the fund's window, and the grant is recorded from what the fund approved — so a
+		 * total under the amount the form showed is the approval, not a garbled answer.
+		 */
+		quoteIsGrant: ({ context }, params: { quote: Quote }): boolean =>
+			context.authorization !== null && quoteIsUsable(params.quote, params.quote.feeMinor),
+
+		/** a fund's approval survived the failed send, so a Try again sends it again. */
+		grantIsHeld: ({ context }) => context.authorization !== null,
+
+		/** the widget has minted a token since the last send spent one. */
+		tokenIsFresh: ({ context }) =>
+			context.turnstileToken !== null && context.turnstileToken !== context.sentToken,
+
 		/** a challenge report is waiting for a state that can answer it, and this is one. */
 		challengeIsHeld: ({ context }) => context.heldChallenge !== null,
 
@@ -765,13 +957,15 @@ export const checkoutMachine = setup({
 		 * one of these costs money if it survives: a stale `mandateAccepted` confirms an ACH debit
 		 * on an authorization the donor gave to a different attempt.
 		 */
-		beginAttempt: assign({
+		beginAttempt: assign(({ context }) => ({
 			quote: null,
 			reconciliation: null,
 			mandateAccepted: false,
 			verificationDeadline: null,
-			failure: null
-		}),
+			failure: null,
+			authorization: null,
+			payerDraft: { ...context.payerDraft, method: standingRail(context) }
+		})),
 
 		/**
 		 * the held challenge report, said at last, and taken off the context in the same breath.
@@ -788,6 +982,26 @@ export const checkoutMachine = setup({
 		/** the one place a donor draft becomes the payer an intent is minted for. */
 		commitPayer: assign({
 			payer: ({ context }) => completePayer(context.payerDraft, context.config)
+		}),
+
+		/**
+		 * the fund's rail chosen by its own button's press, and the payer its window is opened for.
+		 *
+		 * one action for both, because the press is both: the rail it displaces is kept to stand on
+		 * again when the attempt is over (`railBeforeFund`), and the estimate is restated on the fund's
+		 * own fee rule so the window opens on the total the donor is asked to grant.
+		 */
+		chooseFund: assign(({ context }) => {
+			const previous = context.payerDraft.method;
+			const payerDraft = { ...context.payerDraft, method: 'daf' as const };
+			const chosen = { ...context, payerDraft };
+			return {
+				payerDraft,
+				railBeforeFund:
+					previous !== undefined && isChariotRail(previous) ? context.railBeforeFund : previous,
+				estimate: currentEstimate(chosen),
+				payer: completeFundPayer(payerDraft, context.config)
+			};
 		}),
 
 		/**
@@ -884,6 +1098,9 @@ export const checkoutMachine = setup({
 		turnstileToken: null,
 		verificationDeadline: null,
 		failure: null,
+		authorization: null,
+		railBeforeFund: undefined,
+		sentToken: null,
 		heldChallenge: null
 	}),
 	// three reports from surfaces that resolve on their own schedule. none of them is a step in the
@@ -1212,6 +1429,7 @@ export const checkoutMachine = setup({
 				// ./value.ts. the typed fields it also asks for were settled on the step before, so
 				// the only thing this press can be refused for here is the rail.
 				SUBMIT: { guard: 'payerIsComplete', target: 'quoting', actions: 'commitPayer' },
+				OPEN_FUND: { guard: 'fundCanOpen', target: 'authorizing', actions: 'chooseFund' },
 				/**
 				 * the marks, and from the last step every move they offer is backwards and so
 				 * unconditional.
@@ -1240,6 +1458,54 @@ export const checkoutMachine = setup({
 		},
 
 		/**
+		 * a donor-advised fund's window is open, and the flow waits on the donor inside it.
+		 *
+		 * no timeout: the donor is signing in to their fund and choosing a grant, which takes as long
+		 * as it takes, and nothing has been sent anywhere yet. closing without an approval goes back
+		 * to the review step with nothing sent; an approval goes on to the quote, which is where the
+		 * challenge token is read — after the window, so a token minted before a long stay in it has
+		 * already been replaced by the widget (`refresh-expired` in ./embed/turnstile.ts).
+		 */
+		authorizing: {
+			on: {
+				FUND_APPROVED: {
+					target: 'quoting',
+					actions: assign({
+						authorization: ({ event }) => ({
+							authorizationId: event.authorizationId,
+							authorizedMinor: event.authorizedMinor
+						})
+					})
+				},
+				FUND_CLOSED: { target: 'give' }
+			}
+		},
+
+		/**
+		 * a fund's approval, about to be sent again, waiting on a token it may spend.
+		 *
+		 * the server answers a repeated session with the grant it already holds, so the approval is
+		 * sent again rather than asked of the donor a second time. the widget is reset on the way out
+		 * of the send that failed (`#start` in ./element.ts), and this waits for the token it mints —
+		 * the one before it was spent by that send. the root takes the token; the check below runs on
+		 * every event that lands here.
+		 */
+		resending: {
+			always: { guard: 'tokenIsFresh', target: 'quoting' },
+			after: {
+				portTimeout: {
+					target: 'failed',
+					actions: assign({
+						failure: (): Failure => ({
+							message: FUND_REQUEST_MAY_BE_SENT,
+							fix: `No fresh challenge token arrived within ${PORT_TIMEOUT_MS}ms to send the fund's approval again. The approval is kept for the next attempt.`
+						})
+					})
+				}
+			}
+		},
+
+		/**
 		 * the first beat of the press: the server mints the intent and names the real fee.
 		 *
 		 * there is no `SUBMIT` handler here, and that absence is what drops a second press: it
@@ -1247,6 +1513,7 @@ export const checkoutMachine = setup({
 		 * to bypass. It bounds the double press, not the determined caller — see the header.
 		 */
 		quoting: {
+			entry: assign({ sentToken: ({ context }) => context.turnstileToken }),
 			invoke: {
 				src: 'mintQuote',
 				input: ({ context }) => {
@@ -1254,6 +1521,13 @@ export const checkoutMachine = setup({
 					return { ports: context.ports, request: quoteRequest(context, context.payer) };
 				},
 				onDone: [
+					{
+						// the grant is created inside this same request, so a usable answer is the gift
+						// made — pending until the fund pays it, which is `processing`'s own claim.
+						guard: { type: 'quoteIsGrant', params: ({ event }) => ({ quote: event.output }) },
+						target: 'processing',
+						actions: assign({ quote: ({ event }) => event.output })
+					},
 					{
 						guard: { type: 'quoteIsUsable', params: ({ event }) => ({ quote: event.output }) },
 						target: 'quoted',
@@ -1265,22 +1539,47 @@ export const checkoutMachine = setup({
 							failure: (): Failure => ({
 								message: GENERIC_FAILURE,
 								fix: 'POST /api/v1/forms/:id/donations answered with a fee, total or payment token that cannot be charged. Check that feeMinor and totalMinor are whole minor units and that totalMinor is at least amountMinor.'
-							})
+							}),
+							// the same approval would be answered with the same unusable body.
+							authorization: null
 						})
 					}
 				],
 				onError: {
 					target: 'failed',
-					actions: assign({ failure: ({ event }) => toFailure(event.error) })
+					actions: assign({
+						failure: ({ context, event }) => {
+							const failure = toFailure(event.error);
+							if (context.authorization !== null && maybeSentGrant(event.error)) {
+								return { ...failure, message: FUND_REQUEST_MAY_BE_SENT };
+							}
+							switch (errorCode(event.error)) {
+								case 'daf_authorization_expired':
+									return { ...failure, message: FUND_APPROVAL_EXPIRED };
+								// the fund refusing under its own rules is the one refusal a quote carries
+								// that is the rail's, so it is marked the way `rememberDecline` marks one.
+								case 'daf_grant_declined':
+									return { ...failure, refusedByRail: true };
+								default:
+									return failure;
+							}
+						},
+						// a kept approval is sent again by a Try again (`resending` below).
+						authorization: ({ context, event }) =>
+							keepsFundApproval(event.error) ? context.authorization : null
+					})
 				}
 			},
 			after: {
 				portTimeout: {
 					target: 'failed',
 					actions: assign({
-						failure: (): Failure => ({
-							message: GENERIC_FAILURE,
-							fix: `POST /api/v1/forms/:id/donations did not answer within ${PORT_TIMEOUT_MS}ms. Nothing was authorized, so this attempt can be made again.`
+						failure: ({ context }): Failure => ({
+							message: context.authorization === null ? GENERIC_FAILURE : FUND_REQUEST_MAY_BE_SENT,
+							fix:
+								context.authorization === null
+									? `POST /api/v1/forms/:id/donations did not answer within ${PORT_TIMEOUT_MS}ms. Nothing was authorized, so this attempt can be made again.`
+									: `POST /api/v1/forms/:id/donations did not answer within ${PORT_TIMEOUT_MS}ms. The fund's approval is kept, and the next attempt sends it again.`
 						})
 					})
 				}
@@ -1691,6 +1990,7 @@ export const checkoutMachine = setup({
 		failed: {
 			on: {
 				RETRY: [
+					{ guard: 'grantIsHeld', target: 'resending' },
 					{ guard: not('amountIsDecided'), target: 'amount' },
 					{ guard: not('payerFieldsAreGiven'), target: 'details' },
 					{ target: 'give' }

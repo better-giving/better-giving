@@ -2,6 +2,8 @@ import { createActor } from 'xstate';
 import { describe, expect, it } from 'vitest';
 import {
 	checkoutMachine,
+	fundIsOffered,
+	openFund,
 	stepIsReachable,
 	MICRODEPOSIT_WINDOW_MS,
 	PORT_TIMEOUT_MS
@@ -31,7 +33,8 @@ const CONFIG: FormConfig = {
 		apple_pay: { percent: 0.029, fixedMinor: 30 },
 		google_pay: { percent: 0.029, fixedMinor: 30 },
 		paypal: { percent: 0.0349, fixedMinor: 49 },
-		venmo: { percent: 0.0349, fixedMinor: 49 }
+		venmo: { percent: 0.0349, fixedMinor: 49 },
+		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -884,7 +887,8 @@ describe('where the correction screen is and is not shown', () => {
 					apple_pay: { percent: 0.029, fixedMinor: 30 },
 					google_pay: { percent: 0.029, fixedMinor: 30 },
 					paypal: { percent: 0.0349, fixedMinor: 49 },
-					venmo: { percent: 0.0349, fixedMinor: 49 }
+					venmo: { percent: 0.0349, fixedMinor: 49 },
+					daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
 				} as FormConfig['feeRules']
 			},
 			quote: async () => ({ paymentToken: 'pi_1_secret_x', feeMinor: 0, totalMinor: 2500 })
@@ -925,7 +929,8 @@ describe('where the correction screen is and is not shown', () => {
 					apple_pay: { percent: 0.029, fixedMinor: 30 },
 					google_pay: { percent: 0.029, fixedMinor: 30 },
 					paypal: { percent: 0.0349, fixedMinor: 49 },
-					venmo: { percent: 0.0349, fixedMinor: 49 }
+					venmo: { percent: 0.0349, fixedMinor: 49 },
+					daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
 				} as FormConfig['feeRules']
 			},
 			quote: async () => ({ paymentToken: 'pi_1_secret_x', feeMinor: 175, totalMinor: 2675 })
@@ -1407,6 +1412,9 @@ const EVERY_EVENT: readonly CheckoutEvent[] = Object.values({
 	SET_CONSENT: { type: 'SET_CONSENT', consented: true },
 	SET_TURNSTILE_TOKEN: { type: 'SET_TURNSTILE_TOKEN', token: 'tk_x' },
 	SUBMIT: { type: 'SUBMIT' },
+	OPEN_FUND: { type: 'OPEN_FUND' },
+	FUND_APPROVED: { type: 'FUND_APPROVED', authorizationId: 'wfs_x', authorizedMinor: 2500 },
+	FUND_CLOSED: { type: 'FUND_CLOSED' },
 	CONFIRM: { type: 'CONFIRM' },
 	ACCEPT_MANDATE: { type: 'ACCEPT_MANDATE' },
 	DECLINE_MANDATE: { type: 'DECLINE_MANDATE' },
@@ -1599,7 +1607,8 @@ describe('a config the wire mangled', () => {
 					apple_pay: { percent: 0.029, fixedMinor: 30 },
 					google_pay: { percent: 0.029, fixedMinor: 30 },
 					paypal: { percent: 0.0349, fixedMinor: 49 },
-					venmo: { percent: 0.0349, fixedMinor: 49 }
+					venmo: { percent: 0.0349, fixedMinor: 49 },
+					daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
 				} as FormConfig['feeRules']
 			}
 		});
@@ -1811,5 +1820,360 @@ describe('an anti-abuse challenge that will never mint a token', () => {
 		actor.send({ type: 'RETRY' });
 
 		expect(actor.getSnapshot().value).toBe('give');
+	});
+});
+
+describe('a gift from a donor-advised fund', () => {
+	const DAF_CONFIG: FormConfig = {
+		...CONFIG,
+		providers: [...CONFIG.providers, { name: 'chariot', publishableKey: 'cid_x' }],
+		paymentMethods: ['card', 'daf']
+	};
+
+	/**
+	 * the review step with a card picked and the fund's own button beside it, about to be pressed.
+	 *
+	 * the press is the fund's rail chosen and its window opened in one go, so nothing reports the
+	 * rail ahead of it.
+	 */
+	function onFundRail(options: HarnessOptions = {}) {
+		return readyToSubmit({ config: DAF_CONFIG, ...options });
+	}
+
+	const GRANT: Quote = { paymentToken: 'grant_1', feeMinor: 100, totalMinor: 2600 };
+
+	// the fund's window is the authorization and the quote is the gift: the server creates the grant
+	// in the same POST that mints the quote, so nothing is confirmed after it.
+	it('sends the fund’s approval with the gift and confirms nothing after it', async () => {
+		const { actor, calls } = onFundRail({ quote: () => Promise.resolve(GRANT) });
+		actor.send({ type: 'OPEN_FUND' });
+		expect(actor.getSnapshot().value).toBe('authorizing');
+		expect(calls.quote).toHaveLength(0);
+
+		actor.send({ type: 'FUND_APPROVED', authorizationId: 'wfs_1', authorizedMinor: 2600 });
+		await settle();
+
+		expect(calls.quote).toHaveLength(1);
+		expect(calls.quote[0]).toMatchObject({
+			method: 'daf',
+			authorizationId: 'wfs_1',
+			authorizedMinor: 2600
+		});
+		expect(calls.confirm).toHaveLength(0);
+		expect(actor.getSnapshot().value).toBe('processing');
+	});
+
+	it('goes back to the review step with nothing sent when the window closes unapproved', async () => {
+		const { actor, calls } = onFundRail();
+		actor.send({ type: 'OPEN_FUND' });
+		actor.send({ type: 'FUND_CLOSED' });
+		await settle();
+
+		expect(actor.getSnapshot().value).toBe('give');
+		expect(calls.quote).toHaveLength(0);
+	});
+
+	// the fund's own button is pressed from wherever the donor's rail stood, and a window closed
+	// unapproved leaves them standing there: a card picked in the inline fields is still the card the
+	// Donate control spends, with nothing to pick again.
+	it('puts the donor back on the rail they were on when the window closes unapproved', async () => {
+		const { actor, calls } = onFundRail();
+		actor.send({ type: 'OPEN_FUND' });
+		expect(actor.getSnapshot().context.payerDraft.method).toBe('daf');
+		actor.send({ type: 'FUND_CLOSED' });
+
+		expect(actor.getSnapshot().context.payerDraft.method).toBe('card');
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		expect(calls.quote[0]?.method).toBe('card');
+	});
+
+	// the server answers a repeated session with the grant it already holds, so an answer that never
+	// arrived is sent again on the same approval rather than asked of the donor a second time — and
+	// sent on a token minted after the one the first send spent.
+	it('resends the same approval on a fresh token after a send that did not land', async () => {
+		let answer: () => Promise<Quote> = () =>
+			Promise.reject({
+				message: 'This gift was not started.',
+				fix: 'POST unreachable.',
+				unanswered: true
+			});
+		const { actor, calls } = onFundRail({ quote: () => answer() });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'first' });
+		actor.send({ type: 'OPEN_FUND' });
+		actor.send({ type: 'FUND_APPROVED', authorizationId: 'wfs_1', authorizedMinor: 2600 });
+		await settle();
+		expect(actor.getSnapshot().value).toBe('failed');
+
+		answer = () => Promise.resolve(GRANT);
+		actor.send({ type: 'RETRY' });
+		await settle();
+		expect(calls.quote).toHaveLength(1);
+
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'second' });
+		await settle();
+		expect(calls.quote).toHaveLength(2);
+		expect(calls.quote[1]).toMatchObject({
+			authorizationId: 'wfs_1',
+			authorizedMinor: 2600,
+			turnstileToken: 'second'
+		});
+		expect(actor.getSnapshot().value).toBe('processing');
+	});
+
+	it('keeps the approval through a send that timed out', async () => {
+		let answer: () => Promise<Quote> = neverAnswers;
+		const { actor, calls, clock } = onFundRail({ quote: () => answer() });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'first' });
+		actor.send({ type: 'OPEN_FUND' });
+		actor.send({ type: 'FUND_APPROVED', authorizationId: 'wfs_1', authorizedMinor: 2600 });
+		clock.advance(PORT_TIMEOUT_MS);
+		await settle();
+		expect(actor.getSnapshot().value).toBe('failed');
+
+		answer = () => Promise.resolve(GRANT);
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'second' });
+		actor.send({ type: 'RETRY' });
+		await settle();
+		expect(calls.quote[1]?.authorizationId).toBe('wfs_1');
+		expect(actor.getSnapshot().value).toBe('processing');
+	});
+
+	// the answers worth sending the same approval to again: the processor faulted, the token was
+	// refused, or nothing answered. every other refusal answers the same approval the same way, so a
+	// Try again that resent it would be a donor pressing into the same refusal forever.
+	it.each([
+		['the processor faulted', { code: 'payments_unavailable', message: 'The processor faulted.' }],
+		[
+			'the challenge was refused',
+			{ code: 'challenge_failed', message: 'The check did not clear.' }
+		],
+		['nothing answered', { message: 'This gift was not started.', unanswered: true }]
+	])('keeps the approval for a Try again when %s', async (_label, refusal) => {
+		const { actor } = onFundRail({ quote: () => Promise.reject(refusal) });
+		actor.send({ type: 'OPEN_FUND' });
+		actor.send({ type: 'FUND_APPROVED', authorizationId: 'wfs_1', authorizedMinor: 2600 });
+		await settle();
+		expect(actor.getSnapshot().value).toBe('failed');
+
+		actor.send({ type: 'RETRY' });
+
+		expect(actor.getSnapshot().value).toBe('resending');
+		expect(actor.getSnapshot().context.authorization?.authorizationId).toBe('wfs_1');
+	});
+
+	it.each([
+		['the approval expired', { code: 'daf_authorization_expired', message: 'Expired.' }],
+		['the fund declined', { code: 'daf_grant_declined', message: 'Declined.' }],
+		[
+			'the approved amount is outside the form’s range',
+			{ message: 'The amount is above this form’s maximum.' }
+		],
+		[
+			'the approval could not be found',
+			{ message: 'That approval could not be found.', fix: 'POST answered 404.' }
+		],
+		['payments are not configured', { code: 'payments_not_configured', message: 'Not set up.' }],
+		['the form is retired', { code: 'form_retired', message: 'Retired.' }],
+		['the form is unpublished', { code: 'form_not_published', message: 'Unpublished.' }],
+		['the server faulted', { message: 'Something went wrong.', fix: 'POST answered 500.' }]
+	])('spends the approval and returns to the fund’s button when %s', async (_label, refusal) => {
+		const { actor, calls } = onFundRail({ quote: () => Promise.reject(refusal) });
+		actor.send({ type: 'OPEN_FUND' });
+		actor.send({ type: 'FUND_APPROVED', authorizationId: 'wfs_1', authorizedMinor: 2600 });
+		await settle();
+		expect(actor.getSnapshot().value).toBe('failed');
+		expect(actor.getSnapshot().context.authorization).toBeNull();
+
+		actor.send({ type: 'RETRY' });
+
+		expect(actor.getSnapshot().value).toBe('give');
+		expect(fundIsOffered(actor.getSnapshot())).toBe(true);
+		expect(calls.quote).toHaveLength(1);
+	});
+
+	it('spends the approval on an answer that is not a grant', async () => {
+		const { actor } = onFundRail({
+			quote: () => Promise.resolve({ paymentToken: 'grant_1', feeMinor: -1, totalMinor: 2600 })
+		});
+		actor.send({ type: 'OPEN_FUND' });
+		actor.send({ type: 'FUND_APPROVED', authorizationId: 'wfs_1', authorizedMinor: 2600 });
+		await settle();
+		expect(actor.getSnapshot().value).toBe('failed');
+
+		actor.send({ type: 'RETRY' });
+
+		expect(actor.getSnapshot().value).toBe('give');
+	});
+
+	// the grant may have been created before the answer was lost, so the donor is not told nothing
+	// happened — and the resend is safe to press, because the server answers it with the grant it holds.
+	it.each([
+		['the processor faulted', { code: 'payments_unavailable', message: 'The processor faulted.' }],
+		['nothing answered', { message: 'This gift was not started.', unanswered: true }]
+	])('tells the donor their fund may already have the request when %s', async (_label, refusal) => {
+		const { actor } = onFundRail({ quote: () => Promise.reject(refusal) });
+		actor.send({ type: 'OPEN_FUND' });
+		actor.send({ type: 'FUND_APPROVED', authorizationId: 'wfs_1', authorizedMinor: 2600 });
+		await settle();
+
+		expect(actor.getSnapshot().context.failure?.message).toMatch(/fund may already have/i);
+	});
+
+	it('tells the donor their fund may already have the request when the send timed out', async () => {
+		const { actor, clock } = onFundRail({ quote: neverAnswers });
+		actor.send({ type: 'OPEN_FUND' });
+		actor.send({ type: 'FUND_APPROVED', authorizationId: 'wfs_1', authorizedMinor: 2600 });
+		clock.advance(PORT_TIMEOUT_MS);
+		await settle();
+
+		expect(actor.getSnapshot().value).toBe('failed');
+		expect(actor.getSnapshot().context.failure?.message).toMatch(/fund may already have/i);
+	});
+
+	it('keeps saying so when no fresh token arrives to send the approval again', async () => {
+		const { actor, clock } = onFundRail({
+			quote: () => Promise.reject({ message: 'This gift was not started.', unanswered: true })
+		});
+		actor.send({ type: 'OPEN_FUND' });
+		actor.send({ type: 'FUND_APPROVED', authorizationId: 'wfs_1', authorizedMinor: 2600 });
+		await settle();
+		actor.send({ type: 'RETRY' });
+		clock.advance(PORT_TIMEOUT_MS);
+		await settle();
+
+		expect(actor.getSnapshot().value).toBe('failed');
+		expect(actor.getSnapshot().context.failure?.message).toMatch(/fund may already have/i);
+		expect(actor.getSnapshot().context.authorization?.authorizationId).toBe('wfs_1');
+	});
+
+	// off the fund's rail a processor fault is still the ordinary sentence: nothing was charged.
+	it('keeps the ordinary sentence for a processor fault on a card', async () => {
+		const { actor } = readyToSubmit({
+			config: DAF_CONFIG,
+			quote: () =>
+				Promise.reject({ code: 'payments_unavailable', message: 'The processor faulted.' })
+		});
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(actor.getSnapshot().context.failure?.message).toBe('The processor faulted.');
+	});
+
+	// an approval the fund gave too long before the grant was created cannot be sent again: the
+	// donor approves again in the fund's window, which the review step's fund button reopens.
+	it('tells the donor their fund’s approval expired and lets them approve again', async () => {
+		let answer: () => Promise<Quote> = () =>
+			Promise.reject({
+				code: 'daf_authorization_expired',
+				message: 'Grant session wfs_1 is past its window.',
+				fix: 'Open the fund window again.'
+			});
+		const { actor, calls } = onFundRail({ quote: () => answer() });
+		actor.send({ type: 'OPEN_FUND' });
+		actor.send({ type: 'FUND_APPROVED', authorizationId: 'wfs_1', authorizedMinor: 2600 });
+		await settle();
+
+		expect(actor.getSnapshot().value).toBe('failed');
+		expect(actor.getSnapshot().context.failure?.message).toMatch(/approval .*expired/i);
+
+		actor.send({ type: 'RETRY' });
+		expect(actor.getSnapshot().value).toBe('give');
+		expect(actor.getSnapshot().context.authorization).toBeNull();
+
+		answer = () => Promise.resolve(GRANT);
+		actor.send({ type: 'OPEN_FUND' });
+		actor.send({ type: 'FUND_APPROVED', authorizationId: 'wfs_2', authorizedMinor: 2600 });
+		await settle();
+		expect(calls.quote[1]?.authorizationId).toBe('wfs_2');
+		expect(actor.getSnapshot().value).toBe('processing');
+	});
+
+	// the fund's own reason, as the server carried it, and marked as the rail's: the donor settles it
+	// with the fund or a different amount, beside the fund's button on the step a retry lands on.
+	it('carries the fund’s reason for refusing the grant as the rail’s refusal', async () => {
+		const { actor } = onFundRail({
+			quote: () =>
+				Promise.reject({
+					code: 'daf_grant_declined',
+					message: 'Your fund requires grants of at least $50.'
+				})
+		});
+		actor.send({ type: 'OPEN_FUND' });
+		actor.send({ type: 'FUND_APPROVED', authorizationId: 'wfs_1', authorizedMinor: 2600 });
+		await settle();
+
+		expect(actor.getSnapshot().value).toBe('failed');
+		expect(actor.getSnapshot().context.failure).toEqual({
+			message: 'Your fund requires grants of at least $50.',
+			refusedByRail: true
+		});
+	});
+
+	// a fund's grant repeats nowhere this deployment can match, so a press on the fund's button is
+	// never taken on a repeating gift — the button is not drawn there (`fundIsOffered`), and a stale
+	// one pressed anyway opens nothing.
+	it('takes no press of the fund’s button on a repeating gift', () => {
+		const { actor, calls } = onFundRail();
+		actor.send({ type: 'GO_TO_STEP', step: 'amount' });
+		actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
+		actor.send({ type: 'GO_TO_STEP', step: 'give' });
+
+		actor.send({ type: 'OPEN_FUND' });
+
+		expect(actor.getSnapshot().value).toBe('give');
+		expect(actor.getSnapshot().context.payerDraft.method).toBe('card');
+		expect(calls.quote).toHaveLength(0);
+	});
+
+	// a token minted before the window may expire while the donor is in it, and the widget replaces
+	// it on its own — so the one the request carries is the last to arrive before the window closed.
+	it('sends the challenge token that arrived while the fund’s window was open', async () => {
+		const { actor, calls } = onFundRail({ quote: () => Promise.resolve(GRANT) });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'before' });
+		actor.send({ type: 'OPEN_FUND' });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'after' });
+		actor.send({ type: 'FUND_APPROVED', authorizationId: 'wfs_1', authorizedMinor: 2600 });
+		await settle();
+
+		expect(calls.quote[0]?.turnstileToken).toBe('after');
+	});
+
+	// what the fund's window is opened with: the total the donor was shown and the receipt's fields,
+	// read in the same task as the press, and nothing at all where the press was refused.
+	it('names the gift the fund’s window opens on, and only for a press the flow took', () => {
+		// a form offering no fund, where a press on a fund's button is not one the flow takes.
+		const refused = readyToSubmit();
+		expect(openFund(refused.actor)).toBeNull();
+
+		const { actor } = onFundRail();
+		expect(openFund(actor)).toEqual({
+			amountMinor: 2600,
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		expect(actor.getSnapshot().value).toBe('authorizing');
+		expect(openFund(actor)).toBeNull();
+	});
+
+	// Chariot's button is the fund's option on the card, so it stands exactly where a press on it
+	// can be taken — and through the open window, whose endings are heard on that element.
+	it('offers the fund on the review step of a one-time gift, and through its open window', () => {
+		const details = atDetails({ config: DAF_CONFIG });
+		expect(fundIsOffered(details.actor.getSnapshot())).toBe(false);
+
+		const { actor } = readyToSubmit({ config: DAF_CONFIG });
+		expect(fundIsOffered(actor.getSnapshot())).toBe(true);
+		actor.send({ type: 'OPEN_FUND' });
+		expect(fundIsOffered(actor.getSnapshot())).toBe(true);
+
+		const monthly = readyToSubmit({ config: DAF_CONFIG });
+		monthly.actor.send({ type: 'GO_TO_STEP', step: 'amount' });
+		monthly.actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
+		monthly.actor.send({ type: 'GO_TO_STEP', step: 'give' });
+		expect(fundIsOffered(monthly.actor.getSnapshot())).toBe(false);
+
+		expect(fundIsOffered(readyToSubmit().actor.getSnapshot())).toBe(false);
 	});
 });

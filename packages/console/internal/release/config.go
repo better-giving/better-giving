@@ -140,13 +140,13 @@ func mustParse(source []byte) Config {
 	return config
 }
 
-// DeployVars is the seventeen values a deployment is configured with, and every one of them is a
+// DeployVars is the twenty-one values a deployment is configured with, and every one of them is a
 // plain worker var.
 //
 // **stated here rather than baked, and gated rather than trusted.** the list is
 // packages/operator/src/deploy-split.ts's — both operator surfaces read it — and ./config_test.go
 // holds this one to that module's, so a name added there and not here fails `go test` rather than
-// shipping a console that draws sixteen rows. it is a list rather than a bake because it is this
+// shipping a console that draws twenty rows. it is a list rather than a bake because it is this
 // binary's own reading of the deployment and not a fact about the checkout it was baked from.
 //
 // **the order is the source's and is not a preference**: it is the order every screen draws the
@@ -171,6 +171,10 @@ var DeployVars = []string{
 	"PAYPAL_CLIENT_SECRET",
 	"PAYPAL_WEBHOOK_ID",
 	"PAYPAL_CHARITY_RATE_APPROVED",
+	"CHARIOT_API_KEY",
+	"CHARIOT_API_URL",
+	"CHARIOT_CONNECT_ID",
+	"CHARIOT_WEBHOOK_SECRET",
 	"BETTER_AUTH_SECRET",
 	"BETTER_AUTH_URL",
 	"ADMIN_PASSWORD",
@@ -178,7 +182,7 @@ var DeployVars = []string{
 
 // the closed sets a deployment answers its own console surface in.
 //
-// **stated here and gated rather than trusted, the way the seventeen above are.** each of them is
+// **stated here and gated rather than trusted, the way the twenty-one above are.** each of them is
 // one operator surface's statement in packages/operator/src/console/, and ./config_test.go holds
 // these lists to it — so a member added there and not here fails `go test` rather than shipping a
 // console that reads a real answer as one it has no state for. what a member means is written
@@ -211,7 +215,7 @@ var (
 	RecurringSetupReasons = []string{"no_key", "failed"}
 	// PaymentProcessors is every processor a deployment can be set up to charge on, which the
 	// payments reading carries one entry per whether or not the deployment holds its credentials.
-	PaymentProcessors = []string{"stripe", "paypal"}
+	PaymentProcessors = []string{"stripe", "paypal", "chariot"}
 	// RailStandings is where one way of paying stands on that account.
 	RailStandings = []string{
 		"approved",
@@ -255,7 +259,7 @@ const PaypalProcessor = "paypal"
 // what the deployment's webhook endpoint is: the path it answers on, the version its deliveries are
 // serialised in, and everything it subscribes to.
 //
-// **stated here and gated rather than trusted, the way the seventeen above are.** the source is
+// **stated here and gated rather than trusted, the way the twenty-one above are.** the source is
 // packages/operator/src/stripe/webhook-endpoint.ts, which both ends of the endpoint read — this
 // binary registers it on the processor account and the deployment serves it — and ./config_test.go
 // holds these to that module's. what each of them costs when the two ends disagree is written
@@ -299,6 +303,18 @@ var (
 		"BILLING.SUBSCRIPTION.EXPIRED",
 		"BILLING.SUBSCRIPTION.SUSPENDED",
 	}
+)
+
+// what the deployment's Chariot event subscription is: the path it delivers to and the one category
+// it is subscribed to.
+//
+// **stated here and gated rather than trusted, the way the PayPal listener above is.** the path's
+// source is packages/operator/src/chariot/webhook-subscription.ts and the category's is
+// `SETTLEMENT_CATEGORY` in packages/app/src/lib/server/payments/chariot.ts, the one the settle path
+// reads; ./config_test.go holds both to those modules.
+const (
+	ChariotWebhookPath   = "/api/chariot/webhook"
+	ChariotEventCategory = "grant.updated"
 )
 
 // MinAdminPasswordLength is the shortest dashboard password a deployment will authenticate

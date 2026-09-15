@@ -18,6 +18,7 @@ import {
 	CONSOLE_TOKEN_MIN_RANDOM,
 	formatConsoleToken
 } from '@better-giving/operator/console/token';
+import { CHARIOT_LIVE_API_URL, createChariotProvider } from '$lib/server/payments/chariot';
 import { refusing } from '$lib/server/payments/provider';
 import type {
 	AccountChargeability,
@@ -83,7 +84,7 @@ const STRIPE_VALUES = {
  * so `configured` and `unset` beside it go on being the deployment's own answer.
  */
 const stub = vi.hoisted(() => ({
-	ports: {} as Partial<Record<'stripe' | 'paypal', PaymentProvider>>
+	ports: {} as Partial<Record<ProcessorName, PaymentProvider>>
 }));
 
 vi.mock('$lib/server/payments/factory', async (importOriginal) => {
@@ -94,7 +95,7 @@ vi.mock('$lib/server/payments/factory', async (importOriginal) => {
 			const processors = actual.createPaymentProviders(platformEnv);
 			return {
 				...processors,
-				for: (name: 'stripe' | 'paypal') => stub.ports[name] ?? processors.for(name)
+				for: (name: ProcessorName) => stub.ports[name] ?? processors.for(name)
 			};
 		}
 	};
@@ -486,7 +487,7 @@ describe('the report this deployment answers with', () => {
 	/**
 	 * no configuration value crosses this wire, and neither does the name of one.
 	 *
-	 * the console reads all seventeen off the Cloudflare account it is signed in to, so a member
+	 * the console reads all twenty-one off the Cloudflare account it is signed in to, so a member
 	 * here that reported one too would be a second seed disagreeing with the first mid-deploy —
 	 * which is why the envelope carries none and why this is one case over the whole list rather
 	 * than an assertion per name. the name is checked as well as the value because a member is
@@ -931,6 +932,27 @@ describe('setting up repeating gifts', () => {
 	});
 
 	/**
+	 * Chariot takes no repeating gifts (`takesRepeatingGifts` in $lib/server/payments/provider.ts), so
+	 * a deployment holding its key has no standing to report for it and nothing to fail on.
+	 */
+	it('answers a read on a deployment holding Chariot’s key without a line for it', async () => {
+		const response = await readRecurring({ ...NO_STRIPE, CHARIOT_API_KEY: 'notarealchariotkey' });
+
+		expect(response.status).toBe(200);
+		expect(await reportOf(response)).toEqual({ processors: [] });
+	});
+
+	/** and a press naming it is refused, rather than asking an account that has no such arm. */
+	it('refuses a body naming Chariot', async () => {
+		const response = await setUpRecurringOn('chariot', { CHARIOT_API_KEY: 'notarealchariotkey' });
+		const refusal = (await response.json()) as { error: string; fix: string };
+
+		expect(response.status).toBe(400);
+		expect(refusal.error).toBe('bad_processor');
+		expect(refusal.fix).not.toContain('chariot');
+	});
+
+	/**
 	 * one press over both accounts, and neither one's answer stands for the other: a donor is
 	 * offered a repeating gift only where every configured processor can collect one, so an account
 	 * that is ready says nothing about the deployment while the other is short.
@@ -1059,7 +1081,7 @@ describe('the accounts this deployment charges on', () => {
 	it('names each processor the way an operator is shown it', async () => {
 		const body = (await (await readPayments()).json()) as PaymentsReport;
 
-		expect(body.processors.map((entry) => entry.label)).toEqual(['Stripe', 'PayPal']);
+		expect(body.processors.map((entry) => entry.label)).toEqual(['Stripe', 'PayPal', 'Chariot']);
 	});
 
 	/**
@@ -1346,6 +1368,86 @@ describe('bringing the webhook endpoint level', () => {
 		const response = await repairWebhook(NO_STRIPE);
 		expect(response.headers.get('access-control-allow-origin')).toBeNull();
 		expect(response.headers.get('cache-control')).toBe('no-store');
+	});
+});
+
+/**
+ * the reading of the DAF processor, which settles one rail, keeps no endpoint this deployment
+ * registers and draws no wallet.
+ *
+ * the real adapter answers every arm but the account read, which is the one that goes over the
+ * network: what the deployment says about the others is the adapter's own refusals mapped onto the
+ * wire.
+ */
+describe('a deployment set up on Chariot', () => {
+	const CHARIOT_VALUES = { CHARIOT_API_KEY: 'notarealchariotkey' };
+
+	/** the adapter, with its account read answering the `daf` rail active as a key it accepts does. */
+	function chariotPort(): PaymentProvider {
+		return {
+			...createChariotProvider({
+				apiKey: CHARIOT_VALUES.CHARIOT_API_KEY,
+				apiUrl: CHARIOT_LIVE_API_URL,
+				webhookSecret: null
+			}),
+			async readAccountChargeability(): Promise<PaymentResult<AccountChargeability>> {
+				return { ok: true, value: { chargesEnabled: true, rails: { daf: 'active' } } };
+			}
+		};
+	}
+
+	beforeEach(() => {
+		stub.ports.chariot = chariotPort();
+	});
+
+	it('reports Chariot as unconfigured on a deployment holding none of its values', async () => {
+		const reading = await readingFor('chariot');
+
+		expect(reading).toEqual({
+			processor: 'chariot',
+			label: 'Chariot',
+			state: 'unconfigured',
+			unset: ['CHARIOT_API_KEY']
+		});
+	});
+
+	it('reports the DAF rail approved on credentials alone, with a sentence saying so', async () => {
+		const reading = await configuredReading('chariot', CHARIOT_VALUES);
+
+		expect(reading.rails.state === 'read' && reading.rails.evidence).toBe('credentials_only');
+		const rails = reading.rails.state === 'read' ? reading.rails.rails : [];
+		expect(rails.map((line) => [line.rail, line.standing])).toEqual([['daf', 'approved']]);
+		expect(rails[0]?.note).toMatch(/Chariot/);
+	});
+
+	/** no endpoint is listed through the port, so there is nothing to compare a secret against. */
+	it('reports the subscription unreadable with the adapter’s sentence, and the secret by what is held', async () => {
+		const unset = await configuredReading('chariot', CHARIOT_VALUES);
+		expect(unset.subscription.state).toBe('unreadable');
+		expect(unset.subscription.state === 'unreadable' && unset.subscription.detail).toMatch(
+			/Chariot/
+		);
+		expect(unset.webhook).toEqual({ state: 'unset', detail: null });
+
+		const held = await configuredReading('chariot', {
+			...CHARIOT_VALUES,
+			CHARIOT_WEBHOOK_SECRET: 'notarealchariotsecret'
+		});
+		expect(held.webhook).toEqual({ state: 'unconfirmable', detail: null });
+	});
+
+	it('reports no wallet section at all', async () => {
+		const reading = await configuredReading('chariot', CHARIOT_VALUES);
+
+		expect(reading.wallets).toBeNull();
+	});
+
+	it('carries no Chariot credential in its answer', async () => {
+		const said = await (
+			await readPayments({ ...CHARIOT_VALUES, CHARIOT_WEBHOOK_SECRET: 'notarealchariotsecret' })
+		).text();
+		expect(said).not.toContain(CHARIOT_VALUES.CHARIOT_API_KEY);
+		expect(said).not.toContain('notarealchariotsecret');
 	});
 });
 

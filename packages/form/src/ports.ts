@@ -180,3 +180,37 @@ export type CheckoutPorts = {
 	/** Unix ms. A port because ten days is not a thing a test can wait for. */
 	now(): number;
 };
+
+/**
+ * what a donor-advised fund's own window approved.
+ *
+ * the two fields `QuoteRequest.authorizationId` and `authorizedMinor` in ./v1.ts, as one value so
+ * neither travels without the other. `authorizedMinor` is the total the fund approved, which the
+ * donor may have changed inside the window.
+ */
+export type FundAuthorization = {
+	readonly authorizationId: string;
+	readonly authorizedMinor: number;
+};
+
+/** what a fund's window is opened on, so the donor finds the gift they chose already in it. */
+export type FundRequest = {
+	readonly amountMinor: number;
+	readonly email: string;
+	readonly firstName: string;
+	readonly lastName: string;
+};
+
+/**
+ * the three things a donor-advised fund's window reports into the flow, as the adapter hears them.
+ *
+ * `opened` is asked synchronously, on the donor's press of the fund's own button and before its
+ * window opens: the flow is told of the press and answers with what to open the window on, or with
+ * `null` to keep it shut. anything awaited there spends the press, and the browser blocks a window
+ * opened without one. `approved` and `closed` are the window's two endings, exactly one per opening.
+ */
+export type FundReports = {
+	opened(): FundRequest | null;
+	approved(authorization: FundAuthorization): void;
+	closed(): void;
+};

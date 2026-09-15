@@ -6,6 +6,7 @@ import { holdBar } from '@better-giving/operator/progress-bar';
 import type { CSSProperties } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { Link, Outlet, redirect, useLocation, useSearchParams } from 'react-router';
+import chariotLogo from '../assets/processors/chariot.png';
 import paypalLogo from '../assets/processors/paypal.png';
 import stripeLogo from '../assets/processors/stripe.png';
 import github from '../assets/social/github.webp';
@@ -78,7 +79,8 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 	const { reading } = loaderData;
 	const groups = railGroups(reading.sections, reading.processors, {
 		stripe: stripeLogo,
-		paypal: paypalLogo
+		paypal: paypalLogo,
+		chariot: chariotLogo
 	});
 	const here = groups
 		.flatMap((group) => group.destinations)

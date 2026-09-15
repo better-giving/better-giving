@@ -52,7 +52,7 @@ import type { StripeUnreadableReason } from './stripe-read.js';
  *
  * the order is the deployment's and no consumer sorts it, so the folds always stand in one order.
  */
-export const PAYMENT_PROCESSORS = ['stripe', 'paypal'] as const;
+export const PAYMENT_PROCESSORS = ['stripe', 'paypal', 'chariot'] as const;
 
 export type PaymentProcessor = (typeof PAYMENT_PROCESSORS)[number];
 

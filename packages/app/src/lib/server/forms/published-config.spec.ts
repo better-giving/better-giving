@@ -376,7 +376,7 @@ describe('publishedConfig — refusals', () => {
 		if (result.ok) return;
 		expect(result.error.fix).toContain('Stripe');
 		expect(result.error.fix).toContain('PayPal');
-		expect(result.error.fix).toContain('Either processor is enough on its own.');
+		expect(result.error.fix).toContain('Any one processor is enough on its own.');
 	});
 
 	/**

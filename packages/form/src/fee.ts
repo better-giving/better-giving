@@ -59,10 +59,10 @@ const SCALE = 1_000_000;
  * whether this rule prices this gift at all — every misconfiguration both readings of the fee
  * withhold on.
  *
- * one predicate rather than the same six lines in each, and that is the contract rather than
+ * one predicate rather than the same seven lines in each, and that is the contract rather than
  * tidiness: the two functions below answer opposite questions about the same rule, and a donor
  * shown one figure and not the other over a rate nobody typed is a fee row that contradicts
- * itself. a seventh misconfiguration is added here and both readings withhold on it together.
+ * itself. an eighth misconfiguration is added here and both readings withhold on it together.
  *
  * misconfiguration and no more than that. `estimateDeductedFee` below withholds on one further
  * condition of its own — a gift too small to take the fee out of — and that asymmetry is deliberate:
@@ -82,7 +82,13 @@ function isPriceable(amountMinor: number, rule: FeeRule | undefined): rule is Fe
 	if (!Number.isInteger(rule.fixedMinor) || rule.fixedMinor < 0) return false;
 	const cap = rule.capMinor;
 	if (cap !== undefined && (!Number.isInteger(cap) || cap < 0)) return false;
+	const step = rule.roundUpMinor;
+	if (step !== undefined && (!Number.isInteger(step) || step <= 0)) return false;
 	return true;
+}
+
+function roundUp(feeMinor: number, step: number | undefined): number {
+	return step === undefined ? feeMinor : Math.ceil(feeMinor / step) * step;
 }
 
 /**
@@ -96,7 +102,7 @@ function isPriceable(amountMinor: number, rule: FeeRule | undefined): rule is Fe
  * permanent, and in the direction nobody audits.
  *
  * rounds up. a half minor unit rounded down is an underpayment the org absorbs; rounded up it
- * costs the donor at most one cent.
+ * costs the donor at most one cent, or one `roundUpMinor` step on a rule that states one.
  *
  * what comes back is the rule solved, and no more than that. the rule states one percentage and
  * one flat charge, and a card priced above it — issued outside the account's country, or settled
@@ -130,10 +136,15 @@ export function estimateFee(amountMinor: number, rule: FeeRule | undefined): Fee
 	// the smaller of the two is the one the cap binds in — below it the capped form is the larger
 	// and the rate is what the processor takes; at and above it the gross-up is the larger and
 	// quotes a fee past the one incurred. integers on both sides, so the choice adds no rounding.
-	const totalMinor =
+	const unrounded =
 		cap === undefined ? grossedUp : Math.min(grossedUp, amountMinor + cap + rule.fixedMinor);
+	// rounding the solved fee up is exact rather than approximate: a stepped fee `k·step` nets the
+	// gift exactly when `min(percent·(amount + k·step), cap) + fixed <= k·step`, and the smallest
+	// such `k·step` is the unrounded fee rounded up — so the larger total is never charged a step more.
+	const feeMinor = roundUp(unrounded - amountMinor, rule.roundUpMinor);
+	const totalMinor = amountMinor + feeMinor;
 	if (!Number.isSafeInteger(totalMinor)) return null;
-	return { feeMinor: totalMinor - amountMinor, totalMinor };
+	return { feeMinor, totalMinor };
 }
 
 /**
@@ -170,7 +181,8 @@ export type DeductedFee = {
  * believed they had covered; this number is charged to nobody and checked against nothing, so
  * neither direction is a shortfall and nearest is the reading wrong by the least. a half unit goes
  * up, which is stated rather than left to be worked out — it is also the direction that never
- * overstates what the org receives.
+ * overstates what the org receives. a rule with a `roundUpMinor` step rounds up instead, because
+ * that is the price the rail states.
  *
  * returns `null` where the deduction would leave nothing, and this is the one withholding
  * `estimateFee` above does not share — see `isPriceable`. at a gift smaller than the flat charge
@@ -188,10 +200,14 @@ export function estimateDeductedFee(
 	// binary-float product of it is not, so the half that decides the rounding has to be a real one.
 	const scaled = amountMinor * Math.round(rule.percent * SCALE);
 	if (!Number.isSafeInteger(scaled)) return null;
-	const proportional = Math.round(scaled / SCALE);
+	// a stepped rule rounds the exact product up: nearest first would pull $100.00012 down onto a step.
+	const proportional =
+		rule.roundUpMinor === undefined ? Math.round(scaled / SCALE) : Math.ceil(scaled / SCALE);
 	const cap = rule.capMinor;
-	const feeMinor =
-		(cap === undefined ? proportional : Math.min(proportional, cap)) + rule.fixedMinor;
+	const feeMinor = roundUp(
+		(cap === undefined ? proportional : Math.min(proportional, cap)) + rule.fixedMinor,
+		rule.roundUpMinor
+	);
 	if (feeMinor >= amountMinor) return null;
 	return { feeMinor, netMinor: amountMinor - feeMinor };
 }

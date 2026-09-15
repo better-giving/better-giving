@@ -226,7 +226,8 @@ const CONFIG: FormConfig = {
 		apple_pay: { percent: 0.029, fixedMinor: 30 },
 		google_pay: { percent: 0.029, fixedMinor: 30 },
 		paypal: { percent: 0.0349, fixedMinor: 49 },
-		venmo: { percent: 0.0349, fixedMinor: 49 }
+		venmo: { percent: 0.0349, fixedMinor: 49 },
+		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',

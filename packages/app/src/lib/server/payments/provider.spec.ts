@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	isRetryable,
 	PAYMENT_FAILURE_REASONS,
+	processorOf,
 	refusing,
 	RETRYABLE_FAILURE_REASONS,
 	sealed,
@@ -42,6 +43,14 @@ const NOTICE = {
 	providerNoticeId: 'in_1',
 	occurredAt: new Date(1_770_000_000_000)
 } as const;
+
+describe('processorOf', () => {
+	// the donor's page opens Chariot's window for a DAF gift, so the grant is Chariot's to create and
+	// settle — a rail read as anyone else's is a quote minted on a processor with no grant to make.
+	it('hands a DAF gift to Chariot', () => {
+		expect(processorOf('daf')).toBe('chariot');
+	});
+});
 
 describe('refusing', () => {
 	/**

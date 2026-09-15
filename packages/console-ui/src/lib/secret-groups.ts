@@ -7,7 +7,7 @@ import type { DeployValueName } from '@better-giving/operator/deploy-split';
 // the names to remove — so the two ends need the same vocabulary, and what is here is the half both
 // of them need and nothing that touches a network or a credential.
 //
-// **a group is a group of boxes and says nothing about how a value is stored.** all seventeen are
+// **a group is a group of boxes and says nothing about how a value is stored.** all twenty-one are
 // plain vars (`DEPLOY_VARS` in packages/operator/src/deploy-split.ts); a name here calls a value a
 // secret only where Stripe or a mail host calls it one.
 //
@@ -37,11 +37,11 @@ export type SecretGroup = {
 };
 
 /**
- * the five groups.
+ * the six groups.
  *
  * the order is `DEPLOY_VARS`'s own, so a name added to the enumeration lands in a group here
  * without the screen and the split having an order each to drift from the other. four of the
- * seventeen are in no group and ./deploy-vars.ts names them: they are the values no group's press
+ * twenty-one are in no group and ./deploy-vars.ts names them: they are the values no group's press
  * sets, and that is where each is argued.
  *
  * two of the grouped names belong to no fold's own errand, and they are the first group:
@@ -82,6 +82,14 @@ export const SECRET_GROUPS: readonly SecretGroup[] = [
 		id: 'paypal',
 		label: 'Taking PayPal and Venmo',
 		names: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'PAYPAL_WEBHOOK_ID']
+	},
+	/* the third processor's, a group of its own for the second's reason. the four are one press
+	   because none of them is useful without the key: the address is where the key is sent, and the
+	   connect id and the webhook secret are what the key fetched and subscribed. */
+	{
+		id: 'chariot',
+		label: 'Taking gifts from donor-advised funds',
+		names: ['CHARIOT_API_KEY', 'CHARIOT_API_URL', 'CHARIOT_CONNECT_ID', 'CHARIOT_WEBHOOK_SECRET']
 	}
 ];
 
@@ -113,6 +121,9 @@ export const PAYMENTS_GROUP = 'payments';
  */
 export const PAYPAL_GROUP = 'paypal';
 
+/** the group the same fold's Chariot section draws, named here for {@link SIGN_IN_GROUP}'s reason. */
+export const CHARIOT_GROUP = 'chariot';
+
 /** what a press posts to save `group`, which is the submitting button's own value. */
 export const groupIntent = (group: SecretGroup): string => `secrets:${group.id}`;
 
@@ -121,7 +132,7 @@ export const groupPosted = (intent: unknown): SecretGroup | null =>
 	SECRET_GROUPS.find((group) => groupIntent(group) === intent) ?? null;
 
 /**
- * the values no operator ever types a value for, because a press mints one.
+ * the values no operator ever types a value for, because a press mints or fetches one.
  *
  * `BETTER_AUTH_SECRET` signs the session a staff member gets back: `packages/console/internal/first`
  * generates it on the one press that makes the deployment and argues why a box for it would be
@@ -136,11 +147,22 @@ export const groupPosted = (intent: unknown): SecretGroup | null =>
  * nobody can correctly fill. it does keep a row: ./stripe-section.tsx states whether the deployment
  * is holding one, because an operator reading that fold is deciding whether payments are set up.
  *
+ * `CHARIOT_WEBHOOK_SECRET` is the same kind of value: the console mints it for the webhook
+ * subscription it creates with the key, and no operator holds one to paste. `CHARIOT_CONNECT_ID` is
+ * fetched on that same press, with the key and the EIN the organisation's profile holds
+ * (`packages/console/internal/chariot`), so a box for it would be a second way to name a Connect the
+ * key did not produce.
+ *
  * it is a list here rather than a literal where it is drawn so that each name is written once.
  * spelled again at the call site it would be a second copy to keep level, and the way that fails is
  * a box appearing under a renamed value with nothing saying so.
  */
-export const MINTED_BY_CONSOLE: readonly string[] = ['BETTER_AUTH_SECRET', 'STRIPE_WEBHOOK_SECRET'];
+export const MINTED_BY_CONSOLE: readonly string[] = [
+	'BETTER_AUTH_SECRET',
+	'STRIPE_WEBHOOK_SECRET',
+	'CHARIOT_CONNECT_ID',
+	'CHARIOT_WEBHOOK_SECRET'
+];
 
 /**
  * the names in a group an operator types a value for, which is the group less whatever the console
@@ -196,11 +218,12 @@ export const pressedNames = (group: SecretGroup): readonly string[] =>
  *
  * every box on this console is seeded with the value the deployment is holding (./held-values.ts),
  * which is what lets an operator check a stored credential against the page they copied it from —
- * and four of the seventeen are values that reading over their shoulder is enough to take. the
+ * and five of the twenty-one are values that reading over their shoulder is enough to take. the
  * dashboard password opens /admin, the mail password sends as the organisation, and the Stripe
- * secret key and the PayPal client secret move money. so those four are drawn masked and the press
- * is how they are read, rather than standing legible through a screen share for as long as the fold
- * is open. `masked` in packages/operator/src/components/forms/Field.jsx is what draws it.
+ * secret key, the PayPal client secret and the Chariot key move money. so those five are drawn
+ * masked and the press is how they are read, rather than standing legible through a screen share
+ * for as long as the fold is open. `masked` in packages/operator/src/components/forms/Field.jsx is
+ * what draws it.
  *
  * **`STRIPE_PUBLISHABLE_KEY` is deliberately not one of them.** it ships inside the donation form
  * on every page the snippet is pasted into, so a box that hid it would be hiding a value already
@@ -213,20 +236,24 @@ export const pressedNames = (group: SecretGroup): readonly string[] =>
  * of value: it names a listener and authorises nothing. what is masked beside them is the client
  * secret, which authenticates every server call this deployment makes to PayPal.
  *
+ * **`CHARIOT_CONNECT_ID` is not one of them for the same reason.** it starts Connect in a donor's
+ * browser, and the key beside it is what authenticates every call to Chariot.
+ *
  * the rest are values that identify rather than authorise — a mail host, a username, the address
  * receipts leave under — and a box that made an operator press to read their own sending address
  * would be ceremony over nothing.
  *
- * the four are drawn by three different folds — ./password-fold.tsx through
- * ./secret-group-form.tsx, ./smtp-fold.tsx, and ./stripe-section.tsx with ./paypal-section.tsx — and
- * each takes its answer from here, so a fifth credential is decided once and not at whichever fold
+ * the five are drawn by three different folds — ./password-fold.tsx through
+ * ./secret-group-form.tsx, ./smtp-fold.tsx, and the payments fold's processor sections — and each
+ * takes its answer from here, so a sixth credential is decided once and not at whichever fold
  * draws it.
  */
 export const MASKED_VALUES: readonly string[] = [
 	'ADMIN_PASSWORD',
 	'SMTP_PASSWORD',
 	'STRIPE_SECRET_KEY',
-	'PAYPAL_CLIENT_SECRET'
+	'PAYPAL_CLIENT_SECRET',
+	'CHARIOT_API_KEY'
 ];
 
 /** whether the box for `name` is drawn masked ({@link MASKED_VALUES}). */

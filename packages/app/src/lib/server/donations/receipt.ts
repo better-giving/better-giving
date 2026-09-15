@@ -2,11 +2,15 @@ import type { TributeKind } from '@better-giving/form/v1';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { donation } from '../db/schema';
+import { renderGrantReceived, type GrantNoticeInput } from '../email/grant';
+import type { RenderedEmail } from '../email/provider';
 import { renderReceipt, type ReceiptContribution } from '../email/receipt';
 import { readOrgProfile } from '../org/queries';
 import { alert, type MailDeps } from './delivery';
 
 // the donor's receipt, sent once per gift that reached the books, whichever path put it there.
+// a donor-advised fund gift gets a thank-you in its place (`sendGrantReceived`), under the same
+// claim, so a gift is stamped for whichever of the two it was owed.
 //
 // it is a module of its own for the reason ./delivery.ts is one: both halves of the webhook end at
 // it and neither may import the other. ./settle.ts settles a one-off gift against the payment row a
@@ -110,20 +114,8 @@ export type ReceiptTarget = {
  * signal to act on: every arm that needed an operator has already told one.
  */
 export async function sendReceipt(deps: MailDeps, target: ReceiptTarget): Promise<ReceiptOutcome> {
-	if (target.donorEmail === null) return 'no_address';
-
-	try {
-		// the gift claimed, or nothing. `.returning()` is what says which happened: no row means the
-		// gift already carries a stamp — or is not there at all, which is the same "nothing to
-		// receipt" from here.
-		const [claimed] = await deps.db
-			.update(donation)
-			.set({ receiptSentAt: new Date() })
-			.where(and(eq(donation.id, target.donationId), isNull(donation.receiptSentAt)))
-			.returning({ id: donation.id });
-		if (claimed === undefined) return 'not_sent';
-
-		const rendered = await renderReceipt({
+	return claimAndSend(deps, target.donationId, target.donorEmail, 'receipt', async () =>
+		renderReceipt({
 			// a document a donor files, so an incomplete profile is refused rather than printed with a
 			// gap in it — which is the refusal this function's own header describes, and the backlog
 			// below is what it leaves behind.
@@ -136,17 +128,75 @@ export async function sendReceipt(deps: MailDeps, target: ReceiptTarget): Promis
 			goodsOrServices: { kind: 'none' },
 			tribute: target.tribute,
 			program: target.program
-		});
+		})
+	);
+}
+
+/** one donor-advised fund gift to thank: who to write to, and the gift portion of the grant. */
+export type GrantReceivedTarget = Omit<GrantNoticeInput, 'org'> & {
+	/** the gift being thanked for. `receipt_sent_at` is stamped on this row and no other. */
+	readonly donationId: string;
+	/** `null` is a donor nobody has an address for, and nothing is sent. */
+	readonly donorEmail: string | null;
+};
+
+/**
+ * the donor's thank-you for a grant the organisation has received, in place of a receipt.
+ *
+ * a donor-advised fund gift was deducted when the donor funded their account, so the fund's grant
+ * gets no tax receipt. it claims the same `receipt_sent_at` a receipt does, and on the same terms:
+ * the column records that the donor's one message about a settled gift went, so a gift carrying it
+ * is never later sent a receipt by anything that reads that stamp.
+ */
+export async function sendGrantReceived(
+	deps: MailDeps,
+	target: GrantReceivedTarget
+): Promise<ReceiptOutcome> {
+	return claimAndSend(deps, target.donationId, target.donorEmail, 'thank-you', async () =>
+		renderGrantReceived({ ...target, org: await readOrgProfile(deps.db) })
+	);
+}
+
+/** a rendered message, or the sentence saying why it could not be written. */
+type Rendering =
+	| { readonly ok: true; readonly message: RenderedEmail }
+	| { readonly ok: false; readonly detail: string };
+
+/**
+ * the gift claimed, the message rendered and sent, and the claim handed back on every way out that
+ * did not send. `noun` is what an operator's alert calls the message.
+ */
+async function claimAndSend(
+	deps: MailDeps,
+	donationId: string,
+	donorEmail: string | null,
+	noun: 'receipt' | 'thank-you',
+	render: () => Promise<Rendering>
+): Promise<ReceiptOutcome> {
+	if (donorEmail === null) return 'no_address';
+
+	try {
+		// the gift claimed, or nothing. `.returning()` is what says which happened: no row means the
+		// gift already carries a stamp — or is not there at all, which is the same "nothing to
+		// receipt" from here.
+		const [claimed] = await deps.db
+			.update(donation)
+			.set({ receiptSentAt: new Date() })
+			.where(and(eq(donation.id, donationId), isNull(donation.receiptSentAt)))
+			.returning({ id: donation.id });
+		if (claimed === undefined) return 'not_sent';
+
+		const rendered = await render();
 
 		if (!rendered.ok) {
-			await release(deps.db, target.donationId);
+			await release(deps.db, donationId);
 			await alert(deps, {
-				headline: 'A gift was recorded and its receipt could not be written',
+				headline: `A gift was recorded and its ${noun} could not be written`,
 				body:
-					'The gift is in the books. The receipt was not sent, and the donor is owed one. The ' +
+					`The gift is in the books. The ${noun} was not sent, and the donor is owed one. The ` +
 					'gift stays on the unreceipted list until this is fixed and it is sent.',
 				facts: [
-					{ label: 'Donation', value: target.donationId },
+					{ label: 'Donation', value: donationId },
 					{ label: 'Reason', value: rendered.detail }
 				],
 				action:
@@ -155,19 +205,19 @@ export async function sendReceipt(deps: MailDeps, target: ReceiptTarget): Promis
 			return 'not_sent';
 		}
 
-		const sent = await deps.email.send({ to: target.donorEmail, ...rendered.message });
+		const sent = await deps.email.send({ to: donorEmail, ...rendered.message });
 		if (!sent.ok) {
 			// handed back on an indeterminate send too. the alert says which it was, and a donor who
 			// gets a second copy is a better outcome than one this deployment records as receipted and
 			// never wrote to.
-			await release(deps.db, target.donationId);
+			await release(deps.db, donationId);
 			await alert(deps, {
-				headline: 'A gift was recorded and its receipt did not send',
+				headline: `A gift was recorded and its ${noun} did not send`,
 				body:
 					'The gift is in the books and the donor has not been told. It stays on the unreceipted ' +
 					'list, so nothing is lost by fixing the mail settings and sending it again.',
 				facts: [
-					{ label: 'Donation', value: target.donationId },
+					{ label: 'Donation', value: donationId },
 					{ label: 'Reason', value: sent.reason },
 					{ label: 'Detail', value: sent.detail },
 					{ label: 'May have sent anyway', value: sent.indeterminate ? 'yes' : 'no' }
@@ -180,7 +230,7 @@ export async function sendReceipt(deps: MailDeps, target: ReceiptTarget): Promis
 
 		return 'sent';
 	} catch (error) {
-		await faulted(deps, target.donationId, error);
+		await faulted(deps, donationId, noun, error);
 		return 'not_sent';
 	}
 }
@@ -204,7 +254,12 @@ async function release(db: Db, donationId: string): Promise<void> {
  * goes out over a transport that may be the very thing that faulted, and `alert` logs its headline
  * and facts before it reaches that transport (./delivery.ts), so the sentence lands either way.
  */
-async function faulted(deps: MailDeps, donationId: string, error: unknown): Promise<void> {
+async function faulted(
+	deps: MailDeps,
+	donationId: string,
+	noun: 'receipt' | 'thank-you',
+	error: unknown
+): Promise<void> {
 	try {
 		await release(deps.db, donationId);
 	} catch {
@@ -214,10 +269,10 @@ async function faulted(deps: MailDeps, donationId: string, error: unknown): Prom
 
 	try {
 		await alert(deps, {
-			headline: 'A gift was recorded and its receipt could not be attempted',
+			headline: `A gift was recorded and its ${noun} could not be attempted`,
 			body:
 				'The gift is in the books and the step that receipts it failed outright. The donor has ' +
-				'not been told and is owed a receipt.',
+				`not been told and is owed a ${noun}.`,
 			facts: [
 				{ label: 'Donation', value: donationId },
 				{ label: 'Reason', value: error instanceof Error ? error.message : String(error) }

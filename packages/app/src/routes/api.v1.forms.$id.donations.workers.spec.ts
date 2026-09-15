@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountRoutes } from '../route-request.testing';
 import * as donations from './api.v1.forms.$id.donations';
 import * as surface from './api.v1';
@@ -21,8 +21,8 @@ import * as surface from './api.v1';
 // nesting), and mounting the layout is also what puts every case here in front of the meter.
 //
 // ---------------------------------------------------------------------------
-// every case below stops before the network, and that is a property of the fixtures rather than of
-// a stub.
+// every case below but the fund refusals at the foot of the file stops before the network, and
+// that is a property of the fixtures rather than of a stub.
 //
 // this route builds its own payment provider and passes the real `verifyTurnstile`, which is the
 // point — those two lines are what a spec injecting both would never exercise. so the deployment
@@ -787,5 +787,66 @@ describe('POST /api/v1/forms/:id/donations — the capability it does not gate o
 			// be served a rail list nothing else asked for.
 			await edge.delete(RAIL_KEY);
 		}
+	});
+});
+
+/**
+ * the two refusals a donor-advised fund answers with, the only cases in this file that go past the
+ * challenge.
+ *
+ * the route builds the real Chariot adapter and the real `verifyTurnstile`, so both are reached
+ * through a scripted `fetch` rather than an injected port: siteverify honours the token on the
+ * form's own site, and Create Grant answers what Chariot answers. ../../vitest.workers.config.ts
+ * sets `unstubGlobals`, so the stub is gone before the next case.
+ */
+describe('POST /api/v1/forms/:id/donations — a fund gift the fund refuses', () => {
+	const CHARIOT = {
+		CHARIOT_API_KEY: 'notarealchariotkey',
+		CHARIOT_CONNECT_ID: 'notarealconnectid',
+		TURNSTILE_SITE_KEY: '0xSITE',
+		TURNSTILE_SECRET_KEY: '0xSECRET'
+	};
+	const fundGift = {
+		method: 'daf',
+		authorizationId: 'cfe09e64-6a74-4dab-a565-361185a6f248',
+		authorizedMinor: 10_000
+	};
+
+	function chariotAnswers(grant: Response): void {
+		vi.stubGlobal('fetch', async (input: Request | string | URL, init?: RequestInit) => {
+			const request = input instanceof Request ? input : new Request(String(input), init);
+			if (request.url.startsWith('https://challenges.cloudflare.com/')) {
+				return Response.json({ success: true, hostname: new URL(ALLOWED).hostname });
+			}
+			if (request.method === 'POST' && new URL(request.url).pathname.endsWith('/grants')) {
+				return grant.clone();
+			}
+			return Response.json({ title: 'Not Found' }, { status: 404 });
+		});
+	}
+
+	it('answers 409 for an approval the fund no longer holds', async () => {
+		chariotAnswers(Response.json({ title: 'Gone' }, { status: 410 }));
+
+		const response = await post(fundGift, { vars: CHARIOT });
+
+		expect(response.status).toBe(409);
+		expect(await response.json()).toMatchObject({ error: 'daf_authorization_expired' });
+		expect(response.headers.get('access-control-allow-origin')).toBe(ALLOWED);
+	});
+
+	it('answers 422 for an amount the fund will not grant', async () => {
+		chariotAnswers(
+			Response.json(
+				{ title: 'Bad Request', detail: 'amount exceeds the fund balance' },
+				{ status: 400 }
+			)
+		);
+
+		const response = await post(fundGift, { vars: CHARIOT });
+
+		expect(response.status).toBe(422);
+		expect(await response.json()).toMatchObject({ error: 'daf_grant_declined' });
+		expect(response.headers.get('access-control-allow-origin')).toBe(ALLOWED);
 	});
 });

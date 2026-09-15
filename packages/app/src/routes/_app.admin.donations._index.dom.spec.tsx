@@ -56,6 +56,7 @@ function gift(over: Partial<Gift> = {}): Gift {
 		repeating: false,
 		tribute: null,
 		program: null,
+		trackingId: null,
 		...over
 	};
 }
@@ -164,4 +165,22 @@ it('leaves the rail empty on a gift nothing has been attempted on', () => {
 	// fallback — a rail invented for a gift that has none is a claim about money that never moved.
 	const root = screen([gift({ paidWith: null })]);
 	expect(cell(root, 'Paid with')).toBe('—');
+});
+
+it('draws a pending grant’s tracking id beside its state, as a literal to type', () => {
+	// the organisation marks the grant received in Chariot's dashboard by this id, so it is drawn as
+	// code: something an operator retypes.
+	const root = screen([
+		gift({ status: 'pending', paidWith: 'Donor-advised fund', trackingId: 'L9E182VBGP' })
+	]);
+	expect(cell(root, 'Status')).toBe('Pending Tracking ID L9E182VBGP');
+	expect(root.querySelector('tbody code')?.textContent).toBe('L9E182VBGP');
+	// the status column is narrow at a phone's width; the label wraps above the id, the id never splits.
+	expect(root.querySelector('tbody code')?.classList.contains('adm-code--unbroken')).toBe(true);
+});
+
+it('draws no tracking id on a gift that has none', () => {
+	const root = screen([gift({ status: 'pending' })]);
+	expect(cell(root, 'Status')).toBe('Pending');
+	expect(root.querySelector('tbody code')).toBe(null);
 });

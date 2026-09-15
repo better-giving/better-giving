@@ -14,6 +14,8 @@ import type {
 import { estimateFee } from '@better-giving/form/fee';
 import { PAYPAL_US_FEE_RULES_CHARITY, PAYPAL_US_FEE_RULES_STANDARD } from '../payments/fees';
 import { soleProcessor } from '../payments/processors.testing';
+import type { EmailMessage, EmailProvider } from '../email/provider';
+import { CHARIOT_FEE_RULES } from '../payments/fees';
 import { mintQuote, refusalCode, type QuoteDeps } from './quote';
 
 // the whole quote path, against a real D1 and against every arm of the two ports it reaches
@@ -234,6 +236,18 @@ function paypalProvider(
 	return { port, requests: scripted.requests, gifts: scripted.gifts };
 }
 
+/** the mail transport, recording what it was handed. */
+function mailer() {
+	const sent: EmailMessage[] = [];
+	const port: EmailProvider = {
+		async send(message) {
+			sent.push(message);
+			return { ok: true };
+		}
+	};
+	return { port, sent };
+}
+
 /** a challenge check that answers as scripted, and records what it was handed. */
 function challenge(result: TurnstileResult = { ok: true }) {
 	const checks: TurnstileCheck[] = [];
@@ -274,6 +288,9 @@ const body = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
  */
 type DepsOver = Partial<Omit<QuoteDeps, 'processors'>> & { readonly provider?: PaymentProvider };
 
+/** what `deps()`'s `defer` was handed, which `mint` waits out so a case reads what it sent. */
+const deferred: Promise<unknown>[] = [];
+
 function deps(over: DepsOver = {}): QuoteDeps {
 	const { provider: port, ...rest } = over;
 	return {
@@ -281,15 +298,27 @@ function deps(over: DepsOver = {}): QuoteDeps {
 		env: STRIPE_ENV,
 		processors: soleProcessor(port ?? provider().port),
 		verifyChallenge: challenge().verify,
+		email: mailer().port,
+		defer: (task) => {
+			deferred.push(task);
+		},
 		...rest
 	};
 }
 
-const mint = (
+const mint = async (
 	d: QuoteDeps = deps(),
 	over: Record<string, unknown> = {},
 	origin: string | null = ALLOWED
-) => mintQuote(d, { formId: FORM_ID, body: body(over), request: request(origin) });
+) => {
+	const result = await mintQuote(d, {
+		formId: FORM_ID,
+		body: body(over),
+		request: request(origin)
+	});
+	await Promise.allSettled(deferred.splice(0));
+	return result;
+};
 
 describe('mintQuote() — a gift that goes through', () => {
 	it('answers with the token and the server’s own numbers', async () => {
@@ -1322,5 +1351,330 @@ describe('mintQuote() — a gift on PayPal’s rails', () => {
 
 		expect(result.ok || result.reason).toBe('payments_not_configured');
 		expect(result.ok || result.fix).toContain('Stripe');
+	});
+});
+
+describe('mintQuote() — a gift from a donor-advised fund', () => {
+	/** a deployment holding Chariot and nothing else, so the served config offers the fund rail. */
+	const CHARIOT_ENV = {
+		CHARIOT_API_KEY: 'notarealchariotkey',
+		CHARIOT_CONNECT_ID: 'notarealconnectid',
+		TURNSTILE_SECRET_KEY: '0xSECRET'
+	};
+	const SESSION = 'cfe09e64-6a74-4dab-a565-361185a6f248';
+	const GRANT_ID = '1e60800e-849b-43d1-870e-57afc8d75473';
+	const grant = (): PaymentResult<Intent> => ({
+		ok: true,
+		value: { providerTxnId: GRANT_ID, paymentToken: GRANT_ID }
+	});
+
+	/**
+	 * the scripted port under Chariot's name. `createIntent` is Create Grant (../payments/chariot.ts),
+	 * whose HTTP answers ../payments/chariot.spec.ts maps; what this file drives is the failure each
+	 * one arrives as.
+	 */
+	function chariotProvider(
+		answers: readonly PaymentResult<Intent>[] = [grant()],
+		onCreate: () => Promise<void> = async () => {}
+	) {
+		const scripted = provider(answers);
+		const port: PaymentProvider = {
+			...scripted.port,
+			processor: 'chariot',
+			async createIntent(request) {
+				await onCreate();
+				return scripted.port.createIntent(request);
+			},
+			async readAccountChargeability() {
+				return { ok: true, value: { chargesEnabled: true, rails: { daf: 'active' } } } as const;
+			},
+			async readRailSwitchboard() {
+				return { ok: true, value: { daf: { offered: true, switchedOn: true } } } as const;
+			},
+			async readRecurringGiftProvision() {
+				return { ok: false, reason: 'unsupported', detail: 'one-time grants only' } as const;
+			}
+		};
+		return { port, requests: scripted.requests };
+	}
+
+	const fundGift = (over: Record<string, unknown> = {}) => ({
+		method: 'daf',
+		authorizationId: SESSION,
+		authorizedMinor: 10_300,
+		...over
+	});
+
+	const chariotDeps = (port: PaymentProvider = chariotProvider().port, over: DepsOver = {}) =>
+		deps({ env: CHARIOT_ENV, provider: port, ...over });
+
+	it('creates the grant from the session at the authorized total and answers with the grant', async () => {
+		const port = chariotProvider();
+
+		const result = await mint(chariotDeps(port.port), fundGift());
+
+		expect(result.ok && result.quote).toEqual({
+			paymentToken: GRANT_ID,
+			feeMinor: 0,
+			totalMinor: 10_300
+		});
+		expect(port.requests[0]).toMatchObject({
+			amountMinor: 10_300,
+			currency: 'USD',
+			method: 'daf',
+			authorizedSessionId: SESSION
+		});
+	});
+
+	it('records the payment against Chariot and the grant it created', async () => {
+		await mint(chariotDeps(), fundGift());
+
+		const [paid] = await db.select().from(payment);
+		expect(paid).toMatchObject({
+			status: 'pending',
+			provider: 'chariot',
+			method: 'daf',
+			providerTxnId: GRANT_ID,
+			amountMinor: 10_300
+		});
+	});
+
+	/**
+	 * the donor chose $100.00 on the form and raised it to $155.00 in the fund's window, covering the
+	 * fee: the gift is recorded at what the fund grants, and the covered fee is Chariot's rate on that
+	 * total rather than on the figure the form showed.
+	 */
+	it('records a changed amount at the granted figure, with the covered fee split out of it', async () => {
+		const result = await mint(
+			chariotDeps(),
+			fundGift({ amountMinor: 10_000, coversFee: true, authorizedMinor: 15_500 })
+		);
+
+		// 2.9% of $155.00 is $4.495, which a fund grants as the next whole dollar.
+		expect(result.ok && result.quote).toMatchObject({ totalMinor: 15_500, feeMinor: 500 });
+		const [gift] = await db.select().from(donation);
+		expect(gift).toMatchObject({ totalMinor: 15_500, feeMinor: 500 });
+	});
+
+	// a total that is exactly a covered gift splits back into that gift, so an unchanged amount
+	// records what the donor was shown.
+	it('splits an unchanged covered total back into the gift the form priced', async () => {
+		const shown = estimateFee(10_000, CHARIOT_FEE_RULES.daf);
+
+		const result = await mint(
+			chariotDeps(),
+			fundGift({ coversFee: true, authorizedMinor: shown?.totalMinor })
+		);
+
+		expect(result.ok && result.quote).toMatchObject({
+			totalMinor: shown?.totalMinor,
+			feeMinor: shown?.feeMinor
+		});
+	});
+
+	it('creates no grant for a gift portion outside the form’s range, and says why', async () => {
+		const port = chariotProvider();
+
+		// the form takes $5.00 to $10,000.00, and $4.00 is below it.
+		const result = await mint(chariotDeps(port.port), fundGift({ authorizedMinor: 400 }));
+
+		expect(result.ok || result.reason).toBe('invalid_request');
+		expect(result.ok || result.message).toContain('$5.00');
+		expect(port.requests).toHaveLength(0);
+		const [gifts] = await db.select({ n: sql<number>`count(*)` }).from(donation);
+		expect(gifts?.n).toBe(0);
+	});
+
+	it('tells the donor a fund approval past its window has expired', async () => {
+		const port = chariotProvider([
+			{ ok: false, reason: 'authorization_expired', detail: 'more than 15 minutes ago' }
+		]);
+
+		const result = await mint(chariotDeps(port.port), fundGift());
+
+		expect(result.ok || result.reason).toBe('daf_authorization_expired');
+		expect(result.ok || result.fix).toContain('fund');
+		const [gifts] = await db.select({ n: sql<number>`count(*)` }).from(donation);
+		expect(gifts?.n).toBe(0);
+	});
+
+	// a session Chariot holds nothing for is a posted body naming the wrong approval, and telling the
+	// donor theirs expired would send them back to the window for a reason that is not true.
+	it('tells the donor an approval Chariot cannot find was not found, and never that it expired', async () => {
+		const port = chariotProvider([{ ok: false, reason: 'not_found', detail: 'no such session' }]);
+
+		const result = await mint(chariotDeps(port.port), fundGift());
+
+		expect(result.ok || result.reason).toBe('invalid_request');
+		expect(result.ok || result.message).toContain('couldn’t be found');
+		expect(result.ok || result.message).not.toContain('expired');
+	});
+
+	it('carries the fund’s reason when it will not grant the amount', async () => {
+		const port = chariotProvider([
+			{
+				ok: false,
+				reason: 'invalid_request',
+				detail:
+					'Chariot did not create the grant. Chariot said: Bad Request: amount exceeds the fund balance'
+			}
+		]);
+
+		const result = await mint(chariotDeps(port.port), fundGift());
+
+		expect(result.ok || result.reason).toBe('daf_grant_declined');
+		// the fund's words verbatim, in a fundraiser's sentence: the adapter's own wording names the
+		// processor and is written for the log.
+		expect(result.ok || result.message).toBe(
+			'Your fund didn’t approve this gift: Bad Request: amount exceeds the fund balance'
+		);
+		expect(result.ok || result.fix).not.toContain('Chariot');
+	});
+
+	it('reports a Chariot that did not answer as an outage the donor may retry', async () => {
+		const port = chariotProvider([{ ok: false, reason: 'unreachable', detail: 'no answer' }]);
+
+		const result = await mint(chariotDeps(port.port), fundGift());
+
+		expect(result.ok || result.reason).toBe('payments_unavailable');
+		// the grant may exist, so the answer never says nothing was given.
+		expect(result.ok || result.fix).toContain('may already');
+		expect(result.ok || result.fix).not.toContain('Nothing was charged');
+	});
+
+	/**
+	 * a Create Grant nobody answered may have created the grant, and a donor who leaves instead of
+	 * trying again leaves a pledge the settlement path will read as a grant it does not know.
+	 */
+	it('tells an operator the session and amount when whether the grant was created is unknown', async () => {
+		await env.DB.prepare(`update org_profile set notification_email = 'ops@hope.example'`).run();
+		const mail = mailer();
+		const port = chariotProvider([{ ok: false, reason: 'unreachable', detail: 'no answer' }]);
+
+		await mint(chariotDeps(port.port, { email: mail.port }), fundGift());
+
+		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+		expect(mail.sent[0]?.text).toContain(SESSION);
+		expect(mail.sent[0]?.text).toContain('103.00');
+	});
+
+	it('tells no operator anything when Chariot answered that it created no grant', async () => {
+		await env.DB.prepare(`update org_profile set notification_email = 'ops@hope.example'`).run();
+		const mail = mailer();
+		const port = chariotProvider([{ ok: false, reason: 'provider_error', detail: 'a 500' }]);
+
+		await mint(chariotDeps(port.port, { email: mail.port }), fundGift());
+
+		expect(mail.sent).toHaveLength(0);
+	});
+
+	/**
+	 * a grant that exists with no gift recorded against it is visible nowhere else: the settlement path
+	 * answers an unknown grant quietly, so this press is the one place the loss can be reported.
+	 */
+	it('tells an operator the grant id when the gift cannot be recorded against a created grant', async () => {
+		await env.DB.prepare(`update org_profile set notification_email = 'ops@hope.example'`).run();
+		const mail = mailer();
+		// the form goes between the read at the top of the request and the write at the bottom.
+		const port = chariotProvider([grant()], async () => {
+			await env.DB.prepare('delete from form').run();
+		});
+
+		const result = await mint(chariotDeps(port.port, { email: mail.port }), fundGift());
+
+		expect(result.ok || result.reason).toBe('internal_error');
+		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+		expect(mail.sent[0]?.text).toContain(GRANT_ID);
+	});
+
+	/**
+	 * the same session posted twice — a donor pressing again, or a client retrying a lost answer. Chariot
+	 * answers the grant it already holds, and the payment the first call recorded against it refuses a
+	 * second one: one gift, and both calls answer with the grant.
+	 */
+	it('records one gift for a session submitted twice', async () => {
+		const port = chariotProvider([grant(), grant()]);
+
+		const first = await mint(chariotDeps(port.port), fundGift());
+		const second = await mint(chariotDeps(port.port), fundGift());
+
+		expect(first.ok && first.quote.paymentToken).toBe(GRANT_ID);
+		expect(second.ok && second.quote.paymentToken).toBe(GRANT_ID);
+		const [gifts] = await db.select({ n: sql<number>`count(*)` }).from(donation);
+		expect(gifts?.n).toBe(1);
+	});
+
+	// the gift the first submission recorded is the gift; a resend carrying another split is not.
+	it('answers a session submitted twice with the gift the first submission recorded', async () => {
+		const port = chariotProvider([grant(), grant()]);
+		await mint(chariotDeps(port.port), fundGift({ coversFee: true, authorizedMinor: 15_500 }));
+
+		const second = await mint(
+			chariotDeps(port.port),
+			fundGift({ coversFee: false, authorizedMinor: 15_500 })
+		);
+
+		expect(second.ok && second.quote).toEqual({
+			paymentToken: GRANT_ID,
+			feeMinor: 500,
+			totalMinor: 15_500
+		});
+	});
+
+	it('tells the donor their grant request is on its way, at the gift and not the covered total', async () => {
+		const mail = mailer();
+
+		await mint(
+			chariotDeps(chariotProvider().port, { email: mail.port }),
+			fundGift({ amountMinor: 10_000, coversFee: true, authorizedMinor: 15_500 })
+		);
+
+		expect(mail.sent.map((m) => [m.to, m.subject])).toEqual([
+			['ada@example.org', 'Your grant request to Hope Foundation is on its way']
+		]);
+		// $155.00 granted, $5.00 of it the covered fee.
+		expect(mail.sent[0]?.text).toContain('150.00');
+		expect(mail.sent[0]?.text).not.toContain('155.00');
+	});
+
+	it('sends no second grant request notice for a session submitted twice', async () => {
+		const port = chariotProvider([grant(), grant()]);
+		await mint(chariotDeps(port.port), fundGift());
+		const mail = mailer();
+
+		await mint(chariotDeps(port.port, { email: mail.port }), fundGift());
+
+		expect(mail.sent).toHaveLength(0);
+	});
+
+	// slow mail is not the donor's wait: the form gives up at 30 seconds on a gift already recorded.
+	it('answers with the grant without waiting on the donor’s notice', async () => {
+		const handed: Promise<unknown>[] = [];
+		const stalled: EmailProvider = { send: () => new Promise(() => {}) };
+
+		const result = await mintQuote(
+			chariotDeps(chariotProvider().port, {
+				email: stalled,
+				defer: (task) => {
+					handed.push(task);
+				}
+			}),
+			{ formId: FORM_ID, body: body(fundGift()), request: request() }
+		);
+
+		expect(result.ok && result.quote.paymentToken).toBe(GRANT_ID);
+		expect(handed).toHaveLength(1);
+	});
+
+	it('answers with the grant when the donor’s notice cannot be sent', async () => {
+		const broken: EmailProvider = {
+			async send() {
+				throw new Error('the socket went away');
+			}
+		};
+
+		const result = await mint(chariotDeps(chariotProvider().port, { email: broken }), fundGift());
+
+		expect(result.ok && result.quote.paymentToken).toBe(GRANT_ID);
 	});
 });

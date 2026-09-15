@@ -188,7 +188,7 @@ describe('one rail-side subscription is one commitment', () => {
 });
 
 describe('a commitment names a processor the schema knows', () => {
-	it.each(['stripe', 'paypal'])(
+	it.each(['stripe', 'paypal', 'chariot'])(
 		'accepts %s, which is a processor that runs one',
 		async (provider) => {
 			// the positive control the rejection below is worth nothing without: a commitment

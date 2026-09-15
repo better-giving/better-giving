@@ -1,15 +1,16 @@
 import type { PaymentMethod } from '../v1';
 
 /**
- * which rails each processor settles, as two lists that cover the vocabulary exactly once.
+ * which rails each processor settles, as three lists that cover the vocabulary exactly once.
  *
  * no rail is offered by both, which is what keeps a deployment holding two processors from ever
  * having to choose one for a gift: the inline card fields collect `card`, the bank debit and the
- * wallets, and the hosted window collects `paypal` and `venmo` — a donor paying by card inside
- * that window is on the `paypal` rail rather than on `card`, because `card` is the inline box.
+ * wallets, the hosted window collects `paypal` and `venmo` — a donor paying by card inside that
+ * window is on the `paypal` rail rather than on `card`, because `card` is the inline box — and
+ * Chariot's window collects `daf`.
  *
  * an adapter reads its own list rather than the whole vocabulary, so a rail it cannot mint is one
- * it never asks its processor for. `rail-agreement.spec.ts` in the app holds the two lists to
+ * it never asks its processor for. `rail-agreement.spec.ts` in the app holds the three lists to
  * `PAYMENT_METHODS`: a rail in neither, or in both, is a rail nothing settles.
  *
  * `satisfies` rather than an annotation, so each stays a literal union and is checked to be a
@@ -26,6 +27,9 @@ export type StripeRail = (typeof STRIPE_RAILS)[number];
 export const PAYPAL_RAILS = ['paypal', 'venmo'] as const satisfies readonly PaymentMethod[];
 export type PaypalRail = (typeof PAYPAL_RAILS)[number];
 
+export const CHARIOT_RAILS = ['daf'] as const satisfies readonly PaymentMethod[];
+export type ChariotRail = (typeof CHARIOT_RAILS)[number];
+
 /** whether this rail is one the inline card fields collect, narrowing a rail read off a config. */
 export function isStripeRail(rail: PaymentMethod): rail is StripeRail {
 	return (STRIPE_RAILS as readonly PaymentMethod[]).includes(rail);
@@ -34,6 +38,11 @@ export function isStripeRail(rail: PaymentMethod): rail is StripeRail {
 /** whether this rail is one the hosted window collects, narrowing a rail read off a config. */
 export function isPaypalRail(rail: PaymentMethod): rail is PaypalRail {
 	return (PAYPAL_RAILS as readonly PaymentMethod[]).includes(rail);
+}
+
+/** whether this rail is one Chariot's window collects, narrowing a rail read off a config. */
+export function isChariotRail(rail: PaymentMethod): rail is ChariotRail {
+	return (CHARIOT_RAILS as readonly PaymentMethod[]).includes(rail);
 }
 
 /**
@@ -66,5 +75,6 @@ export const RAILS: Readonly<Record<PaymentMethod, string>> = Object.freeze({
 	google_pay: 'card',
 	ach: 'us_bank_account',
 	paypal: 'paypal',
-	venmo: 'venmo'
+	venmo: 'venmo',
+	daf: 'daf'
 });

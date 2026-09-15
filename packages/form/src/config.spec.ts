@@ -242,6 +242,30 @@ describe('a response with a safe reading', () => {
 		expect(Object.keys(config?.feeRules ?? {})).toEqual(['card']);
 	});
 
+	it('carries a rail’s rounding step through', () => {
+		// a DAF grant's fee is rounded up to a whole dollar; dropped, the fee line quotes cents under it.
+		const config = readFormConfig(
+			withField('feeRules', { daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 } })
+		);
+
+		expect(config?.feeRules.daf).toEqual({ percent: 0.029, fixedMinor: 0, roundUpMinor: 100 });
+	});
+
+	it('drops a rail whose rounding step is not a whole positive amount', () => {
+		// kept with the step stripped, the rule would quote under the rounded fee the fund charges.
+		const config = readFormConfig(
+			withField('feeRules', {
+				card: { percent: 0.029, fixedMinor: 30 },
+				ach: { percent: 0.008, fixedMinor: 0, capMinor: 500, roundUpMinor: 0 },
+				apple_pay: { percent: 0.029, fixedMinor: 30, roundUpMinor: -100 },
+				google_pay: { percent: 0.029, fixedMinor: 30, roundUpMinor: 0.5 },
+				daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: '100' }
+			})
+		);
+
+		expect(Object.keys(config?.feeRules ?? {})).toEqual(['card']);
+	});
+
 	it('reads a choice between no causes as no program at all', () => {
 		// a select drawn over nothing is a question with no answers, and the gift goes where it is
 		// needed most either way — which is what an absent program already means.

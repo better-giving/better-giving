@@ -19,6 +19,7 @@ func report(rails, webhook, subscription, wallets any) map[string]any {
 	return processors(
 		configured("stripe", "Stripe", rails, webhook, subscription, wallets),
 		unconfigured("paypal", "PayPal", "PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET"),
+		unconfigured("chariot", "Chariot", "CHARIOT_API_KEY", "CHARIOT_CONNECT_ID"),
 	)
 }
 
@@ -84,7 +85,7 @@ func answered(t *testing.T, body any) PaymentsRead {
 // keeps them apart is what a fold with no reading to draw is keyed off.
 func TestAProcessorTheDeploymentHoldsNoCredentialsForCarriesNoReading(t *testing.T) {
 	read := answered(t, report(readRails(), verifying, map[string]any{"state": "complete"}, readWallets()))
-	if read.Kind != PaymentsWasRead || len(read.Report.Processors) != 2 {
+	if read.Kind != PaymentsWasRead || len(read.Report.Processors) != 3 {
 		t.Fatalf("read %+v", read)
 	}
 	none := read.Report.Processors[1]
@@ -156,6 +157,7 @@ func TestAProcessorEntryThisConsoleCannotDrawIsNoReportAtAll(t *testing.T) {
 		"a processor named twice beside every other one": {
 			configured("stripe", "Stripe", readRails(), verifying, complete, readWallets()),
 			unconfigured("paypal", "PayPal", "PAYPAL_CLIENT_ID"),
+			unconfigured("chariot", "Chariot", "CHARIOT_API_KEY"),
 			configured("stripe", "Stripe", readRails(), verifying, complete, readWallets()),
 		},
 		"a state nothing is drawn for": {
@@ -205,6 +207,7 @@ func TestAProcessorThatDrawsNoWalletCarriesNoHostnamesRatherThanNone(t *testing.
 			map[string]any{"state": "complete"}, readWallets()),
 		configured("paypal", "PayPal", readRails(), verifying,
 			map[string]any{"state": "complete"}, nil),
+		unconfigured("chariot", "Chariot", "CHARIOT_API_KEY"),
 	))
 	if read.Kind != PaymentsWasRead {
 		t.Fatalf("read %+v", read)

@@ -164,7 +164,7 @@ export type PaypalPress = {
 };
 
 export type PaypalSectionProps = {
-	/** the seventeen as cloudflare answered for them, which is what the boxes are drawn with. */
+	/** the twenty-one as cloudflare answered for them, which is what the boxes are drawn with. */
 	values: DeployedValues;
 	/**
 	 * where every processor account stands, on the promise the loader handed down.

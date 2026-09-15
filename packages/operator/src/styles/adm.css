@@ -2385,6 +2385,13 @@
 		overflow-wrap: anywhere;
 	}
 
+	/* a short literal an operator retypes, held on one line: an id split across two reads as two
+	   values. only for one known to be short, inside a container that scrolls rather than a
+	   sentence the page has to fit — the text around it still wraps, onto its own line above. */
+	.adm-code--unbroken {
+		white-space: nowrap;
+	}
+
 	/* ---------- the command row --------------------------------------------------------
 
 	   a literal an operator runs, on the page's own ground. the slab below is the dark

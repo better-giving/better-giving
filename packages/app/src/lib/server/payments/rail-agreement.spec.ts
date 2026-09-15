@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PAYPAL_RAILS, RAILS, STRIPE_RAILS } from '@better-giving/form/embed/rails';
+import { CHARIOT_RAILS, PAYPAL_RAILS, RAILS, STRIPE_RAILS } from '@better-giving/form/embed/rails';
 import { PAYMENT_METHODS } from '@better-giving/form/v1';
 import { INTENT_METHODS } from './stripe';
 
@@ -46,13 +46,13 @@ describe('the rails a confirmation names at both ends', () => {
 	 * every rail is settled by exactly one processor, which is what lets each adapter hold a table
 	 * total over its own list rather than over the vocabulary.
 	 *
-	 * the runtime half of a claim the types make one way only: `STRIPE_RAILS` and `PAYPAL_RAILS` are
-	 * each checked to be a subset of `PAYMENT_METHODS`, and nothing there says the two cover it and
-	 * do not overlap. a rail in neither is one no processor settles and no table owes a price or an
+	 * the runtime half of a claim the types make one way only: `STRIPE_RAILS`, `PAYPAL_RAILS` and
+	 * `CHARIOT_RAILS` are each checked to be a subset of `PAYMENT_METHODS`, and nothing there says the
+	 * three cover it and do not overlap. a rail in neither is one no processor settles and no table owes a price or an
 	 * intent method for — a gift offered on it reaches the point of charging and finds nothing.
 	 */
 	it('gives every rail one processor and no more', () => {
-		const owned = [...STRIPE_RAILS, ...PAYPAL_RAILS];
+		const owned = [...STRIPE_RAILS, ...PAYPAL_RAILS, ...CHARIOT_RAILS];
 
 		expect([...owned].sort()).toEqual([...PAYMENT_METHODS].sort());
 		expect(new Set(owned).size).toBe(owned.length);

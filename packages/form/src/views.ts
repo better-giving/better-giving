@@ -232,8 +232,8 @@ const STEP_COUNT = STEP_HEADINGS.length;
 /**
  * what the card is showing.
  *
- * `working` stays where it happened. the flow collapses boot, quoting, quoted, confirming and
- * resuming into one thing a donor is told — something is happening — so the projection cannot say
+ * `working` stays where it happened. the flow collapses boot, authorizing, resending, quoting,
+ * quoted, confirming and resuming into one thing a donor is told — something is happening — so the projection cannot say
  * which screen asked, and the last one shown is the answer. without that, the press on the review
  * step drops the donor onto a blank frame for the length of a request that spans two beats.
  *
@@ -252,12 +252,13 @@ function visibleStep(api: DomApi, last: Screen): Screen {
 }
 
 /**
- * who a donor on a given rail is waiting on, which is three answers rather than six.
+ * who a donor on a given rail is waiting on, which is four answers rather than seven.
  *
  * the wallets are a card presented differently and wait on the same issuer; the two hosted-window
  * rails wait on the processor whose window opened, and there the word a donor read on the control
  * is the honest noun, so it is taken from `PAYMENT_METHOD_LABELS` rather than spelled a second time
- * here. `undefined` is a cold return — this page was handed a payment token and nothing else, and a
+ * here. a donor-advised fund's gift waits on the donor's own fund, which grants rather than charges
+ * and which no label names — the fund is the donor's, not the processor's. `undefined` is a cold return — this page was handed a payment token and nothing else, and a
  * sentence naming a rail it does not have would be naming the wrong one on most of them.
  *
  * total over `PaymentMethod`, so a rail added to the vocabulary is a `pnpm check` failure here
@@ -267,6 +268,7 @@ type Waiting =
 	| { readonly kind: 'bank' }
 	| { readonly kind: 'issuer' }
 	| { readonly kind: 'window'; readonly name: string }
+	| { readonly kind: 'fund' }
 	| { readonly kind: 'unknown' };
 
 function waitingOn(method: PaymentMethod | undefined): Waiting {
@@ -281,6 +283,8 @@ function waitingOn(method: PaymentMethod | undefined): Waiting {
 		case 'paypal':
 		case 'venmo':
 			return { kind: 'window', name: PAYMENT_METHOD_LABELS[method] };
+		case 'daf':
+			return { kind: 'fund' };
 	}
 }
 
@@ -300,6 +304,8 @@ function redirectingHeading(method: PaymentMethod | undefined): string {
 			return 'Continue with your card issuer';
 		case 'window':
 			return `Continue in ${waiting.name}`;
+		case 'fund':
+			return 'Continue in your fund’s window';
 		case 'unknown':
 			return 'Continue with this payment';
 	}
@@ -315,6 +321,8 @@ function redirectingBody(method: PaymentMethod | undefined): string {
 			return `Your card issuer is checking this payment. ${keepOpen}`;
 		case 'window':
 			return `${waiting.name} is checking this payment. ${keepOpen}`;
+		case 'fund':
+			return `Your fund is checking this gift. ${keepOpen}`;
 		case 'unknown':
 			return `This payment is being checked. ${keepOpen}`;
 	}
@@ -332,9 +340,19 @@ function redirectingBody(method: PaymentMethod | undefined): string {
  * below promises no schedule: it is the last thing most donors on those rails see.
  */
 function processingNote(method: PaymentMethod | undefined): string {
-	return waitingOn(method).kind === 'bank'
-		? 'This transfer has not settled yet.'
-		: 'This payment has not settled yet.';
+	switch (waitingOn(method).kind) {
+		case 'bank':
+			return 'This transfer has not settled yet.';
+		case 'fund':
+			return 'Your fund has not paid this grant yet.';
+		default:
+			return 'This payment has not settled yet.';
+	}
+}
+
+/** what the settling screen's total is called: a fund grants a gift, and every other rail charges one. */
+function processingTotalLabel(method: PaymentMethod | undefined): string {
+	return waitingOn(method).kind === 'fund' ? 'Grant requested' : 'To be charged';
 }
 
 function processingBody(org: string, method: PaymentMethod | undefined): string {
@@ -345,6 +363,8 @@ function processingBody(org: string, method: PaymentMethod | undefined): string 
 			return `Bank transfers usually take 4 to 5 business days to settle. ${told}`;
 		case 'window':
 			return `${waiting.name} has your approval and the payment has not finished clearing. ${told}`;
+		case 'fund':
+			return `Your fund has your grant request and pays ${org} directly. ${told}`;
 		case 'issuer':
 		case 'unknown':
 			return `This payment has not finished clearing. ${told}`;
@@ -367,6 +387,8 @@ function indeterminateBody(org: string, method: PaymentMethod | undefined): stri
 			return `Your gift has been sent to your card issuer for confirmation. ${rest}`;
 		case 'window':
 			return `Your gift has been sent to ${waiting.name} for confirmation. ${rest}`;
+		case 'fund':
+			return `Your gift has been sent to your fund for approval. ${rest}`;
 		case 'unknown':
 			return `Your gift has been sent for confirmation. ${rest}`;
 	}
@@ -390,6 +412,8 @@ function workingWords(state: State): string {
 			return 'Confirming your gift with your card issuer.';
 		case 'window':
 			return `Confirming your gift with ${waiting.name}.`;
+		case 'fund':
+			return 'Confirming your gift with your fund.';
 		case 'unknown':
 			return 'Confirming your gift.';
 	}
@@ -553,7 +577,7 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 				...BLANK,
 				heading: 'Your gift is on its way',
 				receipt: 'pending',
-				totalLabel: 'To be charged',
+				totalLabel: processingTotalLabel(state.method),
 				receiptNote: processingNote(state.method),
 				body: processingBody(org, state.method)
 			};
@@ -2880,6 +2904,15 @@ export function createCard(
 			// knows only what it read back. the receipt keeps the figures it was last given and only
 			// the words around them change, which is what "the same receipt" means on those screens.
 			if (screen.totalLabel !== '') setText(totalLabel, screen.totalLabel);
+			// the one ending that restates its figures rather than keeping them: a fund may grant a
+			// different amount from the one the review step showed, and the grant is what was made.
+			if (state.step === 'processing' && state.granted !== undefined) {
+				const { giftMinor, feeMinor, totalMinor } = state.granted;
+				setText(giftFigure, money(giftMinor));
+				setText(feeFigure, feeMinor > 0 ? `+ ${money(feeMinor)}` : '');
+				setHidden(feeRow, feeMinor === 0);
+				setText(totalFigure, money(totalMinor));
+			}
 			setText(receiptNote, screen.receiptNote);
 			setHidden(receiptNote, screen.receiptNote === '');
 			// the row on this path is the ledger reading, because no screen reached without a gift

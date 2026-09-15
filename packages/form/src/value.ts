@@ -27,7 +27,8 @@
 // screen already had in hand. anything stricter starts refusing real donors, on someone else's
 // website, where nobody will ever tell us.
 //
-// imports the contract and nothing else — no framework, no DOM, no Stripe.
+// imports the contract and the rail partition in ./embed/rails.ts, and nothing else — no framework,
+// no DOM, no Stripe.
 //
 // `../package.json` exports this module as `./value`, types only. the predicates stay ./connect.ts's
 // to call: a renderer reaching for `completeAmount` here would be re-answering a question the
@@ -41,6 +42,7 @@ import {
 	type TributeKind,
 	type WalletMethod
 } from './v1';
+import { isChariotRail } from './embed/rails';
 
 /**
  * the amount screen mid-edit: every field optional, because every one of them is.
@@ -445,6 +447,25 @@ export function missingPayerFields(draft: PayerDraft): readonly PayerField[] {
 export function completePayer(draft: PayerDraft, config: FormConfig): Payer | null {
 	const { method } = draft;
 	if (method === undefined || !methodIsChargeable(draft, config)) return null;
+	return payerOn(method, draft);
+}
+
+/**
+ * the payer a fund's window is opened for, or `null` where the donor is not on a fund's rail.
+ *
+ * the counterpart of `completePayer` above for the one rail the Donate control never spends: a
+ * donor-advised fund's gift is authorized in the fund's own window, opened by the fund's own
+ * button, and the flow holds that rail only from the press to the end of the attempt.
+ */
+export function completeFundPayer(draft: PayerDraft, config: FormConfig): Payer | null {
+	const { method } = draft;
+	if (method === undefined || !isChariotRail(method) || !config.paymentMethods.includes(method)) {
+		return null;
+	}
+	return payerOn(method, draft);
+}
+
+function payerOn(method: PaymentMethod, draft: PayerDraft): Payer | null {
 	if (missingPayerFields(draft).length > 0) return null;
 
 	const email = (draft.email ?? '').trim();

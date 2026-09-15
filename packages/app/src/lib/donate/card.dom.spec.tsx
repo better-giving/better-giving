@@ -10,6 +10,7 @@ import type {
 	PaymentElementLike,
 	StripeLike
 } from '@better-giving/form/embed/stripe';
+import { CHARIOT_TAG } from '@better-giving/form/embed/chariot';
 import type { ChallengeSeam, TurnstileLike } from '@better-giving/form/embed/turnstile';
 import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from '@better-giving/form/parts';
 import type { FeeRules, FormConfig } from '@better-giving/form/v1';
@@ -40,7 +41,8 @@ const FEE_RULES: FeeRules = {
 	google_pay: { percent: 0.029, fixedMinor: 30 },
 	ach: { percent: 0.008, fixedMinor: 0, capMinor: 500 },
 	paypal: { percent: 0.0349, fixedMinor: 49 },
-	venmo: { percent: 0.0349, fixedMinor: 49 }
+	venmo: { percent: 0.0349, fixedMinor: 49 },
+	daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
 };
 
 const CONFIG: FormConfig = {
@@ -122,6 +124,32 @@ function paypalProvider() {
 	return { load: async () => namespace };
 }
 
+/** Chariot's element, standing in: it keeps the one callback it is handed and nothing else. */
+class StubConnect extends HTMLElement {
+	donationRequest: (() => unknown) | null = null;
+	onDonationRequest(callback: () => unknown): void {
+		this.donationRequest = callback;
+	}
+}
+if (customElements.get(CHARIOT_TAG) === undefined) customElements.define(CHARIOT_TAG, StubConnect);
+
+/** the same deployment, holding Chariot's key beside the card processor's. */
+const WITH_FUND: FormConfig = {
+	...CONFIG,
+	providers: [...CONFIG.providers, { name: 'chariot', publishableKey: 'cid_spec' }],
+	paymentMethods: ['card', 'daf']
+};
+
+/** the fund's own button on the review step, pressed the way its script asks for the gift. */
+function openFund(root: HTMLElement): StubConnect {
+	const button = root.querySelector(CHARIOT_TAG);
+	if (!(button instanceof StubConnect)) throw new Error('no fund button on the review step');
+	act(() => {
+		button.donationRequest?.();
+	});
+	return button;
+}
+
 const CHALLENGE: ChallengeSeam = {
 	load: async () => {
 		const api: TurnstileLike = { render: () => 'widget-1', reset: () => {}, remove: () => {} };
@@ -150,7 +178,8 @@ async function card(config: FormConfig = CONFIG) {
 				seams={{
 					payment: {
 						stripe: { load: payment.load, delay: () => () => {} },
-						paypal: { load: paypal.load, delay: () => () => {} }
+						paypal: { load: paypal.load, delay: () => () => {} },
+						chariot: { load: async () => true, delay: () => () => {} }
 					},
 					challenge: CHALLENGE
 				}}
@@ -529,4 +558,57 @@ it('names the rail in what it says out loud while the charge is in flight', asyn
 	expect(said(root)).toBe(copy.confirming('card'));
 	// and not the bank's, which a card donor is never waiting on.
 	expect(said(root)).not.toBe(copy.confirming('ach'));
+});
+
+// the donor is in their fund's window, which is the fund's own page rather than a request this card
+// is waiting on: the card stays on the review step, is not busy, and keeps the fund's button standing
+// — its window's endings are heard on that element, and a button taken down drops the approval.
+it('stays on the review step, unbusied, with the fund’s button standing while its window is open', async () => {
+	const { root } = await card(WITH_FUND);
+	walkToGive(root);
+
+	const button = openFund(root);
+
+	expect(screen(root).className).toContain('step-give');
+	expect(one(root, 'form.card-body').hasAttribute('aria-busy')).toBe(false);
+	expect(said(root)).toBe('');
+	expect(root.querySelector(CHARIOT_TAG)).toBe(button);
+});
+
+// the donor may change the amount inside the fund's window, and the grant is recorded from what the
+// fund approved — so the ending states the server's figures, not the ones the review step showed.
+it('states the granted figures on the ending, not the ones the form showed', async () => {
+	const { root } = await card(WITH_FUND);
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(
+			async () =>
+				new Response(JSON.stringify({ paymentToken: 'grant_1', feeMinor: 200, totalMinor: 5200 }), {
+					status: 200,
+					headers: { 'content-type': 'application/json' }
+				})
+		)
+	);
+	walkToGive(root);
+	expect(one(root, '.row.total .figure').textContent).not.toBe('$52.00');
+
+	const button = openFund(root);
+	await act(async () => {
+		button.dispatchEvent(
+			new CustomEvent('CHARIOT_SUCCESS', {
+				detail: { workflowSessionId: 'wfs_1', grantIntent: { amount: 5200 } }
+			})
+		);
+		for (let at = 0; at < 20; at += 1) await Promise.resolve();
+	});
+
+	const ending = screen(root);
+	expect(ending.className).toContain('takeover');
+	expect(one(ending, 'h2').textContent).toBe(copy.PROCESSING_HEADING);
+	expect(one(ending, '.row:not(.fee):not(.total) .figure').textContent).toBe('$50.00');
+	expect(one(ending, '.row.fee .figure').textContent).toBe('+ $2.00');
+	expect(one(ending, '.row.total .figure').textContent).toBe('$52.00');
+	expect(one(ending, '.row.total .row-label').textContent).toBe('Grant requested');
+	expect(one(ending, '.prose').textContent).toContain('Your fund has your grant request');
+	expect(one(ending, '.prose').textContent).not.toContain('charge');
 });

@@ -86,14 +86,14 @@ export type HomeFace =
 	/** it is up, it answers, and the six folds are what is left. */
 	| { kind: 'ready'; address: string };
 
-/** one of the seventeen values an operator configures a deployment with, every one of them a var. */
+/** one of the twenty-one values an operator configures a deployment with, every one of them a var. */
 export type DeployVarName = (typeof DEPLOY_VARS)[number];
 
 /**
  * one var, as the deployment holds it.
  *
  * three states and not two. `absent` is nothing in the slot; `withheld` is a binding under one of
- * the seventeen names that is not plain text, which is a deployment that stored the value as a
+ * the twenty-one names that is not plain text, which is a deployment that stored the value as a
  * secret — the value is there and the deployment reads it, and the free press is the way out.
  * collapsing them would print the same cell over two deployments an operator has to do different
  * things to.
@@ -103,7 +103,7 @@ export type DeployedVar =
 	| { readonly name: DeployVarName; readonly kind: 'withheld' }
 	| { readonly name: DeployVarName; readonly kind: 'absent' };
 
-/** what the seventeen read as, or which way they did not. */
+/** what the twenty-one read as, or which way they did not. */
 export type VarsRead =
 	| { kind: 'read'; vars: DeployedVar[] }
 	/** the worker is not in the account, which is every run before a first deploy. */
@@ -117,7 +117,7 @@ export type VarsRead =
 	/** it answered, and in a shape nothing was written against. */
 	| { kind: 'unreadable'; detail: string };
 
-/** the seventeen as the one door answered for them, whether or not it landed. */
+/** the twenty-one as the one door answered for them, whether or not it landed. */
 export type DeployedValues = { vars: VarsRead };
 
 /**
@@ -191,7 +191,7 @@ export type HomeReading = {
 };
 
 /**
- * why there was nowhere to write one of the seventeen to.
+ * why there was nowhere to write one of the twenty-one to.
  *
  * two members and not the seven an address read has: a write finds out from its own answer, and the
  * only two things it can find out are that the account holds no such worker and that the binary
@@ -200,7 +200,7 @@ export type HomeReading = {
 export type NoWhere = { kind: 'not-deployed' } | { kind: 'no-credential'; detail: string };
 
 /**
- * the ways a write of one of the seventeen did not happen.
+ * the ways a write of one of the twenty-one did not happen.
  *
  * shared by both doors because they are the same four facts about the machine and the account:
  * every fold on this surface already draws the one it got.
@@ -215,7 +215,7 @@ export type ValuesRefusal =
 	| { kind: 'failed'; detail: string };
 
 /**
- * how a write of one or more of the seventeen went, which is the one answer every press on the page
+ * how a write of one or more of the twenty-one went, which is the one answer every press on the page
  * gets: each of them is a var and they all go through one door.
  *
  * `set` is the only one that left anything on the deployment. `nothing` is a press the binary
@@ -341,7 +341,7 @@ export type StripeUnreadableReason = 'no_key' | 'failed';
  * the vocabulary is `PAYMENT_PROCESSORS` in `packages/operator/src/console/payments.ts`, and the
  * order is the deployment's: nothing here sorts, so the sections always stand in one order.
  */
-export type PaymentProcessor = 'stripe' | 'paypal';
+export type PaymentProcessor = 'stripe' | 'paypal' | 'chariot';
 
 /** where one way of paying stands on that account. */
 export type RailStanding =
@@ -964,6 +964,123 @@ export type PaypalRunRead =
 export type PaypalStarted =
 	| { started: boolean; run: PaypalRunRead }
 	/** the binary's door would not take the pair, so no run began. */
+	| { started: false; turnedDown: true }
+	/**
+	 * the binary could not write at all — this machine holds no cloudflare sign-in — so no run
+	 * began (`writing` in `packages/console/internal/server/values.go`).
+	 */
+	| { started: false; unwritten: ValuesRefusal };
+
+/**
+ * the ways a call to Chariot did not answer.
+ *
+ * `refused` is a key Chariot would not accept at the address — wrong, revoked, or the other
+ * address's — and the way out is the two boxes; `forbidden` is a key it accepted and would not let
+ * do this, and the way out is Chariot; `rejected` is a request it understood and would not carry
+ * out; `unreachable` is nothing found out either way, a 5xx included.
+ */
+export type ChariotFailure = {
+	kind: 'refused' | 'forbidden' | 'rejected' | 'unreachable' | 'unreadable';
+	detail: string;
+};
+
+/**
+ * which part of the Chariot chain is running (`packages/console/internal/chariot/setup.go`).
+ *
+ * `checking` is the key asked at the address; `finding` is the EIN read off the deployment's profile
+ * and the organisation found by it; `connecting` is its Connect fetched or made; `subscribing` is the
+ * address derived, every subscription read and the one here settled; `storing` is the values written
+ * onto the deployment in one write.
+ */
+export type ChariotStage = 'checking' | 'finding' | 'connecting' | 'subscribing' | 'storing';
+
+/** one organisation in Chariot's directory, in the facts an operator recognises it by. */
+export type ChariotOrganisation = {
+	id: string;
+	name: string;
+	city: string;
+	state: string;
+	/** whether Chariot accepts DAF grants to it. */
+	eligible: boolean;
+};
+
+/** the organisation's Connect. `active` false is one Chariot will not process grants on yet. */
+export type ChariotConnect = { id: string; active: boolean };
+
+/**
+ * what the press did about the subscription at this deployment's address.
+ *
+ * every press makes a new one, because nothing proves a secret the deployment holds is the one a
+ * subscription already here signs with: `created` is where there was none, and `replaced` is where
+ * there were matches, which were then taken down.
+ */
+export type ChariotSubscription = { kind: 'created' | 'replaced'; id: string };
+
+export type ChariotFacts = {
+	organisation: ChariotOrganisation | null;
+	connect: ChariotConnect | null;
+	subscription: ChariotSubscription | null;
+};
+
+/**
+ * how the Chariot chain ended.
+ *
+ * the wire is flat — every field on every answer, empty where a kind says nothing about it — and
+ * this is it read per kind. **every stop in front of `storing` wrote nothing**: the four values are
+ * one write once the subscription is settled.
+ */
+export type ChariotSetup =
+	| { kind: 'done' }
+	/** the key did not answer at the address, so nothing was read, made or stored. */
+	| { kind: 'unauthorized'; failure: ChariotFailure }
+	/** the deployment's profile could not be read, and `read` says which way. */
+	| { kind: 'unprofiled'; read: NoReport }
+	/** the organisation's profile holds no EIN, or none that is nine digits. */
+	| { kind: 'no-ein' }
+	/** Chariot's directory did not answer the search. */
+	| { kind: 'unsearched'; failure: ChariotFailure }
+	/** no organisation in Chariot's directory carries the EIN; `ein` is the nine digits searched. */
+	| { kind: 'unlisted'; ein: string }
+	/** more than one carries it, and none was picked: the operator names them to Chariot. */
+	| { kind: 'ambiguous'; candidates: ChariotOrganisation[] }
+	/** the one organisation carrying it takes no DAF grants; the facts name it. */
+	| { kind: 'ineligible' }
+	/** Chariot refused the Connect. */
+	| { kind: 'unconnected'; failure: ChariotFailure }
+	/** there is nowhere to subscribe, and the address read says why. */
+	| { kind: 'nowhere'; address: AddressRead }
+	/** the deployment's address is not https. */
+	| { kind: 'insecure'; origin: string }
+	/** the account's subscriptions could not be read. */
+	| { kind: 'unread'; failure: ChariotFailure }
+	/** Chariot refused the subscription, so nothing new delivers here. */
+	| { kind: 'unsubscribed'; failure: ChariotFailure }
+	/**
+	 * the write did not land. a subscription this press made was taken back down, and `left` names
+	 * it where that did not land either.
+	 */
+	| { kind: 'unstored'; written: VarsUnwritten; left: string[] }
+	/**
+	 * everything landed, and the older subscriptions in `left` were not taken down: each delivers
+	 * signed with a secret the deployment no longer holds, and the next press replaces them.
+	 */
+	| { kind: 'unretired'; left: string[] }
+	/** the console failed part way through, and how far it got was not observed. carries nothing. */
+	| { kind: 'console-stopped' };
+
+/** what the section reads off the Chariot run. on an ended run `stage` is the one it stopped at. */
+export type ChariotRunRead =
+	| { kind: 'running'; stage: ChariotStage; facts: ChariotFacts; outcome: null }
+	| { kind: 'ended'; stage: ChariotStage; facts: ChariotFacts; outcome: ChariotSetup };
+
+/**
+ * what a press to set Chariot up was answered with.
+ *
+ * `started` is false where a run is already going, and that run is the one to draw.
+ */
+export type ChariotStarted =
+	| { started: boolean; run: ChariotRunRead }
+	/** the binary's door would not take the boxes, so no run began. */
 	| { started: false; turnedDown: true }
 	/**
 	 * the binary could not write at all — this machine holds no cloudflare sign-in — so no run

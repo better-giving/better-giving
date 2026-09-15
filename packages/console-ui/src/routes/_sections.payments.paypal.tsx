@@ -18,7 +18,7 @@ import type { Route } from './+types/_sections.payments.paypal';
 // /payments/paypal — PayPal's page, one of the two under the rail's donation processor heading.
 // what it draws is ../lib/paypal-section.tsx whole.
 //
-// the account, the worker and the seventeen values are the sections layout's reading
+// the account, the worker and the twenty-one values are the sections layout's reading
 // (./_sections.tsx); what this page reads on top of them is ../lib/processor-reading.ts's, kept between
 // visits by ../lib/processor-cache.ts.
 
@@ -52,7 +52,7 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	 * stores whether PayPal has approved this organisation for its charity rate, or takes the name
 	 * off.
 	 *
-	 * **it is one of the seventeen and goes through the same door every other value does**, so there
+	 * **it is one of the twenty-one and goes through the same door every other value does**, so there
 	 * is nothing here but the two positions the switch can be in: the payload is composed from them
 	 * rather than from what the body claimed (`charityEdit` in ../lib/paypal-charity.ts), which is
 	 * what keeps a third spelling off a door that refuses one with a 400.

@@ -91,7 +91,9 @@ const VERIFICATION: Readonly<
 	>
 > = Object.freeze({
 	stripe: { variable: 'STRIPE_WEBHOOK_SECRET', stamp: secretFingerprint },
-	paypal: { variable: 'PAYPAL_WEBHOOK_ID', stamp: (stored) => stored ?? null }
+	paypal: { variable: 'PAYPAL_WEBHOOK_ID', stamp: (stored) => stored ?? null },
+	// Chariot signs a delivery with the subscription's secret, as Stripe does, so only digests cross.
+	chariot: { variable: 'CHARIOT_WEBHOOK_SECRET', stamp: secretFingerprint }
 });
 
 /**

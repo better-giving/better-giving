@@ -27,7 +27,8 @@ const CONFIG: FormConfig = {
 		apple_pay: { percent: 0.029, fixedMinor: 30 },
 		google_pay: { percent: 0.029, fixedMinor: 30 },
 		paypal: { percent: 0.0349, fixedMinor: 49 },
-		venmo: { percent: 0.0349, fixedMinor: 49 }
+		venmo: { percent: 0.0349, fixedMinor: 49 },
+		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -264,6 +265,44 @@ describe('the state projection', () => {
 		if (state.step !== 'working') throw new Error(`expected working, got ${state.step}`);
 		expect(state.phase).toBe('confirming');
 		expect(state.method).toBe('venmo');
+	});
+
+	// the fund's window is open over the review step: a busy flow on that step, naming who is
+	// deciding, and nothing sent yet.
+	it('projects the fund’s open window as a busy beat of its own', () => {
+		const { get } = api(
+			(send) => {
+				readyToSubmit(send);
+				send({ type: 'SET_METHOD', method: 'daf' } as never);
+				send({ type: 'OPEN_FUND' } as never);
+			},
+			{ config: EVERY_RAIL }
+		);
+		const state = get().state;
+		if (state.step !== 'working') throw new Error(`expected working, got ${state.step}`);
+		expect(state.phase).toBe('authorizing');
+		expect(state.method).toBe('daf');
+	});
+
+	// the donor may change the figure inside the fund's window, and the grant is what the fund
+	// approved — so the ending states the server's figures for it rather than the form's.
+	it('carries the granted figures onto the ending of a fund’s gift', async () => {
+		const { get } = api(
+			(send) => {
+				readyToSubmit(send);
+				send({ type: 'SET_METHOD', method: 'daf' } as never);
+				send({ type: 'OPEN_FUND' } as never);
+				send({ type: 'FUND_APPROVED', authorizationId: 'wfs_1', authorizedMinor: 5200 } as never);
+			},
+			{
+				config: EVERY_RAIL,
+				ports: { quote: async () => ({ paymentToken: 'grant_1', feeMinor: 200, totalMinor: 5200 }) }
+			}
+		);
+		await settle();
+		const state = get().state;
+		if (state.step !== 'processing') throw new Error(`expected processing, got ${state.step}`);
+		expect(state.granted).toEqual({ giftMinor: 5000, feeMinor: 200, totalMinor: 5200 });
 	});
 
 	it('names no rail on a cold resume, because the page was handed none', async () => {

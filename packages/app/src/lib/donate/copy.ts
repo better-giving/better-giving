@@ -212,13 +212,15 @@ export function mandateNote(org: string, total: string): string {
 export const USE_DIFFERENT_METHOD = 'Use a different payment method';
 
 /**
- * who a donor on a given rail is waiting on, which is three answers rather than six.
+ * who a donor on a given rail is waiting on, which is four answers rather than seven.
  *
  * the wallets are a card presented differently and wait on the same issuer; the two hosted-window
  * rails wait on the processor whose window opened, and there the word a donor read on the button is
  * the honest noun, so it is taken from `PAYMENT_METHOD_LABELS` rather than spelled a second time
- * here. a rail that is absent is a cold return — this page was handed a payment token and nothing
- * else — and it is a reading of its own rather than a missing one: a sentence naming a rail the
+ * here. a donor-advised fund's gift waits on the donor's own fund, which grants rather than charges
+ * and which no label names — the fund is the donor's, not the processor's. a rail that is absent is
+ * a cold return — this page was handed a payment token and nothing else — and it is a reading of its
+ * own rather than a missing one: a sentence naming a rail the
  * flow never committed would be naming the wrong one on some of them. it arrives absent rather than
  * null because that is how `State` (@better-giving/form/connect) carries it, which is the one place
  * this page reads a rail from.
@@ -230,6 +232,7 @@ type Waiting =
 	| { readonly kind: 'bank' }
 	| { readonly kind: 'issuer' }
 	| { readonly kind: 'window'; readonly name: string }
+	| { readonly kind: 'fund' }
 	| { readonly kind: 'unknown' };
 
 function waitingOn(method: PaymentMethod | undefined): Waiting {
@@ -244,6 +247,8 @@ function waitingOn(method: PaymentMethod | undefined): Waiting {
 		case 'paypal':
 		case 'venmo':
 			return { kind: 'window', name: PAYMENT_METHOD_LABELS[method] };
+		case 'daf':
+			return { kind: 'fund' };
 	}
 }
 
@@ -263,6 +268,8 @@ export function redirectingHeading(method: PaymentMethod | undefined): string {
 			return 'Continue with your card issuer';
 		case 'window':
 			return `Continue in ${waiting.name}`;
+		case 'fund':
+			return 'Continue in your fund’s window';
 		case 'unknown':
 			return 'Continue with this payment';
 	}
@@ -278,6 +285,8 @@ export function redirectingBody(method: PaymentMethod | undefined): string {
 			return `Your card issuer is checking this payment. ${keepOpen}`;
 		case 'window':
 			return `${waiting.name} is checking this payment. ${keepOpen}`;
+		case 'fund':
+			return `Your fund is checking this gift. ${keepOpen}`;
 		case 'unknown':
 			return `This payment is being checked. ${keepOpen}`;
 	}
@@ -294,9 +303,19 @@ export function redirectingBody(method: PaymentMethod | undefined): string {
 export const PROCESSING_HEADING = 'Your gift is on its way';
 
 export function processingNote(method: PaymentMethod | undefined): string {
-	return waitingOn(method).kind === 'bank'
-		? 'This transfer has not settled yet.'
-		: 'This payment has not settled yet.';
+	switch (waitingOn(method).kind) {
+		case 'bank':
+			return 'This transfer has not settled yet.';
+		case 'fund':
+			return 'Your fund has not paid this grant yet.';
+		default:
+			return 'This payment has not settled yet.';
+	}
+}
+
+/** what the settling screen's total is called: a fund grants a gift, and every other rail charges one. */
+export function processingTotalLabel(method: PaymentMethod | undefined): string {
+	return waitingOn(method).kind === 'fund' ? 'Grant requested' : TO_BE_CHARGED;
 }
 
 export function processingBody(org: string, method: PaymentMethod | undefined): string {
@@ -307,6 +326,8 @@ export function processingBody(org: string, method: PaymentMethod | undefined): 
 			return `Bank transfers usually take 4 to 5 business days to settle. ${told}`;
 		case 'window':
 			return `${waiting.name} has your approval and the payment has not finished clearing. ${told}`;
+		case 'fund':
+			return `Your fund has your grant request and pays ${org} directly. ${told}`;
 		case 'issuer':
 		case 'unknown':
 			return `This payment has not finished clearing. ${told}`;
@@ -331,6 +352,8 @@ export function indeterminateBody(org: string, method: PaymentMethod | undefined
 			return `Your gift has been sent to your card issuer for confirmation. ${rest}`;
 		case 'window':
 			return `Your gift has been sent to ${waiting.name} for confirmation. ${rest}`;
+		case 'fund':
+			return `Your gift has been sent to your fund for approval. ${rest}`;
 		case 'unknown':
 			return `Your gift has been sent for confirmation. ${rest}`;
 	}
@@ -391,6 +414,8 @@ export function confirming(method: PaymentMethod | undefined): string {
 			return 'Confirming your gift with your card issuer.';
 		case 'window':
 			return `Confirming your gift with ${waiting.name}.`;
+		case 'fund':
+			return 'Confirming your gift with your fund.';
 		case 'unknown':
 			return 'Confirming your gift.';
 	}
