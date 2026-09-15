@@ -7,6 +7,7 @@ import {
 import { type FormEvent, type RefObject, useCallback, useEffect, useState } from 'react';
 import type { FormProps } from 'react-router';
 import type { z } from 'zod';
+import { refusalStanding } from './refusal-standing';
 
 // the one way a console fold mounts a form: conform's own pass over what the boxes hold, the
 // button's rung underneath it, and the deployment's own answer standing beside both.
@@ -78,8 +79,9 @@ import type { z } from 'zod';
 // so the deployment's own answer is this module's, keyed by the name of the box at fault, and it
 // goes one box at a time: **a sentence about a box is about what that box was holding**, so the box
 // being typed in is what ends it — {@link ConsoleForm.box} hangs that on the box itself rather than
-// on the form, which is what keeps it to the one box the operator actually edited. the same reading
-// holds a press back: a box still holding exactly what was turned down is a press whose outcome is
+// on the form, which is what keeps it to the one box the operator actually edited. a refusal about
+// several boxes together is the one exception, and goes at an edit to any of them (`together`,
+// ./refusal-standing.ts). the same reading holds a press back: a box still holding exactly what was turned down is a press whose outcome is
 // already on the screen, so nothing starts, the button never draws `Saving` over it, and focus goes
 // to the first box named.
 //
@@ -176,6 +178,12 @@ type Options<S extends z.ZodObject> = Omit<SavedFormInputs, 'press' | 'changed'>
 	 * panel nobody has open, which is a press answered by nothing moving.
 	 */
 	readonly refused?: Record<string, string> | null;
+	/**
+	 * the boxes `refused` is about as one — a pair turned down together, its sentence keyed to one
+	 * of them for focus — so an edit to any of them ends it (./refusal-standing.ts). absent where
+	 * each sentence is about its own box.
+	 */
+	readonly together?: readonly string[] | null;
 };
 
 /**
@@ -276,7 +284,11 @@ export function useConsoleForm<S extends z.ZodObject>(
 	   it is the boxes put right rather than the boxes left, so a form that has just been answered
 	   holds none of them and every sentence the answer carries is standing. */
 	const [fixed, setFixed] = useState<readonly string[]>(NONE);
-	const unfixed = fixed.length === 0 ? names : names.filter((name) => !fixed.includes(name));
+	const { unfixed, listening } = refusalStanding({
+		named: names,
+		fixed,
+		together: options.together ?? NONE
+	});
 	const standing: Record<string, string> | null =
 		refused === null || unfixed.length === 0
 			? null
@@ -345,9 +357,10 @@ export function useConsoleForm<S extends z.ZodObject>(
 				   can be answered, so the first is the one an operator can act on. */
 				error,
 				/* hung on the box rather than on the form, which is the whole of what keeps the lift to
-				   the one box that was edited. left off where the box has nothing standing under it, so
-				   a form nobody has been refused over sets no state at any keystroke. */
-				...(said === undefined
+				   the one box that was edited — or to the boxes a refusal is about together. left off
+				   where no sentence standing is about the box, so a form nobody has been refused over
+				   sets no state at any keystroke. */
+				...(!listening.includes(field.name)
 					? {}
 					: {
 							onInput: () =>

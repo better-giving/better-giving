@@ -65,6 +65,7 @@
 		"./components/status/ProgressBar": "./src/components/status/ProgressBar.jsx",
 		"./components/status/StatusLine": "./src/components/status/StatusLine.jsx",
 		"./components/status/StatusWord": "./src/components/status/StatusWord.jsx",
+		"./behaviour/Ask": "./src/behaviour/Ask.tsx",
 		"./behaviour/AnchoredCard": "./src/behaviour/AnchoredCard.tsx",
 		"./behaviour/AnchoredPanel": "./src/behaviour/AnchoredPanel.tsx",
 		"./behaviour/Dialog": "./src/behaviour/Dialog.tsx",

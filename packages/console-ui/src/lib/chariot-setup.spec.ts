@@ -9,6 +9,7 @@ import type {
 } from '../api/types';
 import {
 	CHARIOT_BLANK,
+	CHARIOT_CONTACT_FORM,
 	CHARIOT_FIELD,
 	CHARIOT_FORM,
 	CHARIOT_LIVE,
@@ -107,21 +108,25 @@ describe('the boxes a press posts', () => {
 
 	it('is the rule the form runs first, on what conform hands over', () => {
 		const schema = CHARIOT_FORM.schema;
-		expect(
-			schema.safeParse({
-				[CHARIOT_FIELD('apiKey')]: 'key',
-				[CHARIOT_FIELD('contactEmail')]: 'a@b.org'
-			}).success
-		).toBe(true);
-		const refused = schema.safeParse({
-			[CHARIOT_FIELD('address')]: 'https://example.org/path',
-			[CHARIOT_FIELD('contactEmail')]: 'not an address'
-		});
+		expect(schema.safeParse({ [CHARIOT_FIELD('apiKey')]: 'key' }).success).toBe(true);
+		const refused = schema.safeParse({ [CHARIOT_FIELD('address')]: 'https://example.org/path' });
 		expect(refused.error?.issues.map((issue) => [issue.path[0], issue.message])).toEqual([
 			[CHARIOT_FIELD('apiKey'), CHARIOT_BLANK],
-			[CHARIOT_FIELD('address'), CHARIOT_NOT_ADDRESS],
-			[CHARIOT_FIELD('contactEmail'), CHARIOT_NOT_EMAIL]
+			[CHARIOT_FIELD('address'), CHARIOT_NOT_ADDRESS]
 		]);
+	});
+
+	it('asks the contact email by the same rule the press is read with', () => {
+		const schema = CHARIOT_CONTACT_FORM.schema;
+		const said = (typed?: string) =>
+			schema
+				.safeParse(typed === undefined ? {} : { [CHARIOT_FIELD('contactEmail')]: typed })
+				.error?.issues.map((issue) => issue.message);
+		expect(schema.parse({ [CHARIOT_FIELD('contactEmail')]: ' a@b.org\n' })).toEqual({
+			[CHARIOT_FIELD('contactEmail')]: 'a@b.org'
+		});
+		expect(said()).toEqual([CHARIOT_BLANK]);
+		expect(said('Name <a@b.org>')).toEqual([CHARIOT_NOT_EMAIL]);
 	});
 });
 
@@ -279,12 +284,8 @@ describe('where a stopped run reports', () => {
 });
 
 describe('what the boxes are seeded from', () => {
-	const reported = { apiKey: 'old', address: CHARIOT_LIVE, contactEmail: '' };
-	const sent = {
-		apiKey: 'new',
-		address: 'https://sandboxapi.givechariot.com',
-		contactEmail: 'a@b.org'
-	};
+	const reported = { apiKey: 'old', address: CHARIOT_LIVE };
+	const sent = { apiKey: 'new', address: 'https://sandboxapi.givechariot.com' };
 
 	it('is what was sent, from the moment the run says it stored it until the re-read lands', () => {
 		const stored: ChariotSetup[] = [{ kind: 'done' }, { kind: 'unretired', left: ['sub_0'] }];

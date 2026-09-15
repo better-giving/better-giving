@@ -1,4 +1,5 @@
 import { AnchoredNote } from '@better-giving/operator/behaviour/AnchoredCard';
+import { useAsk } from '@better-giving/operator/behaviour/Ask';
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import type { Tone } from '@better-giving/operator/components/closed-sets';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
@@ -12,7 +13,7 @@ import { StatusLedger, StatusLine } from '@better-giving/operator/components/sta
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { Await, Form, Link, useRevalidator } from 'react-router';
+import { Await, Form, Link, useRevalidator, useSubmit } from 'react-router';
 import { chariotRun } from '../api/client';
 import type {
 	AddressRead,
@@ -26,7 +27,15 @@ import type {
 	ValuesRefusal,
 	VarsWritten
 } from '../api/types';
-import type { ChariotBox, ChariotBoxes, ChariotStop, FailedCall } from './chariot-setup';
+import type { ChariotContactPromptProps } from './chariot-contact-prompt';
+import { ChariotContactPrompt } from './chariot-contact-prompt';
+import type {
+	ChariotBox,
+	ChariotBoxes,
+	ChariotSetupBody,
+	ChariotStop,
+	FailedCall
+} from './chariot-setup';
 import {
 	CHARIOT_BOXES,
 	CHARIOT_FIELD,
@@ -64,8 +73,10 @@ import {
 import { useConsoleForm } from './use-console-form';
 import { FREE_INTENT, WithheldValues } from './withheld-values';
 
-// the whole of Chariot on this deployment — what the deployment answered about it, and the three
-// boxes and one press that set gifts from donor-advised funds up.
+// the whole of Chariot on this deployment — what the deployment answered about it, and the two
+// boxes and one press that set gifts from donor-advised funds up. the contact email the press also
+// sends is asked for in a card at the press (./chariot-contact-prompt.tsx), for the reason
+// `ChariotSetupBody` in ./chariot-setup.ts states.
 //
 // **each processor has a page, and this is Chariot's** (../routes/_sections.payments.chariot.tsx).
 // it is ./paypal-section.tsx's arrangement cut to what Chariot is: one press, a run in the binary
@@ -107,9 +118,11 @@ const CHARIOT_WRITES = SECRET_GROUPS.filter((group) => group.id === CHARIOT_GROU
 /** what each box is called. */
 const LABEL: Record<ChariotBox, string> = {
 	apiKey: 'Chariot API key',
-	address: 'Chariot address',
-	contactEmail: 'Contact email'
+	address: 'Chariot address'
 };
+
+/** the two boxes' names, which a refusal about the key at this address is about together. */
+const CHARIOT_BOX_FIELDS = CHARIOT_BOXES.map((box) => CHARIOT_FIELD(box));
 
 /** how often the screen asks how far the run has got. the Stripe screen's interval. */
 const POLL_MS = 2500;
@@ -301,7 +314,7 @@ const CALLED: Record<FailedCall, string> = {
 	subscribe: 'add a notification address for this deployment'
 };
 
-/** the three boxes, the one press, and the run it starts. */
+/** the two boxes, the one press, and the run it starts. */
 function ChariotKeysForm({
 	values,
 	reading,
@@ -380,10 +393,10 @@ function ChariotKeysForm({
 		void revalidate();
 	}, [settled, revalidate]);
 
-	/* the boxes as they stood at the submit, kept once the press is in flight (`boxesStanding` in
-	   ./chariot-setup.ts). the contact email is kept apart as well: Chariot holds it on the Connect and
-	   the deployment stores none, so what this page last sent is the only seed it has. */
-	const typed = useRef<ChariotBoxes | null>(null);
+	/* the body as it stood at the submit, its boxes kept once the press is in flight (`boxesStanding`
+	   in ./chariot-setup.ts). the contact email is kept apart as the card's seed: what this page last
+	   sent is the only one it has. */
+	const typed = useRef<ChariotSetupBody | null>(null);
 	const [sent, setSent] = useState<ChariotBoxes | null>(null);
 	const [lastEmail, setLastEmail] = useState('');
 	const [pressedHere, setPressedHere] = useState(false);
@@ -391,8 +404,13 @@ function ChariotKeysForm({
 		if (pending !== CHARIOT_SETUP_INTENT) return;
 		setPolled(undefined);
 		setPressedHere(true);
-		setSent(typed.current);
-		if (typed.current !== null) setLastEmail(typed.current.contactEmail);
+		if (typed.current === null) {
+			setSent(null);
+			return;
+		}
+		const { contactEmail, ...boxes } = typed.current;
+		setSent(boxes);
+		setLastEmail(contactEmail);
 	}, [pending]);
 	const loaded = runKind(press.run);
 	const seen = useRef(loaded);
@@ -421,8 +439,8 @@ function ChariotKeysForm({
 	const reportedKey = values.seeds.CHARIOT_API_KEY ?? '';
 	const reportedAddress = values.seeds.CHARIOT_API_URL || CHARIOT_LIVE;
 	const reported: ChariotBoxes = useMemo(
-		() => ({ apiKey: reportedKey, address: reportedAddress, contactEmail: lastEmail }),
-		[reportedKey, reportedAddress, lastEmail]
+		() => ({ apiKey: reportedKey, address: reportedAddress }),
+		[reportedKey, reportedAddress]
 	);
 	const reread = useReseeded({ landed, pending: underway, reading });
 	const { seeded, spent } = useMemo(
@@ -432,15 +450,16 @@ function ChariotKeysForm({
 	const closed = keysClosed(phase, pressAnswer, busy, working, { landed, spent });
 
 	const keySentence = 'Chariot didn’t accept this key at this address. Check both.';
-	const doorSentence = 'The console couldn’t read these boxes. Check all three.';
+	const doorSentence = 'The console couldn’t read these boxes. Check both.';
 
 	const keys = useConsoleForm(CHARIOT_FORM, {
 		report: live,
 		landed,
 		spent,
 		/* a refusal about the key and the address together is handed to the seam as the far end's
-		   answer about the key's box, which puts the operator back in it; the sentence stands at the
-		   press, since it is about more than that box. */
+		   answer about the key's box, which puts the operator back in it, and as about both boxes, so
+		   an edit to either ends it; the sentence stands at the press, since it is about more than
+		   that box. */
 		refused:
 			namedBoxes ??
 			(doorTurnedDown
@@ -448,10 +467,10 @@ function ChariotKeysForm({
 				: keyRefused
 					? { [CHARIOT_FIELD('apiKey')]: keySentence }
 					: null),
+		together: namedBoxes === null ? CHARIOT_BOX_FIELDS : null,
 		defaultValue: {
 			[CHARIOT_FIELD('apiKey')]: seeded.apiKey,
-			[CHARIOT_FIELD('address')]: seeded.address,
-			[CHARIOT_FIELD('contactEmail')]: seeded.contactEmail
+			[CHARIOT_FIELD('address')]: seeded.address
 		},
 		busy: elsewhere,
 		pending: underway
@@ -467,9 +486,11 @@ function ChariotKeysForm({
 	};
 	const bound: Record<ChariotBox, ReturnType<typeof bind>> = {
 		apiKey: bind('apiKey'),
-		address: bind('address'),
-		contactEmail: bind('contactEmail')
+		address: bind('address')
 	};
+
+	const ask = useAsk();
+	const submit = useSubmit();
 
 	/** the card the press puts up: `pressed` before its run is read, `reading` once it is. */
 	const [reporting, setReporting] = useState<'pressed' | 'reading' | null>(null);
@@ -683,7 +704,7 @@ function ChariotKeysForm({
 		);
 	};
 
-	/** what the three boxes hold right now. */
+	/** what the two boxes hold right now. */
 	const boxes = (element: HTMLFormElement): ChariotBoxes => {
 		const value = (box: ChariotBox) => {
 			const control = element.elements.namedItem(CHARIOT_FIELD(box));
@@ -691,8 +712,7 @@ function ChariotKeysForm({
 		};
 		return {
 			apiKey: value('apiKey'),
-			address: value('address') || CHARIOT_LIVE,
-			contactEmail: value('contactEmail')
+			address: value('address') || CHARIOT_LIVE
 		};
 	};
 
@@ -710,13 +730,25 @@ function ChariotKeysForm({
 				className="adm-stack"
 				method="post"
 				preventScrollReset
-				/* the seam goes first and answers both ways a press starts nothing; a press past it runs on
-				   the press itself and puts up the card that reports it. */
+				/* the seam goes first and answers both ways a press starts nothing. a press past it waits on
+				   the contact email: backed out of, nothing is sent; answered, the body goes with it and
+				   the card that reports the run goes up. */
 				onSubmit={(event) => {
 					keys.mount.onSubmit(event);
 					if (event.defaultPrevented) return;
-					typed.current = form.current === null ? null : boxes(form.current);
-					setReporting('pressed');
+					event.preventDefault();
+					const element = event.currentTarget;
+					const posted = new FormData(element, (event.nativeEvent as SubmitEvent).submitter);
+					const standing = boxes(element);
+					void ask<string, ChariotContactPromptProps>(ChariotContactPrompt, {
+						seed: lastEmail
+					}).then((contactEmail) => {
+						if (contactEmail === undefined) return;
+						posted.set(CHARIOT_FIELD('contactEmail'), contactEmail);
+						typed.current = { ...standing, contactEmail };
+						setReporting('pressed');
+						void submit(posted, { method: 'post', preventScrollReset: true });
+					});
 				}}
 			>
 				<div className="adm-stack">
@@ -726,10 +758,9 @@ function ChariotKeysForm({
 							id={bound[box].id}
 							name={bound[box].name}
 							label={LABEL[box]}
-							code={box !== 'contactEmail'}
+							code
 							masked={box === 'apiKey' && isMasked('CHARIOT_API_KEY')}
-							type={box === 'contactEmail' ? 'email' : 'text'}
-							autoComplete={box === 'contactEmail' ? 'email' : 'off'}
+							autoComplete="off"
 							spellCheck={false}
 							defaultValue={bound[box].defaultValue}
 							disabled={closed}
@@ -748,7 +779,7 @@ function ChariotKeysForm({
 					/>
 				</div>
 
-				{/* the key turned down, at the press that asked and gone the moment the key's box is edited:
+				{/* the key turned down, at the press that asked and gone the moment either box is edited:
 				    `standing` is the answer cut down to the boxes nobody has typed in since. */}
 				{(keyRefused || doorTurnedDown) &&
 				keys.standing?.[CHARIOT_FIELD('apiKey')] !== undefined ? (

@@ -1,3 +1,4 @@
+import { AskHost } from '@better-giving/operator/behaviour/Ask';
 import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { ProgressBar } from '@better-giving/operator/components/status/ProgressBar';
 import { movesPage, openingLabel, pageDrawn } from '@better-giving/operator/progress-bar';
@@ -116,6 +117,8 @@ export function HydrateFallback() {
  *
  * **it stands exactly as long as the router is moving**, so a move that lands on an error boundary
  * or is taken over by a second press leaves no bar behind: both end the navigation this reads.
+ *
+ * `AskHost` is where a question a screen awaits is drawn (packages/operator/src/behaviour/Ask.tsx).
  */
 export default function App() {
 	const navigation = useNavigation();
@@ -128,6 +131,7 @@ export default function App() {
 		<>
 			{moving ? <ProgressBar label={openingLabel(navigation.location?.state)} overMove /> : null}
 			<Outlet />
+			<AskHost />
 		</>
 	);
 }

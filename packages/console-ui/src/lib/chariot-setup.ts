@@ -12,10 +12,11 @@ import type {
 } from '../api/types';
 import type { StatedForm } from './use-console-form';
 
-// what one press of ./chariot-section.tsx carries, the rules its three boxes are read against, the
-// lines its run is drawn as, and where each way the run can end reports.
+// what one press of ./chariot-section.tsx carries, the rules its two boxes and the contact email it
+// asks for are read against, the lines its run is drawn as, and where each way the run can end
+// reports.
 //
-// **one press, three boxes, and nothing about the Connect or the notifications to type.** the binary
+// **one press, two boxes, and nothing about the Connect or the notifications to type.** the binary
 // finds the organisation by the EIN the deployment's profile holds, fetches or makes its Connect,
 // settles the subscription at this deployment's address and writes the four values in one write
 // (`packages/console/internal/chariot/setup.go`), so neither the Connect id nor the signing secret
@@ -35,16 +36,26 @@ export const CHARIOT_SETUP_INTENT = 'chariot:set-up';
  */
 export const CHARIOT_LIVE = 'https://api.givechariot.com';
 
-/** the three boxes, in the order the screen draws them. */
-export const CHARIOT_BOXES = ['apiKey', 'address', 'contactEmail'] as const;
+/** the two boxes, in the order the screen draws them. */
+export const CHARIOT_BOXES = ['apiKey', 'address'] as const;
 
 export type ChariotBox = (typeof CHARIOT_BOXES)[number];
 
-/** what the three boxes hold. */
+/** what the two boxes hold. */
 export type ChariotBoxes = Readonly<Record<ChariotBox, string>>;
 
-/** the field one box is posted under. */
-export const CHARIOT_FIELD = <B extends ChariotBox>(box: B): `chariot:${B}` => `chariot:${box}`;
+/**
+ * what the press posts: the two boxes and the contact email.
+ *
+ * the email has no box on the page. Chariot holds it on the Connect it creates and the deployment
+ * stores none, so a box could only be seeded from what this page last sent and would be empty after
+ * a reload — it is asked for at the press instead (./chariot-contact-prompt.tsx).
+ */
+export type ChariotSetupBody = ChariotBoxes & { readonly contactEmail: string };
+
+/** the field one posted value goes under. */
+export const CHARIOT_FIELD = <B extends keyof ChariotSetupBody>(box: B): `chariot:${B}` =>
+	`chariot:${box}`;
 
 /** what a box left empty says under it. */
 export const CHARIOT_BLANK = 'required';
@@ -84,7 +95,10 @@ const chariotBoxes = z.object({
 		.refine(
 			(typed) => typed === undefined || typed === '' || isChariotAddress(typed),
 			CHARIOT_NOT_ADDRESS
-		),
+		)
+});
+
+const chariotContact = z.object({
 	[CHARIOT_FIELD('contactEmail')]: z.string(CHARIOT_BLANK).trim().min(1, CHARIOT_BLANK).pipe(email)
 });
 
@@ -100,6 +114,12 @@ export const CHARIOT_FORM: StatedForm<typeof chariotBoxes> = {
 	schema: chariotBoxes
 };
 
+/** the card the press asks the contact email in: its id and its one rule. */
+export const CHARIOT_CONTACT_FORM: StatedForm<typeof chariotContact> = {
+	id: 'chariot-contact',
+	schema: chariotContact
+};
+
 /**
  * the boxes a press posted, read by the same rules the boxes were, or the boxes it refuses by field.
  *
@@ -109,13 +129,13 @@ export const CHARIOT_FORM: StatedForm<typeof chariotBoxes> = {
 export function chariotPosted(
 	posted: FormData
 ):
-	| { readonly ok: true; readonly boxes: ChariotBoxes }
+	| { readonly ok: true; readonly boxes: ChariotSetupBody }
 	| { readonly ok: false; readonly errors: Record<string, string> } {
-	const read = (box: ChariotBox) => {
+	const read = (box: keyof ChariotSetupBody) => {
 		const value = posted.get(CHARIOT_FIELD(box));
 		return typeof value === 'string' ? value.trim() : '';
 	};
-	const boxes: ChariotBoxes = {
+	const boxes: ChariotSetupBody = {
 		apiKey: read('apiKey'),
 		address: read('address'),
 		contactEmail: read('contactEmail')
@@ -292,7 +312,7 @@ const STORED: readonly ChariotSetup['kind'][] = ['done', 'unretired'];
 /**
  * what the boxes are seeded from, and whether a write has put them back to it.
  *
- * `pairStanding` in ./paypal-setup.ts, over three boxes: what the press sent seeds them from the
+ * `pairStanding` in ./paypal-setup.ts, over two boxes: what the press sent seeds them from the
  * answer that says it stored them until the reading after it lands.
  */
 export function boxesStanding(press: {

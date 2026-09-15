@@ -139,6 +139,9 @@ const LABEL: Record<PaypalPairName, string> = {
 	PAYPAL_CLIENT_SECRET: 'Client secret'
 };
 
+/** the pair's box names, which a refusal of the pair is about together. */
+const PAIR_FIELDS = PAYPAL_PAIR_NAMES.map((name) => PAIR_FIELD(name));
+
 /** how often the screen asks how far the run has got. the Stripe screen's interval. */
 const POLL_MS = 2500;
 
@@ -603,7 +606,7 @@ function PaypalKeysForm({
 		return Object.fromEntries(named.map((name) => [PAIR_FIELD(name), said[name] as string]));
 	};
 	/* the pair turned down handed to the seam as the far end's answer about the first box, which puts
-	   the operator back in it and holds the next press until something changes. the sentence itself
+	   the operator back in it and holds the next press until either box changes. the sentence itself
 	   stands at the press, since it is about both halves. */
 	const pairSentence = 'Invalid client ID or secret.';
 
@@ -612,6 +615,7 @@ function PaypalKeysForm({
 		landed,
 		spent,
 		refused: carried(namedBoxes ?? (refusedPair ? { PAYPAL_CLIENT_ID: pairSentence } : null)),
+		together: namedBoxes === null ? PAIR_FIELDS : null,
 		defaultValue: {
 			[PAIR_FIELD('PAYPAL_CLIENT_ID')]: seeded.PAYPAL_CLIENT_ID,
 			[PAIR_FIELD('PAYPAL_CLIENT_SECRET')]: seeded.PAYPAL_CLIENT_SECRET
