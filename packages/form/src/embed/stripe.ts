@@ -802,46 +802,67 @@ export function createPaymentSurface(
 		// as an unanswered confirmation, which is the one thing this is definitely not.
 		if (live === null) return { kind: 'declined', message: UNLOADABLE };
 
-		// the group offers every rail this form takes so that the donor picks theirs in the
-		// provider's own box; the intent names exactly one, because the fee that produced its
-		// amount was priced for that rail. the confirmation carries the group's own list for the
-		// API to check against the intent's, so this is where the two are made to agree — a group
-		// still offering the rail the donor did not choose is refused before any rail is touched,
-		// which is an intent left at `requires_payment_method` with nothing attached and no
-		// `last_payment_error` to read it by. narrowed to the rail the flow was quoted on rather
-		// than to the last selection this module saw, because that is the rail
-		// `createIntent` in `src/lib/server/payments/stripe.ts` minted for.
-		const narrowed = offer([RAILS[method]]);
-
 		// everything the element group was asked for is a request of its own, so a donor whose quote
 		// lands in the same breath as their press waits for it to be applied first — and so does the
 		// cadence they committed to. an ask the group refused is a refusal here rather than an
-		// attempt on fields drawn for a gift the donor did not choose.
-		await narrowed;
+		// attempt on fields drawn for a gift the donor did not choose. read here rather than before
+		// `ready` above, because an ask made while the group was still being built joins this chain
+		// only once there is a group to take it.
+		await settling;
 		if (unshaped) return { kind: 'declined', message: UNSHAPED };
 
 		try {
+			// the provider's own fields, validated before anything is asked of the group — and that
+			// order is the whole of what keeps an unfinished card marked. `submit` paints its marks on
+			// the fields as they are rendered now, and every ask re-renders them: narrowing for the
+			// confirmation and putting the rails back for the donor would redraw those fields on either
+			// side of the one call that marked them, and a donor who pressed over an empty card would
+			// be handed back an empty card saying nothing. validated first, the path that never
+			// confirms asks the group for nothing at all, so there is nothing to put back.
 			const validated = await live.elements.submit();
-			const result = validated.error
-				? { error: validated.error }
-				: await live.stripe.confirmPayment({
-						elements: live.elements,
-						clientSecret: paymentToken,
-						confirmParams: {
-							// back to the page the form is on, whichever page that is: this package holds
-							// no address of its own and is handed one. the provider appends the payment
-							// token to it, and `takeResumeToken` in ./resume.ts is what reads it back on
-							// the way in — for this form alone, which is what the stamp is for.
-							// `returnTo` above is where it was read, and why it was read there.
-							return_url: returnTo,
-							...(billing === null ? {} : { payment_method_data: { billing_details: billing } })
-						},
-						// the browser is handed to the donor's bank only where the rail cannot be
-						// authenticated in place. everything else resolves here, which is what lets a
-						// card that needed no challenge reach the thank-you screen without the host's
-						// page being navigated away from underneath it.
-						redirect: 'if_required'
-					});
+			if (validated.error) {
+				const answer = outcomeOfConfirmation({ error: validated.error });
+				if (!donorsOwn(validated.error)) report(UNCONFIRMED, validated.error);
+				// the donor is put in front of the fields that stopped them rather than left on a press
+				// that appeared to do nothing, and the provider's own marks are already on the field
+				// that is unfinished. nothing to wait for first: the group was never asked for anything,
+				// so the fields the caret is moving into are the ones that were just marked. the card may
+				// have gone away in the meantime, and the fields went with it — `stop` below destroys
+				// the group this would be reaching into.
+				if (answer.kind === 'unfinished' && !stopped) live.element.focus();
+				return answer;
+			}
+
+			// the group offers every rail this form takes so that the donor picks theirs in the
+			// provider's own box; the intent names exactly one, because the fee that produced its
+			// amount was priced for that rail. the confirmation carries the group's own list for the
+			// API to check against the intent's, so this is where the two are made to agree — a group
+			// still offering the rail the donor did not choose is refused before any rail is touched,
+			// which is an intent left at `requires_payment_method` with nothing attached and no
+			// `last_payment_error` to read it by. narrowed to the rail the flow was quoted on rather
+			// than to the last selection this module saw, because that is the rail
+			// `createIntent` in `src/lib/server/payments/stripe.ts` minted for.
+			await offer([RAILS[method]]);
+			if (unshaped) return { kind: 'declined', message: UNSHAPED };
+
+			const result = await live.stripe.confirmPayment({
+				elements: live.elements,
+				clientSecret: paymentToken,
+				confirmParams: {
+					// back to the page the form is on, whichever page that is: this package holds
+					// no address of its own and is handed one. the provider appends the payment
+					// token to it, and `takeResumeToken` in ./resume.ts is what reads it back on
+					// the way in — for this form alone, which is what the stamp is for.
+					// `returnTo` above is where it was read, and why it was read there.
+					return_url: returnTo,
+					...(billing === null ? {} : { payment_method_data: { billing_details: billing } })
+				},
+				// the browser is handed to the donor's bank only where the rail cannot be
+				// authenticated in place. everything else resolves here, which is what lets a
+				// card that needed no challenge reach the thank-you screen without the host's
+				// page being navigated away from underneath it.
+				redirect: 'if_required'
+			});
 
 			// what the donor is refused for is theirs to read on the screen; anything else that
 			// stopped this confirmation is the integration's, and the console is the only place it
@@ -854,14 +875,11 @@ export function createPaymentSurface(
 			// is made in is the provider's own — so the rails this form offers come back with the form.
 			if (outcome.kind === 'declined') void offer(railTypes());
 			if (outcome.kind === 'unfinished') {
-				// the donor is put in front of the fields that stopped them rather than left on a press
-				// that appeared to do nothing, and the provider's own marks are already on the field
-				// that is unfinished.
-				//
-				// behind the restore above rather than beside it: putting the rails back re-renders
-				// those fields, and a caret moved into fields about to be redrawn is the same press
-				// doing nothing. where the form offers the one rail nothing is asked and this is the
-				// next microtask.
+				// the caret is put in front of the fields that stopped the donor, as on the validation
+				// path above, and behind the restore rather than beside it: putting the rails back
+				// re-renders those fields, and a caret moved into fields about to be redrawn is the same
+				// press doing nothing. where the form offers the one rail nothing is asked and this is
+				// the next microtask.
 				void offer(railTypes()).then(() => {
 					// the card may have gone away while the group was being asked, and the fields went
 					// with it — `stop` below destroys the group this would be reaching into.

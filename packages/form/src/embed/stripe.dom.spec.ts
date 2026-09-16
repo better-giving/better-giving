@@ -660,6 +660,11 @@ describe('the cadence the donor committed to', () => {
 	// and the fast one is the total, which is the interleaving that matters — a field holding only
 	// the newest ask would let the confirmation go the moment the total landed, on fields still
 	// drawn for the gift the donor no longer chose.
+	//
+	// the narrowing is the one ask that comes after the validation rather than before it, and it is
+	// not one of the two: it is made for the confirmation itself, on fields the donor has finished
+	// typing into. `asks the group for nothing at all when the press was over an unfinished form`
+	// below is what that ordering is for.
 	it('never confirms before everything asked of the group has been applied', async () => {
 		const order: string[] = [];
 		const kit = recorder({
@@ -683,7 +688,7 @@ describe('the cadence the donor committed to', () => {
 			mandateAccepted: false
 		});
 
-		expect(order).toEqual(['update:mode', 'update:amount', 'update:paymentMethodTypes', 'submit']);
+		expect(order).toEqual(['update:mode', 'update:amount', 'submit', 'update:paymentMethodTypes']);
 	});
 
 	// nothing has been authorized at the point this is discovered, so a refusal costs the donor a
@@ -764,8 +769,8 @@ describe('confirming', () => {
 	 * no charge, no decline, an intent left at `requires_payment_method` with nothing attached and
 	 * no `last_payment_error`, and a donor reading a thank-you.
 	 *
-	 * measured where the confirmation reads it rather than afterwards, so that a list put back for
-	 * a donor who may try again cannot stand in for one that was never narrowed.
+	 * measured inside the confirmation rather than afterwards, so that a list put back for a donor
+	 * who may try again cannot stand in for one that was never narrowed.
 	 */
 	it.each([
 		['card', 'card'],
@@ -773,9 +778,9 @@ describe('confirming', () => {
 	])('confirms a %s gift on the one rail the intent names', async (method, named) => {
 		let offered: unknown;
 		const kit: Recorder = recorder({
-			submit: async () => {
+			confirm: async () => {
 				offered = railsOffered(kit);
-				return {};
+				return { paymentIntent: { status: 'succeeded' } };
 			}
 		});
 		const surface = surfaceOn(box(), kit);
@@ -1073,17 +1078,21 @@ describe('confirming', () => {
 			method: 'card',
 			mandateAccepted: false
 		});
-		// the caret waits for the picker to be put back, because that ask redraws the fields it is
-		// moving into.
-		await settle();
 
+		// inside the press itself: nothing was asked of the group on this path, so there is no redraw
+		// for the caret to wait behind.
 		expect(kit.focused).toBe(1);
 	});
 
-	// the narrowing lasts one attempt, and this attempt is over — the donor is back in the picker
-	// with the form. a group left holding the one rail the intent named would offer someone who has
-	// not chosen yet a single option, on a step they never left.
-	it('offers every rail again when the donor is handed back an unfinished form', async () => {
+	/**
+	 * the defect a donor sees as a press that did nothing: an ask made on either side of the
+	 * validation redraws the fields the marks were painted on, and the empty card comes back saying
+	 * nothing. `confirm` in ./stripe.ts is where that ordering is held and why.
+	 *
+	 * the rails are read as well as the asks, because a group left holding the one rail the intent
+	 * named would offer a donor who has not chosen yet a single option, on a step they never left.
+	 */
+	it('asks the group for nothing at all when the press was over an unfinished form', async () => {
 		const kit = recorder({
 			submit: async () => ({
 				error: { type: 'validation_error', message: 'Your card number is incomplete.' }
@@ -1099,6 +1108,7 @@ describe('confirming', () => {
 		});
 		await settle();
 
+		expect(kit.updates).toEqual([]);
 		expect(railsOffered(kit)).toEqual(['card', 'us_bank_account']);
 	});
 

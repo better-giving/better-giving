@@ -124,7 +124,7 @@ export const PAYMENT_HEADING = 'Select payment method';
  * because it travels two channels — the sentence on the card, and the live region where the caret
  * cannot land.
  */
-export const PAYMENT_PROBLEM = 'required';
+export const PAYMENT_PROBLEM = 'Please select payment method';
 
 /**
  * the words on the fee control, which are also its whole accessible name.

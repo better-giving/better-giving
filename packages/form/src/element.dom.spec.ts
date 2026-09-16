@@ -3578,8 +3578,8 @@ describe('the review step’s one refusal', () => {
 		expect(box.getAttribute('aria-describedby')).toBe('payment-problem');
 		expect(box.hasAttribute('aria-invalid')).toBe(false);
 		expect(card.shadow.activeElement).toBe(box);
-		expect(card.text('#payment-problem')).toBe('required');
-		expect(card.text('[role="status"]')).toBe('required');
+		expect(card.text('#payment-problem')).toBe('Please select payment method');
+		expect(card.text('[role="status"]')).toBe('Please select payment method');
 	});
 
 	// a header over one option is a question with one answer, so it is drawn only where the box
@@ -3620,7 +3620,7 @@ describe('the review step’s one refusal', () => {
 		card.find('[part~="submit"]').click();
 		await settle();
 
-		expect(card.text('[role="status"]')).toBe('required');
+		expect(card.text('[role="status"]')).toBe('Please select payment method');
 
 		// the caret is already on the box, which is where a Safari donor's second press finds it.
 		card.find('[part~="payment"]').focus();
@@ -3630,7 +3630,7 @@ describe('the review step’s one refusal', () => {
 
 		await settle();
 
-		expect(card.text('[role="status"]')).toBe('required');
+		expect(card.text('[role="status"]')).toBe('Please select payment method');
 	});
 
 	it('clears the payment sentence once the provider reports a rail it can charge', async () => {

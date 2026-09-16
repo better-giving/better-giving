@@ -752,7 +752,7 @@ const NOTIFY_OPEN = '\u2212 Notify recipient';
  * because it travels two channels — the sentence on the card, and the live region where the caret
  * cannot land (`updatePayment` below) — and two copies is how those two drift apart.
  */
-const PAYMENT_PROBLEM = 'required';
+const PAYMENT_PROBLEM = 'Please select payment method';
 
 /** the payment box's name where no header stands over it to name it. */
 const PAYMENT_NAME = 'Payment details';
