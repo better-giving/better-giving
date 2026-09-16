@@ -71,7 +71,7 @@ export default function DataCreateCardPreview() {
 		<div className="adm-stack">
 			<div className="adm-list">
 				<CreateCard href="#create-programme" ghost={programme}>
-					Create programme
+					Create program
 				</CreateCard>
 			</div>
 			<div className="adm-list">
@@ -92,10 +92,10 @@ export default function DataCreateCardPreview() {
 			</div>
 			<div className="adm-list">
 				<CreateCard href="#create-hover" ghost={programme} state="hover">
-					Create programme
+					Create program
 				</CreateCard>
 				<CreateCard href="#create-focus" ghost={programme} state="focus">
-					Create programme
+					Create program
 				</CreateCard>
 			</div>
 		</div>
