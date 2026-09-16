@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -71,6 +73,12 @@ func packed(t *testing.T, manifest any, files map[string]string) []byte {
 		t.Fatalf("Close: %v", err)
 	}
 	return out.Bytes()
+}
+
+// the digest a release would have packed one bundle under.
+func digestOf(archive []byte) string {
+	sum := sha256.Sum256(archive)
+	return hex.EncodeToString(sum[:])
 }
 
 func TestAReleaseCarryingNoSuchAssetIsMissingRatherThanUnreadable(t *testing.T) {
@@ -413,5 +421,85 @@ func TestADownloadOfNoStatedLengthSaysNothingAtAll(t *testing.T) {
 	}
 	if arrived != 0 {
 		t.Errorf("the download was reported %d times against a length nobody stated", arrived)
+	}
+}
+
+func TestABundleIsRefusedWhenItsBytesAreNotTheOnesThisReleasePacked(t *testing.T) {
+	// the manifest cannot answer this on its own: a substituted archive carries whatever manifest
+	// its author wrote, and what this binary was released holding is the digest of the bytes.
+	theirs := packed(t, baked(), map[string]string{"worker/index.js": "export default {fetch(){}};\n"})
+
+	read := readFrom(bytes.NewReader(theirs), baked(), digestOf(packed(t, baked(), nil)))
+
+	if read.Kind != Substituted {
+		t.Fatalf("kind = %q (%s), want %q", read.Kind, read.Detail, Substituted)
+	}
+}
+
+func TestABundleThisReleasePackedIsReadTheWayEveryBundleIs(t *testing.T) {
+	archive := packed(t, baked(), nil)
+
+	read := readFrom(bytes.NewReader(archive), baked(), digestOf(archive))
+
+	if read.Kind != Held || read.Bundle.MainModule != mainModule || len(read.Bundle.Migrations) != 1 {
+		t.Fatalf("kind = %q (%s), want the whole bundle", read.Kind, read.Detail)
+	}
+}
+
+func TestTheDigestIsOfTheWholeArchiveAndNotOfWhatTheUnpackingTookFromIt(t *testing.T) {
+	// what a release states a digest of is the file, and what the unpacking reads is however much
+	// of it the archive it holds turns out to need. a bundle carrying anything past the archive is
+	// the two coming apart, and the digest that answers for it has to be the file's own.
+	archive := append(packed(t, baked(), nil), 0, 0, 0, 0)
+
+	read := readFrom(bytes.NewReader(archive), baked(), digestOf(archive))
+
+	if read.Kind != Held {
+		t.Fatalf("kind = %q (%s), want %q", read.Kind, read.Detail, Held)
+	}
+}
+
+func TestABinaryCarryingNoDigestReadsABundleTheWayItAlwaysDid(t *testing.T) {
+	// deliberate, and the contributor is who it is for: `go build` in this repository passes no
+	// ldflags, so a bundle somebody just packed has no release digest to be held to and the
+	// manifest comparison is the whole of what stands between it and a deploy.
+	if Digest != "" {
+		t.Fatalf("Digest = %q, want the empty value a build in this repository leaves", Digest)
+	}
+	archive := packed(t, baked(), nil)
+
+	read := ReadFrom(bytes.NewReader(archive), baked())
+
+	if read.Kind != Held {
+		t.Fatalf("kind = %q (%s), want %q", read.Kind, read.Detail, Held)
+	}
+	theirs := readFrom(bytes.NewReader(archive), baked(), digestOf([]byte("another bundle")))
+	if theirs.Kind != Substituted {
+		t.Errorf("kind = %q, want the same bundle refused where a digest is carried", theirs.Kind)
+	}
+}
+
+func TestARefusedBundleSaysWhetherItsBytesOrItsManifestWereWrong(t *testing.T) {
+	// the two are different acts: bytes that are not the ones this release packed are an archive
+	// from somewhere else, and a manifest that disagrees is the app's own revision having moved.
+	theirs := baked()
+	theirs.Commit = strings.Repeat("b", 40)
+	drifted := packed(t, theirs, nil)
+
+	substituted := readFrom(bytes.NewReader(drifted), baked(), digestOf(packed(t, baked(), nil)))
+	if substituted.Kind != Substituted || len(substituted.Fields) != 0 {
+		t.Fatalf("kind = %q fields = %v, want %q and no field named",
+			substituted.Kind, substituted.Fields, Substituted)
+	}
+	if !strings.Contains(substituted.Detail, digestOf(drifted)) {
+		t.Errorf("detail = %q, want the digest the bundle arrived under", substituted.Detail)
+	}
+
+	// the same bundle, held by a binary released with that bundle's own digest: the bytes are the
+	// ones it was packed with and the manifest is still the one to answer for it.
+	mismatched := readFrom(bytes.NewReader(drifted), baked(), digestOf(drifted))
+	if mismatched.Kind != Mismatched || strings.Join(mismatched.Fields, ",") != "commit" {
+		t.Errorf("kind = %q fields = %v, want %q and the field that drifted",
+			mismatched.Kind, mismatched.Fields, Mismatched)
 	}
 }

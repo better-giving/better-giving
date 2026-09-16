@@ -343,7 +343,9 @@ func everyDeployStopSentence(say func(effects.Carried) string) []string {
 		said = append(said, say(effects.Carried{
 			Kind: effects.NotDeployed, Ran: &deploy.Run{At: deploy.Stage(at)}}))
 	}
-	for _, kind := range []deploy.Kind{deploy.NoBundle, deploy.Mismatched, deploy.Refused} {
+	for _, kind := range []deploy.Kind{
+		deploy.NoBundle, deploy.Mismatched, deploy.Substituted, deploy.Refused,
+	} {
 		said = append(said, say(effects.Carried{
 			Kind: effects.NotDeployed, Ran: &deploy.Run{Kind: kind}}))
 	}
@@ -375,5 +377,23 @@ func TestAPendingReadThatLandedRefusesNothing(t *testing.T) {
 	read := effects.Migrations{Applied: cf.ResultValue, Names: []string{"0007_donors.sql"}}
 	if said := Unnamed(read); said != "" {
 		t.Errorf("a read that named the door says %q", said)
+	}
+}
+
+func TestABundleThatIsNotThisReleasesSaysSoRatherThanThatTheDeployStopped(t *testing.T) {
+	// what an operator is owed is which of the two it was: a release carrying a bundle from another
+	// revision of the app is a version to install past, and a bundle that is not the one this
+	// release packed is a download to make again from somewhere it can be.
+	substituted := UpdateOutcome(effects.Carried{Kind: effects.NotDeployed,
+		Ran: &deploy.Run{Kind: deploy.Substituted, At: deploy.Fetching}})
+
+	for _, said := range []string{
+		UpdateOutcome(effects.Carried{Kind: effects.NotDeployed, Ran: &deploy.Run{At: deploy.Fetching}}),
+		UpdateOutcome(effects.Carried{Kind: effects.NotDeployed,
+			Ran: &deploy.Run{Kind: deploy.Mismatched, At: deploy.Fetching}}),
+	} {
+		if substituted == said {
+			t.Errorf("a bundle that is not this release's has no sentence of its own: %q", substituted)
+		}
 	}
 }

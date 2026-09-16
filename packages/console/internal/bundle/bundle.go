@@ -19,6 +19,14 @@
 // every field of it is compared: `commit` alone already refuses a bundle from any other revision,
 // and each of the others names what an operator is looking at.
 //
+// **the bytes are held to the digest this binary's own release packed, which is the reading the
+// manifest cannot do for itself.** the manifest is inside the archive it speaks for, so an archive
+// somebody else wrote carries whatever manifest they wrote with it and every field of it agrees;
+// the digest is stated on the link step instead, outside the bytes it answers for, and ./Digest
+// argues where it comes from and why a binary carrying none reads a bundle the way it always did.
+// what is behind this reading is javascript and the sql of a one-way door, on the operator's own
+// cloudflare account.
+//
 // every failure is a value, the way ../cf's are: a bundle that is not there and a bundle that is
 // not one are two states a screen has different sentences for, and neither is an error to unwind
 // on.
@@ -28,6 +36,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -74,6 +83,9 @@ const (
 	Mismatched Kind = "mismatched"
 	// Missing is a release carrying no such asset, which is every version that never shipped one.
 	Missing Kind = "missing"
+	// Substituted is an archive whose bytes are not the ones this binary's own release packed,
+	// whatever manifest it carries. It is never reached by a binary carrying no ./Digest.
+	Substituted Kind = "substituted"
 	// Unreachable is nothing found out either way: no route to the release, or it took too long.
 	Unreachable Kind = "unreachable"
 	// Unreadable is an answer that is not a bundle, or one missing a part a deploy needs.
@@ -223,12 +235,54 @@ func (counter *counting) Read(into []byte) (int, error) {
 	return got, err
 }
 
+// Digest is the sha256 of the bundle this binary's own release packed, in hex. It is set on the
+// link step — .goreleaser.yaml at the repository root — from what .github/workflows/release.yml
+// packed a step before it.
+//
+// **it travels on the link step because it cannot travel in the config.** ../release's `Manifest`
+// is an alias of its `Config` and the manifest is that config copied into the archive, so a digest
+// stated there would be a digest of bytes it is itself inside. what a manifest says about the
+// bundle carrying it is whatever its author wrote; this is the one fact about those bytes that was
+// stated somewhere they cannot reach.
+//
+// **empty is a binary that was linked with none, and it refuses no bundle over a digest.** `go
+// build` in this repository passes no ldflags, and ../../cmd/pack reads back an archive it wrote
+// seconds earlier — a contributor holding a bundle they packed has no release digest to hold it to,
+// and the manifest comparison is what stands for them. .github/workflows/release.yml is where a
+// *release* is held to carrying one.
+var Digest string
+
 // ReadFrom is one bundle read out of the bytes it was packed into, and checked against what this
 // binary was baked for.
 func ReadFrom(source io.Reader, want release.Config) Read {
-	files, err := unpacked(source, maxUnpacked)
+	return readFrom(source, want, Digest)
+}
+
+// the same reading, against a digest stated rather than the one this binary was linked with.
+func readFrom(source io.Reader, want release.Config, digest string) Read {
+	hashed := sha256.New()
+	counted := io.TeeReader(source, hashed)
+
+	files, err := unpacked(counted, maxUnpacked)
 	if err != nil {
 		return Read{Kind: Unreadable, Detail: err.Error()}
+	}
+	// the digest answers for the file and the unpacking reads the archive inside it, so whatever is
+	// left over goes through the hash before it is taken. the two are the same read on every bundle
+	// ../../cmd/pack writes, and this is what holds them together for one it did not: a digest over
+	// however much of a file the unpacking happened to want would refuse an honest bundle, and that
+	// is a deploy the operator it stops can do nothing about.
+	if _, err := io.Copy(io.Discard, counted); err != nil {
+		return Read{Kind: Unreadable, Detail: err.Error()}
+	}
+	// in front of the manifest, because these bytes being the ones this release packed is what
+	// makes the manifest inside them worth comparing at all: an archive that is not those bytes
+	// would be answered for by fields its own author chose.
+	if digest != "" {
+		if arrived := hex.EncodeToString(hashed.Sum(nil)); !strings.EqualFold(arrived, digest) {
+			return Read{Kind: Substituted,
+				Detail: "that bundle is " + arrived + " and this release packed " + digest}
+		}
 	}
 
 	manifest, held := files["manifest.json"]

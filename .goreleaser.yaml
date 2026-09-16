@@ -40,7 +40,15 @@ builds:
       # line: internal/release's `BundleSource` derives the bundle's address from it, so a binary
       # built without this deploys nothing. goreleaser's `.Version` is the tag without its `v`,
       # which is how the asset below is named too.
+      #
+      # the digest is the sha256 of the bundle .github/workflows/release.yml packed a step before
+      # this one, and it travels here rather than in the baked config because the manifest inside
+      # that bundle *is* that config — a digest stated there would be inside the bytes it answers
+      # for (packages/console/internal/bundle's `Digest`). the workflow reads it back out of what
+      # this builds, so a binary linked with the wrong value or with none fails the release rather
+      # than refusing every bundle an operator presses deploy on.
       - -s -w -X main.version={{ .Version }} -X main.commit={{ .FullCommit }}
+      - -X github.com/better-giving/console/internal/bundle.Digest={{ .Env.BUNDLE_DIGEST }}
     goos:
       - darwin
       - linux

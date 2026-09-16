@@ -103,6 +103,9 @@ const (
 	NoBundle Kind = "no-bundle"
 	// Mismatched is a bundle built from another shape of the app, and Fields names how.
 	Mismatched Kind = "mismatched"
+	// Substituted is an archive that is not the bundle this release packed, whatever it states
+	// about itself.
+	Substituted Kind = "substituted"
 	// Refused is cloudflare turning this sign-in down for this account.
 	Refused Kind = "refused"
 	// Cancelled is the operator no longer waiting, and At is the stage it was in.
@@ -273,6 +276,8 @@ func Prepare(ctx context.Context, options Options) (Prepared, Run) {
 	case bundle.Mismatched:
 		return Prepared{}, Run{Kind: Mismatched, At: Fetching, Fields: read.Fields,
 			Detail: "that bundle was packed from another revision of the app"}
+	case bundle.Substituted:
+		return Prepared{}, Run{Kind: Substituted, At: Fetching, Detail: read.Detail}
 	default:
 		return Prepared{}, Run{Kind: stoppedBy(ctx), At: Fetching, Detail: read.Detail}
 	}

@@ -210,6 +210,9 @@ func notDeployed(ran *deploy.Run, fix Repair) string {
 		return "What this release carries was built from a different version of the app than this " +
 			"console was, so nothing was uploaded and nothing was changed. Install the current " +
 			"release, " + fix.After
+	case deploy.Substituted:
+		return "What this release carries isn't the bundle this console was released with, so " +
+			"nothing was uploaded and nothing was changed. " + fix.Alone
 	case deploy.Refused:
 		return "Cloudflare won't let this sign-in deploy to this account, so nothing was " +
 			"uploaded. " + AnotherAccount()

@@ -101,9 +101,17 @@ jobs:
           # packages/console/bundle/ is gitignored, so it is absent on a clean runner, and
           # cmd/pack writes with os.Create, which does not make a parent directory.
           mkdir -p bundle
+          packed="$GITHUB_WORKSPACE/packages/console/bundle/worker-${GITHUB_REF_NAME#v}.tar.gz"
           go run ./cmd/pack \
             --worker "$RUNNER_TEMP/worker" \
-            --out "$GITHUB_WORKSPACE/packages/console/bundle/worker-${GITHUB_REF_NAME#v}.tar.gz"
+            --out "$packed"
+          # what the binary built below is linked with, so that it can tell this archive from one
+          # somebody else wrote. it is taken here because this is the step that produced the file,
+          # and it cannot be baked into the binary's config: the manifest inside the archive *is*
+          # that config, so a digest stated there would be inside the bytes it answers for
+          # (packages/console/internal/bundle's `Digest`). the step after goreleaser holds the two
+          # ends of that together.
+          echo "BUNDLE_DIGEST=$(sha256sum "$packed" | cut -d' ' -f1)" >> "$GITHUB_ENV"
 
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
@@ -117,3 +125,24 @@ jobs:
           args: release --clean --skip=validate
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # the whole chain held together inside the job that made it: the archive the pack step wrote,
+      # the digest taken of it there, and the string the binaries came out carrying. a binary linked
+      # with the wrong value refuses every bundle, and nothing else here would find that out — the
+      # first reader of it would be an operator whose deploy stopped, in front of a door that is one
+      # way.
+      #
+      # it reads the binary's own bytes rather than its build settings: the build passes `-trimpath`
+      # (.goreleaser.yaml) and the go command records no `-ldflags` for a build that does, so
+      # `go version -m` has nothing to say about this one. a `-X` naming a package or a variable
+      # that is not there is silently ignored by the linker and leaves the value in no binary at
+      # all, so the same read covers a misspelled one.
+      - name: every binary carries the digest of the bundle that was packed
+        run: |
+          digest=$(sha256sum "packages/console/bundle/worker-${GITHUB_REF_NAME#v}.tar.gz" | cut -d' ' -f1)
+          for binary in packages/console/dist/*/better-giving; do
+            grep -qaF "$digest" "$binary" || {
+              echo "$binary carries no $digest, so it would refuse every bundle it downloads" >&2
+              exit 1
+            }
+          done

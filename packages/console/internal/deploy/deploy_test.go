@@ -676,3 +676,23 @@ func TestAnUploadThatRaisedIsARunThatFailedAndNotAProcessThatEnded(t *testing.T)
 		t.Errorf("the operator is shown %q, want nothing the raise carried", failed.Detail)
 	}
 }
+
+func TestABundleThatIsNotTheOneThisReleasePackedIsRefusedBeforeAnythingIsApplied(t *testing.T) {
+	// the manifest is no answer to this one: an archive somebody else wrote carries whatever
+	// manifest they wrote with it, and what a deploy hands the account is javascript and sql.
+	bundle.Digest = strings.Repeat("0", 64)
+	t.Cleanup(func() { bundle.Digest = "" })
+	held := &account{}
+
+	run, stages := deployed(t, held, packed(t, baked()))
+
+	if run.Kind != Substituted || run.At != Fetching {
+		t.Fatalf("kind = %q at %q (%s)", run.Kind, run.At, run.Detail)
+	}
+	if len(held.paths) != 0 {
+		t.Errorf("the account was called at all: %v", held.paths)
+	}
+	if strings.Join(stagesAsText(stages), " ") != "fetching" {
+		t.Errorf("stages = %v, want the one it did not get past", stages)
+	}
+}
