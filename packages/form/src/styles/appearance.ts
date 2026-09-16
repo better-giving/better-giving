@@ -79,6 +79,14 @@ const EM = /^(-?(?:\d+\.?\d*|\.\d+))em$/;
 const PX = /^(-?(?:\d+\.?\d*|\.\d+))px$/;
 
 /**
+ * the floor a box a donor types into is drawn at.
+ *
+ * `[part~='field']` in ./parts.css states it and argues it, and the fields inside the provider's
+ * frame are the same box wearing the same decision.
+ */
+const FIELD_MIN_PX = 16;
+
+/**
  * whether a resolved value can be handed over at all.
  *
  * an unresolved `var()` is the one value that must not travel. Stripe drops these strings
@@ -140,8 +148,18 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 
 	// the root the `em` tokens are relative to. a standard property, so the browser has already
 	// resolved it to px — unlike the `--_` tokens, which have not been computed at all.
-	const rootSize = value('font-size');
-	const basePx = pxNumber(rootSize);
+	const basePx = pxNumber(value('font-size'));
+
+	// what the provider sizes everything inside its frame from, and it is the row's size rather than
+	// the card's. the fields stand inside a payment row, and a row is drawn at `--_t-sm` — `.name` in
+	// ./rows.css, which is matched to what the provider draws unasked — so a root at the card's own
+	// base puts the fields a step above the row around them, which is the mismatch on the screen.
+	const rowSize = toPx(value('--_t-sm'), basePx);
+
+	// the same step, dropped rather than passed through when the root did not resolve: this is what
+	// the two variables below are sent as, and a variable is the scale the frame's own `em`s resolve
+	// against. a relative one there is that scale handed to whatever size the provider applied.
+	const rowPx = pxNumber(rowSize) === undefined ? undefined : rowSize;
 
 	const n1 = value('--_n1');
 	const n11 = value('--_n11');
@@ -163,7 +181,11 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	put(variables, 'colorTextPlaceholder', n11);
 	put(variables, 'colorDanger', value('--_bad'));
 	put(variables, 'fontFamily', value('font-family'));
-	put(variables, 'fontSizeBase', rootSize);
+	put(variables, 'fontSizeBase', rowPx);
+	// the name on each rail the provider paints. it scales off the root above unasked, and `.name` in
+	// ./rows.css draws the rows we paint ourselves at this same step — so left to scale, the provider's
+	// names and ours part company and the one list reads as two.
+	put(variables, 'accordionItemLabelFontSize', rowPx);
 	put(variables, 'borderRadius', value('--_r'));
 	const unit = toPx(value('--_sp1'), basePx);
 	put(variables, 'spacingUnit', unit);
@@ -184,6 +206,12 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	if (borderWidth !== undefined && edge !== undefined)
 		frame.border = `${borderWidth} solid ${edge}`;
 	put(frame, 'backgroundColor', n1);
+	// and the size, which is the one thing on these fields that is not the row's: a field is drawn at
+	// `FIELD_MIN_PX` above or at the card's root, whichever is larger, exactly as `[part~='field']` in
+	// ./parts.css draws the boxes beside it. the root is the card's and not the one sent above — the
+	// `em` half of that rule is converted here, where the base is known, like every other one.
+	const fieldSize = basePx === undefined ? undefined : `${Math.max(FIELD_MIN_PX, basePx)}px`;
+	put(frame, 'fontSize', fieldSize);
 
 	// the container each rail is drawn in draws no edge and no lift: the fields inside it are what a
 	// donor finds, and they carry the frame above; a box around the rail as well is a second ring
@@ -246,8 +274,11 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 		inputFocus.boxShadow = `0 0 0 ${focusWidth} ${focusRing}`;
 	}
 
+	// the same length the root above carries, and stated rather than left derived: the provider sizes
+	// a label off the root rather than at it, and the card's own labels are that same step
+	// (`[part~='label']` in ./parts.css), so a derived one would sit under every label beside it.
 	const label: Record<string, string> = {};
-	put(label, 'fontSize', toPx(value('--_t-sm'), basePx));
+	put(label, 'fontSize', rowSize);
 	put(label, 'color', n11);
 	put(label, 'fontWeight', value('--_w-bold'));
 

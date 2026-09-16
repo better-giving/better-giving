@@ -76,6 +76,7 @@ describe('what the provider is handed', () => {
 		const appearance = resolveAppearance(card);
 
 		expect(Object.keys(appearance.variables).sort()).toEqual([
+			'accordionItemLabelFontSize',
 			'accordionItemSpacing',
 			'borderRadius',
 			'colorBackground',
@@ -157,7 +158,9 @@ describe('what the provider is handed', () => {
 	it('states the lengths in units that survive the frame boundary', () => {
 		const appearance = resolveAppearance(card);
 
-		expect(appearance.variables.fontSizeBase).toBe('16px');
+		// the row's size and not the card's root: the fields stand inside a payment row, drawn at
+		// `--_t-sm` (`.name` in ./rows.css), and the root the provider is given is what sizes them.
+		expect(appearance.variables.fontSizeBase).toBe('14px');
 		expect(appearance.variables.spacingUnit).toBe('4px');
 		expect(appearance.variables.borderRadius).toBe('8px');
 		// the rail's side pad, which `[part~='payment']` in ./parts.css pulls the box out by: the

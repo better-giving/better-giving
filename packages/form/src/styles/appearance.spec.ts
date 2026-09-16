@@ -84,7 +84,10 @@ describe('stripeAppearance', () => {
 			colorTextPlaceholder: 'oklch(0.49 0.002 264)',
 			colorDanger: 'oklch(0.495 0.19 27)',
 			fontFamily: 'system-ui, sans-serif',
-			fontSizeBase: '16px',
+			fontSizeBase: '14px',
+			// the provider's own rail names, held at the size our rows draw theirs at rather than
+			// scaled off the root above — otherwise the two kinds of row stop being one list.
+			accordionItemLabelFontSize: '14px',
 			borderRadius: '8px',
 			spacingUnit: '4px',
 			// the step's own rhythm: with the rails drawn bare, space is all that parts them.
@@ -95,7 +98,10 @@ describe('stripeAppearance', () => {
 			// same frame the form's own fields do rather than a restatement of it.
 			'.Input': {
 				border: '1px solid oklch(0.855 0.001 264)',
-				backgroundColor: 'oklch(0.995 0.001 264)'
+				backgroundColor: 'oklch(0.995 0.001 264)',
+				// the length `[part~='field']` in ./parts.css draws the card's own fields at, worn
+				// here a second time: the box a donor types into is one size wherever it is painted.
+				fontSize: '16px'
 			},
 			// each rail is its own container in the stack and draws no edge and no lift; the side
 			// pad is room for a block the provider paints wider than the rail's content, and
@@ -124,6 +130,28 @@ describe('stripeAppearance', () => {
 		expect([...new Set(asked)].sort()).toEqual([...APPEARANCE_INPUTS].sort());
 	});
 
+	it("sets the provider's root to the size the rows its fields sit in are drawn at", () => {
+		// `.name` in ./rows.css is that size, and the card's own base is a step above it: a field
+		// drawn at the base reads larger than the row it stands in.
+		const appearance = stripeAppearance(reader());
+
+		expect(appearance.variables.fontSizeBase).toBe('14px');
+		expect(appearance.variables.fontSizeBase).not.toBe(RESOLVED['font-size']);
+	});
+
+	it("draws the typed field at the length the card's own fields carry", () => {
+		// both halves of `[part~='field']` in ./parts.css, which the root the provider is given sits
+		// under: the floor holds at the bottom of the clamp band, and the root wins at the top of it.
+		const floored = stripeAppearance(reader({ 'font-size': '15px' }));
+		const raised = stripeAppearance(reader({ 'font-size': '18px' }));
+
+		expect(floored.rules['.Input']?.fontSize).toBe('16px');
+		expect(raised.rules['.Input']?.fontSize).toBe('18px');
+		// and the field is never dragged under that floor by the root the rows set: a base moved
+		// down here is a field a donor types into zooming the page it is painted on.
+		expect(floored.variables.fontSizeBase).toBe('13.125px');
+	});
+
 	it('converts em lengths against the root the form actually resolved to', () => {
 		// the clamp floor in tokens.css, which is what a host with a shrunken root gets.
 		const appearance = stripeAppearance(reader({ 'font-size': '15px' }));
@@ -139,6 +167,9 @@ describe('stripeAppearance', () => {
 	});
 
 	it('leaves an em length alone when the root font-size could not be read', () => {
+		// the root is the one length that is dropped instead of passed through: every other `em`
+		// inside the frame resolves against it, so a relative root there is a scale the form has
+		// handed to whatever font size the provider happened to apply.
 		const appearance = stripeAppearance(reader({ 'font-size': '' }));
 
 		expect(appearance.variables).not.toHaveProperty('fontSizeBase');
@@ -215,7 +246,8 @@ describe('stripeAppearance', () => {
 		const appearance = stripeAppearance(reader({ '--_edge-control': '' }));
 
 		expect(appearance.rules['.Input']).toEqual({
-			backgroundColor: 'oklch(0.995 0.001 264)'
+			backgroundColor: 'oklch(0.995 0.001 264)',
+			fontSize: '16px'
 		});
 	});
 
@@ -225,7 +257,8 @@ describe('stripeAppearance', () => {
 		const appearance = stripeAppearance(reader({ '--_border': '' }));
 
 		expect(appearance.rules['.Input']).toEqual({
-			backgroundColor: 'oklch(0.995 0.001 264)'
+			backgroundColor: 'oklch(0.995 0.001 264)',
+			fontSize: '16px'
 		});
 	});
 
