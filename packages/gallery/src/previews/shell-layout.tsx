@@ -18,6 +18,14 @@ import {
  * drawn tight and loose beside each other for the same reason — a step is a step relative to
  * another step, and a single run of rows says nothing about which one it took.
  *
+ * the tight run is drawn twice, and the second is the reason: a labelled box on that stack takes a
+ * step of its own (`.adm-stack--tight > .adm-field + *` in packages/operator/src/styles/adm.css),
+ * so a run of paragraphs and a run of fields stand at two different distances under one modifier.
+ * the boxes are a gate screen's, which is where the tight stack actually holds fields. the caption
+ * under the last box takes the step as well — it is what stands next to a field — and the press
+ * under it keeps the stack's own gap, so the way out and the press read as one block standing off
+ * the boxes rather than as a third one.
+ *
  * `Section` is the one arrangement whose rule is drawn by the element rather than written: two
  * adjacent sections take a rule between them and a lone section takes none
  * (`.adm-section + .adm-section` in packages/operator/src/styles/adm.css), so three in a row is the
@@ -77,6 +85,17 @@ export default function ShellLayoutPreview() {
 			<Stack tight>
 				<p>The closer run: a control and the sentence under it, or a run of rows.</p>
 				<p>Never the default — a screen stacked tight throughout reads as one block.</p>
+			</Stack>
+
+			<Stack tight>
+				<Field id="shell-layout-tight-identifier" label="Username or email address" />
+				<Field id="shell-layout-tight-password" label="Password" type="password" />
+				<p className="adm-caption">
+					<a href="#forgot">Forgot your password?</a>
+				</p>
+				<div className="adm-actions">
+					<Button variant="primary">Sign in</Button>
+				</div>
 			</Stack>
 
 			<div>

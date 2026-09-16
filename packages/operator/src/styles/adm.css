@@ -4443,6 +4443,28 @@
 		gap: var(--admin-space-4);
 	}
 
+	/* a labelled box on the closer stack, and whatever stands next to it. `.adm-stack--tight` gaps
+	   its items by `--admin-space-4` and a field steps its own parts by `--admin-space-3` — one rung
+	   of the scale apart, so two fields on that stack stand as far from each other as a label stands
+	   from its own box, and there is nothing to read the boundary from. the wider stack needs none of
+	   this: at `--admin-space-6` its gap is already the larger by a clear margin.
+
+	   `--admin-space-2` on top of the gap brings that boundary to `--admin-space-5`, which is the
+	   step a fieldset already puts between one of its children and the next (`.adm-fieldset > * + *`
+	   above) — so a field standing on a tight stack stands off its neighbour exactly as far as a
+	   field inside a group does, and the stack stays closer than the one it is a modifier of.
+
+	   added to the gap rather than replacing it, so a tight stack holding no field is untouched, and
+	   between siblings only — a field at either end of the stack is bounded by the panel, and a step
+	   there would be space against its edge. both directions, because the boundary belongs to the
+	   field and falls on whichever side it has a neighbour — the sibling under the last box as much
+	   as the box under the first, and on a gate screen that sibling is as often the caption carrying
+	   the way out as the row of controls itself. */
+	.adm-stack--tight > .adm-field + *,
+	.adm-stack--tight > * + .adm-field {
+		margin-block-start: var(--admin-space-2);
+	}
+
 	/* a stack whose items stand on one centre rather than on one leading edge. it is for a stack
 	   that is the whole of a screen — a page that is waiting, where a heading and the mark under it
 	   are all there is — and never for a stack of content: a run of fields, rows or paragraphs
