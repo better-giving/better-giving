@@ -820,6 +820,29 @@ describe('a payment row drawn beside the provider’s frame', () => {
 		}
 	);
 
+	// the open row is said in ink and ground and in nothing else. a name that went bold on the press
+	// would be re-laid out under the pointer that pressed it, which is the rule
+	// `[part~='amount-option']` in ./parts.css is held to and the whole reason `--_w-medium` exists
+	// (./tokens.css). read on the drawn word as well as on the declaration, because a weight the
+	// stack's tail resolves to the same glyphs would pass one and not the other.
+	it('opens a row in ink and ground alone, at the weight the closed row draws its name at', () => {
+		const { head, row } = measured('fund');
+		const name = head.querySelector('.name') as HTMLElement;
+		const band = head.parentElement as HTMLElement;
+		const closed = getComputedStyle(head);
+		const weight = closed.fontWeight;
+		const ink = closed.color;
+		const ground = getComputedStyle(band).backgroundColor;
+		const resting = name.getBoundingClientRect().width;
+
+		row.expand();
+
+		expect(getComputedStyle(head).fontWeight).toBe(weight);
+		expect(name.getBoundingClientRect().width).toBe(resting);
+		expect(getComputedStyle(head).color).not.toBe(ink);
+		expect(getComputedStyle(band).backgroundColor).not.toBe(ground);
+	});
+
 	// the fund's mark is Chariot's single-colour icon, every path `currentColor` (../embed/rows.ts), so
 	// the head's own `color` is what paints it — and the head's colour is one thing closed and another
 	// open (`.head` in ./rows.css). read in both states, because a glyph that took the ink once and

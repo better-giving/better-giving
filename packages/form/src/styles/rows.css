@@ -13,7 +13,8 @@
  * stands `--_sp3` below the band's top edge, and the open band is `--_n3`. a closed band paints
  * nothing, which is the card's own ground, and no line stands between two bands. the name's type and
  * the mark's size are matched to what the provider draws unasked, because ./appearance.ts sends its
- * rows' names nothing.
+ * rows' names nothing — with the one departure stated at `.head` below: an open row is said in ink
+ * and ground and never in weight, whatever the provider does inside its own frame.
  *
  * nothing here moves: the provider's rows open without a transition this sheet could match.
  */
@@ -27,8 +28,13 @@
 }
 
 /*
- * the name is set the way the provider sets its own rows' names: at `--_t-sm` and `--_w-medium` in
- * the ramp's secondary ink while closed, and in the card's own ink at `--_w-bold` once open.
+ * the name is set the way the provider sets its own rows' names: at `--_t-sm` and `--_w-medium`, in
+ * the ramp's secondary ink while closed and in the card's own ink once open.
+ *
+ * the weight is the one thing the row's state does not move, and it stays put however heavily the
+ * provider draws its own open row: a name redrawn at another weight is a name re-laid out under the
+ * pointer at the moment it is pressed. open is `--_n12` on `--_n3` and nothing else — the same rule
+ * `[part~='amount-option']` in ./parts.css is held to, and what `--_w-medium` is for (./tokens.css).
  *
  * this ink is the fund's mark as well as its name: Chariot's glyph is drawn `currentColor`
  * (../embed/rows.ts), so it moves between the two states with the words beside it. PayPal's and
@@ -53,7 +59,6 @@
 }
 
 .band.open .head {
-	font-weight: var(--_w-bold);
 	color: var(--_n12);
 }
 
