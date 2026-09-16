@@ -1,11 +1,14 @@
 package deploy
 
 import (
+	"context"
 	"encoding/json"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/better-giving/console/internal/bundle"
+	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/deployment"
 )
 
@@ -643,5 +646,33 @@ func TestTheScriptUploadSaysHowManyBytesHaveGoneAndOfHowMany(t *testing.T) {
 	}
 	if !strings.Contains(reported[1].Detail, "12.1 MB of 12.1 MB") {
 		t.Errorf("the script ended saying %q, want the whole body gone", reported[1].Detail)
+	}
+}
+
+// what a call raising from inside the upload may be spelling, which is the whole reason a recovered
+// value is dropped where it is.
+const uploadCredential = "hunter2"
+
+func TestAnUploadThatRaisedIsARunThatFailedAndNotAProcessThatEnded(t *testing.T) {
+	// **the ledger is drawn over this call**, so a raise on the goroutine carrying it that nobody
+	// catches ends the process while the terminal is the renderer's — an operator left at a shell
+	// with no cursor, typing `reset` blind. the run stops through the door it already stops through.
+	options := Options{
+		Account: "an-account",
+		Config:  baked(),
+		Shape:   shape(),
+		Upload: func(context.Context, string, string, []cf.Part, cf.Sending) cf.Answer {
+			panic("cloudflare turned down " + uploadCredential)
+		},
+	}
+
+	failed := uploadScript(context.Background(), options,
+		bundle.Bundle{MainModule: "index.js"}, "a-token", func(Progress) {})
+
+	if failed.Kind != Stopped {
+		t.Fatalf("an upload that raised is %q, want a run that stopped", failed.Kind)
+	}
+	if strings.Contains(failed.Detail, uploadCredential) {
+		t.Errorf("the operator is shown %q, want nothing the raise carried", failed.Detail)
 	}
 }

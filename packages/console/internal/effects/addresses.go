@@ -73,7 +73,7 @@ func eachAddress(
 	answers := make(chan landed, len(accounts))
 	for _, one := range accounts {
 		go func() {
-			answers <- landed{one.ID, read(inside, one.ID)}
+			answers <- landed{one.ID, attempted(inside, read, one.ID)}
 		}()
 	}
 
@@ -90,4 +90,28 @@ func eachAddress(
 		}
 	}
 	return found
+}
+
+// the read's own answer, or the one a read that raised ends as.
+//
+// **a raise here is nobody else's to catch**: recover reaches only the goroutine it is deferred on,
+// so a `read` without this one takes the whole process down — and the wait above is drawn over the
+// terminal (../terminal), so what it takes down is a screen nothing ever gave back.
+//
+// **what the raise carried reaches no reading.** the read is made on the operator's own cloudflare
+// credential, and a value raised from inside one is a value that may be spelling it; the answer is
+// the kind a read that found nothing out ends as, and the recovered value is dropped where it is.
+// the loop above then leaves the account off the list exactly as it leaves off a refusal, which is
+// what keeps every row a claim this console can support.
+func attempted(
+	ctx context.Context,
+	read func(context.Context, string) deployment.Address,
+	accountID string,
+) (address deployment.Address) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			address = deployment.Address{Kind: deployment.AddressUnreachable}
+		}
+	}()
+	return read(ctx, accountID)
 }

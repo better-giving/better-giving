@@ -32,16 +32,24 @@ type reads struct {
 	answer map[string]deployment.Address
 	// slow are the accounts whose read never comes back inside the ceiling.
 	slow map[string]bool
-	made []string
+	// panicking are the accounts whose read raises rather than answering.
+	panicking map[string]bool
+	made      []string
 }
 
 func (held *reads) read(ctx context.Context, accountID string) deployment.Address {
 	held.mutex.Lock()
 	held.made = append(held.made, accountID)
 	slow := held.slow[accountID]
+	raises := held.panicking[accountID]
 	answer := held.answer[accountID]
 	held.mutex.Unlock()
 
+	if raises {
+		// credential-shaped on purpose: the read is made on the operator's own, which is why what
+		// it raises is dropped rather than carried.
+		panic("cloudflare turned down hunter2")
+	}
 	if slow {
 		<-ctx.Done()
 		return deployment.Address{Kind: deployment.AddressUnreachable}
@@ -120,5 +128,24 @@ func TestTheCeilingIsWhatThePickerWaitsOnAndNoLonger(t *testing.T) {
 	}
 	if len(found) != 0 {
 		t.Errorf("reads that never landed left %v on the list", found)
+	}
+}
+
+func TestAReadThatRaisedIsLeftOffAndTakesNoneOfTheOthersWithIt(t *testing.T) {
+	// **a read that raised is a read that did not land, and nothing else about it moves.** the
+	// picker is drawn over these reads, so a raise nobody catches ends the process while the
+	// terminal is the renderer's — an operator left at a shell with no cursor.
+	held := &reads{
+		answer:    map[string]deployment.Address{"b2": {Kind: deployment.Deployed}},
+		panicking: map[string]bool{"a1": true},
+	}
+
+	found := eachAddress(context.Background(), reaching("a1", "b2"), held.read, time.Second)
+
+	if found["b2"].Kind != deployment.Deployed {
+		t.Errorf("the account that answered is %v, want the read that landed kept", found["b2"])
+	}
+	if _, carried := found["a1"]; carried {
+		t.Errorf("the account whose read raised is on the list as %v", found["a1"])
 	}
 }

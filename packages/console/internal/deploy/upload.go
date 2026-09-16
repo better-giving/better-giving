@@ -249,9 +249,7 @@ func uploadScript(ctx context.Context, options Options, held bundle.Bundle, asse
 	reports := make(chan Progress, scriptSteps+1)
 	answered := make(chan cf.Answer, 1)
 	go func() {
-		answered <- options.Upload(ctx, http.MethodPut,
-			"/accounts/"+options.Account+"/workers/scripts/"+options.Config.Name, parts,
-			going(func(progress Progress) { reports <- progress }))
+		answered <- put(ctx, options, parts, going(func(progress Progress) { reports <- progress }))
 	}()
 
 	answer := cf.Answer{}
@@ -268,6 +266,26 @@ func uploadScript(ctx context.Context, options Options, held bundle.Bundle, asse
 		say(<-reports)
 	}
 	return refusal(ctx, answer)
+}
+
+// the upload's own answer, or the one an upload that raised ends as.
+//
+// **a raise here is nobody else's to catch**: recover reaches only the goroutine it is deferred on,
+// so an upload without this one takes the whole process down — and the ledger is drawn over it
+// (../terminal), so what it takes down is a screen nothing ever gave back.
+//
+// **what the raise carried reaches no drawn line.** the call is made on the operator's own
+// cloudflare credential, and a value raised from inside one is a value that may be spelling it — so
+// the answer is this console's own fixed words, which ./deploy.go's refusal reads as a stop the way
+// it reads a cloudflare nothing was found out from, and the recovered value is dropped where it is.
+func put(ctx context.Context, options Options, parts []cf.Part, watching cf.Sending) (answer cf.Answer) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			answer = cf.Answer{Kind: cf.Unreachable, Detail: "the upload stopped before Cloudflare answered"}
+		}
+	}()
+	return options.Upload(ctx, http.MethodPut,
+		"/accounts/"+options.Account+"/workers/scripts/"+options.Config.Name, parts, watching)
 }
 
 // what the upload states about this deployment's static assets.
