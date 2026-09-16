@@ -1679,15 +1679,23 @@
 	   what a row's status has to say is which of the four it is, and the tone on the word alone
 	   says it.
 
-	   the size goes with the ground, which is the rule's older half: a word set a step above every
-	   other cell reads as the row pointing at itself, and once the pill is off there is no tag
-	   left to hold apart from the reading beside it.
+	   the size and the leading go with the ground, which is the rule's older half: a word set a step
+	   above every other cell reads as the row pointing at itself, and once the pill is off there is
+	   no tag left to hold apart from the reading beside it. the leading is the same sentence said
+	   about a word that wraps — the rule above deliberately withholds `white-space: nowrap`, so two
+	   lines in a cell is a state this drawing exists to support, and two lines set at the caption's
+	   leading beside a cell set at the plane's is the tag still speaking after its ground came off.
+
+	   the leading is `inherit` and not a second token named here: what the word takes is whatever
+	   the cell it stands in was set at, which is what keeps this rule saying that a status in a
+	   cell is a cell rather than naming some other specific thing for it to be.
 
 	   keyed on where the word is drawn and not on a prop a screen passes, so a table added later
 	   cannot forget it. everywhere else keeps the pill — a record card, a setting row's neighbour,
 	   a value slot — and ./tokens.css carries the exception at both places it states the shape. */
 	.adm-table .adm-state {
 		font-size: var(--admin-table-size);
+		line-height: inherit;
 		padding: var(--admin-space-0);
 		background: none;
 		border-radius: var(--admin-radius-0);

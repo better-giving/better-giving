@@ -42,11 +42,13 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  * and takes no class from a caller, so those two are the sheet's to draw and nothing on this page
  * can pin them.
  *
- * two planes carry the screen's one press on the caption's own line, and they are two because the
- * line is drawn from either of its halves: the sentence counts the rows and the press stands at the
- * far end of it, and then the same screen with nothing to count keeps the press and loses the
- * sentence, which is the state where the line holds one child. the press is the screen's own
- * element and not something the plane drew, so what stands there is an ordinary button.
+ * three planes carry the screen's one press on the caption's own line, and they are three because
+ * the line is drawn at each of its lengths. the sentence counts the rows and the press stands at
+ * the far end of it; then the capped list puts a second sentence in front of the same press, which
+ * is the longest that line ever gets and the first of the three to wrap as the page narrows; then
+ * the same screen with nothing to count keeps the press and loses the sentence, which is the state
+ * where the line holds one child. the press is the screen's own element and not something the plane
+ * drew, so what stands there is an ordinary button.
  *
  * the last plane is the descriptive status word in a cell, which is the one drawing of it that is
  * not the pill src/previews/status-status-word.tsx shows: the ground and the corner come off inside
@@ -290,6 +292,18 @@ export default function DataDataTablePreview() {
 					{ id: 'kitchen-fund', cells: { name: 'Kitchen fund', raised: '£0.00', gifts: '0' } }
 				]}
 				press={<Button>Add a donation form</Button>}
+			/>
+
+			{/* the same line at its longest: the capped list's second sentence in front of a press that
+			    still has to seat at the far end. the plane above holds that line without the second
+			    sentence and the one below holds it without any sentence at all, so neither of them
+			    reaches the width this one wraps at. */}
+			<DataTable
+				caption="6 donations."
+				capNote="The 6 most recent are shown."
+				columns={columns}
+				rows={rows}
+				press={<Button>Export these donations</Button>}
 			/>
 
 			{/* the same screen before its first record, which is where the line holds the press alone:

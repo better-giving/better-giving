@@ -14,9 +14,16 @@ import { stripComments } from './raw-values';
 //
 // **what it sweeps is derived from the pill rather than listed.** every property `.adm-state` sets
 // that draws something around the word has to be answered in the cell, so a fourth one added to the
-// pill — a border, a shadow — fails here until the cell says what becomes of it. the two sets below
-// are the only thing this file spells: the properties that are the word itself, and the sheet's own
+// pill — a border, a shadow — fails here until the cell says what becomes of it. the three sets
+// below are the only thing this file spells: the properties that are the word and are left as the
+// pill set them, the properties the cell takes back off the plane it stands in, and the sheet's own
 // spellings for nothing.
+//
+// the middle set is what a property joins when it is neither the shape around the word nor the word
+// as the pill set it. a cell is set at the plane's size and read at the plane's leading, and a word
+// standing in one is a cell and takes both — so each is named here with the value the cell has to
+// state, and a property left out of all three sets falls into the derived list and fails until
+// somebody says which of the three it is.
 //
 // it reads the sheet's text, for ./raw-values.ts's reason: what a rule draws is not observable from
 // a value. ../../vitest.config.ts renders the dom pool into happy-dom, which lays nothing out, and
@@ -26,14 +33,20 @@ import { stripComments } from './raw-values';
 const SHEET = new URL('./adm.css', import.meta.url).pathname;
 
 /** the properties that are the word and not the shape around it, which a cell keeps as they are. */
-const WORD = new Set([
-	'color',
-	'display',
-	'font-size',
-	'font-style',
-	'font-weight',
-	'line-height',
-	'white-space'
+const WORD = new Set(['color', 'display', 'font-style', 'font-weight', 'white-space']);
+
+/**
+ * the properties a cell takes back off the plane rather than keeping, and what each has to say.
+ *
+ * the size is the older half of the rule and the leading joined it: a word that wraps inside a cell
+ * sets its two lines against the reading beside it, and the caption leading the pill was given is a
+ * step tighter than the plane's.
+ */
+const PLANE = new Map([
+	['font-size', 'var(--admin-table-size)'],
+	// whatever the cell was set at, which is the one answer that stays true if the plane is
+	// re-pitched: ./adm.css argues it on the rule itself.
+	['line-height', 'inherit']
 ]);
 
 /** the sheet's word for nothing, in the two spellings ./tokens.css names and the css keyword. */
@@ -62,7 +75,7 @@ const pill = ruleOf(css, '.adm-state');
 const cell = ruleOf(css, '.adm-table .adm-state');
 
 /** the pill's own drawing: what it puts around the word rather than what it makes of the word. */
-const around = [...pill.keys()].filter((property) => !WORD.has(property));
+const around = [...pill.keys()].filter((property) => !WORD.has(property) && !PLANE.has(property));
 
 describe('a status drawn in a table cell is the word and nothing else', () => {
 	it('finds the two rules it is meant to be reading', () => {
@@ -76,6 +89,17 @@ describe('a status drawn in a table cell is the word and nothing else', () => {
 		expect(around.filter((property) => !cell.has(property))).toEqual([]);
 	});
 
+	it('answers every part of the pill the cell takes off the plane instead', () => {
+		expect([...PLANE.keys()].filter((property) => !cell.has(property))).toEqual([]);
+	});
+
+	it('names nothing in that set the pill does not set', () => {
+		// without this the set is where a property goes to stop being swept: a name left here after
+		// the pill stopped setting it is a name out of `around` and answered by a cell rule nothing
+		// else reads, which is this file excusing a declaration that draws nothing.
+		expect([...PLANE.keys()].filter((property) => !pill.has(property))).toEqual([]);
+	});
+
 	it('draws no ground, no padding and no corner there', () => {
 		expect(
 			around
@@ -84,9 +108,10 @@ describe('a status drawn in a table cell is the word and nothing else', () => {
 		).toEqual([]);
 	});
 
-	it("takes the plane's size rather than the body's", () => {
-		// the older half of the rule, and the half that survives the pill coming off: a word set a
-		// step above every other cell reads as the row pointing at itself.
-		expect(cell.get('font-size')).toBe('var(--admin-table-size)');
+	it("takes the plane's size and the plane's leading rather than the tag's", () => {
+		// the half that survives the pill coming off: a word set a step above every other cell reads
+		// as the row pointing at itself, and a word whose two lines are set tighter than the cell
+		// beside it reads the same way — the tag still speaking with its ground gone.
+		expect([...PLANE].filter(([property, value]) => cell.get(property) !== value)).toEqual([]);
 	});
 });

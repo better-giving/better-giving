@@ -26,6 +26,16 @@ import {
  * under it keeps the stack's own gap, so the way out and the press read as one block standing off
  * the boxes rather than as a third one.
  *
+ * that second run stands in `.adm-panel` because the question it answers is a bounded one: whether
+ * two boxes a step apart read as two blocks depends on how wide each box is, and every screen that
+ * draws this run is a gate bounded at `--admin-measure-panel` — packages/app/src/routes/login.tsx
+ * and packages/app/src/lib/admin/setup-gate.tsx among them, each through `PanelRoute` in
+ * packages/operator/src/components/shell/AppShell.jsx. `.adm-main` caps nothing, so left on the
+ * page the boxes run the window less its gutter, the steps between them read against a width no
+ * screen in this system is ever read at, and the specimen answers a question nobody asked. the box
+ * is the panel alone and not the route around it:
+ * `.adm-panelroute` is a screen tall, and a page of specimens cannot spend a viewport on each.
+ *
  * `Section` is the one arrangement whose rule is drawn by the element rather than written: two
  * adjacent sections take a rule between them and a lone section takes none
  * (`.adm-section + .adm-section` in packages/operator/src/styles/adm.css), so three in a row is the
@@ -87,16 +97,18 @@ export default function ShellLayoutPreview() {
 				<p>Never the default — a screen stacked tight throughout reads as one block.</p>
 			</Stack>
 
-			<Stack tight>
-				<Field id="shell-layout-tight-identifier" label="Username or email address" />
-				<Field id="shell-layout-tight-password" label="Password" type="password" />
-				<p className="adm-caption">
-					<a href="#forgot">Forgot your password?</a>
-				</p>
-				<div className="adm-actions">
-					<Button variant="primary">Sign in</Button>
-				</div>
-			</Stack>
+			<div className="adm-panel">
+				<Stack tight>
+					<Field id="shell-layout-tight-identifier" label="Username or email address" />
+					<Field id="shell-layout-tight-password" label="Password" type="password" />
+					<p className="adm-caption">
+						<a href="#forgot">Forgot your password?</a>
+					</p>
+					<div className="adm-actions">
+						<Button variant="primary">Sign in</Button>
+					</div>
+				</Stack>
+			</div>
 
 			<div>
 				<Section>
