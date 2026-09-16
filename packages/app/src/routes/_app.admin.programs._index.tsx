@@ -1,7 +1,7 @@
-import { Button } from '@better-giving/operator/components/controls/Button';
-import { EmptyState } from '@better-giving/operator/components/data/EmptyState';
+import { CreateCard } from '@better-giving/operator/components/data/CreateCard';
 import { Column, List } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
+import { Mark } from '@better-giving/operator/components/status/Mark';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { PROGRAM_STATUS_TONES } from '$lib/admin/status-tones';
 import { useEffect, useRef } from 'react';
@@ -77,6 +77,23 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	);
 }
 
+/* the shape a cause takes on this list, drawn hidden inside the create card so that card stands as
+   tall as a record whether or not the deployment has one yet. it carries no link and no heading:
+   the card is one press, and either would be a focusable node inside an `aria-hidden` subtree —
+   `CreateCard`'s `ghost` prop says the rest. */
+const SAMPLE = (
+	<div className="adm-record">
+		<div className="adm-record__head adm-record__head--marked">
+			<span className="adm-record__mark">
+				<Mark name="folder-heart" />
+			</span>
+			<span className="adm-record__title">Clean water</span>
+			<StatusWord tone="done">Active</StatusWord>
+		</div>
+		<p className="adm-caption">Wells and filters for villages along the river.</p>
+	</div>
+);
+
 // what this page owes is the causes this deployment has, active ones first, and a way to reach the
 // screen that edits one. it writes nothing: every change to a cause happens on its own page.
 export default function Programs({ loaderData }: Route.ComponentProps) {
@@ -104,19 +121,6 @@ export default function Programs({ loaderData }: Route.ComponentProps) {
 		// one column and the column is what spaces it: every block below carries no margin of its
 		// own, so one that is not rendered leaves no space behind it.
 		<Column>
-			{/* the page's one press, where `PageHeader` draws its trailing slot. the strip over the
-			    page carries the name, so the header draws no title of its own. */}
-			<header className="adm-pageheader">
-				<div className="adm-pageheader__row">
-					{/* a link dressed as a button, and it stays a link: this navigates, it does not write.
-					    "Add" is the dashboard's one word for bringing a record into being, and it is the
-					    word on the button, the page it opens and the banner that reports the write. */}
-					<Button as={Link} to={href('/admin/programs/new')}>
-						Add program
-					</Button>
-				</div>
-			</header>
-
 			{/* the outcome of the create next door, which redirected here with the new cause's id. it
 			    is the only outcome this page reports and the only one it can: this page writes
 			    nothing, so every other thing that happens to a cause is reported on the screen that
@@ -129,41 +133,48 @@ export default function Programs({ loaderData }: Route.ComponentProps) {
 				</div>
 			) : null}
 
-			{programs.length === 0 ? (
-				<EmptyState>No programs yet. Add one to name what a gift went to.</EmptyState>
-			) : (
-				<List>
-					{programs.map((program) => (
-						// a cause is a record rather than a run of paragraphs: its name and its status on
-						// one baseline, then the sentence staff wrote about it.
-						//
-						// the record is written out of the classes packages/operator/src/styles/adm.css
-						// already draws, which is what the donation forms list beside it does.
-						<section className="adm-record" key={program.id}>
-							<div className="adm-record__head">
-								{/* level 2, because a record on this list stands directly under the page's
-								    own `<h1>` and nothing sits between them. how loud the words are is
-								    `.adm-record__title`'s to say. */}
-								<h2 className="adm-record__title">
-									<Link to={href('/admin/programs/:id', { id: program.id })}>{program.name}</Link>
-								</h2>
-								{/* the tone is what tells the two apart down a list: Active is the accent and
-								    Archived is the hueless step down. it replaces the `secondary` this word
-								    used to carry — $lib/admin/status-tones.ts says why one or the other. */}
-								<StatusWord tone={PROGRAM_STATUS_TONES[program.status]}>
-									{PROGRAM_STATUS_LABELS[program.status]}
-								</StatusWord>
-							</div>
+			<List>
+				{/* the way to add a cause leads the list rather than standing over it, so an empty
+				    deployment meets the same screen a full one does with one card fewer on it. */}
+				<CreateCard as={Link} to={href('/admin/programs/new')} ghost={SAMPLE}>
+					Create program
+				</CreateCard>
 
-							{/* the description and nothing else, because there is nothing else stored: a
-							    cause with none draws no line rather than a labelled blank, which is what a
-							    record with one optional value can afford. it is a caption because it is
-							    staff wording rather than a figure. */}
-							{program.description ? <p className="adm-caption">{program.description}</p> : null}
-						</section>
-					))}
-				</List>
-			)}
+				{programs.map((program) => (
+					// a cause is a record rather than a run of paragraphs: its name and its status on
+					// one baseline, then the sentence staff wrote about it.
+					//
+					// the record is written out of the classes packages/operator/src/styles/adm.css
+					// already draws, which is what the donation forms list beside it does.
+					<section className="adm-record" key={program.id}>
+						<div className="adm-record__head adm-record__head--marked">
+							{/* the glyph the rail carries for Programs ($lib/admin/destinations.ts), so a
+							    card and the destination that reached it agree on sight. */}
+							<span className="adm-record__mark">
+								<Mark name="folder-heart" />
+							</span>
+							{/* level 2, because a record on this list stands directly under the page's
+							    own `<h1>` and nothing sits between them. how loud the words are is
+							    `.adm-record__title`'s to say. */}
+							<h2 className="adm-record__title">
+								<Link to={href('/admin/programs/:id', { id: program.id })}>{program.name}</Link>
+							</h2>
+							{/* the tone is what tells the two apart down a list: Active is the accent and
+							    Archived is the hueless step down. it replaces the `secondary` this word
+							    used to carry — $lib/admin/status-tones.ts says why one or the other. */}
+							<StatusWord tone={PROGRAM_STATUS_TONES[program.status]}>
+								{PROGRAM_STATUS_LABELS[program.status]}
+							</StatusWord>
+						</div>
+
+						{/* the description and nothing else, because there is nothing else stored: a
+						    cause with none draws no line rather than a labelled blank, which is what a
+						    record with one optional value can afford. it is a caption because it is
+						    staff wording rather than a figure. */}
+						{program.description ? <p className="adm-caption">{program.description}</p> : null}
+					</section>
+				))}
+			</List>
 		</Column>
 	);
 }
