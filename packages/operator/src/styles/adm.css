@@ -2472,8 +2472,8 @@
 	}
 
 	/* the chip as a press. what stands at the foot of a record is the literal the rule above draws
-	   with something to do about it — a site the form is served on, opening what that site can be
-	   set to; where the form itself answers, opening the page. so the element under it is a link
+	   with something to do about it — a site the form is served on, opening the embed card aimed at
+	   that site; where the form itself answers, opening the page. so the element under it is a link
 	   where it navigates and a button where it does not, and both wear this class and are drawn the
 	   same, which is what the ring below is restated for.
 
@@ -2965,8 +2965,8 @@
 
 	   the ghost is a sample and never a copy of a real record, and that is what an empty list turns
 	   on: a screen reaching into its own list for the shape has nothing to reach for on the one page
-	   the card matters most on. it carries `aria-hidden` at its call site — a reader has no use for
-	   a record that is not there. */
+	   the card matters most on. packages/operator/src/components/data/CreateCard.jsx sets
+	   `aria-hidden` on it — a reader has no use for a record that is not there. */
 	.adm-create {
 		display: grid;
 		border: var(--admin-border-width) dashed var(--admin-border);

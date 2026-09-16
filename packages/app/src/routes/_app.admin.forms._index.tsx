@@ -273,11 +273,10 @@ export default function DonationForms({ loaderData }: Route.ComponentProps) {
 					// baseline, then the places it is used, each one a press.
 					//
 					// the record is written out of the classes packages/operator/src/styles/adm.css
-					// already draws rather than mounted from the library's `RecordCard`, which now draws
-					// all of this: the level is the caller's, the status word takes its register, the mark
-					// is a name from the closed set, and the origins are a foot of presses. adopting it is
-					// the one change left here and is a screen's change rather than a part's. nothing new
-					// is drawn and no value is stated.
+					// already draws rather than mounted from the library's `RecordCard`, which draws all
+					// of this: the level is the caller's, the status word takes its tone, the mark is a
+					// name from the closed set, and the origins are a foot of presses. adopting it is a
+					// screen's change rather than a part's.
 					//
 					// the id is not a value on the card and must not become one. every press is already
 					// built from it — the name links to the form's own page, and the foot carries it in

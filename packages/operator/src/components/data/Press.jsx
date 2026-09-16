@@ -12,7 +12,7 @@ import { Mark } from '../status/Mark.jsx';
  *   spelled as a literal, and it opens a page. the two are one decision in the drawing and not two
  *   props that would only ever be passed together: a press holding words is a destination, and the
  *   arrow is what says the destination is a page rather than something that happens here. a press
- *   holding a literal opens what that literal can be set to and takes no arrow.
+ *   holding a literal opens something about that literal on this screen and takes no arrow.
  * @property {PointerState | undefined} [state]
  */
 
@@ -22,9 +22,8 @@ import { Mark } from '../status/Mark.jsx';
  * so a screen that has one hands its link in — `as={Link}` — and a bare `<a>` to an internal
  * destination takes the whole document with it.
  *
- * the default is a button, because the press that does not navigate is the common one: a site at
- * the foot of a form's record opens what that site can be set to, and only the form's own page is
- * somewhere to go.
+ * the default is a button, for a press that acts on this screen rather than going anywhere. a
+ * screen whose presses navigate hands its link in, as the forms list does for every press it draws.
  *
  * @template {ElementType} T
  * @typedef {PressOwnProps & { as?: T } & Omit<ComponentProps<T>, 'as' | keyof PressOwnProps>} PressProps

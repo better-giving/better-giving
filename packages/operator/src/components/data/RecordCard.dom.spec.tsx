@@ -74,7 +74,7 @@ describe('a record card mounted into a document', () => {
 	});
 
 	it('draws no mark, and the head every other screen draws, when the screen states none', () => {
-		// the absent reading is what every screen mounting this card draws today: two things on a
+		// the absent reading is what every card with no mark draws: two things on a
 		// baseline. it is asserted rather than assumed, because a modifier arriving unasked would
 		// move all of them without a screen changing.
 		const root = render(RecordCard, {

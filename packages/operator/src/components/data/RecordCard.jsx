@@ -96,7 +96,7 @@ export function RecordCard({
 	return (
 		<article className="adm-record">
 			{/* the marked head is a second class and not a rule of its own: a head with a mark in it
-			    has three things in a row and centres them, and one without has two on a baseline,
+			    has three tracks, and one without has two ends held apart. both keep the baseline,
 			    which is what a heading and the word beside it are read on. ../../styles/adm.css
 			    argues both. */}
 			<div className={mark ? 'adm-record__head adm-record__head--marked' : 'adm-record__head'}>

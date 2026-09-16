@@ -159,8 +159,8 @@ export default function DataRecordCardPreview() {
 					'https://shelter-winter-appeal.example.org'
 				]}
 			/>
-			{/* the same card twice, unmarked then marked: the head goes from two things on a baseline to
-			    three tracks centred on one row. */}
+			{/* the same card twice, unmarked then marked: the head goes from two ends held apart on a
+			    baseline to three tracks on the same baseline. */}
 			<RecordCard
 				titleAs="h3"
 				title="Clean water"
@@ -198,8 +198,8 @@ export default function DataRecordCardPreview() {
 				origins={['https://riverside-shelter.org']}
 			/>
 			{/* the other reading of the origins, at one press and at several. the words press is the
-			    form's own page and navigates, so it is an anchor; the sites open what each can be set
-			    to and are buttons. src/previews/data-press.tsx draws both in every state. */}
+			    form's own page and navigates, so it is an anchor; the sites are left at the default
+			    button. src/previews/data-press.tsx draws both in every state. */}
 			<RecordCard
 				titleAs="h3"
 				title="General giving"

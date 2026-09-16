@@ -4,8 +4,8 @@ import { Press } from '@better-giving/operator/components/data/Press';
  * the press at the foot of a record card, in both readings and every state a pointer reaches.
  *
  * the literal is the default and is the common one: a site a form is served on, pressed to open
- * what that site can be set to. it is a button because nothing navigates, and the code face and the
- * ground under it are `.adm-chip`'s — what is pressed is still the literal.
+ * the embed card aimed at that site. it is drawn as the default button here, and the code face and
+ * the ground under it are `.adm-chip`'s — what is pressed is still the literal.
  *
  * the words reading is the other, and the arrow rides with it rather than standing as a prop of its
  * own: a press said in words is a destination, and the arrow is what says the destination is a page.
