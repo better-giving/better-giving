@@ -129,8 +129,8 @@ import { WALLET_NAMES, linkStanding, walletHostLines, walletRows } from './walle
 // agree to: every value it touches is one this deployment does not hold, no endpoint is deleted and
 // no credential is replaced, so a card between Save and the run asks an operator to confirm the
 // press they have just made. what separates the two is ./stripe-confirm.ts's `remakesSetup`, which
-// reads whether any line of the confirm replaces something — and what that press puts up instead is
-// the run's own report, which asks nothing and answers nothing.
+// reads whether the signing secret is one this deployment already holds — and what that press puts
+// up instead is the run's own report, which asks nothing and answers nothing.
 //
 // **the press reports itself step by step, because it is several round trips against three hosts.**
 // it starts a run in the binary and answers at once; this screen asks that run how far it has got
@@ -919,7 +919,7 @@ export function StripeSection({
 			: {
 					destroys:
 						confirming.act === 'remove' ||
-						(confirming.act === 'errand' && remakesSetup(confirming.lines)),
+						(confirming.act === 'errand' && remakesSetup(confirming.lines, MINTED)),
 					label: ASKS[confirming.act].press,
 					props: {
 						type: 'submit' as const,
@@ -1918,7 +1918,7 @@ export function StripeSection({
 						   would ask the operator to agree to the press they just made. what no row can
 						   carry is the other errand: a re-save deletes the endpoint Stripe is already
 						   delivering to, which is what `remakesSetup` reads (./stripe-confirm.ts). */
-							if (ask?.act === 'errand' && !remakesSetup(lines)) {
+							if (ask?.act === 'errand' && !remakesSetup(lines, MINTED)) {
 								// the run still reports in the top layer: this press puts no question up, so the
 								// card it puts up is the report itself.
 								setReporting('pressed');
@@ -2062,7 +2062,7 @@ export function StripeSection({
 							    it belongs to. it is the whole reason an errand puts a card up at all: a first
 							    set-up is made at the button and reaches this only where there is a working
 							    set-up to remake (./stripe-confirm.ts). */}
-								{confirming.act === 'errand' && remakesSetup(confirming.lines) ? (
+								{confirming.act === 'errand' && remakesSetup(confirming.lines, MINTED) ? (
 									<p className="adm-prose">
 										The endpoint Stripe already sends payments to is deleted and registered again.
 									</p>

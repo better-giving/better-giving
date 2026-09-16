@@ -90,24 +90,49 @@ describe('remakesSetup', () => {
 	 */
 	it('reads a press that sets every value for the first time as no remake', () => {
 		expect(
-			remakesSetup([
-				{ name: 'STRIPE_SECRET_KEY', act: 'Set' },
-				{ name: 'STRIPE_PUBLISHABLE_KEY', act: 'Set' },
-				{ name: 'STRIPE_WEBHOOK_SECRET', act: 'Set' }
-			])
+			remakesSetup(
+				[
+					{ name: 'STRIPE_SECRET_KEY', act: 'Set' },
+					{ name: 'STRIPE_PUBLISHABLE_KEY', act: 'Set' },
+					{ name: 'STRIPE_WEBHOOK_SECRET', act: 'Set' }
+				],
+				MINTED
+			)
 		).toBe(false);
 	});
 
 	it('reads a signing secret being replaced as a setup that already works', () => {
 		expect(
-			remakesSetup([
-				{ name: 'STRIPE_SECRET_KEY', act: 'Replaced' },
-				{ name: 'STRIPE_WEBHOOK_SECRET', act: 'Replaced' }
-			])
+			remakesSetup(
+				[
+					{ name: 'STRIPE_SECRET_KEY', act: 'Replaced' },
+					{ name: 'STRIPE_WEBHOOK_SECRET', act: 'Replaced' }
+				],
+				MINTED
+			)
 		).toBe(true);
 	});
 
+	/**
+	 * the state a `remove` press leaves behind: it nulls the secret key and reaches neither Stripe
+	 * nor the published key, so the next operator pastes a fresh pair over a deployment holding a
+	 * publishable key and no endpoint. that box says `Replaced` and the credential this reads says
+	 * `Set`, so the press is a first set-up and the confirm it opens must say so.
+	 */
+	it('reads a replaced key box beside a first signing secret as no remake', () => {
+		expect(
+			remakesSetup(
+				lines(
+					{ secret: 'sk_live_new', publishable: 'pk_live_new' },
+					{ secret: '', publishable: HOLDING.publishable },
+					[]
+				),
+				MINTED
+			)
+		).toBe(false);
+	});
+
 	it('reads a press with no lines at all as no remake', () => {
-		expect(remakesSetup([])).toBe(false);
+		expect(remakesSetup([], MINTED)).toBe(false);
 	});
 });

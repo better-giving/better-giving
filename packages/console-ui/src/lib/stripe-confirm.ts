@@ -69,6 +69,11 @@ export function confirmLines(
  * the signing secret is the reading, because it is the credential the registration returns and the
  * only one this console mints — a deployment holding one has an endpoint behind it, and its line
  * says `Replaced` for exactly that reason ({@link confirmLines}).
+ *
+ * **so a box saying `Replaced` counts for nothing**, and the names are what tells the two apart. a
+ * `remove` press nulls the secret key and reaches neither Stripe nor the published key, so the
+ * deployment it leaves behind holds a publishable key and no endpoint — and the first set-up made
+ * over that state states `Replaced` against a box while the credential this reads is `Set`.
  */
-export const remakesSetup = (lines: readonly ConfirmLine[]): boolean =>
-	lines.some((line) => line.act === 'Replaced');
+export const remakesSetup = (lines: readonly ConfirmLine[], minted: readonly string[]): boolean =>
+	lines.some((line) => line.act === 'Replaced' && minted.includes(line.name));
