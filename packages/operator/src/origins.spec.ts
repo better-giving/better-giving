@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import fixture from './origins.hosts.json';
 import {
 	MAX_ALLOWED_ORIGINS,
 	MAX_ORIGIN_LENGTH,
@@ -332,5 +333,23 @@ describe('the host inside an origin', () => {
 		expect(hostsOf(['https://example.org', '', 'https://example.org:8443'])).toEqual([
 			'example.org'
 		]);
+	});
+});
+
+// the rule is implemented twice — here and as `Hosts` in packages/console/internal/widget/widget.go
+// — and this is what holds the two equal. both read `./origins.hosts.json`, so a row either side
+// reads differently is a red suite rather than a widget covering a site the deployment serves under
+// a different name. a row that belongs to one language's parser and not to the rule belongs in the
+// block above instead: this one is only ever the fixture.
+describe('the reading the console binary takes over the same origins', () => {
+	it.each(fixture.rows)('reads a stored $origin as its host', ({ origin, host, why }) => {
+		expect(hostOf(origin), why).toBe(host);
+	});
+
+	it('reads the whole fixture as one list, in its order and without repeats', () => {
+		// a fixture nothing could be read out of would pass every case above by holding none.
+		expect(fixture.rows.length).toBeGreaterThan(0);
+		const hosts = fixture.rows.map((row) => row.host).filter((host) => host !== null);
+		expect(hostsOf(fixture.rows.map((row) => row.origin))).toEqual([...new Set(hosts)]);
 	});
 });

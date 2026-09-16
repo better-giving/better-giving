@@ -1,0 +1,46 @@
+{
+	"note": "the one reading of a stored origin down to its host name, and the rows the two implementations of it must agree on: hostOf and hostsOf in packages/operator/src/origins.ts, and Hosts in packages/console/internal/widget/widget.go. one file and not one per language, because a second copy of these rows is the duplication the gate exists to catch, arrived at one level up. json rather than a module so the go module can read it: it has no package.json and reaches no workspace package, so it opens this file by path (packages/console/internal/widget/widget_test.go) where the typescript half imports it.",
+	"rows-note": "each row is one stored origin and the host it must read to, null where the row is dropped. read in order the whole list is also the list reading: first-seen order kept, repeats out, dropped rows gone. every host here is lowercase and punycoded already, because a site is stored as URL.origin — that is a property of the storage path and of neither function, and it is pinned here so a store that stopped normalising cannot quietly move what reaches them.",
+	"rows": [
+		{
+			"origin": "https://give.example.org:8443",
+			"host": "give.example.org",
+			"why": "a stored origin may carry a port, and nothing that takes a host name takes one on the end of it."
+		},
+		{
+			"origin": "https://example.org",
+			"host": "example.org",
+			"why": "the ordinary row, lowercase and unpunycoded because URL.origin made it so before it was stored."
+		},
+		{
+			"origin": "https://xn--caf-dma.example",
+			"host": "xn--caf-dma.example",
+			"why": "an internationalised name arrives already punycoded, for the same reason, and neither implementation encodes one itself."
+		},
+		{
+			"origin": "http://[::1]:5173",
+			"host": "::1",
+			"why": "bare, without the brackets url.hostname hands back: a dev server binding v6-first sends exactly this origin, and both lists become a vendor's domain field, which takes a host name and not url syntax."
+		},
+		{
+			"origin": "",
+			"host": null,
+			"why": "a row an operator added and never filled in is a value with no host in it, dropped rather than passed through."
+		},
+		{
+			"origin": "not a url",
+			"host": null,
+			"why": "no address in it at all, and not an error to either reader: a list is what they are handed."
+		},
+		{
+			"origin": "mailto:someone",
+			"host": null,
+			"why": "a scheme with no authority after it parses on both sides and holds no host."
+		},
+		{
+			"origin": "https://example.org:8443",
+			"host": "example.org",
+			"why": "the same host as the second row: two stored origins are one domain, so the list reading keeps the first and drops this one."
+		}
+	]
+}

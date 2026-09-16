@@ -2,6 +2,8 @@ package widget
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 )
@@ -26,6 +28,71 @@ func TestARowWithNoHostInItIsDroppedRatherThanPassedThrough(t *testing.T) {
 	// is a value with no host in it.
 	if held := Hosts([]string{"", "not a url", "mailto:someone"}); len(held) != 0 {
 		t.Errorf("hosts = %v, want none", held)
+	}
+}
+
+// the rows both implementations of the host reading must agree on, beside the typescript half they
+// are the other side of.
+//
+// read at run time rather than embedded: go:embed reaches nothing outside this module, and one file
+// read from two languages is the whole point — a copy of these rows in go is the duplication the
+// gate exists to catch, arrived at one level up.
+const originHosts = "../../../operator/src/origins.hosts.json"
+
+// one stored origin and the host it must read to, or null where the row is dropped.
+type originHost struct {
+	Origin string  `json:"origin"`
+	Host   *string `json:"host"`
+	Why    string  `json:"why"`
+}
+
+func TestTheHostInsideAStoredOriginIsTheOneTheOperatorSurfacesRead(t *testing.T) {
+	// `hostOf` and `hostsOf` in packages/operator/src/origins.ts read the same file and assert the
+	// same rows, so a host read one way there and another here is a red suite rather than a widget
+	// covering a site the deployment serves under a different name.
+	read, err := os.ReadFile(originHosts)
+	if err != nil {
+		t.Fatalf("%s: %v", originHosts, err)
+	}
+	var fixture struct {
+		Rows []originHost `json:"rows"`
+	}
+	if err := json.Unmarshal(read, &fixture); err != nil {
+		t.Fatalf("%s: %v", originHosts, err)
+	}
+	// a fixture nothing could be read out of would pass every case below by holding none.
+	if len(fixture.Rows) == 0 {
+		t.Fatalf("%s holds no row", originHosts)
+	}
+
+	origins := []string{}
+	wanted := []string{}
+	seen := map[string]bool{}
+	for _, row := range fixture.Rows {
+		origins = append(origins, row.Origin)
+		// one row at a time, which is the single-origin reading `hostOf` states on the other side:
+		// this package exports no reader but the list one.
+		one := Hosts([]string{row.Origin})
+		if row.Host == nil {
+			if len(one) != 0 {
+				t.Errorf("Hosts([%q]) = %v, want none: %s", row.Origin, one, row.Why)
+			}
+			continue
+		}
+		if len(one) != 1 || one[0] != *row.Host {
+			t.Errorf("Hosts([%q]) = %v, want %q: %s", row.Origin, one, *row.Host, row.Why)
+		}
+		if seen[*row.Host] {
+			continue
+		}
+		seen[*row.Host] = true
+		wanted = append(wanted, *row.Host)
+	}
+
+	// the whole fixture as one list: its own order kept, the repeats out, and every row with no host
+	// in it gone.
+	if held := Hosts(origins); strings.Join(held, ",") != strings.Join(wanted, ",") {
+		t.Errorf("Hosts(every row) = %v, want %v", held, wanted)
 	}
 }
 

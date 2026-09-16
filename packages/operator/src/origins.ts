@@ -341,11 +341,22 @@ function isLoopbackHttp(url: URL): boolean {
  * (`Hosts` in `packages/console/internal/widget`); this is beside the rules above because the host
  * it takes is only ever taken out of a line those rules accepted, and the two must keep agreeing —
  * a host read one way here and another there is a widget covering a site the deployment serves
- * under a different name.
+ * under a different name. `./origins.hosts.json` is what holds them equal rather than the two
+ * doc comments: `./origins.spec.ts` reads it and so does
+ * `packages/console/internal/widget/widget_test.go`, so a row either side reads differently is a
+ * red suite.
  *
  * `hostname` and not `host`, so the port comes off with the scheme. an origin may carry one —
  * `https://give.example.org:8443` is stored with it — and nothing that takes a host name takes a
  * port on the end of it.
+ *
+ * **an IPv6 literal comes back bare, and the brackets are what this side gives up to keep the two
+ * in step.** `url.hostname` hands one back bracketed and go's `Hostname()` does not, so `[::1]` and
+ * `::1` were the same stored origin read two ways. what both lists are handed decides it: a
+ * Turnstile widget's domains and Stripe's wallet domains are domain fields, and a domain field
+ * takes a host name rather than url syntax — the brackets belong to the address the host was read
+ * out of. the row reader above keeps them, because {@link LOOPBACK_HOSTNAMES} is matched against
+ * `url.hostname` and reads a row rather than a stored origin.
  *
  * it reads a stored origin rather than a typed row, so nothing is repaired on the way: `null`
  * rather than a throw, because a value with no host in it is not an error to this reader — it is a
@@ -358,7 +369,9 @@ export function hostOf(origin: string): string | null {
 	} catch {
 		return null;
 	}
-	return url.hostname === '' ? null : url.hostname;
+	const host = url.hostname;
+	if (host === '') return null;
+	return host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
 }
 
 /**
