@@ -116,7 +116,7 @@ export function AppShell({
 		{ destinations: [{ label: 'Dashboard', short: 'Dashboard', mark: 'layout-dashboard' }] },
 		{
 			destinations: [
-				{ label: 'Donation forms', short: 'Forms', mark: 'file-text' },
+				{ label: 'Donation forms', short: 'Forms', mark: 'form' },
 				{ label: 'Donors', short: 'Donors', mark: 'users' },
 				{ label: 'Gifts', short: 'Gifts', mark: 'hand-heart' }
 			]
