@@ -5,6 +5,7 @@ import { DestructiveConfirm } from '@better-giving/operator/components/shell/Des
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { FORM_STATUS_TONES } from '$lib/admin/status-tones';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
 import { useEffect, useRef } from 'react';
@@ -927,12 +928,13 @@ export default function DonationForm({ loaderData, actionData }: Route.Component
 			    ../routes.spec.ts's bundle sweep reads the attribute as a reference to the export.
 			    nothing new is drawn and no value is stated.
 
-			    an archived form's word is the quiet one: `secondary` is for a status that has run its
-			    course, which is exactly what archived is. */}
+			    an archived form's word is the hueless one: the `note` tone is for a status that has
+			    run its course, which is exactly what archived is. $lib/admin/status-tones.ts maps the
+			    three. */}
 			<header className="adm-pageheader">
 				<div className="adm-pageheader__row">
 					<h1>{name}</h1>
-					<StatusWord secondary={archived}>{FORM_STATUS_LABELS[status]}</StatusWord>
+					<StatusWord tone={FORM_STATUS_TONES[status]}>{FORM_STATUS_LABELS[status]}</StatusWord>
 				</div>
 			</header>
 

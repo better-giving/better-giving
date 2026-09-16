@@ -3,16 +3,28 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
 /*
  * two registers, and everything each one ignores about the other.
  *
- * descriptive is a fact and takes three drawings: the plain word, the quiet one for a value nobody
- * needs to act on, and the unset one for no value at all. `unset` and `secondary` say different
- * things and compose in the class list, so the row carrying both is drawn — nothing in the
- * component stops it, and what wins is whichever rule comes last in
- * packages/operator/src/styles/adm.css rather than anything either prop states.
+ * descriptive is a fact and is drawn as a pill. untoned it is hueless, and it takes three drawings
+ * that way: the plain word, the quiet one for a value nobody needs to act on, and the unset one for
+ * no value at all. `unset` and `secondary` say different things and compose in the class list, so
+ * the row carrying both is drawn — nothing in the component stops it, and what wins is whichever
+ * rule comes last in packages/operator/src/styles/adm.css rather than anything either prop states.
  *
- * momentary is the other register and it discards three of the props. `unset` and `secondary` are
- * read only on the descriptive path (packages/operator/src/components/status/StatusWord.jsx:60),
- * so a momentary word handed either is the plain momentary word — drawn here beside one that was
- * not, because the two are identical and that is the finding.
+ * `tone` is the fourth drawing and there are four of it, one per member of the shared set
+ * (packages/operator/src/components/closed-sets.js). only a record's own lifecycle status is meant
+ * to carry one — $lib/admin/status-tones.ts in packages/app maps the four unions the dashboard
+ * renders — so every untoned specimen above is what everything else on a screen looks like. a word
+ * handed a tone and `secondary` together is drawn here too, because nothing stops a screen doing
+ * it: the tone wins, by source order in the sheet and not by anything the component says.
+ *
+ * the long word is the specimen the pill exists to be tested against. a status word can be computed
+ * from a list rather than chosen from one, and the pill does not refuse to wrap — what a wrapped
+ * one looks like is only visible with one here.
+ *
+ * momentary is the other register and it discards four of the props. `unset`, `secondary` and
+ * `tone` are read only on the descriptive path
+ * (packages/operator/src/components/status/StatusWord.jsx), so a momentary word handed any of them
+ * is the plain momentary word — drawn here beside one that was not, because the two are identical
+ * and that is the finding.
  *
  * `mark` is the momentary register's only variable and defaults to the tick. `blocked` is the
  * momentary word that reports the thing could not be done, and it is the whole of the second
@@ -55,6 +67,29 @@ export default function StatusStatusWordPreview() {
 			</p>
 			<p>
 				<StatusWord />
+			</p>
+			<p>
+				<StatusWord tone="done">Live</StatusWord>
+			</p>
+			<p>
+				<StatusWord tone="attention">Draft</StatusWord>
+			</p>
+			<p>
+				<StatusWord tone="blocker">Payment failed</StatusWord>
+			</p>
+			<p>
+				<StatusWord tone="note">Archived</StatusWord>
+			</p>
+			<p>
+				<StatusWord tone="done" secondary>
+					Live — handed a tone and secondary, and the tone is what it is drawn in
+				</StatusWord>
+			</p>
+			<p>
+				<StatusWord tone="blocker">
+					Payment failed on the card this donor last used, which is a toned status word long enough
+					to wrap and is what the pill has to survive
+				</StatusWord>
 			</p>
 			<p>
 				<StatusWord register="momentary">Saved</StatusWord>

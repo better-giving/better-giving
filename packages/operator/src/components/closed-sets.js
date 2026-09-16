@@ -39,6 +39,8 @@
 /**
  * the register an operator surface speaks in. `note` is the bare `.adm-banner` and the bare
  * `.adm-status` rather than a modifier of either: a note is a fact, and a fact is not coloured.
+ * `.adm-state` is the one place it is a modifier, because that pill is already hueless before any
+ * tone reaches it and what `note` adds there is the step down in ink, not the loss of a colour.
  *
  * @typedef {'blocker' | 'attention' | 'note' | 'done'} Tone
  */

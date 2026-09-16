@@ -99,17 +99,31 @@
    colour. a completed write reports in the accent.
 
    three registers of status, and they are separated by where a word sits and what may
-   accompany it rather than by hue, because a hue scheme is the thing an operator learns to
-   scan instead of reading. imperative — something is asking you to act — sits at the leading
-   edge of a ledger line in a fixed mark gutter, carries a mark, carries a tone, and carries a
-   sentence. descriptive — this is just what it is — sits in a value slot, carries no mark, no
-   tone and no graphic of its own, and is a plain ink word that is uniform across every value,
-   so `failed` and `completed` are typographically identical; what tells one from prose is the
-   slot it sits in, and a rule under a run of words is what a link wears, so a state may not
-   wear one. momentary — this just happened, on this control — reports on the control that
-   caused it, in the accent, and is never a toast and never a banner at the head of the page.
+   accompany it, never by hue alone, because a hue scheme read on its own is the thing an
+   operator learns to scan instead of reading. imperative — something is asking you to act —
+   sits at the leading edge of a ledger line in a fixed mark gutter, carries a mark, carries a
+   tone, and carries a sentence. descriptive — this is just what it is — sits in a value slot,
+   carries no mark and no sentence, and is drawn as a pill: the word on a rung 3 tint at
+   `--admin-radius-pill`, hueless until it is given a tone. momentary — this just happened, on
+   this control — reports on the control that caused it, in the accent, and is never a toast and
+   never a banner at the head of the page.
    packages/operator/src/components/status/Banner.jsx, StatusWord.jsx and StatusLine.jsx are where those three
    are drawn.
+
+   the descriptive register is the one that is not uniform, and the trade is worth stating where
+   it is made. it is the register an operator meets a hundred at a time, and a word drawn
+   identically for every value leaves `failed` and `completed` typographically the same thing —
+   a list of gifts read a row at a time to find the two that went wrong. a tone answers one
+   question and no other: which of four a value is, settled or running, waiting on somebody,
+   failed or refused, ended. the scanning it invites therefore lands on the only question it can
+   answer, and the word is still the only thing saying which value it is.
+
+   two bounds keep that from becoming the hue scheme this file rules out. only a record's own
+   lifecycle status takes a tone: a consent reading, a count, `Repeating` and `Invited` stay the
+   hueless pill, so a tone on a screen means a record stands somewhere on its own ladder rather
+   than that something has been coloured. and the ladder is the one declared here — `done` is the
+   accent and never green, which is the no-green rule above holding rather than an exception to
+   it.
 
    four banner tones and one of them has no hue: `note` is a fact, and a fact is not coloured.
    blocker is red, attention is ochre, done is the accent, and what tells a note from the
@@ -826,11 +840,20 @@
 
 		/* ---- radius --------------------------------------------------------------------
 
-		   one radius, wherever a corner is rounded at all, and it stays small. nothing is a pill:
-		   a fully rounded control reads as a tag. `--admin-radius-0` is the word for square, so a
-		   rule that means square says it rather than leaving the corner unstated. */
+		   one radius wherever a corner is rounded at all, and it stays small, because a fully
+		   rounded control reads as a tag and a control is not a tag. `--admin-radius-0` is the
+		   word for square, so a rule that means square says it rather than leaving the corner
+		   unstated.
+
+		   `--admin-radius-pill` is the exception and it has one wearer: the descriptive status
+		   word, which is a tag — a record's own state, read as a unit and never pressed. the
+		   round corner is the whole of what says so, which is why nothing else may take it. a
+		   second wearer turns the shape into decoration, and then nothing on a screen tells a
+		   state from a value. it is larger than any height it will meet rather than measured,
+		   because the word inside sets that height. */
 		--admin-radius-0: 0;
 		--admin-radius: 4px;
+		--admin-radius-pill: 999px;
 
 		/* ---- borders and rules ---------------------------------------------------------
 

@@ -6,6 +6,7 @@ import { EmptyState } from '@better-giving/operator/components/data/EmptyState';
 import { Column, List } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { FORM_STATUS_TONES } from '$lib/admin/status-tones';
 import { useEffect, useRef } from 'react';
 import { data, href, Link, useNavigate } from 'react-router';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -295,11 +296,11 @@ export default function DonationForms({ loaderData }: Route.ComponentProps) {
 									<h2 className="adm-record__title">
 										<Link to={href('/admin/forms/:id', { id: form.id })}>{form.name}</Link>
 									</h2>
-									{/* Live is the word somebody scanning this list is looking for, so it is
-									    the one at full weight and Draft is the quieter of the two. there are
-									    only ever those two here: `readForms` leaves an archived form out of
-									    the list entirely. */}
-									<StatusWord secondary={form.status !== 'live'}>
+									{/* the tone is what tells the two apart down a list: Live is the accent and
+									    Draft is the ochre of a form still waiting on somebody. there are only
+									    ever those two here — `readForms` leaves an archived form out of the
+									    list entirely — and $lib/admin/status-tones.ts maps all three. */}
+									<StatusWord tone={FORM_STATUS_TONES[form.status]}>
 										{FORM_STATUS_LABELS[form.status]}
 									</StatusWord>
 								</div>

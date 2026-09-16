@@ -2,6 +2,7 @@ import { FREQUENCY_LABELS } from '@better-giving/form/v1';
 import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { RECURRING_STATUS_TONES } from '$lib/admin/status-tones';
 import { href, Link } from 'react-router';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formatMinor } from '$lib/donations/money';
@@ -164,7 +165,11 @@ export default function RecurringGifts({ loaderData }: Route.ComponentProps) {
 						email: plan.donorEmail,
 						amount: plan.amount,
 						often: FREQUENCY_LABELS[plan.interval],
-						status: <StatusWord>{RECURRING_STATUS_LABELS[plan.status]}</StatusWord>,
+						status: (
+							<StatusWord tone={RECURRING_STATUS_TONES[plan.status]}>
+								{RECURRING_STATUS_LABELS[plan.status]}
+							</StatusWord>
+						),
 						// three renderings of one column, because null means "none expected" and that
 						// covers two different situations. a date is a date. no date on a gift that is
 						// still collecting is worth noticing, so it takes a word rather than a dash —

@@ -15,9 +15,14 @@
  *   fault, and the card it opens.
  */
 
-/* four readings in the value cell: a not-set state word, a stored state word, a plain value and a
-   literal in the code face. `literal` hides nothing — it is the same value `value` draws, in the
-   face an operator checks a key or a host character for character.
+/* four readings in the value cell: a not-set word, a stored word, a plain value and a literal in
+   the code face. `literal` hides nothing — it is the same value `value` draws, in the face an
+   operator checks a key or a host character for character.
+
+   the three word readings are `.adm-setting__word` and never `.adm-state`: a value is not a state.
+   ../../styles/adm.css argues the split where both are drawn, and ../status/StatusWord.jsx's
+   descriptive register is the only thing that may write the status pill. a row wanting a record's
+   own status in its cell is a screen passing that word in, not this part reaching for the class.
 
    one mark, and it is a slot rather than a name on a bare mark: a mark with nothing behind it says
    the row is at fault and gives a reader no way to find out why. it stands after the label, because
@@ -46,9 +51,11 @@ export function SettingRow({ label, value, reading = 'value', note }) {
 				{note}
 			</div>
 			<div className="adm-setting__value">
-				{read === 'unset' ? <span className="adm-state adm-state--unset">Not set</span> : null}
-				{read === 'stored' ? <span className="adm-state">Stored</span> : null}
-				{read === 'value' ? <span className="adm-state">{value}</span> : null}
+				{read === 'unset' ? (
+					<span className="adm-setting__word adm-setting__word--unset">Not set</span>
+				) : null}
+				{read === 'stored' ? <span className="adm-setting__word">Stored</span> : null}
+				{read === 'value' ? <span className="adm-setting__word">{value}</span> : null}
 				{/* the chip and never the inline literal: this is the whole of the value cell, with no
 				    sentence running up against it. ../../styles/adm.css draws the difference. */}
 				{read === 'literal' ? <code className="adm-chip">{value}</code> : null}

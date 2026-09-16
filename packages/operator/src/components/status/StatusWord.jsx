@@ -3,6 +3,7 @@ import { Mark } from './Mark.jsx';
 /**
  * @import { ReactNode } from 'react'
  * @import { MarkName } from './Mark.jsx'
+ * @import { Tone } from '../closed-sets.js'
  *
  * @typedef {'descriptive' | 'momentary'} StatusRegister
  *
@@ -11,6 +12,11 @@ import { Mark } from './Mark.jsx';
  * @property {StatusRegister | undefined} [register]
  * @property {boolean | undefined} [unset] no value at all, which says something different from `secondary`.
  * @property {boolean | undefined} [secondary]
+ * @property {Tone | undefined} [tone] where a record stands on its own lifecycle ladder: `done`
+ *   settled or running, `attention` waiting on somebody, `blocker` failed or refused, `note`
+ *   retired, stopped or ended. absent on every word that is not one of those statuses — a consent
+ *   reading and a count are facts about a record rather than where it stands — and absent wherever
+ *   `secondary` is passed, since a tone already says the quiet one is quiet.
  * @property {MarkName | undefined} [mark]
  *
  * @typedef {object} StatusWordBlocked
@@ -24,9 +30,9 @@ import { Mark } from './Mark.jsx';
  * @typedef {StatusWordBase & (StatusWordBlocked | StatusWordNeutral)} StatusWordProps
  */
 
-/* three registers, and the register is carried by position and accompaniment, not by hue.
-   descriptive — a fact. an ink word with a flat neutral underscore, no mark, no colour,
-                 uniform across every value so nothing ranks.
+/* three registers, and the register is carried by position and accompaniment, never by hue alone.
+   descriptive — a fact, drawn as a pill in a value slot with no mark and no sentence. hueless
+                 until it is handed a `tone`, which only a record's own lifecycle status gets.
    momentary   — this just happened, on this control. accent, with a mark, transient; attention
                  when `blocked`, and ink with the info mark when `neutral`. */
 /** @param {StatusWordProps} props */
@@ -35,6 +41,7 @@ export function StatusWord({
 	register = 'descriptive',
 	unset = false,
 	secondary = false,
+	tone,
 	mark,
 	blocked = false,
 	neutral = false
@@ -61,7 +68,8 @@ export function StatusWord({
 	const cls = [
 		'adm-state',
 		unset ? 'adm-state--unset' : '',
-		secondary ? 'adm-state--secondary' : ''
+		secondary ? 'adm-state--secondary' : '',
+		tone ? `adm-state--${tone}` : ''
 	]
 		.filter(Boolean)
 		.join(' ');

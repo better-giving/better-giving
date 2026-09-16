@@ -43,7 +43,7 @@ describe('a row that says it holds a value and holds none', () => {
 		const root = render(SettingRow, { label: 'Minimum gift' });
 
 		expect(root.querySelector('.adm-setting__value')?.textContent).toBe('Not set');
-		expect(root.querySelector('.adm-state--unset')).not.toBeNull();
+		expect(root.querySelector('.adm-setting__word--unset')).not.toBeNull();
 	});
 
 	it('reads an empty string the same way, which is the same blank by another door', () => {
@@ -59,6 +59,6 @@ describe('a row that says it holds a value and holds none', () => {
 		// of its own, and the two word readings ignore `value` entirely.
 		const root = render(SettingRow, { label: 'Receipt sender', reading: 'literal', value: '' });
 
-		expect(root.querySelector('.adm-state--unset')).toBeNull();
+		expect(root.querySelector('.adm-setting__word--unset')).toBeNull();
 	});
 });

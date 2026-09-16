@@ -1581,25 +1581,47 @@
 	}
 
 	/* the descriptive register: this is just what it is. a fact about a gift is not an
-	   instruction to the operator, so it sits in a value slot, carries no mark and no tone,
-	   and is a plain ink word that is uniform across every value — `failed` and `completed`
-	   are typographically identical. never a pill, a badge or a dot.
+	   instruction to the operator, so it carries no mark and no sentence and sits in a value
+	   slot — and it is drawn as a pill, which is the one thing on these surfaces a fully round
+	   corner is for. ./tokens.css argues the shape at the radius block and argues the trade at
+	   `three registers of status`.
+
+	   hueless at rest: the ground is the note tone's tint, which is the neutral ladder's rung 3,
+	   and the word over it is the page's own ink. a value that is not a record's lifecycle
+	   status — a consent reading, a count, `Repeating` — stops at this rule and ranks against
+	   nothing.
+
+	   the caption size holds at every width and inside every plane, a table cell included: a pill
+	   whose size moves with its container is two tags rather than one. it sits a step under the
+	   text around it everywhere, which is what a tag beside a reading should do.
 
 	   and no line under it. a run of words with a rule beneath is what a link wears on every
-	   other operator screen, so a state drawn that way is a fact an operator tries to
-	   click. what tells these words from prose is the slot they sit in, which is a value
-	   slot on a record head or a setting row and never the middle of a sentence. */
+	   other operator screen, so a state drawn that way is a fact an operator tries to click. the
+	   ground and the corner are what tell these words from the prose around them, which is why
+	   one may stand mid-sentence where the plain word could not.
+
+	   a setting row's value is not one of these and draws `.adm-setting__word` below: a value is
+	   not a state.
+
+	   no `white-space: nowrap`, deliberately: a status word can be computed from a list rather
+	   than chosen from one, and a pill that refuses to wrap pushes a screen sideways at 375
+	   instead. packages/gallery/src/previews/status-status-word.tsx carries the long specimen. */
 	.adm-state {
 		display: inline-block;
-		font-size: var(--admin-body-size);
+		font-size: var(--admin-caption-size);
 		font-weight: var(--admin-value-weight);
+		line-height: var(--admin-caption-lh);
+		padding: var(--admin-space-3) var(--admin-space-5);
+		border-radius: var(--admin-radius-pill);
 		color: var(--admin-ink);
+		background: var(--admin-tone-note-tint);
 	}
 
 	/* set, and quiet. it steps the ink and the weight down. */
-	/* carried-ok: .adm-state--secondary — spelled in the derived class list in
-	   packages/operator/src/components/status/StatusWord.jsx rather than in a `class`
-	   attribute. */
+	/* every name in this block is spelled in the derived class list in
+	   packages/operator/src/components/status/StatusWord.jsx rather than in a `class` attribute,
+	   and that component is the only thing that writes any of them.
+	   carried-ok: .adm-state .adm-state--unset .adm-state--secondary */
 	.adm-state--secondary {
 		color: var(--admin-ink-2);
 		/* type-ok: the variant steps the value rank down. */
@@ -1615,11 +1637,39 @@
 		font-style: italic;
 	}
 
-	/* a state in a cell is a cell, and takes the plane's size rather than the body's: the word is
-	   read along the row it sits in, and one set a step above every other cell reads as the row
-	   pointing at itself. */
-	.adm-table .adm-state {
-		font-size: var(--admin-table-size);
+	/* the four tones, last in this list on purpose: a word handed a tone and `secondary` together
+	   is a word the tone speaks for, and source order is what settles that rather than the order
+	   the component happens to assemble its class list in.
+
+	   only a record's own lifecycle status takes one, and each names what produces it — `done` is
+	   settled or running, `attention` is waiting on somebody, `blocker` is failed or refused,
+	   `note` is retired, stopped or ended. each is its tone's word on its tone's tint, the same
+	   pair a banner in that tone wears. `done` is the accent and never green; ./tokens.css argues
+	   that where the ladders are declared.
+
+	   `note` steps the ink down and leaves the ground alone, because the pill is already hueless:
+	   an ended record is a fact said quietly. it lands on the rung `secondary` lands on, which is
+	   the same quiet said by a screen with no lifecycle ladder to name. */
+	/* carried-ok: .adm-state--done .adm-state--attention .adm-state--blocker .adm-state--note
+	   — each is `` `adm-state--${tone}` `` in that same derived class list, so no `class`
+	   attribute anywhere spells one. */
+	.adm-state--done {
+		color: var(--admin-tone-done-ink);
+		background: var(--admin-tone-done-tint);
+	}
+
+	.adm-state--attention {
+		color: var(--admin-tone-attention-ink);
+		background: var(--admin-tone-attention-tint);
+	}
+
+	.adm-state--blocker {
+		color: var(--admin-tone-blocker-ink);
+		background: var(--admin-tone-blocker-tint);
+	}
+
+	.adm-state--note {
+		color: var(--admin-tone-note-ink);
 	}
 
 	/* the momentary register: this just happened, on this control. it reports beside the
@@ -2784,6 +2834,33 @@
 		align-items: start;
 		gap: var(--admin-space-3);
 		min-inline-size: 0;
+	}
+
+	/* the word in a value cell: what the row holds, said in words rather than drawn as a figure or
+	   a literal. a stored secret's marker, an act nobody performed, the reading a row was given.
+
+	   it is not `.adm-state` and must not become it. a value is not a state: `.adm-state` is a
+	   pill because a record's own status is a tag, read as a unit and scanned down a list, and a
+	   reply-to address or a sum of money is none of those things. the pill around one would rank a
+	   setting against the settings beside it and shrink the value a reader came to check. so this
+	   is the plain word in a slot — the body size, the value weight, the page's ink — and the only
+	   thing telling it from prose is the cell it sits in.
+
+	   no `display`: this word is only ever a child of the flex cell above, which blockifies it. */
+	.adm-setting__word {
+		font-size: var(--admin-body-size);
+		font-weight: var(--admin-value-weight);
+		color: var(--admin-ink);
+	}
+
+	/* nothing set at all, and it says so in words rather than leaving the cell blank: a blank
+	   beside a label reads as a screen that failed to load one. the ink and the face are what
+	   keep it from being read as a value somebody typed. */
+	.adm-setting__word--unset {
+		color: var(--admin-ink-muted);
+		/* type-ok: an unset reading is quieter than the value it stands in for. */
+		font-weight: var(--admin-weight-regular);
+		font-style: italic;
 	}
 
 	/* the mark aligns to the first line of the label it stands in, computed off that line's own box

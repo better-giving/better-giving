@@ -4,12 +4,13 @@ import { SettingRow } from '@better-giving/operator/components/data/SettingRow';
 /*
  * a card per state its status word can take, and a card per length its origins list can be.
  *
- * the word is a `StatusWord` the card passes `register` and `secondary` through to, so the three
- * readings a record can carry are drawn: the plain descriptive word, the quieter one for the value
- * a reader scanning a list is not looking for, and the momentary one — which is the odd pairing
- * worth seeing. a momentary word reports what just happened on the control that caused it, and a
- * record card has no control; the specimen is here to show that the register is reachable through
- * this part and reads wrong in it.
+ * the word is a `StatusWord` the card passes `register`, `secondary` and `tone` through to, so
+ * every reading a record can carry is drawn: the untoned pill, the quieter one for the value a
+ * reader scanning a list is not looking for, one card per tone — which is what a real list of
+ * records looks like, since a record's own lifecycle status is the one word meant to carry one —
+ * and the momentary one, which is the odd pairing worth seeing. a momentary word reports what just
+ * happened on the control that caused it, and a record card has no control; the specimen is here to
+ * show that the register is reachable through this part and reads wrong in it.
  *
  * `state` absent is the state beside them: the head keeps its two tracks and the trailing one is
  * empty, so a list of records where one has no word is a list with a hole in it rather than a list
@@ -52,6 +53,46 @@ export default function DataRecordCardPreview() {
 				href="#kitchen-fund"
 				state="Draft"
 				secondary
+				originsLabel="Allowed on"
+				emptyOrigins="No sites yet, so this form is refused everywhere."
+				origins={['https://riverside-shelter.org']}
+			/>
+			<RecordCard
+				titleAs="h3"
+				title="Winter appeal"
+				href="#winter-appeal-done"
+				state="Live"
+				tone="done"
+				originsLabel="Allowed on"
+				emptyOrigins="No sites yet, so this form is refused everywhere."
+				origins={['https://give.riverside-shelter.org']}
+			/>
+			<RecordCard
+				titleAs="h3"
+				title="Kitchen fund"
+				href="#kitchen-fund-attention"
+				state="Draft"
+				tone="attention"
+				originsLabel="Allowed on"
+				emptyOrigins="No sites yet, so this form is refused everywhere."
+				origins={['https://riverside-shelter.org']}
+			/>
+			<RecordCard
+				titleAs="h3"
+				title="Monthly gift from Alice Nakamura"
+				href="#monthly-blocker"
+				state="Payment failed"
+				tone="blocker"
+				originsLabel="Allowed on"
+				emptyOrigins="No sites yet, so this form is refused everywhere."
+				origins={['https://give.riverside-shelter.org']}
+			/>
+			<RecordCard
+				titleAs="h3"
+				title="Emergency response"
+				href="#emergency-note"
+				state="Archived"
+				tone="note"
 				originsLabel="Allowed on"
 				emptyOrigins="No sites yet, so this form is refused everywhere."
 				origins={['https://riverside-shelter.org']}

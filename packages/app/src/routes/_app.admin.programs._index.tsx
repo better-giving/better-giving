@@ -3,6 +3,7 @@ import { EmptyState } from '@better-giving/operator/components/data/EmptyState';
 import { Column, List } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { PROGRAM_STATUS_TONES } from '$lib/admin/status-tones';
 import { useEffect, useRef } from 'react';
 import { data, href, Link } from 'react-router';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -146,9 +147,10 @@ export default function Programs({ loaderData }: Route.ComponentProps) {
 								<h2 className="adm-record__title">
 									<Link to={href('/admin/programs/:id', { id: program.id })}>{program.name}</Link>
 								</h2>
-								{/* Active is the word somebody scanning this list is looking for, so it is the
-								    one at full weight and Archived is the quieter of the two. */}
-								<StatusWord secondary={program.status !== 'active'}>
+								{/* the tone is what tells the two apart down a list: Active is the accent and
+								    Archived is the hueless step down. it replaces the `secondary` this word
+								    used to carry — $lib/admin/status-tones.ts says why one or the other. */}
+								<StatusWord tone={PROGRAM_STATUS_TONES[program.status]}>
 									{PROGRAM_STATUS_LABELS[program.status]}
 								</StatusWord>
 							</div>

@@ -3,6 +3,7 @@ import { DestructiveConfirm } from '@better-giving/operator/components/shell/Des
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { PROGRAM_STATUS_TONES } from '$lib/admin/status-tones';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
@@ -354,12 +355,14 @@ export default function Program({ loaderData, actionData }: Route.ComponentProps
 			    pass a prop of that name at all, because ../routes.spec.ts's bundle sweep reads the
 			    attribute as a reference to the export.
 
-			    an archived cause's word is the quiet one: `secondary` is for a status that has run its
-			    course. */}
+			    an archived cause's word is the hueless one: the `note` tone is for a status that has
+			    run its course, and $lib/admin/status-tones.ts is where the four are mapped. */}
 			<header className="adm-pageheader">
 				<div className="adm-pageheader__row">
 					<h1>{name}</h1>
-					<StatusWord secondary={archived}>{PROGRAM_STATUS_LABELS[status]}</StatusWord>
+					<StatusWord tone={PROGRAM_STATUS_TONES[status]}>
+						{PROGRAM_STATUS_LABELS[status]}
+					</StatusWord>
 				</div>
 			</header>
 

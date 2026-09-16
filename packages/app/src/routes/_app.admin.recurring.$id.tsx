@@ -4,6 +4,7 @@ import { DestructiveConfirm } from '@better-giving/operator/components/shell/Des
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { RECURRING_STATUS_TONES } from '$lib/admin/status-tones';
 import { useEffect, useRef } from 'react';
 import { data, Form, href, Link, useNavigation } from 'react-router';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
@@ -527,15 +528,17 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 			    word qualifying the title — the gap /admin/forms/[id] was reported against. nothing
 			    new is drawn and no value is stated.
 
-			    `secondary` on a stopped commitment for the reason an archived form takes it: a status
-			    that has run its course. `Payment failed` keeps the full weight — it has not run its
+			    the `note` tone on a stopped commitment for the reason an archived form takes it: a
+			    status that has run its course. `Payment failed` takes `blocker` — it has not run its
 			    course, it is the state most worth reading, and it is the one a donor is most likely
-			    to be writing about. it gets no red either: colour in /admin means "act on this", and
-			    this is descriptive. */}
+			    to be writing about. the red is what finds it down a list of a hundred, and the
+			    sentence below is what says what to do about it. */}
 			<header className="adm-pageheader">
 				<div className="adm-pageheader__row">
 					<h1>{donorName}</h1>
-					<StatusWord secondary={stopped}>{RECURRING_STATUS_LABELS[status]}</StatusWord>
+					<StatusWord tone={RECURRING_STATUS_TONES[status]}>
+						{RECURRING_STATUS_LABELS[status]}
+					</StatusWord>
 				</div>
 			</header>
 

@@ -3,6 +3,7 @@ import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { DONATION_STATUS_TONES } from '$lib/admin/status-tones';
 import { href, Link } from 'react-router';
 import { screenTitle } from '$lib/admin/screen-title';
 import { IN_HAND_METHOD_LABELS } from '$lib/donations/methods';
@@ -279,11 +280,15 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 						// operator retypes it.
 						status: d.trackingId ? (
 							<>
-								<StatusWord>{DONATION_STATUS_LABELS[d.status]}</StatusWord> Tracking ID{' '}
-								<code className="adm-code adm-code--unbroken">{d.trackingId}</code>
+								<StatusWord tone={DONATION_STATUS_TONES[d.status]}>
+									{DONATION_STATUS_LABELS[d.status]}
+								</StatusWord>{' '}
+								Tracking ID <code className="adm-code adm-code--unbroken">{d.trackingId}</code>
 							</>
 						) : (
-							<StatusWord>{DONATION_STATUS_LABELS[d.status]}</StatusWord>
+							<StatusWord tone={DONATION_STATUS_TONES[d.status]}>
+								{DONATION_STATUS_LABELS[d.status]}
+							</StatusWord>
 						),
 						// the word the loader resolved, printed. a gift with nothing attempted hands
 						// over nothing and the table dashes the cell itself.

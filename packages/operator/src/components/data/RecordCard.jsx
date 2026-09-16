@@ -4,6 +4,7 @@ import { StatusWord } from '../status/StatusWord.jsx';
 /**
  * @import { ReactNode } from 'react'
  * @import { StatusRegister } from '../status/StatusWord.jsx'
+ * @import { Tone } from '../closed-sets.js'
  */
 
 /**
@@ -26,6 +27,8 @@ import { StatusWord } from '../status/StatusWord.jsx';
  * @property {StatusRegister | undefined} [register] the register the status word is spoken in.
  * @property {boolean | undefined} [secondary] the quieter of two words, for the one a reader
  *   scanning a list is not looking for.
+ * @property {Tone | undefined} [tone] where the record stands on its own lifecycle ladder, handed
+ *   straight to the status word. a screen passes this or `secondary` and never both.
  * @property {readonly string[] | undefined} [origins]
  * @property {ReactNode} originsLabel what the origins are called on this screen, stated rather than
  *   defaulted: it is the whole of what names the list, and a run of identifiers with no name over it
@@ -44,6 +47,7 @@ export function RecordCard({
 	state,
 	register,
 	secondary = false,
+	tone,
 	origins = [],
 	originsLabel,
 	emptyOrigins,
@@ -63,7 +67,7 @@ export function RecordCard({
 				<Title className="adm-record__title">
 					<a href={href}>{title}</a>
 				</Title>
-				<StatusWord register={register} secondary={secondary}>
+				<StatusWord register={register} secondary={secondary} tone={tone}>
 					{state}
 				</StatusWord>
 			</div>
