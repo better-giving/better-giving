@@ -2442,6 +2442,67 @@
 		white-space: nowrap;
 	}
 
+	/* the chip as a press. what stands at the foot of a record is the literal the rule above draws
+	   with something to do about it — a site the form is served on, opening what that site can be
+	   set to; where the form itself answers, opening the page. so the element under it is a link
+	   where it navigates and a button where it does not, and both wear this class and are drawn the
+	   same, which is what the ring below is restated for.
+
+	   a modifier on the chip rather than a class that redraws one: what is pressed is still that
+	   literal, so the face, the ground and the corner stay the chip's and this adds the press and
+	   nothing else. it is not `.adm-state`'s corner and must not become it — a state is read and a
+	   press is taken, and ./tokens.css keeps the round one to the single thing that is only read.
+	   no `font-family` here for the same reason: a press holding a literal is in the code face, and
+	   the one holding words says so itself below.
+
+	   no line under it in any state. the ground and the corner already tell it from the prose, and
+	   a run of words with a rule under it at the foot of a card reads as a link inside a sentence
+	   rather than as one thing to press. */
+	.adm-press {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--admin-space-2);
+		cursor: pointer;
+		text-decoration-line: none;
+	}
+
+	/* carried-ok: .is-hover .is-focus — the twin beside each state pseudo, here and below. */
+	.adm-press:hover,
+	.adm-press.is-hover {
+		background: var(--admin-surface-fill);
+		color: var(--admin-ink);
+	}
+
+	/* the ring is stated here rather than left to the focused-link treatment in ./base.css, and for
+	   `.adm-dest`'s reason below: that one is a tint fill, a thicker underline and a bleed of the
+	   same tint, and the chip's own ground and this rule's missing underline override the first two
+	   in this layer — which leaves the bleed alone, a halo of tint with no edge to it. the hugging
+	   ring is also what the button form takes from that sheet's general rule, so restating it here
+	   is what keeps a link and a button one drawing. the transparent outline under it comes from
+	   that general rule and is not restated. */
+	.adm-press:focus-visible,
+	.adm-press.is-focus {
+		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
+	}
+
+	/* the press holding words rather than a literal — where it goes, said in the surface's own
+	   voice. it is the one place a chip leaves the code face, so it states both halves: the
+	   document's face, and the caption size, the code size being a step of no scale a word is
+	   ranked on. */
+	.adm-press--words {
+		font-family: var(--admin-font-sans);
+		font-size: var(--admin-caption-size);
+	}
+
+	/* the mark inside a words press, and it is the one mark on these surfaces measured against the
+	   words beside it. raw-length-ok: 0.75em — the arrow is sized to the letters it stands with
+	   rather than to `--admin-mark-size`, as `.adm-brand` below is: a press sets its words a step
+	   under the page and a mark at the fixed mark size out-measures them. */
+	.adm-press__arrow {
+		inline-size: 0.75em;
+		block-size: 0.75em;
+	}
+
 	/* ---------- the command row --------------------------------------------------------
 
 	   a literal an operator runs, on the page's own ground. the slab below is the dark
@@ -2754,6 +2815,74 @@
 		gap: var(--admin-space-4);
 	}
 
+	/* the head with a mark at its leading edge: three tracks — the mark, the name, the status —
+	   rather than the two ends the rule above holds apart. a mark is a third thing, and in a row
+	   spaced from both ends it lands against the name with the gap left in the wrong place.
+
+	   a modifier and not a change to the rule above, because that rule is what
+	   packages/operator/src/components/data/RecordCard.jsx draws for every screen mounting a card
+	   with no mark in it, and this is the second class a screen with one puts beside it.
+
+	   it states no `align-items`, and that is the load-bearing absence here: the baseline the rule
+	   above sets is what this row keeps, so the status word at the trailing end stays on the line
+	   the name starts on. a record's name is an operator's own string and wraps, and first-baseline
+	   alignment reads the first line — a row centred instead would hang the word between two
+	   wrapped lines the moment a name got long. the mark is the one thing that cannot be placed
+	   that way and says so at its own rule below.
+
+	   the name's track is `minmax(0, 1fr)` so a long one wraps inside its own column rather than
+	   widening the row past the card, which is the whole of what holds this at 375. */
+	.adm-record__head--marked {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		gap: var(--admin-space-5);
+	}
+
+	/* the mark's own box, and it is a tile rather than a bare glyph: at the head of a card a glyph
+	   alone is too small to hold the leading edge of the row, and the sunken ground is what gives
+	   it one. the corner is the card's and never the press's — a square is part of what tells a mark
+	   from a state.
+
+	   it is out of the row's baseline group, and that is the whole of what this rule says about
+	   alignment: a tile holds no text, so the baseline synthesised for it is its own bottom edge,
+	   and left in the group it would drop the name to meet that edge. it stays at the row's own
+	   start, which puts its top on the card's padding edge like everything else the card holds —
+	   the name comes down to it, at the rule below. */
+	.adm-record__mark {
+		display: grid;
+		place-items: center;
+		align-self: start;
+		inline-size: var(--admin-space-9);
+		block-size: var(--admin-space-9);
+		border-radius: var(--admin-radius);
+		background: var(--admin-surface-sunken);
+		color: var(--admin-ink-2);
+	}
+
+	/* the name's first line centred against the tile beside it, which is the same rule
+	   `.adm-status__mark` above keeps and taken from the other end: there the mark moves to the
+	   text's line, and here the text moves to the mark's box. the direction is what the card is
+	   read by — a tile lifted onto a one-line name sits proud of the row and closer to the card's
+	   edge than anything else on the screen, and the name coming down instead leaves every top edge
+	   on the one line.
+
+	   it is scoped to the marked head because there is nothing to come down to without one, and the
+	   offset is the tile's box less the line it is centring, halved.
+
+	   `1lh` needs no face stated beside it, and that is the reason the arithmetic is written on this
+	   element rather than on the tile: `.adm-record__title` below is where the subhead role is set,
+	   so the line this measures is the line these words are actually set in. measured off the head
+	   or off the tile it would be the card's own leading, and the name would land a few pixels out
+	   — wrong in a way that reads as a drawing decision rather than as a mistake.
+
+	   a name long enough to wrap keeps its first line there and flows the rest under it, because the
+	   offset is a margin on the block and not an alignment of it. and the status word rides with it:
+	   it is in the row's baseline group with the name, so the margin moves the name's baseline and
+	   the word follows to stay on the line the name starts on. */
+	.adm-record__head--marked > .adm-record__title {
+		margin-block-start: calc((var(--admin-space-9) - 1lh) / 2);
+	}
+
 	.adm-record__title {
 		font-size: var(--admin-subhead-size);
 		font-weight: var(--admin-subhead-weight);
@@ -2781,6 +2910,102 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--admin-space-2);
+	}
+
+	/* the same list stood at the foot of the card instead of beside a label: the step above it is
+	   what separates the presses from what the card says, and the wider gap is what tells one from
+	   the next now that each is a thing to press rather than a literal to read. a second class on
+	   the rule above, so neither the row nor its wrap is restated here. */
+	.adm-record__foot {
+		gap: var(--admin-space-4);
+		margin-block-start: var(--admin-space-10);
+	}
+
+	/* ---------- the create card ---------------------------------------------------------
+
+	   the press that leads a list of records, drawn as a card of its own so a list opens with the
+	   way to add to it. dashed, and the dashes are the whole of what says it holds nothing: a solid
+	   edge here is another record.
+
+	   its height is a record's, and a ghost is how. every child stands in the one grid area and the
+	   first of them is a whole record's markup at `visibility: hidden`, so the card measures what a
+	   card beside it measures — and it goes on measuring it with no record on the page at all,
+	   which is what an empty list needs and why the ghost is inside this card rather than a sibling
+	   of it. `visibility` and not `display: none`: a hidden box is still laid out, and laying it out
+	   is the entire job.
+
+	   the ghost is a sample and never a copy of a real record, and that is what an empty list turns
+	   on: a screen reaching into its own list for the shape has nothing to reach for on the one page
+	   the card matters most on. it carries `aria-hidden` at its call site — a reader has no use for
+	   a record that is not there. */
+	.adm-create {
+		display: grid;
+		border: var(--admin-border-width) dashed var(--admin-border);
+		border-radius: var(--admin-radius);
+		color: var(--admin-ink-muted);
+		text-decoration-line: none;
+	}
+
+	/* one area, and every child stacked in it. the ghost gives the area its size and the body is
+	   centred over it. */
+	.adm-create > * {
+		grid-area: 1 / 1;
+	}
+
+	.adm-create__ghost {
+		visibility: hidden;
+		display: grid;
+		gap: var(--admin-space-4);
+	}
+
+	.adm-create__body {
+		place-self: center;
+		display: grid;
+		justify-items: center;
+		gap: var(--admin-space-3);
+	}
+
+	/* the plus in a ring, and the ring is dashed for the card's own reason rather than filled: a
+	   solid circle is a button, and here the card is the press. raw-length-ok: 50% — a circle,
+	   which is a shape and not a step on the size scale. */
+	.adm-create__plus {
+		display: grid;
+		place-items: center;
+		inline-size: var(--admin-space-9);
+		block-size: var(--admin-space-9);
+		border: var(--admin-border-width) dashed var(--admin-border);
+		border-radius: 50%;
+		background: var(--admin-surface-sunken);
+	}
+
+	.adm-create__word {
+		font-size: var(--admin-caption-size);
+		line-height: var(--admin-caption-lh);
+	}
+
+	/* carried-ok: .is-hover .is-focus — the twin beside each state pseudo, here and below. */
+	.adm-create:hover,
+	.adm-create.is-hover {
+		color: var(--admin-ink-2);
+		border-color: var(--admin-ink-muted);
+	}
+
+	/* the circle's edge steps with the card's, so the two dashed edges move together. */
+	.adm-create:hover .adm-create__plus,
+	.adm-create.is-hover .adm-create__plus {
+		border-color: var(--admin-ink-muted);
+	}
+
+	/* the ring is stated here for `.adm-dest`'s reason below: this card is an anchor, and the
+	   focused-link treatment in ./base.css spends its emphasis on a bleed of tint past the box —
+	   around a card the size of a record that is a halo with no edge in it, and the dashed edge
+	   that is the whole of what says "create" is what a reader loses track of. the tint fill from
+	   that rule stands: this card sets no ground of its own, so the fill is the one it takes when
+	   the keyboard reaches it. the corner is the card's and is not restated, and neither is the
+	   transparent outline that sheet's general focus rule draws. */
+	.adm-create:focus-visible,
+	.adm-create.is-focus {
+		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
 	}
 
 	/* ---------- setting row -------------------------------------------------------------

@@ -1,5 +1,6 @@
 import {
 	ArrowLeft,
+	ArrowUpRight,
 	Bell,
 	BookOpen,
 	Building2,
@@ -18,6 +19,7 @@ import {
 	EyeOff,
 	FileText,
 	FolderHeart,
+	Form,
 	Globe,
 	GripVertical,
 	HandHeart,
@@ -59,6 +61,7 @@ import {
 // own that belong to no tone ladder. ./Brand.jsx draws that, from an image.
 export const GLYPHS = {
 	'arrow-left': ArrowLeft,
+	'arrow-up-right': ArrowUpRight,
 	bell: Bell,
 	'book-open': BookOpen,
 	'building-2': Building2,
@@ -77,6 +80,7 @@ export const GLYPHS = {
 	'eye-off': EyeOff,
 	'file-text': FileText,
 	'folder-heart': FolderHeart,
+	form: Form,
 	globe: Globe,
 	'grip-vertical': GripVertical,
 	'hand-heart': HandHeart,

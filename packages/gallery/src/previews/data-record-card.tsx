@@ -1,3 +1,4 @@
+import { Press } from '@better-giving/operator/components/data/Press';
 import { RecordCard } from '@better-giving/operator/components/data/RecordCard';
 import { SettingRow } from '@better-giving/operator/components/data/SettingRow';
 
@@ -30,6 +31,25 @@ import { SettingRow } from '@better-giving/operator/components/data/SettingRow';
  * `emptyOrigins` is stated on every card for the same rule and draws on only one of them: a card
  * holding origins today is a card whose list can be emptied, and the sentence has to be ready before
  * that happens rather than written the day it does.
+ *
+ * the cards at the foot of this page are the two things a card can carry that the ones above do not.
+ *
+ * `mark` is the first: a glyph at the leading edge, for a list whose records are all one kind of
+ * thing. the head turns into three tracks where the head above it holds two ends apart, and the
+ * marked card is drawn directly under an unmarked one so the difference is the thing on the screen
+ * rather than something to take on trust. the mark is out of the accessibility tree — twenty records
+ * carrying the same glyph is a reader told nothing twenty times.
+ *
+ * the marked card with a name long enough to wrap is the specimen that alignment exists for, and it
+ * is the one to look hardest at: the tile and the status word sit on the line the name starts on,
+ * which is what a row centred on its own block loses the moment a second line arrives. a record's
+ * name is an operator's own string, so that is not a rare reading of this card.
+ *
+ * the foot is the second, and it is the other reading of the same origins: taken rather than named
+ * and read. there is no label and no empty sentence in that reading, and stating either alongside
+ * `foot` is a type error rather than a branch the card chooses at runtime. one press and several are
+ * both drawn, because what a run of them does at the foot of a card is only visible with a run
+ * there — and the single one is what a form with one site looks like, which is most of them.
  */
 export default function DataRecordCardPreview() {
 	return (
@@ -138,6 +158,79 @@ export default function DataRecordCardPreview() {
 					'https://riverside-shelter.org',
 					'https://shelter-winter-appeal.example.org'
 				]}
+			/>
+			{/* the same card twice, unmarked then marked: the head goes from two things on a baseline to
+			    three tracks centred on one row. */}
+			<RecordCard
+				titleAs="h3"
+				title="Clean water"
+				href="#clean-water"
+				state="Active"
+				tone="done"
+				originsLabel="Allowed on"
+				emptyOrigins="No sites yet, so this form is refused everywhere."
+				origins={['https://riverside-shelter.org']}
+			/>
+			<RecordCard
+				titleAs="h3"
+				title="Clean water"
+				href="#clean-water-marked"
+				mark="folder-heart"
+				state="Active"
+				tone="done"
+				originsLabel="Allowed on"
+				emptyOrigins="No sites yet, so this form is refused everywhere."
+				origins={['https://riverside-shelter.org']}
+			/>
+			{/* the name that wraps, marked: the specimen the head's alignment exists for. the mark sits
+			    on the line the name starts on rather than between its two lines, and the status word
+			    stays on that first line with it — a row centred instead would hang both in the middle
+			    of the block. */}
+			<RecordCard
+				titleAs="h3"
+				title="The Wharfedale Riverside Community Kitchen and Night Shelter winter emergency appeal"
+				href="#long-marked"
+				mark="form"
+				state="Live"
+				tone="done"
+				originsLabel="Allowed on"
+				emptyOrigins="No sites yet, so this form is refused everywhere."
+				origins={['https://riverside-shelter.org']}
+			/>
+			{/* the other reading of the origins, at one press and at several. the words press is the
+			    form's own page and navigates, so it is an anchor; the sites open what each can be set
+			    to and are buttons. src/previews/data-press.tsx draws both in every state. */}
+			<RecordCard
+				titleAs="h3"
+				title="General giving"
+				href="#general-giving"
+				mark="form"
+				state="Draft"
+				tone="attention"
+				foot={
+					<Press as="a" href="#general-giving-page" words>
+						form page
+					</Press>
+				}
+			/>
+			<RecordCard
+				titleAs="h3"
+				title="Year-end appeal"
+				href="#year-end-appeal"
+				mark="form"
+				state="Live"
+				tone="done"
+				foot={
+					<>
+						<Press as="a" href="#year-end-page" words>
+							form page
+						</Press>
+						<Press>riverside-shelter.org</Press>
+						<Press>www.riverside-shelter.org</Press>
+						<Press>give.riverside-shelter.org</Press>
+						<Press>donate.riverside-shelter-and-community-kitchen.example.org.uk</Press>
+					</>
+				}
 			/>
 			{/* a card with rows attached under the origins: the setting rows drop their own rule inside
 			    a card, so the card's border is the only line. */}
