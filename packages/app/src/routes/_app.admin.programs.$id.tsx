@@ -1,5 +1,5 @@
+import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
-import { DestructiveConfirm } from '@better-giving/operator/components/shell/DestructiveConfirm';
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
@@ -7,8 +7,8 @@ import { PROGRAM_STATUS_TONES } from '$lib/admin/status-tones';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
-import { useEffect, useRef } from 'react';
-import { data, Form, href, Link, useNavigation } from 'react-router';
+import { type ReactNode, useEffect, useRef } from 'react';
+import { data, Form, href, Link, useNavigate, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { ProgramFields } from '$lib/admin/programs/fields';
 import type { CrumbHandle } from '$lib/admin/crumbs';
@@ -317,7 +317,19 @@ export default function Program({ loaderData, actionData }: Route.ComponentProps
 	// what a refused archive said, which travels under its own form's id: the button submits no
 	// values, so there is no box for a message to sit under and a page reading one channel for both
 	// would render a refused archive as a complaint about an input a fundraiser filled in correctly.
+	//
+	// one node and two places, because the two are one sentence about one press. it belongs inside
+	// the card the press was made on, and there is one state — a cause archived from somewhere else,
+	// with the card no longer drawn — where there is no card for it to stand in.
 	const archiveRefusal = formRefusal(PROGRAM_ARCHIVE, actionData);
+	const notArchived = archiveRefusal ? (
+		<Banner tone="blocker" word="Not archived">
+			<MarkedText text={archiveRefusal} />
+		</Banner>
+	) : null;
+
+	// whether the question is on the screen, which is what decides where that refusal is read.
+	const asking = !archived && loaderData.confirmArchive;
 
 	return (
 		// one column and the column is what spaces it: every block below carries no margin of its
@@ -343,11 +355,10 @@ export default function Program({ loaderData, actionData }: Route.ComponentProps
 					<MarkedText text={saveRefusal} />
 				</Banner>
 			) : null}
-			{archiveRefusal ? (
-				<Banner tone="blocker" word="Not archived">
-					<MarkedText text={archiveRefusal} />
-				</Banner>
-			) : null}
+			{/* the refusal, in the one state where the card it was answered from is no longer on the
+			    screen. every other one is read inside that card, where the press was made — and it has
+			    to be: the card is a modal, so a banner up here is behind an inert page. */}
+			{asking ? null : notArchived}
 
 			{/* the header is written out of the classes packages/operator/src/styles/adm.css already
 			    draws rather than mounted from the library's `PageHeader`: that component's trailing
@@ -373,7 +384,12 @@ export default function Program({ loaderData, actionData }: Route.ComponentProps
 			)}
 
 			{archived ? null : (
-				<ArchiveSection id={id} name={name} confirming={loaderData.confirmArchive} />
+				<ArchiveSection
+					id={id}
+					name={name}
+					confirming={loaderData.confirmArchive}
+					refusal={notArchived}
+				/>
 			)}
 		</Column>
 	);
@@ -471,52 +487,49 @@ function StoredRecord({ description }: { readonly description: string | null }) 
  * screen into is a state of the URL — which is what makes it shareable, reloadable and reachable
  * with the browser's own Back.
  *
- * it stays in the page, which is the ordinary case: /admin spends the top layer only where an act
- * reachable from the surface destroys something that already exists, which `.adm-dialog` in
- * packages/operator/src/styles/adm.css states. archiving destroys nothing — every gift recorded
- * against the cause still names it — so the question stays where the record it is about is.
+ * the second step is a dialog, which is what every destructive confirmation on an operator surface
+ * takes — `.adm-dialog` in packages/operator/src/styles/adm.css states it. the `<form>` stands
+ * around the whole card rather than around the control that submits it, which is the rule
+ * packages/operator/src/components/shell/Dialog.jsx's header states: its actions row holds controls
+ * and never a `form`, and a submit belongs to the form enclosing it whether or not the element is
+ * painted in the top layer.
  */
 function ArchiveSection({
 	id,
 	name,
-	confirming
+	confirming,
+	refusal
 }: {
 	readonly id: string;
 	readonly name: string;
 	readonly confirming: boolean;
+	/** what the last press was refused with, or nothing where there was no press. */
+	readonly refusal: ReactNode;
 }) {
-	// the question in the words it is asked in, stated once and read twice: it is the banner's own
-	// word and it is the name of the group holding the banner and the two controls. one expression
-	// rather than two strings, so the name a voice user says cannot drift from what is on the screen
-	// (WCAG 2.5.3).
-	const question = `Archive ${name}?`;
+	const navigate = useNavigate();
 
-	// where the answer lands on the two navigations that open and leave the question. both are links
-	// to this same address, and a navigation carrying nothing puts focus back at the top of the
-	// document — while the question, its two controls and the link that opens them are all at the
-	// foot of the page. `preventScrollReset` on each link keeps the page where it is; this is the
-	// other half, and without it a reader being read to is returned to the masthead by a press they
-	// made at the bottom of the page (WCAG 2.4.3).
+	// where the answer lands when the question is left. moving focus in is the card's own and is not
+	// written here; handing it back cannot be the card's, because the link that asked is off the
+	// page by the time the shell reads what to return to. so this is the return leg alone: cancel,
+	// Escape and a press on the ground are one navigation to this same address, and a navigation
+	// carrying nothing puts focus at the top of the document — while the link that asks is at the
+	// foot of the page. `preventScrollReset` on each keeps the page where it is; this is the other
+	// half, and without it a reader being read to is returned to the masthead by a press they made
+	// at the bottom of the page (WCAG 2.4.3).
 	//
-	// the confirmation itself takes the focus rather than the button inside it: the question is what
-	// has to be read before either control means anything, and the two are one Tab away. it is a
-	// named group, so what a reader is moved to announces itself as the question rather than as an
-	// unnamed box.
-	//
-	// the third navigation is not this effect's and cannot be: an archive that lands redirects onto a
-	// record with no question and no archive section left on it, and the banner reporting it takes
-	// focus in the screen component above.
+	// the landing after an archive is neither leg and cannot be: it redirects onto a record with no
+	// archive section left on it, and the banner reporting it takes focus in the screen component
+	// above.
 	//
 	// only when the state changes, so a page opened straight at `?confirm=archive` — a reload, an
 	// address somebody pasted — lands where the browser puts it rather than being moved by a press
 	// nobody made.
-	const confirmation = useRef<HTMLDivElement>(null);
 	const ask = useRef<HTMLAnchorElement>(null);
 	const wasConfirming = useRef(confirming);
 	useEffect(() => {
 		if (confirming === wasConfirming.current) return;
 		wasConfirming.current = confirming;
-		(confirming ? confirmation.current : ask.current)?.focus();
+		if (!confirming) ask.current?.focus();
 	}, [confirming]);
 
 	return (
@@ -529,26 +542,20 @@ function ArchiveSection({
 			{confirming ? (
 				<Form method="post">
 					<input {...whichForm(PROGRAM_ARCHIVE.id)} />
-					{/* the way out is a `Link` rather than an anchor, so leaving this panel is a
-					    navigation the router handles rather than a full document load.
-
-					    the block carries the `tabIndex` that makes it a place focus can land and the
-					    role and name that make what a reader lands on announce itself. the name is
-					    stated rather than read off the banner's word: a word is a node, and the string
-					    a voice user says has to be one this screen wrote. */}
-					<DestructiveConfirm
-						ref={confirmation}
-						role="group"
-						aria-label={question}
-						tabIndex={-1}
-						tone="attention"
-						word={question}
-						confirm="Yes, archive this program"
+					<Modal
+						title={`Archive ${name}?`}
+						danger="Yes, archive this program"
+						// a `Link` rather than an anchor, so leaving the card is a navigation the router
+						// handles rather than a full document load.
 						cancel="Cancel"
 						cancelProps={{ as: Link, to: screen(id), preventScrollReset: true }}
+						// Escape and a press on the ground mean what the way out means, and the state
+						// they are dismissing is on the address rather than in this component.
+						onDismiss={() => navigate(screen(id), { preventScrollReset: true })}
 					>
-						This cannot be undone from here.
-					</DestructiveConfirm>
+						<p className="adm-prose">This cannot be undone from here.</p>
+						{refusal}
+					</Modal>
 				</Form>
 			) : (
 				// a link dressed as a button, because it writes nothing: it asks.

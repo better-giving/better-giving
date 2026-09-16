@@ -9,7 +9,9 @@ import { Button } from '../controls/Button.jsx';
 /* ../controls/Button.jsx read without its generic, which is the only way a spread of props a
    caller handed can reach it. those props are checked where the caller states them — there the
    element type is a real one and `as={Link}` types `to` — and cannot be checked a second time
-   here. ./DestructiveConfirm.jsx:16 widens for the same reason and says it at more length. */
+   here, because tsc holds that element type only as this component's own type parameter and
+   leaves `ComponentProps<…>` of it unresolved. ../controls/Button.jsx:57 widens its own spread
+   for the same reason. */
 const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
 	/** @type {unknown} */ (Button)
 );
@@ -48,9 +50,11 @@ const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
  * submit. what ../../behaviour/Dialog.tsx adds is the presentation and nothing the question
  * depends on.
  *
- * the three controls are a label and the rest of what the control is, as ./DestructiveConfirm.jsx's
- * pair are and for the reason stated there: what a dialog's confirm has to be is settled by the
- * screen around it — a form's submit on one, a handler on the next — and never here.
+ * the three controls are a label and the rest of what the control is, because what a confirm has
+ * to be is settled by the screen around it and never here: on a screen that archives it is a form's
+ * submit and the way out is a navigation, and on a screen that clears something in place both are
+ * handlers. so each takes ../controls/Button.jsx's own props — `as` for the element type, `type`
+ * for the button type, and whatever that element takes.
  *
  * **the actions row holds controls and never a `form`.** a confirm that posts is a submit in this
  * row and the `form` element goes around the whole dialog, which is what the platform already

@@ -17,7 +17,8 @@ import Donations from './_app.admin.donations._index';
 // seventh column is that folding one into the other re-fuses them.
 //
 // it is not the browser spec CLAUDE.md bans over a dashboard screen: nothing here reads a computed
-// style or a class. what is asserted is which cell holds which words.
+// style. what a case names a class for is where a thing is drawn — which line the press stands on —
+// and never what it looks like there.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -104,9 +105,29 @@ it('draws no heading of its own: the frame names the page', () => {
 	expect(screen([gift({})]).querySelector('h1')).toBe(null);
 });
 
-it('links to adding a donation that arrived in hand', () => {
+it('links to adding a donation that arrived in hand, on the line that counts them', () => {
+	const root = screen([gift()]);
+	const link = [...root.querySelectorAll('a')].find((a) => a.textContent === 'Add donation');
+
+	expect(link?.getAttribute('href')).toBe('/admin/donations/new');
+	// the press is the table's, drawn on the line that counts the gifts rather than in a band of
+	// its own over the page.
+	expect(root.querySelector('.adm-tablelead')?.contains(link ?? null)).toBe(true);
+});
+
+it('keeps the press on a deployment that has taken no gifts', () => {
+	// the screen an operator is most likely to be pressing it on, and the one where the line it
+	// now sits on states no count.
 	const link = [...screen([]).querySelectorAll('a')].find((a) => a.textContent === 'Add donation');
 	expect(link?.getAttribute('href')).toBe('/admin/donations/new');
+});
+
+it('puts no press over the page, on either reading', () => {
+	// the header band is gone: a second copy of the press above the count would be two ways to the
+	// same screen a line apart.
+	for (const donations of [[], [gift()]]) {
+		expect(screen(donations).querySelector('.adm-pageheader')).toBe(null);
+	}
 });
 
 it('states the dedication as the sentence a fundraiser says', () => {

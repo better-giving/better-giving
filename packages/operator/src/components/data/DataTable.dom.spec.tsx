@@ -447,3 +447,110 @@ describe('a column head a press sorts by', () => {
 		]);
 	});
 });
+
+/** what a screen hands in to be pressed: its own element, and nothing the table drew. */
+function addGift() {
+	return <button type="button">Add a donation</button>;
+}
+
+/** what names the plane and the table inside it, each resolved the way a reader would meet it. */
+function namedBy(root: HTMLElement): (string | null | undefined)[] {
+	return ['.adm-plane', 'table'].map((selector) => {
+		const element = root.querySelector(selector);
+		const id = element?.getAttribute('aria-labelledby');
+		return id == null
+			? element?.getAttribute('aria-label')
+			: root.querySelector(`#${id}`)?.textContent;
+	});
+}
+
+describe('the line above a plane', () => {
+	it('stands the screen’s press at the end of the sentence counting the rows', () => {
+		// the press has nowhere else to sit that is both above the plane and tied to it: on a row
+		// of its own above the sentence it lines up with neither the strip over the page nor the
+		// plane's own edge, which is where an operator reported it twice.
+		const root = render(DataTable, {
+			caption: '2 gifts, newest first.',
+			captionId: 'gifts-caption',
+			columns: COLUMNS,
+			rows: GIFTS,
+			press: addGift()
+		});
+		const lead = root.querySelector('.adm-tablelead');
+
+		expect([...(lead?.children ?? [])].map((child) => child.tagName)).toEqual(['P', 'BUTTON']);
+		expect(lead?.querySelector('.adm-tablecaption')?.getAttribute('id')).toBe('gifts-caption');
+		// nothing stands between the line and the table it leads.
+		expect(lead?.nextElementSibling?.getAttribute('class')).toBe('adm-plane');
+	});
+
+	it('stands the press alone where there is nothing to count', () => {
+		// a screen keeps its press while its list is empty — that is the screen an operator is most
+		// likely to be pressing it on — and no count is stated, because there is nothing to count
+		// and ./DataTable.jsx draws no sentence saying so.
+		const root = render(DataTable, {
+			caption: 'Gifts',
+			columns: COLUMNS,
+			rows: [],
+			empty: 'No gifts yet.',
+			press: addGift()
+		});
+		const lead = root.querySelector('.adm-tablelead');
+
+		expect([...(lead?.children ?? [])].map((child) => child.tagName)).toEqual(['BUTTON']);
+		expect(root.querySelector('.adm-tablecaption')).toBeNull();
+	});
+
+	it('draws nothing at all with no press and nothing to count', () => {
+		// the markup a plane has always had. an empty line is a step above the plane with nothing
+		// on it, which reads as a sentence that failed to render.
+		const root = render(DataTable, {
+			caption: 'Gifts',
+			columns: COLUMNS,
+			rows: [],
+			empty: 'No gifts yet.'
+		});
+
+		expect(root.querySelector('.adm-tablelead')).toBeNull();
+		expect(root.querySelector('.adm-tablecaption')).toBeNull();
+	});
+
+	it('draws nothing for a press the screen decided against', () => {
+		// a screen offering the press to some operators writes `press={mayAdd && <Button …/>}`, and
+		// the falsy half of that is `false` rather than nothing — held only against null it draws
+		// the line, and every operator who may not press it gets the step and no control.
+		const root = render(DataTable, {
+			caption: 'Gifts',
+			columns: COLUMNS,
+			rows: [],
+			empty: 'No gifts yet.',
+			press: false
+		});
+
+		expect(root.querySelector('.adm-tablelead')).toBeNull();
+	});
+
+	it('leaves the plane and the table named by what they were named by before', () => {
+		// a press is not a name. the sentence names a counted plane and the screen's own noun names
+		// an empty one, and standing a control on that line changes neither — a plane named by
+		// whatever was pressable on it is one a reader meets as "add a donation".
+		const counted = { caption: '2 gifts, newest first.', columns: COLUMNS, rows: GIFTS };
+		const waiting = {
+			caption: 'Gifts',
+			columns: COLUMNS,
+			rows: [],
+			empty: 'No gifts yet.'
+		};
+
+		expect(namedBy(render(DataTable, { ...counted, press: addGift() }))).toEqual(
+			namedBy(render(DataTable, counted))
+		);
+		expect(namedBy(render(DataTable, { ...waiting, press: addGift() }))).toEqual(
+			namedBy(render(DataTable, waiting))
+		);
+		expect(namedBy(render(DataTable, { ...waiting, press: addGift() }))).toEqual([
+			'Gifts',
+			'Gifts'
+		]);
+	});
+});

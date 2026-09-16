@@ -216,17 +216,6 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 		// own, so one that is not rendered leaves no space behind it. the wide measure, because a
 		// table plane is what it exists for.
 		<Column wide>
-			{/* the page's one press, where `PageHeader` draws its trailing slot, in the shape
-			    ./_app.admin.programs._index.tsx draws Add program: the strip over the page carries the
-			    name, so the header draws no title. a link dressed as a button, because it navigates. */}
-			<header className="adm-pageheader">
-				<div className="adm-pageheader__row">
-					<Button as={Link} to={href('/admin/donations/new')}>
-						Add donation
-					</Button>
-				</div>
-			</header>
-
 			{/* the table sits in the column directly, and nothing wraps it. a grid item's automatic
 			    minimum size is its min-content size, so a plain element between the column and the
 			    plane is one the column can never make narrower than the whole table: the page then
@@ -235,9 +224,16 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 			    scroll box, which is the one kind of item whose automatic minimum is zero, so as the
 			    column's own child it shrinks and scrolls at every width. the cost is the step
 			    between the caption and the table it names, which is now the column's gap and the
-			    caption's own margin-block-end together. */}
+			    margin-block-end of the line the caption shares with the press together. */}
 			<DataTable
 				captionId={CAPTION_ID}
+				// the page's one press, drawn at the trailing edge of the caption's line. a link
+				// dressed as a button, because it navigates.
+				press={
+					<Button as={Link} to={href('/admin/donations/new')}>
+						Add donation
+					</Button>
+				}
 				// with rows, the sentence that says what the table holds and is what names it.
 				// with none there is no count worth stating and none is drawn — the word is the
 				// screen's own noun, which `DataTable` gives the plane as its name so a region

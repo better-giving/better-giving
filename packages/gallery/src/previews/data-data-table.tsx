@@ -1,5 +1,7 @@
+import { Button } from '@better-giving/operator/components/controls/Button';
 import type { Column, Row } from '@better-giving/operator/components/data/DataTable';
 import { DataTable } from '@better-giving/operator/components/data/DataTable';
+import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 
 /*
  * one plane at every length it can be, and every reading a cell can take.
@@ -39,6 +41,18 @@ import { DataTable } from '@better-giving/operator/components/data/DataTable';
  * no pointer or keyboard state is drawn for them: the link inside a head comes from the component
  * and takes no class from a caller, so those two are the sheet's to draw and nothing on this page
  * can pin them.
+ *
+ * two planes carry the screen's one press on the caption's own line, and they are two because the
+ * line is drawn from either of its halves: the sentence counts the rows and the press stands at the
+ * far end of it, and then the same screen with nothing to count keeps the press and loses the
+ * sentence, which is the state where the line holds one child. the press is the screen's own
+ * element and not something the plane drew, so what stands there is an ordinary button.
+ *
+ * the last plane is the descriptive status word in a cell, which is the one drawing of it that is
+ * not the pill src/previews/status-status-word.tsx shows: the ground and the corner come off inside
+ * a table and the word is left standing in its tone. a row of them is the only way to see why —
+ * packages/operator/src/styles/adm.css argues it at `.adm-table .adm-state` — so every tone is
+ * drawn at once, with the untoned quiet word beside a figure and a word long enough to wrap.
  */
 
 const columns: readonly Column[] = [
@@ -253,6 +267,113 @@ export default function DataDataTablePreview() {
 					{
 						id: 'give.riverside-shelter.org',
 						cells: { origin: 'https://give.riverside-shelter.org', added: '12 Nov 2025' }
+					}
+				]}
+			/>
+
+			{/* the press on the caption's line, where a screen's one control belongs: at the far end
+			    of the sentence counting what it acts on. narrow the page and the line wraps, and the
+			    press drops under the sentence at the leading edge rather than staying pinned out at
+			    the far one. */}
+			<DataTable
+				caption="2 donation forms."
+				columns={[
+					{ key: 'name', label: 'Form', width: '55%' },
+					{ key: 'raised', label: 'Raised', width: '20%', kind: 'money' },
+					{ key: 'gifts', label: 'Gifts', width: '25%', kind: 'count' }
+				]}
+				rows={[
+					{
+						id: 'winter-appeal',
+						cells: { name: 'Winter appeal', raised: '£12,480.00', gifts: '214' }
+					},
+					{ id: 'kitchen-fund', cells: { name: 'Kitchen fund', raised: '£0.00', gifts: '0' } }
+				]}
+				press={<Button>Add a donation form</Button>}
+			/>
+
+			{/* the same screen before its first record, which is where the line holds the press alone:
+			    nothing is counted, so no sentence is drawn beside it and the plane takes the screen's
+			    own noun as its name instead. */}
+			<DataTable
+				caption="Donation forms"
+				columns={[
+					{ key: 'name', label: 'Form', width: '55%' },
+					{ key: 'raised', label: 'Raised', width: '20%', kind: 'money' },
+					{ key: 'gifts', label: 'Gifts', width: '25%', kind: 'count' }
+				]}
+				empty="No donation forms yet. The first one appears here once it is made."
+				press={<Button>Add a donation form</Button>}
+			/>
+
+			{/* the status word in a cell, which is where the pill comes off. every tone at once, the
+			    untoned quiet word beside the figure it qualifies, and the unset one — and a blocker
+			    long enough to wrap, because a status word can be computed from a list rather than
+			    chosen from one and a cell is the narrowest place one lands. */}
+			<DataTable
+				caption="5 gifts."
+				columns={[
+					{ key: 'received', label: 'Received', width: '18%', kind: 'date' },
+					{ key: 'donor', label: 'Donor', width: '28%' },
+					{ key: 'amount', label: 'Amount', width: '20%', kind: 'money' },
+					{ key: 'status', label: 'Status', width: '34%' }
+				]}
+				rows={[
+					{
+						id: 'dn_4Kq2Rt',
+						cells: {
+							received: '4 Feb 2026',
+							donor: 'Marianne Whitfield',
+							amount: {
+								reading: 'noted',
+								value: (
+									<>
+										£45.00<StatusWord secondary>Repeating</StatusWord>
+									</>
+								)
+							},
+							status: <StatusWord tone="done">Received</StatusWord>
+						}
+					},
+					{
+						id: 'dn_9Lm7Bd',
+						cells: {
+							received: '3 Feb 2026',
+							donor: 'Anonymous',
+							amount: '£20.00',
+							status: <StatusWord tone="attention">Awaiting the bank</StatusWord>
+						}
+					},
+					{
+						id: 'dn_2Zx8Hp',
+						cells: {
+							received: '3 Feb 2026',
+							donor: 'Priya Raghunathan',
+							amount: '£1,250.00',
+							status: (
+								<StatusWord tone="blocker">
+									Payment failed on the card this donor last used
+								</StatusWord>
+							)
+						}
+					},
+					{
+						id: 'dn_6Yt1Cw',
+						cells: {
+							received: '2 Feb 2026',
+							donor: 'Tomasz Kowalczyk',
+							amount: '£30.00',
+							status: <StatusWord tone="note">Refunded</StatusWord>
+						}
+					},
+					{
+						id: 'dn_8Nr5Vk',
+						cells: {
+							received: '1 Feb 2026',
+							donor: 'Grace Hopper',
+							amount: '£10.00',
+							status: <StatusWord unset>Not scheduled yet</StatusWord>
+						}
 					}
 				]}
 			/>

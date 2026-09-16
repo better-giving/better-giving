@@ -5,9 +5,11 @@ import { Dialog } from './Dialog.jsx';
 // the dialog the server sends, with no script having run over it.
 //
 // what is asserted here is the half that does not need a browser: the element is a `dialog` the
-// markup already carries `open`, it is labelled by the heading a reader can see, and each of the
-// three controls hands its press to whoever passed it. ../../behaviour/Dialog.dom.spec.tsx is the
-// other half.
+// markup already carries `open`, it is labelled by the heading a reader can see, each of the three
+// controls hands its press to whoever passed it, and the actions row is the pairing and the shapes
+// a destructive confirmation needs of it — one coloured control and it is the destructive one, a
+// way out that can be a link, and a confirm that is a submit belonging to the form the card stands
+// in. ../../behaviour/Dialog.dom.spec.tsx is the other half.
 
 describe('the dialog the server renders', () => {
 	it('is an open dialog element drawn as a column in the page', () => {
@@ -95,5 +97,60 @@ describe('the dialog the server renders', () => {
 		expect(
 			[...root.querySelectorAll('.adm-dialog__actions button')].map((n) => n.textContent)
 		).toEqual(['Rotate it', 'Keep it']);
+	});
+
+	it('keeps the danger rank on the destructive control and no rank on the way out', () => {
+		// the other half of that pairing, which the order above does not read: the way out is the
+		// bare secondary rank and states no `variant` of its own to get it.
+		const root = render(Dialog, {
+			title: 'Archive this form?',
+			danger: 'Yes, archive this form',
+			cancel: 'Cancel',
+			cancelProps: { as: 'a', href: '/admin/forms/1' }
+		});
+		const [confirm, cancel] = [...root.querySelectorAll('.adm-dialog__actions > *')];
+
+		expect(confirm?.className).toContain('adm-btn--danger');
+		expect(cancel?.className).toBe('adm-btn');
+	});
+
+	it('lets the way out be a link, which is what leaving a card opened by an address is', () => {
+		const root = render(Dialog, {
+			title: 'Archive this form?',
+			danger: 'Yes, archive this form',
+			cancel: 'Cancel',
+			cancelProps: { as: 'a', href: '/admin/forms/1' }
+		});
+		const cancel = root.querySelector('.adm-dialog__actions a');
+
+		expect(cancel?.getAttribute('href')).toBe('/admin/forms/1');
+		expect(cancel?.textContent).toBe('Cancel');
+	});
+
+	it('lets the destructive control be a submit inside the form the card stands in', () => {
+		// the actions-row rule above, read back off a tree: the `form` encloses the whole card and
+		// the submit inside it belongs to that form. a `form` put between the row and this control
+		// would pass an assertion about the button and break the row it sits in.
+		function InForm() {
+			return (
+				<form action="/archive" method="post">
+					<Dialog
+						title="Archive this form?"
+						danger="Yes, archive this form"
+						dangerProps={{ type: 'submit', name: 'intent', value: 'archive' }}
+					/>
+				</form>
+			);
+		}
+		const confirm = render(InForm, {}).querySelector('.adm-dialog__actions button');
+
+		expect(confirm?.getAttribute('type')).toBe('submit');
+		expect(confirm?.getAttribute('name')).toBe('intent');
+		// the owner form is read back by what it is rather than by identity: `closest` in this pool
+		// hands back an element that is not the same object `querySelector` does for the same node,
+		// so `toBe` against the form compares two wrappers and fails on a tree that is correct.
+		const owner = confirm?.closest('form');
+		expect(owner?.getAttribute('method')).toBe('post');
+		expect(owner?.getAttribute('action')).toBe('/archive');
 	});
 });

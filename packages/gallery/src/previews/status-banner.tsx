@@ -19,10 +19,9 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
  * mark beside a sentence rather than a sentence with an empty line over it, and a banner given
  * neither is its mark and the band alone. both are drawn.
  *
- * `actions` sit beneath the sentence and never inside the band's own row, which is the
- * in-the-page destructive grammar: the controls belong to the reader's next move rather than to
- * the report. the long specimen last, because a banner's sentence is a consequence and consequences
- * are the longest copy on an operator screen.
+ * `actions` sit beneath the sentence and never inside the band's own row: the controls belong to
+ * the reader's next move rather than to the report. the long specimen last, because a banner's
+ * sentence is a consequence and consequences are the longest copy on an operator screen.
  */
 export default function StatusBannerPreview() {
 	return (

@@ -4,7 +4,7 @@ import { createRoutesStub } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import RecurringGift from './_app.admin.recurring.$id';
 
-// every sentence on this screen that names a processor, drawn.
+// every sentence on this screen that names a processor, drawn, and the card they are read in.
 //
 // what it covers: the copy the page composes rather than the loader, which is invisible to
 // ./_app.admin.recurring.$id.workers.spec.ts — that file reads the json a loader publishes, and the
@@ -15,6 +15,13 @@ import RecurringGift from './_app.admin.recurring.$id';
 // the claim under all of them is one: a sentence names the processor this commitment's own row
 // carries, or it names none. so each case asserts both processors rather than one — a hard-coded
 // name passes half of a pair and fails the other.
+//
+// the card is asserted for what it is and what stands in it rather than for how it looks: a
+// `dialog` named by the question, the stop as a submit inside the form that posts, the way out as a
+// link back to the record, and a refused stop still readable there. happy-dom implements
+// `showModal()` as a flag with no top layer and no focus move, so nothing here claims to have
+// watched a page go inert — that half is the platform's and
+// packages/operator/src/behaviour/Dialog.dom.spec.tsx says why it is nobody's to assert.
 //
 // it is not the browser spec CLAUDE.md bans over a dashboard screen: nothing here reads a computed
 // style or a class. what is asserted is which words are on the page.
@@ -66,6 +73,8 @@ function commitment(over: Partial<Loaded> = {}): Loaded {
 	};
 }
 
+type Refused = Parameters<typeof RecurringGift>[0]['actionData'];
+
 /**
  * the screen, drawn over one commitment.
  *
@@ -73,15 +82,19 @@ function commitment(over: Partial<Loaded> = {}): Loaded {
  * `useNavigation`, none of which exist outside a router. the action never settles, so a press that
  * reached it would leave the screen mid-flight rather than re-rendering over the evidence — no case
  * here presses, and it is the shape ./_app.admin.forms.new.dom.spec.tsx states.
+ *
+ * a refusal is handed in as the action's result rather than pressed for, for that same reason: what
+ * this file reads is the screen a rejected stop renders, which is the render the router performs
+ * when the action answers with `data` instead of a redirect.
  */
-function screen(loaded: Loaded = commitment()): HTMLElement {
+function screen(loaded: Loaded = commitment(), refused: Refused = undefined): HTMLElement {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/recurring/:id',
 			Component: () =>
 				createElement(RecurringGift as never, {
 					loaderData: loaded,
-					actionData: undefined,
+					actionData: refused,
 					params: { id: PLAN_ID },
 					matches: []
 				}),
@@ -89,6 +102,13 @@ function screen(loaded: Loaded = commitment()): HTMLElement {
 		}
 	]);
 	return mount(createElement(Stub, { initialEntries: [`/admin/recurring/${PLAN_ID}`] }));
+}
+
+/** the card the question is asked in, which is the whole of the confirmation. */
+function card(root: HTMLElement): HTMLDialogElement {
+	const found = root.querySelector('dialog');
+	if (found === null) throw new Error('the screen drew no dialog');
+	return found;
 }
 
 /** every word on the page, which is what a sentence is asserted against. */
@@ -169,4 +189,54 @@ it('names the processor that gave up, in the note under a payment-failed heading
 	const paypal = words(screen(commitment({ ...lapsed, processor: 'PayPal' })));
 	expect(paypal).toContain('PayPal stopped collecting');
 	expect(paypal).not.toContain('Stripe');
+});
+
+it('asks the question in a dialog named by it', () => {
+	// the confirmation is the card and not a block under the section's prose: a question that
+	// interrupts is one a reader cannot press past, and the name a voice user says is the heading
+	// they can see rather than a second string beside it.
+	const dialog = card(screen(commitment({ confirmStop: true })));
+	const heading = dialog.querySelector('h2');
+
+	expect(heading?.textContent).toBe('Stop this gift from Ada Okafor?');
+	expect(dialog.getAttribute('aria-labelledby')).toBe(heading?.id);
+});
+
+it('draws no card until the address asks for one', () => {
+	// `?confirm=stop` is the whole of what opens it, which is what makes it shareable, reloadable
+	// and closable with the browser's own Back.
+	expect(screen().querySelector('dialog')).toBeNull();
+});
+
+it('stops the gift with a submit inside the form that posts, and leaves by a link to the record', () => {
+	const dialog = card(screen(commitment({ confirmStop: true })));
+	const [confirm, cancel] = [...dialog.querySelectorAll('.adm-dialog__actions > *')];
+
+	expect(confirm?.textContent).toBe('Yes, stop this gift');
+	// the form encloses the whole card, so the submit inside it belongs to that form — a `form` put
+	// around the control instead would break the row it sits in.
+	expect(confirm?.closest('form')?.getAttribute('method')).toBe('post');
+	expect(cancel?.textContent).toBe('Cancel');
+	expect(cancel?.getAttribute('href')).toBe(`/admin/recurring/${PLAN_ID}`);
+});
+
+it('leaves the card standing with the refusal in it when a stop is rejected', () => {
+	// a rejected write performs no navigation, so the parameter that opened the card is still on the
+	// address and the card is still up. the sentence has to be read inside it: the page behind a
+	// modal is inert, so a banner at the top of the screen is one nobody can reach.
+	const refused = { stopWord: 'Not stopped', stopError: 'Stripe refused the cancellation.' };
+	const dialog = card(screen(commitment({ confirmStop: true }), refused));
+
+	expect(dialog.textContent).toContain('Not stopped');
+	expect(dialog.textContent).toContain('Stripe refused the cancellation.');
+});
+
+it('reads a refusal on the page where there is no card left to read it in', () => {
+	// a gift stopped from a second tab: the question is gone and the sentence about the press still
+	// has to land somewhere.
+	const refused = { stopWord: 'Not stopped', stopError: 'This gift is already stopped.' };
+	const root = screen(commitment({ status: 'cancelled' }), refused);
+
+	expect(root.querySelector('dialog')).toBeNull();
+	expect(words(root)).toContain('This gift is already stopped.');
 });

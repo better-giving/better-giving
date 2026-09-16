@@ -9,7 +9,7 @@ import type { RecurringPlanStatus } from '$lib/recurring/statuses';
 // the ladder is the one `packages/operator/src/styles/tokens.css` declares at `three registers of
 // status`: settled or running is `done`, waiting on somebody is `attention`, failed or refused is
 // `blocker`, ended is `note`. a word that is not a record's own lifecycle status — a consent
-// reading, a count, `Repeating`, `Invited` — takes no tone at all and stays the hueless pill.
+// reading, a count, `Repeating`, `Invited` — takes no tone at all and stays hueless.
 //
 // here and not beside the labels in `$lib/{programs,forms,recurring,donations}/statuses.ts`, for
 // the reason `./forms/readiness.tsx`'s `TONES` is where it is: those four modules are also the
@@ -17,7 +17,7 @@ import type { RecurringPlanStatus } from '$lib/recurring/statuses';
 // and a tone is a fact about a screen rather than about the column.
 //
 // every map is keyed by its union rather than by `string`, so a status added to one of them is a
-// type error here rather than a pill that arrives untoned and reads as a value nobody classified.
+// type error here rather than a word that arrives untoned and reads as a value nobody classified.
 
 export const PROGRAM_STATUS_TONES: Record<ProgramStatus, Tone> = {
 	active: 'done',

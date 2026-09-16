@@ -1591,9 +1591,10 @@
 	   status — a consent reading, a count, `Repeating` — stops at this rule and ranks against
 	   nothing.
 
-	   the caption size holds at every width and inside every plane, a table cell included: a pill
-	   whose size moves with its container is two tags rather than one. it sits a step under the
-	   text around it everywhere, which is what a tag beside a reading should do.
+	   the caption size holds at every width: a pill whose size moves with its container is two tags
+	   rather than one, and it sits a step under the text around it, which is what a tag beside a
+	   reading should do. a table cell is the one place that stops, and the rule under the tones
+	   below is where it does.
 
 	   and no line under it. a run of words with a rule beneath is what a link wears on every
 	   other operator screen, so a state drawn that way is a fact an operator tries to click. the
@@ -1670,6 +1671,26 @@
 
 	.adm-state--note {
 		color: var(--admin-tone-note-ink);
+	}
+
+	/* a state in a cell is a cell. the plane has already grouped these rows and ruled one off the
+	   next, so a ground behind the word draws a second grid inside the first one — and a hundred
+	   rows of it is read as a pattern of tinted blocks before any of the words in them is read.
+	   what a row's status has to say is which of the four it is, and the tone on the word alone
+	   says it.
+
+	   the size goes with the ground, which is the rule's older half: a word set a step above every
+	   other cell reads as the row pointing at itself, and once the pill is off there is no tag
+	   left to hold apart from the reading beside it.
+
+	   keyed on where the word is drawn and not on a prop a screen passes, so a table added later
+	   cannot forget it. everywhere else keeps the pill — a record card, a setting row's neighbour,
+	   a value slot — and ./tokens.css carries the exception at both places it states the shape. */
+	.adm-table .adm-state {
+		font-size: var(--admin-table-size);
+		padding: var(--admin-space-0);
+		background: none;
+		border-radius: var(--admin-radius-0);
 	}
 
 	/* the momentary register: this just happened, on this control. it reports beside the
@@ -3064,10 +3085,10 @@
 	/* the word in a value cell: what the row holds, said in words rather than drawn as a figure or
 	   a literal. a stored secret's marker, an act nobody performed, the reading a row was given.
 
-	   it is not `.adm-state` and must not become it. a value is not a state: `.adm-state` is a
-	   pill because a record's own status is a tag, read as a unit and scanned down a list, and a
-	   reply-to address or a sum of money is none of those things. the pill around one would rank a
-	   setting against the settings beside it and shrink the value a reader came to check. so this
+	   it is not `.adm-state` and must not become it. a value is not a state: `.adm-state` is a tag
+	   because a record's own status is read as a unit and scanned down a list, and a reply-to
+	   address or a sum of money is none of those things. the pill around one would rank a setting
+	   against the settings beside it and shrink the value a reader came to check. so this
 	   is the plain word in a slot — the body size, the value weight, the page's ink — and the only
 	   thing telling it from prose is the cell it sits in.
 
@@ -3163,17 +3184,52 @@
 	   money is tabular lining figures, end-aligned and never abbreviated; a date is one value
 	   and never wraps; a count is spelled in the sentence naming the table. */
 
+	/* the line above a plane: the sentence counting its rows, and the one press acting on what it
+	   counts. the press is the screen's own element and this rule only places it, so a plane that
+	   states no press is this line with one child and draws the same as it always did.
+
+	   the step to the plane is the line's rather than the sentence's, because either child may be
+	   the only one there: on a screen with nothing to count yet the press stands here alone, and a
+	   step that belonged to the sentence would leave it sitting on the plane's edge.
+
+	   `--admin-space-5` between the two, the step `.adm-pageheader__name` spends for the same
+	   reason: at that point they are two things on a line rather than two lines of one thing.
+
+	   the line wraps, and the press drops under the sentence at the leading edge rather than
+	   staying pinned to the far one — a control on a line of its own at the end of a narrow screen
+	   is a control with the whole width between it and the words it acts on. */
+	.adm-tablelead {
+		display: flex;
+		flex-wrap: wrap;
+		/* on one baseline rather than on one centre line: the sentence and the press are set at
+		   different sizes, and two sizes centred against each other read as a misalignment. */
+		align-items: baseline;
+		justify-content: space-between;
+		gap: var(--admin-space-5);
+		margin-block-end: var(--admin-space-4);
+	}
+
+	/* with nothing to count there is no sentence to lead the line, and a lone child of a spread
+	   line sits at its start. the press would then stand at the leading edge while the list is
+	   empty and jump to the far one the moment the first row arrives — so it is held where it sits
+	   on every plane that counts something. */
+	.adm-tablelead:not(:has(.adm-tablecaption)) {
+		justify-content: end;
+	}
+
 	/* the sentence naming a table stands outside the scroll box — never in a `<caption>`,
 	   which is part of the table and therefore scrolls away at exactly the widths the scroll
 	   box exists for. the table is named by `aria-labelledby` pointing at this element, so
-	   keeping it out here costs a screen reader nothing. */
+	   keeping it out here costs a screen reader nothing.
+
+	   it carries no step under it: it is a run of words that knows nothing about what it sits
+	   above, and the line holding it spends that step for both of its children at once. */
 	.adm-tablecaption {
 		font-size: var(--admin-body-size);
 		/* the step: a sentence naming a table is a short run rather than prose. */
 		line-height: var(--admin-lh-snug);
 		color: var(--admin-ink-2);
 		text-align: start;
-		margin-block-end: var(--admin-space-4);
 	}
 
 	.adm-tablecaption b {
@@ -3518,6 +3574,13 @@
 		z-index: 3;
 	}
 
+	/* the card a question is asked in, and there is one destructive grammar on these surfaces
+	   rather than two: a confirmation before an act that cannot be undone is this card, whether
+	   the act is archiving a donation form or replacing a payment credential. the question is the
+	   heading and the consequence is the body, and neither is drawn in a coloured band — a dialog
+	   interrupts by being one, and a band inside it would be the card raising its voice at a
+	   reader who cannot press anything else anyway. a refusal a press came back with is the one
+	   thing in here that does take a band: it reports rather than asks. */
 	.adm-dialog {
 		display: grid;
 		gap: var(--admin-space-5);
@@ -3582,16 +3645,6 @@
 		align-items: center;
 		gap: var(--admin-space-4);
 		margin-block-start: var(--admin-space-2);
-	}
-
-	/* two destructive grammars, and which one a write gets is what can be undone: archiving a
-	   form confirms in the page, replacing a payment credential confirms in the top layer.
-	   in the page the controls sit beneath the banner and never inside it — a button drawn
-	   inside the sentence explaining the consequence is a button pressed before the sentence
-	   is finished. */
-	.adm-destructive {
-		display: grid;
-		gap: var(--admin-space-5);
 	}
 }
 

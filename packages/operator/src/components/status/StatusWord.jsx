@@ -31,8 +31,9 @@ import { Mark } from './Mark.jsx';
  */
 
 /* three registers, and the register is carried by position and accompaniment, never by hue alone.
-   descriptive — a fact, drawn as a pill in a value slot with no mark and no sentence. hueless
-                 until it is handed a `tone`, which only a record's own lifecycle status gets.
+   descriptive — a fact in a value slot, with no mark and no sentence: a pill everywhere but
+                 inside a table, where it is the word alone. hueless until it is handed a `tone`,
+                 which only a record's own lifecycle status gets.
    momentary   — this just happened, on this control. accent, with a mark, transient; attention
                  when `blocked`, and ink with the info mark when `neutral`. */
 /** @param {StatusWordProps} props */

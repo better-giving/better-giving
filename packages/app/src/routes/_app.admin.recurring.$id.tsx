@@ -1,12 +1,12 @@
 import { FREQUENCY_LABELS } from '@better-giving/form/v1';
+import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { CodeChip } from '@better-giving/operator/components/data/CodeSlab';
-import { DestructiveConfirm } from '@better-giving/operator/components/shell/DestructiveConfirm';
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { RECURRING_STATUS_TONES } from '$lib/admin/status-tones';
 import { useEffect, useRef } from 'react';
-import { data, Form, href, Link, useNavigation } from 'react-router';
+import { data, Form, href, Link, useNavigate, useNavigation } from 'react-router';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { CrumbHandle } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -408,6 +408,7 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 
 	const navigation = useNavigation();
 	const stopping = navigation.state === 'submitting';
+	const navigate = useNavigate();
 
 	const stopped = status === 'cancelled';
 
@@ -415,40 +416,29 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 	// where focus lands. it is drawn by the two conditions below and read by both.
 	const asking = !stopped && confirmStop;
 
-	// the question in the words it is asked in, stated once and read twice: it is the banner's own
-	// word and it is the name of the group holding the banner and the two controls. one expression
-	// rather than two strings, so the name a voice user says cannot drift from what is on the screen
-	// (WCAG 2.5.3).
-	const question = `Stop this gift from ${donorName}?`;
-
-	// where the answer lands on the two navigations that open and leave the question. both are links
-	// to this same address, and a navigation carrying nothing puts focus back at the top of the
-	// document — while the question, its two buttons and the control that opens them are all at the
-	// foot of the page. `preventScrollReset` on each link is what keeps the page where it is; this
-	// is the other half, and without it a reader being read to is returned to the masthead by a
-	// press they made at the bottom of the page.
+	// where the answer lands when the question is left. moving focus in is the card's own and is not
+	// written here; handing it back cannot be the card's, because the link that asked is off the
+	// page by the time the shell reads what to return to. so this is the return leg alone: cancel,
+	// Escape and a press on the ground are one navigation to this same address, and a navigation
+	// carrying nothing puts focus back at the top of the document — while the link that asks is at
+	// the foot of the page. `preventScrollReset` on each is what keeps the page where it is; this is
+	// the other half, and without it a reader being read to is returned to the masthead by a press
+	// they made at the bottom of the page.
 	//
-	// the confirmation itself takes the focus rather than the button inside it: the question is what
-	// has to be read before either control means anything, and the two are one Tab away. it is a
-	// named group, so what a reader is moved to announces itself as the question rather than as an
-	// unnamed box.
-	//
-	// the third navigation is not this effect's and cannot be: a stop that lands redirects onto a
-	// record with no question and no control left on it, so there is nothing here to move focus to
-	// and both of these are gone by the time the effect runs. what answers focus there is the
-	// router's own reset to the top of the document, which is where the banner reporting the stop is
-	// drawn.
+	// the landing after a stop is neither leg and cannot be: it redirects onto a record with no
+	// control left on it, so there is nothing here to move focus to and this link is gone by the
+	// time the effect runs. what answers focus there is the router's own reset to the top of the
+	// document, which is where the banner reporting the stop is drawn.
 	//
 	// only when the state changes, so a page opened straight at `?confirm=stop` — a reload, an
 	// address somebody pasted — lands where the browser puts it rather than being moved by a press
 	// nobody made.
-	const confirmation = useRef<HTMLDivElement>(null);
 	const ask = useRef<HTMLAnchorElement>(null);
 	const wasAsking = useRef(asking);
 	useEffect(() => {
 		if (asking === wasAsking.current) return;
 		wasAsking.current = asking;
-		(asking ? confirmation.current : ask.current)?.focus();
+		if (!asking) ask.current?.focus();
 	}, [asking]);
 
 	// what a stop that did not fully land said. one node and two places, because the two are one
@@ -516,9 +506,10 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 				</Banner>
 			) : null}
 
-			{/* the refusal, in the one state where the question it was answered from is no longer on
-			    the page: a gift already stopped, which is what a second tab or a second press
-			    produces. every other refusal is drawn at the foot with the button that carried it. */}
+			{/* the refusal, in the one state where the card it was answered from is no longer on the
+			    screen: a gift already stopped, which is what a second tab or a second press produces.
+			    every other refusal is read inside that card, where the press was made — and it has to
+			    be: the card is a modal, so a banner up here is behind an inert page. */}
 			{asking ? null : refusal}
 
 			{/* the record is a person, and the person is who the staff member is holding an email
@@ -671,50 +662,32 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 					{asking ? (
 						// the second step. a link got here and a POST leaves.
 						//
-						// it stays in the page rather than taking the top layer, and the dashboard's own
-						// test is what decides that: /admin spends the top layer only where an act
-						// reachable from the surface destroys something that already exists. every gift
-						// this commitment collected is still in the books, the record is still readable,
-						// and what changed is that no new charge can be made under it — so the question
-						// stays where the record it is about is. permanence is not the test and could
-						// not be: the console's credential replacement is modal because it destroys
-						// something Stripe cannot re-issue.
+						// a dialog, which is what every destructive confirmation on an operator surface
+						// takes — `.adm-dialog` in packages/operator/src/styles/adm.css states it.
 						//
-						// there is therefore no dialog, no scrim, no focus trap and no `onCancel`.
-						// Escape does nothing here because there is nothing modal to dismiss;
-						// cancelling is a link back without the parameter.
-						//
-						// the `<form>` stands around the whole confirmation rather than around the
-						// control that submits it, which is the rule `DestructiveConfirm` states: its
-						// actions row holds controls, and a submit belongs to the form enclosing it.
-						//
-						// the block is a named group rather than a fieldset: a fieldset is named by a
-						// legend, so the question would be on the screen a second time directly under the
-						// banner already asking it, and a fieldset groups form controls where the way out
-						// of this one is a link. the name is stated rather than read off the banner's
-						// word, because a word is a node and the string a voice user says has to be one
-						// this screen wrote — it is `question`, so what is said and what is on the screen
-						// are one expression (WCAG 2.5.3).
+						// the `<form>` stands around the whole card rather than around the control that
+						// submits it, which is the rule
+						// packages/operator/src/components/shell/Dialog.jsx's header states: its actions
+						// row holds controls and never a `form`, and a submit belongs to the form
+						// enclosing it whether or not the element is painted in the top layer.
 						<Form method="post">
-							<DestructiveConfirm
-								ref={confirmation}
-								role="group"
-								aria-label={question}
-								tabIndex={-1}
-								tone="attention"
-								word={question}
-								report={refusal}
-								confirm="Yes, stop this gift"
+							<Modal
+								title={`Stop this gift from ${donorName}?`}
+								danger="Yes, stop this gift"
 								/* no confirmation on this button and it must not gain one: it cannot
 								   survive its own success. the write redirects, the status becomes Stopped
 								   and this whole block is gone, so a tick here would be one nobody ever
 								   sees. */
-								confirmProps={{ disabled: stopping, 'aria-busy': stopping || undefined }}
+								dangerProps={{ disabled: stopping, 'aria-busy': stopping || undefined }}
 								cancel="Cancel"
 								/* `preventScrollReset` because this lands on the address it was pressed
 								   from and the whole of this block is at the foot of the page; where focus
 								   goes is answered in the effect above. */
 								cancelProps={{ as: Link, to: screen(id), preventScrollReset: true }}
+								/* Escape and a press on the ground mean what the way out means, and the
+								   state they are dismissing is on the address rather than in this
+								   component. */
+								onDismiss={() => navigate(screen(id), { preventScrollReset: true })}
 							>
 								{/* what pressing it does, then what it does not do. the first clause is the
 								    only half that names a processor and it is `stopConsequence` above,
@@ -722,9 +695,12 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 								    decided in one place; the rest is one sentence for all of them,
 								    because what is not returned and who is not told is this product's
 								    own behaviour rather than any processor's. */}
-								{stopConsequence(status, processor)} Nothing already collected is returned, and
-								nothing here tells {donorName}. Reply to them yourself.
-							</DestructiveConfirm>
+								<p className="adm-prose">
+									{stopConsequence(status, processor)} Nothing already collected is returned, and
+									nothing here tells {donorName}. Reply to them yourself.
+								</p>
+								{refusal}
+							</Modal>
 						</Form>
 					) : (
 						// a link dressed as a button, because it writes nothing: it asks. not

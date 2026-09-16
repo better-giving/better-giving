@@ -54,7 +54,6 @@
 		"./components/shell/AppShell": "./src/components/shell/AppShell.jsx",
 		"./components/shell/BareShell": "./src/components/shell/BareShell.jsx",
 		"./components/shell/DestinationCell": "./src/components/shell/DestinationCell.jsx",
-		"./components/shell/DestructiveConfirm": "./src/components/shell/DestructiveConfirm.jsx",
 		"./components/shell/Dialog": "./src/components/shell/Dialog.jsx",
 		"./components/shell/ErrorPanel": "./src/components/shell/ErrorPanel.jsx",
 		"./components/shell/Layout": "./src/components/shell/Layout.jsx",

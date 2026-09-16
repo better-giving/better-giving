@@ -110,6 +110,11 @@ const WORN = {
  * @property {readonly Column[] | undefined} [columns]
  * @property {readonly Row[] | undefined} [rows]
  * @property {ReactNode} [empty]
+ * @property {ReactNode} [press] the one control acting on the list, drawn at the trailing edge of
+ *   the caption's line. the table draws no control of its own: only the screen knows what pressing
+ *   it does, so what arrives here is already the element it wants pressed. it is a press and not a
+ *   name — a plane holding one is named by its caption or by the screen's noun exactly as a plane
+ *   without one is.
  * @property {ReactNode} [add]
  * @property {string | undefined} [addHref]
  * @property {string | undefined} [captionId] the id the caption paragraph is drawn with and the
@@ -143,6 +148,12 @@ function read(held, column) {
    it is drawn only where there are rows to count. with none there is no count worth stating, and
    the row inside the table says what the screen is waiting for.
 
+   the sentence and the screen's one press share a line, and `.adm-tablelead` is what holds them
+   on it. a press has nowhere else to sit that is both above the plane and tied to it: standing on
+   its own row above the caption it lines up with neither the strip over the page nor the plane's
+   own edge. the wrapper is drawn where there is either thing to hold, so a plane with a caption
+   and no press keeps the sentence it already had, and a plane with neither draws nothing at all.
+
    the plane is a region and the table inside it is named too, from the same sentence. they are two
    elements a reader arrives at separately — the plane by tabbing to the scroll box, the table by
    entering it — and a table with no name of its own is one a reader meets knowing only how many
@@ -161,6 +172,7 @@ export function DataTable({
 	columns = [],
 	rows = [],
 	empty,
+	press,
 	add,
 	addHref = '#',
 	captionId
@@ -173,13 +185,22 @@ export function DataTable({
 	const captionedBy = captionId ?? own;
 	const counted = caption != null && rows.length > 0;
 	const named = !counted && typeof caption === 'string' ? caption : undefined;
+	// `false` as well as nothing, because a screen offering the press conditionally writes
+	// `press={mayAdd && <Button …/>}` and the falsy half of that is a boolean rather than nothing —
+	// held only against null, it draws an empty line and a step above the plane with no control on it.
+	const pressed = press != null && press !== false;
 	return (
 		<>
-			{counted ? (
-				<p className="adm-tablecaption" id={captionedBy}>
-					{caption}
-					{capNote ? <> {capNote}</> : null}
-				</p>
+			{counted || pressed ? (
+				<div className="adm-tablelead">
+					{counted ? (
+						<p className="adm-tablecaption" id={captionedBy}>
+							{caption}
+							{capNote ? <> {capNote}</> : null}
+						</p>
+					) : null}
+					{press}
+				</div>
 			) : null}
 			<section
 				className="adm-plane"

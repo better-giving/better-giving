@@ -6,9 +6,9 @@ import { PanelRoute } from './AppShell.jsx';
  * @import { ButtonProps } from '../controls/Button.jsx'
  */
 
-/* ../controls/Button.jsx read without its generic, for the reason
-   ./DestructiveConfirm.jsx states about its own two controls: the props are checked where the
-   caller states them, and the element type is only a type parameter here. */
+/* ../controls/Button.jsx read without its generic, for the reason ./Dialog.jsx states about its
+   own three controls: the props are checked where the caller states them, and the element type is
+   only a type parameter here. */
 const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
 	/** @type {unknown} */ (Button)
 );
