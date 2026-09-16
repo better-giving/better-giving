@@ -113,6 +113,9 @@ export function consentLabel(org: string): string {
 
 export const PAYMENT_DETAILS = 'Payment details';
 
+/** the header over the payment box, drawn only while the box lists a choice. */
+export const PAYMENT_HEADING = 'Select payment method';
+
 /**
  * the one thing a press on the review step can be refused for, in words.
  *

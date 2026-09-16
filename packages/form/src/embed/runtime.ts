@@ -186,6 +186,8 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 				cadence: surface.cadence,
 				// the fund's reading, passed straight through for the reason the cadence is.
 				offerFund: surface.offerFund,
+				// the count the card heads the payment box from, passed straight through.
+				rows: surface.rows,
 				// the card letting go of the surface built for this configuration, and it is this
 				// surface's own: a second gift is a second call here, so a door shared between them
 				// would stop the live one on the orphan's behalf.

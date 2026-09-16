@@ -24,11 +24,12 @@
 //     click. a window opened more than a moment after the press is a popup the browser blocks, so
 //     nothing is awaited between the press and the answer (`opened` on `FundReports`).
 //
-// Chariot's own button is the fund's option on the card: one press chooses the rail and opens the
-// window. it stands while the flow says a fund is offered (`fundIsOffered` in ../checkout.machine.ts,
-// told through `offer` below), and the element Chariot's script builds adds one `@font-face`
-// `<style>` to the document head each time it is created, which a donor returning to the review
-// step adds again.
+// Chariot's own button is the fund's option on the card, standing in a row of the payment box
+// (./rows.ts): opening the row only shows the button, and one press on the button chooses the rail
+// and opens the window. it stands while the flow says a fund is offered (`fundIsOffered` in
+// ../checkout.machine.ts, told through `offer` below), and the element Chariot's script builds adds
+// one `@font-face` `<style>` to the document head each time it is created, which a donor returning
+// to the review step adds again.
 //
 // no sandbox, no stage: the Connect id in the served config is the only thing that decides which
 // organisation a grant goes to, for the reason CLAUDE.md gives under *Product surface*.
@@ -39,10 +40,17 @@ import type { Failure } from '../checkout.machine';
 import type { CheckoutPorts, FundReports } from '../ports';
 import type { FormConfig } from '../v1';
 import { INJECTING_NONCE } from './nonce';
+import { createRows, type Row, type RowList } from './rows';
 import type { PaymentSurface } from './stripe';
 
 /** what this adapter's own entry on `FormConfig.providers` calls itself, and whose key is the Connect id. */
 const PROVIDER_NAME = 'chariot';
+
+/**
+ * what a donor reads on the fund's row, which names no processor for the reason `waitingOn` in
+ * ../views.ts gives.
+ */
+const ROW_NAME = 'Donor-advised fund';
 
 /** where Chariot serves the script that registers its element. */
 export const CHARIOT_SCRIPT_URL = 'https://cdn.givechariot.com/chariot-connect.umd.js';
@@ -184,6 +192,8 @@ function approvalOf(detail: unknown): { authorizationId: string; authorizedMinor
 export type ChariotPaymentSurface = PaymentSurface & {
 	/** whether the flow offers a fund right now — told on every reading, so a repeat changes nothing. */
 	offer(offered: boolean): void;
+	/** the one row the element stands in while it stands, which ./surface.ts opens and closes. */
+	readonly rows: RowList;
 };
 
 /**
@@ -207,11 +217,8 @@ export function createPaymentSurface(
 	const load = seam?.load ?? defaultLoad;
 	const delay = seam?.delay ?? defaultDelay(mount);
 
-	// the padding is this shell's own, on the seam every other control sits on — the same decision
-	// ./paypal.ts states for its own node.
-	mount.style.display = 'grid';
-	mount.style.gap = 'var(--_sp2)';
-	mount.style.paddingInline = 'var(--_inset)';
+	// the row the element stands in pads itself, for the reason `rowList` in ./paypal.ts gives.
+	const rowList = createRows(mount);
 
 	let stopped = false;
 	let loaded = false;
@@ -220,7 +227,11 @@ export function createPaymentSurface(
 	/** cancels the mount deadline, where one is standing. */
 	let disarm: (() => void) | null = null;
 	/** the fund's element while this form holds the page's one, and the listeners on it. */
-	let held: { readonly connect: ChariotConnectLike; readonly letGo: AbortController } | null = null;
+	let held: {
+		readonly connect: ChariotConnectLike;
+		readonly row: Row;
+		readonly letGo: AbortController;
+	} | null = null;
 
 	const unavailable = (reason: string): void => {
 		if (announced) return;
@@ -262,9 +273,8 @@ export function createPaymentSurface(
 			{ signal: letGo.signal }
 		);
 		connect.addEventListener(EXIT, () => fund.closed(), { signal: letGo.signal });
-		held = { connect, letGo };
 		page.held = true;
-		mount.appendChild(connect);
+		held = { connect, row: rowList.draw(ROW_NAME, 'fund', connect), letGo };
 	}
 
 	/** the element brought into line with what is wanted, and the page's one handed on when let go. */
@@ -283,7 +293,7 @@ export function createPaymentSurface(
 		page.waiting.delete(settle);
 		if (held === null) return;
 		held.letGo.abort();
-		held.connect.remove();
+		rowList.erase(held.row);
 		held = null;
 		page.held = false;
 		for (const waiter of [...page.waiting]) waiter();
@@ -320,6 +330,7 @@ export function createPaymentSurface(
 	return {
 		confirm: unanswerable,
 		resume: () => Promise.resolve({ kind: 'indeterminate' }),
+		rows: rowList,
 		quoted() {},
 		// which cadence is offered a fund is the flow's answer, carried by `offer` below.
 		cadence() {},

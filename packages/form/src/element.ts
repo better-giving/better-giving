@@ -102,6 +102,14 @@ export type FormCheckout = {
 	 */
 	readonly offerFund: (offered: boolean) => void;
 	/**
+	 * how many options the payment box lists, handed to `listener` now and on every change.
+	 *
+	 * the card heads the box only where there is a choice in it, and the count moves after the flow
+	 * does not: a processor's rows are drawn when its own script answers, and the fund's with the
+	 * cadence.
+	 */
+	readonly rows: (listener: (count: number) => void) => void;
+	/**
 	 * takes the provider's own fields down, which removing the node they were mounted into does not
 	 * do.
 	 *
@@ -1038,6 +1046,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 				}
 			);
 			this.#checkout = checkout;
+			checkout.rows((count) => view.paymentRows(count));
 			const actor = createActor(checkoutMachine, { input: checkout.input });
 			report = (method) => actor.send({ type: 'SET_METHOD', method });
 			stop = (failure) => actor.send({ type: 'PAYMENT_UNAVAILABLE', failure });

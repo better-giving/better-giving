@@ -338,6 +338,32 @@ it('stops without leaving a subscription, a widget or a deadline behind', async 
 	expect(() => checkout.stop()).not.toThrow();
 });
 
+it('tells a listener how many options the payment box lists', async () => {
+	const payment = paymentProvider();
+	const timer = clock();
+	const start = (config: FormConfig) => {
+		const { paymentMount, challengeMount } = boxes();
+		const checkout = startCheckout(config, {
+			paymentMount,
+			challengeMount,
+			resumeToken: null,
+			seams: { payment: { stripe: { load: payment.load, delay: timer.delay } } }
+		});
+		onTestFinished(() => checkout.stop());
+		return checkout;
+	};
+
+	const single: number[] = [];
+	start(CONFIG).rows((count) => single.push(count));
+	const pair: number[] = [];
+	start({ ...CONFIG, paymentMethods: ['card', 'ach'] }).rows((count) => pair.push(count));
+	await settle();
+
+	// told on the call, because the provider's rails are counted off the config before anything loads.
+	expect(single).toEqual([1]);
+	expect(pair).toEqual([2]);
+});
+
 // the hole this page had until the surface it composes stopped being one processor's: a deployment
 // holding PayPal's keys and no card processor's drew a box nothing could be paid in.
 it('draws a payment surface for a config offering only PayPal’s rails, and confirms on one', async () => {

@@ -1,0 +1,103 @@
+/*
+ * one payment row drawn outside the provider's frame (../embed/rows.ts): the PayPal, Venmo and fund
+ * options, drawn to stand in the same list as the rows the provider paints inside its own frame.
+ *
+ * adopted into each row's own shadow root rather than into the card's, because a row lives in the
+ * light DOM beside the provider's mount (`#openPaymentBox` in ../element.ts argues why that node is
+ * outside the card's encapsulation) and a host page's own `button { … }` rule would otherwise reach
+ * the row's name. the tokens arrive the way every inherited property does, through the slot.
+ *
+ * every length placing the band is the one ./appearance.ts sends the provider for its own rows, so
+ * the two kinds of row are one list: the band runs to the card's edges and pads back in by
+ * `--_inset` (`[part~='payment']` in ./parts.css pulls the box out by that same length), the name
+ * stands `--_sp3` below the band's top edge, and the open band is `--_n3`. a closed band paints
+ * nothing, which is the card's own ground, and no line stands between two bands. the name's type and
+ * the mark's size are matched to what the provider draws unasked, because ./appearance.ts sends its
+ * rows' names nothing.
+ *
+ * nothing here moves: the provider's rows open without a transition this sheet could match.
+ */
+
+:host {
+	display: block;
+}
+
+.band.open {
+	background: var(--_n3);
+}
+
+/*
+ * the name is set the way the provider sets its own rows' names: at `--_t-sm` and `--_w-medium` in
+ * the ramp's secondary ink while closed, and in the card's own ink at `--_w-bold` once open.
+ *
+ * this ink is the fund's mark as well as its name: Chariot's glyph is drawn `currentColor`
+ * (../embed/rows.ts), so it moves between the two states with the words beside it. PayPal's and
+ * Venmo's are their brands' own colours and stand still.
+ */
+.head {
+	display: flex;
+	align-items: start;
+	gap: var(--_sp3);
+	box-sizing: border-box;
+	inline-size: 100%;
+	margin: 0;
+	padding: var(--_sp3) var(--_inset);
+	border: 0;
+	background: none;
+	font: inherit;
+	font-weight: var(--_w-medium);
+	color: var(--_n11);
+	letter-spacing: inherit;
+	text-align: start;
+	cursor: pointer;
+}
+
+.band.open .head {
+	font-weight: var(--_w-bold);
+	color: var(--_n12);
+}
+
+/*
+ * inset, because the band reaches the card's edges and a ring outside it would be clipped at both
+ * ends — the same answer `[part~='frequency-option']` in ./parts.css gives for a control whose edge is
+ * a neighbour's.
+ */
+.head:focus-visible {
+	outline: var(--_focus-width) solid transparent;
+	box-shadow: inset 0 0 0 var(--_focus-width) var(--_focus-ring);
+}
+
+/*
+ * the size is set on the name and the mark rather than the head, so the head's padding stays the
+ * `--_sp3` the provider's rows are padded by at the card's own size.
+ */
+.name,
+.mark {
+	font-size: var(--_t-sm);
+}
+
+/*
+ * the provider's icons are a box a shade over the name's own `em`, which is `--_box` resolved at the
+ * name's size, and it is centred on the name's first line so a name that wraps keeps its mark there
+ * (`[part~='checkbox']` in ./parts.css centres its box the same way).
+ *
+ * the glyph stands at the start of a column `--_sp4` wider than itself, which with the head's gap
+ * starts the name where the provider starts its rows' names: 42px from the mark's start on a 16px
+ * root, `--_box` and `--_sp4` at the name's size plus `--_sp3` at the head's.
+ */
+.mark {
+	flex: none;
+	block-size: var(--_box);
+	inline-size: var(--_box);
+	margin-block-start: calc((1lh - var(--_box)) / 2);
+	margin-inline-end: var(--_sp4);
+}
+
+.panel {
+	display: grid;
+	padding: 0 var(--_inset) var(--_sp3);
+}
+
+.panel[hidden] {
+	display: none;
+}

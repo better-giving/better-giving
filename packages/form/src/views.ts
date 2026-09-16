@@ -754,6 +754,12 @@ const NOTIFY_OPEN = '\u2212 Notify recipient';
  */
 const PAYMENT_PROBLEM = 'required';
 
+/** the payment box's name where no header stands over it to name it. */
+const PAYMENT_NAME = 'Payment details';
+
+/** the id the payment box's header carries, which the box is named by while it stands. */
+const PAYMENT_HEADING = 'payment-heading';
+
 /** the whole card, and everything that patches it. */
 export type CardView = {
 	readonly root: HTMLElement;
@@ -792,6 +798,13 @@ export type CardView = {
 	 */
 	focus(): void;
 	update(api: DomApi): void;
+	/**
+	 * how many options the payment box lists, as the payment surface counts them.
+	 *
+	 * a header saying there is a method to select stands over the box only where there is more than
+	 * one, and the box is named by that header where it stands and by its own label where it does not.
+	 */
+	paymentRows(count: number): void;
 	/**
 	 * everything this card holds outside its own subtree, let go of.
 	 *
@@ -1871,10 +1884,20 @@ export function createCard(
 	const payment = make(doc, 'div', {
 		part: part('payment'),
 		role: 'group',
-		'aria-label': 'Payment details',
+		'aria-label': PAYMENT_NAME,
 		tabindex: -1,
 		hidden: true
 	});
+	// the step's header for the box, dressed as the other steps' headers are, and drawn only while
+	// the box lists a choice (`paymentRows` below). one group with the box so it stands at the
+	// header's own distance above it rather than at the step's.
+	const paymentHeading = make(
+		doc,
+		'h3',
+		{ part: part('label'), id: PAYMENT_HEADING, hidden: true },
+		['Select payment method']
+	);
+	const paymentGroup = make(doc, 'div', { class: 'group' }, [paymentHeading, payment]);
 	// built empty, because more than one sentence reaches it and `updatePayment` below writes every
 	// one of them. words here would be a second statement of one of the two, gone stale the first
 	// time it is reworded at its own site.
@@ -1926,7 +1949,7 @@ export function createCard(
 		giveHead.head,
 		summary,
 		receiptTo,
-		payment,
+		paymentGroup,
 		paymentMessage,
 		submitButton
 	]);
@@ -3031,6 +3054,19 @@ export function createCard(
 		update(api) {
 			if (current === null) build(api);
 			update(api);
+		},
+		paymentRows(count) {
+			// the box's own `hidden` is read rather than tracked: `#openPaymentBox` in ./element.ts is
+			// what un-hides it, and a header over a box that is not drawn heads nothing.
+			const heads = count > 1 && !payment.hidden;
+			paymentHeading.hidden = !heads;
+			if (heads) {
+				payment.removeAttribute('aria-label');
+				payment.setAttribute('aria-labelledby', PAYMENT_HEADING);
+			} else {
+				payment.removeAttribute('aria-labelledby');
+				payment.setAttribute('aria-label', PAYMENT_NAME);
+			}
 		},
 		stop() {
 			view?.removeEventListener('resize', rewrapped);

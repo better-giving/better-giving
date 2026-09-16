@@ -3,9 +3,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 // document and is the one a reader here is looking for.
 import { page as browser, userEvent } from 'vitest/browser';
 import { defineDonateForm, DONATE_FORM_TAG } from '../element';
+import { createRows, type Row, type RowMark } from '../embed/rows';
 import type { CheckoutPorts } from '../ports';
 import type { FormConfig } from '../v1';
 import { createSkeleton } from '../views';
+import tokens from './tokens.css?inline';
 
 // the browser pool, and the only pool that can see any of this. what is measured here is which
 // declaration an engine keeps when a host page's `::part()` rule and this element's own adopted
@@ -122,6 +124,7 @@ async function mount(config: FormConfig = CONFIG): Promise<Mounted> {
 				input: { config, ports: PORTS },
 				cadence: () => {},
 				offerFund: () => {},
+				rows: () => {},
 				stop: () => {}
 			}),
 			challenge: () => ({ reset: () => {}, stop: () => {} })
@@ -743,6 +746,128 @@ describe('the box a payment provider paints in', () => {
 		expect(shadow.activeElement).not.toBe(paymentBox(shadow));
 		expect(said(shadow)).toBe('required');
 	});
+});
+
+// the rows drawn beside the provider's frame (../embed/rows.ts) adopt a sheet of their own, and a
+// closed row that still draws its panel puts a processor's branded button on screen under a name
+// nobody opened. `hidden` is an attribute and whether it hides is a cascade, so only a real engine
+// can say.
+describe('a payment row drawn beside the provider’s frame', () => {
+	const mounts: HTMLElement[] = [];
+	afterEach(() => {
+		for (const node of mounts.splice(0)) node.remove();
+	});
+
+	function drawn(mark: RowMark = 'paypal'): {
+		mount: HTMLElement;
+		panel: HTMLElement;
+		content: HTMLElement;
+		row: Row;
+	} {
+		const mount = document.createElement('div');
+		document.body.appendChild(mount);
+		mounts.push(mount);
+		const content = document.createElement('button');
+		content.textContent = 'PayPal';
+		const row = createRows(mount).draw('PayPal', mark, content);
+		const panel = mount.firstElementChild?.shadowRoot?.querySelector('[role="region"]');
+		if (!(panel instanceof HTMLElement)) throw new Error('the row drew no panel');
+		return { mount, panel, content, row };
+	}
+
+	it('draws nothing of its panel while closed', () => {
+		const { panel, content } = drawn();
+
+		expect(getComputedStyle(panel).display).toBe('none');
+		expect(content.getBoundingClientRect().height).toBe(0);
+	});
+
+	it('draws the panel once opened, and hides it again on close', () => {
+		const { panel, content, row } = drawn();
+
+		row.expand();
+		expect(getComputedStyle(panel).display).not.toBe('none');
+		expect(content.getBoundingClientRect().height).toBeGreaterThan(0);
+
+		row.collapse();
+		expect(getComputedStyle(panel).display).toBe('none');
+	});
+
+	// the name starts where the provider's own rows start theirs, 42px in from the mark's start on a
+	// 16px root — measured against its frame, which no test can reach into. the mark sits in a column
+	// wider than its glyph (`.mark` in ./rows.css), so the offset is that column plus the head's gap.
+	// every row is measured, the fund's included: one mark box for all three is what keeps the column
+	// the same, and the name is the last thing in every head.
+	it.each(['paypal', 'venmo', 'fund'] as const)(
+		'draws the %s mark at the padding edge and the name a column and a gap after it',
+		(mark) => {
+			const { head } = measured(mark);
+			const glyph = head.querySelector('.mark') as SVGElement;
+			const name = head.querySelector('.name') as HTMLElement;
+			const headStyle = getComputedStyle(head);
+			const paddingEdge =
+				head.getBoundingClientRect().left + parseFloat(headStyle.paddingInlineStart);
+			const column =
+				glyph.getBoundingClientRect().width + parseFloat(getComputedStyle(glyph).marginInlineEnd);
+			const offset = name.getBoundingClientRect().left - paddingEdge;
+
+			expect(head.firstElementChild).toBe(glyph);
+			expect(head.lastElementChild).toBe(name);
+			expect(glyph.getBoundingClientRect().left).toBeCloseTo(paddingEdge, 1);
+			expect(column).toBeGreaterThan(glyph.getBoundingClientRect().width);
+			expect(offset).toBeCloseTo(column + parseFloat(headStyle.columnGap), 1);
+			expect(Math.abs(offset - 42)).toBeLessThanOrEqual(1);
+		}
+	);
+
+	// the fund's mark is Chariot's single-colour icon, every path `currentColor` (../embed/rows.ts), so
+	// the head's own `color` is what paints it — and the head's colour is one thing closed and another
+	// open (`.head` in ./rows.css). read in both states, because a glyph that took the ink once and
+	// then sat still would pass an assertion written against either one of them.
+	it('draws the fund mark in the row’s own ink, and moves it with the row’s state', () => {
+		const { head, row } = measured('fund');
+		const glyph = head.querySelector('.mark') as SVGElement;
+		const fills = () =>
+			new Set([...glyph.querySelectorAll('path')].map((path) => getComputedStyle(path).fill));
+
+		const closed = getComputedStyle(head).color;
+		expect(fills()).toEqual(new Set([closed]));
+
+		row.expand();
+		const open = getComputedStyle(head).color;
+
+		expect(open).not.toBe(closed);
+		expect(fills()).toEqual(new Set([open]));
+	});
+
+	// and the two processors' rows take nothing from that ink: a brand's mark is drawn in the brand's
+	// colours, which the head's own `color` would take back from a glyph filled `currentColor`.
+	//
+	// raw-colour-ok: the trademarks' own fills, as ../embed/rows.ts states them.
+	it.each(['paypal', 'venmo'] as const)('fills the %s mark with the brand’s colours', (mark) => {
+		const { head } = measured(mark);
+		const fills = [...head.querySelectorAll('.mark path')].map(
+			(path) => getComputedStyle(path).fill
+		);
+
+		expect(fills.length).toBeGreaterThan(0);
+		// `#008CFF`, the one colour both files state.
+		expect(fills).toContain('rgb(0, 140, 255)');
+		expect(fills).not.toContain(getComputedStyle(head).color);
+	});
+
+	function measured(mark: RowMark): { head: HTMLElement; row: Row } {
+		document.documentElement.style.fontSize = '16px';
+		// the card's tokens reach a row through its slot; `[data-donate-root]` is the light-dom scope
+		// the same sheet declares them on.
+		page(tokens);
+		const { mount, panel, row } = drawn(mark);
+		mount.setAttribute('data-donate-root', '');
+		return {
+			head: (panel.getRootNode() as ShadowRoot).querySelector('.head') as HTMLElement,
+			row
+		};
+	}
 });
 
 // a used size rather than a declared one, which is the other thing only a real engine hands back:

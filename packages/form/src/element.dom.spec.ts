@@ -24,6 +24,7 @@ import partStyles from './styles/parts.css?inline';
 import layoutStyles from './styles/layout.css?inline';
 import motionStyles from './styles/motion.css?inline';
 import tokenStyles from './styles/tokens.css?inline';
+import rowStyles from './styles/rows.css?inline';
 
 // the dom pool. what a lightweight DOM can prove about a custom element is structure, attributes,
 // events, slots and the upgrade lifecycle, and that is the whole of what is asserted here. layout,
@@ -93,11 +94,13 @@ type Mounted = {
 	challengeUnavailable(failure: Failure): void;
 	/** what a donor-advised fund's window reports, as the runtime was handed it. */
 	fund(): FundReports;
+	/** the payment surface saying how many options its box now lists. */
+	rows(count: number): void;
 };
 
 function view(
 	host: HTMLElement
-): Omit<Mounted, 'rail' | 'unavailable' | 'token' | 'challengeUnavailable' | 'fund'> {
+): Omit<Mounted, 'rail' | 'unavailable' | 'token' | 'challengeUnavailable' | 'fund' | 'rows'> {
 	const shadow = host.shadowRoot;
 	if (shadow === null) throw new Error('the element has not upgraded');
 	const find = (selector: string): HTMLElement => {
@@ -141,6 +144,8 @@ type Options = {
 	readonly cadences?: (frequency: Frequency | undefined) => void;
 	/** every reading of whether a fund is offered, in the order the card told the payment surface. */
 	readonly offers?: (offered: boolean) => void;
+	/** how many options the payment box lists when the card first asks; one where unsaid. */
+	readonly rowCount?: number;
 	readonly attributes?: Readonly<Record<string, string>>;
 	readonly children?: string;
 };
@@ -153,6 +158,7 @@ async function mount(options: Options = {}): Promise<Mounted> {
 	let minted: (token: string) => void = () => {};
 	let unchallengeable: (failure: Failure) => void = () => {};
 	let reports: FundReports | null = null;
+	let counted: (count: number) => void = () => {};
 	defineDonateForm(
 		{
 			loadConfig: options.loadConfig ?? (async () => options.config ?? CONFIG),
@@ -179,6 +185,10 @@ async function mount(options: Options = {}): Promise<Mounted> {
 					},
 					cadence: (frequency) => options.cadences?.(frequency),
 					offerFund: (offered) => options.offers?.(offered),
+					rows: (listener) => {
+						counted = listener;
+						listener(options.rowCount ?? 1);
+					},
 					stop: () => options.torn?.()
 				};
 			}
@@ -201,7 +211,8 @@ async function mount(options: Options = {}): Promise<Mounted> {
 		fund: () => {
 			if (reports === null) throw new Error('the runtime was never asked for a checkout');
 			return reports;
-		}
+		},
+		rows: (count) => counted(count)
 	};
 }
 
@@ -268,6 +279,7 @@ function placed(attributes: Readonly<Record<string, string>> = { form: 'frm_a8x2
 							input: { config, ports: PORTS },
 							cadence: () => {},
 							offerFund: () => {},
+							rows: () => {},
 							stop: () => {}
 						};
 					},
@@ -935,6 +947,7 @@ describe('the live region', () => {
 					input: { config, ports: PORTS },
 					cadence: () => {},
 					offerFund: () => {},
+					rows: () => {},
 					stop: () => {}
 				}),
 				challenge: () => ({ reset: () => {}, stop: () => {} })
@@ -3569,6 +3582,34 @@ describe('the review step’s one refusal', () => {
 		expect(card.text('[role="status"]')).toBe('required');
 	});
 
+	// a header over one option is a question with one answer, so it is drawn only where the box
+	// lists a choice — and the box takes its name from it where it is drawn.
+	it('heads the payment box only while it lists more than one option, and names the box by it', async () => {
+		const card = await atReview();
+		const box = card.find('[part~="payment"]');
+		const header = card.find('#payment-heading');
+
+		expect(header.hidden).toBe(true);
+		expect(box.getAttribute('aria-label')).toBe('Payment details');
+		expect(box.hasAttribute('aria-labelledby')).toBe(false);
+
+		card.rows(2);
+		expect(header.hidden).toBe(false);
+		expect(header.textContent).toBe('Select payment method');
+		expect(header.getAttribute('part')).toBe('label');
+		expect(box.getAttribute('aria-labelledby')).toBe('payment-heading');
+		expect(box.hasAttribute('aria-label')).toBe(false);
+
+		card.rows(1);
+		expect(header.hidden).toBe(true);
+		expect(box.getAttribute('aria-label')).toBe('Payment details');
+	});
+
+	it('heads the payment box from the count the surface gives when it is built', async () => {
+		const card = await atReview({ rowCount: 3 });
+		expect(card.find('#payment-heading').hidden).toBe(false);
+	});
+
 	// the second press is the whole of this one. a `role="status"` node handed the sentence it is
 	// already holding is not a change, and nothing announces it — so the region is emptied and
 	// written again a task later, which is the shortest gap assistive technology reads as two
@@ -4474,6 +4515,15 @@ describe('the stylesheets', () => {
 		expect(css.length).toBeGreaterThan(1000);
 		expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
 		expect(css).not.toMatch(/\b(rgb|rgba|hsl|oklch)\(/);
+	});
+
+	// the payment rows drawn outside the provider's frame carry a sheet of their own
+	// (./embed/rows.ts), and it is held to the same rule.
+	it('derives every colour on the payment rows from a token too', async () => {
+		const rows = declarations(rowStyles);
+		expect(rows.length).toBeGreaterThan(300);
+		expect(rows).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+		expect(rows).not.toMatch(/\b(rgb|rgba|hsl|oklch)\(/);
 	});
 
 	// every compound selector in the still sheets, one per comma, so a part can be asked whether a

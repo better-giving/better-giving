@@ -268,6 +268,7 @@ export type GiveStepProps = {
 	readonly submitLabel: string;
 	readonly paymentMount: RefObject<HTMLDivElement | null>;
 	readonly paymentPrepared: boolean;
+	readonly paymentRows: number;
 	readonly paymentWords: string;
 	readonly onSubmit: () => void;
 	readonly submits: boolean;
@@ -282,6 +283,7 @@ export function GiveStep({
 	submitLabel,
 	paymentMount,
 	paymentPrepared,
+	paymentRows,
 	paymentWords,
 	onSubmit,
 	submits
@@ -294,7 +296,12 @@ export function GiveStep({
 			<p className="aside" hidden={receiptTo === ''}>
 				{receiptTo}
 			</p>
-			<PaymentBox mount={paymentMount} prepared={paymentPrepared} words={paymentWords} />
+			<PaymentBox
+				mount={paymentMount}
+				prepared={paymentPrepared}
+				rows={paymentRows}
+				words={paymentWords}
+			/>
 			<button
 				part={partWhen('action', { submit: true, busy })}
 				type={submits ? 'submit' : 'button'}

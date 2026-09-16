@@ -76,6 +76,13 @@ export type CheckoutMounts = {
 export type Checkout = {
 	readonly actor: Actor<typeof checkoutMachine>;
 	/**
+	 * hands `listener` how many options the payment box lists, now and on every change.
+	 *
+	 * the surface's own `rows`, passed through: the count is the one this module's surface drew. one
+	 * listener; a second call replaces the first, and `stop` below is what ends it.
+	 */
+	rows(listener: (count: number) => void): void;
+	/**
 	 * everything this checkout started, let go of.
 	 *
 	 * safe in any order and any number of times, because every stop it reaches is. the provider's
@@ -180,6 +187,7 @@ export function startCheckout(config: FormConfig, mounts: CheckoutMounts): Check
 
 	return {
 		actor,
+		rows: (listener) => surface.rows(listener),
 		stop() {
 			subscription.unsubscribe();
 			actor.stop();

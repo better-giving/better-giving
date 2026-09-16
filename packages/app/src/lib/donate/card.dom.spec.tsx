@@ -14,11 +14,12 @@ import { CHARIOT_TAG } from '@better-giving/form/embed/chariot';
 import type { ChallengeSeam, TurnstileLike } from '@better-giving/form/embed/turnstile';
 import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from '@better-giving/form/parts';
 import type { FeeRules, FormConfig } from '@better-giving/form/v1';
-import { act } from 'react';
+import { act, createRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, onTestFinished, vi } from 'vitest';
 import { DonateCard } from './card';
 import * as copy from './copy';
+import { PaymentBox } from './payment';
 
 // the card a donor uses, driven the way a donor drives it.
 //
@@ -528,6 +529,53 @@ it('draws both processors’ boxes where a deployment holds both', async () => {
 	const box = one(root, '[part~="payment"]');
 	expect(box.children).toHaveLength(2);
 	expect(box.querySelector('paypal-button')).not.toBeNull();
+});
+
+it('draws no header over a box listing one option, and names the box itself', async () => {
+	const { root } = await card();
+	walkToGive(root);
+
+	const box = one(root, '[part~="payment"]');
+	expect(one(root, '#payment-heading').hidden).toBe(true);
+	expect(box.getAttribute('aria-label')).toBe(copy.PAYMENT_DETAILS);
+	expect(box.hasAttribute('aria-labelledby')).toBe(false);
+});
+
+it('heads a box listing a choice, and names the box by the header', async () => {
+	const { root } = await card({ ...CONFIG, paymentMethods: ['card', 'ach'] });
+	walkToGive(root);
+
+	const heading = one(root, '#payment-heading');
+	const box = one(root, '[part~="payment"]');
+	expect(heading.hidden).toBe(false);
+	expect(heading.tagName).toBe('H3');
+	expect(heading.getAttribute('part')).toBe('label');
+	expect(heading.textContent).toBe(copy.PAYMENT_HEADING);
+	expect(box.getAttribute('aria-labelledby')).toBe('payment-heading');
+	expect(box.hasAttribute('aria-label')).toBe(false);
+});
+
+// the card starts its checkout in an effect, so an unprepared box is the server-rendered one: drawn
+// here through the box alone rather than through a card that prepares itself on mount.
+it('draws no header over a box that is not prepared, however many options it lists', () => {
+	const host = document.createElement('div');
+	document.body.appendChild(host);
+	const mounted = createRoot(host);
+	act(() => {
+		mounted.render(<PaymentBox mount={createRef()} prepared={false} rows={2} words="" />);
+	});
+	onTestFinished(() => {
+		act(() => {
+			mounted.unmount();
+		});
+		host.remove();
+	});
+
+	const box = one(host, '[part~="payment"]');
+	expect(box.hidden).toBe(true);
+	expect(one(host, '#payment-heading').hidden).toBe(true);
+	expect(box.getAttribute('aria-label')).toBe(copy.PAYMENT_DETAILS);
+	expect(box.hasAttribute('aria-labelledby')).toBe(false);
 });
 
 // the charge is different news from the mint for a donor who cannot see the spinner, and on which

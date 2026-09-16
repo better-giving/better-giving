@@ -267,6 +267,8 @@ export type PaymentElementLike = {
 	 * `StripePaymentElement` is built from (`@stripe/stripe-js`, `dist/stripe-js/elements/base.d.ts`).
 	 */
 	focus(): void;
+	/** every rail closed, which is what a row opened outside the provider's frame asks of it. */
+	collapse(): void;
 	on(event: 'change', handler: (payload: PaymentChangeLike) => void): void;
 	on(event: 'ready', handler: () => void): void;
 	on(event: 'loaderror', handler: (payload: PaymentLoadErrorLike) => void): void;
@@ -383,6 +385,12 @@ export type PaymentSurface = {
 	stop(): void;
 };
 
+/** the payment surface this adapter presents, plus the one thing ./surface.ts asks of its rails. */
+export type StripePaymentSurface = PaymentSurface & {
+	/** every rail in the provider's own fields closed, for a row opened outside them. */
+	collapse(): void;
+};
+
 /**
  * whether the deployment offers a rail that is delivered as a card, which is what the wallets ride.
  *
@@ -428,7 +436,7 @@ export function createPaymentSurface(
 	onRail: (rail: PaymentMethod | null) => void,
 	onUnavailable: (failure: Failure) => void,
 	seam?: PaymentSeam
-): PaymentSurface {
+): StripePaymentSurface {
 	/**
 	 * the rails on offer that this processor settles, and never the whole offered list.
 	 *
@@ -892,6 +900,12 @@ export function createPaymentSurface(
 	return {
 		confirm,
 		resume,
+		collapse() {
+			// nothing to close before the fields are up, and nothing after the card let go of them.
+			void ready.then((live) => {
+				if (live !== null && !stopped) live.element.collapse();
+			});
+		},
 		quoted(request, quote) {
 			billing = {
 				name: `${request.firstName} ${request.lastName}`.trim(),

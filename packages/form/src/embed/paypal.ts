@@ -42,6 +42,7 @@ import type { FormConfig, PaymentMethod } from '../v1';
 import { INJECTING_NONCE } from './nonce';
 import { UNCONFIRMABLE, UNSTATED_DECLINE } from './outcome';
 import { isPaypalRail, type PaypalRail } from './rails';
+import { createRows, type RowList } from './rows';
 import type { PaymentSurface } from './stripe';
 
 /**
@@ -499,6 +500,12 @@ const BUTTON_TAGS: Readonly<Record<PaypalRail, 'paypal-button' | 'venmo-button'>
 	venmo: 'venmo-button'
 });
 
+/** what a donor reads on each rail's row. */
+const ROW_NAMES: Readonly<Record<PaypalRail, string>> = Object.freeze({
+	paypal: 'PayPal',
+	venmo: 'Venmo'
+});
+
 /**
  * PayPal's own name for each rail in the eligibility vocabulary.
  *
@@ -538,6 +545,8 @@ export type PaypalSeam = {
  */
 export type PaypalPaymentSurface = PaymentSurface & {
 	claimsReturn(): Promise<boolean>;
+	/** the row each drawn rail's button stands in, which ./surface.ts opens and closes. */
+	readonly rows: RowList;
 };
 
 /** the loaders that were given the deadline and never answered, on this page. */
@@ -657,21 +666,14 @@ export function createPaymentSurface(
 	const doc = mount.ownerDocument;
 
 	/**
-	 * the node this adapter was handed, dressed as the root it is.
+	 * the rows this adapter's buttons stand in, one per rail, drawn into the node it was handed.
 	 *
-	 * the padding is this shell's own and the separation above it is the caller's — ./surface.ts
-	 * places this node, and `[part~='payment']` in ../styles/parts.css pulls the whole box out to
-	 * the card's own edges by `--_inset` so that each rail's band is full bleed. the other adapter
-	 * pads its rails back in by that same token through the appearance object it sends; this is the
-	 * same decision said in the one channel a node in this document has, so the buttons land on the
-	 * seam every other control on the card sits on rather than out at its edges.
-	 *
-	 * set as properties rather than through `cssText`, so a caller's own geometry on this node
-	 * survives being dressed.
+	 * the node takes no pad of its own: `[part~='payment']` in ../styles/parts.css pulls the whole box
+	 * out to the card's own edges by `--_inset`, and each row runs its band to those edges and pads its
+	 * name and its button back in by that same token (../styles/rows.css), which is the same decision
+	 * the other adapter's rows are sent through the appearance object it hands its provider.
 	 */
-	mount.style.display = 'grid';
-	mount.style.gap = 'var(--_sp2)';
-	mount.style.paddingInline = 'var(--_inset)';
+	const rowList = createRows(mount);
 
 	/** the one report that the button is not coming up, said once. */
 	let announced = false;
@@ -751,8 +753,6 @@ export function createPaymentSurface(
 
 	/** every listener this surface took out, dropped in one call whatever order `stop` is reached in. */
 	const letGo = new AbortController();
-	/** the button elements this surface put on the page, which are its own to take back off. */
-	const buttons: HTMLElement[] = [];
 
 	async function build(): Promise<Live | null> {
 		if (abandoned) {
@@ -852,8 +852,7 @@ export function createPaymentSurface(
 		for (const rail of sessions.keys()) {
 			const button = doc.createElement(BUTTON_TAGS[rail]);
 			button.addEventListener('click', () => onRail(rail), { signal: letGo.signal });
-			mount.appendChild(button);
-			buttons.push(button);
+			rowList.draw(ROW_NAMES[rail], rail, button);
 		}
 
 		// one claim over all of them and never one each: the attempt below is a single latch, so two
@@ -977,6 +976,7 @@ export function createPaymentSurface(
 	return {
 		confirm,
 		resume,
+		rows: rowList,
 		async claimsReturn() {
 			await ready;
 			return returned;
@@ -999,7 +999,7 @@ export function createPaymentSurface(
 			// an attempt still waiting is answered, so a confirmation the card walked away from is a
 			// promise that settles rather than one nothing ever will.
 			record({ kind: 'silent' });
-			for (const button of buttons.splice(0)) button.remove();
+			for (const row of [...rowList.current()]) rowList.erase(row);
 			void building.then((held) => {
 				for (const session of held?.sessions.values() ?? []) {
 					// each separately: two elements on one page hold sessions of their own off one shared

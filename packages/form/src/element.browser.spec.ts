@@ -62,6 +62,7 @@ async function mount(): Promise<HTMLElement> {
 				input: { config, ports: PORTS },
 				cadence: () => {},
 				offerFund: () => {},
+				rows: () => {},
 				stop: () => {}
 			}),
 			challenge: () => ({ reset: () => {}, stop: () => {} })
@@ -173,6 +174,7 @@ describe('the box a host page holds before the element upgrades', () => {
 					input: { config, ports: PORTS },
 					cadence: () => {},
 					offerFund: () => {},
+					rows: () => {},
 					stop: () => {}
 				}),
 				challenge: () => ({ reset: () => {}, stop: () => {} })

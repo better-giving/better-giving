@@ -6,14 +6,16 @@
 // move any of that: this module is where the adapters become one surface, and everything above it
 // keeps taking one.
 //
-// what it owns is therefore three decisions and no more. **which adapters exist at all**, off the
+// what it owns is therefore four decisions and no more. **which adapters exist at all**, off the
 // rails the config offers rather than off the processors it names — `STRIPE_RAILS`, `PAYPAL_RAILS`
 // and `CHARIOT_RAILS` in ./rails.ts cover the vocabulary exactly once, so a config offering a rail
 // is a config needing that rail's adapter, and an adapter whose own processor the config does not name
 // reports that for itself. **which adapter a reading belongs to** — a confirmation by the rail its
 // order was minted on, a rail report by the box the donor pressed in, a re-read by whichever
-// processor can answer for the token. and **stopping all of them**, which is the one thing a caller
-// holding a single surface could not do for itself.
+// processor can answer for the token. **which option in the box is open**, because the provider's
+// rails and the rows the other adapters draw (./rows.ts) are one list to a donor and no adapter sees
+// the others' options. and **stopping all of them**, which is the one thing a caller holding a
+// single surface could not do for itself.
 //
 // what it deliberately does not own is any donor-facing sentence. each adapter writes its own,
 // naming its own processor where that is the honest noun, and the only thing decided here is
@@ -31,6 +33,7 @@ import type { FormConfig, PaymentMethod } from '../v1';
 import { createPaymentSurface as createChariotSurface, type ChariotSeam } from './chariot';
 import { createPaymentSurface as createPaypalSurface, type PaypalSeam } from './paypal';
 import { isChariotRail, isPaypalRail, isStripeRail } from './rails';
+import type { Row, RowList } from './rows';
 import {
 	createPaymentSurface as createStripeSurface,
 	type PaymentSeam,
@@ -58,17 +61,30 @@ export type PaymentSeams = {
 type Part = {
 	readonly owns: (rail: PaymentMethod) => boolean;
 	readonly surface: PaymentSurface;
+	/** the rows this processor draws outside the provider's frame, where it draws any. */
+	readonly rows?: RowList;
 	/** whether this page load is a return from this processor's own window. */
 	claimsReturn(): Promise<boolean>;
 };
 
 /**
- * the composed surface, plus the one reading only a fund's button is drawn from.
+ * the composed surface, plus the one reading only a fund's button is drawn from and the one count
+ * the card draws its payment header from.
  *
  * `offerFund` is `fundIsOffered` in ../checkout.machine.ts, told on every reading; a form offering no
  * fund has nothing to tell it to.
+ *
+ * `rows` hands `listener` how many options the box lists — now, and again whenever that changes —
+ * which is what decides whether there is a choice to put a header over. the provider's rails are
+ * counted off the config, because the provider reports nothing about which of them it drew: a
+ * wallet the device cannot pay with is counted and is not on screen. the rows drawn here are
+ * counted as drawn, so a PayPal rail this donor is not eligible for and a fund not offered on this
+ * cadence are not. one listener; a second call replaces the first.
  */
-export type ComposedPaymentSurface = PaymentSurface & { offerFund(offered: boolean): void };
+export type ComposedPaymentSurface = PaymentSurface & {
+	offerFund(offered: boolean): void;
+	rows(listener: (count: number) => void): void;
+};
 
 /**
  * the geometry a node in this document has to be pinned to, because a host page's own stylesheet
@@ -90,16 +106,6 @@ const PINNED =
 	'inline-size:100%;min-inline-size:0;max-inline-size:none;' +
 	'block-size:auto;min-block-size:0;max-block-size:none;' +
 	'position:static;float:none;clear:none;overflow:visible';
-
-/**
- * what separates one processor's surface from the next.
- *
- * the card's own block step, and it is the caller's spacing rather than either adapter's: the rails
- * inside the inline box stack flush because they are one list of one object (`accordionItemSpacing`
- * in ../styles/appearance.ts argues that), and two processors are two objects. the first node takes
- * none — a root carries no outer spacing, and the box above it already holds the step.
- */
-const BETWEEN = 'margin-block-start:var(--_sp4)';
 
 /**
  * every processor this form can take a gift through, behind one surface.
@@ -151,22 +157,67 @@ export function createPaymentSurface(
 		onRail(rail);
 	};
 
-	/** the node one adapter owns, placed and pinned here and dressed inside by the adapter itself. */
+	/** every row drawn outside the provider's frame, in the order a donor reads them. */
+	const drawnRows = (): Row[] => parts.flatMap((part) => [...(part.rows?.current() ?? [])]);
+
+	/** the provider's own rails closed, where this form has any. */
+	let collapseInline: () => void = () => {};
+
+	/**
+	 * one open option across the whole box, which is a list the provider's frame is only part of.
+	 *
+	 * a row opened here closes the other rows and the provider's rails, and a rail chosen in those
+	 * rails is un-picked with them rather than left to whatever the provider says about its own
+	 * collapse: the fields that rail is confirmed through are no longer on screen. a rail pressed in
+	 * another row stays chosen — that press was a choice, and opening a row is only looking.
+	 */
+	const opened = (row: Row): void => {
+		for (const other of drawnRows()) if (other !== row) other.collapse();
+		collapseInline();
+		if (chosen !== null && chosen.part === inlinePart) reported(inlinePart, null);
+	};
+
+	let listener: ((count: number) => void) | null = null;
+	let counted: number | null = null;
+	/** how many rails the provider's frame lists, off the config for the reason `rows` above gives. */
+	const inlineRows = config.paymentMethods.filter(isStripeRail).length;
+
+	/** the count told, after any row was drawn or taken away. */
+	const recount = (): void => {
+		const count = inlineRows + drawnRows().length;
+		if (count === counted) return;
+		counted = count;
+		listener?.(count);
+	};
+
+	/**
+	 * the node one adapter owns, placed and pinned here and dressed inside by the adapter itself.
+	 *
+	 * the nodes stack flush: every processor draws its options as rows of the one list the box is
+	 * (`accordionItemSpacing` in ../styles/appearance.ts, ../styles/rows.css), and a gap between two
+	 * processors' rows is a stripe of the card's ground cutting across it.
+	 */
 	const open = (): HTMLElement => {
 		const node = doc.createElement('div');
-		node.style.cssText = parts.length === 0 ? PINNED : `${PINNED};${BETWEEN}`;
+		node.style.cssText = PINNED;
 		mount.appendChild(node);
 		return node;
 	};
 
+	let inlinePart: Part | null = null;
 	if (config.paymentMethods.some(isStripeRail)) {
 		const inline = createStripeSurface(
 			config,
 			open(),
-			(rail) => reported(part, rail),
+			(rail) => {
+				// a rail the donor opened in the provider's frame is the one open option in the box.
+				if (rail !== null) for (const row of drawnRows()) row.collapse();
+				reported(part, rail);
+			},
 			held,
 			seams?.stripe
 		);
+		collapseInline = () => inline.collapse();
 		const part: Part = {
 			owns: isStripeRail,
 			surface: inline,
@@ -176,6 +227,7 @@ export function createPaymentSurface(
 			claimsReturn: () => Promise.resolve(false)
 		};
 		parts.push(part);
+		inlinePart = part;
 	}
 
 	if (config.paymentMethods.some(isPaypalRail)) {
@@ -189,6 +241,7 @@ export function createPaymentSurface(
 		const part: Part = {
 			owns: isPaypalRail,
 			surface: paypal,
+			rows: paypal.rows,
 			claimsReturn: () => paypal.claimsReturn()
 		};
 		parts.push(part);
@@ -202,11 +255,17 @@ export function createPaymentSurface(
 		parts.push({
 			owns: isChariotRail,
 			surface: chariot,
+			rows: chariot.rows,
 			// a grant id is nothing a browser can read back, and no window of the fund's returns here.
 			claimsReturn: () => Promise.resolve(false)
 		});
 		offerFund = (offered) => chariot.offer(offered);
 	}
+
+	// watched only once every part is built, so a row drawn in the meantime is counted by the first
+	// recount rather than by a watcher reading a list still being assembled.
+	for (const part of parts) part.rows?.watch({ changed: recount, opened });
+	recount();
 
 	/** whichever processor last took a confirmation, which is whose order a re-read is about. */
 	let confirmed: Part | null = null;
@@ -245,6 +304,10 @@ export function createPaymentSurface(
 		confirm,
 		resume,
 		offerFund: (offered) => offerFund(offered),
+		rows(next) {
+			listener = next;
+			if (counted !== null) next(counted);
+		},
 		quoted(request, quote) {
 			for (const part of parts) part.surface.quoted(request, quote);
 		},

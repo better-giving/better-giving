@@ -134,6 +134,7 @@ function CheckoutCard({
 
 	const initial = useMemo(() => initialSnapshot(config), [config]);
 	const [live, setLive] = useState<Checkout | null>(null);
+	const [paymentRows, setPaymentRows] = useState(0);
 
 	const paymentMount = useRef<HTMLDivElement | null>(null);
 	const challengeMount = useRef<HTMLDivElement | null>(null);
@@ -150,6 +151,7 @@ function CheckoutCard({
 			resumeToken: takeResumeToken(document, config.formId),
 			...(seams === undefined ? {} : { seams })
 		});
+		started.rows(setPaymentRows);
 		setLive(started);
 		return () => started.stop();
 	}, [config, seams]);
@@ -643,6 +645,7 @@ function CheckoutCard({
 						submitLabel={reading?.submitLabel ?? ''}
 						paymentMount={paymentMount}
 						paymentPrepared={live !== null}
+						paymentRows={paymentRows}
 						paymentWords={paymentWords}
 						onSubmit={onSubmit}
 						submits={shown === 'give'}

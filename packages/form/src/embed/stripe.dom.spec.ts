@@ -77,6 +77,7 @@ type Recorder = {
 	readonly destroyed: number[];
 	/** how many times the adapter moved the caret into the provider's own fields. */
 	readonly focused: number;
+	readonly collapsed: number;
 	/** the provider reporting what the donor picked in its own fields. */
 	changed(event: PaymentChangeLike): void;
 	/** the provider reporting that its own fields are on screen. */
@@ -148,12 +149,14 @@ function recorder(answers: Answers = {}): Recorder {
 		});
 
 	const focuses: number[] = [];
+	const collapses: number[] = [];
 
 	const element: PaymentElementLike = {
 		mount: (node) => void mounted.push(node),
 		on,
 		off,
 		focus: () => void focuses.push(focuses.length + 1),
+		collapse: () => void collapses.push(collapses.length + 1),
 		destroy: () => {
 			destroyed.push(destroyed.length + 1);
 			destroy();
@@ -203,6 +206,9 @@ function recorder(answers: Answers = {}): Recorder {
 		// number read off the object at return time would be the count before anything happened.
 		get focused() {
 			return focuses.length;
+		},
+		get collapsed() {
+			return collapses.length;
 		},
 		changed: (event) => {
 			for (const listener of listeners) listener(event);
@@ -374,6 +380,19 @@ describe('the element group this adapter asks for', () => {
 		kit.changed({ collapsed: false, empty: true, value: { type: 'us_bank_account' } });
 
 		expect(reported).toEqual(['ach']);
+	});
+
+	// a row opened outside the provider's frame is the one open option in the box, so the rails
+	// inside the frame close for it.
+	it('closes every rail in the provider’s own fields when asked', async () => {
+		const kit = recorder();
+		const surface = surfaceOn(box(), kit);
+		await settle();
+
+		surface.collapse();
+		await settle();
+
+		expect(kit.collapsed).toBe(1);
 	});
 
 	it('mounts into the box the card handed it', async () => {

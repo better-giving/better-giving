@@ -45,7 +45,7 @@
 						},
 						{
 							"name": "label",
-							"description": "Every field label and every fieldset legend."
+							"description": "Every field label, every fieldset legend, and the header over the payment box where it lists more than one way to pay."
 						},
 						{
 							"name": "field",

@@ -2,7 +2,8 @@ import { part } from '@better-giving/form/parts';
 import type { RefObject } from 'react';
 import * as copy from './copy';
 
-// the box the payment provider paints its own fields into, and the sentence written under it.
+// the box the payment provider paints its own fields into, the header over it while it lists a
+// choice, and the sentence written under it.
 //
 // the provider's fields are drawn in a frame on its own origin, so nothing here can reach one, name
 // one or say which of them is unfinished. what this box owns is everything around that: a role and
@@ -21,6 +22,9 @@ import * as copy from './copy';
 
 const PROBLEM_ID = 'payment-problem';
 
+/** the id the header carries, which the box is named by while the header stands. */
+const HEADING_ID = 'payment-heading';
+
 export type PaymentBoxProps = {
 	/** the node the provider mounts into, handed to the checkout rather than looked up. */
 	readonly mount: RefObject<HTMLDivElement | null>;
@@ -33,27 +37,43 @@ export type PaymentBoxProps = {
 	 * step's refusal announces itself by putting the caret here.
 	 */
 	readonly prepared: boolean;
+	/**
+	 * how many options the box lists, off `Checkout.rows` in ./machine.ts; `0` before it has counted.
+	 *
+	 * a header over one option offers no choice, and a header over a box that is not drawn heads
+	 * nothing — so it stands at two or more on a prepared box, and the box is named by it only then.
+	 */
+	readonly rows: number;
 	/** what the box says about itself: a refused press, or the reason a rail gave for the last try. */
 	readonly words: string;
 };
 
-export function PaymentBox({ mount, prepared, words }: PaymentBoxProps) {
+export function PaymentBox({ mount, prepared, rows, words }: PaymentBoxProps) {
+	const heads = prepared && rows > 1;
 	return (
 		<>
-			{/* biome-ignore lint/a11y/useSemanticElements: a `<fieldset>` is a grouping of this
-			    document's own form controls, and what lands in this box is a payment provider's frame on
-			    its own origin — there is no control of ours in it to group. the role and the name are
-			    here because the caret is sent to this box by a refused press, and a generic with no name
-			    announces nothing at all. */}
-			<div
-				ref={mount}
-				part={part('payment')}
-				role="group"
-				aria-label={copy.PAYMENT_DETAILS}
-				aria-describedby={words === '' ? undefined : PROBLEM_ID}
-				tabIndex={-1}
-				hidden={!prepared}
-			/>
+			{/* one group with the box, so the header stands at the group's distance above it rather
+			    than the step's — the markup `paymentRows` in @better-giving/form's views.ts draws. */}
+			<div className="group">
+				<h3 part={part('label')} id={HEADING_ID} hidden={!heads}>
+					{copy.PAYMENT_HEADING}
+				</h3>
+				{/* biome-ignore lint/a11y/useSemanticElements: a `<fieldset>` is a grouping of this
+				    document's own form controls, and what lands in this box is a payment provider's frame on
+				    its own origin — there is no control of ours in it to group. the role and the name are
+				    here because the caret is sent to this box by a refused press, and a generic with no name
+				    announces nothing at all. */}
+				<div
+					ref={mount}
+					part={part('payment')}
+					role="group"
+					aria-label={heads ? undefined : copy.PAYMENT_DETAILS}
+					aria-labelledby={heads ? HEADING_ID : undefined}
+					aria-describedby={words === '' ? undefined : PROBLEM_ID}
+					tabIndex={-1}
+					hidden={!prepared}
+				/>
+			</div>
 			<p className="message" id={PROBLEM_ID} hidden={words === ''}>
 				{words}
 			</p>

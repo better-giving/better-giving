@@ -377,6 +377,8 @@ export function devRuntime(): FormRuntime {
 				input: { config, ports: ports(config) },
 				cadence: () => {},
 				offerFund: () => {},
+				// no provider draws here, so the box is headed as though every offered rail were a row.
+				rows: (listener) => listener(config.paymentMethods.length),
 				stop: () => {}
 			};
 		},

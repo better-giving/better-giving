@@ -404,23 +404,39 @@ describe('the buttons this adapter draws', () => {
 		expect(k.eligibilityAsks[0]).toEqual({ currencyCode: 'USD' });
 	});
 
-	it('puts a button for each eligible rail in the node it was handed', async () => {
+	it('draws a row for each eligible rail, holding that rail’s button', async () => {
 		const k = kit();
-		await mounted(k);
-		expect([...k.mount.children].map((child) => child.tagName.toLowerCase())).toEqual([
-			'paypal-button',
-			'venmo-button'
-		]);
+		const surface = await mounted(k);
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal', 'Venmo']);
+		expect(
+			[...k.mount.children].map((child) => child.firstElementChild?.tagName.toLowerCase())
+		).toEqual(['paypal-button', 'venmo-button']);
 	});
 
 	// not a disabled control and not an error: a donor who cannot pay with Venmo should not learn
 	// that Venmo exists.
 	it('draws nothing at all for a rail this donor is not eligible for', async () => {
 		const k = kit({ eligible: ['paypal'] });
+		const surface = await mounted(k);
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal']);
+		expect(k.mount.querySelector('venmo-button')).toBeNull();
+	});
+
+	it('draws every row closed, its button behind a press on the row’s name', async () => {
+		const k = kit();
 		await mounted(k);
-		expect([...k.mount.children].map((child) => child.tagName.toLowerCase())).toEqual([
-			'paypal-button'
-		]);
+		const head = k.mount.children[0]?.shadowRoot?.querySelector('button');
+		const panel = k.mount.children[0]?.shadowRoot?.querySelector('[role="region"]');
+		expect(head?.getAttribute('aria-expanded')).toBe('false');
+		expect(head?.textContent).toBe('PayPal');
+		expect(panel?.hasAttribute('hidden')).toBe(true);
+		expect(head?.getAttribute('aria-controls')).toBe(panel?.id);
+
+		head?.click();
+		expect(head?.getAttribute('aria-expanded')).toBe('true');
+		expect(panel?.hasAttribute('hidden')).toBe(false);
+		// opening a row is looking, not choosing: the rail is still the button's to report.
+		expect(k.rails).toEqual([]);
 	});
 
 	// the whole reason ineligible and unreadable must not collapse into each other: treating a

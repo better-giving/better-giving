@@ -110,6 +110,7 @@
 
 [part~='label'] {
 	display: block;
+	margin: 0;
 	font-size: var(--_t-sm);
 	font-weight: var(--_w-bold);
 	color: var(--_n11);

@@ -140,6 +140,32 @@ describe('a donor-advised fund’s window, behind the payment surface', () => {
 		expect(k.mount.children).toHaveLength(0);
 	});
 
+	// the fund's option is a row like the rails beside it, drawn closed, and its button is behind a
+	// press on the row's name; the row stands exactly while the element does.
+	it('stands the element in a closed row of its own, and takes the row with it', async () => {
+		const k = kit();
+		const surface = await surfaced(k);
+		const changes: number[] = [];
+		surface.rows.watch({
+			changed: () => changes.push(surface.rows.current().length),
+			opened: () => {}
+		});
+
+		surface.offer(true);
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['Donor-advised fund']);
+		const head = k.mount.children[0]?.shadowRoot?.querySelector('button');
+		expect(head?.getAttribute('aria-expanded')).toBe('false');
+		expect(k.mount.children[0]?.firstElementChild?.tagName.toLowerCase()).toBe(CHARIOT_TAG);
+
+		head?.click();
+		expect(surface.rows.current()[0]?.expanded).toBe(true);
+		expect(k.opens).toEqual([]);
+
+		surface.offer(false);
+		expect(surface.rows.current()).toEqual([]);
+		expect(changes).toEqual([1, 0]);
+	});
+
 	// Chariot answers the first element on the page, so a second form holding one would open the
 	// wrong form's gift. the first form to mount keeps it, and the second offers no fund until the
 	// first lets it go.
