@@ -49,15 +49,17 @@ const alreadyCurrent = "this console is already the newest release, so nothing w
 // build asked github nothing, so an operator told to check their connection would be looking for a
 // fault this machine never had — and a console cut from a release is the one where that is the
 // whole of what there is to try.
-var noReading = "this console couldn't work out whether a newer one has been released, so " +
-	"nothing was installed: a console built from a checkout carries no version to weigh against " +
-	"a release, and a release this one could not read is the other way here. If this console came " +
-	"from a release, check this machine's connection and run " + terminal.Cmd("update") + " again"
+func noReading() string {
+	return "this console couldn't work out whether a newer one has been released, so " +
+		"nothing was installed: a console built from a checkout carries no version to weigh against " +
+		"a release, and a release this one could not read is the other way here. If this console came " +
+		"from a release, check this machine's connection and run " + terminal.Cmd("update") + " again"
+}
 
 func update(args []string, to, wrong io.Writer) error {
 	// no flag of its own, and the empty set is the statement: an argument this command does not
 	// know is refused rather than passed over (./main.go's updateTakes).
-	taken := taking("update", updateTakes)
+	taken := taking("update", updateTakes())
 	if on, err := taken.read(args, to, wrong); err != nil || !on {
 		return err
 	}
@@ -66,7 +68,7 @@ func update(args []string, to, wrong io.Writer) error {
 	ctx := context.Background()
 	return updating(releases.Latest(ctx, releases.Source(), version), to,
 		func(read releases.Read) error {
-			_, err := installing(ctx, read, to, terminal.Updating)
+			_, err := installing(ctx, read, to, terminal.Updating())
 			return err
 		})
 }
@@ -95,7 +97,7 @@ func updating(read releases.Read, to io.Writer, install func(releases.Read) erro
 		terminal.Say(to, alreadyCurrent)
 		return nil
 	default:
-		terminal.Say(to, noReading)
+		terminal.Say(to, noReading())
 		return nil
 	}
 }

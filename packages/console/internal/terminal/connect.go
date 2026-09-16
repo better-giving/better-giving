@@ -41,19 +41,19 @@ func Unconnected(kind deployment.ConnectionKind, dir string) string {
 	switch kind {
 	case deployment.ConnectNowhere:
 		return name + " answers on no address this console can read, so the console couldn't " +
-			"connect to it and wasn't opened. " + again
+			"connect to it and wasn't opened. " + again()
 	case deployment.ConnectRefused:
 		return "Cloudflare won't let this sign-in store the console's session on " + name +
-			", so the console wasn't opened. " + AnotherAccount
+			", so the console wasn't opened. " + AnotherAccount()
 	case deployment.ConnectUnreachable:
 		return "Cloudflare didn't answer, so the console couldn't connect to " + name +
-			" and wasn't opened. Check this machine's connection, " + Starting.After
+			" and wasn't opened. Check this machine's connection, " + Starting().After
 	case deployment.ConnectUnkept:
 		return name + " holds this console's session and this machine couldn't write it down in " +
 			Code(dir) + ", so the console wasn't opened. Make that folder writable, " +
-			Starting.After
+			Starting().After
 	default:
 		return "Cloudflare didn't store the console's session on " + name +
-			", so the console wasn't opened. " + again
+			", so the console wasn't opened. " + again()
 	}
 }

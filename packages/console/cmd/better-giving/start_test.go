@@ -194,9 +194,9 @@ func TestEveryUnreadableAddressEndsInSomethingToDo(t *testing.T) {
 		kind deployment.AddressKind
 		want string
 	}{
-		{deployment.AddressRefused, terminal.AnotherAccount},
-		{deployment.AddressUnreadable, terminal.Starting.Alone},
-		{"", terminal.Starting.After},
+		{deployment.AddressRefused, terminal.AnotherAccount()},
+		{deployment.AddressUnreadable, terminal.Starting().Alone},
+		{"", terminal.Starting().After},
 	} {
 		err := unread(deployment.Address{Kind: read.kind, Detail: "said"})
 		if err == nil {
@@ -226,8 +226,8 @@ func TestTheActOnAnUnreadableAddressIsThePressThatMadeTheRead(t *testing.T) {
 // the two sentences that named no act at all.
 
 func TestASessionKeyThisMachineCouldNotMintNamesThePressAgain(t *testing.T) {
-	if !strings.Contains(noSessionKey, "better-giving start again") {
-		t.Errorf("said %q, want something to do about it", noSessionKey)
+	if !strings.Contains(noSessionKey(), "better-giving start again") {
+		t.Errorf("said %q, want something to do about it", noSessionKey())
 	}
 }
 
@@ -1033,13 +1033,13 @@ func TestADeploymentAheadOfThisBinaryEndsTheCarryAsAFailure(t *testing.T) {
 	if went == through {
 		t.Error("a command went on past a deployment a newer console put up")
 	}
-	if err == nil || err.Error() != aheadOfThisBinary {
-		t.Errorf("said %v, want %q", err, aheadOfThisBinary)
+	if err == nil || err.Error() != aheadOfThisBinary() {
+		t.Errorf("said %v, want %q", err, aheadOfThisBinary())
 	}
 	// the act is an install and then this press again: a binary older than the database it is
 	// looking at has nothing it could deploy that would not carry the app backwards.
-	if !strings.Contains(aheadOfThisBinary, "better-giving update") {
-		t.Errorf("said %q, want the press that installs the current console", aheadOfThisBinary)
+	if !strings.Contains(aheadOfThisBinary(), "better-giving update") {
+		t.Errorf("said %q, want the press that installs the current console", aheadOfThisBinary())
 	}
 }
 

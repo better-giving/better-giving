@@ -2,7 +2,10 @@ package terminal
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -354,8 +357,11 @@ var (
 )
 
 // the picker after bubbletea has reported a window `width` cells wide.
-func windowed(drawn chooser, width int) chooser {
-	next, _ := drawn.Update(tea.WindowSizeMsg{Width: width, Height: 40})
+func windowed(drawn chooser, width int) chooser { return framed(drawn, width, 40) }
+
+// the picker after bubbletea has reported a window `width` cells wide and `height` lines deep.
+func framed(drawn chooser, width, height int) chooser {
+	next, _ := drawn.Update(tea.WindowSizeMsg{Width: width, Height: height})
 	return next.(chooser)
 }
 
@@ -421,6 +427,140 @@ func TestAWindowTooNarrowForTheIDDropsTheMarkAndStillDrawsTheIDWhole(t *testing.
 	}
 	if strings.Contains(rows[0], release.Baked.Name) {
 		t.Errorf("the marked row kept its mark where its id alone overflows: %q", rows[0])
+	}
+}
+
+// a window too short for the list, which is the other half of the terminal this screen has to fit.
+//
+// bubbletea's inline renderer drops the lines of an over-tall view from the top, so a picker drawn
+// taller than the terminal loses the question and the act above it first — and an operator holding
+// more accounts than their terminal has lines would be answering a screen whose question is gone.
+// what gives way instead is the run of account rows, inside a window that says what it is holding
+// back.
+
+// a sign-in holding `count` accounts, numbered so that a case can say which row it is reading.
+func manyAccounts(count int) signin.SignIn {
+	held := make([]signin.Account, 0, count)
+	for at := range count {
+		numbered := fmt.Sprintf("%02d", at)
+		held = append(held, signin.Account{ID: "id" + numbered, Name: "Account " + numbered})
+	}
+	return holding(held...)
+}
+
+// the lines a view takes in the terminal, which is what bubbletea measures it against.
+func deep(said string) int { return strings.Count(said, "\n") + 1 }
+
+// the account rows the screen is drawing, in order.
+func drawnAccounts(said string) []string {
+	held := []string{}
+	for _, line := range strings.Split(said, "\n") {
+		if strings.Contains(line, "Account ") {
+			held = append(held, line)
+		}
+	}
+	return held
+}
+
+// what the screen says the window is holding back, off the line that says it.
+func holdingBack(said, which string) int {
+	found := regexp.MustCompile(`(\d+) ` + which).FindStringSubmatch(said)
+	if found == nil {
+		return 0
+	}
+	count, _ := strconv.Atoi(found[1])
+	return count
+}
+
+// how deep the windows these cases report are, which is short enough to hold none of their lists.
+const shortWindow = 14
+
+func TestAListTallerThanTheWindowKeepsTheQuestionBothActsAndTheRowTheCursorIsOn(t *testing.T) {
+	drawn := framed(choosing(manyAccounts(30), Picker{SignOut: true}), 80, shortWindow)
+
+	if lines := deep(drawn.View()); lines > shortWindow {
+		t.Errorf("the picker draws %d lines in a window %d deep", lines, shortWindow)
+	}
+	said := screen(drawn)
+	for _, words := range []string{chooseAccount, signOutSaid, exitSaid, "enter submit"} {
+		if !strings.Contains(said, words) {
+			t.Errorf("a picker taller than its window drew %q, want %q standing", said, words)
+		}
+	}
+	if !strings.Contains(said, "> "+resting(drawn).named) {
+		t.Errorf("the row the cursor is on is off the screen: %q", said)
+	}
+}
+
+func TestTheRowTheCursorIsOnStaysInsideTheWindowAtEitherEndOfTheList(t *testing.T) {
+	// the arrows run through the accounts and off both ends of them onto the acts, so the window
+	// follows the cursor all the way down the list, round to the sign-out and back up again.
+	drawn := framed(choosing(manyAccounts(30), Picker{SignOut: true}), 80, shortWindow)
+
+	for range 2 * len(drawn.ring()) {
+		drawn = pressing(drawn, pressDown)
+		inside(t, drawn)
+	}
+	for range 2 * len(drawn.ring()) {
+		drawn = pressing(drawn, pressUp)
+		inside(t, drawn)
+	}
+}
+
+// the screen with the row the cursor is on drawn inside the window it reported.
+func inside(t *testing.T, drawn chooser) {
+	t.Helper()
+	if lines := deep(drawn.View()); lines > shortWindow {
+		t.Fatalf("the picker draws %d lines in a window %d deep", lines, shortWindow)
+	}
+	said, one := screen(drawn), resting(drawn)
+	if one.value == signOutRow || one.value == exitRow {
+		if !strings.Contains(said, actCursor+one.said) {
+			t.Fatalf("the cursor is on %q and no act carries it: %q", one.value, said)
+		}
+		return
+	}
+	if !strings.Contains(said, "> "+one.named) {
+		t.Fatalf("the cursor is on %q and its row is off the screen: %q", one.value, said)
+	}
+}
+
+func TestTheWindowSaysHowManyAccountsAreOverItAndUnderIt(t *testing.T) {
+	// a window saying nothing about what it is not drawing is a screen claiming a sign-in holds the
+	// accounts on it and no others, which is the whole reason the rows are the part that gives way.
+	held := 30
+	drawn := framed(choosing(manyAccounts(held), Picker{SignOut: true}), 80, shortWindow)
+
+	// the window opens at the top of the list, so everything it holds back is under it.
+	said := screen(drawn)
+	shown := len(drawnAccounts(said))
+	if shown == 0 || shown >= held {
+		t.Fatalf("a window %d deep draws %d of %d accounts", shortWindow, shown, held)
+	}
+	same(t, "what a window at the top of the list is holding back",
+		strconv.Itoa(holdingBack(said, "above"))+" "+strconv.Itoa(holdingBack(said, "below")),
+		"0 "+strconv.Itoa(held-shown))
+
+	// and at the end of it, everything it holds back is over it.
+	ended := drawn
+	for range held - 1 {
+		ended = pressing(ended, pressDown)
+	}
+	said = screen(ended)
+	same(t, "what a window at the end of the list is holding back",
+		strconv.Itoa(holdingBack(said, "above"))+" "+strconv.Itoa(holdingBack(said, "below")),
+		strconv.Itoa(held-len(drawnAccounts(said)))+" 0")
+
+	// and in the middle, both ends are counted.
+	middle := drawn
+	for range held / 2 {
+		middle = pressing(middle, pressDown)
+	}
+	said = screen(middle)
+	above, below := holdingBack(said, "above"), holdingBack(said, "below")
+	if above == 0 || below == 0 || above+below != held-len(drawnAccounts(said)) {
+		t.Errorf("a window in the middle of the list says %d above and %d below, of %d it is not "+
+			"drawing", above, below, held-len(drawnAccounts(said)))
 	}
 }
 

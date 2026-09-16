@@ -3,6 +3,10 @@ package terminal
 import (
 	"bytes"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -655,6 +659,63 @@ func TestEveryPressIsSpelledTheOneWay(t *testing.T) {
 		if drawn := toneless.ReplaceAllString(Cmd(one.sub), ""); drawn != one.said {
 			t.Errorf("Cmd(%q) = %q, want %q", one.sub, drawn, one.said)
 		}
+	}
+}
+
+// the readings this package takes off the machine it is running on, and what reaches each of them.
+//
+// ./spelled reads the file this process is running from and this machine's PATH; ./Code renders
+// through lipgloss, which works out what this process's output can draw the first time it is asked;
+// and ./account.go's helping renders adaptive colours, which lipgloss resolves by asking the
+// terminal for its background and reading the answer in raw mode.
+var offTheMachine = map[string]bool{"Cmd": true, "Code": true, "helping": true}
+
+func TestNothingThisPackageSaysIsWorkedOutAtInit(t *testing.T) {
+	// a package variable holding one of these is a reading taken as this package loads, which is in
+	// front of every command this binary has — `version` and `help` included, neither of which names
+	// a press or draws a screen. ../../cmd/better-giving/main_test.go holds the same reading over the
+	// sentences the commands themselves say.
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := token.NewFileSet()
+	worked := []string{}
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		parsed, err := parser.ParseFile(read, file, nil, 0)
+		if err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		for _, held := range parsed.Decls {
+			declared, ok := held.(*ast.GenDecl)
+			if !ok || declared.Tok != token.VAR {
+				continue
+			}
+			for _, one := range declared.Specs {
+				named, ok := one.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for _, value := range named.Values {
+					ast.Inspect(value, func(node ast.Node) bool {
+						call, ok := node.(*ast.CallExpr)
+						if !ok {
+							return true
+						}
+						if what, ok := call.Fun.(*ast.Ident); ok && offTheMachine[what.Name] {
+							worked = append(worked, named.Names[0].Name+" calls "+what.Name)
+						}
+						return true
+					})
+				}
+			}
+		}
+	}
+	if len(worked) > 0 {
+		t.Errorf("%v at init, want a function for each of them", worked)
 	}
 }
 

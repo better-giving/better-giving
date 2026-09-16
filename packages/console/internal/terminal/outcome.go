@@ -34,7 +34,7 @@ import (
 // of its own.
 
 // what an operator does about a press that stopped, which at a terminal is the press again.
-var again = "Run " + Cmd("start") + " again."
+func again() string { return "Run " + Cmd("start") + " again." }
 
 // Repair is that act as the command that made the press, in the two shapes a sentence needs it.
 //
@@ -56,32 +56,39 @@ type Repair struct {
 }
 
 // Starting and Updating are the two presses, as the act on the end of a sentence about either.
-var (
-	Starting = Repair{Alone: again, After: "then run " + Cmd("start") + " again."}
-	Updating = Repair{
+func Starting() Repair {
+	return Repair{Alone: again(), After: "then run " + Cmd("start") + " again."}
+}
+
+func Updating() Repair {
+	return Repair{
 		Alone: "Run " + Cmd("update") + " again.",
 		After: "then run " + Cmd("update") + " again.",
 	}
-)
+}
 
 // where a sign-in that has gone is taken again, and the press behind it.
-var signInAgain = "Run " + Cmd("login") + ", then " + Cmd("start") + " again."
+func signInAgain() string { return "Run " + Cmd("login") + ", then " + Cmd("start") + " again." }
 
 // AnotherAccount is what an operator does about an account this sign-in may not act in.
 //
 // the two acts and not one: access is granted by somebody else and this console cannot ask for it,
 // so the other way out is an account that already has it — which `login` is where the picker is
 // (./account.go).
-var AnotherAccount = "Ask an administrator of that account for administrator access, or run " +
-	Cmd("login") + " to choose another account."
+func AnotherAccount() string {
+	return "Ask an administrator of that account for administrator access, or run " +
+		Cmd("login") + " to choose another account."
+}
 
 // what a chain that ended in a kind this file does not know left behind.
 //
 // ./outcome_test.go holds every kind ../first names to a sentence of its own, so a kind added there
 // and not here fails `go test` — and reaches this rather than a blank line under the ledger if one
 // ever does.
-var unaccounted = "This deploy did not finish, and this console has no account of how it " +
-	"stopped. " + again
+func unaccounted() string {
+	return "This deploy did not finish, and this console has no account of how it " +
+		"stopped. " + again()
+}
 
 // Outcome is what a chain that did not land left behind, in one sentence an operator can act on.
 //
@@ -100,12 +107,12 @@ func Outcome(ran first.Outcome) string {
 		// the console's own state and never the account's: nothing observed how far the press got,
 		// so no step is named and there is nothing cloudflare said to draw.
 		return "This console stopped part way through the deploy and doesn't know how far it got. " +
-			"What reached Cloudflare before it stopped is what your deployment holds now. " + again +
+			"What reached Cloudflare before it stopped is what your deployment holds now. " + again() +
 			" It reads what is already there rather than assuming."
 	case first.NoDatabase:
 		return noDatabase(ran.Made)
 	case first.NotDeployed:
-		return notDeployed(ran.Ran, Starting)
+		return notDeployed(ran.Ran, Starting())
 	case first.NoSignIn:
 		return noSignIn(ran.Written)
 	case first.NoWidget:
@@ -114,10 +121,10 @@ func Outcome(ran first.Outcome) string {
 		return unkept(ran.Written)
 	case first.NoSession:
 		return release.Baked.Name + " is deployed and signable in to, and this console didn't get " +
-			"a session, so it can't read anything the deployment says about itself. " + again +
+			"a session, so it can't read anything the deployment says about itself. " + again() +
 			" It connects this console too."
 	default:
-		return unaccounted
+		return unaccounted()
 	}
 }
 
@@ -175,15 +182,15 @@ func noDatabase(made *deployment.Standing) string {
 			"Databases, or move the account to a paid plan."
 	case deployment.DatabaseRefused:
 		return "Cloudflare won't let this sign-in create things in this account, so nothing was " +
-			"made and nothing was deployed. " + AnotherAccount
+			"made and nothing was deployed. " + AnotherAccount()
 	case deployment.DatabaseNoCredential:
 		return "This machine isn't signed in to Cloudflare any more, so nothing was made and " +
-			"nothing was deployed. " + signInAgain
+			"nothing was deployed. " + signInAgain()
 	case deployment.DatabaseUnreachable:
 		return "Cloudflare didn't answer, so nothing was made and nothing was deployed. Check " +
 			"this machine's connection, then run " + Cmd("start") + " again."
 	default:
-		return "The database wasn't made, so nothing was deployed. " + again
+		return "The database wasn't made, so nothing was deployed. " + again()
 	}
 }
 
@@ -205,7 +212,7 @@ func notDeployed(ran *deploy.Run, fix Repair) string {
 			"release, " + fix.After
 	case deploy.Refused:
 		return "Cloudflare won't let this sign-in deploy to this account, so nothing was " +
-			"uploaded. " + AnotherAccount
+			"uploaded. " + AnotherAccount()
 	default:
 		return bundleStopped(ran.At, fix)
 	}
@@ -270,7 +277,7 @@ func unkept(written *deployment.Written) string {
 	if withheld(written) {
 		return stood + ": " + heldBack(written.Names)
 	}
-	return stood + ", so your donation form is open to bots. " + again +
+	return stood + ", so your donation form is open to bots. " + again() +
 		" The widget you already have is used rather than a second one made."
 }
 
@@ -293,18 +300,18 @@ func noWidget(supply *widget.Supply) string {
 		// cloudflare was never asked: what stopped this is the address read, and ../first's noOrigin
 		// is the answer ./Said draws underneath.
 		return upAndServing + ": this console couldn't work out where it answers, so there was no " +
-			"host to register spam protection against. " + again
+			"host to register spam protection against. " + again()
 	case widget.Unmade:
-		return upAndServing + ": Cloudflare didn't register the spam protection. " + again
+		return upAndServing + ": Cloudflare didn't register the spam protection. " + again()
 	case widget.Unlisted:
 		if supply.Read != nil && supply.Read.Kind == widget.NoCredential {
 			return upAndServing + ": this machine isn't signed in to Cloudflare any more, so the " +
-				"spam protection wasn't registered. " + signInAgain
+				"spam protection wasn't registered. " + signInAgain()
 		}
 		return upAndServing + ": this account's existing widgets couldn't be read, so the spam " +
-			"protection wasn't registered. " + again
+			"protection wasn't registered. " + again()
 	default:
-		return upAndServing + ": the spam protection wasn't registered. " + again
+		return upAndServing + ": the spam protection wasn't registered. " + again()
 	}
 }
 

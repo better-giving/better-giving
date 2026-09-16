@@ -175,6 +175,12 @@ func resolved(path string, err error) string {
 // package and in the commands themselves, and a spelling that lived at each of those sites is one
 // nothing holds together — so what a sentence composes with is this, and ./ledger_test.go holds it
 // to the four presses.
+//
+// **a sentence composed with it is a function and never a package variable.** ./spelled reads the
+// file this process is running from and this machine's PATH the first time it is asked, so a
+// variable holding one of these sentences takes that reading as its package loads — in front of
+// every command this binary has, and `version` and `help` name no press at all.
+// ./ledger_test.go and ../../cmd/better-giving/main_test.go hold both packages to it.
 func Cmd(sub ...string) string { return Code(press(spelled(), sub)) }
 
 // press is the words one of this console's presses is typed as, given how this terminal spells the

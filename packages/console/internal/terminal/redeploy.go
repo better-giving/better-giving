@@ -41,7 +41,7 @@ import (
 // there and not here fails `go test` — and reaches this rather than a blank line under the ledger
 // if one ever does.
 var unaccountedUpdate = "This update did not finish, and this console has no account of how it " +
-	"stopped. " + Starting.Alone
+	"stopped. " + Starting().Alone
 
 // UpdateOutcome is what a redeploy that did not land left behind, in one sentence an operator can
 // act on.
@@ -56,11 +56,11 @@ func UpdateOutcome(ran effects.Carried) string {
 		// so no step is named and there is nothing cloudflare said to draw.
 		return "This console stopped part way through the update and doesn't know how far it got. " +
 			"What reached Cloudflare before it stopped is what your deployment holds now. " +
-			Starting.Alone + " It reads what is already there rather than assuming."
+			Starting().Alone + " It reads what is already there rather than assuming."
 	case effects.NoDatabase:
 		return NoDatabaseFound(ran.Found)
 	case effects.NotDeployed:
-		return notDeployed(ran.Ran, Starting)
+		return notDeployed(ran.Ran, Starting())
 	default:
 		return unaccountedUpdate
 	}
@@ -102,17 +102,17 @@ func Unnamed(read effects.Migrations) string {
 		return ""
 	case cf.ResultRefused:
 		return "Cloudflare won't tell this sign-in what has been applied to this deployment's " +
-			"database, so nothing was uploaded. " + AnotherAccount
+			"database, so nothing was uploaded. " + AnotherAccount()
 	case cf.ResultMissing:
 		// the database resolved a moment ago and is gone by the next call: the same absence the
 		// list read answers, so it is said in the same words.
 		return NoDatabaseFound("none")
 	case cf.ResultUnreadable:
 		return "Cloudflare answered about this deployment's database in a shape this console was " +
-			"not written against, so nothing was uploaded. " + Starting.Alone
+			"not written against, so nothing was uploaded. " + Starting().Alone
 	default:
 		return "Cloudflare didn't answer about this deployment's database, so nothing was " +
-			"uploaded. Check this machine's connection, " + Starting.After
+			"uploaded. Check this machine's connection, " + Starting().After
 	}
 }
 
@@ -131,15 +131,15 @@ func NoDatabaseFound(found string) string {
 		// holding two would bind the worker to one of them without saying which (CLAUDE.md).
 		return "Two databases in this account are called " + release.Baked.DatabaseName +
 			", so nothing was uploaded: a deploy would pick one without saying which. Delete or " +
-			"rename the one that isn't this deployment's, " + Starting.After
+			"rename the one that isn't this deployment's, " + Starting().After
 	case "refused":
 		return "Cloudflare won't tell this sign-in what is in this account, so nothing was " +
-			"uploaded. " + AnotherAccount
+			"uploaded. " + AnotherAccount()
 	case "no-credential":
 		return "This machine isn't signed in to Cloudflare any more, so nothing was uploaded. " +
-			signInAgain
+			signInAgain()
 	default:
 		return "Cloudflare didn't answer, so nothing was uploaded. Check this machine's " +
-			"connection, " + Starting.After
+			"connection, " + Starting().After
 	}
 }

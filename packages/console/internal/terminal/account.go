@@ -3,11 +3,14 @@ package terminal
 import (
 	"errors"
 	"io"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/better-giving/console/internal/release"
@@ -41,6 +44,13 @@ import (
 // is not a kind of account. so the accounts are drawn as their own block, the sign-out stands above
 // it and the way out below it, and the arrows run through the three in the order an operator
 // reaches for them (./chooser).
+//
+// **the accounts are what gives way to a terminal too short for the screen.** bubbletea draws this
+// picker inline and drops the lines of an over-tall view from the top, so a sign-in holding more
+// accounts than the terminal has lines would lose the question and the sign-out standing over it —
+// which is the screen an operator answers with. so those, the way out and the help line are drawn
+// whatever the height says, the rows scroll inside a window of their own (./showing), and the line
+// under them says how many accounts are over it and under it (./elsewhere).
 //
 // **it is this package's own drawing and not a form.** a form draws its own title first and puts no
 // row above it, and the act that gives up the sign-in belongs above the question rather than under
@@ -235,9 +245,13 @@ type chooser struct {
 	left bool
 	// quit is the operator's ctrl-c, which ends the command rather than the question (./quit.go).
 	quit bool
-	// width is the window's in cells as bubbletea last reported it, and 0 before any report — which
-	// draws every row whole, as the renderer truncates nothing at 0 either.
-	width int
+	// width is the window's in cells and height its lines, as bubbletea last reported them, and 0
+	// before any report — which draws every row whole and every account, as the renderer truncates
+	// nothing and drops nothing at 0 either.
+	width, height int
+	// from is the first of the accounts the filter left standing that the window draws, and the
+	// whole of what this screen remembers about where the rows have been scrolled to (./startingAt).
+	from int
 }
 
 // the model the screen opens on: the accounts labelled, and the cursor on the one this machine
@@ -319,8 +333,10 @@ func (drawn chooser) Init() tea.Cmd { return textinput.Blink }
 // it ends is the command, which is every prompt's ctrl-c (./quit.go).
 func (drawn chooser) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if window, resized := message.(tea.WindowSizeMsg); resized {
-		drawn.width = window.Width
-		return drawn, nil
+		drawn.width, drawn.height = window.Width, window.Height
+		// a window that shrank under the cursor is one the row it rests on may be outside of, and the
+		// screen is drawn from the same reading either way (./scrolled).
+		return drawn.scrolled(), nil
 	}
 	key, pressed := message.(tea.KeyMsg)
 	if !pressed {
@@ -374,6 +390,13 @@ func (drawn chooser) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 func (drawn chooser) moved(by int) chooser {
 	held := len(drawn.ring())
 	drawn.at = (drawn.at + by + held) % held
+	return drawn.scrolled()
+}
+
+// the window over the accounts carried to the row the cursor is now on, which every press that
+// moves that cursor or changes the list ends on.
+func (drawn chooser) scrolled() chooser {
+	drawn.from, _, _ = drawn.showing(len(drawn.matching()))
 	return drawn
 }
 
@@ -392,14 +415,14 @@ func (drawn chooser) anchored(resting string) chooser {
 	for at, one := range held {
 		if one.value == resting {
 			drawn.at = at
-			return drawn
+			return drawn.scrolled()
 		}
 	}
 	drawn.at = len(held) - 1
 	if len(drawn.matching()) > 0 {
 		drawn.at = drawn.accountsFrom()
 	}
-	return drawn
+	return drawn.scrolled()
 }
 
 // the filter given up, with every account back on the ring.
@@ -417,21 +440,27 @@ func (drawn chooser) unfiltered() chooser {
 // **each act is a line with nothing beside it and a blank line between it and the block.** what
 // tells an operator that the two are not accounts is where they are drawn, so the space around them
 // is the whole of that reading.
-func (drawn chooser) View() string {
+func (drawn chooser) View() string { return drawn.around(drawn.block()) }
+
+// the screen around the block, which is drawn whatever the window's height says.
+//
+// it is apart from ./View so that ./rows can count the lines it takes: the accounts are what gives
+// way to a short window, and what they give way to is every line here.
+func (drawn chooser) around(block string) string {
 	held := drawn.ring()
 	said := &strings.Builder{}
 	if drawn.signOut {
 		said.WriteString(act(held[0], drawn.at == 0) + "\n\n")
 	}
-	said.WriteString(dressing.Focused.Base.Render(drawn.block()) + "\n\n")
+	said.WriteString(dressing.Focused.Base.Render(block) + "\n\n")
 	last := len(held) - 1
 	said.WriteString(act(held[last], drawn.at == last) + "\n\n")
-	said.WriteString(helpSaid + "\n")
+	said.WriteString(helpSaid() + "\n")
 	return said.String()
 }
 
-// the block the cursor moves inside: the question, and a row for every account the filter left
-// standing.
+// the block the cursor moves inside: the question, a row for every account the window has room for,
+// and the line saying what it is holding back.
 //
 // a filter that left none says so where a row would be, because a block with nothing under its own
 // question reads as a screen that lost the list rather than as one an operator typed too much into.
@@ -443,15 +472,90 @@ func (drawn chooser) block() string {
 		said.WriteString("\n" + noCursor + dimmed.Render(noneMatching))
 	}
 	room := drawn.room()
-	for at, one := range standing {
-		if drawn.at == drawn.accountsFrom()+at {
+	from, shown, marked := drawn.showing(len(standing))
+	for at, one := range standing[from : from+shown] {
+		if drawn.at == drawn.accountsFrom()+from+at {
 			said.WriteString("\n" + dressing.Focused.SelectSelector.String() +
 				dressing.Focused.SelectedOption.Render(one.fitted(room)))
 			continue
 		}
 		said.WriteString("\n" + noCursor + dressing.Focused.UnselectedOption.Render(one.fitted(room)))
 	}
+	if marked {
+		said.WriteString("\n" + noCursor +
+			dimmed.Render(elsewhere(from, len(standing)-from-shown)))
+	}
 	return said.String()
+}
+
+// the window over the accounts the filter left standing: where it starts, how many of them it
+// draws, and whether it is saying what it is holding back.
+//
+// **a window one row deep draws that row and says nothing about the rest.** the line that says what
+// is being held back is a row the accounts do not get, and the row the cursor rests on is the one
+// thing this screen cannot leave out.
+func (drawn chooser) showing(standing int) (from, shown int, marked bool) {
+	rows := drawn.rows()
+	if rows <= 0 || standing <= rows {
+		return 0, standing, false
+	}
+	shown = max(rows-1, 1)
+	return startingAt(drawn.from, drawn.at-drawn.accountsFrom(), shown, standing), shown, shown < rows
+}
+
+// the lines the accounts have, and 0 where no window has been reported — which draws every one of
+// them, as a screen nothing has measured is one nothing can be left off.
+//
+// the lines around them are counted off a drawing of this screen with nothing in the block rather
+// than stated as a number, so a line added around the accounts comes out of their room rather than
+// off the bottom of the terminal.
+func (drawn chooser) rows() int {
+	if drawn.height <= 0 {
+		return 0
+	}
+	return max(drawn.height-lipgloss.Height(drawn.around("")), 1)
+}
+
+// where a window `room` rows deep over `standing` accounts starts, having been left at `from` with
+// the cursor on the account at `at`.
+//
+// **it moves by as little as it takes to hold the cursor's row.** a window that re-centred itself on
+// every press would move every row under an operator who is reading them, so the rows hold still
+// until the cursor reaches an edge of the window and then they go one row at a time.
+//
+// an `at` outside the accounts is the cursor resting on one of the two acts, which moves no row: the
+// rows an operator arrowed away from are the ones they arrow back into.
+func startingAt(from, at, room, standing int) int {
+	from = max(min(from, standing-room), 0)
+	switch {
+	case at < 0 || at >= standing:
+		return from
+	case at < from:
+		return at
+	case at >= from+room:
+		return at - room + 1
+	}
+	return from
+}
+
+// what the window is holding back, said on the line under the rows it is drawing.
+//
+// **a window over a list says what it is not drawing.** an operator reading five accounts on a
+// sign-in that holds forty is reading a screen that lied to them, and the filter is what they reach
+// for once they know the rest are there. ./cut opens it, which is the same claim a row whose name
+// was cut short makes: there is more of this than is drawn.
+//
+// **the direction is in the words and not in where they sit.** every line this block spends on
+// itself is an account it does not draw, so the two counts share the one line under the rows.
+func elsewhere(above, below int) string {
+	said := make([]string, 0, 2)
+	if above > 0 {
+		said = append(said, strconv.Itoa(above)+" above")
+	}
+	if below > 0 {
+		said = append(said, strconv.Itoa(below)+" below")
+	}
+	return cut + " " + strings.Join(said, ", ")
 }
 
 // the cells a row's words have inside the block's frame and behind its cursor, and 0 where no
@@ -540,7 +644,13 @@ var onAct = dressing.Focused.SelectSelector.UnsetString()
 // the words are the ones huh's own select put there and the keys are the same keys, so an operator
 // who has run `start` before reads the line they have always read — and the quit last, as every form
 // in this package draws it (./quit.go).
-var helpSaid = helping()
+//
+// **it is worked out the first time a screen is drawn and never at init.** the styles it renders are
+// adaptive colours, which lipgloss resolves by asking the terminal for its background and reading
+// the answer in raw mode — up to termenv's timeout where the terminal does not answer. a package
+// variable would put that wait in front of every command this binary has, and `version` and `help`
+// draw no screen at all.
+var helpSaid = sync.OnceValue(helping)
 
 func helping() string {
 	pressing := []struct{ key, does string }{

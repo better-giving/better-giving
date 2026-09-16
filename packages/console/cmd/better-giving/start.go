@@ -98,7 +98,7 @@ import (
 // the console they typed this command for.
 
 func start(args []string, to, wrong io.Writer) error {
-	taken := taking("start", startTakes)
+	taken := taking("start", startTakes())
 	port := taken.flags.Int("port", defaultPort, "the loopback port to serve on")
 	noOpen := taken.flags.Bool("no-open", false, "serve without opening a browser")
 	if on, err := taken.read(args, to, wrong); err != nil || !on {
@@ -697,8 +697,10 @@ func operating(
 // the act on the end of it because every other sentence this program ends on has one: the failure
 // is a read of the operating system that came back empty, so the press again is the whole of what
 // there is to do about it, and nothing was created (../../internal/first).
-var noSessionKey = "this console could not generate the key that signs a staff session, so " +
-	"nothing was created and nothing was deployed. Run " + terminal.Cmd("start") + " again."
+func noSessionKey() string {
+	return "this console could not generate the key that signs a staff session, so " +
+		"nothing was created and nothing was deployed. Run " + terminal.Cmd("start") + " again."
+}
 
 // the two an operator answers, taken in the order they are needed and both in front of the chain.
 //
@@ -720,7 +722,7 @@ func ask(preamble string) (first.Asked, error) {
 	// (../../internal/first).
 	secret, err := first.SessionSecret()
 	if err != nil {
-		return first.Asked{}, errors.New(noSessionKey)
+		return first.Asked{}, errors.New(noSessionKey())
 	}
 	return first.Asked{Password: password, SessionSecret: secret, Placement: placement}, nil
 }
@@ -867,17 +869,17 @@ func unnamed(held deployment.Named, cannot string) error {
 	switch held.Kind {
 	case deployment.NameRefused:
 		return fmt.Errorf("Cloudflare won't let this sign-in name this account's workers.dev "+
-			"address, %s: %s. %s", cannot, held.Detail, terminal.AnotherAccount)
+			"address, %s: %s. %s", cannot, held.Detail, terminal.AnotherAccount())
 	case deployment.NameUnreadable:
 		return fmt.Errorf("Cloudflare answered about this account's workers.dev name in a shape "+
 			"this console was not written against, %s: %s. %s",
-			cannot, held.Detail, terminal.Starting.Alone)
+			cannot, held.Detail, terminal.Starting().Alone)
 	case deployment.NameUnreachable:
 		return fmt.Errorf("Cloudflare didn't answer, %s: %s. Check this machine's connection, %s",
-			cannot, held.Detail, terminal.Starting.After)
+			cannot, held.Detail, terminal.Starting().After)
 	default:
 		return fmt.Errorf("Cloudflare would not give this account a workers.dev name, %s: %s. %s",
-			cannot, held.Detail, terminal.Starting.Alone)
+			cannot, held.Detail, terminal.Starting().Alone)
 	}
 }
 
@@ -1034,13 +1036,13 @@ func unread(address deployment.Address) error {
 	switch address.Kind {
 	case deployment.AddressRefused:
 		return fmt.Errorf("Cloudflare won't tell this sign-in what is in this account, so %s: %s. %s",
-			cannot, address.Detail, terminal.AnotherAccount)
+			cannot, address.Detail, terminal.AnotherAccount())
 	case deployment.AddressUnreadable:
 		return fmt.Errorf("Cloudflare answered about this account in a shape this console was not "+
-			"written against, so %s: %s. %s", cannot, address.Detail, terminal.Starting.Alone)
+			"written against, so %s: %s. %s", cannot, address.Detail, terminal.Starting().Alone)
 	default:
 		return fmt.Errorf("Cloudflare didn't answer, so %s: %s. Check this machine's connection, %s",
-			cannot, address.Detail, terminal.Starting.After)
+			cannot, address.Detail, terminal.Starting().After)
 	}
 }
 
@@ -1049,15 +1051,19 @@ func unread(address deployment.Address) error {
 // the list itself has already been named at the terminal (../../internal/terminal/confirm.go); what
 // is left is the act, and it is an install rather than a press — a binary older than the database
 // it is looking at has nothing it could deploy that would not carry the app backwards.
-var aheadOfThisBinary = "this deployment's database records migrations this binary does not " +
-	"carry, so nothing was uploaded: run " + terminal.Cmd("update") + " to install the current " +
-	"console, then " + terminal.Cmd("start") + " again"
+func aheadOfThisBinary() string {
+	return "this deployment's database records migrations this binary does not " +
+		"carry, so nothing was uploaded: run " + terminal.Cmd("update") + " to install the current " +
+		"console, then " + terminal.Cmd("start") + " again"
+}
 
 // what a run nobody is standing at is answered with, which is the rule this whole command keeps:
 // this console is interactive or it does not run.
-var noOneAtTheDoor = "this console asks before it updates your deployment and couldn't ask here, " +
-	"so nothing was applied and nothing was uploaded: run " + terminal.Cmd("start") + " at a " +
-	"terminal the question can be answered at"
+func noOneAtTheDoor() string {
+	return "this console asks before it updates your deployment and couldn't ask here, " +
+		"so nothing was applied and nothing was uploaded: run " + terminal.Cmd("start") + " at a " +
+		"terminal the question can be answered at"
+}
 
 // the order a carry onto a deployment already standing runs in: what a deploy would apply read, the
 // door answered, the carry itself, and where it left the deployment.
@@ -1170,9 +1176,9 @@ func atTheDoor(answered terminal.Confirmation) (said string, went doorway, err e
 	case terminal.Quit:
 		return "", shut, terminal.ErrQuit
 	case terminal.Unattended:
-		return "", shut, errors.New(noOneAtTheDoor)
+		return "", shut, errors.New(noOneAtTheDoor())
 	case terminal.Ahead:
-		return "", shut, errors.New(aheadOfThisBinary)
+		return "", shut, errors.New(aheadOfThisBinary())
 	default:
 		return "", shut, fmt.Errorf("this console didn't understand the answer at the door (%q), "+
 			"so nothing was applied and nothing was uploaded: run %s again",

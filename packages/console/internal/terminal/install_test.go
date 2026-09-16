@@ -57,7 +57,7 @@ func TestThePartsOfAnInstallNameTheArchiveAndTheFileItWasPutIn(t *testing.T) {
 func TestEveryWayAnInstallCanStopSaysWhatItLeftBehind(t *testing.T) {
 	for _, kind := range stoppedInstalls {
 		said := InstallStopped(update.Landed{Kind: kind, Asset: installing.Asset,
-			Path: installing.Path}, Updating)
+			Path: installing.Path}, Updating())
 		if said == "" {
 			t.Errorf("an install that ended %q says nothing at all", kind)
 		}
@@ -68,11 +68,11 @@ func TestEveryWayAnInstallCanStopSaysWhatItLeftBehind(t *testing.T) {
 		if !strings.Contains(said, "nothing was deployed") {
 			t.Errorf("an install that ended %q says %q, want what it left undone", kind, said)
 		}
-		if !strings.Contains(said, Updating.Alone) {
+		if !strings.Contains(said, Updating().Alone) {
 			t.Errorf("an install that ended %q says %q, want the press it belongs to named",
 				kind, said)
 		}
-		if said == unaccountedInstall(Updating) {
+		if said == unaccountedInstall(Updating()) {
 			t.Errorf("an install that ended %q has no sentence of its own", kind)
 		}
 	}
@@ -85,7 +85,7 @@ func TestNoTwoWaysAnInstallCanStopShareOneSentence(t *testing.T) {
 	seen := map[string]update.Put{}
 	for _, kind := range stoppedInstalls {
 		said := InstallStopped(update.Landed{Kind: kind, Asset: installing.Asset,
-			Path: installing.Path}, Updating)
+			Path: installing.Path}, Updating())
 		if already, twice := seen[said]; twice {
 			t.Errorf("%q and %q are told apart by nothing", already, kind)
 		}
@@ -94,7 +94,7 @@ func TestNoTwoWaysAnInstallCanStopShareOneSentence(t *testing.T) {
 }
 
 func TestAnInstallThatLandedHasNothingToStopAbout(t *testing.T) {
-	if said := InstallStopped(update.Landed{Kind: update.Replaced}, Updating); said != "" {
+	if said := InstallStopped(update.Landed{Kind: update.Replaced}, Updating()); said != "" {
 		t.Errorf("an install that landed says %q about not landing", said)
 	}
 }
@@ -112,7 +112,7 @@ func TestAConsoleThatCouldNotWorkOutWhichFileItRunsFromNamesNoDanglingOne(t *tes
 	// ../update answers Unwritable for the machine that would not say what this process is
 	// executing, and there is no path to quote for it: a sentence ending in "at , so" reads as a
 	// value that went missing on the way here (./confirm.go's answering).
-	said := InstallStopped(update.Landed{Kind: update.Unwritable, Asset: installing.Asset}, Updating)
+	said := InstallStopped(update.Landed{Kind: update.Unwritable, Asset: installing.Asset}, Updating())
 
 	if strings.Contains(said, "at ,") || strings.Contains(said, " at  ") {
 		t.Errorf("said %q, want no clause naming a file this console never worked out", said)

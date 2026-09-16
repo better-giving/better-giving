@@ -139,7 +139,7 @@ func TestAGithubThatWouldNotAnswerSaysNothingAndEndsNoCommand(t *testing.T) {
 
 func TestAskingASubcommandWhatItTakesEndsItWithNoError(t *testing.T) {
 	var help, wrong strings.Builder
-	taken := taking("start", startTakes)
+	taken := taking("start", startTakes())
 	port := taken.flags.Int("port", defaultPort, "the loopback port to serve on")
 
 	on, err := taken.read([]string{"-h"}, &help, &wrong)
@@ -147,7 +147,7 @@ func TestAskingASubcommandWhatItTakesEndsItWithNoError(t *testing.T) {
 	if on || err != nil {
 		t.Errorf("read(-h) = %v, %v, want a command that ends having answered", on, err)
 	}
-	if !strings.Contains(flowing(help.String()), flowing(startTakes)) {
+	if !strings.Contains(flowing(help.String()), flowing(startTakes())) {
 		t.Errorf("said %q, want what the command takes", help.String())
 	}
 	if !strings.Contains(help.String(), "port") {
@@ -163,7 +163,7 @@ func TestAskingASubcommandWhatItTakesEndsItWithNoError(t *testing.T) {
 
 func TestAnOptionASubcommandDoesNotKnowIsNamedOnceUnderWhatItDoesTake(t *testing.T) {
 	var help, wrong strings.Builder
-	taken := taking("update", updateTakes)
+	taken := taking("update", updateTakes())
 
 	on, err := taken.read([]string{"--yes"}, &help, &wrong)
 
@@ -176,7 +176,7 @@ func TestAnOptionASubcommandDoesNotKnowIsNamedOnceUnderWhatItDoesTake(t *testing
 	if !strings.Contains(wrong.String(), "yes") {
 		t.Errorf("said %q, want the option that was not understood named", wrong.String())
 	}
-	if !strings.Contains(flowing(wrong.String()), flowing(updateTakes)) {
+	if !strings.Contains(flowing(wrong.String()), flowing(updateTakes())) {
 		t.Errorf("said %q, want what this command does take", wrong.String())
 	}
 	if strings.Count(wrong.String(), "yes") > 1 {
@@ -203,9 +203,9 @@ func TestAnOptionASubcommandDoesNotKnowIsNamedOnceUnderWhatItDoesTake(t *testing
 
 func TestACommandTakingNoOptionsStillAnswersWhatItTakesAndDoesNothing(t *testing.T) {
 	for _, asked := range []struct{ name, says string }{
-		{"login", loginTakes},
-		{"logout", logoutTakes},
-		{"version", versionTakes},
+		{"login", loginTakes()},
+		{"logout", logoutTakes()},
+		{"version", versionTakes()},
 	} {
 		for _, help := range []string{"-h", "--help"} {
 			var out, wrong strings.Builder
@@ -437,8 +437,8 @@ func TestAnArgumentNoSubcommandTakesIsRefusedRatherThanPassedOver(t *testing.T) 
 		name, says string
 		typed      []string
 	}{
-		{"start", startTakes, []string{"now"}},
-		{"update", updateTakes, []string{"--", "--yes"}},
+		{"start", startTakes(), []string{"now"}},
+		{"update", updateTakes(), []string{"--", "--yes"}},
 	} {
 		var help, wrong strings.Builder
 		taken := taking(command.name, command.says)
@@ -551,11 +551,11 @@ func TestLoginNamesTheAccountItRecordedOnTheWayOut(t *testing.T) {
 // what a stop leaves behind, and what a machine with nowhere to keep anything is told.
 
 func TestStoppingTheConsoleSaysTheDeploymentIsUntouchedAndHowToComeBack(t *testing.T) {
-	if !strings.Contains(stillUp, "Cloudflare") {
-		t.Errorf("said %q, want where the deployment actually runs", stillUp)
+	if !strings.Contains(stillUp(), "Cloudflare") {
+		t.Errorf("said %q, want where the deployment actually runs", stillUp())
 	}
-	if !strings.Contains(stillUp, "better-giving start") {
-		t.Errorf("said %q, want the press that serves the console again", stillUp)
+	if !strings.Contains(stillUp(), "better-giving start") {
+		t.Errorf("said %q, want the press that serves the console again", stillUp())
 	}
 }
 
@@ -602,10 +602,10 @@ func TestACommandThisMachineDoesHoldIsOne(t *testing.T) {
 func TestAStopSaysWhatItLeftBehindWhereTheAnswersGo(t *testing.T) {
 	var said strings.Builder
 
-	if err := endRun(&said, &http.Server{}, &server.Presses{}, stillUp); err != nil {
+	if err := endRun(&said, &http.Server{}, &server.Presses{}, stillUp()); err != nil {
 		t.Fatalf("endRun = %v, want a server that was never serving shut cleanly", err)
 	}
-	if !strings.Contains(flowing(said.String()), flowing(stillUp)) {
+	if !strings.Contains(flowing(said.String()), flowing(stillUp())) {
 		t.Errorf("said %q, want what a stop leaves behind on the writer this run answers on",
 			said.String())
 	}
@@ -953,5 +953,56 @@ func TestACtrlCOnTheServedConsoleSaysItStoppedAndHowToOpenItAgain(t *testing.T) 
 	want := "the console has stopped. run " + terminal.Cmd("start") + " to open it again"
 	if !strings.Contains(flowing(said.String()), want) {
 		t.Errorf("said %q, want %q", said.String(), want)
+	}
+}
+
+func TestNoSentenceThisPackageSaysIsWorkedOutBeforeACommandRunsIt(t *testing.T) {
+	// every sentence here that names a press composes with terminal.Cmd, which reads the file this
+	// process is running from and this machine's PATH the first time it is asked
+	// (../../internal/terminal/ledger.go). a package variable takes that reading at init — in front
+	// of every command this binary has, `version` and `help` included, and neither of those says a
+	// sentence at all. so a sentence is a function here and the command that says it is what works
+	// it out.
+	//
+	// the same reading ../../internal/terminal/ledger_test.go's
+	// TestNothingThisPackageSaysIsWorkedOutAtInit holds that package to, one package in.
+	read := token.NewFileSet()
+	worked := []string{}
+	for _, file := range []string{"main.go", "start.go", "update.go"} {
+		parsed, err := parser.ParseFile(read, file, nil, 0)
+		if err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		for _, held := range parsed.Decls {
+			declared, ok := held.(*ast.GenDecl)
+			if !ok || declared.Tok != token.VAR {
+				continue
+			}
+			for _, one := range declared.Specs {
+				named, ok := one.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for _, value := range named.Values {
+					ast.Inspect(value, func(node ast.Node) bool {
+						call, ok := node.(*ast.CallExpr)
+						if !ok {
+							return true
+						}
+						where, ok := call.Fun.(*ast.SelectorExpr)
+						if !ok {
+							return true
+						}
+						if from, ok := where.X.(*ast.Ident); ok && from.Name == "terminal" {
+							worked = append(worked, named.Names[0].Name+" calls terminal."+where.Sel.Name)
+						}
+						return true
+					})
+				}
+			}
+		}
+	}
+	if len(worked) > 0 {
+		t.Errorf("%v at init, want a function for each of them", worked)
 	}
 }

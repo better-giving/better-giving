@@ -190,24 +190,39 @@ type options struct {
 }
 
 // what each command answers when it is asked what it takes, or handed something it does not know.
-var (
-	startTakes = terminal.Cmd("start") + " puts this release on your deployment and opens the " +
+//
+// **each is worked out where it is answered and never at init**, which every sentence in this
+// package naming a press is (../../internal/terminal/ledger.go's Cmd).
+func startTakes() string {
+	return terminal.Cmd("start") + " puts this release on your deployment and opens the " +
 		"console at it: it stands one up where there is none, and offers to carry this release " +
 		"onto one that is already behind, and waits for your answer before it updates: no flag " +
 		"answers for you. It takes:"
-	updateTakes = terminal.Cmd("update") + " takes no options. It installs the newest console on " +
+}
+
+func updateTakes() string {
+	return terminal.Cmd("update") + " takes no options. It installs the newest console on " +
 		"this machine and deploys nothing: what puts a release on your deployment is " +
 		terminal.Cmd("start") + "."
-	// **the three that take nothing read what was typed after them all the same.** ./read is where
-	// `-h` is answered and a word this command does not know is refused, and a command that skipped
-	// it answers `better-giving logout -h` by revoking the sign-in this machine holds.
-	loginTakes = terminal.Cmd("login") + " takes no options. It signs this machine in to " +
+}
+
+// **the three that take nothing read what was typed after them all the same.** ./read is where
+// `-h` is answered and a word this command does not know is refused, and a command that skipped
+// it answers `better-giving logout -h` by revoking the sign-in this machine holds.
+func loginTakes() string {
+	return terminal.Cmd("login") + " takes no options. It signs this machine in to " +
 		"Cloudflare and takes the account every command after it runs under."
-	logoutTakes = terminal.Cmd("logout") + " takes no options. It gives up the sign-in this " +
+}
+
+func logoutTakes() string {
+	return terminal.Cmd("logout") + " takes no options. It gives up the sign-in this " +
 		"machine holds, at Cloudflare and on this machine."
-	versionTakes = terminal.Cmd("version") + " takes no options. It says what this binary is and " +
+}
+
+func versionTakes() string {
+	return terminal.Cmd("version") + " takes no options. It says what this binary is and " +
 		"what it was baked for."
-)
+}
 
 func taking(name, says string) *options {
 	return &options{flags: flag.NewFlagSet(name, flag.ContinueOnError), says: says}
@@ -416,13 +431,13 @@ func installing(
 // **it returns only where the operator is left on this binary**: every way the install can fail, and
 // the exec that could not happen. on the way it works this process is already gone (./asNewer).
 func installed(ctx context.Context, read releases.Read, to io.Writer) error {
-	landed, err := installing(ctx, read, to, terminal.Starting)
+	landed, err := installing(ctx, read, to, terminal.Starting())
 	if err != nil {
 		return err
 	}
 	terminal.Lines(to)
 	terminal.Say(to, terminal.NowOn(read.Version))
-	return asNewer(landed.Path, terminal.Starting)
+	return asNewer(landed.Path, terminal.Starting())
 }
 
 // the newer console taking this run over, in this process and with the words it was typed with.
@@ -530,7 +545,7 @@ func serve(
 		// the console they were looking at, and this is the terminal that has to say so.
 		terminal.Say(to, "the console was closed from its page, stopping")
 		stop()
-		return endRun(to, listening, presses, stillUp)
+		return endRun(to, listening, presses, stillUp())
 	}
 }
 
@@ -614,12 +629,14 @@ func endRun(to io.Writer, listening *http.Server, presses *server.Presses, last 
 // the run ended by a ctrl-c in this terminal, which is where the operator typed the command and so
 // where the way to open the console again is said.
 func interrupted(to io.Writer, listening *http.Server, presses *server.Presses) error {
-	return endRun(to, listening, presses, consoleStopped)
+	return endRun(to, listening, presses, consoleStopped())
 }
 
 // what a ctrl-c on the served console leaves on the screen once the server is down: that it stopped,
 // and the command that opens it again.
-var consoleStopped = "the console has stopped. run " + terminal.Cmd("start") + " to open it again"
+func consoleStopped() string {
+	return "the console has stopped. run " + terminal.Cmd("start") + " to open it again"
+}
 
 // what a close from the page leaves behind, which is a deployment this process was never holding up.
 //
@@ -630,8 +647,10 @@ var consoleStopped = "the console has stopped. run " + terminal.Cmd("start") + "
 // the relationship rather than a claim that a deployment is there: the run that served this console
 // read it minutes or days ago, and a line asserting it is standing now would be a reading this stop
 // never took.
-var stillUp = "your deployment runs on Cloudflare and stopping this console left it alone. " +
-	"run " + terminal.Cmd("start") + " to bring the console back"
+func stillUp() string {
+	return "your deployment runs on Cloudflare and stopping this console left it alone. " +
+		"run " + terminal.Cmd("start") + " to bring the console back"
+}
 
 // how often a stop asks again whether the press it is waiting for has ended.
 const waited = 500 * time.Millisecond
@@ -686,7 +705,7 @@ func signIn(records state.Store) *oauth.Flow {
 // that wrote a credential and an account to disk would otherwise end with nothing of its own on the
 // screen — while `logout` confirms a smaller act.
 func login(args []string, to, wrong io.Writer) error {
-	taken := taking("login", loginTakes)
+	taken := taking("login", loginTakes())
 	if on, err := taken.read(args, to, wrong); err != nil || !on {
 		return err
 	}
@@ -929,7 +948,9 @@ func choosing(
 //
 // One sentence because it is one state: every command that reaches cloudflare needs a sign-in and
 // none of them can take one, so the act is the same wherever the absence is found.
-var signedOut = "this machine holds no Cloudflare sign-in: run " + terminal.Cmd("login")
+func signedOut() string {
+	return "this machine holds no Cloudflare sign-in: run " + terminal.Cmd("login")
+}
 
 // why a sign-in carries no account list to choose from.
 //
@@ -938,7 +959,7 @@ var signedOut = "this machine holds no Cloudflare sign-in: run " + terminal.Cmd(
 func unusableSignIn(held signin.SignIn) error {
 	switch held.Kind {
 	case signin.SignedOut:
-		return errors.New(signedOut)
+		return errors.New(signedOut())
 	case signin.Refused:
 		return fmt.Errorf("Cloudflare turned this sign-in down: %s", held.Detail)
 	default:
@@ -948,7 +969,7 @@ func unusableSignIn(held signin.SignIn) error {
 
 // gives up the sign-in this machine holds, at cloudflare and on disk.
 func logout(args []string, to, wrong io.Writer) error {
-	taken := taking("logout", logoutTakes)
+	taken := taking("logout", logoutTakes())
 	if on, err := taken.read(args, to, wrong); err != nil || !on {
 		return err
 	}
@@ -979,7 +1000,7 @@ func signingOut(ctx context.Context, flow *oauth.Flow, to io.Writer) error {
 // it reads its arguments for ./loginTakes' reason: a command that takes nothing still answers what
 // it takes, and a word it does not know is refused rather than passed over.
 func baked(args []string, to, wrong io.Writer) error {
-	taken := taking("version", versionTakes)
+	taken := taking("version", versionTakes())
 	if on, err := taken.read(args, to, wrong); err != nil || !on {
 		return err
 	}

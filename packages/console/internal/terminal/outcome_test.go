@@ -33,7 +33,7 @@ func TestEveryWayTheChainCanStopSaysWhatItLeftBehind(t *testing.T) {
 		if said == "" {
 			t.Errorf("a chain that ended %q says nothing at all", kind)
 		}
-		if said == unaccounted {
+		if said == unaccounted() {
 			t.Errorf("a chain that ended %q has no sentence of its own", kind)
 		}
 	}
@@ -123,7 +123,7 @@ func TestEveryStageOfTheDeploySaysWhatItLeftStanding(t *testing.T) {
 		// a stage the engine genuinely reaches and this file has no case for falls through to the
 		// sentence for a deploy that stopped where nothing could say — which reads as this console
 		// losing track of a press it watched the whole way.
-		if said == nowhereNamed(Starting) {
+		if said == nowhereNamed(Starting()) {
 			t.Errorf("a deploy stopped at %q says this console has no account of where", at)
 		}
 		if already, twice := seen[said]; twice && !oneState(already, deploy.Stage(at)) {
