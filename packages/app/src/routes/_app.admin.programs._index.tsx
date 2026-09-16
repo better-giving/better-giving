@@ -160,8 +160,8 @@ export default function Programs({ loaderData }: Route.ComponentProps) {
 								<Link to={href('/admin/programs/:id', { id: program.id })}>{program.name}</Link>
 							</h2>
 							{/* the tone is what tells the two apart down a list: Active is the accent and
-							    Archived is the hueless step down. it replaces the `secondary` this word
-							    used to carry — $lib/admin/status-tones.ts says why one or the other. */}
+							    Archived is the hueless step down. $lib/admin/status-tones.ts says which
+							    status takes which. */}
 							<StatusWord tone={PROGRAM_STATUS_TONES[program.status]}>
 								{PROGRAM_STATUS_LABELS[program.status]}
 							</StatusWord>

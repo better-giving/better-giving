@@ -405,15 +405,15 @@ function EmbedCard({
 
 	// the site the press carried, said back: an operator with three sites reads where this paste is
 	// going rather than checking the address bar for it. with no site — the address typed, the card
-	// reloaded off a bookmark — it is what the sentence has always been, which is what the form is
-	// allowed on and where to widen that.
+	// reloaded off a bookmark — the sentence names what the form is allowed on and where to widen
+	// that.
 	const closing =
 		form.site === null ? (
 			<>It loads only on the sites this form lists. Add the site on {ownPage}.</>
 		) : (
 			<>
 				Paste this into <InlineCode>{form.site}</InlineCode>. It loads only on the sites this form
-				lists &mdash; add another on {ownPage}.
+				lists. Add another on {ownPage}.
 			</>
 		);
 

@@ -128,8 +128,8 @@ it('draws the create card and nothing else while the deployment has no causes', 
 });
 
 it('puts no press over the page, on either reading', () => {
-	// the page's one press is in the list now, so a header holding a second copy of it would be two
-	// ways to the same screen a card apart.
+	// the page's one press is the card that leads the list, so a header holding a second copy of it
+	// would be two ways to the same screen a card apart.
 	for (const programs of [[], [WELLS, LEGACY]]) {
 		expect(screen(programs).querySelector('.adm-pageheader')).toBe(null);
 	}

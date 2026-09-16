@@ -441,8 +441,8 @@ describe('/admin/forms load — the form the address asks to embed', () => {
 	});
 
 	it('aims the card at nothing when the address asks for no site at all', async () => {
-		// the card the Embed press used to open, and the reading every card keeps when the operator
-		// reached it by any other route: the closing sentence names the list rather than one site.
+		// the reading a card keeps when the operator reached it by any route but a site's press: the
+		// closing sentence names the list rather than one site.
 		const { embedding } = await runLoad('configured', '', embedQuestion(FORM_ID));
 		expect(embedding?.site).toBe(null);
 	});

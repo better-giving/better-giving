@@ -165,7 +165,7 @@ it('aims a site’s press at that site on that form', () => {
 		'/admin/forms?embed=frm_general&site=https%3A%2F%2Friverbanktrust.org'
 	);
 	// the accessible name carries the record, so a reader meeting the press out of the card it
-	// stands in is told which form it embeds — the job the Embed button it replaced was doing.
+	// stands in is told which form it embeds.
 	expect(press?.getAttribute('aria-label')).toBe(
 		'Embed General Fund on https://riverbanktrust.org'
 	);
@@ -185,12 +185,12 @@ it('puts nothing over the list and no labelled value inside a card, on either re
 	for (const forms of [[], [GENERAL, APPEAL]]) {
 		const root = screen(null, forms);
 
-		// the page's one press is in the list now, so a header holding a second copy of it would be
-		// two ways to the same screen a card apart, and the hint that stood over the records went
-		// with the buttons it was qualifying.
+		// the page's one press is the card that leads the list, so a header holding a second copy of
+		// it would be two ways to the same screen a card apart. nothing stands over the records
+		// either: a draft's own pill says the state, and the screen that publishes says the rest.
 		expect(root.querySelector('.adm-pageheader')).toBe(null);
 		expect(root.querySelector('.adm-hint')).toBe(null);
-		// the sites are the presses now rather than a value read beside a label.
+		// the sites are presses at the foot of the record rather than a value read beside a label.
 		expect(root.textContent).not.toContain('Sites');
 		expect(root.textContent).not.toContain('View donation page');
 	}
@@ -266,8 +266,7 @@ it('names the site the press carried, and the list alone when there was none', (
 	const aimed = cardOn(screen({ ...ASKED, site: 'https://riverbanktrust.org' }));
 	expect(aimed.textContent).toContain('Paste this into https://riverbanktrust.org.');
 
-	// and with no site the sentence is the one every reading kept before there were presses to aim
-	// it: what the snippet is allowed on, and where to widen that.
+	// and with no site the sentence names what the snippet is allowed on, and where to widen that.
 	const plain = cardOn(screen(ASKED));
 	expect(plain.textContent).toContain('It loads only on the sites this form lists.');
 	expect(plain.textContent).not.toContain('Paste this into');
