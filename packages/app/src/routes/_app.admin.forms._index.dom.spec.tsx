@@ -7,11 +7,11 @@ import DonationForms from './_app.admin.forms._index';
 // what a form's card offers and what it does not hold.
 //
 // mounted rather than rendered to a string, and that is why this file is in the dom pool: every
-// control on the card is a `Link`, and a link only resolves to an address inside a router.
+// press on the card is a `Link`, and a link only resolves to an address inside a router.
 //
 // it is not the browser spec CLAUDE.md bans over a dashboard screen: nothing here reads a computed
-// style or a class. what is asserted is which controls a card carries, where they point, and what
-// the card does not carry.
+// style. the classes named below are read as structure and never as appearance — which card leads
+// the list, which head carries a mark, and which list is the record's foot.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -34,31 +34,53 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
-/** the two forms every case below is drawn over, as the loader projects them. */
-const GENERAL = {
-	id: 'frm_general',
-	name: 'General Fund',
-	status: 'live' as const,
-	origins: ['https://riverbanktrust.org']
+/** a form as the loader projects it: the whole of what this screen is given about one. */
+type Projected = {
+	id: string;
+	name: string;
+	status: 'live' | 'draft';
+	origins: string[];
 };
 
-const APPEAL = {
+/**
+ * the two forms every case below is drawn over: one live and served on two sites, one draft served
+ * on none. neither shares a word with the sample inside the create card, so no assertion below can
+ * be satisfied by that sample standing in for a record.
+ */
+const GENERAL: Projected = {
+	id: 'frm_general',
+	name: 'General Fund',
+	status: 'live',
+	origins: ['https://riverbanktrust.org', 'https://give.riverbanktrust.org']
+};
+
+const APPEAL: Projected = {
 	id: 'frm_appeal',
 	name: 'Winter Appeal',
-	status: 'draft' as const,
+	status: 'draft',
 	origins: []
 };
 
-/** the screen as it stands over those two, with whatever the address is asking about. */
+/** the embed card as the loader hands it over, or `null` while the address asks about nothing. */
+type Asked = {
+	id: string;
+	name: string;
+	runtime: string;
+	element: string;
+	site: string | null;
+};
+
+/** the screen as it stands over whatever forms the deployment has, and whatever the address asks. */
 function screen(
-	embedding: { id: string; name: string; runtime: string; element: string } | null = null
+	embedding: Asked | null = null,
+	forms: Projected[] = [GENERAL, APPEAL]
 ): HTMLElement {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/forms',
 			Component: () =>
 				createElement(DonationForms as never, {
-					loaderData: { created: null, embedding, forms: [GENERAL, APPEAL] },
+					loaderData: { created: null, embedding, forms },
 					params: {},
 					matches: []
 				})
@@ -67,50 +89,118 @@ function screen(
 	return mount(createElement(Stub, { initialEntries: ['/admin/forms'] }));
 }
 
-it('draws no heading of its own, and keeps the add press: the frame names the page', () => {
-	const root = screen();
+/** the list every case below reads, and it is always drawn. */
+function list(root: HTMLElement): HTMLElement {
+	const drawn = root.querySelector<HTMLElement>('.adm-list');
+	if (drawn === null) throw new Error('the screen drew no list');
+	return drawn;
+}
 
-	expect(root.querySelector('h1')).toBe(null);
-	expect(root.querySelector('.adm-pageheader a[href="/admin/forms/new"]')?.textContent).toBe(
-		'Add donation form'
+/**
+ * the cards a reader can reach, which is every record on the list and not the sample inside the
+ * create card: that one wears a record's classes on purpose, and is hidden.
+ */
+function records(root: HTMLElement): HTMLElement[] {
+	return [...list(root).querySelectorAll<HTMLElement>('.adm-record')].filter(
+		(card) => card.closest('[aria-hidden="true"]') === null
+	);
+}
+
+/** the presses at the foot of one record, in the order the card draws them. */
+function foot(card: HTMLElement | undefined): HTMLAnchorElement[] {
+	if (card === undefined) throw new Error('the screen drew no such record');
+	return [...card.querySelectorAll<HTMLAnchorElement>('.adm-record__foot a')];
+}
+
+it('leads the list with the way to add to it, on an empty list and a populated one alike', () => {
+	// the create card is the list's first card in both readings, which is what makes the empty list
+	// the same screen as the full one rather than a sentence standing in for it.
+	for (const forms of [[], [GENERAL, APPEAL]]) {
+		const lead = list(screen(null, forms)).firstElementChild;
+
+		expect(lead?.getAttribute('href')).toBe('/admin/forms/new');
+		expect(lead?.textContent).toContain('Create donation form');
+	}
+});
+
+it('draws the create card and nothing else while the deployment has no forms', () => {
+	const root = screen(null, []);
+
+	// no sentence stands in for the empty list, so there is one card on the screen and it is the way
+	// to end the emptiness.
+	expect(records(root)).toHaveLength(0);
+	expect(list(root).childElementCount).toBe(1);
+	expect(root.querySelector('.adm-empty')).toBe(null);
+});
+
+it('carries a form’s mark on the line its name is on, with its status word', () => {
+	const head = records(screen())[0]?.querySelector('.adm-record__head--marked');
+
+	// the mark leads the head, before the name: the rail carries the same glyph for Donation forms
+	// ($lib/admin/destinations.ts), so a card and the destination that reached it agree on sight.
+	expect(head?.firstElementChild?.className).toBe('adm-record__mark');
+	expect(head?.querySelector('h2 a')?.getAttribute('href')).toBe('/admin/forms/frm_general');
+	expect(head?.lastElementChild?.textContent).toBe('Live');
+});
+
+it('ends a record with its own page and then each of its sites, in the form’s own order', () => {
+	// the foot is the record's ways out, and the order is the form's: its own donation page first,
+	// because every form has one, then the sites as the form lists them.
+	const presses = foot(records(screen())[0]);
+
+	expect(presses.map((press) => press.textContent?.trim())).toEqual([
+		'form page',
+		'https://riverbanktrust.org',
+		'https://give.riverbanktrust.org'
+	]);
+	expect(presses[0]?.getAttribute('href')).toBe('/frm_general');
+});
+
+it('aims a site’s press at that site on that form', () => {
+	// the press carries both halves, so the card it opens names the site the operator pressed rather
+	// than leaving them to match it up themselves.
+	const press = foot(records(screen())[0])[1];
+
+	expect(press?.getAttribute('href')).toBe(
+		'/admin/forms?embed=frm_general&site=https%3A%2F%2Friverbanktrust.org'
+	);
+	// the accessible name carries the record, so a reader meeting the press out of the card it
+	// stands in is told which form it embeds — the job the Embed button it replaced was doing.
+	expect(press?.getAttribute('aria-label')).toBe(
+		'Embed General Fund on https://riverbanktrust.org'
 	);
 });
 
-it('leaves the snippet off the card: it is behind the Embed control now', () => {
+it('gives a form with no sites a foot of its own page alone', () => {
+	// the draft is `APPEAL`, and it is offered its own page exactly as the live form is: this screen
+	// withholds nothing over a state it cannot repair, and publishing is a press on the form's own
+	// page. a form nobody has ticked a site on has one press and no list of them.
+	const presses = foot(records(screen())[1]);
+
+	expect(presses.map((press) => press.textContent?.trim())).toEqual(['form page']);
+	expect(presses[0]?.getAttribute('href')).toBe('/frm_appeal');
+});
+
+it('puts nothing over the list and no labelled value inside a card, on either reading', () => {
+	for (const forms of [[], [GENERAL, APPEAL]]) {
+		const root = screen(null, forms);
+
+		// the page's one press is in the list now, so a header holding a second copy of it would be
+		// two ways to the same screen a card apart, and the hint that stood over the records went
+		// with the buttons it was qualifying.
+		expect(root.querySelector('.adm-pageheader')).toBe(null);
+		expect(root.querySelector('.adm-hint')).toBe(null);
+		// the sites are the presses now rather than a value read beside a label.
+		expect(root.textContent).not.toContain('Sites');
+		expect(root.textContent).not.toContain('View donation page');
+	}
+});
+
+it('leaves the snippet off the card: it is behind a press at the foot now', () => {
 	const root = screen();
 
 	expect(root.querySelector('pre')).toBe(null);
 	expect(root.textContent).not.toContain('bg-donate-form');
-});
-
-/** every link on the screen, by the address it points at. */
-function links(root: HTMLElement): HTMLAnchorElement[] {
-	return [...root.querySelectorAll('a')];
-}
-
-/** the accessible name of a link: the label the screen states, or the words in it. */
-function named(link: HTMLAnchorElement): string {
-	return link.getAttribute('aria-label') ?? link.textContent ?? '';
-}
-
-it('offers each form its own donation page and its own snippet', () => {
-	const found = links(screen()).map((link) => [named(link), link.getAttribute('href')]);
-
-	expect(found).toContainEqual(['View donation page', '/frm_general']);
-	expect(found).toContainEqual(['View donation page', '/frm_appeal']);
-	// the accessible name carries the record, so the two Embed controls are told apart by a reader
-	// meeting either of them out of the card it stands in.
-	expect(found).toContainEqual(['Embed General Fund', '/admin/forms?embed=frm_general']);
-	expect(found).toContainEqual(['Embed Winter Appeal', '/admin/forms?embed=frm_appeal']);
-});
-
-it('draws both controls on a draft, whose page and snippet both refuse until it is published', () => {
-	// the draft is `APPEAL`, and it is offered exactly what the live form is offered. this screen
-	// withholds nothing over a state it cannot repair: publishing is a press on the form's own page.
-	const drawn = links(screen()).map(named);
-
-	expect(drawn.filter((name) => name === 'View donation page')).toHaveLength(2);
-	expect(drawn.filter((name) => name.startsWith('Embed '))).toHaveLength(2);
 });
 
 /**
@@ -121,11 +211,12 @@ it('draws both controls on a draft, whose page and snippet both refuse until it 
  * half, in order, and packages/form/src/embed/snippet.spec.ts is where the halves themselves are
  * held.
  */
-const ASKED = {
+const ASKED: Asked = {
 	id: GENERAL.id,
 	name: GENERAL.name,
 	runtime: '<script src="https://example.org/embed.js" async></script>\n<style>…</style>',
-	element: '<bg-donate-form form="frm_general"></bg-donate-form>'
+	element: '<bg-donate-form form="frm_general"></bg-donate-form>',
+	site: null
 };
 
 it('puts no card on the screen while the address asks about nothing', () => {
@@ -166,7 +257,20 @@ it('names each copy control for the placement it takes, not just for the record'
 it('titles the card with the form’s name in quotes', () => {
 	// the quotes are the seam between the verb and the name: `Embed General Fund` reads as one
 	// run-on phrase.
-	expect(cardOn(screen(ASKED)).textContent).toContain('Embed \u201cGeneral Fund\u201d');
+	expect(cardOn(screen(ASKED)).textContent).toContain('Embed “General Fund”');
+});
+
+it('names the site the press carried, and the list alone when there was none', () => {
+	// the press said which site it was for, so the card says it back: an operator with three sites
+	// reads where this paste is going rather than checking the address bar for it.
+	const aimed = cardOn(screen({ ...ASKED, site: 'https://riverbanktrust.org' }));
+	expect(aimed.textContent).toContain('Paste this into https://riverbanktrust.org.');
+
+	// and with no site the sentence is the one every reading kept before there were presses to aim
+	// it: what the snippet is allowed on, and where to widen that.
+	const plain = cardOn(screen(ASKED));
+	expect(plain.textContent).toContain('It loads only on the sites this form lists.');
+	expect(plain.textContent).not.toContain('Paste this into');
 });
 
 it('offers the way out and the page the sites are ticked on', () => {

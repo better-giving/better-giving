@@ -52,7 +52,7 @@ export const DESTINATION_GROUPS = [
 	},
 	{
 		destinations: [
-			{ href: '/admin/forms', label: 'Donation forms', short: 'Forms', mark: 'file-text' },
+			{ href: '/admin/forms', label: 'Donation forms', short: 'Forms', mark: 'form' },
 			// directly after the forms, because a program is what a form asks a donor about: it is named
 			// here and then pinned or offered there, and neither screen means anything without the other.
 			{ href: '/admin/programs', label: 'Programs', short: 'Programs', mark: 'folder-heart' },

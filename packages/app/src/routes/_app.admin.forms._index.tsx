@@ -1,10 +1,11 @@
 import { elementSnippet, runtimeSnippet } from '@better-giving/form/embed/snippet';
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
-import { Button } from '@better-giving/operator/components/controls/Button';
-import { CodeChip, CodeSlab, InlineCode } from '@better-giving/operator/components/data/CodeSlab';
-import { EmptyState } from '@better-giving/operator/components/data/EmptyState';
+import { CodeSlab, InlineCode } from '@better-giving/operator/components/data/CodeSlab';
+import { CreateCard } from '@better-giving/operator/components/data/CreateCard';
+import { Press } from '@better-giving/operator/components/data/Press';
 import { Column, List } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
+import { Mark } from '@better-giving/operator/components/status/Mark';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { FORM_STATUS_TONES } from '$lib/admin/status-tones';
 import { useEffect, useRef } from 'react';
@@ -41,8 +42,8 @@ import type { Route } from './+types/_app.admin.forms._index';
 // which refuses to make a form while a blocker stands, and the editor, which refuses to publish one
 // — and a second telling on a screen that writes nothing would be a second place to read the same
 // thing. `$lib/server/forms/readiness.ts` is where it lives and those two routes are its callers.
-// the organisation's own details go with it, for the same reason: the control in this page's header
-// is a link that never gates, so nothing here asks whether they are saved.
+// the organisation's own details go with it, for the same reason: the card that leads the list is a
+// link that never gates, so nothing here asks whether they are saved.
 //
 // this file is deliberately thin. what reaches the database lives in
 // `$lib/server/forms/queries.ts`; the only job here is a projection. neither `D1Database` nor the
@@ -117,6 +118,16 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 	const asked = url.searchParams.get('embed');
 	const embedded = listed.find((form) => form.id === asked) ?? null;
 
+	// the site that form's card is aimed at, named by the press the operator made at the foot of the
+	// record. kept only when the matched form's own origins hold that exact string: the address is
+	// anybody's to type, and a card naming a site the form does not list would be telling an operator
+	// to paste into a page the served config refuses.
+	//
+	// taken off the row already in hand rather than read again, and the exact string rather than a
+	// parsed host — what the served config matches an `Origin` against is the stored string.
+	const aimed = url.searchParams.get('site');
+	const site = embedded?.origins.find((origin) => origin === aimed) ?? null;
+
 	return data(
 		{
 			// the outcome of the create next door: the new form's name, so the banner names it. `null`
@@ -124,8 +135,8 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 			// it.
 			created: created && { id: created.id, name: created.name },
 			// what the embed card is drawn from: the name it is titled with, the id the link out of it
-			// points at, and the two placements the card hands over — the row itself, so the card and
-			// the list can only ever agree about the form they are both naming.
+			// points at, the two placements the card hands over and the site it is aimed at — the row
+			// itself, so the card and the list can only ever agree about the form they are both naming.
 			//
 			// built here rather than on the projection above, because the card is drawn over one form
 			// and a string on every row is a string the browser is sent once per form to draw none of.
@@ -136,7 +147,10 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 				id: embedded.id,
 				name: embedded.name,
 				runtime: runtimeSnippet(origin),
-				element: elementSnippet(embedded.id)
+				element: elementSnippet(embedded.id),
+				// the one site the card names in its closing sentence, or `null` for the sentence that
+				// names the form's list instead.
+				site
 			},
 			forms: listed
 		},
@@ -148,37 +162,57 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 	);
 }
 
+/* the shape a form takes on this list, drawn hidden inside the create card so that card stands as
+   tall as a record whether or not the deployment has one yet. it carries no link and no heading:
+   the card is one press, and either would be a focusable node inside an `aria-hidden` subtree —
+   `CreateCard`'s `ghost` prop says the rest. the presses in it are plain elements wearing the
+   press's classes for that same reason. */
+const SAMPLE = (
+	<div className="adm-record">
+		<div className="adm-record__head adm-record__head--marked">
+			<span className="adm-record__mark">
+				<Mark name="form" />
+			</span>
+			<span className="adm-record__title">Year-end appeal</span>
+			<StatusWord tone="done">Live</StatusWord>
+		</div>
+		<ul className="adm-record__origins adm-record__foot">
+			<li>
+				<span className="adm-chip adm-press adm-press--words">form page</span>
+			</li>
+			<li>
+				<span className="adm-chip adm-press">riverside-shelter.org</span>
+			</li>
+		</ul>
+	</div>
+);
+
 // what this page owes is the forms this deployment has, the snippet an operator pastes into their
 // own site, and a way to reach the screen that configures one. it writes nothing: every change to a
 // form happens on its own page.
 //
-// each record ends with the two ways out of it, and they are the two places a form is actually
-// used: the deployment's own donation page for that form, and the embed, in a card the address asks
-// for. what the card hands over is two placements rather than one block — the runtime, once per
-// page, and the element, wherever the form appears — because that is the instruction an integrator
-// is following. either is a value somebody takes away rather than one they read down a list, so
-// both are one press away and the record stays the height of what it says.
+// each record ends in the places that form is actually used — the deployment's own donation page
+// for it, then each site an operator has ticked — and every one of them is a press. a site's press
+// opens the embed card aimed at that site, because what an operator came for is the block to paste
+// into that page rather than a list of where the form is allowed. what the card hands over is two
+// placements rather than one block — the runtime, once per page, and the element, wherever the form
+// appears — because that is the instruction an integrator is following, and both are a value
+// somebody takes away rather than one they read down a list.
 //
 // because it writes nothing, it gates nothing and reports nothing about the deployment's own state.
 // the status ledger is on the screens under `new` and `[id]`, which are the ones that refuse a
-// write while a blocker stands, and the action in this page's header is a plain link that is never
+// write while a blocker stands, and the card that leads the list is a plain link that is never
 // switched off — a second telling here would be a second place to read the same thing, and the
 // place an operator would have to act is the console's Organisation fold either way
 // (`packages/console-ui/src/lib/org-fold.tsx`), which is not on this deployment at all.
 //
 // that reaches the wording of a value as well as the presence of a block, and it is the rule a
 // record here is written to: a value a form has not been given is stated as a fact about that form
-// and never as a warning about it. no mark, no tone, no position of its own — the ink is the empty
-// sentence's and nothing else — because a line that reads as a blocker on the one screen that
-// cannot act on one sends an operator looking for the button that clears it.
+// and never as a warning about it. a form nobody has ticked a site on has a shorter foot and no
+// sentence about it, because a line that reads as a blocker on the one screen that cannot act on
+// one sends an operator looking for the button that clears it.
 export default function DonationForms({ loaderData }: Route.ComponentProps) {
 	const { created, embedding, forms } = loaderData;
-
-	// whether the note about drafts is owed at all. it is one fact about every draft on the list
-	// rather than a fact about any one of them, so a reader meets it once above the records instead
-	// of once per card — the same sentence repeated down a list is read as a different sentence each
-	// time and then as none of them.
-	const anyDraft = forms.some((form) => form.status === 'draft');
 
 	// the notice arrives already holding its text, and a live region that arrives carrying its own
 	// text is one insertion rather than a change: no reader announces it, and focus is still on
@@ -202,28 +236,6 @@ export default function DonationForms({ loaderData }: Route.ComponentProps) {
 		// one column and the column is what spaces it: every block below carries no margin of its
 		// own, so one that is not rendered leaves no space behind it.
 		<Column>
-			{/* the page's one press, where `PageHeader` draws its trailing slot. the strip over the
-			    page carries the name, so the header draws no title of its own. */}
-			<header className="adm-pageheader">
-				<div className="adm-pageheader__row">
-					{/* a link dressed as a button, and it stays a link: this navigates, it does not write,
-					    and the markup is where that difference should be readable.
-
-					    it is never switched off. whatever would block adding a form — an organisation
-					    with no registered name and no EIN saved, keys that cannot charge — is a
-					    gate on the screen that adds one, which is the screen that writes and the screen
-					    carrying the ledger that says which blocker stands. a control disabled here would
-					    be a second answer to a question this page never asks.
-
-					    "Add" is the dashboard's one word for bringing a record into being, here and on the
-					    donors list, and it is the word on the button, the page it opens and the banner
-					    that reports the write. */}
-					<Button as={Link} to={href('/admin/forms/new')}>
-						Add donation form
-					</Button>
-				</div>
-			</header>
-
 			{/* the outcome of the create next door, which redirected here with the new form's id. it
 			    is the only outcome this page reports and the only one it can: this page writes
 			    nothing, so every other thing that happens to a form is reported on the screen that
@@ -244,130 +256,101 @@ export default function DonationForms({ loaderData }: Route.ComponentProps) {
 
 			{/* no opening sentence, and the page is not missing one: what a snippet is for is said
 			    where one is handed over — on the form's own page, over that form's slab, and in the
-			    card the Embed control opens — so an instruction here would be the same instruction
-			    read before there is anything to act on. */}
+			    card a site's press opens — so an instruction here would be the same instruction read
+			    before there is anything to act on. */}
 
-			{forms.length === 0 ? (
-				<EmptyState>No donation forms yet.</EmptyState>
-			) : (
-				<>
-					{/* what a draft on this list answers with, said once for every draft on it. both
-					    controls under a draft's record lead somewhere that refuses — the donation page
-					    draws a notice and the pasted snippet loads nothing, because the served config
-					    refuses a draft — and this is where that is said, rather than at each control
-					    that would then say it twice.
+			<List>
+				{/* the way to add a form leads the list rather than standing over it, so an empty
+				    deployment meets the same screen a full one does with one card fewer on it. the word
+				    names what is created; `Add` stays the verb for the act, on the screen this opens
+				    and in the banner that reports the write. */}
+				<CreateCard as={Link} to={href('/admin/forms/new')} ghost={SAMPLE}>
+					Create donation form
+				</CreateCard>
 
-					    it stands above the records rather than inside one because it is the same fact
-					    about each of them, and it is a hint rather than a standfirst: it qualifies the
-					    list under it rather than naming the page. a live record is not what it is about
-					    and a list with no draft on it never draws it. */}
-					{anyDraft ? (
-						<p className="adm-hint">
-							A draft takes no gifts: its donation page and its snippet both refuse until you
-							publish it.
-						</p>
-					) : null}
+				{forms.map((form) => (
+					// a form is a record rather than a run of paragraphs: its name and its status on one
+					// baseline, then the places it is used, each one a press.
+					//
+					// the record is written out of the classes packages/operator/src/styles/adm.css
+					// already draws rather than mounted from the library's `RecordCard`, which now draws
+					// all of this: the level is the caller's, the status word takes its register, the mark
+					// is a name from the closed set, and the origins are a foot of presses. adopting it is
+					// the one change left here and is a screen's change rather than a part's. nothing new
+					// is drawn and no value is stated.
+					//
+					// the id is not a value on the card and must not become one. every press is already
+					// built from it — the name links to the form's own page, and the foot carries it in
+					// the addresses it points at — so a row printing it would be one string said again
+					// with no job.
+					<section className="adm-record" key={form.id}>
+						<div className="adm-record__head adm-record__head--marked">
+							{/* the glyph the rail carries for Donation forms ($lib/admin/destinations.ts),
+							    so a card and the destination that reached it agree on sight. */}
+							<span className="adm-record__mark">
+								<Mark name="form" />
+							</span>
+							{/* the name is a plain link and takes the title's own type role, rather than
+							    arriving at a button's and being pushed back out of it.
 
-					<List>
-						{forms.map((form) => (
-							// a form is a record rather than a run of paragraphs: its name and its status on
-							// one baseline, then the one fact a list of forms is scanned for — where it may
-							// be used — as a labelled value, then what an operator takes away from it.
-							//
-							// the record is written out of the classes packages/operator/src/styles/adm.css
-							// already draws rather than mounted from the library's `RecordCard`, which now
-							// draws all of this: the level is the caller's, the status word takes its
-							// register, and the origins are a labelled list. adopting it is the one change
-							// left here and is a screen's change rather than a part's. nothing new is drawn
-							// and no value is stated.
-							//
-							// the id is not one of those labelled values and must not become one. every
-							// control on the card is already built from it — the name links to the form's
-							// own page, and the two below carry it in the addresses they point at — so a row
-							// printing it as a value is one string said again with no job.
-							<section className="adm-record" key={form.id}>
-								<div className="adm-record__head">
-									{/* the name is a plain link and takes the title's own type role, rather
-									    than arriving at a button's and being pushed back out of it.
+							    level 2, because a record on this list stands directly under the page's own
+							    `<h1>` and nothing sits between them. how loud the words are is
+							    `.adm-record__title`'s to say. */}
+							<h2 className="adm-record__title">
+								<Link to={href('/admin/forms/:id', { id: form.id })}>{form.name}</Link>
+							</h2>
+							{/* the tone is what tells the two apart down a list: Live is the accent and
+							    Draft is the ochre of a form still waiting on somebody. there are only ever
+							    those two here — `readForms` leaves an archived form out of the list
+							    entirely — and $lib/admin/status-tones.ts maps all three. */}
+							<StatusWord tone={FORM_STATUS_TONES[form.status]}>
+								{FORM_STATUS_LABELS[form.status]}
+							</StatusWord>
+						</div>
 
-									    level 2, because a record on this list stands directly under the
-									    page's own `<h1>` and nothing sits between them. how loud the words
-									    are is `.adm-record__title`'s to say. */}
-									<h2 className="adm-record__title">
-										<Link to={href('/admin/forms/:id', { id: form.id })}>{form.name}</Link>
-									</h2>
-									{/* the tone is what tells the two apart down a list: Live is the accent and
-									    Draft is the ochre of a form still waiting on somebody. there are only
-									    ever those two here — `readForms` leaves an archived form out of the
-									    list entirely — and $lib/admin/status-tones.ts maps all three. */}
-									<StatusWord tone={FORM_STATUS_TONES[form.status]}>
-										{FORM_STATUS_LABELS[form.status]}
-									</StatusWord>
-								</div>
+						{/* the foot: where this form is used, in the order it is reached — the deployment's
+						    own donation page, which every form has, then the sites an operator ticked.
 
-								<dl>
-									<div className="adm-setting">
-										<dt className="adm-setting__label">Sites</dt>
-										{/* a form with nothing ticked is still served somewhere, so the empty
-										    value says where rather than saying none: this deployment's own
-										    donation page is on no `site` row and on no form's
-										    `allowed_origins`, and is accepted off the request instead
-										    (./$formId.tsx). it states what the form is, not what an operator
-										    should do about it — this screen writes nothing and reports no
-										    blocker, so it is set as a caption rather than as a value somebody
-										    has to act on. */}
-										{form.origins.length === 0 ? (
-											<dd className="adm-setting__value adm-caption">Your donation page only.</dd>
-										) : (
-											// a list and never the joined text, however few there are: an
-											// origin is an identifier, and a comma between two of them reads
-											// as part of one.
-											<dd className="adm-setting__value">
-												<ul className="adm-record__origins">
-													{form.origins.map((origin) => (
-														<li key={origin}>
-															<CodeChip>{origin}</CodeChip>
-														</li>
-													))}
-												</ul>
-											</dd>
-										)}
-									</div>
-								</dl>
+						    `Press` draws its own `<li>`, so the items are the part's and a screen
+						    assembling them itself is a screen that can drop the element a browser reports
+						    the run by.
 
-								{/* last, because it is what an operator takes away from the record rather
-								    than part of what the record says.
+						    every press is drawn on a draft as well. a draft's donation page answers with a
+						    notice rather than the form and its pasted snippet loads nothing — the served
+						    config refuses a draft — and neither is a state this screen can repair:
+						    publishing is a press on the form's own page.
 
-								    both navigate and neither writes, so both are links wearing a button and
-								    neither states a `variant`: they are one rank, and the record they act on
-								    is what tells them apart rather than a tone.
-
-								    both are drawn on a draft as well. a draft's donation page answers with a
-								    notice rather than the form and its snippet fails the same way — the
-								    served config refuses a draft — and neither is a state this screen can
-								    repair: publishing is a press on the form's own page, and the hint above
-								    the list is where that is said once. */}
-								<div className="adm-actions">
-									<Button as={Link} size="sm" to={href('/:formId', { formId: form.id })}>
-										View donation page
-									</Button>
-									{/* named for the record it acts on, for the reason the members list names
-									    its per-row control: twenty controls all called Embed is a list a
-									    reader has to walk to reach the one they came for. */}
-									<Button
-										as={Link}
-										size="sm"
-										to={`${SCREEN}?embed=${encodeURIComponent(form.id)}`}
-										aria-label={`Embed ${form.name}`}
-									>
-										Embed
-									</Button>
-								</div>
-							</section>
-						))}
-					</List>
-				</>
-			)}
+						    the role is stated for the reason `RecordCard` states it on the foot it draws:
+						    no marker and a flex row, either of which stops a browser reporting this as a
+						    list. removing the attribute re-opens the defect. */}
+						{/* biome-ignore lint/a11y/noRedundantRoles: no marker and a flex row, as above. */}
+						<ul role="list" className="adm-record__origins adm-record__foot">
+							{/* words and an arrow, because it goes to a page. the site presses beside it
+							    hold a literal instead and take none. */}
+							<Press words as={Link} to={href('/:formId', { formId: form.id })}>
+								form page
+							</Press>
+							{form.origins.map((origin) => (
+								// the site is what is pressed and the card it opens is aimed at it, so the
+								// snippet an operator is about to paste names the page it is going into.
+								//
+								// named for the record it acts on, for the reason the members list names its
+								// per-row control: a screenful of presses all reading as the same act is a
+								// list a reader has to walk to reach the one they came for. the site is in
+								// the name as well as in the press, so what is read out holds what is seen.
+								<Press
+									key={origin}
+									as={Link}
+									to={`${SCREEN}?embed=${encodeURIComponent(form.id)}&site=${encodeURIComponent(origin)}`}
+									aria-label={`Embed ${form.name} on ${origin}`}
+								>
+									{origin}
+								</Press>
+							))}
+						</ul>
+					</section>
+				))}
+			</List>
 
 			{embedding ? <EmbedCard form={embedding} /> : null}
 		</Column>
@@ -404,6 +387,10 @@ export default function DonationForms({ loaderData }: Route.ComponentProps) {
  * this screen writes nothing, so the sentence points at the page that does. the deployment's own
  * donation page is not on that list and never has to be — it is accepted off the request instead
  * (./$formId.tsx).
+ *
+ * the site is named in that sentence when the press that opened the card carried one, and the
+ * loader keeps it only when the form lists it: a card telling an operator to paste into a page the
+ * served config refuses would be worse than one naming no page at all.
  */
 function EmbedCard({
 	form
@@ -411,6 +398,24 @@ function EmbedCard({
 	readonly form: NonNullable<Route.ComponentProps['loaderData']['embedding']>;
 }) {
 	const navigate = useNavigate();
+
+	const ownPage = (
+		<Link to={href('/admin/forms/:id', { id: form.id })}>the form&rsquo;s own page</Link>
+	);
+
+	// the site the press carried, said back: an operator with three sites reads where this paste is
+	// going rather than checking the address bar for it. with no site — the address typed, the card
+	// reloaded off a bookmark — it is what the sentence has always been, which is what the form is
+	// allowed on and where to widen that.
+	const closing =
+		form.site === null ? (
+			<>It loads only on the sites this form lists. Add the site on {ownPage}.</>
+		) : (
+			<>
+				Paste this into <InlineCode>{form.site}</InlineCode>. It loads only on the sites this form
+				lists &mdash; add another on {ownPage}.
+			</>
+		);
 
 	return (
 		<Modal
@@ -433,10 +438,7 @@ function EmbedCard({
 			<CodeSlab label="script" record={form.name} content={form.runtime} copyable />
 			<p className="adm-prose">2. Put this where the form should appear.</p>
 			<CodeSlab label="element" record={form.name} content={form.element} copyable />
-			<p className="adm-prose">
-				It loads only on the sites this form lists. Add the site on{' '}
-				<Link to={href('/admin/forms/:id', { id: form.id })}>the form&rsquo;s own page</Link>.
-			</p>
+			<p className="adm-prose">{closing}</p>
 		</Modal>
 	);
 }

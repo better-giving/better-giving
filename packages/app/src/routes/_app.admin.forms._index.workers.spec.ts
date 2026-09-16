@@ -138,7 +138,13 @@ const STRIPE_KEYS: Record<StripeSlots, Record<string, string>> = {
 /** what the screen is handed, off one request through the chain the deployment serves it under. */
 type Loaded = {
 	created: { id: string; name: string } | null;
-	embedding: { id: string; name: string; runtime: string; element: string } | null;
+	embedding: {
+		id: string;
+		name: string;
+		runtime: string;
+		element: string;
+		site: string | null;
+	} | null;
 	forms: {
 		id: string;
 		name: string;
@@ -175,9 +181,13 @@ async function runLoad(
 	return payload(await visit(reason, flash, search));
 }
 
-/** the address the Embed control navigates to, built the way the screen builds it. */
-function embedQuestion(id: string): string {
-	return `?embed=${encodeURIComponent(id)}`;
+/**
+ * the address a press at the foot of a record navigates to, built the way the screen builds it: the
+ * form the card is drawn over, and the site it is aimed at when the press was a site's.
+ */
+function embedQuestion(id: string, site?: string): string {
+	const embed = `?embed=${encodeURIComponent(id)}`;
+	return site === undefined ? embed : `${embed}&site=${encodeURIComponent(site)}`;
 }
 
 /**
@@ -359,7 +369,13 @@ describe('/admin/forms load — the form the address asks to embed', () => {
 		const { embedding } = await runLoad('configured', '', embedQuestion(FORM_ID));
 		expect(embedding?.id).toBe(FORM_ID);
 		expect(embedding?.name).toBe('General Fund');
-		expect(Object.keys(embedding ?? {}).sort()).toEqual(['element', 'id', 'name', 'runtime']);
+		expect(Object.keys(embedding ?? {}).sort()).toEqual([
+			'element',
+			'id',
+			'name',
+			'runtime',
+			'site'
+		]);
 	});
 
 	it('hands the card the two placements, built against this request’s own origin', async () => {
@@ -397,5 +413,37 @@ describe('/admin/forms load — the form the address asks to embed', () => {
 			.bind('archived', FORM_ID)
 			.run();
 		expect((await runLoad('configured', '', embedQuestion(FORM_ID))).embedding).toBe(null);
+	});
+	it('aims the card at the site the press carried, when that form lists it', async () => {
+		// a press at the foot of a record is one of that form's own sites, so the card names where the
+		// snippet is going rather than leaving an operator to match it up themselves.
+		const site = 'https://acme.org';
+		await env.DB.prepare('update form set allowed_origins = ? where id = ?')
+			.bind(JSON.stringify([site]), FORM_ID)
+			.run();
+
+		const { embedding } = await runLoad('configured', '', embedQuestion(FORM_ID, site));
+		expect(embedding?.site).toBe(site);
+	});
+
+	it('aims the card at nothing when the address names a site the form does not list', async () => {
+		// a card naming a site the form does not list would be telling an operator to paste into a
+		// page the served config refuses. the address is anybody's to type, so the site is kept only
+		// when the matched form's own origins hold that exact string.
+		await env.DB.prepare('update form set allowed_origins = ? where id = ?')
+			.bind(JSON.stringify(['https://acme.org']), FORM_ID)
+			.run();
+
+		for (const site of ['https://elsewhere.org', 'acme.org', '']) {
+			const { embedding } = await runLoad('configured', '', embedQuestion(FORM_ID, site));
+			expect(embedding?.site, site || '(empty)').toBe(null);
+		}
+	});
+
+	it('aims the card at nothing when the address asks for no site at all', async () => {
+		// the card the Embed press used to open, and the reading every card keeps when the operator
+		// reached it by any other route: the closing sentence names the list rather than one site.
+		const { embedding } = await runLoad('configured', '', embedQuestion(FORM_ID));
+		expect(embedding?.site).toBe(null);
 	});
 });
