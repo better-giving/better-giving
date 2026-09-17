@@ -5,6 +5,8 @@ import type {
 	ConsoleVersion,
 	HomeReading,
 	HomeShape,
+	NowpaymentsPress,
+	NowpaymentsSaved,
 	OrgWrite,
 	PaymentsRead,
 	PaypalRunRead,
@@ -114,7 +116,7 @@ export const homeReading = (): Promise<HomeReading> => ask('/home/reading', 'GET
 /**
  * sets and clears the values a fold's boxes carry, in one request to cloudflare.
  *
- * every one of the twenty-one is a plain var, so this is the one door every press on the page writes
+ * every one of the twenty-four is a plain var, so this is the one door every press on the page writes
  * through — a read of the worker's bindings and one patch back. seconds and no deploy: the binary
  * replaces the named bindings and sends every other one back up as inherited, so the deployment's
  * database and its rate limiters are untouched.
@@ -125,8 +127,9 @@ export const homeReading = (): Promise<HomeReading> => ask('/home/reading', 'GET
  *
  * **every way it did not happen comes back as a value rather than thrown**, because each is a state
  * the fold draws at the control that was pressed. the binary refuses a name that is not one of the
- * twenty-one, PayPal's three credentials, which only {@link startPaypalSetup} writes, and Chariot's
- * four values, which only {@link startChariotSetup} writes, before
+ * twenty-four, PayPal's three credentials, which only {@link startPaypalSetup} writes, and Chariot's
+ * four values, which only {@link startChariotSetup} writes, and NOWPayments' three, which only
+ * {@link saveNowpayments} writes, before
  * cloudflare is asked — and that refusal is thrown: no control on this page can make one.
  */
 export const setVars = (values: Record<string, string | null>): Promise<VarsWritten> =>
@@ -346,6 +349,17 @@ export async function startChariotSetup(boxes: {
  */
 export const chariotRun = async (): Promise<ChariotRunRead | null> =>
 	(await ask<{ run: ChariotRunRead | null }>('/chariot/run', 'GET')).run;
+
+/**
+ * stores NOWPayments' three values, answering once the binary has checked the key and the payout
+ * currency against NOWPayments and written them, in this one request — a save with no run behind it.
+ *
+ * every way it stored nothing comes back as a value naming the box it is about. a box posted blank is
+ * thrown: the route reads the boxes by the binary's own rule first (../lib/nowpayments-setup.ts), so
+ * no press on the page can send one.
+ */
+export const saveNowpayments = (press: NowpaymentsPress): Promise<NowpaymentsSaved> =>
+	post('/nowpayments/values', press);
 
 /**
  * the release this binary was built as, out of what it was baked with.

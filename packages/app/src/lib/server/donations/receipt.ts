@@ -4,7 +4,7 @@ import type { Db } from '../db/client';
 import { donation } from '../db/schema';
 import { renderGrantReceived, type GrantNoticeInput } from '../email/grant';
 import type { RenderedEmail } from '../email/provider';
-import { renderReceipt, type ReceiptContribution } from '../email/receipt';
+import { renderReceipt, type CryptoReceived, type ReceiptContribution } from '../email/receipt';
 import { readOrgProfile } from '../org/queries';
 import { alert, type MailDeps } from './delivery';
 
@@ -95,6 +95,11 @@ export type ReceiptTarget = {
 	 * because both already read the gift and neither costs a round trip for it.
 	 */
 	readonly program: string | null;
+	/**
+	 * the coin and amount a crypto gift arrived as, or `null` on every other rail — joined by the
+	 * caller off the settled `payment` row, with the coin's name from the list the donor picked from.
+	 */
+	readonly crypto: CryptoReceived | null;
 };
 
 /**
@@ -127,7 +132,8 @@ export async function sendReceipt(deps: MailDeps, target: ReceiptTarget): Promis
 			// make rather than one it is guessing at.
 			goodsOrServices: { kind: 'none' },
 			tribute: target.tribute,
-			program: target.program
+			program: target.program,
+			crypto: target.crypto
 		})
 	);
 }

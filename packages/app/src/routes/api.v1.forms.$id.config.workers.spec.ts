@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountRoutes } from '../route-request.testing';
 import * as config from './api.v1.forms.$id.config';
 import * as surface from './api.v1';
@@ -409,6 +409,93 @@ describe('GET /api/v1/forms/:id/config', () => {
 		const response = await get();
 		expect(response.status).toBe(200);
 		expect(await response.json()).not.toHaveProperty('program');
+	});
+});
+
+/**
+ * crypto on a served config, through the real NOWPayments adapter behind a scripted `fetch`: offered
+ * beside the coins the account enabled, and on a one-time gift only — a deployment holding a
+ * processor that collects repeating gifts beside it still offers those cadences.
+ */
+describe('GET /api/v1/forms/:id/config — crypto', () => {
+	const NOWPAYMENTS = {
+		NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey',
+		NOWPAYMENTS_OUTCOME_CURRENCY: 'btc'
+	};
+	const BTC = {
+		code: 'BTC',
+		name: 'Bitcoin',
+		enable: true,
+		network: 'btc',
+		ticker: 'btc',
+		extra_id_exists: false,
+		extra_id_optional: false,
+		available_for_payment: true
+	};
+	const COIN_KEY = new Request('https://give.example.workers.dev/__payable-coins');
+
+	function accountEnabling(codes: readonly string[]): void {
+		vi.stubGlobal('fetch', async (input: Request | string | URL, init?: RequestInit) => {
+			const request = input instanceof Request ? input : new Request(String(input), init);
+			const path = new URL(request.url).pathname;
+			if (path === '/v1/merchant/coins') return Response.json({ selectedCurrencies: codes });
+			if (path === '/v1/full-currencies') return Response.json({ currencies: [BTC] });
+			return Response.json({ message: 'unscripted' }, { status: 500 });
+		});
+	}
+
+	afterEach(async () => {
+		await Promise.all([edge.delete(COIN_KEY), edge.delete(RAIL_KEY), warmCadences()]);
+	});
+
+	const warm = (key: Request, value: unknown) =>
+		edge.put(
+			key,
+			new Response(JSON.stringify(value), {
+				headers: { 'content-type': 'application/json', 'cache-control': 'max-age=300' }
+			})
+		);
+
+	it('offers crypto on a one-time gift alone where NOWPayments is the only processor', async () => {
+		// the cadences read for real: no processor held here collects a repeating gift.
+		await edge.delete(CADENCE_KEY);
+		accountEnabling(['BTC']);
+
+		const response = await get(FORM_ID, ALLOWED, NOWPAYMENTS);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			paymentMethods: ['crypto'],
+			frequencies: ['one_time'],
+			coins: [{ coin: 'btc', name: 'Bitcoin', network: 'btc', ticker: 'btc', memoRequired: false }]
+		});
+	});
+
+	it('offers crypto beside a card processor that still offers monthly and yearly', async () => {
+		await warm(CADENCE_KEY, ['one_time', 'monthly', 'yearly']);
+		await warm(RAIL_KEY, ['card', 'crypto']);
+		accountEnabling(['BTC']);
+
+		const response = await get(FORM_ID, ALLOWED, { ...STRIPE, ...NOWPAYMENTS });
+
+		expect(response.status).toBe(200);
+		const config = (await response.json()) as Record<string, unknown>;
+		expect(config).toMatchObject({
+			paymentMethods: ['card', 'crypto'],
+			frequencies: ['one_time', 'monthly', 'yearly']
+		});
+		expect(config.coins).toHaveLength(1);
+	});
+
+	it('withdraws crypto where no coin could be offered, whatever the rail read kept', async () => {
+		await warm(RAIL_KEY, ['card', 'crypto']);
+		accountEnabling([]);
+
+		const response = await get(FORM_ID, ALLOWED, { ...STRIPE, ...NOWPAYMENTS });
+		const config = (await response.json()) as Record<string, unknown>;
+
+		expect(config.paymentMethods).not.toContain('crypto');
+		expect(config).not.toHaveProperty('coins');
 	});
 });
 

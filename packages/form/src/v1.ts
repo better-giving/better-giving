@@ -150,9 +150,10 @@ export type FeeCoverage = (typeof FEE_COVERAGE_MODES)[number];
  *
  * more than one processor's rails, and no rail is offered by two of them: `card`, `ach` and the
  * wallets are settled by the processor whose fields the card draws inline, `paypal` and `venmo` by
- * the processor whose own window collects them, and `daf` by the processor whose window asks the
- * donor's fund for a grant. `STRIPE_RAILS`, `PAYPAL_RAILS` and `CHARIOT_RAILS` in ./embed/rails.ts
- * are that split written down, and `providers` on `FormConfig` below is the field that lets one
+ * the processor whose own window collects them, `daf` by the processor whose window asks the
+ * donor's fund for a grant, and `crypto` by the processor that mints an address the donor sends a
+ * coin to. `STRIPE_RAILS`, `PAYPAL_RAILS`, `CHARIOT_RAILS` and `NOWPAYMENTS_RAILS` in
+ * ./embed/rails.ts are that split written down, and `providers` on `FormConfig` below is the field that lets one
  * config name more than one.
  */
 export const PAYMENT_METHODS = [
@@ -162,7 +163,8 @@ export const PAYMENT_METHODS = [
 	'google_pay',
 	'paypal',
 	'venmo',
-	'daf'
+	'daf',
+	'crypto'
 ] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
@@ -182,7 +184,8 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 	google_pay: 'Google Pay',
 	paypal: 'PayPal',
 	venmo: 'Venmo',
-	daf: 'Donor-advised fund'
+	daf: 'Donor-advised fund',
+	crypto: 'Crypto'
 };
 
 /**
@@ -292,6 +295,24 @@ export type Provider = {
 };
 
 /**
+ * one coin the deployment's crypto account takes, as a donor picks it.
+ *
+ * `coin` is NOWPayments' own code, lowercased (`usdttrc20`), and it is the value `QuoteRequest.coin`
+ * carries back — never the ticker, which names the base asset and is shared by the same asset on
+ * several chains. `ticker` is NOWPayments' ticker, lowercased (`usdt`), for display and search only;
+ * `coin` still identifies the coin. `network` is shown beside it because a deposit sent on the wrong
+ * chain reaches no gift. `memoRequired` says a deposit without the payment's memo cannot be matched at
+ * all; where it is false the quote's `Deposit.memo` still says whether that one payment carries one.
+ */
+export type PayableCoin = {
+	readonly coin: string;
+	readonly ticker: string;
+	readonly name: string;
+	readonly network: string;
+	readonly memoRequired: boolean;
+};
+
+/**
  * `GET /api/v1/forms/:id/config` — everything the form cannot know and the backend owns.
  *
  * nothing here is secret, by construction: it is embedded in public HTML on the org's site.
@@ -342,6 +363,23 @@ export type FormConfig = {
 	readonly monthlyAsk?: MonthlyAsk;
 	/** the cause this form's gifts are credited to, absent where it has none. */
 	readonly program?: Program;
+	/**
+	 * the coins a `crypto` gift may be sent in, absent where the rail is not offered.
+	 *
+	 * on this response rather than on an endpoint of its own. which coins an account takes is a
+	 * capability, and the served config is already edge-cached as one (CLAUDE.md → *Storage*), so the
+	 * list arrives with the boot the form makes anyway. a separate read under `/api/v1` would owe
+	 * CORS, rate limiting, Turnstile and server-side bounds (CLAUDE.md → *Bans*) for data this
+	 * response already carries.
+	 *
+	 * a coin's minimum and price cap are not here and never will be: both are numbers that move with
+	 * the coin's price, and a cached number is a stale one. the quote refuses them by name instead —
+	 * `below_minimum` and `above_maximum` in `API_ERROR_CODES` below.
+	 *
+	 * ./config.ts reads an empty or unreadable list as none, and a config offering `crypto` with no
+	 * coin to pick as one not offering it.
+	 */
+	readonly coins?: readonly PayableCoin[];
 };
 
 /**
@@ -353,6 +391,36 @@ export type FormConfig = {
  */
 export type Mandate = {
 	readonly text: string;
+};
+
+/**
+ * where and how much a donor sends on a `crypto` gift, as the quote hands it over.
+ *
+ * typed beside `Quote.paymentToken` rather than packed inside it: the element, the donation page and
+ * the pending-payment email each read these, and an opaque token would be a parser per reader.
+ *
+ * `coinAmount` is text, a canonical positive decimal (`^(0|[1-9]\d*)(\.\d*[1-9])?$`), and never a
+ * number. a coin carries more precision than a double keeps, and the figure is what the donor types
+ * into a wallet — a digit lost to a float is an address paid the wrong amount. it is shown and never
+ * computed with.
+ *
+ * `memo` is null where the payment carries none, and a screen never drops one that is present: a
+ * deposit to a memo coin's address without it cannot be matched to the gift.
+ *
+ * `validUntil` is ISO 8601 text, when the address stops being watched for this payment.
+ *
+ * `qr` is the address alone as a module matrix, encoded on the server so the embed ships no encoder:
+ * one string per row, each character `'1'` for a dark module and `'0'` for a light one, square, with
+ * no quiet zone — the renderer draws the margin.
+ */
+export type Deposit = {
+	readonly address: string;
+	readonly memo: string | null;
+	readonly coin: string;
+	readonly network: string;
+	readonly coinAmount: string;
+	readonly validUntil: string;
+	readonly qr: { readonly rows: readonly string[] };
 };
 
 /**
@@ -381,6 +449,13 @@ export type Quote = {
 	readonly totalMinor: number;
 	/** present only on a rail that requires an authorization the donor must accept first. */
 	readonly mandate?: Mandate;
+	/**
+	 * present exactly on a `crypto` quote, and what the donor is shown to pay it.
+	 *
+	 * on that rail nothing is confirmed after the quote: the donor sends the coin, and
+	 * `paymentToken` is the donation id `DonationStatus` below is read by.
+	 */
+	readonly deposit?: Deposit;
 };
 
 /** what the machine sends to mint a `Quote`. */
@@ -415,6 +490,14 @@ export type QuoteRequest = {
 	 * grant, and nothing is confirmed after it.
 	 */
 	readonly authorizedMinor?: number;
+	/**
+	 * the coin the donor chose, as `PayableCoin.coin` on the served config names it.
+	 *
+	 * present exactly when `method` is `'crypto'` and absent on every other method. the endpoint
+	 * checks it against what the account takes at the moment of the quote rather than against the
+	 * served list, which may be older, and refuses a coin it no longer takes as `coin_not_accepted`.
+	 */
+	readonly coin?: string;
 	readonly email: string;
 	readonly firstName: string;
 	readonly lastName: string;
@@ -494,6 +577,27 @@ export type QuoteRequest = {
 };
 
 /**
+ * where a gift paid to an address stands, as the waiting screen reads it.
+ *
+ * `waiting` is no deposit recorded against the gift yet, `received` is one recorded — the donor's
+ * part is done — and `expired` is the address no longer watched with nothing received. a vocabulary
+ * under this file's add-never-rename rule.
+ */
+export const DONATION_STATES = ['waiting', 'received', 'expired'] as const;
+export type DonationState = (typeof DONATION_STATES)[number];
+
+/**
+ * `GET /api/v1/forms/:id/donations/:donationId` — one gift's standing, read off this deployment's
+ * own rows.
+ *
+ * keyed by `Quote.paymentToken` on a `crypto` quote, which is the donation id. the state and nothing
+ * else: no amount and no donor detail, because the id is all a caller holds.
+ */
+export type DonationStatus = {
+	readonly state: DonationState;
+};
+
+/**
  * a 4xx from `/api/v1`.
  *
  * `fix` is not decoration. CLAUDE.md: 4xx bodies are read by AI agents, not humans in a
@@ -506,6 +610,11 @@ export type ApiError = {
 	readonly error: string;
 	readonly message: string;
 	readonly fix?: string;
+	/**
+	 * `below_minimum` only, where the processor named its floor: the least gift the coin takes, in the
+	 * minor units of `QuoteRequest.amountMinor`, any covered fee left out, rounded up. absent otherwise.
+	 */
+	readonly minAmountMinor?: number;
 };
 
 /**
@@ -516,16 +625,17 @@ export type ApiError = {
  * switches on, so renaming one breaks an integration that already handles it, and the only way to
  * add or merge a member is to edit the file whose header says that.
  *
- * ten, and the count is held down deliberately. a code answers "which screen", the message
+ * thirteen, and the count is held down deliberately. a code answers "which screen", the message
  * answers "which value" — so two codes carrying a byte-identical `fix` were one code all along
  * and are merged rather than kept as synonyms, and a new value worth naming is a new sentence in
- * an existing member's message before it is an eleventh member.
+ * an existing member's message before it is a fourteenth member.
  *
- * six of the ten are decided before anything is charged, from this deployment's own
- * configuration and the form record. the four that are not are the four the donation form can do
+ * six of the thirteen are decided before anything is charged, from this deployment's own
+ * configuration and the form record. the seven that are not are the seven the donation form can do
  * something about, and that is what earns each of them a member: `payments_unavailable` is the
  * processor answering badly, `challenge_failed` is a token the challenge service would not
- * honour, and the two `daf_` members are a donor-advised fund's own answer to a grant. every other
+ * honour, the two `daf_` members are a donor-advised fund's own answer to a grant, and the three
+ * crypto members are the processor refusing the coin or the amount the donor chose. every other
  * failure of the payment path is either a hole an operator fills, which the six already say, or a
  * bug of ours, which is a 500 and no code at all: a member for one would ask a donation form to
  * render a screen about our defect.
@@ -582,6 +692,30 @@ export const API_ERROR_CODES = [
 	 * with the fund or a different amount. neither a fresh approval nor a retry moves it, which is
 	 * what keeps it apart from `daf_authorization_expired` and `payments_unavailable`.
 	 */
-	'daf_grant_declined'
+	'daf_grant_declined',
+	/**
+	 * the coin on a `crypto` quote is not one the account takes, so no address was minted.
+	 *
+	 * `message` names the coin as `QuoteRequest.coin` sent it, and `fix` says to pick another from
+	 * the served config's `coins` — a coin switched off after that list was cached is the ordinary
+	 * way here. a retry of the same coin answers the same.
+	 */
+	'coin_not_accepted',
+	/**
+	 * the gift converts to less of the chosen coin than the processor accepts, so no address was
+	 * minted.
+	 *
+	 * `message` names the coin and the minimum in dollars, because the minimum moves with the coin's
+	 * price and is on no served response to read ahead of time; `fix` is a larger amount or another
+	 * coin. apart from `above_maximum` because the donor moves the amount the other way.
+	 */
+	'below_minimum',
+	/**
+	 * the processor refused the gift as more than it takes in the chosen coin, so no address was
+	 * minted.
+	 *
+	 * `message` names the coin and the amount refused; `fix` is a smaller amount or another coin.
+	 */
+	'above_maximum'
 ] as const;
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

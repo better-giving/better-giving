@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import layoutStyles from './layout.css?inline';
 import partStyles from './parts.css?inline';
+import { createDepositBlock } from '../deposit';
 
 // the browser pool. what is asserted here is what a lightweight DOM cannot see at all: how the
 // amount tiles actually flowed — how many to a row, and whether any row came out short — which unit
@@ -389,6 +390,103 @@ describe('the review step at the narrowest card', () => {
 		receipt.style.whiteSpace = 'nowrap';
 		expect(receipt.scrollWidth).toBeGreaterThan(receipt.clientWidth);
 	});
+});
+
+describe('the address screen at the narrowest card', () => {
+	/** the block ../views.ts stands on the address screen, holding the longest address and a memo. */
+	function addressScreen() {
+		const built = card('375px', '16px');
+		const block = createDepositBlock(document, () => {});
+		built.takeover.appendChild(block.root);
+		block.update({
+			coinAmount: '19.36121163',
+			ticker: 'XRP',
+			about: 'About $25.00 today',
+			network: 'XLM',
+			networkWarning: 'Send on this network only.',
+			address: 'GT5XENIU5JALFHLBH53QVDEP65LRK5WHIKF2KIRCK6FBF7SDJSJ3NKSYGT5XENIU5JALFHLBH53QVDEP65',
+			memo: '3198472051',
+			memoWarning: 'Include this memo.',
+			qr: ['101', '010', '101'],
+			sendBy: 'Send by September 24, 2026 at 3:42 PM.',
+			walletFee: 'Your gift is what arrives.',
+			email: 'These details were also sent to ruth@example.org.',
+			status: 'Waiting for your gift to arrive'
+		});
+		const [, , address, memo] = [...block.root.querySelectorAll<HTMLElement>('.held')];
+		return {
+			...built,
+			block: block.root,
+			address: address as HTMLElement,
+			memo: memo as HTMLElement
+		};
+	}
+
+	it('keeps the whole address inside the card, wrapped rather than cut', () => {
+		const { body, takeover, address } = addressScreen();
+		const value = address.querySelector('.value') as HTMLElement;
+		const inset = getComputedStyle(body);
+		const interior =
+			body.clientWidth -
+			Number.parseFloat(inset.paddingLeft) -
+			Number.parseFloat(inset.paddingRight);
+
+		expect(takeover.getBoundingClientRect().width).toBeLessThanOrEqual(interior);
+		expect(value.scrollWidth).toBeLessThanOrEqual(value.clientWidth);
+		expect(value.getBoundingClientRect().height).toBeGreaterThan(
+			Number.parseFloat(getComputedStyle(value).fontSize) * 2
+		);
+	});
+
+	it('keeps each Copy beside its value, on the value’s first line', () => {
+		const { address } = addressScreen();
+		const value = (address.querySelector('.value') as HTMLElement).getBoundingClientRect();
+		const copy = (address.querySelector('button') as HTMLElement).getBoundingClientRect();
+
+		expect(copy.left).toBeGreaterThanOrEqual(value.right);
+		expect(copy.top).toBeLessThan(
+			value.top + Number.parseFloat(getComputedStyle(address).fontSize)
+		);
+	});
+
+	it('puts the QR under the memo rather than beside the address', () => {
+		const { block, memo } = addressScreen();
+		const qr = (block.querySelector('.qr') as HTMLElement).getBoundingClientRect();
+
+		expect(qr.top).toBeGreaterThanOrEqual(memo.getBoundingClientRect().bottom);
+		expect(qr.width).toBeGreaterThanOrEqual(176);
+	});
+
+	// the Copy column is `auto`, so a label that grew on press would narrow the address beside it,
+	// wrap it a line further and drop everything under it — and lift it back on blur.
+	it.each([
+		['Copied', () => Promise.resolve()],
+		['Copy failed', () => Promise.reject(new Error('denied'))]
+	])(
+		'holds the Copy and the address where they were once the Copy reads %s',
+		async (said, write) => {
+			const { address } = addressScreen();
+			const value = address.querySelector('.value') as HTMLElement;
+			const copy = address.querySelector('button') as HTMLButtonElement;
+			const before = {
+				copy: copy.getBoundingClientRect().width,
+				value: value.getBoundingClientRect().height
+			};
+
+			vi.spyOn(navigator.clipboard, 'writeText').mockImplementation(write);
+			onTestFinished(() => {
+				vi.restoreAllMocks();
+			});
+			copy.click();
+			await vi.waitFor(() => expect(copy.innerText).toBe(said));
+
+			expect({
+				copy: copy.getBoundingClientRect().width,
+				value: value.getBoundingClientRect().height
+			}).toEqual(before);
+			expect(copy.getAttribute('aria-label')).toBe('Copy address');
+		}
+	);
 });
 
 describe('the hidden attribute', () => {

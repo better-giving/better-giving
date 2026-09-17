@@ -3,6 +3,7 @@ import {
 	chariotRun,
 	consoleVersion,
 	levelWallets,
+	saveNowpayments,
 	startChariotSetup,
 	startStripeSetup
 } from './client';
@@ -123,6 +124,35 @@ describe('the press that sets chariot up from the key and the address', () => {
 
 		await expect(chariotRun()).resolves.toBeNull();
 		expect(calls[0]?.[0]).toBe('/api/chariot/run');
+	});
+});
+
+describe('the press that stores nowpayments from the three boxes', () => {
+	const press = { apiKey: 'np_x', ipnSecret: 'ipn_x', outcomeCurrency: 'usdc' };
+
+	it('posts the three boxes to the binary and answers the write it made', async () => {
+		const written = { kind: 'written', written: { kind: 'written' } };
+		const calls = recording(written);
+
+		await expect(saveNowpayments(press)).resolves.toEqual(written);
+		expect(calls[0]?.[0]).toBe('/api/nowpayments/values');
+		expect(calls[0]?.[1]?.method).toBe('POST');
+		expect(JSON.parse(String(calls[0]?.[1]?.body))).toEqual(press);
+	});
+
+	it('answers a key nowpayments turned down as a value, naming the box', async () => {
+		answering(200, { kind: 'key_refused', detail: 'Invalid api key' });
+
+		await expect(saveNowpayments(press)).resolves.toEqual({
+			kind: 'key_refused',
+			detail: 'Invalid api key'
+		});
+	});
+
+	it('throws where the door refused the body, which no box on the page can post', async () => {
+		answering(400, { error: 'the api key slot holds nothing, or a value with space around it' });
+
+		await expect(saveNowpayments(press)).rejects.toThrow('api key slot');
 	});
 });
 

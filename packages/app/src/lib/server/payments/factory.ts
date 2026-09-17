@@ -11,6 +11,7 @@ import {
 	type ProcessorName
 } from './provider';
 import { CHARIOT_LIVE_API_URL, createChariotProvider } from './chariot';
+import { createNowpaymentsProvider } from './nowpayments';
 import { createPaypalProvider } from './paypal';
 import { createStripeProvider } from './stripe';
 import type { StripeUnreadableReason } from '@better-giving/operator/console/stripe-read';
@@ -146,6 +147,24 @@ const PROCESSORS: Readonly<Record<ProcessorName, Processor>> = Object.freeze({
 				webhookSecret: env.CHARIOT_WEBHOOK_SECRET ?? null
 			});
 		}
+	},
+	nowpayments: {
+		// the payout coin is a credential here in all but name: every coin's minimum is asked against
+		// it and no call reads it off the account (`NowpaymentsCredentials.outcomeCurrency` in
+		// ./nowpayments.ts), so a deployment without it can price no gift.
+		requires: ['NOWPAYMENTS_API_KEY', 'NOWPAYMENTS_OUTCOME_CURRENCY'],
+		build: (env) => {
+			const apiKey = env.NOWPAYMENTS_API_KEY;
+			const outcomeCurrency = env.NOWPAYMENTS_OUTCOME_CURRENCY;
+			if (apiKey === undefined || outcomeCurrency === undefined) return null;
+			// `NOWPAYMENTS_IPN_SECRET` for Stripe's signing secret's reason above: the IPN arm is its
+			// one reader.
+			return createNowpaymentsProvider({
+				apiKey,
+				outcomeCurrency,
+				ipnSecret: env.NOWPAYMENTS_IPN_SECRET ?? null
+			});
+		}
 	}
 });
 
@@ -187,7 +206,8 @@ export function requiredCredentials(name: ProcessorName): readonly (keyof Config
 }
 
 /**
- * the public key each processor's browser SDK is started with.
+ * the public key each processor's browser SDK is started with, or null for a processor with no
+ * browser half.
  *
  * one variable per processor and separate from {@link PROCESSORS}'s `requires`, because the two
  * halves are short in different ways and fix differently. a deployment holding the server half and
@@ -197,11 +217,17 @@ export function requiredCredentials(name: ProcessorName): readonly (keyof Config
  *
  * PayPal's is its client id, which is on its `requires` as well: the pair authenticates a server
  * call and the id alone starts the SDK, so the one variable is short in both ways at once.
+ *
+ * NOWPayments' is null: a crypto gift is an address the donor pays from their own wallet, and no
+ * script is started on the donor's page. null means no browser half is owed, so it is never named
+ * as short, and never an entry in `ServedProcessors.providers` — `Provider.publishableKey` in
+ * packages/form/src/v1.ts is what an adapter on the donor's page starts an SDK with.
  */
-const BROWSER_VARS: Readonly<Record<ProcessorName, keyof ConfigEnv>> = Object.freeze({
+const BROWSER_VARS: Readonly<Record<ProcessorName, keyof ConfigEnv | null>> = Object.freeze({
 	stripe: 'STRIPE_PUBLISHABLE_KEY',
 	paypal: 'PAYPAL_CLIENT_ID',
-	chariot: 'CHARIOT_CONNECT_ID'
+	chariot: 'CHARIOT_CONNECT_ID',
+	nowpayments: null
 });
 
 /** which processors a donation form may be served on here, and what to say where there are none. */
@@ -216,7 +242,21 @@ export type ServedProcessors = {
 	 */
 	readonly providers: readonly Provider[];
 	/**
-	 * what is short, for the refusal a caller states where `providers` is empty.
+	 * every processor whose credentials are set, browser half or not, in `PROCESSOR_NAMES` order —
+	 * what a refusal names as the accounts it read.
+	 */
+	readonly configured: readonly ProcessorName[];
+	/**
+	 * whether any processor can take a gift on a form served here: an entry in `providers`, or a
+	 * processor with no browser half whose credentials are set.
+	 *
+	 * the answer a refusal turns on, rather than `providers` being empty. a processor with no browser
+	 * half is never in `providers` (see {@link BROWSER_VARS}), so read off that list a deployment
+	 * holding NOWPayments' values alone would be refused and told to set what it already holds.
+	 */
+	readonly serves: boolean;
+	/**
+	 * what is short, for the refusal a caller states where `serves` is false.
 	 *
 	 * read on that arm alone. it names the variables whose setting would change the answer and says
 	 * of any processor whose credentials are set that this release reads them from nothing — which
@@ -247,19 +287,31 @@ export function servedProcessors(source: unknown): ServedProcessors {
 	if (env === null) {
 		return {
 			providers: [],
+			configured: [],
+			serves: false,
 			shortfall: 'this deployment’s configuration could not be read',
 			fix: processorSetupFix(PROCESSOR_NAMES)
 		};
 	}
 
 	const providers = PROCESSOR_NAMES.flatMap((name) => {
-		const publishableKey = env[BROWSER_VARS[name]];
+		const browserVar = BROWSER_VARS[name];
+		if (browserVar === null) return [];
+		const publishableKey = env[browserVar];
 		if (publishableKey === undefined) return [];
 		if (!configuredFor(env, name)) return [];
 		return [{ name, publishableKey }];
 	});
 
-	return { providers, shortfall: shortfall(env), fix: processorSetupFix(startedOn(env)) };
+	const configured = PROCESSOR_NAMES.filter((name) => configuredFor(env, name));
+	const serves = providers.length > 0 || configured.some((name) => BROWSER_VARS[name] === null);
+	return {
+		providers,
+		configured,
+		serves,
+		shortfall: shortfall(env),
+		fix: processorSetupFix(startedOn(env))
+	};
 }
 
 /**
@@ -287,7 +339,10 @@ function startedOn(env: ConfigEnv): readonly ProcessorName[] {
  * ways.
  */
 function setupVars(name: ProcessorName): readonly (keyof ConfigEnv)[] {
-	return [...new Set([...PROCESSORS[name].requires, BROWSER_VARS[name]])];
+	const browserVar = BROWSER_VARS[name];
+	const vars =
+		browserVar === null ? PROCESSORS[name].requires : [...PROCESSORS[name].requires, browserVar];
+	return [...new Set(vars)];
 }
 
 /**
@@ -315,7 +370,12 @@ const SETUP_FIXES: Readonly<Record<ProcessorName, string>> = Object.freeze({
 	chariot:
 		'Chariot issues the org’s API key by email. Open the console (`better-giving start`) and set ' +
 		'Chariot up on its page under Donation processor, which stores the key, fetches the Connect ' +
-		'id and creates the event subscription with its secret.'
+		'id and creates the event subscription with its secret.',
+	nowpayments:
+		'In the org’s own NOWPayments dashboard, take the API key, and the code of the coin set as ' +
+		`the payout wallet under Payment Settings (such as \`usdttrc20\`), then run ` +
+		`\`${setCommand('NOWPAYMENTS_API_KEY')}\` and \`${setCommand('NOWPAYMENTS_OUTCOME_CURRENCY')}\` ` +
+		'against this deployment.'
 });
 
 /**
@@ -419,10 +479,20 @@ export type Processors = {
  */
 export function createPaymentProviders(source: unknown): Processors {
 	const env = read(source);
+	// one adapter per processor for the set's life, so what an adapter keeps for the request it was
+	// built on is shared by every caller in that request (`accountSelection` in ./nowpayments.ts).
+	const built = new Map<ProcessorName, PaymentProvider>();
+	const adapter = (name: ProcessorName): PaymentProvider => {
+		const kept = built.get(name);
+		if (kept !== undefined) return kept;
+		const made = provider(env, name);
+		built.set(name, made);
+		return made;
+	};
 	return {
 		configured: env === null ? [] : PROCESSOR_NAMES.filter((name) => configuredFor(env, name)),
-		for: (name) => provider(env, name),
-		forRail: (rail) => provider(env, processorOf(rail)),
+		for: adapter,
+		forRail: (rail) => adapter(processorOf(rail)),
 		// a configuration that could not be read is every variable unset rather than none: the answer a
 		// caller acts on is "this cannot be called", and an empty list there would read as a processor
 		// that is ready.

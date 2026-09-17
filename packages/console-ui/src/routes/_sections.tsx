@@ -7,6 +7,7 @@ import type { CSSProperties } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { Link, Outlet, redirect, useLocation, useSearchParams } from 'react-router';
 import chariotLogo from '../assets/processors/chariot.png';
+import nowpaymentsLogo from '../assets/processors/nowpayments.png';
 import paypalLogo from '../assets/processors/paypal.png';
 import stripeLogo from '../assets/processors/stripe.png';
 import github from '../assets/social/github.webp';
@@ -80,7 +81,8 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 	const groups = railGroups(reading.sections, reading.processors, {
 		stripe: stripeLogo,
 		paypal: paypalLogo,
-		chariot: chariotLogo
+		chariot: chariotLogo,
+		nowpayments: nowpaymentsLogo
 	});
 	const here = groups
 		.flatMap((group) => group.destinations)

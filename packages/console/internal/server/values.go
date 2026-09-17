@@ -9,21 +9,23 @@ import (
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/chariot"
 	"github.com/better-giving/console/internal/deployment"
+	"github.com/better-giving/console/internal/nowpayments"
 	"github.com/better-giving/console/internal/oauth"
 	"github.com/better-giving/console/internal/release"
 )
 
-// the two presses over the twenty-one values this deployment is configured with: one sets them and
+// the two presses over the twenty-four values this deployment is configured with: one sets them and
 // takes them off, and one frees a name the deployment is holding as a credential.
 //
 // **what a browser posts is names and values, and a name mapped to `null` is a removal.** setting
 // and removing are one door because they are one patch of the worker's bindings — internal/deployment
 // is where that is argued.
 //
-// **a body is refused in four cases.** internal/release holds the twenty-one, and a name off that
+// **a body is refused in four cases.** internal/release holds the twenty-four, and a name off that
 // list is refused here rather than written under whatever the page said — the console's own session
 // credential is on no enumeration and is not reachable through this door. the second is PayPal's
-// three credentials and Chariot's four values, argued at ./paypalSetUpOnly and ./chariotSetUpOnly.
+// three credentials, Chariot's four values and NOWPayments' three, argued at ./paypalSetUpOnly,
+// ./chariotSetUpOnly and ./nowpaymentsSetUpOnly.
 // the third is a name carrying a blank, which is neither a value the deployment reads nor the
 // removal `null` is. the fourth is the charity-rate switch carrying anything but its one word,
 // argued at ./charityRate.
@@ -68,9 +70,14 @@ var paypalSetUpOnly = []string{"PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYP
 // so a write of any of the four here leaves them disagreeing and grants never reading received.
 var chariotSetUpOnly = chariot.SetUpOnly
 
+// the names NOWPayments' press writes (./nowpayments.go), and that press alone: it asks NOWPayments
+// whether the key reads the account and the outcome currency is a coin before it writes, so a write
+// here would be a key nothing checked.
+var nowpaymentsSetUpOnly = nowpayments.SetUpOnly
+
 // how much of a press's body is read before it is a request nobody made.
 //
-// The whole enumeration is the largest thing posted here — twenty-one names and their values — and
+// The whole enumeration is the largest thing posted here — twenty-four names and their values — and
 // anything past that is not this page.
 const writtenBytes = 32 << 10
 
@@ -108,6 +115,14 @@ func valuesRoutes(
 					"error": "this console writes " + name + " only through Chariot's set-up press " +
 						"(POST /api/chariot/setup), which fetches the Connect and settles the subscription " +
 						"beside the key",
+				})
+				return
+			}
+			if enumerated(nowpaymentsSetUpOnly, name) {
+				answer(w, http.StatusBadRequest, map[string]string{
+					"error": "this console writes " + name + " only through NOWPayments' press " +
+						"(POST /api/nowpayments/values), which checks the key and the outcome currency " +
+						"with NOWPayments first",
 				})
 				return
 			}
@@ -230,14 +245,24 @@ func writing(
 		answer(w, http.StatusOK, deployment.NoCredentialWrite(credential.Detail))
 		return deployment.Door{}, false
 	}
+	return openDoor(accountID, credential, reads, patches, settings), true
+}
 
+// the door onto this release's worker in one account, on a credential this console holds.
+func openDoor(
+	accountID string,
+	credential cf.Credential,
+	reads func(cf.Credential) cf.Get,
+	patches func(cf.Credential) cf.Send,
+	settings func(cf.Credential) cf.MultipartUpload,
+) deployment.Door {
 	return deployment.Door{
 		AccountID:  accountID,
 		WorkerName: release.Baked.Name,
 		Get:        reads(credential),
 		Patch:      patches(credential),
 		Settings:   settings(credential),
-	}, true
+	}
 }
 
 // whether `name` is on the enumeration.
@@ -252,7 +277,7 @@ func enumerated(enumeration []string, name string) bool {
 
 func refuseName(w http.ResponseWriter, name string) {
 	answer(w, http.StatusBadRequest, map[string]string{
-		"error": "this console sets the twenty-one values a deployment is configured with, and " +
+		"error": "this console sets the twenty-four values a deployment is configured with, and " +
 			name + " is not one of them",
 	})
 }

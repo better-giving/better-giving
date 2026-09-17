@@ -399,7 +399,11 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 		resubscribeWebhookEndpoint: async () => unsupported(NO_LISTENER_ARMS),
 		replaceWebhookEndpoint: async () => unsupported(NO_LISTENER_ARMS),
 		listWalletDomains: async () => unsupported(NO_WALLETS),
-		registerWalletDomain: async () => unsupported(NO_WALLETS)
+		registerWalletDomain: async () => unsupported(NO_WALLETS),
+		listPayableCoins: async () =>
+			unsupported(
+				'A grant is made in dollars, so there is no coin list to read. Nothing was asked of Chariot.'
+			)
 	};
 }
 
@@ -498,7 +502,8 @@ function settlementOf(grant: unknown): PaymentResult<Settlement> {
 			// the gift a grant belongs to is the row the server bound the grant id to.
 			metadata: {},
 			...(trackingId !== null && { reference: trackingId }),
-			occurredAt
+			occurredAt,
+			arrival: null
 		}
 	};
 }

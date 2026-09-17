@@ -109,6 +109,32 @@ func TestTheTopLevelIsReadEvenWhereAnEnvironmentDeclaresOneOfItsOwn(t *testing.T
 	}
 }
 
+func TestTheCronsAreTheOnesTheTopLevelTriggersDeclare(t *testing.T) {
+	declared, err := Declared(`{
+		"name": "better-giving",
+		"triggers": { "crons": ["*/30 * * * *", "0 3 * * *"] },
+		` + boundDatabase + `,
+		"env": { "test": { "triggers": { "crons": ["* * * * *"] } } }
+	}`)
+	if err != nil {
+		t.Fatalf("Declared: %v", err)
+	}
+	if got := strings.Join(declared.Crons, ","); got != "*/30 * * * *,0 3 * * *" {
+		t.Errorf("crons = %v, want the top level's two", declared.Crons)
+	}
+}
+
+func TestAConfigDeclaringNoTriggersBakesAnEmptyScheduleRatherThanNone(t *testing.T) {
+	// the deploy sends the list whole, and an empty one is what takes a removed schedule off.
+	declared, err := Declared(`{ "name": "better-giving", ` + boundDatabase + ` }`)
+	if err != nil {
+		t.Fatalf("Declared: %v", err)
+	}
+	if declared.Crons == nil || len(declared.Crons) != 0 {
+		t.Errorf("crons = %#v, want an empty list", declared.Crons)
+	}
+}
+
 func TestAConfigThatNamesNoWorkerIsRefused(t *testing.T) {
 	// the name is what it is read for, and guessing it is how a binary comes to be baked for a
 	// worker nobody has.
@@ -183,6 +209,7 @@ func baked() Config {
 		DatabaseName:        "better-giving",
 		MigrationsDir:       "./migrations",
 		Migrations:          []string{"0000_a.sql", "0001_b.sql"},
+		Crons:               []string{"*/30 * * * *"},
 		TurnstileWidgetName: "better-giving",
 		Commit:              strings.Repeat("a", 40),
 	}
@@ -233,8 +260,17 @@ func TestAReorderedMigrationListIsDriftBecauseTheOrderIsTheApplyOrder(t *testing
 	}
 }
 
+func TestDriftNamesTheCronsWhereAScheduleChangedAndNobodyRebaked(t *testing.T) {
+	committed := baked()
+	committed.Crons = []string{"0 * * * *"}
+
+	if drifted := DriftedFields(committed, baked()); strings.Join(drifted, ",") != "crons" {
+		t.Errorf("drifted = %v, want [crons]", drifted)
+	}
+}
+
 func TestDriftNamesEveryFieldWhereThereIsNoCommittedConfigToRead(t *testing.T) {
-	want := "database_name,migrations,migrations_dir,name,turnstileWidgetName"
+	want := "crons,database_name,migrations,migrations_dir,name,turnstileWidgetName"
 
 	if drifted := DriftedFields(Config{}, baked()); strings.Join(drifted, ",") != want {
 		t.Errorf("drifted = %v, want %v", drifted, want)

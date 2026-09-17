@@ -58,7 +58,8 @@ function countingPort(
 			resubscribeWebhookEndpoint: unused('resubscribeWebhookEndpoint'),
 			replaceWebhookEndpoint: unused('replaceWebhookEndpoint'),
 			listWalletDomains: unused('listWalletDomains'),
-			registerWalletDomain: unused('registerWalletDomain')
+			registerWalletDomain: unused('registerWalletDomain'),
+			listPayableCoins: unused('listPayableCoins')
 		}
 	};
 }

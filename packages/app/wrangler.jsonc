@@ -25,7 +25,7 @@
 
 	// keep the vars this deployment is holding, and do not delete them on the way past.
 	//
-	// all twenty-one values an operator configures this deployment with are plain vars, so that the
+	// all twenty-four values an operator configures this deployment with are plain vars, so that the
 	// console can read each one back off the account and show what was stored rather than a mask.
 	// `@better-giving/operator/deploy-split` holds the list and argues it; DEPLOY.md is the same
 	// thing written for an operator.
@@ -37,14 +37,14 @@
 	// from the console, on the Worker's Variables and Secrets page, or by appending
 	// `--var NAME:value` to `pnpm run deploy`, which reaches `wrangler deploy` intact because it
 	// is the last command in that script's chain. `pnpm run deploy:vars` is that last form
-	// twenty-one times over, read out of a gitignored file (scripts/deploy-vars.js).
+	// twenty-four times over, read out of a gitignored file (scripts/deploy-vars.js).
 	//
 	// which is exactly what makes this line load-bearing rather than tidy. wrangler's own
 	// `deploy --help` for the pinned version: "When not used (or set to false), Wrangler will
 	// delete all vars before setting those found in the Wrangler configuration. When used (and
 	// set to true), the environment variables are not deleted before the deployment. … Note that
 	// secrets are never deleted by deployments." the default is false. so without this, a repo
-	// that declares no vars and a deployment that holds twenty-one is one plain `pnpm run deploy`
+	// that declares no vars and a deployment that holds twenty-four is one plain `pnpm run deploy`
 	// away from holding none — silently, leaving a deployment that can sign nobody in, charge
 	// nothing, send nothing and refuse every gift.
 	//
@@ -61,6 +61,16 @@
 
 	"observability": {
 		"enabled": true
+	},
+
+	// every thirty minutes, src/worker.ts's `scheduled` reads back the crypto gifts no IPN settled
+	// (src/lib/server/donations/pending-crypto-read.ts).
+	//
+	// top-level and only top-level: wrangler runs `triggers` through its `inheritable` helper, so the
+	// `test` environment below carries the same schedule without repeating it — unlike the bindings,
+	// which it has to. an environment declaring `triggers` of its own replaces this one outright.
+	"triggers": {
+		"crons": ["*/30 * * * *"]
 	},
 
 	"d1_databases": [

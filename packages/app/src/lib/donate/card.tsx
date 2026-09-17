@@ -1,4 +1,5 @@
 import { connect, type CheckoutSnapshot, type State } from '@better-giving/form/connect';
+import { createDepositBlock, type DepositView } from '@better-giving/form/deposit';
 import { takeResumeToken } from '@better-giving/form/embed/resume';
 import type { CheckoutEvent } from '@better-giving/form/machine';
 import { formatFigure, formatMinor, formatOffer, parseMinor } from '@better-giving/form/money';
@@ -55,6 +56,13 @@ import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
 // hands them over, and `startCheckout` in ./machine.ts is what mounts into each. the payment one
 // takes a node per processor the served config offers, placed and ordered by the composer in
 // @better-giving/form/embed/surface — so this file draws one box however many a deployment holds.
+//
+// a crypto gift adds two imperative blocks the form package builds and this card patches from the
+// projection, the way @better-giving/form's views.ts patches them for the element: the coin list,
+// which the crypto option stands in its row in the payment box, and the address block, which stands
+// in the takeover. neither is react's to render — one carries its own shadow root and the other its
+// own Copy controls — so what is here is the words each is handed and when the caret goes into the
+// coin list.
 
 const SCREENS = ['amount', 'details', 'give', 'takeover'] as const;
 type Screen = (typeof SCREENS)[number];
@@ -134,6 +142,7 @@ function CheckoutCard({
 
 	const initial = useMemo(() => initialSnapshot(config), [config]);
 	const [live, setLive] = useState<Checkout | null>(null);
+	const [deposit, setDeposit] = useState<DepositView | null>(null);
 	const [paymentRows, setPaymentRows] = useState(0);
 
 	const paymentMount = useRef<HTMLDivElement | null>(null);
@@ -153,7 +162,18 @@ function CheckoutCard({
 		});
 		started.rows(setPaymentRows);
 		setLive(started);
-		return () => started.stop();
+		// a Copy's outcome is said on the card's one region, again on every press: the words do not
+		// change between two presses of one control.
+		const block = createDepositBlock(document, (words) => {
+			setShot({ at: started.actor.getSnapshot(), kind: 'copy', words });
+			setNonce((at) => at + 1);
+		});
+		setDeposit(block);
+		return () => {
+			started.stop();
+			// stood in the takeover by hand, so it is taken out by hand: a second checkout builds its own.
+			block.root.remove();
+		};
 	}, [config, seams]);
 
 	const subscribe = useCallback(
@@ -203,12 +223,16 @@ function CheckoutCard({
 	/** the press that asked for a sentence to be said again, which is the only thing a repeat has. */
 	const [nonce, setNonce] = useState(0);
 	/** a sentence one press asked for, spent by the snapshot it was asked on. */
-	const [shot, setShot] = useState<{ at: CheckoutSnapshot; kind: 'details' | 'fee' } | null>(null);
+	const [shot, setShot] = useState<{
+		at: CheckoutSnapshot;
+		kind: 'details' | 'fee' | 'copy';
+		words?: string;
+	} | null>(null);
 	/** a commit, so a press that changed nothing else still gets its caret moved. */
 	const [, setTick] = useState(0);
 
-	const wanted = useRef<HTMLElement | null>(null);
-	const focusOn = (node: HTMLElement | null): void => {
+	const wanted = useRef<{ focus(): void } | null>(null);
+	const focusOn = (node: { focus(): void } | null): void => {
 		wanted.current = node;
 		setTick((at) => at + 1);
 	};
@@ -237,7 +261,11 @@ function CheckoutCard({
 	// read off the flow's own guard rather than off `payable`, which is the rail alone: the two
 	// disagree wherever a press is refused for anything but the rail, and there the caret would land
 	// on a group with nothing said about why.
-	const refusedPayment = pressed && api.state.step === 'give' && !api.state.payerComplete;
+	// a crypto gift's press is refused for its coin rather than its rail, and that is said in the coin
+	// list rather than on the box it stands in.
+	const onCrypto = api.state.step === 'give' && api.state.method === 'crypto';
+	const refusedPayment =
+		pressed && api.state.step === 'give' && !api.state.payerComplete && !onCrypto;
 
 	/**
 	 * the reason a rail refused, taken off the takeover and kept for the step a retry lands on.
@@ -278,12 +306,68 @@ function CheckoutCard({
 	const paymentWords =
 		api.state.step !== 'give' ? '' : refusedPayment ? copy.PAYMENT_PROBLEM : decline.current.words;
 
+	// ── the coin a crypto gift is sent in ────────────────────────────────────────────────────────
+
+	const coinChoice = api.coinSelect;
+	const pickedCoin = coinChoice.options.find((option) => option.value === coinChoice.box.value);
+	// a coin the account refused is said whenever it is the one picked — the quote that refused it was
+	// the press — and every coin refused is said as the way on being another rail. a coin never picked
+	// is said only once a press asked for one.
+	const coinRefused = pickedCoin?.refused === true;
+	const coinWords = coinRefused
+		? coinChoice.options.every((option) => option.refused === true)
+			? copy.EVERY_COIN_REFUSED
+			: copy.COIN_REFUSED
+		: pressed && onCrypto && api.state.step === 'give' && !api.state.payerComplete
+			? copy.COIN_REQUIRED
+			: '';
+	useEffect(() => {
+		live?.coins.update(
+			{
+				value: coinChoice.box.value,
+				options: coinChoice.options.map((option) => ({
+					value: option.value,
+					label: option.label,
+					name: option.name ?? '',
+					refused: option.refused === true
+				})),
+				onChange: (value) => coinChoice.set(value)
+			},
+			coinWords
+		);
+	});
+
+	// a coin's refusal of the amount, stated under `How much`. the coin is named as the served list
+	// names it, and by its own code where the list no longer carries it.
+	const amountRefusal = api.state.step === 'amount' ? api.state.refusal : undefined;
+	const refusalWords =
+		amountRefusal === undefined
+			? ''
+			: copy.coinRefusal(
+					amountRefusal.code,
+					config.coins?.find((coin) => coin.coin === amountRefusal.coin)?.name ??
+						amountRefusal.coin.toUpperCase(),
+					amountRefusal.code === 'below_minimum' && amountRefusal.minAmountMinor !== undefined
+						? offer(amountRefusal.minAmountMinor)
+						: null
+				);
+
 	// ── which screen, and where the caret goes ───────────────────────────────────────────────────
 
-	const screen = useRef<{ shown: Screen; moved: boolean; painted: boolean }>({
+	const screen = useRef<{
+		shown: Screen;
+		moved: boolean;
+		painted: boolean;
+		/** the projected step the last commit drew, which tells a coin refusal landing from a press. */
+		step: State['step'] | null;
+		/** whether the last commit stood the address block on the card. */
+		deposit: boolean;
+	}>({
 		shown: 'amount',
 		moved: false,
-		painted: false
+		painted: false,
+		step: null,
+		deposit: false
 	});
 	const shown = visibleStep(api.state, screen.current.shown);
 	const moved = screen.current.moved || shown !== screen.current.shown;
@@ -297,15 +381,35 @@ function CheckoutCard({
 	};
 
 	useEffect(() => {
+		deposit?.update(takeover.deposit);
+	});
+
+	useEffect(() => {
 		const before = screen.current;
+		const state = api.state;
 		screen.current = {
 			shown,
 			moved: before.moved || shown !== before.shown,
-			painted: true
+			painted: true,
+			step: state.step,
+			deposit: takeover.deposit !== null
 		};
 		// never on the first paint: a donor returning from their bank boots straight onto a takeover,
 		// and a card that took focus as it rendered would move the caret on a page nobody asked it to.
-		if (before.painted && shown !== before.shown) headings[shown].current?.focus();
+		const advanced = before.painted && shown !== before.shown;
+		// three arrivals put the caret on the control that fixes what the donor arrived about rather
+		// than on the heading: a coin's refusal of the amount on the control holding the figure, and a
+		// refusal of the coin — or a way back from the address screen — on the coin list.
+		const backToCoins =
+			state.step === 'give' &&
+			state.method === 'crypto' &&
+			((advanced && before.shown === 'takeover') || (coinRefused && before.step === 'working'));
+		// the address block leaving the card takes whatever Copy held the caret with it.
+		const addressLeft = before.deposit && takeover.deposit === null && shown === 'takeover';
+		if (backToCoins) live?.coins.focus();
+		else if (advanced && state.step === 'amount' && state.refusal !== undefined) {
+			figureControl()?.focus();
+		} else if (advanced || addressLeft) headings[shown].current?.focus();
 	});
 
 	// ── the receipt ──────────────────────────────────────────────────────────────────────────────
@@ -349,6 +453,18 @@ function CheckoutCard({
 		// only go missing through the other tile, which opens the box in the tiles' place, and on a
 		// bare tray the box is the whole amount block.
 		return amountRefs.entry.current;
+	}
+
+	/**
+	 * the control holding the figure a coin's refusal is about: the free entry where it holds the
+	 * amount, and otherwise the tile that does.
+	 */
+	function figureControl(): HTMLElement | null {
+		const entry = amountRefs.entry.current;
+		if (entry?.closest<HTMLElement>('.tile.entry')?.hidden !== true) return entry;
+		return (
+			entry.closest('.tiles')?.querySelector<HTMLElement>('input[type="radio"]:checked') ?? entry
+		);
 	}
 
 	function firstDetailsProblem(missing: readonly PayerField[]): HTMLElement | null {
@@ -410,7 +526,9 @@ function CheckoutCard({
 		// off the screen here, but Safari on macOS still focuses no button on a click, so a mouse
 		// donor's second press re-focuses a box the caret is already on.
 		setNonce((at) => at + 1);
-		focusOn(paymentMount.current);
+		// on crypto the rail is chosen and the coin is what is missing, and its list is ours to send the
+		// caret to.
+		focusOn(state.method === 'crypto' ? (live?.coins ?? null) : paymentMount.current);
 	}
 
 	/**
@@ -564,9 +682,11 @@ function CheckoutCard({
 					? copy.PAYMENT_PROBLEM
 					: spent === 'fee'
 						? (reading?.words ?? '')
-						: busy
-							? workingWords(api.state)
-							: '';
+						: spent === 'copy' && takeover.deposit !== null
+							? (shot?.words ?? '')
+							: busy
+								? workingWords(api.state)
+								: '';
 
 	// ── the card ─────────────────────────────────────────────────────────────────────────────────
 
@@ -611,6 +731,7 @@ function CheckoutCard({
 						hidden={shown !== 'amount'}
 						missing={missingDecisions}
 						amountProblem={bounds}
+						refusal={refusalWords}
 						entry={entry}
 						onEntry={onEntry}
 						onPreset={onPreset}
@@ -656,6 +777,7 @@ function CheckoutCard({
 						busy={busy}
 						receipt={inTakeover ? receipt : null}
 						headingRef={headings.takeover}
+						deposit={deposit?.root ?? null}
 						onPrimary={onPrimary}
 						onSecondary={onSecondary}
 					/>

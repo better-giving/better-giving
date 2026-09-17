@@ -10,6 +10,7 @@ import (
 
 	"github.com/better-giving/console/internal/account"
 	"github.com/better-giving/console/internal/cf"
+	"github.com/better-giving/console/internal/deploy"
 	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/effects"
 	"github.com/better-giving/console/internal/first"
@@ -428,7 +429,11 @@ type standingDeployment struct {
 	answered terminal.Confirmation
 	carried  bool
 	ran      effects.Carried
-	halted   bool
+	// scheduled is whether the schedule was read back; levelled and levelHalted are what that came to.
+	scheduled   bool
+	levelled    effects.Carried
+	levelHalted bool
+	halted      bool
 	// finished is what the finish said, and finishes whether it was reached at all.
 	finished string
 	finishes bool
@@ -486,6 +491,11 @@ func (onto *standingDeployment) run(t *testing.T) error {
 		func() (effects.Carried, bool) {
 			onto.carried = true
 			return onto.ran, onto.halted
+		},
+		func() (effects.Carried, bool) {
+			onto.scheduled = true
+			onto.order = append(onto.order, "scheduled")
+			return onto.levelled, onto.levelHalted
 		},
 		func() string { return "your deployment is up to date, at https://give.acme.test" },
 		func() (string, error) {
@@ -627,6 +637,7 @@ func aCarryThatLands(t *testing.T) *standingDeployment {
 		read:     effects.Migrations{Applied: cf.ResultValue},
 		answered: terminal.Confirmed,
 		ran:      effects.Carried{Kind: effects.Deployed},
+		levelled: effects.Carried{Kind: effects.Deployed},
 	}
 }
 
@@ -658,6 +669,54 @@ func TestADeploymentAlreadyCarryingThisReleaseIsOpenedAndNotDeployedTo(t *testin
 	if !strings.Contains(onto.said.String(), newerConsoleLine) {
 		t.Errorf("said %q, want the newer console named where no door will name it",
 			onto.said.String())
+	}
+}
+
+func TestADeploymentAlreadyCarryingThisReleaseHasItsScheduleLevelledBeforeItIsOpened(t *testing.T) {
+	// the upload records the release before the schedule goes up, so a redeploy that stopped between
+	// the two reads as up to date: this is the one pass that finishes it (../../internal/deploy's
+	// Unscheduled).
+	onto := aCarryThatLands(t)
+	onto.deployed = onto.carrying
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v", err)
+	}
+	if !onto.scheduled || onto.carried {
+		t.Errorf("scheduled = %v and carried = %v, want the schedule read and nothing uploaded",
+			onto.scheduled, onto.carried)
+	}
+	if onto.served != onto.bound {
+		t.Error("a deployment whose schedule was level was not opened")
+	}
+}
+
+func TestAScheduleThatCouldNotBeLevelledStopsTheUpToDatePassInCloudflaresWords(t *testing.T) {
+	onto := aCarryThatLands(t)
+	onto.deployed = onto.carrying
+	onto.levelled = effects.Carried{Kind: effects.NotDeployed, Ran: &deploy.Run{
+		Kind: deploy.Stopped, At: deploy.Scheduling,
+		Detail: "Cloudflare did not read back the worker's schedule: an internal error occurred"}}
+
+	err := onto.run(t)
+	if err == nil || !strings.Contains(err.Error(), "an internal error occurred") {
+		t.Fatalf("catchingUp = %v, want the stop in cloudflare's words", err)
+	}
+	if onto.served != nil || onto.connects {
+		t.Error("a pass whose schedule did not level went on to the console")
+	}
+}
+
+func TestACarryIsNotAlsoRescheduledOnItsOwn(t *testing.T) {
+	// the carry's own deploy puts the schedule up as its scheduling stage.
+	onto := aCarryThatLands(t)
+	onto.deployed = "1.3.0"
+
+	if err := onto.run(t); err != nil {
+		t.Fatalf("catchingUp = %v", err)
+	}
+	if onto.scheduled {
+		t.Error("a carry read the schedule back as well as putting it up")
 	}
 }
 
@@ -1401,7 +1460,7 @@ func TestTheWaitOverTheReadsIsGivenUpBeforeADeploymentAlreadyCarryingIsNamed(t *
 	if err := onto.run(t); err != nil {
 		t.Fatalf("catchingUp = %v", err)
 	}
-	if ran := strings.Join(onto.order, " "); ran != "weighed settled drew drew finished connected" {
+	if ran := strings.Join(onto.order, " "); ran != "weighed scheduled settled drew drew finished connected" {
 		t.Errorf("an up-to-date pass ran %q, want the wait given up in front of both lines", ran)
 	}
 }
@@ -1676,7 +1735,7 @@ func TestAnAccountAlreadyNamedSaysNothingAboveTheLedger(t *testing.T) {
 // (packages/console-ui/src/lib/sites-fold.tsx), so the press that told the operator to run this
 // command again could not have helped them.
 
-// the twenty-one as a deployment that never reached the widget stage holds them.
+// the twenty-four as a deployment that never reached the widget stage holds them.
 func holdingNeitherHalf() deployment.VarsRead {
 	return deployment.VarsRead{Kind: deployment.ValuesRead, Vars: []deployment.DeployedVar{
 		{Name: "TURNSTILE_SITE_KEY", Kind: deployment.VarAbsent},
@@ -1684,7 +1743,7 @@ func holdingNeitherHalf() deployment.VarsRead {
 	}}
 }
 
-// the twenty-one as a deployment a run did finish holds them.
+// the twenty-four as a deployment a run did finish holds them.
 func holdingBothHalves() deployment.VarsRead {
 	return deployment.VarsRead{Kind: deployment.ValuesRead, Vars: []deployment.DeployedVar{
 		{Name: "TURNSTILE_SITE_KEY", Kind: deployment.VarValue, Value: "0x4"},
@@ -1874,7 +1933,7 @@ func TestAFinishWithNothingToSayDrawsNoLine(t *testing.T) {
 	if err := onto.run(t); err != nil {
 		t.Fatalf("catchingUp = %v", err)
 	}
-	if ran := strings.Join(onto.order, " "); ran != "weighed settled drew drew finished connected" {
+	if ran := strings.Join(onto.order, " "); ran != "weighed scheduled settled drew drew finished connected" {
 		t.Errorf("an up-to-date pass ran %q, want no line drawn for a finish that said nothing", ran)
 	}
 }

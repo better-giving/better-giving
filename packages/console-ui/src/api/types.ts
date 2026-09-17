@@ -86,14 +86,14 @@ export type HomeFace =
 	/** it is up, it answers, and the six folds are what is left. */
 	| { kind: 'ready'; address: string };
 
-/** one of the twenty-one values an operator configures a deployment with, every one of them a var. */
+/** one of the twenty-four values an operator configures a deployment with, every one of them a var. */
 export type DeployVarName = (typeof DEPLOY_VARS)[number];
 
 /**
  * one var, as the deployment holds it.
  *
  * three states and not two. `absent` is nothing in the slot; `withheld` is a binding under one of
- * the twenty-one names that is not plain text, which is a deployment that stored the value as a
+ * the twenty-four names that is not plain text, which is a deployment that stored the value as a
  * secret — the value is there and the deployment reads it, and the free press is the way out.
  * collapsing them would print the same cell over two deployments an operator has to do different
  * things to.
@@ -103,7 +103,7 @@ export type DeployedVar =
 	| { readonly name: DeployVarName; readonly kind: 'withheld' }
 	| { readonly name: DeployVarName; readonly kind: 'absent' };
 
-/** what the twenty-one read as, or which way they did not. */
+/** what the twenty-four read as, or which way they did not. */
 export type VarsRead =
 	| { kind: 'read'; vars: DeployedVar[] }
 	/** the worker is not in the account, which is every run before a first deploy. */
@@ -117,7 +117,7 @@ export type VarsRead =
 	/** it answered, and in a shape nothing was written against. */
 	| { kind: 'unreadable'; detail: string };
 
-/** the twenty-one as the one door answered for them, whether or not it landed. */
+/** the twenty-four as the one door answered for them, whether or not it landed. */
 export type DeployedValues = { vars: VarsRead };
 
 /**
@@ -191,7 +191,7 @@ export type HomeReading = {
 };
 
 /**
- * why there was nowhere to write one of the twenty-one to.
+ * why there was nowhere to write one of the twenty-four to.
  *
  * two members and not the seven an address read has: a write finds out from its own answer, and the
  * only two things it can find out are that the account holds no such worker and that the binary
@@ -200,7 +200,7 @@ export type HomeReading = {
 export type NoWhere = { kind: 'not-deployed' } | { kind: 'no-credential'; detail: string };
 
 /**
- * the ways a write of one of the twenty-one did not happen.
+ * the ways a write of one of the twenty-four did not happen.
  *
  * shared by both doors because they are the same four facts about the machine and the account:
  * every fold on this surface already draws the one it got.
@@ -215,7 +215,7 @@ export type ValuesRefusal =
 	| { kind: 'failed'; detail: string };
 
 /**
- * how a write of one or more of the twenty-one went, which is the one answer every press on the page
+ * how a write of one or more of the twenty-four went, which is the one answer every press on the page
  * gets: each of them is a var and they all go through one door.
  *
  * `set` is the only one that left anything on the deployment. `nothing` is a press the binary
@@ -341,7 +341,7 @@ export type StripeUnreadableReason = 'no_key' | 'failed';
  * the vocabulary is `PAYMENT_PROCESSORS` in `packages/operator/src/console/payments.ts`, and the
  * order is the deployment's: nothing here sorts, so the sections always stand in one order.
  */
-export type PaymentProcessor = 'stripe' | 'paypal' | 'chariot';
+export type PaymentProcessor = 'stripe' | 'paypal' | 'chariot' | 'nowpayments';
 
 /** where one way of paying stands on that account. */
 export type RailStanding =
@@ -396,6 +396,9 @@ export type WebhookSecretReading = {
 /**
  * what this deployment's endpoint is subscribed to.
  *
+ * `not_applicable` is a processor that keeps no endpoint on the account: each payment names its own
+ * callback address, so there is nothing to register, read or repair.
+ *
  * the two faults the incomplete arm holds are the whole reason a screen can say which one an
  * operator is looking at: a missing `delivering` read as `true` would draw a switched-off endpoint
  * as one merely short of an event.
@@ -403,6 +406,7 @@ export type WebhookSecretReading = {
 export type WebhookSubscriptionReading =
 	| { state: 'unreadable'; detail: string }
 	| { state: 'unregistered' }
+	| { state: 'not_applicable' }
 	| { state: 'complete' }
 	| { state: 'incomplete'; delivering: boolean; missingEventTypes: string[] };
 
@@ -1089,6 +1093,22 @@ export type ChariotStarted =
 	 * began (`writing` in `packages/console/internal/server/values.go`).
 	 */
 	| { started: false; unwritten: ValuesRefusal };
+
+/** the three boxes the NOWPayments press posts, none of them blank or with space around it. */
+export type NowpaymentsPress = { apiKey: string; ipnSecret: string; outcomeCurrency: string };
+
+/**
+ * how a press storing NOWPayments' three values went
+ * (`packages/console/internal/server/nowpayments.go`).
+ *
+ * `written` is NOWPayments having said the key reads the account and the outcome currency is one of
+ * its coins, and carries the write. `key_refused` and `currency_unknown` name the box that is wrong,
+ * and `unanswered` is nothing found out about either; none of the three stored anything, and
+ * `detail` is NOWPayments' own words about it.
+ */
+export type NowpaymentsSaved =
+	| { kind: 'written'; written: VarsWritten }
+	| { kind: 'key_refused' | 'currency_unknown' | 'unanswered'; detail: string };
 
 /**
  * which way the account's own turnstile widgets were not read.

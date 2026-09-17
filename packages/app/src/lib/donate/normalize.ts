@@ -72,7 +72,16 @@ export type SelectProps = {
 		readonly value: string;
 		readonly onChange: (event: ChangeEvent<HTMLSelectElement>) => void;
 	};
-	readonly options: readonly { readonly value: string; readonly label: string }[];
+	readonly options: readonly {
+		readonly value: string;
+		readonly label: string;
+		/** the coin's name, on the coin choice alone, shown after its ticker. */
+		readonly name?: string;
+		/** whether the account refused this coin on this card, on the coin choice alone. */
+		readonly refused?: boolean;
+	}[];
+	/** the same door the box's own handler goes through, for a control that is not a native select. */
+	readonly set: (value: string) => void;
 };
 
 export type ButtonProps = {
@@ -118,7 +127,8 @@ export const reactPropTypes: PropTypes<Shapes> = {
 		};
 		return {
 			box: { ...rest, onChange: (event) => onChange(event.currentTarget.value) },
-			options
+			options,
+			set: onChange
 		};
 	}
 };

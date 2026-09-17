@@ -696,7 +696,7 @@ describe('the enum CHECKs', () => {
 		);
 	});
 
-	it('refuses a payment method outside the seven the schema models', async () => {
+	it('refuses a payment method outside the ones the schema models', async () => {
 		await rejects(
 			'payment.method',
 			`insert into payment (id, donation_id, amount_minor, currency, direction, method,
@@ -760,7 +760,7 @@ describe('the enum CHECKs', () => {
 		);
 	});
 
-	it('refuses a payment provider outside stripe/paypal/chariot/manual, while still allowing none', async () => {
+	it('refuses a payment provider outside stripe/paypal/chariot/nowpayments/manual, while still allowing none', async () => {
 		await rejects(
 			'payment.provider',
 			`insert into payment (id, donation_id, amount_minor, currency, direction, method,

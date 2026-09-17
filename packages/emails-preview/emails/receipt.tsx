@@ -27,6 +27,7 @@ export default function Receipt() {
 		},
 		goodsOrServices: { kind: 'provided', description: 'two gala tickets' },
 		tribute: { label: 'In memory of', honoree: 'Margaret Chen' },
-		program: 'Clean water'
+		program: 'Clean water',
+		crypto: null
 	}).node;
 }

@@ -188,7 +188,7 @@ export function heldNames(read: VarsRead): ReadonlySet<string> {
 /**
  * the six rows, from the reading the binary answered with.
  *
- * **a door that did not answer never reaches here.** the twenty-one values come off the account in
+ * **a door that did not answer never reaches here.** the twenty-four values come off the account in
  * one read that is scoped to no fold, so a console that could not take it draws no fold at all —
  * the face is `blocked` and this is not called. `heldNames`'s empty fallback is what that arm would
  * read as, and it is stated rather than asserted because an assertion is a way for this to throw
@@ -236,7 +236,8 @@ export function readSections(read: HomeReading): readonly HomeSection[] {
 		payments: either(
 			configured(...CHARGE_PAIRS.stripe),
 			configured(...CHARGE_PAIRS.paypal),
-			configured(...CHARGE_PAIRS.chariot)
+			configured(...CHARGE_PAIRS.chariot),
+			configured(...CHARGE_PAIRS.nowpayments)
 		),
 		// `SMTP_PORT` is deliberately not here. 465 is the only port the deployment dials and an
 		// absent one means 465, so there is nothing an operator sets — the fold states the value

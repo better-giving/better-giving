@@ -13,6 +13,8 @@
 		"./value": "./src/value.ts",
 		"./money": "./src/money.ts",
 		"./parts": "./src/parts.ts",
+		"./coin-picker": "./src/coin-picker.ts",
+		"./deposit": "./src/deposit.ts",
 		"./embed/reservation": "./src/embed/reservation.ts",
 		"./embed/rails": "./src/embed/rails.ts",
 		"./embed/snippet": "./src/embed/snippet.ts",

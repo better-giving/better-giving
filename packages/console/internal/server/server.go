@@ -25,6 +25,7 @@ import (
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/chariot"
 	"github.com/better-giving/console/internal/deployment"
+	"github.com/better-giving/console/internal/nowpayments"
 	"github.com/better-giving/console/internal/oauth"
 	"github.com/better-giving/console/internal/paypal"
 	"github.com/better-giving/console/internal/state"
@@ -66,6 +67,9 @@ type Options struct {
 	// case can run the whole setup chain without a Chariot account. Nil is Chariot itself, at the
 	// address the press named.
 	Chariot func(address, apiKey string) chariot.Call
+	// Nowpayments is how a call to NOWPayments is bound to the api key one press carries, so a case can
+	// check a key without a NOWPayments account. Nil is NOWPayments' own API.
+	Nowpayments func(apiKey string) nowpayments.Call
 	// Accounts is which cloudflare account this deployment is in, as this machine remembers it.
 	Accounts *account.Store
 	// Records is what this machine remembers between runs, which the session is read out of and
@@ -111,6 +115,10 @@ func New(options Options) http.Handler {
 	if bindChariot == nil {
 		bindChariot = chariot.BindAt
 	}
+	bindNowpayments := options.Nowpayments
+	if bindNowpayments == nil {
+		bindNowpayments = nowpayments.Bind
+	}
 	sends := options.Sends
 	if sends == nil {
 		sends = cf.APISend
@@ -133,6 +141,7 @@ func New(options Options) http.Handler {
 		presses)
 	chariotRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, doors, bindChariot,
 		presses)
+	nowpaymentsRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, bindNowpayments)
 	closeRoutes(routes, options.Close)
 	routes.HandleFunc("GET /api/version", func(w http.ResponseWriter, _ *http.Request) {
 		// a placeholder while the folds are still the react app's own: what it says is true, and

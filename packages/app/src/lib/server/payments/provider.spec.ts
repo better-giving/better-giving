@@ -6,6 +6,7 @@ import {
 	refusing,
 	RETRYABLE_FAILURE_REASONS,
 	sealed,
+	takesRepeatingGifts,
 	TERMINAL_FAILURE_REASONS,
 	type PaymentFailureReason,
 	type PaymentProvider
@@ -23,7 +24,8 @@ const REQUEST = {
 	amountMinor: 1000,
 	currency: 'USD',
 	method: 'card',
-	idempotencyKey: 'attempt-1'
+	idempotencyKey: 'attempt-1',
+	deploymentOrigin: 'https://donate.example.org'
 } as const;
 
 /** the smallest valid repeating gift, for the cases that assert something other than its contents. */
@@ -49,6 +51,23 @@ describe('processorOf', () => {
 	// settle — a rail read as anyone else's is a quote minted on a processor with no grant to make.
 	it('hands a DAF gift to Chariot', () => {
 		expect(processorOf('daf')).toBe('chariot');
+	});
+
+	// a crypto gift is a deposit to an address NOWPayments minted, and only NOWPayments watches it.
+	it('hands a crypto gift to NOWPayments', () => {
+		expect(processorOf('crypto')).toBe('nowpayments');
+	});
+});
+
+describe('takesRepeatingGifts', () => {
+	// a crypto payment is one deposit to one address; nothing on NOWPayments collects again.
+	it.each([
+		['stripe', true],
+		['paypal', true],
+		['chariot', false],
+		['nowpayments', false]
+	] as const)('answers %s with %s', (name, expected) => {
+		expect(takesRepeatingGifts(name)).toBe(expected);
 	});
 });
 
@@ -81,7 +100,8 @@ describe('refusing', () => {
 			provider.resubscribeWebhookEndpoint('we_1'),
 			provider.replaceWebhookEndpoint('we_1', 'https://example.org/api/stripe/webhook'),
 			provider.listWalletDomains(),
-			provider.registerWalletDomain('donate.example.org')
+			provider.registerWalletDomain('donate.example.org'),
+			provider.listPayableCoins()
 		]);
 
 		for (const result of results) {
@@ -166,7 +186,8 @@ function throwing(): PaymentProvider {
 		resubscribeWebhookEndpoint: fault,
 		replaceWebhookEndpoint: fault,
 		listWalletDomains: fault,
-		registerWalletDomain: fault
+		registerWalletDomain: fault,
+		listPayableCoins: fault
 	};
 }
 
@@ -200,7 +221,8 @@ describe('sealed', () => {
 				p.replaceWebhookEndpoint('we_1', 'https://example.org/api/stripe/webhook')
 		],
 		['listWalletDomains', (p: PaymentProvider) => p.listWalletDomains()],
-		['registerWalletDomain', (p: PaymentProvider) => p.registerWalletDomain('donate.example.org')]
+		['registerWalletDomain', (p: PaymentProvider) => p.registerWalletDomain('donate.example.org')],
+		['listPayableCoins', (p: PaymentProvider) => p.listPayableCoins()]
 	])('turns a throw out of %s into a refusal', async (_name, call) => {
 		vi.spyOn(console, 'error').mockImplementation(() => {});
 

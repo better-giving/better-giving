@@ -260,7 +260,8 @@ describe('the clock the shipped ports read', () => {
 				() => {},
 				() => {},
 				'first',
-				NO_FUND
+				NO_FUND,
+				document.createElement('div')
 			)
 			.input.ports.now();
 
@@ -429,7 +430,8 @@ describe('the quote port the element is handed', () => {
 			() => {},
 			() => {},
 			'first',
-			NO_FUND
+			NO_FUND,
+			document.createElement('div')
 		).input.ports.quote;
 	}
 
@@ -463,7 +465,8 @@ describe('the rails a runtime offers', () => {
 			() => {},
 			() => {},
 			'first',
-			NO_FUND
+			NO_FUND,
+			document.createElement('div')
 		);
 
 	const inputFor = (paymentMethods: readonly string[]) => checkoutFor(paymentMethods).input;
@@ -574,7 +577,8 @@ describe('a donor coming back from their bank', () => {
 			() => {},
 			() => {},
 			boot,
-			NO_FUND
+			NO_FUND,
+			document.createElement('div')
 		).input;
 
 	const bootedWith = (search: string) => {

@@ -3,7 +3,7 @@ import { PAYMENT_METHODS, WALLET_METHODS } from '@better-giving/form/v1';
 import { OFFERED_PAYMENT_METHODS } from './offered-rails';
 
 describe('OFFERED_PAYMENT_METHODS', () => {
-	it('offers the card, the bank rail, both wallets, both hosted rails and a DAF grant', () => {
+	it('offers the card, the bank rail, both wallets, both hosted rails, a DAF grant and crypto', () => {
 		expect(OFFERED_PAYMENT_METHODS).toEqual([
 			'card',
 			'ach',
@@ -11,7 +11,8 @@ describe('OFFERED_PAYMENT_METHODS', () => {
 			'google_pay',
 			'paypal',
 			'venmo',
-			'daf'
+			'daf',
+			'crypto'
 		]);
 	});
 

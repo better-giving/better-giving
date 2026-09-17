@@ -232,6 +232,32 @@ export function quoteIsUsable(quote: Quote, amountMinor: number): boolean {
 	return quote.totalMinor >= amountMinor;
 }
 
+/** `Deposit.coinAmount`'s own shape (./v1.ts): a canonical positive decimal, never a number. */
+const COIN_AMOUNT = /^(0|[1-9]\d*)(\.\d*[1-9])?$/;
+
+/**
+ * whether a `crypto` quote carries an address a donor can be told to send to, on top of
+ * `quoteIsUsable` above.
+ *
+ * the address screen states every one of these fields as an instruction and the donor acts on it
+ * from their own wallet, where nothing checks it again: a blank address or a figure that is not a
+ * decimal is money sent somewhere nobody watches. a send-by that is not a date is refused for the
+ * same reason, because it is when the screen withdraws the address. the QR is not among them — a
+ * QR that cannot be drawn leaves the address to be copied, which is the same instruction.
+ */
+export function depositIsUsable(quote: Quote): boolean {
+	const deposit = quote.deposit;
+	if (typeof deposit !== 'object' || deposit === null) return false;
+	const text = (value: unknown): boolean => typeof value === 'string' && value.trim().length > 0;
+	if (!text(deposit.address) || !text(deposit.coin) || !text(deposit.network)) return false;
+	if (deposit.memo !== null && !text(deposit.memo)) return false;
+	const { coinAmount } = deposit;
+	if (typeof coinAmount !== 'string' || !COIN_AMOUNT.test(coinAmount) || coinAmount === '0') {
+		return false;
+	}
+	return typeof deposit.validUntil === 'string' && Number.isFinite(Date.parse(deposit.validUntil));
+}
+
 /**
  * the three things a reconciliation can be saying about the total.
  *

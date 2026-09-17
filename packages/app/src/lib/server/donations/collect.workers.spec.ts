@@ -165,6 +165,7 @@ const settlement = (over: Partial<Settlement> = {}): Settlement => ({
 	// keeps the `payment_intent.succeeded` that accompanies it out of the books.
 	metadata: {},
 	occurredAt: new Date('2026-08-03T12:00:00.000Z'),
+	arrival: null,
 	...over
 });
 
@@ -203,7 +204,8 @@ function provider(
 		resubscribeWebhookEndpoint: refuse('resubscribeWebhookEndpoint'),
 		replaceWebhookEndpoint: refuse('replaceWebhookEndpoint'),
 		listWalletDomains: refuse('listWalletDomains'),
-		registerWalletDomain: refuse('registerWalletDomain')
+		registerWalletDomain: refuse('registerWalletDomain'),
+		listPayableCoins: refuse('listPayableCoins')
 	} as PaymentProvider;
 }
 

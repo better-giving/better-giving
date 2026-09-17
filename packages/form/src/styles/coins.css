@@ -1,0 +1,224 @@
+/*
+ * the coin list inside the crypto option (../coin-picker.ts): a box a donor types a search into and
+ * the list it narrows, in the payment row the option stands in (../embed/rows.ts).
+ *
+ * adopted into the list's own shadow root after ./parts.css, which is where the box's field look, the
+ * label, the sentence under a refused choice and the focus rings come from. the list is a light-DOM
+ * child of the element, like the rows around it, so the card's other two sheets do not reach it and
+ * the few rules of theirs it needs are restated here; the tokens arrive the way every inherited
+ * property does.
+ *
+ * the box and the list take the card's own ground rather than a field's, because the open row they
+ * stand in is drawn a field's ground (`.band.open` in ./rows.css) and a box that matched it would
+ * disappear into it. nothing here moves.
+ */
+
+:host {
+	display: block;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+input,
+button {
+	font: inherit;
+	color: inherit;
+	letter-spacing: inherit;
+	margin: 0;
+}
+
+.field-row {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp2);
+}
+
+/*
+ * the box: a mark at its start, the words, and the chevron at its end. the search field and the chosen
+ * coin share the middle cell, so the box keeps one height whichever of the two it is showing.
+ */
+.picker {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--_sp3);
+	background: var(--_n1);
+	cursor: text;
+}
+
+/*
+ * a box holding the caret takes the ring a field holding the caret takes, open or closed: an open box
+ * always holds it, and a closed one does wherever its input matches `:focus-visible`, which is that
+ * pseudo-class's own call on a keyboard or a pointer.
+ */
+.picker.open,
+.picker:has(input:focus-visible) {
+	border-color: var(--_focus-ring);
+	box-shadow: 0 0 0 var(--_focus-width) var(--_focus-ring);
+}
+
+.picker.open[part~='invalid'],
+.picker:has(input:focus-visible)[part~='invalid'] {
+	border-color: var(--_bad);
+	box-shadow:
+		inset 0 0 0 var(--_border) var(--_bad),
+		0 0 0 var(--_focus-width) var(--_bad);
+}
+
+.words {
+	display: grid;
+	min-inline-size: 0;
+}
+
+.words > * {
+	grid-area: 1 / 1;
+	min-inline-size: 0;
+}
+
+/*
+ * the search field draws nothing of its own: the box around it is the field, and where the caret is
+ * standing is the box's ring above.
+ */
+.picker input {
+	inline-size: 100%;
+	padding: 0;
+	background: none;
+	border: 0;
+	outline: none;
+	color: var(--_n12);
+}
+
+.picker input:focus-visible {
+	box-shadow: none;
+}
+
+.picker input::placeholder {
+	color: var(--_n11);
+	opacity: 1;
+}
+
+/* a coin name longer than the box is cut at its end, never in the middle of the ticker before it. */
+.chosen {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	pointer-events: none;
+}
+
+.glyph {
+	inline-size: 1em;
+	block-size: 1em;
+	color: var(--_n11);
+}
+
+.coin-ticker {
+	color: var(--_n12);
+}
+
+.coin-label {
+	margin-inline-start: var(--_sp1);
+	color: var(--_n11);
+	font-size: var(--_t-sm);
+}
+
+/* a coin's mark: the round shape a logo stands in, holding the first letter of the coin's name. */
+.logo {
+	display: grid;
+	place-items: center;
+	flex: none;
+	inline-size: var(--_box);
+	block-size: var(--_box);
+	border-radius: 50%;
+	background: var(--_n5);
+	color: var(--_n11);
+	font-size: var(--_t-md);
+}
+
+.logo .initial {
+	font-size: var(--_t-xs);
+	font-weight: var(--_w-bold);
+	line-height: 1;
+}
+
+/*
+ * the list opens in flow, under the box, pushing what follows down: the card clips its own overflow
+ * (`[part~='card']` in ./parts.css), so a list floating over the bottom of the card would be cut off.
+ *
+ * its height is four and a half rows, so the half row says there is more to scroll to. no token names
+ * a list's height; the rows are the token's.
+ */
+.coin-list {
+	margin-block-start: var(--_sp1);
+	padding: var(--_sp1);
+	background: var(--_n1);
+	border: var(--_border) solid var(--_edge-control);
+	border-radius: var(--_r-in);
+	box-shadow: var(--_lift);
+	max-block-size: calc(var(--_row-min) * 4.5);
+	overflow-y: auto;
+}
+
+.option {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: start;
+	align-content: center;
+	gap: var(--_sp3);
+	min-block-size: var(--_row-min);
+	padding: var(--_sp2) var(--_sp3);
+	border-radius: var(--_r-in);
+	font-size: var(--_t-md);
+	cursor: pointer;
+}
+
+.option .logo,
+.option .tick {
+	margin-block-start: calc((1lh - var(--_box)) / 2);
+}
+
+.option-text {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.option-text .coin-text {
+	overflow-wrap: anywhere;
+}
+
+/* the option the arrow keys stand on, and the one a pointer is over: ground alone, never weight. */
+.option.highlighted,
+.option:hover {
+	background: var(--_n3);
+}
+
+.option .tick {
+	inline-size: var(--_box);
+	block-size: var(--_box);
+	color: var(--_p);
+}
+
+.option[aria-disabled='true'] {
+	cursor: default;
+}
+
+.option[aria-disabled='true'] .coin-ticker,
+.option[aria-disabled='true'] .coin-label {
+	color: var(--_n10);
+}
+
+.no-match {
+	margin: 0;
+	padding: var(--_sp2) var(--_sp3);
+	color: var(--_n10);
+	font-size: var(--_t-sm);
+}
+
+/* last, so an element's own `display` above never outranks the attribute that takes it off screen. */
+[hidden] {
+	display: none;
+}

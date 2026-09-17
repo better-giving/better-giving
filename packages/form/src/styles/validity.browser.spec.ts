@@ -48,7 +48,8 @@ const CONFIG: FormConfig = {
 		google_pay: { percent: 0.029, fixedMinor: 30 },
 		paypal: { percent: 0.0349, fixedMinor: 49 },
 		venmo: { percent: 0.0349, fixedMinor: 49 },
-		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
+		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
+		crypto: { percent: 0.01, fixedMinor: 0 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -60,6 +61,7 @@ const PORTS: CheckoutPorts = {
 	quote: async () => ({ paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor: 2606 }),
 	confirm: async () => ({ kind: 'succeeded' }),
 	resume: async () => ({ kind: 'succeeded' }),
+	status: async () => ({ state: 'waiting' }),
 	now: () => 1_700_000_000_000
 };
 
@@ -107,6 +109,7 @@ async function mount(config: FormConfig = CONFIG): Promise<Card> {
 				input: { config, ports: PORTS },
 				cadence: () => {},
 				offerFund: () => {},
+				offerCrypto: () => {},
 				rows: () => {},
 				stop: () => {}
 			}),

@@ -68,7 +68,8 @@ describe('railNotes', () => {
 			google_pay: null,
 			paypal: null,
 			venmo: null,
-			daf: null
+			daf: null,
+			crypto: null
 		});
 	});
 
@@ -213,5 +214,20 @@ describe('railNotes on a processor that publishes no per-rail approval', () => {
 		const note = railNotes('paypal', paypal()).venmo ?? '';
 
 		expect(note).not.toContain('Stripe');
+	});
+});
+
+/**
+ * NOWPayments settles its rail on this deployment rather than in a donor's browser: a donor is shown
+ * the coins the account enabled, read off the account when the form is served.
+ */
+describe('railNotes on NOWPayments', () => {
+	it('never says the processor decides in a donor’s browser', () => {
+		const note = railNotes('nowpayments', read({ crypto: 'approved' })).crypto ?? '';
+
+		expect(note).toContain('NOWPayments');
+		expect(note).not.toMatch(/browser/i);
+		expect(note).toMatch(/coins/);
+		expect(note).toContain('within five minutes');
 	});
 });

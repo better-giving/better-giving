@@ -1,8 +1,13 @@
 import type { ServerBuild } from 'react-router';
 import { createRequestHandler } from 'react-router';
+import { requestDb } from '$lib/server/db/client';
+import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
+import { createEmailProvider } from '$lib/server/email/factory';
+import { createPaymentProviders } from '$lib/server/payments/factory';
 import { requestContext } from './request-context';
 
-// the worker ./wrangler.jsonc names, and every request this deployment answers enters here.
+// the worker ./wrangler.jsonc names: every request this deployment answers enters here, and every
+// run of its cron `triggers`.
 //
 // one request context is built per request and seeded with what the runtime handed this handler,
 // so nothing downstream reads a binding off a module. what goes into it is
@@ -25,5 +30,19 @@ const handleRequest = createRequestHandler(
 export default {
 	fetch(request, env, ctx) {
 		return handleRequest(request, requestContext(env, ctx));
+	},
+
+	// every cron run, built from the env that run was handed, as a request's handles are.
+	scheduled(controller, env, ctx) {
+		ctx.waitUntil(
+			readPendingCryptoGifts(
+				{
+					db: requestDb(env),
+					processors: createPaymentProviders(env),
+					email: createEmailProvider(env)
+				},
+				new Date(controller.scheduledTime)
+			)
+		);
 	}
 } satisfies ExportedHandler<Env>;

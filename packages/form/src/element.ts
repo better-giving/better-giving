@@ -23,6 +23,7 @@
 import { createActor, type Actor } from 'xstate';
 import {
 	checkoutMachine,
+	cryptoIsOffered,
 	fundIsOffered,
 	openFund,
 	type CheckoutEvent,
@@ -101,6 +102,13 @@ export type FormCheckout = {
 	 * its press chooses the rail and opens the fund's window in one go.
 	 */
 	readonly offerFund: (offered: boolean) => void;
+	/**
+	 * whether the payment box lists the crypto option, told on every reading.
+	 *
+	 * `cryptoIsOffered` in ./checkout.machine.ts is the answer; the option stands the coin list the
+	 * card built (`coins` on `CardView` in ./views.ts) in a row of its own.
+	 */
+	readonly offerCrypto: (offered: boolean) => void;
 	/**
 	 * how many options the payment box lists, handed to `listener` now and on every change.
 	 *
@@ -211,6 +219,11 @@ export type FormRuntime = {
 	 * `fund` is what a donor-advised fund's window reports into the flow, and like the two reports
 	 * above it travels the other way. `FundReports` in ./ports.ts says why its first answer is given
 	 * in the same call as the press.
+	 *
+	 * `coins` is the coin list a `crypto` gift is chosen in, which the card built and keeps patched.
+	 * handed over rather than built by the runtime, for the reason `mount` is passed: the card owns
+	 * what the list says and where a refusal about the coin sends the caret, and the runtime only
+	 * stands it in the payment box.
 	 */
 	readonly checkout: (
 		config: FormConfig,
@@ -218,7 +231,8 @@ export type FormRuntime = {
 		onRail: (method: PaymentMethod | null) => void,
 		onUnavailable: (failure: Failure) => void,
 		boot: FormBoot,
-		fund: FundReports
+		fund: FundReports,
+		coins: HTMLElement
 	) => FormCheckout;
 
 	/**
@@ -1043,7 +1057,8 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 					opened: () => opened(),
 					approved: (authorization) => fundSays({ type: 'FUND_APPROVED', ...authorization }),
 					closed: () => fundSays({ type: 'FUND_CLOSED' })
-				}
+				},
+				view.coins
 			);
 			this.#checkout = checkout;
 			checkout.rows((count) => view.paymentRows(count));
@@ -1073,6 +1088,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 				const api = connect(snapshot, actor.send, domPropTypes);
 				checkout.cadence(committedFrequency(api.state));
 				checkout.offerFund(fundIsOffered(snapshot));
+				checkout.offerCrypto(cryptoIsOffered(snapshot));
 				view.update(api);
 				const { step } = api.state;
 

@@ -5,8 +5,8 @@ import type {
 import type { DestinationStatus } from '@better-giving/operator/components/shell/DestinationCell';
 import type { MarkName } from '@better-giving/operator/components/status/Mark';
 import { FOLD_LABELS, JOB_WORDS } from '@better-giving/operator/setup-folds';
-import type { PaymentProcessor } from '../api/types';
 import type { HomeSection, SectionId } from './home-sections';
+import type { PaymentProcessor } from '../api/types';
 import type { ProcessorLink } from './processor-links';
 
 // the console's pages: one per set-up section, and the rail that lists them.

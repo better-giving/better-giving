@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { projectRail, projectStatus, type SettlementAttempt } from './queries';
+import { projectCoinReceived, projectRail, projectStatus, type SettlementAttempt } from './queries';
 
 // node pool, no database: the projection is a pure function over rows, and the rows it is given
 // here are written by hand precisely so a case can hold a shape a fixture would have to work to
@@ -171,5 +171,32 @@ describe('the gift rail projection', () => {
 		// the shape `projectStatus` answers `pending` to. there is nothing to name, and the screen
 		// draws the absence rather than a rail nobody used.
 		expect(projectRail([])).toBeNull();
+	});
+});
+
+describe('the coin a crypto gift received', () => {
+	it('reads the coin and the amount off the attempt that settled', () => {
+		expect(
+			projectCoinReceived([
+				{
+					...attempt({ method: 'crypto', provider: 'nowpayments' }),
+					coin: 'xrp',
+					coinAmount: '19.36121163'
+				}
+			])
+		).toEqual({ coin: 'xrp', amount: '19.36121163' });
+	});
+
+	it('reads nothing on a crypto gift still waiting on its deposit', () => {
+		// the pending row already names the coin the donor picked; nothing has arrived in it.
+		expect(
+			projectCoinReceived([
+				{
+					...attempt({ method: 'crypto', provider: 'nowpayments', status: 'pending' }),
+					coin: 'xrp',
+					coinAmount: null
+				}
+			])
+		).toBeNull();
 	});
 });

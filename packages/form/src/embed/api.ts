@@ -7,8 +7,10 @@
 // start, and two copies of them are two wordings of one money-path refusal, drifting apart with
 // nothing failing.
 //
-// the read is not here. `GET /api/v1/forms/:id/config` is ./runtime.ts's, because only the embed
-// makes it: the deployment's own page has the config server-side before it renders anything.
+// the config read is not here. `GET /api/v1/forms/:id/config` is ./runtime.ts's, because only the
+// embed makes it: the deployment's own page has the config server-side before it renders anything.
+// the read of a gift paid to an address is here, because both surfaces make it from the donor's
+// browser while the address screen stands.
 //
 // nor is this reachable through ./runtime.ts, which is why the split is a module and not an
 // export. that file imports `defineDonateForm` and reads its own script tag, so importing it from a
@@ -20,6 +22,7 @@
 // a host page pasting the snippet reaches this through ./runtime.ts and never by name.
 
 import type { CheckoutPorts } from '../ports';
+import type { DonationStatus } from '../v1';
 import { LOADER_PATH } from './loader';
 
 /** the write one press makes. `v1` is permanent, so this path is too. */
@@ -51,13 +54,22 @@ export class EmbedFailure extends Error {
 	 * where this is set, since the grant may already exist.
 	 */
 	readonly unanswered?: true;
+	/** the least gift the coin takes, where a `below_minimum` refusal named it (`ApiError` in ../v1.ts). */
+	readonly minAmountMinor?: number;
 
-	constructor(message: string, fix: string, code?: string, unanswered?: true) {
+	constructor(
+		message: string,
+		fix: string,
+		code?: string,
+		unanswered?: true,
+		minAmountMinor?: number
+	) {
 		super(message);
 		this.name = 'EmbedFailure';
 		this.fix = fix;
 		if (code !== undefined) this.code = code;
 		if (unanswered !== undefined) this.unanswered = unanswered;
+		if (minAmountMinor !== undefined) this.minAmountMinor = minAmountMinor;
 	}
 }
 
@@ -81,6 +93,15 @@ function apiCode(body: unknown): string | undefined {
 	if (typeof body !== 'object' || body === null) return undefined;
 	const { error } = body as { error?: unknown };
 	return typeof error === 'string' && error.length > 0 ? error : undefined;
+}
+
+/** the floor a `below_minimum` refusal named, where it is a whole count of minor units. */
+function apiMinAmountMinor(body: unknown): number | undefined {
+	if (typeof body !== 'object' || body === null) return undefined;
+	const { minAmountMinor } = body as { minAmountMinor?: unknown };
+	return Number.isSafeInteger(minAmountMinor) && (minAmountMinor as number) >= 0
+		? (minAmountMinor as number)
+		: undefined;
 }
 
 /** the sentence and the fix an api error carries, where it carries them. */
@@ -168,7 +189,9 @@ export function createQuote(origin: string | null): CheckoutPorts['quote'] {
 			throw new EmbedFailure(
 				words?.message ?? UNCHARGED,
 				words?.fix ?? `POST ${url} answered ${response.status}.`,
-				parsed.ok ? apiCode(parsed.value) : undefined
+				parsed.ok ? apiCode(parsed.value) : undefined,
+				undefined,
+				parsed.ok ? apiMinAmountMinor(parsed.value) : undefined
 			);
 		}
 
@@ -180,5 +203,37 @@ export function createQuote(origin: string | null): CheckoutPorts['quote'] {
 			);
 		}
 		return parsed.value as Awaited<ReturnType<CheckoutPorts['quote']>>;
+	};
+}
+
+/** where a gift paid to an address stands. `v1` is permanent, so this path is too. */
+export function statusUrl(origin: string, formId: string, donationId: string): string {
+	return `${origin}/api/v1/forms/${encodeURIComponent(formId)}/donations/${encodeURIComponent(donationId)}`;
+}
+
+/**
+ * the port the address screen reads on a timer: `GET /api/v1/forms/:id/donations/:donationId`.
+ *
+ * every way it can fail is a rejection and none of them is worded, because none reaches a donor:
+ * the flow answers a rejection by reading again (`awaitingDeposit` in ../checkout.machine.ts), and a
+ * sentence here would be a refusal nobody is shown. the body is handed back unread for `createQuote`'s
+ * reason — the machine is what decides whether it names a state.
+ *
+ * `credentials: 'omit'` for `createQuote`'s reason.
+ */
+export function createStatusRead(origin: string | null): CheckoutPorts['status'] {
+	return async ({ formId, paymentToken }) => {
+		if (origin === null) {
+			throw new Error('the embedded runtime could not tell which deployment it was served from');
+		}
+		const url = statusUrl(origin, formId, paymentToken);
+		const response = await fetch(url, {
+			credentials: 'omit',
+			headers: { accept: 'application/json' }
+		});
+		if (!response.ok) throw new Error(`GET ${url} answered ${response.status}`);
+		const parsed = await readJson(response);
+		if (!parsed.ok) throw new Error(`GET ${url} answered a body that is not JSON`);
+		return parsed.value as DonationStatus;
 	};
 }

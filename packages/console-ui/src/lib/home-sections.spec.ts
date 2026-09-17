@@ -52,7 +52,7 @@ const reading = (over: Partial<HomeReading> = {}): HomeReading => ({
 	...over
 });
 
-/** the same reading with some of the twenty-one unset. */
+/** the same reading with some of the twenty-four unset. */
 const without = (...names: readonly string[]): HomeReading =>
 	reading({
 		values: {
@@ -108,6 +108,17 @@ const onChariotAlone = (...short: readonly string[]): HomeReading =>
 			{ name: 'CHARIOT_API_KEY', kind: 'value', value: 'ch_key' },
 			{ name: 'CHARIOT_CONNECT_ID', kind: 'value', value: 'live_cid' },
 			{ name: 'CHARIOT_WEBHOOK_SECRET', kind: 'value', value: 'whsec' }
+		],
+		short
+	);
+
+/** the same reading with NOWPayments' own set stored and Stripe's gone, less whatever is named. */
+const onNowpaymentsAlone = (...short: readonly string[]): HomeReading =>
+	onAlone(
+		[
+			{ name: 'NOWPAYMENTS_API_KEY', kind: 'value', value: 'NP1-KEY' },
+			{ name: 'NOWPAYMENTS_IPN_SECRET', kind: 'value', value: 'ipn-secret' },
+			{ name: 'NOWPAYMENTS_OUTCOME_CURRENCY', kind: 'value', value: 'usdttrc20' }
 		],
 		short
 	);
@@ -317,6 +328,19 @@ describe('the six sections', () => {
 
 	it('read Chariot\u2019s key without its connect id as not done', () => {
 		expect(stateOf(onChariotAlone('CHARIOT_CONNECT_ID'), 'payments')).toBe('todo');
+	});
+
+	it('read a deployment holding NOWPayments\u2019 pair and no Stripe key as done', () => {
+		expect(stateOf(onNowpaymentsAlone(), 'payments')).toBe('ready');
+	});
+
+	it('read NOWPayments\u2019 key without its payout currency as not done', () => {
+		expect(stateOf(onNowpaymentsAlone('NOWPAYMENTS_OUTCOME_CURRENCY'), 'payments')).toBe('todo');
+	});
+
+	// the IPN secret verifies a notification and charges nothing, so the pair is done without it.
+	it('read NOWPayments\u2019 pair as done with no IPN secret stored', () => {
+		expect(stateOf(onNowpaymentsAlone('NOWPAYMENTS_IPN_SECRET'), 'payments')).toBe('ready');
 	});
 
 	// the webhook id is the same kind of value the signing secret is: without it a settled charge is

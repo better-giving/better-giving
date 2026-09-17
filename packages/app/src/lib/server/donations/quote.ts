@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { estimateDeductedFee, estimateFee } from '@better-giving/form/fee';
-import type { ApiErrorCode, FormConfig, Frequency, Quote } from '@better-giving/form/v1';
+import type { ApiErrorCode, Deposit, FormConfig, Frequency, Quote } from '@better-giving/form/v1';
 import { majorText } from '../../forms/amounts';
 import type { TurnstileCheck, TurnstileResult } from '../api/turnstile';
 import type { Db } from '../db/client';
@@ -9,11 +9,13 @@ import { donation, payment } from '../db/schema';
 import type { EmailProvider } from '../email/provider';
 import type { FormRecord } from '../forms/form-input';
 import { cachedCadences } from '../forms/cadence-cache';
+import { cachedCoins } from '../forms/coin-cache';
 import { readPublishedConfig } from '../forms/published-config';
 import { cachedRails } from '../forms/rail-cache';
 import { processorSetupFix, type Processors } from '../payments/factory';
 import {
 	commitmentMetadata,
+	type DepositInstructions,
 	type Intent,
 	type ProcessorName,
 	DONATION_METADATA_KEY,
@@ -26,7 +28,9 @@ import {
 	type RecurringInterval
 } from '../payments/provider';
 import { alert } from './delivery';
+import { depositQr } from './deposit-qr';
 import { commitDonor } from './donor';
+import { sendCryptoPending } from './crypto-pending';
 import { sendGrantRequested } from './grant-requested';
 import { parseQuoteRequest, type DafAuthorization, type ParsedQuoteRequest } from './quote-input';
 import { recordAuthorizedGift, recordDonation } from './record';
@@ -139,6 +143,20 @@ export const QUOTE_REFUSALS = [
 	 * different amount.
 	 */
 	'daf_grant_declined',
+	/**
+	 * a crypto gift in a coin the account does not take today, so no address was minted. checked
+	 * against the account at the moment of the quote, so a coin switched off after the served list
+	 * was cached lands here. the donor picks another coin.
+	 */
+	'coin_not_accepted',
+	/**
+	 * a crypto gift converting to less of the coin than NOWPayments accepts, so no address was minted
+	 * — a deposit under the floor lands failed or part-paid rather than as a gift. where the adapter
+	 * read the floor, the message names it in dollars and `minAmountMinor` carries it as a gift.
+	 */
+	'below_minimum',
+	/** a crypto gift NOWPayments refused as more than it takes in the coin. no address was minted. */
+	'above_maximum',
 	/** a defect of ours. nothing about the request or the deployment fixes it. */
 	'internal_error'
 ] as const;
@@ -161,7 +179,10 @@ export const QUOTE_REFUSAL_CODES = [
 	'challenge_failed',
 	'payments_unavailable',
 	'daf_authorization_expired',
-	'daf_grant_declined'
+	'daf_grant_declined',
+	'coin_not_accepted',
+	'below_minimum',
+	'above_maximum'
 ] as const satisfies readonly ApiErrorCode[];
 
 /** whether a refusal carries an `error` code on the wire, or only a sentence. */
@@ -187,6 +208,12 @@ export type QuoteResult =
 			readonly message: string;
 			readonly fix: string;
 			readonly form: FormRecord | null;
+			/**
+			 * `below_minimum` only, where the processor named its floor: the least gift the coin takes,
+			 * in the minor units and terms of `QuoteRequest.amountMinor` — the donor's own figure, any
+			 * covered fee left out.
+			 */
+			readonly minAmountMinor?: number;
 	  };
 
 /** everything this needs that it may not build for itself. */
@@ -214,15 +241,16 @@ export type QuoteDeps = {
 	 */
 	readonly verifyChallenge: (check: TurnstileCheck) => Promise<TurnstileResult>;
 	/**
-	 * the mail transport, for a donor-advised fund gift's messages: the donor's notice that the grant
-	 * request went (./grant-requested.ts), and the alerts for a grant that may exist with no gift
-	 * recorded against it. its failures are reported and never change the answer.
+	 * the mail transport, for the donor's notices sent at quote time — that a fund's grant request went
+	 * (./grant-requested.ts) and where to send a crypto gift (./crypto-pending.ts) — and the alerts for
+	 * a grant that may exist with no gift recorded against it. its failures are reported and never
+	 * change the answer.
 	 */
 	readonly email: EmailProvider;
 	/**
 	 * work that finishes after the answer: the Worker's `ctx.waitUntil`.
 	 *
-	 * the donor's grant notice and the operator's alerts go here, since slow mail would otherwise
+	 * the donor's notices and the operator's alerts go here, since slow mail would otherwise
 	 * count against the form's 30-second wait on a gift already recorded or already refused.
 	 * required for `verifyChallenge`'s reason.
 	 */
@@ -259,9 +287,9 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 	// how often a gift may repeat and which rails a donor is shown are both read off this
 	// deployment's processor accounts through the edge cache, and the port is `deps.processors` — the
 	// same injected one every other call here uses, so this reaches no network a spec did not ask
-	// for. the request's own origin is spent as a cache key and nothing else: an entry in
-	// `caches.default` belongs to the zone that asked for it. see ../forms/cadence-cache.ts and
-	// ../forms/rail-cache.ts.
+	// for. the request's own origin is spent as a cache key — an entry in `caches.default` belongs to
+	// the zone that asked for it, see ../forms/cadence-cache.ts and ../forms/rail-cache.ts — and as the
+	// deployment origin an intent is minted with, never the `Origin` header.
 	//
 	// what comes back narrows what this path *offers* and never what it *accepts*, and two things
 	// hold that. `parseQuoteRequest` below reads both vocabularies whole rather than the served
@@ -277,7 +305,12 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 		attempt.formId,
 		deps.env,
 		() => cachedCadences(deps.processors, origin),
-		() => cachedRails(deps.processors, origin)
+		() => cachedRails(deps.processors, origin),
+		// the coin list is read for a crypto quote alone, so a slow NOWPayments is no other donor's
+		// wait. the method is peeked before the body is parsed, because the parse is handed the config
+		// this read builds; `parseQuoteRequest` reads the same field, and the adapter checks a crypto
+		// quote's coin against the account whatever the list held.
+		async () => (postsCrypto(attempt.body) ? cachedCoins(deps.processors, origin) : [])
 	);
 	if (!served.ok) {
 		return {
@@ -332,12 +365,13 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 	// every other mint, and before the fee below, which prices a gift the donor has not yet been
 	// charged for.
 	if (submission.authorization !== null) {
-		return mintGrant(deps, form, config, submission, submission.authorization, attempt);
+		return mintGrant(deps, form, config, submission, submission.authorization, attempt, origin);
 	}
 
 	// the authoritative numbers, both of them the server's own. the donor's amount is an input that
 	// has already been looked up against the form's bounds; nothing they sent is charged.
-	const priced = price(submission, config.feeRules[submission.method]);
+	const rule = config.feeRules[submission.method];
+	const priced = price(submission, rule);
 	if (priced === null) {
 		return refuse(
 			form,
@@ -384,6 +418,9 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 		// minting a second intent on purpose. what the key buys is that a repeat of this exact call
 		// resolves to the intent it already made rather than a second one.
 		idempotencyKey: donationId,
+		deploymentOrigin: origin,
+		// checked against the account at this moment by the adapter, never against the served list.
+		...(submission.coin === null ? {} : { coin: submission.coin }),
 		// the id is the pointer and the other three are what the charge says about itself, so a
 		// reconciler reading it in the processor's dashboard is not looking anything up here. the
 		// gift is stated rather than the charge because the charge is already the amount above:
@@ -401,14 +438,19 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 			submission.method,
 			submission.frequency,
 			intent.reason,
-			intent.detail
+			intent.detail,
+			intent.minimumMinor === undefined
+				? undefined
+				: (leastGiftCharging(intent.minimumMinor, submission.coversFee, rule) ?? undefined)
 		);
 	}
 
+	const deposit = intent.value.deposit;
 	const quote: Quote = {
 		paymentToken: intent.value.paymentToken,
 		feeMinor: priced.feeMinor,
-		totalMinor: priced.chargeMinor
+		totalMinor: priced.chargeMinor,
+		...(deposit === undefined ? {} : { deposit: wireDeposit(deposit) })
 		// `mandate` is absent, and absent is its correct value. the wording that authorizes a bank
 		// debit is the provider's and never ours (packages/form/src/v1.ts), and none arrives at intent
 		// creation — the Payment Element renders it in the donor's own browser.
@@ -432,6 +474,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 		method: submission.method,
 		processor: provider.processor,
 		providerTxnId: intent.value.providerTxnId,
+		...(deposit === undefined ? {} : { deposit }),
 		occurredAt: new Date(),
 		consentedToContact: submission.consentedToContact,
 		note: submission.note,
@@ -457,7 +500,41 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 		);
 	}
 
+	if (deposit !== undefined) {
+		later(
+			deps,
+			sendCryptoPending(deps, {
+				donationId,
+				donorName: submission.donor.displayName,
+				donorEmail: submission.donor.primaryEmail,
+				...coinAsShown(config, deposit),
+				network: deposit.network,
+				coinAmount: deposit.coinAmount,
+				address: deposit.address,
+				memo: deposit.memo,
+				validUntil: deposit.validUntil
+			})
+		);
+	}
+
 	return { ok: true, quote, form };
+}
+
+/**
+ * the coin's name and memo rule off the served list, which is the list the donor picked from.
+ *
+ * the adapter read the account a moment ago and took the coin, so a coin missing from that list is one
+ * enabled after the list was cached: it is named by its code, uppercased, and its memo is treated as
+ * required exactly where the payment carries one — a memo present is never one a donor may skip.
+ */
+function coinAsShown(
+	config: FormConfig,
+	deposit: DepositInstructions
+): { readonly coinName: string; readonly memoRequired: boolean } {
+	const listed = config.coins?.find((coin) => coin.coin === deposit.coin);
+	return listed === undefined
+		? { coinName: deposit.coin.toUpperCase(), memoRequired: deposit.memo !== null }
+		: { coinName: listed.name, memoRequired: listed.memoRequired };
 }
 
 /**
@@ -624,7 +701,8 @@ async function mintGrant(
 	config: FormConfig,
 	submission: ParsedQuoteRequest,
 	authorization: DafAuthorization,
-	attempt: QuoteAttempt
+	attempt: QuoteAttempt,
+	origin: string
 ): Promise<QuoteResult> {
 	if (config.currency !== 'USD') {
 		return refuse(
@@ -656,6 +734,7 @@ async function mintGrant(
 		currency: config.currency,
 		method: 'daf',
 		idempotencyKey: donationId,
+		deploymentOrigin: origin,
 		authorizedSessionId: authorization.id
 	});
 	if (!created.ok) {
@@ -764,6 +843,19 @@ async function mintGrant(
 			'has been told. The cause is in this deployment’s logs (the Cloudflare dashboard, or ' +
 			'`pnpm run logs` from a checkout).'
 	);
+}
+
+/** where and how much to send, as `Deposit` in packages/form/src/v1.ts carries it. */
+function wireDeposit(deposit: DepositInstructions): Deposit {
+	return {
+		address: deposit.address,
+		memo: deposit.memo,
+		coin: deposit.coin,
+		network: deposit.network,
+		coinAmount: deposit.coinAmount,
+		validUntil: deposit.validUntil.toISOString(),
+		qr: depositQr(deposit.address)
+	};
 }
 
 /** the figures of the gift already recorded against this intent, or `null` where none reads back. */
@@ -924,6 +1016,32 @@ function price(
 }
 
 /**
+ * the least gift `price` charges at least `chargeMinor` for — `price` run backwards, so a floor the
+ * processor states on the charge is named in the donor's own terms. with the fee covered that is a
+ * gift below the floor by about the fee; uncovered it is the floor itself. searched rather than
+ * solved, because `estimateFee` rounds and caps and any closed-form inverse is a second copy of both;
+ * its charge never falls as the gift grows, which is what the search leans on. `null` where no gift up
+ * to the floor prices at all.
+ */
+function leastGiftCharging(
+	chargeMinor: number,
+	coversFee: boolean,
+	rule: Parameters<typeof estimateFee>[1]
+): number | null {
+	const reaches = (gift: number) =>
+		(price({ amountMinor: gift, coversFee }, rule)?.chargeMinor ?? -1) >= chargeMinor;
+	if (!reaches(chargeMinor)) return null;
+	let below = 0;
+	let least = chargeMinor;
+	while (least - below > 1) {
+		const middle = Math.floor((below + least) / 2);
+		if (reaches(middle)) least = middle;
+		else below = middle;
+	}
+	return least;
+}
+
+/**
  * the bare hostnames a challenge for this form may have been solved on: the sites it is allowed to
  * be embedded on, and this deployment's own host.
  *
@@ -972,6 +1090,13 @@ function attributedOrigin(request: Request, allowedOrigins: readonly string[]): 
 	return origin !== null && allowedOrigins.includes(origin) ? origin : null;
 }
 
+/** whether an unparsed body names the crypto rail. */
+function postsCrypto(body: unknown): boolean {
+	return (
+		typeof body === 'object' && body !== null && (body as { method?: unknown }).method === 'crypto'
+	);
+}
+
 /** `TURNSTILE_SECRET_KEY` off the platform env, without narrowing anything else out of it. */
 function readTurnstileSecret(env: unknown): string | undefined {
 	if (typeof env !== 'object' || env === null) return undefined;
@@ -1004,6 +1129,9 @@ function readTurnstileSiteKey(env: unknown): string | undefined {
  * can produce it, since it is a settled charge's fee still being computed and this path settles
  * nothing.
  *
+ * the three crypto reasons are the donor's choice of coin or amount, carried under their own codes
+ * with the adapter's sentence, which names the figure.
+ *
  * `frequency` is what splits the two remaining ones, and it is why this takes the cadence at all.
  * on a single gift `unsupported` and `not_found` are ours — an arm no release builds, or an object
  * `createIntent`'s own parameters named. on a commitment they are the account no longer holding
@@ -1014,7 +1142,8 @@ function paymentRefusal(
 	rail: QuotedRail,
 	frequency: Frequency,
 	reason: string,
-	detail: string
+	detail: string,
+	minAmountMinor?: number
 ): QuoteResult {
 	if (reason === 'rate_limited' || reason === 'unreachable' || reason === 'provider_error') {
 		return refuse(
@@ -1035,6 +1164,10 @@ function paymentRefusal(
 			// since, and the pair that is set is not the pair to go and re-check.
 			processorSetupFix([processorOf(rail)])
 		);
+	}
+	if (reason === 'coin_not_accepted' || reason === 'below_minimum' || reason === 'above_maximum') {
+		const refused = refuse(form, reason, detail, CRYPTO_CHOICE_FIX[reason]);
+		return minAmountMinor === undefined ? refused : { ...refused, minAmountMinor };
 	}
 	if (frequency !== 'one_time' && (reason === 'unsupported' || reason === 'not_found')) {
 		return refuse(
@@ -1058,6 +1191,22 @@ function paymentRefusal(
 	);
 }
 
+/**
+ * what a donor does about a crypto refusal. the adapter's `detail` is the message and names the coin
+ * and the figure; these say which of the two choices to move, and where the other coins are listed.
+ */
+const CRYPTO_CHOICE_FIX = {
+	coin_not_accepted:
+		'Nothing was charged. Pick another coin from `coins` on this form’s config ' +
+		'(`GET /api/v1/forms/:id/config`), which lists what the organisation’s account takes.',
+	below_minimum:
+		'Nothing was charged. Give at least the minimum named, or pick another coin from `coins` on ' +
+		'this form’s config (`GET /api/v1/forms/:id/config`).',
+	above_maximum:
+		'Nothing was charged. Give a smaller amount, or pick another coin from `coins` on this form’s ' +
+		'config (`GET /api/v1/forms/:id/config`).'
+} as const;
+
 /** hands a send to `deps.defer`, logging a throw there is nobody left to answer. */
 function later(deps: QuoteDeps, task: Promise<void>): void {
 	deps.defer(
@@ -1072,6 +1221,6 @@ function refuse(
 	reason: QuoteRefusal,
 	message: string,
 	fix: string
-): QuoteResult {
+): Extract<QuoteResult, { ok: false }> {
 	return { ok: false, reason, message, fix, form };
 }

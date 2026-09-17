@@ -34,6 +34,7 @@ import type {
 	AccountChargeability,
 	Intent,
 	IntentRequest,
+	PayableCoin,
 	PaymentFailure,
 	PaymentProvider,
 	PaymentResult,
@@ -1464,6 +1465,12 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 
 		async registerWalletDomain(): Promise<PaymentResult<WalletDomain>> {
 			return unsupported(NO_WALLET_DOMAINS);
+		},
+
+		async listPayableCoins(): Promise<PaymentResult<readonly PayableCoin[]>> {
+			return unsupported(
+				'PayPal takes no payment in a coin, so there is no coin list to read. Nothing was asked of PayPal.'
+			);
 		}
 	};
 }
@@ -1855,7 +1862,8 @@ function saleSettlementOf(sale: Record<string, unknown>, saleId: string): Settle
 		currency,
 		feeMinor,
 		metadata: {},
-		occurredAt: at(typeof sale.create_time === 'string' ? sale.create_time : undefined)
+		occurredAt: at(typeof sale.create_time === 'string' ? sale.create_time : undefined),
+		arrival: null
 	};
 }
 
@@ -1898,7 +1906,8 @@ function settlementOf(order: Order, captured: CapturedPayment | null): Settlemen
 		// it; the purchase unit's before a capture exists. PayPal copies `custom_id` from one onto the
 		// other, so these are the same value read from whichever object exists.
 		metadata: decodeMetadata(captured?.customId ?? order.purchaseUnits?.[0]?.customId),
-		occurredAt: at(captured?.createTime ?? order.createTime)
+		occurredAt: at(captured?.createTime ?? order.createTime),
+		arrival: null
 	};
 }
 

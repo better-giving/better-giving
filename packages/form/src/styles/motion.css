@@ -198,8 +198,13 @@
 		background-color var(--_move-state);
 }
 
-/* bounded by the request that started it: the only loop here, and it ends when the flow does. */
-[part~='busy'] .spinner {
+/*
+ * bounded by the request that started it: the only loop here, and it ends when the flow does. the
+ * address screen's status is the same loop, bounded by that screen, which stands only while the gift
+ * is still being read.
+ */
+[part~='busy'] .spinner,
+.status .spinner {
 	animation: spin var(--_dur-spin) linear infinite;
 }
 

@@ -1,4 +1,5 @@
-// the rows the payment box lists outside the provider's frame: one per PayPal rail, and the fund's.
+// the rows the payment box lists outside the provider's frame: one per PayPal rail, the fund's, and
+// the crypto option's.
 //
 // the provider paints its own rails as rows inside its frame (`layout` in ./stripe.ts), and a donor
 // reads the box as one list, so the options the other adapters draw are rows of the same shape: the
@@ -21,7 +22,7 @@
 import rowStyles from '../styles/rows.css?inline';
 
 /** which mark a row carries. */
-export type RowMark = 'paypal' | 'venmo' | 'fund';
+export type RowMark = 'paypal' | 'venmo' | 'fund' | 'crypto';
 
 /** one row, as the adapter that drew it and the composer that coordinates it hold it. */
 export type Row = {
@@ -48,8 +49,13 @@ export type RowList = {
 
 /** a row list plus the two things only the adapter drawing it does. */
 export type RowDrawer = RowList & {
-	/** a row holding `content`, appended to the mount closed. */
-	draw(name: string, mark: RowMark, content: HTMLElement): Row;
+	/**
+	 * a row holding `content`, appended to the mount closed.
+	 *
+	 * `toggled` hears the row open and close, whoever asked — the donor's press or ./surface.ts closing
+	 * it for a neighbour — for a row whose opening is itself the choice.
+	 */
+	draw(name: string, mark: RowMark, content: HTMLElement, toggled?: (open: boolean) => void): Row;
 	/** the row taken off the page along with what it holds. */
 	erase(row: Row): void;
 };
@@ -65,7 +71,7 @@ const PINNED =
 /** one path of a drawn glyph, as its source file states it. */
 type GlyphPath = { readonly d: string; readonly fill: string };
 
-/** a glyph as its source file draws it: the file's own viewBox and paths, in order. */
+/** a glyph as its source file draws it: the file's own viewBox and paths, in order, each with its fill. */
 type Glyph = { readonly viewBox: string; readonly paths: readonly GlyphPath[] };
 
 /**
@@ -81,11 +87,11 @@ type Glyph = { readonly viewBox: string; readonly paths: readonly GlyphPath[] };
  *
  * the fund's is the single-colour icon rather than the blue logo, so every path is `currentColor`: it
  * takes the head's own ink and changes with the row's open state exactly as the name beside it does
- * (`.head` in ../styles/rows.css). the two processors' are their brands' colours and change with
+ * (`.head` in ../styles/rows.css). the processors' are their brands' colours and change with
  * nothing.
  *
- * raw-colour-ok: PayPal's and Venmo's fills are a third party's trademark rather than a colour of this
- * card. the provider's own rows carry their brands' marks in their brands' colours inside its frame,
+ * raw-colour-ok: PayPal's, Venmo's and NOWPayments' fills are a third party's trademark rather than a
+ * colour of this card. the provider's own rows carry their brands' marks in their brands' colours inside its frame,
  * and these stand in that list.
  */
 const BRAND_MARKS: Readonly<Record<RowMark, Glyph>> = {
@@ -113,6 +119,15 @@ const BRAND_MARKS: Readonly<Record<RowMark, Glyph>> = {
 				fill: '#008CFF',
 				d: 'M42.3 2L28.5 4.8c.8 1.9 1.4 4.1 1.4 7.4 0 6-4.2 14.8-7.7 20.4L18.5 3 3.3 4.5l7 41.5h17.4c7.7-10 17-24.3 17-35.2 0-3.4-.8-6.1-2.4-8.8z'
 			}
+		]
+	},
+	// NOWPayments' favicon, https://nowpayments.io/images/favicon.ico: a 64px raster of two squares,
+	// written as the two paths its pixels draw, fills verbatim.
+	crypto: {
+		viewBox: '0 0 64 64',
+		paths: [
+			{ fill: '#68AAFF', d: 'M0 0h64v64H0z' },
+			{ fill: '#000000', d: 'M15 15h34v34H15z' }
 		]
 	},
 	fund: {
@@ -183,7 +198,7 @@ export function createRows(mount: HTMLElement): RowDrawer {
 		watch(next) {
 			watcher = next;
 		},
-		draw(name, mark, content) {
+		draw(name, mark, content, toggled) {
 			const host = doc.createElement('div');
 			host.style.cssText = PINNED;
 			const root = host.attachShadow({ mode: 'open' });
@@ -217,9 +232,11 @@ export function createRows(mount: HTMLElement): RowDrawer {
 			host.appendChild(content);
 
 			const show = (open: boolean): void => {
+				const was = !panel.hidden;
 				head.setAttribute('aria-expanded', String(open));
 				panel.hidden = !open;
 				band.classList.toggle('open', open);
+				if (was !== open) toggled?.(open);
 			};
 
 			const row: Row = {
@@ -245,6 +262,8 @@ export function createRows(mount: HTMLElement): RowDrawer {
 			const at = drawn.findIndex((entry) => entry.row === row);
 			if (at === -1) return;
 			const [entry] = drawn.splice(at, 1);
+			// closed on the way out, so a row whose opening was a choice takes the choice with it.
+			entry?.row.collapse();
 			entry?.host.remove();
 			watcher?.changed();
 		}

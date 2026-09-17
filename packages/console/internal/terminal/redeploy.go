@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"github.com/better-giving/console/internal/cf"
+	"github.com/better-giving/console/internal/deploy"
 	"github.com/better-giving/console/internal/effects"
 	"github.com/better-giving/console/internal/release"
 )
@@ -60,6 +61,12 @@ func UpdateOutcome(ran effects.Carried) string {
 	case effects.NoDatabase:
 		return NoDatabaseFound(ran.Found)
 	case effects.NotDeployed:
+		// the upload recorded this release on the worker before its schedule went up, so the code is
+		// serving whatever the schedule's stop was, and the next `start` reads the schedule back.
+		if ran.Ran != nil && ran.Ran.At == deploy.Scheduling {
+			return "The new code is live, but the app's scheduled checks weren't turned on. " +
+				"Run " + Cmd("start") + " again to finish."
+		}
 		return notDeployed(ran.Ran, Starting())
 	default:
 		return unaccountedUpdate

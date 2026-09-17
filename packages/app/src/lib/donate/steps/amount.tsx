@@ -34,6 +34,11 @@ export type AmountStepProps = {
 	/** the decisions this step is reporting, empty until a press has asked for one. */
 	readonly missing: readonly AmountDecision[];
 	readonly amountProblem: string;
+	/**
+	 * a coin's refusal of the amount a crypto gift was quoted at, `''` where there is none. it stands
+	 * where the bounds do and gives way to them: a figure outside the form's own bounds no coin takes.
+	 */
+	readonly refusal: string;
 	/** the free entry's own text, which is the view's answer rather than the flow's. */
 	readonly entry: string;
 	readonly onEntry: (text: string) => void;
@@ -67,6 +72,7 @@ export function AmountStep({
 	hidden,
 	missing,
 	amountProblem,
+	refusal,
 	entry,
 	onEntry,
 	onPreset,
@@ -86,6 +92,9 @@ export function AmountStep({
 	const busy = api.continueButton['aria-busy'];
 	const missingAmount = missing.includes('amount');
 	const missingNote = missing.includes('note');
+	const amountWords = missingAmount ? amountProblem : refusal;
+	// a refusal sends the caret to the control holding the figure, so that control is described by it.
+	const figureProblem = refusal === '' ? undefined : 'amount-problem';
 
 	// a deployment offering one cadence draws no control: one option is not a choice, and a track
 	// holding it asks a donor to decide something already decided. what a control would have sent is
@@ -238,7 +247,10 @@ export function AmountStep({
 			 * the box itself, where the role does support it, and the sentence reaches the group through
 			 * `aria-describedby`, which is global and works on the role a fieldset already has.
 			 */}
-			<fieldset className="group" aria-describedby={missingAmount ? 'amount-problem' : undefined}>
+			<fieldset
+				className="group"
+				aria-describedby={amountWords === '' ? undefined : 'amount-problem'}
+			>
 				<legend part={part('label')}>{copy.HOW_MUCH}</legend>
 				<div className={tiled ? 'tiles' : 'tiles bare'} ref={tiles}>
 					{tiled
@@ -258,6 +270,7 @@ export function AmountStep({
 										name={api.amountGroup.name}
 										value={String(option.value)}
 										checked={option.checked && !otherHolds}
+										aria-describedby={figureProblem}
 										onChange={() => {
 											// the amount is one decision, so the press writes its own figure into the
 											// box below: the tiles and the box are two views of one number.
@@ -282,6 +295,7 @@ export function AmountStep({
 								name={api.amountGroup.name}
 								value=""
 								checked={otherHolds}
+								aria-describedby={figureProblem}
 								onChange={onOther}
 							/>
 							<span>{copy.OTHER}</span>
@@ -303,8 +317,9 @@ export function AmountStep({
 						{/*
 						 * a numeric keypad with a decimal separator on it rather than `type="number"`, whose
 						 * spinner and scroll-wheel stepping both change a gift by accident. it is described
-						 * by nothing: a description written here would be read whether the sentence is on
-						 * screen or not, which tells every donor their amount is wrong before they type one.
+						 * only while a coin's refusal stands: a description written here otherwise would be
+						 * read whether the sentence is on screen or not, which tells every donor their amount
+						 * is wrong before they type one.
 						 */}
 						<input
 							id="amount-entry"
@@ -315,6 +330,7 @@ export function AmountStep({
 							placeholder={copy.AMOUNT}
 							value={entry}
 							aria-invalid={missingAmount ? true : undefined}
+							aria-describedby={figureProblem}
 							onChange={(event) => onEntry(event.currentTarget.value)}
 						/>
 						<span className="adorn-trail" aria-hidden="true">
@@ -325,8 +341,8 @@ export function AmountStep({
 				<label part={part('label')} className="vh" htmlFor="amount-entry">
 					{copy.AMOUNT}
 				</label>
-				<p className="message" id="amount-problem" hidden={!missingAmount}>
-					{amountProblem}
+				<p className="message" id="amount-problem" hidden={amountWords === ''}>
+					{amountWords}
 				</p>
 			</fieldset>
 

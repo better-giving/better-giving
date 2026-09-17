@@ -1,4 +1,10 @@
-import { checkoutMachine, fundIsOffered, openFund } from '@better-giving/form/machine';
+import { createCoinPicker, type CoinPicker } from '@better-giving/form/coin-picker';
+import {
+	checkoutMachine,
+	cryptoIsOffered,
+	fundIsOffered,
+	openFund
+} from '@better-giving/form/machine';
 import type { CheckoutEvent, Failure } from '@better-giving/form/machine';
 import { toState, type CheckoutSnapshot, type State } from '@better-giving/form/connect';
 import type { CheckoutPorts, FundReports } from '@better-giving/form/ports';
@@ -47,6 +53,7 @@ export function initialSnapshot(config: FormConfig): CheckoutSnapshot {
 		quote: inert,
 		confirm: inert,
 		resume: inert,
+		status: inert,
 		now: () => 0
 	};
 	const actor = createActor(checkoutMachine, { input: { config, ports } });
@@ -75,6 +82,12 @@ export type CheckoutMounts = {
 
 export type Checkout = {
 	readonly actor: Actor<typeof checkoutMachine>;
+	/**
+	 * the coin list a `crypto` gift is chosen in, which the crypto option stands in its row in the
+	 * payment box. built here because the surface takes it before the actor exists; what it lists and
+	 * says, and when the caret goes into it, are the card's.
+	 */
+	readonly coins: CoinPicker;
 	/**
 	 * hands `listener` how many options the payment box lists, now and on every change.
 	 *
@@ -129,6 +142,8 @@ export function startCheckout(config: FormConfig, mounts: CheckoutMounts): Check
 	let fundSays: (event: CheckoutEvent) => void = () => {};
 	let opened: FundReports['opened'] = () => null;
 
+	const coins = createCoinPicker(paymentMount.ownerDocument);
+
 	const surface = createPaymentSurface(
 		config,
 		paymentMount,
@@ -139,6 +154,7 @@ export function startCheckout(config: FormConfig, mounts: CheckoutMounts): Check
 			approved: (authorization) => fundSays({ type: 'FUND_APPROVED', ...authorization }),
 			closed: () => fundSays({ type: 'FUND_CLOSED' })
 		},
+		coins.host,
 		seams?.payment
 	);
 
@@ -166,6 +182,7 @@ export function startCheckout(config: FormConfig, mounts: CheckoutMounts): Check
 		// said, and the surface is where a reading that changes nothing stops.
 		surface.cadence('fv' in state ? state.fv?.frequency : undefined);
 		surface.offerFund(fundIsOffered(snapshot));
+		surface.offerCrypto(cryptoIsOffered(snapshot));
 
 		if (state.step === 'details' && challenge === null) {
 			challenge = createChallenge(
@@ -187,6 +204,7 @@ export function startCheckout(config: FormConfig, mounts: CheckoutMounts): Check
 
 	return {
 		actor,
+		coins,
 		rows: (listener) => surface.rows(listener),
 		stop() {
 			subscription.unsubscribe();

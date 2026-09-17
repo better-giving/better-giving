@@ -9,13 +9,14 @@ import {
 } from './element';
 import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from './parts';
 import type { CheckoutPorts, FundReports } from './ports';
-import type { Failure } from './checkout.machine';
+import { DEPOSIT_POLL_MS, type Failure } from './checkout.machine';
 import {
 	PAYMENT_METHODS,
 	type FormConfig,
 	type Frequency,
 	type PaymentMethod,
 	type Program,
+	type Quote,
 	type QuoteRequest
 } from './v1';
 import { DEFAULT_SHAPE } from './views';
@@ -25,6 +26,7 @@ import layoutStyles from './styles/layout.css?inline';
 import motionStyles from './styles/motion.css?inline';
 import tokenStyles from './styles/tokens.css?inline';
 import rowStyles from './styles/rows.css?inline';
+import coinStyles from './styles/coins.css?inline';
 
 // the dom pool. what a lightweight DOM can prove about a custom element is structure, attributes,
 // events, slots and the upgrade lifecycle, and that is the whole of what is asserted here. layout,
@@ -55,7 +57,8 @@ const CONFIG: FormConfig = {
 		google_pay: { percent: 0.029, fixedMinor: 30 },
 		paypal: { percent: 0.0349, fixedMinor: 49 },
 		venmo: { percent: 0.0349, fixedMinor: 49 },
-		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
+		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
+		crypto: { percent: 0.01, fixedMinor: 0 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -67,6 +70,7 @@ const PORTS: CheckoutPorts = {
 	quote: async () => ({ paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor: 2606 }),
 	confirm: async () => ({ kind: 'succeeded' }),
 	resume: async () => ({ kind: 'succeeded' }),
+	status: async () => ({ state: 'waiting' }),
 	now: () => 1_700_000_000_000
 };
 
@@ -144,6 +148,8 @@ type Options = {
 	readonly cadences?: (frequency: Frequency | undefined) => void;
 	/** every reading of whether a fund is offered, in the order the card told the payment surface. */
 	readonly offers?: (offered: boolean) => void;
+	/** every reading of whether crypto is offered, in the order the card told the payment surface. */
+	readonly cryptoOffers?: (offered: boolean) => void;
 	/** how many options the payment box lists when the card first asks; one where unsaid. */
 	readonly rowCount?: number;
 	readonly attributes?: Readonly<Record<string, string>>;
@@ -171,8 +177,11 @@ async function mount(options: Options = {}): Promise<Mounted> {
 					stop: () => options.stopped?.()
 				};
 			},
-			checkout: (config, mount, onRail, onUnavailable, boot, fund) => {
+			checkout: (config, mount, onRail, onUnavailable, boot, fund, coins) => {
 				reports = fund;
+				// stood in the payment node the way the crypto option stands it, so it is in the document
+				// and can hold the caret.
+				mount.appendChild(coins);
 				options.mounted?.(mount);
 				options.boots?.(boot);
 				report = onRail;
@@ -185,6 +194,7 @@ async function mount(options: Options = {}): Promise<Mounted> {
 					},
 					cadence: (frequency) => options.cadences?.(frequency),
 					offerFund: (offered) => options.offers?.(offered),
+					offerCrypto: (offered) => options.cryptoOffers?.(offered),
 					rows: (listener) => {
 						counted = listener;
 						listener(options.rowCount ?? 1);
@@ -279,6 +289,7 @@ function placed(attributes: Readonly<Record<string, string>> = { form: 'frm_a8x2
 							input: { config, ports: PORTS },
 							cadence: () => {},
 							offerFund: () => {},
+							offerCrypto: () => {},
 							rows: () => {},
 							stop: () => {}
 						};
@@ -947,6 +958,7 @@ describe('the live region', () => {
 					input: { config, ports: PORTS },
 					cadence: () => {},
 					offerFund: () => {},
+					offerCrypto: () => {},
 					rows: () => {},
 					stop: () => {}
 				}),
@@ -4517,6 +4529,15 @@ describe('the stylesheets', () => {
 		expect(css).not.toMatch(/\b(rgb|rgba|hsl|oklch)\(/);
 	});
 
+	// the coin list inside the crypto option carries a sheet of its own (./coin-picker.ts), held to it too.
+	it('derives every colour in the coin list from a token too', async () => {
+		const list = declarations(coinStyles);
+		expect(list.length).toBeGreaterThan(300);
+		expect(list).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+		expect(list).not.toMatch(/\b(rgb|rgba|hsl|oklch)\(/);
+		expect(list).not.toMatch(/\btransition\b|\banimation\b|!important/);
+	});
+
 	// the payment rows drawn outside the provider's frame carry a sheet of their own
 	// (./embed/rows.ts), and it is held to the same rule.
 	it('derives every colour on the payment rows from a token too', async () => {
@@ -5123,5 +5144,372 @@ describe('a donor-advised fund’s window', () => {
 	it('keeps the window shut on a form offering no fund', async () => {
 		const card = await atReview();
 		expect(card.fund().opened()).toBeNull();
+	});
+});
+
+describe('a crypto gift', () => {
+	const CRYPTO: FormConfig = {
+		...CONFIG,
+		paymentMethods: ['card', 'crypto'],
+		coins: [
+			{ coin: 'xrp', ticker: 'xrp', name: 'Ripple', network: 'xrp', memoRequired: true },
+			{
+				coin: 'usdttrc20',
+				ticker: 'usdt',
+				name: 'Tether USD (Tron)',
+				network: 'trx',
+				memoRequired: false
+			},
+			{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false }
+		]
+	};
+	/** a week past the clock `PORTS.now` stands at, at noon so the date reads the same in any zone. */
+	const VALID_UNTIL = '2023-11-21T12:00:00.000Z';
+	const USDT: Quote = {
+		paymentToken: 'don_1',
+		feeMinor: 25,
+		totalMinor: 2525,
+		deposit: {
+			address: 'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',
+			memo: null,
+			coin: 'usdttrc20',
+			network: 'trx',
+			coinAmount: '25.004187',
+			validUntil: VALID_UNTIL,
+			qr: { rows: ['110', '011', '101'] }
+		}
+	};
+	const XRP: Quote = {
+		...USDT,
+		deposit: {
+			...(USDT.deposit as NonNullable<Quote['deposit']>),
+			address: 'rLJsrwVTayaqCnQZnxLLLvcz6kS3LwqhkX',
+			memo: '3198472051',
+			coin: 'xrp',
+			network: 'xrp',
+			coinAmount: '19.36121163'
+		}
+	};
+
+	/** the coin list's own root, standing in the payment node. */
+	const coins = (card: Mounted): ShadowRoot => {
+		const host = [...card.host.querySelectorAll('*')].find((node) =>
+			node.shadowRoot?.querySelector('[role="combobox"]')
+		);
+		if (host?.shadowRoot == null) throw new Error('no coin list was handed to the runtime');
+		return host.shadowRoot;
+	};
+	const combobox = (card: Mounted) => coins(card).querySelector('input') as HTMLInputElement;
+	/** the donor picking a coin in the list, by its ticker. */
+	const pick = (card: Mounted, ticker: string) => {
+		(coins(card).querySelector('.picker') as HTMLElement).click();
+		const option = [...coins(card).querySelectorAll<HTMLElement>('[role="option"]')].find(
+			(node) => node.querySelector('.coin-ticker')?.textContent === ticker
+		);
+		option?.click();
+	};
+	/** the review step of a one-time gift with the crypto option open. */
+	const onCrypto = async (options: Options = {}) => {
+		const card = await atReviewBeforeRail({ config: CRYPTO, ...options });
+		card.rail('crypto');
+		return card;
+	};
+	/** the address screen, for `quote`. */
+	const atAddress = async (quote: Quote = USDT, ticker = 'USDT', options: Options = {}) => {
+		const quotes: QuoteRequest[] = [];
+		const card = await onCrypto({
+			...options,
+			ports: {
+				quote: async (request) => {
+					quotes.push(request);
+					return quote;
+				},
+				...options.ports
+			}
+		});
+		pick(card, ticker);
+		card.find('[part~="submit"]').click();
+		await settle();
+		return { card, quotes };
+	};
+	const heading = (card: Mounted) => card.text('.takeover [part~="heading"]');
+	const region = (card: Mounted) => card.text('[role="status"]');
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('lists the account’s coins by ticker and sends the one the donor picks', async () => {
+		const card = await onCrypto();
+		expect(
+			[...coins(card).querySelectorAll('[role="option"] .coin-ticker')].map(
+				(node) => node.textContent
+			)
+		).toEqual(['BTC', 'USDT', 'XRP']);
+
+		const { quotes } = await atAddress();
+
+		expect(quotes[0]?.coin).toBe('usdttrc20');
+	});
+
+	it('tells the card which way crypto is offered as the cadence moves', async () => {
+		const offers: boolean[] = [];
+		const card = await onCrypto({ cryptoOffers: (offered) => offers.push(offered) });
+		expect(offers.at(-1)).toBe(true);
+
+		dot(card, 1).click();
+		press(card.all('[part~="frequency-option"] input')[1] as HTMLElement);
+		expect(offers.at(-1)).toBe(false);
+	});
+
+	it('says what the fee does to a gift valued on arrival', async () => {
+		const card = await onCrypto();
+		expect(card.text('.fee-note')).toBe('You add about $0.26 toward the processing fee.');
+
+		press(card.find('.row.fee [part~="checkbox"]'));
+		expect(card.text('.fee-note')).toBe(
+			'Acme Relief Fund pays the processing fee out of your gift.'
+		);
+	});
+
+	it('asks for a coin on a press with none picked, and puts the caret in the list', async () => {
+		const quotes: QuoteRequest[] = [];
+		const card = await onCrypto({
+			ports: {
+				quote: async (request) => {
+					quotes.push(request);
+					return USDT;
+				}
+			}
+		});
+		expect(coins(card).getElementById('coin-problem')?.hidden).toBe(true);
+
+		card.find('[part~="submit"]').click();
+
+		expect(quotes).toHaveLength(0);
+		expect(coins(card).getElementById('coin-problem')?.textContent).toBe('required');
+		expect(coins(card).activeElement).toBe(combobox(card));
+		expect(card.find('#payment-problem').hidden).toBe(true);
+	});
+
+	it('shows where and how much to send, in the order a donor reads it', async () => {
+		const { card } = await atAddress();
+
+		expect(heading(card)).toBe('Send your gift');
+		const block = card.find('.deposit');
+		expect(block.hidden).toBe(false);
+		const read = [
+			...block.querySelectorAll<HTMLElement>('[part~="label"], .value, .aside, .attention, .status')
+		]
+			.filter((node) => node.closest('[hidden]') === null)
+			.map((node) => node.textContent);
+		expect(read).toEqual([
+			'Amount to send',
+			'25.004187 USDT',
+			'About $25.25 today',
+			'Network',
+			'TRX',
+			'Send on this network only. Coins sent on another network may not reach Acme Relief Fund.',
+			'Address',
+			'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',
+			expect.stringMatching(
+				/^Send by November 21, 2023 at \d{1,2}:\d\d [AP]M\. After that this address closes and you would need to start over\.$/
+			),
+			'Your gift is what arrives, so add any wallet or exchange fee on top.',
+			'These details were also sent to donor@example.org.',
+			'Waiting for your gift to arrive'
+		]);
+		expect(block.querySelector('.attention')?.textContent).toContain('Send on this network only.');
+		expect(block.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
+			'QR code for the address'
+		);
+		expect(block.querySelector('.qr path')?.getAttribute('d')).toBe(
+			'M0 0h2v1h-2zM1 1h2v1h-2zM0 2h1v1h-1zM2 2h1v1h-1z'
+		);
+		expect(shows(card, '.takeover > [part~="action-quiet"]')).toBe('Use a different coin');
+		expect(card.find('.receipt-slot').hidden).toBe(true);
+	});
+
+	it('warns about the memo where the coin needs one, and quiets the network’s warning', async () => {
+		const { card } = await atAddress(XRP, 'XRP');
+		const block = card.find('.deposit');
+
+		const attention = [...block.querySelectorAll<HTMLElement>('.attention')].filter(
+			(node) => !node.hidden
+		);
+		expect(attention.map((node) => node.textContent)).toEqual([
+			'Include this memo. Without it your gift cannot be matched and may not reach Acme Relief Fund.'
+		]);
+		expect([...block.querySelectorAll('.aside')].map((node) => node.textContent)).toContain(
+			'Send on this network only. Coins sent on another network may not reach Acme Relief Fund.'
+		);
+		expect([...block.querySelectorAll('.value')].map((node) => node.textContent)).toContain(
+			'3198472051'
+		);
+	});
+
+	it('leaves the QR out where the quote’s matrix cannot be drawn, and the rest as it was', async () => {
+		const unusable: Quote = {
+			...USDT,
+			deposit: { ...(USDT.deposit as NonNullable<Quote['deposit']>), qr: { rows: ['10', '1'] } }
+		};
+		const { card } = await atAddress(unusable);
+
+		expect(card.find('.qr').hidden).toBe(true);
+		expect(heading(card)).toBe('Send your gift');
+	});
+
+	it('copies the bare figure and says so on the control and on the region', async () => {
+		const written: string[] = [];
+		vi.stubGlobal('navigator', {
+			...navigator,
+			clipboard: { writeText: async (text: string) => void written.push(text) }
+		});
+		const { card } = await atAddress();
+		const amountCopy = card.find('.deposit [aria-label="Copy amount"]');
+		expect(amountCopy.querySelector('.said')?.textContent).toBe('Copy');
+
+		amountCopy.click();
+		await settle();
+		await settle();
+
+		expect(written).toEqual(['25.004187']);
+		expect(amountCopy.querySelector('.said')?.textContent).toBe('Copied');
+		expect(region(card)).toBe('Amount copied.');
+	});
+
+	it('reads Copy failed where the clipboard refuses', async () => {
+		vi.stubGlobal('navigator', {
+			...navigator,
+			clipboard: { writeText: () => Promise.reject(new Error('denied')) }
+		});
+		const { card } = await atAddress();
+		const addressCopy = card.find('.deposit [aria-label="Copy address"]');
+
+		addressCopy.click();
+		await settle();
+
+		expect(addressCopy.querySelector('.said')?.textContent).toBe('Copy failed');
+	});
+
+	it('turns to the thank-you once the gift arrives, with no receipt figures', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		let state: 'waiting' | 'received' = 'waiting';
+		const { card } = await atAddress(USDT, 'USDT', { ports: { status: async () => ({ state }) } });
+
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+		expect(heading(card)).toBe('Send your gift');
+		// the caret on a Copy control, which leaves the card with the address block.
+		card.find('.deposit [aria-label="Copy address"]').focus();
+		state = 'received';
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+
+		expect(heading(card)).toBe('Thank you');
+		expect(card.text('.takeover .prose')).toBe(
+			'Your gift arrived. A receipt is on its way to your email. Acme Relief Fund has your gift.'
+		);
+		expect(card.find('.receipt-slot').hidden).toBe(true);
+		expect(card.find('.deposit').hidden).toBe(true);
+		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+	});
+
+	it('withdraws the address once its send-by passes here, and keeps checking', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
+		const { card } = await atAddress(USDT, 'USDT', {
+			ports: { now: () => Date.now() }
+		});
+		expect(heading(card)).toBe('Send your gift');
+
+		await vi.advanceTimersByTimeAsync(1000);
+
+		expect(heading(card)).toBe('Checking for your gift');
+		expect(card.text('.takeover .prose')).toMatch(
+			/^The address for this gift closed on November 21, 2023 at .+\. If you sent your gift before then, this page changes when it arrives\.$/
+		);
+		expect(card.find('.deposit').hidden).toBe(true);
+		expect(card.find('.takeover > [part~="action-quiet"]').hidden).toBe(true);
+	});
+
+	it('offers a new address once the server says this one expired, and starts again at the coin', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const { card } = await atAddress(USDT, 'USDT', {
+			ports: { status: async () => ({ state: 'expired' }) }
+		});
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+
+		expect(heading(card)).toBe('This gift needs to be started again');
+		expect(card.text('.takeover .prose')).toBe(
+			'The address for this gift closed before anything arrived. Do not send to it now.'
+		);
+		primary(card).click();
+
+		expect(card.find('.step-give').hidden).toBe(false);
+		expect(coins(card).activeElement).toBe(combobox(card));
+		expect(coins(card).querySelector('.chosen')?.textContent).toBe('USDT Tether USD (Tron)');
+	});
+
+	it('goes back to the coin list for a different coin', async () => {
+		const { card } = await atAddress();
+
+		secondary(card).click();
+
+		expect(card.find('.step-give').hidden).toBe(false);
+		expect(coins(card).activeElement).toBe(combobox(card));
+	});
+
+	it('lands a gift below the coin’s minimum on the amount step, naming the minimum', async () => {
+		const card = await onCrypto({
+			ports: {
+				quote: () =>
+					Promise.reject({ code: 'below_minimum', message: 'too small', minAmountMinor: 1200 })
+			}
+		});
+		pick(card, 'USDT');
+		card.find('[part~="submit"]').click();
+		await settle();
+
+		expect(card.find('.step').hidden).toBe(false);
+		expect(card.text('#amount-problem')).toBe(
+			'at least $12 in Tether USD (Tron), or pick another coin'
+		);
+		const focused = card.shadow.activeElement as HTMLElement;
+		expect(focused.getAttribute('aria-describedby')).toBe('amount-problem');
+		expect(card.shadow.querySelector('[role="alert"]')).toBeNull();
+
+		type(card.find('#amount-entry'), '50');
+		expect(card.find('#amount-problem').hidden).toBe(true);
+	});
+
+	it.each([
+		[{ code: 'below_minimum' }, 'too small for Tether USD (Tron), raise it or pick another coin'],
+		[{ code: 'above_maximum' }, 'too large for Tether USD (Tron), lower it or pick another coin']
+	])('words a refusal with no figure: %o', async (refusal, words) => {
+		const card = await onCrypto({
+			ports: { quote: () => Promise.reject({ ...refusal, message: 'refused' }) }
+		});
+		pick(card, 'USDT');
+		card.find('[part~="submit"]').click();
+		await settle();
+
+		expect(card.text('#amount-problem')).toBe(words);
+	});
+
+	it('lands a coin the account no longer takes back in the list, marked', async () => {
+		const card = await onCrypto({
+			ports: { quote: () => Promise.reject({ code: 'coin_not_accepted', message: 'refused' }) }
+		});
+		pick(card, 'USDT');
+		card.find('[part~="submit"]').focus();
+		card.find('[part~="submit"]').click();
+		await settle();
+
+		expect(card.find('.step-give').hidden).toBe(false);
+		expect(coins(card).getElementById('coin-problem')?.textContent).toBe(
+			'no longer accepted, pick another coin'
+		);
+		expect(coins(card).activeElement).toBe(combobox(card));
+		expect(coins(card).querySelector('[aria-disabled="true"] .coin-ticker')?.textContent).toBe(
+			'USDT'
+		);
 	});
 });

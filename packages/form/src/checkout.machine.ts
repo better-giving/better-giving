@@ -46,6 +46,11 @@
 // creates the grant inside that request, so a usable answer is the gift made and nothing is
 // confirmed after it. closing the window unapproved goes back to `give`.
 //
+// a crypto gift's rail is `give ─► quoting ─► awaitingDeposit`: the quote mints an address, the donor
+// sends the coin from their own wallet, and the gift is read until it arrives (`success`) or the
+// address closes empty (`depositExpired`). a refusal of its amount or its coin lands back on the step
+// that fixes it rather than on `failed`.
+//
 // `quoted` is a junction rather than a screen. it routes to `confirm` where the total moved and
 // to `mandate` where the rail wants an authorization; both of those lead on to `confirming`, and
 // everything else goes straight there. what `confirming` ends in:
@@ -74,6 +79,7 @@
 
 import { assign, fromPromise, not, setup, type Actor } from 'xstate';
 import {
+	depositIsUsable,
 	estimateDeductedFee,
 	estimateFee,
 	quoteIsUsable,
@@ -103,8 +109,10 @@ import {
 } from './value';
 import { isChariotRail } from './embed/rails';
 import {
+	DONATION_STATES,
 	FREQUENCIES,
 	PAYMENT_METHODS,
+	type DonationStatus,
 	type FeeRule,
 	type FormConfig,
 	type PaymentMethod,
@@ -189,6 +197,23 @@ export type Failure = {
 };
 
 /**
+ * the processor refusing the coin or the amount a `crypto` quote asked for, as the step that can fix
+ * it states it.
+ *
+ * `coin` is the one the refused request named, which may no longer be the one picked by the time a
+ * screen reads this. `minAmountMinor` is the floor a `below_minimum` refusal named, in the minor units
+ * of the gift and with any covered fee left out (`ApiError` in ./v1.ts), and absent where it named
+ * none.
+ */
+export type CoinRefusal =
+	| {
+			readonly code: 'below_minimum';
+			readonly coin: string;
+			readonly minAmountMinor?: number;
+	  }
+	| { readonly code: 'above_maximum' | 'coin_not_accepted'; readonly coin: string };
+
+/**
  * everything the machine knows.
  *
  * the draft/value pairs are not redundant. `draft` is what a screen is still editing and
@@ -253,6 +278,20 @@ export type CheckoutContext = {
 	 * and the three editable steps deliver it on arrival.
 	 */
 	readonly heldChallenge: Failure | null;
+	/**
+	 * the last refusal of a `crypto` quote, standing on the step it was routed to until the donor
+	 * changes what it was about — the amount, the coin or the rail.
+	 *
+	 * never `failure`: that is what `failed` reads, and these refusals do not pass through it.
+	 */
+	readonly coinRefusal: CoinRefusal | null;
+	/**
+	 * every coin the account refused as not accepted on this card, in the order they were refused.
+	 *
+	 * kept for the card's life rather than for one attempt: a retry of the same coin answers the same
+	 * (`coin_not_accepted` in ./v1.ts), so a press for one of these is refused here instead.
+	 */
+	readonly refusedCoins: readonly string[];
 };
 
 /**
@@ -338,6 +377,13 @@ export type CheckoutEvent =
 	 */
 	| { readonly type: 'GO_TO_STEP'; readonly step: NumberedStep }
 	| { readonly type: 'SET_METHOD'; readonly method: PaymentMethod | null }
+	/**
+	 * the coin a `crypto` gift is sent in, as `PayableCoin.coin` names it, or `null` for none.
+	 *
+	 * the card draws this control itself, inside the crypto option of the payment box, so unlike the
+	 * rail it is not a report from a provider's frame and is answered on the review step alone.
+	 */
+	| { readonly type: 'SET_COIN'; readonly coin: string | null }
 	| { readonly type: 'PAYMENT_UNAVAILABLE'; readonly failure: Failure }
 	| { readonly type: 'CHALLENGE_UNAVAILABLE'; readonly failure: Failure }
 	| {
@@ -384,6 +430,16 @@ export type CheckoutEvent =
  * expires the gift of a donor whose microdeposits are still in the post.
  */
 export const MICRODEPOSIT_WINDOW_MS = 10 * 24 * 60 * 60 * 1000;
+
+/**
+ * how long the address screen waits between two readings of where the gift stands.
+ *
+ * the read is metered by the `/api/v1` bucket every endpoint there shares, per client IP
+ * (`API_RATE_LIMITER` in packages/app/wrangler.jsonc), and a chain confirms in minutes rather than
+ * seconds — so every few seconds is as soon as a donor could be told and still leaves the bucket to
+ * the presses that spend it. exported for the reason `MICRODEPOSIT_WINDOW_MS` is.
+ */
+export const DEPOSIT_POLL_MS = 5000;
 
 /**
  * the floor below which a stated deadline is not a Unix millisecond timestamp at all.
@@ -444,6 +500,44 @@ function errorCode(error: unknown): string | undefined {
 	return typeof code === 'string' ? code : undefined;
 }
 
+/** the floor a `below_minimum` refusal named, where it named one (`EmbedFailure` in ./embed/api.ts). */
+function minAmountOf(error: unknown): number | undefined {
+	if (typeof error !== 'object' || error === null) return undefined;
+	const { minAmountMinor } = error as { minAmountMinor?: unknown };
+	return typeof minAmountMinor === 'number' ? minAmountMinor : undefined;
+}
+
+/**
+ * a rejected quote as the refusal a `crypto` gift is routed on, or `null` where it is not one.
+ *
+ * only the three codes a donor fixes on a step of the form: every other refusal keeps today's path
+ * through `failed`.
+ */
+function coinRefusalOf(context: CheckoutContext, error: unknown): CoinRefusal | null {
+	const coin = context.payer?.method === 'crypto' ? context.payer.coin : undefined;
+	if (coin === undefined) return null;
+	const code = errorCode(error);
+	if (code === 'below_minimum') {
+		const minAmountMinor = minAmountOf(error);
+		return minAmountMinor === undefined ? { code, coin } : { code, coin, minAmountMinor };
+	}
+	if (code === 'above_maximum' || code === 'coin_not_accepted') return { code, coin };
+	return null;
+}
+
+/**
+ * whether the flow takes a press on the review step: the payer `completePayer` (./value.ts) builds,
+ * on a coin the account has not refused on this card.
+ *
+ * exported for the reason `stepIsReachable` below is: it is the guard on `SUBMIT` and the
+ * `payerComplete` a renderer explains a refusal from (./connect.ts), and one expression is what keeps
+ * the two from parting.
+ */
+export function payerIsComplete(context: CheckoutContext): boolean {
+	const payer = completePayer(context.payerDraft, context.config);
+	return payer !== null && (payer.coin === undefined || !context.refusedCoins.includes(payer.coin));
+}
+
 /** whether a rejected port never heard back from the endpoint (`EmbedFailure` in ./embed/api.ts). */
 function wentUnanswered(error: unknown): boolean {
 	return (
@@ -483,6 +577,7 @@ function quoteRequest(context: CheckoutContext, payer: Payer): QuoteRequest {
 		firstName: payer.firstName,
 		lastName: payer.lastName,
 		consentedToContact: payer.consentedToContact,
+		...(payer.coin === undefined ? {} : { coin: payer.coin }),
 		...(fv.note === undefined ? {} : { note: fv.note }),
 		// omitted where the donor chose no cause, which is what the endpoint reads as the gift going
 		// where it is needed most — and it is also every gift on a pinned form, because that pin is
@@ -677,6 +772,20 @@ export function fundIsOffered(snapshot: {
 	);
 }
 
+/**
+ * whether the payment box lists the crypto option: a form offering the rail, on a gift the donor has
+ * made one-time.
+ *
+ * off the cadence as it is being picked rather than as committed, so the option leaves the box the
+ * moment a repeating one is chosen and a donor coming back to the review step never finds it standing
+ * over a gift it cannot be sent for. exported for both surfaces that run this flow, which tell their
+ * payment surface on every reading.
+ */
+export function cryptoIsOffered(snapshot: { readonly context: CheckoutContext }): boolean {
+	const { config, draft } = snapshot.context;
+	return draft.frequency === 'one_time' && config.paymentMethods.includes('crypto');
+}
+
 /** everything the amount step exists to decide has been decided. */
 function amountIsDecided(context: CheckoutContext): boolean {
 	return completeAmount(context.draft, context.config) !== null;
@@ -808,6 +917,20 @@ function outcomeRoute(output: unknown): OutcomeRoute | null {
 	return unroutedOutcome(outcome);
 }
 
+/**
+ * the state a donation read answered, or `null` for an answer that is not one of ours.
+ *
+ * the body is untrusted JSON off a stranger's page, and anything but a named state is a reading
+ * nobody has — never `expired`, which withdraws the address.
+ */
+function depositState(output: unknown): DonationStatus['state'] | null {
+	if (typeof output !== 'object' || output === null) return null;
+	const { state } = output as { state?: unknown };
+	return (DONATION_STATES as readonly unknown[]).includes(state)
+		? (state as DonationStatus['state'])
+		: null;
+}
+
 /** the compile-time half: a kind with no case above is not `never` here, and the build fails. */
 function unroutedOutcome(_outcome: never): null {
 	return null;
@@ -835,7 +958,11 @@ export const checkoutMachine = setup({
 		),
 		resumeIntent: fromPromise<ConfirmOutcome, { ports: CheckoutPorts; paymentToken: string }>(
 			({ input }) => input.ports.resume({ paymentToken: input.paymentToken })
-		)
+		),
+		readDeposit: fromPromise<
+			DonationStatus,
+			{ ports: CheckoutPorts; formId: string; paymentToken: string }
+		>(({ input }) => input.ports.status({ formId: input.formId, paymentToken: input.paymentToken }))
 	},
 	guards: {
 		/** the donor arrived on a URL carrying a payment token, so this is a return rather than a start. */
@@ -863,7 +990,7 @@ export const checkoutMachine = setup({
 			stepIsReachable(context, params.from, params.to),
 
 		/** the donor has filled in everything a typed rail needs before an intent can be minted. */
-		payerIsComplete: ({ context }) => completePayer(context.payerDraft, context.config) !== null,
+		payerIsComplete: ({ context }) => payerIsComplete(context),
 
 		/**
 		 * the donor on a fund's rail may open its window: a one-time gift and every field the receipt
@@ -873,6 +1000,23 @@ export const checkoutMachine = setup({
 		fundCanOpen: ({ context }) =>
 			context.fv?.frequency === 'one_time' &&
 			completeFundPayer({ ...context.payerDraft, method: 'daf' }, context.config) !== null,
+
+		/**
+		 * a quote minted for an address, which is the whole of that rail's press: nothing is confirmed
+		 * after it, because the donor sends the coin from their own wallet.
+		 *
+		 * `quoteIsUsable` and `depositIsUsable` both, because the address screen states the total as
+		 * well as the address — `About {total} today` — and neither is checked again.
+		 */
+		quoteIsDeposit: ({ context }, params: { quote: Quote }): boolean =>
+			context.payer?.method === 'crypto' &&
+			context.fv !== null &&
+			quoteIsUsable(params.quote, context.fv.amountMinor) &&
+			depositIsUsable(params.quote),
+
+		/** a reading of the gift paid to an address, answered with one of `DONATION_STATES`. */
+		depositReads: ({ event }, params: { state: DonationStatus['state'] }): boolean =>
+			'output' in event && depositState(event.output) === params.state,
 
 		/**
 		 * a quote minted on a fund's approval, which is the gift made rather than an intent to confirm.
@@ -886,6 +1030,16 @@ export const checkoutMachine = setup({
 
 		/** a fund's approval survived the failed send, so a Try again sends it again. */
 		grantIsHeld: ({ context }) => context.authorization !== null,
+
+		/** a `crypto` quote refused for the amount, which the amount step is where the donor fixes. */
+		refusesAmountForCoin: ({ context, event }) => {
+			const code = 'error' in event ? coinRefusalOf(context, event.error)?.code : undefined;
+			return code === 'below_minimum' || code === 'above_maximum';
+		},
+
+		/** a `crypto` quote refused for the coin, which the review step's coin list is where it is fixed. */
+		refusesCoin: ({ context, event }) =>
+			'error' in event && coinRefusalOf(context, event.error)?.code === 'coin_not_accepted',
 
 		/** the widget has minted a token since the last send spent one. */
 		tokenIsFresh: ({ context }) =>
@@ -1078,6 +1232,21 @@ export const checkoutMachine = setup({
 				Math.max(0, (context.verificationDeadline ?? 0) - context.ports.now())
 			),
 
+		/**
+		 * what is left before the minted address stops being watched, floored at zero.
+		 *
+		 * off `Deposit.validUntil` and this device's clock, so a quote whose send-by has already passed
+		 * here closes the address on the next tick. capped at `MICRODEPOSIT_WINDOW_MS` for the reason
+		 * `verificationWindow` above gives: a delay past `setTimeout`'s 32-bit ceiling fires at once.
+		 */
+		depositWindow: ({ context }) => {
+			const until = Date.parse(context.quote?.deposit?.validUntil ?? '');
+			return Math.min(
+				MICRODEPOSIT_WINDOW_MS,
+				Math.max(0, (Number.isFinite(until) ? until : 0) - context.ports.now())
+			);
+		},
+
 		/** the ceiling on a port the machine is allowed to give up on. */
 		portTimeout: PORT_TIMEOUT_MS
 	}
@@ -1101,7 +1270,9 @@ export const checkoutMachine = setup({
 		authorization: null,
 		railBeforeFund: undefined,
 		sentToken: null,
-		heldChallenge: null
+		heldChallenge: null,
+		coinRefusal: null,
+		refusedCoins: []
 	}),
 	// three reports from surfaces that resolve on their own schedule. none of them is a step in the
 	// flow and none moves it from here, so all three are accepted wherever the machine happens to be.
@@ -1152,7 +1323,10 @@ export const checkoutMachine = setup({
 					payerDraft: ({ context, event }) => ({
 						...context.payerDraft,
 						method: event.method ?? undefined
-					})
+					}),
+					// a rail reported again unchanged is not the donor changing it.
+					coinRefusal: ({ context, event }) =>
+						(event.method ?? undefined) === context.payerDraft.method ? context.coinRefusal : null
 				}),
 				'refreshEstimate'
 			]
@@ -1184,7 +1358,8 @@ export const checkoutMachine = setup({
 			on: {
 				SET_AMOUNT: {
 					actions: assign({
-						draft: ({ context, event }) => ({ ...context.draft, amountMinor: event.amountMinor })
+						draft: ({ context, event }) => ({ ...context.draft, amountMinor: event.amountMinor }),
+						coinRefusal: null
 					})
 				},
 				/**
@@ -1197,7 +1372,8 @@ export const checkoutMachine = setup({
 				 */
 				CLEAR_AMOUNT: {
 					actions: assign({
-						draft: ({ context }) => ({ ...context.draft, amountMinor: undefined })
+						draft: ({ context }) => ({ ...context.draft, amountMinor: undefined }),
+						coinRefusal: null
 					})
 				},
 				SET_FREQUENCY: {
@@ -1411,6 +1587,15 @@ export const checkoutMachine = setup({
 			// through a charge is delivered — see the `amount` step's own.
 			always: { guard: 'challengeIsHeld', target: 'failed', actions: 'deliverChallenge' },
 			on: {
+				SET_COIN: {
+					actions: assign({
+						payerDraft: ({ context, event }) => ({
+							...context.payerDraft,
+							coin: event.coin ?? undefined
+						}),
+						coinRefusal: null
+					})
+				},
 				// handled on this step alone, which is where the control that sends it lives. a donor
 				// who has pressed past the receipt has authorized a figure, and a fee changed behind
 				// that press is a charge they never saw.
@@ -1529,6 +1714,11 @@ export const checkoutMachine = setup({
 						actions: assign({ quote: ({ event }) => event.output })
 					},
 					{
+						guard: { type: 'quoteIsDeposit', params: ({ event }) => ({ quote: event.output }) },
+						target: 'awaitingDeposit',
+						actions: assign({ quote: ({ event }) => event.output })
+					},
+					{
 						guard: { type: 'quoteIsUsable', params: ({ event }) => ({ quote: event.output }) },
 						target: 'quoted',
 						actions: { type: 'acceptQuote', params: ({ event }) => ({ quote: event.output }) }
@@ -1545,30 +1735,55 @@ export const checkoutMachine = setup({
 						})
 					}
 				],
-				onError: {
-					target: 'failed',
-					actions: assign({
-						failure: ({ context, event }) => {
-							const failure = toFailure(event.error);
-							if (context.authorization !== null && maybeSentGrant(event.error)) {
-								return { ...failure, message: FUND_REQUEST_MAY_BE_SENT };
-							}
-							switch (errorCode(event.error)) {
-								case 'daf_authorization_expired':
-									return { ...failure, message: FUND_APPROVAL_EXPIRED };
-								// the fund refusing under its own rules is the one refusal a quote carries
-								// that is the rail's, so it is marked the way `rememberDecline` marks one.
-								case 'daf_grant_declined':
-									return { ...failure, refusedByRail: true };
-								default:
-									return failure;
-							}
-						},
-						// a kept approval is sent again by a Try again (`resending` below).
-						authorization: ({ context, event }) =>
-							keepsFundApproval(event.error) ? context.authorization : null
-					})
-				}
+				onError: [
+					// a refusal a donor fixes on a step of the form skips the failure screen and lands
+					// them on that step, where the refusal is stated.
+					{
+						guard: 'refusesAmountForCoin',
+						target: 'amount',
+						actions: assign({
+							coinRefusal: ({ context, event }) => coinRefusalOf(context, event.error)
+						})
+					},
+					{
+						guard: 'refusesCoin',
+						target: 'give',
+						actions: assign(({ context, event }) => {
+							const refusal = coinRefusalOf(context, event.error);
+							return {
+								coinRefusal: refusal,
+								refusedCoins:
+									refusal === null || context.refusedCoins.includes(refusal.coin)
+										? context.refusedCoins
+										: [...context.refusedCoins, refusal.coin]
+							};
+						})
+					},
+					{
+						target: 'failed',
+						actions: assign({
+							failure: ({ context, event }) => {
+								const failure = toFailure(event.error);
+								if (context.authorization !== null && maybeSentGrant(event.error)) {
+									return { ...failure, message: FUND_REQUEST_MAY_BE_SENT };
+								}
+								switch (errorCode(event.error)) {
+									case 'daf_authorization_expired':
+										return { ...failure, message: FUND_APPROVAL_EXPIRED };
+									// the fund refusing under its own rules is the one refusal a quote carries
+									// that is the rail's, so it is marked the way `rememberDecline` marks one.
+									case 'daf_grant_declined':
+										return { ...failure, refusedByRail: true };
+									default:
+										return failure;
+								}
+							},
+							// a kept approval is sent again by a Try again (`resending` below).
+							authorization: ({ context, event }) =>
+								keepsFundApproval(event.error) ? context.authorization : null
+						})
+					}
+				]
 			},
 			after: {
 				portTimeout: {
@@ -1812,6 +2027,86 @@ export const checkoutMachine = setup({
 						})
 					})
 				}
+			}
+		},
+
+		/**
+		 * an address is minted and the flow waits for the donor's coin to arrive at it.
+		 *
+		 * the gift is read every `DEPOSIT_POLL_MS` for as long as this state stands, and on no other
+		 * screen. a reading that is not `received` or `expired` — `waiting`, a rejection, a body that
+		 * is not ours, no answer inside `PORT_TIMEOUT_MS` — changes nothing and says nothing: the
+		 * endpoint's rate limit answers with no CORS headers, so a limited read is indistinguishable
+		 * here from a dropped connection, and neither says the address closed.
+		 */
+		awaitingDeposit: {
+			type: 'parallel',
+			states: {
+				/**
+				 * whether the address is still one to send to, by this device's clock.
+				 *
+				 * past `Deposit.validUntil` the address, the memo and every way to copy them are
+				 * withdrawn so nobody sends to an address no longer watched, and the reading goes on:
+				 * a coin sent before then may still arrive. the way back to the review step is on the
+				 * open address alone, because the closed one's screen draws no control.
+				 */
+				address: {
+					initial: 'open',
+					states: {
+						open: {
+							after: { depositWindow: 'closed' },
+							on: { BACK: { target: '#checkout.give' } }
+						},
+						closed: {}
+					}
+				},
+				reading: {
+					initial: 'resting',
+					states: {
+						resting: { after: { [DEPOSIT_POLL_MS]: 'asking' } },
+						asking: {
+							invoke: {
+								src: 'readDeposit',
+								input: ({ context }) => {
+									if (context.quote === null) {
+										throw new Error('unreachable: an address is only awaited past a quote');
+									}
+									return {
+										ports: context.ports,
+										formId: context.config.formId,
+										paymentToken: context.quote.paymentToken
+									};
+								},
+								onDone: [
+									{
+										guard: { type: 'depositReads', params: { state: 'received' } },
+										target: '#checkout.success'
+									},
+									{
+										guard: { type: 'depositReads', params: { state: 'expired' } },
+										target: '#checkout.depositExpired'
+									},
+									{ target: 'resting' }
+								],
+								onError: { target: 'resting' }
+							},
+							after: { portTimeout: 'resting' }
+						}
+					}
+				}
+			}
+		},
+
+		/**
+		 * the address closed with nothing received, as the server read it.
+		 *
+		 * `RETRY` goes to the review step for the reason `verificationExpired` below gives: the entry
+		 * there drops the spent quote, and the rail and the coin stay picked, so the next press mints a
+		 * fresh address for the same coin.
+		 */
+		depositExpired: {
+			on: {
+				RETRY: { target: 'give' }
 			}
 		},
 

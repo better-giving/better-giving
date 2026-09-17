@@ -25,6 +25,7 @@ func baked() release.Config {
 		DatabaseName:        "better-giving",
 		MigrationsDir:       "./migrations",
 		Migrations:          []string{"0000_initial.sql"},
+		Crons:               []string{"*/30 * * * *"},
 		TurnstileWidgetName: "better-giving",
 		Commit:              strings.Repeat("a", 40),
 	}
@@ -233,6 +234,7 @@ func TestEveryBakedFieldIsComparedAndNotJustTheNames(t *testing.T) {
 		{"migrations_dir", func(c *release.Config) { c.MigrationsDir = "./elsewhere" }},
 		{"turnstileWidgetName", func(c *release.Config) { c.TurnstileWidgetName = "other" }},
 		{"commit", func(c *release.Config) { c.Commit = strings.Repeat("b", 40) }},
+		{"crons", func(c *release.Config) { c.Crons = []string{} }},
 	} {
 		theirs := baked()
 		one.altered(&theirs)

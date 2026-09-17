@@ -201,7 +201,7 @@ import { WALLET_NAMES, linkStanding, walletHostLines, walletRows } from './walle
 // mounts it and the presses it makes are answered there; what this holds is the boxes, the press
 // and the sentences each answer is said in.
 //
-// **the two names every read is scoped to and the twenty-one values arrive as props.** what this
+// **the two names every read is scoped to and the twenty-four values arrive as props.** what this
 // screen reaches for itself is the run, which is the one reading that changes while it is on screen
 // — everything else was taken by the route and is handed down.
 
@@ -323,7 +323,7 @@ const ASKS: Record<StripeAct, { title: string; press: string }> = {
 };
 
 export type StripeSectionProps = {
-	/** the twenty-one as cloudflare answered for them, which is what every reading here is drawn from. */
+	/** the twenty-four as cloudflare answered for them, which is what every reading here is drawn from. */
 	values: DeployedValues;
 	/**
 	 * where every processor account stands, or `null` where that read was never taken.
@@ -1941,7 +1941,7 @@ export function StripeSection({
 								// the code face. these are literals an operator checks character for character
 								// against the page they were copied from.
 								code
-								// which of the twenty-one arrive masked, the publishable key below among the ones
+								// which of the twenty-four arrive masked, the publishable key below among the ones
 								// that do not, is ./secret-groups.ts's.
 								masked={isMasked('STRIPE_SECRET_KEY')}
 								autoComplete="off"

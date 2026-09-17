@@ -46,6 +46,7 @@ import (
 	"net/http"
 	"path"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -449,6 +450,7 @@ func driftedFields(carried, want release.Config) []string {
 		{"database_name", carried.DatabaseName == want.DatabaseName},
 		{"migrations_dir", carried.MigrationsDir == want.MigrationsDir},
 		{"migrations", reflect.DeepEqual(carried.Migrations, want.Migrations)},
+		{"crons", slices.Equal(carried.Crons, want.Crons)},
 		{"turnstileWidgetName", carried.TurnstileWidgetName == want.TurnstileWidgetName},
 		{"commit", carried.Commit == want.Commit},
 	}

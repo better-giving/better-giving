@@ -215,6 +215,13 @@ func start(args []string, to, wrong io.Writer) error {
 							Release:    version,
 						})
 					},
+					func() (effects.Carried, bool) {
+						return levelAt(ctx, silence.Done, effects.Carrying{
+							AccountID:  in.ID,
+							Credential: credential,
+							Sends:      cf.APISend,
+						})
+					},
 					func() string { return nowLevel(standing) },
 					func() (string, error) { return finishAt(ctx, door, credential, records, in) },
 					func() error {
@@ -457,6 +464,11 @@ func standingUp(
 // written into the screen the operator answers on, and the up-to-date path's two lines would be
 // drawn over one.
 //
+// `levelling` is the up-to-date path's one repair: the worker's schedule read back and put up where
+// it is not this release's (./levelAt). the upload records the release before the schedule goes up,
+// so a carry that stopped between the two is one every later run reads as up to date — and this is
+// the pass that finishes it. it reads under the wait and gives the wait up itself where it draws.
+//
 // `carrying` is the release this binary would put on, which ./alreadyCarrying weighs what the
 // deployment is on against. It is handed in rather than read off ./main.go's version so that the
 // weighing is a function of its two arguments and not of the build.
@@ -483,6 +495,7 @@ func catchingUp(
 	reading func() effects.Migrations,
 	asking func(terminal.Deployment, effects.Migrations) terminal.Confirmation,
 	running func() (effects.Carried, bool),
+	levelling func() (effects.Carried, bool),
 	where func() string,
 	finish func() (string, error),
 	connect func() error,
@@ -497,10 +510,14 @@ func catchingUp(
 	over := func() (bool, error) {
 		deployed := weighing()
 		if alreadyCarrying(deployed, carrying) {
+			levelled, halted := levelling()
 			settled()
 			terminal.Say(to, newerConsole)
+			if err := afterTheCarry(levelled); err != nil {
+				return false, err
+			}
 			terminal.Say(to, where())
-			return true, nil
+			return !halted, nil
 		}
 		onto.Release = deployed
 		named = true
@@ -1357,7 +1374,28 @@ func connecting(to io.Writer, connect func() deployment.Connection, dir string) 
 // the run carries its own recover; and nothing but the kind travels back out of it, because the
 // press it died inside was holding a cloudflare credential.
 func carryAt(ctx context.Context, made effects.Carrying) (effects.Carried, bool) {
-	drawn := terminal.Draw(terminal.UpdateRows, os.Stdout)
+	return drawnOver(ctx, terminal.UpdateRows, made, effects.Carry)
+}
+
+// the schedule of a deployment already on this release, read back and put up where it differs.
+//
+// **nothing is drawn unless there is something to put up.** the read is one of the pass's reads and
+// stands under its wait; a schedule that is level draws no row, and the wait is given up (`settled`)
+// only in front of the one row a put draws, since the ledger draws on the terminal the wait is on.
+func levelAt(ctx context.Context, settled func(), made effects.Carrying) (effects.Carried, bool) {
+	unscheduled, read := effects.Unscheduled(ctx, made)
+	if !unscheduled {
+		return read, false
+	}
+	settled()
+	return drawnOver(ctx, terminal.ScheduleRows, made, effects.Reschedule)
+}
+
+// one press run on its own goroutine under a ledger of `rows`, for every reason ./carryAt gives.
+func drawnOver(ctx context.Context, rows []terminal.Row, made effects.Carrying,
+	press func(context.Context, effects.Carrying) effects.Carried,
+) (effects.Carried, bool) {
+	drawn := terminal.Draw(rows, os.Stdout)
 	made.At = drawn.Reporting
 	ended := make(chan effects.Carried, 1)
 	go func() {
@@ -1371,7 +1409,7 @@ func carryAt(ctx context.Context, made effects.Carrying) (effects.Carried, bool)
 			}
 			ended <- ran
 		}()
-		ran = effects.Carry(ctx, made)
+		ran = press(ctx, made)
 	}()
 
 	shown := drawn.Show()

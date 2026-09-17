@@ -15,7 +15,7 @@ import (
 	"github.com/better-giving/console/internal/state"
 )
 
-// the two presses that set the twenty-one, and what each of them refuses.
+// the two presses that set the twenty-four, and what each of them refuses.
 
 // a cloudflare that answers everything and remembers what it was asked.
 func writes(t *testing.T, answers map[string]any) (*httptest.Server, *[]string) {
@@ -86,7 +86,7 @@ func TestNothingIsWrittenForAMachineThatHasChosenNoAccount(t *testing.T) {
 }
 
 // **the names a press may carry are the enumeration's and never the body's own keys.** a name off
-// that list is a value written under whatever a page said, and the twenty-one are what this console
+// that list is a value written under whatever a page said, and the twenty-four are what this console
 // is for — the console's own session credential among the names it refuses.
 func TestANameOffTheEnumerationIsRefusedBeforeCloudflareIsAsked(t *testing.T) {
 	api, asked := writes(t, nil)
@@ -141,6 +141,29 @@ func TestChariotsValuesAreRefusedAndTheRefusalNamesThePressThatSetsThem(t *testi
 		said, _ := answer["error"].(string)
 		if status != http.StatusBadRequest || !strings.Contains(said, "CHARIOT_") ||
 			!strings.Contains(said, "/api/chariot/setup") {
+			t.Errorf("%s: %d %v", body, status, answer)
+		}
+		if len(*asked) != 0 {
+			t.Errorf("%s: cloudflare was asked %v", body, *asked)
+		}
+	}
+}
+
+// NOWPayments' three are its press's alone: that press asks NOWPayments whether the key reads the
+// account and the currency is a coin before it writes, and a write here would be one nothing checked.
+func TestNowpaymentsValuesAreRefusedAndTheRefusalNamesThePressThatSetsThem(t *testing.T) {
+	for _, body := range []string{
+		`{"values":{"NOWPAYMENTS_API_KEY":"a-key"}}`,
+		`{"values":{"NOWPAYMENTS_IPN_SECRET":"a-secret"}}`,
+		`{"values":{"NOWPAYMENTS_OUTCOME_CURRENCY":"btc"}}`,
+	} {
+		api, asked := writes(t, nil)
+		handler := pressing(t, "an-account", api)
+
+		status, answer := press(t, handler, "/api/values/vars", body)
+		said, _ := answer["error"].(string)
+		if status != http.StatusBadRequest || !strings.Contains(said, "NOWPAYMENTS_") ||
+			!strings.Contains(said, "/api/nowpayments/values") {
 			t.Errorf("%s: %d %v", body, status, answer)
 		}
 		if len(*asked) != 0 {

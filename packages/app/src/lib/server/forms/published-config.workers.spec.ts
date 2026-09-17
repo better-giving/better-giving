@@ -46,6 +46,20 @@ const READY = async () => ['one_time', 'monthly', 'yearly'] as const;
  */
 const BOTH_RAILS = async () => OFFERED_PAYMENT_METHODS;
 
+/** the coin list of a deployment holding no NOWPayments keys (`$lib/server/forms/coin-cache.ts`). */
+const NO_COINS = async () => [];
+
+const USDT = {
+	coin: 'usdttrc20',
+	name: 'Tether USD (Tron)',
+	network: 'trx',
+	ticker: 'usdt',
+	memoRequired: false
+};
+
+/** the coin list of an account that enabled one coin. */
+const ONE_COIN = async () => [USDT];
+
 beforeAll(async () => {
 	db = createDb(env.DB);
 	const row = await env.DB.prepare(
@@ -83,7 +97,7 @@ describe('readPublishedConfig', () => {
 		// processor's account. each is asserted against what this file handed in rather than against
 		// a written-out list, because no column could disagree with either: `form` carries no
 		// `payment_methods` and no `frequencies`.
-		const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS);
+		const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS, ONE_COIN);
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
 		expect(result.config).toMatchObject({
@@ -94,6 +108,7 @@ describe('readPublishedConfig', () => {
 			// column behind it any more.
 			frequencies: ['one_time', 'monthly', 'yearly'],
 			paymentMethods: OFFERED_PAYMENT_METHODS,
+			coins: [USDT],
 			orgLegalName: 'Hope Foundation'
 		});
 	});
@@ -108,7 +123,14 @@ describe('readPublishedConfig', () => {
 	 * none of the operator's switches on a charge this app mints.
 	 */
 	it('serves the rails the account read answered with, not the repository’s list', async () => {
-		const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, async () => ['card']);
+		const result = await readPublishedConfig(
+			db,
+			FORM_ID,
+			STRIPE,
+			READY,
+			async () => ['card'],
+			NO_COINS
+		);
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
 		expect(result.config.paymentMethods).toEqual(['card']);
@@ -124,13 +146,13 @@ describe('readPublishedConfig', () => {
 	 * it. this case fails if it is ever folded back in here.
 	 */
 	it('serves a deployment whose account can charge none of its rails, refusing nothing', async () => {
-		const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, async () => []);
+		const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, async () => [], NO_COINS);
 		expect(result.ok).toBe(true);
 		expect(result.ok && result.config.paymentMethods).toEqual([]);
 	});
 
 	/**
-	 * an id nothing matches costs no outbound call, and the two reads throw to prove it.
+	 * an id nothing matches costs no outbound call, and the three reads throw to prove it.
 	 *
 	 * this route is public and unauthenticated, so an id nobody has a row for is a request anyone can
 	 * make this deployment issue — and each of these is a call to Stripe rather than a query. the
@@ -147,7 +169,8 @@ describe('readPublishedConfig', () => {
 			'frm_nosuchformatall1',
 			STRIPE,
 			refuseToRead('readCadences'),
-			refuseToRead('readRails')
+			refuseToRead('readRails'),
+			refuseToRead('readCoins')
 		);
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
@@ -166,7 +189,7 @@ describe('readPublishedConfig', () => {
 		await env.DB.prepare(`update form set status = 'archived', archived_at = 1 where id = ?`)
 			.bind(FORM_ID)
 			.run();
-		const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS);
+		const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS, NO_COINS);
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('form_retired');
@@ -176,7 +199,7 @@ describe('readPublishedConfig', () => {
 	// because nothing seeds `org_profile` and a blank row would read as configured.
 	it('refuses when no organisation profile has been saved', async () => {
 		await env.DB.prepare('delete from org_profile').run();
-		const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS);
+		const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS, NO_COINS);
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('org_profile_incomplete');
@@ -199,7 +222,7 @@ describe('readPublishedConfig', () => {
 		if (!parsed.ok) throw new Error(`the profile was refused: ${JSON.stringify(parsed.errors)}`);
 		await saveOrgProfile(db, parsed.value);
 
-		const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS);
+		const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS, NO_COINS);
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
 		expect(result.config.deductibilityStatement).toBe(SUGGESTED_DEDUCTIBILITY_STATEMENT);
@@ -210,7 +233,7 @@ describe('readPublishedConfig', () => {
 		await env.DB.prepare('update form set min_minor = null, max_minor = null where id = ?')
 			.bind(FORM_ID)
 			.run();
-		const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS);
+		const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS, NO_COINS);
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('form_unservable');
@@ -233,7 +256,7 @@ describe('readPublishedConfig', () => {
 		{ column: 'max_minor', sql: 'update form set min_minor = 0, max_minor = 0 where id = ?' }
 	])('refuses a stored form whose $column is zero, which D1 accepts', async ({ column, sql }) => {
 		await env.DB.prepare(sql).bind(FORM_ID).run();
-		const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS);
+		const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS, NO_COINS);
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('form_unservable');
@@ -249,19 +272,26 @@ describe('readPublishedConfig', () => {
 	 * unauthenticated path to get the origins back.
 	 */
 	it('carries the stored row out with both an answer and a refusal', async () => {
-		const answered = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS);
+		const answered = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS, NO_COINS);
 		expect(answered.ok).toBe(true);
 		expect(answered.form?.allowedOrigins).toEqual(['https://acme.org']);
 
 		await env.DB.prepare(`update form set status = 'draft' where id = ?`).bind(FORM_ID).run();
-		const refused = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS);
+		const refused = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS, NO_COINS);
 		expect(refused.ok).toBe(false);
 		expect(refused.form?.allowedOrigins).toEqual(['https://acme.org']);
 	});
 
 	// no row, so no origins — which is the correct CORS answer to an id nothing matches.
 	it('carries no row when no form matched the id', async () => {
-		const result = await readPublishedConfig(db, 'frm_nosuchformatall1', STRIPE, READY, BOTH_RAILS);
+		const result = await readPublishedConfig(
+			db,
+			'frm_nosuchformatall1',
+			STRIPE,
+			READY,
+			BOTH_RAILS,
+			NO_COINS
+		);
 		expect(result.form).toBeNull();
 	});
 
@@ -284,7 +314,8 @@ describe('readPublishedConfig', () => {
 			FORM_ID,
 			{ ...env, ...STRIPE, TURNSTILE_SITE_KEY: env.DB },
 			READY,
-			BOTH_RAILS
+			BOTH_RAILS,
+			NO_COINS
 		);
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
@@ -327,7 +358,7 @@ describe('readPublishedConfig', () => {
 
 		it('serves a pinned cause by name', async () => {
 			await pin(CLEAN);
-			const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS);
+			const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS, NO_COINS);
 			expect(result.ok).toBe(true);
 			if (!result.ok) return;
 			expect(result.config.program).toEqual({ mode: 'pinned', name: 'Clean water' });
@@ -343,7 +374,7 @@ describe('readPublishedConfig', () => {
 		 */
 		it('serves a pin on a retired cause', async () => {
 			await pin(RETIRED);
-			const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS);
+			const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS, NO_COINS);
 			expect(result.ok).toBe(true);
 			if (!result.ok) return;
 			expect(result.config.program).toEqual({ mode: 'pinned', name: 'Winter appeal' });
@@ -353,7 +384,7 @@ describe('readPublishedConfig', () => {
 			await env.DB.prepare(`update form set program_mode = 'choice' where id = ?`)
 				.bind(FORM_ID)
 				.run();
-			const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS);
+			const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS, NO_COINS);
 			expect(result.ok).toBe(true);
 			if (!result.ok) return;
 			expect(result.config.program).toEqual({
@@ -370,14 +401,14 @@ describe('readPublishedConfig', () => {
 			await env.DB.prepare(`update form set program_mode = 'choice' where id = ?`)
 				.bind(FORM_ID)
 				.run();
-			const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS);
+			const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS, NO_COINS);
 			expect(result.ok).toBe(true);
 			if (!result.ok) return;
 			expect(result.config).not.toHaveProperty('program');
 		});
 
 		it('omits the key on a form that asks about no cause', async () => {
-			const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS);
+			const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS, NO_COINS);
 			expect(result.ok).toBe(true);
 			if (!result.ok) return;
 			expect(result.config).not.toHaveProperty('program');

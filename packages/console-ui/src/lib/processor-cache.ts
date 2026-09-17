@@ -44,11 +44,17 @@ import { readProcessorScreen } from './processor-reading';
 // that page asks after its own run (./stripe-section.tsx), and a reading ahead that got to the landed
 // run first would leave its poll holding a run that is going forever — the page frozen busy.
 
-/** each processor page's setup run, which is the one reading the pages differ by. */
-const RUNS = { stripe: stripeRun, paypal: paypalRun, chariot: chariotRun } satisfies Record<
-	PaymentProcessor,
-	() => Promise<unknown>
->;
+/**
+ * each processor page's setup run, which is the one reading the pages differ by. NOWPayments' press
+ * is a save that starts none, so its page reads a run that is always `null` and is otherwise kept,
+ * served and read ahead like the rest.
+ */
+const RUNS = {
+	stripe: stripeRun,
+	paypal: paypalRun,
+	chariot: chariotRun,
+	nowpayments: async () => null
+} satisfies Record<PaymentProcessor, () => Promise<unknown>>;
 
 type RunOf<P extends PaymentProcessor> = Awaited<ReturnType<(typeof RUNS)[P]>>;
 

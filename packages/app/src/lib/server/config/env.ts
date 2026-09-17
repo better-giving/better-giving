@@ -21,7 +21,7 @@ export interface ConfigEnv {
 	 * not a credential: it is designed to sit in public HTML, and `/api/v1/forms/:id/config`
 	 * serves it to any browser that asks. so an operator sets it as a Worker var and can read
 	 * it back, where the secret key beside it is a secret and cannot be — DEPLOY.md draws that
-	 * split for all twenty-one. either arrives here as a string on the platform env, which is why
+	 * split for all twenty-four. either arrives here as a string on the platform env, which is why
 	 * nothing below this line distinguishes them.
 	 */
 	readonly STRIPE_PUBLISHABLE_KEY?: string;
@@ -72,6 +72,16 @@ export interface ConfigEnv {
 	readonly CHARIOT_CONNECT_ID?: string;
 	/** the signing secret of the org's own Chariot webhook subscription. */
 	readonly CHARIOT_WEBHOOK_SECRET?: string;
+	/** the API key of the org's own NOWPayments account, which crypto gifts are taken on. */
+	readonly NOWPAYMENTS_API_KEY?: string;
+	/** the secret NOWPayments signs each IPN with, set in that account's settings. */
+	readonly NOWPAYMENTS_IPN_SECRET?: string;
+	/**
+	 * the coin the NOWPayments account pays out in, as NOWPayments' own lowercase code for the payout
+	 * wallet (`usdttrc20`). no NOWPayments call reports it, and a coin's minimum is only right quoted
+	 * against it, so it is typed.
+	 */
+	readonly NOWPAYMENTS_OUTCOME_CURRENCY?: string;
 	/** the mail host's submission hostname, e.g. `smtp.resend.com`. */
 	readonly SMTP_HOST?: string;
 	/**
@@ -171,7 +181,10 @@ export const CONFIG_VAR_NAMES = [
 	'CHARIOT_API_KEY',
 	'CHARIOT_API_URL',
 	'CHARIOT_CONNECT_ID',
-	'CHARIOT_WEBHOOK_SECRET'
+	'CHARIOT_WEBHOOK_SECRET',
+	'NOWPAYMENTS_API_KEY',
+	'NOWPAYMENTS_IPN_SECRET',
+	'NOWPAYMENTS_OUTCOME_CURRENCY'
 ] as const satisfies readonly (keyof ConfigEnv)[];
 
 /**

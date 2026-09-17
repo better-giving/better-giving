@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq, sql } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { TurnstileCheck, TurnstileResult } from '../api/turnstile';
 import { createDb, type Db } from '../db/client';
 import { contact, donation, entryGroup, lineItem, payment } from '../db/schema';
@@ -13,9 +13,9 @@ import type {
 } from '../payments/provider';
 import { estimateFee } from '@better-giving/form/fee';
 import { PAYPAL_US_FEE_RULES_CHARITY, PAYPAL_US_FEE_RULES_STANDARD } from '../payments/fees';
-import { soleProcessor } from '../payments/processors.testing';
+import { processorsOf, soleProcessor } from '../payments/processors.testing';
 import type { EmailMessage, EmailProvider } from '../email/provider';
-import { CHARIOT_FEE_RULES } from '../payments/fees';
+import { CHARIOT_FEE_RULES, NOWPAYMENTS_FEE_RULE } from '../payments/fees';
 import { mintQuote, refusalCode, type QuoteDeps } from './quote';
 
 // the whole quote path, against a real D1 and against every arm of the two ports it reaches
@@ -197,6 +197,9 @@ function provider(
 		},
 		async registerWalletDomain() {
 			throw new Error('registerWalletDomain is not part of the quote path');
+		},
+		async listPayableCoins() {
+			throw new Error('listPayableCoins is not part of the quote path');
 		}
 	};
 	return { port, requests, gifts };
@@ -372,6 +375,15 @@ describe('mintQuote() — a gift that goes through', () => {
 		// about how it is spelled.
 		expect(port.requests[0]?.metadata).toMatchObject({ donation_id: gift?.id });
 		expect(port.requests[0]?.idempotencyKey).toBe(gift?.id);
+	});
+
+	// the donor's page sent `Origin`, and a callback built from it would notify their site.
+	it('tells the processor this deployment’s own origin, never the page’s', async () => {
+		const port = provider();
+
+		await mint(deps({ provider: port.port }));
+
+		expect(port.requests[0]?.deploymentOrigin).toBe('https://give.example.workers.dev');
 	});
 
 	/**
@@ -1422,7 +1434,8 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 			amountMinor: 10_300,
 			currency: 'USD',
 			method: 'daf',
-			authorizedSessionId: SESSION
+			authorizedSessionId: SESSION,
+			deploymentOrigin: 'https://give.example.workers.dev'
 		});
 	});
 
@@ -1676,5 +1689,308 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		const result = await mint(chariotDeps(chariotProvider().port, { email: broken }), fundGift());
 
 		expect(result.ok && result.quote.paymentToken).toBe(GRANT_ID);
+	});
+});
+
+describe('mintQuote() — a gift sent in crypto', () => {
+	/** a deployment holding NOWPayments and nothing else. */
+	const NOWPAYMENTS_ENV = {
+		NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey',
+		NOWPAYMENTS_OUTCOME_CURRENCY: 'usdttrc20',
+		TURNSTILE_SECRET_KEY: '0xSECRET'
+	};
+	const PAYMENT_ID = '5745459419';
+	const ADDRESS = 'rNoTaReAlAdDrEsSfOrThIsSpEcXxXxXx';
+	const XRP = {
+		coin: 'xrp',
+		name: 'Ripple',
+		network: 'xrp',
+		ticker: 'xrp',
+		memoRequired: true
+	} as const;
+	const VALID_UNTIL = new Date('2026-09-24T12:00:00.000Z');
+
+	const minted = (): PaymentResult<Intent> => ({
+		ok: true,
+		value: {
+			providerTxnId: PAYMENT_ID,
+			// the adapter's token is the donation id it was told; the port below hands it back.
+			paymentToken: '',
+			deposit: {
+				address: ADDRESS,
+				memo: '2718281828',
+				coin: 'xrp',
+				network: 'xrp',
+				coinAmount: '41.923071',
+				validUntil: VALID_UNTIL
+			}
+		}
+	});
+
+	/** the scripted port under NOWPayments' name, answering crypto on the account's own coins. */
+	function nowpaymentsProvider(answers: readonly PaymentResult<Intent>[] = [minted()]) {
+		const scripted = provider(answers);
+		const port: PaymentProvider = {
+			...scripted.port,
+			processor: 'nowpayments',
+			async createIntent(request) {
+				const answer = await scripted.port.createIntent(request);
+				if (!answer.ok) return answer;
+				return {
+					ok: true,
+					value: { ...answer.value, paymentToken: request.metadata?.donation_id ?? '' }
+				};
+			},
+			async readAccountChargeability() {
+				return { ok: true, value: { chargesEnabled: true, rails: { crypto: 'active' } } } as const;
+			},
+			async readRailSwitchboard() {
+				return { ok: true, value: { crypto: { offered: true, switchedOn: true } } } as const;
+			},
+			async readRecurringGiftProvision() {
+				return { ok: false, reason: 'unsupported', detail: 'one deposit per payment' } as const;
+			},
+			async listPayableCoins() {
+				return { ok: true, value: [XRP] } as const;
+			}
+		};
+		return { port, requests: scripted.requests };
+	}
+
+	const cryptoDeps = (port: PaymentProvider = nowpaymentsProvider().port, over: DepsOver = {}) =>
+		deps({ env: NOWPAYMENTS_ENV, provider: port, ...over });
+
+	const cryptoGift = (over: Record<string, unknown> = {}) => ({
+		method: 'crypto',
+		coin: 'xrp',
+		...over
+	});
+
+	/** the zone's own store, and the two entries a crypto quote's config read writes into it. */
+	const edge = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
+	const coinKey = new Request('https://give.example.workers.dev/__payable-coins');
+	const railKey = new Request('https://give.example.workers.dev/__offered-rails');
+
+	afterEach(async () => {
+		await Promise.all([edge.delete(coinKey), edge.delete(railKey)]);
+	});
+
+	it('answers with where to send the coin, how much, the memo, the expiry and the address’s QR', async () => {
+		const result = await mint(cryptoDeps(), cryptoGift());
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.quote).toMatchObject({
+			feeMinor: 0,
+			totalMinor: 10_000,
+			deposit: {
+				address: ADDRESS,
+				memo: '2718281828',
+				coin: 'xrp',
+				network: 'xrp',
+				coinAmount: '41.923071',
+				validUntil: '2026-09-24T12:00:00.000Z'
+			}
+		});
+		expect(result.quote.deposit?.qr.rows[0]).toMatch(/^1111111[01]*1111111$/);
+	});
+
+	it('records a pending gift under NOWPayments’ payment id, with the coin and when the address closes', async () => {
+		const result = await mint(cryptoDeps(), cryptoGift());
+
+		const [paid] = await db.select().from(payment);
+		expect(paid).toMatchObject({
+			status: 'pending',
+			provider: 'nowpayments',
+			method: 'crypto',
+			providerTxnId: PAYMENT_ID,
+			amountMinor: 10_000,
+			coin: 'xrp',
+			coinNetwork: 'xrp',
+			validUntil: VALID_UNTIL,
+			// what arrived is the settlement's to write; nothing has.
+			coinAmount: null
+		});
+		expect(result.ok && result.quote.paymentToken).toBe(paid?.donationId);
+	});
+
+	/**
+	 * every figure and the coin are the server's: the price is the form-bounded gift grossed up at
+	 * NOWPayments' own rate, the coin is the body's pick normalised and checked by the adapter against
+	 * the account, and anything else the body names about the payment is read by nothing.
+	 */
+	it('mints the payment the server priced, whatever else the body says about it', async () => {
+		const port = nowpaymentsProvider();
+
+		await mint(
+			cryptoDeps(port.port),
+			cryptoGift({
+				coin: ' XRP ',
+				coversFee: true,
+				totalMinor: 1,
+				feeMinor: 0,
+				price_amount: 0.01,
+				pay_currency: 'btc',
+				currency: 'EUR'
+			})
+		);
+
+		expect(port.requests).toHaveLength(1);
+		expect(port.requests[0]).toMatchObject({
+			amountMinor: estimateFee(10_000, NOWPAYMENTS_FEE_RULE)?.totalMinor,
+			currency: 'USD',
+			method: 'crypto',
+			coin: 'xrp',
+			deploymentOrigin: 'https://give.example.workers.dev'
+		});
+	});
+
+	/**
+	 * the adapter's three refusals about the donor's choice, each under its own wire code. the
+	 * sentences are the adapter's (../payments/nowpayments.ts), carried whole: each names the coin and
+	 * the figure, and `below_minimum`'s names the minimum in dollars.
+	 */
+	it.each([
+		{
+			reason: 'coin_not_accepted',
+			detail:
+				'This organisation’s NOWPayments account takes no payment in `doge` today. No address was created.',
+			figure: '`doge`'
+		},
+		{
+			reason: 'below_minimum',
+			detail:
+				'A gift of $100.00 converts to 0.0009 BTC, under the 0.0003 BTC NOWPayments accepts in that coin — about $33.12. No address was created.',
+			figure: '$33.12'
+		},
+		{
+			reason: 'above_maximum',
+			detail:
+				'A gift of $100.00 is over what NOWPayments accepts in XRP. No address was created. NOWPayments said: maximum exceeded',
+			figure: '$100.00'
+		}
+	] as const)(
+		'refuses $reason under its own code, naming the figure, and records nothing',
+		async ({ reason, detail, figure }) => {
+			const port = nowpaymentsProvider([{ ok: false, reason, detail }]);
+
+			const result = await mint(cryptoDeps(port.port), cryptoGift());
+
+			expect(result.ok).toBe(false);
+			if (result.ok) return;
+			expect(result.reason).toBe(reason);
+			expect(refusalCode(result.reason)).toBe(reason);
+			expect(result.message).toContain(figure);
+			expect(result.fix).toContain('coins');
+			expect(await db.select().from(payment)).toHaveLength(0);
+		}
+	);
+
+	it('states the minimum as the gift the donor would type', async () => {
+		const port = nowpaymentsProvider([
+			{ ok: false, reason: 'below_minimum', detail: 'under the floor.', minimumMinor: 1194 }
+		]);
+
+		const result = await mint(cryptoDeps(port.port), cryptoGift());
+
+		expect(result.ok === false && result.minAmountMinor).toBe(1194);
+	});
+
+	// the floor is on the charge, and a covered 1% is inside it: $11.82 grosses up to $11.94, $11.81 to
+	// $11.93.
+	it('states the minimum without the fee, where the donor covers it', async () => {
+		const port = nowpaymentsProvider([
+			{ ok: false, reason: 'below_minimum', detail: 'under the floor.', minimumMinor: 1194 }
+		]);
+
+		const result = await mint(cryptoDeps(port.port), cryptoGift({ coversFee: true }));
+
+		expect(result.ok === false && result.minAmountMinor).toBe(1182);
+	});
+
+	it('tells the donor where to send the coin, once the gift is recorded', async () => {
+		const mail = mailer();
+
+		await mint(cryptoDeps(nowpaymentsProvider().port, { email: mail.port }), cryptoGift());
+
+		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org']);
+		const text = mail.sent[0]?.text ?? '';
+		for (const fact of ['Ripple', '41.923071', ADDRESS, '2718281828']) {
+			expect(text).toContain(fact);
+		}
+	});
+
+	/** a coin enabled after the served list was cached: the adapter took it, and the list has no name. */
+	it('names a coin the cached list does not carry by its code', async () => {
+		await edge.put(
+			coinKey,
+			new Response('[]', {
+				headers: { 'content-type': 'application/json', 'cache-control': 'max-age=300' }
+			})
+		);
+		const mail = mailer();
+
+		await mint(cryptoDeps(nowpaymentsProvider().port, { email: mail.port }), cryptoGift());
+
+		expect(mail.sent[0]?.text).toContain('XRP');
+		expect(mail.sent[0]?.text).not.toContain('Ripple');
+	});
+
+	it('sends no notice for a payment NOWPayments did not create', async () => {
+		const mail = mailer();
+		const refused = nowpaymentsProvider([
+			{ ok: false, reason: 'coin_not_accepted', detail: 'no `xrp` today.' }
+		]);
+
+		await mint(cryptoDeps(refused.port, { email: mail.port }), cryptoGift());
+
+		expect(mail.sent).toHaveLength(0);
+	});
+
+	it('answers with the address when the donor’s notice cannot be sent', async () => {
+		const broken: EmailProvider = {
+			async send() {
+				throw new Error('the socket went away');
+			}
+		};
+
+		const result = await mint(
+			cryptoDeps(nowpaymentsProvider().port, { email: broken }),
+			cryptoGift()
+		);
+
+		expect(result.ok && result.quote.deposit?.address).toBe(ADDRESS);
+		expect(await db.select().from(payment)).toHaveLength(1);
+	});
+
+	/** a slow NOWPayments is no card donor's wait: only a crypto quote reads the coin list. */
+	it('reads no coin list for a gift on another rail, on a deployment holding NOWPayments too', async () => {
+		let coinReads = 0;
+		const nowpayments: PaymentProvider = {
+			...nowpaymentsProvider().port,
+			async listPayableCoins() {
+				coinReads += 1;
+				return { ok: true, value: [XRP] } as const;
+			}
+		};
+		const card = provider();
+
+		const result = await mint({
+			...deps({ env: { ...STRIPE_ENV, ...NOWPAYMENTS_ENV } }),
+			processors: processorsOf(card.port, nowpayments)
+		});
+
+		expect(result.ok).toBe(true);
+		expect(card.requests).toHaveLength(1);
+		expect(coinReads).toBe(0);
+	});
+
+	it('mints nothing for an amount outside the form’s bounds', async () => {
+		const port = nowpaymentsProvider();
+
+		const result = await mint(cryptoDeps(port.port), cryptoGift({ amountMinor: 1 }));
+
+		expect(result.ok).toBe(false);
+		expect(port.requests).toHaveLength(0);
 	});
 });

@@ -38,6 +38,8 @@ function data(overrides: Partial<ReceiptData> = {}): ReceiptData {
 		// and recorded against no cause, which is what a form asking about none produces. every
 		// case about the last row states its own.
 		program: null,
+		// and not given in crypto. every case about the coin rows states its own.
+		crypto: null,
 		...overrides
 	};
 }
@@ -492,6 +494,51 @@ describe('receipt.template — the receipt block', () => {
 		expect(text).toContain(`${rule}\nYour receipt:\n`);
 		expect(text).toContain(`Amount      USD 100.00\n${rule}\n`);
 		expect(text).not.toContain('YOUR RECEIPT');
+	});
+});
+
+describe('receipt.template — a gift given in crypto', () => {
+	const CRYPTO = { coinName: 'Bitcoin', coinAmount: '0.001234567890123456' } as const;
+
+	/** the coin and what arrived stand where the amount stands, and the dollar figure is named. */
+	it('states coin, amount received and value when received in place of the amount', async () => {
+		for (const arm of await arms({ crypto: CRYPTO })) {
+			expect(arm.indexOf('Date')).toBeLessThan(arm.indexOf('Coin'));
+			expect(arm.indexOf('Coin')).toBeLessThan(arm.indexOf('Amount received'));
+			expect(arm.indexOf('Amount received')).toBeLessThan(arm.indexOf('Value when received'));
+			expect(arm).toContain('Bitcoin');
+			expect(arm).toContain('USD 100.00');
+			expect(arm).not.toMatch(/\bAmount\b(?! received)/);
+		}
+	});
+
+	/** a decimal string survives a float by nothing: past 17 digits a parse would round it. */
+	it('prints the amount received verbatim', async () => {
+		for (const arm of await arms({ crypto: CRYPTO })) {
+			expect(arm).toContain('0.001234567890123456');
+		}
+	});
+
+	it('lines its rows up in a column the longest crypto label sets', async () => {
+		const { text } = await rendered({ crypto: CRYPTO });
+		expect(text).toContain('\nCoin                 Bitcoin\n');
+		expect(text).toContain('\nAmount received      0.001234567890123456\n');
+		expect(text).toContain('\nValue when received  USD 100.00\n');
+		expect(text).toContain('\nDate                 January 5, 2026\n');
+	});
+
+	it('emphasises the amount received and not the dollar value', async () => {
+		const { html } = await rendered({ crypto: CRYPTO });
+		expect(html).toContain('<strong>0.001234567890123456</strong>');
+		expect(html).not.toContain('<strong>USD 100.00</strong>');
+	});
+
+	/** the column on every other rail is where it was before crypto existed. */
+	it('leaves a card gift unchanged', async () => {
+		const { text, html } = await rendered();
+		expect(text).toContain('\nAmount      USD 100.00\n');
+		expect(html).toContain('<strong>USD 100.00</strong>');
+		for (const arm of [text, html]) expect(arm).not.toMatch(/Coin|received/);
 	});
 });
 

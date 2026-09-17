@@ -145,6 +145,20 @@ export interface Dedication {
 	readonly honoree: string;
 }
 
+/**
+ * what arrived on a gift given in crypto: the coin and how much of it.
+ *
+ * the dollar figure is not here. it is `ReceiptContribution.totalMinor`, which on this rail is the
+ * value of what arrived at the moment it arrived — a figure this document labels as exactly that,
+ * and never as an appraisal.
+ */
+export interface CryptoReceived {
+	/** the coin as a donor reads it — `Bitcoin`, never the processor's code. */
+	readonly coinName: string;
+	/** a canonical decimal string, printed verbatim: never parsed, so never rounded. */
+	readonly coinAmount: string;
+}
+
 export interface ReceiptData {
 	readonly org: ReceiptOrg;
 	/** who to address it to. `null` prints a neutral greeting rather than "Dear null". */
@@ -176,6 +190,14 @@ export interface ReceiptData {
 	 * retired prints the name it was given under.
 	 */
 	readonly program: string | null;
+	/**
+	 * the coin and amount a crypto gift arrived as, or `null` on every other rail.
+	 *
+	 * a required key with a nullable value, for `tribute`'s reason: a caller that forgot it would
+	 * print a crypto gift as a bare dollar amount, and a donor holding a wallet record of coins
+	 * could match nothing on it.
+	 */
+	readonly crypto: CryptoReceived | null;
 }
 
 /**
@@ -226,7 +248,7 @@ export function template(data: ReceiptData): EmailTemplate {
 		...(data.donorName === null ? [] : [{ label: RECEIPT_LABELS.donor, value: data.donorName }]),
 		{ label: RECEIPT_LABELS.recipient, value: org.legalName },
 		{ label: RECEIPT_LABELS.date, value: date },
-		{ label: RECEIPT_LABELS.amount, value: amount },
+		...amountRows(data.crypto, amount),
 		// after the four and never among them: the quartet is what the law asks a receipt for and
 		// its order is settled, and this is a fact about the gift the donor stated and the document
 		// states back. a gift given for nobody drops the row, the way an unnamed donor drops theirs.
@@ -302,9 +324,43 @@ const RECEIPT_LABELS = {
 	program: 'Program'
 } as const;
 
-/** the label column in the text arm, widened by the longest label rather than by a guess. */
-const RECEIPT_LABEL_WIDTH =
-	Math.max(...Object.values(RECEIPT_LABELS).map((label) => label.length)) + 2;
+/**
+ * a crypto gift's amount, in three rows where every other gift has one, in the same place.
+ *
+ * `Value when received` is the dollar figure, named for what it is: the coins' value at the moment
+ * they arrived, not an appraisal.
+ */
+const CRYPTO_LABELS = {
+	coin: 'Coin',
+	amountReceived: 'Amount received',
+	valueWhenReceived: 'Value when received'
+} as const;
+
+/**
+ * the label column in the text arm, widened by the longest label printed rather than by a guess.
+ *
+ * the crypto labels widen it on a crypto receipt alone, so every other receipt's column stays
+ * where it was.
+ */
+function labelWidth(rows: readonly ReceiptRow[]): number {
+	const crypto = rows.some((row) => row.label === CRYPTO_LABELS.valueWhenReceived);
+	const labels = [
+		...Object.values(RECEIPT_LABELS),
+		...(crypto ? Object.values(CRYPTO_LABELS) : [])
+	];
+	return Math.max(...labels.map((label) => label.length)) + 2;
+}
+
+/** the amount row, or a crypto gift's three in its place. */
+function amountRows(crypto: CryptoReceived | null, amount: string): ReceiptRow[] {
+	return crypto === null
+		? [{ label: RECEIPT_LABELS.amount, value: amount }]
+		: [
+				{ label: CRYPTO_LABELS.coin, value: crypto.coinName },
+				{ label: CRYPTO_LABELS.amountReceived, value: crypto.coinAmount },
+				{ label: CRYPTO_LABELS.valueWhenReceived, value: amount }
+			];
+}
 
 /**
  * how the greeting addresses somebody, from a name that has no parts.
@@ -418,8 +474,9 @@ function textArm(copy: ReceiptCopy): string {
 
 	// one line per row, and the labels padded to a column: this arm is what gets pasted into a
 	// spreadsheet and read down, so the values have to line up when it is.
+	const width = labelWidth(copy.rows);
 	for (const { label, value } of copy.rows) {
-		lines.push(`${label.padEnd(RECEIPT_LABEL_WIDTH)}${value}`);
+		lines.push(`${label.padEnd(width)}${value}`);
 	}
 	lines.push(TEXT_RULE, '');
 
@@ -504,6 +561,9 @@ const LABEL_CELL_STYLE: CSSProperties = { padding: box(0, SPACE_8, SPACE_2, 0) }
    take it: a label set like a figure reads as another figure. */
 const VALUE_CELL_STYLE: CSSProperties = { padding: box(0, 0, SPACE_2), fontFamily: FONT_MONO };
 
+/** the rows set apart in the HTML arm, which `ReceiptPanel` argues. */
+const EMPHASISED: readonly string[] = [RECEIPT_LABELS.amount, CRYPTO_LABELS.amountReceived];
+
 /**
  * the block in the HTML arm: a label and its value, one row each, in the order they were decided,
  * on a tinted panel.
@@ -516,8 +576,9 @@ const VALUE_CELL_STYLE: CSSProperties = { padding: box(0, 0, SPACE_2), fontFamil
  * layout, not data with headers.
  *
  * only the amount is emphasised: it is the figure the donor's bank shows and the one an eye
- * scanning the document is looking for. matched on the label rather than on the position, so the
- * emphasis follows the row wherever the order is edited.
+ * scanning the document is looking for. on a crypto gift that is the amount received, the figure
+ * the donor's wallet shows. matched on the label rather than on the position, so the emphasis
+ * follows the row wherever the order is edited.
  */
 function ReceiptPanel({ rows }: { readonly rows: readonly ReceiptRow[] }) {
 	return (
@@ -529,7 +590,7 @@ function ReceiptPanel({ rows }: { readonly rows: readonly ReceiptRow[] }) {
 						<tr key={label}>
 							<td style={LABEL_CELL_STYLE}>{label}</td>
 							<td style={VALUE_CELL_STYLE}>
-								{label === RECEIPT_LABELS.amount ? <strong>{value}</strong> : value}
+								{EMPHASISED.includes(label) ? <strong>{value}</strong> : value}
 							</td>
 						</tr>
 					))}

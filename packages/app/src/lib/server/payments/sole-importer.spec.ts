@@ -50,16 +50,31 @@ const SELF = resolve(import.meta.filename);
  * PayPal adapter reach for `stripe` and the Stripe one reach for PayPal — each adapter translates
  * one processor's vocabulary, and a file importing both is a file translating neither.
  *
+ * NOWPayments' SDK and its unmaintained predecessor are guarded with ./nowpayments.ts as the one
+ * exemption, and that adapter imports neither — it speaks the API over `fetch` (its header argues
+ * why). `imported` says which adapters are held to importing their SDK.
+ *
  * `@stripe/stripe-js` and `@paypal/paypal-js` are deliberately not here. those are the browser
  * loaders the donation form's element uses (packages/form), which is a different package with a
  * different rule — the anchoring below is what keeps a specifier ending at the quote from matching
  * one of them.
  */
-const GUARDED: { specifier: string; adapter: string }[] = [
-	{ specifier: 'stripe', adapter: resolve(import.meta.dirname, 'stripe.ts') },
+const GUARDED: { specifier: string; adapter: string; imported: boolean }[] = [
+	{ specifier: 'stripe', adapter: resolve(import.meta.dirname, 'stripe.ts'), imported: true },
 	{
 		specifier: '@paypal/paypal-server-sdk',
-		adapter: resolve(import.meta.dirname, 'paypal.ts')
+		adapter: resolve(import.meta.dirname, 'paypal.ts'),
+		imported: true
+	},
+	{
+		specifier: '@nowpaymentsio/nowpayments-sdk-nodejs',
+		adapter: resolve(import.meta.dirname, 'nowpayments.ts'),
+		imported: false
+	},
+	{
+		specifier: '@nowpaymentsio/nowpayments-api-js',
+		adapter: resolve(import.meta.dirname, 'nowpayments.ts'),
+		imported: false
 	}
 ];
 
@@ -214,7 +229,7 @@ describe('one module per processor SDK is the only importer of it', () => {
 		}
 	});
 
-	it.each(GUARDED)(
+	it.each(GUARDED.filter((entry) => entry.imported))(
 		'matches `$specifier` in its own adapter, so the patterns work on real source',
 		({ specifier, adapter }) => {
 			// the case above is written from the same idea as the patterns, so it cannot catch a rule

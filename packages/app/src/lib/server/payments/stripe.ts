@@ -19,6 +19,7 @@ import type {
 	RailCapabilityState,
 	Intent,
 	IntentRequest,
+	PayableCoin,
 	PaymentEvent,
 	PaymentFailure,
 	PaymentProvider,
@@ -1056,7 +1057,8 @@ function settlementOf(
 		// the balance transaction's time is when the money reached the account, which is the date a
 		// reconciler matches against a statement. before there is one, the charge's; before that, the
 		// intent's, so this is never absent and never a guess dressed as a date.
-		occurredAt: atMillis(balance?.created ?? charge?.created ?? intent.created)
+		occurredAt: atMillis(balance?.created ?? charge?.created ?? intent.created),
+		arrival: null
 	};
 }
 
@@ -2171,6 +2173,15 @@ export function createStripeProvider(
 			} catch (error) {
 				return classify(error);
 			}
+		},
+
+		async listPayableCoins(): Promise<PaymentResult<readonly PayableCoin[]>> {
+			return {
+				ok: false,
+				reason: 'unsupported',
+				detail:
+					'Stripe takes no payment in a coin, so there is no coin list to read. Nothing was asked of Stripe.'
+			};
 		}
 	};
 }

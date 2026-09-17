@@ -13,10 +13,11 @@ import type {
 import { CHARIOT_TAG } from '@better-giving/form/embed/chariot';
 import type { ChallengeSeam, TurnstileLike } from '@better-giving/form/embed/turnstile';
 import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from '@better-giving/form/parts';
-import type { FeeRules, FormConfig } from '@better-giving/form/v1';
+import { DEPOSIT_POLL_MS } from '@better-giving/form/machine';
+import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
 import { act, createRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { expect, it, onTestFinished, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { DonateCard } from './card';
 import * as copy from './copy';
 import { PaymentBox } from './payment';
@@ -43,7 +44,8 @@ const FEE_RULES: FeeRules = {
 	ach: { percent: 0.008, fixedMinor: 0, capMinor: 500 },
 	paypal: { percent: 0.0349, fixedMinor: 49 },
 	venmo: { percent: 0.0349, fixedMinor: 49 },
-	daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
+	daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
+	crypto: { percent: 0.01, fixedMinor: 0 }
 };
 
 const CONFIG: FormConfig = {
@@ -78,6 +80,7 @@ function paymentProvider() {
 	const element = {
 		mount: () => {},
 		focus: () => {},
+		collapse: () => {},
 		on: (event: string, handler: unknown) => {
 			held[event]?.push(handler);
 		},
@@ -659,4 +662,322 @@ it('states the granted figures on the ending, not the ones the form showed', asy
 	expect(one(ending, '.row.total .row-label').textContent).toBe('Grant requested');
 	expect(one(ending, '.prose').textContent).toContain('Your fund has your grant request');
 	expect(one(ending, '.prose').textContent).not.toContain('charge');
+});
+
+describe('a crypto gift', () => {
+	const CRYPTO: FormConfig = {
+		...CONFIG,
+		paymentMethods: ['card', 'crypto'],
+		coins: [
+			{ coin: 'xrp', ticker: 'xrp', name: 'Ripple', network: 'xrp', memoRequired: true },
+			{
+				coin: 'usdttrc20',
+				ticker: 'usdt',
+				name: 'Tether USD (Tron)',
+				network: 'trx',
+				memoRequired: false
+			},
+			{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false }
+		]
+	};
+	/** far enough out that no spec's clock reaches it, unless the spec puts its clock there. */
+	const VALID_UNTIL = '2099-11-21T12:00:00.000Z';
+	const USDT: Quote = {
+		paymentToken: 'don_1',
+		feeMinor: 25,
+		totalMinor: 2525,
+		deposit: {
+			address: 'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',
+			memo: null,
+			coin: 'usdttrc20',
+			network: 'trx',
+			coinAmount: '25.004187',
+			validUntil: VALID_UNTIL,
+			qr: { rows: ['110', '011', '101'] }
+		}
+	};
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	const json = (body: unknown, status = 200) =>
+		new Response(JSON.stringify(body), {
+			status,
+			headers: { 'content-type': 'application/json' }
+		});
+
+	/**
+	 * the deployment's two endpoints a crypto gift reaches: the quote answers `quote`, and the read
+	 * answers whatever `state` holds when it is asked.
+	 */
+	function deployment(quote: () => Response) {
+		const server = { state: 'waiting' as string, reads: 0 };
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (_url: string, init?: RequestInit) => {
+				if (init?.method === 'POST') return quote();
+				server.reads += 1;
+				return json({ state: server.state });
+			})
+		);
+		return server;
+	}
+
+	/** the row a payment option stands in, found by the name on its head. */
+	function row(root: HTMLElement, name: string): HTMLElement | null {
+		for (const node of every(root, '[part~="payment"] *')) {
+			const head = node.shadowRoot?.querySelector<HTMLElement>('.head');
+			if (head?.querySelector('.name')?.textContent === name) return head;
+		}
+		return null;
+	}
+
+	/** the coin list's own shadow root, standing in the crypto option. */
+	function coins(root: HTMLElement): ShadowRoot {
+		const host = every(root, '[part~="payment"] *').find((node) =>
+			node.shadowRoot?.querySelector('[role="combobox"]')
+		);
+		if (host?.shadowRoot == null) throw new Error('no coin list in the payment box');
+		return host.shadowRoot;
+	}
+	const combobox = (root: HTMLElement) =>
+		coins(root).querySelector('[role="combobox"]') as HTMLInputElement;
+
+	function pick(root: HTMLElement, ticker: string): void {
+		press(coins(root).querySelector('.picker') as HTMLElement);
+		const option = [...coins(root).querySelectorAll<HTMLElement>('[role="option"]')].find(
+			(node) => node.querySelector('.coin-ticker')?.textContent === ticker
+		);
+		if (option === undefined) throw new Error(`no ${ticker} in the coin list`);
+		press(option);
+	}
+
+	/** the review step of a one-time gift with the crypto option open. */
+	async function onCrypto(quote: () => Response = () => json(USDT)) {
+		const server = deployment(quote);
+		const { root } = await card(CRYPTO);
+		walkToGive(root);
+		const head = row(root, 'Crypto');
+		if (head === null) throw new Error('no crypto option on the review step');
+		press(head);
+		return { root, server };
+	}
+
+	/** Donate pressed from the keyboard, so the caret starts on the control rather than in the list. */
+	async function donate(root: HTMLElement): Promise<void> {
+		await act(async () => {
+			one(root, 'button[part~="submit"]').focus();
+			one(root, 'button[part~="submit"]').click();
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+	}
+
+	/** the address screen, for a USDT gift. */
+	async function atAddress() {
+		const reached = await onCrypto();
+		pick(reached.root, 'USDT');
+		await donate(reached.root);
+		return reached;
+	}
+
+	async function tick(ms: number): Promise<void> {
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(ms);
+		});
+	}
+
+	it('offers crypto on a one-time gift and hides it on a repeating one', async () => {
+		deployment(() => json(USDT));
+		const { root } = await card(CRYPTO);
+		walkToGive(root);
+		expect(row(root, 'Crypto')).not.toBeNull();
+
+		press(every(root, '.step-give .step-dot')[0] as HTMLElement);
+		press(one(root, '.segment > label:nth-of-type(2)'));
+		press(one(root, CONTINUE));
+		press(one(root, CONTINUE));
+
+		expect(screen(root).className).toContain('step-give');
+		expect(row(root, 'Crypto')).toBeNull();
+	});
+
+	it('says what the fee does to a gift valued on arrival', async () => {
+		const { root } = await onCrypto();
+		expect(one(root, '.fee-note').textContent).toMatch(
+			/^You add about \$\d+\.\d\d toward the processing fee\.$/
+		);
+
+		press(input(root, '.row.fee [part~="checkbox"]'));
+		expect(one(root, '.fee-note').textContent).toBe(
+			'Helping Hands pays the processing fee out of your gift.'
+		);
+	});
+
+	it('asks for a coin on a press with none picked, in the coin list and not on the box', async () => {
+		const { root, server } = await onCrypto();
+
+		await donate(root);
+
+		expect(screen(root).className).toContain('step-give');
+		expect(coins(root).getElementById('coin-problem')?.textContent).toBe(copy.COIN_REQUIRED);
+		expect(coins(root).activeElement).toBe(combobox(root));
+		expect(one(root, '#payment-problem').hidden).toBe(true);
+		expect(server.reads).toBe(0);
+	});
+
+	it('shows where and how much to send, with the caret on the heading', async () => {
+		const { root } = await atAddress();
+
+		const ending = screen(root);
+		expect(ending.className).toContain('takeover');
+		const heading = one(ending, 'h2');
+		expect(heading.textContent).toBe('Send your gift');
+		expect(document.activeElement).toBe(heading);
+		// a child of the takeover itself, where the element stands it.
+		const block = one(ending, ':scope > .deposit');
+		expect(block.hidden).toBe(false);
+		expect(one(block, '.value.amount').textContent).toBe('25.004187 USDT');
+		expect(one(block, '.attention').textContent).toContain('Send on this network only.');
+		expect(one(ending, '.receipt-slot').hidden).toBe(true);
+		expect(
+			every(ending, ':scope > button')
+				.filter((node) => !node.hidden)
+				.map((node) => node.textContent)
+		).toEqual(['Use a different coin']);
+	});
+
+	it('says a Copy on the card’s region', async () => {
+		vi.stubGlobal('navigator', {
+			...navigator,
+			clipboard: { writeText: async () => {} }
+		});
+		const { root } = await atAddress();
+
+		await act(async () => {
+			one(root, '.deposit [aria-label="Copy amount"]').click();
+			for (let at = 0; at < 4; at += 1) await Promise.resolve();
+		});
+
+		expect(one(root, '.deposit [aria-label="Copy amount"] .said').textContent).toBe('Copied');
+		expect(said(root)).toBe('Amount copied.');
+	});
+
+	it('goes back to the coin list for a different coin', async () => {
+		const { root } = await atAddress();
+
+		press(one(root, '.takeover > button[part~="action-quiet"]'));
+
+		expect(screen(root).className).toContain('step-give');
+		expect(coins(root).activeElement).toBe(combobox(root));
+	});
+
+	it('turns to the thank-you once the gift arrives, with no receipt figures', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const { root, server } = await atAddress();
+
+		await tick(DEPOSIT_POLL_MS);
+		expect(server.reads).toBe(1);
+		expect(one(screen(root), 'h2').textContent).toBe('Send your gift');
+		// the caret on a Copy control, which leaves the card with the address block.
+		one(root, '.deposit [aria-label="Copy address"]').focus();
+
+		server.state = 'received';
+		await tick(DEPOSIT_POLL_MS);
+
+		const ending = screen(root);
+		expect(one(ending, 'h2').textContent).toBe(copy.SUCCESS_HEADING);
+		expect(one(ending, '.prose').textContent).toBe(copy.arrivedBody('Helping Hands'));
+		expect(one(ending, '.receipt-slot').hidden).toBe(true);
+		expect(one(ending, '.deposit').hidden).toBe(true);
+		expect(document.activeElement).toBe(one(ending, 'h2'));
+		expect(said(root)).toBe(copy.ARRIVED_ANNOUNCE);
+	});
+
+	it('offers a new address once the server says this one expired, and keeps the coin', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const { root, server } = await atAddress();
+		server.state = 'expired';
+
+		await tick(DEPOSIT_POLL_MS);
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.EXPIRED_HEADING);
+		expect(one(screen(root), '.prose').textContent).toBe(copy.DEPOSIT_EXPIRED_BODY);
+		press(one(root, '.takeover > button[part~="action"]'));
+
+		expect(screen(root).className).toContain('step-give');
+		expect(coins(root).activeElement).toBe(combobox(root));
+		expect(coins(root).querySelector('.chosen')?.textContent).toBe('USDT Tether USD (Tron)');
+	});
+
+	it('withdraws the address and every Copy once its send-by passes, and keeps reading', async () => {
+		vi.useFakeTimers({
+			shouldAdvanceTime: true,
+			now: new Date(VALID_UNTIL).getTime() - DEPOSIT_POLL_MS * 2
+		});
+		const { root, server } = await atAddress();
+		expect(one(screen(root), 'h2').textContent).toBe('Send your gift');
+
+		await tick(DEPOSIT_POLL_MS * 2);
+
+		const checking = screen(root);
+		expect(one(checking, 'h2').textContent).toBe(copy.CHECKING_HEADING);
+		expect(one(checking, '.deposit').hidden).toBe(true);
+		expect(every(checking, 'button').filter((node) => node.closest('[hidden]') === null)).toEqual(
+			[]
+		);
+
+		const before = server.reads;
+		await tick(DEPOSIT_POLL_MS);
+		expect(server.reads).toBeGreaterThan(before);
+	});
+
+	it('lands a gift below the coin’s minimum on the amount step, naming the minimum', async () => {
+		const { root } = await onCrypto(() =>
+			json({ error: 'below_minimum', message: 'too small', minAmountMinor: 1200 }, 422)
+		);
+		pick(root, 'USDT');
+
+		await donate(root);
+
+		expect(screen(root).className).not.toContain('step-give');
+		expect(one(root, '#amount-problem').hidden).toBe(false);
+		expect(one(root, '#amount-problem').textContent).toBe(
+			'at least $12 in Tether USD (Tron), or pick another coin'
+		);
+		const focused = document.activeElement as HTMLElement;
+		expect(focused.getAttribute('aria-describedby')).toBe('amount-problem');
+
+		press(one(root, '.tiles > label.other'));
+		type(input(root, '#amount-entry'), '50');
+		expect(one(root, '#amount-problem').hidden).toBe(true);
+	});
+
+	it.each([
+		['above_maximum', 'too large for Tether USD (Tron), lower it or pick another coin'],
+		['below_minimum', 'too small for Tether USD (Tron), raise it or pick another coin']
+	])('words a %s refusal with no figure', async (code, words) => {
+		const { root } = await onCrypto(() => json({ error: code, message: 'refused' }, 422));
+		pick(root, 'USDT');
+
+		await donate(root);
+
+		expect(one(root, '#amount-problem').textContent).toBe(words);
+	});
+
+	it('lands a coin the account no longer takes back in the list, marked', async () => {
+		const { root } = await onCrypto(() =>
+			json({ error: 'coin_not_accepted', message: 'refused' }, 422)
+		);
+		pick(root, 'USDT');
+
+		await donate(root);
+
+		expect(screen(root).className).toContain('step-give');
+		expect(coins(root).getElementById('coin-problem')?.textContent).toBe(copy.COIN_REFUSED);
+		expect(coins(root).activeElement).toBe(combobox(root));
+		expect(coins(root).querySelector('[aria-disabled="true"] .coin-ticker')?.textContent).toBe(
+			'USDT'
+		);
+	});
 });

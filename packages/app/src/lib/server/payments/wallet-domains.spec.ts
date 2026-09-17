@@ -66,7 +66,8 @@ function port(
 		async listWalletDomains() {
 			return list;
 		},
-		registerWalletDomain: register ?? unused('registerWalletDomain')
+		registerWalletDomain: register ?? unused('registerWalletDomain'),
+		listPayableCoins: unused('listPayableCoins')
 	};
 }
 

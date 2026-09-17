@@ -1,4 +1,5 @@
 import { CHARIOT_WEBHOOK_PATH } from '@better-giving/operator/chariot/webhook-subscription';
+import { NOWPAYMENTS_IPN_PATH } from '@better-giving/operator/nowpayments/ipn-callback';
 import { PAYPAL_WEBHOOK_PATH } from '@better-giving/operator/paypal/webhook-listener';
 import { webhookEndpointUrl } from '@better-giving/operator/stripe/webhook-endpoint';
 import type { ProcessorName } from './provider';
@@ -22,7 +23,8 @@ import type { ProcessorName } from './provider';
 const ADDRESS: Readonly<Record<ProcessorName, (origin: string) => string>> = Object.freeze({
 	stripe: webhookEndpointUrl,
 	paypal: (origin) => `${origin}${PAYPAL_WEBHOOK_PATH}`,
-	chariot: (origin) => `${origin}${CHARIOT_WEBHOOK_PATH}`
+	chariot: (origin) => `${origin}${CHARIOT_WEBHOOK_PATH}`,
+	nowpayments: (origin) => `${origin}${NOWPAYMENTS_IPN_PATH}`
 });
 
 /** the address this deployment answers one processor's deliveries on. */

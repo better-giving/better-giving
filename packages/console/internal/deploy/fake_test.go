@@ -32,6 +32,7 @@ func baked() release.Config {
 		DatabaseName:        "better-giving",
 		MigrationsDir:       "./migrations",
 		Migrations:          []string{"0000_a.sql"},
+		Crons:               []string{"*/30 * * * *"},
 		TurnstileWidgetName: "better-giving",
 		Commit:              strings.Repeat("a", 40),
 	}
@@ -129,6 +130,14 @@ type account struct {
 	refusesSQL string
 	// bound is what GET settings reports afterwards, and nil means every binding that went up.
 	bound []string
+	// schedules is the raw body of every schedules PUT, in order.
+	schedules []string
+	// refusesSchedules is an account that takes the script and turns its schedule down.
+	refusesSchedules bool
+	// scheduled is the worker's schedule as a GET reads it, which a PUT that lands replaces.
+	scheduled []string
+	// refusesScheduleRead is an account that turns a read of the worker's schedule down.
+	refusesScheduleRead bool
 }
 
 func (held *account) called(path string) {
@@ -167,6 +176,8 @@ func (held *account) serve(t *testing.T) *httptest.Server {
 			held.domains(w)
 		case strings.HasSuffix(r.URL.Path, "/settings"):
 			held.settings(w)
+		case strings.HasSuffix(r.URL.Path, "/schedules"):
+			held.schedule(w, r)
 		case r.Method == http.MethodPut:
 			held.script(t, w, r)
 		default:
@@ -285,6 +296,71 @@ func (held *account) script(t *testing.T, w http.ResponseWriter, r *http.Request
 		"success": true,
 		"result":  map[string]any{"id": "better-giving", "has_assets": true, "has_modules": true},
 	})
+}
+
+func (held *account) schedule(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		held.readSchedule(w)
+		return
+	}
+	body, _ := io.ReadAll(r.Body)
+	var sent []struct {
+		Cron string `json:"cron"`
+	}
+	json.Unmarshal(body, &sent)
+	held.mutex.Lock()
+	held.schedules = append(held.schedules, string(body))
+	refused := held.refusesSchedules
+	if !refused {
+		held.scheduled = []string{}
+		for _, one := range sent {
+			held.scheduled = append(held.scheduled, one.Cron)
+		}
+	}
+	held.mutex.Unlock()
+
+	if refused {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"success":false,"errors":[{"code":10100,"message":"invalid cron expression"}]}`))
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]any{
+		"success": true,
+		"result":  map[string]any{"schedules": []any{}},
+	})
+}
+
+func (held *account) readSchedule(w http.ResponseWriter) {
+	held.mutex.Lock()
+	crons, refused := held.scheduled, held.refusesScheduleRead
+	held.mutex.Unlock()
+
+	if refused {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"success":false,"errors":[{"code":10013,"message":"an internal error occurred"}]}`))
+		return
+	}
+	listed := []any{}
+	for _, cron := range crons {
+		listed = append(listed, map[string]any{"cron": cron, "created_on": "2026-09-01T00:00:00Z"})
+	}
+	json.NewEncoder(w).Encode(map[string]any{
+		"success": true,
+		"result":  map[string]any{"schedules": listed},
+	})
+}
+
+// the options a schedule-only call is made with against a fake account, reporting into `reported`.
+func againstAccount(t *testing.T, held *account, config release.Config, reported *[]Progress) Options {
+	t.Helper()
+	api := held.serve(t)
+	t.Cleanup(api.Close)
+	return Options{
+		Send:    cf.JSONSend(api.URL, nil),
+		Account: "an-account",
+		Config:  config,
+		Report:  func(progress Progress) { *reported = append(*reported, progress) },
+	}
 }
 
 // the workers.dev call on one worker, which is what says it answers on an address at all. a GET is
@@ -441,6 +517,17 @@ func deployedStopping(t *testing.T, held *account, bundle []byte, at Stage) (Run
 // one deploy against a fake account and a fake release, reporting through `say`.
 func running(t *testing.T, held *account, bundle []byte, carrying string, at Stage, say func(Progress)) Run {
 	t.Helper()
+	return runningAs(t, held, bundle, baked(), carrying, at, say)
+}
+
+// one deploy by a binary baked for `config` rather than for ./baked.
+func runningWith(t *testing.T, held *account, bundle []byte, config release.Config) Run {
+	t.Helper()
+	return runningAs(t, held, bundle, config, carriedRelease, "", func(Progress) {})
+}
+
+func runningAs(t *testing.T, held *account, bundle []byte, config release.Config, carrying string, at Stage, say func(Progress)) Run {
+	t.Helper()
 	api := held.serve(t)
 	defer api.Close()
 	releases := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -473,7 +560,7 @@ func running(t *testing.T, held *account, bundle []byte, carrying string, at Sta
 		BundleURL:  releases.URL + "/worker-1.2.3.tar.gz",
 		Account:    "an-account",
 		DatabaseID: "a-database",
-		Config:     baked(),
+		Config:     config,
 		Shape:      shape(),
 		Release:    carrying,
 		Report: func(progress Progress) {

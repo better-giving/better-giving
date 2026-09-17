@@ -54,7 +54,8 @@ describe('the provider this app actually builds, inside workerd', () => {
 			amountMinor: 1000,
 			currency: 'USD',
 			method: 'paypal',
-			idempotencyKey: 'attempt-1'
+			idempotencyKey: 'attempt-1',
+			deploymentOrigin: 'https://donate.example.org'
 		});
 
 		expect(result.ok && result.value.providerTxnId).toBe('5O190127TN364715T');

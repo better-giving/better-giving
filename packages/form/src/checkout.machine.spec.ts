@@ -2,15 +2,17 @@ import { createActor } from 'xstate';
 import { describe, expect, it } from 'vitest';
 import {
 	checkoutMachine,
+	cryptoIsOffered,
 	fundIsOffered,
 	openFund,
 	stepIsReachable,
+	DEPOSIT_POLL_MS,
 	MICRODEPOSIT_WINDOW_MS,
 	PORT_TIMEOUT_MS
 } from './checkout.machine';
 import type { CheckoutEvent } from './checkout.machine';
 import type { CheckoutPorts, ConfirmInput } from './ports';
-import type { FormConfig, Quote, QuoteRequest } from './v1';
+import type { DonationStatus, FormConfig, Quote, QuoteRequest } from './v1';
 
 // node pool: no browser, no DOM, no Stripe. that is the claim the machine exists to earn —
 // the client's money path gets the same treatment as `src/lib/server/ledger/posting.ts` gets on
@@ -34,7 +36,8 @@ const CONFIG: FormConfig = {
 		google_pay: { percent: 0.029, fixedMinor: 30 },
 		paypal: { percent: 0.0349, fixedMinor: 49 },
 		venmo: { percent: 0.0349, fixedMinor: 49 },
-		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
+		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
+		crypto: { percent: 0.01, fixedMinor: 0 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -101,6 +104,7 @@ type Calls = {
 	quote: QuoteRequest[];
 	confirm: ConfirmInput[];
 	resume: string[];
+	status: string[];
 };
 
 const QUOTE: Quote = { paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor: 2606 };
@@ -111,6 +115,7 @@ type HarnessOptions = {
 	readonly quote?: (request: QuoteRequest) => Promise<Quote>;
 	readonly confirm?: (input: ConfirmInput) => Promise<import('./ports').ConfirmOutcome>;
 	readonly resumeWith?: () => Promise<import('./ports').ConfirmOutcome>;
+	readonly status?: () => Promise<DonationStatus>;
 };
 
 /**
@@ -121,7 +126,7 @@ type HarnessOptions = {
  * stand-in instead of on the machine.
  */
 function harness(options: HarnessOptions = {}) {
-	const calls: Calls = { quote: [], confirm: [], resume: [] };
+	const calls: Calls = { quote: [], confirm: [], resume: [], status: [] };
 	const clock = manualClock();
 
 	const ports: CheckoutPorts = {
@@ -136,6 +141,10 @@ function harness(options: HarnessOptions = {}) {
 		resume: ({ paymentToken }) => {
 			calls.resume.push(paymentToken);
 			return options.resumeWith?.() ?? Promise.resolve({ kind: 'succeeded' as const });
+		},
+		status: ({ paymentToken }) => {
+			calls.status.push(paymentToken);
+			return options.status?.() ?? Promise.resolve({ state: 'waiting' as const });
 		},
 		now: clock.now
 	};
@@ -888,7 +897,8 @@ describe('where the correction screen is and is not shown', () => {
 					google_pay: { percent: 0.029, fixedMinor: 30 },
 					paypal: { percent: 0.0349, fixedMinor: 49 },
 					venmo: { percent: 0.0349, fixedMinor: 49 },
-					daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
+					daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
+					crypto: { percent: 0.01, fixedMinor: 0 }
 				} as FormConfig['feeRules']
 			},
 			quote: async () => ({ paymentToken: 'pi_1_secret_x', feeMinor: 0, totalMinor: 2500 })
@@ -930,7 +940,8 @@ describe('where the correction screen is and is not shown', () => {
 					google_pay: { percent: 0.029, fixedMinor: 30 },
 					paypal: { percent: 0.0349, fixedMinor: 49 },
 					venmo: { percent: 0.0349, fixedMinor: 49 },
-					daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
+					daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
+					crypto: { percent: 0.01, fixedMinor: 0 }
 				} as FormConfig['feeRules']
 			},
 			quote: async () => ({ paymentToken: 'pi_1_secret_x', feeMinor: 175, totalMinor: 2675 })
@@ -1399,6 +1410,7 @@ const EVERY_EVENT: readonly CheckoutEvent[] = Object.values({
 	BACK: { type: 'BACK' },
 	GO_TO_STEP: { type: 'GO_TO_STEP', step: 'amount' },
 	SET_METHOD: { type: 'SET_METHOD', method: 'card' },
+	SET_COIN: { type: 'SET_COIN', coin: 'btc' },
 	PAYMENT_UNAVAILABLE: {
 		type: 'PAYMENT_UNAVAILABLE',
 		failure: { message: 'The payment fields could not be shown.' }
@@ -1608,7 +1620,8 @@ describe('a config the wire mangled', () => {
 					google_pay: { percent: 0.029, fixedMinor: 30 },
 					paypal: { percent: 0.0349, fixedMinor: 49 },
 					venmo: { percent: 0.0349, fixedMinor: 49 },
-					daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
+					daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
+					crypto: { percent: 0.01, fixedMinor: 0 }
 				} as FormConfig['feeRules']
 			}
 		});
@@ -2175,5 +2188,270 @@ describe('a gift from a donor-advised fund', () => {
 		expect(fundIsOffered(monthly.actor.getSnapshot())).toBe(false);
 
 		expect(fundIsOffered(readyToSubmit().actor.getSnapshot())).toBe(false);
+	});
+});
+
+describe('a crypto gift', () => {
+	const COINS = [
+		{
+			coin: 'usdttrc20',
+			ticker: 'usdt',
+			name: 'Tether USD (Tron)',
+			network: 'trx',
+			memoRequired: false
+		},
+		{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false }
+	];
+	const CRYPTO_CONFIG: FormConfig = {
+		...CONFIG,
+		paymentMethods: ['card', 'crypto'],
+		coins: COINS
+	};
+	const VALID_UNTIL = EPOCH + 7 * 24 * 60 * 60 * 1000;
+	const DEPOSIT_QUOTE: Quote = {
+		paymentToken: 'don_crypto_1',
+		feeMinor: 25,
+		totalMinor: 2525,
+		deposit: {
+			address: 'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',
+			memo: null,
+			coin: 'usdttrc20',
+			network: 'trx',
+			coinAmount: '25.004187',
+			validUntil: new Date(VALID_UNTIL).toISOString(),
+			qr: { rows: ['101', '010', '101'] }
+		}
+	};
+
+	/** the review step of a one-time crypto gift, with the rail reported and no coin picked yet. */
+	function onCryptoRail(options: HarnessOptions = {}) {
+		const h = readyToSubmit({
+			config: CRYPTO_CONFIG,
+			quote: async () => DEPOSIT_QUOTE,
+			...options
+		});
+		h.actor.send({ type: 'SET_METHOD', method: 'crypto' });
+		return h;
+	}
+
+	it('sends the coin the donor picked and waits on the address the quote minted', async () => {
+		const { actor, calls } = onCryptoRail();
+		actor.send({ type: 'SET_COIN', coin: 'usdttrc20' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.quote[0]?.coin).toBe('usdttrc20');
+		expect(calls.confirm).toHaveLength(0);
+		expect(actor.getSnapshot().matches('awaitingDeposit')).toBe(true);
+	});
+
+	/** the address screen, reached with a coin picked and the quote's deposit in hand. */
+	async function awaitingDeposit(options: HarnessOptions = {}) {
+		const h = onCryptoRail(options);
+		h.actor.send({ type: 'SET_COIN', coin: 'usdttrc20' });
+		h.actor.send({ type: 'SUBMIT' });
+		await settle();
+		return h;
+	}
+
+	it('turns to the thank-you once the gift is read as received', async () => {
+		let state: DonationStatus['state'] = 'waiting';
+		const { actor, calls, clock } = await awaitingDeposit({
+			status: async () => ({ state })
+		});
+
+		clock.advance(DEPOSIT_POLL_MS);
+		await settle();
+		expect(calls.status).toEqual(['don_crypto_1']);
+		expect(actor.getSnapshot().matches('awaitingDeposit')).toBe(true);
+
+		state = 'received';
+		clock.advance(DEPOSIT_POLL_MS);
+		await settle();
+		expect(actor.getSnapshot().value).toBe('success');
+	});
+
+	// only the server's own `expired` withdraws the address: a rejection is how a rate-limited read
+	// reaches a browser, and a body that is not ours is a reading nobody has.
+	it('keeps waiting through an unreadable answer, and stops only on the server’s expired', async () => {
+		let answer: () => Promise<DonationStatus> = () =>
+			Promise.reject(new TypeError('Failed to fetch'));
+		const { actor, clock } = await awaitingDeposit({ status: () => answer() });
+
+		clock.advance(DEPOSIT_POLL_MS);
+		await settle();
+		expect(actor.getSnapshot().matches('awaitingDeposit')).toBe(true);
+
+		answer = () => Promise.resolve({ state: 'closed' } as unknown as DonationStatus);
+		clock.advance(DEPOSIT_POLL_MS);
+		await settle();
+		expect(actor.getSnapshot().matches('awaitingDeposit')).toBe(true);
+
+		answer = () => Promise.resolve({ state: 'expired' });
+		clock.advance(DEPOSIT_POLL_MS);
+		await settle();
+		expect(actor.getSnapshot().value).toBe('depositExpired');
+	});
+
+	it('starts again on the review step with the coin still picked', async () => {
+		const { actor, clock } = await awaitingDeposit({ status: async () => ({ state: 'expired' }) });
+		clock.advance(DEPOSIT_POLL_MS);
+		await settle();
+
+		actor.send({ type: 'RETRY' });
+
+		expect(actor.getSnapshot().value).toBe('give');
+		expect(actor.getSnapshot().context.payerDraft).toMatchObject({
+			method: 'crypto',
+			coin: 'usdttrc20'
+		});
+		expect(actor.getSnapshot().context.quote).toBeNull();
+	});
+
+	it('reads nothing once the donor leaves the address for a different coin', async () => {
+		const { actor, calls, clock } = await awaitingDeposit();
+
+		actor.send({ type: 'BACK' });
+		clock.advance(DEPOSIT_POLL_MS * 3);
+		await settle();
+
+		expect(actor.getSnapshot().value).toBe('give');
+		expect(actor.getSnapshot().context.payerDraft.coin).toBe('usdttrc20');
+		expect(calls.status).toHaveLength(0);
+	});
+
+	// past the address's own send-by on this device, and the server still waiting: the address is
+	// withdrawn so nobody sends to it, and the reading goes on — a coin sent in time may still land.
+	it('closes the address at its send-by and keeps reading until the gift is settled', async () => {
+		let state: DonationStatus['state'] = 'waiting';
+		const { actor, clock } = await awaitingDeposit({ status: async () => ({ state }) });
+
+		clock.advance(VALID_UNTIL - EPOCH - 1);
+		await settle();
+		expect(actor.getSnapshot().matches({ awaitingDeposit: { address: 'open' } })).toBe(true);
+
+		clock.advance(1);
+		await settle();
+		expect(actor.getSnapshot().matches({ awaitingDeposit: { address: 'closed' } })).toBe(true);
+
+		// no way back to the review step from a closed address: that screen draws no control.
+		actor.send({ type: 'BACK' });
+		expect(actor.getSnapshot().matches({ awaitingDeposit: { address: 'closed' } })).toBe(true);
+
+		state = 'received';
+		clock.advance(DEPOSIT_POLL_MS);
+		await settle();
+		expect(actor.getSnapshot().value).toBe('success');
+	});
+
+	it('closes the address at once for a quote whose send-by has already passed here', async () => {
+		const { actor, clock } = await awaitingDeposit({
+			quote: async () => ({
+				...DEPOSIT_QUOTE,
+				deposit: { ...DEPOSIT_QUOTE.deposit!, validUntil: new Date(EPOCH - 1000).toISOString() }
+			})
+		});
+		clock.advance(0);
+
+		expect(actor.getSnapshot().matches({ awaitingDeposit: { address: 'closed' } })).toBe(true);
+	});
+
+	// the option comes off the payment box the moment a repeating cadence is chosen, before any step
+	// commits it, and comes back with one-time — nothing is said on the amount step either way.
+	it('offers crypto on a one-time gift only, following the cadence as the donor picks it', () => {
+		const { actor } = onCryptoRail();
+		expect(cryptoIsOffered(actor.getSnapshot())).toBe(true);
+
+		actor.send({ type: 'GO_TO_STEP', step: 'amount' });
+		actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
+		expect(cryptoIsOffered(actor.getSnapshot())).toBe(false);
+
+		actor.send({ type: 'SET_FREQUENCY', frequency: 'one_time' });
+		expect(cryptoIsOffered(actor.getSnapshot())).toBe(true);
+
+		expect(cryptoIsOffered(readyToSubmit().actor.getSnapshot())).toBe(false);
+	});
+
+	describe('a refusal of the coin or the amount', () => {
+		const refused =
+			(code: string, extra: Record<string, unknown> = {}) =>
+			() =>
+				Promise.reject({ code, message: `refused: ${code}`, fix: 'pick another', ...extra });
+
+		async function refusedWith(code: string, extra: Record<string, unknown> = {}) {
+			return awaitingDeposit({ quote: refused(code, extra) });
+		}
+
+		it('lands a gift below the coin’s minimum on the amount step, carrying the minimum', async () => {
+			const { actor } = await refusedWith('below_minimum', { minAmountMinor: 1200 });
+
+			expect(actor.getSnapshot().value).toBe('amount');
+			expect(actor.getSnapshot().context.coinRefusal).toEqual({
+				code: 'below_minimum',
+				coin: 'usdttrc20',
+				minAmountMinor: 1200
+			});
+			expect(actor.getSnapshot().context.failure).toBeNull();
+		});
+
+		it('lands a gift over the coin’s cap on the amount step, with no figure to carry', async () => {
+			const { actor } = await refusedWith('above_maximum');
+
+			expect(actor.getSnapshot().value).toBe('amount');
+			expect(actor.getSnapshot().context.coinRefusal).toEqual({
+				code: 'above_maximum',
+				coin: 'usdttrc20'
+			});
+		});
+
+		it('clears the amount refusal once the donor changes the amount', async () => {
+			const { actor } = await refusedWith('below_minimum', { minAmountMinor: 1200 });
+
+			actor.send({ type: 'SET_AMOUNT', amountMinor: 5000 });
+
+			expect(actor.getSnapshot().context.coinRefusal).toBeNull();
+		});
+
+		it('keeps the coin and the rail for the press after the amount is raised', async () => {
+			const { actor } = await refusedWith('below_minimum', { minAmountMinor: 1200 });
+			actor.send({ type: 'SET_AMOUNT', amountMinor: 5000 });
+			actor.send({ type: 'CONTINUE' });
+			actor.send({ type: 'CONTINUE' });
+
+			expect(actor.getSnapshot().value).toBe('give');
+			expect(actor.getSnapshot().context.payerDraft).toMatchObject({
+				method: 'crypto',
+				coin: 'usdttrc20'
+			});
+		});
+
+		it('lands a coin the account no longer takes back on the review step, that coin refused', async () => {
+			const { actor, calls } = await refusedWith('coin_not_accepted');
+
+			expect(actor.getSnapshot().value).toBe('give');
+			expect(actor.getSnapshot().context.refusedCoins).toEqual(['usdttrc20']);
+
+			// a retry of the same coin answers the same, so the press is refused here instead.
+			actor.send({ type: 'SUBMIT' });
+			expect(actor.getSnapshot().value).toBe('give');
+			expect(calls.quote).toHaveLength(1);
+		});
+
+		it('takes the press again once the donor picks a coin the account has not refused', async () => {
+			const { actor } = await refusedWith('coin_not_accepted');
+
+			actor.send({ type: 'SET_COIN', coin: 'btc' });
+			expect(actor.getSnapshot().context.coinRefusal).toBeNull();
+			actor.send({ type: 'SUBMIT' });
+
+			expect(actor.getSnapshot().value).toBe('quoting');
+		});
+
+		it('leaves every other refusal on the failure screen, as it does today', async () => {
+			const { actor } = await refusedWith('challenge_failed');
+
+			expect(actor.getSnapshot().value).toBe('failed');
+			expect(actor.getSnapshot().context.coinRefusal).toBeNull();
+		});
 	});
 });

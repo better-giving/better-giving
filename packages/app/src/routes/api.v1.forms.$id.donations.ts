@@ -119,7 +119,8 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 		{
 			...(code === null ? {} : { error: code }),
 			message: result.message,
-			fix: result.fix
+			fix: result.fix,
+			...(result.minAmountMinor === undefined ? {} : { minAmountMinor: result.minAmountMinor })
 		},
 		{ status: REFUSAL_STATUS[result.reason], headers }
 	);
@@ -210,6 +211,10 @@ async function readJsonBody(request: Request): Promise<unknown> {
  *   the grant was created, or an amount the fund will not grant. 409 rather than Chariot's own 410,
  *   which on this surface already means a retired form; both are the donor's to act on in the
  *   fund's window, and nothing about the deployment is wrong.
+ * - 422, a crypto gift NOWPayments will not take: a coin the account does not take today, or an
+ *   amount under the coin's minimum or over what it takes. the donor moves the coin or the amount.
+ *   under the minimum, the body also carries `minAmountMinor` where NOWPayments named its floor:
+ *   the least gift the coin takes, as `QuoteRequest.amountMinor` would state it.
  * - 500, a defect of ours. no code, because no screen fixes it: `API_ERROR_CODES` in
  *   `packages/form/src/v1.ts` is a permanent vocabulary whose members each name one, and a member for our
  *   own bug would ask a donation form to render a screen about it. this is also where a gift that
@@ -241,5 +246,8 @@ const REFUSAL_STATUS = {
 	payments_unavailable: 503,
 	daf_authorization_expired: 409,
 	daf_grant_declined: 422,
+	coin_not_accepted: 422,
+	below_minimum: 422,
+	above_maximum: 422,
 	internal_error: 500
 } as const satisfies Record<QuoteRefusal, number>;

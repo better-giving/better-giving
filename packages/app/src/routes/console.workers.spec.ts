@@ -19,6 +19,7 @@ import {
 	formatConsoleToken
 } from '@better-giving/operator/console/token';
 import { CHARIOT_LIVE_API_URL, createChariotProvider } from '$lib/server/payments/chariot';
+import { createNowpaymentsProvider } from '$lib/server/payments/nowpayments';
 import { refusing } from '$lib/server/payments/provider';
 import type {
 	AccountChargeability,
@@ -487,7 +488,7 @@ describe('the report this deployment answers with', () => {
 	/**
 	 * no configuration value crosses this wire, and neither does the name of one.
 	 *
-	 * the console reads all twenty-one off the Cloudflare account it is signed in to, so a member
+	 * the console reads all twenty-four off the Cloudflare account it is signed in to, so a member
 	 * here that reported one too would be a second seed disagreeing with the first mid-deploy —
 	 * which is why the envelope carries none and why this is one case over the whole list rather
 	 * than an assertion per name. the name is checked as well as the value because a member is
@@ -1081,7 +1082,12 @@ describe('the accounts this deployment charges on', () => {
 	it('names each processor the way an operator is shown it', async () => {
 		const body = (await (await readPayments()).json()) as PaymentsReport;
 
-		expect(body.processors.map((entry) => entry.label)).toEqual(['Stripe', 'PayPal', 'Chariot']);
+		expect(body.processors.map((entry) => entry.label)).toEqual([
+			'Stripe',
+			'PayPal',
+			'Chariot',
+			'NOWPayments'
+		]);
 	});
 
 	/**
@@ -1448,6 +1454,178 @@ describe('a deployment set up on Chariot', () => {
 		).text();
 		expect(said).not.toContain(CHARIOT_VALUES.CHARIOT_API_KEY);
 		expect(said).not.toContain('notarealchariotsecret');
+	});
+});
+
+/**
+ * the reading of the crypto processor, which keeps no endpoint at all — each payment names its own
+ * callback address — and draws no wallet.
+ *
+ * readable means the key reads the account's coin selection, and nothing past that crosses: no coin
+ * list and no count. the account read is the one arm stubbed, because it goes over the network.
+ */
+describe('a deployment set up on NOWPayments', () => {
+	const NOWPAYMENTS_VALUES = {
+		NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey',
+		NOWPAYMENTS_OUTCOME_CURRENCY: 'usdttrc20'
+	};
+
+	/** the adapter, with its two account reads answering as the key it was handed would. */
+	function nowpaymentsPort(read: PaymentResult<AccountChargeability>): PaymentProvider {
+		return {
+			...createNowpaymentsProvider({
+				apiKey: NOWPAYMENTS_VALUES.NOWPAYMENTS_API_KEY,
+				outcomeCurrency: NOWPAYMENTS_VALUES.NOWPAYMENTS_OUTCOME_CURRENCY,
+				ipnSecret: null
+			}),
+			readAccountChargeability: async () => read,
+			readRailSwitchboard: async () =>
+				read.ok ? { ok: true, value: { crypto: { offered: true, switchedOn: true } } } : read
+		};
+	}
+
+	const READS: PaymentResult<AccountChargeability> = {
+		ok: true,
+		value: { chargesEnabled: true, rails: { crypto: 'active' } }
+	};
+
+	beforeEach(() => {
+		stub.ports.nowpayments = nowpaymentsPort(READS);
+	});
+
+	it('reports NOWPayments as unconfigured on a deployment holding none of its values', async () => {
+		const reading = await readingFor('nowpayments');
+
+		expect(reading).toEqual({
+			processor: 'nowpayments',
+			label: 'NOWPayments',
+			state: 'unconfigured',
+			unset: ['NOWPAYMENTS_API_KEY', 'NOWPAYMENTS_OUTCOME_CURRENCY']
+		});
+	});
+
+	it('reports crypto approved where the account enabled a coin, carrying no coin', async () => {
+		const reading = await configuredReading('nowpayments', NOWPAYMENTS_VALUES);
+
+		expect(reading.rails.state === 'read' && reading.rails.evidence).toBe('credentials_only');
+		const rails = reading.rails.state === 'read' ? reading.rails.rails : [];
+		expect(rails.map((line) => [line.rail, line.standing])).toEqual([['crypto', 'approved']]);
+		expect(rails[0]?.note).toMatch(/NOWPayments/);
+		expect(JSON.stringify(reading)).not.toMatch(/usdt|btc/i);
+	});
+
+	it('reports a key the account read refuses as unreadable, with the adapter’s sentence', async () => {
+		stub.ports.nowpayments = nowpaymentsPort({
+			ok: false,
+			reason: 'not_configured',
+			detail: 'NOWPayments did not accept NOWPAYMENTS_API_KEY.'
+		});
+		const reading = await configuredReading('nowpayments', NOWPAYMENTS_VALUES);
+
+		expect(reading.rails.state).toBe('unreadable');
+		expect(reading.rails.state === 'unreadable' && reading.rails.detail).toContain(
+			'NOWPayments did not accept NOWPAYMENTS_API_KEY.'
+		);
+	});
+
+	/** no endpoint is kept anywhere, so the subscription is not a reading that failed. */
+	it('reports the subscription not applicable, and the secret by what is held', async () => {
+		const unset = await configuredReading('nowpayments', NOWPAYMENTS_VALUES);
+		expect(unset.subscription).toEqual({ state: 'not_applicable' });
+		expect(unset.webhook).toEqual({ state: 'unset', detail: null });
+
+		const held = await configuredReading('nowpayments', {
+			...NOWPAYMENTS_VALUES,
+			NOWPAYMENTS_IPN_SECRET: 'notarealipnsecret'
+		});
+		expect(held.webhook).toEqual({ state: 'unconfirmable', detail: null });
+	});
+
+	it('reports no wallet section at all', async () => {
+		const reading = await configuredReading('nowpayments', NOWPAYMENTS_VALUES);
+
+		expect(reading.wallets).toBeNull();
+	});
+
+	/** there is no endpoint to bring level, so a press naming it is refused rather than tried on Stripe. */
+	it('refuses a repair press naming NOWPayments, by name', async () => {
+		const response = await webhookRepairRoutes(
+			new Request('https://give.example.workers.dev/console/webhook-repair', {
+				method: 'POST',
+				headers: bearer(TOKEN),
+				body: JSON.stringify({ processor: 'nowpayments' })
+			}),
+			{ env: envWith({ ...DEPLOYMENT, ...NOWPAYMENTS_VALUES }) }
+		);
+
+		expect(response.status).toBe(400);
+		const body = (await response.json()) as { error: string; message: string };
+		expect(body.error).toBe('not_applicable');
+		expect(body.message).toContain('NOWPayments');
+	});
+
+	it('refuses a repair press naming a processor whose endpoint is not repaired here', async () => {
+		const response = await webhookRepairRoutes(
+			new Request('https://give.example.workers.dev/console/webhook-repair', {
+				method: 'POST',
+				headers: bearer(TOKEN),
+				body: JSON.stringify({ processor: 'paypal' })
+			}),
+			{ env: envWith(DEPLOYMENT) }
+		);
+
+		expect(response.status).toBe(400);
+		expect(((await response.json()) as { error: string }).error).toBe('bad_processor');
+	});
+
+	/** a crypto payment is one deposit, so no repeating-gift read or press names it. */
+	it('answers a recurring read without a line for it, and refuses a press naming it', async () => {
+		const read = (await (
+			await readRecurring({ ...NO_STRIPE, ...NOWPAYMENTS_VALUES })
+		).json()) as RecurringReport;
+		expect(read.processors).toEqual([]);
+
+		const press = await setUpRecurringOn('nowpayments', NOWPAYMENTS_VALUES);
+		expect(press.status).toBe(400);
+		expect(((await press.json()) as { error: string }).error).toBe('bad_processor');
+	});
+
+	/** beside a processor that does repeat, only that one is read. */
+	it('leaves the recurring read to the second processor on a deployment holding both', async () => {
+		const read = (await (await readRecurring(NOWPAYMENTS_VALUES)).json()) as RecurringReport;
+
+		expect(read.processors.map((entry) => entry.processor)).toEqual(['stripe']);
+	});
+
+	/** a deployment on NOWPayments alone: the other three folds stay unconfigured beside it. */
+	it('leaves every other processor unconfigured on a deployment holding only its values', async () => {
+		const body = (await (
+			await readPayments({ ...NO_STRIPE, ...NOWPAYMENTS_VALUES })
+		).json()) as PaymentsReport;
+
+		expect(body.processors.map((entry) => [entry.processor, entry.state])).toEqual([
+			['stripe', 'unconfigured'],
+			['paypal', 'unconfigured'],
+			['chariot', 'unconfigured'],
+			['nowpayments', 'configured']
+		]);
+	});
+
+	/** beside Stripe, each reads its own account and only NOWPayments' endpoint is not applicable. */
+	it('reads both processors on a deployment holding Stripe’s values too', async () => {
+		const stripe = await configuredReading('stripe', NOWPAYMENTS_VALUES);
+		const nowpayments = await configuredReading('nowpayments', NOWPAYMENTS_VALUES);
+
+		expect(stripe.subscription.state).not.toBe('not_applicable');
+		expect(nowpayments.subscription).toEqual({ state: 'not_applicable' });
+	});
+
+	it('carries no NOWPayments credential in its answer', async () => {
+		const said = await (
+			await readPayments({ ...NOWPAYMENTS_VALUES, NOWPAYMENTS_IPN_SECRET: 'notarealipnsecret' })
+		).text();
+		expect(said).not.toContain(NOWPAYMENTS_VALUES.NOWPAYMENTS_API_KEY);
+		expect(said).not.toContain('notarealipnsecret');
 	});
 });
 

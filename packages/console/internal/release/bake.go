@@ -72,8 +72,8 @@ func Bake(root, commit string) (Config, error) {
 	return baked, nil
 }
 
-// Declared is the worker, the database and the migrations directory a wrangler config states, off
-// its top level.
+// Declared is the worker, the database, the migrations directory and the crons a wrangler config
+// states, off its top level.
 //
 // **`env` is not read, and the rehearsal is why that has to be said.** packages/app/wrangler.jsonc
 // declares an `env.test` block and packages/app declares a `deploy:test` that uploads it, which is
@@ -83,8 +83,11 @@ func Bake(root, commit string) (Config, error) {
 // or reports on.
 func Declared(text string) (Config, error) {
 	var file struct {
-		Name string    `json:"name"`
-		D1   []d1Entry `json:"d1_databases"`
+		Name     string    `json:"name"`
+		D1       []d1Entry `json:"d1_databases"`
+		Triggers struct {
+			Crons []string `json:"crons"`
+		} `json:"triggers"`
 	}
 	if err := json.Unmarshal([]byte(StripJSONC(text)), &file); err != nil {
 		return Config{}, fmt.Errorf("that wrangler config will not parse: %w", err)
@@ -101,10 +104,15 @@ func Declared(text string) (Config, error) {
 		return Config{}, fmt.Errorf("that wrangler config states no migrations_dir for that database")
 	}
 
+	crons := file.Triggers.Crons
+	if crons == nil {
+		crons = []string{}
+	}
 	return Config{
 		Name:          file.Name,
 		DatabaseName:  *entry.DatabaseName,
 		MigrationsDir: entry.MigrationsDir,
+		Crons:         crons,
 	}, nil
 }
 
@@ -188,6 +196,9 @@ func MigrationNames(dir string) ([]string, error) {
 // baked at, and it legitimately differs from the one in the tree now.
 func DriftedFields(committed, baked Config) []string {
 	drifted := []string{}
+	if !slices.Equal(committed.Crons, baked.Crons) {
+		drifted = append(drifted, "crons")
+	}
 	if committed.DatabaseName != baked.DatabaseName {
 		drifted = append(drifted, "database_name")
 	}

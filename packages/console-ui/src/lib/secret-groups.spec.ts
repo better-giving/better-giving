@@ -7,6 +7,7 @@ import {
 	MAIL_GROUP,
 	MASKED_VALUES,
 	MINTED_BY_CONSOLE,
+	NOWPAYMENTS_GROUP,
 	SECRET_GROUPS,
 	SIGN_IN_GROUP,
 	isMasked,
@@ -62,6 +63,19 @@ describe('the values the console mints or fetches', () => {
 	});
 });
 
+describe('the NOWPayments group', () => {
+	it('is the three one press stores, every one of them typed', () => {
+		// the press checks the key and the currency against NOWPayments and stores all three in one
+		// write, and the console mints none of them.
+		const nowpayments = SECRET_GROUPS.find((one) => one.id === NOWPAYMENTS_GROUP) as SecretGroup;
+		expect(pressedNames(nowpayments)).toEqual([
+			'NOWPAYMENTS_API_KEY',
+			'NOWPAYMENTS_IPN_SECRET',
+			'NOWPAYMENTS_OUTCOME_CURRENCY'
+		]);
+	});
+});
+
 describe('the names a press carries a value for', () => {
 	it('leaves the sign-in group with the password alone, which is the one box it draws', () => {
 		// the reading this exists for. `BETTER_AUTH_SECRET` is minted by the console and gets no box
@@ -95,7 +109,7 @@ describe('the names a press carries a value for', () => {
 	});
 });
 
-describe('the groups the twenty-one are set in', () => {
+describe('the groups the twenty-four are set in', () => {
 	it('covers the enumeration exactly, each name in one group or named as having none', () => {
 		const grouped = SECRET_GROUPS.flatMap((group) => group.names);
 		expect([...grouped, ...UNGROUPED_VARS].sort()).toEqual([...DEPLOY_VARS].sort());
@@ -104,7 +118,7 @@ describe('the groups the twenty-one are set in', () => {
 });
 
 describe('the boxes that arrive masked', () => {
-	it('is the five values reading over a shoulder is enough to take, and no others', () => {
+	it('is the seven values reading over a shoulder is enough to take, and no others', () => {
 		// what makes a value one of these is what somebody could do with it after reading it off the
 		// screen, and the only place that judgement is recorded is the list itself — so this case is
 		// what makes changing the list deliberate.
@@ -113,12 +127,14 @@ describe('the boxes that arrive masked', () => {
 			'SMTP_PASSWORD',
 			'STRIPE_SECRET_KEY',
 			'PAYPAL_CLIENT_SECRET',
-			'CHARIOT_API_KEY'
+			'CHARIOT_API_KEY',
+			'NOWPAYMENTS_API_KEY',
+			'NOWPAYMENTS_IPN_SECRET'
 		]);
 	});
 
-	it('leaves the other sixteen of the twenty-one legible, the three public halves among them', () => {
-		// held over the enumeration, so a twenty-second value lands unmasked and this case is where that
+	it('leaves the other seventeen of the twenty-four legible, the three public halves among them', () => {
+		// held over the enumeration, so a twenty-fifth value lands unmasked and this case is where that
 		// shows. the three named are the ones worth asserting: each stands beside a masked box in the
 		// same fold and carries a word that reads like a credential, and ./secret-groups.ts argues why
 		// none is one.

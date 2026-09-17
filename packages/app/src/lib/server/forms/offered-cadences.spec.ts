@@ -49,7 +49,8 @@ function port(
 		resubscribeWebhookEndpoint: unused('resubscribeWebhookEndpoint'),
 		replaceWebhookEndpoint: unused('replaceWebhookEndpoint'),
 		listWalletDomains: unused('listWalletDomains'),
-		registerWalletDomain: unused('registerWalletDomain')
+		registerWalletDomain: unused('registerWalletDomain'),
+		listPayableCoins: unused('listPayableCoins')
 	};
 }
 
@@ -185,24 +186,29 @@ describe('readOfferedCadences', () => {
 	});
 
 	/**
-	 * Chariot takes one-time grants only, so it is no member of the intersection: the DAF option is
-	 * absent from a repeating gift's payment step, and what a deployment holding Chariot beside a
-	 * card processor offers is that processor's answer alone.
+	 * Chariot takes one-time grants and NOWPayments one-deposit payments, so neither is a member of
+	 * the intersection: what a deployment holding either beside a card processor offers is that
+	 * processor's answer alone.
 	 */
-	const CHARIOT = port(
-		{ ok: false, reason: 'unsupported', detail: 'one-time grants only' },
-		'chariot'
+	const ONE_TIME_ONLY = (['chariot', 'nowpayments'] as const).map((name) =>
+		port({ ok: false, reason: 'unsupported', detail: 'one-time gifts only' }, name)
 	);
 
-	it('offers every cadence where Stripe can collect, whatever Chariot answers', async () => {
-		const held = processorsOf(port({ ok: true, value: 'ready' }), CHARIOT);
+	it.each(ONE_TIME_ONLY)(
+		'offers every cadence where Stripe can collect, whatever $processor answers',
+		async (oneTime) => {
+			const held = processorsOf(port({ ok: true, value: 'ready' }), oneTime);
 
-		expect(await readOfferedCadences(held)).toEqual([...FREQUENCIES]);
-	});
+			expect(await readOfferedCadences(held)).toEqual([...FREQUENCIES]);
+		}
+	);
 
-	it('offers one-time alone on a deployment holding only Chariot', async () => {
-		expect(await readOfferedCadences(soleProcessor(CHARIOT))).toEqual(['one_time']);
-	});
+	it.each(ONE_TIME_ONLY)(
+		'offers one-time alone on a deployment holding only $processor',
+		async (oneTime) => {
+			expect(await readOfferedCadences(soleProcessor(oneTime))).toEqual(['one_time']);
+		}
+	);
 
 	it('offers every cadence where both configured accounts can collect', async () => {
 		const both = processorsOf(

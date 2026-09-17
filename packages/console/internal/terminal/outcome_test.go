@@ -111,7 +111,7 @@ func TestTheTwoStagesInFrontOfTheOneWayDoorSayNothingWasChanged(t *testing.T) {
 }
 
 func TestEveryStageOfTheDeploySaysWhatItLeftStanding(t *testing.T) {
-	// the seven are four different states of one account, and the migration is the line between
+	// the eight are four different states of one account, and the migration is the line between
 	// them: a deploy stopped anywhere in the upload left a database that was migrated, and one
 	// stopped in front of it left nothing.
 	seen := map[string]deploy.Stage{}
@@ -139,7 +139,7 @@ func oneState(one, other deploy.Stage) bool {
 		// in front of the one-way door: nothing written anywhere.
 		{deploy.Fetching: true, deploy.Checking: true},
 		// past it and short of a deployment: the files, the code and where it answers alike.
-		{deploy.Uploading: true, deploy.Pushing: true, deploy.Addressing: true},
+		{deploy.Uploading: true, deploy.Pushing: true, deploy.Scheduling: true, deploy.Addressing: true},
 	} {
 		if group[one] && group[other] {
 			return true
@@ -395,5 +395,29 @@ func TestABundleThatIsNotThisReleasesSaysSoRatherThanThatTheDeployStopped(t *tes
 		if substituted == said {
 			t.Errorf("a bundle that is not this release's has no sentence of its own: %q", substituted)
 		}
+	}
+}
+
+func TestARedeployStoppedAtItsScheduleSaysTheCodeIsLiveAndStartFinishesIt(t *testing.T) {
+	// the upload recorded this release before the schedule went up, so the code is serving: what
+	// is missing is the scheduled checks, and the next `start` puts them up (../deploy's Unscheduled).
+	for _, kind := range []deploy.Kind{deploy.Stopped, deploy.Refused, deploy.Cancelled} {
+		said := UpdateOutcome(effects.Carried{Kind: effects.NotDeployed,
+			Ran: &deploy.Run{Kind: kind, At: deploy.Scheduling}})
+		if strings.Contains(said, "nothing deployed") || strings.Contains(said, "nothing was uploaded") {
+			t.Errorf("a redeploy %s at its schedule says %q", kind, said)
+		}
+		for _, words := range []string{"live", "scheduled checks", Cmd("start")} {
+			if !strings.Contains(said, words) {
+				t.Errorf("a redeploy %s at its schedule says %q, want %q", kind, said, words)
+			}
+		}
+	}
+}
+
+func TestAFirstDeployStoppedAtItsScheduleKeepsTheUploadsSentence(t *testing.T) {
+	said := Outcome(first.Outcome{Kind: first.NotDeployed, Ran: &deploy.Run{At: deploy.Scheduling}})
+	if !strings.Contains(said, "nothing deployed") {
+		t.Errorf("a first deploy stopped at its schedule says %q", said)
 	}
 }

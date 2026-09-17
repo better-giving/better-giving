@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/better-giving/console/internal/bundle"
@@ -288,6 +289,89 @@ func put(ctx context.Context, options Options, parts []cf.Part, watching cf.Send
 		"/accounts/"+options.Account+"/workers/scripts/"+options.Config.Name, parts, watching)
 }
 
+// schedule puts the worker's crons up, which is a call of its own after the script it is about.
+//
+// **the list goes up whole, empty included**: the PUT replaces the schedule, so a cron removed from
+// packages/app/wrangler.jsonc comes off the deployment rather than running on under a release that
+// no longer declares it. a deploy hands in the bundle's manifest, already held equal to this
+// binary's baked config (../bundle).
+func schedule(ctx context.Context, options Options, crons []string) failure {
+	body := make([]map[string]string, 0, len(crons))
+	for _, cron := range crons {
+		body = append(body, map[string]string{"cron": cron})
+	}
+	answer := options.Send(ctx, http.MethodPut, schedulesPath(options), body)
+	refused := refusal(ctx, answer)
+	if refused.Kind != "" && refused.Kind != Cancelled {
+		refused.Detail = "Cloudflare did not take the worker's schedule: " + refused.Detail
+	}
+	return refused
+}
+
+func schedulesPath(options Options) string {
+	return "/accounts/" + options.Account + "/workers/scripts/" + options.Config.Name + "/schedules"
+}
+
+// Unscheduled is whether the worker's schedule differs from the crons this binary was baked with,
+// read without writing anything or reporting any stage.
+//
+// **it is how a deployment already on this release heals a schedule its own deploy never put up**:
+// the code upload records the release before the schedule goes up, so a run that stopped between
+// the two reads as up to date to every later `start`. no bundle is fetched for it — a bundle is held
+// equal to the baked config field for field before a deploy applies it (../bundle), so a deployment
+// on this release was deployed out of these same crons.
+//
+// Order is not compared: a schedule is a set of crons. The Run is the zero value where the read
+// landed, and a stop at Scheduling in cloudflare's own words where it did not.
+func Unscheduled(ctx context.Context, options Options) (bool, Run) {
+	answer := options.Send(ctx, http.MethodGet, schedulesPath(options), nil)
+	if refused := refusal(ctx, answer); refused.Kind != "" {
+		return false, Run{Kind: refused.Kind, At: Scheduling,
+			Detail: "Cloudflare did not read back the worker's schedule: " + refused.Detail}
+	}
+	read := cf.ReadShaped(answer, func(value any) ([]string, bool) {
+		result, ok := value.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		listed, ok := result["schedules"].([]any)
+		if !ok {
+			return nil, false
+		}
+		crons := []string{}
+		for _, one := range listed {
+			schedule, ok := one.(map[string]any)
+			cron, named := schedule["cron"].(string)
+			if !ok || !named {
+				return nil, false
+			}
+			crons = append(crons, cron)
+		}
+		return crons, true
+	})
+	if read.Kind != cf.ResultValue {
+		return false, Run{Kind: Stopped, At: Scheduling,
+			Detail: "Cloudflare did not read back the worker's schedule: " + cf.Said(answer)}
+	}
+	return !slices.Equal(sorted(read.Value), sorted(options.Config.Crons)), Run{}
+}
+
+// Reschedule is the Scheduling stage alone: this binary's baked crons put up as the worker's whole
+// schedule, for a deployment ./Unscheduled found without them.
+func Reschedule(ctx context.Context, options Options) Run {
+	reporter(options)(Progress{Stage: Scheduling})
+	if failure := schedule(ctx, options, options.Config.Crons); failure.Kind != "" {
+		return Run{Kind: failure.Kind, At: Scheduling, Detail: failure.Detail}
+	}
+	return Run{Kind: Deployed, At: Scheduling}
+}
+
+func sorted(crons []string) []string {
+	held := slices.Clone(crons)
+	slices.Sort(held)
+	return held
+}
+
 // what the upload states about this deployment's static assets.
 //
 // `config` carries the one field this app populates: the `_headers` rules, which travel on the
@@ -307,7 +391,7 @@ func assetsField(token, headers string) map[string]any {
 // account, and the field is `id` on the way up whatever a later read of the settings calls it.
 //
 // **the release goes up with them, and that is what makes it a fact about what is running.** it is
-// the console's own record about the deployment rather than one of the twenty-one an operator
+// the console's own record about the deployment rather than one of the twenty-four an operator
 // configures (../deployment/recorded.go), and it travels in this metadata so that no state exists
 // where the code landed and the record says another release. a binary naming no release writes no
 // binding at all: `keep_bindings` then leaves whatever the last deploy recorded, where an empty one

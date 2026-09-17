@@ -7,6 +7,7 @@ import { DonateCard } from '$lib/donate/card';
 import { DonateNotice } from '$lib/donate/notice';
 import pageChrome from '$lib/donate/page.css?url';
 import { cachedCadences } from '$lib/server/forms/cadence-cache';
+import { cachedCoins } from '$lib/server/forms/coin-cache';
 import { readPublishedConfig, renderableConfig } from '$lib/server/forms/published-config';
 import { cachedRails } from '$lib/server/forms/rail-cache';
 import { createPaymentProviders } from '$lib/server/payments/factory';
@@ -93,7 +94,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			params.formId,
 			env,
 			() => cachedCadences(processors, origin),
-			() => cachedRails(processors, origin)
+			() => cachedRails(processors, origin),
+			() => cachedCoins(processors, origin)
 		)
 	);
 	if (!result.ok) return noForm();

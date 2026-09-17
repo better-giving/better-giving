@@ -26,7 +26,7 @@
 
 import { defineDonateForm, type FormBoot, type FormRuntime } from '../element';
 import type { CheckoutPorts } from '../ports';
-import { apiWords, createQuote, EmbedFailure, readJson } from './api';
+import { apiWords, createQuote, createStatusRead, EmbedFailure, readJson } from './api';
 import { createPaymentSurface } from './surface';
 import { takeResumeToken } from './resume';
 import { createChallenge } from './turnstile';
@@ -116,6 +116,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 	// with. `quote` needs only the deployment's origin, and the payment surface needs the config
 	// itself — a payment SDK is initialised with the publishable key it carries.
 	const post = createQuote(origin);
+	const status = createStatusRead(origin);
 
 	/**
 	 * the return this page came back with, per form, held from the one read that could claim it.
@@ -150,7 +151,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 
 	return {
 		loadConfig: createLoadConfig(origin),
-		checkout: (config, mount, onRail, onUnavailable, boot, fund) => {
+		checkout: (config, mount, onRail, onUnavailable, boot, fund, coins) => {
 			// the return this gift is resuming, where this form is the one that sent the donor away.
 			// read here rather than where `post` is built, because the answer is per form and per
 			// boot, and neither is known until an element asks.
@@ -160,7 +161,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 			// one of this deployment's rails or into `null`, and the sentence a donor reads when
 			// nothing came up is written there too, next to what it knows about why.
 			// ../element.ts is what turns each report into an event the flow accepts.
-			const surface = createPaymentSurface(config, mount, onRail, onUnavailable, fund);
+			const surface = createPaymentSurface(config, mount, onRail, onUnavailable, fund, coins);
 			// the quote port, wrapped so the provider's own fields learn what the server just
 			// decided. nothing is decided here: the total is the server's and the payer is the one
 			// the request was made for, and both are handed on exactly as they came back.
@@ -176,6 +177,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 						quote,
 						confirm: surface.confirm,
 						resume: surface.resume,
+						status,
 						now: () => Date.now()
 					},
 					...(resumeToken === null ? {} : { resume: { paymentToken: resumeToken } })
@@ -186,6 +188,8 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 				cadence: surface.cadence,
 				// the fund's reading, passed straight through for the reason the cadence is.
 				offerFund: surface.offerFund,
+				// the crypto option's reading, passed straight through for the fund's reason.
+				offerCrypto: surface.offerCrypto,
 				// the count the card heads the payment box from, passed straight through.
 				rows: surface.rows,
 				// the card letting go of the surface built for this configuration, and it is this

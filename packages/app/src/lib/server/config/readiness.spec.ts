@@ -53,6 +53,12 @@ const chariotPair: ConfigEnv = {
 	CHARIOT_CONNECT_ID: 'live_connect-id'
 };
 
+/** the pair a crypto gift is taken on: the key, and the coin the account pays out in. */
+const nowpaymentsPair: ConfigEnv = {
+	NOWPAYMENTS_API_KEY: 'nowpayments-api-key',
+	NOWPAYMENTS_OUTCOME_CURRENCY: 'usdttrc20'
+};
+
 const facts = (over: Partial<SetupFacts> = {}): SetupFacts => ({
 	password: true,
 	profile: { ...filledIn, notificationEmail: 'alerts@example.org' } as OrgProfile,
@@ -124,6 +130,16 @@ describe('one job at a time left undone', () => {
 	it("holds payments incomplete on Chariot's key without its connect id", () => {
 		const { CHARIOT_CONNECT_ID: _connect, ...noConnect } = chariotPair;
 		expect(line({ config: { ...mailSet, ...noConnect } }, 'payments').state).toBe('todo');
+	});
+
+	it("reads payments done on NOWPayments' pair with no other processor's key", () => {
+		// no IPN secret: it is what hears a payment settle rather than what creates one.
+		expect(line({ config: { ...mailSet, ...nowpaymentsPair } }, 'payments').state).toBe('ready');
+	});
+
+	it("holds payments incomplete on NOWPayments' key without its outcome currency", () => {
+		const { NOWPAYMENTS_OUTCOME_CURRENCY: _outcome, ...noOutcome } = nowpaymentsPair;
+		expect(line({ config: { ...mailSet, ...noOutcome } }, 'payments').state).toBe('todo');
 	});
 
 	it('holds payments incomplete where neither processor holds a whole pair', () => {

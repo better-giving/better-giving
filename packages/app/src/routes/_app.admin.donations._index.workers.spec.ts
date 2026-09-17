@@ -190,20 +190,37 @@ async function attempt(
 		method?: string;
 		provider?: string | null;
 		status?: string;
+		coin?: string | null;
+		coinAmount?: string | null;
+		parentPaymentId?: string | null;
 	} = {}
 ) {
 	const {
 		id = '019fb300-0000-7000-8000-000000000009',
 		method = 'card',
 		provider = 'stripe',
-		status = 'succeeded'
+		status = 'succeeded',
+		coin = null,
+		coinAmount = null,
+		parentPaymentId = null
 	} = over;
 	await env.DB.prepare(
 		`insert into payment (id, donation_id, amount_minor, currency, direction, method, status,
-		                      provider, provider_txn_id, occurred_at, created_at)
-		 values (?, ?, 12345, 'USD', 'inbound', ?, ?, ?, ?, 0, 0)`
+		                      provider, provider_txn_id, occurred_at, created_at, coin, coin_amount,
+		                      parent_payment_id)
+		 values (?, ?, 12345, 'USD', 'inbound', ?, ?, ?, ?, 0, 0, ?, ?, ?)`
 	)
-		.bind(id, donationId, method, status, provider, provider === null ? null : `txn_${id}`)
+		.bind(
+			id,
+			donationId,
+			method,
+			status,
+			provider,
+			provider === null ? null : `txn_${id}`,
+			coin,
+			coinAmount,
+			parentPaymentId
+		)
 		.run();
 }
 
@@ -254,6 +271,7 @@ async function runLoad(configEnv?: Env) {
 			note: string | null;
 			status: string;
 			paidWith: string | null;
+			coinReceived?: string;
 			repeating: boolean;
 			tribute: { kind: string; honoree: string } | null;
 			program: string | null;
@@ -452,6 +470,74 @@ describe('/admin/donations load', () => {
 		const { donations } = await runLoad();
 		expect(donations[0]?.paidWith).toBe('Cheque');
 		expect(JSON.stringify(donations)).not.toContain('manual');
+	});
+
+	it('names the coin and how much of it arrived beside a settled crypto gift', async () => {
+		// the code and never a name off NOWPayments' coin list: the loader asks the processor nothing.
+		const id = await gift();
+		await attempt(id, {
+			method: 'crypto',
+			provider: 'nowpayments',
+			coin: 'xrp',
+			coinAmount: '19.36121163'
+		});
+		const [row] = (await runLoad()).donations;
+		expect(row?.paidWith).toBe('Crypto');
+		expect(row?.coinReceived).toBe('19.36121163 XRP');
+	});
+
+	it('names only the rail on a crypto gift still waiting on its deposit', async () => {
+		const id = await gift();
+		await attempt(id, {
+			method: 'crypto',
+			provider: 'nowpayments',
+			status: 'pending',
+			coin: 'xrp'
+		});
+		const [row] = (await runLoad()).donations;
+		expect(row?.status).toBe('pending');
+		expect(row?.paidWith).toBe('Crypto');
+		expect(row).not.toHaveProperty('coinReceived');
+	});
+
+	it('lists a repeat deposit as a gift of its own, and never the payment it followed', async () => {
+		const first = await gift({
+			id: '019fb300-0000-7000-8000-00000000000b',
+			receivedAt: Date.UTC(2026, 6, 4)
+		});
+		const firstPayment = '019fb300-0000-7000-8000-00000000000c';
+		await attempt(first, {
+			id: firstPayment,
+			method: 'crypto',
+			provider: 'nowpayments',
+			coin: 'xrp',
+			coinAmount: '19.36121163'
+		});
+		const repeat = await gift({
+			id: '019fb300-0000-7000-8000-00000000000d',
+			receivedAt: Date.UTC(2026, 6, 5)
+		});
+		await attempt(repeat, {
+			id: '019fb300-0000-7000-8000-00000000000e',
+			method: 'crypto',
+			provider: 'nowpayments',
+			coin: 'xrp',
+			coinAmount: '2.5',
+			parentPaymentId: firstPayment
+		});
+
+		const { donations } = await runLoad();
+		expect(donations.map((d) => [d.id, d.coinReceived])).toEqual([
+			[repeat, '2.5 XRP'],
+			[first, '19.36121163 XRP']
+		]);
+		expect(JSON.stringify(donations)).not.toContain(firstPayment);
+	});
+
+	it('leaves the coin row out of a card gift', async () => {
+		const id = await gift();
+		await attempt(id);
+		expect((await runLoad()).donations[0]).not.toHaveProperty('coinReceived');
 	});
 
 	it('leaves a gift nothing has been attempted on with no rail', async () => {

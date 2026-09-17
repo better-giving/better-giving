@@ -83,3 +83,26 @@ export function formatDate(at: Date): string {
 		timeZone: 'UTC'
 	}).format(at);
 }
+
+/**
+ * a moment a donor has to act by, to the minute — `September 24, 2026 at 3:04 PM UTC`.
+ *
+ * UTC for `formatDate`'s reason, and named in the string because a deadline read in the reader's
+ * own zone is off by their offset: a mail knows nobody's zone, so it says which one it means.
+ *
+ * ICU sets U+202F, a narrow non-breaking space, before `PM`, and it is normalised away for
+ * `formatMoney`'s reason: the string is searched for and pasted.
+ */
+export function formatDateTime(at: Date): string {
+	return new Intl.DateTimeFormat(LOCALE, {
+		day: 'numeric',
+		month: 'long',
+		year: 'numeric',
+		hour: 'numeric',
+		minute: '2-digit',
+		timeZone: 'UTC',
+		timeZoneName: 'short'
+	})
+		.format(at)
+		.replaceAll(/[  ]/g, ' ');
+}

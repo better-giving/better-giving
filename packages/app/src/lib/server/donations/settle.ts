@@ -1,5 +1,6 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
+import { uuidv7 } from 'uuidv7';
 import { projectTribute } from '../../donations/tributes';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
@@ -14,6 +15,7 @@ import {
 	type Payment,
 	type PaymentMethod
 } from '../db/schema';
+import type { CryptoReceived } from '../email/receipt';
 import { renderUncollectedNotice } from '../email/uncollected';
 import { postingStatements } from '../ledger/posting';
 import { readOrgProfile } from '../org/queries';
@@ -21,6 +23,9 @@ import {
 	DONATION_METADATA_KEY,
 	isRetryable,
 	takesRepeatingGifts,
+	type PaymentFailure,
+	type PayableCoin,
+	type PaymentFailureReason,
 	type ProcessorName,
 	type Settlement,
 	type WebhookDelivery
@@ -108,10 +113,11 @@ import { sendTributeNotice } from './tribute-notice';
 // the write depends on and it is deliberately not a gate: nothing about the answer is checked and
 // then relied on to still be true when the batch runs. a one-off gift's lines are written once, in
 // the one `batch()` that writes the gift (./record.ts), and nothing updates or deletes one
-// afterwards — the single arm that ever rewrites a line is the charge that opens a repeating
-// commitment (`claimWrites` in ./collect.ts), which no delivery reaching this function is. and what
-// makes a redelivery safe is `entry_group_source_idx` refusing the second posting rather than
-// anything read here, which is the shape CLAUDE.md's ban on read-then-write asks for.
+// afterwards but in two arms, each restating the one line in the same batch as its posting: the
+// charge that opens a repeating commitment (`claimWrites` in ./collect.ts), and a gift valued at what
+// arrived (the section below). and what makes a redelivery safe is `entry_group_source_idx`
+// refusing the second posting rather than anything read here, which is the shape CLAUDE.md's ban on
+// read-then-write asks for.
 //
 // what happens when the lines and the money disagree: nothing is posted, the payment row is still
 // corrected, and an operator is told. a partial capture is what parts them, and no allocation is
@@ -121,6 +127,35 @@ import { sendTributeNotice } from './tribute-notice';
 // settlement with no gift behind it and the same one ./collect.ts reaches for a collection the
 // ledger cannot hold. no fee is posted with it either: `feeEntry` credits `1020` for what the
 // processor withheld, and `1020` was never debited.
+//
+// ---------------------------------------------------------------------------
+// a gift valued at what arrived is restated to it, and never refused for differing from what was
+// asked.
+//
+// a crypto gift settles at the dollar value of the coins that reached the address
+// (`Settlement.arrival` in ../payments/provider.ts), which is almost never the figure quoted. the
+// gift's total, its one line and its payment's amount are restated to that value in the batch that
+// posts it, and a covered fee is split out of it in the ratio the donor was quoted. a gift itemized
+// across funds is not split — which fund takes the difference is a choice nobody made — so it goes
+// to an operator as a disagreeing one does. a report of the same payment at another value posts
+// nothing and tells an operator (`revalued`).
+//
+// money sent again to that address arrives as a payment of its own naming the first
+// (`Arrival.repeatOf`) and is recorded as a new gift from the same donor (`recordRepeatDeposit`):
+// nothing authorized it, so no row waits for it, and the settlement inserts it whole as
+// `chargeWrites` in ./collect.ts inserts a later collection.
+//
+// where the payment cannot be read back — a key replaced since it was made, a repeat deposit the key
+// never created — the settlement the verified delivery stated stands in (`fallbackFor`), and only
+// for a state it ended in: a delivery can be older than the one that settled the payment, so a
+// state read off one never walks a settled payment back. nor does a later read of a crypto payment,
+// which can report a state from before the money landed (`write`).
+//
+// ---------------------------------------------------------------------------
+// "three days" below is Stripe's and PayPal's redelivery window. NOWPayments sends a non-2xx again
+// the number of times, at the interval, set under Payment Settings → Instant Payment Notifications
+// in its dashboard, and starts again on the next status change; the reasoning is the same over a
+// shorter window.
 //
 // ---------------------------------------------------------------------------
 // nothing on this path throws, and that is one rule behind two doors.
@@ -186,8 +221,9 @@ export async function settleDelivery(
 		// value for its own endpoint sees a dashboard full of failures. answered 200, the same
 		// deployment reads as healthy while every settlement is silently dropped, and nothing
 		// anywhere reports it. no alert goes with it: this endpoint is public, so an unverified
-		// delivery is anyone's, and mailing on one is a way to send mail from outside.
-		if (verified.reason === 'bad_signature') {
+		// delivery is anyone's, and mailing on one is a way to send mail from outside. a verified body
+		// naming nothing to act on (`invalid_request`) is answered the same way, for the same operator.
+		if (verified.reason === 'bad_signature' || verified.reason === 'invalid_request') {
 			return { ok: false, reason: 'unverified', detail: verified.detail };
 		}
 		return isRetryable(verified.reason)
@@ -210,29 +246,71 @@ export async function settleDelivery(
 		};
 	}
 
+	return settleTransaction(deps, {
+		providerTxnId: event.providerTxnId,
+		eventId: event.id,
+		eventType: event.type,
+		...(event.delivered === undefined ? {} : { delivered: event.delivered })
+	});
+}
+
+/** one transaction to settle, as a delivery names it or as a scheduled read comes to it. */
+export type TransactionToSettle = {
+	/** the processor's id for the transaction — `Intent.providerTxnId`. */
+	readonly providerTxnId: string;
+	/** what reached this, named in anything an operator is told: a delivery's event id, or a read's own. */
+	readonly eventId: string;
+	/** the processor's event type, where a delivery carried one. */
+	readonly eventType?: string;
+	/** `SettlementEvent.delivered`, where the verified delivery stated one. */
+	readonly delivered?: Settlement;
+	/**
+	 * a transaction the processor does not find (`not_found`) is answered without telling an operator.
+	 * a scheduled read reaches the same payment every run and logs it instead; a delivery arrives once
+	 * and alerts. every other refusal alerts either way.
+	 */
+	readonly quietWhenUnreadable?: boolean;
+};
+
+/**
+ * the half of a delivery after verification: re-read, correct, post, then tell people.
+ *
+ * exported so a scheduled read holding a transaction id and no delivery settles it through the same
+ * write. never throws, for `settleDelivery`'s reason.
+ */
+export async function settleTransaction(
+	deps: SettleDeps,
+	transaction: TransactionToSettle
+): Promise<SettleResult> {
 	// the transaction re-read rather than reconstructed from what arrived. deliveries carry no
 	// ordering guarantee, so a handler that rebuilt state from the sequence it happened to receive
 	// would be wrong for any donor whose bank was slow.
-	const read = await deps.provider.readSettlement(event.providerTxnId);
-	if (!read.ok) {
-		if (isRetryable(read.reason)) return { ok: false, reason: 'incomplete', detail: read.detail };
-		const processor = processorLabel(deps);
-		await alert(deps, {
-			headline: `A ${processor} delivery could not be read and was not acted on`,
-			body:
-				'The delivery verified and the transaction behind it could not be read. Nothing was ' +
-				'written. Repeating the call answers the same way, so this needs a person.',
-			facts: [
-				{ label: 'Event', value: event.id },
-				{ label: 'Event type', value: event.type },
-				{ label: 'Transaction', value: event.providerTxnId },
-				{ label: 'Reason', value: read.detail }
-			],
-			action: `Find the payment in the ${processor} dashboard and reconcile it by hand.`
-		});
-		return { ok: true, outcome: 'unactionable', detail: read.detail };
+	const read = await deps.provider.readSettlement(transaction.providerTxnId);
+	let settlement: Settlement;
+	if (read.ok) {
+		settlement = read.value;
+	} else {
+		const fallback = fallbackFor(read.reason, transaction.delivered);
+		if (fallback === 'pending') {
+			return {
+				ok: true,
+				outcome: 'ignored',
+				detail: `transaction ${transaction.providerTxnId} could not be read back and the delivery states it still pending; nothing was written.`
+			};
+		}
+		if (fallback === null) return unreadable(deps, transaction, read);
+		settlement = fallback;
 	}
-	const settlement = read.value;
+	// a verified state standing in for a read never walks a settled payment back: it may be older
+	// than the one that settled it, and nothing here can say which came first.
+	const settledOnly = !read.ok;
+
+	// money sent again to an address whose payment already settled is a gift of its own. the read
+	// names its first payment, and where a read that answered does not, the verified delivery does.
+	const repeatOf = settlement.arrival?.repeatOf ?? transaction.delivered?.arrival?.repeatOf ?? null;
+	if (repeatOf !== null && settlement.arrival !== null && settlement.status === 'succeeded') {
+		return recordRepeatDeposit(deps, transaction.eventId, settlement, repeatOf);
+	}
 
 	// the gift this transaction is for, as the intent itself names it. absent means this app did
 	// not mint the intent, which every collection under a repeating gift is — see the metadata
@@ -254,7 +332,7 @@ export async function settleDelivery(
 		// named, it is a gift this deployment minted and lost, which a person has to record. unnamed,
 		// nothing says it was ever this deployment's: a Chariot grant on the org's account can come
 		// from any of the org's Chariot pages, and telling an operator about each would be noise.
-		if (named !== null) return unmatched(deps, event.id, settlement);
+		if (named !== null) return unmatched(deps, transaction.eventId, settlement);
 		return {
 			ok: true,
 			outcome: 'unmatched',
@@ -270,12 +348,29 @@ export async function settleDelivery(
 			: null;
 	const credits = recognition?.ok ? recognition.credits : null;
 
-	const written = await write(deps.db, target.payment, settlement, credits);
+	const written = await write(deps.db, target, settlement, credits, settledOnly);
 	if (written === 'already_posted') {
+		// a dollar figure moves with every read — NOWPayments values what arrived at its estimate when
+		// asked — so only a different coin or amount of it is news.
+		if (
+			settlement.arrival !== null &&
+			target.payment.status === 'succeeded' &&
+			(settlement.arrival.coin !== target.payment.coin ||
+				settlement.arrival.coinAmount !== target.payment.coinAmount)
+		) {
+			await revalued(deps, target, settlement);
+		}
 		return {
 			ok: true,
 			outcome: 'already_posted',
 			detail: `payment ${target.payment.id} is already in the books; this delivery changed nothing.`
+		};
+	}
+	if (written === 'unchanged') {
+		return {
+			ok: true,
+			outcome: 'ignored',
+			detail: `payment ${target.payment.id} is already settled; the ${settlement.status} state this delivery reports was not applied.`
 		};
 	}
 	if (written === 'failed') {
@@ -311,16 +406,60 @@ export async function settleDelivery(
 	// person something to do. the alert goes after the batch for the same reason the receipt does.
 	if (!recognition.ok) return unrecognisable(deps, target, settlement, recognition.problem);
 
+	const settled = settledTarget(target, settlement);
 	try {
-		await tellPeople(deps, target, settlement);
+		await tellPeople(deps, settled, settlement);
 	} catch (error) {
-		await tellingFault(deps, target, 'the donor’s receipt and the alert that goes with it', error);
+		await tellingFault(deps, settled, 'the donor’s receipt and the alert that goes with it', error);
 	}
 	return {
 		ok: true,
 		outcome: 'posted',
 		detail: `payment ${target.payment.id} settled and posted.`
 	};
+}
+
+/**
+ * the settlement a verified delivery stated, where the read that should have settled it was refused
+ * in a way a read made again answers the same — `SettlementEvent.delivered`'s rule. `pending` where
+ * that settlement is one nothing is written from, and null where there is none to stand in.
+ */
+function fallbackFor(
+	reason: PaymentFailureReason,
+	delivered: Settlement | undefined
+): Settlement | 'pending' | null {
+	if (delivered === undefined || (reason !== 'not_found' && reason !== 'not_configured'))
+		return null;
+	return delivered.status === 'pending' ? 'pending' : delivered;
+}
+
+/** a transaction that could not be read, held open where the read is worth making again. */
+async function unreadable(
+	deps: SettleDeps,
+	transaction: TransactionToSettle,
+	read: PaymentFailure
+): Promise<SettleResult> {
+	if (isRetryable(read.reason)) return { ok: false, reason: 'incomplete', detail: read.detail };
+	if (transaction.quietWhenUnreadable === true && read.reason === 'not_found') {
+		return { ok: true, outcome: 'unactionable', detail: read.detail };
+	}
+	const processor = processorLabel(deps);
+	await alert(deps, {
+		headline: `A ${processor} delivery could not be read and was not acted on`,
+		body:
+			'The delivery verified and the transaction behind it could not be read. Nothing was ' +
+			'written. Repeating the call answers the same way, so this needs a person.',
+		facts: [
+			{ label: 'Event', value: transaction.eventId },
+			...(transaction.eventType === undefined
+				? []
+				: [{ label: 'Event type', value: transaction.eventType }]),
+			{ label: 'Transaction', value: transaction.providerTxnId },
+			{ label: 'Reason', value: read.detail }
+		],
+		action: `Find the payment in the ${processor} dashboard and reconcile it by hand.`
+	});
+	return { ok: true, outcome: 'unactionable', detail: read.detail };
 }
 
 /**
@@ -495,6 +634,21 @@ async function recognitionOf(
 		};
 	}
 
+	// valued at what arrived, the one line is restated to the settlement in `write` below; a second
+	// line would need a split of the difference nobody chose.
+	if (settlement.arrival !== null) {
+		if (rest.length > 0) {
+			return {
+				ok: false,
+				problem: `donation ${donationId} has ${funds.length} line items and settled at the value of what arrived, so no line says which fund takes the difference from what was asked.`
+			};
+		}
+		return {
+			ok: true,
+			credits: [{ accountId: first.accountId, amountMinor: settlement.amountMinor }]
+		};
+	}
+
 	let sum = 0;
 	for (const [i, share] of funds.entries()) {
 		if (!Number.isSafeInteger(share.amountMinor) || share.amountMinor <= 0) {
@@ -533,10 +687,19 @@ async function recognitionOf(
  */
 async function write(
 	db: Db,
-	row: Payment,
+	target: Target,
 	settlement: Settlement,
-	credits: GiftRevenue | null
-): Promise<'written' | 'already_posted' | 'failed'> {
+	credits: GiftRevenue | null,
+	settledOnly: boolean
+): Promise<'written' | 'unchanged' | 'already_posted' | 'failed'> {
+	const row = target.payment;
+	// a crypto payment posted at what arrived, or one settled off a delivery's own state, is never
+	// walked back: a later read or an older delivery can report a state from before the money
+	// landed. the guard is in the statement, so no read taken beforehand decides it.
+	const correcting =
+		(settledOnly || row.method === 'crypto') && settlement.status !== 'succeeded'
+			? and(eq(payment.id, row.id), ne(payment.status, 'succeeded'))
+			: eq(payment.id, row.id);
 	const writes: [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]] = [
 		db
 			.update(payment)
@@ -556,19 +719,35 @@ async function write(
 					? {}
 					: { occurredAt: settlement.occurredAt })
 			})
-			.where(eq(payment.id, row.id))
+			.where(correcting)
+			.returning({ id: payment.id })
 	];
 
 	if (credits !== null) {
+		if (settlement.arrival !== null) writes.push(...restatement(db, target, settlement));
 		const gift = { paymentId: row.id, donationId: row.donationId, revenue: credits };
 		writes.push(...postingStatements(db, chargeEntry(gift, settlement)));
 		const fee = feeEntry(gift, settlement);
 		if (fee !== null) writes.push(...postingStatements(db, fee));
 	}
 
+	const committed = await commit(db, writes);
+	if (typeof committed === 'string') return committed;
+	// the correction's own rows: none is a guarded row that was already settled.
+	const [corrected] = committed;
+	return Array.isArray(corrected) && corrected.length === 0 ? 'unchanged' : 'written';
+}
+
+/**
+ * one settlement's batch and what each statement returned, or a redelivery told apart from a write
+ * the database refused.
+ */
+async function commit(
+	db: Db,
+	writes: [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]]
+): Promise<readonly unknown[] | 'already_posted' | 'failed'> {
 	try {
-		await db.batch(writes);
-		return 'written';
+		return await db.batch(writes);
 	} catch (error) {
 		if (sqliteResultCode(error) === 'SQLITE_CONSTRAINT_UNIQUE') return 'already_posted';
 		try {
@@ -578,6 +757,95 @@ async function write(
 		}
 		return 'failed';
 	}
+}
+
+/**
+ * the gift as it reads once a settlement valued at what arrived is written: the total, the covered
+ * fee and the payment's amount at the settlement's value, and the coin that arrived.
+ *
+ * what arrived splits between gift and covered fee in the ratio the donor was quoted, rounded to the
+ * nearest cent, so a donor who sent less covered proportionally less. every other settlement leaves
+ * the gift as the quote wrote it.
+ */
+function settledTarget(target: Target, settlement: Settlement): Target {
+	const arrival = settlement.arrival;
+	if (arrival === null) return target;
+	const { donation: gift, payment: row } = target;
+	const feeMinor =
+		gift.totalMinor > 0
+			? Math.round((settlement.amountMinor * gift.feeMinor) / gift.totalMinor)
+			: 0;
+	return {
+		...target,
+		donation: { ...gift, totalMinor: settlement.amountMinor, feeMinor },
+		payment: {
+			...row,
+			amountMinor: settlement.amountMinor,
+			coin: arrival.coin,
+			coinAmount: arrival.coinAmount,
+			coinNetwork: networkOf(row, arrival.coin)
+		}
+	};
+}
+
+/**
+ * the network a coin that arrived travelled on, as the payment it arrived against records it.
+ *
+ * a network belongs to the coin it was written with, so a deposit in another coin names none.
+ */
+function networkOf(recorded: Pick<Payment, 'coin' | 'coinNetwork'>, coin: string): string | null {
+	return recorded.coin === coin ? recorded.coinNetwork : null;
+}
+
+/**
+ * the statements that restate a gift to what arrived, for the same `batch()` as its posting.
+ *
+ * the gift's total, its covered fee, its one line and the payment's amount all move together:
+ * a line left at the asked figure against a posting at another puts the gift's own record and the
+ * books at odds. a redelivery valued at a drifted estimate is refused by `entry_group_source_idx`
+ * with the rest of the batch, so the first posting's figures stand.
+ */
+function restatement(db: Db, target: Target, settlement: Settlement): BatchItem<'sqlite'>[] {
+	const { donation: gift, payment: row } = settledTarget(target, settlement);
+	return [
+		db
+			.update(donation)
+			.set({ totalMinor: gift.totalMinor, feeMinor: gift.feeMinor })
+			.where(eq(donation.id, gift.id)),
+		db
+			.update(lineItem)
+			.set({ unitPriceMinor: gift.totalMinor, lineTotalMinor: gift.totalMinor })
+			.where(eq(lineItem.donationId, gift.id)),
+		db
+			.update(payment)
+			.set({
+				amountMinor: row.amountMinor,
+				coin: row.coin,
+				coinAmount: row.coinAmount,
+				coinNetwork: row.coinNetwork
+			})
+			.where(eq(payment.id, row.id))
+	];
+}
+
+/**
+ * the coin and amount a settled crypto payment received, as its receipt prints them, or null.
+ *
+ * the coin is named off the list the donor picked it from (`SettleDeps.payableCoins`). a coin that
+ * list does not hold — enabled since it was cached, or a deposit in a coin nobody picked — is named
+ * by its code uppercased, as `coinAsShown` in ./quote.ts names it, and so is every coin when the list
+ * cannot be read.
+ */
+async function cryptoReceived(deps: SettleDeps, row: Payment): Promise<CryptoReceived | null> {
+	if (row.coin === null || row.coinAmount === null) return null;
+	let coins: readonly PayableCoin[] | null = null;
+	try {
+		coins = deps.payableCoins === undefined ? null : await deps.payableCoins();
+	} catch {
+		// a name is the one thing a failed list read costs; the receipt still goes.
+	}
+	const listed = coins?.find((coin) => coin.coin === row.coin);
+	return { coinName: listed?.name ?? row.coin.toUpperCase(), coinAmount: row.coinAmount };
 }
 
 /**
@@ -680,6 +948,8 @@ async function somethingWasCollected(db: Db, donationId: string): Promise<boolea
  *            refused, so it fails the way card does.
  *   daf    — a grant the fund cancels reads cancelled on the gift and sends the donor nothing:
  *            they were already told the grant request was sent and that it comes from their fund.
+ *   crypto — an address nothing reached before it expired is a gift not given, and nobody is
+ *            written to: the donor was the one who did not send.
  *   cash,
  *   check  — staff entry: there is no donor session, no processor and no attempt the donor made.
  *            a failure here is a correction to a record, and the person who typed it is the person
@@ -697,6 +967,7 @@ export function failureIsNewsToTheDonor(rail: PaymentMethod): boolean {
 		case 'card':
 		case 'venmo':
 		case 'daf':
+		case 'crypto':
 		case 'cash':
 		case 'check':
 			return false;
@@ -829,6 +1100,220 @@ async function unmatched(
 }
 
 /**
+ * a payment valued at what arrived, reported again as a different coin or amount of it than the one
+ * posted.
+ *
+ * nothing is posted: the books hold the first figure, refused a second time by
+ * `entry_group_source_idx`.
+ */
+async function revalued(deps: SettleDeps, target: Target, settlement: Settlement): Promise<void> {
+	const processor = processorLabel(deps);
+	await alert(deps, {
+		headline: `A ${processor} payment was reported again with a different amount received`,
+		body:
+			'A payment already in the books was reported again as a different amount of crypto. ' +
+			'Nothing was changed: the books keep what it was posted at.',
+		facts: [
+			{ label: 'Payment', value: target.payment.id },
+			{ label: 'Donation', value: target.donation.id },
+			{ label: 'Transaction', value: settlement.providerTxnId },
+			{
+				label: 'Posted as',
+				value: `${target.payment.coinAmount ?? ''} ${target.payment.coin ?? ''}, ${target.payment.amountMinor} ${target.payment.currency} (minor units)`
+			},
+			{
+				label: 'Reported as',
+				value: `${settlement.arrival?.coinAmount ?? ''} ${settlement.arrival?.coin ?? ''}, ${settlement.amountMinor} ${settlement.currency} (minor units)`
+			}
+		],
+		action: `Compare the payment in the ${processor} dashboard with the gift in /admin, and correct it by hand if the posted value is wrong.`
+	});
+}
+
+/**
+ * a repeat deposit: money sent again to an address whose payment already settled, recorded as a gift
+ * of its own.
+ *
+ * nothing was authorized for it, so no row waits for it and it is inserted whole — the donation, its
+ * one line, a payment pointing at the first one (`payment.parent_payment_id`) and the postings, in
+ * one `batch()`. the donor, the form, the cause, the fund and the dedication are the first gift's;
+ * the date is the day it arrived, and no covered fee is recorded because none was quoted. nobody the
+ * donor named is told again: the notify columns stay null, as `chargeWrites` in ./collect.ts leaves
+ * them. the first gift is read and never written.
+ *
+ * the first payment is found by its own transaction id, which is what the deposit names. one not here
+ * never will be — its row is written before its address exists — so it is answered as `unmatched`
+ * is, with an alert, rather than held open for redeliveries that end the same way. a redelivery is
+ * `payment_provider_txn_idx` refusing the insert, so the batch is its own idempotency.
+ */
+async function recordRepeatDeposit(
+	deps: SettleDeps,
+	eventId: string,
+	settlement: Settlement,
+	repeatOf: string
+): Promise<SettleResult> {
+	const processor = deps.provider.processor;
+	const first = await findTarget(deps.db, processor, repeatOf);
+	if (first === null) return unmatchedDeposit(deps, eventId, settlement, repeatOf);
+	const [fund] = await readGiftFunds(deps.db, first.donation.id);
+	const refused =
+		unpostable(settlement) ??
+		(fund === undefined
+			? `donation ${first.donation.id} has no line items, so no fund says where a deposit to its address posts.`
+			: null);
+	if (refused !== null || fund === undefined) {
+		return unrecordedDeposit(deps, first, settlement, refused ?? '');
+	}
+
+	const donationId = uuidv7();
+	const paymentId = uuidv7();
+	const dedication = projectTribute(first.donation.tributeKind, first.donation.tributeHonoree);
+	const coin = settlement.arrival?.coin ?? null;
+	const gift = {
+		paymentId,
+		donationId,
+		revenue: [{ accountId: fund.accountId, amountMinor: settlement.amountMinor }] as const
+	};
+	const fee = feeEntry(gift, settlement);
+	const written = await commit(deps.db, [
+		deps.db.insert(donation).values({
+			id: donationId,
+			contactId: first.donation.contactId,
+			totalMinor: settlement.amountMinor,
+			currency: settlement.currency,
+			feeMinor: 0,
+			receivedAt: settlement.occurredAt,
+			formId: first.donation.formId,
+			origin: null,
+			tributeKind: dedication?.kind ?? null,
+			tributeHonoree: dedication?.honoree ?? null,
+			programId: first.donation.programId
+		}),
+		deps.db.insert(lineItem).values({
+			id: uuidv7(),
+			donationId,
+			label: 'Donation',
+			revenueAccountId: fund.accountId,
+			unitPriceMinor: settlement.amountMinor,
+			lineTotalMinor: settlement.amountMinor
+		}),
+		deps.db.insert(payment).values({
+			id: paymentId,
+			donationId,
+			amountMinor: settlement.amountMinor,
+			currency: settlement.currency,
+			direction: 'inbound',
+			method: settlement.method ?? first.payment.method,
+			status: 'succeeded',
+			provider: processor,
+			providerTxnId: settlement.providerTxnId,
+			occurredAt: settlement.occurredAt,
+			coin,
+			coinNetwork: coin === null ? null : networkOf(first.payment, coin),
+			coinAmount: settlement.arrival?.coinAmount ?? null,
+			parentPaymentId: first.payment.id
+		}),
+		...postingStatements(deps.db, chargeEntry(gift, settlement)),
+		...(fee === null ? [] : postingStatements(deps.db, fee))
+	]);
+	if (written === 'already_posted') {
+		return {
+			ok: true,
+			outcome: 'already_posted',
+			detail: `repeat deposit ${settlement.providerTxnId} is already in the books; this delivery changed nothing.`
+		};
+	}
+	if (written === 'failed') {
+		return {
+			ok: false,
+			reason: 'incomplete',
+			detail: `repeat deposit ${settlement.providerTxnId} could not be written.`
+		};
+	}
+
+	// the row just written, read back with the donor and form the receipt and notice address.
+	const target = await findTarget(deps.db, processor, settlement.providerTxnId);
+	if (target !== null) {
+		try {
+			await tellPeople(deps, target, settlement);
+		} catch (error) {
+			await tellingFault(
+				deps,
+				target,
+				'the donor’s receipt and the alert that goes with it',
+				error
+			);
+		}
+	}
+	return {
+		ok: true,
+		outcome: 'posted',
+		detail: `repeat deposit ${settlement.providerTxnId} recorded as donation ${donationId} and posted.`
+	};
+}
+
+/** a repeat deposit to the address of a payment this deployment has no row for. */
+async function unmatchedDeposit(
+	deps: SettleDeps,
+	eventId: string,
+	settlement: Settlement,
+	repeatOf: string
+): Promise<SettleResult> {
+	const processor = processorLabel(deps);
+	await alert(deps, {
+		headline: `A ${processor} deposit arrived for a payment that is not in this deployment`,
+		body:
+			'Money was sent again to the address of a payment with no record here, so nothing was ' +
+			'written and nothing was posted. Money moved and the books do not have it. Sending the ' +
+			'delivery again cannot fix this.',
+		facts: [
+			{ label: 'Event', value: eventId },
+			{ label: 'Transaction', value: settlement.providerTxnId },
+			{ label: 'Sent to the address of', value: repeatOf },
+			{
+				label: 'Received',
+				value: `${settlement.arrival?.coinAmount ?? ''} ${settlement.arrival?.coin ?? ''}`
+			},
+			{ label: 'Amount', value: `${settlement.amountMinor} ${settlement.currency} (minor units)` }
+		],
+		action: `Find both payments in the ${processor} dashboard and record the gift by hand.`
+	});
+	return {
+		ok: true,
+		outcome: 'unmatched',
+		detail: `repeat deposit ${settlement.providerTxnId} was sent to the address of payment ${repeatOf}, which has no payment row here; an alert was sent.`
+	};
+}
+
+/** a repeat deposit the books could not take: nothing written, and an operator told. */
+async function unrecordedDeposit(
+	deps: SettleDeps,
+	first: Target,
+	settlement: Settlement,
+	problem: string
+): Promise<SettleResult> {
+	const processor = processorLabel(deps);
+	await alert(deps, {
+		headline: 'A repeat deposit arrived and the books could not take it',
+		body:
+			'Money was sent again to the address of a gift already given, and nothing was recorded for ' +
+			`it. Sending the delivery again reaches the same figures.`,
+		facts: [
+			{ label: 'First gift', value: first.donation.id },
+			{ label: 'Transaction', value: settlement.providerTxnId },
+			{ label: 'Amount', value: `${settlement.amountMinor} ${settlement.currency} (minor units)` },
+			{ label: 'Problem', value: problem }
+		],
+		action: `Find this payment in the ${processor} dashboard and record the gift by hand.`
+	});
+	return {
+		ok: true,
+		outcome: 'unactionable',
+		detail: `repeat deposit ${settlement.providerTxnId} was not recorded: ${problem}`
+	};
+}
+
+/**
  * the receipt, the organisation's notice, and — where something needs saying — the alert, after the
  * books are committed.
  *
@@ -910,7 +1395,8 @@ async function tellPeople(deps: SettleDeps, target: Target, settlement: Settleme
 					tribute: projectTribute(target.donation.tributeKind, target.donation.tributeHonoree),
 					// the cause's name, joined with the gift rather than looked up here: a receipt is
 					// reproducible from what is on it, and a pointer is not something a donor reads.
-					program: target.programName
+					program: target.programName,
+					crypto: await cryptoReceived(deps, target.payment)
 				});
 
 	// the person the donor asked us to tell, after the donor's own receipt and before the

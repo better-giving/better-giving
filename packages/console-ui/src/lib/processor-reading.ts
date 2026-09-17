@@ -2,10 +2,11 @@ import { redirect } from 'react-router';
 import { readPayments, readRecurring } from '../api/client';
 import { readConsole } from './console-reading';
 
-// what both processor pages are read off (../routes/_sections.payments.stripe.tsx,
-// ../routes/_sections.payments.paypal.tsx): the console's reading, which the sections layout above
-// them reads too and this joins rather than taking again (./console-reading.ts), and the two
-// readings of the processor accounts — each page adding the one setup run it draws.
+// what every processor page is read off (the `_sections.payments.*` routes, through
+// ./processor-cache.ts): the console's reading, which the sections layout above them reads too and
+// this joins rather than taking again (./console-reading.ts), and the two readings of the processor
+// accounts — each page adding the setup run it draws, and NOWPayments' page, which draws none, a run
+// that is always null.
 //
 // **a processor page exists only on the ready face.** every section under it is drawn over a
 // deployment whose address was read and whose session answers, so any other face is `/`, which is

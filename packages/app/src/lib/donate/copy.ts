@@ -172,6 +172,43 @@ export function feeDeclined(org: string, fee: string, net: string): string {
 }
 
 /**
+ * the fee sentences on a crypto gift, which is valued on arrival: no figure the card holds is what
+ * the organisation receives, so covering names its addition as approximate and declining names no
+ * net figure.
+ */
+export function feeCoveredCrypto(added: string): string {
+	return `You add about ${added} toward the processing fee.`;
+}
+
+export function feeDeclinedCrypto(org: string): string {
+	return `${org} pays the processing fee out of your gift.`;
+}
+
+// ── the coin a crypto gift is sent in ────────────────────────────────────────────────────────
+
+/** the coin list's predicates. its own words — the label, the search, a refused row — are the list's. */
+export const COIN_REQUIRED = 'required';
+export const COIN_REFUSED = 'no longer accepted, pick another coin';
+export const EVERY_COIN_REFUSED = 'none accepted right now, choose another payment method';
+
+/**
+ * a coin's refusal of the amount, as the predicate under `How much`.
+ *
+ * the minimum is offered the way a tile offers a figure, and is absent where the processor named
+ * none; a coin's upper bound is never a figure.
+ */
+export function coinRefusal(
+	code: 'below_minimum' | 'above_maximum',
+	coinName: string,
+	minimum: string | null
+): string {
+	if (code === 'above_maximum') return `too large for ${coinName}, lower it or pick another coin`;
+	return minimum === null
+		? `too small for ${coinName}, raise it or pick another coin`
+		: `at least ${minimum} in ${coinName}, or pick another coin`;
+}
+
+/**
  * the sentence a repeating gift owes the donor, or nothing at all for a one-off.
  *
  * stated on every screen that states a total, which is what the review step needs it for: a monthly
@@ -215,7 +252,7 @@ export function mandateNote(org: string, total: string): string {
 export const USE_DIFFERENT_METHOD = 'Use a different payment method';
 
 /**
- * who a donor on a given rail is waiting on, which is four answers rather than seven.
+ * who a donor on a given rail is waiting on, which is four answers rather than eight.
  *
  * the wallets are a card presented differently and wait on the same issuer; the two hosted-window
  * rails wait on the processor whose window opened, and there the word a donor read on the button is
@@ -252,6 +289,9 @@ function waitingOn(method: PaymentMethod | undefined): Waiting {
 			return { kind: 'window', name: PAYMENT_METHOD_LABELS[method] };
 		case 'daf':
 			return { kind: 'fund' };
+		// sent from the donor's own wallet, so no window or bank is waited on and none is named.
+		case 'crypto':
+			return { kind: 'unknown' };
 	}
 }
 
@@ -383,12 +423,49 @@ export const EXPIRED_BODY =
 	'The window for verifying your bank account has closed, so your bank needs the payment details again. Nothing was charged.';
 export const START_AGAIN = 'Start again';
 
+/** the address screen, where a crypto gift is sent from the donor's own wallet. */
+export const SEND_HEADING = 'Send your gift';
+export const USE_DIFFERENT_COIN = 'Use a different coin';
+export function aboutToday(total: string): string {
+	return `About ${total} today`;
+}
+export function networkWarning(org: string): string {
+	return `Send on this network only. Coins sent on another network may not reach ${org}.`;
+}
+export function memoWarning(org: string): string {
+	return `Include this memo. Without it your gift cannot be matched and may not reach ${org}.`;
+}
+/** mirrors `verifyDeadline`: a date and a time, because the address closes at an hour. */
+export function sendBy(moment: string): string {
+	return `Send by ${moment}. After that this address closes and you would need to start over.`;
+}
+export const WALLET_FEE = 'Your gift is what arrives, so add any wallet or exchange fee on top.';
+export function detailsSentTo(email: string): string {
+	return `These details were also sent to ${email}.`;
+}
+export const WAITING_FOR_GIFT = 'Waiting for your gift to arrive';
+
+/** the address screen once its send-by has passed on this device, with the reading still going. */
+export const CHECKING_HEADING = 'Checking for your gift';
+export function checkingBody(closedAt: string): string {
+	return `The address for this gift closed on ${closedAt}. If you sent your gift before then, this page changes when it arrives.`;
+}
+
+/** no email is sent when an address closes, so this sentence is the donor's only notice of it. */
+export const DEPOSIT_EXPIRED_BODY =
+	'The address for this gift closed before anything arrived. Do not send to it now.';
+
 /** the thank-you. */
 export const SUCCESS_HEADING = 'Thank you';
 export function successBody(org: string): string {
 	return `A receipt is on its way to your email. ${org} has your gift.`;
 }
 export const SUCCESS_ANNOUNCE = 'Your gift went through.';
+/** the thank-you on a crypto gift, which names no figure: the emailed receipt names what arrived. */
+export function arrivedBody(org: string): string {
+	return `Your gift arrived. A receipt is on its way to your email. ${org} has your gift.`;
+}
+export const ARRIVED_ANNOUNCE = 'Your gift arrived.';
 /** the label names its destination, because a bare "back" beside a charged figure reads as undoing it. */
 export const BACK_TO_START = 'Back to start';
 

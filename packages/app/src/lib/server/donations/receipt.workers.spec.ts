@@ -101,6 +101,7 @@ const target = (over: Partial<Parameters<typeof sendReceipt>[1]> = {}) => ({
 	// packages/emails/src/templates/receipt.spec.tsx; the two cases below are that this module
 	// hands the name over rather than dropping it.
 	program: null as string | null,
+	crypto: null,
 	...over
 });
 

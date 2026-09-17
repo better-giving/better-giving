@@ -369,7 +369,8 @@ export async function action({ context, request }: Route.ActionArgs) {
 					receivedAt
 				},
 				tribute: null,
-				program: programName
+				program: programName,
+				crypto: null
 			}
 		);
 	}

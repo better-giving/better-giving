@@ -176,6 +176,13 @@ export type FormValue = {
 /** the give screen mid-edit. */
 export type PayerDraft = {
 	readonly method?: PaymentMethod | undefined;
+	/**
+	 * the coin picked for a `crypto` gift, as `PayableCoin.coin` names it.
+	 *
+	 * kept whichever rail the donor stands on, so a donor who leaves the crypto option and comes back
+	 * finds the coin they picked still in it.
+	 */
+	readonly coin?: string | undefined;
 	readonly email?: string | undefined;
 	readonly firstName?: string | undefined;
 	readonly lastName?: string | undefined;
@@ -193,6 +200,8 @@ export type PayerDraft = {
  */
 export type Payer = {
 	readonly method: PaymentMethod;
+	/** present exactly on a `crypto` payer, which `completePayer` refuses without one. */
+	readonly coin?: string;
 	readonly email: string;
 	readonly firstName: string;
 	readonly lastName: string;
@@ -443,11 +452,18 @@ export function missingPayerFields(draft: PayerDraft): readonly PayerField[] {
  * a wallet rail is refused here, through `methodIsChargeable` above. Apple Pay and Google Pay
  * take their authorization in a sheet of their own, and this form opens none — a payer this
  * function accepted on a wallet rail would mint an intent on a rail nothing here can spend.
+ *
+ * a `crypto` payer also needs a coin the served config lists: the quote mints an address for exactly
+ * one coin, and a press with none picked has nothing to mint one for.
  */
 export function completePayer(draft: PayerDraft, config: FormConfig): Payer | null {
 	const { method } = draft;
 	if (method === undefined || !methodIsChargeable(draft, config)) return null;
-	return payerOn(method, draft);
+	if (method !== 'crypto') return payerOn(method, draft);
+	const coin = config.coins?.find((offered) => offered.coin === draft.coin)?.coin;
+	if (coin === undefined) return null;
+	const payer = payerOn(method, draft);
+	return payer === null ? null : { ...payer, coin };
 }
 
 /**

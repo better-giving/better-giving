@@ -12,12 +12,14 @@ import { offeredRails } from './offered-rails';
 // rather than one — so the case for not making it per boot is the stronger of the two.
 //
 // what a cold boot costs, stated because it is easy to under-count: three outbound Stripe calls, the
-// cadence read's one and this read's two. **there is no stampede protection and none of the three is
-// deduplicated across concurrent requests** — the entry is written after an answer arrives, so a
-// burst that misses together asks together. and while the account reads unreadable nothing is stored
-// at all (below), so a processor outage is every request re-issuing all three for its duration
-// rather than one request paying for the rest. that is the ceiling to weigh before another read
-// joins them here.
+// cadence read's one and this read's two; and on a deployment holding NOWPayments, two more — this
+// read's `merchant/coins`, asked once per provider, and `full-currencies` for ./coin-cache.ts — each
+// bounded by `LIST_TIMEOUT_MS` in ../payments/nowpayments.ts. **there is no stampede protection and
+// none of them is deduplicated across concurrent requests** — the entry is written after an answer
+// arrives, so a burst that misses together asks together. and while an account reads unreadable
+// nothing is stored at all (below), so a processor outage is every request re-issuing all of them
+// for its duration rather than one request paying for the rest. that is the ceiling to weigh before
+// another read joins them here.
 //
 // **this is not the balance cache CLAUDE.md bans**, and it is the same carve-out that file already
 // names: what is kept here is which rails a third party's account is approved for, which is a

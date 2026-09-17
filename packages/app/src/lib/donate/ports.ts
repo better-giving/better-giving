@@ -1,12 +1,13 @@
-import { createQuote } from '@better-giving/form/embed/api';
+import { createQuote, createStatusRead } from '@better-giving/form/embed/api';
 import type { PaymentSurface } from '@better-giving/form/embed/stripe';
 import type { CheckoutPorts } from '@better-giving/form/ports';
 
 // the outside world, for the deployment's own donation page.
 //
-// four functions, exactly the set `CheckoutPorts` names. three of them are the payment surface's —
+// five functions, exactly the set `CheckoutPorts` names. three of them are the payment surface's —
 // `confirm` and `resume` are its own, and the write is wrapped so the provider's fields learn the
-// total the server just named. the fourth is the clock.
+// total the server just named. the fourth is the read of a crypto gift the donor sends from their own
+// wallet, and the fifth is the clock.
 //
 // this is the client half of the rule CLAUDE.md states about payments: nothing here imports a
 // payment SDK. `createPaymentSurface` in @better-giving/form/embed/surface is the seam, and the
@@ -15,10 +16,12 @@ import type { CheckoutPorts } from '@better-giving/form/ports';
 // which is why this function still takes exactly one.
 
 /**
- * where the quote is posted, which is nowhere: this page and `/api/v1` are one deployment.
+ * where the quote is posted and a crypto gift is read, which is nowhere: this page and `/api/v1` are
+ * one deployment.
  *
- * `createQuote` builds `${origin}/api/v1/forms/:id/donations`, so an empty origin is a path and the
- * request is same-origin by construction rather than by a stored address anyone can get wrong. it
+ * `createQuote` and `createStatusRead` build `${origin}/api/v1/forms/:id/donations…`, so an empty
+ * origin is a path and each request is same-origin by construction rather than by a stored address
+ * anyone can get wrong. it
  * is not the absent origin that module refuses on — that is `null`, which is the embed being unable
  * to tell which deployment served it, and this page can always tell.
  */
@@ -44,6 +47,7 @@ export function deploymentPorts(surface: PaymentSurface): CheckoutPorts {
 		},
 		confirm: surface.confirm,
 		resume: surface.resume,
+		status: createStatusRead(SAME_DEPLOYMENT),
 		now: () => Date.now()
 	};
 }

@@ -9,7 +9,7 @@ import type {
 import { PAYMENT_METHOD_LABELS } from '@better-giving/form/v1';
 import { webhookSecretStanding } from '$lib/server/payments/webhook-secret';
 import { consoleJson, consoleMethodNotAllowed } from '$lib/server/console/surface';
-import { CONSOLE_PROCESSORS } from '$lib/server/console/processors';
+import { CONSOLE_PROCESSORS, keepsWebhookEndpoint } from '$lib/server/console/processors';
 import { walletHostLine, walletHosts, type WalletHosts } from '$lib/server/console/wallet-hosts';
 import { OFFERED_PAYMENT_METHODS } from '$lib/forms/offered-rails';
 import { createPaymentProviders, type Processors } from '$lib/server/payments/factory';
@@ -190,7 +190,9 @@ async function processorPayments(
 		// so the variable compared is the one that verifies the deliveries this registration is a
 		// reading of.
 		webhook: await webhookSecretStanding(env, processor, registration),
-		subscription: subscriptionReading(registration),
+		subscription: keepsWebhookEndpoint(processor)
+			? subscriptionReading(registration)
+			: { state: 'not_applicable' },
 		wallets: walletsReading(domains, asked.own)
 	};
 }

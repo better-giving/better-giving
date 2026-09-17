@@ -34,7 +34,9 @@ const EVIDENCE: Readonly<Record<ProcessorName, RailEvidence>> = Object.freeze({
 	stripe: 'per_rail_approval',
 	paypal: 'credentials_only',
 	// a DAF grant is approved by the donor's fund, per gift; no account read reports a rail standing.
-	chariot: 'credentials_only'
+	chariot: 'credentials_only',
+	// the enabled coins are the account's own list, and no read says the account may take a payment.
+	nowpayments: 'credentials_only'
 });
 
 /** what a rails reading made against this processor's account is worth. */

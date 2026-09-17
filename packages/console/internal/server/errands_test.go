@@ -233,6 +233,10 @@ func TestTheFiveOtherErrandsReachTheirOwnAddress(t *testing.T) {
 				"processor": "chariot", "label": "Chariot", "state": "unconfigured",
 				"unset": []any{"CHARIOT_API_KEY", "CHARIOT_CONNECT_ID"},
 			},
+			map[string]any{
+				"processor": "nowpayments", "label": "NOWPayments", "state": "unconfigured",
+				"unset": []any{"NOWPAYMENTS_API_KEY", "NOWPAYMENTS_OUTCOME_CURRENCY"},
+			},
 		}},
 		// one entry per processor the deployment holds the credentials for and none for one it does
 		// not, which is where this parts company with the report above it.

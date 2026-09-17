@@ -89,14 +89,19 @@ const allSet = (config: ConfigEnv, names: readonly (keyof ConfigEnv)[]): boolean
  * on. `PAYPAL_CHARITY_RATE_APPROVED` is off them for a reason of its own: it picks which published
  * fee table a donor covering fees is quoted from (../payments/fees.ts), and unset is an answer
  * rather than a gap. `CHARIOT_API_URL` is off for the same reason: unset is Chariot's live address.
+ * `NOWPAYMENTS_IPN_SECRET` is off by the webhook rule, though the IPN is the only way a crypto
+ * payment is ever heard to settle: the payment is still created without it. NOWPayments' second member is its outcome currency rather than a
+ * browser half, which it has none of: a coin's minimum is quoted against it, so no payment can be
+ * offered without it.
  *
- * a pair rather than a flat list of everything payments needs, because the three are alternatives:
- * an organisation on any one of them alone holds no key for the other two and is set up.
+ * a pair rather than a flat list of everything payments needs, because the four are alternatives:
+ * an organisation on any one of them alone holds no key for the other three and is set up.
  */
 const CHARGE_PAIRS: readonly (readonly (keyof ConfigEnv)[])[] = [
 	['STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY'],
 	['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET'],
-	['CHARIOT_API_KEY', 'CHARIOT_CONNECT_ID']
+	['CHARIOT_API_KEY', 'CHARIOT_CONNECT_ID'],
+	['NOWPAYMENTS_API_KEY', 'NOWPAYMENTS_OUTCOME_CURRENCY']
 ];
 
 /** whether each of the five is done, from the facts alone. */

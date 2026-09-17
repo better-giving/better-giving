@@ -100,19 +100,28 @@ const STANDING_NOTE: Record<RailStanding, ((processor: string) => string) | null
  * what stands under an `approved` rail on a reading that read no approval.
  *
  * the one place in this file where the standing alone is not enough to write a sentence. a
- * processor that publishes no per-rail approval reports every rail active on the strength of its
+ * processor that publishes no per-rail approval reports a rail active on the strength of its
  * credentials authenticating (../payments/rail-evidence.ts), so silence here — which is what
  * `approved` gets everywhere else — would be this screen letting an operator read a green row as a
- * way of paying that is switched on. it is not, and nothing on this deployment can find out: which
- * funding sources a payer is offered is settled in the payer's own browser.
+ * way of paying that is switched on. it is not, and for PayPal and Chariot nothing on this deployment
+ * can find out: which funding sources a payer is offered is settled in the payer's own browser.
+ * NOWPayments is the exception, and the second sentence is its own: its rail is served here off the
+ * account's coin selection (`listPayableCoins` in ../payments/nowpayments.ts), so a sentence about
+ * a browser would be false there.
  *
  * so it says what was actually proven and closes rather than pointing anywhere, which is the shape
  * the two standings with nowhere to go already take. it says nothing about the rail being usable in
  * either direction, because neither claim is one this deployment was told.
  */
-const CREDENTIALS_ONLY_NOTE = (processor: string): string =>
-	`${processor} accepted this deployment’s credentials. It does not publish which ways of paying ` +
-	`this account may take, and it decides in each donor’s browser whether to offer this one.`;
+const CREDENTIALS_ONLY_NOTE = (processor: ProcessorName): string => {
+	const label = PROCESSOR_LABELS[processor];
+	const accepted = `${label} accepted this deployment’s credentials.`;
+	return processor === 'nowpayments'
+		? `${accepted} A donor is offered the coins your ${label} dashboard has on, and a change there ` +
+				'reaches the form within five minutes.'
+		: `${accepted} It does not publish which ways of paying this account may take, and it decides ` +
+				'in each donor’s browser whether to offer this one.';
+};
 
 /**
  * what to say under each way of paying on the editor, given what the account answered.
@@ -126,7 +135,9 @@ const CREDENTIALS_ONLY_NOTE = (processor: string): string =>
 export function railNotes(processor: ProcessorName, chargeability: RailChargeability): RailNotes {
 	const label = PROCESSOR_LABELS[processor];
 	const approvedNote =
-		railEvidence(processor) === 'credentials_only' ? CREDENTIALS_ONLY_NOTE : STANDING_NOTE.approved;
+		railEvidence(processor) === 'credentials_only'
+			? () => CREDENTIALS_ONLY_NOTE(processor)
+			: STANDING_NOTE.approved;
 
 	const notes = {} as Record<PaymentMethod, string | null>;
 	for (const method of PAYMENT_METHODS) {

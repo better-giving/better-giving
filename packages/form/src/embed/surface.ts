@@ -7,10 +7,10 @@
 // keeps taking one.
 //
 // what it owns is therefore four decisions and no more. **which adapters exist at all**, off the
-// rails the config offers rather than off the processors it names — `STRIPE_RAILS`, `PAYPAL_RAILS`
-// and `CHARIOT_RAILS` in ./rails.ts cover the vocabulary exactly once, so a config offering a rail
-// is a config needing that rail's adapter, and an adapter whose own processor the config does not name
-// reports that for itself. **which adapter a reading belongs to** — a confirmation by the rail its
+// rails the config offers rather than off the processors it names — `STRIPE_RAILS`, `PAYPAL_RAILS`,
+// `CHARIOT_RAILS` and `NOWPAYMENTS_RAILS` in ./rails.ts cover the vocabulary exactly once, so a config
+// offering a rail is a config needing that rail's adapter, and an adapter whose own processor the
+// config does not name reports that for itself. **which adapter a reading belongs to** — a confirmation by the rail its
 // order was minted on, a rail report by the box the donor pressed in, a re-read by whichever
 // processor can answer for the token. **which option in the box is open**, because the provider's
 // rails and the rows the other adapters draw (./rows.ts) are one list to a donor and no adapter sees
@@ -31,8 +31,9 @@ import type { Failure } from '../checkout.machine';
 import type { CheckoutPorts, ConfirmOutcome, FundReports } from '../ports';
 import type { FormConfig, PaymentMethod } from '../v1';
 import { createPaymentSurface as createChariotSurface, type ChariotSeam } from './chariot';
+import { createPaymentSurface as createNowpaymentsSurface } from './nowpayments';
 import { createPaymentSurface as createPaypalSurface, type PaypalSeam } from './paypal';
-import { isChariotRail, isPaypalRail, isStripeRail } from './rails';
+import { isChariotRail, isNowpaymentsRail, isPaypalRail, isStripeRail } from './rails';
 import type { Row, RowList } from './rows';
 import {
 	createPaymentSurface as createStripeSurface,
@@ -83,6 +84,8 @@ type Part = {
  */
 export type ComposedPaymentSurface = PaymentSurface & {
 	offerFund(offered: boolean): void;
+	/** `cryptoIsOffered` in ../checkout.machine.ts, told on every reading, as `offerFund` is. */
+	offerCrypto(offered: boolean): void;
 	rows(listener: (count: number) => void): void;
 };
 
@@ -119,6 +122,11 @@ export function createPaymentSurface(
 	onRail: (rail: PaymentMethod | null) => void,
 	onUnavailable: (failure: Failure) => void,
 	fund: FundReports,
+	/**
+	 * the coin list the card draws for a `crypto` gift, which the crypto option stands in. handed in
+	 * rather than built here: the card owns what it says and where a refused press puts the caret.
+	 */
+	coins: HTMLElement,
 	seams?: PaymentSeams
 ): ComposedPaymentSurface {
 	const doc = mount.ownerDocument;
@@ -262,6 +270,20 @@ export function createPaymentSurface(
 		offerFund = (offered) => chariot.offer(offered);
 	}
 
+	// last of all, because the card lists it last: no processor's window or frame stands behind it.
+	let offerCrypto: (offered: boolean) => void = () => {};
+	if (config.paymentMethods.some(isNowpaymentsRail)) {
+		const crypto = createNowpaymentsSurface(open(), coins, (rail) => reported(part, rail));
+		const part: Part = {
+			owns: isNowpaymentsRail,
+			surface: crypto,
+			rows: crypto.rows,
+			claimsReturn: () => Promise.resolve(false)
+		};
+		parts.push(part);
+		offerCrypto = (offered) => crypto.offer(offered);
+	}
+
 	// watched only once every part is built, so a row drawn in the meantime is counted by the first
 	// recount rather than by a watcher reading a list still being assembled.
 	for (const part of parts) part.rows?.watch({ changed: recount, opened });
@@ -304,6 +326,7 @@ export function createPaymentSurface(
 		confirm,
 		resume,
 		offerFund: (offered) => offerFund(offered),
+		offerCrypto: (offered) => offerCrypto(offered),
 		rows(next) {
 			listener = next;
 			if (counted !== null) next(counted);

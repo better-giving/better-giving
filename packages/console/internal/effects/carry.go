@@ -125,6 +125,43 @@ func Carry(ctx context.Context, made Carrying) Carried {
 	return Carried{Kind: Deployed, Ran: &ran}
 }
 
+// Unscheduled is ../deploy's read of the worker's schedule on this account and this sign-in, for a
+// deployment already on this release: whether it differs from the baked crons, or the Carried a read
+// that did not land stops at.
+func Unscheduled(ctx context.Context, made Carrying) (bool, Carried) {
+	if made.Credential.Kind == cf.NoCredential {
+		return false, Carried{Kind: NoDatabase, Found: "no-credential", Detail: made.Credential.Detail}
+	}
+	unscheduled, ran := deploy.Unscheduled(ctx, scheduling(made))
+	if ran.Kind != "" {
+		return false, Carried{Kind: NotDeployed, Ran: &ran}
+	}
+	return unscheduled, Carried{Kind: Deployed}
+}
+
+// Reschedule is ../deploy's scheduling stage alone, on this account and this sign-in.
+func Reschedule(ctx context.Context, made Carrying) Carried {
+	ran := deploy.Reschedule(ctx, scheduling(made))
+	if ran.Kind != deploy.Deployed {
+		return Carried{Kind: NotDeployed, Ran: &ran}
+	}
+	return Carried{Kind: Deployed, Ran: &ran}
+}
+
+// the options a schedule is read and put with, which is the deploy's own less everything it uploads.
+func scheduling(made Carrying) deploy.Options {
+	return deploy.Options{
+		Send:    made.Sends(made.Credential),
+		Account: made.AccountID,
+		Config:  release.Baked,
+		Report: func(progress deploy.Progress) {
+			if made.At != nil {
+				made.At(progress)
+			}
+		},
+	}
+}
+
 // Absent is why the database was not resolved, or empty where it was.
 //
 // Two rows of one name is one of them: every remote path resolves the database by name, so a deploy

@@ -45,6 +45,7 @@ function input(overrides: Partial<ReceiptInput> = {}): ReceiptInput {
 		// the ordinary gift, given for nobody and credited to no cause.
 		tribute: null,
 		program: null,
+		crypto: null,
 		...overrides
 	};
 }

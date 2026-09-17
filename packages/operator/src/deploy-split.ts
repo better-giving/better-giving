@@ -1,4 +1,4 @@
-// the twenty-one deploy-time values an operator configures a deployment with, and the one command
+// the twenty-four deploy-time values an operator configures a deployment with, and the one command
 // that sets one. every instruction a deployment prints or logs is built from here: a refusal's fix
 // sentence, a log line's `operatorFix`.
 //
@@ -16,16 +16,16 @@
 // cost the operator the ability to verify it, because Cloudflare never returns a secret's value.
 //
 // **it is here rather than beside the readers because both ends need it.** the deployment reads all
-// twenty-one off `platform.env` and builds the instruction beside each one, and the operator console
-// reads the same twenty-one back off the Worker — one enumeration, in the leaf package the two
+// twenty-four off `platform.env` and builds the instruction beside each one, and the operator console
+// reads the same twenty-four back off the Worker — one enumeration, in the leaf package the two
 // already share, for the reason ./console/report.ts is here. a second list on the console side
-// would be a twenty-second name, a missing name, or a command spelled the other way round, with
+// would be a twenty-fifth name, a missing name, or a command spelled the other way round, with
 // nothing able to see the disagreement. DEPLOY.md's "Configuration values" section is this list
 // written for an operator.
 //
 // nothing that *reads* one of these can tell how it was stored: a var and a secret both arrive on
 // `platform.env`, and `packages/app/src/lib/server/config/env.ts` and `.../auth/env.ts` read all
-// twenty-one the same way. that is exactly why a wrong instruction here is silent — an operator
+// twenty-four the same way. that is exactly why a wrong instruction here is silent — an operator
 // who stores a value as a secret holds a working deployment whose console cannot show them what
 // they set. so the rule is asserted rather than reviewed:
 // `packages/app/src/lib/server/config/deploy-split.spec.ts` checks the command built for every
@@ -33,14 +33,14 @@
 // by hand as a secret, and holds this list to the names the app actually reads — in both
 // directions, which is more than a `satisfies` could say, and this leaf can name no env type to
 // write one against anyway. `.../config/deploy-vars.config.spec.ts` is the other half:
-// `keep_vars` in wrangler.jsonc, without which a plain deploy deletes all twenty-one.
+// `keep_vars` in wrangler.jsonc, without which a plain deploy deletes all twenty-four.
 //
 // `CONSOLE_TOKEN` is on no list here and is not a configuration value: the console mints it for its
 // own session and writes it as a Worker secret. ./console/token.ts and
 // `packages/app/src/lib/server/console/access.ts` are where that one is argued.
 
 /**
- * the twenty-one, in the order the app reads them — `CONFIG_VAR_NAMES` in
+ * the twenty-four, in the order the app reads them — `CONFIG_VAR_NAMES` in
  * `packages/app/src/lib/server/config/env.ts`, then `AUTH_VAR_NAMES` in `.../auth/env.ts`.
  *
  * `SMTP_PORT` is on it though its right answer is usually to leave it unset (`SMTP_PORT` in
@@ -72,6 +72,9 @@ export const DEPLOY_VARS = [
 	'CHARIOT_API_URL',
 	'CHARIOT_CONNECT_ID',
 	'CHARIOT_WEBHOOK_SECRET',
+	'NOWPAYMENTS_API_KEY',
+	'NOWPAYMENTS_IPN_SECRET',
+	'NOWPAYMENTS_OUTCOME_CURRENCY',
 	'BETTER_AUTH_SECRET',
 	'BETTER_AUTH_URL',
 	'ADMIN_PASSWORD'

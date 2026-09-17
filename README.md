@@ -2,19 +2,19 @@
 
 A donation app for a **single** nonprofit, deployed to your own Cloudflare account. One deployment, one org: a donation form embedded on their own site, a staff back office, donor records, and an append-only double-entry ledger underneath. React Router on Workers, D1 for storage.
 
-**Bring your own processor.** Charges go directly to the org's own account at Stripe, PayPal, Chariot (gifts from a donor-advised fund), or any mix: the app holds their keys and never custodies funds.
+**Bring your own processor.** Charges go directly to the org's own account at Stripe, PayPal, Chariot (gifts from a donor-advised fund), NOWPayments (crypto), or any mix: the app holds their keys and never custodies funds.
 
 ## Two operator surfaces
 
 - **The dashboard** is `/admin` on a deployment. Donation forms, donations, donors, recurring gifts. The only thing a staff member opens.
-- **The console** is a program the operator runs on their own machine: `better-giving start` puts this release on the deployment from the terminal, then serves the console's screens at `http://127.0.0.1:5320`. Never deployed; the screens are built into the binary. Between the terminal half and the screens it sets the deployment up: the Cloudflare account, the D1 database, all twenty-one configuration values, the payment processor keys, the site list, the org's legal identity.
+- **The console** is a program the operator runs on their own machine: `better-giving start` puts this release on the deployment from the terminal, then serves the console's screens at `http://127.0.0.1:5320`. Never deployed; the screens are built into the binary. Between the terminal half and the screens it sets the deployment up: the Cloudflare account, the D1 database, all twenty-four configuration values, the payment processor keys, the site list, the org's legal identity.
 
 ## Get started
 
 ### Requirements
 
 - **Node ≥ 22** and **pnpm** (`corepack enable`), for running locally and for the checkout deploy
-- **a Cloudflare account on a paid Workers plan** (the Free plan runs it, but its rate limits on the public donation endpoint silently do not enforce), **a Stripe, PayPal or Chariot account** (any one alone is enough, and more than one may be set), **an SMTP account on port 465**, for deploying and taking money. [`DEPLOY.md`](./DEPLOY.md) has the details
+- **a Cloudflare account on a paid Workers plan** (the Free plan runs it, but its rate limits on the public donation endpoint silently do not enforce), **a Stripe, PayPal, Chariot or NOWPayments account** (any one alone is enough, and more than one may be set), **an SMTP account on port 465**, for deploying and taking money. [`DEPLOY.md`](./DEPLOY.md) has the details
 
 ### Run it locally
 
@@ -171,7 +171,7 @@ The console covers the same jobs without a checkout: every credential, every var
 
 An append-only ledger is corrected by posting a compensating entry rather than by restoring. Tearing a rehearsal deployment down is two raw wrangler commands; [`DEPLOY.md`](./DEPLOY.md) gives them in full.
 
-Every configuration value is a plain Worker var, stored from the console and read back there as a value. The console runs on your own Cloudflare session, so masking a credential from the person holding the account bought nothing and cost them the ability to check it. Deleting a Worker deletes all twenty-one; from a checkout `pnpm run deploy:vars` re-arms them from a local gitignored `.deploy.vars` in one deploy. [`DEPLOY.md`](./DEPLOY.md) has the file's shape and its one escaping trap. The Worker's Variables and Secrets page is the other place to read or change one.
+Every configuration value is a plain Worker var, stored from the console and read back there as a value. The console runs on your own Cloudflare session, so masking a credential from the person holding the account bought nothing and cost them the ability to check it. Deleting a Worker deletes all twenty-four; from a checkout `pnpm run deploy:vars` re-arms them from a local gitignored `.deploy.vars` in one deploy. [`DEPLOY.md`](./DEPLOY.md) has the file's shape and its one escaping trap. The Worker's Variables and Secrets page is the other place to read or change one.
 
 ## Contributing
 

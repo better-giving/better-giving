@@ -1,5 +1,6 @@
 import { corsHeaders, preflightResponse } from '$lib/server/api/cors';
 import { cachedCadences } from '$lib/server/forms/cadence-cache';
+import { cachedCoins } from '$lib/server/forms/coin-cache';
 import {
 	readPublishedConfig,
 	renderableConfig,
@@ -119,7 +120,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs): Pr
 			params.id,
 			env,
 			() => cachedCadences(processors, origin),
-			() => cachedRails(processors, origin)
+			() => cachedRails(processors, origin),
+			() => cachedCoins(processors, origin)
 		)
 	);
 	const headers = corsHeaders(request, result.form?.allowedOrigins ?? []);

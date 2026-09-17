@@ -99,7 +99,8 @@ const REQUEST = {
 	amountMinor: 1000,
 	currency: 'USD',
 	method: 'card',
-	idempotencyKey: 'attempt-1'
+	idempotencyKey: 'attempt-1',
+	deploymentOrigin: 'https://donate.example.org'
 } as const;
 
 /** the fields the adapter reads off a created intent, and nothing else. */
@@ -189,7 +190,8 @@ describe('createIntent', () => {
 
 		await createStripeProvider(CREDENTIALS, { httpClient }).createIntent({
 			...REQUEST,
-			idempotencyKey: 'donation-01932f7c'
+			idempotencyKey: 'donation-01932f7c',
+			deploymentOrigin: 'https://donate.example.org'
 		});
 
 		expect(calls[0]?.headers['Idempotency-Key']).toBe('donation-01932f7c');
@@ -276,7 +278,8 @@ describe('createIntent', () => {
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).createIntent({
 			...REQUEST,
-			idempotencyKey: idempotencyKey as string
+			idempotencyKey: idempotencyKey as string,
+			deploymentOrigin: 'https://donate.example.org'
 		});
 
 		expect(calls).toEqual([]);

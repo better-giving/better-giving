@@ -154,6 +154,30 @@ export function projectRail(attempts: readonly SettlementAttempt[]): GiftRail | 
 	return deciding ? { method: deciding.method, provider: deciding.provider } : null;
 }
 
+/** how much of which coin a crypto gift received, as the `payment` row stores both. */
+export type CoinReceived = {
+	/** NOWPayments' code, lowercased. */
+	readonly coin: string;
+	/** the canonical decimal text `payment.coin_amount` holds. */
+	readonly amount: string;
+};
+
+/**
+ * the coin and amount received off the attempt `projectRail` reads the rail off, or `null` where
+ * nothing has arrived — every rail but crypto, and a crypto gift still waiting on its deposit.
+ *
+ * keyed on `coin_amount` and not on the attempt's status: a pending crypto row already carries the
+ * coin the donor picked, and the amount is what stays null until the processor reports an arrival.
+ */
+export function projectCoinReceived(
+	attempts: readonly (SettlementAttempt & Pick<Payment, 'coin' | 'coinAmount'>)[]
+): CoinReceived | null {
+	const deciding = decidingAttempt(attempts);
+	return deciding !== undefined && deciding.coin !== null && deciding.coinAmount !== null
+		? { coin: deciding.coin, amount: deciding.coinAmount }
+		: null;
+}
+
 /** the attempt `projectRail` reads the rail off, whole. */
 function decidingAttempt<T extends SettlementAttempt>(attempts: readonly T[]): T | undefined {
 	const inbound = attempts.filter((a) => a.direction === 'inbound');
@@ -243,7 +267,8 @@ const DONATION_COLUMNS = {
  * an attempt with the gift it settles, which the grouping needs, and the processor's own id for the
  * charge, which is what a screen asks the processor about the deciding attempt by.
  */
-type AttemptRow = SettlementAttempt & Pick<Payment, 'donationId' | 'providerTxnId'>;
+type AttemptRow = SettlementAttempt &
+	Pick<Payment, 'donationId' | 'providerTxnId' | 'coin' | 'coinAmount'>;
 
 /**
  * the columns of `payment` the two projections read.
@@ -252,8 +277,9 @@ type AttemptRow = SettlementAttempt & Pick<Payment, 'donationId' | 'providerTxnI
  * `projectRail` answers with, and a rail nothing selects is the reason no screen could say how a
  * gift arrived. `provider_txn_id` is selected for the one question this app cannot answer from its
  * own rows — the reference a processor holds for the charge (`Settlement.reference` in
- * ../payments/provider.ts) — and stops at the loader that asks it. the rest of the row stays out on
- * the argument `DONATION_COLUMNS` above makes.
+ * ../payments/provider.ts) — and stops at the loader that asks it. `coin` and `coin_amount` are what
+ * `projectCoinReceived` answers with. the rest of the row stays out on the argument
+ * `DONATION_COLUMNS` above makes.
  *
  * these rows never cross to a browser: they are read here and collapsed into `DonationListRow`
  * below, which is where the narrowing a browser payload gets is stated.
@@ -267,7 +293,9 @@ const ATTEMPT_COLUMNS = {
 	method: payment.method,
 	provider: payment.provider,
 	providerTxnId: payment.providerTxnId,
-	occurredAt: payment.occurredAt
+	occurredAt: payment.occurredAt,
+	coin: payment.coin,
+	coinAmount: payment.coinAmount
 } satisfies Record<keyof AttemptRow, SQLiteColumn>;
 
 /** one gift as a screen shows it: the row, the donor it came from, and the state it is in. */
@@ -293,6 +321,8 @@ export type DonationListRow = Omit<
 	 * browser payload.
 	 */
 	providerTxnId: Payment['providerTxnId'];
+	/** what a crypto gift received, or `null` where nothing has. see `projectCoinReceived`. */
+	coinReceived: CoinReceived | null;
 	/**
 	 * whether this charge was collected under a standing commitment.
 	 *
@@ -399,6 +429,7 @@ export async function listDonations(db: Db): Promise<DonationPage> {
 			status: projectStatus(byDonation.get(row.id) ?? []),
 			rail: projectRail(byDonation.get(row.id) ?? []),
 			providerTxnId: decidingAttempt(byDonation.get(row.id) ?? [])?.providerTxnId ?? null,
+			coinReceived: projectCoinReceived(byDonation.get(row.id) ?? []),
 			repeating: recurringId !== null,
 			tribute: projectTribute(tributeKind, tributeHonoree)
 		})),

@@ -1519,6 +1519,66 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
+ * a value a donor sends a gift with — the figure, the network, the address, the memo — in the card's
+ * own ink, and never cut: an address wraps anywhere, because a donor checks its first and last
+ * characters against what their wallet shows.
+ */
+.value {
+	margin: 0;
+	color: var(--_n12);
+	font-size: var(--_t-md);
+	overflow-wrap: anywhere;
+	font-variant-numeric: tabular-nums lining-nums;
+}
+
+.value.amount {
+	font-size: var(--_t-lg);
+	font-weight: var(--_w-bold);
+	line-height: var(--_lh-tight);
+}
+
+/* the Copy beside a value keeps its target while centred on the value's first line. */
+.held-line [part~='action-quiet'] {
+	margin-block: calc((1lh - var(--_row-min)) / 2);
+	padding-block: 0;
+}
+
+/*
+ * the QR: dark modules in the card's ink on the card's own ground, with a quiet zone of `--_sp4`
+ * around them. its size is four rows, a size a phone camera reads at arm's length; no token names a
+ * code's size, and the rows are the token's.
+ */
+.qr {
+	padding: var(--_sp4);
+	background: var(--_n1);
+	border: var(--_border) solid var(--_n6);
+	border-radius: var(--_r-in);
+	color: var(--_n12);
+	line-height: 0;
+}
+
+.qr svg {
+	display: block;
+	inline-size: calc(var(--_row-min) * 4);
+	block-size: calc(var(--_row-min) * 4);
+	shape-rendering: crispEdges;
+}
+
+/* what the screen is waiting for, beside a spinner that stays drawn while it waits. */
+.status {
+	margin: 0;
+	color: var(--_n11);
+	font-size: var(--_t-sm);
+}
+
+.status .spinner {
+	position: static;
+	flex: none;
+	margin-block-start: calc((1lh - var(--_spinner)) / 2);
+	opacity: 1;
+}
+
+/*
  * attention, not danger, and the pair is chosen by whether anything went wrong. a donor who has to
  * go and find two deposits before a date has a task, not a failure, and painting it red would tell
  * them their gift has already broken.

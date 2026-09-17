@@ -95,7 +95,7 @@ func TestAStageReportedBehindTheRowAlreadyDrawnChangesNothing(t *testing.T) {
 }
 
 func TestAStageNoRowCoversChangesNothing(t *testing.T) {
-	// the redeploy's four rows cover the deploy engine's seven, and the chain runs four more around
+	// the redeploy's four rows cover the deploy engine's eight, and the chain runs four more around
 	// them that this ledger is not drawing.
 	same(t, "the ledger for a stage no row covers",
 		marks(after(UpdateRows, Underway, at(first.SigningIn))),
@@ -114,20 +114,21 @@ func TestARedeploysAddressCheckKeepsTheCodeLitUntilTheLinkCheckLightsNext(t *tes
 	children := UpdateRows[upload].Children
 	pushed := drawing(UpdateRows).
 		folding(at(first.Stage(deploy.Uploading))).
-		folding(at(first.Stage(deploy.Pushing)))
+		folding(at(first.Stage(deploy.Pushing))).
+		folding(at(first.Stage(deploy.Scheduling)))
 	addressed := pushed.folding(at(first.Stage(deploy.Addressing)))
 
 	if addressed.at != pushed.at {
 		t.Errorf("the address check moved the ledger from %v to %v", pushed.at, addressed.at)
 	}
 	same(t, "the children through the address check",
-		marks(Marks(children, addressed.at.child, Underway)), "closed working waiting")
+		marks(Marks(children, addressed.at.child, Underway)), "closed closed working waiting")
 
 	verifying := addressed.folding(at(first.Stage(deploy.Verifying)))
 	same(t, "the children at the link check",
-		marks(Marks(children, verifying.at.child, Underway)), "closed closed working")
+		marks(Marks(children, verifying.at.child, Underway)), "closed closed closed working")
 	said := verifying.View()
-	for _, words := range []string{children[1].Done, children[2].Running} {
+	for _, words := range []string{children[2].Done, children[3].Running} {
 		if !strings.Contains(said, words) {
 			t.Errorf("the ledger at the link check says %q, want %q", said, words)
 		}

@@ -17,6 +17,8 @@
 // in this file is the same answer derived twice, on a page nobody here can reach.
 
 import type { CheckoutApi, PropTypes, State } from './connect';
+import { createCoinPicker } from './coin-picker';
+import { createDepositBlock, type DepositScreen } from './deposit';
 import type { AmountDecision, PayerField } from './value';
 import { RECONCILIATION_LABELS, type DeductedFee } from './fee';
 import { currencySymbol, formatFigure, formatMinor, formatOffer, parseMinor } from './money';
@@ -75,6 +77,14 @@ type SelectProps = {
 	readonly value: string;
 	readonly options: readonly { readonly value: string; readonly label: string }[];
 	readonly onChange: (value: string) => void;
+};
+
+/** one coin in `coinSelect`, which carries the coin's name and whether it was refused beside its label. */
+type CoinOption = {
+	readonly value: string;
+	readonly label: string;
+	readonly name: string;
+	readonly refused: boolean;
 };
 
 type ButtonProps = {
@@ -252,7 +262,7 @@ function visibleStep(api: DomApi, last: Screen): Screen {
 }
 
 /**
- * who a donor on a given rail is waiting on, which is four answers rather than seven.
+ * who a donor on a given rail is waiting on, which is four answers rather than eight.
  *
  * the wallets are a card presented differently and wait on the same issuer; the two hosted-window
  * rails wait on the processor whose window opened, and there the word a donor read on the control
@@ -285,6 +295,9 @@ function waitingOn(method: PaymentMethod | undefined): Waiting {
 			return { kind: 'window', name: PAYMENT_METHOD_LABELS[method] };
 		case 'daf':
 			return { kind: 'fund' };
+		// sent from the donor's own wallet, so no window or bank is waited on and none is named.
+		case 'crypto':
+			return { kind: 'unknown' };
 	}
 }
 
@@ -467,6 +480,8 @@ type Takeover = {
 	readonly primary: { readonly label: string; readonly submit: boolean } | null;
 	/** the line under the primary control, stating what pressing it does. */
 	readonly primaryNote: string;
+	/** where and how much to send a `crypto` gift, on the one screen that states it. */
+	readonly deposit: DepositScreen | null;
 	/** the way out of the screen: beside the primary where there is one, alone where there is not. */
 	readonly secondary: { readonly label: string } | null;
 };
@@ -485,6 +500,7 @@ const BLANK: Takeover = {
 	failure: '',
 	primary: null,
 	primaryNote: '',
+	deposit: null,
 	secondary: null
 };
 
@@ -501,6 +517,53 @@ function formatDate(at: number, locale: string): string {
 	} catch {
 		return new Date(at).toISOString().slice(0, 10);
 	}
+}
+
+/**
+ * a timestamp as the date and the time of day, in the donor's own zone.
+ *
+ * the address a crypto gift is sent to closes seven days out at a given hour, so the date alone names
+ * a day on which a send may already be too late. degrades the way `formatDate` above does.
+ */
+function formatMoment(at: number, locale: string): string {
+	try {
+		return new Intl.DateTimeFormat(locale, { dateStyle: 'long', timeStyle: 'short' }).format(
+			new Date(at)
+		);
+	} catch {
+		return new Date(at).toISOString().slice(0, 16).replace('T', ' ');
+	}
+}
+
+/** the address screen's block, in the copy deck's words for the deposit the quote handed over. */
+function depositScreen(
+	state: State & { readonly step: 'awaitingDeposit' },
+	config: FormConfig,
+	money: (minor: number) => string
+): DepositScreen {
+	const { deposit } = state;
+	const org = config.orgLegalName;
+	const coin = config.coins?.find((offered) => offered.coin === deposit.coin);
+	return {
+		coinAmount: deposit.coinAmount,
+		// the processor's ticker where the served list names the coin, and its own code where it does
+		// not: a figure with no unit beside it is not one a donor can type into a wallet.
+		ticker: (coin?.ticker ?? deposit.coin).toUpperCase(),
+		about: `About ${money(state.totalMinor)} today`,
+		network: deposit.network.toUpperCase(),
+		networkWarning: `Send on this network only. Coins sent on another network may not reach ${org}.`,
+		address: deposit.address,
+		memo: deposit.memo,
+		memoWarning:
+			coin?.memoRequired === true
+				? `Include this memo. Without it your gift cannot be matched and may not reach ${org}.`
+				: '',
+		qr: deposit.qr?.rows ?? null,
+		sendBy: `Send by ${formatMoment(Date.parse(deposit.validUntil), config.locale)}. After that this address closes and you would need to start over.`,
+		walletFee: 'Your gift is what arrives, so add any wallet or exchange fee on top.',
+		email: `These details were also sent to ${state.email}.`,
+		status: 'Waiting for your gift to arrive'
+	};
 }
 
 /**
@@ -616,6 +679,33 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 						: `Verify by ${formatDate(state.deadline, config.locale)}. After that this gift is cancelled and you would need to start over.`
 			};
 
+		case 'awaitingDeposit':
+			// past the send-by on this device the address is withdrawn, and so is every way to copy it,
+			// so nobody sends to an address no longer watched. the reading goes on behind both.
+			if (state.closed) {
+				const closedAt = formatMoment(Date.parse(state.deposit.validUntil), config.locale);
+				return {
+					...BLANK,
+					heading: 'Checking for your gift',
+					body: `The address for this gift closed on ${closedAt}. If you sent your gift before then, this page changes when it arrives.`
+				};
+			}
+			return {
+				...BLANK,
+				heading: 'Send your gift',
+				deposit: depositScreen(state, config, money),
+				secondary: { label: 'Use a different coin' }
+			};
+
+		// no email is sent when an address closes, so this screen is the donor's only notice of it.
+		case 'depositExpired':
+			return {
+				...BLANK,
+				heading: 'This gift needs to be started again',
+				body: 'The address for this gift closed before anything arrived. Do not send to it now.',
+				primary: { label: 'Start again', submit: false }
+			};
+
 		case 'verificationExpired':
 			return {
 				...BLANK,
@@ -624,7 +714,18 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 				primary: { label: 'Start again', submit: false }
 			};
 
+		// a gift sent from the donor's own wallet is valued on arrival, so no figure the card holds is
+		// what arrived: the emailed receipt names that, and this screen draws no receipt at all.
 		case 'success':
+			if (state.method === 'crypto') {
+				return {
+					...BLANK,
+					heading: 'Thank you',
+					body: `Your gift arrived. A receipt is on its way to your email. ${org} has your gift.`,
+					announce: 'Your gift arrived.',
+					secondary: { label: 'Back to start' }
+				};
+			}
 			return {
 				...BLANK,
 				heading: 'Thank you',
@@ -789,6 +890,14 @@ export type CardView = {
 	 */
 	readonly challenge: HTMLElement;
 	/**
+	 * the coin list a `crypto` gift is chosen in, handed out for the reason `payment` above is.
+	 *
+	 * the card draws it and keeps it patched, and the crypto option stands it in its row in the payment
+	 * box (./embed/nowpayments.ts) — a light-DOM node like the rows around it, so it carries a shadow
+	 * root of its own (./coin-picker.ts).
+	 */
+	readonly coins: HTMLElement;
+	/**
 	 * puts the caret on the heading of the screen the card is showing.
 	 *
 	 * for a card that replaced one a donor pressed a control on: that press took the node holding
@@ -924,6 +1033,10 @@ export function createCard(
 	let flipped = false;
 	/** the screen on the card, which is what a busy flow stays on and what motion reports against. */
 	let shown: Screen = 'amount';
+	/** the projected step the last patch drew, which is what tells a refusal landing from a press. */
+	let stepBefore: State['step'] | null = null;
+	/** whether the last patch drew the address block, which is what tells the block leaving. */
+	let depositShown = false;
 	/** whether the flow has changed screen at all, which is what the entry motion waits for. */
 	let moved = false;
 	/**
@@ -1584,6 +1697,32 @@ export function createCard(
 		return entryInput;
 	}
 
+	/**
+	 * a coin's refusal of the amount, as the predicate under `How much`.
+	 *
+	 * the coin is named by the name the served list gives it, and by its own code where the list no
+	 * longer carries it. the minimum is offered the way a tile offers a figure (./money.ts).
+	 */
+	function coinRefusalWords(refusal: NonNullable<(State & { step: 'amount' })['refusal']>): string {
+		const coinName =
+			config.coins?.find((coin) => coin.coin === refusal.coin)?.name ?? refusal.coin.toUpperCase();
+		if (refusal.code === 'above_maximum') {
+			return `too large for ${coinName}, lower it or pick another coin`;
+		}
+		return refusal.minAmountMinor === undefined
+			? `too small for ${coinName}, raise it or pick another coin`
+			: `at least ${offer(refusal.minAmountMinor)} in ${coinName}, or pick another coin`;
+	}
+
+	/**
+	 * the control holding the figure a refusal of the amount is about: the free entry where it holds
+	 * the amount, and otherwise the tile that does.
+	 */
+	function figureControl(): HTMLElement {
+		if (otherTile === null || otherChosen) return entryInput;
+		return amountOptions.find((option) => option.input.checked)?.input ?? entryInput;
+	}
+
 	const amountHead = stepHead();
 	const amountStep = make(doc, 'section', { class: 'step' }, [
 		amountHead.head,
@@ -1902,6 +2041,7 @@ export function createCard(
 	// one of them. words here would be a second statement of one of the two, gone stale the first
 	// time it is reworded at its own site.
 	const paymentMessage = make(doc, 'p', { class: 'message', id: 'payment-problem', hidden: true });
+	const coinPicker = createCoinPicker(doc);
 
 	const submitLabel = make(doc, 'span', { class: 'action-label' });
 	const submitButton = make(doc, 'button', { part: part('action', 'submit'), type: 'button' }, [
@@ -1934,8 +2074,9 @@ export function createCard(
 		update(now());
 		// straight to the payment box, with no set to walk: the typed fields were settled on the
 		// step before this one and cannot be unsettled from here, so the rail is the whole of what
-		// this press can be refused for.
-		payment.focus();
+		// this press can be refused for — or, on crypto, the coin, whose list is ours to send it to.
+		if (after.step === 'give' && after.method === 'crypto') coinPicker.focus();
+		else payment.focus();
 	});
 
 	// the line that closes the gap the split opens: the step that takes the money shows no field
@@ -1998,6 +2139,8 @@ export function createCard(
 	// card's one region (`announce` on the `failed` screen above), and a sentence that speaks from
 	// here as well is the same decline read out twice.
 	const failureMessage = make(doc, 'p', { class: 'message', hidden: true });
+	// a Copy's outcome is said on the card's region, again on every press: the words do not change.
+	const depositBlock = createDepositBlock(doc, (words) => say(words, true));
 
 	const primaryLabel = make(doc, 'span', { class: 'action-label' });
 	const primaryButton = make(
@@ -2028,6 +2171,7 @@ export function createCard(
 		mandateWell,
 		deadlineBlock,
 		failureMessage,
+		depositBlock.root,
 		primaryButton,
 		primaryNote,
 		secondaryButton
@@ -2391,6 +2535,7 @@ export function createCard(
 		// a change: a resume boots straight onto a takeover, and an element that grabbed focus while
 		// rendering would move the caret on a page it does not own.
 		const advanced = painted && step !== shown;
+		const shownBefore = shown;
 		if (step !== shown) moved = true;
 		toggleAttribute(root, 'data-moved', moved ? '' : null);
 		shown = step;
@@ -2440,9 +2585,22 @@ export function createCard(
 		// was refused for it, clears on the keystroke that satisfies it, and clears again the moment
 		// the donor unticks — which is what takes the decision out of `state.missing` altogether.
 		const missingNote = missing.includes('note');
-		setHidden(amountMessage, !missingAmount);
+		// a coin's refusal of the amount stands in the same place and weight as the bounds, and gives way
+		// to them where both stand: the bounds are the form's own and a figure outside them no coin takes.
+		const refusal = api.state.step === 'amount' ? api.state.refusal : undefined;
+		const amountWords = missingAmount
+			? amountProblem
+			: refusal === undefined
+				? ''
+				: coinRefusalWords(refusal);
+		setText(amountMessage, amountWords);
+		setHidden(amountMessage, amountWords === '');
 		setHidden(noteMessage, !missingNote);
-		toggleAttribute(amountGroup, 'aria-describedby', missingAmount ? 'amount-problem' : null);
+		toggleAttribute(amountGroup, 'aria-describedby', amountWords === '' ? null : 'amount-problem');
+		// and the box holding the figure is described by it too, which is where a refusal sends the caret.
+		for (const control of [entryInput, ...amountOptions.map((option) => option.input)]) {
+			toggleAttribute(control, 'aria-describedby', refusal === undefined ? null : 'amount-problem');
+		}
 		// beside the part token rather than instead of it: the token is what a host's stylesheet
 		// paints, and this is what a screen reader is told, so a donor who cannot see the edge is
 		// not left with the sentence alone. it is written only where the role supports it — the free
@@ -2526,6 +2684,7 @@ export function createCard(
 		// control is holding at the time it is read.
 		const missingFields = updateDetails(api);
 		const refusedPayment = updatePayment(api);
+		const coinRefused = updateCoins(api);
 		// what a numbered step was refused for, said out loud, and one sentence however many steps
 		// there are: the three are mutually exclusive, because a press is refused on the step it was
 		// made on. every missing decision at once, for the reason `missingDecisions` above gives
@@ -2600,7 +2759,21 @@ export function createCard(
 
 		// last, and after the step it lands in has been un-hidden: a heading inside a `hidden`
 		// subtree is not focusable, and a caret that failed to land is the defect this exists for.
-		if (advanced) headings[step].focus();
+		// three arrivals put the caret somewhere other than the heading, each on the control that fixes
+		// what the donor arrived about: a refusal of the amount on the box holding the figure, and a
+		// refusal of the coin — or a way back from the address screen — on the coin list.
+		const refusedAmount = api.state.step === 'amount' && api.state.refusal !== undefined;
+		const backToCoins =
+			api.state.step === 'give' &&
+			api.state.method === 'crypto' &&
+			((advanced && shownBefore === 'takeover') || (coinRefused && stepBefore === 'working'));
+		// the address block leaving the card takes whatever Copy held the caret with it.
+		const addressLeft = depositShown && screen.deposit === null && step === 'takeover';
+		depositShown = screen.deposit !== null;
+		stepBefore = api.state.step;
+		if (backToCoins) coinPicker.focus();
+		else if (advanced && refusedAmount) figureControl().focus();
+		else if (advanced || addressLeft) headings[step].focus();
 		painted = true;
 	}
 
@@ -2746,7 +2919,10 @@ export function createCard(
 	function updatePayment(api: DomApi): boolean {
 		const { state } = api;
 		if (state.step !== 'give') pressed = false;
-		const refused = pressed && state.step === 'give' && !state.payerComplete;
+		// a crypto press is refused for its coin, and the coin list says so under itself instead
+		// (`updateCoins` below): the rail is chosen, so this box has nothing to say about it.
+		const refused =
+			pressed && state.step === 'give' && !state.payerComplete && state.method !== 'crypto';
 		carryDecline(state);
 		// written only on the step this box is on. the node is inside the review step and every
 		// other screen hides that step, so a sentence written here off it is one kept quiet by the
@@ -2756,6 +2932,37 @@ export function createCard(
 		setText(paymentMessage, words);
 		setHidden(paymentMessage, words === '');
 		toggleAttribute(payment, 'aria-describedby', words === '' ? null : 'payment-problem');
+		return refused;
+	}
+
+	/**
+	 * the coin list, patched from the projection, and the one sentence it may say under itself.
+	 *
+	 * a coin the account refused is said whenever it is the one picked — nothing on this step was
+	 * pressed to earn it, the quote that refused it was — and one no coin answers is said once every
+	 * coin in the list is refused, because the way on is another row rather than another coin. a coin
+	 * never picked is said only once a press asked for one, on the terms `updatePayment` above keeps.
+	 *
+	 * returns whether the picked coin stands refused, which is where the caret goes when a refusal
+	 * lands the donor back on this step.
+	 */
+	function updateCoins(api: DomApi): boolean {
+		const { state } = api;
+		const choice = api.coinSelect;
+		const options = choice.options as readonly CoinOption[];
+		const picked = options.find((option) => option.value === choice.value);
+		const refused = picked?.refused === true;
+		const words = refused
+			? options.every((option) => option.refused)
+				? 'none accepted right now, choose another payment method'
+				: 'no longer accepted, pick another coin'
+			: pressed && state.step === 'give' && state.method === 'crypto' && !state.payerComplete
+				? 'required'
+				: '';
+		coinPicker.update(
+			{ value: choice.value, options, onChange: (value) => now().coinSelect.onChange(value) },
+			words
+		);
 		return refused;
 	}
 
@@ -2826,6 +3033,7 @@ export function createCard(
 		setHidden(deadlineBlock, screen.deadline === '');
 		setText(failureMessage, screen.failure);
 		setHidden(failureMessage, screen.failure === '');
+		depositBlock.update(screen.deposit);
 		setText(primaryNote, screen.primaryNote);
 		setHidden(primaryNote, screen.primaryNote === '');
 
@@ -3008,8 +3216,16 @@ export function createCard(
 		// declined reading keeps a sentence there, because where the fee comes from holds with no
 		// figure to name.
 		const declined = api.feeToggle.declinedFee ?? null;
-		const consequence =
-			api.feeToggle.pressed === true
+		// a crypto gift is valued on arrival, so neither figure a card can state is what the org
+		// receives: covering names the addition as approximate, and declining names no net figure.
+		const onCrypto = state.step === 'give' && state.method === 'crypto';
+		const consequence = onCrypto
+			? api.feeToggle.pressed === true
+				? feeShown
+					? `You add about ${money(feeMinor)} toward the processing fee.`
+					: ''
+				: `${config.orgLegalName} pays the processing fee out of your gift.`
+			: api.feeToggle.pressed === true
 				? feeShown
 					? `You add ${money(feeMinor)} so ${config.orgLegalName} receives the full ${money(fv.amountMinor)}.`
 					: ''
@@ -3048,6 +3264,7 @@ export function createCard(
 		root,
 		payment,
 		challenge,
+		coins: coinPicker.host,
 		focus() {
 			headings[shown].focus();
 		},

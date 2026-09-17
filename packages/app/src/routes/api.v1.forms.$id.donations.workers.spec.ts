@@ -850,3 +850,112 @@ describe('POST /api/v1/forms/:id/donations — a fund gift the fund refuses', ()
 		expect(response.headers.get('access-control-allow-origin')).toBe(ALLOWED);
 	});
 });
+
+/**
+ * the three refusals a crypto gift answers with, past the challenge through the real NOWPayments
+ * adapter behind a scripted `fetch`: 422, because the donor's own choice of coin or amount is what
+ * moves it, and nothing about the deployment is wrong.
+ */
+describe('POST /api/v1/forms/:id/donations — a crypto gift NOWPayments will not take', () => {
+	const NOWPAYMENTS = {
+		NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey',
+		NOWPAYMENTS_OUTCOME_CURRENCY: 'btc',
+		TURNSTILE_SITE_KEY: '0xSITE',
+		TURNSTILE_SECRET_KEY: '0xSECRET'
+	};
+	const BTC = {
+		code: 'BTC',
+		name: 'Bitcoin',
+		enable: true,
+		network: 'btc',
+		ticker: 'btc',
+		extra_id_exists: false,
+		extra_id_optional: false,
+		available_for_payment: true
+	};
+	/** the edge entries a crypto boot writes, which outlive the case unless deleted. */
+	const KEPT = ['/__offered-rails', '/__payable-coins'].map(
+		(path) => new Request(`https://give.example.workers.dev${path}`)
+	);
+
+	/** an account taking BTC, answering the pricing and creating calls `pricing` scripts. */
+	function stubAccount(pricing: (path: string) => Response | undefined = () => undefined) {
+		vi.stubGlobal('fetch', async (input: Request | string | URL, init?: RequestInit) => {
+			const request = input instanceof Request ? input : new Request(String(input), init);
+			if (request.url.startsWith('https://challenges.cloudflare.com/')) {
+				return Response.json({ success: true, hostname: new URL(ALLOWED).hostname });
+			}
+			const path = new URL(request.url).pathname;
+			if (path === '/v1/merchant/coins') return Response.json({ selectedCurrencies: ['BTC'] });
+			if (path === '/v1/full-currencies') return Response.json({ currencies: [BTC] });
+			return pricing(path) ?? Response.json({ message: 'unscripted' }, { status: 500 });
+		});
+	}
+
+	it('answers 422 naming a coin the account does not take', async () => {
+		stubAccount();
+
+		try {
+			const response = await post({ method: 'crypto', coin: 'doge' }, { vars: NOWPAYMENTS });
+
+			expect(response.status).toBe(422);
+			const answered = (await response.json()) as Record<string, unknown>;
+			expect(answered).toMatchObject({ error: 'coin_not_accepted' });
+			expect(String(answered.message)).toContain('`doge`');
+			expect(response.headers.get('access-control-allow-origin')).toBe(ALLOWED);
+		} finally {
+			await Promise.all(KEPT.map((key) => edge.delete(key)));
+		}
+	});
+
+	// $12.9010644 is NOWPayments' floor for the coin; the form shows it under the amount box.
+	it('answers 422 stating the least gift the coin takes, in cents', async () => {
+		stubAccount((path) => {
+			if (path === '/v1/estimate') return Response.json({ estimated_amount: '0.0001' });
+			if (path === '/v1/min-amount') {
+				return Response.json({ min_amount: 0.0002, fiat_equivalent: 12.9010644 });
+			}
+			return undefined;
+		});
+
+		try {
+			const response = await post({ method: 'crypto', coin: 'btc' }, { vars: NOWPAYMENTS });
+
+			expect(response.status).toBe(422);
+			expect(await response.json()).toMatchObject({
+				error: 'below_minimum',
+				minAmountMinor: 1291
+			});
+		} finally {
+			await Promise.all(KEPT.map((key) => edge.delete(key)));
+		}
+	});
+
+	// the rate moved between the estimate and the create, and NOWPayments' refusal names no figure.
+	it('answers 422 stating no least gift where NOWPayments named none', async () => {
+		stubAccount((path) => {
+			if (path === '/v1/estimate') return Response.json({ estimated_amount: '0.001' });
+			if (path === '/v1/min-amount') {
+				return Response.json({ min_amount: 0.0002, fiat_equivalent: 12.9010644 });
+			}
+			if (path === '/v1/payment') {
+				return Response.json(
+					{ code: 'AMOUNT_MINIMAL_ERROR', message: 'Amount is less than minimal' },
+					{ status: 400 }
+				);
+			}
+			return undefined;
+		});
+
+		try {
+			const response = await post({ method: 'crypto', coin: 'btc' }, { vars: NOWPAYMENTS });
+
+			expect(response.status).toBe(422);
+			const answered = await response.json();
+			expect(answered).toMatchObject({ error: 'below_minimum' });
+			expect(answered).not.toHaveProperty('minAmountMinor');
+		} finally {
+			await Promise.all(KEPT.map((key) => edge.delete(key)));
+		}
+	});
+});

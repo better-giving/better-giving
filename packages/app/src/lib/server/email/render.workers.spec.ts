@@ -45,7 +45,8 @@ describe('rendering a template inside workerd', () => {
 				contribution: CONTRIBUTION,
 				goodsOrServices: { kind: 'none' },
 				tribute: null,
-				program: null
+				program: null,
+				crypto: null
 			})
 		);
 

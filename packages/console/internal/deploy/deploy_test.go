@@ -19,7 +19,7 @@ func TestADeployFetchesMigratesUploadsPushesAndVerifies(t *testing.T) {
 	if run.Kind != Deployed {
 		t.Fatalf("kind = %q at %q (%s)", run.Kind, run.At, run.Detail)
 	}
-	if strings.Join(stagesAsText(stages), " ") != "fetching checking migrating uploading pushing addressing verifying" {
+	if strings.Join(stagesAsText(stages), " ") != "fetching checking migrating uploading pushing scheduling addressing verifying" {
 		t.Errorf("stages = %v, want each one as the run reached it", stages)
 	}
 	if strings.Join(run.Applied, ",") != "0000_a.sql" {
@@ -401,14 +401,152 @@ func TestEveryCheckADeployMakesIsAStageOfItsOwnAndNamesNothingBesideIt(t *testin
 			passed = append(passed, progress.Stage)
 		}
 	}
-	want := "fetching checking migrating uploading pushing addressing verifying"
+	want := "fetching checking migrating uploading pushing scheduling addressing verifying"
 	if got := strings.Join(stagesAsText(passed), " "); got != want {
 		t.Errorf("stages = %q, want %q", got, want)
 	}
-	for _, check := range []Stage{Checking, Addressing, Verifying} {
+	for _, check := range []Stage{Checking, Scheduling, Addressing, Verifying} {
 		if said := detailed(reportedAt(reported, check)); strings.Join(said, "|") != "" {
 			t.Errorf("%q said %q, want the stage opening and nothing else", check, said)
 		}
+	}
+}
+
+func TestTheScheduleGoesUpAfterTheScriptAsTheCronsTheBundleCarries(t *testing.T) {
+	held := &account{}
+	run, _ := deployed(t, held, packed(t, baked()))
+	if run.Kind != Deployed {
+		t.Fatalf("kind = %q at %q (%s)", run.Kind, run.At, run.Detail)
+	}
+
+	const schedules = "PUT /accounts/an-account/workers/scripts/better-giving/schedules"
+	script, scheduled := -1, -1
+	for at, path := range held.paths {
+		switch path {
+		case "PUT /accounts/an-account/workers/scripts/better-giving":
+			script = at
+		case schedules:
+			scheduled = at
+		}
+	}
+	if script == -1 || scheduled < script {
+		t.Fatalf("script at %d and schedule at %d, in %v", script, scheduled, held.paths)
+	}
+	var sent []map[string]string
+	if len(held.schedules) != 1 || json.Unmarshal([]byte(held.schedules[0]), &sent) != nil {
+		t.Fatalf("schedules sent = %q, want one json body", held.schedules)
+	}
+	if len(sent) != 1 || len(sent[0]) != 1 || sent[0]["cron"] != "*/30 * * * *" {
+		t.Errorf("schedule = %v, want the one cron the bundle carries", sent)
+	}
+}
+
+func TestABundleDeclaringNoCronsTakesTheScheduleOffRatherThanLeavingIt(t *testing.T) {
+	config := baked()
+	config.Crons = []string{}
+	held := &account{}
+	run := runningWith(t, held, packed(t, config), config)
+	if run.Kind != Deployed {
+		t.Fatalf("kind = %q at %q (%s)", run.Kind, run.At, run.Detail)
+	}
+
+	if len(held.schedules) != 1 || strings.TrimSpace(held.schedules[0]) != "[]" {
+		t.Errorf("schedules sent = %q, want one empty list", held.schedules)
+	}
+}
+
+func TestAScheduleCloudflareTurnedDownStopsTheRunAndSaysSo(t *testing.T) {
+	held := &account{refusesSchedules: true}
+	run, stages := deployed(t, held, packed(t, baked()))
+
+	if run.Kind != Stopped || run.At != Scheduling {
+		t.Fatalf("kind = %q at %q (%s), want stopped at scheduling", run.Kind, run.At, run.Detail)
+	}
+	if !strings.Contains(run.Detail, "schedule") || !strings.Contains(run.Detail, "invalid cron expression") {
+		t.Errorf("detail = %q, want the schedule named and cloudflare's own words", run.Detail)
+	}
+	if last := stages[len(stages)-1]; last != Scheduling {
+		t.Errorf("stages = %v, want the run to end at the schedule", stages)
+	}
+}
+
+func TestAWorkerMissingItsScheduleIsUnscheduledAndNothingIsReported(t *testing.T) {
+	held := &account{}
+	reported := []Progress{}
+	options := againstAccount(t, held, baked(), &reported)
+
+	unscheduled, run := Unscheduled(t.Context(), options)
+	if run.Kind != "" || !unscheduled {
+		t.Errorf("unscheduled = %v with %q (%s), want the missing cron found", unscheduled, run.Kind, run.Detail)
+	}
+	if len(reported) != 0 || len(held.schedules) != 0 {
+		t.Errorf("a read reported %v and put %q, want neither", reported, held.schedules)
+	}
+}
+
+func TestAWorkerHoldingTheCarriedScheduleInAnyOrderIsLevel(t *testing.T) {
+	config := baked()
+	config.Crons = []string{"0 3 * * *", "*/30 * * * *"}
+	held := &account{scheduled: []string{"*/30 * * * *", "0 3 * * *"}}
+	reported := []Progress{}
+
+	unscheduled, run := Unscheduled(t.Context(), againstAccount(t, held, config, &reported))
+	if run.Kind != "" || unscheduled {
+		t.Errorf("unscheduled = %v with %q (%s), want level", unscheduled, run.Kind, run.Detail)
+	}
+}
+
+func TestAWorkerHoldingACronTheReleaseDroppedIsUnscheduled(t *testing.T) {
+	config := baked()
+	config.Crons = []string{}
+	held := &account{scheduled: []string{"*/30 * * * *"}}
+	reported := []Progress{}
+
+	if unscheduled, _ := Unscheduled(t.Context(), againstAccount(t, held, config, &reported)); !unscheduled {
+		t.Error("a cron the release no longer declares read as level")
+	}
+}
+
+func TestAScheduleReadThatDidNotLandStopsAtSchedulingInCloudflaresWords(t *testing.T) {
+	held := &account{refusesScheduleRead: true}
+	reported := []Progress{}
+
+	unscheduled, run := Unscheduled(t.Context(), againstAccount(t, held, baked(), &reported))
+	if unscheduled || run.Kind != Stopped || run.At != Scheduling {
+		t.Fatalf("unscheduled = %v with %q at %q, want stopped at scheduling", unscheduled, run.Kind, run.At)
+	}
+	if !strings.Contains(run.Detail, "schedule") || !strings.Contains(run.Detail, "an internal error occurred") {
+		t.Errorf("detail = %q, want the schedule named and cloudflare's own words", run.Detail)
+	}
+	if len(held.schedules) != 0 {
+		t.Errorf("a read that did not land put %q", held.schedules)
+	}
+}
+
+func TestARescheduleIsTheSchedulingStagePuttingTheCarriedCronsUp(t *testing.T) {
+	held := &account{}
+	reported := []Progress{}
+
+	run := Reschedule(t.Context(), againstAccount(t, held, baked(), &reported))
+	if run.Kind != Deployed || run.At != Scheduling {
+		t.Fatalf("kind = %q at %q (%s)", run.Kind, run.At, run.Detail)
+	}
+	if len(reported) != 1 || reported[0].Stage != Scheduling {
+		t.Errorf("reported %v, want the scheduling stage alone", reported)
+	}
+	if strings.Join(held.scheduled, ",") != "*/30 * * * *" {
+		t.Errorf("the worker holds %q, want the carried cron", held.scheduled)
+	}
+}
+
+func TestARescheduleCloudflareTurnedDownStopsAtScheduling(t *testing.T) {
+	held := &account{refusesSchedules: true}
+	reported := []Progress{}
+
+	run := Reschedule(t.Context(), againstAccount(t, held, baked(), &reported))
+	if run.Kind != Stopped || run.At != Scheduling ||
+		!strings.HasPrefix(run.Detail, "Cloudflare did not take the worker's schedule: ") {
+		t.Errorf("kind = %q at %q (%s)", run.Kind, run.At, run.Detail)
 	}
 }
 

@@ -571,6 +571,60 @@ form {
 	gap: var(--_sp5);
 }
 
+/*
+ * the address screen's block, in its one reading order at every width. each value stands under its
+ * label, and a value its Copy copies shares a line with it, the Copy in a column of its own so a
+ * wrapped address keeps the control beside where it starts. the QR follows the memo rather than
+ * sitting beside the address: the takeover's measure leaves no width for both.
+ */
+.deposit {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp5);
+}
+
+.held {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp2);
+}
+
+.held-line {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: start;
+	gap: var(--_sp3);
+}
+
+/*
+ * the Copy's column is `auto`, so a label that grew on press would narrow the value beside it and
+ * wrap it a line further. every label the control can read is stacked in one cell and only the one
+ * it reads is visible, so the column is its widest label's in every state. `visibility` rather than
+ * `hidden`, because a label taken out of the layout sizes nothing.
+ */
+.held-line [part~='action-quiet'] {
+	display: inline-grid;
+	justify-items: start;
+}
+
+.held-line [part~='action-quiet'] > * {
+	grid-area: 1 / 1;
+}
+
+.held-line [part~='action-quiet'] > :not(.said) {
+	visibility: hidden;
+}
+
+.qr {
+	align-self: start;
+}
+
+.status {
+	display: flex;
+	align-items: start;
+	gap: var(--_sp2);
+}
+
 /* the block a form that cannot be rendered says so in. */
 .alert {
 	display: grid;

@@ -1,8 +1,9 @@
 import type { State } from '@better-giving/form/connect';
+import type { DepositScreen } from '@better-giving/form/deposit';
 import { RECONCILIATION_LABELS } from '@better-giving/form/fee';
 import { PAYMENT_METHOD_LABELS, type FormConfig } from '@better-giving/form/v1';
 import { part, partWhen } from '@better-giving/form/parts';
-import type { ReactNode, RefObject } from 'react';
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import * as copy from './copy';
 
 // every state that takes the whole card, in the words a donor reads.
@@ -40,6 +41,8 @@ export type Takeover = {
 	readonly primary: { readonly label: string; readonly submit: boolean } | null;
 	/** the line under the primary control, stating what pressing it does. */
 	readonly primaryNote: string;
+	/** where and how much to send a `crypto` gift, on the one screen that states it. */
+	readonly deposit: DepositScreen | null;
 	/** the way out of the screen: beside the primary where there is one, alone where there is not. */
 	readonly secondary: { readonly label: string } | null;
 };
@@ -58,6 +61,7 @@ export const BLANK: Takeover = {
 	failure: '',
 	primary: null,
 	primaryNote: '',
+	deposit: null,
 	secondary: null
 };
 
@@ -73,6 +77,50 @@ function formatDate(at: number, locale: string): string {
 	} catch {
 		return new Date(at).toISOString().slice(0, 10);
 	}
+}
+
+/**
+ * a timestamp as the date and the time of day, in the donor's own zone.
+ *
+ * the address a crypto gift is sent to closes seven days out at a given hour, so the date alone names
+ * a day on which a send may already be too late.
+ */
+function formatMoment(at: number, locale: string): string {
+	try {
+		return new Intl.DateTimeFormat(locale, { dateStyle: 'long', timeStyle: 'short' }).format(
+			new Date(at)
+		);
+	} catch {
+		return new Date(at).toISOString().slice(0, 16).replace('T', ' ');
+	}
+}
+
+/** the address screen's block, for the deposit the quote handed over. */
+function depositScreen(
+	state: State & { readonly step: 'awaitingDeposit' },
+	config: FormConfig,
+	money: (minor: number) => string
+): DepositScreen {
+	const { deposit } = state;
+	const org = config.orgLegalName;
+	const coin = config.coins?.find((offered) => offered.coin === deposit.coin);
+	return {
+		coinAmount: deposit.coinAmount,
+		// the processor's own code where the served list no longer names the coin: a figure with no
+		// unit beside it is not one a donor can type into a wallet.
+		ticker: (coin?.ticker ?? deposit.coin).toUpperCase(),
+		about: copy.aboutToday(money(state.totalMinor)),
+		network: deposit.network.toUpperCase(),
+		networkWarning: copy.networkWarning(org),
+		address: deposit.address,
+		memo: deposit.memo,
+		memoWarning: coin?.memoRequired === true ? copy.memoWarning(org) : '',
+		qr: deposit.qr?.rows ?? null,
+		sendBy: copy.sendBy(formatMoment(Date.parse(deposit.validUntil), config.locale)),
+		walletFee: copy.WALLET_FEE,
+		email: copy.detailsSentTo(state.email),
+		status: copy.WAITING_FOR_GIFT
+	};
 }
 
 /**
@@ -185,6 +233,31 @@ export function takeoverFor(
 						: copy.verifyDeadline(formatDate(state.deadline, config.locale))
 			};
 
+		case 'awaitingDeposit':
+			// past the send-by on this device the address is withdrawn, and every way to copy it with
+			// it, so nobody sends to an address no longer watched. the reading goes on behind both.
+			if (state.closed) {
+				return {
+					...BLANK,
+					heading: copy.CHECKING_HEADING,
+					body: copy.checkingBody(formatMoment(Date.parse(state.deposit.validUntil), config.locale))
+				};
+			}
+			return {
+				...BLANK,
+				heading: copy.SEND_HEADING,
+				deposit: depositScreen(state, config, money),
+				secondary: { label: copy.USE_DIFFERENT_COIN }
+			};
+
+		case 'depositExpired':
+			return {
+				...BLANK,
+				heading: copy.EXPIRED_HEADING,
+				body: copy.DEPOSIT_EXPIRED_BODY,
+				primary: { label: copy.START_AGAIN, submit: false }
+			};
+
 		case 'verificationExpired':
 			return {
 				...BLANK,
@@ -193,7 +266,18 @@ export function takeoverFor(
 				primary: { label: copy.START_AGAIN, submit: false }
 			};
 
+		// a gift sent from the donor's own wallet is valued on arrival, so no figure the card holds is
+		// what arrived: the emailed receipt names that, and this screen draws no receipt at all.
 		case 'success':
+			if (state.method === 'crypto') {
+				return {
+					...BLANK,
+					heading: copy.SUCCESS_HEADING,
+					body: copy.arrivedBody(org),
+					announce: copy.ARRIVED_ANNOUNCE,
+					secondary: { label: copy.BACK_TO_START }
+				};
+			}
 			return {
 				...BLANK,
 				heading: copy.SUCCESS_HEADING,
@@ -243,6 +327,11 @@ export type TakeoverScreenProps = {
 	/** the receipt block, shown only on a screen that states one and only once it has figures. */
 	readonly receipt: ReactNode;
 	readonly headingRef: RefObject<HTMLHeadingElement | null>;
+	/**
+	 * the address block (`createDepositBlock` in @better-giving/form/deposit), built by the card and
+	 * patched from `screen.deposit`; `null` until the live flow has started.
+	 */
+	readonly deposit: HTMLElement | null;
 	readonly onPrimary: () => void;
 	readonly onSecondary: () => void;
 };
@@ -253,9 +342,19 @@ export function TakeoverScreen({
 	busy,
 	receipt,
 	headingRef,
+	deposit,
 	onPrimary,
 	onSecondary
 }: TakeoverScreenProps) {
+	const primary = useRef<HTMLButtonElement | null>(null);
+	// a child of the section itself, where the element stands it, so the takeover's own column rules
+	// reach it. every sibling react draws here is always rendered, which is what keeps a node react
+	// did not write from being reconciled away.
+	useEffect(() => {
+		const before = primary.current;
+		if (deposit === null || before === null || deposit.nextSibling === before) return;
+		before.parentNode?.insertBefore(deposit, before);
+	}, [deposit]);
 	return (
 		<section className="step takeover" hidden={hidden}>
 			{/*
@@ -316,6 +415,7 @@ export function TakeoverScreen({
 			 * pressed one of those would restart a donor who was reading the refusal.
 			 */}
 			<button
+				ref={primary}
 				part={partWhen('action', { submit: screen.primary?.submit === true, busy })}
 				type={screen.primary?.submit === true ? 'submit' : 'button'}
 				aria-busy={busy}

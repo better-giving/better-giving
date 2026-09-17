@@ -33,18 +33,25 @@ export type ProcessorLink = {
 export const CHARGE_PAIRS: Record<PaymentProcessor, readonly DeployVarName[]> = {
 	stripe: ['STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY'],
 	paypal: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET'],
-	chariot: ['CHARIOT_API_KEY', 'CHARIOT_CONNECT_ID']
+	chariot: ['CHARIOT_API_KEY', 'CHARIOT_CONNECT_ID'],
+	nowpayments: ['NOWPAYMENTS_API_KEY', 'NOWPAYMENTS_OUTCOME_CURRENCY']
 };
 
 /** what each processor is called and where its page is. */
 export const PROCESSORS: Record<PaymentProcessor, { name: string; href: string }> = {
 	stripe: { name: 'Stripe', href: '/payments/stripe' },
 	paypal: { name: 'PayPal', href: '/payments/paypal' },
-	chariot: { name: 'Chariot', href: '/payments/chariot' }
+	chariot: { name: 'Chariot', href: '/payments/chariot' },
+	nowpayments: { name: 'NOWPayments', href: '/payments/nowpayments' }
 };
 
 /** the order the cells stand in, which is the order the deployment reports processors in. */
-const ORDER: readonly PaymentProcessor[] = ['stripe', 'paypal', 'chariot'];
+const ORDER = [
+	'stripe',
+	'paypal',
+	'chariot',
+	'nowpayments'
+] as const satisfies readonly PaymentProcessor[];
 
 /**
  * one cell per processor.

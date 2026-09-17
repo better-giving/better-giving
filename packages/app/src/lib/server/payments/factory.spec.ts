@@ -16,6 +16,12 @@ const CHARIOT_HELD = {
 	CHARIOT_WEBHOOK_SECRET: 'notarealsigningsecret'
 };
 
+const NOWPAYMENTS_HELD = {
+	NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey',
+	NOWPAYMENTS_IPN_SECRET: 'notarealipnsecret',
+	NOWPAYMENTS_OUTCOME_CURRENCY: 'usdttrc20'
+};
+
 const CONFIGURED = {
 	STRIPE_SECRET_KEY: 'sk_test_notarealkey',
 	STRIPE_WEBHOOK_SECRET: 'whsec_notarealsecret'
@@ -131,7 +137,8 @@ describe('the provider one processor resolves to', () => {
 			amountMinor: 0,
 			currency: 'USD',
 			method: 'card',
-			idempotencyKey: 'attempt-1'
+			idempotencyKey: 'attempt-1',
+			deploymentOrigin: 'https://donate.example.org'
 		});
 
 		expect(result.ok === false && result.reason).toBe('invalid_request');
@@ -198,7 +205,13 @@ describe('createPaymentProviders', () => {
 		['Stripe alone', CONFIGURED, ['stripe']],
 		['PayPal alone', PAYPAL_CONFIGURED, ['paypal']],
 		['both', { ...CONFIGURED, ...PAYPAL_CONFIGURED }, ['stripe', 'paypal']],
-		['Chariot’s values alone', CHARIOT_HELD, ['chariot']]
+		['Chariot’s values alone', CHARIOT_HELD, ['chariot']],
+		['NOWPayments’ values alone', NOWPAYMENTS_HELD, ['nowpayments']],
+		[
+			'all four',
+			{ ...CONFIGURED, ...PAYPAL_CONFIGURED, ...CHARIOT_HELD, ...NOWPAYMENTS_HELD },
+			['stripe', 'paypal', 'chariot', 'nowpayments']
+		]
 	])('names what a deployment holding %s can charge on', (_label, source, expected) => {
 		expect(createPaymentProviders(source).configured).toEqual(expected);
 	});
@@ -219,7 +232,8 @@ describe('createPaymentProviders', () => {
 			amountMinor: 1000,
 			currency: 'USD',
 			method: 'paypal',
-			idempotencyKey: 'attempt-1'
+			idempotencyKey: 'attempt-1',
+			deploymentOrigin: 'https://donate.example.org'
 		});
 
 		expect(result.ok === false && result.reason).toBe('not_configured');
@@ -310,6 +324,7 @@ describe('Chariot', () => {
 		currency: 'USD',
 		method: 'daf',
 		idempotencyKey: 'attempt-1',
+		deploymentOrigin: 'https://donate.example.org',
 		authorizedSessionId: 'session-1'
 	} as const;
 
@@ -411,5 +426,94 @@ describe('servedProcessors — the fix', () => {
 		expect(fix).toContain('Stripe');
 		expect(fix).toContain('PayPal');
 		expect(fix).toContain('Any one processor is enough on its own.');
+	});
+});
+
+describe('NOWPayments', () => {
+	/** a coin read the adapter answers, recording the address and key it was sent with. */
+	function coinRead(): { url: string; key: string | null }[] {
+		const calls: { url: string; key: string | null }[] = [];
+		vi.stubGlobal('fetch', async (input: Request | string | URL, init?: RequestInit) => {
+			const request = input instanceof Request ? input : new Request(String(input), init);
+			calls.push({ url: request.url, key: request.headers.get('x-api-key') });
+			// the payout coin is listed, or the read refuses the deployment's own configuration.
+			return Response.json({ selectedCurrencies: [], currencies: [{ code: 'USDTTRC20' }] });
+		});
+		return calls;
+	}
+
+	it('builds the adapter on a deployment holding NOWPayments’ values', async () => {
+		const calls = coinRead();
+
+		await createPaymentProviders(NOWPAYMENTS_HELD).for('nowpayments').listPayableCoins();
+
+		expect(calls[0]?.url).toBe('https://api.nowpayments.io/v1/merchant/coins');
+		expect(calls[0]?.key).toBe('notarealnowpaymentskey');
+	});
+
+	// a minimum is only right quoted against the coin the account pays out in, and no NOWPayments
+	// call reports it — so a deployment without it can price no coin at all.
+	it.each([['NOWPAYMENTS_API_KEY'], ['NOWPAYMENTS_OUTCOME_CURRENCY']])(
+		'refuses NOWPayments as unconfigured without %s, naming it',
+		async (variable) => {
+			const short: Record<string, string> = { ...NOWPAYMENTS_HELD };
+			delete short[variable];
+
+			const result = await createPaymentProviders(short).for('nowpayments').listPayableCoins();
+
+			expect(result.ok === false && result.reason).toBe('not_configured');
+			expect(result.ok === false ? result.detail : '').toContain(variable);
+			expect(createPaymentProviders(short).configured).toEqual([]);
+		}
+	);
+
+	// read by the IPN arm alone, as every other processor's signing value is.
+	// the rails read, the coin list and the quote each take the adapter off one request's set, and
+	// what the adapter keeps for the request (`accountSelection` in ./nowpayments.ts) is shared by all three.
+	it('hands one request the same adapter however it is asked for', async () => {
+		const calls = coinRead();
+		const processors = createPaymentProviders(NOWPAYMENTS_HELD);
+
+		await processors.for('nowpayments').listPayableCoins();
+		await processors.forRail('crypto').listPayableCoins();
+
+		expect(calls.filter((call) => call.url.endsWith('/v1/merchant/coins'))).toHaveLength(1);
+	});
+
+	it('builds the adapter for a deployment holding no IPN secret', async () => {
+		const calls = coinRead();
+		const { NOWPAYMENTS_IPN_SECRET: _, ...unsigned } = NOWPAYMENTS_HELD;
+
+		const result = await createPaymentProviders(unsigned).for('nowpayments').listPayableCoins();
+
+		expect(result.ok).toBe(true);
+		expect(calls).not.toHaveLength(0);
+	});
+
+	// `Provider.publishableKey` on the wire starts a browser SDK, and NOWPayments has none to start.
+	it('names no NOWPayments entry for the donor’s page', () => {
+		expect(servedProcessors({ ...CONFIGURED, ...NOWPAYMENTS_HELD }).providers).toEqual([]);
+		expect(
+			servedProcessors({
+				...CONFIGURED,
+				STRIPE_PUBLISHABLE_KEY: 'pk_test_notarealkey',
+				...NOWPAYMENTS_HELD
+			}).providers
+		).toEqual([{ name: 'stripe', publishableKey: 'pk_test_notarealkey' }]);
+	});
+
+	// no browser half is owed, so its server half alone is a deployment that can take a gift.
+	it('counts a deployment holding NOWPayments’ values as one that can take a gift', () => {
+		expect(servedProcessors(NOWPAYMENTS_HELD).serves).toBe(true);
+		expect(servedProcessors({}).serves).toBe(false);
+		expect(servedProcessors({ STRIPE_SECRET_KEY: 'sk_test_notarealkey' }).serves).toBe(false);
+	});
+
+	it('names NOWPayments for a deployment part-way through NOWPayments’ values', () => {
+		const served = servedProcessors({ NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey' });
+
+		expect(served.fix).toContain('NOWPayments');
+		expect(served.fix).not.toContain('Stripe');
+		expect(served.shortfall).toContain('NOWPAYMENTS_OUTCOME_CURRENCY');
 	});
 });

@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { API_BASE_PATH } from '$lib/server/api/surface';
 import { CONSOLE_BASE_PATH } from '$lib/server/console/surface';
 import { CHARIOT_WEBHOOK_PATH } from '@better-giving/operator/chariot/webhook-subscription';
+import { NOWPAYMENTS_IPN_PATH } from '@better-giving/operator/nowpayments/ipn-callback';
 import { PAYPAL_WEBHOOK_PATH } from '@better-giving/operator/paypal/webhook-listener';
 import { STRIPE_WEBHOOK_PATH } from '@better-giving/operator/stripe/webhook-endpoint';
 import {
@@ -96,7 +97,7 @@ const ROOT_ROUTE = 'root.tsx';
  * the address is here beside the file rather than left to the name, because it is what an operator
  * pastes into a processor's dashboard: Stripe's is registered by this app and PayPal's is typed in
  * by hand, and the deployment tells an operator PayPal's over the console wire
- * (`src/routes/console.payments.ts`).
+ * (`src/routes/console.payments.ts`). NOWPayments' is named on each payment this app creates.
  *
  * each address is the constant the rest of the tree builds from rather than a second spelling of
  * it, which is what makes this the pin: a route file renamed changes the path react router resolves
@@ -106,7 +107,8 @@ const ROOT_ROUTE = 'root.tsx';
 const PROCESSOR_CALLBACKS: Readonly<Record<string, string>> = {
 	'routes/api.stripe.webhook.ts': STRIPE_WEBHOOK_PATH,
 	'routes/api.paypal.webhook.ts': PAYPAL_WEBHOOK_PATH,
-	'routes/api.chariot.webhook.ts': CHARIOT_WEBHOOK_PATH
+	'routes/api.chariot.webhook.ts': CHARIOT_WEBHOOK_PATH,
+	'routes/api.nowpayments.webhook.ts': NOWPAYMENTS_IPN_PATH
 };
 
 /**
@@ -172,6 +174,12 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// Turnstile token checked before any intent is minted, and the amount re-read from the form
 	// record rather than taken from the body.
 	'routes/api.v1.forms.$id.donations.ts',
+	// the standing of one crypto gift, polled by the donation form's waiting screen on that same
+	// page. CORS from the form's own `allowed_origins` and the limit from the layout above it; no
+	// Turnstile, by the user-approved exception its header states — a token per poll cannot exist,
+	// the id is a uuid the Turnstile-gated endpoint above minted, and the read initiates nothing and
+	// answers a state with no amount or donor detail.
+	'routes/api.v1.forms.$id.donations.$donationId.ts',
 	// the payment processors' callbacks, delivered by machines belonging to somebody else. they are
 	// unauthenticated because there is no session a processor could hold and no page any of them is
 	// answering: no origin to echo, no visitor to challenge, no form id in the path. what stands

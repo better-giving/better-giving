@@ -110,6 +110,16 @@ describe('a processor page read between visits', () => {
 		expect(binary.runs).toBe(1);
 	});
 
+	it('reads a page with no run once, with no run on it, and answers the second visit from the first', async () => {
+		const first = await readProcessorPage(move('/payments/nowpayments'), 'nowpayments');
+		bar.pageDrawn('/organisation');
+		await readProcessorPage(move('/payments/nowpayments'), 'nowpayments');
+
+		expect(first.run).toBeNull();
+		expect(binary.runs).toBe(0);
+		expect(binary.payments).toBe(1);
+	});
+
 	it('reads again for a re-read of the page already on the screen', async () => {
 		// a press's re-read and the page asking again once a run stops (./stripe-section.tsx) both
 		// want what the binary says now.
@@ -235,6 +245,14 @@ describe('a processor page read ahead of the press on its rail cell', () => {
 		await turn();
 
 		expect(binary.runs).toBe(0);
+	});
+
+	it('reads a page with no run ahead of the press too', async () => {
+		warmProcessorPage('/payments/nowpayments', ORIGIN);
+		await turn();
+		await readProcessorPage(move('/payments/nowpayments'), 'nowpayments');
+
+		expect(binary.payments).toBe(1);
 	});
 
 	it('reads nothing for a page that is not a processor page', async () => {

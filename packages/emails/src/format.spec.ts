@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatMoney } from './format';
+import { formatDate, formatDateTime, formatMoney } from './format';
 
 describe('formatMoney', () => {
 	// the code, never the symbol: `$100.00` is four different currencies this app can hold.
@@ -69,5 +69,18 @@ describe('formatDate', () => {
 	 */
 	it('renders in UTC, so a late-December gift keeps its year', () => {
 		expect(formatDate(new Date('2025-12-31T23:30:00Z'))).toBe('December 31, 2025');
+	});
+});
+
+describe('formatDateTime', () => {
+	// a deadline to the minute, in the zone it names: a mail knows nobody's own.
+	it('spells the month out and names UTC', () => {
+		expect(formatDateTime(new Date('2026-09-24T15:04:00Z'))).toBe(
+			'September 24, 2026 at 3:04 PM UTC'
+		);
+	});
+
+	it('uses plain spaces only', () => {
+		expect(formatDateTime(new Date('2026-09-24T15:04:00Z'))).not.toMatch(/[\u00A0\u202F]/);
 	});
 });

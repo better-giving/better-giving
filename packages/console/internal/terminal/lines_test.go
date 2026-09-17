@@ -54,11 +54,11 @@ func TestTheRedeploysRowsCoverEveryDeployStageButAddressingExactlyOnceAndInOrder
 	same(t, "the redeploy's covering", stages(covering(UpdateRows)), stages(want))
 }
 
-func TestTheDeployEngineReachesSevenStages(t *testing.T) {
+func TestTheDeployEngineReachesEightStages(t *testing.T) {
 	// the redeploy's rows are checked against this list less one, so a list that shrank would shrink
 	// what they are held to with it.
-	if len(DeployStages) != 7 {
-		t.Errorf("DeployStages holds %v, want the engine's seven", DeployStages)
+	if len(DeployStages) != 8 {
+		t.Errorf("DeployStages holds %v, want the engine's eight", DeployStages)
 	}
 }
 
@@ -150,5 +150,14 @@ func TestTheWaitOverTheAddressSaysWhatItIsWaitingFor(t *testing.T) {
 	}
 	if !strings.Contains(said, "answering") {
 		t.Errorf("said %q, want what is being waited for it to do", said)
+	}
+}
+
+func TestTheScheduleHealDrawsTheSchedulingRowAlone(t *testing.T) {
+	same(t, "the schedule heal's covering",
+		stages(covering(ScheduleRows)), stages([]first.Stage{first.Stage(deploy.Scheduling)}))
+	if ScheduleRows[0].Running != "Turning on the app's scheduled checks" ||
+		ScheduleRows[0].Done != "Scheduled checks turned on" {
+		t.Errorf("the schedule row says %q / %q", ScheduleRows[0].Running, ScheduleRows[0].Done)
 	}
 }

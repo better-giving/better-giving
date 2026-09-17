@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createQuote } from './api';
+import { createQuote, createStatusRead } from './api';
 
 // the write both surfaces spend, asserted where it lives rather than through either of them.
 //
@@ -133,6 +133,48 @@ describe('minting a quote', () => {
 		expect((failure as { code?: string }).code).toBe('daf_authorization_expired');
 	});
 
+	// the floor is what a crypto screen offers the donor instead of the amount they typed.
+	it('carries the floor the processor named with a below-minimum refusal', async () => {
+		stubFetch(
+			json(
+				{
+					error: 'below_minimum',
+					message: 'Bitcoin takes gifts of at least $12.34.',
+					fix: 'Raise amountMinor to 1234 or pick another coin.',
+					minAmountMinor: 1234
+				},
+				422
+			)
+		);
+
+		const failure = await refusal(createQuote(DEPLOYMENT)(SUBMISSION));
+
+		expect((failure as { minAmountMinor?: number }).minAmountMinor).toBe(1234);
+	});
+
+	it.each([
+		['a fraction', 12.5],
+		['negative', -1],
+		['text', '1234'],
+		['null', null]
+	])('leaves out a floor that is %s', async (_, minAmountMinor) => {
+		stubFetch(
+			json(
+				{
+					error: 'below_minimum',
+					message: 'Bitcoin takes larger gifts.',
+					fix: 'Raise amountMinor or pick another coin.',
+					minAmountMinor
+				},
+				422
+			)
+		);
+
+		const failure = await refusal(createQuote(DEPLOYMENT)(SUBMISSION));
+
+		expect((failure as { minAmountMinor?: number }).minAmountMinor).toBeUndefined();
+	});
+
 	it('says nothing was charged when the endpoint answers no sentence at all', async () => {
 		stubFetch(new Response('<html>502</html>', { status: 502 }));
 
@@ -183,5 +225,32 @@ describe('minting a quote', () => {
 		const failure = await refusal(createQuote(null)(SUBMISSION));
 
 		expect(failure.fix).toContain('/embed');
+	});
+});
+
+describe('the read the address screen makes', () => {
+	const read = { formId: 'frm_a8x2k9', paymentToken: 'don_01J8Z' };
+
+	it('reads the gift off the deployment by its donation id, with no credential', async () => {
+		const fetched = stubFetch(json({ state: 'waiting' }));
+
+		expect(await createStatusRead(DEPLOYMENT)(read)).toEqual({ state: 'waiting' });
+		expect(fetched).toHaveBeenCalledWith(
+			'https://donate.example/api/v1/forms/frm_a8x2k9/donations/don_01J8Z',
+			expect.objectContaining({ credentials: 'omit' })
+		);
+	});
+
+	// every way the read fails is a reading nobody has, which the flow answers by reading again.
+	it.each([
+		['an answer that is not a success', () => json({ message: 'not found' }, 404)],
+		['a body that is not JSON', () => new Response('<html>', { status: 200 })]
+	])('refuses %s', async (_case, response) => {
+		stubFetch(response());
+		await expect(createStatusRead(DEPLOYMENT)(read)).rejects.toBeDefined();
+	});
+
+	it('refuses where the runtime could not tell which deployment served it', async () => {
+		await expect(createStatusRead(null)(read)).rejects.toBeDefined();
 	});
 });

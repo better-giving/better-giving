@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFormConfig } from './config';
+import { estimateFee } from './fee';
 
 // node pool: reading a value someone else fetched is pure, so every claim about untrusted JSON is
 // assertable with an object literal and no network.
@@ -59,6 +60,27 @@ describe('reading a usable response', () => {
 
 	it('reads a form with no program at all as carrying none', () => {
 		expect(readFormConfig(RESPONSE)).not.toHaveProperty('program');
+	});
+
+	it('carries the coins a donor may pay in, beside the crypto rail', () => {
+		const coins = [
+			{
+				coin: 'usdttrc20',
+				ticker: 'usdt',
+				name: 'Tether USD (Tron)',
+				network: 'trx',
+				memoRequired: false
+			},
+			{ coin: 'xrp', ticker: 'xrp', name: 'Ripple', network: 'xrp', memoRequired: true }
+		];
+		const config = readFormConfig({
+			...RESPONSE,
+			paymentMethods: ['card', 'crypto'],
+			coins
+		});
+
+		expect(config?.paymentMethods).toEqual(['card', 'crypto']);
+		expect(config?.coins).toEqual(coins);
 	});
 
 	it('keeps an optional field only when it is readable', () => {
@@ -266,6 +288,62 @@ describe('a response with a safe reading', () => {
 		expect(Object.keys(config?.feeRules ?? {})).toEqual(['card']);
 	});
 
+	it('drops a coin it cannot read and keeps the coins it can', () => {
+		// a memo coin read as needing none is a deposit that reaches no gift, so a `memoRequired`
+		// that is not a boolean drops the coin rather than defaulting it. a coin with no ticker is
+		// dropped like one with no name.
+		const tether = {
+			coin: 'usdttrc20',
+			ticker: 'usdt',
+			name: 'Tether USD (Tron)',
+			network: 'trx',
+			memoRequired: false
+		};
+		const config = readFormConfig({
+			...RESPONSE,
+			paymentMethods: ['card', 'crypto'],
+			coins: [
+				tether,
+				{ coin: 'xrp', ticker: 'xrp', name: 'Ripple', network: 'xrp', memoRequired: 'yes' },
+				{ coin: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false },
+				{ coin: '', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false },
+				'eth'
+			]
+		});
+
+		expect(config?.coins).toEqual([tether]);
+	});
+
+	it.each([
+		['absent', undefined],
+		['not a list', { coin: 'btc' }],
+		['empty', []],
+		['all unreadable', [{ coin: 'btc' }]]
+	])('withdraws the crypto rail when its coin list is %s', (_, coins) => {
+		// a rail with no coin to pick is one nothing can be quoted on.
+		const config = readFormConfig({ ...RESPONSE, paymentMethods: ['card', 'crypto'], coins });
+
+		expect(config?.paymentMethods).toEqual(['card']);
+		expect(config).not.toHaveProperty('coins');
+	});
+
+	it('refuses a config whose only rail is crypto with no coin to pick', () => {
+		expect(readFormConfig({ ...RESPONSE, paymentMethods: ['crypto'] })).toBeNull();
+	});
+
+	it('offers a crypto rail it holds no price for, with no fee to state on it', () => {
+		// the case `FormConfig` in ./v1.ts says actually happens: a rail newer than the table serving
+		// its prices. the rail still reaches the donor; the fee line does not render.
+		const config = readFormConfig({
+			...RESPONSE,
+			paymentMethods: ['card', 'crypto'],
+			coins: [{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false }]
+		});
+
+		expect(config?.paymentMethods).toEqual(['card', 'crypto']);
+		expect(estimateFee(2500, config?.feeRules.crypto)).toBeNull();
+	});
+
 	it('reads a choice between no causes as no program at all', () => {
 		// a select drawn over nothing is a question with no answers, and the gift goes where it is
 		// needed most either way — which is what an absent program already means.
@@ -303,7 +381,7 @@ describe('a response with a safe reading', () => {
 	});
 
 	it('ignores a member of a vocabulary it does not know', () => {
-		const config = readFormConfig(withField('paymentMethods', ['card', 'crypto']));
+		const config = readFormConfig(withField('paymentMethods', ['card', 'wire_transfer']));
 
 		expect(config?.paymentMethods).toEqual(['card']);
 	});

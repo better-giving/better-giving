@@ -172,7 +172,12 @@ describe('parseQuoteRequest() — the choices the form offers', () => {
 	 */
 	it.each(OFFERED_PAYMENT_METHODS)('accepts %s over a config naming neither', (method) => {
 		const disagreeing: FormConfig = { ...CONFIG, paymentMethods: ['apple_pay'] };
-		const rail = method === 'daf' ? { method, ...AUTHORIZED } : { method };
+		const rail =
+			method === 'daf'
+				? { method, ...AUTHORIZED }
+				: method === 'crypto'
+					? { method, coin: 'btc' }
+					: { method };
 		expect(parseQuoteRequest(body(rail), disagreeing).ok).toBe(true);
 	});
 
@@ -248,6 +253,28 @@ describe('parseQuoteRequest() — a donor-advised fund gift', () => {
 			expect(result.fix).not.toContain('Give once instead');
 		}
 	);
+});
+
+describe('parseQuoteRequest() — a gift sent in crypto', () => {
+	it('carries the coin, spelled the way the account names it', () => {
+		const result = parseQuoteRequest(body({ method: 'crypto', coin: ' USDTTRC20 ' }), CONFIG);
+
+		expect(result.ok && result.value.coin).toBe('usdttrc20');
+	});
+
+	it('refuses a crypto gift naming no coin', () => {
+		expect(refusal({ method: 'crypto' }).message).toContain('`coin` is missing');
+	});
+
+	it('refuses a coin sent on another rail', () => {
+		expect(refusal({ method: 'card', coin: 'btc' }).message).toContain('only a crypto gift');
+	});
+
+	it.each(['monthly', 'yearly'] as const)('refuses a %s crypto gift as one-time', (frequency) => {
+		expect(refusal({ method: 'crypto', coin: 'btc', frequency }).message).toContain(
+			'a crypto gift is one-time'
+		);
+	});
 });
 
 describe('parseQuoteRequest() — the donor', () => {

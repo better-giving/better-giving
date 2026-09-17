@@ -96,7 +96,7 @@ const COLUMNS = [
  * declared outside `$lib/server/**` because a component may import them, and this one is the
  * `payment` table's own — `PAYMENT_METHODS` in `$lib/server/db/schema.ts`, which a component may
  * not reach at all. so what crosses is the word, and the type is what keeps the table total: a
- * seventh rail on the column is a compile error here rather than a raw `ach` on a screen.
+ * rail added to the column is a compile error here rather than a raw `ach` on a screen.
  *
  * every word is the fundraiser's. `Bank transfer` and never `ACH`, which is the schema's word and
  * exactly the initialism CLAUDE.md keeps off a screen. `PayPal` and `Venmo` are the two a donor
@@ -112,7 +112,8 @@ const RAIL_LABELS: Record<PaymentMethod, string> = {
 	ach: 'Bank transfer',
 	paypal: 'PayPal',
 	venmo: 'Venmo',
-	daf: 'Donor-advised fund'
+	daf: 'Donor-advised fund',
+	crypto: 'Crypto'
 };
 
 /** the screen's name in the document title. the frame's strip names the page (./_app.tsx). */
@@ -174,6 +175,12 @@ export async function loader({ context }: Route.LoaderArgs) {
 			// (`projectRail` in `$lib/server/donations/queries.ts`); this is the boundary that
 			// drops one.
 			paidWith: d.rail === null ? null : RAIL_LABELS[d.rail.method],
+			// only on a gift something arrived in, so every other row crosses exactly as it did. the
+			// code uppercased and never the coin's name: the name is NOWPayments' list, and this
+			// loader asks the processor nothing.
+			...(d.coinReceived && {
+				coinReceived: `${d.coinReceived.amount} ${d.coinReceived.coin.toUpperCase()}`
+			}),
 			// whether a standing commitment collected this charge, marked beside the figure rather
 			// than in Source — Source is free text a staff member typed, and a derived value in it
 			// would make one column mean two things. the read hands over a boolean and never
@@ -288,7 +295,17 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 						),
 						// the word the loader resolved, printed. a gift with nothing attempted hands
 						// over nothing and the table dashes the cell itself.
-						paidWith: d.paidWith,
+						//
+						// a crypto gift something arrived in carries the coin beside the word, in the
+						// quiet tone `Repeating` takes beside a figure: the rail is what the column is
+						// scanned for, and the coin qualifies it.
+						paidWith: d.coinReceived ? (
+							<>
+								{d.paidWith} <StatusWord secondary>{d.coinReceived}</StatusWord>
+							</>
+						) : (
+							d.paidWith
+						),
 						// a cell with nothing in it is dashed and set in the muted ink by the table
 						// itself, which is why neither column reaches for a fallback here.
 						source: d.source,

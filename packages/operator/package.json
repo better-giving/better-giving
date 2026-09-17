@@ -24,6 +24,7 @@
 		"./console/test-send": "./src/console/test-send.ts",
 		"./console/token": "./src/console/token.ts",
 		"./chariot/webhook-subscription": "./src/chariot/webhook-subscription.ts",
+		"./nowpayments/ipn-callback": "./src/nowpayments/ipn-callback.ts",
 		"./paypal/webhook-listener": "./src/paypal/webhook-listener.ts",
 		"./stripe/secret-fingerprint": "./src/stripe/secret-fingerprint.ts",
 		"./stripe/webhook-endpoint": "./src/stripe/webhook-endpoint.ts",

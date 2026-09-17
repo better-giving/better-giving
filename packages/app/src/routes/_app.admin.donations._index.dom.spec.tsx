@@ -181,6 +181,17 @@ it('prints the rail under the column headed for it', () => {
 	expect(cell(root, 'Paid with')).toBe('Venmo');
 });
 
+it('draws the coin and how much of it arrived beside a crypto gift’s rail', () => {
+	const root = screen([gift({ paidWith: 'Crypto', coinReceived: '19.36121163 XRP' })]);
+	expect(cell(root, 'Paid with')).toBe('Crypto 19.36121163 XRP');
+	expect(cell(root, 'Amount')).toBe('$123.45');
+});
+
+it('draws the rail alone on a crypto gift nothing has arrived in', () => {
+	const root = screen([gift({ status: 'pending', paidWith: 'Crypto' })]);
+	expect(cell(root, 'Paid with')).toBe('Crypto');
+});
+
 it('leaves the rail empty on a gift nothing has been attempted on', () => {
 	// `DataTable` dashes and mutes an empty cell itself, which is why the page reaches for no
 	// fallback — a rail invented for a gift that has none is a claim about money that never moved.

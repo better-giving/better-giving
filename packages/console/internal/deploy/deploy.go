@@ -71,6 +71,9 @@ const (
 	// its own parts, and a screen drawing them under one name has to reword a single line as it
 	// goes (../terminal/lines.go).
 	Pushing Stage = "pushing"
+	// Scheduling is the worker's cron schedule put up as the bundle states it, which the script
+	// upload does not carry.
+	Scheduling Stage = "scheduling"
 	// Addressing is somewhere for the worker just uploaded to answer, made where it answers nowhere.
 	Addressing Stage = "addressing"
 	// Verifying is the deployment read back, to see it carries what went up.
@@ -293,9 +296,9 @@ func Prepare(ctx context.Context, options Options) (Prepared, Run) {
 	return Prepared{held: read.Bundle}, Run{}
 }
 
-// Apply is the five stages from the one-way door on: every pending migration, then the static
-// files, then the script that names them, then somewhere for it to answer, then the deployment read
-// back.
+// Apply is the six stages from the one-way door on: every pending migration, then the static
+// files, then the script that names them, then its schedule, then somewhere for it to answer, then
+// the deployment read back.
 //
 // `prepared` is what Prepare answered with, and the migrations it applies are the ones that
 // bundle carries — so what goes through the door is what was checked in front of it.
@@ -335,6 +338,12 @@ func Apply(ctx context.Context, options Options, prepared Prepared) Run {
 	say(Progress{Stage: Pushing})
 	if failure := uploadScript(ctx, options, prepared.held, token, say); failure.Kind != "" {
 		run.Kind, run.At, run.Detail = failure.Kind, Pushing, failure.Detail
+		return run
+	}
+
+	say(Progress{Stage: Scheduling})
+	if failure := schedule(ctx, options, prepared.held.Manifest.Crons); failure.Kind != "" {
+		run.Kind, run.At, run.Detail = failure.Kind, Scheduling, failure.Detail
 		return run
 	}
 

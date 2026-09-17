@@ -12,7 +12,7 @@ import {
 } from '../payments/fees';
 import type { FormRecord } from './form-input';
 import { publishedConfig, renderableConfig, type PublishedConfigSources } from './published-config';
-import type { PaymentMethod } from '@better-giving/form/v1';
+import type { PayableCoin, PaymentMethod } from '@better-giving/form/v1';
 
 // the refusals, every one of them decidable without a database. the composer that reads the two
 // rows is in `published-config.workers.spec.ts`; everything here is the judgement it wraps.
@@ -99,6 +99,12 @@ const PAYPAL = {
 	PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
 };
 
+/** a deployment holding NOWPayments' values and no other processor's. */
+const NOWPAYMENTS = {
+	NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey',
+	NOWPAYMENTS_OUTCOME_CURRENCY: 'usdttrc20'
+};
+
 describe('publishedConfig — refusals', () => {
 	/**
 	 * an id nothing matches, which is what a mistyped `form` attribute looks like from here.
@@ -113,6 +119,7 @@ describe('publishedConfig — refusals', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
 			form: null,
 			profile: orgProfile(),
 			env: STRIPE
@@ -136,6 +143,7 @@ describe('publishedConfig — refusals', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
 			form: formRecord({ status: 'draft' }),
 			profile: orgProfile(),
 			env: STRIPE
@@ -162,6 +170,7 @@ describe('publishedConfig — refusals', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
 			form: formRecord({ status: 'archived' }),
 			profile: orgProfile(),
 			env: STRIPE
@@ -202,6 +211,7 @@ describe('publishedConfig — refusals', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
 			form: formRecord(bounds),
 			profile: orgProfile(),
 			env: STRIPE
@@ -234,6 +244,7 @@ describe('publishedConfig — refusals', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
 			form: formRecord(bounds),
 			profile: orgProfile(),
 			env: STRIPE
@@ -272,6 +283,7 @@ describe('publishedConfig — refusals', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
 			form: formRecord(),
 			profile,
 			env: STRIPE
@@ -315,6 +327,7 @@ describe('publishedConfig — refusals', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
 			form: formRecord(),
 			profile: orgProfile(),
 			env
@@ -352,6 +365,7 @@ describe('publishedConfig — refusals', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
 			form: formRecord(),
 			profile: orgProfile(),
 			env
@@ -368,6 +382,7 @@ describe('publishedConfig — refusals', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
 			form: formRecord(),
 			profile: orgProfile(),
 			env: {}
@@ -393,6 +408,7 @@ describe('publishedConfig — refusals', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails: [],
+			coins: [],
 			form: formRecord(),
 			profile: orgProfile(),
 			env: STRIPE
@@ -421,6 +437,7 @@ describe('publishedConfig — the row it carries out', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
 			form,
 			profile: orgProfile(),
 			env: STRIPE
@@ -440,6 +457,7 @@ describe('publishedConfig — the row it carries out', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
 			form: formRecord(),
 			profile: orgProfile(),
 			env: STRIPE,
@@ -459,6 +477,7 @@ describe('publishedConfig — the row it carries out', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
 			form: null,
 			profile: orgProfile(),
 			env: STRIPE
@@ -475,6 +494,7 @@ describe('publishedConfig — the row it carries out', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
 			form: formRecord(),
 			profile: orgProfile(),
 			env: STRIPE
@@ -503,6 +523,7 @@ describe('renderableConfig', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails,
+			coins: [],
 			form: formRecord(),
 			profile: orgProfile(),
 			env: STRIPE
@@ -533,6 +554,7 @@ describe('renderableConfig', () => {
 				cadences: SERVED_CADENCES,
 				program: null,
 				rails: [],
+				coins: [],
 				form: formRecord(),
 				profile: orgProfile(),
 				env: PAYPAL
@@ -544,6 +566,42 @@ describe('renderableConfig', () => {
 		expect(result.error.message).not.toContain('Stripe');
 		for (const rail of PAYPAL_RAILS) expect(result.error.message).toContain(rail);
 		for (const rail of STRIPE_RAILS) expect(result.error.message).not.toContain(rail);
+	});
+
+	/** a NOWPayments-only deployment, whose crypto rail was withdrawn for want of a coin. */
+	const nowpaymentsOnly = (coins: readonly PayableCoin[] | null) =>
+		renderableConfig(
+			publishedConfig({
+				id: FORM_ID,
+				cadences: ['one_time'],
+				program: null,
+				rails: ['crypto'],
+				coins,
+				form: formRecord(),
+				profile: orgProfile(),
+				env: NOWPAYMENTS
+			})
+		);
+
+	it('says NOWPayments did not answer where its coins could not be read, and to try again', () => {
+		const result = nowpaymentsOnly(null);
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('payments_not_configured');
+		expect(result.error.message).toContain('NOWPayments did not answer');
+		expect(result.error.fix).toContain('Try again');
+		expect(result.error.fix).not.toContain('standing');
+	});
+
+	it('says the NOWPayments account has no coin switched on where the read answered none', () => {
+		const result = nowpaymentsOnly([]);
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.error.message).toContain('NOWPayments account has no coin');
+		expect(result.error.fix).toContain('NOWPayments dashboard');
+		expect(result.error.fix).not.toContain('Try again');
 	});
 
 	it.each([
@@ -567,6 +625,7 @@ describe('renderableConfig', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails: [],
+			coins: [],
 			form: formRecord({ status: 'draft' }),
 			profile: orgProfile(),
 			env: STRIPE
@@ -577,13 +636,24 @@ describe('renderableConfig', () => {
 	});
 });
 
+/** a coin the account enabled, as `listPayableCoins` reads it. */
+const USDT = {
+	coin: 'usdttrc20',
+	name: 'Tether USD (Tron)',
+	network: 'trx',
+	ticker: 'usdt',
+	memoRequired: false
+};
+
 /** the config a live form on a fully configured deployment produces. */
+
 function served(sources: Partial<PublishedConfigSources> = {}) {
 	const result = publishedConfig({
 		id: FORM_ID,
 		cadences: SERVED_CADENCES,
 		program: null,
 		rails: OFFERED_PAYMENT_METHODS,
+		coins: [USDT],
 		form: formRecord(),
 		profile: orgProfile(),
 		env: STRIPE,
@@ -663,6 +733,29 @@ describe('publishedConfig — the config it serves', () => {
 		]);
 	});
 
+	/**
+	 * crypto is served with the coins to pick, or not at all: a donor offered the rail with nothing
+	 * to send is a form that stops at the coin picker (`readFormConfig` in packages/form/src/config.ts
+	 * withdraws it the same way).
+	 */
+	it('serves crypto with the coins the account enabled', () => {
+		const config = served({ rails: ['card', 'crypto'], coins: [USDT] });
+
+		expect(config.paymentMethods).toEqual(['card', 'crypto']);
+		expect(config.coins).toEqual([USDT]);
+	});
+
+	it('withdraws crypto where no coin was read, and serves no coin list', () => {
+		const config = served({ rails: ['card', 'crypto'], coins: [] });
+
+		expect(config.paymentMethods).toEqual(['card']);
+		expect(config).not.toHaveProperty('coins');
+	});
+
+	it('serves no coin list on a deployment not offering crypto', () => {
+		expect(served({ rails: ['card'], coins: [USDT] })).not.toHaveProperty('coins');
+	});
+
 	it('carries the organisation’s identity from the saved profile', () => {
 		expect(served()).toMatchObject({
 			orgLegalName: 'Hope Foundation',
@@ -719,6 +812,7 @@ describe('publishedConfig — the config it serves', () => {
 			cadences: SERVED_CADENCES,
 			program: null,
 			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
 			form: formRecord(),
 			profile: orgProfile(),
 			env: {
@@ -730,6 +824,31 @@ describe('publishedConfig — the config it serves', () => {
 		expect(result.ok && result.config.providers).toEqual([
 			{ name: 'paypal', publishableKey: 'notarealclientid' }
 		]);
+	});
+
+	/**
+	 * a deployment holding NOWPayments' values alone is served, with no provider named.
+	 *
+	 * a crypto gift starts no script on the donor's page, so nothing is owed to `providers`: the
+	 * deployment can take a gift from its server half alone, and refusing it would send an operator to
+	 * set values they have already set.
+	 */
+	it('serves a deployment holding NOWPayments’ values alone', () => {
+		const result = publishedConfig({
+			id: FORM_ID,
+			cadences: SERVED_CADENCES,
+			program: null,
+			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
+			form: formRecord(),
+			profile: orgProfile(),
+			env: {
+				NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey',
+				NOWPAYMENTS_OUTCOME_CURRENCY: 'usdttrc20'
+			}
+		});
+
+		expect(result.ok && result.config.providers).toEqual([]);
 	});
 
 	/**

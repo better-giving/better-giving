@@ -952,7 +952,9 @@ async function receiptFor(
 		// rule `contribution` is under, so the document a donor files cannot disagree with the gift
 		// it is about.
 		tribute: charge.tribute,
-		program: charge.program
+		program: charge.program,
+		// a collection under a commitment is a card charge; no coin arrives on one.
+		crypto: null
 	});
 
 	// the person the donor asked us to tell, after the donor's own receipt. every collection but the

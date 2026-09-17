@@ -83,6 +83,14 @@ export type ParsedQuoteRequest = {
 	 * against the form's bounds.
 	 */
 	readonly authorization: DafAuthorization | null;
+	/**
+	 * the coin a crypto gift is sent in, trimmed and lowercased as NOWPayments' codes are compared —
+	 * or `null` on every other rail.
+	 *
+	 * checked against nothing here. which coins the account takes is read at the moment of the quote
+	 * (`createIntent` in ../payments/nowpayments.ts), never off the served list, which may be older.
+	 */
+	readonly coin: string | null;
 };
 
 /** a donor-advised fund gift's authorization, both halves present and well formed. */
@@ -294,6 +302,48 @@ function parseAuthorization(
 	if (!total.success) return refusal(first(total.error), AUTHORIZATION_FIX);
 
 	return { ok: true, value: { id: id.data, authorizedMinor: total.data } };
+}
+
+/** a coin code, bounded because it is a stranger's string on a public path. */
+const COIN = z
+	.string({ error: (issue) => `\`coin\` is ${describe(issue.input)}, which is not a string.` })
+	.trim()
+	.min(1, { error: '`coin` is empty.' })
+	.max(40, { error: '`coin` is over the 40-character maximum.' });
+
+const COIN_FIX =
+	'Send `coin` as one entry’s `coin` from `coins` on this form’s config ' +
+	'(`GET /api/v1/forms/:id/config`), and only with `method` `crypto`.';
+
+/**
+ * the coin a crypto gift carries, held to that rail in both directions and to one-time.
+ *
+ * one-time because a payment to an address is one deposit, and nothing collects it again.
+ */
+function parseCoin(
+	posted: Record<string, unknown>,
+	method: PaymentMethod,
+	frequency: Frequency
+): { readonly ok: true; readonly value: string | null } | Refusal {
+	if (method !== 'crypto') {
+		if (posted.coin === undefined) return { ok: true, value: null };
+		return refusal(
+			`\`coin\` was sent with \`method\` \`${method}\`, and only a crypto gift carries one.`,
+			COIN_FIX
+		);
+	}
+	if (frequency !== 'one_time') {
+		return refusal(
+			`\`frequency\` is \`${frequency}\`, and a crypto gift is one-time.`,
+			'Send `frequency` `one_time` on `method` `crypto`. A gift that repeats is given on another rail.'
+		);
+	}
+	if (posted.coin === undefined) {
+		return refusal('`coin` is missing, and a crypto gift names the coin it is sent in.', COIN_FIX);
+	}
+	const coin = COIN.safeParse(posted.coin);
+	if (!coin.success) return refusal(first(coin.error), COIN_FIX);
+	return { ok: true, value: coin.data.toLowerCase() };
 }
 
 /** whether the donor is paying the processing fee. a real boolean, never a string spelling one. */
@@ -588,6 +638,9 @@ export function parseQuoteRequest(body: unknown, config: FormConfig): QuoteInput
 	const authorization = parseAuthorization(posted, method.data, frequency.data);
 	if (!authorization.ok) return authorization;
 
+	const coin = parseCoin(posted, method.data, frequency.data);
+	if (!coin.ok) return coin;
+
 	const coversFee = COVERS_FEE.safeParse(posted.coversFee);
 	if (!coversFee.success) {
 		return refusal(
@@ -689,7 +742,8 @@ export function parseQuoteRequest(body: unknown, config: FormConfig): QuoteInput
 			tribute: tribute.value,
 			programId: program.value,
 			turnstileToken: turnstileToken.data,
-			authorization: authorization.value
+			authorization: authorization.value,
+			coin: coin.value
 		}
 	};
 }

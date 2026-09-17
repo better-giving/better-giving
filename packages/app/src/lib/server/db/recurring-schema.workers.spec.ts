@@ -208,6 +208,15 @@ describe('a commitment names a processor the schema knows', () => {
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('recurring_plan_provider_check');
 	});
+
+	it('refuses nowpayments, a processor the payment table knows and no commitment can run on', async () => {
+		// `RECURRING_PLAN_PROVIDERS` in schema.ts is this check's own list, not `PAYMENT_PROVIDERS`.
+		const message = await rejection(() =>
+			insertPlan({ id: 'plan-nowpayments', provider: 'nowpayments' })
+		);
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('recurring_plan_provider_check');
+	});
 });
 
 describe('donation.recurring_id resolves against recurring_plan', () => {

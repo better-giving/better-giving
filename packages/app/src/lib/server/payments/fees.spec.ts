@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { estimateFee } from '@better-giving/form/fee';
-import { CHARIOT_RAILS, PAYPAL_RAILS, STRIPE_RAILS } from '@better-giving/form/embed/rails';
+import {
+	CHARIOT_RAILS,
+	NOWPAYMENTS_RAILS,
+	PAYPAL_RAILS,
+	STRIPE_RAILS
+} from '@better-giving/form/embed/rails';
 import { PAYMENT_METHODS, WALLET_METHODS } from '@better-giving/form/v1';
 import {
 	CHARIOT_FEE_RULES,
+	NOWPAYMENTS_FEE_RULE,
 	PAYPAL_US_FEE_RULES_CHARITY,
 	PAYPAL_US_FEE_RULES_STANDARD,
 	paypalFeeRules,
@@ -201,6 +207,7 @@ describe('the table a config is served', () => {
 			expect(served[rail]).toBe(PAYPAL_US_FEE_RULES_CHARITY[rail]);
 		}
 		for (const rail of CHARIOT_RAILS) expect(served[rail]).toBe(CHARIOT_FEE_RULES[rail]);
+		for (const rail of NOWPAYMENTS_RAILS) expect(served[rail]).toBe(NOWPAYMENTS_FEE_RULE);
 	});
 
 	// the charity switch is a fact about the org's PayPal account, so the two answers have to be two

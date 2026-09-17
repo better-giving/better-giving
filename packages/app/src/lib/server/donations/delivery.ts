@@ -2,7 +2,7 @@ import { adminAlert } from '@better-giving/emails';
 import { renderEmail } from '@better-giving/emails/render';
 import type { Db } from '../db/client';
 import type { EmailProvider } from '../email/provider';
-import { PROCESSOR_LABELS, type PaymentProvider } from '../payments/provider';
+import { PROCESSOR_LABELS, type PayableCoin, type PaymentProvider } from '../payments/provider';
 import { readOrgProfile } from '../org/queries';
 
 // what one verified delivery may answer with, and the one way this app tells an operator about a
@@ -77,7 +77,8 @@ export type SettleResult =
  * way — the difference is the sentence in its own delivery log, which is where an operator with a
  * misconfigured secret actually looks.
  *
- *   unverified — the signature did not check out, so the body was not read.
+ *   unverified — the signature did not check out, so the body was not read; or it did, and the
+ *                body names nothing a delivery has to.
  *   incomplete — everything verified and something this app depends on did not answer.
  */
 export const SETTLE_FAILURES = ['unverified', 'incomplete'] as const;
@@ -86,7 +87,7 @@ export type SettleFailure = (typeof SETTLE_FAILURES)[number];
 /**
  * everything the webhook's modules need that they may not build for themselves, all per request.
  *
- * ./settle.ts and ./collect.ts produce the answers above and read all three. what they end at —
+ * ./settle.ts and ./collect.ts produce the answers above and read the first three. what they end at —
  * ./receipt.ts and `alert` below — reads the database and sends mail and asks the processor nothing,
  * so it takes `MailDeps`, which a bag of these satisfies as it is.
  */
@@ -95,6 +96,11 @@ export type SettleDeps = {
 	readonly provider: PaymentProvider;
 	/** the mail transport. its failures are reported and never raised — see ./settle.ts's header. */
 	readonly email: EmailProvider;
+	/**
+	 * the coins the donor picked from, where a receipt for a crypto gift names its coin — `cachedCoins`
+	 * in ../forms/coin-cache.ts. absent, or answering null, a coin is named by its code uppercased.
+	 */
+	readonly payableCoins?: () => Promise<readonly PayableCoin[] | null>;
 };
 
 /**

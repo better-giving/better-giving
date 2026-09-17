@@ -1,5 +1,12 @@
 import { defineDonateForm, DONATE_FORM_TAG } from '../src/element';
-import { devRuntime, FIXTURE_NAMES, FIXTURES, type FixtureName } from './fixtures';
+import {
+	DEPOSIT_ENDINGS,
+	devRuntime,
+	FIXTURE_NAMES,
+	FIXTURES,
+	type DepositEnding,
+	type FixtureName
+} from './fixtures';
 import { remember, remembered } from './state';
 
 // the dev page: one real `<bg-donate-form>` on a ground a contributor can change, and a panel of
@@ -29,7 +36,11 @@ function need<T extends HTMLElement>(id: string, kind: new () => T): T {
 
 const stage = need('stage', HTMLElement);
 
-defineDonateForm(devRuntime());
+// `?deposit=` has no control on the panel: it is read once, at registration, because the runtime is.
+const wantedEnding = remembered('deposit');
+const ending: DepositEnding = DEPOSIT_ENDINGS.find((one) => one === wantedEnding) ?? 'received';
+
+defineDonateForm(devRuntime(ending));
 const element = document.createElement(DONATE_FORM_TAG);
 
 // --- the seed ---

@@ -84,7 +84,8 @@ type WebhookSecretReading struct {
 	Detail *string `json:"detail"`
 }
 
-// WebhookSubscriptionReading is what this deployment's endpoint is subscribed to.
+// WebhookSubscriptionReading is what this deployment's endpoint is subscribed to, or `not_applicable`
+// for a processor that keeps no endpoint on the account.
 //
 // Delivering and MissingEventTypes are the incomplete arm's alone; Detail is the unreadable arm's.
 type WebhookSubscriptionReading struct {
@@ -394,7 +395,7 @@ func subscriptionReading(value any) *WebhookSubscriptionReading {
 		return &WebhookSubscriptionReading{
 			State: state, Detail: *detail, MissingEventTypes: []string{},
 		}
-	case "unregistered", "complete":
+	case "unregistered", "complete", "not_applicable":
 		return &WebhookSubscriptionReading{State: state, MissingEventTypes: []string{}}
 	case "incomplete":
 		delivering, isBool := held["delivering"].(bool)

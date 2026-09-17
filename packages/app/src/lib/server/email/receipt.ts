@@ -18,6 +18,9 @@ import type { RenderedEmail } from './provider';
 // when it ran, and the whole value of a receipt is that it is reproducible. the caller reads the
 // row; this decides whether it may be printed at all.
 
+/** what arrived on a crypto gift, as the template prints it. */
+export type CryptoReceived = receipt.CryptoReceived;
+
 /** the gift, as the `donation` row holds it. */
 export interface ReceiptContribution extends receipt.ReceiptContribution {
 	/**
@@ -74,6 +77,12 @@ export interface ReceiptInput {
 	 * `program.name` its caller joined.
 	 */
 	readonly program: string | null;
+	/**
+	 * the coin and amount a crypto gift arrived as, or `null` on every other rail — the coin's name
+	 * as a donor reads it and never the processor's code. the dollar figure it prints beside them is
+	 * `contribution.totalMinor`, the value at arrival.
+	 */
+	readonly crypto: CryptoReceived | null;
 }
 
 /**
@@ -272,7 +281,8 @@ export async function renderReceipt(input: ReceiptInput): Promise<ReceiptResult>
 								label: TRIBUTE_KIND_LABELS[input.tribute.kind],
 								honoree: input.tribute.honoree
 							},
-				program: input.program
+				program: input.program,
+				crypto: input.crypto
 			})
 		)
 	};

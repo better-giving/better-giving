@@ -3,6 +3,7 @@ import type {
 	ApiErrorCode,
 	FormConfig,
 	Frequency,
+	PayableCoin,
 	PaymentMethod,
 	Program
 } from '@better-giving/form/v1';
@@ -15,7 +16,7 @@ import { readOrgProfile } from '../org/queries';
 import { present } from '../org/receipt-fields';
 import { paypalFeeRules, servedFeeRules } from '../payments/fees';
 import { servedProcessors } from '../payments/factory';
-import { PROCESSOR_LABELS, PROCESSOR_NAMES, processorOf } from '../payments/provider';
+import { PROCESSOR_LABELS, processorOf, type ProcessorName } from '../payments/provider';
 import { readActivePrograms, readProgram } from '../programs/queries';
 import { redactPublicId } from '../../redact';
 import type { FormRecord } from './form-input';
@@ -85,7 +86,19 @@ export type PublishedConfigRefusal = (typeof PUBLISHED_CONFIG_REFUSALS)[number];
  * deployment's own origin is taken off the request by `corsHeaders` in ../api/cors.ts.
  */
 export type PublishedConfigResult =
-	| { readonly ok: true; readonly config: FormConfig; readonly form: FormRecord }
+	| {
+			readonly ok: true;
+			readonly config: FormConfig;
+			readonly form: FormRecord;
+			/**
+			 * what `renderableConfig` names where the config offers no rail: the processors whose
+			 * credentials are set, and whether the coin list could be read.
+			 */
+			readonly served: {
+				readonly processors: readonly ProcessorName[];
+				readonly coinsRead: boolean;
+			};
+	  }
 	| {
 			readonly ok: false;
 			readonly reason: PublishedConfigRefusal;
@@ -122,6 +135,16 @@ export interface PublishedConfigSources {
 	 */
 	readonly rails: readonly PaymentMethod[];
 	/**
+	 * the coins a crypto gift may be sent in, already read (`cachedCoins` in ./coin-cache.ts): empty
+	 * where the account enabled none or the deployment holds no NOWPayments keys, and `null` where the
+	 * read failed.
+	 *
+	 * the one source that narrows `rails` rather than standing beside it: crypto with no coin to pick
+	 * is withdrawn, because `readFormConfig` in packages/form/src/config.ts withdraws it anyway and a
+	 * rail served there and dropped on the donor's page is a rail nobody here sees go.
+	 */
+	readonly coins: readonly PayableCoin[] | null;
+	/**
 	 * the cause this form's gifts are credited to, already read — `null` where it names none.
 	 *
 	 * a value for `cadences`' reason, and the read behind it is `readFormProgram` below: `pinned`
@@ -148,24 +171,25 @@ export interface PublishedConfigSources {
  * `readForm` and not `readForms`: it returns an archived row, which is what lets a retired form
  * be told from an id that never existed — see the refusal pair below.
  *
- * `readCadences` and `readRails` are how to find out rather than the answers, and they are called
- * only once a row has been found. how often a gift may repeat and which rails may be shown are both
- * facts about this deployment's processor account, so finding out means leaving the deployment — and
- * an id nothing matches must not cost an outbound call on a public, unauthenticated path any more
- * than it costs a second query. they are functions rather than a provider because building one is
- * the caller's, which is what keeps this module free of the payment factory and every refusal here
- * reachable in a test with no network in sight: `$lib/server/forms/cadence-cache.ts` and
- * `$lib/server/forms/rail-cache.ts` are what every caller passes, and their headers state what is
+ * `readCadences`, `readRails` and `readCoins` are how to find out rather than the answers, and they
+ * are called only once a row has been found. how often a gift may repeat and which rails may be
+ * shown are both facts about this deployment's processor account, so finding out means leaving the
+ * deployment — and an id nothing matches must not cost an outbound call on a public,
+ * unauthenticated path any more than it costs a second query. they are functions rather than a
+ * provider because building one is the caller's, which is what keeps this module free of the
+ * payment factory and every refusal here reachable in a test with no network in sight:
+ * `$lib/server/forms/cadence-cache.ts`, `$lib/server/forms/rail-cache.ts` and
+ * `$lib/server/forms/coin-cache.ts` are what every caller passes, and their headers state what is
  * cached and what a stale entry costs.
  *
- * two arguments rather than one read of the account, because they are two reads with two answers and
- * one of them can be kept while the other is refetched. required rather than defaulted, so a caller
- * that has not been given a rail source is a compile error here — a fallback to the repository's own
- * list is exactly the unconditional answer this parameter exists to remove.
+ * separate arguments rather than one read of the account, because they are separate reads with
+ * their own answers and one of them can be kept while another is refetched. required rather than
+ * defaulted, so a caller that has not been given a rail source is a compile error here — a fallback
+ * to the repository's own list is exactly the unconditional answer this parameter exists to remove.
  *
- * neither may throw: `offeredCadences` in ./offered-cadences.ts and `offeredRails` in
- * ./offered-rails.ts turn every failing arm of the payment port into a list, so a processor nobody
- * can reach changes what a form offers rather than taking this route down.
+ * none may throw: `offeredCadences` in ./offered-cadences.ts, `offeredRails` in ./offered-rails.ts
+ * and `cachedCoins` in ./coin-cache.ts turn every failing arm of the payment port into a list, so a
+ * processor nobody can reach changes what a form offers rather than taking this route down.
  *
  * `source` is the platform env whole, narrowed here by `readConfigEnv` — the same entry point
  * `createEmailProvider` and `createPaymentProviders` take, so a blank value and a binding sitting
@@ -184,7 +208,8 @@ export async function readPublishedConfig(
 	id: string,
 	source: unknown,
 	readCadences: () => Promise<readonly Frequency[]>,
-	readRails: () => Promise<readonly PaymentMethod[]>
+	readRails: () => Promise<readonly PaymentMethod[]>,
+	readCoins: () => Promise<readonly PayableCoin[] | null>
 ): Promise<PublishedConfigResult> {
 	const env = readConfigEnv(source);
 	const form = await readForm(db, id);
@@ -198,17 +223,19 @@ export async function readPublishedConfig(
 			env,
 			cadences: [],
 			rails: [],
+			coins: [],
 			program: null
 		});
 	}
 
-	const [profile, cadences, rails, program] = await Promise.all([
+	const [profile, cadences, rails, coins, program] = await Promise.all([
 		readOrgProfile(db),
 		readCadences(),
 		readRails(),
+		readCoins(),
 		readFormProgram(db, form)
 	]);
-	return publishedConfig({ id, form, profile, env, cadences, rails, program });
+	return publishedConfig({ id, form, profile, env, cadences, rails, coins, program });
 }
 
 /**
@@ -431,7 +458,7 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 	// ../payments/factory.ts is where both halves are read, so which processors this deployment can
 	// serve a form on is decided beside which ones it can charge on rather than twice.
 	const processors = servedProcessors(sources.env);
-	if (processors.providers.length === 0) {
+	if (!processors.serves) {
 		return refusal(
 			form,
 			'payments_not_configured',
@@ -445,10 +472,14 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 
 	const turnstileSiteKey = (sources.env.TURNSTILE_SITE_KEY ?? '').trim();
 	const program = servedProgram(sources.program);
+	const coins = sources.coins ?? [];
+	const paymentMethods =
+		coins.length > 0 ? sources.rails : sources.rails.filter((rail) => rail !== 'crypto');
 
 	return {
 		ok: true,
 		form,
+		served: { processors: processors.configured, coinsRead: sources.coins !== null },
 		config: {
 			formId: form.id,
 			// every processor this deployment can both charge on and start an SDK for, in the port's
@@ -476,7 +507,8 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 			// the deployment's own answer and never this row's, the same as `frequencies` above and
 			// under the same rule: which of the rails this repository has a form for the processor
 			// account is approved for, read by `offeredRails` in ./offered-rails.ts.
-			paymentMethods: sources.rails,
+			// crypto only beside a coin to pick — see `PublishedConfigSources.coins`.
+			paymentMethods,
 			feeCoverage: SERVED_FEE_COVERAGE,
 			// every rail the vocabulary holds, composed from each processor's own table
 			// (`servedFeeRules` in ../payments/fees.ts). which of the two PayPal tables is the one thing
@@ -493,7 +525,9 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 			...(turnstileSiteKey === '' ? {} : { turnstileSiteKey }),
 			// omitted rather than sent empty, the same call the sitekey above takes: the field is
 			// optional on the contract and `readFormConfig` drops what `servedProgram` drops.
-			...(program === null ? {} : { program })
+			...(program === null ? {} : { program }),
+			// omitted rather than sent empty, and only beside the rail that reads it.
+			...(paymentMethods.includes('crypto') ? { coins } : {})
 			// `monthlyAsk` stays declared on the contract in packages/form/src/v1.ts because `v1` is
 			// add-never-rename (CLAUDE.md), and nothing on either side touches it: no code here
 			// sets it and no code in packages/form/src/ reads it.
@@ -564,34 +598,57 @@ const SERVED_LOCALE = 'en-US';
  * judgement stays a value, testable in the node pool, rather than moving into a `RequestHandler`
  * where it could only be read through a `Response`.
  *
- * unreachable from a processor nobody could read: that arm answers with the deployment's list whole,
- * so an empty list here is an account that answered and said no to every rail. the fix is on the
- * processor's own dashboard, and the console is where a standing per rail is already drawn, so
- * the sentence sends an operator there rather than naming a variable that is set correctly.
+ * a rail processor nobody could read never reaches this: that arm answers with its rails whole, so
+ * an empty list is an account that answered and said no to every rail — the fix is on the
+ * processor's own dashboard, and the console is where a standing per rail is already drawn. crypto
+ * is the exception, because it is withdrawn for want of a coin rather than for a standing
+ * (`PublishedConfigSources.coins`): a coin list that could not be read is NOWPayments not
+ * answering, and the sentence says to try again rather than sending anyone to fix a value that is
+ * set correctly; a list that answered with no coin says so, and names the dashboard it is set in.
  */
 export function renderableConfig(result: PublishedConfigResult): PublishedConfigResult {
 	if (!result.ok || result.config.paymentMethods.length > 0) return result;
 
-	// the processors that answered and the rails those processors settle, rather than the whole
-	// vocabulary: a deployment holding PayPal alone has no Stripe account whose standings could be
-	// read and no card rail anything here could mint, so naming either sends an operator looking for
-	// a screen that does not exist. taken out of the port's own list rather than off the served one,
-	// because `Provider.name` in packages/form/src/v1.ts is a string on purpose — a name off the
-	// wire is not one this repository has a label or a rail table for.
-	const named = new Set(result.config.providers.map((provider) => provider.name));
-	const answering = PROCESSOR_NAMES.filter((name) => named.has(name));
-	const labels = answering.map((name) => PROCESSOR_LABELS[name]).join(' and ');
-	const rails = OFFERED_PAYMENT_METHODS.filter((rail) => answering.includes(processorOf(rail)));
-	const one = answering.length === 1;
+	// the processors whose credentials are set, and never the served `providers`: NOWPayments has no
+	// browser half and is on no entry there, so a deployment holding it alone would be named as
+	// nobody.
+	const { processors, coinsRead } = result.served;
+	const clauses: string[] = [];
+	const fixes: string[] = [];
+	if (processors.includes('nowpayments')) {
+		clauses.push(
+			coinsRead
+				? 'the NOWPayments account has no coin switched on that it takes payment in'
+				: 'NOWPayments did not answer when its coins were read'
+		);
+		fixes.push(
+			coinsRead
+				? 'Switch on at least one coin in the NOWPayments dashboard; a form offers it within five minutes.'
+				: 'Nothing about the deployment needs changing. Try again in a few minutes.'
+		);
+	}
+
+	const standing: readonly ProcessorName[] = processors.filter((name) => name !== 'nowpayments');
+	if (standing.length > 0) {
+		const one = standing.length === 1;
+		const labels = standing.map((name) => PROCESSOR_LABELS[name]).join(' and ');
+		const rails = OFFERED_PAYMENT_METHODS.filter((rail) => standing.includes(processorOf(rail)));
+		clauses.push(
+			`${labels} ${one ? 'is' : 'are'} approved for none of the rails ` +
+				`${one ? 'it settles' : 'they settle'} (${rails.join(', ')})`
+		);
+		fixes.push(
+			'Open the console (`better-giving start`), read the standing shown against each rail, and ' +
+				'clear it where the processor’s own dashboard says to. A rail switched off there is one ' +
+				'switch; a capability never requested has to be asked for.'
+		);
+	}
 
 	return refusal(
 		result.form,
 		'payments_not_configured',
-		`This deployment cannot serve a donation form: ${labels} ${one ? 'is' : 'are'} approved for ` +
-			`none of the rails ${one ? 'it settles' : 'they settle'} (${rails.join(', ')}).`,
-		'Open the console (`better-giving start`), read the standing shown against each rail, and clear ' +
-			'it where the processor’s own dashboard says to. A rail switched off there is one switch; ' +
-			'a capability never requested has to be asked for.'
+		`This deployment cannot serve a donation form: ${clauses.join(', and ')}.`,
+		fixes.join(' ')
 	);
 }
 

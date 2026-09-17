@@ -10,7 +10,7 @@ import (
 // sentence over the one wait past them that draws no row at all (./WaitingForTheAddress).
 //
 // **a row is the thing an operator is waiting on, and a check the binary makes is one of those
-// things.** the chain reports eleven stages and the deploy engine seven, and three of the seven are
+// things.** the chain reports twelve stages and the deploy engine eight, and three of the eight are
 // checks: `checking` reads the cloudflare account in front of the migration, `addressing` makes sure
 // the uploaded worker answers somewhere, and `verifying` reads back what cloudflare is now holding.
 // each lights and ticks on a row of its own, so an operator sees every check pass — bar `addressing`
@@ -93,7 +93,10 @@ var deploysToAccount = Row{
 // again at none of its bytes sent. one line over the two is a bar that fills, empties and fills
 // again under a note reworded as it goes, which is why they are two lines here.
 //
-// the checks after the code are children of their own, in the order the engine makes them:
+// the schedule is a child of its own after the code, because it is a second call cloudflare can
+// turn down once the code is already up (../deploy's schedule).
+//
+// the checks after it are children of their own, in the order the engine makes them:
 // `addressing` makes sure the worker answers somewhere, and `verifying` is a read of what cloudflare
 // is holding rather than of the deployment answering — a get of the worker's settings, checked for
 // the bindings that went up (../deploy).
@@ -121,6 +124,11 @@ var (
 		Running: "Uploading the app's code",
 		Done:    "The app's code uploaded",
 	}
+	scheduling = Row{
+		Stages:  []first.Stage{first.Stage(deploy.Scheduling)},
+		Running: "Turning on the app's scheduled checks",
+		Done:    "Scheduled checks turned on",
+	}
 	addressing = Row{
 		Stages:  []first.Stage{first.Stage(deploy.Addressing)},
 		Running: "Making sure your deployment has a web address",
@@ -134,9 +142,14 @@ var (
 )
 
 var (
-	cloudflareChain  = toCloudflare(uploadingFiles, pushingCode, addressing, verifying)
-	cloudflareUpdate = toCloudflare(uploadingFiles, pushingCode, verifying)
+	cloudflareChain  = toCloudflare(uploadingFiles, pushingCode, scheduling, addressing, verifying)
+	cloudflareUpdate = toCloudflare(uploadingFiles, pushingCode, scheduling, verifying)
 )
+
+// ScheduleRows are what a `start` onto a deployment already on this release draws, where its
+// schedule is not the one this release carries and nothing else is drawn: the scheduling row alone,
+// in the upload's own words (../deploy's Unscheduled).
+var ScheduleRows = []Row{scheduling}
 
 // ChainRows are the rows the first deploy draws, in the order the chain reaches them.
 //
@@ -223,11 +236,11 @@ var UpdateRows = []Row{
 	cloudflareUpdate,
 }
 
-// DeployStages are the deploy engine's own seven, in the order it reaches them, spelled as the chain
+// DeployStages are the deploy engine's own eight, in the order it reaches them, spelled as the chain
 // names them so that one renderer draws both halves of `start`.
 //
 // a list of its own rather than a slice of ../first's `Stages`, so that a stage added to the chain
-// outside the deploy cannot quietly join it. ./lines_test.go holds UpdateRows to all seven but
+// outside the deploy cannot quietly join it. ./lines_test.go holds UpdateRows to all eight but
 // `addressing`.
 var DeployStages = []first.Stage{
 	first.Stage(deploy.Fetching),
@@ -235,6 +248,7 @@ var DeployStages = []first.Stage{
 	first.Stage(deploy.Migrating),
 	first.Stage(deploy.Uploading),
 	first.Stage(deploy.Pushing),
+	first.Stage(deploy.Scheduling),
 	first.Stage(deploy.Addressing),
 	first.Stage(deploy.Verifying),
 }

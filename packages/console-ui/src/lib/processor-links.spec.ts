@@ -7,13 +7,21 @@ import { processorLinks } from './processor-links';
 const STRIPE_PAIR = ['STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY'];
 const PAYPAL_PAIR = ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET'];
 const CHARIOT_PAIR = ['CHARIOT_API_KEY', 'CHARIOT_CONNECT_ID'];
+const NOWPAYMENTS_PAIR = ['NOWPAYMENTS_API_KEY', 'NOWPAYMENTS_OUTCOME_CURRENCY'];
 
 describe('processorLinks', () => {
 	it('draws every processor set up where the deployment holds every pair', () => {
-		expect(processorLinks(new Set([...STRIPE_PAIR, ...PAYPAL_PAIR, ...CHARIOT_PAIR]))).toEqual([
+		const held = new Set([...STRIPE_PAIR, ...PAYPAL_PAIR, ...CHARIOT_PAIR, ...NOWPAYMENTS_PAIR]);
+		expect(processorLinks(held)).toEqual([
 			{ processor: 'stripe', name: 'Stripe', href: '/payments/stripe', notSetUp: false },
 			{ processor: 'paypal', name: 'PayPal', href: '/payments/paypal', notSetUp: false },
-			{ processor: 'chariot', name: 'Chariot', href: '/payments/chariot', notSetUp: false }
+			{ processor: 'chariot', name: 'Chariot', href: '/payments/chariot', notSetUp: false },
+			{
+				processor: 'nowpayments',
+				name: 'NOWPayments',
+				href: '/payments/nowpayments',
+				notSetUp: false
+			}
 		]);
 	});
 
@@ -22,7 +30,8 @@ describe('processorLinks', () => {
 		expect(rows.map((row) => [row.name, row.notSetUp])).toEqual([
 			['Stripe', true],
 			['PayPal', false],
-			['Chariot', true]
+			['Chariot', true],
+			['NOWPayments', true]
 		]);
 	});
 
@@ -39,6 +48,6 @@ describe('processorLinks', () => {
 	});
 
 	it('marks every processor where the deployment holds no pair', () => {
-		expect(processorLinks(new Set()).map((row) => row.notSetUp)).toEqual([true, true, true]);
+		expect(processorLinks(new Set()).map((row) => row.notSetUp)).toEqual([true, true, true, true]);
 	});
 });

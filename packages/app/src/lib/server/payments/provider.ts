@@ -1,4 +1,9 @@
-import { isPaypalRail, isStripeRail } from '@better-giving/form/embed/rails';
+import {
+	isChariotRail,
+	isNowpaymentsRail,
+	isPaypalRail,
+	isStripeRail
+} from '@better-giving/form/embed/rails';
 import type { Frequency, PaymentMethod as QuotedRail } from '@better-giving/form/v1';
 import type {
 	PaymentMethod as SettledRail,
@@ -11,15 +16,17 @@ import type {
 //
 // payments go through this port, never a processor's SDK directly (CLAUDE.md). one module imports
 // each SDK and no other may — ./stripe.ts for `stripe` and ./paypal.ts for
-// `@paypal/paypal-server-sdk`, gated by ./sole-importer.spec.ts; ./chariot.ts imports none and speaks
-// Chariot's API over `fetch` — which is the same shape ../db/client.ts holds over D1, and for the
-// same stated reason: so the contract has one place to be stated rather than one per call site.
+// `@paypal/paypal-server-sdk`, gated by ./sole-importer.spec.ts; ./chariot.ts and ./nowpayments.ts
+// import none and speak their processors' APIs over `fetch` — which is the same shape
+// ../db/client.ts holds over D1, and for the same stated reason: so the contract has one place to be
+// stated rather than one per call site.
 //
-// **the port names three processors, and no adapter answers every arm.** an adapter this release
-// ships refuses the arms its processor has nothing behind — a gift that
-// repeats, a capability read the API does not publish — with `unsupported`, exactly as ./factory.ts
-// answers for a processor with no adapter at all. so a method being present here is never a claim
-// that every deployment can reach it, and a caller's answer to any of them is `if (!result.ok)`.
+// **the port names every processor in `PROCESSOR_NAMES`, and no adapter answers every arm.** an
+// adapter this release ships refuses the arms its processor has nothing behind — a gift that
+// repeats, a capability read the API does not publish, a coin list on a processor that takes none —
+// with `unsupported`, exactly as ./factory.ts answers for a processor with no adapter at all. so a
+// method being present here is never a claim that every deployment can reach it, and a caller's
+// answer to any of them is `if (!result.ok)`. which arms an adapter answers is in its own header.
 //
 // what the port buys beyond that is containment and testability: the processor's vocabulary — seven
 // PaymentIntent states, sixteen error classes, unix seconds, lowercase currencies, expandable
@@ -48,7 +55,8 @@ import type {
 export const PROCESSOR_NAMES = [
 	'stripe',
 	'paypal',
-	'chariot'
+	'chariot',
+	'nowpayments'
 ] as const satisfies readonly PaymentProviderName[];
 export type ProcessorName = (typeof PROCESSOR_NAMES)[number];
 
@@ -67,37 +75,59 @@ export type ProcessorName = (typeof PROCESSOR_NAMES)[number];
 export const PROCESSOR_LABELS: Readonly<Record<ProcessorName, string>> = Object.freeze({
 	stripe: 'Stripe',
 	paypal: 'PayPal',
-	chariot: 'Chariot'
+	chariot: 'Chariot',
+	nowpayments: 'NOWPayments'
 });
 
 /**
  * whether a gift that repeats is taken through this processor at all.
  *
- * Chariot's is not: a grant through it is one-time, and its adapter refuses every
- * repeating arm (./chariot.ts). so it is asked nothing about repeating gifts and has no say in which
- * cadences a form offers — ./recurring-provision.ts reads this before it asks any account, and
- * a deployment holding Chariot beside a card processor offers what that processor can collect.
+ * Chariot's is not: a grant through it is one-time. NOWPayments' is not either: a crypto payment is
+ * one deposit to one address, and nothing on the account collects again. both adapters refuse every
+ * repeating arm, so neither is asked anything about repeating gifts nor has a say in which cadences
+ * a form offers — ./recurring-provision.ts reads this before it asks any account, and a deployment
+ * holding either beside a card processor offers what that processor can collect.
+ *
+ * a table total over `ProcessorName`, so a processor added without an answer is a compile error
+ * rather than one joining the cadence intersection by default.
  */
+const TAKES_REPEATING_GIFTS: Readonly<Record<ProcessorName, boolean>> = Object.freeze({
+	stripe: true,
+	paypal: true,
+	chariot: false,
+	nowpayments: false
+});
+
 export function takesRepeatingGifts(name: ProcessorName): boolean {
-	return name !== 'chariot';
+	return TAKES_REPEATING_GIFTS[name];
 }
 
 /**
  * which processor a rail is quoted and settled on.
  *
- * the rail-to-processor table is `STRIPE_RAILS`, `PAYPAL_RAILS` and `CHARIOT_RAILS` in
- * packages/form/src/embed/rails.ts and this reads it rather than restating it: those three lists
- * are the split, ./rail-agreement.spec.ts holds them to partitioning `PAYMENT_METHODS`, and a second
- * table here would be the one that disagrees the day a rail moves.
+ * the rail-to-processor table is the per-processor lists in packages/form/src/embed/rails.ts and
+ * this reads it rather than restating it: those lists are the split, ./rail-agreement.spec.ts holds
+ * them to partitioning `PAYMENT_METHODS`, and a second table here would be the one that disagrees
+ * the day a rail moves.
  *
- * total over `QuotedRail` because the three lists partition the vocabulary, so this never answers
- * null and no caller writes a fallback for one. it is the whole of what makes a rail a donor picked
- * select the adapter that can mint for it — `Processors.forRail` in ./factory.ts is the one reader,
- * and a caller pairing a rail with a processor by hand is the drift it exists to prevent.
+ * total over `QuotedRail` because the lists partition the vocabulary, so this never answers null and
+ * no caller writes a fallback for one. each list is asked by name and none is the fallthrough: a rail
+ * added to the vocabulary with no guard here leaves `rail` un-narrowed at the end, which is a compile
+ * error at `unrouted` rather than a quote minted on whichever processor came last. it is the whole of
+ * what makes a rail a donor picked select the adapter that can mint for it — `Processors.forRail` in
+ * ./factory.ts is the one reader, and a caller pairing a rail with a processor by hand is the drift it
+ * exists to prevent.
  */
 export function processorOf(rail: QuotedRail): ProcessorName {
 	if (isStripeRail(rail)) return 'stripe';
-	return isPaypalRail(rail) ? 'paypal' : 'chariot';
+	if (isPaypalRail(rail)) return 'paypal';
+	if (isChariotRail(rail)) return 'chariot';
+	if (isNowpaymentsRail(rail)) return 'nowpayments';
+	return unrouted(rail);
+}
+
+function unrouted(rail: never): never {
+	throw new TypeError(`no processor settles the rail ${String(rail)}`);
 }
 
 /**
@@ -299,6 +329,19 @@ export type { QuotedRail, SettledRail };
  *                      `not_configured` asks for a value to set, and there is none that changes
  *                      this, while `internal_error` points at logs that hold nothing. what changes
  *                      it is a release, which is the one thing a deployment cannot do to itself.
+ *   coin_not_accepted
+ *                    — `createIntent` only, on the crypto rail. the coin asked for is not one the
+ *                      account takes today, so nothing was created. the donor picks another coin.
+ *   below_minimum    — `createIntent` only, on the crypto rail. the gift converts to less of the coin
+ *                      than the processor will accept, and a deposit under it lands as a failed or
+ *                      part-paid payment rather than a gift. nothing was created; `detail` names the
+ *                      minimum in dollars, and `minimumMinor` carries it where the adapter read one.
+ *   above_maximum    — `createIntent` only, on the crypto rail. the processor refused the gift as
+ *                      more than it takes in that coin. nothing was created.
+ *
+ * the three crypto reasons are refusals about the donor's choice rather than about the deployment,
+ * and none of them is worth the same call again: the minimum moves with the coin's price, but a
+ * retry of the identical request is still the donor's same figure.
  */
 export const PAYMENT_FAILURE_REASONS = [
 	'not_configured',
@@ -311,7 +354,10 @@ export const PAYMENT_FAILURE_REASONS = [
 	'unreachable',
 	'provider_error',
 	'internal_error',
-	'unsupported'
+	'unsupported',
+	'coin_not_accepted',
+	'below_minimum',
+	'above_maximum'
 ] as const;
 export type PaymentFailureReason = (typeof PAYMENT_FAILURE_REASONS)[number];
 
@@ -360,7 +406,10 @@ export const TERMINAL_FAILURE_REASONS = [
 	'not_found',
 	'authorization_expired',
 	'internal_error',
-	'unsupported'
+	'unsupported',
+	'coin_not_accepted',
+	'below_minimum',
+	'above_maximum'
 ] as const satisfies readonly PaymentFailureReason[];
 
 /**
@@ -396,6 +445,12 @@ export type PaymentFailure = {
 	readonly ok: false;
 	readonly reason: PaymentFailureReason;
 	readonly detail: string;
+	/**
+	 * `below_minimum` only, and only where the processor named a figure: the least
+	 * `IntentRequest.amountMinor` the coin takes, in the same minor units, rounded up. a covered fee
+	 * is inside it, as it is inside `amountMinor`. absent on every other refusal.
+	 */
+	readonly minimumMinor?: number;
 };
 
 /**
@@ -470,6 +525,23 @@ export type IntentRequest = {
 	 */
 	readonly authorizedSessionId?: string;
 	/**
+	 * the origin of the request that reached this deployment — `new URL(request.url).origin` — and
+	 * never the `Origin` header a donor's page sent, which is an attribution signal (CLAUDE.md).
+	 *
+	 * required on every rail though one adapter reads it: NOWPayments takes the address it notifies on
+	 * each payment (`webhookAddress` in ./webhook-address.ts), and a payment minted without one
+	 * settles nowhere with nothing saying so. Stripe, PayPal and Chariot ignore it.
+	 */
+	readonly deploymentOrigin: string;
+	/**
+	 * the coin the donor picked, as NOWPayments' code lowercased (`usdttrc20`), on a crypto gift.
+	 *
+	 * an input to check and never a price: the adapter refuses a coin the account does not take
+	 * (`coin_not_accepted`), and the amount paid in it is converted by the processor from
+	 * `amountMinor`. absent on every other rail.
+	 */
+	readonly coin?: string;
+	/**
 	 * what this app needs written on the processor's copy of the record.
 	 *
 	 * the donation id belongs here. an event can reach the webhook before the row that caused it
@@ -482,6 +554,42 @@ export type IntentRequest = {
 	readonly metadata?: Readonly<Record<string, string>>;
 };
 
+/**
+ * an amount of a coin, as a canonical positive decimal: `^(0|[1-9]\d*)(\.\d*[1-9])?$`.
+ *
+ * text and never a JS number past the adapter that read it, because a coin carries more precision
+ * than a double keeps (a wei is 1e-18 of an ether) and the figure is shown to a donor and receipted —
+ * a digit lost in a float is an address paid the wrong amount. never `REAL` in D1, and never summed
+ * or compared in SQL: the books stay in USD minor units, and this is a fact about what moved.
+ */
+export type CoinAmount = string;
+
+/**
+ * where and how much a donor sends, on a gift paid to an address.
+ *
+ * typed rather than packed into `Intent.paymentToken`, because the element, the pending-payment
+ * email and the row each read it, and an opaque token would be three parsers of one adapter's format.
+ */
+export type DepositInstructions = {
+	/** the address the processor minted for this one payment. */
+	readonly address: string;
+	/**
+	 * the memo or destination tag the deposit has to carry, or null where the payment has none.
+	 *
+	 * a deposit to a memo coin's address without it cannot be matched to the payment and reaches no
+	 * gift, so a screen never drops one that is present.
+	 */
+	readonly memo: string | null;
+	/** NOWPayments' code, lowercased (`usdttrc20`) — never its `ticker`, which names the base asset. */
+	readonly coin: string;
+	/** the chain the coin travels on, as NOWPayments names it (`trx`); the donor's wrong-network guard. */
+	readonly network: string;
+	/** what the processor asks the donor to send. */
+	readonly coinAmount: CoinAmount;
+	/** when the address stops being watched for this payment. */
+	readonly validUntil: Date;
+};
+
 /** a minted intent, as the quote endpoint needs it. */
 export type Intent = {
 	/** the processor's own id, stored as `payment.provider_txn_id`. */
@@ -490,9 +598,40 @@ export type Intent = {
 	 * what the donor's browser confirms this attempt with, and `Quote.paymentToken` on the wire.
 	 *
 	 * opaque here as it is there: named for what it does rather than for what one processor calls
-	 * it, so the adapter is the only thing that knows what is inside it.
+	 * it, so the adapter is the only thing that knows what is inside it. on a gift paid to an address
+	 * there is nothing to confirm, and it is the donation id — a UUID the Turnstile-gated quote minted,
+	 * which a waiting screen reads the gift's standing by.
 	 */
 	readonly paymentToken: string;
+	/** present exactly on a gift paid to an address, and what the donor is shown to pay it. */
+	readonly deposit?: DepositInstructions;
+};
+
+/**
+ * one coin the account takes, as a donor picks it.
+ *
+ * read from the account on every ask and never committed: which coins are enabled is set in the
+ * processor's dashboard, and a list in this tree is wrong the day a coin is switched there.
+ */
+export type PayableCoin = {
+	/** NOWPayments' code, lowercased — the value `IntentRequest.coin` carries back. */
+	readonly coin: string;
+	/** the processor's display name (`Tether USD (Tron)`). */
+	readonly name: string;
+	/** the chain, as NOWPayments names it. */
+	readonly network: string;
+	/**
+	 * NOWPayments' `ticker`, lowercased (`usdt`). names the base asset, so the same asset on several
+	 * chains shares one: for display and search only, never to identify the coin — `coin` does.
+	 */
+	readonly ticker: string;
+	/**
+	 * whether a deposit without the payment's memo cannot be matched at all.
+	 *
+	 * false on a coin whose memo is optional; the created payment's `DepositInstructions.memo` is
+	 * what says whether that payment carries one.
+	 */
+	readonly memoRequired: boolean;
 };
 
 /**
@@ -550,11 +689,17 @@ export type Settlement = {
 	 */
 	readonly feeMinor: number | null;
 	/**
-	 * whatever `IntentRequest.metadata` wrote on the record, read back.
+	 * whatever `IntentRequest.metadata` wrote on the record, read back, and `{}` where the processor
+	 * keeps none this app wrote.
 	 *
 	 * this is what makes that field worth having. a delivery can arrive before the row that caused
 	 * it is readable, so a handler that could only find its gift by looking the transaction id up
 	 * in its own database would lose exactly the race the metadata was written for.
+	 *
+	 * not every processor carries it. a Chariot grant takes no metadata and reads back `{}`, and is
+	 * found by `providerTxnId` alone. a NOWPayments payment carries one `order_id`, read back under
+	 * `DONATION_METADATA_KEY` — except on a repeat deposit (`Arrival.repeatOf`), which inherits its
+	 * parent's `order_id` and reads back `{}` so it can never be taken for the parent's gift.
 	 */
 	readonly metadata: Readonly<Record<string, string>>;
 	/**
@@ -567,6 +712,33 @@ export type Settlement = {
 	readonly reference?: string;
 	/** business time: when the money moved, as the ledger's `occurred_at` wants it. */
 	readonly occurredAt: Date;
+	/**
+	 * what arrived, where the gift settles at the value of what the donor actually sent rather than
+	 * at the amount the intent was minted for.
+	 *
+	 * null means `amountMinor` is the amount asked, which is every card, wallet, PayPal and grant
+	 * settlement. present, `amountMinor` is the dollar value of what arrived and the gift's recorded
+	 * figures are restated to it before posting (../donations/settle.ts).
+	 */
+	readonly arrival: Arrival | null;
+};
+
+/** what reached the processor on a gift paid to an address. */
+export type Arrival = {
+	/** the coin that arrived, read off the payment and never off the intent. */
+	readonly coin: string;
+	/** how much of it arrived. */
+	readonly coinAmount: CoinAmount;
+	/**
+	 * where `Settlement.amountMinor` came from: the processor's own dollar value at arrival, or its
+	 * estimate for the amount received where the payment carries none.
+	 */
+	readonly valuedBy: 'arrival_rate' | 'processor_estimate';
+	/**
+	 * the parent payment's `providerTxnId` on a repeat deposit — money sent again to an address whose
+	 * payment already settled, which arrives as a payment of its own — else null.
+	 */
+	readonly repeatOf: string | null;
 };
 
 /**
@@ -598,7 +770,8 @@ export type PaymentEventKind = (typeof PAYMENT_EVENT_KINDS)[number];
  * delivery is serialised in the API version the account held when it happened, so a replayed one
  * can carry an older shape for any field. what is read here is the little that has never moved.
  * everything a handler acts on comes from a read — `readSettlement` or `readRecurringGift` — which
- * fetches the object fresh against one pinned version.
+ * fetches the object fresh against one pinned version. `SettlementEvent.delivered` is the one
+ * exception, and says why.
  */
 type VerifiedDelivery = {
 	/**
@@ -618,6 +791,17 @@ export type SettlementEvent = VerifiedDelivery & {
 	readonly kind: 'settlement';
 	/** the transaction this is about, and never null on this kind. */
 	readonly providerTxnId: string;
+	/**
+	 * the settlement as the verified body itself states it — the one exception to `VerifiedDelivery`'s
+	 * rule, and NOWPayments' alone: its IPNs carry no version to replay an older shape under, and a
+	 * payment NOWPayments minted itself (a repeat deposit) may not answer the read.
+	 *
+	 * a fallback and never the source: a caller reaches for it only where
+	 * `readSettlement` refused `not_found` or `not_configured`, and only for a `succeeded`, `failed` or
+	 * `cancelled` status. absent on every other processor, and where the body could not be read into
+	 * a settlement.
+	 */
+	readonly delivered?: Settlement;
 };
 
 /**
@@ -652,9 +836,10 @@ export type WebhookDelivery = {
 	/**
 	 * the raw body, byte for byte.
 	 *
-	 * the signature is computed over what was sent, so a body that has been parsed and
-	 * re-serialised verifies against nothing. the route that owns this endpoint reads the body
-	 * once and hands the string here — CLAUDE.md: the request body is read exactly once, by the
+	 * a signature is computed over what was sent, so a body that has been parsed and re-serialised
+	 * verifies against nothing — NOWPayments aside, whose signature covers its own re-serialised parse
+	 * (`verifies` in ./nowpayments.ts), and which is handed the raw string all the same. the route
+	 * that owns this endpoint reads the body once and hands the string here — CLAUDE.md: the request body is read exactly once, by the
 	 * endpoint that owns it, and a hook that touches it breaks verification at runtime.
 	 */
 	readonly body: string;
@@ -1574,6 +1759,15 @@ export interface PaymentProvider {
 	 * answer is reported as it stands rather than waited on.
 	 */
 	registerWalletDomain(host: string): Promise<PaymentResult<WalletDomain>>;
+
+	/**
+	 * the coins the account takes, read from the account. changes nothing.
+	 *
+	 * what a donor is offered is this list and nothing wider — `IntentRequest.coin` is refused outside
+	 * it. no minimum is read for it: a coin's floor is checked by `createIntent` for the coin a donor
+	 * picked, which refuses a coin whose floor cannot be read as `coin_not_accepted`.
+	 */
+	listPayableCoins(): Promise<PaymentResult<readonly PayableCoin[]>>;
 }
 
 /**
@@ -1617,7 +1811,8 @@ export function sealed(provider: PaymentProvider): PaymentProvider {
 		resubscribeWebhookEndpoint: (id) => guard(() => provider.resubscribeWebhookEndpoint(id)),
 		replaceWebhookEndpoint: (id, url) => guard(() => provider.replaceWebhookEndpoint(id, url)),
 		listWalletDomains: () => guard(() => provider.listWalletDomains()),
-		registerWalletDomain: (host) => guard(() => provider.registerWalletDomain(host))
+		registerWalletDomain: (host) => guard(() => provider.registerWalletDomain(host)),
+		listPayableCoins: () => guard(() => provider.listPayableCoins())
 	};
 }
 
@@ -1729,6 +1924,9 @@ export function refusing(
 			return refusal;
 		},
 		async registerWalletDomain(): Promise<PaymentResult<WalletDomain>> {
+			return refusal;
+		},
+		async listPayableCoins(): Promise<PaymentResult<readonly PayableCoin[]>> {
 			return refusal;
 		}
 	};

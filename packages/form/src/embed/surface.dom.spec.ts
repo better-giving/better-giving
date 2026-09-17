@@ -37,7 +37,8 @@ const CONFIG: FormConfig = {
 		google_pay: { percent: 0.029, fixedMinor: 30 },
 		paypal: { percent: 0.0349, fixedMinor: 49 },
 		venmo: { percent: 0.0349, fixedMinor: 49 },
-		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
+		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
+		crypto: { percent: 0.01, fixedMinor: 0 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -72,7 +73,7 @@ type Kit = {
 	readonly collapses: number[];
 	readonly paypalSessions: SessionOptionsLike[];
 	readonly paypalStarts: Promise<{ orderId: string }>[];
-	readonly seams: Parameters<typeof createPaymentSurface>[5];
+	readonly seams: Parameters<typeof createPaymentSurface>[6];
 };
 
 type Answers = {
@@ -184,6 +185,9 @@ if (customElements.get(CHARIOT_TAG) === undefined) {
 	);
 }
 
+/** the coin list the card hands over, which the crypto row stands in and nothing here reads. */
+const COIN_LIST = document.createElement('div');
+
 async function composed(k: Kit, config: FormConfig = CONFIG) {
 	const surface = createPaymentSurface(
 		config,
@@ -191,6 +195,7 @@ async function composed(k: Kit, config: FormConfig = CONFIG) {
 		(rail) => k.rails.push(rail),
 		(failure) => k.unavailable.push(failure),
 		NO_FUND,
+		COIN_LIST,
 		k.seams
 	);
 	for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
@@ -469,6 +474,73 @@ describe('one payment surface over however many processors a config names', () =
 
 			expect(glyph?.getAttribute('viewBox')).toBe('0 0 33 33');
 			surface.stop();
+		});
+
+		describe('the crypto option', () => {
+			const CRYPTO: FormConfig = {
+				...CONFIG,
+				paymentMethods: ['card', 'paypal', 'crypto'],
+				coins: [
+					{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false }
+				]
+			};
+
+			it('stands last, holding the card’s coin list, while crypto is offered', async () => {
+				const k = kit();
+				const surface = await composed(k, CRYPTO);
+				expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal']);
+
+				surface.offerCrypto(true);
+				expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal', 'Crypto']);
+				expect(rowsIn(k)[1]?.contains(COIN_LIST)).toBe(true);
+
+				surface.offerCrypto(false);
+				expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal']);
+				surface.stop();
+			});
+
+			// opening the row is choosing the rail: the coin list inside it is the rest of the choice.
+			it('chooses the rail when its row is opened and lets it go when the row closes', async () => {
+				const k = kit();
+				const surface = await composed(k, CRYPTO);
+				surface.offerCrypto(true);
+
+				head(rowsIn(k)[1])?.click();
+				expect(k.rails).toEqual(['crypto']);
+				head(rowsIn(k)[0])?.click();
+				expect(k.rails).toEqual(['crypto', null]);
+				head(rowsIn(k)[1])?.click();
+				k.pickCard('card');
+				expect(k.rails).toEqual(['crypto', null, 'crypto', null, 'card']);
+				surface.stop();
+			});
+
+			it('lets the rail go with the row when crypto stops being offered while it is open', async () => {
+				const k = kit();
+				const surface = await composed(k, CRYPTO);
+				surface.offerCrypto(true);
+				head(rowsIn(k)[1])?.click();
+
+				surface.offerCrypto(false);
+
+				expect(k.rails).toEqual(['crypto', null]);
+				surface.stop();
+			});
+
+			// raw-colour-ok: NOWPayments' favicon fills, as ./rows.ts states them.
+			it('draws NOWPayments’ mark in its own fills, with no id', async () => {
+				const k = kit();
+				const surface = await composed(k, CRYPTO);
+				surface.offerCrypto(true);
+
+				const glyph = head(rowsIn(k)[1])?.querySelector('svg');
+				expect(glyph?.getAttribute('viewBox')).toBe('0 0 64 64');
+				expect(
+					[...(glyph?.querySelectorAll('path') ?? [])].map((path) => path.getAttribute('fill'))
+				).toEqual(['#68AAFF', '#000000']);
+				expect(glyph?.querySelector('[id]')).toBeNull();
+				surface.stop();
+			});
 		});
 
 		// the header over the box says there is a choice to make, which one row is not.

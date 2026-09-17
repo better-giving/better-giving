@@ -42,15 +42,16 @@ import type { AdjustedReconciliation } from './fee';
 import {
 	declinedFee,
 	NUMBERED_STEPS,
+	payerIsComplete,
 	shownTotalMinor,
 	stepIsReachable,
 	type checkoutMachine,
 	type CheckoutEvent,
+	type CoinRefusal,
 	type Failure,
 	type NumberedStep
 } from './checkout.machine';
 import {
-	completePayer,
 	methodIsChargeable,
 	missingAmountDecisions,
 	missingPayerFields,
@@ -69,6 +70,7 @@ import {
 	NO_PROGRAM_LABEL,
 	TRIBUTE_KIND_LABELS,
 	TRIBUTE_KINDS,
+	type Deposit,
 	type Frequency,
 	type PaymentMethod,
 	type Quote,
@@ -170,6 +172,11 @@ export type State =
 			readonly fv?: FormValue;
 			/** the decisions a press would still be refused for, in the order they are asked. */
 			readonly missing: readonly AmountDecision[];
+			/**
+			 * the processor refusing the amount for the coin a `crypto` gift was quoted in, which this
+			 * step is where a donor fixes, standing until the amount, the coin or the rail changes.
+			 */
+			readonly refusal?: CoinRefusal & { readonly code: 'below_minimum' | 'above_maximum' };
 	  }
 	| {
 			readonly step: 'details';
@@ -209,6 +216,13 @@ export type State =
 			 * `payable` alone says nothing wherever a press is refused for anything but the rail.
 			 */
 			readonly payerComplete: boolean;
+			/**
+			 * the rail the payment surface last reported, where it reported one.
+			 *
+			 * read for the words that differ by rail on this step — a crypto gift's fee sentence and its
+			 * coin list's refusal — and never for whether a press is taken, which `payerComplete` is.
+			 */
+			readonly method?: PaymentMethod;
 	  }
 	| {
 			readonly step: 'confirm';
@@ -258,8 +272,23 @@ export type State =
 	  } & CommittedRail)
 	| ({ readonly step: 'indeterminate' } & CommittedRail)
 	| { readonly step: 'awaitingVerification'; readonly deadline: number | null }
+	| {
+			readonly step: 'awaitingDeposit';
+			/** where and how much to send, exactly as the quote handed it over. */
+			readonly deposit: Deposit;
+			/** the quote's own total, which the address screen states as what the coin is worth today. */
+			readonly totalMinor: number;
+			/** where the same details were emailed, off the committed payer. */
+			readonly email: string;
+			/**
+			 * the address's send-by has passed on this device, so the address is withdrawn while the gift
+			 * is still read.
+			 */
+			readonly closed: boolean;
+	  }
+	| { readonly step: 'depositExpired' }
 	| { readonly step: 'verificationExpired' }
-	| { readonly step: 'success' }
+	| ({ readonly step: 'success' } & CommittedRail)
 	| {
 			readonly step: 'failed';
 			readonly message: string;
@@ -310,6 +339,15 @@ export type CheckoutApi<
 	readonly emailField: T['field'];
 	readonly firstNameField: T['field'];
 	readonly lastNameField: T['field'];
+	/**
+	 * the coin a `crypto` gift is sent in: every coin the account takes, sorted by ticker, each with
+	 * the words it is listed under and whether the account refused it on this card.
+	 *
+	 * a `select` because it is one choice from a closed list, with `''` for none as the tribute's and
+	 * the program's are. what a renderer draws it as is the renderer's; the element draws a searchable
+	 * list, which is a way of choosing from this list rather than a different list.
+	 */
+	readonly coinSelect: T['select'];
 	readonly consentToggle: T['button'];
 	readonly feeToggle: T['button'];
 	readonly submitButton: T['button'];
@@ -372,6 +410,8 @@ export const TOP_LEVEL_STATES = [
 	'redirecting',
 	'processing',
 	'awaitingVerification',
+	'awaitingDeposit',
+	'depositExpired',
 	'verificationExpired',
 	'success',
 	'failed'
@@ -413,10 +453,17 @@ export function toState(snapshot: CheckoutSnapshot): State {
 	switch (step) {
 		case 'amount': {
 			const missing = missingAmountDecisions(context.draft, context.config);
-			return fv === null ? { step: 'amount', missing } : { step: 'amount', fv, missing };
+			const { coinRefusal } = context;
+			const refusal =
+				coinRefusal !== null && coinRefusal.code !== 'coin_not_accepted'
+					? { refusal: { ...coinRefusal, code: coinRefusal.code } }
+					: {};
+			return fv === null
+				? { step: 'amount', missing, ...refusal }
+				: { step: 'amount', fv, missing, ...refusal };
 		}
 		case 'success':
-			return { step: 'success' };
+			return { step: 'success', ...rail };
 		case 'redirecting':
 			return { step: 'redirecting', ...rail };
 		case 'processing':
@@ -435,6 +482,22 @@ export function toState(snapshot: CheckoutSnapshot): State {
 			return { step: 'indeterminate', ...rail };
 		case 'verificationExpired':
 			return { step: 'verificationExpired' };
+		case 'awaitingDeposit': {
+			const deposit = context.quote?.deposit;
+			// reached only past `quoteIsDeposit`, which a quote without a deposit or a payer never passes.
+			if (deposit === undefined || context.quote === null || context.payer === null) {
+				return working('quoting');
+			}
+			return {
+				step: 'awaitingDeposit',
+				deposit,
+				totalMinor: context.quote.totalMinor,
+				email: context.payer.email,
+				closed: snapshot.matches({ awaitingDeposit: { address: 'closed' } })
+			};
+		}
+		case 'depositExpired':
+			return { step: 'depositExpired' };
 		case 'awaitingVerification':
 			return { step: 'awaitingVerification', deadline: context.verificationDeadline };
 		case 'failed':
@@ -450,7 +513,10 @@ export function toState(snapshot: CheckoutSnapshot): State {
 						step: 'give',
 						fv,
 						payable: methodIsChargeable(context.payerDraft, context.config),
-						payerComplete: completePayer(context.payerDraft, context.config) !== null
+						payerComplete: payerIsComplete(context),
+						...(context.payerDraft.method === undefined
+							? {}
+							: { method: context.payerDraft.method })
 					};
 		case 'mandate':
 			return fv === null || context.quote === null
@@ -543,6 +609,9 @@ function isWorking(snapshot: CheckoutSnapshot): boolean {
  * control's encoding rather than a wire one: no request ever carries it.
  */
 const NO_PROGRAM = '';
+
+/** what the coin choice carries while no coin is picked, for `NO_PROGRAM`'s reason. */
+const NO_COIN = '';
 
 /**
  * derives the render surface from a snapshot.
@@ -688,6 +757,23 @@ export function connect<
 			maxLength: MAX_TRIBUTE_EMAIL,
 			value: draft.tribute?.notifyEmail ?? '',
 			onChange: (notifyEmail: string) => send({ type: 'SET_TRIBUTE', notifyEmail })
+		}),
+
+		// sorted here rather than by a renderer, so both surfaces list the coins in one order: by ticker,
+		// which is how a donor holding a coin knows it.
+		coinSelect: normalize.select({
+			name: 'coin',
+			value: payerDraft.coin ?? NO_COIN,
+			options: [...(config.coins ?? [])]
+				.sort((a, b) => a.ticker.localeCompare(b.ticker) || a.name.localeCompare(b.name))
+				.map((coin) => ({
+					value: coin.coin,
+					label: coin.ticker.toUpperCase(),
+					name: coin.name,
+					refused: context.refusedCoins.includes(coin.coin)
+				})),
+			onChange: (value: string) =>
+				send({ type: 'SET_COIN', coin: value === NO_COIN ? null : value })
 		}),
 
 		continueButton: button({ onClick: () => send({ type: 'CONTINUE' }) }),

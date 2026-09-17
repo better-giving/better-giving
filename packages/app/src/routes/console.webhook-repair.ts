@@ -1,7 +1,9 @@
 import type { WebhookRepairReport } from '@better-giving/operator/console/payments';
 import { webhookEndpointUrl } from '@better-giving/operator/stripe/webhook-endpoint';
 import { consoleJson, consoleMethodNotAllowed } from '$lib/server/console/surface';
+import { keepsWebhookEndpoint } from '$lib/server/console/processors';
 import { createPaymentProviders } from '$lib/server/payments/factory';
+import { PROCESSOR_LABELS, PROCESSOR_NAMES } from '$lib/server/payments/provider';
 import { repairWebhookRegistration } from '$lib/server/payments/webhook-registration';
 import { platform } from '../context';
 import type { Route } from './+types/console.webhook-repair';
@@ -31,10 +33,12 @@ import type { Route } from './+types/console.webhook-repair';
 // version an endpoint's deliveries are serialised in, which is fixed at creation — that one is a
 // replacement, and $lib/server/payments/provider.ts says so at the arm.
 //
-// **it takes no body, and the endpoint is not named by the caller.** which endpoint on the account
-// is this deployment's is settled by the address this request reached, exactly as the reading beside
-// it settles it (./console.payments.ts) — an id a request could carry would be a press acting on
-// whichever endpoint it was told to, including another deployment on the same account's.
+// **the endpoint is not named by the caller.** which endpoint on the account is this deployment's is
+// settled by the address this request reached, exactly as the reading beside it settles it
+// (./console.payments.ts) — an id a request could carry would be a press acting on whichever
+// endpoint it was told to, including another deployment on the same account's. a body may name the
+// processor and nothing else, and only Stripe is taken: a processor that keeps no endpoint at all
+// is refused by name rather than pressed on Stripe's in its place.
 //
 // **nothing about the endpoint comes back out.** no id, no signing secret and no fingerprint reaches
 // the answer, a sentence in it or a log line: what the console draws is the outcome and, where the
@@ -45,6 +49,9 @@ import type { Route } from './+types/console.webhook-repair';
 // be told had changed.
 
 export async function action({ context, request }: Route.ActionArgs): Promise<Response> {
+	const named = await namedProcessor(request);
+	if (named !== null) return consoleJson(named, 400);
+
 	const { env } = context.get(platform);
 
 	// the address this deployment answers on, learned from the request that reached it: no hostname
@@ -63,6 +70,40 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 	// was drawn are all 500s rather than 400s, for ./console.recurring.ts's reason: no value a caller
 	// could send fixes any of them.
 	return consoleJson(report, report.outcome === 'failed' ? 500 : 200);
+}
+
+/** why a press body cannot be acted on, or `null` where it names Stripe or nothing. */
+async function namedProcessor(
+	request: Request
+): Promise<{ error: string; message: string } | null> {
+	const sent = await request.text();
+	if (sent.trim() === '') return null;
+
+	let body: unknown;
+	try {
+		body = JSON.parse(sent);
+	} catch {
+		return { error: 'bad_body', message: 'The request body is not JSON.' };
+	}
+	const named =
+		typeof body === 'object' && body !== null && !Array.isArray(body)
+			? (body as Record<string, unknown>).processor
+			: undefined;
+	if (named === undefined || named === null || named === 'stripe') return null;
+
+	const processor = PROCESSOR_NAMES.find((name) => name === named);
+	if (processor !== undefined && !keepsWebhookEndpoint(processor))
+		return {
+			error: 'not_applicable',
+			message:
+				`${PROCESSOR_LABELS[processor]} keeps no webhook endpoint to repair: each payment names ` +
+				'its own callback address.'
+		};
+	return {
+		error: 'bad_processor',
+		message:
+			'Only Stripe’s webhook endpoint is repaired here. Send `{ "processor": "stripe" }` or no body.'
+	};
 }
 
 /** the read this address does not answer. where the endpoint stands is ./console.payments.ts's. */

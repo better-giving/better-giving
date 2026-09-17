@@ -142,6 +142,15 @@ import type { PostableAccountId } from './postable';
 //    table and fails on a second.
 //    this is why every constraint on `account` below landed in the first migration:
 //    adding one afterwards is this path.
+//    a self-referencing FK adds one more edit. the rebuild's `DROP TABLE payment` deletes
+//    every row with foreign keys on, and each delete searches both tables whose FK names
+//    `payment` — the old table and `__new_payment` — so with the FK column unindexed on
+//    either one the drop is rows × rows, which at tens of thousands of payments is past D1's
+//    per-query time limit. drizzle creates the indexes only after the rename, so the index
+//    on that column moves up to `__new_payment` before the `DROP`. index names are global
+//    to the schema, and the old table still holds the real name at that point: create it
+//    under a `__new_` name, and after the rename drop that and keep drizzle's `CREATE INDEX`.
+//    `payment.parent_payment_id` is the one such column today.
 //
 // 3. every table is `STRICT`, and the keyword is hand-patched into the SQL.
 //    drizzle-kit has no `STRICT` concept — this file cannot ask for it, and the
@@ -1391,8 +1400,21 @@ export type PaymentDirection = (typeof PAYMENT_DIRECTIONS)[number];
  *
  * `daf` is how money arrives from a donor-advised fund: a grant the fund pays out, not a charge
  * on anything the donor holds.
+ *
+ * `crypto` is a coin the donor sent to an address, whichever coin it was. the coin itself is
+ * `payment.coin`, not a member here: the list of coins is the processor's and moves weekly, and
+ * every member of this list is a rebuild of `payment`.
  */
-export const PAYMENT_METHODS = ['cash', 'check', 'card', 'ach', 'paypal', 'venmo', 'daf'] as const;
+export const PAYMENT_METHODS = [
+	'cash',
+	'check',
+	'card',
+	'ach',
+	'paypal',
+	'venmo',
+	'daf',
+	'crypto'
+] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 /**
@@ -1408,9 +1430,31 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
  *
  * `chariot` is the processor that carries a `daf` gift; the grant id it mints is the row's
  * `provider_txn_id`.
+ *
+ * `nowpayments` is the processor that carries a `crypto` gift; NOWPayments' `payment_id` is the
+ * row's `provider_txn_id`, so a delivery naming it finds the row through
+ * `payment_provider_txn_idx` like every other processor's.
  */
-export const PAYMENT_PROVIDERS = ['stripe', 'paypal', 'chariot', 'manual'] as const;
+export const PAYMENT_PROVIDERS = ['stripe', 'paypal', 'chariot', 'nowpayments', 'manual'] as const;
 export type PaymentProviderName = (typeof PAYMENT_PROVIDERS)[number];
+
+/**
+ * the providers `recurring_plan_provider_check` admits: its own frozen list, not
+ * `PAYMENT_PROVIDERS`. widening that check rebuilds `recurring_plan`, a table `donation` points
+ * at, so a processor that cannot carry a commitment does not join it. `nowpayments` is one —
+ * a crypto gift is one-time, and `takesRepeatingGifts` in ../payments/provider.ts keeps it out of
+ * every repeating read.
+ *
+ * a processor that does run commitments is added here and to `PAYMENT_PROVIDERS` in the same
+ * change, and that migration rebuilds both tables. `satisfies` holds this list to names the
+ * other one has.
+ */
+export const RECURRING_PLAN_PROVIDERS = [
+	'stripe',
+	'paypal',
+	'chariot',
+	'manual'
+] as const satisfies readonly PaymentProviderName[];
 
 /**
  * the members of `PAYMENT_PROVIDERS` that mint no transaction id, which is the exception
@@ -1524,8 +1568,47 @@ export const payment = sqliteTable(
 		 */
 		occurredAt: at('occurred_at').notNull(),
 		/** system time: when the row was written. */
-		createdAt: createdAt()
+		createdAt: createdAt(),
 		// append new columns below this line — see rule 1 at the top of this file.
+
+		/**
+		 * the coin a `crypto` payment is in, NOWPayments' code lowercased (`usdttrc20`) —
+		 * the donor's choice on a pending row, and what the processor reports arrived once it
+		 * settles, the same claim-then-outcome shape `method` carries. null on every other rail.
+		 */
+		coin: text('coin'),
+		/**
+		 * the network the coin travels on, as NOWPayments names it. beside `coin` rather than
+		 * inside it because it is the fact a donor sending on the wrong chain gets wrong, and a
+		 * reader should not have to decode a code to find it. null where the processor said none.
+		 */
+		coinNetwork: text('coin_network'),
+		/**
+		 * how much of `coin` arrived, as a canonical decimal string: `0.5`, `12`, `1.000000001`.
+		 * null until something arrives.
+		 *
+		 * text, and never `real` or an integer: a coin amount has up to eighteen decimal places
+		 * and no fixed minor unit, so an integer column has no scale to agree on across coins and
+		 * a float column silently rounds the last digits a receipt quotes. it is never summed,
+		 * compared or booked in SQL — the books hold `amount_minor`, the dollar value at arrival —
+		 * so text costs nothing a query needs. canonical means one spelling per number (no
+		 * leading or trailing zeros, no exponent, no sign), so two rows naming the same amount
+		 * store the same bytes; `payment_coin_amount_canonical_check` below holds that.
+		 */
+		coinAmount: text('coin_amount'),
+		/**
+		 * business time: when the deposit address stops being watched. set on a pending
+		 * `crypto` row from what the processor quoted; the scheduled read that closes an expired
+		 * gift is keyed on it.
+		 */
+		validUntil: at('valid_until'),
+		/**
+		 * on a repeat deposit — a second sending to an address whose first already settled — the
+		 * payment row of that first sending. this deployment's own `payment.id`, never
+		 * NOWPayments' parent id: theirs is the parent row's `provider_txn_id`, which is how the
+		 * parent is found before this is written. null on every first payment.
+		 */
+		parentPaymentId: text('parent_payment_id').references((): AnySQLiteColumn => payment.id)
 	},
 	(t) => [
 		check('payment_direction_check', enumCheck(t.direction, PAYMENT_DIRECTIONS)),
@@ -1594,7 +1677,52 @@ export const payment = sqliteTable(
 		 * compensating entry a human writes, which is what double-entry books are for.
 		 */
 		check('payment_amount_minor_positive_check', sql`${t.amountMinor} > 0`),
+		check('payment_coin_not_blank_check', optionalNotBlank(t.coin)),
+		// one spelling per coin, as NOWPayments' codes are compared once lowercased: `USDTTRC20`
+		// and `usdttrc20` stored side by side would read as two coins.
+		check('payment_coin_lowercase_check', sql`${t.coin} is null or ${t.coin} = lower(${t.coin})`),
+		check('payment_coin_network_not_blank_check', optionalNotBlank(t.coinNetwork)),
+		/**
+		 * a coin fact is a crypto fact. a card row carrying a coin is a writer that mixed two
+		 * gifts up, and nothing reading `coin` would think to check `method` first.
+		 */
+		check('payment_coin_needs_crypto_check', sql`${t.coin} is null or ${t.method} = 'crypto'`),
+		/**
+		 * an amount is reachable to its unit, the rule `ccy` states at the top of this file for
+		 * money: a `coin_amount` with no `coin` is a number nobody can read, and a network with no
+		 * coin names nothing.
+		 */
+		check(
+			'payment_coin_facts_need_coin_check',
+			sql`(${t.coinAmount} is null and ${t.coinNetwork} is null) or ${t.coin} is not null`
+		),
+		/**
+		 * `^(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$`, and not zero, in glob terms because D1 has no
+		 * REGEXP: only digits and at most one point; the point neither first nor last; no
+		 * leading zero before another digit; no trailing zero after the point. `0` itself is
+		 * refused — a row records an amount that arrived, and nothing arrived is null.
+		 */
+		check(
+			'payment_coin_amount_canonical_check',
+			sql`${t.coinAmount} is null or (${t.coinAmount} <> '' and ${t.coinAmount} <> '0' and ${t.coinAmount} not glob '*[^0-9.]*' and length(${t.coinAmount}) - length(replace(${t.coinAmount}, '.', '')) <= 1 and ${t.coinAmount} not glob '.*' and ${t.coinAmount} not glob '*.' and ${t.coinAmount} not glob '0[0-9]*' and ${t.coinAmount} not glob '*.*0')`
+		),
 		index('payment_donation_id_idx').on(t.donationId),
+		// not for a read: what it serves is the next rebuild's `DROP TABLE payment` — rule 2.
+		index('payment_parent_payment_id_idx').on(t.parentPaymentId),
+		/**
+		 * the scheduled read in `lib/server/donations/pending-crypto-read.ts`, every thirty minutes.
+		 * partial, so it holds only the gifts still waiting and shrinks as they settle, where
+		 * `payment_provider_txn_idx` holds every crypto gift ever taken.
+		 *
+		 * `provider` leads because that read names it by equality: sqlite, holding no statistics,
+		 * takes the index matching the most equality terms, and on `created_at` alone it picks
+		 * `payment_provider_txn_idx` instead. the index is usable only while the query's `where`
+		 * names `method` and `status` with these values — `pending-crypto-read.plan.workers.spec.ts`
+		 * holds the plan to it.
+		 */
+		index('payment_pending_crypto_provider_created_at_idx')
+			.on(t.provider, t.createdAt)
+			.where(sql`${t.method} = 'crypto' and ${t.status} = 'pending'`),
 		/**
 		 * payment-grain idempotency, sitting underneath `entry_group_source_idx`'s
 		 * posting-grain idempotency. a redelivered Stripe charge carries the same
@@ -1742,7 +1870,7 @@ export const recurringPlan = sqliteTable(
 	(t) => [
 		check('recurring_plan_interval_check', enumCheck(t.interval, RECURRING_INTERVALS)),
 		check('recurring_plan_status_check', enumCheck(t.status, RECURRING_PLAN_STATUSES)),
-		check('recurring_plan_provider_check', enumCheck(t.provider, PAYMENT_PROVIDERS)),
+		check('recurring_plan_provider_check', enumCheck(t.provider, RECURRING_PLAN_PROVIDERS)),
 		check('recurring_plan_currency_check', currencyCheck(t.currency)),
 		// `> 0` for the reason `donation_total_minor_positive_check` gives: a zero-amount
 		// commitment is the shape a half-parsed submit produces, and every charge it made

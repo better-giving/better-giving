@@ -33,6 +33,7 @@ import {
 	type FeeRules,
 	type FormConfig,
 	type Frequency,
+	type PayableCoin,
 	type PaymentMethod,
 	type Provider
 } from './v1';
@@ -195,6 +196,36 @@ function program(value: unknown): Pick<FormConfig, 'program'> | null {
 	return options.length === 0 ? {} : { program: { mode: 'choice', options } };
 }
 
+/** one coin, or `null` where any field of it is unreadable. */
+function coin(value: unknown): PayableCoin | null {
+	const source = record(value);
+	if (source === null) return null;
+	const code = text(source.coin);
+	const ticker = text(source.ticker);
+	const name = text(source.name);
+	const network = text(source.network);
+	if (code === null || ticker === null || name === null || network === null) return null;
+	if (typeof source.memoRequired !== 'boolean') return null;
+	return { coin: code, ticker, name, network, memoRequired: source.memoRequired };
+}
+
+/**
+ * the coins a crypto gift may be sent in, holding only the entries it could read.
+ *
+ * an unreadable entry is dropped rather than refusing the config, for `providers`' reason: a coin
+ * missing from the list is one the donor cannot pick, and every coin still on it is one the account
+ * takes. a `memoRequired` that is not a boolean drops the coin rather than defaulting, because a
+ * memo coin read as needing none is a deposit that reaches no gift.
+ */
+function coins(value: unknown): readonly PayableCoin[] {
+	const entries: PayableCoin[] = [];
+	for (const entry of list(value)) {
+		const readable = coin(entry);
+		if (readable !== null) entries.push(readable);
+	}
+	return entries;
+}
+
 /**
  * the mode every served config is read as, whatever it names.
  *
@@ -236,10 +267,12 @@ export function readFormConfig(value: unknown): FormConfig | null {
 	if (minAmountMinor > maxAmountMinor) return null;
 
 	const frequencies: readonly Frequency[] = vocabulary(source.frequencies, FREQUENCIES);
+	const payableCoins = coins(source.coins);
+	// a crypto rail with no coin to pick is one nothing can be quoted on, so it is not offered.
 	const paymentMethods: readonly PaymentMethod[] = vocabulary(
 		source.paymentMethods,
 		PAYMENT_METHODS
-	);
+	).filter((method) => method !== 'crypto' || payableCoins.length > 0);
 	if (frequencies.length === 0 || paymentMethods.length === 0) return null;
 
 	const suggestedAmountsMinor = list(source.suggestedAmountsMinor)
@@ -268,6 +301,7 @@ export function readFormConfig(value: unknown): FormConfig | null {
 		ein,
 		deductibilityStatement,
 		...cause,
-		...(turnstileSiteKey === null ? {} : { turnstileSiteKey })
+		...(turnstileSiteKey === null ? {} : { turnstileSiteKey }),
+		...(payableCoins.length === 0 ? {} : { coins: payableCoins })
 	};
 }

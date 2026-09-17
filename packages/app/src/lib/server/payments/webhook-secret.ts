@@ -93,7 +93,9 @@ const VERIFICATION: Readonly<
 	stripe: { variable: 'STRIPE_WEBHOOK_SECRET', stamp: secretFingerprint },
 	paypal: { variable: 'PAYPAL_WEBHOOK_ID', stamp: (stored) => stored ?? null },
 	// Chariot signs a delivery with the subscription's secret, as Stripe does, so only digests cross.
-	chariot: { variable: 'CHARIOT_WEBHOOK_SECRET', stamp: secretFingerprint }
+	chariot: { variable: 'CHARIOT_WEBHOOK_SECRET', stamp: secretFingerprint },
+	// an IPN is signed with the account's IPN secret, so only digests cross here too.
+	nowpayments: { variable: 'NOWPAYMENTS_IPN_SECRET', stamp: secretFingerprint }
 });
 
 /**

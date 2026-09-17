@@ -52,7 +52,7 @@ import type { StripeUnreadableReason } from './stripe-read.js';
  *
  * the order is the deployment's and no consumer sorts it, so the folds always stand in one order.
  */
-export const PAYMENT_PROCESSORS = ['stripe', 'paypal', 'chariot'] as const;
+export const PAYMENT_PROCESSORS = ['stripe', 'paypal', 'chariot', 'nowpayments'] as const;
 
 export type PaymentProcessor = (typeof PAYMENT_PROCESSORS)[number];
 
@@ -219,6 +219,8 @@ export interface WebhookSecretReading {
  *                  anywhere. the fresh-fork state, and the one the setup press belongs to.
  *   complete     — switched on and subscribed to everything this app records. nothing to do.
  *   incomplete   — the endpoint is the right one and is not doing the whole job.
+ *   not_applicable — the processor keeps no endpoint on the account at all: each payment names its
+ *                  own callback address, so there is nothing to register, read or repair.
  *
  * **the two faults `incomplete` carries are kept apart and both are true at once.** an endpoint
  * switched off delivers nothing at all; an endpoint delivering while short of an event drops
@@ -235,6 +237,7 @@ export interface WebhookSecretReading {
 export type WebhookSubscriptionReading =
 	| { readonly state: 'unreadable'; readonly detail: string }
 	| { readonly state: 'unregistered' }
+	| { readonly state: 'not_applicable' }
 	| { readonly state: 'complete' }
 	| {
 			readonly state: 'incomplete';

@@ -65,7 +65,8 @@ function port(
 		resubscribeWebhookEndpoint: unused('resubscribeWebhookEndpoint'),
 		replaceWebhookEndpoint: unused('replaceWebhookEndpoint'),
 		listWalletDomains: unused('listWalletDomains'),
-		registerWalletDomain: unused('registerWalletDomain')
+		registerWalletDomain: unused('registerWalletDomain'),
+		listPayableCoins: unused('listPayableCoins')
 	};
 }
 
@@ -227,20 +228,24 @@ describe('setUpRecurringGiftsOn', () => {
 	});
 
 	/**
-	 * Chariot takes no gift that repeats, so a press naming nothing acts on the processors that do
-	 * and never on it: asked, its refusal would fail every run on a deployment that holds it.
+	 * Chariot and NOWPayments take no gift that repeats, so a press naming nothing acts on the
+	 * processors that do and never on either: asked, a refusal would fail every run on a deployment
+	 * that holds one.
 	 */
-	it('acts on no processor that takes one-time gifts only', async () => {
-		const held = processorsOf(
-			port({ prepare: { ok: true, value: { created: true } } }),
-			port({}, 'chariot')
-		);
+	it.each(['chariot', 'nowpayments'] as const)(
+		'acts on no %s account, which takes one-time gifts only',
+		async (oneTime) => {
+			const held = processorsOf(
+				port({ prepare: { ok: true, value: { created: true } } }),
+				port({}, oneTime)
+			);
 
-		const run = acted(await setUpRecurringGiftsOn(held, null));
+			const run = acted(await setUpRecurringGiftsOn(held, null));
 
-		expect(run.setups).toEqual({ stripe: { outcome: 'set_up', detail: null, reason: null } });
-		expect(run.outcome).toBe('set_up');
-	});
+			expect(run.setups).toEqual({ stripe: { outcome: 'set_up', detail: null, reason: null } });
+			expect(run.outcome).toBe('set_up');
+		}
+	);
 
 	/** one account that moved is what an operator is owed hearing about, over one that had nothing to do. */
 	it('answers with set_up where one account was provisioned and the other already held it', async () => {

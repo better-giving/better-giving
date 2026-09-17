@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 // the provider's own handle on the test page, aliased: this file's `page` writes css into the host
 // document and is the one a reader here is looking for.
 import { page as browser, userEvent } from 'vitest/browser';
+import { createCoinPicker } from '../coin-picker';
 import { defineDonateForm, DONATE_FORM_TAG } from '../element';
 import { createRows, type Row, type RowMark } from '../embed/rows';
 import type { CheckoutPorts } from '../ports';
@@ -59,7 +60,8 @@ const CONFIG: FormConfig = {
 		google_pay: { percent: 0.029, fixedMinor: 30 },
 		paypal: { percent: 0.0349, fixedMinor: 49 },
 		venmo: { percent: 0.0349, fixedMinor: 49 },
-		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
+		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
+		crypto: { percent: 0.01, fixedMinor: 0 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -71,6 +73,7 @@ const PORTS: CheckoutPorts = {
 	quote: async () => ({ paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor: 2606 }),
 	confirm: async () => ({ kind: 'succeeded' }),
 	resume: async () => ({ kind: 'succeeded' }),
+	status: async () => ({ state: 'waiting' }),
 	now: () => 1_700_000_000_000
 };
 
@@ -124,6 +127,7 @@ async function mount(config: FormConfig = CONFIG): Promise<Mounted> {
 				input: { config, ports: PORTS },
 				cadence: () => {},
 				offerFund: () => {},
+				offerCrypto: () => {},
 				rows: () => {},
 				stop: () => {}
 			}),
@@ -752,6 +756,108 @@ describe('the box a payment provider paints in', () => {
 // closed row that still draws its panel puts a processor's branded button on screen under a name
 // nobody opened. `hidden` is an attribute and whether it hides is a cascade, so only a real engine
 // can say.
+// the coin list adopts a sheet of its own after the card's paint (../coin-picker.ts), and `hidden` is
+// only as strong as the rule that answers it there: a class drawing a box `display: grid` would put a
+// closed list, a tick on every coin and a refusal under every one back on screen.
+describe('the coin list inside the crypto option', () => {
+	const mounts: HTMLElement[] = [];
+	afterEach(() => {
+		for (const node of mounts.splice(0)) node.remove();
+	});
+
+	// the tokens reach the list by inheritance from the card around it, which `data-donate-root` in
+	// ./tokens.css stands in for; without them every colour the ring cases compare resolves to one.
+	function drawn(refused: boolean, problem = '') {
+		const picker = createCoinPicker(document);
+		const card = document.createElement('div');
+		card.setAttribute('data-donate-root', '');
+		const sheet = document.createElement('style');
+		sheet.textContent = tokens;
+		card.append(sheet, picker.host);
+		document.body.appendChild(card);
+		mounts.push(card);
+		picker.update(
+			{
+				value: 'btc',
+				options: [
+					{ value: 'btc', label: 'BTC', name: 'Bitcoin', refused: false },
+					{ value: 'sol', label: 'SOL', name: 'Solana', refused }
+				],
+				onChange: () => {}
+			},
+			problem
+		);
+		return picker.host.shadowRoot as ShadowRoot;
+	}
+
+	/** the box's edge and ring while its input holds a keyboard caret, closed and then opened. */
+	async function ringed(root: ShadowRoot) {
+		const box = root.querySelector('.picker') as HTMLElement;
+		const input = box.querySelector('input') as HTMLInputElement;
+		const edge = () => {
+			const style = getComputedStyle(box);
+			return { border: style.borderTopColor, ring: style.boxShadow };
+		};
+		const rest = edge();
+		await caretOn(input);
+		const closed = { open: box.classList.contains('open'), ...edge() };
+		await userEvent.keyboard('{ArrowDown}');
+		const open = { open: box.classList.contains('open'), ...edge() };
+		return { rest, closed, open };
+	}
+	const shown = (node: Element | null) =>
+		node !== null && getComputedStyle(node).display !== 'none';
+
+	it('draws no list, no tick and no refusal while closed and nothing is refused', () => {
+		const root = drawn(false);
+
+		expect(shown(root.querySelector('.coin-list'))).toBe(false);
+		expect(shown(root.querySelector('.no-match'))).toBe(false);
+		expect(shown(root.querySelector('#coin-problem'))).toBe(false);
+	});
+
+	it('opens the list on a press, ticks only the picked coin and says the refusal under a refused one', () => {
+		const root = drawn(true);
+		(root.querySelector('.picker') as HTMLElement).click();
+		const [btc, sol] = [...root.querySelectorAll('[role="option"]')];
+
+		expect(shown(root.querySelector('.coin-list'))).toBe(true);
+		expect(shown(btc?.querySelector('.tick') ?? null)).toBe(true);
+		expect(shown(sol?.querySelector('.tick') ?? null)).toBe(false);
+		expect(shown(btc?.querySelector('.message') ?? null)).toBe(false);
+		expect(shown(sol?.querySelector('.message') ?? null)).toBe(true);
+	});
+
+	// the box is the field and its input draws nothing, so a ring given only to the open box leaves a
+	// keyboard donor on a closed one — tabbed in, back from Escape — with no mark of where they are.
+	it('rings the closed box its caret is in with the open box’s ring, in the accent', async () => {
+		const root = drawn(false);
+		const { rest, closed, open } = await ringed(root);
+
+		expect(closed.open).toBe(false);
+		expect(open.open).toBe(true);
+		expect(rest.ring).toBe('none');
+		expect(closed.border).toBe(used(root, '--_focus-ring'));
+		expect({ border: closed.border, ring: closed.ring }).toEqual({
+			border: open.border,
+			ring: open.ring
+		});
+	});
+
+	it('rings a refused closed box its caret is in with the refused open box’s ring', async () => {
+		const root = drawn(false, 'Choose a coin.');
+		const { rest, closed, open } = await ringed(root);
+
+		expect(closed.open).toBe(false);
+		expect(closed.border).toBe(used(root, '--_bad'));
+		expect(closed.ring).not.toBe(rest.ring);
+		expect({ border: closed.border, ring: closed.ring }).toEqual({
+			border: open.border,
+			ring: open.ring
+		});
+	});
+});
+
 describe('a payment row drawn beside the provider’s frame', () => {
 	const mounts: HTMLElement[] = [];
 	afterEach(() => {
@@ -863,19 +969,23 @@ describe('a payment row drawn beside the provider’s frame', () => {
 		expect(fills()).toEqual(new Set([open]));
 	});
 
-	// and the two processors' rows take nothing from that ink: a brand's mark is drawn in the brand's
+	// and the processors' rows take nothing from that ink: a brand's mark is drawn in the brand's
 	// colours, which the head's own `color` would take back from a glyph filled `currentColor`.
 	//
-	// raw-colour-ok: the trademarks' own fills, as ../embed/rows.ts states them.
-	it.each(['paypal', 'venmo'] as const)('fills the %s mark with the brand’s colours', (mark) => {
+	// raw-colour-ok: the trademarks' own fills, as ../embed/rows.ts states them — `#008CFF`, the one
+	// colour PayPal's and Venmo's files both state, and NOWPayments' `#68AAFF`.
+	it.each([
+		['paypal', 'rgb(0, 140, 255)'],
+		['venmo', 'rgb(0, 140, 255)'],
+		['crypto', 'rgb(104, 170, 255)']
+	] as const)('fills the %s mark with the brand’s colours', (mark, brand) => {
 		const { head } = measured(mark);
 		const fills = [...head.querySelectorAll('.mark path')].map(
 			(path) => getComputedStyle(path).fill
 		);
 
 		expect(fills.length).toBeGreaterThan(0);
-		// `#008CFF`, the one colour both files state.
-		expect(fills).toContain('rgb(0, 140, 255)');
+		expect(fills).toContain(brand);
 		expect(fills).not.toContain(getComputedStyle(head).color);
 	});
 

@@ -13,9 +13,10 @@ import type {
 	StripeLike
 } from '@better-giving/form/embed/stripe';
 import { CHARIOT_TAG } from '@better-giving/form/embed/chariot';
+import { DEPOSIT_POLL_MS } from '@better-giving/form/machine';
 import type { TurnstileLike } from '@better-giving/form/embed/turnstile';
-import type { FeeRules, FormConfig } from '@better-giving/form/v1';
-import { expect, it, onTestFinished, vi } from 'vitest';
+import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
+import { afterEach, expect, it, onTestFinished, vi } from 'vitest';
 import { initialSnapshot, startCheckout } from './machine';
 import { reactPropTypes } from './normalize';
 
@@ -43,7 +44,8 @@ const FEE_RULES: FeeRules = {
 	ach: { percent: 0.008, fixedMinor: 0, capMinor: 500 },
 	paypal: { percent: 0.0349, fixedMinor: 49 },
 	venmo: { percent: 0.0349, fixedMinor: 49 },
-	daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
+	daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
+	crypto: { percent: 0.01, fixedMinor: 0 }
 };
 
 const CONFIG: FormConfig = {
@@ -585,4 +587,122 @@ it('puts a donor who closed the fund’s window back on the review step with not
 	expect(toState(actor.getSnapshot()).step).toBe('give');
 	expect(fetched).not.toHaveBeenCalled();
 	expect(paymentMount.querySelector(CHARIOT_TAG)).toBe(button);
+});
+
+/** the same deployment, taking crypto beside cards on a form that offers a repeating cadence. */
+const WITH_CRYPTO: FormConfig = {
+	...CONFIG,
+	frequencies: ['one_time', 'monthly'],
+	paymentMethods: ['card', 'crypto'],
+	coins: [
+		{
+			coin: 'usdttrc20',
+			ticker: 'usdt',
+			name: 'Tether USD (Tron)',
+			network: 'trx',
+			memoRequired: false
+		}
+	]
+};
+
+const USDT: Quote = {
+	paymentToken: 'don_1',
+	feeMinor: 25,
+	totalMinor: 2525,
+	deposit: {
+		address: 'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',
+		memo: null,
+		coin: 'usdttrc20',
+		network: 'trx',
+		coinAmount: '25.004187',
+		validUntil: '2099-01-01T00:00:00.000Z',
+		qr: { rows: ['1'] }
+	}
+};
+
+afterEach(() => {
+	vi.useRealTimers();
+});
+
+it('stands the coin list in the crypto option on a one-time gift, and takes it away on a repeating one', async () => {
+	const { paymentMount, challengeMount } = boxes();
+	const payment = paymentProvider();
+	const timer = clock();
+
+	const checkout = startCheckout(WITH_CRYPTO, {
+		paymentMount,
+		challengeMount,
+		resumeToken: null,
+		seams: { payment: { stripe: { load: payment.load, delay: timer.delay } } }
+	});
+	onTestFinished(() => checkout.stop());
+	await settle();
+
+	expect(paymentMount.contains(checkout.coins.host)).toBe(true);
+
+	checkout.actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
+	expect(paymentMount.contains(checkout.coins.host)).toBe(false);
+
+	checkout.actor.send({ type: 'SET_FREQUENCY', frequency: 'one_time' });
+	expect(paymentMount.contains(checkout.coins.host)).toBe(true);
+});
+
+it('reads a crypto gift at this deployment until it arrives', async () => {
+	vi.useFakeTimers({ shouldAdvanceTime: true });
+	const { paymentMount, challengeMount } = boxes();
+	const payment = paymentProvider();
+	const timer = clock();
+	const reads: string[] = [];
+	let arrived = false;
+	const challenge = challengeProvider();
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (url: string, init?: RequestInit) => {
+			if (init?.method === 'POST') {
+				return new Response(JSON.stringify(USDT), {
+					status: 200,
+					headers: { 'content-type': 'application/json' }
+				});
+			}
+			reads.push(url);
+			return new Response(JSON.stringify({ state: arrived ? 'received' : 'waiting' }), {
+				status: 200,
+				headers: { 'content-type': 'application/json' }
+			});
+		})
+	);
+
+	const checkout = startCheckout(WITH_CRYPTO, {
+		paymentMount,
+		challengeMount,
+		resumeToken: null,
+		seams: {
+			payment: { stripe: { load: payment.load, delay: timer.delay } },
+			challenge: { load: challenge.load, delay: timer.delay }
+		}
+	});
+	onTestFinished(() => checkout.stop());
+	await settle();
+
+	const { actor } = checkout;
+	actor.send({ type: 'CONTINUE' });
+	actor.send({ type: 'SET_CONTACT', email: 'donor@example.org' });
+	actor.send({ type: 'SET_CONTACT', firstName: 'Ada' });
+	actor.send({ type: 'SET_CONTACT', lastName: 'Lovelace' });
+	actor.send({ type: 'CONTINUE' });
+	actor.send({ type: 'SET_METHOD', method: 'crypto' });
+	actor.send({ type: 'SET_COIN', coin: 'usdttrc20' });
+	actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'token-1' });
+	actor.send({ type: 'SUBMIT' });
+	for (let turn = 0; turn < 20; turn += 1) await settle();
+	expect(toState(actor.getSnapshot()).step).toBe('awaitingDeposit');
+
+	await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+	// same-origin, as the quote is: this page and `/api/v1` are one deployment.
+	expect(reads).toEqual([`/api/v1/forms/${WITH_CRYPTO.formId}/donations/don_1`]);
+	expect(toState(actor.getSnapshot()).step).toBe('awaitingDeposit');
+
+	arrived = true;
+	await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+	expect(toState(actor.getSnapshot())).toEqual({ step: 'success', method: 'crypto' });
 });

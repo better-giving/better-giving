@@ -20,6 +20,7 @@ func report(rails, webhook, subscription, wallets any) map[string]any {
 		configured("stripe", "Stripe", rails, webhook, subscription, wallets),
 		unconfigured("paypal", "PayPal", "PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET"),
 		unconfigured("chariot", "Chariot", "CHARIOT_API_KEY", "CHARIOT_CONNECT_ID"),
+		unconfigured("nowpayments", "NOWPayments", "NOWPAYMENTS_API_KEY", "NOWPAYMENTS_OUTCOME_CURRENCY"),
 	)
 }
 
@@ -85,7 +86,7 @@ func answered(t *testing.T, body any) PaymentsRead {
 // keeps them apart is what a fold with no reading to draw is keyed off.
 func TestAProcessorTheDeploymentHoldsNoCredentialsForCarriesNoReading(t *testing.T) {
 	read := answered(t, report(readRails(), verifying, map[string]any{"state": "complete"}, readWallets()))
-	if read.Kind != PaymentsWasRead || len(read.Report.Processors) != 3 {
+	if read.Kind != PaymentsWasRead || len(read.Report.Processors) != 4 {
 		t.Fatalf("read %+v", read)
 	}
 	none := read.Report.Processors[1]
@@ -158,6 +159,7 @@ func TestAProcessorEntryThisConsoleCannotDrawIsNoReportAtAll(t *testing.T) {
 			configured("stripe", "Stripe", readRails(), verifying, complete, readWallets()),
 			unconfigured("paypal", "PayPal", "PAYPAL_CLIENT_ID"),
 			unconfigured("chariot", "Chariot", "CHARIOT_API_KEY"),
+			unconfigured("nowpayments", "NOWPayments", "NOWPAYMENTS_API_KEY"),
 			configured("stripe", "Stripe", readRails(), verifying, complete, readWallets()),
 		},
 		"a state nothing is drawn for": {
@@ -208,6 +210,7 @@ func TestAProcessorThatDrawsNoWalletCarriesNoHostnamesRatherThanNone(t *testing.
 		configured("paypal", "PayPal", readRails(), verifying,
 			map[string]any{"state": "complete"}, nil),
 		unconfigured("chariot", "Chariot", "CHARIOT_API_KEY"),
+		unconfigured("nowpayments", "NOWPayments", "NOWPAYMENTS_API_KEY"),
 	))
 	if read.Kind != PaymentsWasRead {
 		t.Fatalf("read %+v", read)
@@ -349,6 +352,36 @@ func TestASwitchedOffEndpointIsToldFromOneShortOfEvents(t *testing.T) {
 	}
 	if len(held.MissingEventTypes) != 1 || held.MissingEventTypes[0] != "charge.succeeded" {
 		t.Fatalf("missing %v", held.MissingEventTypes)
+	}
+}
+
+// NOWPayments as the deployment answers for it: no rail of its own, nothing proven but that the key
+// reads the account, no endpoint kept on the account, and no wallet anywhere.
+func TestAProcessorKeepingNoEndpointIsReadAsOneWithNothingToRegister(t *testing.T) {
+	read := answered(t, processors(
+		unconfigured("stripe", "Stripe", "STRIPE_SECRET_KEY"),
+		unconfigured("paypal", "PayPal", "PAYPAL_CLIENT_ID"),
+		unconfigured("chariot", "Chariot", "CHARIOT_API_KEY"),
+		configured("nowpayments", "NOWPayments",
+			map[string]any{
+				"state": "read", "chargesEnabled": true, "evidence": "credentials_only", "rails": []any{},
+			},
+			map[string]any{"state": "unconfirmable", "detail": nil},
+			map[string]any{"state": "not_applicable"},
+			nil),
+	))
+	if read.Kind != PaymentsWasRead {
+		t.Fatalf("read %+v", read)
+	}
+	held := read.Report.Processors[3]
+	if held.Processor != "nowpayments" || held.State != "configured" || held.Wallets != nil {
+		t.Fatalf("processor %+v", held)
+	}
+	if held.Rails.Evidence != "credentials_only" || len(held.Rails.Rails) != 0 {
+		t.Fatalf("rails %+v", held.Rails)
+	}
+	if held.Subscription.State != "not_applicable" || held.Subscription.MissingEventTypes == nil {
+		t.Fatalf("subscription %+v", held.Subscription)
 	}
 }
 

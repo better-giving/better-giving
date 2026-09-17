@@ -52,7 +52,12 @@ describe('the page `/` opens on', () => {
 	});
 });
 
-const LOGOS = { stripe: '/stripe.png', paypal: '/paypal.png', chariot: '/chariot.png' };
+const LOGOS = {
+	stripe: '/stripe.png',
+	paypal: '/paypal.png',
+	chariot: '/chariot.png',
+	nowpayments: '/nowpayments.png'
+};
 
 /** every cell of the rail, flat, as `label → href`. */
 const cells = (groups: ReturnType<typeof railGroups>) =>
@@ -67,6 +72,7 @@ describe('the rail', () => {
 			'Stripe → /payments/stripe',
 			'PayPal → /payments/paypal',
 			'Chariot → /payments/chariot',
+			'NOWPayments → /payments/nowpayments',
 			'Sites → /sites',
 			'SMTP → /smtp',
 			'Notifications → /notifications'
@@ -84,12 +90,14 @@ describe('the rail', () => {
 		expect(processors?.destinations.map((d) => d.status)).toEqual([
 			{ tone: 'attention', mark: 'circle-dashed', label: 'Not set up' },
 			{ tone: 'done', mark: 'check', label: 'Configured' },
+			{ tone: 'attention', mark: 'circle-dashed', label: 'Not set up' },
 			{ tone: 'attention', mark: 'circle-dashed', label: 'Not set up' }
 		]);
 		expect(processors?.destinations.map((d) => d.mark)).toEqual([
 			{ src: '/stripe.png' },
 			{ src: '/paypal.png' },
-			{ src: '/chariot.png' }
+			{ src: '/chariot.png' },
+			{ src: '/nowpayments.png' }
 		]);
 	});
 

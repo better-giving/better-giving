@@ -1,6 +1,7 @@
 /*
- * one payment row drawn outside the provider's frame (../embed/rows.ts): the PayPal, Venmo and fund
- * options, drawn to stand in the same list as the rows the provider paints inside its own frame.
+ * one payment row drawn outside the provider's frame (../embed/rows.ts): the PayPal, Venmo, fund
+ * and crypto options, drawn to stand in the same list as the rows the provider paints inside its own
+ * frame.
  *
  * adopted into each row's own shadow root rather than into the card's, because a row lives in the
  * light DOM beside the provider's mount (`#openPaymentBox` in ../element.ts argues why that node is

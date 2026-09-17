@@ -103,7 +103,8 @@ const REQUEST = {
 	amountMinor: 1000,
 	currency: 'USD',
 	method: 'paypal',
-	idempotencyKey: 'attempt-1'
+	idempotencyKey: 'attempt-1',
+	deploymentOrigin: 'https://donate.example.org'
 } as const;
 
 /** the fields the adapter reads off a created order, and nothing else. */
@@ -903,7 +904,8 @@ describe('what an order is minted with', () => {
 
 		await createPaypalProvider(CREDENTIALS).createIntent({
 			...REQUEST,
-			idempotencyKey: 'donation-019412e0'
+			idempotencyKey: 'donation-019412e0',
+			deploymentOrigin: 'https://donate.example.org'
 		});
 
 		expect(apiCall(calls)?.headers['paypal-request-id']).toBe('donation-019412e0');
@@ -2001,7 +2003,8 @@ describe('readSettlement on a repeating gift’s charge', () => {
 			// a sale carries no `custom_id`; a collection is attributed through the commitment's,
 			// which `readRecurringGift` reads.
 			metadata: {},
-			occurredAt: new Date('2026-09-16T22:20:08Z')
+			occurredAt: new Date('2026-09-16T22:20:08Z'),
+			arrival: null
 		});
 	});
 

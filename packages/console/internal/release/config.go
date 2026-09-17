@@ -33,6 +33,9 @@ type Config struct {
 	// Migrations is every filename in that directory, in the order wrangler applies them — which is
 	// what a deployment's own `d1_migrations` table is compared against.
 	Migrations []string `json:"migrations"`
+	// Crons is the worker's whole schedule, as that config's top-level `triggers` states it. The
+	// deploy puts the list up as it stands, so an empty one takes a removed schedule off.
+	Crons []string `json:"crons"`
 	// TurnstileWidgetName is what the anti-abuse widget is called on the cloudflare account.
 	TurnstileWidgetName string `json:"turnstileWidgetName"`
 	// Commit is the revision the bake ran at, which the `version` subcommand prints.
@@ -140,13 +143,13 @@ func mustParse(source []byte) Config {
 	return config
 }
 
-// DeployVars is the twenty-one values a deployment is configured with, and every one of them is a
+// DeployVars is the twenty-four values a deployment is configured with, and every one of them is a
 // plain worker var.
 //
 // **stated here rather than baked, and gated rather than trusted.** the list is
 // packages/operator/src/deploy-split.ts's — both operator surfaces read it — and ./config_test.go
 // holds this one to that module's, so a name added there and not here fails `go test` rather than
-// shipping a console that draws twenty rows. it is a list rather than a bake because it is this
+// shipping a console that draws twenty-three rows. it is a list rather than a bake because it is this
 // binary's own reading of the deployment and not a fact about the checkout it was baked from.
 //
 // **the order is the source's and is not a preference**: it is the order every screen draws the
@@ -175,6 +178,9 @@ var DeployVars = []string{
 	"CHARIOT_API_URL",
 	"CHARIOT_CONNECT_ID",
 	"CHARIOT_WEBHOOK_SECRET",
+	"NOWPAYMENTS_API_KEY",
+	"NOWPAYMENTS_IPN_SECRET",
+	"NOWPAYMENTS_OUTCOME_CURRENCY",
 	"BETTER_AUTH_SECRET",
 	"BETTER_AUTH_URL",
 	"ADMIN_PASSWORD",
@@ -182,7 +188,7 @@ var DeployVars = []string{
 
 // the closed sets a deployment answers its own console surface in.
 //
-// **stated here and gated rather than trusted, the way the twenty-one above are.** each of them is
+// **stated here and gated rather than trusted, the way the twenty-four above are.** each of them is
 // one operator surface's statement in packages/operator/src/console/, and ./config_test.go holds
 // these lists to it — so a member added there and not here fails `go test` rather than shipping a
 // console that reads a real answer as one it has no state for. what a member means is written
@@ -215,7 +221,7 @@ var (
 	RecurringSetupReasons = []string{"no_key", "failed"}
 	// PaymentProcessors is every processor a deployment can be set up to charge on, which the
 	// payments reading carries one entry per whether or not the deployment holds its credentials.
-	PaymentProcessors = []string{"stripe", "paypal", "chariot"}
+	PaymentProcessors = []string{"stripe", "paypal", "chariot", "nowpayments"}
 	// RailStandings is where one way of paying stands on that account.
 	RailStandings = []string{
 		"approved",
@@ -259,7 +265,7 @@ const PaypalProcessor = "paypal"
 // what the deployment's webhook endpoint is: the path it answers on, the version its deliveries are
 // serialised in, and everything it subscribes to.
 //
-// **stated here and gated rather than trusted, the way the twenty-one above are.** the source is
+// **stated here and gated rather than trusted, the way the twenty-four above are.** the source is
 // packages/operator/src/stripe/webhook-endpoint.ts, which both ends of the endpoint read — this
 // binary registers it on the processor account and the deployment serves it — and ./config_test.go
 // holds these to that module's. what each of them costs when the two ends disagree is written

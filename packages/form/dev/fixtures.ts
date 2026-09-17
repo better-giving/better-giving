@@ -1,23 +1,29 @@
 import type { FormRuntime } from '../src/element';
+import { EmbedFailure } from '../src/embed/api';
+import { createPaymentSurface } from '../src/embed/surface';
 import { estimateFee } from '../src/fee';
 import type { CheckoutPorts } from '../src/ports';
 import {
 	FREQUENCIES,
 	PAYMENT_METHODS,
+	type Deposit,
 	type FeeCoverage,
 	type FeeRule,
 	type FormConfig,
+	type PayableCoin,
 	type PaymentMethod,
 	type Program,
 	type Provider
 } from '../src/v1';
 
-// the twelve configurations ./main.ts can put the element on, and the runtime that serves them.
+// the thirteen configurations ./main.ts can put the element on, and the runtime that serves them.
 //
 // nothing here reaches the network, and that is the whole premise of the page rather than a
-// convenience: `loadConfig` answers from this file, `checkout` is a stub so Stripe.js is never
-// asked for, and no fixture names a `turnstileSiteKey`, which is what keeps ../src/embed/turnstile.ts
-// from loading a widget. a contributor needs no deployment, no database and no vendor account.
+// convenience: `loadConfig` answers from this file, `checkout` never lets Stripe.js be asked for —
+// a stub on every fixture but `crypto`, and on that one the real surface with the Stripe half's
+// loader answering nothing — and no fixture names a `turnstileSiteKey`, which is what keeps
+// ../src/embed/turnstile.ts from loading a widget. a contributor needs no deployment, no database
+// and no vendor account.
 //
 // each fixture is a served body rather than a `FormConfig`: ../src/config.ts is what turns one into
 // the other, and going through it is what makes a fixture a state the element can actually be in.
@@ -50,14 +56,15 @@ type ServedConfig = {
 	readonly ein: string;
 	readonly deductibilityStatement: string;
 	readonly program?: Program;
+	readonly coins?: readonly PayableCoin[];
 };
 
 /**
  * the provider set every fixture carries.
  *
- * the key is a shape and not a credential: `checkout` below hands the flow its ports directly and
- * never builds a payment surface, so no SDK reads this and nothing is initialised with it. one
- * processor, which is what a deployment holding one serves.
+ * the key is a shape and not a credential: `checkout` below builds a payment surface for `crypto`
+ * alone, and hands that one's Stripe half a loader that answers nothing, so no SDK reads this and
+ * nothing is initialised with it. one processor, which is what a deployment holding one serves.
  */
 const PROVIDERS: readonly Provider[] = [{ name: 'stripe', publishableKey: 'pk_live_x' }];
 
@@ -69,7 +76,8 @@ const RULES: Record<PaymentMethod, FeeRule> = {
 	google_pay: { percent: 0.029, fixedMinor: 30 },
 	paypal: { percent: 0.0349, fixedMinor: 49 },
 	venmo: { percent: 0.0349, fixedMinor: 49 },
-	daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
+	daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
+	crypto: { percent: 0.01, fixedMinor: 0 }
 };
 
 const IDENTITY = {
@@ -207,6 +215,88 @@ const CHOICE: ServedConfig = {
 	}
 };
 
+/**
+ * the coins `crypto` serves, one per screen worth looking at.
+ *
+ * xrp carries a memo and usdt on tron does not, which are the two address screens. ada's address is
+ * the long one. `fail` is no coin at all: its quote refuses as `below_minimum`, which is the step the
+ * refusal lands back on. every address is plainly not one, and nothing here would pay anybody.
+ */
+const COINS: readonly PayableCoin[] = [
+	{ coin: 'xrp', ticker: 'xrp', name: 'Ripple', network: 'xrp', memoRequired: true },
+	{
+		coin: 'usdttrc20',
+		ticker: 'usdt',
+		name: 'Tether USD (Tron)',
+		network: 'trx',
+		memoRequired: false
+	},
+	{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false },
+	{ coin: 'ada', ticker: 'ada', name: 'Cardano', network: 'ada', memoRequired: false },
+	{ coin: 'fail', ticker: 'fail', name: 'Refused on purpose', network: 'dev', memoRequired: false }
+];
+
+/** a coin's made-up address and its made-up price in minor units per whole coin, keyed by `coin`. */
+const WALLETS: Readonly<Record<string, { readonly address: string; readonly priceMinor: number }>> =
+	{
+		xrp: { address: 'rDEVxFAKExADDRESSxNOTxREALxXRP0000', priceMinor: 52 },
+		usdttrc20: { address: 'TDEVxFAKExADDRESSxNOTxREALxTRON000', priceMinor: 100 },
+		btc: { address: 'bc1qdevxfakexaddressxnotxrealxbitcoin0000000', priceMinor: 6_100_000 },
+		ada: {
+			address:
+				'addr1_dev_fake_address_not_real_cardano_0000000000000000000000000000000000000000000000000000000000000000',
+			priceMinor: 35
+		}
+	};
+
+/** the floor `fail`'s refusal names, as `ApiError.minAmountMinor` in ../src/v1.ts. */
+const FAIL_MINIMUM_MINOR = 5000;
+
+/** the memo a memo coin's quote carries. */
+const MEMO = '104729';
+
+/**
+ * the address as the module matrix a quote carries, written out rather than encoded.
+ *
+ * a square with a finder in three corners and noise between, so the screen draws what a QR code
+ * looks like. it does not scan and is not meant to.
+ */
+const QR_ROWS = [
+	'1111111010110111101111111',
+	'1000001000011101101000001',
+	'1011101011001111001011101',
+	'1011101000110110101011101',
+	'1011101010000011101011101',
+	'1000001011110010101000001',
+	'1111111010101010101111111',
+	'0000000000011011100000000',
+	'0111011111111011111000011',
+	'0011000111100000010000000',
+	'0101001001010101001110111',
+	'1000100010011111100000000',
+	'0111001100001110010111001',
+	'1100110010010000000000011',
+	'0000101001001011100100011',
+	'1101110000010111011110001',
+	'0111011000111111011101110',
+	'0000000010000010110011100',
+	'1111111001111000001001110',
+	'1000001011011010000100000',
+	'1011101001011000001110110',
+	'1011101011110011110001011',
+	'1011101011110001101100011',
+	'1000001000001011111001000',
+	'1111111001111111111111101'
+] as const;
+
+/** card and crypto, on both cadences, so the monthly one shows the crypto row leaving the box. */
+const CRYPTO: ServedConfig = {
+	...DEFAULT,
+	formId: 'frm_crypto',
+	paymentMethods: ['card', 'crypto'],
+	coins: COINS
+};
+
 /** the body the `slow` fixture answers with once it has finished being slow. */
 const SLOW: ServedConfig = { ...DEFAULT, formId: 'frm_slow' };
 
@@ -229,6 +319,7 @@ export const FIXTURE_NAMES = [
 	'many',
 	'pinned',
 	'choice',
+	'crypto',
 	'one',
 	'five',
 	'seven',
@@ -278,6 +369,11 @@ export const FIXTURES: Readonly<Record<FixtureName, Fixture>> = {
 		note: 'Three causes the donor picks between, a select under the amount, and the receipt names the pick.',
 		load: async () => CHOICE
 	},
+	crypto: {
+		formId: CRYPTO.formId,
+		note: 'Card and crypto, five coins. ?deposit= picks the ending: received (default), expired or late. The coin named fail is refused as under its minimum.',
+		load: async () => CRYPTO
+	},
 	one: {
 		formId: PRESETS_1.formId,
 		note: 'One suggested amount: no tiles, the box opens holding it.',
@@ -316,6 +412,57 @@ export const FIXTURES: Readonly<Record<FixtureName, Fixture>> = {
 };
 
 /**
+ * how a `crypto` gift's address ends, which `?deposit=` on the page picks (./main.ts).
+ *
+ * `received` and `expired` are the server's two readings, each after `READINGS_BEFORE_ENDING` of
+ * `waiting`. `late` is a send-by already past on this device, so the address closes at once and the
+ * reading goes on with nothing ever arriving — the screen that says so stays up.
+ */
+export const DEPOSIT_ENDINGS = ['received', 'expired', 'late'] as const;
+export type DepositEnding = (typeof DEPOSIT_ENDINGS)[number];
+
+/** readings of `waiting` before the ending, each `DEPOSIT_POLL_MS` in ../src/checkout.machine.ts apart. */
+const READINGS_BEFORE_ENDING = 3;
+
+/** how long an address stays open on the `received` and `expired` endings. */
+const ADDRESS_OPEN_MS = 30 * 60 * 1000;
+
+/** a whole-coin figure as `Deposit.coinAmount`'s canonical decimal text. */
+function coinAmount(totalMinor: number, priceMinor: number): string {
+	return (totalMinor / priceMinor).toFixed(8).replace(/\.?0+$/, '');
+}
+
+/**
+ * the address a `crypto` quote hands over, or the refusal `fail` answers with.
+ *
+ * the refusal is an `EmbedFailure` carrying the code and floor, which is exactly what the real quote
+ * port (`createQuote` in ../src/embed/api.ts) rejects with, so the machine routes it the same way.
+ */
+function deposit(coin: string, totalMinor: number, ending: DepositEnding): Deposit {
+	const wallet = WALLETS[coin];
+	const served = COINS.find((one) => one.coin === coin);
+	if (wallet === undefined || served === undefined) {
+		throw new EmbedFailure(
+			`A gift of this size is under what NOWPayments accepts in ${coin.toUpperCase()}. No address was created.`,
+			'Nothing is wrong with this deployment: the coin named fail in packages/form/dev/fixtures.ts is refused on purpose.',
+			'below_minimum',
+			undefined,
+			FAIL_MINIMUM_MINOR
+		);
+	}
+	const until = Date.now() + (ending === 'late' ? -60 * 60 * 1000 : ADDRESS_OPEN_MS);
+	return {
+		address: wallet.address,
+		memo: served.memoRequired ? MEMO : null,
+		coin,
+		network: served.network,
+		coinAmount: coinAmount(totalMinor, wallet.priceMinor),
+		validUntil: new Date(until).toISOString(),
+		qr: { rows: QR_ROWS }
+	};
+}
+
+/**
  * the money path, answered from the configuration the flow is already holding.
  *
  * derived rather than fixed, because `quoteIsUsable` in ../src/fee.ts refuses a total below the
@@ -323,20 +470,36 @@ export const FIXTURES: Readonly<Record<FixtureName, Fixture>> = {
  * review step would read as broken rather than as unwired. this is the same arithmetic the card
  * already shows in its fee row, so the two agree and no correction screen is reached.
  */
-function ports(config: FormConfig): CheckoutPorts {
+function ports(config: FormConfig, ending: DepositEnding): CheckoutPorts {
+	let minted = 0;
+	/** readings made per donation id, so each address counts to its ending from zero. */
+	const readings = new Map<string, number>();
 	return {
 		quote: async (request) => {
 			const covered = request.coversFee
 				? estimateFee(request.amountMinor, config.feeRules[request.method])
 				: null;
+			const feeMinor = covered?.feeMinor ?? 0;
+			const totalMinor = covered?.totalMinor ?? request.amountMinor;
+			if (request.method !== 'crypto' || request.coin === undefined) {
+				return { paymentToken: `pi_dev_${request.formId}`, feeMinor, totalMinor };
+			}
+			minted += 1;
 			return {
-				paymentToken: `pi_dev_${request.formId}`,
-				feeMinor: covered?.feeMinor ?? 0,
-				totalMinor: covered?.totalMinor ?? request.amountMinor
+				paymentToken: `don_dev_${minted}`,
+				feeMinor,
+				totalMinor,
+				deposit: deposit(request.coin, totalMinor, ending)
 			};
 		},
 		confirm: async () => ({ kind: 'succeeded' }),
 		resume: async () => ({ kind: 'succeeded' }),
+		status: async ({ paymentToken }) => {
+			const read = (readings.get(paymentToken) ?? 0) + 1;
+			readings.set(paymentToken, read);
+			if (ending === 'late' || read <= READINGS_BEFORE_ENDING) return { state: 'waiting' };
+			return { state: ending };
+		},
 		now: () => Date.now()
 	};
 }
@@ -356,8 +519,14 @@ function ports(config: FormConfig): CheckoutPorts {
  * on the screen, which reads as a broken card rather than as an absent vendor. the first rail the
  * deployment offers is reported once instead, through the same callback a real surface reports it
  * through.
+ *
+ * `crypto` is the exception, composed the way ../src/embed/runtime.ts composes it so the coin row,
+ * its list and the monthly cadence taking it away are the shipped code. its Stripe half is handed a
+ * loader that answers nothing, which that adapter reads as fields that never came up and
+ * ../src/embed/surface.ts withholds, since the crypto half never reports the same — so the card row
+ * is counted in the box's header and never drawn.
  */
-export function devRuntime(): FormRuntime {
+export function devRuntime(ending: DepositEnding): FormRuntime {
 	return {
 		loadConfig: async (formId) => {
 			const fixture = Object.values(FIXTURES).find((one) => one.formId === formId);
@@ -369,14 +538,37 @@ export function devRuntime(): FormRuntime {
 			}
 			return fixture.load();
 		},
-		checkout: (config, _mount, onRail) => {
+		checkout: (config, mount, onRail, onUnavailable, _boot, fund, coins) => {
+			if (config.formId === CRYPTO.formId) {
+				const surface = createPaymentSurface(config, mount, onRail, onUnavailable, fund, coins, {
+					stripe: { load: async () => null }
+				});
+				const fake = ports(config, ending);
+				const quote: CheckoutPorts['quote'] = async (request) => {
+					const answered = await fake.quote(request);
+					surface.quoted(request, answered);
+					return answered;
+				};
+				return {
+					input: {
+						config,
+						ports: { ...fake, quote, confirm: surface.confirm, resume: surface.resume }
+					},
+					cadence: surface.cadence,
+					offerFund: surface.offerFund,
+					offerCrypto: surface.offerCrypto,
+					rows: surface.rows,
+					stop: surface.stop
+				};
+			}
 			// after the caller has finished starting the flow, the way a provider's own report always
 			// arrives: a rail named inside this call would reach a machine that does not exist yet.
 			queueMicrotask(() => onRail(config.paymentMethods[0] ?? null));
 			return {
-				input: { config, ports: ports(config) },
+				input: { config, ports: ports(config, ending) },
 				cadence: () => {},
 				offerFund: () => {},
+				offerCrypto: () => {},
 				// no provider draws here, so the box is headed as though every offered rail were a row.
 				rows: (listener) => listener(config.paymentMethods.length),
 				stop: () => {}

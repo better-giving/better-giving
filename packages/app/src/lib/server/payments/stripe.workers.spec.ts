@@ -116,7 +116,8 @@ describe('the provider this app actually builds, inside workerd', () => {
 			amountMinor: 1000,
 			currency: 'USD',
 			method: 'card',
-			idempotencyKey: 'attempt-1'
+			idempotencyKey: 'attempt-1',
+			deploymentOrigin: 'https://donate.example.org'
 		});
 
 		expect(result.ok === false && result.reason).toBe('unreachable');

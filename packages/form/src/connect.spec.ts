@@ -28,7 +28,8 @@ const CONFIG: FormConfig = {
 		google_pay: { percent: 0.029, fixedMinor: 30 },
 		paypal: { percent: 0.0349, fixedMinor: 49 },
 		venmo: { percent: 0.0349, fixedMinor: 49 },
-		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
+		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
+		crypto: { percent: 0.01, fixedMinor: 0 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -40,6 +41,7 @@ const PORTS: CheckoutPorts = {
 	quote: async () => ({ paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor: 2606 }),
 	confirm: async () => ({ kind: 'succeeded' }),
 	resume: async () => ({ kind: 'succeeded' }),
+	status: async () => ({ state: 'waiting' }),
 	now: () => 1_700_000_000_000
 };
 
@@ -590,5 +592,120 @@ describe('the prop getters', () => {
 		const surface = connect(actor.getSnapshot(), actor.send, marked);
 		expect(surface.continueButton).toEqual({ marked: true });
 		expect(surface.frequencyGroup).toEqual({ marked: true });
+	});
+});
+
+describe('the crypto projection', () => {
+	const CRYPTO: FormConfig = {
+		...CONFIG,
+		frequencies: ['one_time'],
+		paymentMethods: ['card', 'crypto'],
+		coins: [
+			{ coin: 'xrp', ticker: 'xrp', name: 'Ripple', network: 'xrp', memoRequired: true },
+			{
+				coin: 'usdttrc20',
+				ticker: 'usdt',
+				name: 'Tether USD (Tron)',
+				network: 'trx',
+				memoRequired: false
+			},
+			{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false }
+		]
+	};
+	const DEPOSIT = {
+		address: 'rLJsrwVTayaqCnQZnxLLLvcz6kS3LwqhkX',
+		memo: '3198472051',
+		coin: 'xrp',
+		network: 'xrp',
+		coinAmount: '19.36121163',
+		validUntil: '2026-09-24T15:42:00.000Z',
+		qr: { rows: ['1'] }
+	};
+	const onCrypto = (coin: string | null) => (send: (event: never) => void) => {
+		readyToSubmit(send);
+		send({ type: 'SET_METHOD', method: 'crypto' } as never);
+		send({ type: 'SET_COIN', coin } as never);
+	};
+	type Coins = {
+		readonly value: string;
+		readonly options: readonly { value: string; label: string; name: string; refused: boolean }[];
+		readonly onChange: (value: string) => void;
+	};
+
+	it('lists the account’s coins by ticker, each under its ticker upper-cased and its name', () => {
+		const { get } = api(onCrypto(null), { config: CRYPTO });
+		const coins = get().coinSelect as Coins;
+
+		expect(coins.value).toBe('');
+		expect(coins.options).toEqual([
+			{ value: 'btc', label: 'BTC', name: 'Bitcoin', refused: false },
+			{ value: 'usdttrc20', label: 'USDT', name: 'Tether USD (Tron)', refused: false },
+			{ value: 'xrp', label: 'XRP', name: 'Ripple', refused: false }
+		]);
+	});
+
+	it('sends the coin a donor picks, and an emptied choice as none', () => {
+		const { actor, get } = api(onCrypto(null), { config: CRYPTO });
+		(get().coinSelect as Coins).onChange('xrp');
+		expect(actor.getSnapshot().context.payerDraft.coin).toBe('xrp');
+		(get().coinSelect as Coins).onChange('');
+		expect(actor.getSnapshot().context.payerDraft.coin).toBeUndefined();
+	});
+
+	it('marks a coin the account refused, and refuses the press for it', async () => {
+		const { get } = api(onCrypto('xrp'), {
+			config: CRYPTO,
+			ports: {
+				quote: () => Promise.reject({ code: 'coin_not_accepted', message: 'no longer accepted' })
+			}
+		});
+		(get().submitButton as { onClick: () => void }).onClick();
+		await settle();
+
+		const coins = get().coinSelect as Coins;
+		expect(coins.options.find((option) => option.value === 'xrp')?.refused).toBe(true);
+		const state = get().state;
+		if (state.step !== 'give') throw new Error(`expected the give step, got ${state.step}`);
+		expect(state.payerComplete).toBe(false);
+	});
+
+	it('carries a refusal of the amount onto the amount step', async () => {
+		const { get } = api(onCrypto('xrp'), {
+			config: CRYPTO,
+			ports: {
+				quote: () =>
+					Promise.reject({ code: 'below_minimum', message: 'too small', minAmountMinor: 1200 })
+			}
+		});
+		(get().submitButton as { onClick: () => void }).onClick();
+		await settle();
+
+		const state = get().state;
+		if (state.step !== 'amount') throw new Error(`expected the amount step, got ${state.step}`);
+		expect(state.refusal).toEqual({ code: 'below_minimum', coin: 'xrp', minAmountMinor: 1200 });
+	});
+
+	it('hands the address screen the deposit, the total, the receipt address and whether it closed', async () => {
+		const { get } = api(onCrypto('xrp'), {
+			config: CRYPTO,
+			ports: {
+				quote: async () => ({
+					paymentToken: 'don_1',
+					feeMinor: 25,
+					totalMinor: 2525,
+					deposit: DEPOSIT
+				})
+			}
+		});
+		(get().submitButton as { onClick: () => void }).onClick();
+		await settle();
+
+		expect(get().state).toEqual({
+			step: 'awaitingDeposit',
+			deposit: DEPOSIT,
+			totalMinor: 2525,
+			email: 'donor@example.org',
+			closed: false
+		});
 	});
 });

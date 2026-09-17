@@ -30,7 +30,8 @@ const FEE_RULES: FeeRules = {
 	ach: { percent: 0.008, fixedMinor: 0, capMinor: 500 },
 	paypal: { percent: 0.0349, fixedMinor: 49 },
 	venmo: { percent: 0.0349, fixedMinor: 49 },
-	daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 }
+	daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
+	crypto: { percent: 0.01, fixedMinor: 0 }
 };
 
 const CONFIG: FormConfig = {
@@ -74,6 +75,7 @@ function draw(state: State): HTMLElement {
 				busy={false}
 				receipt={null}
 				headingRef={createRef<HTMLHeadingElement>()}
+				deposit={null}
 				onPrimary={() => {}}
 				onSecondary={() => {}}
 			/>
@@ -285,6 +287,120 @@ it('thanks the donor with a quiet way back and no loud one', () => {
 	expect(controls(root)).toEqual([copy.BACK_TO_START]);
 	// no failure survives onto this screen: the render is total over the descriptor.
 	expect(shown(root, '.message')).toBe('');
+});
+
+// a gift sent from the donor's own wallet: the address screen, its closed reading, the expired ending
+// and the thank-you that states no figure.
+const COINS: FormConfig = {
+	...CONFIG,
+	paymentMethods: ['card', 'crypto'],
+	coins: [
+		{ coin: 'xrp', ticker: 'xrp', name: 'Ripple', network: 'xrp', memoRequired: true },
+		{
+			coin: 'usdttrc20',
+			ticker: 'usdt',
+			name: 'Tether USD (Tron)',
+			network: 'trx',
+			memoRequired: false
+		}
+	]
+};
+const DEPOSIT = {
+	address: 'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',
+	memo: null,
+	coin: 'usdttrc20',
+	network: 'trx',
+	coinAmount: '25.004187',
+	validUntil: '2023-11-21T12:00:00.000Z',
+	qr: { rows: ['110', '011', '101'] }
+};
+const AWAITING = {
+	step: 'awaitingDeposit',
+	deposit: DEPOSIT,
+	totalMinor: 2525,
+	email: 'donor@example.org',
+	closed: false
+} as const;
+
+it('states where and how much to send a crypto gift, with a way back to the coin', () => {
+	const screen = takeoverFor(AWAITING, COINS, money);
+
+	expect(screen.heading).toBe('Send your gift');
+	expect(screen.receipt).toBe('none');
+	expect(screen.primary).toBe(null);
+	expect(screen.secondary).toEqual({ label: 'Use a different coin' });
+	expect(screen.deposit).toMatchObject({
+		coinAmount: '25.004187',
+		ticker: 'USDT',
+		about: 'About $25.25 today',
+		network: 'TRX',
+		networkWarning:
+			'Send on this network only. Coins sent on another network may not reach Helping Hands.',
+		address: 'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',
+		memo: null,
+		memoWarning: '',
+		qr: ['110', '011', '101'],
+		walletFee: 'Your gift is what arrives, so add any wallet or exchange fee on top.',
+		email: 'These details were also sent to donor@example.org.',
+		status: 'Waiting for your gift to arrive'
+	});
+	expect(screen.deposit?.sendBy).toMatch(
+		/^Send by November 21, 2023 at \d{1,2}:\d\d [AP]M\. After that this address closes and you would need to start over\.$/
+	);
+});
+
+it('warns about the memo only where the coin requires one, and names an unlisted coin by its code', () => {
+	const xrp = takeoverFor(
+		{ ...AWAITING, deposit: { ...DEPOSIT, coin: 'xrp', network: 'xrp', memo: '3198472051' } },
+		COINS,
+		money
+	);
+	expect(xrp.deposit?.memo).toBe('3198472051');
+	expect(xrp.deposit?.memoWarning).toBe(
+		'Include this memo. Without it your gift cannot be matched and may not reach Helping Hands.'
+	);
+
+	const unlisted = takeoverFor(
+		{ ...AWAITING, deposit: { ...DEPOSIT, coin: 'dogecoin', memo: 'tag-1' } },
+		COINS,
+		money
+	);
+	expect(unlisted.deposit?.ticker).toBe('DOGECOIN');
+	expect(unlisted.deposit?.memoWarning).toBe('');
+});
+
+it('withdraws the address once its send-by passes here, and offers no control', () => {
+	const root = draw({ ...AWAITING, closed: true });
+
+	expect(heading(root)).toBe('Checking for your gift');
+	expect(shown(root, '.prose')).toMatch(
+		/^The address for this gift closed on November 21, 2023 at .+\. If you sent your gift before then, this page changes when it arrives\.$/
+	);
+	expect(takeoverFor({ ...AWAITING, closed: true }, COINS, money).deposit).toBe(null);
+	expect(controls(root)).toEqual([]);
+});
+
+it('tells a donor whose address closed not to send to it, and offers a new one', () => {
+	const root = draw({ step: 'depositExpired' });
+
+	expect(heading(root)).toBe(copy.EXPIRED_HEADING);
+	expect(shown(root, '.prose')).toBe(
+		'The address for this gift closed before anything arrived. Do not send to it now.'
+	);
+	expect(controls(root)).toEqual([copy.START_AGAIN]);
+});
+
+it('thanks a crypto donor for a gift that arrived, stating no figure', () => {
+	const screen = takeoverFor({ step: 'success', method: 'crypto' }, COINS, money);
+	expect(screen.receipt).toBe('none');
+	expect(screen.announce).toBe('Your gift arrived.');
+
+	const root = draw({ step: 'success', method: 'crypto' });
+	expect(heading(root)).toBe(copy.SUCCESS_HEADING);
+	expect(shown(root, '.prose')).toBe(
+		'Your gift arrived. A receipt is on its way to your email. Helping Hands has your gift.'
+	);
+	expect(controls(root)).toEqual([copy.BACK_TO_START]);
 });
 
 it('carries the rail’s own sentence and never the fix written for whoever deployed it', () => {

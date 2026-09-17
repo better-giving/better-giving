@@ -27,7 +27,7 @@
 // surface owns — so what a port is stays one declaration rather than one per surface, and the ban
 // above is the same ban on both.
 
-import type { PaymentMethod, Quote, QuoteRequest } from './v1';
+import type { DonationStatus, PaymentMethod, Quote, QuoteRequest } from './v1';
 
 /**
  * how far a confirmation got, as the machine needs to distinguish it.
@@ -132,11 +132,11 @@ export type ConfirmInput = {
 };
 
 /**
- * the outside world, in four functions.
+ * the outside world, in five functions.
  *
  * small on purpose. Every function added here is one more thing a headless adapter must
  * implement and one more thing the spec must stand in for; the flow needs exactly these, and
- * the discipline that keeps the seam honest is refusing to add a fifth for convenience.
+ * the discipline that keeps the seam honest is refusing to add a sixth for convenience.
  */
 export type CheckoutPorts = {
 	/**
@@ -176,6 +176,20 @@ export type CheckoutPorts = {
 	 * confirmation went unanswered, which is why it is a read that may be repeated.
 	 */
 	resume(input: { readonly paymentToken: string }): Promise<ConfirmOutcome>;
+
+	/**
+	 * `GET /api/v1/forms/:id/donations/:donationId` — where a gift paid to an address stands.
+	 *
+	 * the crypto rail's only reading after its quote: nothing is confirmed there, the donor sends the
+	 * coin from their own wallet, and `paymentToken` on that quote is the donation id. read on a timer
+	 * while the address screen stands (`awaitingDeposit` in ./checkout.machine.ts), so a rejection or
+	 * an answer outside `DONATION_STATES` is a reading nobody has and changes nothing — the endpoint's
+	 * rate limit answers without CORS headers, which a browser reports as a network failure.
+	 */
+	status(input: {
+		readonly formId: string;
+		readonly paymentToken: string;
+	}): Promise<DonationStatus>;
 
 	/** Unix ms. A port because ten days is not a thing a test can wait for. */
 	now(): number;

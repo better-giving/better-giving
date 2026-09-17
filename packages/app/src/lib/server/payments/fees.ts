@@ -33,7 +33,8 @@ import type { ConfigEnv } from '../config/env';
 // donor's form can price any offered rail against.
 //
 // the numbers are the processors' published US rates: https://stripe.com/pricing,
-// https://www.paypal.com/us/webapps/mpp/merchant-fees and https://www.givechariot.com/pricing
+// https://www.paypal.com/us/webapps/mpp/merchant-fees, https://www.givechariot.com/pricing and
+// https://nowpayments.io/pricing
 
 /**
  * the card price, and every rail that settles as a card carries it by reference below.
@@ -147,6 +148,24 @@ export const CHARIOT_FEE_RULES: Readonly<Record<ChariotRail, FeeRule>> = Object.
 });
 
 /**
+ * what NOWPayments takes on a crypto gift: its 1% service fee.
+ *
+ * one rule rather than a table keyed by rail, because `crypto` is the one rail NOWPayments settles
+ * (`NOWPAYMENTS_RAILS` in packages/form/src/embed/rails.ts); `servedFeeRules` below keys it there.
+ *
+ * the service fee alone. the network's own fee for moving the coin on to the payout wallet is taken
+ * in that coin at a size set by the chain on the day, and no figure in the tree could state it — so
+ * a donor covering the fee covers the rate. what NOWPayments actually took is read off the payment,
+ * in dollars only where it names the fee in dollars or in the coin paid in (`feeInCents` in
+ * ./nowpayments.ts), and a fee of nothing is $0 in any currency. a non-zero fee in any other coin —
+ * the payout coin, most often — settles as `feeMinor: null`, which ../donations/settle.ts reports to
+ * an operator as a fee it does not know.
+ *
+ * frozen for `CARD`'s reason.
+ */
+export const NOWPAYMENTS_FEE_RULE: FeeRule = Object.freeze({ percent: 0.01, fixedMinor: 0 });
+
+/**
  * the table `/api/v1/forms/:id/config` serves, covering every rail the wire vocabulary holds.
  *
  * composed from each processor's own rules rather than picked whole: the tables price disjoint
@@ -160,8 +179,14 @@ export const CHARIOT_FEE_RULES: Readonly<Record<ChariotRail, FeeRule>> = Object.
  *
  * frozen, because this object is handed by reference into every `FormConfig` served from an
  * isolate that outlives the request — `CARD` above states what one caller writing to it in place
- * would cost. the rules inside it are the frozen ones the three tables already hold.
+ * would cost. the rules inside it are the frozen ones the three tables and `NOWPAYMENTS_FEE_RULE`
+ * already hold.
  */
 export function servedFeeRules(paypal: Readonly<Record<PaypalRail, FeeRule>>): FeeRules {
-	return Object.freeze({ ...STRIPE_US_FEE_RULES, ...paypal, ...CHARIOT_FEE_RULES });
+	return Object.freeze({
+		...STRIPE_US_FEE_RULES,
+		...paypal,
+		...CHARIOT_FEE_RULES,
+		crypto: NOWPAYMENTS_FEE_RULE
+	});
 }

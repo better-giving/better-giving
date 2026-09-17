@@ -110,13 +110,21 @@ export function readReceipt(
 	// — the switch beside it is what says the decision was made, and the line under it prices both
 	// sides. the covered reading is blank on the same rule for the opposite cause: the rail prices the
 	// fee, and a configuration that publishes no rule for it leaves nothing to add either.
+	//
+	// a crypto gift is valued on arrival, so neither figure the card can state is what the organisation
+	// receives, and its two sentences name neither.
+	const onCrypto = state.step === 'give' && state.method === 'crypto';
 	const consequence = covering
-		? feeShown
-			? copy.feeCovered(org, money(feeMinor), money(fv.amountMinor))
-			: ''
-		: declined === null
-			? copy.feeDeclinedUnpriced(org, money(fv.amountMinor))
-			: copy.feeDeclined(org, money(declined.feeMinor), money(declined.netMinor));
+		? !feeShown
+			? ''
+			: onCrypto
+				? copy.feeCoveredCrypto(money(feeMinor))
+				: copy.feeCovered(org, money(feeMinor), money(fv.amountMinor))
+		: onCrypto
+			? copy.feeDeclinedCrypto(org)
+			: declined === null
+				? copy.feeDeclinedUnpriced(org, money(fv.amountMinor))
+				: copy.feeDeclined(org, money(declined.feeMinor), money(declined.netMinor));
 
 	const totalLabel = screen.totalLabel === '' ? copy.TOTAL_TODAY : screen.totalLabel;
 	// the repeat sentence is owed on the review step too, and that is a correctness requirement

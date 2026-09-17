@@ -14,7 +14,7 @@ import {
 	type NewPayment,
 	type PaymentMethod as SettledRail
 } from '../db/schema';
-import type { ProcessorName } from '../payments/provider';
+import type { DepositInstructions, ProcessorName } from '../payments/provider';
 import type { QuotedRail } from '../payments/provider';
 import { resolveDonor } from './donor';
 import type { Tribute } from './quote-input';
@@ -35,6 +35,11 @@ import type { Tribute } from './quote-input';
 // both leave the donation reading `pending`, which is what puts an unfinished repeating gift on the
 // gifts list beside an unfinished single one: the projection `donation`'s header states counts "no
 // `payment` row yet" and "the latest inbound attempt is `pending`" as the same state.
+//
+// one gift is recorded without an authorization, and it is the exception to "the gift is recorded
+// at authorization": a crypto repeat deposit — money sent again to an address whose payment already
+// settled — was never quoted, so nothing here writes it. the settlement that reports it inserts the
+// gift, its payment and its postings together (`recordRepeatDeposit` in ./settle.ts).
 //
 // ---------------------------------------------------------------------------
 // what this does not write, and why that is the whole shape of the module.
@@ -188,6 +193,14 @@ export type RecordDonationInput = {
 	readonly processor: ProcessorName;
 	/** the processor's id for the intent this gift is being paid with — `Intent.providerTxnId`. */
 	readonly providerTxnId: string;
+	/**
+	 * the address a crypto gift is sent to, as the processor minted it — present exactly on the
+	 * `crypto` rail, and refused on any other (`problemWith`).
+	 *
+	 * what reaches the row is the coin, its network and when the address closes; the amount asked is
+	 * not stored, because `payment.coin_amount` is what arrived and the settlement writes it.
+	 */
+	readonly deposit?: Pick<DepositInstructions, 'coin' | 'network' | 'validUntil'>;
 	/**
 	 * business time: when the gift was made, as the donor experienced it.
 	 *
@@ -346,7 +359,8 @@ const QUOTED_RAIL_METHODS: Readonly<Record<QuotedRail, SettledRail>> = Object.fr
 	ach: 'ach',
 	paypal: 'paypal',
 	venmo: 'venmo',
-	daf: 'daf'
+	daf: 'daf',
+	crypto: 'crypto'
 });
 
 /**
@@ -363,7 +377,7 @@ const QUOTED_RAIL_METHODS: Readonly<Record<QuotedRail, SettledRail>> = Object.fr
  * there and why the driver's own vocabulary is not among it.
  */
 export async function recordDonation(db: Db, input: RecordDonationInput): Promise<RecordResult> {
-	const malformed = problemWith(input);
+	const malformed = problemWith(input) ?? depositProblem(input);
 	if (malformed !== null) return { ok: false, reason: 'malformed_gift', detail: malformed };
 
 	try {
@@ -532,7 +546,14 @@ async function write(db: Db, input: RecordDonationInput): Promise<RecordedDonati
 		status: 'pending',
 		provider: input.processor,
 		providerTxnId: input.providerTxnId,
-		occurredAt: input.occurredAt
+		occurredAt: input.occurredAt,
+		...(input.deposit === undefined
+			? {}
+			: {
+					coin: input.deposit.coin,
+					coinNetwork: input.deposit.network,
+					validUntil: input.deposit.validUntil
+				})
 	};
 
 	// foreign-key order, and non-empty by construction rather than by assertion: the gift's own
@@ -615,6 +636,23 @@ function problemWith(input: {
 		return `the line items sum to ${sum} but the donor is charged ${input.totalMinor} (minor units). every part of what is charged has to be itemized, because the lines are what the settlement posts revenue from.`;
 	}
 
+	return null;
+}
+
+/**
+ * a crypto payment without its address facts, or another rail's payment carrying them, or `null`.
+ *
+ * checked here rather than left to the schema: `payment_coin_needs_crypto_check` refuses a coin on
+ * another rail, and nothing refuses a `crypto` row with no coin — a pending gift the scheduled read
+ * that closes an expired address could never find, since it is keyed on `valid_until`.
+ */
+function depositProblem(input: RecordDonationInput): string | null {
+	if (input.method === 'crypto' && input.deposit === undefined) {
+		return 'a crypto payment was recorded with no deposit. the coin, its network and when the address closes are written with the payment they belong to.';
+	}
+	if (input.method !== 'crypto' && input.deposit !== undefined) {
+		return `a ${input.method} payment was recorded with a deposit, which only a crypto payment carries.`;
+	}
 	return null;
 }
 

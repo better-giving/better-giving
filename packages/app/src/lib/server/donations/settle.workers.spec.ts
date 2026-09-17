@@ -18,7 +18,7 @@ import type {
 } from '../payments/provider';
 import { recordDonation } from './record';
 import type { SettleDeps, SettleOutcome } from './delivery';
-import { failureIsNewsToTheDonor, settleDelivery } from './settle';
+import { failureIsNewsToTheDonor, settleDelivery, settleTransaction } from './settle';
 
 // the settlement half, against a real D1: what a verified delivery does to the payment row and to
 // the books.
@@ -111,7 +111,9 @@ function donor(over: { email?: string | null } = {}): ParsedContact {
 /** the pending gift a quote leaves behind, written by the module that writes it in production. */
 async function pendingGift(
 	over: {
-		method?: 'card' | 'apple_pay' | 'ach' | 'paypal' | 'daf';
+		method?: 'card' | 'apple_pay' | 'ach' | 'paypal' | 'daf' | 'crypto';
+		/** the address facts a crypto gift is recorded with, and only a crypto gift. */
+		deposit?: Parameters<typeof recordDonation>[1]['deposit'];
 		/**
 		 * which processor minted the intent, written onto the row exactly as ./record.ts writes it.
 		 *
@@ -148,6 +150,7 @@ async function pendingGift(
 		lines,
 		method: over.method ?? 'card',
 		providerTxnId: over.providerTxnId ?? 'pi_settle_1',
+		...(over.deposit === undefined ? {} : { deposit: over.deposit }),
 		occurredAt: new Date('2026-08-01T09:00:00.000Z'),
 		consentedToContact: false,
 		note: undefined,
@@ -168,6 +171,7 @@ const settlement = (over: Partial<Settlement> = {}): Settlement => ({
 	feeMinor: 320,
 	metadata: { donation_id: 'unused-by-the-lookup' },
 	occurredAt: new Date('2026-08-03T12:00:00.000Z'),
+	arrival: null,
 	...over
 });
 
@@ -236,6 +240,9 @@ function provider(
 		},
 		async registerWalletDomain() {
 			throw new Error('registerWalletDomain is not part of the settlement path');
+		},
+		async listPayableCoins() {
+			throw new Error('listPayableCoins is not part of the settlement path');
 		}
 	};
 }
@@ -1582,5 +1589,269 @@ describe('settleDelivery() — a gift settled on PayPal', () => {
 		expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
 		const [groups] = await db.select({ n: sql<number>`count(*)` }).from(entryGroup);
 		expect(groups?.n).toBe(0);
+	});
+});
+
+/**
+ * a crypto gift settles at the dollar value of what arrived, whatever was asked, so the gift's own
+ * figures are restated to it before it is posted.
+ */
+describe('settleDelivery() — a crypto gift valued at what arrived', () => {
+	const PAYMENT_ID = '5745459419';
+
+	const arrived = (over: Partial<Settlement> = {}): Settlement =>
+		settlement({
+			providerTxnId: PAYMENT_ID,
+			method: 'crypto',
+			amountMinor: 8_000,
+			feeMinor: null,
+			metadata: {},
+			arrival: {
+				coin: 'xrp',
+				coinAmount: '19.36121163',
+				valuedBy: 'arrival_rate',
+				repeatOf: null
+			},
+			...over
+		});
+
+	const nowpayments = (read: Settlement = arrived()) =>
+		provider(
+			{ ok: true, value: settledEvent({ providerTxnId: PAYMENT_ID, type: 'finished' }) },
+			{ ok: true, value: read },
+			'nowpayments'
+		);
+
+	/** $100.00 asked, $3.30 of it the fee the donor chose to cover. */
+	const pendingCrypto = (over: Parameters<typeof pendingGift>[0] = {}) =>
+		pendingGift({
+			method: 'crypto',
+			processor: 'nowpayments',
+			providerTxnId: PAYMENT_ID,
+			deposit: { coin: 'xrp', network: 'xrp', validUntil: new Date('2026-08-08T09:00:00.000Z') },
+			...over
+		});
+
+	it('splits what arrived between gift and covered fee in the ratio the donor was quoted', async () => {
+		const gift = await pendingCrypto();
+
+		const result = await settleDelivery(deps({ provider: nowpayments() }), DELIVERY);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		const [row] = await db.select().from(donation).where(eq(donation.id, gift.donationId));
+		// 330 of 10_000 was fee; 8_000 arrived, so 264 of it is.
+		expect(row).toMatchObject({ totalMinor: 8_000, feeMinor: 264 });
+		const [line] = await db.select().from(lineItem).where(eq(lineItem.donationId, gift.donationId));
+		expect(line).toMatchObject({ unitPriceMinor: 8_000, lineTotalMinor: 8_000 });
+		const charge = await groupLines('payment', gift.paymentId);
+		expect(charge?.lines.map((l) => l.amountMinor).sort((a, b) => a - b)).toEqual([-8_000, 8_000]);
+	});
+
+	it('receipts the coin by the name the donor picked it by, with the amount received and its value', async () => {
+		await pendingCrypto();
+		const mail = mailer();
+
+		await settleDelivery(
+			deps({
+				provider: nowpayments(),
+				email: mail.port,
+				payableCoins: async () => [
+					{ coin: 'xrp', name: 'Ripple', network: 'xrp', ticker: 'xrp', memoRequired: true }
+				]
+			}),
+			DELIVERY
+		);
+
+		const receipt = mail.sent.find((m) => m.to === 'ada@example.org');
+		expect(receipt?.text).toContain('Ripple');
+		expect(receipt?.text).toContain('19.36121163');
+		expect(receipt?.text).toContain('80.00');
+	});
+
+	it('names a coin the served list does not hold by its code', async () => {
+		await pendingCrypto();
+		const mail = mailer();
+
+		await settleDelivery(
+			deps({ provider: nowpayments(), email: mail.port, payableCoins: async () => null }),
+			DELIVERY
+		);
+
+		expect(mail.sent.find((m) => m.to === 'ada@example.org')?.text).toContain('XRP');
+	});
+
+	it('settles a transaction a scheduled read names, with no delivery behind it', async () => {
+		const gift = await pendingCrypto();
+
+		const result = await settleTransaction(deps({ provider: nowpayments() }), {
+			providerTxnId: PAYMENT_ID,
+			eventId: 'expiry-read'
+		});
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		const [row] = await db.select().from(payment).where(eq(payment.id, gift.paymentId));
+		expect(row).toMatchObject({ status: 'succeeded', amountMinor: 8_000 });
+	});
+
+	it('refuses to restate a gift itemized across two funds, posting nothing and telling an operator', async () => {
+		await pendingCrypto({
+			lines: [
+				{ revenueAccountId, amountMinor: 6_000 },
+				{ revenueAccountId: OTHER_FUND, amountMinor: 4_000 }
+			]
+		});
+		const mail = mailer();
+
+		const result = await settleDelivery(
+			deps({ provider: nowpayments(), email: mail.port }),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
+		const [groups] = await db.select({ n: sql<number>`count(*)` }).from(entryGroup);
+		expect(groups?.n).toBe(0);
+		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+	});
+
+	it('tells an operator when a payment already posted is reported as another amount received, changing nothing', async () => {
+		const gift = await pendingCrypto();
+		await settleDelivery(deps({ provider: nowpayments() }), DELIVERY);
+		const mail = mailer();
+
+		const result = await settleDelivery(
+			deps({
+				provider: nowpayments(
+					arrived({
+						amountMinor: 8_100,
+						arrival: {
+							coin: 'xrp',
+							coinAmount: '19.5',
+							valuedBy: 'processor_estimate',
+							repeatOf: null
+						}
+					})
+				),
+				email: mail.port
+			}),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+		const [row] = await db.select().from(donation).where(eq(donation.id, gift.donationId));
+		expect(row?.totalMinor).toBe(8_000);
+	});
+
+	/** each read values the same coins at the estimate of the moment, so the dollars drift. */
+	it('tells nobody when a payment already posted is reported at another dollar value alone', async () => {
+		await pendingCrypto();
+		await settleDelivery(deps({ provider: nowpayments() }), DELIVERY);
+		const mail = mailer();
+
+		const result = await settleDelivery(
+			deps({ provider: nowpayments(arrived({ amountMinor: 8_100 })), email: mail.port }),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect(mail.sent).toHaveLength(0);
+	});
+
+	it('still receipts the gift when the coin list cannot be read, naming the coin by its code', async () => {
+		await pendingCrypto();
+		const mail = mailer();
+
+		await settleDelivery(
+			deps({
+				provider: nowpayments(),
+				email: mail.port,
+				payableCoins: async () => {
+					throw new Error('the cache went away');
+				}
+			}),
+			DELIVERY
+		);
+
+		expect(mail.sent.find((m) => m.to === 'ada@example.org')?.text).toContain('XRP');
+	});
+
+	describe('a repeat deposit', () => {
+		const CHILD_ID = '5745460001';
+
+		const repeat = () =>
+			provider(
+				{ ok: true, value: settledEvent({ providerTxnId: CHILD_ID, type: 'finished' }) },
+				{
+					ok: true,
+					value: arrived({
+						providerTxnId: CHILD_ID,
+						amountMinor: 514,
+						occurredAt: new Date('2026-08-10T10:00:00.000Z'),
+						arrival: {
+							coin: 'xrp',
+							coinAmount: '4',
+							valuedBy: 'arrival_rate',
+							repeatOf: PAYMENT_ID
+						}
+					})
+				},
+				'nowpayments'
+			);
+
+		it('copies the first gift’s dedication and cause, and tells nobody the donor named', async () => {
+			const first = await pendingCrypto({
+				programId: PROGRAM_ID,
+				tribute: {
+					kind: 'memory',
+					honoree: 'Margaret Chen',
+					notify: { name: 'Iris Chen', email: 'iris@example.org' }
+				}
+			});
+			const mail = mailer();
+
+			const result = await settleDelivery(deps({ provider: repeat(), email: mail.port }), DELIVERY);
+
+			expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+			const [child] = await db.select().from(payment).where(eq(payment.providerTxnId, CHILD_ID));
+			expect(child).toMatchObject({ parentPaymentId: first.paymentId });
+			const [gift] = await db
+				.select()
+				.from(donation)
+				.where(eq(donation.id, child?.donationId ?? ''));
+			expect(gift).toMatchObject({
+				tributeKind: 'memory',
+				tributeHonoree: 'Margaret Chen',
+				tributeNotifyName: null,
+				tributeNotifyEmail: null,
+				programId: PROGRAM_ID,
+				feeMinor: 0,
+				receivedAt: new Date('2026-08-10T10:00:00.000Z')
+			});
+			expect(mail.sent.map((m) => m.to)).not.toContain('iris@example.org');
+			const receipt = mail.sent.find((m) => m.to === 'ada@example.org');
+			expect(receipt?.text).toContain('In memory of Margaret Chen');
+			expect(receipt?.text).toContain('5.14');
+		});
+
+		it('never adds to or settles the first gift', async () => {
+			const first = await pendingCrypto();
+
+			await settleDelivery(deps({ provider: repeat() }), DELIVERY);
+
+			const [row] = await db.select().from(payment).where(eq(payment.id, first.paymentId));
+			expect(row).toMatchObject({ status: 'pending', amountMinor: 10_000 });
+			expect(await groupLines('payment', first.paymentId)).toBeNull();
+		});
+
+		it('tells an operator about a deposit to an address with no payment here, writing nothing', async () => {
+			const mail = mailer();
+
+			const result = await settleDelivery(deps({ provider: repeat(), email: mail.port }), DELIVERY);
+
+			expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
+			expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+			const [groups] = await db.select({ n: sql<number>`count(*)` }).from(entryGroup);
+			expect(groups?.n).toBe(0);
+		});
 	});
 });

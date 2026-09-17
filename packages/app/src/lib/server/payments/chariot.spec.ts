@@ -85,6 +85,7 @@ const GRANT_REQUEST: IntentRequest = {
 	currency: 'USD',
 	method: 'daf',
 	idempotencyKey: 'attempt-1',
+	deploymentOrigin: 'https://donate.example.org',
 	authorizedSessionId: SESSION
 };
 
@@ -362,7 +363,8 @@ describe('readSettlement — Get Grant', () => {
 				feeMinor: 195,
 				metadata: {},
 				reference: 'L9E182VBGP',
-				occurredAt: new Date('2024-10-21T03:05:45.833Z')
+				occurredAt: new Date('2024-10-21T03:05:45.833Z'),
+				arrival: null
 			}
 		});
 	});

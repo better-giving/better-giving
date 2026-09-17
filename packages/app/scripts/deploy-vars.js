@@ -1,12 +1,12 @@
 /**
  * `pnpm run deploy:vars` — deploy, carrying every line of `.deploy.vars` as a Worker var.
  *
- * the bulk path for the twenty-one values a deployment is configured with
+ * the bulk path for the twenty-four values a deployment is configured with
  * (`@better-giving/operator/deploy-split`). every one of them is a plain var, and a var is set by a
  * flag on the deploy — so this is `pnpm run deploy` with one `--var NAME:value` appended per line,
- * and the whole file lands in one deploy rather than twenty-one.
+ * and the whole file lands in one deploy rather than twenty-four.
  *
- * why a script rather than a line an operator types. twenty-one `--var` flags typed out put a live
+ * why a script rather than a line an operator types. twenty-four `--var` flags typed out put a live
  * Stripe key and the dashboard password in a shell history, and the file is where those values
  * already are. spawned with an argument list and no shell, a value never passes through one:
  * quoting, `#`, backslashes and spaces reach wrangler exactly as the file holds them. the file's own
