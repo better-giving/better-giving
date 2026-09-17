@@ -10,7 +10,7 @@ pnpm wrangler d1 execute DB --local --file scripts/seed-local.sql  # the organis
 pnpm dev                                                   # http://localhost:5321
 ```
 
-- `pnpm install` runs `prepare`: route typegen, `worker-configuration.d.ts`, git hooks. Stale types after editing `wrangler.jsonc` want `pnpm wrangler types`, not a reinstall.
+- `pnpm install` runs `prepare`: route typegen, `worker-configuration.d.ts`. Stale types after editing `wrangler.jsonc` want `pnpm wrangler types`, not a reinstall.
 - `pnpm dev` does not build the embed: `/embed.js` 404s until `pnpm run build` has run once.
 
 Before changing code, read [`CLAUDE.md`](./.claude/CLAUDE.md) for the invariants, several non-obvious enough that inferring intent from the code gets them backwards.
@@ -24,7 +24,7 @@ Before changing code, read [`CLAUDE.md`](./.claude/CLAUDE.md) for the invariants
 | `pnpm run gallery` | every `packages/operator` component     | 5323        |
 | `pnpm run form`    | the donation form against fixtures      | 5324        |
 
-**Console**: the Vite server proxies `/api` to `go run ./cmd/better-giving` (Go 1.24.2+, needed only by `packages/console` contributors; the commit hook skips `go-test` where Go is absent). The console operates a *deployed* Worker resolved off its Cloudflare sign-in, never your dev server.
+**Console**: the Vite server proxies `/api` to `go run ./cmd/better-giving` (Go 1.24.2+, needed only by `packages/console` contributors; CI's `go-test` job runs regardless). The console operates a *deployed* Worker resolved off its Cloudflare sign-in, never your dev server.
 
 **The deploy commands need a bundle you packed.** The binary a checkout builds is version `dev`, and there is no release under that name to fetch from, so `pnpm console` (`scripts/console.sh`) names a local one instead:
 
@@ -71,11 +71,9 @@ Which package may import which is enforced by `biome.jsonc`'s overrides (`CLAUDE
 
 `pnpm run check` and `pnpm test` fan out one package at a time (`--workspace-concurrency=1`, because parallel workerd suites oversubscribe the machine).
 
-## The commit hook
+## CI
 
-`lefthook.yml` gates every commit, and it is the only quality gate: nothing gates a push, a PR, or a deploy. In order, stopping at first failure: `format` (biome, writes fixes back), `check` (`tsc --noEmit` per package), `test`, `go-test`, `lint`. Broken tree onto a branch: `git commit --no-verify`, and nothing downstream re-runs these.
-
-`packages/form`'s `test:browser` (real Chromium, two CSS properties a lightweight DOM cannot see) stays outside the hook.
+`.github/workflows/ci.yml` gates a push to `main` and every pull request, and it is the only quality gate: nothing gates a local commit. Four independent jobs: `checks` (a non-writing `biome format`, `lint`, `check`), `test` (`pnpm -r --workspace-concurrency=1 test`, one package at a time), `browser-test` (`packages/form`'s `test:browser`, real Chromium, two CSS properties a lightweight DOM cannot see), `go-test` (`go test ./...` in `packages/console`, unconditional — CI always has Go). Nothing gates a deploy either; `deploy` runs its own preflight (`scripts/preflight-deploy.js`).
 
 ## Tests
 

@@ -1,0 +1,120 @@
+# the one gate: this workflow checks a push to `main` and every pull request, nothing checks a
+# commit on a contributor's own machine, and `.github/workflows/release.yml` runs on a tag and gates nothing.
+#
+# no `paths`/`paths-ignore` on the triggers and no `if:` on the jobs below — every job fires on
+# every push to `main` and every pull request, so a required check always produces a run rather
+# than being silently skipped.
+#
+# four independent jobs, each its own check: `checks` (format, lint, typecheck), `test` (the pnpm
+# suite across every package), `browser-test` (packages/form's real-chromium specs, which `test`
+# never reaches), `go-test` (the console's go module, which the pnpm suite cannot reach). there is
+# no turbo here — this repository has none (`.claude/CLAUDE.md` → toolchain), so nothing is cached
+# or fanned out through a task graph; each job just runs the same command a contributor would run
+# locally.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# third-party actions are pinned to a full commit sha, not a mutable tag. the trailing `# vX.Y.Z`
+# is the tag that sha was, for readability only — bumping means resolving the new tag to a sha, not
+# editing that comment.
+#
+# jobs run on blacksmith (blacksmith.sh) rather than github-hosted runners, the same swap
+# release.yml already made: the app is installed on the org and the runner label is the whole
+# integration, with no action to add or pin. blacksmith proxies the standard cache actions to its
+# own colocated cache, so `cache: pnpm` below is accelerated as-is.
+
+jobs:
+  checks:
+    name: checks
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # non-writing: `biome format` with no `--write` exits non-zero on a diff instead of fixing
+      # it, so a workflow-run reformat never lands in a PR nobody reviewed.
+      - run: pnpm exec biome format .
+
+      # `biome lint .` — the single root pass CLAUDE.md's tooling section describes, not fanned
+      # through anything.
+      - run: pnpm run lint
+
+      # `pnpm -r --workspace-concurrency=1 check` — route typegen plus `tsc --noEmit` per package.
+      # the typed `worker-configuration.d.ts` and react-router's generated types this depends on
+      # come from `prepare`, which `pnpm install` above already ran.
+      - run: pnpm run check
+
+  test:
+    name: test
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # `pnpm -r --workspace-concurrency=1 test` — every package's own `test` script, one at a
+      # time (parallel workerd suites oversubscribe the runner the same way they would a
+      # contributor's machine). this never reaches packages/form's `test:browser`: that script is
+      # its own, separate from `test`, and vitest.browser.config.ts's own header says it
+      # deliberately never runs from plain `vitest`/`pnpm test` — that suite runs in `browser-test`
+      # below instead.
+      - run: pnpm run test
+
+  browser-test:
+    name: browser-test
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # installs the chromium build matching the `playwright` version packages/form pins
+      # (package.json devDependencies), plus its OS deps — run from packages/form so the
+      # workspace's own pinned binary resolves, not whatever hoists to the root.
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: packages/form
+
+      # vitest.browser.config.ts's header: this pool is not one of vitest.config.ts's `projects`,
+      # so `pnpm run test` above never reaches it. this job is what runs it.
+      - run: pnpm --filter @better-giving/form test:browser
+
+  go-test:
+    name: go-test
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: packages/console/go.mod
+          cache-dependency-path: packages/console/go.sum
+
+      - run: go test ./...
+        working-directory: packages/console

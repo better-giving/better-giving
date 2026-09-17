@@ -15,12 +15,11 @@ import { playwright } from '@vitest/browser-playwright';
 //    suite does not pay.
 //  - what's actually at stake: a wrong color ramp or a missed breakpoint is a visual regression
 //    in a widget, not a corrupted book, so it does not need to sit behind the same one-way door as
-//    `deploy`'s other gates. it needs a human to run it before shipping a change that touches the
-//    seed properties or the container queries — which `test:browser` is for.
+//    `deploy`'s other gates.
 //
-// this is a deliberate scope choice, not an oversight: the visual assertions are real coverage
-// that a maintainer must remember to run by hand, and that is the drift risk this file accepts in
-// exchange for keeping `deploy` fast for everyone else.
+// `.github/workflows/ci.yml`'s `browser-test` job runs this on every push to `main` and every
+// pull request, apart from its `test` job, so this is a scope choice
+// about `deploy`'s gate, not about who runs the suite at all.
 
 export default defineConfig({
 	test: {
