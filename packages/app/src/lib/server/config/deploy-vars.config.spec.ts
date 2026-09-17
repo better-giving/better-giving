@@ -28,8 +28,8 @@ import { readWranglerConfig } from '../wrangler-config.testing';
 //
 // what this spec cannot prove is that Cloudflare honours the flag; only a real deploy shows that.
 // what it proves is that the flag is still in the file and that no `vars` block has appeared beside
-// it, which are the two ways this breaks from inside the repository. `test` runs in lefthook.yml's
-// pre-commit hook, so both land in front of whoever changed them.
+// it, which are the two ways this breaks from inside the repository. `test` runs in ci.yml on
+// every push and pull request, so both land in front of whoever changed them.
 
 /** the fields this file reads. everything else in the config is somebody else's concern. */
 interface WranglerConfig {

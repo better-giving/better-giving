@@ -11,7 +11,7 @@ import { RUNTIME_PATH_PREFIX } from './loader';
 // type-checking that config is not this file's job and has not been since the form became a
 // package: ../../vite.embed.config.ts is named directly in ../../tsconfig.json's `include`, so a
 // signature change in ./stamp.ts fails `pnpm --filter @better-giving/form check` — which the root
-// `check` script runs first and lefthook.yml runs at commit time. what is left here is the half a
+// `check` script runs first and ci.yml runs on every push and pull request. what is left here is the half a
 // type is blind to: which directory each mode writes into, and that an unrecognised mode is
 // refused rather than defaulted. both of those are strings, and getting one wrong still type-checks
 // and still fails inside `build` — which `deploy` runs first, so nothing irreversible has happened,
@@ -64,8 +64,8 @@ describe('the loader half', () => {
 	});
 });
 
-// biome.jsonc states the same boundary and covers app source too, but it runs at commit time
-// through lefthook.yml and neither `build` nor `deploy` runs `lint`. what is asserted here is the
+// biome.jsonc states the same boundary and covers app source too, but it runs in ci.yml
+// and neither `build` nor `deploy` runs `lint`. what is asserted here is the
 // half the shipping build enforces on its own: an undeclared import bundled into an `iife` is
 // minified into the script served to every site that pasted the snippet.
 describe('the boundary the build enforces', () => {

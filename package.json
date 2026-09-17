@@ -35,7 +35,7 @@
 		"db:create:test": "pnpm --filter @better-giving/app db:create:test",
 		"db:info": "pnpm --filter @better-giving/app db:info",
 		"db:export": "pnpm --filter @better-giving/app db:export",
-		"prepare": "pnpm --filter @better-giving/app prepare && pnpm --filter @better-giving/console-ui prepare && lefthook install",
+		"prepare": "pnpm --filter @better-giving/app prepare && pnpm --filter @better-giving/console-ui prepare",
 		"check": "pnpm -r --workspace-concurrency=1 check",
 		"lint": "biome lint .",
 		"format": "biome format --write .",
@@ -44,7 +44,6 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.9",
-		"lefthook": "2.1.10",
 		"typescript": "catalog:"
 	},
 	"pnpm": {

@@ -29,7 +29,7 @@ import { readWranglerConfig } from '../wrangler-config.testing';
 // what this file cannot prove is what a real deploy does — that Cloudflare puts up a second worker,
 // that it binds the second database, that the first one is untouched. what it proves is that the
 // commands sent are the commands intended, which is the half that breaks from inside the repository.
-// `test` runs in lefthook.yml's pre-commit hook, so it lands in front of whoever changed them.
+// `test` runs in ci.yml on every push and pull request, so it lands in front of whoever changed them.
 
 /** the fields this file reads off the config. everything else in it is somebody else's concern. */
 interface WranglerConfig {

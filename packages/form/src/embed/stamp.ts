@@ -1,7 +1,7 @@
 // the two string-to-string steps the embed build is made of, kept out of the build script so
 // they can be asserted without running one.
 //
-// the suite runs in lefthook.yml's pre-commit hook, with no build ordered ahead of it anywhere, so
+// the suite runs in ci.yml, with no build ordered ahead of it anywhere, so
 // at the moment it runs there may well be no bundle on disk — a spec that shelled out to a build
 // would either be asserting nothing or putting a full build inside every commit. ./stamp.spec.ts
 // asserts these instead, and vite.embed.config.ts calls them.

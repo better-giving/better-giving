@@ -14,7 +14,7 @@ Publish the pair an operator installs: the console binary for four platforms and
 
 ## Steps
 
-1. **A clean `main` that the remote holds.** `git status -sb` names no modification and no `ahead` count: goreleaser writes the changelog from the commits since the previous tag, so a commit the remote does not have is a commit the release does not carry. Outstanding work is committed first — `lefthook.yml` runs the suite and the type check on that commit, which is the whole of this repository's gate. Done when the status is clean and level with `origin/main`.
+1. **A clean `main` that the remote holds.** `git status -sb` names no modification and no `ahead` count: goreleaser writes the changelog from the commits since the previous tag, so a commit the remote does not have is a commit the release does not carry. Outstanding work is committed and pushed first — `.github/workflows/ci.yml` runs the suite and the type check on that push and on every PR into `main`, which is the whole of this repository's gate. Done when the status is clean and level with `origin/main`.
 
 2. **The bake still matches the app.** From `packages/console`: `go run ./cmd/bake --check`. It is the workflow's first step and the one failure a release cannot recover from afterwards — a binary whose baked config disagrees with `packages/app/wrangler.jsonc` refuses every deploy an operator presses. Repair with `go run ./cmd/bake` and commit what it rewrote. Done when the check exits quiet.
 

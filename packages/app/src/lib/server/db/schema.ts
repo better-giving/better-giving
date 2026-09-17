@@ -169,8 +169,8 @@ import type { PostableAccountId } from './postable';
 //    `pragma_table_list` after
 //    applying every migration and fails on any table that lost it; that spec is the
 //    only thing standing between a generated rebuild and a schema that quietly stopped
-//    enforcing its own encodings, and it gets its chance in lefthook.yml's pre-commit
-//    hook — the rebuild is caught before it is even committed, let alone deployed, which
+//    enforcing its own encodings, and it gets its chance in ci.yml —
+//    the rebuild is caught before it is ever deployed, which
 //    matters because putting the keyword back afterwards needs a rebuild of its own, on
 //    a table D1 will not let you drop, so it is there at birth or never.
 //    `STRICT` does not subsume a check (see `boolCheck` below — STRICT INTEGER takes

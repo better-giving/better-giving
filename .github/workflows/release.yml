@@ -1,7 +1,8 @@
-# the one remote workflow this repository has, and it gates nothing.
+# the second remote workflow this repository has, and it gates nothing — ci.yml is the one that
+# does, on every push to main and every pull request.
 #
-# it runs on a tag and never on a push or a pull request: what gates a commit is lefthook.yml on
-# the contributor's own machine, and nothing here is asked before code lands. what it produces is
+# it runs on a tag and never on a push or a pull request: nothing here is asked before code lands.
+# what it produces is
 # the pair an operator installs — the console binary for four platforms, and the worker bundle that
 # binary uploads — held to each other by the baked config both halves carry.
 #

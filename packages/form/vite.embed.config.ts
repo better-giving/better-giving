@@ -28,7 +28,7 @@ import { runtimeAssetPath, stampLoader } from './src/embed/stamp';
 // imports it — with `importAllowed` beside it — to assert the mode switch, the two output
 // directories and which specifiers may enter the bundle. type-checking is not that import's job: this file is named in packages/form/tsconfig.json's `include`, so a signature change
 // in packages/form/src/embed/stamp.ts fails `pnpm --filter @better-giving/form check` — which the
-// root `check` script runs first, and which lefthook.yml runs at commit time. what the spec catches
+// root `check` script runs first, and which ci.yml runs on every push and pull request. what the spec catches
 // is a change that still type-checks and would die inside `build`, which is `deploy`'s first step:
 // in front of the remote migration rather than behind it, but on the deployer's machine rather than
 // the contributor's.
@@ -77,7 +77,7 @@ export function importAllowed(source: string, allowed: readonly string[]): boole
  * refuses an import this package does not declare, at the moment it would enter the bundle.
  *
  * biome.jsonc states the same boundary and is the gate that covers app source as well as this
- * package, but it runs at commit time through lefthook.yml and neither `build` nor `deploy` runs
+ * package, but it runs in ci.yml and neither `build` nor `deploy` runs
  * `lint`. this is the half of that rule the shipping build enforces on its own, and the failure it
  * exists for is the worst one available here: node resolution walks up to the workspace root's
  * node_modules, so `zod`, `drizzle-orm` and every other root dependency resolve from inside this

@@ -261,12 +261,16 @@ describe('a cascade the sheet never reached at all', () => {
 		// the flush stack is the one variable that survives a cascade that resolved nothing: it reads
 		// no token, so there was nothing for this reader to fail to resolve.
 		expect(appearance.variables.accordionItemSpacing).toBe('0px');
-		// not one rule read from the cascade survives, and the whole object is the assertion: a rule
+		// not one rule read from a token survives, and the whole object is the assertion: a rule
 		// left holding a single declaration is a surface this form claims to have drawn on a page
-		// where it resolved nothing at all. the rail's rule is the one exception, because what it
-		// draws reads nothing — ./appearance.ts sends the bare container whatever resolved, and both
-		// its pads are lengths and are dropped here with every other one.
+		// where it resolved nothing at all. two rules are the exception, because neither reads a
+		// token. the rail's draws nothing read at all — ./appearance.ts sends the bare container
+		// whatever resolved, and both its pads are lengths and are dropped here with every other one.
+		// and the typed field's size is `[part~='field']`'s `max(16px, 1em)` in ./parts.css: a literal
+		// floor over the card's computed `font-size`, a standard property the browser resolves on any
+		// page, so it is sent here too, and at the floor.
 		expect(appearance.rules).toEqual({
+			'.Input': { fontSize: '16px' },
 			'.AccordionItem': {
 				border: 'none',
 				boxShadow: 'none',

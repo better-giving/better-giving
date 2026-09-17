@@ -48,8 +48,8 @@
 -- it cannot be added afterwards. that needs a table rebuild, and D1 refuses to drop a table
 -- a child references — so the keyword is there at birth or never.
 -- `src/lib/server/db/strict.workers.spec.ts` reads `pragma_table_list` over these files and
--- fails on any table that lost it; the suite runs in `lefthook.yml`'s pre-commit hook, so it
--- gets the chance to before the migration is even committed.
+-- fails on any table that lost it; the suite runs in `ci.yml`, so it
+-- gets the chance to before the migration ever reaches `deploy`.
 --
 -- no FOREIGN KEY here carries `ON DELETE CASCADE`, and none may — the exceptions are
 -- `auth_session -> auth_user` and `auth_account -> auth_user`, where the row is worthless

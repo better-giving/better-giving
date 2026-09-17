@@ -18,7 +18,7 @@ import { quoteRateLimitRefusal, rateLimitRefusal, signInRateLimitMessage } from 
 // API_RATE_LIMITER is the deployment `refuseIfRateLimited` refuses by name at runtime, and for the
 // other two is a bucket that silently stops bounding anything, since both of those fail open. that
 // difference is why every one of the three is named here rather than only the loud one: `test`
-// runs in lefthook.yml's pre-commit hook, ahead of any deploy at all, so a missing binding of any
+// runs in ci.yml on every push and pull request, ahead of any deploy at all, so a missing binding of any
 // of the three lands in front of whoever removed it rather than in production.
 //
 // every block the config declares is read, not the top level alone. a named environment inherits

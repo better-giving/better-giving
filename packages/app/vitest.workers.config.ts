@@ -12,8 +12,8 @@ import { versionDefine } from './version-define';
 //
 // no `main`. the pool's `main` is optional, and pointing it at the worker entry wrangler.jsonc
 // names would tie `test` to a build having already happened — and nothing anywhere orders one
-// ahead of it. the suite runs in lefthook.yml's pre-commit hook, behind `format`, `lint` and
-// `check` and no build at all, so the gate would either fail on a clean checkout or silently test
+// ahead of it. the suite runs in .github/workflows/ci.yml's `test` job on a clean checkout with no build at
+// all, so the gate would either fail on a clean checkout or silently test
 // a stale bundle. these specs bind D1 and nothing else, so there is no entrypoint to point at.
 //
 // the bindings are declared here rather than read from wrangler.jsonc for the same

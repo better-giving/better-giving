@@ -51,7 +51,7 @@
 	// it is a top-level key and only a top-level key — wrangler's config schema puts `keep_vars`
 	// on `RawConfig` and not on `RawEnvironment` — so this one line already covers any named
 	// environment a fork adds later. src/lib/server/config/deploy-vars.config.spec.ts holds it
-	// here, and `test` runs in lefthook.yml's pre-commit hook, ahead of any deploy.
+	// here, and `test` runs in ci.yml on every push and pull request, ahead of any deploy.
 	//
 	// the trade it makes: a var can no longer be removed by a deploy. deleting one is the
 	// Variables and Secrets page, or setting it to the empty string — which `readConfigEnv` in

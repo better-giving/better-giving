@@ -176,7 +176,7 @@
 		// (packages/form/vite.embed.config.ts): that gate exists because the embed ships into a
 		// stranger's page and `lint` never runs in `build` or `deploy`. none of packages/operator,
 		// packages/console-ui, packages/gallery and packages/emails-preview is ever built or
-		// deployed, so lint-at-commit (lefthook.yml) is the whole gate and is proportionate to what
+		// deployed, so lint-in-ci (ci.yml) is the whole gate and is proportionate to what
 		// each package actually reaches.
 		{
 			// the secret gate. packages/console-ui declares no dependency on packages/app, and
