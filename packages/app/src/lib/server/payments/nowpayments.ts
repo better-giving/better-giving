@@ -74,9 +74,10 @@ export type NowpaymentsCredentials = {
 	/**
 	 * `NOWPAYMENTS_OUTCOME_CURRENCY` — the lowercase code of the coin the account pays out in.
 	 *
-	 * every minimum is asked against it: without `currency_to`, `min-amount` answers the coin's floor
-	 * to itself, which is two orders of magnitude under the real one for some coins, and no call reads
-	 * the payout coin off the account.
+	 * every minimum is asked against it: without `currency_to`, `min-amount` prices the coin against no
+	 * payout coin at all rather than the account's wallet, and misses the real floor both ways — an
+	 * order of magnitude over it for btc and under it for eth and trx. no call reads the payout coin
+	 * off the account.
 	 */
 	readonly outcomeCurrency: string;
 	/**
@@ -173,13 +174,14 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 		);
 		const payable = new Map<string, PayableCoin>();
 		const known = new Set<string>();
+		const networkName = networkNamesOf(currencies);
 		for (const currency of currencies) {
 			const code = stringField(currency, 'code');
 			if (code !== null) known.add(code.toLowerCase());
-			const coin = acceptedCoinOf(currency);
+			const coin = acceptedCoinOf(currency, networkName);
 			if (coin !== null && chosen.has(coin.coin)) payable.set(coin.coin, coin);
 		}
-		return { ok: true, value: { payable, known } };
+		return { ok: true, value: { payable, known, networkName } };
 	}
 
 	/**
@@ -286,7 +288,7 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 			if (answer.status !== 200 && answer.status !== 201) {
 				return refusedPayment(answer, price, coin);
 			}
-			return intentOf(answer.body, donationId, coin);
+			return intentOf(answer.body, donationId, coin, accepted.value.networkName);
 		},
 
 		/**
@@ -673,7 +675,12 @@ function refusedPayment(answer: Answer, price: string, coin: string): PaymentFai
  * digits. the expiry is `valid_until`, and where a payment carries none, `created_at` plus the seven
  * days a floating-rate address is watched for.
  */
-function intentOf(payment: unknown, donationId: string, asked: string): PaymentResult<Intent> {
+function intentOf(
+	payment: unknown,
+	donationId: string,
+	asked: string,
+	networkName: (network: string) => string
+): PaymentResult<Intent> {
 	const id = digitsOrNull(paymentIdField(payment, 'payment_id'));
 	const address = stringField(payment, 'pay_address');
 	const coin = stringField(payment, 'pay_currency')?.toLowerCase() ?? null;
@@ -705,7 +712,7 @@ function intentOf(payment: unknown, donationId: string, asked: string): PaymentR
 				address,
 				memo: idField(payment, 'payin_extra_id'),
 				coin,
-				network,
+				network: networkName(network),
 				coinAmount,
 				validUntil
 			}
@@ -895,16 +902,58 @@ function arrivedAmount(payment: unknown): string | null | 'unreadable' {
 	return isZero(text) ? null : 'unreadable';
 }
 
-/** what the account holds: the coins it takes payment in, and every code NOWPayments knows. */
+/**
+ * what the account holds: the coins it takes payment in, every code NOWPayments knows, and what each
+ * network is called.
+ */
 type CoinLists = {
 	readonly payable: ReadonlyMap<string, PayableCoin>;
 	readonly known: ReadonlySet<string>;
+	readonly networkName: (network: string) => string;
 };
 
 /** a coin's floor: what NOWPayments will accept in it, and that figure in dollars. */
 type Minimum = { readonly coinAmount: string; readonly dollars: string };
 
-function acceptedCoinOf(currency: unknown): PayableCoin | null {
+/**
+ * a network's readable name, off `full-currencies` alone — the list carries no name for a network.
+ *
+ * `Tether USD (Tron)` names `trx`: the bracket a token on the network carries, the most frequent
+ * where tokens disagree and the first listed on a tie. a network no token brackets takes the name of
+ * the first unbracketed coin whose ticker is its code (`eth` → `Ethereum`), and one with neither
+ * keeps its code, uppercased.
+ */
+function networkNamesOf(currencies: readonly unknown[]): (network: string) => string {
+	const brackets = new Map<string, Map<string, number>>();
+	const natives = new Map<string, string>();
+	for (const currency of currencies) {
+		const network = stringField(currency, 'network');
+		const name = stringField(currency, 'name');
+		const ticker = stringField(currency, 'ticker')?.toLowerCase();
+		const bracket = /\(([^()]+)\)\s*$/.exec(name ?? '')?.[1]?.trim();
+		if (name !== null && ticker !== undefined && !name.includes('(') && !natives.has(ticker)) {
+			natives.set(ticker, name);
+		}
+		if (network === null || !bracket) continue;
+		const counts = brackets.get(network) ?? new Map<string, number>();
+		counts.set(bracket, (counts.get(bracket) ?? 0) + 1);
+		brackets.set(network, counts);
+	}
+	const names = new Map<string, string>();
+	for (const [network, counts] of brackets) {
+		let best = '';
+		for (const [bracket, count] of counts) {
+			if (count > (counts.get(best) ?? 0)) best = bracket;
+		}
+		names.set(network, best);
+	}
+	return (network) => names.get(network) ?? natives.get(network) ?? network.toUpperCase();
+}
+
+function acceptedCoinOf(
+	currency: unknown,
+	networkName: (network: string) => string
+): PayableCoin | null {
 	const code = stringField(currency, 'code');
 	const name = stringField(currency, 'name');
 	const network = stringField(currency, 'network');
@@ -916,7 +965,7 @@ function acceptedCoinOf(currency: unknown): PayableCoin | null {
 	return {
 		coin: code.toLowerCase(),
 		name,
-		network,
+		network: networkName(network),
 		ticker: ticker.toLowerCase(),
 		memoRequired:
 			field(currency, 'extra_id_exists') === true && field(currency, 'extra_id_optional') !== true

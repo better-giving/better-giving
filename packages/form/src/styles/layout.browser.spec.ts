@@ -402,7 +402,7 @@ describe('the address screen at the narrowest card', () => {
 			coinAmount: '19.36121163',
 			ticker: 'XRP',
 			about: 'About $25.00 today',
-			network: 'XLM',
+			network: 'Stellar',
 			networkWarning: 'Send on this network only.',
 			address: 'GT5XENIU5JALFHLBH53QVDEP65LRK5WHIKF2KIRCK6FBF7SDJSJ3NKSYGT5XENIU5JALFHLBH53QVDEP65',
 			memo: '3198472051',

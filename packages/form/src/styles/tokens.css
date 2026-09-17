@@ -452,6 +452,14 @@
 	--_font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 
 	/*
+	 * the face for a string a donor checks against a wallet character by character — an address, a
+	 * memo, a figure in coin units, a ticker, a network code — where `0` and `O`, `l` and `1` must not
+	 * share a shape. the platform's own stack for the reason `--_font` gives, ending in `monospace`.
+	 * the words around such a string, and every dollar figure, stay in `--_font`.
+	 */
+	--_font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+
+	/*
 	 * every size is `em` off the clamped root above, and `--_t-xs` is the one step this scale does
 	 * not protect. nothing at this level floors it: a consumer that needs one states its own
 	 * `max(12px, …)` at its own site, which four of the six do — `.optional`, `.fee-note`,

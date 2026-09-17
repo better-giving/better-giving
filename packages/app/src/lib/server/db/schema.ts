@@ -1578,7 +1578,7 @@ export const payment = sqliteTable(
 		 */
 		coin: text('coin'),
 		/**
-		 * the network the coin travels on, as NOWPayments names it. beside `coin` rather than
+		 * the network the coin travels on, by the name NOWPayments' coin list reads for it. beside `coin` rather than
 		 * inside it because it is the fact a donor sending on the wrong chain gets wrong, and a
 		 * reader should not have to decode a code to find it. null where the processor said none.
 		 */

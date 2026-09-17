@@ -3,11 +3,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 // document and is the one a reader here is looking for.
 import { page as browser, userEvent } from 'vitest/browser';
 import { createCoinPicker } from '../coin-picker';
+import { createDepositBlock } from '../deposit';
 import { defineDonateForm, DONATE_FORM_TAG } from '../element';
 import { createRows, type Row, type RowMark } from '../embed/rows';
 import type { CheckoutPorts } from '../ports';
 import type { FormConfig } from '../v1';
 import { createSkeleton } from '../views';
+import layoutSheet from './layout.css?inline';
+import partSheet from './parts.css?inline';
 import tokens from './tokens.css?inline';
 
 // the browser pool, and the only pool that can see any of this. what is measured here is which
@@ -844,6 +847,19 @@ describe('the coin list inside the crypto option', () => {
 		});
 	});
 
+	// a ticker is read against a wallet's, character for character; the coin's name is prose.
+	it('sets the ticker in the monospace stack and the coin’s name in the card’s face', () => {
+		const root = drawn(false);
+		const family = (selector: string) =>
+			getComputedStyle(root.querySelector(selector) as Element).fontFamily;
+		const closed = family('.chosen .coin-ticker');
+		(root.querySelector('.picker') as HTMLElement).click();
+
+		expect(closed).toBe(family('[role="option"] .coin-ticker'));
+		expect(family('[role="option"] .coin-ticker')).toContain('ui-monospace');
+		expect(family('[role="option"] .coin-label')).toContain('system-ui');
+	});
+
 	it('rings a refused closed box its caret is in with the refused open box’s ring', async () => {
 		const root = drawn(false, 'Choose a coin.');
 		const { rest, closed, open } = await ringed(root);
@@ -855,6 +871,99 @@ describe('the coin list inside the crypto option', () => {
 			border: open.border,
 			ring: open.ring
 		});
+	});
+});
+
+// the address screen's values are what a donor retypes or checks against a wallet, where `0` and
+// `O`, `l` and `1` must not share a shape; the words and the Copy around them stay in the card's face.
+describe('the values on the address screen', () => {
+	const mounts: HTMLElement[] = [];
+	afterEach(() => {
+		for (const node of mounts.splice(0)) node.remove();
+	});
+
+	function drawn(): HTMLElement {
+		const mount = document.createElement('div');
+		const shadow = mount.attachShadow({ mode: 'open' });
+		shadow.adoptedStyleSheets = [tokens, partSheet, layoutSheet].map((css) => {
+			const sheet = new CSSStyleSheet();
+			sheet.replaceSync(css);
+			return sheet;
+		});
+		const block = createDepositBlock(document, () => {});
+		shadow.appendChild(block.root);
+		document.body.appendChild(mount);
+		mounts.push(mount);
+		block.update({
+			coinAmount: '0.00041',
+			ticker: 'BTC',
+			about: 'About $25.00 today',
+			network: 'Bitcoin',
+			networkWarning: 'Send on this network only.',
+			address: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
+			memo: '3198472051',
+			memoWarning: 'Include this memo.',
+			qr: null,
+			sendBy: 'Send by September 24, 2026 at 3:42 PM.',
+			walletFee: 'Your gift is what arrives.',
+			email: 'These details were also sent to ruth@example.org.',
+			status: 'Waiting for your gift to arrive'
+		});
+		return block.root;
+	}
+
+	it('sets the amount, address and memo in the monospace stack', () => {
+		const values = [...drawn().querySelectorAll('.value:not(.name)')].map(
+			(node) => getComputedStyle(node).fontFamily
+		);
+
+		expect(values).toHaveLength(3);
+		for (const stack of values) {
+			expect(stack).toContain('ui-monospace');
+			expect(stack.endsWith('monospace')).toBe(true);
+		}
+	});
+
+	it('leaves the network’s name, the Copy, the labels and the prose in the card’s face', () => {
+		const root = drawn();
+		const family = (selector: string) =>
+			getComputedStyle(root.querySelector(selector) as Element).fontFamily;
+
+		expect(family('.value.name')).toContain('system-ui');
+		expect(family('button')).toContain('system-ui');
+		expect(family('[part~="label"]')).toContain('system-ui');
+		expect(family('.aside')).toContain('system-ui');
+	});
+
+	// the ring hugs the Copy's own edge, so that edge is the words' line and not the 44px target
+	// around it; every label it can read is stacked in the one cell it draws in.
+	it('rings a Copy as tight as its words, one line tall, with its target kept', async () => {
+		const root = drawn();
+		const button = root.querySelector('.held-line button') as HTMLButtonElement;
+		const labels = [...button.children].map((node) => node.getBoundingClientRect());
+		const drawnRing = await caretOn(button);
+		const edge = button.getBoundingClientRect();
+
+		for (const label of labels) {
+			expect(label.left).toBe(labels[0]?.left);
+			expect(label.top).toBe(labels[0]?.top);
+		}
+		expect(edge.height).toBe(labels[0]?.height);
+		expect(edge.width).toBe(Math.max(...labels.map((label) => label.width)));
+		const shadow = root.getRootNode() as ShadowRoot;
+		expect(drawnRing.boxShadow).toContain(used(shadow, '--_focus-ring'));
+		const x = edge.left + edge.width / 2;
+		const reach = (Number.parseFloat(drawnRing.getPropertyValue('--_row-min')) - edge.height) / 2;
+		expect(shadow.elementFromPoint(x, edge.top - reach + 1)).toBe(button);
+		expect(shadow.elementFromPoint(x, edge.bottom + reach - 1)).toBe(button);
+	});
+
+	it('leaves no ring on a Copy a pointer pressed', async () => {
+		const root = drawn();
+		const button = root.querySelector('.held-line button') as HTMLButtonElement;
+		await userEvent.click(button);
+
+		expect(getComputedStyle(button).boxShadow).toBe('none');
 	});
 });
 

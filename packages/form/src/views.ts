@@ -550,7 +550,7 @@ function depositScreen(
 		// not: a figure with no unit beside it is not one a donor can type into a wallet.
 		ticker: (coin?.ticker ?? deposit.coin).toUpperCase(),
 		about: `About ${money(state.totalMinor)} today`,
-		network: deposit.network.toUpperCase(),
+		network: deposit.network,
 		networkWarning: `Send on this network only. Coins sent on another network may not reach ${org}.`,
 		address: deposit.address,
 		memo: deposit.memo,

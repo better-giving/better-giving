@@ -236,18 +236,30 @@ const COINS: readonly PayableCoin[] = [
 	{ coin: 'fail', ticker: 'fail', name: 'Refused on purpose', network: 'dev', memoRequired: false }
 ];
 
-/** a coin's made-up address and its made-up price in minor units per whole coin, keyed by `coin`. */
-const WALLETS: Readonly<Record<string, { readonly address: string; readonly priceMinor: number }>> =
-	{
-		xrp: { address: 'rDEVxFAKExADDRESSxNOTxREALxXRP0000', priceMinor: 52 },
-		usdttrc20: { address: 'TDEVxFAKExADDRESSxNOTxREALxTRON000', priceMinor: 100 },
-		btc: { address: 'bc1qdevxfakexaddressxnotxrealxbitcoin0000000', priceMinor: 6_100_000 },
-		ada: {
-			address:
-				'addr1_dev_fake_address_not_real_cardano_0000000000000000000000000000000000000000000000000000000000000000',
-			priceMinor: 35
-		}
-	};
+/**
+ * a coin's made-up address, the name its network goes by on a quote, and its made-up price in minor
+ * units per whole coin, keyed by `coin`.
+ */
+const WALLETS: Readonly<
+	Record<
+		string,
+		{ readonly address: string; readonly network: string; readonly priceMinor: number }
+	>
+> = {
+	xrp: { address: 'rDEVxFAKExADDRESSxNOTxREALxXRP0000', network: 'Ripple', priceMinor: 52 },
+	usdttrc20: { address: 'TDEVxFAKExADDRESSxNOTxREALxTRON000', network: 'Tron', priceMinor: 100 },
+	btc: {
+		address: 'bc1qdevxfakexaddressxnotxrealxbitcoin0000000',
+		network: 'Bitcoin',
+		priceMinor: 6_100_000
+	},
+	ada: {
+		address:
+			'addr1_dev_fake_address_not_real_cardano_0000000000000000000000000000000000000000000000000000000000000000',
+		network: 'Cardano',
+		priceMinor: 35
+	}
+};
 
 /** the floor `fail`'s refusal names, as `ApiError.minAmountMinor` in ../src/v1.ts. */
 const FAIL_MINIMUM_MINOR = 5000;
@@ -455,7 +467,7 @@ function deposit(coin: string, totalMinor: number, ending: DepositEnding): Depos
 		address: wallet.address,
 		memo: served.memoRequired ? MEMO : null,
 		coin,
-		network: served.network,
+		network: wallet.network,
 		coinAmount: coinAmount(totalMinor, wallet.priceMinor),
 		validUntil: new Date(until).toISOString(),
 		qr: { rows: QR_ROWS }

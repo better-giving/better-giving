@@ -582,7 +582,10 @@ export type DepositInstructions = {
 	readonly memo: string | null;
 	/** NOWPayments' code, lowercased (`usdttrc20`) — never its `ticker`, which names the base asset. */
 	readonly coin: string;
-	/** the chain the coin travels on, as NOWPayments names it (`trx`); the donor's wrong-network guard. */
+	/**
+	 * the chain the coin travels on, by name (`Tron` for `trx`), or its code uppercased where the
+	 * processor names none; the donor's wrong-network guard.
+	 */
 	readonly network: string;
 	/** what the processor asks the donor to send. */
 	readonly coinAmount: CoinAmount;
@@ -618,7 +621,7 @@ export type PayableCoin = {
 	readonly coin: string;
 	/** the processor's display name (`Tether USD (Tron)`). */
 	readonly name: string;
-	/** the chain, as NOWPayments names it. */
+	/** the chain, by name (`Tron` for `trx`), or its code uppercased where the processor names none. */
 	readonly network: string;
 	/**
 	 * NOWPayments' `ticker`, lowercased (`usdt`). names the base asset, so the same asset on several

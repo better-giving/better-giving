@@ -185,16 +185,16 @@ describe('listPayableCoins — the coins the account takes', () => {
 		expect(result).toEqual({
 			ok: true,
 			value: [
-				{ coin: 'btc', name: 'Bitcoin', network: 'btc', ticker: 'btc', memoRequired: false },
-				{ coin: 'xrp', name: 'Ripple', network: 'xrp', ticker: 'xrp', memoRequired: false },
+				{ coin: 'btc', name: 'Bitcoin', network: 'Bitcoin', ticker: 'btc', memoRequired: false },
+				{ coin: 'xrp', name: 'Ripple', network: 'Ripple', ticker: 'xrp', memoRequired: false },
 				{
 					coin: 'usdttrc20',
 					name: 'Tether USD (Tron)',
-					network: 'trx',
+					network: 'Tron',
 					ticker: 'usdt',
 					memoRequired: false
 				},
-				{ coin: 'luna', name: 'Terra', network: 'luna', ticker: 'luna', memoRequired: true }
+				{ coin: 'luna', name: 'Terra', network: 'Terra', ticker: 'luna', memoRequired: true }
 			]
 		});
 	});
@@ -222,7 +222,7 @@ describe('listPayableCoins — the coins the account takes', () => {
 				{
 					coin: 'usdttrc20',
 					name: 'Tether USD (Tron)',
-					network: 'trx',
+					network: 'Tron',
 					ticker: 'usdt',
 					memoRequired: false
 				}
@@ -295,6 +295,133 @@ describe('listPayableCoins — the coins the account takes', () => {
 		const paths = calls.map((call) => call.url.pathname);
 		expect(paths.filter((path) => path === '/v1/merchant/coins')).toHaveLength(1);
 		expect(paths.filter((path) => path === '/v1/full-currencies')).toHaveLength(1);
+	});
+});
+
+// `full-currencies` carries no network display name, so the name is read off the list itself.
+// records shaped as the live list answered them on 2026-09-17.
+const LISTED = {
+	ETH: { ...BTC, id: 13, code: 'ETH', name: 'Ethereum', network: 'eth', ticker: 'eth' },
+	BTC,
+	SOL,
+	ARB: { ...BTC, id: 80, code: 'ARB', name: 'Arbitrum', network: 'arbitrum', ticker: 'arb' },
+	MATICMAINNET: {
+		...BTC,
+		id: 81,
+		code: 'MATICMAINNET',
+		name: 'Polygon',
+		network: 'matic',
+		ticker: 'matic'
+	},
+	USDCMATIC: {
+		...BTC,
+		id: 82,
+		code: 'USDCMATIC',
+		name: 'USD Coin (Polygon)',
+		network: 'matic',
+		ticker: 'usdc'
+	},
+	USDCBASE: {
+		...BTC,
+		id: 83,
+		code: 'USDCBASE',
+		name: 'USD Coin (Base)',
+		network: 'base',
+		ticker: 'usdc'
+	},
+	USDCSOL: {
+		...BTC,
+		id: 84,
+		code: 'USDCSOL',
+		name: 'USD Coin (Solana)',
+		network: 'sol',
+		ticker: 'usdc'
+	},
+	USDTERC20: {
+		...BTC,
+		id: 85,
+		code: 'USDTERC20',
+		name: 'Tether USD (Ethereum)',
+		network: 'eth',
+		ticker: 'usdt'
+	},
+	USDTTRC20
+};
+
+/** an account that enabled `selected` out of `currencies`. */
+function listing(selected: readonly string[], currencies: readonly unknown[]) {
+	return (method: string, url: URL): Answer | undefined => {
+		if (url.pathname === '/v1/merchant/coins') {
+			return { status: 200, json: { selectedCurrencies: selected } };
+		}
+		if (url.pathname === '/v1/full-currencies') return { status: 200, json: { currencies } };
+		return account(method, url);
+	};
+}
+
+/** the network each enabled coin is offered on; the payout coin is listed last, as every list lists it. */
+async function networksOffered(selected: readonly string[], currencies: readonly unknown[]) {
+	serving(listing(selected, [...currencies, USDTTRC20]));
+	const result = await createNowpaymentsProvider(CREDENTIALS).listPayableCoins();
+	if (!result.ok) throw new Error(result.detail);
+	return Object.fromEntries(result.value.map((coin) => [coin.coin, coin.network]));
+}
+
+describe('network names — read off the coin list', () => {
+	it('names a network by the bracket a token on it carries', async () => {
+		const offered = await networksOffered(['USDTTRC20', 'USDCBASE'], Object.values(LISTED));
+
+		expect(offered).toEqual({ usdttrc20: 'Tron', usdcbase: 'Base' });
+	});
+
+	it('names a network no token brackets by the unbracketed coin whose ticker is its code', async () => {
+		const { USDTERC20: _bracketed, ...unbracketed } = LISTED;
+		const offered = await networksOffered(
+			['ETH', 'BTC'],
+			[
+				{ ...LISTED.ETH, code: 'ETHBSC', name: 'Ethereum (BSC)', network: 'bsc' },
+				...Object.values(unbracketed)
+			]
+		);
+
+		expect(offered).toEqual({ eth: 'Ethereum', btc: 'Bitcoin' });
+	});
+
+	it('keeps a network’s code, uppercased, where nothing on the list names it', async () => {
+		const offered = await networksOffered(['ARB'], Object.values(LISTED));
+
+		expect(offered).toEqual({ arb: 'ARBITRUM' });
+	});
+
+	it('takes the bracket most tokens on a network carry, and the first listed on a tie', async () => {
+		const token = (code: string, name: string, network: string) => ({
+			...LISTED.USDCBASE,
+			code,
+			name,
+			network
+		});
+		const offered = await networksOffered(
+			['USDTBSC', 'USDCOP'],
+			[
+				token('USDTBSC', 'Tether USD (BNB Chain)', 'bsc'),
+				token('USDCBSC', 'USD Coin (BSC)', 'bsc'),
+				token('DAIBSC', 'Dai (BSC)', 'bsc'),
+				token('USDCOP', 'USD Coin (Optimism)', 'op'),
+				token('USDTOP', 'Tether USD (OP Mainnet)', 'op')
+			]
+		);
+
+		expect(offered).toEqual({ usdtbsc: 'BSC', usdcop: 'Optimism' });
+	});
+
+	// a code-less network is no network: a bracket on it names nothing, and the coin is not offered.
+	it('offers no coin on an empty network code, whatever its name brackets', async () => {
+		const offered = await networksOffered(
+			['USDCX', 'BTC'],
+			[{ ...LISTED.USDCBASE, code: 'USDCX', name: 'USD Coin (Base)', network: '' }, BTC]
+		);
+
+		expect(offered).toEqual({ btc: 'Bitcoin' });
 	});
 });
 
@@ -394,7 +521,7 @@ describe('createIntent — a payment minted to an address', () => {
 					address: 'rPEPPER7kfTD9w2To4CQk6UCfuHM9c6GDY',
 					memo: '2918473650',
 					coin: 'xrp',
-					network: 'xrp',
+					network: 'Ripple',
 					coinAmount: '19.36121163',
 					validUntil: new Date('2026-09-24T15:00:22.742Z')
 				}

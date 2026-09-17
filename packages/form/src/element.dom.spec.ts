@@ -5173,7 +5173,7 @@ describe('a crypto gift', () => {
 			address: 'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',
 			memo: null,
 			coin: 'usdttrc20',
-			network: 'trx',
+			network: 'Tron',
 			coinAmount: '25.004187',
 			validUntil: VALID_UNTIL,
 			qr: { rows: ['110', '011', '101'] }
@@ -5186,7 +5186,7 @@ describe('a crypto gift', () => {
 			address: 'rLJsrwVTayaqCnQZnxLLLvcz6kS3LwqhkX',
 			memo: '3198472051',
 			coin: 'xrp',
-			network: 'xrp',
+			network: 'Ripple',
 			coinAmount: '19.36121163'
 		}
 	};
@@ -5308,7 +5308,7 @@ describe('a crypto gift', () => {
 			'25.004187 USDT',
 			'About $25.25 today',
 			'Network',
-			'TRX',
+			'Tron',
 			'Send on this network only. Coins sent on another network may not reach Acme Relief Fund.',
 			'Address',
 			'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',

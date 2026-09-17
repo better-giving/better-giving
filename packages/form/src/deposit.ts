@@ -165,7 +165,7 @@ export function createDepositBlock(
 		about
 	]);
 
-	const networkValue = make('p', 'value');
+	const networkValue = make('p', 'value name');
 	const networkWarning = make('p', '');
 	const network = make('div', 'held', [label('Network'), networkValue, networkWarning]);
 

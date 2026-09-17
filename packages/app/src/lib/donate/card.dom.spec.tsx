@@ -690,7 +690,7 @@ describe('a crypto gift', () => {
 			address: 'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',
 			memo: null,
 			coin: 'usdttrc20',
-			network: 'trx',
+			network: 'Tron',
 			coinAmount: '25.004187',
 			validUntil: VALID_UNTIL,
 			qr: { rows: ['110', '011', '101'] }
