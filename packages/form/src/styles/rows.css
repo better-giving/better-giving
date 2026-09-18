@@ -12,10 +12,12 @@
  * the two kinds of row are one list: the band runs to the card's edges and pads back in by
  * `--_inset` (`[part~='payment']` in ./parts.css pulls the box out by that same length), the name
  * stands `--_sp3` below the band's top edge, and the open band is `--_n3`. a closed band paints
- * nothing, which is the card's own ground, and no line stands between two bands. the name's type and
- * the mark's size are matched to what the provider draws unasked, because ./appearance.ts sends its
- * rows' names nothing — with the one departure stated at `.head` below: an open row is said in ink
- * and ground and never in weight, whatever the provider does inside its own frame.
+ * nothing, which is the card's own ground, and no line stands between two bands — an absence
+ * ../embed/rows.dom.spec.ts holds, because a sheet that draws none reads like a sheet nobody has
+ * written a line into yet. the name's type and the mark's size are matched to what the provider
+ * draws unasked, because ./appearance.ts sends its rows' names nothing — with the one departure
+ * stated at `.head` below: an open row is said in ink and ground and never in weight, whatever the
+ * provider does inside its own frame.
  *
  * nothing here moves: the provider's rows open without a transition this sheet could match.
  */
@@ -89,7 +91,9 @@
  *
  * the glyph stands at the start of a column `--_sp4` wider than itself, which with the head's gap
  * starts the name where the provider starts its rows' names: 42px from the mark's start on a 16px
- * root, `--_box` and `--_sp4` at the name's size plus `--_sp3` at the head's.
+ * root, `--_box` and `--_sp4` at the name's size plus `--_sp3` at the head's. what the provider's
+ * own column is, and why those three tokens come to the same length, is derived and held in
+ * ../embed/rows.dom.spec.ts — nothing here can measure it, because it is drawn inside the frame.
  */
 .mark {
 	flex: none;
