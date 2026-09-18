@@ -416,11 +416,11 @@ export function createDepositBlock(
 	};
 
 	const gift = entry('Amount', false);
-	const fee = entry('Fee coverage', false);
+	const fee = entry('Processing fee', false);
 	const total = entry('Total', true);
 	// unnamed, like every other container here: `summary` is the receipt's name and a host reaching
 	// two blocks through one selector is a rule written for the block they were looking at
-	// (../parts.ts states why a container is not named).
+	// (./parts.ts states why a container is not named).
 	const summary = make('div', 'summary', [network, gift.node, fee.node, total.node]);
 
 	// ── the one thing to do ────────────────────────────────────────────────────────────────────

@@ -277,8 +277,8 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 					reason: 'below_minimum',
 					detail:
 						`A gift of $${price} converts to ${estimated.value} ${coin.toUpperCase()}, under the ` +
-						`${minimum.value.coinAmount} ${coin.toUpperCase()} NOWPayments accepts in that coin — ` +
-						`about $${majorText(minimumMinor, 'USD')}. No address was created.`,
+						`${minimum.value.coinAmount} ${coin.toUpperCase()} NOWPayments accepts in that coin ` +
+						`(about $${majorText(minimumMinor, 'USD')}). No address was created.`,
 					minimumMinor
 				};
 			}
@@ -1198,7 +1198,7 @@ function classifyStatus(status: number, body: unknown, context: string): Payment
 			reason: 'not_configured',
 			detail:
 				'NOWPayments rejected this deployment’s key: `NOWPAYMENTS_API_KEY` is not a key the account ' +
-				`accepts — a sandbox key is the usual cause, since this deployment calls the live API. ${said}`
+				`accepts. A sandbox key is the usual cause, since this deployment calls the live API. ${said}`
 		};
 	}
 	if (status === 404) return { ok: false, reason: 'not_found', detail: said };

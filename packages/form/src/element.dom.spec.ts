@@ -5320,7 +5320,7 @@ describe('a crypto gift', () => {
 			'Amount',
 			'24.756622 USDT',
 			'$25.00',
-			'Fee coverage',
+			'Processing fee',
 			// the fee is the difference between the two figures either side of it rather than a third
 			// figure off the wire, so the three agree.
 			'0.247565 USDT',

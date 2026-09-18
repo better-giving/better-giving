@@ -80,8 +80,7 @@ describe('a landed listing', () => {
 	});
 
 	it('leaves two coins of one ticker two rows, with nothing composed to tell them apart', () => {
-		// the select this box replaced had to append the network to a repeated name to keep the two
-		// readable. the row draws the ticker and the network itself, so there is nothing to compose.
+		// the row draws the ticker and the network itself, so there is nothing to compose.
 		const box = coinsBox(landed([BTC, USDC_ETH, USDC_MATIC]), 'btc');
 		expect(box.options.map((option) => [option.ticker, option.network])).toEqual([
 			['btc', 'btc'],

@@ -112,9 +112,10 @@ export function nowpaymentsPosted(
  * empty where the form draws no such control.
  *
  * **it reads the value rather than the element**, because the three boxes are not all one element:
- * the payout currency is a `<select>` (./nowpayments-coins.ts) and the two credentials are
- * `<input>`s. narrowed to one of those tags, the other reads as empty and every press it makes is
- * refused as blank.
+ * the payout currency is a `CoinPicker` whose value rides a hidden input
+ * (`@better-giving/operator/components/forms/CoinPicker`) and the two credentials are `<input>`s
+ * of their own. narrowed to one tag or one component, the others read as empty and every press
+ * they make is refused as blank.
  */
 export function nowpaymentsHeld(control: unknown): string {
 	const value = (control as { readonly value?: unknown } | null)?.value;

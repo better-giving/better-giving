@@ -13,8 +13,10 @@ export const CONSOLE_PROCESSORS: readonly PaymentProcessor[] = PROCESSOR_NAMES;
  * whether the processor keeps an endpoint on the account that deliveries go to.
  *
  * NOWPayments keeps none: every payment carries its own callback address
- * (../payments/nowpayments.ts), so an endpoint reading or repair for it has no object. total over `ProcessorName`, so a processor
- * added without an entry is a compile error rather than a fold reading a missing endpoint as a fault.
+ * (../payments/nowpayments.ts), so an endpoint reading or repair for it has no object.
+ *
+ * total over `ProcessorName`, so a processor added without an entry is a compile error rather than
+ * a fold reading a missing endpoint as a fault.
  */
 const KEEPS_WEBHOOK_ENDPOINT: Readonly<Record<ProcessorName, boolean>> = {
 	stripe: true,

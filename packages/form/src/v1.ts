@@ -309,8 +309,8 @@ export type Provider = {
  * the last three are what a row *shows* rather than what a gift is built from, and all three are
  * optional under this file's add-never-rename rule: a deployment serving none draws the list it drew
  * before. nothing here is ever assembled from `coin` or `ticker` — a logo path built out of a code
- * and a flag read off a list of coins we consider popular are both a table somebody has to maintain
- * and forgets to, and the whole of what these three carry is the processor's own answer.
+ * and a flag read off a list of coins this repo calls popular are both a table somebody has to
+ * maintain and forgets to, and the whole of what these three carry is the processor's own answer.
  *
  * `logo` is that processor's own path for the coin, absolute and `https:`, which ./config.ts refuses
  * anything else for: the row is drawn into a page this project does not own, so a relative path

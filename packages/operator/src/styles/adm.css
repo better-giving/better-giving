@@ -2040,7 +2040,7 @@
 		border-color: var(--admin-ink-disabled);
 	}
 
-	/* ---- the coin picker -------------------------------------------------------------------
+	/* ---------- the coin picker --------------------------------------------------------
 
 	   the box a payout coin is chosen in and the list it narrows
 	   (packages/operator/src/components/forms/CoinPicker.jsx). it is a searchable list rather than a

@@ -119,7 +119,7 @@ it('states the entries the quote gave it, and no row for one it did not', () => 
 	expect(whole).toEqual([
 		'NetworkRippleSend on this network only.',
 		'Amount19.36 XRP$25.00',
-		'Fee coverage0.70 XRP$0.90',
+		'Processing fee0.70 XRP$0.90',
 		'Total20.06 XRP$25.90'
 	]);
 	expect(entries()).toEqual(['NetworkRippleSend on this network only.', 'Total20.06 XRP$25.90']);

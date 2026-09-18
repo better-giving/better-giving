@@ -20,9 +20,7 @@ export const COINS_UNKEYED = 'Paste your API key to choose a coin.';
  *
  * it is the box's placeholder and not a line of the list, which is what keeps it unstorable: there
  * is no row to land on and nothing is chosen until a coin is, so a press made over it sends the
- * empty string and is refused as a blank box like any other (./nowpayments-setup.ts). the select
- * this box replaced had to carry it as an option with an empty value, because a select comes up on
- * whichever line sorts first and would have stored that with nothing having said so.
+ * empty string and is refused as a blank box like any other (./nowpayments-setup.ts).
  */
 export const COINS_CHOOSE = 'Choose a coin';
 
