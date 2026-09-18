@@ -16,11 +16,13 @@ export const COINS_DEBOUNCE = 400;
 export const COINS_UNKEYED = 'Paste your API key to choose a coin.';
 
 /**
- * what the box leads with while the deployment holds no coin of its own.
+ * what the closed box asks while the deployment holds no coin of its own.
  *
- * it is offered only there, and its value is empty so that it cannot be stored: the box would
- * otherwise come up on whichever coin sorts first and the next press would store that, with nothing
- * having said so. chosen, it is refused as a blank box like any other (./nowpayments-setup.ts).
+ * it is the box's placeholder and not a line of the list, which is what keeps it unstorable: there
+ * is no row to land on and nothing is chosen until a coin is, so a press made over it sends the
+ * empty string and is refused as a blank box like any other (./nowpayments-setup.ts). the select
+ * this box replaced had to carry it as an option with an empty value, because a select comes up on
+ * whichever line sorts first and would have stored that with nothing having said so.
  */
 export const COINS_CHOOSE = 'Choose a coin';
 
@@ -40,8 +42,27 @@ const STOPPED = {
 	unanswered: COINS_UNANSWERED
 } as const satisfies Record<Exclude<NowpaymentsListing['kind'], 'listed'>, string>;
 
-/** one line of the box: the code that is stored, under the name an operator reads. */
-export type CoinOption = { readonly value: string; readonly label: string };
+/**
+ * one row of the list, which is what `CoinPicker` draws a coin as
+ * (`@better-giving/operator/components/forms/CoinPicker`): the mark, the ticker, and the network
+ * under it.
+ *
+ * **the code is the value and the ticker is the first line**, and the two are different strings:
+ * the code is what is stored and what NOWPayments is asked for, and the ticker with the network
+ * under it is how NOWPayments' own dashboard names the coin an operator is matching this list
+ * against. so `usdcmatic` is stored and `usdc` over a `matic` pill is read. it is `''` where a list
+ * named none, which is the row's one fallback to the code. the name is carried and drawn nowhere: a
+ * search still finds a coin by it, and its first letter is the mark a coin with no logo falls back
+ * to.
+ */
+export type CoinOption = {
+	readonly code: string;
+	readonly ticker: string;
+	readonly name: string;
+	readonly network: string;
+	/** the processor's own picture of the coin, empty where the binary's entry carried none. */
+	readonly logo: string;
+};
 
 /** what the box is drawn with. */
 export type CoinsBox = {
@@ -92,21 +113,6 @@ export const coinsLanded = (
 	listing: NowpaymentsListing
 ): CoinsRead => (key === read.key ? { key, landed: listing } : read);
 
-/**
- * a coin's line: its name, and its network where another coin would read the same without it.
- *
- * the code is what is stored and what NOWPayments is asked for, so it is the value and never the
- * label — an operator choosing `usdcmatic` out of a list of codes is the typing this box replaced.
- */
-const lines = (listing: NowpaymentsListing): readonly CoinOption[] => {
-	const named = new Map<string, number>();
-	for (const coin of listing.coins) named.set(coin.name, (named.get(coin.name) ?? 0) + 1);
-	return listing.coins.map((coin) => ({
-		value: coin.code,
-		label: (named.get(coin.name) ?? 0) > 1 ? `${coin.name} (${coin.network})` : coin.name
-	}));
-};
-
 /** what a listing that named no coin says under the box, and `null` where it named coins. */
 const stopping = (listing: NowpaymentsListing | null): Pick<CoinsBox, 'note' | 'detail'> | null => {
 	if (listing === null) return null;
@@ -119,14 +125,18 @@ const stopping = (listing: NowpaymentsListing | null): Pick<CoinsBox, 'note' | '
 
 /** the box as that reading leaves it, holding `stored` until another coin is chosen. */
 export function coinsBox(read: CoinsRead, stored: string): CoinsBox {
-	/** the coins the account can be paid out in, which is the whole of what there is to choose. */
-	const listed = read.landed === null ? [] : lines(read.landed);
+	/* the coins the account can be paid out in, which is the whole of what there is to choose. the
+	   binary sends each one whole and a row draws four of its members, so there is nothing to
+	   compose here: two coins that would once have read the same as two names are one ticker on two
+	   networks, which is the distinction the row makes for itself. */
+	const listed: readonly CoinOption[] = read.landed === null ? [] : read.landed.coins;
 	/* the coin this deployment is holding goes on being offered whatever the list says, because the
-	   box is what the next press posts: dropped, the select would come up on whichever coin sorts
-	   first and store that, with nothing having said so. */
-	const held =
-		stored !== '' && !listed.some((option) => option.value === stored)
-			? { value: stored, label: stored }
+	   box is what the next press posts. it is all the box knows about that coin — a code the
+	   deployment reported and no listing to read a ticker, a name or a chain out of — so it carries
+	   no ticker and the row falls back to the code, with no pill under it. */
+	const held: CoinOption | undefined =
+		stored !== '' && !listed.some((option) => option.code === stored)
+			? { code: stored, ticker: '', name: stored, network: '', logo: '' }
 			: undefined;
 	/* **it is said to be no longer offered only by a list that came back without it.** every other
 	   reading — nothing read yet, a key turned down, no answer — is the box not knowing what the
@@ -135,11 +145,7 @@ export function coinsBox(read: CoinsRead, stored: string): CoinsBox {
 	const retired = read.landed?.kind === 'listed' ? held : undefined;
 	const stopped = stopping(read.landed);
 	return {
-		options: [
-			...(stored === '' ? [{ value: '', label: COINS_CHOOSE }] : []),
-			...(retired === undefined && held !== undefined ? [held] : []),
-			...listed
-		],
+		options: [...(retired === undefined && held !== undefined ? [held] : []), ...listed],
 		retired,
 		note: read.key === '' ? COINS_UNKEYED : (stopped?.note ?? null),
 		detail: stopped?.detail ?? null,

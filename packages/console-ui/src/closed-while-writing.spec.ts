@@ -20,12 +20,13 @@ import { describe, expect, it } from 'vitest';
 // (`ownPress` in ./lib/smtp-fold-state.ts, and `useSavedFormState`'s reset in
 // packages/operator/src/saved-form-state.react.ts, which runs on the group's own write).
 //
-// it reads the ports rather than the elements: `Field`, `RepeatingRows` and `SelectWithNote`
-// (`@better-giving/operator/components/forms/`) are the whole of what a console screen draws a
-// typed or chosen value in — `Field` and `SelectWithNote` spread a caller's `disabled` onto the box
-// and `RepeatingRows` states it on every row and on both of its presses — and the sheet draws the
-// closed rung for all three (`.adm-input:disabled` and `.adm-select:disabled` in
-// packages/operator/src/styles/adm.css).
+// it reads the ports rather than the elements: `Field`, `RepeatingRows`, `SelectWithNote` and
+// `CoinPicker` (`@better-giving/operator/components/forms/`) are the whole of what a console screen
+// draws a typed or chosen value in — `Field` and `SelectWithNote` spread a caller's `disabled` onto
+// the box, `CoinPicker` hands its own to the machine it is built on and to the input that carries
+// the value, and `RepeatingRows` states it on every row and on both of its presses — and the sheet
+// draws the closed rung for all four (`.adm-input:disabled`, `.adm-select:disabled` and
+// `.adm-coinbox[data-disabled]` in packages/operator/src/styles/adm.css).
 //
 // **the press is swept as well as the box, because the box being closed says nothing about the
 // press beside it.** a send that stays pressable while its own send is in flight is one errand and
@@ -106,7 +107,7 @@ import { describe, expect, it } from 'vitest';
 // reaching nothing passes loudest, so the globs are asserted to have found the ports and the
 // presses before either rule is read off them.
 
-const PORTS = new Set(['Field', 'RepeatingRows', 'SelectWithNote']);
+const PORTS = new Set(['CoinPicker', 'Field', 'RepeatingRows', 'SelectWithNote']);
 
 /** the shared button every write on this console is carried by, where it is not drawn by hand. */
 const PRESS = 'SaveButton';
@@ -127,6 +128,7 @@ const CONTROLS = new Set([
 	'CopyControl',
 	'SaveButton',
 	'CheckboxGroup',
+	'CoinPicker',
 	'Field',
 	'PairedFieldset',
 	'RepeatingRows',

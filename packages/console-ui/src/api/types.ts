@@ -1113,10 +1113,26 @@ export type NowpaymentsSaved =
 /**
  * one coin NOWPayments will pay this account out in.
  *
- * `code` is what the deployment stores and what NOWPayments is asked for; `name` is what an operator
- * reads, and `network` tells two coins of the same name apart.
+ * `code` is what the deployment stores and what NOWPayments is asked for; `ticker` is the coin's
+ * own symbol, which is how NOWPayments' own dashboard names it and so how a row does — one over
+ * every network the coin is carried on, and `''` where its list named none. `name` is read by a
+ * search and by nothing else, and `network` tells two coins of one ticker apart. `logo` is the
+ * coin's own picture as an absolute `https:` address and is `''` where NOWPayments carried none the
+ * binary could resolve — a coin listed like any other and drawn without one. `popular` and
+ * `stablecoin` are NOWPayments' own two marks, false unless its list said so.
+ *
+ * every one of them comes off the entry NOWPayments sent: nothing on either side of this wire keys
+ * a picture, a network or a mark off the coin's code.
  */
-export type NowpaymentsCoin = { code: string; name: string; network: string };
+export type NowpaymentsCoin = {
+	code: string;
+	ticker: string;
+	name: string;
+	network: string;
+	logo: string;
+	popular: boolean;
+	stablecoin: boolean;
+};
 
 /**
  * how one listing of the coins that account can be paid out in went

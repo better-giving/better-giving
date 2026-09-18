@@ -1,9 +1,9 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { SettingRow } from '@better-giving/operator/components/data/SettingRow';
+import { CoinPicker } from '@better-giving/operator/components/forms/CoinPicker';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
-import { SelectWithNote } from '@better-giving/operator/components/forms/SelectWithNote';
 import { Section } from '@better-giving/operator/components/shell/Layout';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
@@ -22,6 +22,7 @@ import type { HeldValues } from './held-values';
 import { heldValues, withheldAmong } from './held-values';
 import type { CoinsRead } from './nowpayments-coins';
 import {
+	COINS_CHOOSE,
 	COINS_DEBOUNCE,
 	COINS_UNREAD,
 	coinsBox,
@@ -342,11 +343,13 @@ function NowpaymentsKeysForm({
 						const bound = keys.box(keys.fields[NOWPAYMENTS_FIELD(box)]);
 						return (
 							<Fragment key={box}>
-								{/* the payout coin is chosen out of what the key lists and the two credentials are typed,
-								    so one of the three is a select and the other two are boxes. */}
+								{/* the payout coin is chosen out of what the key lists and the two credentials are
+								    typed, so one of the three is a list and the other two are boxes. the list is
+								    searched rather than scrolled: what the key lists is two hundred codes an
+								    operator is matching one of against their NOWPayments dashboard. */}
 								{box === 'outcomeCurrency' ? (
 									<>
-										<SelectWithNote
+										<CoinPicker
 											id={bound.id}
 											name={bound.name}
 											label={LABEL[box]}
@@ -354,9 +357,10 @@ function NowpaymentsKeysForm({
 											options={coinBox.options}
 											retired={coinBox.retired}
 											note={coinBox.note}
+											placeholder={COINS_CHOOSE}
 											defaultValue={bound.defaultValue}
 											disabled={closed || coinBox.disabled}
-											onInput={bound.onInput}
+											onChoose={() => bound.onInput?.()}
 											error={bound.error}
 										/>
 										{coinBox.detail === null ? null : <Said answer={{ detail: coinBox.detail }} />}

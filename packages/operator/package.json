@@ -46,6 +46,7 @@
 		"./components/data/Series": "./src/components/data/Series.jsx",
 		"./components/data/SettingRow": "./src/components/data/SettingRow.jsx",
 		"./components/forms/CheckboxGroup": "./src/components/forms/CheckboxGroup.jsx",
+		"./components/forms/CoinPicker": "./src/components/forms/CoinPicker.jsx",
 		"./components/forms/Field": "./src/components/forms/Field.jsx",
 		"./components/forms/FieldMessage": "./src/components/forms/FieldMessage.jsx",
 		"./components/forms/PairedFieldset": "./src/components/forms/PairedFieldset.jsx",

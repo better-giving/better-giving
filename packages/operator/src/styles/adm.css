@@ -2040,6 +2040,396 @@
 		border-color: var(--admin-ink-disabled);
 	}
 
+	/* ---- the coin picker -------------------------------------------------------------------
+
+	   the box a payout coin is chosen in and the list it narrows
+	   (packages/operator/src/components/forms/CoinPicker.jsx). it is a searchable list rather than a
+	   `.adm-select` because what it holds is two hundred coins an operator is matching one of
+	   against their NOWPayments dashboard, and a native select over that is a scroll with no search
+	   in it.
+
+	   the machine is ark's combobox, so the open state, the highlight and the refusal all arrive as
+	   `data-*` attributes on its own parts and nothing here reads a class for them. the parts are
+	   named by scope where the rule is about the machine's own element and by class where it is
+	   about something this repository drew inside one. */
+	.adm-coinwrap {
+		position: relative;
+		display: block;
+		inline-size: 100%;
+	}
+
+	/* the box's row in the field, stated here rather than added to the `:is()` list above, which is
+	   copied verbatim into the artboards packages/design holds and reports drift against
+	   (./design-copy.spec.ts). the row is the same one every other box takes. */
+	.adm-field > .adm-coinwrap {
+		grid-row: 3;
+	}
+
+	/* the box: a mark at its start, the words, and the caret at its end. the search field and the
+	   chosen coin share the middle cell, so the box keeps one height whichever of the two is up. */
+	.adm-coinbox {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		align-items: center;
+		gap: var(--admin-space-3);
+		inline-size: 100%;
+		min-block-size: var(--admin-field-height);
+		padding: var(--admin-space-3) var(--admin-space-4);
+		font-size: var(--admin-field-size);
+		color: var(--admin-ink);
+		background: var(--admin-field-bg);
+		border: var(--admin-border-width) solid var(--admin-field-border);
+		border-radius: var(--admin-radius);
+		cursor: text;
+		transition: var(--admin-transition-state);
+	}
+
+	.adm-coinbox:hover,
+	.adm-coinbox.is-hover {
+		border-color: var(--admin-field-border-hover);
+	}
+
+	/* the ring is the box's and never the input's: the field here is the whole box, and a ring
+	   drawn round the input inside it would be a rectangle inside a rectangle. the input's own is
+	   taken back below rather than left to paint under this one. */
+	.adm-coinbox:has(input:focus-visible),
+	.adm-coinbox:has(input.is-focus) {
+		outline: var(--admin-focus-width) solid transparent;
+		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
+	}
+
+	/* refused, as `.adm-select--invalid` is: the machine writes `data-invalid` onto its own control
+	   part off the `invalid` the component states, so there is no modifier class to assemble. the
+	   hover twin is named with it so the refusal outranks the hover rung, which on touch stays on a
+	   box after a tap. */
+	.adm-coinbox[data-invalid],
+	.adm-coinbox[data-invalid]:hover,
+	.adm-coinbox[data-invalid].is-hover {
+		border-color: var(--admin-field-border-invalid);
+		border-width: var(--admin-border-width-strong);
+	}
+
+	.adm-coinbox[data-disabled] {
+		background: var(--admin-field-bg-disabled);
+		border-color: var(--admin-control-border-disabled);
+		color: var(--admin-ink-disabled);
+		cursor: not-allowed;
+	}
+
+	/* the search field draws nothing of its own: the box around it is the field, and where the
+	   caret is standing is the box's ring above. its face, its size and its ink are the box's, which
+	   is ./base.css's reset handing a form control the type it stands in. */
+	.adm-coinbox__input {
+		grid-area: 1 / 1;
+		inline-size: 100%;
+		min-inline-size: 0;
+		padding: 0;
+		border: 0;
+		outline: none;
+	}
+
+	.adm-coinbox__input:focus-visible,
+	.adm-coinbox__input.is-focus {
+		outline: none;
+		box-shadow: none;
+	}
+
+	.adm-coinbox__input::placeholder {
+		color: var(--admin-field-placeholder);
+		opacity: 1;
+	}
+
+	/* the two share one cell, so the box is one height whichever is showing. */
+	.adm-coinbox__words {
+		display: grid;
+		grid-column: 2;
+		min-inline-size: 0;
+	}
+
+	/* the chosen coin, read along one line over the empty search field. a network longer than the
+	   box is cut at its end, never in the middle of the ticker before it. */
+	.adm-coinbox__chosen {
+		grid-area: 1 / 1;
+		min-inline-size: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		pointer-events: none;
+	}
+
+	/* the box leads with the chosen coin's own mark while closed and with a search glyph while
+	   open, which is the one thing that says what typing into it will do. both are drawn and the
+	   machine's own state attribute picks between them, so neither is a render this component has
+	   to hold a flag for.
+
+	   they share one cell at the coin mark's own size, so the words beside them start at one x
+	   whichever is up and whether or not a coin is chosen — an empty lead would let the box shuffle
+	   sideways on the first choice. raw-length-ok: the mark's circle again, at `.adm-coinmark`. */
+	.adm-coinbox__lead {
+		display: grid;
+		place-items: center;
+		grid-column: 1;
+		inline-size: 1.5rem;
+		block-size: 1.5rem;
+	}
+
+	.adm-coinbox__lead > * {
+		grid-area: 1 / 1;
+	}
+
+	.adm-coinbox[data-state='open'] .adm-coinbox__lead .adm-coinmark,
+	.adm-coinbox[data-state='open'] .adm-coinbox__chosen,
+	.adm-coinbox[data-state='closed'] .adm-coinbox__search {
+		display: none;
+	}
+
+	.adm-coinbox__glyph {
+		color: var(--admin-ink-2);
+	}
+
+	/* the caret. it is the machine's own toggle and is out of the tab order — the box beside it is
+	   what the keyboard reaches — so it is drawn as the select's caret is drawn rather than as a
+	   control of its own. */
+	.adm-coinbox__caret {
+		display: grid;
+		place-items: center;
+		padding: 0;
+		background: none;
+		border: 0;
+		color: var(--admin-ink-2);
+		cursor: pointer;
+	}
+
+	.adm-coinbox[data-disabled] .adm-coinbox__glyph,
+	.adm-coinbox[data-disabled] .adm-coinbox__caret {
+		color: var(--admin-ink-disabled);
+	}
+
+	/* the list, over whatever follows the box. a field's own box is positioned — this wrapper, the
+	   select's and the masked box's all are — so an open list would otherwise be painted over by
+	   every box under it on the form, in document order. the step is one rung under the rail's, on
+	   the ladder stated at `.adm-rail`.
+
+	   it goes on the wrapper and not on the machine's positioner, which is where
+	   `[data-scope='popover']` puts its own. that element states `z-index: var(--z-index)` inline
+	   and writes `--z-index: auto` inline beside it as it opens, so neither the property nor the
+	   step can be set on it from a sheet at all. the wrapper is the first thing outside the
+	   positioner's own stacking context and is the element this file can still reach.
+
+	   it is taken while the list is open and not held, so a picker resting on a form stacks in
+	   document order like every other box on it. */
+	.adm-coinwrap:has(.adm-coinlist[data-state='open']) {
+		z-index: 1;
+	}
+
+	/* the positioner is `pointer-events: none`, so that the ground beside a floating list stays
+	   live; the list takes them back at its own rule below. */
+
+	/* it is also the grid every row is laid out on, which is why the three columns are declared
+	   here and not on the row: the mark, the words and the tick. a row takes them with `subgrid`
+	   below, so the words start at one x down the whole list — sized once against the widest mark
+	   any row drew rather than against each row's own.
+
+	   its height is four and a half rows, so the half row says there is more to scroll to. no token
+	   names a list's height; the row it counts is the token's. */
+	.adm-coinlist {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		align-content: start;
+		max-block-size: calc(var(--admin-field-height) * 4.5);
+		padding: var(--admin-space-2);
+		background: var(--admin-surface);
+		border: var(--admin-hairline);
+		border-radius: var(--admin-radius);
+		box-shadow: var(--admin-elevation-dialog);
+		overflow-y: auto;
+		pointer-events: auto;
+	}
+
+	/* a row: the mark, and beside it the ticker on one line with the network's pill under it. three
+	   block tracks, because a coin the list has come back without says so on a third line under the
+	   pill — a track that is empty, and so no height at all, on every other row, which is why there
+	   is no row gap to leave behind on those. */
+	.adm-coinrow {
+		display: grid;
+		grid-column: 1 / -1;
+		grid-template-columns: subgrid;
+		grid-template-rows: auto auto auto;
+		align-content: center;
+		column-gap: var(--admin-space-3);
+		padding: var(--admin-space-2) var(--admin-space-3);
+		border-radius: var(--admin-radius);
+		cursor: pointer;
+	}
+
+	/* the option the arrow keys stand on, and the one a pointer is over: ground alone, never
+	   weight. the machine writes `data-highlighted` for both, so there is one rung here and no
+	   `:hover` beside it. */
+	.adm-coinrow[data-highlighted] {
+		background: var(--admin-control-soft-bg);
+	}
+
+	/* the mark and the tick stand on the middle of the two lines rather than on the first of them:
+	   the pair is a fixed two lines whatever the coin, so there is no wrap for a mark to drift away
+	   from, and a third line is left out of the span so that drawing it moves neither of them. */
+	.adm-coinrow .adm-coinmark,
+	.adm-coinrow__tick {
+		grid-row: 1 / 3;
+		align-self: center;
+	}
+
+	.adm-coinrow .adm-coinmark {
+		grid-column: 1;
+	}
+
+	/* the two lines, on the row's own block tracks rather than on tracks of their own: the ticker
+	   and the pill keep their positions down the list, and a network of any length settles on the
+	   second line without moving the ticker above it. */
+	.adm-coinrow__words {
+		display: grid;
+		grid-column: 2;
+		grid-row: 1 / 3;
+		grid-template-rows: subgrid;
+		justify-items: start;
+		min-inline-size: 0;
+		overflow-wrap: anywhere;
+	}
+
+	/* the ticker is the coin as the operator's own NOWPayments dashboard names it, so it is drawn
+	   the way every value this surface expects to be held up against another window is: the mono
+	   face at the code size, and no slab — `.adm-code`'s ground is for a literal standing in prose,
+	   and a ground per row would be a second grid drawn inside the list. */
+	.adm-coinrow__ticker,
+	.adm-coinbox__ticker {
+		font-family: var(--admin-font-mono);
+		font-size: var(--admin-code-size);
+		color: var(--admin-ink);
+	}
+
+	/* what a coin the account no longer lists says under its own pill. it keeps the sentence out of
+	   the row's own two lines for the reason the block tracks above are three. */
+	.adm-coinrow__note {
+		grid-column: 2;
+		grid-row: 3;
+		font-size: var(--admin-caption-size);
+		color: var(--admin-ink-muted);
+	}
+
+	.adm-coinrow__tick {
+		grid-column: 3;
+		color: var(--admin-accent-ink);
+	}
+
+	/* what the list says when a search matches no coin. it is the machine's own empty part, so it
+	   is drawn only while there is nothing to draw instead. */
+	.adm-coinempty {
+		padding: var(--admin-space-2) var(--admin-space-3);
+		font-size: var(--admin-caption-size);
+		color: var(--admin-ink-muted);
+	}
+
+	/* a coin's mark: the round shape a logo stands in, holding the first letter of the coin's name.
+	   raw-length-ok: the circle is a shape rather than a measure, like the checkbox's own square
+	   above, and `--admin-mark-size` is not it — that one is reserved for state and this is a
+	   picture. raw-length-ok: 50% — a circle. */
+	.adm-coinmark {
+		display: grid;
+		place-items: center;
+		flex: none;
+		inline-size: 1.5rem;
+		block-size: 1.5rem;
+		border-radius: 50%;
+		background: var(--admin-surface-fill);
+		color: var(--admin-ink-muted);
+	}
+
+	/* the letter and the image share the one cell, so the mark is one size whichever of them is
+	   up. */
+	.adm-coinmark > * {
+		grid-area: 1 / 1;
+	}
+
+	.adm-coinmark__initial {
+		font-size: var(--admin-caption-size);
+		font-weight: var(--admin-value-weight);
+	}
+
+	/* the processor's own logo for the coin, filling the mark it stands in. sized by this rule
+	   rather than by the file, so a row stands at one height before its image arrives, after it
+	   arrives, and on a row whose image never arrives at all. raw-length-ok: 50% — a circle, as
+	   above. */
+	.adm-coinmark__logo {
+		inline-size: 100%;
+		block-size: 100%;
+		border-radius: 50%;
+		object-fit: contain;
+	}
+
+	/* the letter shows wherever no image is standing on the mark: a coin whose entry carries no
+	   path, and a coin whose image failed — the component takes the `<img>` out on `error`, so this
+	   selector stops matching and the letter comes back with nothing else to do. hidden rather than
+	   dropped, because a logo drawn on its own transparency over a visible letter is two marks in
+	   one circle. */
+	.adm-coinmark:has(img) .adm-coinmark__initial {
+		visibility: hidden;
+	}
+
+	/* the network's pill, after the ticker in the closed box and under it in a row.
+
+	   its colour is the six-entry palette in ./tokens.css, and which entry is `networkTint`
+	   (packages/operator/src/network-tint.ts) written onto the node as `data-tint` — so a network
+	   NOWPayments lists tomorrow is painted without a rule being added here. there is no rule for a
+	   network by name and there is not to be one.
+
+	   inline-block, which keeps the ticker and the pill one run of inline content in the closed box:
+	   `.adm-coinbox__chosen` above cuts that run with an ellipsis, and an ellipsis is only ever
+	   applied to inline content. the pill itself never breaks across two lines in either place. */
+	.adm-netpill {
+		display: inline-block;
+		padding-inline: var(--admin-space-2);
+		border-radius: var(--admin-radius-pill);
+		font-size: var(--admin-caption-size);
+		font-weight: var(--admin-value-weight);
+		line-height: var(--admin-caption-lh);
+		white-space: nowrap;
+	}
+
+	/* the pill's step from the ticker is the inline gap in the box and the line between them in a
+	   row, never both. */
+	.adm-coinbox__chosen .adm-netpill {
+		margin-inline-start: var(--admin-space-2);
+	}
+
+	.adm-netpill[data-tint='0'] {
+		background: var(--admin-net-0-tint);
+		color: var(--admin-net-0-ink);
+	}
+
+	.adm-netpill[data-tint='1'] {
+		background: var(--admin-net-1-tint);
+		color: var(--admin-net-1-ink);
+	}
+
+	.adm-netpill[data-tint='2'] {
+		background: var(--admin-net-2-tint);
+		color: var(--admin-net-2-ink);
+	}
+
+	.adm-netpill[data-tint='3'] {
+		background: var(--admin-net-3-tint);
+		color: var(--admin-net-3-ink);
+	}
+
+	.adm-netpill[data-tint='4'] {
+		background: var(--admin-net-4-tint);
+		color: var(--admin-net-4-ink);
+	}
+
+	.adm-netpill[data-tint='5'] {
+		background: var(--admin-net-5-tint);
+		color: var(--admin-net-5-ink);
+	}
+
 	/* a masked box's press, inside the box rather than on the row beside it. the arrangement is the
 	   select's above and for the arrangement's own reason — a box cannot draw outside itself, so the
 	   wrapper positions and the box reserves the room, and a revealed value never runs under the

@@ -454,6 +454,56 @@
 		--admin-tone-resolved-ink: var(--admin-neutral-11);
 		--admin-tone-resolved-mark: var(--admin-neutral-10);
 
+		/* ---- the network palette ------------------------------------------------------
+
+		   six anonymous entries a network's pill is painted from, and the whole reason there are
+		   six rather than one per chain: the pill's entry is picked by ../network-tint.ts, a hash
+		   of the network's own words modulo six, so a chain NOWPayments lists tomorrow is painted
+		   with nobody editing this file. a network-to-colour table is a list somebody has to
+		   maintain, and the entry it is missing paints every chain added after it the default.
+
+		   so no entry matches any chain's brand, and two networks may land on one. both are
+		   intended: the pill carries the network's words as well, so the colour is a scanning aid
+		   and never the identifier, and a collision costs an operator nothing they can read.
+
+		   **this is not a tone and takes none of the status vocabulary.** the four tones above say
+		   where a record stands on its own ladder, and a chain's name is not a standing — so the
+		   pill is authored as its own band rather than as a fifth tone, and the hues below step
+		   around none of the three this system already speaks in: the blocker's 27, the
+		   attention's 75 and the accent's 247.3. they also skip the green band entirely, which is
+		   the no-green rule at the top of this file holding rather than an exception to it: an
+		   operator who learns to scan for green stops reading the words.
+
+		   one lightness and one chroma across all six, so no entry reads louder than another. the
+		   chroma is the most the hue that can carry least holds at that lightness inside sRGB —
+		   0.044 at 280 for the tint and 0.077 at 205 for the ink — so nothing here is gamut-mapped
+		   by the browser into a colour this file did not author. the ink is stated at the same hue
+		   as its tint, one band down.
+
+		   measured as a pair, like everything else here: the ink reads 5.58:1 on its own pill at
+		   the worst of the six, which is the floor across the palette rather than its best hue.
+		   the tint holds no floor against what it stands on, for the reason the four tone tints
+		   hold none — 1.27:1 on `--admin-surface` and 1.17:1 on `--admin-neutral-3`, which is what
+		   keeps it reading as a tint rather than as a block. the words are legible on both from the
+		   ink alone, which reaches 7.07:1 on the surface at its worst.
+
+		   packages/form/src/styles/tokens.css authors a palette of the same shape for the donation
+		   form. the two are separate systems that never meet, so the entries are not the same
+		   values, the hash that indexes them is a separate module, and the same network is not
+		   expected to be the same colour on a donation page and on an operator screen. */
+		--admin-net-0-tint: oklch(0.91 0.04 205);
+		--admin-net-1-tint: oklch(0.91 0.04 230);
+		--admin-net-2-tint: oklch(0.91 0.04 280);
+		--admin-net-3-tint: oklch(0.91 0.04 305);
+		--admin-net-4-tint: oklch(0.91 0.04 330);
+		--admin-net-5-tint: oklch(0.91 0.04 355);
+		--admin-net-0-ink: oklch(0.45 0.074 205);
+		--admin-net-1-ink: oklch(0.45 0.074 230);
+		--admin-net-2-ink: oklch(0.45 0.074 280);
+		--admin-net-3-ink: oklch(0.45 0.074 305);
+		--admin-net-4-ink: oklch(0.45 0.074 330);
+		--admin-net-5-ink: oklch(0.45 0.074 355);
+
 		/* ---- the state ladder ---------------------------------------------------------
 
 		   rest, hover, active, disabled and focus on every interactive element, expressed as

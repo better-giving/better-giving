@@ -50,7 +50,7 @@ export default defineConfig({
 	// project's own transform, which is what turns a tag into a call; prebundled, they would reach
 	// the console with no jsx transform in front of them.
 	//
-	// the four below are the opposite case: real dependencies, reached only through the bare imports
+	// the five below are the opposite case: real dependencies, reached only through the bare imports
 	// inside those excluded components, so the prebundler does not meet one until a screen asks for
 	// it. a dependency discovered mid-session is what makes vite re-optimise and reload the
 	// document, and a reload drops whatever was typed into an open fold — naming them here moves
@@ -70,6 +70,7 @@ export default defineConfig({
 	optimizeDeps: {
 		exclude: ['@better-giving/operator'],
 		include: [
+			'@better-giving/operator > @ark-ui/react/combobox',
 			'@better-giving/operator > @ark-ui/react/hover-card',
 			'@better-giving/operator > @ark-ui/react/popover',
 			'@better-giving/operator > @ark-ui/react/portal',

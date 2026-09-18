@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { NowpaymentsListing } from '../api/types';
+import type { NowpaymentsCoin, NowpaymentsListing } from '../api/types';
 import type { CoinsBox } from './nowpayments-coins';
 import {
-	COINS_CHOOSE,
 	COINS_UNPAYABLE_ACCOUNT,
 	COINS_KEY_REFUSED,
 	COINS_UNANSWERED,
@@ -19,12 +18,24 @@ const listing = (coins: NowpaymentsListing['coins']): NowpaymentsListing => ({
 	coins
 });
 
-const BTC = { code: 'btc', name: 'Bitcoin', network: 'btc' };
-const USDC_ETH = { code: 'usdc', name: 'USD Coin', network: 'eth' };
-const USDC_MATIC = { code: 'usdcmatic', name: 'USD Coin', network: 'matic' };
+/** one coin in every member the binary sends it in. */
+const coin = (code: string, ticker: string, name: string, network: string): NowpaymentsCoin => ({
+	code,
+	ticker,
+	name,
+	network,
+	logo: `https://nowpayments.io/images/coins/${code}.svg`,
+	popular: false,
+	stablecoin: false
+});
 
-/** the coins the box is offering, without the standing choice that cannot be stored. */
-const offered = (box: CoinsBox) => box.options.filter((o) => o.value !== '').map((o) => o.value);
+const BTC = coin('btc', 'btc', 'Bitcoin', 'btc');
+const USDC_ETH = coin('usdc', 'usdc', 'USD Coin', 'eth');
+// one ticker over two networks, which is the pair the code and the ticker are two strings on.
+const USDC_MATIC = coin('usdcmatic', 'usdc', 'USD Coin', 'matic');
+
+/** the coins the box is offering, by the code each row is stored under. */
+const offered = (box: CoinsBox) => box.options.map((option) => option.code);
 
 /** a key typed, its listing landed. */
 const landed = (coins: NowpaymentsListing['coins']) =>
@@ -35,7 +46,7 @@ describe('a key box holding nothing', () => {
 		const read = coinsTyped(COINS_UNREAD, '   ');
 		const box = coinsBox(read, '');
 		expect(box).toEqual({
-			options: [{ value: '', label: COINS_CHOOSE }],
+			options: [],
 			retired: undefined,
 			note: COINS_UNKEYED,
 			detail: null,
@@ -47,20 +58,35 @@ describe('a key box holding nothing', () => {
 describe('a landed listing', () => {
 	it('offers the coins in the order the binary sent them, and opens the box', () => {
 		const box = coinsBox(landed([BTC, USDC_ETH]), 'btc');
-		expect(box.options).toEqual([
-			{ value: 'btc', label: 'Bitcoin' },
-			{ value: 'usdc', label: 'USD Coin' }
-		]);
+		expect(offered(box)).toEqual(['btc', 'usdc']);
 		expect(box.disabled).toBe(false);
 		expect(box.note).toBe(null);
 	});
 
-	it('names the network only where two coins would read the same', () => {
+	it('hands a row everything it draws, whole', () => {
+		// the ticker, the network under it and the picture in front of both are the row; the code is
+		// the value and is drawn nowhere, and the name rides along for the search and for the letter a
+		// missing picture falls back to.
+		const box = coinsBox(landed([USDC_MATIC]), '');
+		expect(box.options[0]).toEqual(
+			expect.objectContaining({
+				code: 'usdcmatic',
+				ticker: 'usdc',
+				name: 'USD Coin',
+				network: 'matic',
+				logo: 'https://nowpayments.io/images/coins/usdcmatic.svg'
+			})
+		);
+	});
+
+	it('leaves two coins of one ticker two rows, with nothing composed to tell them apart', () => {
+		// the select this box replaced had to append the network to a repeated name to keep the two
+		// readable. the row draws the ticker and the network itself, so there is nothing to compose.
 		const box = coinsBox(landed([BTC, USDC_ETH, USDC_MATIC]), 'btc');
-		expect(box.options.map((option) => option.label)).toEqual([
-			'Bitcoin',
-			'USD Coin (eth)',
-			'USD Coin (matic)'
+		expect(box.options.map((option) => [option.ticker, option.network])).toEqual([
+			['btc', 'btc'],
+			['usdc', 'eth'],
+			['usdc', 'matic']
 		]);
 	});
 });
@@ -68,13 +94,21 @@ describe('a landed listing', () => {
 describe('the currency the deployment is holding', () => {
 	it('is an offered coin and not also a retired one', () => {
 		const box = coinsBox(landed([BTC, USDC_MATIC]), 'usdcmatic');
-		expect(box.options.map((option) => option.value)).toContain('usdcmatic');
+		expect(offered(box)).toContain('usdcmatic');
 		expect(box.retired).toBe(undefined);
 	});
 
 	it('is kept as the retired option where the list does not offer it', () => {
 		const box = coinsBox(landed([BTC]), 'usdcmatic');
-		expect(box.retired).toEqual({ value: 'usdcmatic', label: 'usdcmatic' });
+		// no ticker, because no listing named one: the row falls back to the code, which is the only
+		// name this coin has here.
+		expect(box.retired).toEqual({
+			code: 'usdcmatic',
+			ticker: '',
+			name: 'usdcmatic',
+			network: '',
+			logo: ''
+		});
 	});
 
 	it('is no option at all where the deployment holds none', () => {
@@ -139,18 +173,13 @@ describe('a key changed under a list already on screen', () => {
 });
 
 describe('a deployment holding no coin yet', () => {
-	it('leads the list with a choice that cannot be stored', () => {
+	it('offers coins and nothing else', () => {
+		// choosing nothing is the closed box's own placeholder and not a line of the list: a row
+		// standing for no coin is a row that can be landed on, and a press over it would store the
+		// empty string on purpose rather than by not having chosen.
 		const box = coinsBox(landed([BTC, USDC_ETH]), '');
-		expect(box.options).toEqual([
-			{ value: '', label: COINS_CHOOSE },
-			{ value: 'btc', label: 'Bitcoin' },
-			{ value: 'usdc', label: 'USD Coin' }
-		]);
-	});
-
-	it('offers that choice to no deployment already holding one', () => {
-		const box = coinsBox(landed([BTC]), 'btc');
-		expect(box.options.map((option) => option.value)).toEqual(['btc']);
+		expect(offered(box)).toEqual(['btc', 'usdc']);
+		expect(box.options.every((option) => option.code !== '')).toBe(true);
 	});
 });
 
@@ -168,7 +197,7 @@ describe('the stored currency before any list has landed', () => {
 	it('stands as an ordinary option rather than one said to be no longer offered', () => {
 		const box = coinsBox(coinsTyped(COINS_UNREAD, 'NP1-KEY'), 'usdcmatic');
 		expect(box.retired).toBe(undefined);
-		expect(box.options).toEqual([{ value: 'usdcmatic', label: 'usdcmatic' }]);
+		expect(offered(box)).toEqual(['usdcmatic']);
 		expect(box.disabled).toBe(true);
 	});
 
@@ -180,12 +209,13 @@ describe('the stored currency before any list has landed', () => {
 		});
 		const box = coinsBox(read, 'usdcmatic');
 		expect(box.retired).toBe(undefined);
-		expect(box.options).toEqual([{ value: 'usdcmatic', label: 'usdcmatic' }]);
+		expect(offered(box)).toEqual(['usdcmatic']);
 	});
 
 	it('is retired only once a listing comes back without it', () => {
 		const box = coinsBox(landed([BTC]), 'usdcmatic');
-		expect(box.retired).toEqual({ value: 'usdcmatic', label: 'usdcmatic' });
+		// and leaves the list itself, because the control appends the retired coin after it.
+		expect(box.retired?.code).toBe('usdcmatic');
 		expect(offered(box)).toEqual(['btc']);
 	});
 });
