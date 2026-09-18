@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { edgeCache } from '$lib/server/edge-cache.testing';
 import { mountRoutes } from '../route-request.testing';
 import * as donations from './api.v1.forms.$id.donations';
 import * as surface from './api.v1';
@@ -136,8 +137,7 @@ function envWith(
 const CADENCE_KEY = new Request('https://give.example.workers.dev/__recurring-cadences');
 const CACHED_CADENCES = ['one_time', 'monthly', 'yearly'];
 
-/** the zone's own store, which the ambient `CacheStorage` type has no name for. */
-const edge = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
+const edge = edgeCache();
 
 async function warmCadences(cadences: readonly string[]): Promise<void> {
 	await edge.put(

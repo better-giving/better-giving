@@ -303,8 +303,8 @@ describe('listPayableCoins — the coins the account takes', () => {
 		expect(result.ok && result.value.every((coin) => coin.logo === undefined)).toBe(true);
 	});
 
-	// the chips the picker draws read these two and nothing else: a list of the coins we consider
-	// popular is a table this repo keeps and forgets, where NOWPayments states its own.
+	// the chips the picker draws read these two and nothing else: a list of the coins this repo
+	// calls popular is a table it keeps and forgets, where NOWPayments states its own.
 	it('carries the list’s own popular and stablecoin flags, reading anything but true as false', async () => {
 		serving(
 			listing(
@@ -526,7 +526,7 @@ describe('network names — read off the coin list', () => {
 });
 
 // the adapter reads no rail off the request: every payment it mints is paid in a coin.
-const RAIL = 'crypto' as unknown as IntentRequest['method'];
+const RAIL: IntentRequest['method'] = 'crypto';
 
 const DONATION_ID = '01920000-0000-7000-8000-000000000001';
 
@@ -1401,8 +1401,9 @@ describe('readSettlement — a payment read back', () => {
 const IPN = `{"payment_id":5745459419,"parent_payment_id":null,"invoice_id":null,"payment_status":"finished","pay_address":"rPEPPER7kfTD9w2To4CQk6UCfuHM9c6GDY","payin_extra_id":"2918473650","price_amount":25,"price_currency":"usd","pay_amount":19.36121163,"actually_paid":19.36121163,"actually_paid_at_fiat":24.87,"pay_currency":"xrp","order_id":"${DONATION_ID}","order_description":null,"purchase_id":"5837122679","created_at":"2026-09-17T15:00:22.742Z","updated_at":"2026-09-17T15:21:40.120Z","outcome_amount":24.1,"outcome_currency":"usdttrc20","payment_extra_ids":["2918473650"],"fee":{"currency":"usdttrc20","depositFee":0.12,"withdrawalFee":0.5,"serviceFee":0.25}}`;
 
 // `IPN` signed under `CREDENTIALS.ipnSecret` by three algorithms, each run outside this repo: the
-// SDK's `createWebhookSignature` (nowpayments-sdk-nodejs src/ipn.js, keys sorted at every depth);
-// the top level sorted alone; and the collection's Node sample, which sorts an array into an object.
+// SDK's `createWebhookSignature`, keys sorted at every depth (`verifies` in ./nowpayments.ts names
+// the file it lives in); the top level sorted alone; and the collection's Node sample, which sorts
+// an array into an object.
 const SIGNED_DEEP =
 	'c141b3c1c43e289ae851ea1f0f36e6573ab895f218fbcfea922d0ebc5e1fd77c0c16c90943be5feef7d03d94e409684f275b1abafbf032f7dda7d1ab4201b9b9';
 const SIGNED_TOP_LEVEL =

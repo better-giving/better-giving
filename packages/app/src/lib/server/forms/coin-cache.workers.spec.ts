@@ -5,6 +5,7 @@ import {
 	type PaymentProvider,
 	type PaymentResult
 } from '../payments/provider';
+import { edgeCache } from '../edge-cache.testing';
 import { soleProcessor } from '../payments/processors.testing';
 import { cachedCoins } from './coin-cache';
 
@@ -37,7 +38,7 @@ function countingPort(answer: PaymentResult<readonly PayableCoin[]>): {
 	};
 }
 
-const edge = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
+const edge = edgeCache();
 
 const coins = (value: readonly PayableCoin[]): PaymentResult<readonly PayableCoin[]> => ({
 	ok: true,

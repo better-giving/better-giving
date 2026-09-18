@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:test';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { edgeCache } from '$lib/server/edge-cache.testing';
 import { mountRoutes } from '../route-request.testing';
 import * as config from './api.v1.forms.$id.config';
 import * as surface from './api.v1';
@@ -129,8 +130,7 @@ function envWith(values: Record<string, string>): Env {
 const CADENCE_KEY = new Request('https://give.example.workers.dev/__recurring-cadences');
 const CACHED_CADENCES = ['one_time', 'yearly'];
 
-/** the zone's own store, which the ambient `CacheStorage` type has no name for. */
-const edge = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
+const edge = edgeCache();
 
 /**
  * where the served rail list is kept, for the one case that puts this route in front of an account
@@ -467,7 +467,11 @@ describe('GET /api/v1/forms/:id/config — crypto', () => {
 		expect(await response.json()).toMatchObject({
 			paymentMethods: ['crypto'],
 			frequencies: ['one_time'],
-			coins: [{ coin: 'btc', name: 'Bitcoin', network: 'btc', ticker: 'btc', memoRequired: false }]
+			coins: [
+				// the network's own words rather than its code: `networkNamesOf` in
+				// $lib/server/payments/nowpayments.ts derives them off the same list.
+				{ coin: 'btc', name: 'Bitcoin', network: 'Bitcoin', ticker: 'btc', memoRequired: false }
+			]
 		});
 	});
 

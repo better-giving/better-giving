@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createStaticHandler, type LoaderFunction } from 'react-router';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { NO_FORM } from '$lib/donate/copy';
+import { edgeCache } from '$lib/server/edge-cache.testing';
 import { requestContext } from '../request-context';
 import * as donorPage from './$formId';
 import type { Route } from './+types/$formId';
@@ -89,8 +90,7 @@ beforeEach(async () => {
 const CADENCE_KEY = new Request(`${OWN}/__recurring-cadences`);
 const CACHED_CADENCES = ['one_time', 'yearly'];
 
-/** the zone's own store, which the ambient `CacheStorage` type has no name for. */
-const edge = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
+const edge = edgeCache();
 
 async function warmCadences(): Promise<void> {
 	await edge.put(

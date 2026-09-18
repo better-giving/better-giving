@@ -61,6 +61,14 @@ describe('the deploy-time configuration this app is deployed with', () => {
 	 * lands in this file without appearing at the top level — which is exactly what an assertion
 	 * that no environment exists would stop reporting the moment one did.
 	 */
+	/**
+	 * the two cases below read the environments one at a time, so a config that declared none would
+	 * leave that half asserting nothing while the file still reported green.
+	 */
+	it('declares environments to read', () => {
+		expect(Object.keys(config.env ?? {}).length).toBeGreaterThan(0);
+	});
+
 	it('commits no value of its own for any of them', () => {
 		expect(config.vars).toBeUndefined();
 		for (const [name, env] of Object.entries(config.env ?? {})) {

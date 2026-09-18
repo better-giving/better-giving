@@ -7,6 +7,7 @@ import type {
 	PaymentResult,
 	RailSwitchboard
 } from '../payments/provider';
+import { edgeCache } from '../edge-cache.testing';
 import { soleProcessor } from '../payments/processors.testing';
 import { cachedRails } from './rail-cache';
 
@@ -94,13 +95,8 @@ const switches = (offered: readonly string[]): PaymentResult<RailSwitchboard> =>
 	}
 });
 
-/**
- * the zone's own store, reached the way ./rail-cache.ts reaches it.
- *
- * a cast because the ambient `CacheStorage` this project compiles against has no name for
- * `default`, which is workerd's own.
- */
-const edge = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
+// the zone's own store, which is where ./rail-cache.ts puts its entry.
+const edge = edgeCache();
 
 const REFUSAL = {
 	ok: false,

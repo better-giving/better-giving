@@ -5,6 +5,7 @@ import type {
 	ProcessorName,
 	RecurringGiftStanding
 } from '../payments/provider';
+import { edgeCache } from '../edge-cache.testing';
 import { processorsOf, soleProcessor } from '../payments/processors.testing';
 import { cachedCadences } from './cadence-cache';
 
@@ -63,13 +64,8 @@ function countingPort(
 	};
 }
 
-/**
- * the zone's own store, reached the way ./cadence-cache.ts reaches it.
- *
- * a cast because the ambient `CacheStorage` this project compiles against has no name for
- * `default`, which is workerd's own.
- */
-const edge = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
+// the zone's own store, which is where ./cadence-cache.ts puts its entry.
+const edge = edgeCache();
 
 const REFUSAL = {
 	ok: false,

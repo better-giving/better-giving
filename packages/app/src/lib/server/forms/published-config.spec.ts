@@ -642,7 +642,11 @@ const USDT = {
 	name: 'Tether USD (Tron)',
 	network: 'trx',
 	ticker: 'usdt',
-	memoRequired: false
+	memoRequired: false,
+	// the adapter carries both on every coin it reads, false where the processor's list flags
+	// neither, so a coin without them is not a shape this module is ever handed.
+	popular: false,
+	stablecoin: false
 };
 
 /** the config a live form on a fully configured deployment produces. */

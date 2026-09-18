@@ -12,14 +12,21 @@ interface WranglerConfig {
 }
 
 const config = readWranglerConfig() as WranglerConfig;
+const environments = Object.keys(config.env ?? {});
 
 describe('the pending crypto read’s schedule', () => {
 	it('is declared', () => {
 		expect(config.triggers?.crons?.length ?? 0).toBeGreaterThan(0);
 	});
 
+	// the list below is read off the parsed config, so an empty one registers no test at all and the
+	// rule goes uncovered under a green file.
+	it('has environments to inherit it', () => {
+		expect(environments.length).toBeGreaterThan(0);
+	});
+
 	// an environment's own `triggers` replaces the top level's rather than adding to it.
-	it.each(Object.keys(config.env ?? {}))('is inherited by the %s environment', (name) => {
+	it.each(environments)('is inherited by the %s environment', (name) => {
 		expect(config.env?.[name]?.triggers).toBeUndefined();
 	});
 });

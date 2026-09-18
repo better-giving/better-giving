@@ -14,6 +14,7 @@ import type {
 } from '../payments/provider';
 import { estimateFee } from '@better-giving/form/fee';
 import { PAYPAL_US_FEE_RULES_CHARITY, PAYPAL_US_FEE_RULES_STANDARD } from '../payments/fees';
+import { edgeCache } from '../edge-cache.testing';
 import { processorsOf, soleProcessor } from '../payments/processors.testing';
 import type { EmailMessage, EmailProvider } from '../email/provider';
 import { CHARIOT_FEE_RULES, NOWPAYMENTS_FEE_RULE } from '../payments/fees';
@@ -562,11 +563,11 @@ describe('mintQuote() — the fee is the server’s', () => {
 
 describe('mintQuote() — a rail the account has stopped offering', () => {
 	/**
-	 * the zone's own store, which the ambient `CacheStorage` type has no name for. the served rail
-	 * list is read through it (`$lib/server/forms/rail-cache.ts`), so writing the entry is how a case
-	 * puts this path in front of an account that offers nothing without inventing a port answer.
+	 * the served rail list is read through the zone's own store
+	 * (`$lib/server/forms/rail-cache.ts`), so writing the entry is how a case puts this path in
+	 * front of an account that offers nothing without inventing a port answer.
 	 */
-	const edge = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
+	const edge = edgeCache();
 	const railKey = new Request('https://give.example.workers.dev/__offered-rails');
 
 	/**
@@ -1768,8 +1769,8 @@ describe('mintQuote() — a gift sent in crypto', () => {
 		...over
 	});
 
-	/** the zone's own store, and the two entries a crypto quote's config read writes into it. */
-	const edge = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
+	/** the two entries a crypto quote's config read writes into the zone's own store. */
+	const edge = edgeCache();
 	const coinKey = new Request('https://give.example.workers.dev/__payable-coins');
 	const railKey = new Request('https://give.example.workers.dev/__offered-rails');
 
@@ -1872,7 +1873,7 @@ describe('mintQuote() — a gift sent in crypto', () => {
 		{
 			reason: 'below_minimum',
 			detail:
-				'A gift of $100.00 converts to 0.0009 BTC, under the 0.0003 BTC NOWPayments accepts in that coin — about $33.12. No address was created.',
+				'A gift of $100.00 converts to 0.0009 BTC, under the 0.0003 BTC NOWPayments accepts in that coin (about $33.12). No address was created.',
 			figure: '$33.12'
 		},
 		{
