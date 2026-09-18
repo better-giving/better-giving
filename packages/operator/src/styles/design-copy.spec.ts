@@ -1,4 +1,4 @@
-import { globSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, globSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,25 +31,32 @@ const tokens = join(here, 'tokens.css');
 const sheets = ['tokens.css', 'base.css', 'adm.css'].map((sheet) => join(here, sheet));
 const design = join(here, '..', '..', '..', 'design');
 
-describe('packages/design/ copies the token layer without changing it', () => {
-	const copies = globSync('*/_shared.css', { cwd: design }).map((file) => join(design, file));
+// packages/design/ is gitignored and no artboard is ever committed (CLAUDE.md), so the directory is
+// there only on the machine that drew one. a checkout without it — ci, a fork, a fresh clone — has
+// nothing to guard, and the sweep is skipped rather than read as a clean tree. the case below stays
+// a case because the directory being there and the glob reaching into it are two different things.
+describe.skipIf(!existsSync(design))(
+	'packages/design/ copies the token layer without changing it',
+	() => {
+		const copies = globSync('*/_shared.css', { cwd: design }).map((file) => join(design, file));
 
-	it('finds the sheets it is meant to be guarding', () => {
-		// without this the suite passes loudest when the glob is wrong and nothing is read, which
-		// is the failure the whole file exists to refuse — and a glob climbing out of its own
-		// package is where that goes wrong. it stays here rather than moving in with the sweep:
-		// only the caller that wrote a glob knows what it was supposed to reach.
-		expect(copies.length).toBeGreaterThan(0);
-	});
+		it('finds the sheets it is meant to be guarding', () => {
+			// without this the suite passes loudest when the glob is wrong and nothing is read, which
+			// is the failure the whole file exists to refuse — and a glob climbing out of its own
+			// package is where that goes wrong. it stays here rather than moving in with the sweep:
+			// only the caller that wrote a glob knows what it was supposed to reach.
+			expect(copies.length).toBeGreaterThan(0);
+		});
 
-	it('sets every token it declares to the value ./tokens.css sets', () => {
-		expect(tokenCopyDrift(copies, tokens)).toEqual([]);
-	});
+		it('sets every token it declares to the value ./tokens.css sets', () => {
+			expect(tokenCopyDrift(copies, tokens)).toEqual([]);
+		});
 
-	it('draws every rule it draws the way ./base.css and ./adm.css draw it', () => {
-		expect(ruleCopyDrift(copies, sheets)).toEqual([]);
-	});
-});
+		it('draws every rule it draws the way ./base.css and ./adm.css draw it', () => {
+			expect(ruleCopyDrift(copies, sheets)).toEqual([]);
+		});
+	}
+);
 
 // the two shapes of finding, opened against a fixture rather than against the tree, for the reason
 // ./raw-values.spec.ts states about its own: the cases above can only ever assert that the sheets
