@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterCoins, NETWORK_TINTS, networkTint, searchCoins, type CoinFilter } from './coins';
+import { NETWORK_TINTS, networkTint, searchCoins } from './coins';
 
 // node pool: which coins a typed search lists, and in what order, is a pure reading of the list
 // ./connect.ts projects and the text in the box.
@@ -39,36 +39,6 @@ describe('the coin search', () => {
 
 	it('lists nothing where nothing matches', () => {
 		expect(tickers('doge')).toEqual([]);
-	});
-});
-
-describe('the chips above the list', () => {
-	const FLAGGED = [
-		{ value: 'btc', label: 'BTC', name: 'Bitcoin', popular: true, stablecoin: false },
-		{ value: 'dai', label: 'DAI', name: 'Dai', popular: false, stablecoin: true },
-		{
-			value: 'usdttrc20',
-			label: 'USDT',
-			name: 'Tether USD (Tron)',
-			popular: true,
-			stablecoin: true
-		},
-		{ value: 'xrp', label: 'XRP', name: 'Ripple', popular: false, stablecoin: false }
-	];
-	const kept = (filter: CoinFilter) => filterCoins(FLAGGED, filter).map((coin) => coin.label);
-
-	it('keeps every coin under all, and only the flagged ones under the other two', () => {
-		expect(kept('all')).toEqual(['BTC', 'DAI', 'USDT', 'XRP']);
-		expect(kept('popular')).toEqual(['BTC', 'USDT']);
-		expect(kept('stable')).toEqual(['DAI', 'USDT']);
-	});
-
-	it('searches within the chip, in the search’s own order', () => {
-		expect(searchCoins(filterCoins(FLAGGED, 'stable'), 'd').map((coin) => coin.label)).toEqual([
-			'DAI',
-			'USDT'
-		]);
-		expect(searchCoins(filterCoins(FLAGGED, 'popular'), 'dai')).toEqual([]);
 	});
 });
 

@@ -10,13 +10,9 @@
 // an editable `role="combobox"`, the highlight is `aria-activedescendant`, and the caret never leaves
 // the box. a refused coin stays listed, `aria-disabled` and passed over by the arrow keys.
 //
-// the chips narrowing the list sit inside that pattern rather than across it, and three rules are
-// what keep them there. they are buttons outside the listbox, so the arrow keys reach none of them
-// and nothing `aria-activedescendant` can name is anything but an option. a pointer pressing one
-// never takes the caret out of the box, the same way a pointer picking a coin does not. and pressing
-// one puts the caret back in the box and opens the list, so the box is focused whenever a highlight
-// is being read out of it — which is the invariant `aria-activedescendant` rests on. Tab still walks
-// out of the box and onto the chips, and the list closes behind it as it closes for any other Tab.
+// the search is the whole of how a donor narrows the list, and nothing else in this root takes a
+// press: the box and the rows are all a pointer can reach, so nothing `aria-activedescendant` can
+// name is anything but an option and Tab out of the box closes the list behind it.
 //
 // a row is a mark and two lines: the ticker on the first, the network's pill on the second, and the
 // closed box reads the same way along one line. the coin's name is drawn nowhere — it says again
@@ -30,7 +26,7 @@
 
 import partStyles from './styles/parts.css?inline';
 import coinStyles from './styles/coins.css?inline';
-import { COIN_FILTERS, filterCoins, networkTint, searchCoins, type CoinFilter } from './coins';
+import { networkTint, searchCoins } from './coins';
 import { glyph } from './glyph';
 import { part, partWhen } from './parts';
 
@@ -47,8 +43,6 @@ export type CoinOption = {
 	readonly network: string;
 	/** the processor's own logo for the coin, absent where its list carries none. */
 	readonly logo?: string;
-	readonly popular: boolean;
-	readonly stablecoin: boolean;
 	readonly refused: boolean;
 };
 
@@ -66,18 +60,6 @@ export type CoinPicker = {
 	update(choice: CoinChoice, problem: string): void;
 	/** the caret into the box, which is where a refusal about the coin sends it. */
 	focus(): void;
-};
-
-/**
- * the words on each chip.
- *
- * one per `CoinFilter` (./coins.ts), so a filter added there is a compile error here until it is
- * given words rather than a chip that draws empty.
- */
-const CHIP_WORDS: Record<CoinFilter, string> = {
-	all: 'All',
-	popular: 'Popular',
-	stable: 'Stablecoins'
 };
 
 /** what the box asks while closed with nothing picked, and while open for a search. */
@@ -196,11 +178,6 @@ export function createCoinPicker(doc: Document): CoinPicker {
 		glyph(doc, 'chevron', 'glyph')
 	]);
 
-	const chips = node(doc, 'div', 'chips');
-	chips.setAttribute('role', 'group');
-	chips.setAttribute('aria-label', 'Narrow the coin list');
-	chips.hidden = true;
-
 	const list = node(doc, 'div', 'coin-list');
 	list.id = 'coin-list';
 	list.setAttribute('role', 'listbox');
@@ -212,7 +189,7 @@ export function createCoinPicker(doc: Document): CoinPicker {
 	message.id = 'coin-problem';
 	message.hidden = true;
 
-	root.appendChild(node(doc, 'div', 'field-row', [label, box, chips, list, noMatch, message]));
+	root.appendChild(node(doc, 'div', 'field-row', [label, box, list, noMatch, message]));
 
 	let current: CoinChoice | null = null;
 	/** one row per coin, built from the first choice: the coins a card lists never change. */
@@ -222,42 +199,14 @@ export function createCoinPicker(doc: Document): CoinPicker {
 		readonly note: HTMLElement;
 		readonly tick: SVGElement;
 	}[] = [];
-	/** one button per chip drawn, empty where the served list carries no flag to narrow by. */
-	let chipRow: { readonly filter: CoinFilter; readonly button: HTMLButtonElement }[] = [];
-	let chosenFilter: CoinFilter = 'all';
 	let open = false;
-	/** the coins the chip and the search are showing together, in the order they show them. */
+	/** the coins the search is showing, in the order it shows them. */
 	let shown: CoinOption[] = [];
 	let highlighted: string | null = null;
 
 	const now = (): CoinChoice => {
 		if (current === null) throw new Error('unreachable: the list is patched before it is shown');
 		return current;
-	};
-
-	/**
-	 * the chips the served list has anything to narrow by, built from the first choice with the rows.
-	 *
-	 * a chip is drawn for a flag some coin on the list carries, and `all` is drawn only when one of
-	 * the other two is: a lone `All` narrows nothing and is a control that does not answer a press.
-	 * so a deployment whose list carries neither flag draws the list it drew before the chips
-	 * existed, rather than a row of controls that hold every coin whichever is pressed.
-	 */
-	const buildChips = (choice: CoinChoice): void => {
-		const carried = COIN_FILTERS.filter(
-			(filter) => filter === 'all' || filterCoins(choice.options, filter).length > 0
-		);
-		if (carried.length < 2) return;
-		chipRow = carried.map((filter) => {
-			const button = node(doc, 'button', 'chip', [CHIP_WORDS[filter]]);
-			button.type = 'button';
-			// the caret stays in the box while a pointer presses, as it does while one picks a coin.
-			button.addEventListener('mousedown', (event) => event.preventDefault());
-			button.addEventListener('click', () => narrowTo(filter));
-			chips.appendChild(button);
-			return { filter, button };
-		});
-		chips.hidden = false;
 	};
 
 	const build = (choice: CoinChoice): void => {
@@ -281,24 +230,6 @@ export function createCoinPicker(doc: Document): CoinPicker {
 		if (option === undefined || option.refused) return;
 		close();
 		now().onChange(value);
-	};
-
-	/**
-	 * the chip a donor pressed: the list narrowed to it, open, with the caret in the box.
-	 *
-	 * the caret is moved rather than left where it was because a keyboard donor reaches a chip by
-	 * tabbing out of the box, and a list whose highlight is read from `aria-activedescendant` says
-	 * nothing at all while the box it is set on is not the focused element.
-	 */
-	const narrowTo = (filter: CoinFilter): void => {
-		chosenFilter = filter;
-		input.focus();
-		if (!open) {
-			openList();
-			return;
-		}
-		narrow();
-		paint();
 	};
 
 	/**
@@ -326,9 +257,6 @@ export function createCoinPicker(doc: Document): CoinPicker {
 			open ? search : picked === undefined ? node(doc, 'span', 'logo-slot') : leadMark(picked)
 		);
 		chosen.replaceChildren(...(open || picked === undefined ? [] : [words(doc, picked)]));
-		for (const { filter, button } of chipRow) {
-			button.setAttribute('aria-pressed', String(filter === chosenFilter));
-		}
 
 		const refusedNow = new Map(choice.options.map((option) => [option.value, option.refused]));
 		const visible = new Set(shown.map((option) => option.value));
@@ -362,15 +290,11 @@ export function createCoinPicker(doc: Document): CoinPicker {
 	};
 
 	/**
-	 * the coins the chip keeps and the text then finds, with the highlight on the first of those the
-	 * account still takes.
-	 *
-	 * the two narrowings compose in one direction and ./coins.ts argues why they are two calls: the
-	 * chip is the set, the search runs inside it.
+	 * the coins the text finds, with the highlight on the first of those the account still takes.
 	 */
 	const narrow = (): void => {
 		const choice = now();
-		shown = searchCoins(filterCoins(choice.options, chosenFilter), input.value);
+		shown = searchCoins(choice.options, input.value);
 		const first = shown.find((option) => !option.refused);
 		const keep = shown.some((option) => option.value === highlighted && !option.refused);
 		highlighted = keep ? highlighted : (first?.value ?? null);
@@ -381,9 +305,9 @@ export function createCoinPicker(doc: Document): CoinPicker {
 		open = true;
 		input.value = '';
 		narrow();
-		// the picked coin is where the arrow keys start, where the chip has left it on the list and
-		// the account still takes it. read off `shown` rather than off the whole list, because a
-		// highlight on a coin the chip is hiding is a combobox naming a row nobody can see.
+		// the picked coin is where the arrow keys start, where the account still takes it. read off
+		// `shown` rather than off the whole list, because a highlight on a coin the search is hiding
+		// is a combobox naming a row nobody can see.
 		const choice = now();
 		if (shown.some((option) => option.value === choice.value && !option.refused)) {
 			highlighted = choice.value;
@@ -453,13 +377,10 @@ export function createCoinPicker(doc: Document): CoinPicker {
 	return {
 		host,
 		update(choice, problem) {
-			if (current === null) {
-				build(choice);
-				buildChips(choice);
-			}
+			if (current === null) build(choice);
 			current = choice;
 			if (open) narrow();
-			else shown = filterCoins(choice.options, chosenFilter);
+			else shown = [...choice.options];
 			paint();
 			const invalid = problem !== '';
 			message.textContent = problem;

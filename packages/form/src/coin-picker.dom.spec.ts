@@ -12,8 +12,6 @@ const OPTIONS = [
 		name: 'Bitcoin',
 		network: 'Bitcoin',
 		logo: 'https://example.test/coins/btc.svg',
-		popular: true,
-		stablecoin: false,
 		refused: false
 	},
 	{
@@ -21,8 +19,6 @@ const OPTIONS = [
 		label: 'SOL',
 		name: 'Solana',
 		network: 'Solana',
-		popular: true,
-		stablecoin: false,
 		refused: false
 	},
 	{
@@ -31,8 +27,6 @@ const OPTIONS = [
 		name: 'Tether USD (Tron)',
 		network: 'Tron',
 		logo: 'https://example.test/coins/usdt.svg',
-		popular: false,
-		stablecoin: true,
 		refused: false
 	},
 	{
@@ -40,8 +34,6 @@ const OPTIONS = [
 		label: 'XRP',
 		name: 'Ripple',
 		network: 'XRP Ledger',
-		popular: false,
-		stablecoin: false,
 		refused: false
 	}
 ];
@@ -73,17 +65,11 @@ function mounted(overrides: Partial<CoinChoice> = {}, problem = '') {
 		[...root.querySelectorAll<HTMLElement>('[role="option"]')]
 			.filter((option) => !option.hidden)
 			.map((option) => option.querySelector('.coin-ticker')?.textContent);
-	const chips = () =>
-		[...root.querySelectorAll<HTMLButtonElement>('.chip')].map((chip) => chip.textContent);
-	const chip = (words: string) =>
-		[...root.querySelectorAll<HTMLButtonElement>('.chip')].find(
-			(candidate) => candidate.textContent === words
-		) as HTMLButtonElement;
 	const active = () =>
 		root
 			.getElementById(input.getAttribute('aria-activedescendant') ?? '')
 			?.querySelector('.coin-ticker')?.textContent;
-	return { picker, root, input, picked, key, typed, listed, active, chips, chip };
+	return { picker, root, input, picked, key, typed, listed, active };
 }
 
 afterEach(() => {
@@ -204,67 +190,31 @@ describe('the coin list', () => {
 		expect(rows[0]?.querySelector('.initial')?.textContent).toBe('B');
 	});
 
-	it('draws a chip for a flag the list carries, and none where it carries neither', () => {
-		// the flags are the served list's own, so a deployment serving none draws the list it drew
-		// before the chips existed rather than a row of controls that narrow nothing.
-		expect(mounted().chips()).toEqual(['All', 'Popular', 'Stablecoins']);
+	it('draws nothing pressable between the box and the list', () => {
+		// the search is the whole of how a donor narrows the list, so no control stands beside it to
+		// take a press: everything the pointer can reach inside the root is the box or an option.
+		const { root } = mounted();
+		(root.querySelector('.picker') as HTMLElement).click();
+		const box = root.querySelector('.picker') as HTMLElement;
 
-		const plain = OPTIONS.map((option) => ({ ...option, popular: false, stablecoin: false }));
-		const bare = mounted({ options: plain });
-		expect(bare.chips()).toEqual([]);
-		expect((bare.root.querySelector('.chips') as HTMLElement).hidden).toBe(true);
+		expect(root.querySelectorAll('button')).toHaveLength(0);
+		expect(box.nextElementSibling?.getAttribute('role')).toBe('listbox');
 	});
 
-	it('narrows the list to the chosen chip, and searches inside it', () => {
-		const { chip, chips, listed, typed, input } = mounted();
-		chip('Stablecoins').click();
-
-		expect(chip('Stablecoins').getAttribute('aria-pressed')).toBe('true');
-		expect(chip('All').getAttribute('aria-pressed')).toBe('false');
-		expect(input.getAttribute('aria-expanded')).toBe('true');
-		expect(listed()).toEqual(['USDT']);
-
-		typed('bitcoin');
-		expect(listed()).toEqual([]);
-		typed('');
-		chip('All').click();
-		expect(listed()).toEqual(['BTC', 'SOL', 'USDT', 'XRP']);
-		expect(chips()).toHaveLength(3);
-	});
-
-	it('never points the highlight at a coin the chip is hiding', () => {
+	it('never points the highlight at a coin the search is hiding', () => {
 		// `aria-activedescendant` is the whole of where the keyboard is standing, so a highlight left
 		// on a hidden row is a combobox reading out a coin nobody can see.
-		const { chip, key, active, picked } = mounted({ value: 'btc' });
+		const { typed, key, active, picked } = mounted({ value: 'btc' });
 		key('ArrowDown');
 		expect(active()).toBe('BTC');
 
-		chip('Stablecoins').click();
+		typed('tether');
 		expect(active()).toBe('USDT');
 		key('ArrowDown');
 		expect(active()).toBe('USDT');
 
 		key('Enter');
 		expect(picked).toEqual(['usdttrc20']);
-	});
-
-	it('keeps the chips out of the listbox the caret is pointing into', () => {
-		// the chips sit inside the combobox pattern rather than across it: they are buttons of their
-		// own, outside the list, so nothing the arrow keys walk and nothing `aria-activedescendant`
-		// can name is anything but an option.
-		const { root, chip, key, active } = mounted();
-		const list = root.getElementById('coin-list') as HTMLElement;
-
-		expect(list.querySelector('.chip')).toBeNull();
-		expect(chip('Popular').tagName).toBe('BUTTON');
-		expect(chip('Popular').closest('[role="listbox"]')).toBeNull();
-
-		key('ArrowDown');
-		key('ArrowUp');
-		expect(active()).toBe('XRP');
-		expect(
-			root.getElementById(root.querySelector('input')?.getAttribute('aria-activedescendant') ?? '')
-		).toHaveProperty('role', 'option');
 	});
 
 	it('marks the box and says the problem under it, described from the box', () => {

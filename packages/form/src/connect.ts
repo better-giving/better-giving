@@ -781,9 +781,9 @@ export function connect<
 		// sorted here rather than by a renderer, so both surfaces list the coins in one order: by ticker,
 		// which is how a donor holding a coin knows it.
 		//
-		// the network, the logo and the two flags ride through as the served config carries them and
-		// are read by no rule here: what a row draws from them is ./coin-picker.ts's, and a value
-		// derived on the way through would be one this seam had to keep true as well.
+		// the network and the logo ride through as the served config carries them and are read by no
+		// rule here: what a row draws from them is ./coin-picker.ts's, and a value derived on the way
+		// through would be one this seam had to keep true as well.
 		coinSelect: normalize.select({
 			name: 'coin',
 			value: payerDraft.coin ?? NO_COIN,
@@ -795,8 +795,6 @@ export function connect<
 					name: coin.name,
 					network: coin.network,
 					...(coin.logo === undefined ? {} : { logo: coin.logo }),
-					popular: coin.popular === true,
-					stablecoin: coin.stablecoin === true,
 					refused: context.refusedCoins.includes(coin.coin)
 				})),
 			onChange: (value: string) =>

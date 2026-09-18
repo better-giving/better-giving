@@ -316,8 +316,8 @@ export type Provider = {
  * anything else for: the row is drawn into a page this project does not own, so a relative path
  * resolves against the host's origin and asks a stranger's site for an image it does not serve.
  *
- * `popular` and `stablecoin` are the processor's own flags for the coin, and they are the whole of
- * what the list's filter chips read.
+ * `popular` and `stablecoin` are the processor's own flags for the coin: what its list says about
+ * the coin, reported here whether or not a surface draws them.
  */
 export type PayableCoin = {
 	readonly coin: string;

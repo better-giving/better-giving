@@ -643,8 +643,6 @@ describe('the crypto projection', () => {
 			name: string;
 			network: string;
 			logo?: string;
-			popular: boolean;
-			stablecoin: boolean;
 			refused: boolean;
 		}[];
 		readonly onChange: (value: string) => void;
@@ -661,8 +659,6 @@ describe('the crypto projection', () => {
 				label: 'BTC',
 				name: 'Bitcoin',
 				network: 'Bitcoin',
-				popular: false,
-				stablecoin: false,
 				refused: false
 			},
 			{
@@ -671,8 +667,6 @@ describe('the crypto projection', () => {
 				name: 'Tether USD (Tron)',
 				network: 'Tron',
 				logo: 'https://example.test/coins/usdt.svg',
-				popular: false,
-				stablecoin: true,
 				refused: false
 			},
 			{
@@ -680,8 +674,6 @@ describe('the crypto projection', () => {
 				label: 'XRP',
 				name: 'Ripple',
 				network: 'XRP Ledger',
-				popular: true,
-				stablecoin: false,
 				refused: false
 			}
 		]);

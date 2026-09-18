@@ -311,9 +311,9 @@ describe('a response with a safe reading', () => {
 		expect(listed(7)).not.toHaveProperty('logo');
 	});
 
-	it('keeps a coin whose cosmetic fields are unreadable, with the chips passing it over', () => {
-		// the logo and the two flags are what a row *shows*, so an unreadable one takes the row's own
-		// fallback rather than dropping a coin the way `memoRequired` does.
+	it('keeps a coin whose cosmetic fields are unreadable, reporting the flags false', () => {
+		// the logo and the two flags are cosmetic, so an unreadable one takes its own fallback rather
+		// than dropping a coin the way `memoRequired` does.
 		const config = readFormConfig({
 			...RESPONSE,
 			paymentMethods: ['card', 'crypto'],
@@ -323,7 +323,7 @@ describe('a response with a safe reading', () => {
 		expect(config?.coins).toEqual([{ ...TETHER, popular: false, stablecoin: false }]);
 	});
 
-	it('carries the two flags the chips above the coin list read', () => {
+	it('carries the two flags the processor’s list says about a coin', () => {
 		const config = readFormConfig({
 			...RESPONSE,
 			paymentMethods: ['card', 'crypto'],

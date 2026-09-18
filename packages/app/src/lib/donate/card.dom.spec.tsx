@@ -676,8 +676,7 @@ describe('a crypto gift', () => {
 				name: 'Tether USD (Tron)',
 				network: 'Tron',
 				memoRequired: false,
-				logo: 'https://nowpayments.io/images/coins/usdttrc20.svg',
-				stablecoin: true
+				logo: 'https://nowpayments.io/images/coins/usdttrc20.svg'
 			},
 			{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'Bitcoin', memoRequired: false }
 		]
@@ -791,7 +790,7 @@ describe('a crypto gift', () => {
 
 	// the picker draws more of a coin than a gift is built from, and the card hands the served option
 	// over whole rather than a subset of its own (`CoinOption` in @better-giving/form/coin-picker).
-	it('draws the network, the logo and the chip the served list earns', async () => {
+	it('draws the network and the logo the served list carries', async () => {
 		const { root } = await onCrypto();
 
 		press(coins(root).querySelector('.picker') as HTMLElement);
@@ -802,11 +801,6 @@ describe('a crypto gift', () => {
 		expect(listed?.querySelector('.net')?.textContent).toBe('Tron');
 		expect(listed?.querySelector('img')?.getAttribute('src')).toBe(
 			'https://nowpayments.io/images/coins/usdttrc20.svg'
-		);
-		// a chip is drawn for a flag some coin on the list carries, so the stablecoin one standing is
-		// the flag having arrived.
-		expect([...coins(root).querySelectorAll('.chip')].map((chip) => chip.textContent)).toContain(
-			'Stablecoins'
 		);
 	});
 
@@ -934,7 +928,9 @@ describe('a crypto gift', () => {
 
 		expect(screen(root).className).toContain('step-give');
 		expect(coins(root).activeElement).toBe(combobox(root));
-		expect(coins(root).querySelector('.chosen')?.textContent).toBe('USDTTronTether USD (Tron)');
+		// the ticker and the network, which is the whole of what the closed box reads (`words` in
+		// @better-giving/form's coin-picker.ts): the coin's full name is drawn nowhere on it.
+		expect(coins(root).querySelector('.chosen')?.textContent).toBe('USDTTron');
 	});
 
 	it('withdraws the address and every Copy once its send-by passes, and keeps reading', async () => {

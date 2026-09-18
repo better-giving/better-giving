@@ -217,9 +217,9 @@ function httpsUrl(value: unknown): string | null {
 /**
  * one coin, or `null` where any field a gift is built from is unreadable.
  *
- * the logo and the two flags are not among those. they are what the row *shows*, so an unreadable one
- * takes the row's own fallback — the lettered mark, and a coin the chips pass over — where an
- * unreadable `memoRequired` drops the coin outright.
+ * the logo and the two flags are not among those. they are cosmetic, so an unreadable one takes its
+ * own fallback — the lettered mark, and a flag reported false — where an unreadable `memoRequired`
+ * drops the coin outright.
  */
 function coin(value: unknown): PayableCoin | null {
 	const source = record(value);

@@ -798,8 +798,6 @@ describe('the coin list inside the crypto option', () => {
 						name: 'Bitcoin',
 						network: 'Bitcoin',
 						logo: LOGO,
-						popular: true,
-						stablecoin: false,
 						refused: false
 					},
 					{
@@ -807,8 +805,6 @@ describe('the coin list inside the crypto option', () => {
 						label: 'SOL',
 						name: 'Solana',
 						network: 'Solana',
-						popular: false,
-						stablecoin: false,
 						refused
 					}
 				],
@@ -1011,33 +1007,6 @@ describe('the coin list inside the crypto option', () => {
 		expect(image.getBoundingClientRect()).toEqual(mark.getBoundingClientRect());
 		expect(getComputedStyle(letter).visibility).toBe('hidden');
 		expect(getComputedStyle(bare).visibility).toBe('visible');
-	});
-
-	// the chips are the one set of controls in this list, and a chosen one says so the way a chosen
-	// cadence does: it rises to the card's own ground and its word steps to the brand.
-	it('marks the pressed chip in the brand and leaves the rest on the row’s own ground', () => {
-		const root = drawn(false);
-		const chips = [...root.querySelectorAll<HTMLButtonElement>('.chip')];
-		const [all, popular] = chips.map((chip) => {
-			const style = getComputedStyle(chip);
-			return {
-				pressed: chip.getAttribute('aria-pressed'),
-				ground: style.backgroundColor,
-				ink: style.color
-			};
-		});
-
-		expect(chips.map((chip) => chip.textContent)).toEqual(['All', 'Popular']);
-		expect(all).toEqual({
-			pressed: 'true',
-			ground: used(root, '--_n1'),
-			ink: used(root, '--_p')
-		});
-		expect(popular).toEqual({
-			pressed: 'false',
-			ground: 'rgba(0, 0, 0, 0)',
-			ink: used(root, '--_n11')
-		});
 	});
 
 	it('rings a refused closed box its caret is in with the refused open box’s ring', async () => {

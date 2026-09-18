@@ -331,64 +331,6 @@ button {
 	color: var(--_n10);
 }
 
-/*
- * the chips between the box and the list: one per flag the served list carries, narrowing what the
- * list holds while a search runs inside it. they are buttons outside the listbox rather than rows
- * in it, and ../coin-picker.ts's header is where that is argued.
- *
- * the vocabulary is the frequency segment's (`[part~='frequency-option']` in ./parts.css): what says
- * chosen is the ground and the ink and never the weight, because a chip that went bold on the press
- * would be wider than the chip beside it and the row would shift under the finger that pressed it.
- */
-.chips {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--_sp2);
-}
-
-.chip {
-	min-block-size: var(--_target-min);
-	padding: var(--_sp1) var(--_sp2);
-	border: 0;
-	border-radius: var(--_r-in);
-	background: none;
-	color: var(--_n11);
-	font-size: var(--_t-sm);
-	font-weight: var(--_w-medium);
-	cursor: pointer;
-}
-
-/*
- * an unchosen chip rests on the open row's own ground (`.band.open` in ./rows.css), so the pointer
- * steps it to the rung under that and the press one further — the ramp's answer for a control that
- * is not drawn in the brand.
- */
-.chip[aria-pressed='false']:hover {
-	background: var(--_n4);
-}
-
-.chip[aria-pressed='false']:active {
-	background: var(--_n5);
-}
-
-/*
- * chosen, and raised rather than filled: the card's own ground under a primary word, which is how a
- * chosen cadence and a chosen amount are said. the primary fills the one control that spends the
- * gift and nothing else on this card.
- */
-.chip[aria-pressed='true'] {
-	background: var(--_n1);
-	color: var(--_p);
-}
-
-.chip[aria-pressed='true']:hover {
-	color: var(--_p-hover);
-}
-
-.chip[aria-pressed='true']:active {
-	color: var(--_p-press);
-}
-
 .no-match {
 	margin: 0;
 	padding: var(--_sp2) var(--_sp3);
