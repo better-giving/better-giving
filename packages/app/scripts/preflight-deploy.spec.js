@@ -10,11 +10,13 @@ import { main } from './preflight-deploy.js';
  * the state under test is `.wrangler/deploy/config.json` and the `build/` it names, which is what
  * `pnpm run deploy` uploads — a spec that read the real pair would pass or fail on whatever was
  * last built here, and a spec that wrote one would arm the defect this guard exists to catch.
+ *
+ * @type {string[]}
  */
 const roots = [];
 
 afterEach(() => {
-	while (roots.length > 0) rmSync(roots.pop(), { recursive: true, force: true });
+	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 /** the three rate limiters a deployment of this app has to be bound to, in wrangler.jsonc's order. */
@@ -29,6 +31,8 @@ const LIMITERS = ['API_RATE_LIMITER', 'QUOTE_RATE_LIMITER', 'SIGN_IN_RATE_LIMITE
  *
  * `limiters` names the three by default so that a case about something else reaches its own check,
  * and takes a shorter list so that a case about a missing one can drop exactly one.
+ *
+ * @param {{ db?: boolean, limiters?: string[] }} [declared]
  */
 function bindings({ db = true, limiters = LIMITERS } = {}) {
 	const databases = db ? '{ "binding": "DB", "database_name": "better-giving" }' : '';
@@ -55,6 +59,9 @@ const CONFIG = `{
  * the same config with a named environment beside it, which is the shape every case below about
  * `--env` is about: a top level that is wired, and an environment that has to be wired itself
  * because it inherits neither of these two blocks from it.
+ *
+ * @param {string} name
+ * @param {string} block the environment's own body, as the JSON text of it.
  */
 function withEnvironment(name, block) {
 	return `{
@@ -73,6 +80,17 @@ function withEnvironment(name, block) {
  * `targetEnvironment` is the field that carries `CLOUDFLARE_ENV` into the upload and is absent on a
  * build made without it, which is why it is left off by default — that is the shape a bare
  * `pnpm run build` writes.
+ *
+ * @typedef {{
+ *   targetEnvironment?: string,
+ *   main?: string,
+ *   bundle?: boolean,
+ *   at?: string,
+ *   names?: string
+ * }} Built
+ *
+ * @param {string} root
+ * @param {Built} [built]
  */
 function build(
 	root,
@@ -105,6 +123,14 @@ function build(
  *
  * `built` and `embed` both default to a clean build, so every case reaches the check it is about
  * with a tree that already passes the ones in front of it.
+ *
+ * @param {{
+ *   config?: string | null,
+ *   built?: Built | null,
+ *   embed?: boolean,
+ *   runtimeFiles?: string[]
+ * }} [tree]
+ * @returns {string} the checkout's own directory.
  */
 function workspace({
 	config = CONFIG,
@@ -143,9 +169,14 @@ function workspace({
  * rehearsal deploy is `--env test` — the same flag wrangler is given by the steps behind this one,
  * because a guard reading a different environment than the deploy uses is a guard that passed for
  * the wrong config.
+ *
+ * @param {string} root
+ * @param {string[]} [argv]
  */
 function capture(root, argv = []) {
+	/** @type {string[]} */
 	const out = [];
+	/** @type {string[]} */
 	const err = [];
 	const outSpy = vi.spyOn(console, 'log').mockImplementation((line) => out.push(String(line)));
 	const errSpy = vi.spyOn(console, 'error').mockImplementation((line) => err.push(String(line)));

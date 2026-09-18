@@ -43,17 +43,23 @@ const LINE = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/;
  * errand cannot survive: the deploy succeeds, the operator reads no complaint, and one of the
  * values is simply not on the deployment — which reads at runtime exactly like a value that was
  * never meant to be set.
+ *
+ * @param {string} text
+ * @param {string} file the path to name in a complaint, since the text arrives without one.
+ * @returns {[string, string][]}
  */
 export function pairs(text, file) {
+	/** @type {[string, string][]} */
 	const found = [];
 	for (const [index, raw] of text.split('\n').entries()) {
 		const line = raw.trim();
 		if (line === '' || line.startsWith('#')) continue;
 		const match = LINE.exec(line);
 		if (!match) throw new Error(`${file}:${index + 1} is not \`NAME=value\`: ${line}`);
-		const [, name, rest] = match;
+		// LINE holds both groups, so the two defaults are unreachable and are here for the checker.
+		const [, name = '', rest = ''] = match;
 		const quoted = /^'(.*)'$/s.exec(rest) ?? /^"(.*)"$/s.exec(rest);
-		found.push([name, quoted ? quoted[1] : rest.trim()]);
+		found.push([name, quoted?.[1] ?? rest.trim()]);
 	}
 	return found;
 }
@@ -63,6 +69,14 @@ export function pairs(text, file) {
  *
  * `readFile` and `spawn` are injected so the spec beside this file can exercise the parse and read
  * the argument list without a deploy — which is the one thing a test of this script may never do.
+ *
+ * @param {string[]} argv
+ * @param {{
+ *   readFile?: (file: string) => string,
+ *   spawn?: (command: string, args: string[], options: import('node:child_process').SpawnSyncOptions) => { status: number | null, error?: Error },
+ *   say?: (said: string) => void
+ * }} [ports] what the spec stands in for: the file, the deploy, and the terminal.
+ * @returns {number}
  */
 export function main(argv, { readFile = read, spawn = spawnSync, say = console.error } = {}) {
 	const [file, ...rest] = argv;
@@ -104,6 +118,10 @@ export function main(argv, { readFile = read, spawn = spawnSync, say = console.e
 	return result.status ?? 1;
 }
 
+/**
+ * @param {string} file
+ * @returns {string}
+ */
 function read(file) {
 	return readFileSync(resolve(process.cwd(), file), 'utf8');
 }

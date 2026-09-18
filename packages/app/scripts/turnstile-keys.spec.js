@@ -8,6 +8,8 @@ import { main } from './turnstile-keys.js';
  * the two key values are made up and shaped like nothing Cloudflare issues, on purpose: a fixture
  * that looked like a real pair is one somebody later reads as this deployment's own (CLAUDE.md
  * commits no deployment artifact).
+ *
+ * @param {Record<string, unknown>} [overrides]
  */
 function widget(overrides = {}) {
 	return {
@@ -23,9 +25,16 @@ function widget(overrides = {}) {
  *
  * the calls are recorded because what this script may run is as much of its contract as what it
  * prints: it reads, and a case below holds it to running nothing that writes.
+ *
+ * @typedef {{ code?: number, stdout?: string, stderr?: string }} Reply
+ * @typedef {{ when: (args: string[]) => boolean, reply: Reply }} Answer
+ *
+ * @param {Answer[]} answers
  */
 function wranglerStub(answers) {
+	/** @type {string[][]} */
 	const calls = [];
+	/** @type {(args: string[]) => Promise<{ code: number, stdout: string, stderr: string }>} */
 	const run = async (args) => {
 		calls.push(args);
 		const answer = answers.find((candidate) => candidate.when(args));
@@ -35,7 +44,12 @@ function wranglerStub(answers) {
 	return { run, calls };
 }
 
-/** the list call, answered with whatever `widgets` is — a value, so a case can send junk. */
+/**
+ * the list call, answered with whatever `widgets` is — a value, so a case can send junk.
+ *
+ * @param {unknown} widgets
+ * @returns {Answer}
+ */
 function listAnswer(widgets) {
 	return {
 		when: (args) => args.includes('list'),
@@ -43,7 +57,12 @@ function listAnswer(widgets) {
 	};
 }
 
-/** the get call, which is the only call that comes back carrying a secret. */
+/**
+ * the get call, which is the only call that comes back carrying a secret.
+ *
+ * @param {unknown} w
+ * @returns {Answer}
+ */
 function getAnswer(w) {
 	return {
 		when: (args) => args.includes('get'),
@@ -51,9 +70,15 @@ function getAnswer(w) {
 	};
 }
 
-/** stdout and stderr as arrays of lines, with the real console silenced for the run. */
+/**
+ * stdout and stderr as arrays of lines, with the real console silenced for the run.
+ *
+ * @param {(args: string[]) => Promise<{ code: number, stdout: string, stderr: string }>} run
+ */
 async function capture(run) {
+	/** @type {string[]} */
 	const out = [];
+	/** @type {string[]} */
 	const err = [];
 	const outSpy = vi.spyOn(console, 'log').mockImplementation((line) => out.push(String(line)));
 	const errSpy = vi.spyOn(console, 'error').mockImplementation((line) => err.push(String(line)));

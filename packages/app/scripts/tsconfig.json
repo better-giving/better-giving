@@ -1,8 +1,17 @@
 {
+	// the operator scripts and their specs are their own program: they run on node rather than on
+	// workerd, so ../tsconfig.json's lib, jsx and `$lib` alias are none of theirs, and `check` runs
+	// this file before that one.
+	//
+	// they are the only JavaScript this repository authors, and `checkJs` holds them to the same
+	// strictness as everything else: preflight-deploy.js is the last gate in front of the remote
+	// migration's one-way door (CLAUDE.md). the types are JSDoc, which is the only way to state one
+	// in a file node runs directly.
 	"extends": "../../../tsconfig.base.json",
 	"compilerOptions": {
 		"types": ["node"],
+		"checkJs": true,
 		"noEmit": true
 	},
-	"include": ["**/*.ts"]
+	"include": ["**/*.ts", "**/*.js"]
 }

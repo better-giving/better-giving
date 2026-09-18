@@ -142,7 +142,12 @@ async function main() {
 	return 1;
 }
 
-/** the sign-in screen on `target`, or `undefined` if `target` is not a usable URL. */
+/**
+ * the sign-in screen on `target`, or `undefined` if `target` is not a usable URL.
+ *
+ * @param {string} target
+ * @returns {URL | undefined}
+ */
 function signInUrl(target) {
 	let base;
 	try {
@@ -156,6 +161,10 @@ function signInUrl(target) {
 	return new URL(base.pathname.replace(/\/+$/, '') + SIGN_IN_PATH, base);
 }
 
+/**
+ * @param {string} problem
+ * @returns {number}
+ */
 function usage(problem) {
 	console.error(`FAILED: ${problem}`);
 	console.error('');

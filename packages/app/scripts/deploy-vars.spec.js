@@ -7,19 +7,30 @@ import { main, pairs } from './deploy-vars.js';
  * what it is called with is the whole of this script's contract with the outside world, and it is
  * also the one call a test may not let through: the real one deploys, applies migrations to a
  * remote database, and is the one-way door DEPLOY.md is written around.
+ *
+ * @param {number} [status] what the deploy would have exited with.
  */
 function spawnStub(status = 0) {
+	/** @type {{ command: string, args: string[], options: import('node:child_process').SpawnSyncOptions }[]} */
 	const calls = [];
+	/** @type {(command: string, args: string[], options: import('node:child_process').SpawnSyncOptions) => { status: number }} */
 	const spawn = (command, args, options) => {
 		calls.push({ command, args, options });
-		return { status, error: undefined };
+		return { status };
 	};
 	return { spawn, calls };
 }
 
-/** the script's own arguments, with the file and the deploy both stubbed out. */
+/**
+ * the script's own arguments, with the file and the deploy both stubbed out.
+ *
+ * @param {string | null} text the file's contents, or `null` for a file that is not there.
+ * @param {string[]} [argv]
+ * @param {number} [status]
+ */
 function run(text, argv = ['.deploy.vars'], status = 0) {
 	const { spawn, calls } = spawnStub(status);
+	/** @type {string[]} */
 	const said = [];
 	const code = main(argv, {
 		readFile: () => {
@@ -75,8 +86,8 @@ describe('deploying the file', () => {
 
 		expect(code).toBe(0);
 		expect(calls).toHaveLength(1);
-		expect(calls[0].command).toBe('pnpm');
-		expect(calls[0].args).toEqual(['run', 'deploy', '--var', 'A:one', '--var', 'B:two']);
+		expect(calls[0]?.command).toBe('pnpm');
+		expect(calls[0]?.args).toEqual(['run', 'deploy', '--var', 'A:one', '--var', 'B:two']);
 	});
 
 	/**
@@ -86,13 +97,13 @@ describe('deploying the file', () => {
 	it('runs the deploy without a shell', () => {
 		const { calls } = run("A='one'\n");
 
-		expect(calls[0].options.shell).toBeUndefined();
+		expect(calls[0]?.options.shell).toBeUndefined();
 	});
 
 	it('passes anything after the file through to the deploy', () => {
 		const { calls } = run("A='one'\n", ['.deploy.vars', '--dry-run']);
 
-		expect(calls[0].args).toEqual(['run', 'deploy', '--var', 'A:one', '--dry-run']);
+		expect(calls[0]?.args).toEqual(['run', 'deploy', '--var', 'A:one', '--dry-run']);
 	});
 
 	it('says which names it is deploying and none of their values', () => {

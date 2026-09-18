@@ -41,8 +41,12 @@ const STATIC = 'static';
  * only the blame is added: the message says whether the form build emitted the wrong thing or
  * whether staging is the one that got it wrong, which is what tells the reader which script to go
  * looking in.
+ *
+ * @param {string} dir
+ * @param {string} blame
  */
 function assertOneRuntime(dir, blame) {
+	/** @type {string[]} */
 	let names;
 	try {
 		names = readdirSync(dir);
@@ -52,7 +56,8 @@ function assertOneRuntime(dir, blame) {
 	try {
 		runtimeAssetPath(names);
 	} catch (error) {
-		throw new Error(`${blame} — ${error.message}`, { cause: error });
+		const said = error instanceof Error ? error.message : String(error);
+		throw new Error(`${blame} — ${said}`, { cause: error });
 	}
 }
 

@@ -238,6 +238,8 @@ export function main(root = process.cwd(), argv = process.argv.slice(2)) {
  * naming a config outside this package, a config that is gone or will not parse, a bundle that was
  * never written — and each is reported with the path it read, because that is what tells an
  * operator whether the build ran at all or ran somewhere else.
+ *
+ * @param {string} root
  */
 function readBuild(root) {
 	const redirectPath = join(root, DEPLOY_CONFIG);
@@ -293,6 +295,8 @@ function readBuild(root) {
  * JSONC, so the comments come out before JSON.parse sees it. every way this can fail answers the
  * same — an unreadable file, unparseable JSON, a config with no `main` — so they collapse into one
  * absent value and one sentence at the call site.
+ *
+ * @param {string} path
  */
 function readConfig(path) {
 	try {
@@ -308,6 +312,9 @@ function readConfig(path) {
  *
  * both spellings, because both select the environment at the wrangler commands behind this step
  * and a guard that read only one would pass on a config nobody is deploying.
+ *
+ * @param {string[]} argv
+ * @returns {string | null}
  */
 function selectedEnvironment(argv) {
 	const inline = argv.find((arg) => arg.startsWith('--env='));
@@ -324,6 +331,9 @@ function selectedEnvironment(argv) {
  * promises a refused caller, and whether the probe's bucket is narrower than the burst that reads
  * it, are `src/lib/server/api/rate-limit.config.spec.ts`'s — that spec reads both blocks and runs
  * at commit, in front of every deploy rather than only in front of this one.
+ *
+ * @param {Record<string, unknown>} environment the top level of the config, or one `env` block of it.
+ * @returns {string[]}
  */
 function missingBindings(environment) {
 	const databases = Array.isArray(environment.d1_databases) ? environment.d1_databases : [];
@@ -341,6 +351,9 @@ function missingBindings(environment) {
  * character by character rather than by regular expression, because the only thing that decides
  * whether `//` opens a comment is whether a string is open around it — and `wrangler.jsonc` holds
  * URLs. a reader that got this wrong would refuse a deploy there is nothing wrong with.
+ *
+ * @param {string} source
+ * @returns {string}
  */
 function stripComments(source) {
 	let out = '';

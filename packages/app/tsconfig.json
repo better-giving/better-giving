@@ -18,9 +18,10 @@
 		"lib": ["esnext", "dom", "dom.iterable"],
 		"types": ["node", "vite/client"],
 		"jsx": "react-jsx",
-		// nothing in this project is authored in JS, and what `allowJs` lets in is generated:
+		// nothing this program holds is authored in JS, and what `allowJs` lets in is generated:
 		// worker-configuration.d.ts's `mainModule` reference reaches the worker entry, and a build's
-		// output is not this program's to check.
+		// output is not this program's to check. the operator scripts are authored in JS and are
+		// checked — they are ./scripts/tsconfig.json's, which `check` runs first.
 		"checkJs": false,
 		"verbatimModuleSyntax": true,
 		"noEmit": true,

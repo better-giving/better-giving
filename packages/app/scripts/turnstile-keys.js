@@ -48,7 +48,11 @@ const DASHBOARD = 'https://dash.cloudflare.com > Turnstile';
  */
 const WIDGET_NAME_SOURCE = new URL('../src/lib/config/turnstile-widget.ts', import.meta.url);
 
-/** the name of the widget this deployment's keys come from, as that module exports it. */
+/**
+ * the name of the widget this deployment's keys come from, as that module exports it.
+ *
+ * @returns {string | undefined}
+ */
 function widgetName() {
 	const source = readFileSync(WIDGET_NAME_SOURCE, 'utf8');
 	const match = source.match(/TURNSTILE_WIDGET_NAME\s*=\s*'([^']+)'/);
@@ -61,6 +65,12 @@ function widgetName() {
  * `pnpm wrangler` and never a global or a bare `npx` (CLAUDE.md), so the version answering here is
  * the version `pnpm run deploy` uses. a non-zero exit is a value rather than a throw, because every
  * branch below reads what wrangler said about it.
+ *
+ * @typedef {{ code: number, stdout: string, stderr: string }} WranglerRun
+ * @typedef {{ name?: unknown, sitekey?: unknown, secret?: unknown }} ListedWidget
+ *
+ * @param {string[]} args
+ * @returns {Promise<WranglerRun>}
  */
 async function runWrangler(args) {
 	try {
@@ -69,12 +79,16 @@ async function runWrangler(args) {
 		});
 		return { code: 0, stdout, stderr };
 	} catch (err) {
+		// execFile rejects with an Error carrying the exit code and both streams, stated once here
+		// so the three reads below are not each a cast of their own.
+		const failure =
+			/** @type {{ code?: unknown, stdout?: string, stderr?: string, message?: string }} */ (err);
 		// `||` and not `??` on the stream: a wrangler that could not be spawned at all rejects with
 		// both streams present and empty, and its message is then the only account of what happened.
 		return {
-			code: typeof err?.code === 'number' ? err.code : 1,
-			stdout: err?.stdout ?? '',
-			stderr: err?.stderr || String(err?.message ?? err)
+			code: typeof failure.code === 'number' ? failure.code : 1,
+			stdout: failure.stdout ?? '',
+			stderr: failure.stderr || String(failure.message ?? err)
 		};
 	}
 }
@@ -87,6 +101,10 @@ async function runWrangler(args) {
  * has to finish on Cloudflare's own screen, and anything else is wrangler's own words plus both
  * ways on. the signals are read off wrangler's text, so a rewording lands in the third arm rather
  * than in the wrong one.
+ *
+ * @param {string} what
+ * @param {WranglerRun} result
+ * @returns {number}
  */
 function reportRefusal(what, result) {
 	const said = `${result.stderr}\n${result.stdout}`.trim();
@@ -117,8 +135,23 @@ function reportRefusal(what, result) {
  * `--json` suppresses wrangler's banner, so stdout is the value alone — and anything else is a
  * version printing a shape this script was not written against. `expected` decides one from the
  * other, since `list` returns an array and `get` returns one widget.
+ *
+ * @overload
+ * @param {string} stdout
+ * @param {'list'} expected
+ * @returns {ListedWidget[] | undefined}
+ *
+ * @overload
+ * @param {string} stdout
+ * @param {'widget'} expected
+ * @returns {ListedWidget | undefined}
+ *
+ * @param {string} stdout
+ * @param {'list' | 'widget'} expected
+ * @returns {ListedWidget[] | ListedWidget | undefined}
  */
 function parsed(stdout, expected) {
+	/** @type {unknown} */
 	let value;
 	try {
 		value = JSON.parse(stdout);
@@ -129,7 +162,12 @@ function parsed(stdout, expected) {
 	return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : undefined;
 }
 
-/** what an alpha command printing an unfamiliar shape leaves an operator to do. */
+/**
+ * what an alpha command printing an unfamiliar shape leaves an operator to do.
+ *
+ * @param {string} what
+ * @returns {number}
+ */
 function reportShape(what) {
 	console.error(`FAILED: wrangler’s \`turnstile widget ${what}\` printed something this script`);
 	console.error('  cannot read. every turnstile subcommand is alpha and may change shape.');
@@ -143,6 +181,9 @@ function reportShape(what) {
  * `.deploy.vars` is parsed before upload and single quotes are what keep a value out of the
  * parser's way (DEPLOY.md), so a value carrying one is a line that would upload as something other
  * than the key. Cloudflare issues neither key with a character outside this set.
+ *
+ * @param {unknown} value
+ * @returns {string | undefined}
  */
 function printable(value) {
 	return typeof value === 'string' && /^[\w-]+$/.test(value) ? value : undefined;
@@ -151,6 +192,9 @@ function printable(value) {
 /**
  * the whole run, against an injected wrangler so the spec beside this file can hold every branch
  * without an account, a login or a network.
+ *
+ * @param {(args: string[]) => Promise<WranglerRun>} [run]
+ * @returns {Promise<number>}
  */
 export async function main(run = runWrangler) {
 	const name = widgetName();
@@ -201,7 +245,7 @@ export async function main(run = runWrangler) {
 
 	// the sitekey is checked before it is passed rather than after: `get` takes it as a required
 	// positional, so a listing that carries none is a call this script must not build at all.
-	const listed = printable(matches[0].sitekey);
+	const listed = printable(matches[0]?.sitekey);
 	if (!listed) return reportShape('list');
 
 	const found = await run(['turnstile', 'widget', 'get', listed, '--json']);
@@ -224,7 +268,12 @@ export async function main(run = runWrangler) {
 	return 0;
 }
 
-/** wrangler's own words, for a terminal: one short line, however many it printed. */
+/**
+ * wrangler's own words, for a terminal: one short line, however many it printed.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
 function oneLine(text) {
 	const flat = text.replace(/\s+/g, ' ').trim();
 	return flat.length > 160 ? `${flat.slice(0, 160)}…` : flat;
