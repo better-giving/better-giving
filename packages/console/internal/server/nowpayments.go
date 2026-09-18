@@ -32,9 +32,12 @@ import (
 //
 // **the listing beside it is the box's own door**, POST /api/nowpayments/currencies: the coins
 // NOWPayments will pay out in, read with the key the page holds so an operator picks an outcome
-// currency rather than spelling one. it is a POST and not a GET for the same reason the press is —
-// the key stays out of a url — and it stores nothing, so it is answered on the key alone and
-// reaches cloudflare not at all.
+// currency rather than spelling one. each coin travels as NOWPayments describes it — its code and
+// the ticker the donation form spells it by, its name and network, its own logo, and the two marks
+// it groups coins by — so a screen draws a coin off this answer and off no table of its own
+// (internal/nowpayments's `Coin`). it is a POST and not a GET for the same reason the press is — the
+// key stays out of a url — and it stores nothing, so it is answered on the key alone and reaches
+// cloudflare not at all.
 
 // the three boxes, as the page posts them.
 type nowpaymentsPress struct {

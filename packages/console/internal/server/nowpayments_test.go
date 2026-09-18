@@ -49,9 +49,11 @@ func nowpaymentsAccount(t *testing.T, keyStatus int) (*httptest.Server, func() [
 		case "/v1/full-currencies":
 			_ = json.NewEncoder(w).Encode(map[string]any{"currencies": []any{
 				map[string]any{"code": "USDTTRC20", "name": "Tether (TRC20)", "network": "trx",
-					"enable": true, "available_for_payout": true},
+					"ticker": "usdt", "enable": true, "available_for_payout": true, "is_stable": true,
+					"logo_url": "/images/coins/usdttrc20.svg"},
 				map[string]any{"code": "BTC", "name": "Bitcoin", "network": "btc",
-					"enable": true, "available_for_payout": true},
+					"ticker": "BTC", "enable": true, "available_for_payout": true, "is_popular": true,
+					"logo_url": "/images/coins/btc.svg"},
 				map[string]any{"code": "ZEC", "name": "Zcash", "network": "zec",
 					"enable": true, "available_for_payout": false},
 			}})
@@ -261,8 +263,11 @@ func TestTheCoinsNowpaymentsPaysOutInAreListedForTheBox(t *testing.T) {
 		t.Fatalf("the listing answered %d %v", status, answer)
 	}
 	listed, _ := json.Marshal(answer["coins"])
-	want := `[{"code":"btc","name":"Bitcoin","network":"btc"},` +
-		`{"code":"usdttrc20","name":"Tether (TRC20)","network":"trx"}]`
+	want := `[{"code":"btc","logo":"https://nowpayments.io/images/coins/btc.svg",` +
+		`"name":"Bitcoin","network":"btc","popular":true,"stablecoin":false,"ticker":"btc"},` +
+		`{"code":"usdttrc20","logo":"https://nowpayments.io/images/coins/usdttrc20.svg",` +
+		`"name":"Tether (TRC20)","network":"trx","popular":false,"stablecoin":true,` +
+		`"ticker":"usdt"}]`
 	if string(listed) != want {
 		t.Errorf("the listing carried %s, want %s", listed, want)
 	}

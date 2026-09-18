@@ -47,14 +47,14 @@ var (
 	// the list as NOWPayments spells it: uppercase codes, a name that sorts by its second letter,
 	// two coins of one name, a coin it takes in and will not pay out, and a coin switched off.
 	listed = answering{http.StatusOK, map[string]any{"currencies": []any{
-		coin("USDTTRC20", "Tether (TRC20)", "trx", true, true),
-		coin("BTC", "Bitcoin", "btc", true, true),
+		marked(tickered(coin("USDTTRC20", "Tether (TRC20)", "trx", true, true), "usdt"), true, true),
+		marked(coin("BTC", "Bitcoin", "btc", true, true), true, false),
 		coin("ZEC", "Zcash", "zec", true, false),
 		coin("XMR", "Monero", "xmr", false, true),
 		coin("XEC", "eCash", "xec", true, true),
-		coin("USDCSOL", "USD Coin", "sol", true, true),
-		coin("USDCALGO", "USD Coin", "algo", true, true),
-		coin("USDCMATIC", "USD Coin (Polygon)", "matic", true, true),
+		tickered(coin("USDCSOL", "USD Coin", "sol", true, true), "usdc"),
+		tickered(coin("USDCALGO", "USD Coin", "algo", true, true), "usdc"),
+		tickered(coin("USDCMATIC", "USD Coin (Polygon)", "matic", true, true), "usdc"),
 	}}}
 )
 
@@ -65,6 +65,20 @@ func coin(code, name, network string, enable, payout bool) map[string]any {
 		"enable": enable, "available_for_payout": payout, "available_for_payment": true,
 		"logo_url": "/images/coins/" + strings.ToLower(code) + ".svg", "precision": 8,
 	}
+}
+
+// the same entry with the coin's own ticker rather than one spelled after its code: NOWPayments
+// names one ticker on every network it carries a coin on, which is what a code cannot say.
+func tickered(entry map[string]any, ticker string) map[string]any {
+	entry["ticker"] = ticker
+	return entry
+}
+
+// the same entry with NOWPayments' two marks on it; the rest of the list carries neither.
+func marked(entry map[string]any, popular, stable bool) map[string]any {
+	entry["is_popular"] = popular
+	entry["is_stable"] = stable
+	return entry
 }
 
 func TestAKeyNowpaymentsRejectsIsRefusedAndNothingElseIsAsked(t *testing.T) {
@@ -148,13 +162,19 @@ func TestTheCoinsNowpaymentsWillPayOutInAreListedByNameAndNothingElseIs(t *testi
 	if listing.Kind != Listed || listing.Detail != "" {
 		t.Fatalf("listed as %+v", listing)
 	}
+	const logos = "https://nowpayments.io/images/coins/"
 	want := []Coin{
-		{Code: "btc", Name: "Bitcoin", Network: "btc"},
-		{Code: "xec", Name: "eCash", Network: "xec"},
-		{Code: "usdttrc20", Name: "Tether (TRC20)", Network: "trx"},
-		{Code: "usdcalgo", Name: "USD Coin", Network: "algo"},
-		{Code: "usdcsol", Name: "USD Coin", Network: "sol"},
-		{Code: "usdcmatic", Name: "USD Coin (Polygon)", Network: "matic"},
+		{Code: "btc", Ticker: "btc", Name: "Bitcoin", Network: "btc", Logo: logos + "btc.svg",
+			Popular: true},
+		{Code: "xec", Ticker: "xec", Name: "eCash", Network: "xec", Logo: logos + "xec.svg"},
+		{Code: "usdttrc20", Ticker: "usdt", Name: "Tether (TRC20)", Network: "trx",
+			Logo: logos + "usdttrc20.svg", Popular: true, Stablecoin: true},
+		{Code: "usdcalgo", Ticker: "usdc", Name: "USD Coin", Network: "algo",
+			Logo: logos + "usdcalgo.svg"},
+		{Code: "usdcsol", Ticker: "usdc", Name: "USD Coin", Network: "sol",
+			Logo: logos + "usdcsol.svg"},
+		{Code: "usdcmatic", Ticker: "usdc", Name: "USD Coin (Polygon)", Network: "matic",
+			Logo: logos + "usdcmatic.svg"},
 	}
 	if !slices.Equal(listing.Coins, want) {
 		t.Errorf("listed %+v, want %+v", listing.Coins, want)
@@ -216,6 +236,100 @@ func TestAListingNowpaymentsSaysNothingAboutIsUnanswered(t *testing.T) {
 		listing := Payable(t.Context(), BindAt(address, "np-typed-key"))
 		if listing.Kind != Unanswered || listing.Detail == "" || listing.Coins == nil {
 			t.Errorf("%s listed as %+v", what, listing)
+		}
+	}
+}
+
+// the list carries each coin's logo as a path on NOWPayments' own site, and a coin is never dropped
+// over one: a picture nothing can resolve is a coin listed without one.
+func TestACoinsLogoIsResolvedAgainstNowpaymentsSiteAndKeptOnlyOverHttps(t *testing.T) {
+	for what, one := range map[string]struct {
+		stated any
+		want   string
+	}{
+		"a path on their site":        {"/images/coins/btc.svg", "https://nowpayments.io/images/coins/btc.svg"},
+		"an address in full":          {"https://cdn.example/btc.svg", "https://cdn.example/btc.svg"},
+		"no logo at all":              {nil, ""},
+		"a logo that is no string":    {42, ""},
+		"an address over http":        {"http://nowpayments.io/images/coins/btc.svg", ""},
+		"an address nothing can read": {"https://nowpayments.io/%zz", ""},
+	} {
+		entry := coin("BTC", "Bitcoin", "btc", true, true)
+		delete(entry, "logo_url")
+		if one.stated != nil {
+			entry["logo_url"] = one.stated
+		}
+		address, _ := account(t, map[string]answering{
+			currenciesPath: {http.StatusOK, map[string]any{"currencies": []any{entry}}},
+		})
+		listing := Payable(t.Context(), BindAt(address, "np-typed-key"))
+		if len(listing.Coins) != 1 {
+			t.Fatalf("%s listed as %+v", what, listing)
+		}
+		if listing.Coins[0].Logo != one.want {
+			t.Errorf("%s carried logo %q, want %q", what, listing.Coins[0].Logo, one.want)
+		}
+	}
+}
+
+// NOWPayments' own two marks, which a screen groups coins by. Neither is a reason to list a coin or
+// to leave one off, so anything but the mark said outright reads as false.
+func TestNowpaymentsOwnMarksTravelAndAnythingElseReadsAsFalse(t *testing.T) {
+	for what, one := range map[string]struct {
+		stated          map[string]any
+		popular, stable bool
+	}{
+		"both marks":                 {map[string]any{"is_popular": true, "is_stable": true}, true, true},
+		"popular alone":              {map[string]any{"is_popular": true, "is_stable": false}, true, false},
+		"stable alone":               {map[string]any{"is_stable": true}, false, true},
+		"neither mark":               {map[string]any{}, false, false},
+		"marks that are no booleans": {map[string]any{"is_popular": "yes", "is_stable": 1}, false, false},
+	} {
+		entry := coin("BTC", "Bitcoin", "btc", true, true)
+		for member, value := range one.stated {
+			entry[member] = value
+		}
+		address, _ := account(t, map[string]answering{
+			currenciesPath: {http.StatusOK, map[string]any{"currencies": []any{entry}}},
+		})
+		listing := Payable(t.Context(), BindAt(address, "np-typed-key"))
+		if len(listing.Coins) != 1 {
+			t.Fatalf("%s listed as %+v", what, listing)
+		}
+		if listing.Coins[0].Popular != one.popular || listing.Coins[0].Stablecoin != one.stable {
+			t.Errorf("%s carried %+v", what, listing.Coins[0])
+		}
+	}
+}
+
+// the ticker is the coin's own symbol rather than its code, and the donation form draws a row by it
+// (`acceptedCoins` in packages/app/src/lib/server/payments/nowpayments.ts), so both surfaces read a
+// coin the same way only where both lowercase it. Like the logo, it is never a reason to leave a
+// coin off: an entry carrying none is listed without one.
+func TestACoinsTickerTravelsLowercasedAndNeverDropsACoin(t *testing.T) {
+	for what, one := range map[string]struct {
+		stated any
+		want   string
+	}{
+		"the coin's own ticker":       {"usdt", "usdt"},
+		"a ticker NOWPayments shouts": {"USDT", "usdt"},
+		"no ticker at all":            {nil, ""},
+		"a ticker that is no string":  {42, ""},
+	} {
+		entry := coin("USDTTRC20", "Tether (TRC20)", "trx", true, true)
+		delete(entry, "ticker")
+		if one.stated != nil {
+			entry["ticker"] = one.stated
+		}
+		address, _ := account(t, map[string]answering{
+			currenciesPath: {http.StatusOK, map[string]any{"currencies": []any{entry}}},
+		})
+		listing := Payable(t.Context(), BindAt(address, "np-typed-key"))
+		if len(listing.Coins) != 1 {
+			t.Fatalf("%s listed as %+v", what, listing)
+		}
+		if listing.Coins[0].Ticker != one.want {
+			t.Errorf("%s carried ticker %q, want %q", what, listing.Coins[0].Ticker, one.want)
 		}
 	}
 }

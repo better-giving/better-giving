@@ -29,6 +29,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -145,13 +146,22 @@ func Check(ctx context.Context, call Call, outcomeCurrency string) Checked {
 	}
 }
 
-// Coin is one coin NOWPayments will pay out in, in the three members a screen draws it by. Code is
-// lowercased, which is the spelling a deployment compares against and the one Check hands back;
-// Name and Network are NOWPayments' own.
+// Coin is one coin NOWPayments will pay out in, in the members a screen draws it by. Code and
+// Ticker are lowercased: the code is the spelling a deployment compares against and the one Check
+// hands back, and the ticker is the coin's own symbol in the spelling `acceptedCoins` in
+// packages/app/src/lib/server/payments/nowpayments.ts carries into the served form config, so one
+// coin reads the same on a console screen and on the donation form. Everything else is
+// NOWPayments' own. Ticker is empty where the entry named none and Logo where it carried none this
+// console could resolve, and the two marks are false unless the entry said so — a coin is listed on
+// all of them either way.
 type Coin struct {
-	Code    string `json:"code"`
-	Name    string `json:"name"`
-	Network string `json:"network"`
+	Code       string `json:"code"`
+	Ticker     string `json:"ticker"`
+	Name       string `json:"name"`
+	Network    string `json:"network"`
+	Logo       string `json:"logo"`
+	Popular    bool   `json:"popular"`
+	Stablecoin bool   `json:"stablecoin"`
 }
 
 // Listing is one read of the payable coins. Detail is empty on Listed, and Coins is the whole set
@@ -183,9 +193,15 @@ func Payable(ctx context.Context, call Call) Listing {
 		if code == "" || !payable(entry) {
 			continue
 		}
+		ticker, _ := entry["ticker"].(string)
 		name, _ := entry["name"].(string)
 		network, _ := entry["network"].(string)
-		coins = append(coins, Coin{Code: strings.ToLower(code), Name: name, Network: network})
+		popular, _ := entry["is_popular"].(bool)
+		stablecoin, _ := entry["is_stable"].(bool)
+		coins = append(coins, Coin{
+			Code: strings.ToLower(code), Ticker: strings.ToLower(ticker), Name: name,
+			Network: network, Logo: logo(entry), Popular: popular, Stablecoin: stablecoin,
+		})
 	}
 	slices.SortFunc(coins, func(a, b Coin) int {
 		if by := strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)); by != 0 {
@@ -203,6 +219,32 @@ func payable(entry map[string]any) bool {
 	on, _ := entry["enable"].(bool)
 	out, _ := entry["available_for_payout"].(bool)
 	return on && out
+}
+
+// where NOWPayments serves the coin logos its list carries as paths.
+var logoOrigin = &url.URL{Scheme: "https", Host: "nowpayments.io"}
+
+// one entry's own logo as an absolute https address, or empty where it carries none this console can
+// resolve — a coin listed like any other and drawn without a picture.
+//
+// `logo_url` is a path on NOWPayments' site (`/images/coins/btc.svg`), so the origin is supplied and
+// the path never is: a logo assembled from a coin's code would be a table this repo keeps and
+// NOWPayments moves. an entry stating an address in full is used as it stands, and nothing but
+// https is kept — the row is drawn on a screen this project does not own the pictures for.
+func logo(entry map[string]any) string {
+	stated, _ := entry["logo_url"].(string)
+	if stated == "" {
+		return ""
+	}
+	reference, err := url.Parse(stated)
+	if err != nil {
+		return ""
+	}
+	resolved := logoOrigin.ResolveReference(reference)
+	if resolved.Scheme != "https" {
+		return ""
+	}
+	return resolved.String()
 }
 
 // the listing a read that found nothing out ends as, in the words the same failure gives a check.
