@@ -5523,7 +5523,7 @@ describe('a crypto gift', () => {
 
 		expect(card.find('.step-give').hidden).toBe(false);
 		expect(coins(card).activeElement).toBe(combobox(card));
-		expect(coins(card).querySelector('.chosen')?.textContent).toBe('USDTTronTether USD (Tron)');
+		expect(coins(card).querySelector('.chosen')?.textContent).toBe('USDTTron');
 	});
 
 	it('goes back to the coin list for a different coin', async () => {

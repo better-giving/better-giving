@@ -18,6 +18,13 @@
 // is being read out of it — which is the invariant `aria-activedescendant` rests on. Tab still walks
 // out of the box and onto the chips, and the list closes behind it as it closes for any other Tab.
 //
+// a row is a mark and two lines: the ticker on the first, the network's pill on the second, and the
+// closed box reads the same way along one line. the coin's name is drawn nowhere — it says again
+// what the ticker and the pill already say, and a two-word network pushing it onto a second line was
+// a row that changed height for nothing. it stays on the option for two readings that are not a row:
+// a donor typing it still finds the coin (`searchCoins` in ./coins.ts), and its first letter is the
+// lettered mark a missing logo falls back to.
+//
 // no flow logic: which coins, which is picked and which were refused are `coinSelect` (./connect.ts),
 // the order a search lists them in is ./coins.ts, and the sentence under the box is the card's.
 
@@ -141,24 +148,22 @@ function logo(doc: Document, option: CoinOption): HTMLElement {
 }
 
 /**
- * the ticker, the network's pill beside it and the coin's name, in three inks.
+ * the ticker and the network's pill, in two inks — one node, drawn on two lines in a row of the list
+ * and along one line in the closed box, which is ./styles/coins.css's call and not this function's.
  *
  * the network's words are the served config's own and are drawn as they arrive; the pill's colour is
- * `networkTint` (./coins.ts) and no rule of this file's. the name is the processor's name for the
- * coin and is never trimmed — the bracket at its end is often the only thing telling two listings of
- * one asset apart.
+ * `networkTint` (./coins.ts) and no rule of this file's.
  *
- * no whitespace between the three: the steps between them are the sheet's margins, and a text node
- * here would add one the sheet cannot take back. they stay one run of inline content all the same,
- * which is what lets the box above cut a long name with an ellipsis (`.chosen` in ./styles/coins.css).
+ * no whitespace between the two: the step between them is the sheet's, and a text node here would add
+ * one the sheet cannot take back. so they stay one run of inline content wherever the sheet leaves
+ * them inline, which is what lets the box above cut a long pill with an ellipsis (`.chosen` there).
  */
 function words(doc: Document, option: CoinOption): HTMLElement {
 	const network = node(doc, 'span', 'net', [option.network]);
 	network.dataset.tint = String(networkTint(option.network));
 	return node(doc, 'span', 'coin-text', [
 		node(doc, 'span', 'coin-ticker', [option.label]),
-		network,
-		node(doc, 'span', 'coin-label', [option.name])
+		network
 	]);
 }
 
@@ -259,11 +264,7 @@ export function createCoinPicker(doc: Document): CoinPicker {
 		rows = choice.options.map((option, at) => {
 			const note = node(doc, 'span', 'message', [REFUSED]);
 			const tick = glyph(doc, 'tick', 'tick');
-			const row = node(doc, 'div', 'option', [
-				logo(doc, option),
-				node(doc, 'span', 'option-text', [words(doc, option), note]),
-				tick
-			]);
+			const row = node(doc, 'div', 'option', [logo(doc, option), words(doc, option), note, tick]);
 			row.id = `coin-option-${at}`;
 			row.setAttribute('role', 'option');
 			// the caret stays in the box while a pointer picks.

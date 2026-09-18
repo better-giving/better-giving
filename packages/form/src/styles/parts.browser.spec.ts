@@ -894,20 +894,18 @@ describe('the coin list inside the crypto option', () => {
 				const style = getComputedStyle(node as Element);
 				return `${style.fontSize} ${style.fontWeight}`;
 			};
-			const closed = ['input', '.chosen .coin-ticker', '.chosen .coin-label'].map((selector) =>
+			const closed = ['input', '.chosen .coin-ticker'].map((selector) =>
 				type(root.querySelector(selector))
 			);
 			(root.querySelector('.picker') as HTMLElement).click();
-			const open = ['[role="option"] .coin-ticker', '[role="option"] .coin-label'].map((selector) =>
-				type(root.querySelector(selector))
-			);
+			const open = [type(root.querySelector('[role="option"] .coin-ticker'))];
 
-			expect([...closed, ...open]).toEqual(Array(5).fill(type(field)));
+			expect([...closed, ...open]).toEqual(Array(3).fill(type(field)));
 		}
 	);
 
-	// a ticker is read against a wallet's, character for character; the coin's name is prose.
-	it('sets the ticker in the monospace stack and the coin’s name in the card’s face', () => {
+	// a ticker is read against a wallet's, character for character; a network's name is prose.
+	it('sets the ticker in the monospace stack and the network in the card’s face', () => {
 		const root = drawn(false);
 		const family = (selector: string) =>
 			getComputedStyle(root.querySelector(selector) as Element).fontFamily;
@@ -916,7 +914,63 @@ describe('the coin list inside the crypto option', () => {
 
 		expect(closed).toBe(family('[role="option"] .coin-ticker'));
 		expect(family('[role="option"] .coin-ticker')).toContain('ui-monospace');
-		expect(family('[role="option"] .coin-label')).toContain('system-ui');
+		expect(family('[role="option"] .net')).toContain('system-ui');
+	});
+
+	// the mark's width is the row's to lose: a logo that was blocked leaves the lettered shape under
+	// it, and a text column measured against each row's own mark would start the words at one x on
+	// the rows whose image arrived and at another on the rows whose did not.
+	it('starts every row’s words at one x, whichever mark the row drew', () => {
+		const root = drawn(false);
+		(root.querySelector('.picker') as HTMLElement).click();
+		const rows = [...root.querySelectorAll<HTMLElement>('[role="option"]')];
+		const marks = rows.map((row) => (row.querySelector('img') === null ? 'letter' : 'logo'));
+		const lefts = () =>
+			rows.map(
+				(row) => (row.querySelector('.coin-ticker') as HTMLElement).getBoundingClientRect().left
+			);
+		const before = lefts();
+
+		expect(marks).toEqual(['logo', 'letter']);
+		expect(new Set(before).size).toBe(1);
+
+		// and the column is the list's rather than each row's, which is the whole of what holds once
+		// two marks differ: one drawn wider moves the words on every row, not only on its own.
+		const wide = root.querySelector('[role="option"] .logo') as HTMLElement;
+		wide.style.inlineSize = '3em';
+
+		expect(new Set(lefts()).size).toBe(1);
+		expect(lefts()[1]).toBeGreaterThan(before[1] as number);
+	});
+
+	// the ticker and the pill are two lines rather than one run that wraps, so a network of two words
+	// settles on the second line instead of pushing the row's height around.
+	it('sets the ticker over the pill on lines of their own, whatever the network is called', () => {
+		const root = drawn(false);
+		(root.querySelector('.picker') as HTMLElement).click();
+		const row = root.querySelector('[role="option"]') as HTMLElement;
+		const ticker = row.querySelector('.coin-ticker') as HTMLElement;
+		const pill = row.querySelector('.net') as HTMLElement;
+		const before = ticker.getBoundingClientRect();
+
+		expect(pill.getBoundingClientRect().top).toBeGreaterThanOrEqual(before.bottom);
+		expect(pill.getBoundingClientRect().left).toBe(before.left);
+
+		pill.textContent = 'Binance Smart Chain';
+		expect(ticker.getBoundingClientRect()).toEqual(before);
+	});
+
+	// the mark stands on the middle of the pair rather than on the first line of it: the two lines are
+	// fixed, so there is no wrap for it to drift away from.
+	it('centres the mark on the two lines beside it', () => {
+		const root = drawn(false);
+		(root.querySelector('.picker') as HTMLElement).click();
+		const row = root.querySelector('[role="option"]') as HTMLElement;
+		const mark = (row.querySelector('.logo') as HTMLElement).getBoundingClientRect();
+		const ticker = (row.querySelector('.coin-ticker') as HTMLElement).getBoundingClientRect();
+		const pill = (row.querySelector('.net') as HTMLElement).getBoundingClientRect();
+
+		expect(mark.top + mark.height / 2).toBeCloseTo(ticker.top + (pill.bottom - ticker.top) / 2, 1);
 	});
 
 	// which entry a network takes is a rule over its own words (`networkTint` in ../coins.ts) and no

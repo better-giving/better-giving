@@ -97,9 +97,29 @@ describe('the coin list', () => {
 		expect(input.getAttribute('aria-expanded')).toBe('false');
 
 		const picked = mounted({ value: 'usdttrc20' });
-		expect(picked.root.querySelector('.chosen')?.textContent).toBe('USDTTronTether USD (Tron)');
+		expect(picked.root.querySelector('.chosen')?.textContent).toBe('USDTTron');
 		expect(picked.input.placeholder).toBe('');
 		expect(root.querySelector('label')?.textContent).toBe('Which coin');
+	});
+
+	it('draws a row as its ticker over its network, and finds a coin by the name no row shows', () => {
+		// the coin's name is the processor's own name for it and says again what the ticker and the
+		// network already say, so no row draws it. it stays on the option because a donor typing it is
+		// still how the coin is found (`searchCoins` in ./coins.ts) and because the lettered mark a
+		// missing logo falls back to is its first letter.
+		const { root, typed, listed } = mounted();
+		(root.querySelector('.picker') as HTMLElement).click();
+		const usdt = [...root.querySelectorAll<HTMLElement>('[role="option"]')][2] as HTMLElement;
+		const lines = [...usdt.querySelectorAll('.coin-text > *')].map((line) => line.textContent);
+
+		expect(lines).toEqual(['USDT', 'Tron']);
+		expect(usdt.textContent).not.toContain('Tether');
+
+		typed('tether');
+		const found = root.querySelector('[role="option"]:not([hidden]) .coin-text') as HTMLElement;
+
+		expect(listed()).toEqual(['USDT']);
+		expect([...found.children].map((line) => line.textContent)).toEqual(['USDT', 'Tron']);
 	});
 
 	it('opens on a press into a search, and narrows the list as the donor types', () => {
