@@ -838,7 +838,7 @@ describe('a crypto gift', () => {
 		const block = one(ending, ':scope > .deposit');
 		expect(block.hidden).toBe(false);
 		expect(one(block, '.value.amount').textContent).toBe('25.004187 USDT');
-		expect(one(block, '.attention').textContent).toContain('Send on this network only.');
+		expect(one(block, '.attention').textContent).toContain('Send on this network only,');
 		expect(one(ending, '.receipt-slot').hidden).toBe(true);
 		expect(
 			every(ending, ':scope > button')
@@ -855,12 +855,12 @@ describe('a crypto gift', () => {
 		const { root } = await atAddress();
 
 		await act(async () => {
-			one(root, '.deposit [aria-label="Copy amount"]').click();
+			one(root, '.deposit [aria-label="Copy address"]').click();
 			for (let at = 0; at < 4; at += 1) await Promise.resolve();
 		});
 
-		expect(one(root, '.deposit [aria-label="Copy amount"] .said').textContent).toBe('Copied');
-		expect(said(root)).toBe('Amount copied.');
+		expect(one(root, '.deposit [aria-label="Copy address"]').dataset.outcome).toBe('copied');
+		expect(said(root)).toBe('Address copied.');
 	});
 
 	it('goes back to the coin list for a different coin', async () => {

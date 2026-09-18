@@ -1520,15 +1520,15 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 /*
  * a value a donor sends a gift with — the figure, the network, the address, the memo — in the card's
- * own ink and the monospace face, and never cut: an address wraps anywhere, because a donor checks its
- * first and last characters against what their wallet shows. the network is a name (`Tron`) rather
- * than a string checked character by character, so `.value.name` sets it in the card's face.
+ * own ink and the monospace face. the network is a name (`Tron`) rather than a string checked
+ * character by character, so `.value.name` sets it in the card's face.
  */
 .value {
 	margin: 0;
 	color: var(--_n12);
 	font-family: var(--_font-mono);
 	font-size: var(--_t-md);
+	line-height: var(--_lh-body);
 	overflow-wrap: anywhere;
 	font-variant-numeric: tabular-nums lining-nums;
 }
@@ -1537,37 +1537,153 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	font-family: var(--_font);
 }
 
+/* the one figure the screen is for, at the size the receipt's total takes on a takeover. */
 .value.amount {
-	font-size: var(--_t-lg);
+	font-size: var(--_t-xl);
 	font-weight: var(--_w-bold);
 	line-height: var(--_lh-tight);
 }
 
 /*
- * the Copy beside a value stands on the value's first line, its box one line of its words so the
- * focus ring below hugs them rather than a 44px box around them. the target is kept by a transparent
- * `::before` reaching `--_row-min` tall past that box, which a pointer hits and nothing paints.
+ * the ticker is the figure's unit rather than part of the value, so it steps down a size and off the
+ * figure's weight and keeps everything else the figure has — the ink, the monospace face, the line
+ * they share. a ticker quieted in ink as well parts from the figure and reads as a second line
+ * rather than as the end of this one, and the ink is what the two have to keep to sit together.
+ *
+ * `--_t-sm` is `em` off the figure it sits inside, so the step is against `--_t-xl` and not against
+ * the card's base — three letters at about 19px on the default root, which no floor is near. the
+ * weight is `--_w-normal` because this is a word read against a neighbour at another weight, which
+ * is the one thing `--_w-medium` cannot do (./tokens.css states why): on a stack shipping 400 and 700
+ * alone, 500 resolves to the figure's own 400 and the ranking disappears.
  */
-.held-line [part~='action-quiet'] {
-	position: relative;
-	min-block-size: 0;
-	padding-block: 0;
-}
-
-.held-line [part~='action-quiet']::before {
-	content: '';
-	position: absolute;
-	inset-inline: 0;
-	inset-block: calc((100% - var(--_row-min)) / 2);
+.value.amount > .ticker {
+	font-size: var(--_t-sm);
+	font-weight: var(--_w-normal);
 }
 
 /*
- * the QR: dark modules in the card's ink on the card's own ground, with a quiet zone of `--_sp4`
- * around them. its size is four rows, a size a phone camera reads at arm's length; no token names a
- * code's size, and the rows are the token's.
+ * an address or a memo: one small line, cut in the middle where the column is narrower than the
+ * value (`oneLine` in ../deposit.ts). the head gives up its width and ends in the ellipsis; the tail
+ * never shrinks, so the last characters a donor checks against their wallet are always drawn.
+ * `whole` is the value a refused copy selected, wrapped anywhere so every character is on screen.
+ */
+.value.line {
+	display: flex;
+	font-size: var(--_t-sm);
+	white-space: nowrap;
+}
+
+.value.line > .head {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.value.line > .tail {
+	flex: none;
+}
+
+.value.line.whole {
+	display: block;
+	white-space: normal;
+}
+
+/*
+ * on this screen the values are what a donor reads and the labels only name them, so a label steps
+ * down to the card's own weight and leaves the ranking to the value's size and ink.
+ */
+.deposit [part~='label'] {
+	font-weight: var(--_w-normal);
+}
+
+/* the warning under the network or the memo, a step tighter than a box that stands on its own. */
+.deposit .attention {
+	padding: var(--_sp2) var(--_sp3);
+}
+
+/*
+ * the send-by, standing on the code and the address it closes. a quiet line and not a box: a
+ * deadline a donor still has time to meet is not the same news as a gift sent to the wrong network,
+ * and the attention band is spent on the second of those.
+ *
+ * `--_n11` is the ink the attention band's own words take (./tokens.css), so this is that word
+ * without its band — which is as close to a warning tone as a line standing on its own gets here:
+ * the card has no warning shade for a word, on the grounds that the band already says it.
+ */
+.deposit .expiry {
+	margin: 0;
+	color: var(--_n11);
+	font-size: var(--_t-sm);
+}
+
+/*
+ * the Copy at the end of a value's row: the mark alone, no edge and no word, on a square of the
+ * card's own target. `::part(action-quiet)` still reaches it, which is why its shape is scoped here
+ * rather than written on the part.
+ *
+ * every face it can show — the copy mark, the tick, the danger mark — is stacked in one grid cell
+ * and only the one `data-outcome` names is visible, so the button is that same square in every
+ * state and nothing beside it moves on a press. `visibility` rather than `display`, because a face
+ * taken out of the layout sizes nothing.
+ *
+ * the square is the target, so nothing here draws one: `--_row-min` on both axes is what a finger
+ * gets, and the ring hugs that square's own edge (the focus block below).
+ *
+ * with the word gone the mark carries the outcome on its own, so what a donor not looking at the
+ * card is told is the live region's sentence and nothing else (`copyControl` in ../deposit.ts).
+ */
+.deposit [part~='action-quiet'] {
+	display: inline-grid;
+	align-self: center;
+	inline-size: var(--_row-min);
+	block-size: var(--_row-min);
+	min-block-size: 0;
+	padding: 0;
+	color: var(--_n11);
+	text-decoration: none;
+}
+
+.deposit [part~='action-quiet']:hover {
+	background: var(--_n4);
+	color: var(--_n12);
+}
+
+.copy-face {
+	display: inline-flex;
+	grid-area: 1 / 1;
+	align-items: center;
+	justify-content: center;
+	visibility: hidden;
+}
+
+[data-outcome='ready'] > .copy-face.ready,
+[data-outcome='copied'] > .copy-face.copied,
+[data-outcome='failed'] > .copy-face.failed {
+	visibility: visible;
+}
+
+.copy-glyph {
+	flex: none;
+	inline-size: var(--_box);
+	block-size: var(--_box);
+}
+
+/*
+ * a refused copy is the card's one danger ink, because the value was not copied and pasting now
+ * would paste something else.
+ */
+.copy-face.failed {
+	color: var(--_bad);
+}
+
+/*
+ * the QR: dark modules on a light ground, because a camera reads a code that way round and no other.
+ * both are fixed rungs of the neutral ladder, which the seed never reaches (./tokens.css), and both
+ * are set here rather than inherited, so a host's own `color` cannot invert the code. the quiet zone
+ * is inside the drawing — four modules, the code's own margin (`qrViewBox` in ../deposit.ts) — so it
+ * scales with the modules rather than with the card's type. its size is four rows, a size a phone
+ * camera reads at arm's length; no token names a code's size, and the rows are the token's.
  */
 .qr {
-	padding: var(--_sp4);
 	background: var(--_n1);
 	border: var(--_border) solid var(--_n6);
 	border-radius: var(--_r-in);

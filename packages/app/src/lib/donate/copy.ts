@@ -1,3 +1,4 @@
+import type { ExpiryUnit } from '@better-giving/form/deposit';
 import { PAYMENT_METHOD_LABELS, type PaymentMethod } from '@better-giving/form/v1';
 
 // every donor-facing word this page states, and the whole of them.
@@ -430,20 +431,31 @@ export function aboutToday(total: string): string {
 	return `About ${total} today`;
 }
 export function networkWarning(org: string): string {
-	return `Send on this network only. Coins sent on another network may not reach ${org}.`;
+	return `Send on this network only, or your gift may not reach ${org}.`;
 }
 export function memoWarning(org: string): string {
-	return `Include this memo. Without it your gift cannot be matched and may not reach ${org}.`;
+	return `Include this memo, or your gift may not reach ${org}.`;
 }
-/** mirrors `verifyDeadline`: a date and a time, because the address closes at an hour. */
-export function sendBy(moment: string): string {
-	return `Send by ${moment}. After that this address closes and you would need to start over.`;
+/**
+ * how long the address has left, which is the one thing on this screen stated as a duration.
+ *
+ * unlike `verifyDeadline` above, and the difference is what a donor does with it: a verification is
+ * a date they plan against, and a send is a thing they do now, so an hour they would have to convert
+ * out of the card's zone is an hour they cannot act on. which figure and which unit is the block's
+ * (`expiry` in @better-giving/form/deposit), which also keeps the moment itself on the line.
+ *
+ * short units, because the line stands over the code at the card's small step and a spelled-out
+ * `minutes` is the longest thing on it. the two abbreviations take no plural, which is what makes
+ * them read as units rather than as clipped words; `day` is spelled, so it takes one.
+ */
+export function expiresIn(left: number, unit: ExpiryUnit): string {
+	if (unit === 'day') return `Expires in ${left} day${left === 1 ? '' : 's'}`;
+	return `Expires in ${left} ${unit === 'hour' ? 'hr' : 'min'}`;
 }
-export const WALLET_FEE = 'Your gift is what arrives, so add any wallet or exchange fee on top.';
 export function detailsSentTo(email: string): string {
-	return `These details were also sent to ${email}.`;
+	return `Also sent to ${email}.`;
 }
-export const WAITING_FOR_GIFT = 'Waiting for your gift to arrive';
+export const WAITING_FOR_GIFT = 'Waiting for your gift';
 
 /** the address screen once its send-by has passed on this device, with the reading still going. */
 export const CHECKING_HEADING = 'Checking for your gift';

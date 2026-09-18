@@ -309,16 +309,19 @@ const DEPOSIT = {
 	address: 'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',
 	memo: null,
 	coin: 'usdttrc20',
-	network: 'trx',
+	network: 'Tron',
 	coinAmount: '25.004187',
 	validUntil: '2023-11-21T12:00:00.000Z',
 	qr: { rows: ['110', '011', '101'] }
 };
+/** six days and a bit, which is what a freshly minted address has (`expiresIn` in the same file). */
+const EXPIRES_IN = 6 * 24 * 60 * 60 * 1000 + 13 * 60 * 60 * 1000;
 const AWAITING = {
 	step: 'awaitingDeposit',
 	deposit: DEPOSIT,
 	totalMinor: 2525,
 	email: 'donor@example.org',
+	expiresIn: EXPIRES_IN,
 	closed: false
 } as const;
 
@@ -333,20 +336,24 @@ it('states where and how much to send a crypto gift, with a way back to the coin
 		coinAmount: '25.004187',
 		ticker: 'USDT',
 		about: 'About $25.25 today',
-		network: 'TRX',
-		networkWarning:
-			'Send on this network only. Coins sent on another network may not reach Helping Hands.',
+		network: 'Tron',
+		networkWarning: 'Send on this network only, or your gift may not reach Helping Hands.',
 		address: 'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',
 		memo: null,
 		memoWarning: '',
 		qr: ['110', '011', '101'],
-		walletFee: 'Your gift is what arrives, so add any wallet or exchange fee on top.',
-		email: 'These details were also sent to donor@example.org.',
-		status: 'Waiting for your gift to arrive'
+		email: 'Also sent to donor@example.org.',
+		status: 'Waiting for your gift'
 	});
-	expect(screen.deposit?.sendBy).toMatch(
-		/^Send by November 21, 2023 at \d{1,2}:\d\d [AP]M\. After that this address closes and you would need to start over\.$/
-	);
+	// the line itself is the block's to write and tick (`expiry` in @better-giving/form/deposit);
+	// what this page hands over is how long is left, the moment it closes at, and the words.
+	expect(screen.deposit?.expiry.left).toBe(EXPIRES_IN);
+	expect(screen.deposit?.expiry.moment).toMatch(/^November 21, 2023 at \d{1,2}:\d\d [AP]M$/);
+	expect(screen.deposit?.expiry.words(6, 'day')).toBe('Expires in 6 days');
+	expect(screen.deposit?.expiry.words(1, 'day')).toBe('Expires in 1 day');
+	// the two short units take no plural, which is what tells them from a clipped word.
+	expect(screen.deposit?.expiry.words(1, 'hour')).toBe('Expires in 1 hr');
+	expect(screen.deposit?.expiry.words(29, 'minute')).toBe('Expires in 29 min');
 });
 
 it('warns about the memo only where the coin requires one, and names an unlisted coin by its code', () => {
@@ -357,7 +364,7 @@ it('warns about the memo only where the coin requires one, and names an unlisted
 	);
 	expect(xrp.deposit?.memo).toBe('3198472051');
 	expect(xrp.deposit?.memoWarning).toBe(
-		'Include this memo. Without it your gift cannot be matched and may not reach Helping Hands.'
+		'Include this memo, or your gift may not reach Helping Hands.'
 	);
 
 	const unlisted = takeoverFor(

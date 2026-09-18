@@ -16,6 +16,7 @@
 import partStyles from './styles/parts.css?inline';
 import coinStyles from './styles/coins.css?inline';
 import { searchCoins } from './coins';
+import { glyph } from './glyph';
 import { part, partWhen } from './parts';
 
 /** one coin as `coinSelect` lists it. */
@@ -48,37 +49,6 @@ const SEARCH = 'Search by symbol or name';
 
 /** the sentence a refused coin carries in the list, under its own unchanged label. */
 const REFUSED = 'no longer accepted';
-
-const SVG = 'http://www.w3.org/2000/svg';
-
-/**
- * lucide's `chevron-down`, `search` and `check` (https://lucide.dev, ISC), each drawn in
- * `currentColor` at its source's own stroke. a circle is written as the path it describes.
- */
-const GLYPHS = {
-	chevron: ['m6 9 6 6 6-6'],
-	search: ['m21 21-4.34-4.34', 'M3 11a8 8 0 1 0 16 0a8 8 0 1 0 -16 0'],
-	tick: ['M20 6 9 17l-5-5']
-} as const;
-
-function glyph(doc: Document, name: keyof typeof GLYPHS, className: string): SVGElement {
-	const svg = doc.createElementNS(SVG, 'svg');
-	svg.setAttribute('class', className);
-	svg.setAttribute('viewBox', '0 0 24 24');
-	svg.setAttribute('fill', 'none');
-	svg.setAttribute('stroke', 'currentColor');
-	svg.setAttribute('stroke-width', '2');
-	svg.setAttribute('stroke-linecap', 'round');
-	svg.setAttribute('stroke-linejoin', 'round');
-	svg.setAttribute('aria-hidden', 'true');
-	svg.setAttribute('focusable', 'false');
-	for (const d of GLYPHS[name]) {
-		const path = doc.createElementNS(SVG, 'path');
-		path.setAttribute('d', d);
-		svg.appendChild(path);
-	}
-	return svg;
-}
 
 /** the sheets, built once per document for the reason `sheetFor` in ./embed/rows.ts builds its own. */
 const sheets = new WeakMap<Document, readonly CSSStyleSheet[]>();

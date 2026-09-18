@@ -58,6 +58,8 @@ import type { PaymentStatus } from '../db/schema';
 // - whether `GET /v1/payment/:id` answers for a repeat deposit, which no key created. the list read's
 //   example carries children, and the status read says only "the same API key that you used in the
 //   create payment request"; where it answers `not_found`, `delivered` is what is left.
+// - which of `full-currencies`' `precision` and `network_precision` is the number of decimals a coin
+//   can actually be sent in. they disagree per coin, and the smaller is taken (`decimalsCarried`).
 // - whether a `partially_paid` payment is later reported `finished` with more received. the collection
 //   names one way to `finished` — the merchant marking a small shortfall finished in the dashboard,
 //   the amount unchanged — and routes more money to the address as a repeat deposit. either way a
@@ -174,14 +176,19 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 		);
 		const payable = new Map<string, PayableCoin>();
 		const known = new Set<string>();
+		const decimals = new Map<string, number>();
 		const networkName = networkNamesOf(currencies);
 		for (const currency of currencies) {
 			const code = stringField(currency, 'code');
-			if (code !== null) known.add(code.toLowerCase());
+			if (code !== null) {
+				known.add(code.toLowerCase());
+				const carried = decimalsCarried(currency);
+				if (carried !== null) decimals.set(code.toLowerCase(), carried);
+			}
 			const coin = acceptedCoinOf(currency, networkName);
 			if (coin !== null && chosen.has(coin.coin)) payable.set(coin.coin, coin);
 		}
-		return { ok: true, value: { payable, known, networkName } };
+		return { ok: true, value: { payable, known, decimals, networkName } };
 	}
 
 	/**
@@ -288,7 +295,13 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 			if (answer.status !== 200 && answer.status !== 201) {
 				return refusedPayment(answer, price, coin);
 			}
-			return intentOf(answer.body, donationId, coin, accepted.value.networkName);
+			return intentOf(
+				answer.body,
+				donationId,
+				coin,
+				accepted.value.networkName,
+				accepted.value.decimals.get(coin) ?? null
+			);
 		},
 
 		/**
@@ -679,7 +692,8 @@ function intentOf(
 	payment: unknown,
 	donationId: string,
 	asked: string,
-	networkName: (network: string) => string
+	networkName: (network: string) => string,
+	decimals: number | null
 ): PaymentResult<Intent> {
 	const id = digitsOrNull(paymentIdField(payment, 'payment_id'));
 	const address = stringField(payment, 'pay_address');
@@ -713,11 +727,70 @@ function intentOf(
 				memo: idField(payment, 'payin_extra_id'),
 				coin,
 				network: networkName(network),
-				coinAmount,
+				coinAmount: askedAmount(coinAmount, decimalField(payment, 'price_amount'), decimals),
 				validUntil
 			}
 		}
 	};
+}
+
+/**
+ * what the donor is asked to send: `pay_amount` carrying only the decimals worth about a cent,
+ * rounded up, and never more than the coin can be sent in.
+ *
+ * `pay_amount` is priced to the coin's full precision — `48.07692308 XRP` — and a donor reads this
+ * figure off a screen to type or paste into a wallet. the decimals that matter are the ones a cent
+ * buys: at `usd` a unit, the last digit worth about a cent is decimal `floor(log10(usd / 0.01))`,
+ * which is 1 for a unit around 52¢ and 7 for one around $100,000.
+ *
+ * **up, never down.** this figure is what has to arrive: rounded down, the donor sends short and
+ * NOWPayments settles a `partially_paid` deposit against a gift they meant to give in full. rounded
+ * up, they send a fraction of a cent more than the payment asked and it settles `finished` at what
+ * arrived. nothing NOWPayments refuses is reachable either way — the payment already exists by the
+ * time this runs, minted at its own `pay_amount` against the coin's minimum, and no call carries
+ * this figure back.
+ *
+ * the arithmetic is the digits NOWPayments sent, never a double: `floor(log10(a/b))` is the
+ * difference of the two exponents, less one where `a`'s mantissa is the smaller.
+ *
+ * the figure NOWPayments sent, unrounded, where the price or the coin's decimals do not read — the
+ * exact amount is always sendable, where a figure rounded on a precision nobody could read is a
+ * guess at what a wallet takes.
+ */
+function askedAmount(coinAmount: string, dollars: string | null, decimals: number | null): string {
+	const price = dollars === null ? null : exactOf(dollars);
+	const amount = exactOf(coinAmount);
+	if (price === null || amount === null || decimals === null) return coinAmount;
+	const perUnit =
+		exponentOf(price) - exponentOf(amount) - (mantissaCompare(price, amount) < 0 ? 1 : 0);
+	return roundedUpAt(coinAmount, Math.min(decimals, Math.max(perUnit + 2, 0)));
+}
+
+/** `floor(log10(x))` for a positive decimal: where its most significant digit stands. */
+function exponentOf(x: Exact): number {
+	return x.digits.toString().length - 1 - x.places;
+}
+
+/** which of two positive decimals has the larger mantissa, their exponents set aside. */
+function mantissaCompare(a: Exact, b: Exact): number {
+	const aDigits = a.digits.toString();
+	const bDigits = b.digits.toString();
+	const width = Math.max(aDigits.length, bDigits.length);
+	const aPadded = aDigits.padEnd(width, '0');
+	const bPadded = bDigits.padEnd(width, '0');
+	return aPadded === bPadded ? 0 : aPadded < bPadded ? -1 : 1;
+}
+
+/** a canonical decimal at `places` decimals, any digit dropped rounding it up. */
+function roundedUpAt(amount: string, places: number): string {
+	const [whole = '0', fraction = ''] = amount.split('.');
+	if (fraction.length <= places) return amount;
+	const dropped = fraction.slice(places);
+	const kept = BigInt(`${whole}${fraction.slice(0, places)}`) + (/[1-9]/.test(dropped) ? 1n : 0n);
+	const digits = kept.toString().padStart(places + 1, '0');
+	const integer = digits.slice(0, digits.length - places);
+	const tail = digits.slice(digits.length - places).replace(/0+$/, '');
+	return tail === '' ? integer : `${integer}.${tail}`;
 }
 
 /**
@@ -909,6 +982,8 @@ function arrivedAmount(payment: unknown): string | null | 'unreadable' {
 type CoinLists = {
 	readonly payable: ReadonlyMap<string, PayableCoin>;
 	readonly known: ReadonlySet<string>;
+	/** how many decimals a coin can be sent in, keyed by lowercased code (`decimalsCarried`). */
+	readonly decimals: ReadonlyMap<string, number>;
 	readonly networkName: (network: string) => string;
 };
 
@@ -948,6 +1023,22 @@ function networkNamesOf(currencies: readonly unknown[]): (network: string) => st
 		names.set(network, best);
 	}
 	return (network) => names.get(network) ?? natives.get(network) ?? network.toUpperCase();
+}
+
+/**
+ * how many decimals of a coin can actually be sent, off `full-currencies`, or null where neither
+ * figure reads.
+ *
+ * the smaller of `precision` and `network_precision`, which the list carries side by side and
+ * disagree on a token — `usdttrc20` is 6 against the 8 beside it. the smaller is the safe one both
+ * ways round: `askedAmount` only ever rounds a figure up, so too few decimals asks for a fraction of
+ * a cent more, while too many asks for a digit the donor's wallet has nowhere to put.
+ */
+function decimalsCarried(currency: unknown): number | null {
+	const carried = [intField(currency, 'precision'), intField(currency, 'network_precision')].filter(
+		(places) => places !== null
+	);
+	return carried.length === 0 ? null : Math.min(...carried);
 }
 
 function acceptedCoinOf(
@@ -1114,6 +1205,13 @@ function plusDays(at: Date | null, days: number): Date | null {
 function stringField(value: unknown, key: string): string | null {
 	const found = field(value, key);
 	return typeof found === 'string' && found !== '' ? found : null;
+}
+
+/** a non-negative whole number off a field NOWPayments sends as a number or as a string. */
+function intField(value: unknown, key: string): number | null {
+	const found = field(value, key);
+	const text = found instanceof JsonNumber ? found.text : typeof found === 'string' ? found : null;
+	return text !== null && /^\d+$/.test(text.trim()) ? Number(text) : null;
 }
 
 /** a positive amount off a field NOWPayments sends as a number or as a string, as canonical text. */

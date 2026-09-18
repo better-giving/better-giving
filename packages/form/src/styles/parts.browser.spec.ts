@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // the provider's own handle on the test page, aliased: this file's `page` writes css into the host
 // document and is the one a reader here is looking for.
 import { page as browser, userEvent } from 'vitest/browser';
 import { createCoinPicker } from '../coin-picker';
-import { createDepositBlock } from '../deposit';
+import { createDepositBlock, type DepositView } from '../deposit';
 import { defineDonateForm, DONATE_FORM_TAG } from '../element';
 import { createRows, type Row, type RowMark } from '../embed/rows';
 import type { CheckoutPorts } from '../ports';
@@ -847,6 +847,39 @@ describe('the coin list inside the crypto option', () => {
 		});
 	});
 
+	// the list is a field: what it shows closed, what a donor types and every row it opens to are set
+	// at the size and weight a field beside it is, so nothing in it reads larger than the words around.
+	it.each(['16px', '18px'])(
+		'sets every word of the list at the size and weight of a field beside it, at a %s card',
+		(size) => {
+			const root = drawn(false);
+			const card = (root.host as HTMLElement).parentElement as HTMLElement;
+			card.style.fontSize = size;
+			const neighbour = document.createElement('div');
+			const shadow = neighbour.attachShadow({ mode: 'open' });
+			const sheet = new CSSStyleSheet();
+			sheet.replaceSync(partSheet);
+			shadow.adoptedStyleSheets = [sheet];
+			const field = document.createElement('input');
+			field.setAttribute('part', 'field');
+			shadow.appendChild(field);
+			card.appendChild(neighbour);
+			const type = (node: Element | null) => {
+				const style = getComputedStyle(node as Element);
+				return `${style.fontSize} ${style.fontWeight}`;
+			};
+			const closed = ['input', '.chosen .coin-ticker', '.chosen .coin-label'].map((selector) =>
+				type(root.querySelector(selector))
+			);
+			(root.querySelector('.picker') as HTMLElement).click();
+			const open = ['[role="option"] .coin-ticker', '[role="option"] .coin-label'].map((selector) =>
+				type(root.querySelector(selector))
+			);
+
+			expect([...closed, ...open]).toEqual(Array(5).fill(type(field)));
+		}
+	);
+
 	// a ticker is read against a wallet's, character for character; the coin's name is prose.
 	it('sets the ticker in the monospace stack and the coin’s name in the card’s face', () => {
 		const root = drawn(false);
@@ -874,15 +907,31 @@ describe('the coin list inside the crypto option', () => {
 	});
 });
 
-// the address screen's values are what a donor retypes or checks against a wallet, where `0` and
-// `O`, `l` and `1` must not share a shape; the words and the Copy around them stay in the card's face.
-describe('the values on the address screen', () => {
+// the address screen: one centred column a donor reads top to bottom and checks against a wallet.
+// its values are what a donor retypes or checks, where `0` and `O`, `l` and `1` must not share a
+// shape; the words around them stay in the card's face.
+describe('the address screen', () => {
 	const mounts: HTMLElement[] = [];
+	const blocks: DepositView[] = [];
 	afterEach(() => {
+		for (const block of blocks.splice(0)) block.stop();
 		for (const node of mounts.splice(0)) node.remove();
+		vi.restoreAllMocks();
 	});
 
-	function drawn(): HTMLElement {
+	/** longer than any column this card draws at one line of the address's own size. */
+	const LONG =
+		'addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae';
+
+	function drawn({
+		width = '375px',
+		address = LONG,
+		seed
+	}: {
+		width?: string;
+		address?: string;
+		seed?: string;
+	} = {}): HTMLElement {
 		const mount = document.createElement('div');
 		const shadow = mount.attachShadow({ mode: 'open' });
 		shadow.adoptedStyleSheets = [tokens, partSheet, layoutSheet].map((css) => {
@@ -891,26 +940,70 @@ describe('the values on the address screen', () => {
 			return sheet;
 		});
 		const block = createDepositBlock(document, () => {});
+		blocks.push(block);
 		shadow.appendChild(block.root);
+		// the card's inset, which a Copy's target reaches into past the column's end.
+		mount.style.cssText = `display: block; box-sizing: border-box; inline-size: ${width}; padding: var(--_inset);`;
+		if (seed !== undefined) {
+			// a host that inks its own page light-on-dark, which the card's text inherits from.
+			mount.style.setProperty('--donate-primary', seed);
+			mount.style.color = 'white';
+			mount.style.background = 'black';
+		}
 		document.body.appendChild(mount);
 		mounts.push(mount);
 		block.update({
-			coinAmount: '0.00041',
-			ticker: 'BTC',
+			coinAmount: '19.36121163',
+			ticker: 'XRP',
 			about: 'About $25.00 today',
-			network: 'Bitcoin',
+			network: 'Ripple',
 			networkWarning: 'Send on this network only.',
-			address: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
+			address,
 			memo: '3198472051',
 			memoWarning: 'Include this memo.',
-			qr: null,
-			sendBy: 'Send by September 24, 2026 at 3:42 PM.',
-			walletFee: 'Your gift is what arrives.',
-			email: 'These details were also sent to ruth@example.org.',
-			status: 'Waiting for your gift to arrive'
+			qr: ['1110111', '1010101', '1110111', '0001000', '1110111', '1010101', '1110111'],
+			expiry: {
+				left: 6 * 24 * 60 * 60 * 1000,
+				moment: 'September 24, 2026 at 3:42 PM',
+				words: (left, unit) => `Expires in ${left} ${unit}${left === 1 ? '' : 's'}`
+			},
+			email: 'Also sent to ruth@example.org.',
+			status: 'Waiting for your gift'
 		});
 		return block.root;
 	}
+
+	/**
+	 * what a piece draws across, which a full-width block's own box does not say: a box for a drawn
+	 * object, the two halves' boxes for a cut line (whose range would span the characters it hides),
+	 * and the laid-out text for the rest.
+	 */
+	const drawnExtent = (piece: HTMLElement): { left: number; right: number } => {
+		if (piece.matches('.qr, button')) return piece.getBoundingClientRect();
+		if (piece.matches('.line')) {
+			const [head, tail] = [...piece.children].map((half) => half.getBoundingClientRect());
+			return { left: (head as DOMRect).left, right: (tail as DOMRect).right };
+		}
+		const range = document.createRange();
+		range.selectNodeContents(piece);
+		return range.getBoundingClientRect();
+	};
+
+	/** a used colour as the sRGB bytes a screen, and a camera, would see. */
+	const bytes = (color: string): readonly number[] => {
+		const canvas = document.createElement('canvas');
+		canvas.width = 1;
+		canvas.height = 1;
+		const context = canvas.getContext('2d') as CanvasRenderingContext2D;
+		context.fillStyle = color;
+		context.fillRect(0, 0, 1, 1);
+		return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+	};
+
+	const groups = (root: HTMLElement) => {
+		const [address, memo] = [...root.querySelectorAll<HTMLElement>('.held:has(.line)')];
+		return { address: address as HTMLElement, memo: memo as HTMLElement };
+	};
 
 	it('sets the amount, address and memo in the monospace stack', () => {
 		const values = [...drawn().querySelectorAll('.value:not(.name)')].map(
@@ -924,46 +1017,236 @@ describe('the values on the address screen', () => {
 		}
 	});
 
-	it('leaves the network’s name, the Copy, the labels and the prose in the card’s face', () => {
+	it('ranks the ticker under the figure it follows, on the figure’s own line', () => {
+		const root = drawn();
+		const amount = root.querySelector('.value.amount') as HTMLElement;
+		const figure = amount.querySelector('.figure') as HTMLElement;
+		const ticker = amount.querySelector('.ticker') as HTMLElement;
+		const read = (node: HTMLElement) => {
+			const style = getComputedStyle(node);
+			return { size: Number.parseFloat(style.fontSize), weight: Number(style.fontWeight) };
+		};
+
+		const value = read(figure);
+		const unit = read(ticker);
+		expect(unit.size).toBeLessThan(value.size);
+		expect(unit.weight).toBeLessThan(value.weight);
+		// both halves are one string to anything reading the card rather than looking at it.
+		expect(amount.textContent).toBe('19.36121163 XRP');
+		// one line, the ticker after the figure and sitting on its baseline rather than under it.
+		const [left, right] = [figure.getBoundingClientRect(), ticker.getBoundingClientRect()];
+		expect(right.left).toBeGreaterThanOrEqual(left.right - 1);
+		expect(right.bottom).toBeCloseTo(left.bottom, 0);
+	});
+
+	it('leaves the network’s name, the labels and the prose in the card’s face', () => {
 		const root = drawn();
 		const family = (selector: string) =>
 			getComputedStyle(root.querySelector(selector) as Element).fontFamily;
 
 		expect(family('.value.name')).toContain('system-ui');
-		expect(family('button')).toContain('system-ui');
 		expect(family('[part~="label"]')).toContain('system-ui');
 		expect(family('.aside')).toContain('system-ui');
 	});
 
-	// the ring hugs the Copy's own edge, so that edge is the words' line and not the 44px target
-	// around it; every label it can read is stacked in the one cell it draws in.
-	it('rings a Copy as tight as its words, one line tall, with its target kept', async () => {
-		const root = drawn();
-		const button = root.querySelector('.held-line button') as HTMLButtonElement;
-		const labels = [...button.children].map((node) => node.getBoundingClientRect());
-		const drawnRing = await caretOn(button);
-		const edge = button.getBoundingClientRect();
+	it.each(['375px', '560px'])(
+		'stands every piece outside a value row on one centre line at %s',
+		(width) => {
+			const root = drawn({ width });
+			const box = root.getBoundingClientRect();
+			const centre = box.left + box.width / 2;
+			const pieces = [
+				...root.querySelectorAll<HTMLElement>(
+					'.value, .aside, .attention, .expiry, [part~="label"], .qr, button, .status'
+				)
+			].filter(
+				// a value row's own three pieces stand across rather than on the centre and are read on
+				// their own below. the warning under the memo is not one of them: it is the same box the
+				// network draws and is centred like it.
+				(node) =>
+					node.closest('[hidden]') === null &&
+					(node.closest('.row') === null || node.matches('.attention'))
+			);
 
-		for (const label of labels) {
-			expect(label.left).toBe(labels[0]?.left);
-			expect(label.top).toBe(labels[0]?.top);
+			expect(pieces.length).toBeGreaterThan(6);
+			for (const piece of pieces) {
+				const ink = drawnExtent(piece);
+				const named = piece.className || piece.textContent;
+				expect({ named, centred: Math.abs((ink.left + ink.right) / 2 - centre) < 1.5 }).toEqual({
+					named,
+					centred: true
+				});
+			}
 		}
-		expect(edge.height).toBe(labels[0]?.height);
-		expect(edge.width).toBe(Math.max(...labels.map((label) => label.width)));
+	);
+
+	it('reads amount, network, the send-by, QR, address, memo, then the notes', () => {
+		const root = drawn();
+		const box = (selector: string) =>
+			(root.querySelector(selector) as HTMLElement).getBoundingClientRect();
+		const { address, memo } = groups(root);
+		const email = [...root.querySelectorAll<HTMLElement>('.aside')].at(-1) as HTMLElement;
+
+		const order = [
+			box('.value.amount').top,
+			box('.value.name').top,
+			box('.expiry').top,
+			box('.qr').top,
+			address.getBoundingClientRect().top,
+			memo.getBoundingClientRect().top,
+			email.getBoundingClientRect().top,
+			box('.status').top
+		];
+		expect(order).toEqual([...order].sort((a, b) => a - b));
+		// the send-by stands on the code it closes: nearer the QR under it than the network above it.
+		const onTheCode = box('.qr').top - box('.expiry').bottom;
+		const network = (root.querySelector('.value.name') as HTMLElement).closest('.held');
+		const offTheNetwork =
+			box('.expiry').top - (network as HTMLElement).getBoundingClientRect().bottom;
+		expect(onTheCode).toBeLessThan(offTheNetwork);
+	});
+
+	it.each(['375px', '560px'])('sets a value on one row — label, value, Copy — at %s', (width) => {
+		const root = drawn({ width });
+		for (const group of [groups(root).address, groups(root).memo]) {
+			const named = (group.querySelector('[part~="label"]') as HTMLElement).textContent;
+			const label = (group.querySelector('[part~="label"]') as HTMLElement).getBoundingClientRect();
+			const value = (group.querySelector('.line') as HTMLElement).getBoundingClientRect();
+			const copy = (group.querySelector('button') as HTMLElement).getBoundingClientRect();
+
+			// three boxes across in that order and all three on the one line, inside the column: a
+			// value too wide for its share would push the Copy off the end rather than wrap.
+			const shares = (one: DOMRect, two: DOMRect) => one.top < two.bottom && two.top < one.bottom;
+			expect({
+				named,
+				across: label.right <= value.left + 1 && value.right <= copy.left + 1,
+				together: shares(label, copy) && shares(value, copy),
+				inside: copy.right <= root.getBoundingClientRect().right + 1
+			}).toEqual({ named, across: true, together: true, inside: true });
+		}
+	});
+
+	it('narrows the value rather than its label or its Copy when the column narrows', () => {
+		const wide = groups(drawn({ width: '560px' })).address;
+		const narrow = groups(drawn({ width: '375px' })).address;
+		const width = (group: HTMLElement, selector: string) =>
+			(group.querySelector(selector) as HTMLElement).getBoundingClientRect().width;
+
+		expect(width(narrow, '[part~="label"]')).toBeCloseTo(width(wide, '[part~="label"]'), 0);
+		expect(width(narrow, 'button')).toBeCloseTo(width(wide, 'button'), 0);
+		expect(width(narrow, '.line')).toBeLessThan(width(wide, '.line'));
+	});
+
+	it('keeps a long address on one line, with both of its ends in view', () => {
+		const root = drawn();
+		const { address } = groups(root);
+		const line = address.querySelector('.line') as HTMLElement;
+		const head = line.querySelector('.head') as HTMLElement;
+		const tail = line.querySelector('.tail') as HTMLElement;
+		const edge = root.getBoundingClientRect();
+
+		expect(line.textContent).toBe(LONG);
+		expect(line.getBoundingClientRect().height).toBeLessThan(
+			Number.parseFloat(getComputedStyle(line).fontSize) * 2
+		);
+		expect(head.scrollWidth).toBeGreaterThan(head.clientWidth);
+		expect(LONG.startsWith(head.textContent ?? '')).toBe(true);
+		expect(tail.textContent?.length).toBeGreaterThan(0);
+		expect(tail.scrollWidth).toBeLessThanOrEqual(tail.clientWidth);
+		expect(head.getBoundingClientRect().left).toBeGreaterThanOrEqual(edge.left);
+		expect(tail.getBoundingClientRect().right).toBeLessThanOrEqual(edge.right);
+	});
+
+	it('draws an address that fits whole, with nothing cut', () => {
+		const root = drawn({ width: '560px', address: 'rDEVxFAKExADDRESSxNOTxREALxXRP0000' });
+		const head = groups(root).address.querySelector('.head') as HTMLElement;
+
+		expect(head.scrollWidth).toBeLessThanOrEqual(head.clientWidth);
+	});
+
+	it('draws the QR dark on white with a quiet zone, under a dark seed on a dark host', () => {
+		const root = drawn({ seed: '#0a0a0a' });
+		const qr = root.querySelector('.qr') as HTMLElement;
+		const style = getComputedStyle(qr);
+
+		for (const channel of bytes(style.backgroundColor)) expect(channel).toBeGreaterThanOrEqual(245);
+		for (const channel of bytes(getComputedStyle(qr.querySelector('path') as Element).fill)) {
+			expect(channel).toBeLessThanOrEqual(80);
+		}
+		// four modules of ground on every side, which is the margin a scanner is built to expect. the
+		// fixture's first and last row and column each hold a dark module, so the path spans the code.
+		const code = (qr.querySelector('path') as SVGPathElement).getBoundingClientRect();
+		const ground = qr.getBoundingClientRect();
+		const module = code.width / 7;
+		expect(code.left - ground.left).toBeGreaterThanOrEqual(4 * module);
+		expect(ground.right - code.right).toBeGreaterThanOrEqual(4 * module);
+		expect(code.top - ground.top).toBeGreaterThanOrEqual(4 * module);
+		expect(ground.bottom - code.bottom).toBeGreaterThanOrEqual(4 * module);
+	});
+
+	it('holds the Copy’s square through every outcome, with a mark and no word in each', () => {
+		const button = groups(drawn()).address.querySelector('button') as HTMLButtonElement;
+		const target = Number.parseFloat(getComputedStyle(button).getPropertyValue('--_row-min'));
+		const shown = () =>
+			[...button.querySelectorAll<HTMLElement>('.copy-face')].filter(
+				(face) => getComputedStyle(face).visibility === 'visible'
+			);
+
+		for (const outcome of ['ready', 'copied', 'failed']) {
+			button.dataset.outcome = outcome;
+			expect(shown()).toHaveLength(1);
+			expect(shown()[0]?.querySelector('svg')?.getBoundingClientRect().width).toBeGreaterThan(0);
+			const box = button.getBoundingClientRect();
+			// the square is the target itself, so every outcome is the same square and nothing beside
+			// the button moves on a press.
+			expect({
+				outcome,
+				words: shown()[0]?.textContent,
+				width: box.width,
+				height: box.height
+			}).toEqual({ outcome, words: '', width: target, height: target });
+		}
+	});
+
+	it('rings a Copy on its own edge, the square being the 44px target', async () => {
+		const root = drawn();
+		const button = groups(root).address.querySelector('button') as HTMLButtonElement;
+		const ring = await caretOn(button);
+		const edge = button.getBoundingClientRect();
+		const target = Number.parseFloat(ring.getPropertyValue('--_row-min'));
 		const shadow = root.getRootNode() as ShadowRoot;
-		expect(drawnRing.boxShadow).toContain(used(shadow, '--_focus-ring'));
+
+		expect(ring.boxShadow).toContain(used(shadow, '--_focus-ring'));
+		expect({ width: edge.width, height: edge.height }).toEqual({ width: target, height: target });
 		const x = edge.left + edge.width / 2;
-		const reach = (Number.parseFloat(drawnRing.getPropertyValue('--_row-min')) - edge.height) / 2;
-		expect(shadow.elementFromPoint(x, edge.top - reach + 1)).toBe(button);
-		expect(shadow.elementFromPoint(x, edge.bottom + reach - 1)).toBe(button);
+		expect(shadow.elementFromPoint(x, edge.top + 1)?.closest('button')).toBe(button);
+		expect(shadow.elementFromPoint(x, edge.bottom - 1)?.closest('button')).toBe(button);
 	});
 
 	it('leaves no ring on a Copy a pointer pressed', async () => {
-		const root = drawn();
-		const button = root.querySelector('.held-line button') as HTMLButtonElement;
+		const button = groups(drawn()).address.querySelector('button') as HTMLButtonElement;
 		await userEvent.click(button);
 
 		expect(getComputedStyle(button).boxShadow).toBe('none');
+	});
+
+	it('shows the whole address, selected, when the clipboard refuses', async () => {
+		const root = drawn();
+		const { address } = groups(root);
+		const line = address.querySelector('.line') as HTMLElement;
+		const button = address.querySelector('button') as HTMLButtonElement;
+		vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
+
+		button.click();
+		await vi.waitFor(() => expect(button.dataset.outcome).toBe('failed'));
+
+		const edge = root.getBoundingClientRect();
+		expect(line.getBoundingClientRect().height).toBeGreaterThan(
+			Number.parseFloat(getComputedStyle(line).fontSize) * 2
+		);
+		expect(line.scrollWidth).toBeLessThanOrEqual(line.clientWidth);
+		expect(line.getBoundingClientRect().right).toBeLessThanOrEqual(edge.right);
+		expect(document.getSelection()?.toString().replace(/\s/g, '')).toBe(LONG);
 	});
 });
 

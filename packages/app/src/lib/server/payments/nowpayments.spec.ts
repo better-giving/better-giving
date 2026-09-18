@@ -522,7 +522,7 @@ describe('createIntent — a payment minted to an address', () => {
 					memo: '2918473650',
 					coin: 'xrp',
 					network: 'Ripple',
-					coinAmount: '19.36121163',
+					coinAmount: '19.37',
 					validUntil: new Date('2026-09-24T15:00:22.742Z')
 				}
 			}
@@ -539,23 +539,6 @@ describe('createIntent — a payment minted to an address', () => {
 			new Date('2026-09-24T15:00:22.742Z')
 		);
 		expect(result.ok && result.value.deposit?.memo).toBeNull();
-	});
-
-	// a wei-scale figure is past what a double holds; the donor is shown the digits NOWPayments sent.
-	it('carries the coin amount as the digits NOWPayments sent', async () => {
-		serving(
-			minting({
-				status: 201,
-				text: JSON.stringify({ ...CREATED, pay_amount: 0 }).replace(
-					'"pay_amount":0',
-					'"pay_amount":19.361211630000000001'
-				)
-			})
-		);
-
-		const result = await createNowpaymentsProvider(CREDENTIALS).createIntent(REQUEST);
-
-		expect(result.ok && result.value.deposit?.coinAmount).toBe('19.361211630000000001');
 	});
 
 	// the coin arrived from a browser, so it is checked against the account before anything is priced.
@@ -756,6 +739,122 @@ describe('createIntent — a payment minted to an address', () => {
 		expect(result.ok === false ? result.detail : '').toContain('NOWPAYMENTS_OUTCOME_CURRENCY');
 		expect(result.ok === false ? result.detail : '').toContain('usdt-trc20');
 		expect(calls.some((call) => call.method === 'POST')).toBe(false);
+	});
+});
+
+/**
+ * an account taking `listed`'s coin alone, minting a payment of `payAmount` of it for $25.
+ *
+ * `pay_amount` is written into the answer's text rather than handed over as a value, so a figure past
+ * what a double holds reaches the adapter as NOWPayments spelled it. the coin's floor is the payment's
+ * own amount, which no case here is under.
+ */
+function mintingIn(listed: Record<string, unknown>, payAmount: string) {
+	const coin = String(listed.code).toLowerCase();
+	const created = JSON.stringify({
+		...CREATED,
+		pay_currency: coin,
+		network: listed.network,
+		pay_amount: 0
+	}).replace('"pay_amount":0', `"pay_amount":${payAmount}`);
+	return (method: string, url: URL): Answer | undefined => {
+		if (method !== 'GET' && !(method === 'POST' && url.pathname === '/v1/payment'))
+			return undefined;
+		if (url.pathname === '/v1/merchant/coins') {
+			return { status: 200, json: { selectedCurrencies: [listed.code] } };
+		}
+		if (url.pathname === '/v1/full-currencies') {
+			return { status: 200, json: { currencies: [listed, USDTTRC20] } };
+		}
+		if (url.pathname === '/v1/min-amount') {
+			return { status: 200, json: { min_amount: payAmount, fiat_equivalent: 25 } };
+		}
+		if (url.pathname === '/v1/estimate') {
+			return { status: 200, json: { estimated_amount: payAmount } };
+		}
+		if (url.pathname === '/v1/payment') return { status: 201, text: created };
+		return undefined;
+	};
+}
+
+/** a coin the list gives eighteen decimals. */
+const SHIB = {
+	...BTC,
+	id: 145,
+	code: 'SHIB',
+	name: 'Shiba Inu',
+	network: 'eth',
+	ticker: 'shib',
+	precision: 18,
+	network_precision: '18'
+};
+
+describe('createIntent — the figure the donor is asked to send', () => {
+	// $25 at 19.36121163 XRP is $1.29 a unit, where the second decimal is the digit worth about a cent.
+	it('asks for the coin amount to the decimal worth about a cent, rounded up', async () => {
+		serving(minting());
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).createIntent(REQUEST);
+
+		expect(result.ok && result.value.deposit?.coinAmount).toBe('19.37');
+	});
+
+	// a wei-scale figure is past what a double holds, and `19.36000000000000001` is `19.36` as one:
+	// read that way it rounds to itself, and the donor is asked for less than the payment wants.
+	it('rounds off the digits NOWPayments sent, never off a double', async () => {
+		serving(mintingIn(XRP, '19.36000000000000001'));
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).createIntent(REQUEST);
+
+		expect(result.ok && result.value.deposit?.coinAmount).toBe('19.37');
+	});
+
+	// a whole unit of this coin is worth a hundredth of a cent, so no decimal of it is worth showing.
+	it('asks for whole units of a coin worth less than a cent', async () => {
+		serving(mintingIn(SHIB, '2500000.44444'));
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).createIntent({
+			...REQUEST,
+			coin: 'shib'
+		});
+
+		expect(result.ok && result.value.deposit?.coinAmount).toBe('2500001');
+	});
+
+	// a cent of a coin worth $10,000,000 is its ninth decimal, and the list gives BTC eight.
+	it('asks for no more decimals than the coin carries', async () => {
+		serving(mintingIn(BTC, '0.00000240000004'));
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).createIntent({
+			...REQUEST,
+			coin: 'btc'
+		});
+
+		expect(result.ok && result.value.deposit?.coinAmount).toBe('0.00000241');
+	});
+
+	// the last digit worth a cent moves with the unit price; these straddle a dime a unit.
+	it.each([
+		['52¢ a unit', '48.07692308', '48.1'],
+		['just over a tenth of a dollar a unit', '249.04', '249.1'],
+		['just under a tenth of a dollar a unit', '250.04', '251']
+	])('asks for the decimals a cent buys at %s', async (_label, payAmount, asked) => {
+		serving(mintingIn(XRP, payAmount));
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).createIntent(REQUEST);
+
+		expect(result.ok && result.value.deposit?.coinAmount).toBe(asked);
+	});
+
+	// a figure rounded on a precision nobody could read is a guess at what a wallet takes; the amount
+	// NOWPayments priced is always sendable.
+	it('asks for the figure NOWPayments sent where the coin names no precision', async () => {
+		const { precision: _p, network_precision: _n, ...UNMEASURED } = XRP;
+		serving(mintingIn(UNMEASURED, '19.36121163'));
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).createIntent(REQUEST);
+
+		expect(result.ok && result.value.deposit?.coinAmount).toBe('19.36121163');
 	});
 });
 

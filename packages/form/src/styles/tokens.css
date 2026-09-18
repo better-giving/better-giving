@@ -476,8 +476,9 @@
 	 * instead (`[part~='amount-input']` in ./parts.css); the box is the one floor for both
 	 * (`--_row-min` below).
 	 *
-	 * the ladder stops at `--_t-xl`, which is the receipt's total once the takeover has it and the
-	 * largest thing this card draws. a step above it is a step nothing on a donation form is ever
+	 * the ladder stops at `--_t-xl`, which is the receipt's total once the takeover has it, and the
+	 * coin amount on the address screen that stands where that total would, and the largest thing
+	 * this card draws. a step above it is a step nothing on a donation form is ever
 	 * set at: the one figure that earns a size of its own already has one.
 	 */
 	--_t-xs: 0.75em;
@@ -709,7 +710,7 @@
 	 * stated against it, so the shape closes on itself — the thumb stands `--_switch-inset` off
 	 * every track edge, and the travel is what is left when a thumb at that inset reaches the far
 	 * end. what a donor reads is the fill and where the thumb is standing; nothing is drawn inside
-	 * the thumb, because this component ships no icon.
+	 * the thumb.
 	 *
 	 * off the clamped root rather than in `em`, for the reason `--_adorn-trail` above is: it is a
 	 * drawn object standing beside words set at a size of their own, and an `em` would resolve it

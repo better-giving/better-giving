@@ -18,7 +18,7 @@
 
 import type { CheckoutApi, PropTypes, State } from './connect';
 import { createCoinPicker } from './coin-picker';
-import { createDepositBlock, type DepositScreen } from './deposit';
+import { createDepositBlock, type DepositScreen, type ExpiryUnit } from './deposit';
 import type { AmountDecision, PayerField } from './value';
 import { RECONCILIATION_LABELS, type DeductedFee } from './fee';
 import { currencySymbol, formatFigure, formatMinor, formatOffer, parseMinor } from './money';
@@ -535,6 +535,22 @@ function formatMoment(at: number, locale: string): string {
 	}
 }
 
+/**
+ * how long an address has left, in the words the line states it in.
+ *
+ * a duration rather than the moment it closes at, which is the one thing about this screen a donor
+ * cannot be asked to convert: the card is on a page in any zone, and a send is a thing they do now.
+ * which figure and which unit is the block's (`expiry` in ./deposit.ts).
+ *
+ * short units, because the line stands over the code at the card's small step and a spelled-out
+ * `minutes` is the longest thing on it. the two abbreviations take no plural, which is what makes
+ * them read as units rather than as clipped words; `day` is spelled, so it takes one.
+ */
+function expiresIn(left: number, unit: ExpiryUnit): string {
+	if (unit === 'day') return `Expires in ${left} day${left === 1 ? '' : 's'}`;
+	return `Expires in ${left} ${unit === 'hour' ? 'hr' : 'min'}`;
+}
+
 /** the address screen's block, in the copy deck's words for the deposit the quote handed over. */
 function depositScreen(
 	state: State & { readonly step: 'awaitingDeposit' },
@@ -551,18 +567,19 @@ function depositScreen(
 		ticker: (coin?.ticker ?? deposit.coin).toUpperCase(),
 		about: `About ${money(state.totalMinor)} today`,
 		network: deposit.network,
-		networkWarning: `Send on this network only. Coins sent on another network may not reach ${org}.`,
+		networkWarning: `Send on this network only, or your gift may not reach ${org}.`,
 		address: deposit.address,
 		memo: deposit.memo,
 		memoWarning:
-			coin?.memoRequired === true
-				? `Include this memo. Without it your gift cannot be matched and may not reach ${org}.`
-				: '',
+			coin?.memoRequired === true ? `Include this memo, or your gift may not reach ${org}.` : '',
 		qr: deposit.qr?.rows ?? null,
-		sendBy: `Send by ${formatMoment(Date.parse(deposit.validUntil), config.locale)}. After that this address closes and you would need to start over.`,
-		walletFee: 'Your gift is what arrives, so add any wallet or exchange fee on top.',
-		email: `These details were also sent to ${state.email}.`,
-		status: 'Waiting for your gift to arrive'
+		expiry: {
+			left: state.expiresIn,
+			moment: formatMoment(Date.parse(deposit.validUntil), config.locale),
+			words: expiresIn
+		},
+		email: `Also sent to ${state.email}.`,
+		status: 'Waiting for your gift'
 	};
 }
 
@@ -917,11 +934,12 @@ export type CardView = {
 	/**
 	 * everything this card holds outside its own subtree, let go of.
 	 *
-	 * one thing today: the `resize` listener the frequency chip is put back on. it is on the host
-	 * page's `window` rather than on anything in this tree, so removing the card does not remove it —
-	 * and it closes over the track, which would keep a card that has left the page alive and being
-	 * measured on every rotation. `#stop` in ./element.ts is the seam that calls this, alongside the
-	 * flow, the payment surface and the challenge widget.
+	 * two things today, and both are held by the host page's own `window` rather than by anything in
+	 * this tree, so removing the card does not remove either. the `resize` listener the frequency chip
+	 * is put back on closes over the track, which would keep a card that has left the page alive and
+	 * being measured on every rotation; the address screen's countdown (`stop` in ./deposit.ts) closes
+	 * over the block it is redrawing. `#stop` in ./element.ts is the seam that calls this, alongside
+	 * the flow, the payment surface and the challenge widget.
 	 *
 	 * it is safe in any order and any number of times, like every other stop that seam reaches.
 	 */
@@ -3286,6 +3304,7 @@ export function createCard(
 			}
 		},
 		stop() {
+			depositBlock.stop();
 			view?.removeEventListener('resize', rewrapped);
 			if (repositioning !== 0) view?.cancelAnimationFrame(repositioning);
 			repositioning = 0;

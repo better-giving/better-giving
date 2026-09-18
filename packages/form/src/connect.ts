@@ -281,6 +281,14 @@ export type State =
 			/** where the same details were emailed, off the committed payer. */
 			readonly email: string;
 			/**
+			 * how long the address has left to be sent to, off this device's clock, floored at zero.
+			 *
+			 * the same reading as the wait that closes the address (`depositWindow` in
+			 * ./checkout.machine.ts), so the line counting it down and the withdrawal it counts down to
+			 * are the same clock reading the same send-by.
+			 */
+			readonly expiresIn: number;
+			/**
 			 * the address's send-by has passed on this device, so the address is withdrawn while the gift
 			 * is still read.
 			 */
@@ -488,11 +496,16 @@ export function toState(snapshot: CheckoutSnapshot): State {
 			if (deposit === undefined || context.quote === null || context.payer === null) {
 				return working('quoting');
 			}
+			// a send-by nothing can be read out of leaves no time at all, which draws no countdown —
+			// the same reading `depositWindow` in ./checkout.machine.ts takes of one, so the line and
+			// the withdrawal agree about a quote this device cannot make sense of.
+			const until = Date.parse(deposit.validUntil);
 			return {
 				step: 'awaitingDeposit',
 				deposit,
 				totalMinor: context.quote.totalMinor,
 				email: context.payer.email,
+				expiresIn: Number.isFinite(until) ? Math.max(0, until - context.ports.now()) : 0,
 				closed: snapshot.matches({ awaitingDeposit: { address: 'closed' } })
 			};
 		}

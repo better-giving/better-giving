@@ -587,7 +587,18 @@ export type DepositInstructions = {
 	 * processor names none; the donor's wrong-network guard.
 	 */
 	readonly network: string;
-	/** what the processor asks the donor to send. */
+	/**
+	 * what the donor is asked to send, and the one figure every surface shows.
+	 *
+	 * a donor reads this off a screen and types or pastes it into a wallet, so it carries only the
+	 * decimals worth about a cent, rounded up, and never more than the coin can be sent in
+	 * (`askedAmount` in ./nowpayments.ts argues both). one field rather than the processor's own figure
+	 * with a display figure beside it: what a screen shows and what a copy control puts on the
+	 * clipboard have to be the same string, and two fields are two things a caller can pick between.
+	 *
+	 * the processor's unrounded figure stays on its own record and is settled against by nothing — a
+	 * gift paid to an address settles at what arrived (`Arrival` below), never at what was asked.
+	 */
 	readonly coinAmount: CoinAmount;
 	/** when the address stops being watched for this payment. */
 	readonly validUntil: Date;

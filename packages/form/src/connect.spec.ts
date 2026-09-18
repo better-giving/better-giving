@@ -685,7 +685,7 @@ describe('the crypto projection', () => {
 		expect(state.refusal).toEqual({ code: 'below_minimum', coin: 'xrp', minAmountMinor: 1200 });
 	});
 
-	it('hands the address screen the deposit, the total, the receipt address and whether it closed', async () => {
+	it('hands the address screen the deposit, the total, the receipt address, how long is left and whether it closed', async () => {
 		const { get } = api(onCrypto('xrp'), {
 			config: CRYPTO,
 			ports: {
@@ -705,6 +705,8 @@ describe('the crypto projection', () => {
 			deposit: DEPOSIT,
 			totalMinor: 2525,
 			email: 'donor@example.org',
+			// the send-by less this device's clock, which is `PORTS.now` above and years behind it.
+			expiresIn: Date.parse(DEPOSIT.validUntil) - 1_700_000_000_000,
 			closed: false
 		});
 	});

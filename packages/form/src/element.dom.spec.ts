@@ -5299,27 +5299,28 @@ describe('a crypto gift', () => {
 		const block = card.find('.deposit');
 		expect(block.hidden).toBe(false);
 		const read = [
-			...block.querySelectorAll<HTMLElement>('[part~="label"], .value, .aside, .attention, .status')
+			...block.querySelectorAll<HTMLElement>(
+				'[part~="label"], .value, .aside, .attention, .expiry, .status'
+			)
 		]
 			.filter((node) => node.closest('[hidden]') === null)
 			.map((node) => node.textContent);
 		expect(read).toEqual([
-			'Amount to send',
+			// what has to arrive, rather than what to send: the fee a wallet or an exchange takes out of
+			// a send is the donor's to add, and no figure on this card can name it.
+			'Amount that must arrive',
 			'25.004187 USDT',
 			'About $25.25 today',
-			'Network',
-			'Tron',
-			'Send on this network only. Coins sent on another network may not reach Acme Relief Fund.',
+			'Tron network',
+			'Send on this network only, or your gift may not reach Acme Relief Fund.',
+			// the send-by as what is left of it, off `PORTS.now` and a week out, on the code it closes.
+			'Expires in 6 days',
 			'Address',
 			'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',
-			expect.stringMatching(
-				/^Send by November 21, 2023 at \d{1,2}:\d\d [AP]M\. After that this address closes and you would need to start over\.$/
-			),
-			'Your gift is what arrives, so add any wallet or exchange fee on top.',
-			'These details were also sent to donor@example.org.',
-			'Waiting for your gift to arrive'
+			'Also sent to donor@example.org.',
+			'Waiting for your gift'
 		]);
-		expect(block.querySelector('.attention')?.textContent).toContain('Send on this network only.');
+		expect(block.querySelector('.attention')?.textContent).toContain('Send on this network only,');
 		expect(block.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
 			'QR code for the address'
 		);
@@ -5330,6 +5331,28 @@ describe('a crypto gift', () => {
 		expect(card.find('.receipt-slot').hidden).toBe(true);
 	});
 
+	it('counts the send-by down in whole units, with the moment itself on the line', async () => {
+		const closing = async (left: number): Promise<HTMLElement> => {
+			const soon: Quote = {
+				...USDT,
+				deposit: {
+					...(USDT.deposit as NonNullable<Quote['deposit']>),
+					validUntil: new Date(PORTS.now() + left).toISOString()
+				}
+			};
+			const { card } = await atAddress(soon);
+			return card.find('.deposit .expiry');
+		};
+
+		const day = await closing(25 * 60 * 60 * 1000);
+		expect(day.textContent).toBe('Expires in 1 day');
+		expect(day.title).toMatch(/^November \d{1,2}, 2023 at \d{1,2}:\d\d [AP]M$/);
+		// the short units the line is set in, which the spelled-out ones would be the longest thing on
+		// it at the card's small step.
+		expect((await closing(2 * 60 * 60 * 1000)).textContent).toBe('Expires in 2 hr');
+		expect((await closing(29 * 60 * 1000)).textContent).toBe('Expires in 29 min');
+	});
+
 	it('warns about the memo where the coin needs one, and quiets the network’s warning', async () => {
 		const { card } = await atAddress(XRP, 'XRP');
 		const block = card.find('.deposit');
@@ -5338,10 +5361,10 @@ describe('a crypto gift', () => {
 			(node) => !node.hidden
 		);
 		expect(attention.map((node) => node.textContent)).toEqual([
-			'Include this memo. Without it your gift cannot be matched and may not reach Acme Relief Fund.'
+			'Include this memo, or your gift may not reach Acme Relief Fund.'
 		]);
 		expect([...block.querySelectorAll('.aside')].map((node) => node.textContent)).toContain(
-			'Send on this network only. Coins sent on another network may not reach Acme Relief Fund.'
+			'Send on this network only, or your gift may not reach Acme Relief Fund.'
 		);
 		expect([...block.querySelectorAll('.value')].map((node) => node.textContent)).toContain(
 			'3198472051'
@@ -5359,26 +5382,27 @@ describe('a crypto gift', () => {
 		expect(heading(card)).toBe('Send your gift');
 	});
 
-	it('copies the bare figure and says so on the control and on the region', async () => {
+	it('copies the address and says so on the control and on the region', async () => {
 		const written: string[] = [];
 		vi.stubGlobal('navigator', {
 			...navigator,
 			clipboard: { writeText: async (text: string) => void written.push(text) }
 		});
 		const { card } = await atAddress();
-		const amountCopy = card.find('.deposit [aria-label="Copy amount"]');
-		expect(amountCopy.querySelector('.said')?.textContent).toBe('Copy');
+		const addressCopy = card.find('.deposit [aria-label="Copy address"]');
+		expect(addressCopy.dataset.outcome).toBe('ready');
 
-		amountCopy.click();
+		addressCopy.click();
 		await settle();
 		await settle();
 
-		expect(written).toEqual(['25.004187']);
-		expect(amountCopy.querySelector('.said')?.textContent).toBe('Copied');
-		expect(region(card)).toBe('Amount copied.');
+		expect(written).toEqual(['TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV']);
+		expect(addressCopy.dataset.outcome).toBe('copied');
+		expect(addressCopy.getAttribute('aria-label')).toBe('Copy address');
+		expect(region(card)).toBe('Address copied.');
 	});
 
-	it('reads Copy failed where the clipboard refuses', async () => {
+	it('marks a refused Copy failed and says so on the region', async () => {
 		vi.stubGlobal('navigator', {
 			...navigator,
 			clipboard: { writeText: () => Promise.reject(new Error('denied')) }
@@ -5388,8 +5412,10 @@ describe('a crypto gift', () => {
 
 		addressCopy.click();
 		await settle();
+		await settle();
 
-		expect(addressCopy.querySelector('.said')?.textContent).toBe('Copy failed');
+		expect(addressCopy.dataset.outcome).toBe('failed');
+		expect(region(card)).toBe('Address not copied. It is selected so you can copy it.');
 	});
 
 	it('turns to the thank-you once the gift arrives, with no receipt figures', async () => {

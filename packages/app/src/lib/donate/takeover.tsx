@@ -116,8 +116,11 @@ function depositScreen(
 		memo: deposit.memo,
 		memoWarning: coin?.memoRequired === true ? copy.memoWarning(org) : '',
 		qr: deposit.qr?.rows ?? null,
-		sendBy: copy.sendBy(formatMoment(Date.parse(deposit.validUntil), config.locale)),
-		walletFee: copy.WALLET_FEE,
+		expiry: {
+			left: state.expiresIn,
+			moment: formatMoment(Date.parse(deposit.validUntil), config.locale),
+			words: copy.expiresIn
+		},
 		email: copy.detailsSentTo(state.email),
 		status: copy.WAITING_FOR_GIFT
 	};

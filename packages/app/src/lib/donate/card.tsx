@@ -172,6 +172,7 @@ function CheckoutCard({
 		return () => {
 			started.stop();
 			// stood in the takeover by hand, so it is taken out by hand: a second checkout builds its own.
+			block.stop();
 			block.root.remove();
 		};
 	}, [config, seams]);

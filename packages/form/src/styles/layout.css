@@ -277,6 +277,18 @@ form {
 	max-inline-size: 46ch;
 }
 
+/*
+ * the address screen is one centred column (`.deposit` below), so the heading over it and the way
+ * back under it stand on that same centre line rather than on the card's start edge.
+ */
+.takeover:has(> .deposit:not([hidden])) {
+	text-align: center;
+}
+
+.takeover:has(> .deposit:not([hidden])) > [part~='action-quiet'] {
+	align-self: center;
+}
+
 /* the block the receipt is moved into when a takeover states the money. */
 .receipt-slot {
 	display: flex;
@@ -572,56 +584,69 @@ form {
 }
 
 /*
- * the address screen's block, in its one reading order at every width. each value stands under its
- * label, and a value its Copy copies shares a line with it, the Copy in a column of its own so a
- * wrapped address keeps the control beside where it starts. the QR follows the memo rather than
- * sitting beside the address: the takeover's measure leaves no width for both.
+ * the address screen's block: one centred column, in its one reading order at every width. the
+ * amount heads it, the network under it, the send-by on the code it closes, the QR on the column's
+ * centre line, and the two values a donor copies as one row each under it.
+ *
+ * two rhythms. inside a group — a value and the line under it — the step is `--_sp1` or `--_sp2`,
+ * so the group reads as one thing; between groups it is the step's own `--_sp5`.
+ *
+ * every group stretches to the column and centres its own contents, rather than the column
+ * centring shrink-wrapped groups: a value cut to one line (`.value.line` in ./parts.css) only cuts
+ * against a width it has been given.
  */
 .deposit {
 	display: flex;
 	flex-direction: column;
 	gap: var(--_sp5);
+	text-align: center;
+	text-wrap: balance;
 }
 
 .held {
 	display: flex;
 	flex-direction: column;
-	gap: var(--_sp2);
+	align-items: center;
+	gap: var(--_sp1);
 }
 
-.held-line {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto;
-	align-items: start;
-	gap: var(--_sp3);
+.held > .attention {
+	align-self: stretch;
+	margin-block-start: var(--_sp1);
 }
 
 /*
- * the Copy's column is `auto`, so a label that grew on press would narrow the value beside it and
- * wrap it a line further. every label the control can read is stacked in one cell and only the one
- * it reads is visible, so the column is its widest label's in every state. `visibility` rather than
- * `hidden`, because a label taken out of the layout sizes nothing.
+ * a value a donor copies: its label, the value, and the Copy, on one line the width of the column.
+ * the value is the only column that gives up width — the label and the square Copy are their own
+ * size at every width — so what shrinks at 375px is the address, which is the one piece here built
+ * to be cut (`.value.line` in ./parts.css), and the row keeps its shape instead of wrapping.
+ *
+ * the memo's warning is the row's second line, under all three columns rather than under the value
+ * alone: it is about the memo being sent at all, not about the string.
  */
-.held-line [part~='action-quiet'] {
-	display: inline-grid;
-	justify-items: start;
+.held.row {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--_sp2);
+	text-align: start;
 }
 
-.held-line [part~='action-quiet'] > * {
-	grid-area: 1 / 1;
-}
-
-.held-line [part~='action-quiet'] > :not(.said) {
-	visibility: hidden;
+.held.row > .attention {
+	grid-column: 1 / -1;
+	/* back onto the column's centre line, which the row's own start alignment would take it off: the
+	 * screen draws two of these boxes and they are the same box. */
+	text-align: center;
 }
 
 .qr {
-	align-self: start;
+	align-self: center;
 }
 
 .status {
 	display: flex;
 	align-items: start;
+	justify-content: center;
 	gap: var(--_sp2);
 }
 
