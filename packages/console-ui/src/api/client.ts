@@ -5,6 +5,7 @@ import type {
 	ConsoleVersion,
 	HomeReading,
 	HomeShape,
+	NowpaymentsListing,
 	NowpaymentsPress,
 	NowpaymentsSaved,
 	OrgWrite,
@@ -360,6 +361,20 @@ export const chariotRun = async (): Promise<ChariotRunRead | null> =>
  */
 export const saveNowpayments = (press: NowpaymentsPress): Promise<NowpaymentsSaved> =>
 	post('/nowpayments/values', press);
+
+/**
+ * the coins NOWPayments will pay this account out in, under the key the box is holding.
+ *
+ * **a read and never a press**, which is why it is called from the box itself rather than through
+ * the route's action (../lib/nowpayments-section.tsx): the page closes every control on it while a
+ * press is in flight, and a list read again behind a key being typed must close nothing.
+ *
+ * the key is the one in the box and never one the deployment is holding — that is what makes the
+ * list about the account whose key is about to be saved. every way it listed nothing comes back as
+ * a value, and a blank key is thrown: the box reads nothing under one (../lib/nowpayments-coins.ts).
+ */
+export const nowpaymentsCurrencies = (apiKey: string): Promise<NowpaymentsListing> =>
+	post('/nowpayments/currencies', { apiKey });
 
 /**
  * the release this binary was built as, out of what it was baked with.

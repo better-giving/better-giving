@@ -29,6 +29,12 @@ import (
 // **the key and the secret are values for the length of one press**, handed to internal/nowpayments
 // and to the deployment's var door and reaching no answer, no log line and no argument list;
 // ./nowpayments_test.go asserts their absence from what the press hands back.
+//
+// **the listing beside it is the box's own door**, POST /api/nowpayments/currencies: the coins
+// NOWPayments will pay out in, read with the key the page holds so an operator picks an outcome
+// currency rather than spelling one. it is a POST and not a GET for the same reason the press is —
+// the key stays out of a url — and it stores nothing, so it is answered on the key alone and
+// reaches cloudflare not at all.
 
 // the three boxes, as the page posts them.
 type nowpaymentsPress struct {
@@ -43,6 +49,20 @@ type nowpaymentsSaved struct {
 	Kind    string              `json:"kind"`
 	Detail  string              `json:"detail"`
 	Written *deployment.Written `json:"written"`
+}
+
+// the one box the listing is asked with.
+type nowpaymentsAsking struct {
+	APIKey string `json:"apiKey"`
+}
+
+// nowpaymentsListed is how one listing went: `listed` carries the coins, and every other kind is
+// what stopped the read, with NOWPayments' own words about why. Coins is empty rather than absent
+// on those, so a page has a list to draw whatever came back.
+type nowpaymentsListed struct {
+	Kind   string             `json:"kind"`
+	Detail string             `json:"detail"`
+	Coins  []nowpayments.Coin `json:"coins"`
 }
 
 func nowpaymentsRoutes(
@@ -91,5 +111,23 @@ func nowpaymentsRoutes(
 		written := deployment.SetVars(r.Context(), door,
 			nowpayments.Values(posted.APIKey, posted.IPNSecret, checked))
 		answer(w, http.StatusOK, nowpaymentsSaved{Kind: "written", Written: &written})
+	})
+
+	routes.HandleFunc("POST /api/nowpayments/currencies", func(w http.ResponseWriter, r *http.Request) {
+		var asking nowpaymentsAsking
+		if !decodedWithin(w, r, &asking, pressedBytes) {
+			return
+		}
+		if !filled(asking.APIKey) {
+			answer(w, http.StatusBadRequest, map[string]string{
+				"error": "the api key slot holds nothing, or a value with space around it",
+			})
+			return
+		}
+
+		listing := nowpayments.Payable(r.Context(), bind(asking.APIKey))
+		answer(w, http.StatusOK, nowpaymentsListed{
+			Kind: string(listing.Kind), Detail: listing.Detail, Coins: listing.Coins,
+		})
 	})
 }

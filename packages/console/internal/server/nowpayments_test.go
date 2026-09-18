@@ -48,7 +48,12 @@ func nowpaymentsAccount(t *testing.T, keyStatus int) (*httptest.Server, func() [
 			_ = json.NewEncoder(w).Encode(map[string]any{"selectedCurrencies": []any{"usdttrc20"}})
 		case "/v1/full-currencies":
 			_ = json.NewEncoder(w).Encode(map[string]any{"currencies": []any{
-				map[string]any{"code": "USDTTRC20"}, map[string]any{"code": "BTC"},
+				map[string]any{"code": "USDTTRC20", "name": "Tether (TRC20)", "network": "trx",
+					"enable": true, "available_for_payout": true},
+				map[string]any{"code": "BTC", "name": "Bitcoin", "network": "btc",
+					"enable": true, "available_for_payout": true},
+				map[string]any{"code": "ZEC", "name": "Zcash", "network": "zec",
+					"enable": true, "available_for_payout": false},
 			}})
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -237,6 +242,84 @@ func TestTheKeyAndTheSecretReachNothingTheNowpaymentsPressAnswersWith(t *testing
 	for _, credential := range []string{nowpaymentsKey, nowpaymentsSecret} {
 		if strings.Contains(logged.String(), credential) {
 			t.Errorf("a log line carries %q", credential)
+		}
+	}
+}
+
+func nowpaymentsAsked(apiKey string) string {
+	written, _ := json.Marshal(map[string]string{"apiKey": apiKey})
+	return string(written)
+}
+
+// the box an outcome currency is chosen in is filled from this door, and it offers only what the
+// deployment could actually be paid out in.
+func TestTheCoinsNowpaymentsPaysOutInAreListedForTheBox(t *testing.T) {
+	handler, asked, cloudflare, _ := settingNowpayments(t, "an-account", http.StatusOK)
+
+	status, answer := press(t, handler, "/api/nowpayments/currencies", nowpaymentsAsked(nowpaymentsKey))
+	if status != http.StatusOK || answer["kind"] != "listed" || answer["detail"] != "" {
+		t.Fatalf("the listing answered %d %v", status, answer)
+	}
+	listed, _ := json.Marshal(answer["coins"])
+	want := `[{"code":"btc","name":"Bitcoin","network":"btc"},` +
+		`{"code":"usdttrc20","name":"Tether (TRC20)","network":"trx"}]`
+	if string(listed) != want {
+		t.Errorf("the listing carried %s, want %s", listed, want)
+	}
+	if calls := asked(); len(calls) != 1 || calls[0] != "GET /v1/full-currencies" {
+		t.Errorf("NOWPayments was asked %v", calls)
+	}
+	if len(*cloudflare) != 0 {
+		t.Errorf("cloudflare was asked %v", *cloudflare)
+	}
+}
+
+func TestAKeyNowpaymentsRejectsListsNoCoinsAndIsNamedByTheListing(t *testing.T) {
+	handler, _, _, _ := settingNowpayments(t, "an-account", http.StatusForbidden)
+
+	status, answer := press(t, handler, "/api/nowpayments/currencies", nowpaymentsAsked(nowpaymentsKey))
+	coins, _ := answer["coins"].([]any)
+	if status != http.StatusOK || answer["kind"] != "key_refused" || answer["detail"] == "" {
+		t.Fatalf("the listing answered %d %v", status, answer)
+	}
+	if coins == nil || len(coins) != 0 {
+		t.Errorf("the listing carried %v, want an empty list", answer["coins"])
+	}
+}
+
+func TestAnEmptyKeyIsRefusedBeforeAnyCoinIsAskedFor(t *testing.T) {
+	for _, body := range []string{nowpaymentsAsked(""), nowpaymentsAsked(" np-typed-key"), `{}`} {
+		t.Run(body, func(t *testing.T) {
+			handler, asked, _, _ := settingNowpayments(t, "an-account", http.StatusOK)
+			status, answer := press(t, handler, "/api/nowpayments/currencies", body)
+			if status != http.StatusBadRequest {
+				t.Fatalf("the listing answered %d %v", status, answer)
+			}
+			if len(asked()) != 0 {
+				t.Errorf("NOWPayments was asked %v", asked())
+			}
+		})
+	}
+}
+
+// the listing door carries the key exactly as the press does: a header on the way out, and nothing
+// a page can read on the way back.
+func TestTheKeyReachesNothingTheNowpaymentsListingAnswersWith(t *testing.T) {
+	for _, keyStatus := range []int{http.StatusOK, http.StatusForbidden} {
+		handler, asked, _, _ := settingNowpayments(t, "an-account", keyStatus)
+		request := httptest.NewRequest(http.MethodPost, "/api/nowpayments/currencies",
+			strings.NewReader(nowpaymentsAsked(nowpaymentsKey)))
+		request.Host = loopback
+		recorded := httptest.NewRecorder()
+		handler.ServeHTTP(recorded, request)
+
+		for where, read := range map[string]string{
+			"the answer":               recorded.Body.String(),
+			"a request to NOWPayments": strings.Join(asked(), "\n"),
+		} {
+			if strings.Contains(read, nowpaymentsKey) {
+				t.Errorf("%d: %s carries the key: %s", keyStatus, where, read)
+			}
 		}
 	}
 }

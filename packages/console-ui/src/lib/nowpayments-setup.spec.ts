@@ -8,6 +8,7 @@ import {
 	NOWPAYMENTS_FORM,
 	nowpaymentsAnswer,
 	nowpaymentsAsks,
+	nowpaymentsHeld,
 	nowpaymentsPhase,
 	nowpaymentsPosted,
 	railsToDraw
@@ -246,5 +247,19 @@ describe('the rail lines drawn', () => {
 				}
 			})
 		).toEqual([]);
+	});
+});
+
+describe('what a box is holding', () => {
+	it('reads a chosen value as it reads a typed one', () => {
+		expect(nowpaymentsHeld({ value: 'usdcmatic' })).toBe('usdcmatic');
+	});
+
+	it('trims it, as the binary refuses space around a value', () => {
+		expect(nowpaymentsHeld({ value: '  NP1-KEY  ' })).toBe('NP1-KEY');
+	});
+
+	it('reads a box the form does not draw as empty', () => {
+		expect(nowpaymentsHeld(null)).toBe('');
 	});
 });

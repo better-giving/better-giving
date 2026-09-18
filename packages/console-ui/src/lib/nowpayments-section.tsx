@@ -1,15 +1,16 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
-import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { SettingRow } from '@better-giving/operator/components/data/SettingRow';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
+import { SelectWithNote } from '@better-giving/operator/components/forms/SelectWithNote';
 import { Section } from '@better-giving/operator/components/shell/Layout';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
 import { Fragment, Suspense, useEffect, useState } from 'react';
 import { Await, Form } from 'react-router';
+import { nowpaymentsCurrencies } from '../api/client';
 import type {
 	DeployedValues,
 	NowpaymentsPress,
@@ -19,6 +20,14 @@ import type {
 } from '../api/types';
 import type { HeldValues } from './held-values';
 import { heldValues, withheldAmong } from './held-values';
+import type { CoinsRead } from './nowpayments-coins';
+import {
+	COINS_DEBOUNCE,
+	COINS_UNREAD,
+	coinsBox,
+	coinsLanded,
+	coinsTyped
+} from './nowpayments-coins';
 import type { NowpaymentsAnswer, NowpaymentsBox, NowpaymentsLine } from './nowpayments-setup';
 import {
 	NOWPAYMENTS_BOXES,
@@ -28,6 +37,7 @@ import {
 	NOWPAYMENTS_SAVE_INTENT,
 	nowpaymentsAnswer,
 	nowpaymentsAsks,
+	nowpaymentsHeld,
 	nowpaymentsPhase,
 	railsToDraw
 } from './nowpayments-setup';
@@ -55,6 +65,14 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 // line is drawn as ./paypal-section.tsx's `Rails` draws a standing. a read that did not land draws
 // the deployment's sentence about it.
 //
+// **the payout box offers what the key lists, and reads that list itself.** the coins the account
+// can be paid out in are a read rather than a press, so it is made from the box and never through
+// the route (../api/client.ts): a press closes every control on the page while it is in flight, and
+// a list read again behind a key being typed must close nothing. the key it is read under is the one
+// in the box above it and never one the deployment is holding, which is what makes the list about
+// the account whose key is about to be saved. ./nowpayments-coins.ts holds every decision the box
+// makes, and this file is its drawing.
+//
 // **nothing about notifications is drawn.** each payment names its own callback address, so the
 // deployment reports the subscription `not_applicable` and there is no endpoint to register, read or
 // repair.
@@ -78,12 +96,7 @@ const LABEL: Record<NowpaymentsBox, string> = {
 
 /** where a box's value comes from, for the boxes whose label cannot say it. */
 const HINT: Partial<Record<NowpaymentsBox, ReactNode>> = {
-	outcomeCurrency: (
-		<>
-			The coin your NOWPayments outcome wallet is paid in, as NOWPayments writes it in its supported
-			coins list: <InlineCode>usdcmatic</InlineCode> for USDC on Polygon.
-		</>
-	)
+	outcomeCurrency: 'Must match the outcome wallet set in your NOWPayments dashboard.'
 };
 
 /** what the one press says it will do, where it asks first ({@link nowpaymentsAsks}). */
@@ -252,6 +265,35 @@ function NowpaymentsKeysForm({
 	/** the confirm's lines, or `null` where it is not on the screen. */
 	const [confirming, setConfirming] = useState<readonly NowpaymentsLine[] | null>(null);
 
+	const seedKey = seeds[NOWPAYMENTS_NAME.apiKey] ?? '';
+	/** what the key box is holding, which is the key the coin list is read under. */
+	const [key, setKey] = useState(seedKey);
+	/* a landed write puts the boxes back by resetting the form (./reseed.ts), and a reset fires no
+	   input event — so the key the list is read under is taken off the seed again here. */
+	useEffect(() => {
+		setKey(seedKey);
+	}, [seedKey]);
+
+	/** the coins that key can be paid out in, as far as the box has been told (./nowpayments-coins.ts). */
+	const [coins, setCoins] = useState<CoinsRead>(COINS_UNREAD);
+	useEffect(() => {
+		const asked = key.trim();
+		setCoins((read) => coinsTyped(read, asked));
+		if (asked === '') return;
+		const timer = setTimeout(() => {
+			/* a read that could not be made at all leaves the box exactly as it was, and says nothing:
+			   it means the binary has stopped, which every press on this page then reports at itself
+			   and the route draws as the whole screen (../routes/_index.tsx). */
+			nowpaymentsCurrencies(asked).then(
+				(listing) => setCoins((read) => coinsLanded(read, asked, listing)),
+				() => {}
+			);
+		}, COINS_DEBOUNCE);
+		return () => clearTimeout(timer);
+	}, [key]);
+
+	const coinBox = coinsBox(coins, seeds[NOWPAYMENTS_NAME.outcomeCurrency] ?? '');
+
 	/* the question is left the moment its own press is answered, whatever the answer says: a landed
 	   write reports at the button underneath, and a refused one leaves the operator in the box it
 	   named — neither is readable behind a card. */
@@ -262,10 +304,8 @@ function NowpaymentsKeysForm({
 
 	/** what the three boxes hold right now, trimmed as the route reads them. */
 	const typed = (element: HTMLFormElement): NowpaymentsPress => {
-		const value = (box: NowpaymentsBox) => {
-			const control = element.elements.namedItem(NOWPAYMENTS_FIELD(box));
-			return control instanceof HTMLInputElement ? control.value.trim() : '';
-		};
+		const value = (box: NowpaymentsBox) =>
+			nowpaymentsHeld(element.elements.namedItem(NOWPAYMENTS_FIELD(box)));
 		return {
 			apiKey: value('apiKey'),
 			ipnSecret: value('ipnSecret'),
@@ -302,20 +342,44 @@ function NowpaymentsKeysForm({
 						const bound = keys.box(keys.fields[NOWPAYMENTS_FIELD(box)]);
 						return (
 							<Fragment key={box}>
-								<Field
-									id={bound.id}
-									name={bound.name}
-									label={LABEL[box]}
-									hint={HINT[box]}
-									code
-									masked={isMasked(NOWPAYMENTS_NAME[box])}
-									autoComplete="off"
-									spellCheck={false}
-									defaultValue={bound.defaultValue}
-									disabled={closed}
-									onInput={bound.onInput}
-									error={bound.error}
-								/>
+								{/* the payout coin is chosen out of what the key lists and the two credentials are typed,
+								    so one of the three is a select and the other two are boxes. */}
+								{box === 'outcomeCurrency' ? (
+									<>
+										<SelectWithNote
+											id={bound.id}
+											name={bound.name}
+											label={LABEL[box]}
+											hint={HINT[box]}
+											options={coinBox.options}
+											retired={coinBox.retired}
+											note={coinBox.note}
+											defaultValue={bound.defaultValue}
+											disabled={closed || coinBox.disabled}
+											onInput={bound.onInput}
+											error={bound.error}
+										/>
+										{coinBox.detail === null ? null : <Said answer={{ detail: coinBox.detail }} />}
+									</>
+								) : (
+									<Field
+										id={bound.id}
+										name={bound.name}
+										label={LABEL[box]}
+										hint={HINT[box]}
+										code
+										masked={isMasked(NOWPAYMENTS_NAME[box])}
+										autoComplete="off"
+										spellCheck={false}
+										defaultValue={bound.defaultValue}
+										disabled={closed}
+										onInput={(event) => {
+											bound.onInput?.();
+											if (box === 'apiKey') setKey(event.currentTarget.value);
+										}}
+										error={bound.error}
+									/>
+								)}
 								{/* NOWPayments' own words about this box, for as long as its sentence stands. */}
 								{said?.said?.box === box && keys.standing?.[bound.name] !== undefined ? (
 									<Said answer={said.said} />

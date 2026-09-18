@@ -1111,6 +1111,29 @@ export type NowpaymentsSaved =
 	| { kind: 'key_refused' | 'currency_unknown' | 'unanswered'; detail: string };
 
 /**
+ * one coin NOWPayments will pay this account out in.
+ *
+ * `code` is what the deployment stores and what NOWPayments is asked for; `name` is what an operator
+ * reads, and `network` tells two coins of the same name apart.
+ */
+export type NowpaymentsCoin = { code: string; name: string; network: string };
+
+/**
+ * how one listing of the coins that account can be paid out in went
+ * (`packages/console/internal/server/nowpayments.go`).
+ *
+ * flat rather than a member per kind, which is what the wire is: `coins` is always a list and is
+ * empty on everything but `listed`, and `detail` is NOWPayments' own words about what stopped the
+ * read and is empty on `listed`. the binary has already cut the list to payout-eligible coins,
+ * lowercased each code and sorted by name, so the order it sent is the order the box offers.
+ */
+export type NowpaymentsListing = {
+	kind: 'listed' | 'key_refused' | 'unanswered';
+	detail: string;
+	coins: NowpaymentsCoin[];
+};
+
+/**
  * which way the account's own turnstile widgets were not read.
  *
  * `no-credential` is its own member and never a refusal: a refusal is "member, not administrator"

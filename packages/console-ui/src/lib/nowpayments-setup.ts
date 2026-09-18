@@ -107,6 +107,20 @@ export function nowpaymentsPosted(
 	return { ok: true, press };
 }
 
+/**
+ * what one of the form's controls is holding, trimmed as {@link nowpaymentsPosted} trims it, and
+ * empty where the form draws no such control.
+ *
+ * **it reads the value rather than the element**, because the three boxes are not all one element:
+ * the payout currency is a `<select>` (./nowpayments-coins.ts) and the two credentials are
+ * `<input>`s. narrowed to one of those tags, the other reads as empty and every press it makes is
+ * refused as blank.
+ */
+export function nowpaymentsHeld(control: unknown): string {
+	const value = (control as { readonly value?: unknown } | null)?.value;
+	return typeof value === 'string' ? value.trim() : '';
+}
+
 /** one line of the confirm: a box the press changes, and what it does to what is held there. */
 export type NowpaymentsLine = { readonly box: NowpaymentsBox; readonly act: 'Set' | 'Replaced' };
 

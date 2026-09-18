@@ -1,11 +1,19 @@
 // Package nowpayments is the console's door to NOWPayments.
 //
-// **two reads and nothing else.** the press that stores NOWPayments' values asks the account's coin
-// selection with the key it was handed, which is what says the key reads the account, and then the
-// currency list, which is what says the outcome currency is a coin NOWPayments names. both are the
-// reads `acceptedCoins` in packages/app/src/lib/server/payments/nowpayments.ts makes with the key the
-// deployment holds, so a key this check passes is one the deployment's own reads accept. no call here
-// creates, pays out or converts anything.
+// **three reads and nothing else, over two paths.** the press that stores NOWPayments' values asks
+// the account's coin selection with the key it was handed, which is what says the key reads the
+// account, and then the currency list, which is what says the outcome currency is a coin
+// NOWPayments will pay out in. the listing is that same currency list read on its own and with
+// nothing checked, so the box an outcome currency is typed into is one an operator picks from
+// rather than spells. both paths are the reads `acceptedCoins` in
+// packages/app/src/lib/server/payments/nowpayments.ts makes with the key the deployment holds, so a
+// key this check passes is one the deployment's own reads accept. no call here creates, pays out or
+// converts anything.
+//
+// **a coin on the list is not a coin this deployment can be paid out in.** an entry carries
+// `enable` and `available_for_payout` and NOWPayments names plenty it takes in and will not send
+// back out, so both the listing and the check read those two rather than the code alone — a coin
+// stored as the outcome currency off the code alone is a payout that fails at the first settlement.
 //
 // **there is no sandbox address.** NOWPayments' sandbox is a separate host with keys of its own, and
 // the deployment calls the live API alone, so a key is checked where the deployment will use it.
@@ -21,6 +29,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/better-giving/console/internal/cf"
@@ -68,16 +77,21 @@ func BindAt(address, apiKey string) Call {
 	}
 }
 
-// CheckKind is how one check of the pasted values ended.
+// CheckKind is how one read of NOWPayments ended: a check of the pasted values, or the listing a
+// screen fills its outcome-currency box from. Both are sorted into the same words, because what an
+// operator does about a key NOWPayments turned down is the same either way.
 type CheckKind string
 
 const (
-	// Readable is the key reading the account and the outcome currency a coin NOWPayments names: the
-	// only kind a press stores anything on.
+	// Readable is the key reading the account and the outcome currency a coin NOWPayments pays out
+	// in: the only kind a press stores anything on.
 	Readable CheckKind = "readable"
+	// Listed is the coin listing read: the only kind coins are carried on.
+	Listed CheckKind = "listed"
 	// KeyRefused is NOWPayments turning the key down. The way out is the key box.
 	KeyRefused CheckKind = "key_refused"
-	// CurrencyUnknown is an outcome currency NOWPayments' list does not name. The way out is that box.
+	// CurrencyUnknown is an outcome currency NOWPayments will not pay out in — one its list does not
+	// name at all, and one it names and takes in only. The way out is that box.
 	CurrencyUnknown CheckKind = "currency_unknown"
 	// Unanswered is nothing found out about either: no route, a 5xx, a request NOWPayments would not
 	// carry out for some other reason, or an answer in a shape this console was not written against.
@@ -115,14 +129,85 @@ func Check(ctx context.Context, call Call, outcomeCurrency string) Checked {
 	wanted := strings.ToLower(outcomeCurrency)
 	for _, one := range currencies {
 		entry, _ := one.(map[string]any)
-		if code, _ := entry["code"].(string); strings.ToLower(code) == wanted {
-			return Checked{Kind: Readable, Currency: wanted}
+		code, _ := entry["code"].(string)
+		if strings.ToLower(code) != wanted {
+			continue
 		}
+		if !payable(entry) {
+			return Checked{Kind: CurrencyUnknown, Detail: fmt.Sprintf(
+				"NOWPayments does not pay out in %q, so it cannot be the outcome currency.", wanted)}
+		}
+		return Checked{Kind: Readable, Currency: wanted}
 	}
 	return Checked{
 		Kind:   CurrencyUnknown,
 		Detail: fmt.Sprintf("NOWPayments names no coin %q, so it cannot be the outcome currency.", wanted),
 	}
+}
+
+// Coin is one coin NOWPayments will pay out in, in the three members a screen draws it by. Code is
+// lowercased, which is the spelling a deployment compares against and the one Check hands back;
+// Name and Network are NOWPayments' own.
+type Coin struct {
+	Code    string `json:"code"`
+	Name    string `json:"name"`
+	Network string `json:"network"`
+}
+
+// Listing is one read of the payable coins. Detail is empty on Listed, and Coins is the whole set
+// on Listed and empty on every other kind — never nil, so a screen has a list to draw either way.
+type Listing struct {
+	Kind   CheckKind
+	Detail string
+	Coins  []Coin
+}
+
+// Payable asks NOWPayments for every coin it will pay out in, which is the set an outcome currency
+// is chosen out of and the set Check accepts one out of. It is the currency list read on its own,
+// with no key checked against the account first: a key this read is made with is one a screen is
+// about to check anyway, and a listing nothing came back for says so in the same words.
+func Payable(ctx context.Context, call Call) Listing {
+	answer := call(ctx, currenciesPath)
+	if refused := failed(answer); refused != nil {
+		return nothingListed(*refused)
+	}
+	currencies, _ := body(answer)["currencies"].([]any)
+	if currencies == nil {
+		return nothingListed(unreadable("the currency list"))
+	}
+
+	coins := []Coin{}
+	for _, one := range currencies {
+		entry, _ := one.(map[string]any)
+		code, _ := entry["code"].(string)
+		if code == "" || !payable(entry) {
+			continue
+		}
+		name, _ := entry["name"].(string)
+		network, _ := entry["network"].(string)
+		coins = append(coins, Coin{Code: strings.ToLower(code), Name: name, Network: network})
+	}
+	slices.SortFunc(coins, func(a, b Coin) int {
+		if by := strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)); by != 0 {
+			return by
+		}
+		return strings.Compare(a.Code, b.Code)
+	})
+	return Listing{Kind: Listed, Coins: coins}
+}
+
+// whether one entry of the currency list is a coin this deployment could be paid out in: switched
+// on in the account, and one NOWPayments pays out at all. A coin it takes in only is on the list
+// like any other.
+func payable(entry map[string]any) bool {
+	on, _ := entry["enable"].(bool)
+	out, _ := entry["available_for_payout"].(bool)
+	return on && out
+}
+
+// the listing a read that found nothing out ends as, in the words the same failure gives a check.
+func nothingListed(from Checked) Listing {
+	return Listing{Kind: from.Kind, Detail: from.Detail, Coins: []Coin{}}
 }
 
 func body(answer cf.Answer) map[string]any {
