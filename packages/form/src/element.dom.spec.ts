@@ -4433,6 +4433,11 @@ describe('the stylesheets', () => {
 	const still = `${declarations(partStyles)}\n${declarations(layoutStyles)}`;
 	const moving = declarations(motionStyles);
 	const css = `${still}\n${moving}`;
+	// the two sheets the card's own three do not cover: the coin list's (../coin-picker.ts) and the
+	// payment rows' (../embed/rows.ts). they are adopted into shadow roots of their own rather than
+	// into the card's, which is why they are not in `css` above — and why a token spent only in one
+	// of them is still a token this element spends.
+	const adopted = `${css}\n${declarations(coinStyles)}\n${declarations(rowStyles)}`;
 	// kept out of `css` above rather than folded into it: the token file is where every colour
 	// literal in this component is authored, so a sheet holding the ramp cannot be swept by the
 	// case below that refuses one.
@@ -4629,7 +4634,7 @@ describe('the stylesheets', () => {
 		const declared = [...tokenSheet.matchAll(/^\s*(--_[\w-]+)\s*:/gm)].flatMap(
 			(match) => match[1] ?? []
 		);
-		const swept = `${tokenSheet}\n${css}`;
+		const swept = `${tokenSheet}\n${adopted}`;
 		const unspent = declared.filter(
 			(token) =>
 				!exempt.includes(token) &&
@@ -5152,15 +5157,15 @@ describe('a crypto gift', () => {
 		...CONFIG,
 		paymentMethods: ['card', 'crypto'],
 		coins: [
-			{ coin: 'xrp', ticker: 'xrp', name: 'Ripple', network: 'xrp', memoRequired: true },
+			{ coin: 'xrp', ticker: 'xrp', name: 'Ripple', network: 'XRP Ledger', memoRequired: true },
 			{
 				coin: 'usdttrc20',
 				ticker: 'usdt',
 				name: 'Tether USD (Tron)',
-				network: 'trx',
+				network: 'Tron',
 				memoRequired: false
 			},
-			{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false }
+			{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'Bitcoin', memoRequired: false }
 		]
 	};
 	/** a week past the clock `PORTS.now` stands at, at noon so the date reads the same in any zone. */
@@ -5518,7 +5523,7 @@ describe('a crypto gift', () => {
 
 		expect(card.find('.step-give').hidden).toBe(false);
 		expect(coins(card).activeElement).toBe(combobox(card));
-		expect(coins(card).querySelector('.chosen')?.textContent).toBe('USDT Tether USD (Tron)');
+		expect(coins(card).querySelector('.chosen')?.textContent).toBe('USDTTronTether USD (Tron)');
 	});
 
 	it('goes back to the coin list for a different coin', async () => {

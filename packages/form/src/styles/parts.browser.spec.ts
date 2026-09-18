@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // document and is the one a reader here is looking for.
 import { page as browser, userEvent } from 'vitest/browser';
 import { createCoinPicker } from '../coin-picker';
+import { NETWORK_TINTS } from '../coins';
 import { createDepositBlock, type DepositView } from '../deposit';
 import { defineDonateForm, DONATE_FORM_TAG } from '../element';
 import { createRows, type Row, type RowMark } from '../embed/rows';
@@ -768,6 +769,14 @@ describe('the coin list inside the crypto option', () => {
 		for (const node of mounts.splice(0)) node.remove();
 	});
 
+	/**
+	 * a coin's logo, inline: the served path is the processor's own and this pool reaches no network,
+	 * so a fetched one would arrive as the `error` the picker removes the image on — which is the
+	 * fallback rather than the case the rules below measure.
+	 */
+	const LOGO =
+		'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 8 8%22%3E%3Ccircle cx=%224%22 cy=%224%22 r=%224%22 fill=%22%23123456%22/%3E%3C/svg%3E';
+
 	// the tokens reach the list by inheritance from the card around it, which `data-donate-root` in
 	// ./tokens.css stands in for; without them every colour the ring cases compare resolves to one.
 	function drawn(refused: boolean, problem = '') {
@@ -783,8 +792,25 @@ describe('the coin list inside the crypto option', () => {
 			{
 				value: 'btc',
 				options: [
-					{ value: 'btc', label: 'BTC', name: 'Bitcoin', refused: false },
-					{ value: 'sol', label: 'SOL', name: 'Solana', refused }
+					{
+						value: 'btc',
+						label: 'BTC',
+						name: 'Bitcoin',
+						network: 'Bitcoin',
+						logo: LOGO,
+						popular: true,
+						stablecoin: false,
+						refused: false
+					},
+					{
+						value: 'sol',
+						label: 'SOL',
+						name: 'Solana',
+						network: 'Solana',
+						popular: false,
+						stablecoin: false,
+						refused
+					}
 				],
 				onChange: () => {}
 			},
@@ -891,6 +917,73 @@ describe('the coin list inside the crypto option', () => {
 		expect(closed).toBe(family('[role="option"] .coin-ticker'));
 		expect(family('[role="option"] .coin-ticker')).toContain('ui-monospace');
 		expect(family('[role="option"] .coin-label')).toContain('system-ui');
+	});
+
+	// which entry a network takes is a rule over its own words (`networkTint` in ../coins.ts) and no
+	// table, so the only thing a sheet can get wrong is whether the entry it picked paints at all: a
+	// `data-tint` no rule answers leaves the pill with no ground, which renders as a word among words
+	// and reads as finished.
+	it('gives every entry of the network palette a ground and an ink of its own', () => {
+		const root = drawn(false);
+		const row = root.querySelector('.field-row') as HTMLElement;
+		const painted = [...Array(NETWORK_TINTS).keys()].map((tint) => {
+			const pill = document.createElement('span');
+			pill.className = 'net';
+			pill.dataset.tint = String(tint);
+			row.appendChild(pill);
+			const style = getComputedStyle(pill);
+			const pair = `${style.backgroundColor} on ${style.color}`;
+			pill.remove();
+			return pair;
+		});
+
+		expect(new Set(painted).size).toBe(NETWORK_TINTS);
+		expect(painted.filter((pair) => pair.includes('rgba(0, 0, 0, 0)'))).toEqual([]);
+	});
+
+	// the logo is the processor's own image and the letter under it is what a blocked or broken one
+	// leaves showing, so the two share the mark's one cell: an image that did not fill it would leave
+	// the letter beside it, and one drawn on its own transparency would leave the letter under it.
+	it('stands the coin’s logo in the mark, over the letter it falls back to', () => {
+		const root = drawn(false);
+		(root.querySelector('.picker') as HTMLElement).click();
+		const mark = root.querySelector('[role="option"] .logo') as HTMLElement;
+		const image = mark.querySelector('img') as HTMLImageElement;
+		const letter = mark.querySelector('.initial') as HTMLElement;
+
+		// the second coin's entry carries no path, so its own letter is what its mark shows.
+		const bare = root.querySelectorAll('[role="option"] .initial')[1] as HTMLElement;
+
+		expect(image.getBoundingClientRect()).toEqual(mark.getBoundingClientRect());
+		expect(getComputedStyle(letter).visibility).toBe('hidden');
+		expect(getComputedStyle(bare).visibility).toBe('visible');
+	});
+
+	// the chips are the one set of controls in this list, and a chosen one says so the way a chosen
+	// cadence does: it rises to the card's own ground and its word steps to the brand.
+	it('marks the pressed chip in the brand and leaves the rest on the row’s own ground', () => {
+		const root = drawn(false);
+		const chips = [...root.querySelectorAll<HTMLButtonElement>('.chip')];
+		const [all, popular] = chips.map((chip) => {
+			const style = getComputedStyle(chip);
+			return {
+				pressed: chip.getAttribute('aria-pressed'),
+				ground: style.backgroundColor,
+				ink: style.color
+			};
+		});
+
+		expect(chips.map((chip) => chip.textContent)).toEqual(['All', 'Popular']);
+		expect(all).toEqual({
+			pressed: 'true',
+			ground: used(root, '--_n1'),
+			ink: used(root, '--_p')
+		});
+		expect(popular).toEqual({
+			pressed: 'false',
+			ground: 'rgba(0, 0, 0, 0)',
+			ink: used(root, '--_n11')
+		});
 	});
 
 	it('rings a refused closed box its caret is in with the refused open box’s ring', async () => {

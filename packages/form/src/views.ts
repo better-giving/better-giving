@@ -17,7 +17,7 @@
 // in this file is the same answer derived twice, on a page nobody here can reach.
 
 import type { CheckoutApi, PropTypes, State } from './connect';
-import { createCoinPicker } from './coin-picker';
+import { createCoinPicker, type CoinOption } from './coin-picker';
 import {
 	coinDifference,
 	createDepositBlock,
@@ -83,14 +83,6 @@ type SelectProps = {
 	readonly value: string;
 	readonly options: readonly { readonly value: string; readonly label: string }[];
 	readonly onChange: (value: string) => void;
-};
-
-/** one coin in `coinSelect`, which carries the coin's name and whether it was refused beside its label. */
-type CoinOption = {
-	readonly value: string;
-	readonly label: string;
-	readonly name: string;
-	readonly refused: boolean;
 };
 
 type ButtonProps = {

@@ -300,9 +300,24 @@ export type Provider = {
  * `coin` is NOWPayments' own code, lowercased (`usdttrc20`), and it is the value `QuoteRequest.coin`
  * carries back — never the ticker, which names the base asset and is shared by the same asset on
  * several chains. `ticker` is NOWPayments' ticker, lowercased (`usdt`), for display and search only;
- * `coin` still identifies the coin. `network` is shown beside it because a deposit sent on the wrong
- * chain reaches no gift. `memoRequired` says a deposit without the payment's memo cannot be matched at
- * all; where it is false the quote's `Deposit.memo` still says whether that one payment carries one.
+ * `coin` still identifies the coin. `network` is the network's own words, already derived from the
+ * processor's list by the deployment, and is shown beside the ticker because a deposit sent on the
+ * wrong chain reaches no gift. `memoRequired` says a deposit without the payment's memo cannot be
+ * matched at all; where it is false the quote's `Deposit.memo` still says whether that one payment
+ * carries one.
+ *
+ * the last three are what a row *shows* rather than what a gift is built from, and all three are
+ * optional under this file's add-never-rename rule: a deployment serving none draws the list it drew
+ * before. nothing here is ever assembled from `coin` or `ticker` — a logo path built out of a code
+ * and a flag read off a list of coins we consider popular are both a table somebody has to maintain
+ * and forgets to, and the whole of what these three carry is the processor's own answer.
+ *
+ * `logo` is that processor's own path for the coin, absolute and `https:`, which ./config.ts refuses
+ * anything else for: the row is drawn into a page this project does not own, so a relative path
+ * resolves against the host's origin and asks a stranger's site for an image it does not serve.
+ *
+ * `popular` and `stablecoin` are the processor's own flags for the coin, and they are the whole of
+ * what the list's filter chips read.
  */
 export type PayableCoin = {
 	readonly coin: string;
@@ -310,6 +325,9 @@ export type PayableCoin = {
 	readonly name: string;
 	readonly network: string;
 	readonly memoRequired: boolean;
+	readonly logo?: string;
+	readonly popular?: boolean;
+	readonly stablecoin?: boolean;
 };
 
 /**

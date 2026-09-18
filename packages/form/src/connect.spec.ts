@@ -601,15 +601,24 @@ describe('the crypto projection', () => {
 		frequencies: ['one_time'],
 		paymentMethods: ['card', 'crypto'],
 		coins: [
-			{ coin: 'xrp', ticker: 'xrp', name: 'Ripple', network: 'xrp', memoRequired: true },
+			{
+				coin: 'xrp',
+				ticker: 'xrp',
+				name: 'Ripple',
+				network: 'XRP Ledger',
+				memoRequired: true,
+				popular: true
+			},
 			{
 				coin: 'usdttrc20',
 				ticker: 'usdt',
 				name: 'Tether USD (Tron)',
-				network: 'trx',
-				memoRequired: false
+				network: 'Tron',
+				memoRequired: false,
+				logo: 'https://example.test/coins/usdt.svg',
+				stablecoin: true
 			},
-			{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false }
+			{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'Bitcoin', memoRequired: false }
 		]
 	};
 	const DEPOSIT = {
@@ -628,7 +637,16 @@ describe('the crypto projection', () => {
 	};
 	type Coins = {
 		readonly value: string;
-		readonly options: readonly { value: string; label: string; name: string; refused: boolean }[];
+		readonly options: readonly {
+			value: string;
+			label: string;
+			name: string;
+			network: string;
+			logo?: string;
+			popular: boolean;
+			stablecoin: boolean;
+			refused: boolean;
+		}[];
 		readonly onChange: (value: string) => void;
 	};
 
@@ -638,9 +656,34 @@ describe('the crypto projection', () => {
 
 		expect(coins.value).toBe('');
 		expect(coins.options).toEqual([
-			{ value: 'btc', label: 'BTC', name: 'Bitcoin', refused: false },
-			{ value: 'usdttrc20', label: 'USDT', name: 'Tether USD (Tron)', refused: false },
-			{ value: 'xrp', label: 'XRP', name: 'Ripple', refused: false }
+			{
+				value: 'btc',
+				label: 'BTC',
+				name: 'Bitcoin',
+				network: 'Bitcoin',
+				popular: false,
+				stablecoin: false,
+				refused: false
+			},
+			{
+				value: 'usdttrc20',
+				label: 'USDT',
+				name: 'Tether USD (Tron)',
+				network: 'Tron',
+				logo: 'https://example.test/coins/usdt.svg',
+				popular: false,
+				stablecoin: true,
+				refused: false
+			},
+			{
+				value: 'xrp',
+				label: 'XRP',
+				name: 'Ripple',
+				network: 'XRP Ledger',
+				popular: true,
+				stablecoin: false,
+				refused: false
+			}
 		]);
 	});
 

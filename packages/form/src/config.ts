@@ -196,7 +196,31 @@ function program(value: unknown): Pick<FormConfig, 'program'> | null {
 	return options.length === 0 ? {} : { program: { mode: 'choice', options } };
 }
 
-/** one coin, or `null` where any field of it is unreadable. */
+/**
+ * an absolute `https:` url, and `null` for everything else.
+ *
+ * the coin's logo is drawn into a page this project does not own, so a relative path would resolve
+ * against the host's own origin and ask a stranger's site for an image it does not serve; `http:` is
+ * refused with it, because an image fetched over it is blocked as mixed content on the pages this
+ * element is pasted into and the row would degrade there and nowhere else.
+ */
+function httpsUrl(value: unknown): string | null {
+	const held = text(value);
+	if (held === null) return null;
+	try {
+		return new URL(held).protocol === 'https:' ? held : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * one coin, or `null` where any field a gift is built from is unreadable.
+ *
+ * the logo and the two flags are not among those. they are what the row *shows*, so an unreadable one
+ * takes the row's own fallback — the lettered mark, and a coin the chips pass over — where an
+ * unreadable `memoRequired` drops the coin outright.
+ */
 function coin(value: unknown): PayableCoin | null {
 	const source = record(value);
 	if (source === null) return null;
@@ -206,7 +230,17 @@ function coin(value: unknown): PayableCoin | null {
 	const network = text(source.network);
 	if (code === null || ticker === null || name === null || network === null) return null;
 	if (typeof source.memoRequired !== 'boolean') return null;
-	return { coin: code, ticker, name, network, memoRequired: source.memoRequired };
+	const logo = httpsUrl(source.logo);
+	return {
+		coin: code,
+		ticker,
+		name,
+		network,
+		memoRequired: source.memoRequired,
+		popular: source.popular === true,
+		stablecoin: source.stablecoin === true,
+		...(logo === null ? {} : { logo })
+	};
 }
 
 /**
@@ -215,7 +249,8 @@ function coin(value: unknown): PayableCoin | null {
  * an unreadable entry is dropped rather than refusing the config, for `providers`' reason: a coin
  * missing from the list is one the donor cannot pick, and every coin still on it is one the account
  * takes. a `memoRequired` that is not a boolean drops the coin rather than defaulting, because a
- * memo coin read as needing none is a deposit that reaches no gift.
+ * memo coin read as needing none is a deposit that reaches no gift; `coin` above states which fields
+ * are not read that way.
  */
 function coins(value: unknown): readonly PayableCoin[] {
 	const entries: PayableCoin[] = [];

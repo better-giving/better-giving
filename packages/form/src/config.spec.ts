@@ -23,6 +23,15 @@ const RESPONSE = {
 	deductibilityStatement: 'No goods or services were provided in exchange for this gift.'
 };
 
+/** one coin as the response lists it, with every field of it readable. */
+const TETHER = {
+	coin: 'usdttrc20',
+	ticker: 'usdt',
+	name: 'Tether USD (Tron)',
+	network: 'trx',
+	memoRequired: false
+};
+
 /** the response with one field replaced or removed. */
 function withField(field: string, value: unknown): unknown {
 	const body: Record<string, unknown> = { ...RESPONSE };
@@ -64,13 +73,7 @@ describe('reading a usable response', () => {
 
 	it('carries the coins a donor may pay in, beside the crypto rail', () => {
 		const coins = [
-			{
-				coin: 'usdttrc20',
-				ticker: 'usdt',
-				name: 'Tether USD (Tron)',
-				network: 'trx',
-				memoRequired: false
-			},
+			TETHER,
 			{ coin: 'xrp', ticker: 'xrp', name: 'Ripple', network: 'xrp', memoRequired: true }
 		];
 		const config = readFormConfig({
@@ -80,7 +83,9 @@ describe('reading a usable response', () => {
 		});
 
 		expect(config?.paymentMethods).toEqual(['card', 'crypto']);
-		expect(config?.coins).toEqual(coins);
+		expect(config?.coins).toEqual(
+			coins.map((coin) => ({ ...coin, popular: false, stablecoin: false }))
+		);
 	});
 
 	it('keeps an optional field only when it is readable', () => {
@@ -288,22 +293,56 @@ describe('a response with a safe reading', () => {
 		expect(Object.keys(config?.feeRules ?? {})).toEqual(['card']);
 	});
 
+	it('reads a coin’s logo, and only from an absolute https url', () => {
+		// the path is drawn into a page this project does not own, so a relative one would resolve
+		// against the host's own origin and fetch an image from a site that serves none.
+		const listed = (logo: unknown) =>
+			readFormConfig({
+				...RESPONSE,
+				paymentMethods: ['card', 'crypto'],
+				coins: [{ ...TETHER, logo }]
+			})?.coins?.[0];
+
+		expect(listed('https://example.test/coins/usdt.svg')?.logo).toBe(
+			'https://example.test/coins/usdt.svg'
+		);
+		expect(listed('/images/coins/usdt.svg')).not.toHaveProperty('logo');
+		expect(listed('http://example.test/coins/usdt.svg')).not.toHaveProperty('logo');
+		expect(listed(7)).not.toHaveProperty('logo');
+	});
+
+	it('keeps a coin whose cosmetic fields are unreadable, with the chips passing it over', () => {
+		// the logo and the two flags are what a row *shows*, so an unreadable one takes the row's own
+		// fallback rather than dropping a coin the way `memoRequired` does.
+		const config = readFormConfig({
+			...RESPONSE,
+			paymentMethods: ['card', 'crypto'],
+			coins: [{ ...TETHER, logo: '', popular: 'yes', stablecoin: 1 }]
+		});
+
+		expect(config?.coins).toEqual([{ ...TETHER, popular: false, stablecoin: false }]);
+	});
+
+	it('carries the two flags the chips above the coin list read', () => {
+		const config = readFormConfig({
+			...RESPONSE,
+			paymentMethods: ['card', 'crypto'],
+			coins: [{ ...TETHER, popular: true, stablecoin: true }]
+		});
+
+		expect(config?.coins?.[0]?.popular).toBe(true);
+		expect(config?.coins?.[0]?.stablecoin).toBe(true);
+	});
+
 	it('drops a coin it cannot read and keeps the coins it can', () => {
 		// a memo coin read as needing none is a deposit that reaches no gift, so a `memoRequired`
 		// that is not a boolean drops the coin rather than defaulting it. a coin with no ticker is
 		// dropped like one with no name.
-		const tether = {
-			coin: 'usdttrc20',
-			ticker: 'usdt',
-			name: 'Tether USD (Tron)',
-			network: 'trx',
-			memoRequired: false
-		};
 		const config = readFormConfig({
 			...RESPONSE,
 			paymentMethods: ['card', 'crypto'],
 			coins: [
-				tether,
+				TETHER,
 				{ coin: 'xrp', ticker: 'xrp', name: 'Ripple', network: 'xrp', memoRequired: 'yes' },
 				{ coin: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false },
 				{ coin: '', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false },
@@ -311,7 +350,7 @@ describe('a response with a safe reading', () => {
 			]
 		});
 
-		expect(config?.coins).toEqual([tether]);
+		expect(config?.coins).toEqual([{ ...TETHER, popular: false, stablecoin: false }]);
 	});
 
 	it.each([

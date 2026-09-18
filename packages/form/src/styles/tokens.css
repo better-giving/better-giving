@@ -22,10 +22,11 @@
  * the money — so the fill is reserved for the press and the other two are marked. and it is a
  * *word* on the quiet action, which is the one control here drawn as words rather than as a box.
  *
- * nothing else on this card is chromatic. a focus ring is `--_focus-ring` below, a fixed rung of
- * the neutral ladder: where the caret is standing is state, and state is not the brand's to say —
- * a ring that followed the seed would be the colour of the thing it bounds wherever the seed had
- * already drawn that thing.
+ * nothing else on this card is chromatic but the two fixed semantic colours and the six network
+ * tints below, and none of the three is the seed's to move. a focus ring is `--_focus-ring` below,
+ * a fixed rung of the neutral ladder: where the caret is standing is state, and state is not the
+ * brand's to say — a ring that followed the seed would be the colour of the thing it bounds
+ * wherever the seed had already drawn that thing.
  *
  * so the ring and the brand would meet along an edge on every control the seed has drawn, and what
  * keeps them apart is measured rather than assumed. the ring is the ladder's darkest rung and the
@@ -39,7 +40,8 @@
  * of those two answers is what this invariant exists to refuse.
  *
  * the seed's `initial-value` is grey and sits at the neutral ladder's own darkest rung, so an
- * unseeded card is grey throughout — the only hue on it is the two fixed semantic colours.
+ * unseeded card is grey throughout — the only hue on it is the two fixed semantic colours and the
+ * network tints, and a card listing no crypto coin draws neither.
  *
  * this sheet is unlayered, and that is the other half of the guarantee the operator layers
  * make: an unlayered sheet outranks every layer regardless of specificity, so no rule /admin
@@ -74,10 +76,11 @@
  * does exactly this, and is the only spec in the repo that can see any of it: a lightweight
  * DOM computes these as strings, never as a rendered color.
  *
- * every text pair below clears WCAG AA on the card it is drawn on — 4.5:1. three numbers carry that
- * claim: the primary's lightness ceiling, `--_on-p`, and the neutral's rung 10, which is cut below
- * its own distribution so that the quietest ink this card draws still clears the text floor. each
- * states its measurement at its own entry.
+ * every text pair below clears WCAG AA on the ground it is drawn on — 4.5:1. four numbers carry
+ * that claim: the primary's lightness ceiling, `--_on-p`, the neutral's rung 10, which is cut below
+ * its own distribution so that the quietest ink this card draws still clears the text floor, and the
+ * network ink, which is read on its own pill rather than on the card. each states its measurement at
+ * its own entry.
  *
  * one thing below is outside that claim and says so at its own entry: `--_edge-control` is one
  * hairline shade for every box on the card and states no floor at all — 1.4.11's 3:1 is not reached
@@ -438,6 +441,52 @@
 	 * a word inside a band stays on the ramp, and this is not a second ink for one.
 	 */
 	--_warn-ink: oklch(0.49 0.12 85);
+
+	/*
+	 * the network palette: six tints a coin's network pill is painted from (`.net` in ./coins.css),
+	 * and the one colour on this card picked by a rule rather than read off a name.
+	 *
+	 * which entry a pill takes is `networkTint` in ../coins.ts — a hash of the network's own words,
+	 * modulo six — so a network the processor lists tomorrow is painted with nobody editing this
+	 * file. that is the whole reason there are six anonymous entries and not a name per chain: a
+	 * network-to-colour table is a list somebody has to maintain, and the entry it is missing paints
+	 * every chain added after it the default.
+	 *
+	 * so no entry matches any chain's brand, and two networks may land on one. both are intended: the
+	 * pill carries the network's words as well, so the colour is a scanning aid and never the
+	 * identifier, and a collision costs a donor nothing they can read.
+	 *
+	 * numbered from zero because the index is the hash's own answer and the sheet reads it straight
+	 * (`[data-tint='0']` in ./coins.css). a ladder starting at one would put an off-by-one between a
+	 * name and the number that picks it, in the one place here where a name is chosen by arithmetic.
+	 *
+	 * one lightness and one chroma across all six, and six hues: no entry reads louder than another.
+	 * the chroma is the most the hue that can carry least holds at that lightness inside sRGB — 265,
+	 * where blue runs out first — so no entry is gamut-mapped by the browser into a colour this file
+	 * did not author. the ink is that same construction a step down, stated from its own tint so each
+	 * hue is written once.
+	 *
+	 * the hues step around the wheel and skip the two the semantic colours hold, 27 and 85, so a pill
+	 * is never the shade a refusal or a caution is said in.
+	 *
+	 * the ink reads 5.55:1 on its own pill at the worst of the six, which is the floor across the
+	 * palette rather than its best hue. the pill's ground is a tint and holds no floor for the same
+	 * reason the two semantic bands hold none: 1.27:1 against the card and 1.16:1 against `--_n3`,
+	 * the ground a highlighted row draws, which is what keeps it reading as a tint rather than as a
+	 * block. the words are legible on both from the ink alone.
+	 */
+	--_net-0-tint: oklch(0.91 0.042 145);
+	--_net-1-tint: oklch(0.91 0.042 185);
+	--_net-2-tint: oklch(0.91 0.042 225);
+	--_net-3-tint: oklch(0.91 0.042 265);
+	--_net-4-tint: oklch(0.91 0.042 305);
+	--_net-5-tint: oklch(0.91 0.042 340);
+	--_net-0-ink: oklch(from var(--_net-0-tint) 0.45 0.078 h);
+	--_net-1-ink: oklch(from var(--_net-1-tint) 0.45 0.078 h);
+	--_net-2-ink: oklch(from var(--_net-2-tint) 0.45 0.078 h);
+	--_net-3-ink: oklch(from var(--_net-3-tint) 0.45 0.078 h);
+	--_net-4-ink: oklch(from var(--_net-4-tint) 0.45 0.078 h);
+	--_net-5-ink: oklch(from var(--_net-5-tint) 0.45 0.078 h);
 
 	/*
 	 * two corners for the whole component: `--_r` is the card and every box drawn directly on it,

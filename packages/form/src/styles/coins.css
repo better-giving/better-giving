@@ -130,6 +130,59 @@ button {
 	color: var(--_n11);
 }
 
+/*
+ * the network's pill, between the ticker and the coin's name.
+ *
+ * its colour is the six-entry palette in ./tokens.css, and which entry is `networkTint`
+ * (../coins.ts) written onto the node as `data-tint` — so a network the processor lists tomorrow is
+ * painted without a rule being added here. there is no rule for a network by name and there is not
+ * to be one.
+ *
+ * inline-block rather than a flex item, which keeps the ticker, the pill and the name one run of
+ * inline content: `.chosen` above cuts a long name with an ellipsis, and an ellipsis is only ever
+ * applied to inline content. it is also what lets the name wrap under the pill in a narrow row while
+ * the pill itself never breaks across two lines.
+ */
+.net {
+	display: inline-block;
+	margin-inline-start: var(--_sp1);
+	padding-inline: var(--_sp1);
+	border-radius: var(--_r-in);
+	font-size: var(--_t-xs);
+	font-weight: var(--_w-medium);
+	white-space: nowrap;
+}
+
+.net[data-tint='0'] {
+	background: var(--_net-0-tint);
+	color: var(--_net-0-ink);
+}
+
+.net[data-tint='1'] {
+	background: var(--_net-1-tint);
+	color: var(--_net-1-ink);
+}
+
+.net[data-tint='2'] {
+	background: var(--_net-2-tint);
+	color: var(--_net-2-ink);
+}
+
+.net[data-tint='3'] {
+	background: var(--_net-3-tint);
+	color: var(--_net-3-ink);
+}
+
+.net[data-tint='4'] {
+	background: var(--_net-4-tint);
+	color: var(--_net-4-ink);
+}
+
+.net[data-tint='5'] {
+	background: var(--_net-5-tint);
+	color: var(--_net-5-ink);
+}
+
 /* a coin's mark: the round shape a logo stands in, holding the first letter of the coin's name. */
 .logo {
 	display: grid;
@@ -143,10 +196,38 @@ button {
 	font-size: var(--_t-md);
 }
 
+/* the letter and the image share the one cell, so the mark is one size whichever of them is up. */
+.logo > * {
+	grid-area: 1 / 1;
+}
+
 .logo .initial {
 	font-size: var(--_t-xs);
 	font-weight: var(--_w-bold);
 	line-height: 1;
+}
+
+/*
+ * the processor's own logo for the coin, filling the mark it stands in. sized by this rule rather
+ * than by the file, so a row stands at one height before its image arrives, after it arrives, and on
+ * a row whose image never arrives at all.
+ */
+.coin-logo {
+	inline-size: 100%;
+	block-size: 100%;
+	border-radius: 50%;
+	object-fit: contain;
+}
+
+/*
+ * the letter shows wherever no image is standing on the mark: a coin whose entry carries no path,
+ * and a coin whose image was refused or failed — ../coin-picker.ts takes the `<img>` out on `error`,
+ * so this selector stops matching and the letter comes back with nothing else to do. hidden rather
+ * than dropped, because a logo drawn on its own transparency over a visible letter is two marks in
+ * one circle.
+ */
+.logo:has(img) .initial {
+	visibility: hidden;
 }
 
 /*
@@ -214,6 +295,64 @@ button {
 .option[aria-disabled='true'] .coin-ticker,
 .option[aria-disabled='true'] .coin-label {
 	color: var(--_n10);
+}
+
+/*
+ * the chips between the box and the list: one per flag the served list carries, narrowing what the
+ * list holds while a search runs inside it. they are buttons outside the listbox rather than rows
+ * in it, and ../coin-picker.ts's header is where that is argued.
+ *
+ * the vocabulary is the frequency segment's (`[part~='frequency-option']` in ./parts.css): what says
+ * chosen is the ground and the ink and never the weight, because a chip that went bold on the press
+ * would be wider than the chip beside it and the row would shift under the finger that pressed it.
+ */
+.chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--_sp2);
+}
+
+.chip {
+	min-block-size: var(--_target-min);
+	padding: var(--_sp1) var(--_sp2);
+	border: 0;
+	border-radius: var(--_r-in);
+	background: none;
+	color: var(--_n11);
+	font-size: var(--_t-sm);
+	font-weight: var(--_w-medium);
+	cursor: pointer;
+}
+
+/*
+ * an unchosen chip rests on the open row's own ground (`.band.open` in ./rows.css), so the pointer
+ * steps it to the rung under that and the press one further — the ramp's answer for a control that
+ * is not drawn in the brand.
+ */
+.chip[aria-pressed='false']:hover {
+	background: var(--_n4);
+}
+
+.chip[aria-pressed='false']:active {
+	background: var(--_n5);
+}
+
+/*
+ * chosen, and raised rather than filled: the card's own ground under a primary word, which is how a
+ * chosen cadence and a chosen amount are said. the primary fills the one control that spends the
+ * gift and nothing else on this card.
+ */
+.chip[aria-pressed='true'] {
+	background: var(--_n1);
+	color: var(--_p);
+}
+
+.chip[aria-pressed='true']:hover {
+	color: var(--_p-hover);
+}
+
+.chip[aria-pressed='true']:active {
+	color: var(--_p-press);
 }
 
 .no-match {
