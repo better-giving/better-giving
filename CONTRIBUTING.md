@@ -73,7 +73,7 @@ Which package may import which is enforced by `biome.jsonc`'s overrides (`CLAUDE
 
 ## CI
 
-`.github/workflows/ci.yml` gates a push to `main` and every pull request, and it is the only quality gate: nothing gates a local commit. Four independent jobs: `checks` (a non-writing `biome format`, `lint`, `check`), `test` (`pnpm -r --workspace-concurrency=1 test`, one package at a time), `browser-test` (`packages/form`'s `test:browser`, real Chromium, two CSS properties a lightweight DOM cannot see), `go-test` (`go test ./...` in `packages/console`, unconditional — CI always has Go). Nothing gates a deploy either; `deploy` runs its own preflight (`scripts/preflight-deploy.js`).
+`.github/workflows/ci.yml` gates a push to `main` and every pull request, and it is the only quality gate: nothing gates a local commit. Four independent jobs, each its own check: `checks` (a non-writing `biome format`, `lint`, `check`), `test`, `browser-test` (`packages/form`'s `test:browser`, real Chromium, two CSS properties a lightweight DOM cannot see), `go-test` (`packages/console`'s Go module, which the pnpm suite cannot reach and which CI always has Go for). Nothing gates a deploy either; `deploy` runs its own preflight (`scripts/preflight-deploy.js`).
 
 ## Tests
 
