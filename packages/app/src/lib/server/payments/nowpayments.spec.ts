@@ -185,16 +185,42 @@ describe('listPayableCoins — the coins the account takes', () => {
 		expect(result).toEqual({
 			ok: true,
 			value: [
-				{ coin: 'btc', name: 'Bitcoin', network: 'Bitcoin', ticker: 'btc', memoRequired: false },
-				{ coin: 'xrp', name: 'Ripple', network: 'Ripple', ticker: 'xrp', memoRequired: false },
+				{
+					coin: 'btc',
+					name: 'Bitcoin',
+					network: 'Bitcoin',
+					ticker: 'btc',
+					memoRequired: false,
+					popular: false,
+					stablecoin: false
+				},
+				{
+					coin: 'xrp',
+					name: 'Ripple',
+					network: 'Ripple',
+					ticker: 'xrp',
+					memoRequired: false,
+					popular: false,
+					stablecoin: false
+				},
 				{
 					coin: 'usdttrc20',
 					name: 'Tether USD (Tron)',
 					network: 'Tron',
 					ticker: 'usdt',
-					memoRequired: false
+					memoRequired: false,
+					popular: false,
+					stablecoin: false
 				},
-				{ coin: 'luna', name: 'Terra', network: 'Terra', ticker: 'luna', memoRequired: true }
+				{
+					coin: 'luna',
+					name: 'Terra',
+					network: 'Terra',
+					ticker: 'luna',
+					memoRequired: true,
+					popular: false,
+					stablecoin: false
+				}
 			]
 		});
 	});
@@ -224,10 +250,84 @@ describe('listPayableCoins — the coins the account takes', () => {
 					name: 'Tether USD (Tron)',
 					network: 'Tron',
 					ticker: 'usdt',
-					memoRequired: false
+					memoRequired: false,
+					popular: false,
+					stablecoin: false
 				}
 			]
 		});
+	});
+
+	// `logo_url` is a path on NOWPayments' own site, and the row is drawn into a page this project does
+	// not own, where a path resolves against the host's origin (`PayableCoin` in @better-giving/form/v1).
+	it('carries the coin’s logo as an address on the processor’s own site', async () => {
+		serving(listing(['BTC'], [{ ...BTC, logo_url: '/images/coins/btc.svg' }, USDTTRC20]));
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).listPayableCoins();
+
+		expect(result.ok && result.value[0]?.logo).toBe('https://nowpayments.io/images/coins/btc.svg');
+	});
+
+	it('takes a logo the list already states in full as it stands', async () => {
+		serving(listing(['BTC'], [{ ...BTC, logo_url: 'https://cdn.example.com/btc.svg' }, USDTTRC20]));
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).listPayableCoins();
+
+		expect(result.ok && result.value[0]?.logo).toBe('https://cdn.example.com/btc.svg');
+	});
+
+	// the logo is what a row shows and never what a gift is built from, so a coin carrying none is one
+	// a donor can still pick: the picker draws its lettered mark instead.
+	it('offers a coin whose logo is absent, not text, or not https, carrying no logo', async () => {
+		serving(
+			listing(
+				['BTC', 'XRP', 'SOL', 'LUNA'],
+				[
+					{ ...BTC, logo_url: 'http://nowpayments.io/images/coins/btc.svg' },
+					{ ...XRP, logo_url: 12 },
+					SOL,
+					{ ...LUNA, logo_url: 'https://' },
+					USDTTRC20
+				]
+			)
+		);
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).listPayableCoins();
+
+		expect(result.ok && result.value.map((coin) => coin.coin)).toEqual([
+			'btc',
+			'xrp',
+			'sol',
+			'luna'
+		]);
+		expect(result.ok && result.value.every((coin) => coin.logo === undefined)).toBe(true);
+	});
+
+	// the chips the picker draws read these two and nothing else: a list of the coins we consider
+	// popular is a table this repo keeps and forgets, where NOWPayments states its own.
+	it('carries the list’s own popular and stablecoin flags, reading anything but true as false', async () => {
+		serving(
+			listing(
+				['BTC', 'XRP', 'SOL', 'USDTTRC20'],
+				[
+					{ ...BTC, is_popular: true, is_stable: false },
+					{ ...XRP, is_popular: 'true', is_stable: 1 },
+					SOL,
+					{ ...USDTTRC20, is_stable: true }
+				]
+			)
+		);
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).listPayableCoins();
+
+		expect(
+			result.ok && result.value.map((coin) => [coin.coin, coin.popular, coin.stablecoin])
+		).toEqual([
+			['btc', true, false],
+			['xrp', false, false],
+			['sol', false, false],
+			['usdttrc20', false, true]
+		]);
 	});
 
 	// the list is read by a public config boot; a minimum per coin would be hundreds of subrequests on

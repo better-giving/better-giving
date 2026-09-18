@@ -1147,14 +1147,43 @@ function acceptedCoinOf(
 	if (field(currency, 'enable') !== true || field(currency, 'available_for_payment') !== true) {
 		return null;
 	}
+	const logo = logoAddress(currency);
 	return {
 		coin: code.toLowerCase(),
 		name,
 		network: networkName(network),
 		ticker: ticker.toLowerCase(),
 		memoRequired:
-			field(currency, 'extra_id_exists') === true && field(currency, 'extra_id_optional') !== true
+			field(currency, 'extra_id_exists') === true && field(currency, 'extra_id_optional') !== true,
+		popular: field(currency, 'is_popular') === true,
+		stablecoin: field(currency, 'is_stable') === true,
+		...(logo === null ? {} : { logo })
 	};
+}
+
+/** where NOWPayments serves the coin logos its list carries as paths. */
+const LOGO_ORIGIN = 'https://nowpayments.io';
+
+/**
+ * the coin's own logo, as an absolute `https:` address, or null where the list carries none this app
+ * can resolve — a coin still payable as any other, and drawn without a picture.
+ *
+ * `logo_url` is a path on NOWPayments' site (`/images/coins/btc.svg`), so the origin it is served
+ * from is supplied and the path itself never is: a logo assembled from a coin's code would be a
+ * table this repo keeps and NOWPayments moves. an entry already stating an address in full is used
+ * as it stands, and nothing but `https:` is kept — the row is drawn into a page this project does
+ * not own (`PayableCoin` in @better-giving/form/v1 argues it).
+ */
+function logoAddress(currency: unknown): string | null {
+	const stated = stringField(currency, 'logo_url');
+	if (stated === null) return null;
+	let resolved: URL;
+	try {
+		resolved = new URL(stated, LOGO_ORIGIN);
+	} catch {
+		return null;
+	}
+	return resolved.protocol === 'https:' ? resolved.href : null;
 }
 
 /**

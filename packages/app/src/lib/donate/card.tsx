@@ -1,3 +1,4 @@
+import type { CoinOption } from '@better-giving/form/coin-picker';
 import { connect, type CheckoutSnapshot, type State } from '@better-giving/form/connect';
 import { createDepositBlock, type DepositView } from '@better-giving/form/deposit';
 import { takeResumeToken } from '@better-giving/form/embed/resume';
@@ -310,13 +311,16 @@ function CheckoutCard({
 	// ── the coin a crypto gift is sent in ────────────────────────────────────────────────────────
 
 	const coinChoice = api.coinSelect;
-	const pickedCoin = coinChoice.options.find((option) => option.value === coinChoice.box.value);
+	// `connect` states the whole of a coin — the network, the logo and the two flags the picker's chips
+	// read — where ./normalize.ts's `SelectProps` describes only what a select needs of an option.
+	const coinOptions = coinChoice.options as readonly CoinOption[];
+	const pickedCoin = coinOptions.find((option) => option.value === coinChoice.box.value);
 	// a coin the account refused is said whenever it is the one picked — the quote that refused it was
 	// the press — and every coin refused is said as the way on being another rail. a coin never picked
 	// is said only once a press asked for one.
 	const coinRefused = pickedCoin?.refused === true;
 	const coinWords = coinRefused
-		? coinChoice.options.every((option) => option.refused === true)
+		? coinOptions.every((option) => option.refused === true)
 			? copy.EVERY_COIN_REFUSED
 			: copy.COIN_REFUSED
 		: pressed && onCrypto && api.state.step === 'give' && !api.state.payerComplete
@@ -326,12 +330,7 @@ function CheckoutCard({
 		live?.coins.update(
 			{
 				value: coinChoice.box.value,
-				options: coinChoice.options.map((option) => ({
-					value: option.value,
-					label: option.label,
-					name: option.name ?? '',
-					refused: option.refused === true
-				})),
+				options: coinOptions,
 				onChange: (value) => coinChoice.set(value)
 			},
 			coinWords

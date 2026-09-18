@@ -659,6 +659,15 @@ export type PayableCoin = {
 	 * what says whether that payment carries one.
 	 */
 	readonly memoRequired: boolean;
+	/**
+	 * the processor's own logo for the coin, absolute and `https:`, absent where its list carries none
+	 * this app can resolve. a coin without one is payable as any other and is drawn by its name.
+	 */
+	readonly logo?: string;
+	/** whether the processor lists the coin as a popular one, absent where its list does not say. */
+	readonly popular?: boolean;
+	/** whether the processor lists the coin as a stablecoin, absent where its list does not say. */
+	readonly stablecoin?: boolean;
 };
 
 /**

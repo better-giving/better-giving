@@ -99,7 +99,7 @@ A child carrying `slot="loading"` (`<p slot="loading">Loading…</p>`, or a bloc
 
 The form needs seven directives, and the one most often missing is your own deployment.
 
-Which vendor lines you need follows the processors your deployment holds: the Stripe lines matter to a deployment taking cards, the PayPal ones to a deployment taking PayPal or Venmo, the Chariot ones to a deployment taking gifts from a donor-advised fund, and a deployment holding more than one needs each. Naming all of them is harmless on a deployment that uses one.
+Which vendor lines you need follows the processors your deployment holds: the Stripe lines matter to a deployment taking cards, the PayPal ones to a deployment taking PayPal or Venmo, the Chariot ones to a deployment taking gifts from a donor-advised fund, the NOWPayments one to a deployment taking crypto, and a deployment holding more than one needs each. Naming all of them is harmless on a deployment that uses one.
 
 Write `<your deployment origin>` as the origin the snippet's `src` points at, scheme and host, no path.
 
@@ -124,6 +124,7 @@ frame-src    https://js.stripe.com https://*.js.stripe.com
 img-src      'self' data:
              https://www.paypalobjects.com
              https://cdn.givechariot.com
+             https://nowpayments.io
 
 font-src     https://cdn.givechariot.com
 
@@ -137,6 +138,8 @@ style-src    'unsafe-inline'
 **`frame-src https://www.paypal.com` is PayPal's equivalent.** PayPal opens its approval window as a browser popup, which no policy of yours governs, but when a donor's browser blocks that popup, PayPal falls back to an overlay inside your page, and that overlay is a frame. Leave this out and the form works until a donor has popups blocked, which is a great many of them. `https://history.paypal.com` and `https://account.venmo.com` are the same line for Venmo, and only a deployment offering Venmo needs them.
 
 **`img-src https://www.paypalobjects.com` is the one nobody predicts.** PayPal's buttons are drawn in your page rather than in a frame of PayPal's, so their wordmarks are images your policy has to allow. Leave it out and the PayPal button renders as a blank gold pill: a control that looks broken and that nobody presses. `'self' data:` rides with it because naming `img-src` at all stops images falling back to `default-src`, which would take the form's own art down.
+
+**`img-src https://nowpayments.io` is the crypto option's, and it is the one you can leave out.** Each coin in the list draws its logo from the crypto processor's own site, loaded when a donor opens the list. Left out, every row draws the round lettered mark it already draws for a coin the processor lists no logo for: a plainer list, and every coin still pickable. Only a deployment offering crypto loads them at all.
 
 **`connect-src https://api-m.paypal.com` is the one with the widest blast radius.** The form asks PayPal which methods this donor is eligible for before it draws anything, so a blocked read is not a missing Venmo button; it is no PayPal buttons at all, on every page load.
 
