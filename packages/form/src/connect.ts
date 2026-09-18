@@ -278,6 +278,11 @@ export type State =
 			readonly deposit: Deposit;
 			/** the quote's own total, which the address screen states as what the coin is worth today. */
 			readonly totalMinor: number;
+			/**
+			 * the fee the donor covered, which the address screen states as its own entry beside the
+			 * gift. zero where the donor declined it, and that is the entry the screen leaves out.
+			 */
+			readonly feeMinor: number;
 			/** where the same details were emailed, off the committed payer. */
 			readonly email: string;
 			/**
@@ -504,6 +509,7 @@ export function toState(snapshot: CheckoutSnapshot): State {
 				step: 'awaitingDeposit',
 				deposit,
 				totalMinor: context.quote.totalMinor,
+				feeMinor: context.quote.feeMinor,
 				email: context.payer.email,
 				expiresIn: Number.isFinite(until) ? Math.max(0, until - context.ports.now()) : 0,
 				closed: snapshot.matches({ awaitingDeposit: { address: 'closed' } })

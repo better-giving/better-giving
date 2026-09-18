@@ -704,6 +704,8 @@ describe('the crypto projection', () => {
 			step: 'awaitingDeposit',
 			deposit: DEPOSIT,
 			totalMinor: 2525,
+			// the fee the donor covered, which the screen states as an entry of its own.
+			feeMinor: 25,
 			email: 'donor@example.org',
 			// the send-by less this device's clock, which is `PORTS.now` above and years behind it.
 			expiresIn: Date.parse(DEPOSIT.validUntil) - 1_700_000_000_000,

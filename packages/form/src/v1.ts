@@ -404,6 +404,11 @@ export type Mandate = {
  * into a wallet — a digit lost to a float is an address paid the wrong amount. it is shown and never
  * computed with.
  *
+ * `giftCoinAmount` is the same kind of text for the gift alone — `coinAmount` less the fee the donor
+ * covered — and is absent where the quote does not state it, in which case the screen states the
+ * total alone. one field rather than two: the fee is the difference between the two figures, and a
+ * third figure on the wire is a third thing that can disagree with the other two.
+ *
  * `memo` is null where the payment carries none, and a screen never drops one that is present: a
  * deposit to a memo coin's address without it cannot be matched to the gift.
  *
@@ -419,6 +424,7 @@ export type Deposit = {
 	readonly coin: string;
 	readonly network: string;
 	readonly coinAmount: string;
+	readonly giftCoinAmount?: string;
 	readonly validUntil: string;
 	readonly qr: { readonly rows: readonly string[] };
 };

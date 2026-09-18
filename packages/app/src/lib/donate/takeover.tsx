@@ -1,5 +1,5 @@
 import type { State } from '@better-giving/form/connect';
-import type { DepositScreen } from '@better-giving/form/deposit';
+import { coinDifference, type DepositScreen, isFigure } from '@better-giving/form/deposit';
 import { RECONCILIATION_LABELS } from '@better-giving/form/fee';
 import { PAYMENT_METHOD_LABELS, type FormConfig } from '@better-giving/form/v1';
 import { part, partWhen } from '@better-giving/form/parts';
@@ -45,6 +45,14 @@ export type Takeover = {
 	readonly deposit: DepositScreen | null;
 	/** the way out of the screen: beside the primary where there is one, alone where there is not. */
 	readonly secondary: { readonly label: string } | null;
+	/**
+	 * the line under the way out, on the one screen that has one.
+	 *
+	 * it stands there rather than among the notes because of what it is for: the details are in the
+	 * donor's inbox, which is the whole reason they may close this page — so it is read under the
+	 * control that leaves, where it reads as permission rather than as a note nobody needed.
+	 */
+	readonly secondaryNote: string;
 };
 
 export const BLANK: Takeover = {
@@ -62,7 +70,8 @@ export const BLANK: Takeover = {
 	primary: null,
 	primaryNote: '',
 	deposit: null,
-	secondary: null
+	secondary: null,
+	secondaryNote: ''
 };
 
 /**
@@ -102,26 +111,31 @@ function depositScreen(
 	money: (minor: number) => string
 ): DepositScreen {
 	const { deposit } = state;
-	const org = config.orgLegalName;
 	const coin = config.coins?.find((offered) => offered.coin === deposit.coin);
+	// the gift in coin is stated only where the quote stated it. the fee is then the difference
+	// between the two figures rather than a third one, so the three rows cannot disagree.
+	const stated = deposit.giftCoinAmount;
+	const gift = stated !== undefined && isFigure(stated) ? stated : null;
+	const fee = gift === null ? null : coinDifference(deposit.coinAmount, gift);
 	return {
-		coinAmount: deposit.coinAmount,
 		// the processor's own code where the served list no longer names the coin: a figure with no
 		// unit beside it is not one a donor can type into a wallet.
 		ticker: (coin?.ticker ?? deposit.coin).toUpperCase(),
-		about: copy.aboutToday(money(state.totalMinor)),
 		network: deposit.network,
-		networkWarning: copy.networkWarning(org),
+		networkWarning: copy.networkWarning(config.orgLegalName, deposit.memo !== null),
+		gift: gift === null ? null : { figure: gift, worth: money(state.totalMinor - state.feeMinor) },
+		fee:
+			fee === null || state.feeMinor === 0 ? null : { figure: fee, worth: money(state.feeMinor) },
+		total: { figure: deposit.coinAmount, worth: money(state.totalMinor) },
+		instruction: copy.SEND_INSTRUCTION,
 		address: deposit.address,
 		memo: deposit.memo,
-		memoWarning: coin?.memoRequired === true ? copy.memoWarning(org) : '',
 		qr: deposit.qr?.rows ?? null,
 		expiry: {
 			left: state.expiresIn,
 			moment: formatMoment(Date.parse(deposit.validUntil), config.locale),
 			words: copy.expiresIn
 		},
-		email: copy.detailsSentTo(state.email),
 		status: copy.WAITING_FOR_GIFT
 	};
 }
@@ -250,7 +264,8 @@ export function takeoverFor(
 				...BLANK,
 				heading: copy.SEND_HEADING,
 				deposit: depositScreen(state, config, money),
-				secondary: { label: copy.USE_DIFFERENT_COIN }
+				secondary: { label: copy.USE_DIFFERENT_COIN },
+				secondaryNote: copy.detailsSentTo(state.email)
 			};
 
 		case 'depositExpired':
@@ -431,14 +446,24 @@ export function TakeoverScreen({
 			<p className="aside" hidden={screen.primaryNote === ''}>
 				{screen.primaryNote}
 			</p>
-			<button
-				part={part('action-quiet')}
-				type="button"
-				hidden={screen.secondary === null}
-				onClick={onSecondary}
-			>
-				{screen.secondary?.label ?? ''}
-			</button>
+			{/*
+			 * the way out and the line that makes taking it safe are one group, so the line stands under
+			 * the control at the group's own step rather than a screen's step away from it. every other
+			 * takeover writes no line and the group is the control alone.
+			 */}
+			<div className="foot" hidden={screen.secondary === null && screen.secondaryNote === ''}>
+				<button
+					part={part('action-quiet')}
+					type="button"
+					hidden={screen.secondary === null}
+					onClick={onSecondary}
+				>
+					{screen.secondary?.label ?? ''}
+				</button>
+				<p className="aside" hidden={screen.secondaryNote === ''}>
+					{screen.secondaryNote}
+				</p>
+			</div>
 		</section>
 	);
 }

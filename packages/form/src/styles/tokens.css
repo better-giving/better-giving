@@ -428,6 +428,16 @@
 	--_bad-tint: oklch(0.972 0.018 27);
 	--_warn-line: oklch(0.895 0.07 85);
 	--_warn-tint: oklch(0.975 0.026 85);
+	/*
+	 * attention on a mark and on a word standing outside a band — the warn ramp's own hue at the
+	 * lightness the neutral ink rung takes, authored as a pair with `--_n1` and shipping as authored.
+	 *
+	 * the exception the paragraph above states is bounded to what has no band to stand in: the
+	 * question mark on the network row, which is the caution itself folded onto a control, and the
+	 * send-by, which is a deadline rather than the news a band carries (`.expiry` in ./parts.css).
+	 * a word inside a band stays on the ramp, and this is not a second ink for one.
+	 */
+	--_warn-ink: oklch(0.49 0.12 85);
 
 	/*
 	 * two corners for the whole component: `--_r` is the card and every box drawn directly on it,

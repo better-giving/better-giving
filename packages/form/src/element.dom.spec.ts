@@ -455,9 +455,9 @@ function primary(card: Mounted): HTMLElement {
 	return card.find('.takeover > [part~="action"]');
 }
 
-/** the takeover's secondary control. */
+/** the takeover's secondary control, which stands in the foot with whatever line follows it. */
 function secondary(card: Mounted): HTMLElement {
-	return card.find('.takeover > [part~="action-quiet"]');
+	return card.find('.takeover > .foot > [part~="action-quiet"]');
 }
 
 /** what one element on the card says, or nothing at all when it is not on screen. */
@@ -4040,7 +4040,7 @@ describe('the endings', () => {
 		expect(card.text('.row.total .row-label')).toBe('Charged today');
 		// the only ending with a way back to the first step. it is the quiet control, because this
 		// donor is owed no act — the loud one on the two recovery screens is a repair.
-		expect(shows(card, '.takeover > [part~="action-quiet"]')).toBe('Back to start');
+		expect(shows(card, '.takeover > .foot > [part~="action-quiet"]')).toBe('Back to start');
 		expect(primary(card).hidden).toBe(true);
 	});
 
@@ -5175,6 +5175,7 @@ describe('a crypto gift', () => {
 			coin: 'usdttrc20',
 			network: 'Tron',
 			coinAmount: '25.004187',
+			giftCoinAmount: '24.756622',
 			validUntil: VALID_UNTIL,
 			qr: { rows: ['110', '011', '101'] }
 		}
@@ -5187,7 +5188,8 @@ describe('a crypto gift', () => {
 			memo: '3198472051',
 			coin: 'xrp',
 			network: 'Ripple',
-			coinAmount: '19.36121163'
+			coinAmount: '19.36121163',
+			giftCoinAmount: '18.68949000'
 		}
 	};
 
@@ -5292,7 +5294,7 @@ describe('a crypto gift', () => {
 		expect(card.find('#payment-problem').hidden).toBe(true);
 	});
 
-	it('shows where and how much to send, in the order a donor reads it', async () => {
+	it('shows what is being sent and where, in the order a donor reads it', async () => {
 		const { card } = await atAddress();
 
 		expect(heading(card)).toBe('Send your gift');
@@ -5300,34 +5302,54 @@ describe('a crypto gift', () => {
 		expect(block.hidden).toBe(false);
 		const read = [
 			...block.querySelectorAll<HTMLElement>(
-				'[part~="label"], .value, .aside, .attention, .expiry, .status'
+				'[part~="label"], .value, .worth, .attention, .expiry, .status'
 			)
 		]
 			.filter((node) => node.closest('[hidden]') === null)
 			.map((node) => node.textContent);
 		expect(read).toEqual([
-			// what has to arrive, rather than what to send: the fee a wallet or an exchange takes out of
-			// a send is the donor's to add, and no figure on this card can name it.
-			'Amount that must arrive',
+			'Network',
+			'Tron',
+			// the account: the gift, the fee the donor covered, and what has to arrive — each in coin
+			// and in the money they decided in.
+			'Amount',
+			'24.756622 USDT',
+			'$25.00',
+			'Fee coverage',
+			// the fee is the difference between the two figures either side of it rather than a third
+			// figure off the wire, so the three agree.
+			'0.247565 USDT',
+			'$0.25',
+			'Total',
 			'25.004187 USDT',
-			'About $25.25 today',
-			'Tron network',
-			'Send on this network only, or your gift may not reach Acme Relief Fund.',
+			'$25.25',
+			// the one thing to do, with the figure and the address set into the sentence.
+			'25.004187 USDT',
+			'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',
 			// the send-by as what is left of it, off `PORTS.now` and a week out, on the code it closes.
 			'Expires in 6 days',
-			'Address',
-			'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',
-			'Also sent to donor@example.org.',
 			'Waiting for your gift'
 		]);
-		expect(block.querySelector('.attention')?.textContent).toContain('Send on this network only,');
+		expect(card.text('.deposit .instruction')).toBe(
+			'Send 25.004187 USDT to this address TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV'
+		);
+		// nothing stands open at rest: the caution is behind the mark on the network's own row.
+		const mark = block.querySelector('.caution') as HTMLButtonElement;
+		expect(mark.getAttribute('aria-label')).toBe('About sending on the Tron network');
+		expect(mark.getAttribute('aria-expanded')).toBe('false');
+		mark.click();
+		expect(card.text('.deposit .attention')).toBe(
+			'Send on this network only, or your gift may not reach Acme Relief Fund.'
+		);
 		expect(block.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
 			'QR code for the address'
 		);
 		expect(block.querySelector('.qr path')?.getAttribute('d')).toBe(
 			'M0 0h2v1h-2zM1 1h2v1h-2zM0 2h1v1h-1zM2 2h1v1h-1z'
 		);
-		expect(shows(card, '.takeover > [part~="action-quiet"]')).toBe('Use a different coin');
+		expect(shows(card, '.takeover > .foot > [part~="action-quiet"]')).toBe('Use a different coin');
+		// the way out and the line that makes taking it safe, as one pair under the card's own voice.
+		expect(card.text('.takeover > .foot > .aside')).toBe('Also sent to donor@example.org.');
 		expect(card.find('.receipt-slot').hidden).toBe(true);
 	});
 
@@ -5353,21 +5375,46 @@ describe('a crypto gift', () => {
 		expect((await closing(29 * 60 * 1000)).textContent).toBe('Expires in 29 min');
 	});
 
-	it('warns about the memo where the coin needs one, and quiets the network’s warning', async () => {
+	it('sets the memo into the sentence, and puts both dangers behind the network’s mark', async () => {
 		const { card } = await atAddress(XRP, 'XRP');
 		const block = card.find('.deposit');
 
-		const attention = [...block.querySelectorAll<HTMLElement>('.attention')].filter(
+		expect(card.text('.deposit .instruction')).toBe(
+			'Send 19.36121163 XRP to this address rLJsrwVTayaqCnQZnxLLLvcz6kS3LwqhkX and include memo 3198472051'
+		);
+		// one caution on the screen and it stands behind the mark: on a payment carrying a memo it
+		// carries both dangers rather than leaving the second as a clause in running prose.
+		const standing = [...block.querySelectorAll<HTMLElement>('.attention')].filter(
 			(node) => !node.hidden
 		);
-		expect(attention.map((node) => node.textContent)).toEqual([
-			'Include this memo, or your gift may not reach Acme Relief Fund.'
-		]);
-		expect([...block.querySelectorAll('.aside')].map((node) => node.textContent)).toContain(
-			'Send on this network only, or your gift may not reach Acme Relief Fund.'
+		expect(standing).toEqual([]);
+		(block.querySelector('.caution') as HTMLButtonElement).click();
+		expect(card.text('.deposit .attention')).toBe(
+			'Send on this network only, or your gift may not reach Acme Relief Fund. Include the memo, or it cannot be matched to you.'
 		);
 		expect([...block.querySelectorAll('.value')].map((node) => node.textContent)).toContain(
 			'3198472051'
+		);
+	});
+
+	it('states the total alone where the quote names no gift it can read', async () => {
+		const unreadable: Quote = {
+			...USDT,
+			deposit: {
+				...(USDT.deposit as NonNullable<Quote['deposit']>),
+				// untrusted json: a figure that is not a decimal is one no row can state, and the screen
+				// drops the entry rather than printing it beside a dollar figure it does not match.
+				giftCoinAmount: '25,00'
+			}
+		};
+		const { card } = await atAddress(unreadable);
+		const labels = [...card.find('.deposit').querySelectorAll<HTMLElement>('.entry')]
+			.filter((row) => !row.hidden)
+			.map((row) => row.querySelector('[part~="label"]')?.textContent);
+
+		expect(labels).toEqual(['Network', 'Total']);
+		expect(card.text('.deposit .instruction')).toBe(
+			'Send 25.004187 USDT to this address TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV'
 		);
 	});
 
@@ -5453,7 +5500,7 @@ describe('a crypto gift', () => {
 			/^The address for this gift closed on November 21, 2023 at .+\. If you sent your gift before then, this page changes when it arrives\.$/
 		);
 		expect(card.find('.deposit').hidden).toBe(true);
-		expect(card.find('.takeover > [part~="action-quiet"]').hidden).toBe(true);
+		expect(card.find('.takeover > .foot > [part~="action-quiet"]').hidden).toBe(true);
 	});
 
 	it('offers a new address once the server says this one expired, and starts again at the coin', async () => {

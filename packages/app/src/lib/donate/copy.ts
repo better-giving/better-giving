@@ -427,15 +427,31 @@ export const START_AGAIN = 'Start again';
 /** the address screen, where a crypto gift is sent from the donor's own wallet. */
 export const SEND_HEADING = 'Send your gift';
 export const USE_DIFFERENT_COIN = 'Use a different coin';
-export function aboutToday(total: string): string {
-	return `About ${total} today`;
+/**
+ * both dangers of a crypto send, in the one caution the network row holds: the chain the gift goes
+ * out on, and — where the payment carries a memo — the string that is the whole of how it is matched
+ * to this donor.
+ *
+ * the memo half is keyed off the payment carrying one rather than off the coin requiring one: what
+ * the donor has to include is what the quote handed over, and a coin that names no rule can still
+ * come back with a memo on it.
+ */
+export function networkWarning(org: string, carriesMemo: boolean): string {
+	const network = `Send on this network only, or your gift may not reach ${org}.`;
+	return carriesMemo ? `${network} Include the memo, or it cannot be matched to you.` : network;
 }
-export function networkWarning(org: string): string {
-	return `Send on this network only, or your gift may not reach ${org}.`;
-}
-export function memoWarning(org: string): string {
-	return `Include this memo, or your gift may not reach ${org}.`;
-}
+/**
+ * the one sentence the address screen is for, as the runs of words between the values set into it.
+ *
+ * the spaces are the sentence's own: each run is read straight up against the figure, the address or
+ * the memo beside it, and the block sets no space of its own between them (`instruction` in
+ * @better-giving/form/deposit).
+ */
+export const SEND_INSTRUCTION = {
+	lead: 'Send ',
+	toAddress: ' to this address ',
+	andMemo: ' and include memo '
+} as const;
 /**
  * how long the address has left, which is the one thing on this screen stated as a duration.
  *

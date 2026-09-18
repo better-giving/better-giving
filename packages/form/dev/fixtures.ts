@@ -439,9 +439,19 @@ const READINGS_BEFORE_ENDING = 3;
 /** how long an address stays open on the `received` and `expired` endings. */
 const ADDRESS_OPEN_MS = 30 * 60 * 1000;
 
-/** a whole-coin figure as `Deposit.coinAmount`'s canonical decimal text. */
-function coinAmount(totalMinor: number, priceMinor: number): string {
-	return (totalMinor / priceMinor).toFixed(8).replace(/\.?0+$/, '');
+/**
+ * a whole-coin figure as `Deposit.coinAmount`'s decimal text, cut where the server cuts it.
+ *
+ * the deployment asks for the figure carrying only the decimals worth about a cent (`askedAmount` in
+ * packages/app/src/lib/server/payments/nowpayments.ts), so the dev page is drawn from figures of that
+ * length rather than from eight decimals nobody is ever shown. what has to arrive is rounded up and
+ * the gift inside it down, which is what leaves the fee the difference between the two.
+ */
+function coinAmount(totalMinor: number, priceMinor: number, round: 'up' | 'down'): string {
+	const places = Math.max(0, Math.floor(Math.log10(priceMinor)));
+	const scale = 10 ** places;
+	const exact = (totalMinor / priceMinor) * scale;
+	return ((round === 'up' ? Math.ceil(exact) : Math.floor(exact)) / scale).toFixed(places);
 }
 
 /**
@@ -450,7 +460,12 @@ function coinAmount(totalMinor: number, priceMinor: number): string {
  * the refusal is an `EmbedFailure` carrying the code and floor, which is exactly what the real quote
  * port (`createQuote` in ../src/embed/api.ts) rejects with, so the machine routes it the same way.
  */
-function deposit(coin: string, totalMinor: number, ending: DepositEnding): Deposit {
+function deposit(
+	coin: string,
+	totalMinor: number,
+	feeMinor: number,
+	ending: DepositEnding
+): Deposit {
 	const wallet = WALLETS[coin];
 	const served = COINS.find((one) => one.coin === coin);
 	if (wallet === undefined || served === undefined) {
@@ -468,7 +483,8 @@ function deposit(coin: string, totalMinor: number, ending: DepositEnding): Depos
 		memo: served.memoRequired ? MEMO : null,
 		coin,
 		network: wallet.network,
-		coinAmount: coinAmount(totalMinor, wallet.priceMinor),
+		coinAmount: coinAmount(totalMinor, wallet.priceMinor, 'up'),
+		giftCoinAmount: coinAmount(totalMinor - feeMinor, wallet.priceMinor, 'down'),
 		validUntil: new Date(until).toISOString(),
 		qr: { rows: QR_ROWS }
 	};
@@ -501,7 +517,7 @@ function ports(config: FormConfig, ending: DepositEnding): CheckoutPorts {
 				paymentToken: `don_dev_${minted}`,
 				feeMinor,
 				totalMinor,
-				deposit: deposit(request.coin, totalMinor, ending)
+				deposit: deposit(request.coin, totalMinor, feeMinor, ending)
 			};
 		},
 		confirm: async () => ({ kind: 'succeeded' }),

@@ -4,9 +4,9 @@
 const SVG = 'http://www.w3.org/2000/svg';
 
 /**
- * lucide's `chevron-down`, `search`, `check`, `copy` and `circle-alert` (https://lucide.dev, ISC),
- * each drawn in `currentColor` at its source's own stroke. a circle or a rect is written as the path
- * it describes.
+ * lucide's `chevron-down`, `search`, `check`, `copy`, `circle-alert` and `circle-help`
+ * (https://lucide.dev, ISC), each drawn in `currentColor` at its source's own stroke. a circle or a
+ * rect is written as the path it describes.
  */
 const GLYPHS = {
 	chevron: ['m6 9 6 6 6-6'],
@@ -16,7 +16,15 @@ const GLYPHS = {
 		'M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z',
 		'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2'
 	],
-	alert: ['M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0', 'M12 8v4', 'M12 16h.01']
+	alert: ['M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0', 'M12 8v4', 'M12 16h.01'],
+	// the question the mark on the network row answers, which is not the danger mark: the caution it
+	// opens is there to be read, and the danger mark on a row nothing has gone wrong on reads as a
+	// failure already on the card.
+	help: [
+		'M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0',
+		'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3',
+		'M12 17h.01'
+	]
 } as const;
 
 export type GlyphName = keyof typeof GLYPHS;

@@ -588,7 +588,7 @@ export type DepositInstructions = {
 	 */
 	readonly network: string;
 	/**
-	 * what the donor is asked to send, and the one figure every surface shows.
+	 * what the donor is asked to send, and the one figure a wallet is ever given.
 	 *
 	 * a donor reads this off a screen and types or pastes it into a wallet, so it carries only the
 	 * decimals worth about a cent, rounded up, and never more than the coin can be sent in
@@ -600,6 +600,19 @@ export type DepositInstructions = {
 	 * gift paid to an address settles at what arrived (`Arrival` below), never at what was asked.
 	 */
 	readonly coinAmount: CoinAmount;
+	/**
+	 * the donor's own figure in the coin — `coinAmount` less the fee they chose to cover — absent
+	 * where there is no second figure to state.
+	 *
+	 * cut at the same place `coinAmount` is, and cut down where that one is cut up, so the fee a
+	 * screen shows between them is exactly their remainder and the three figures sum as drawn. it
+	 * follows that this is strictly smaller than `coinAmount` whenever it is present: a donor who
+	 * declined the fee has one figure, not two, and it is `coinAmount` alone.
+	 *
+	 * shown and never sent. what the donor sends is `coinAmount`, and what the gift settles at is
+	 * what arrived (`Arrival` below).
+	 */
+	readonly giftCoinAmount?: CoinAmount;
 	/** when the address stops being watched for this payment. */
 	readonly validUntil: Date;
 };

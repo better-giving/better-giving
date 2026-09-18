@@ -1535,11 +1535,23 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 .value.name {
 	font-family: var(--_font);
+	font-size: var(--_t-sm);
 }
 
-/* the one figure the screen is for, at the size the receipt's total takes on a takeover. */
+/* an entry's coin figure, on the same edge every other figure in the block ends on. */
 .value.amount {
-	font-size: var(--_t-xl);
+	font-size: var(--_t-sm);
+	text-align: end;
+	white-space: nowrap;
+}
+
+/*
+ * the total: the figure that has to arrive, and the only thing on the screen set in the monospace
+ * face at the card's own base. a size step and a weight step above the entries, which is all the
+ * ladder has left to give it — `--_t-lg` and `--_t-xl` go unused on this screen.
+ */
+.entry.total .value.amount {
+	font-size: var(--_t-md);
 	font-weight: var(--_w-bold);
 	line-height: var(--_lh-tight);
 }
@@ -1550,11 +1562,11 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * they share. a ticker quieted in ink as well parts from the figure and reads as a second line
  * rather than as the end of this one, and the ink is what the two have to keep to sit together.
  *
- * `--_t-sm` is `em` off the figure it sits inside, so the step is against `--_t-xl` and not against
- * the card's base — three letters at about 19px on the default root, which no floor is near. the
- * weight is `--_w-normal` because this is a word read against a neighbour at another weight, which
- * is the one thing `--_w-medium` cannot do (./tokens.css states why): on a stack shipping 400 and 700
- * alone, 500 resolves to the figure's own 400 and the ranking disappears.
+ * `--_t-sm` is `em` off the figure it sits inside, so the step is against whichever size that figure
+ * took and never against the card's base. the weight is `--_w-normal` because this is a word read
+ * against a neighbour at another weight, which is the one thing `--_w-medium` cannot do
+ * (./tokens.css states why): on a stack shipping 400 and 700 alone, 500 resolves to the figure's own
+ * 400 and the ranking disappears.
  */
 .value.amount > .ticker {
 	font-size: var(--_t-sm);
@@ -1562,15 +1574,165 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
- * an address or a memo: one small line, cut in the middle where the column is narrower than the
- * value (`oneLine` in ../deposit.ts). the head gives up its width and ends in the ellipsis; the tail
+ * what a coin figure is worth, one ladder down the block in one treatment: the gloss on the figure
+ * beside it and never the figure itself, so it does not change rank on the total. this is the
+ * account the donor actually decided in, which is why it is the column that runs the block's whole
+ * height.
+ */
+.worth {
+	margin: 0;
+	color: var(--_n10);
+	font-family: var(--_font);
+	font-size: var(--_t-xs);
+	line-height: var(--_lh-body);
+	text-align: end;
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* the total is the one entry read as a statement rather than as a line of one, in ink and weight. */
+.entry.total > [part~='label'] {
+	color: var(--_n12);
+	font-weight: var(--_w-bold);
+}
+
+/*
+ * the rule the account is read against, and the only hairline on the block. it takes the block's own
+ * gap back as padding under the line, so the line sits with the same space either side of it.
+ */
+.entry.total {
+	padding-block-start: var(--_sp2);
+	border-block-start: var(--_border) solid var(--_n6);
+}
+
+/*
+ * on this screen the values are what a donor reads and the labels only name them, so a label steps
+ * down to the card's own weight and leaves the ranking to the value's size and ink.
+ */
+.deposit [part~='label'] {
+	font-weight: var(--_w-normal);
+}
+
+/* the one sentence the screen is for, at the card's small step and one line height throughout. */
+.instruction {
+	margin: 0;
+	font-size: var(--_t-sm);
+	line-height: var(--_lh-body);
+}
+
+/*
+ * what the two controls on this screen have in common: no edge, no word, and none of the standing
+ * shape a control drawn as words takes. `::part(action-quiet)` still reaches both, which is why it
+ * is scoped here rather than written on the part.
+ */
+.deposit [part~='action-quiet'] {
+	min-block-size: 0;
+	padding: 0;
+	color: var(--_n11);
+	font-size: var(--_t-md);
+	text-decoration: none;
+}
+
+/*
+ * the mark that opens the network's caution: the mark alone, at the glyph's own size, with the 44px
+ * target laid around it and painting nothing. this one is not in a sentence — it stands at the end
+ * of a row's value — so it carries the full target, and out of flow, because a target carried by the
+ * box itself would prop the row open to the target's height rather than the text's.
+ *
+ * the ground while its caution is standing is the same step the card's quiet controls take under a
+ * pointer, with the mark keeping its warning ink: the open state is the same mark, not a second one.
+ */
+.deposit .caution {
+	position: relative;
+	display: inline-grid;
+	place-items: center;
+	align-self: center;
+	flex: none;
+	inline-size: var(--_box);
+	block-size: var(--_box);
+	color: var(--_warn-ink);
+}
+
+.deposit .caution::before {
+	content: '';
+	position: absolute;
+	place-self: center;
+	inline-size: var(--_row-min);
+	block-size: var(--_row-min);
+}
+
+.deposit .caution[aria-expanded='true'] {
+	background: var(--_n4);
+}
+
+/*
+ * a value lifted out of that sentence, and the control that copies it: the run is the control.
+ *
+ * rung 3 is the ladder's own ui-element ground, so the value is marked out of the prose by standing
+ * on it rather than by a colour or a weight the prose could also take — and that ground is what a
+ * donor sees pressed, because the whole run is what they press. rung 4 under the pointer and under
+ * the press, the same step every quiet control on this card takes.
+ *
+ * one control per value and no control inside another: the mark is the affordance and never a target
+ * of its own (`run` in ../deposit.ts argues what that buys and what it costs).
+ */
+.deposit .run {
+	align-items: baseline;
+	padding: 0 var(--_sp1);
+	background: var(--_n3);
+	border-radius: var(--_r-in);
+	white-space: nowrap;
+}
+
+.deposit .run:hover,
+.deposit .run:active {
+	background: var(--_n4);
+}
+
+/*
+ * the mark inside the run: the glyph's own size, one character clear of the value, with every face
+ * it can show — the copy mark, the tick, the danger mark — stacked in one grid cell so only the one
+ * `data-outcome` names is visible. the run is that same shape in every state and nothing in the
+ * sentence moves on a press. `visibility` rather than `display`, because a face taken out of the
+ * layout sizes nothing.
+ *
+ * with no word on it the mark carries the outcome on its own, so what a donor not looking at the
+ * card is told is the live region's sentence and nothing else (`run` in ../deposit.ts).
+ */
+.deposit .run .mark {
+	display: inline-grid;
+	place-items: center;
+	align-self: center;
+	flex: none;
+	inline-size: var(--_box);
+	block-size: var(--_box);
+	margin-inline-start: 1ch;
+}
+
+.deposit .run:hover .mark {
+	color: var(--_n12);
+}
+
+/*
+ * an address or a memo: one line, cut in the middle where the sentence is narrower than the value
+ * (`oneLine` in ../deposit.ts). the head gives up its width and ends in the ellipsis; the tail
  * never shrinks, so the last characters a donor checks against their wallet are always drawn.
  * `whole` is the value a refused copy selected, wrapped anywhere so every character is on screen.
+ *
+ * a value inside a control is not selectable by default on every engine, and the refused copy shows
+ * it selected so it can be taken by hand: that path is the whole reason this is declared.
  */
 .value.line {
 	display: flex;
-	font-size: var(--_t-sm);
+	/*
+	 * the value's own baseline is what the run hands the sentence it sits in: without it the run is
+	 * baseline-aligned by its bottom edge and the line carrying a value stands a descender taller
+	 * than the lines around it.
+	 */
+	align-items: baseline;
+	min-inline-size: 0;
 	white-space: nowrap;
+	user-select: text;
 }
 
 .value.line > .head {
@@ -1583,68 +1745,18 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 .value.line.whole {
-	display: block;
+	display: inline;
 	white-space: normal;
 }
 
-/*
- * on this screen the values are what a donor reads and the labels only name them, so a label steps
- * down to the card's own weight and leaves the ranking to the value's size and ink.
- */
-.deposit [part~='label'] {
-	font-weight: var(--_w-normal);
+/* the figure inside the sentence, which is the same figure the account totals to. */
+.value.sent {
+	font-weight: var(--_w-bold);
 }
 
-/* the warning under the network or the memo, a step tighter than a box that stands on its own. */
+/* the caution behind the mark, a step tighter than a box that stands on its own. */
 .deposit .attention {
 	padding: var(--_sp2) var(--_sp3);
-}
-
-/*
- * the send-by, standing on the code and the address it closes. a quiet line and not a box: a
- * deadline a donor still has time to meet is not the same news as a gift sent to the wrong network,
- * and the attention band is spent on the second of those.
- *
- * `--_n11` is the ink the attention band's own words take (./tokens.css), so this is that word
- * without its band — which is as close to a warning tone as a line standing on its own gets here:
- * the card has no warning shade for a word, on the grounds that the band already says it.
- */
-.deposit .expiry {
-	margin: 0;
-	color: var(--_n11);
-	font-size: var(--_t-sm);
-}
-
-/*
- * the Copy at the end of a value's row: the mark alone, no edge and no word, on a square of the
- * card's own target. `::part(action-quiet)` still reaches it, which is why its shape is scoped here
- * rather than written on the part.
- *
- * every face it can show — the copy mark, the tick, the danger mark — is stacked in one grid cell
- * and only the one `data-outcome` names is visible, so the button is that same square in every
- * state and nothing beside it moves on a press. `visibility` rather than `display`, because a face
- * taken out of the layout sizes nothing.
- *
- * the square is the target, so nothing here draws one: `--_row-min` on both axes is what a finger
- * gets, and the ring hugs that square's own edge (the focus block below).
- *
- * with the word gone the mark carries the outcome on its own, so what a donor not looking at the
- * card is told is the live region's sentence and nothing else (`copyControl` in ../deposit.ts).
- */
-.deposit [part~='action-quiet'] {
-	display: inline-grid;
-	align-self: center;
-	inline-size: var(--_row-min);
-	block-size: var(--_row-min);
-	min-block-size: 0;
-	padding: 0;
-	color: var(--_n11);
-	text-decoration: none;
-}
-
-.deposit [part~='action-quiet']:hover {
-	background: var(--_n4);
-	color: var(--_n12);
 }
 
 .copy-face {
@@ -1655,13 +1767,14 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	visibility: hidden;
 }
 
-[data-outcome='ready'] > .copy-face.ready,
-[data-outcome='copied'] > .copy-face.copied,
-[data-outcome='failed'] > .copy-face.failed {
+[data-outcome='ready'] .copy-face.ready,
+[data-outcome='copied'] .copy-face.copied,
+[data-outcome='failed'] .copy-face.failed {
 	visibility: visible;
 }
 
-.copy-glyph {
+.copy-glyph,
+.caution-glyph {
 	flex: none;
 	inline-size: var(--_box);
 	block-size: var(--_box);
@@ -1676,25 +1789,45 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
+ * the send-by, standing under the code it closes. a word in warning ink and not a band: a deadline a
+ * donor still has time to meet is not the same news as a gift sent to the wrong network, and the
+ * band is spent on the second of those. `--_warn-ink` is the one ink this system draws a word in
+ * outside a band, and ./tokens.css states what bounds it.
+ *
+ * the margin takes back the empty head of its own line, so what stands between the modules and this
+ * ink is the code's quiet zone and nothing the layout added.
+ */
+.deposit .expiry {
+	margin: calc((var(--_t-xs) - var(--_t-xs) * var(--_lh-body)) / 2) 0 0;
+	color: var(--_warn-ink);
+	font-size: var(--_t-xs);
+}
+
+/*
  * the QR: dark modules on a light ground, because a camera reads a code that way round and no other.
  * both are fixed rungs of the neutral ladder, which the seed never reaches (./tokens.css), and both
- * are set here rather than inherited, so a host's own `color` cannot invert the code. the quiet zone
- * is inside the drawing — four modules, the code's own margin (`qrViewBox` in ../deposit.ts) — so it
- * scales with the modules rather than with the card's type. its size is four rows, a size a phone
- * camera reads at arm's length; no token names a code's size, and the rows are the token's.
+ * are set here rather than inherited, so a host's own `color` cannot invert the code.
+ *
+ * no box, no hairline and no padding of its own: the dark modules are the shape, and the margin a
+ * scanner needs is inside the drawing (`QUIET_SIDE` in ../deposit.ts) so it scales with the modules
+ * rather than with the card's type.
  */
 .qr {
 	background: var(--_n1);
-	border: var(--_border) solid var(--_n6);
-	border-radius: var(--_r-in);
 	color: var(--_n12);
 	line-height: 0;
 }
 
 .qr svg {
 	display: block;
-	inline-size: calc(var(--_row-min) * 4);
-	block-size: calc(var(--_row-min) * 4);
+	/*
+	 * one line height of the sentence per four modules, which is what makes the code's own quiet zone
+	 * the white the eye reads between the words and the modules. the module count is the matrix's and
+	 * the block hands it over (`--_qr-columns` in ../deposit.ts); the height follows the drawing's own
+	 * box, which is shorter than it is wide by the two modules the underside is drawn at.
+	 */
+	inline-size: calc(var(--_qr-columns) * var(--_t-sm) * var(--_lh-body) / 4);
+	block-size: auto;
 	shape-rendering: crispEdges;
 }
 
@@ -1702,7 +1835,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 .status {
 	margin: 0;
 	color: var(--_n11);
-	font-size: var(--_t-sm);
+	font-size: var(--_t-xs);
 }
 
 .status .spinner {

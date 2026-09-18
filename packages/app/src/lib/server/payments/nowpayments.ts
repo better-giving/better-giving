@@ -1,6 +1,7 @@
 import { majorText } from '../../forms/amounts';
 import {
 	DONATION_METADATA_KEY,
+	GIFT_MINOR_METADATA_KEY,
 	type AccountChargeability,
 	type Arrival,
 	type Intent,
@@ -300,7 +301,8 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 				donationId,
 				coin,
 				accepted.value.networkName,
-				accepted.value.decimals.get(coin) ?? null
+				accepted.value.decimals.get(coin) ?? null,
+				giftSplitOf(request)
 			);
 		},
 
@@ -693,7 +695,8 @@ function intentOf(
 	donationId: string,
 	asked: string,
 	networkName: (network: string) => string,
-	decimals: number | null
+	decimals: number | null,
+	gift: GiftSplit
 ): PaymentResult<Intent> {
 	const id = digitsOrNull(paymentIdField(payment, 'payment_id'));
 	const address = stringField(payment, 'pay_address');
@@ -717,6 +720,8 @@ function intentOf(
 	if (coin !== asked || stringField(payment, 'order_id') !== donationId) {
 		return unreadable(`a payment in ${coin} for another gift or coin than the one asked for`);
 	}
+	const places = centPlaces(coinAmount, decimalField(payment, 'price_amount'), decimals);
+	const giftCoinAmount = giftAmount(coinAmount, places, gift.giftMinor, gift.totalMinor);
 	return {
 		ok: true,
 		value: {
@@ -727,7 +732,8 @@ function intentOf(
 				memo: idField(payment, 'payin_extra_id'),
 				coin,
 				network: networkName(network),
-				coinAmount: askedAmount(coinAmount, decimalField(payment, 'price_amount'), decimals),
+				coinAmount: askedAmount(coinAmount, places),
+				...(giftCoinAmount === null ? {} : { giftCoinAmount }),
 				validUntil
 			}
 		}
@@ -735,13 +741,61 @@ function intentOf(
 }
 
 /**
- * what the donor is asked to send: `pay_amount` carrying only the decimals worth about a cent,
- * rounded up, and never more than the coin can be sent in.
+ * how the charge splits, in the cents the request was priced in: the donor's own figure, and the
+ * whole of what they are paying.
  *
- * `pay_amount` is priced to the coin's full precision — `48.07692308 XRP` — and a donor reads this
+ * `giftMinor` is null where the request stated none — unknown, never "no fee", so the deposit states
+ * the total alone rather than a split guessed at.
+ */
+type GiftSplit = { readonly giftMinor: number | null; readonly totalMinor: number };
+
+/**
+ * the split off the request that is about to be paid.
+ *
+ * read off the metadata the same call writes onto the payment, because that is where this app states
+ * the donor's own figure — the charge is minted at the grossed-up total and the gift has no field of
+ * its own (`GIFT_MINOR_METADATA_KEY` in ./provider.ts). anything but a plain count of cents is
+ * unreadable rather than coerced: it is the numerator of a figure a donor reads.
+ */
+function giftSplitOf(request: IntentRequest): GiftSplit {
+	const stated = request.metadata?.[GIFT_MINOR_METADATA_KEY] ?? '';
+	const giftMinor = /^\d+$/.test(stated) ? Number(stated) : Number.NaN;
+	return {
+		giftMinor: Number.isSafeInteger(giftMinor) ? giftMinor : null,
+		totalMinor: request.amountMinor
+	};
+}
+
+/**
+ * the decimal both of a deposit's figures are cut at: the last one worth about a cent, and never
+ * more than the coin can be sent in. null where the price or the coin's decimals do not read.
+ *
+ * `pay_amount` is priced to the coin's full precision — `48.07692308 XRP` — and a donor reads the
  * figure off a screen to type or paste into a wallet. the decimals that matter are the ones a cent
  * buys: at `usd` a unit, the last digit worth about a cent is decimal `floor(log10(usd / 0.01))`,
  * which is 1 for a unit around 52¢ and 7 for one around $100,000.
+ *
+ * one place for the pair, computed once, because the fee a screen states is the remainder of the two
+ * figures either side of it: cut at two places they are two figures whose difference is not the fee.
+ *
+ * the arithmetic is the digits NOWPayments sent, never a double: `floor(log10(a/b))` is the
+ * difference of the two exponents, less one where `a`'s mantissa is the smaller.
+ */
+function centPlaces(
+	coinAmount: string,
+	dollars: string | null,
+	decimals: number | null
+): number | null {
+	const price = dollars === null ? null : exactOf(dollars);
+	const amount = exactOf(coinAmount);
+	if (price === null || amount === null || decimals === null) return null;
+	const perUnit =
+		exponentOf(price) - exponentOf(amount) - (mantissaCompare(price, amount) < 0 ? 1 : 0);
+	return Math.min(decimals, Math.max(perUnit + 2, 0));
+}
+
+/**
+ * what the donor is asked to send: `pay_amount` at the place a cent buys, rounded up.
  *
  * **up, never down.** this figure is what has to arrive: rounded down, the donor sends short and
  * NOWPayments settles a `partially_paid` deposit against a gift they meant to give in full. rounded
@@ -750,20 +804,55 @@ function intentOf(
  * time this runs, minted at its own `pay_amount` against the coin's minimum, and no call carries
  * this figure back.
  *
- * the arithmetic is the digits NOWPayments sent, never a double: `floor(log10(a/b))` is the
- * difference of the two exponents, less one where `a`'s mantissa is the smaller.
- *
- * the figure NOWPayments sent, unrounded, where the price or the coin's decimals do not read — the
- * exact amount is always sendable, where a figure rounded on a precision nobody could read is a
- * guess at what a wallet takes.
+ * the figure NOWPayments sent, unrounded, where there is no place to cut at — the exact amount is
+ * always sendable, where a figure rounded on a precision nobody could read is a guess at what a
+ * wallet takes.
  */
-function askedAmount(coinAmount: string, dollars: string | null, decimals: number | null): string {
-	const price = dollars === null ? null : exactOf(dollars);
+function askedAmount(coinAmount: string, places: number | null): string {
+	return places === null ? coinAmount : roundedUpAt(coinAmount, places);
+}
+
+/**
+ * the donor's own figure in the coin, cut down at the place the total was cut up, or null where
+ * there is no second figure to state (`DepositInstructions.giftCoinAmount` in ./provider.ts).
+ *
+ * **down, where the total goes up**, at the one place both are cut at: the fee a screen states is
+ * the remainder of the two, so bracketing the true figures is what makes the three rows sum exactly
+ * as drawn. the direction is also the safe one to be wrong in — the donor is never told they gave
+ * more than they did, and the fee they covered is never understated.
+ *
+ * **nothing is sent from this figure and nothing is settled against it.** what the donor sends is
+ * the total, minted and floored by NOWPayments against the coin's minimum before either figure is
+ * cut, so cutting this one down reaches no minimum and no payment.
+ *
+ * null in the four cases the screen has no gift row for: a request that stated no gift; a donor who
+ * declined the fee, whose one figure is the total; a gift under the last place shown, which is a
+ * coin whose whole unit is most of the gift; and a total cut at no place at all, where a gift cut
+ * beside it would be a guess at a precision the coin never named.
+ *
+ * the arithmetic is the digits NOWPayments sent against the two integer cent figures, never a
+ * double: `digits × gift × 10^places / (total × 10^amountPlaces)`, truncated, which is the floor.
+ */
+function giftAmount(
+	coinAmount: string,
+	places: number | null,
+	giftMinor: number | null,
+	totalMinor: number
+): string | null {
 	const amount = exactOf(coinAmount);
-	if (price === null || amount === null || decimals === null) return coinAmount;
-	const perUnit =
-		exponentOf(price) - exponentOf(amount) - (mantissaCompare(price, amount) < 0 ? 1 : 0);
-	return roundedUpAt(coinAmount, Math.min(decimals, Math.max(perUnit + 2, 0)));
+	if (
+		amount === null ||
+		places === null ||
+		giftMinor === null ||
+		giftMinor <= 0 ||
+		giftMinor >= totalMinor
+	) {
+		return null;
+	}
+	const units =
+		(amount.digits * BigInt(giftMinor) * 10n ** BigInt(places)) /
+		(BigInt(totalMinor) * 10n ** BigInt(amount.places));
+	return units === 0n ? null : figureOf(units, places);
 }
 
 /** `floor(log10(x))` for a positive decimal: where its most significant digit stands. */
@@ -787,7 +876,12 @@ function roundedUpAt(amount: string, places: number): string {
 	if (fraction.length <= places) return amount;
 	const dropped = fraction.slice(places);
 	const kept = BigInt(`${whole}${fraction.slice(0, places)}`) + (/[1-9]/.test(dropped) ? 1n : 0n);
-	const digits = kept.toString().padStart(places + 1, '0');
+	return figureOf(kept, places);
+}
+
+/** a positive count of `places`-decimal units as a canonical decimal (`CoinAmount` in ./provider.ts). */
+function figureOf(units: bigint, places: number): string {
+	const digits = units.toString().padStart(places + 1, '0');
 	const integer = digits.slice(0, digits.length - places);
 	const tail = digits.slice(digits.length - places).replace(/0+$/, '');
 	return tail === '' ? integer : `${integer}.${tail}`;

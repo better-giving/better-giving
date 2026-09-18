@@ -907,9 +907,9 @@ describe('the coin list inside the crypto option', () => {
 	});
 });
 
-// the address screen: one centred column a donor reads top to bottom and checks against a wallet.
-// its values are what a donor retypes or checks, where `0` and `O`, `l` and `1` must not share a
-// shape; the words around them stay in the card's face.
+// the address screen: the account of what is being sent, and under it the one thing the donor is
+// asked to do. its values are what a donor retypes or checks, where `0` and `O`, `l` and `1` must
+// not share a shape; the words around them stay in the card's face.
 describe('the address screen', () => {
 	const mounts: HTMLElement[] = [];
 	const blocks: DepositView[] = [];
@@ -919,7 +919,7 @@ describe('the address screen', () => {
 		vi.restoreAllMocks();
 	});
 
-	/** longer than any column this card draws at one line of the address's own size. */
+	/** longer than any sentence this card draws at one line of the address's own size. */
 	const LONG =
 		'addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgs68faae';
 
@@ -942,7 +942,7 @@ describe('the address screen', () => {
 		const block = createDepositBlock(document, () => {});
 		blocks.push(block);
 		shadow.appendChild(block.root);
-		// the card's inset, which a Copy's target reaches into past the column's end.
+		// the card's inset, which a Copy's target reaches into past the sentence's end.
 		mount.style.cssText = `display: block; box-sizing: border-box; inline-size: ${width}; padding: var(--_inset);`;
 		if (seed !== undefined) {
 			// a host that inks its own page light-on-dark, which the card's text inherits from.
@@ -953,21 +953,25 @@ describe('the address screen', () => {
 		document.body.appendChild(mount);
 		mounts.push(mount);
 		block.update({
-			coinAmount: '19.36121163',
 			ticker: 'XRP',
-			about: 'About $25.00 today',
 			network: 'Ripple',
-			networkWarning: 'Send on this network only.',
+			networkWarning: 'Send on this network only, or your gift may not reach Acme Relief Fund.',
+			gift: { figure: '19.36', worth: '$25.00' },
+			fee: { figure: '0.70', worth: '$0.90' },
+			total: { figure: '20.06', worth: '$25.90' },
+			instruction: {
+				lead: 'Send ',
+				toAddress: ' to this address ',
+				andMemo: ' and include memo '
+			},
 			address,
 			memo: '3198472051',
-			memoWarning: 'Include this memo.',
 			qr: ['1110111', '1010101', '1110111', '0001000', '1110111', '1010101', '1110111'],
 			expiry: {
 				left: 6 * 24 * 60 * 60 * 1000,
 				moment: 'September 24, 2026 at 3:42 PM',
 				words: (left, unit) => `Expires in ${left} ${unit}${left === 1 ? '' : 's'}`
 			},
-			email: 'Also sent to ruth@example.org.',
 			status: 'Waiting for your gift'
 		});
 		return block.root;
@@ -1000,17 +1004,22 @@ describe('the address screen', () => {
 		return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)];
 	};
 
-	const groups = (root: HTMLElement) => {
-		const [address, memo] = [...root.querySelectorAll<HTMLElement>('.held:has(.line)')];
-		return { address: address as HTMLElement, memo: memo as HTMLElement };
+	/**
+	 * the two values inside the sentence. each highlighted run is itself the control that copies it,
+	 * so these are the buttons.
+	 */
+	const runs = (root: HTMLElement) => {
+		const [address, memo] = [...root.querySelectorAll<HTMLButtonElement>('button.run')];
+		return { address: address as HTMLButtonElement, memo: memo as HTMLButtonElement };
 	};
 
-	it('sets the amount, address and memo in the monospace stack', () => {
+	it('sets every figure, the address and the memo in the monospace stack', () => {
 		const values = [...drawn().querySelectorAll('.value:not(.name)')].map(
 			(node) => getComputedStyle(node).fontFamily
 		);
 
-		expect(values).toHaveLength(3);
+		// the three entries, the figure inside the sentence, and the two values copied out of it.
+		expect(values).toHaveLength(6);
 		for (const stack of values) {
 			expect(stack).toContain('ui-monospace');
 			expect(stack.endsWith('monospace')).toBe(true);
@@ -1019,7 +1028,7 @@ describe('the address screen', () => {
 
 	it('ranks the ticker under the figure it follows, on the figure’s own line', () => {
 		const root = drawn();
-		const amount = root.querySelector('.value.amount') as HTMLElement;
+		const amount = root.querySelector('.entry.total .value.amount') as HTMLElement;
 		const figure = amount.querySelector('.figure') as HTMLElement;
 		const ticker = amount.querySelector('.ticker') as HTMLElement;
 		const read = (node: HTMLElement) => {
@@ -1032,115 +1041,157 @@ describe('the address screen', () => {
 		expect(unit.size).toBeLessThan(value.size);
 		expect(unit.weight).toBeLessThan(value.weight);
 		// both halves are one string to anything reading the card rather than looking at it.
-		expect(amount.textContent).toBe('19.36121163 XRP');
-		// one line, the ticker after the figure and sitting on its baseline rather than under it.
+		expect(amount.textContent).toBe('20.06 XRP');
+		// one line, the ticker after the figure and sharing its line rather than sitting under it.
 		const [left, right] = [figure.getBoundingClientRect(), ticker.getBoundingClientRect()];
 		expect(right.left).toBeGreaterThanOrEqual(left.right - 1);
-		expect(right.bottom).toBeCloseTo(left.bottom, 0);
+		expect(right.top).toBeLessThan(left.bottom);
+		expect(left.top).toBeLessThan(right.bottom);
 	});
 
-	it('leaves the network’s name, the labels and the prose in the card’s face', () => {
+	it('ranks the total over the entries it totals, and its worth under both', () => {
+		const root = drawn();
+		const size = (selector: string) =>
+			Number.parseFloat(getComputedStyle(root.querySelector(selector) as Element).fontSize);
+
+		expect(size('.entry.total .value.amount')).toBeGreaterThan(size('.entry .value.amount'));
+		expect(size('.entry .worth')).toBeLessThan(size('.entry .value.amount'));
+	});
+
+	it('leaves the network’s name, the labels and the sentence in the card’s face', () => {
 		const root = drawn();
 		const family = (selector: string) =>
 			getComputedStyle(root.querySelector(selector) as Element).fontFamily;
 
 		expect(family('.value.name')).toContain('system-ui');
 		expect(family('[part~="label"]')).toContain('system-ui');
-		expect(family('.aside')).toContain('system-ui');
+		expect(family('.instruction')).toContain('system-ui');
 	});
 
 	it.each(['375px', '560px'])(
-		'stands every piece outside a value row on one centre line at %s',
+		'stands every piece of the instruction on one centre line at %s',
 		(width) => {
 			const root = drawn({ width });
 			const box = root.getBoundingClientRect();
 			const centre = box.left + box.width / 2;
-			const pieces = [
-				...root.querySelectorAll<HTMLElement>(
-					'.value, .aside, .attention, .expiry, [part~="label"], .qr, button, .status'
-				)
-			].filter(
-				// a value row's own three pieces stand across rather than on the centre and are read on
-				// their own below. the warning under the memo is not one of them: it is the same box the
-				// network draws and is centred like it.
-				(node) =>
-					node.closest('[hidden]') === null &&
-					(node.closest('.row') === null || node.matches('.attention'))
-			);
+			const pieces = [...root.querySelectorAll<HTMLElement>('.qr, .expiry, .status')];
 
-			expect(pieces.length).toBeGreaterThan(6);
+			expect(pieces).toHaveLength(3);
 			for (const piece of pieces) {
 				const ink = drawnExtent(piece);
-				const named = piece.className || piece.textContent;
+				const named = piece.className;
 				expect({ named, centred: Math.abs((ink.left + ink.right) / 2 - centre) < 1.5 }).toEqual({
 					named,
 					centred: true
 				});
 			}
+			// the sentence takes the whole column and centres its own lines, which is what keeps a
+			// value that drops to a line of its own on the same centre as the code under it.
+			const sentence = root.querySelector('.instruction') as HTMLElement;
+			expect(getComputedStyle(sentence).textAlign).toBe('center');
+			expect(sentence.getBoundingClientRect().width).toBeCloseTo(box.width, 0);
 		}
 	);
 
-	it('reads amount, network, the send-by, QR, address, memo, then the notes', () => {
+	it('reads the account, then the sentence, the code, the send-by and the status', () => {
 		const root = drawn();
 		const box = (selector: string) =>
 			(root.querySelector(selector) as HTMLElement).getBoundingClientRect();
-		const { address, memo } = groups(root);
-		const email = [...root.querySelectorAll<HTMLElement>('.aside')].at(-1) as HTMLElement;
+		const entries = [...root.querySelectorAll<HTMLElement>('.entry')].map(
+			(row) => row.getBoundingClientRect().top
+		);
 
 		const order = [
-			box('.value.amount').top,
-			box('.value.name').top,
-			box('.expiry').top,
+			...entries,
+			box('.instruction').top,
 			box('.qr').top,
-			address.getBoundingClientRect().top,
-			memo.getBoundingClientRect().top,
-			email.getBoundingClientRect().top,
+			box('.expiry').top,
 			box('.status').top
 		];
 		expect(order).toEqual([...order].sort((a, b) => a - b));
-		// the send-by stands on the code it closes: nearer the QR under it than the network above it.
-		const onTheCode = box('.qr').top - box('.expiry').bottom;
-		const network = (root.querySelector('.value.name') as HTMLElement).closest('.held');
-		const offTheNetwork =
-			box('.expiry').top - (network as HTMLElement).getBoundingClientRect().bottom;
-		expect(onTheCode).toBeLessThan(offTheNetwork);
+		// the send-by stands on the code it closes: nearer the modules over it than the status under it.
+		const onTheCode = box('.expiry').top - box('.qr').bottom;
+		const offTheStatus = box('.status').top - box('.expiry').bottom;
+		expect(onTheCode).toBeLessThan(offTheStatus);
 	});
 
-	it.each(['375px', '560px'])('sets a value on one row — label, value, Copy — at %s', (width) => {
-		const root = drawn({ width });
-		for (const group of [groups(root).address, groups(root).memo]) {
-			const named = (group.querySelector('[part~="label"]') as HTMLElement).textContent;
-			const label = (group.querySelector('[part~="label"]') as HTMLElement).getBoundingClientRect();
-			const value = (group.querySelector('.line') as HTMLElement).getBoundingClientRect();
-			const copy = (group.querySelector('button') as HTMLElement).getBoundingClientRect();
+	it.each(['375px', '560px'])(
+		'sets every entry on one row, on one set of columns at %s',
+		(width) => {
+			const root = drawn({ width });
+			const rows = [...root.querySelectorAll<HTMLElement>('.entry:not(.network)')];
+			const edges = new Set<number>();
 
-			// three boxes across in that order and all three on the one line, inside the column: a
-			// value too wide for its share would push the Copy off the end rather than wrap.
-			const shares = (one: DOMRect, two: DOMRect) => one.top < two.bottom && two.top < one.bottom;
-			expect({
-				named,
-				across: label.right <= value.left + 1 && value.right <= copy.left + 1,
-				together: shares(label, copy) && shares(value, copy),
-				inside: copy.right <= root.getBoundingClientRect().right + 1
-			}).toEqual({ named, across: true, together: true, inside: true });
+			expect(rows).toHaveLength(3);
+			for (const row of rows) {
+				const named = (row.querySelector('[part~="label"]') as HTMLElement).textContent;
+				const label = (row.querySelector('[part~="label"]') as HTMLElement).getBoundingClientRect();
+				const value = (row.querySelector('.value') as HTMLElement).getBoundingClientRect();
+				const worth = (row.querySelector('.worth') as HTMLElement).getBoundingClientRect();
+				edges.add(Math.round(worth.right));
+
+				// three boxes across in that order and all three on the one line: no row is propped open
+				// and none wraps.
+				const shares = (one: DOMRect, two: DOMRect) => one.top < two.bottom && two.top < one.bottom;
+				expect({
+					named,
+					across: label.right <= value.left + 1 && value.right <= worth.left + 1,
+					together: shares(label, worth) && shares(value, worth),
+					inside: worth.right <= root.getBoundingClientRect().right + 1
+				}).toEqual({ named, across: true, together: true, inside: true });
+			}
+			// one grid: every row's last column ends on the same edge.
+			expect(edges.size).toBe(1);
+		}
+	);
+
+	it('separates the rows by the block’s own gap and props none of them open', () => {
+		const root = drawn();
+		const rows = [...root.querySelectorAll<HTMLElement>('.entry:not(.network):not(.total)')];
+		const line = (row: HTMLElement) =>
+			Number.parseFloat(getComputedStyle(row.querySelector('.value') as Element).lineHeight);
+
+		for (const row of rows) {
+			// one line of text and nothing more: no padding of its own, no height it is held to.
+			expect(row.getBoundingClientRect().height).toBeCloseTo(line(row), 0);
 		}
 	});
 
-	it('narrows the value rather than its label or its Copy when the column narrows', () => {
-		const wide = groups(drawn({ width: '560px' })).address;
-		const narrow = groups(drawn({ width: '375px' })).address;
-		const width = (group: HTMLElement, selector: string) =>
-			(group.querySelector(selector) as HTMLElement).getBoundingClientRect().width;
+	it('lays the network’s caution over the rows under it rather than among them', async () => {
+		const root = drawn();
+		const mark = root.querySelector('.caution') as HTMLButtonElement;
+		const caution = root.querySelector('.attention') as HTMLElement;
+		const under = root.querySelector('.entry:not(.network)') as HTMLElement;
+		const before = under.getBoundingClientRect().top;
 
-		expect(width(narrow, '[part~="label"]')).toBeCloseTo(width(wide, '[part~="label"]'), 0);
-		expect(width(narrow, 'button')).toBeCloseTo(width(wide, 'button'), 0);
+		await userEvent.click(mark);
+
+		const band = caution.getBoundingClientRect();
+		expect(under.getBoundingClientRect().top).toBeCloseTo(before, 0);
+		// it stands on the warning band's own ground, over the rows it covers.
+		expect(band.bottom).toBeGreaterThan(before);
+		expect(bytes(getComputedStyle(caution).backgroundColor)).not.toEqual(
+			bytes(getComputedStyle(root).backgroundColor)
+		);
+		const middle = band.left + band.width / 2;
+		expect(
+			(root.getRootNode() as ShadowRoot).elementFromPoint(middle, band.top + band.height / 2)
+		).toBe(caution);
+	});
+
+	it('narrows the value rather than the mark beside it when the card narrows', () => {
+		const wide = runs(drawn({ width: '560px' })).address;
+		const narrow = runs(drawn({ width: '375px' })).address;
+		const width = (run: HTMLElement, selector: string) =>
+			(run.querySelector(selector) as HTMLElement).getBoundingClientRect().width;
+
+		expect(width(narrow, '.mark')).toBeCloseTo(width(wide, '.mark'), 0);
 		expect(width(narrow, '.line')).toBeLessThan(width(wide, '.line'));
 	});
 
 	it('keeps a long address on one line, with both of its ends in view', () => {
 		const root = drawn();
-		const { address } = groups(root);
-		const line = address.querySelector('.line') as HTMLElement;
+		const line = runs(root).address.querySelector('.line') as HTMLElement;
 		const head = line.querySelector('.head') as HTMLElement;
 		const tail = line.querySelector('.tail') as HTMLElement;
 		const edge = root.getBoundingClientRect();
@@ -1159,12 +1210,12 @@ describe('the address screen', () => {
 
 	it('draws an address that fits whole, with nothing cut', () => {
 		const root = drawn({ width: '560px', address: 'rDEVxFAKExADDRESSxNOTxREALxXRP0000' });
-		const head = groups(root).address.querySelector('.head') as HTMLElement;
+		const head = runs(root).address.querySelector('.head') as HTMLElement;
 
 		expect(head.scrollWidth).toBeLessThanOrEqual(head.clientWidth);
 	});
 
-	it('draws the QR dark on white with a quiet zone, under a dark seed on a dark host', () => {
+	it('draws the QR dark on white, four modules of ground around it and two underneath', () => {
 		const root = drawn({ seed: '#0a0a0a' });
 		const qr = root.querySelector('.qr') as HTMLElement;
 		const style = getComputedStyle(qr);
@@ -1173,68 +1224,144 @@ describe('the address screen', () => {
 		for (const channel of bytes(getComputedStyle(qr.querySelector('path') as Element).fill)) {
 			expect(channel).toBeLessThanOrEqual(80);
 		}
-		// four modules of ground on every side, which is the margin a scanner is built to expect. the
-		// fixture's first and last row and column each hold a dark module, so the path spans the code.
+		// the fixture's first and last row and column each hold a dark module, so the path spans the
+		// code and the ground around it is the quiet zone itself.
 		const code = (qr.querySelector('path') as SVGPathElement).getBoundingClientRect();
 		const ground = qr.getBoundingClientRect();
 		const module = code.width / 7;
-		expect(code.left - ground.left).toBeGreaterThanOrEqual(4 * module);
-		expect(ground.right - code.right).toBeGreaterThanOrEqual(4 * module);
-		expect(code.top - ground.top).toBeGreaterThanOrEqual(4 * module);
-		expect(ground.bottom - code.bottom).toBeGreaterThanOrEqual(4 * module);
+		expect(code.left - ground.left).toBeCloseTo(4 * module, 0);
+		expect(ground.right - code.right).toBeCloseTo(4 * module, 0);
+		expect(code.top - ground.top).toBeCloseTo(4 * module, 0);
+		// two underneath, so the send-by sits on the code rather than a second line height away.
+		expect(ground.bottom - code.bottom).toBeCloseTo(2 * module, 0);
 	});
 
-	it('holds the Copy’s square through every outcome, with a mark and no word in each', () => {
-		const button = groups(drawn()).address.querySelector('button') as HTMLButtonElement;
-		const target = Number.parseFloat(getComputedStyle(button).getPropertyValue('--_row-min'));
+	it('sizes the code so its own margin is the line height between it and the words', () => {
+		const root = drawn();
+		const qr = root.querySelector('.qr') as HTMLElement;
+		const code = (qr.querySelector('path') as SVGPathElement).getBoundingClientRect();
+		const line = Number.parseFloat(
+			getComputedStyle(root.querySelector('.instruction') as Element).lineHeight
+		);
+
+		expect((code.width / 7) * 4).toBeCloseTo(line, 0);
+	});
+
+	it('makes the whole run the control, with the mark inside it as affordance alone', () => {
+		const root = drawn();
+		const { address } = runs(root);
+		const shadow = root.getRootNode() as ShadowRoot;
+		const line = Number.parseFloat(
+			getComputedStyle(root.querySelector('.instruction') as Element).lineHeight
+		);
+		const box = address.getBoundingClientRect();
+		const mark = address.querySelector('.mark') as HTMLElement;
+
+		// one control per value and no control inside it: the mark is decoration and carries no target
+		// of its own, so two runs cannot cover the same pixel however the sentence wraps.
+		expect(address.querySelectorAll('button')).toHaveLength(0);
+		expect(mark.getAttribute('aria-hidden')).toBe('true');
+		expect(address.getAttribute('aria-label')).toBe('Copy address');
+		// the value is the control's description, so a reader is told what it copies as well as that
+		// it copies.
+		const value = address.querySelector('.line') as HTMLElement;
+		expect(address.getAttribute('aria-describedby')).toBe(value.id);
+		// the run is one line box of the sentence and the mark is the glyph's own size inside it.
+		expect(box.height).toBeCloseTo(line, 0);
+		// and the line it sits on keeps the prose's own leading: this fixture puts the two runs on
+		// consecutive lines, and a control that bent the text would show up as the gap between them.
+		const below = runs(root).memo.getBoundingClientRect();
+		expect(below.top - box.top).toBeLessThanOrEqual(line + 1.5);
+		expect(mark.getBoundingClientRect().width).toBeLessThan(box.width);
+		// a press lands on the control anywhere on its ground — on the value, and on the mark.
+		for (const x of [box.left + 2, box.right - 2]) {
+			expect(shadow.elementFromPoint(x, box.top + box.height / 2)?.closest('button')).toBe(address);
+		}
+	});
+
+	it('never covers one run’s ground with the other’s, at any value length', () => {
+		const overlap = (address: string, memo: string): number => {
+			const root = drawn({ address });
+			(runs(root).memo.querySelector('.line') as HTMLElement).textContent = memo;
+			const [one, two] = [runs(root).address, runs(root).memo].map((run) =>
+				run.getBoundingClientRect()
+			);
+			const across =
+				Math.min((one as DOMRect).right, (two as DOMRect).right) -
+				Math.max((one as DOMRect).left, (two as DOMRect).left);
+			const down =
+				Math.min((one as DOMRect).bottom, (two as DOMRect).bottom) -
+				Math.max((one as DOMRect).top, (two as DOMRect).top);
+			return Math.min(across, down);
+		};
+
+		// the two controls are inline boxes of the same paragraph, so whatever the values are and
+		// wherever the sentence breaks, neither reaches into the other.
+		for (const [address, memo] of [
+			['rDEVxFAKExADDRESSxNOTxREALxXRP0000', '104729'],
+			['rDEVxFAKExADDRESSxNOTxREALxXRP0000', '9876543210987654'],
+			['rDEVxFAKEXRP0000', '104729'],
+			['rDEVxFAKEXRP0000', '10']
+		]) {
+			expect({
+				address,
+				memo,
+				overlapping: overlap(address as string, memo as string) > 0
+			}).toEqual({ address, memo, overlapping: false });
+		}
+	});
+
+	it('holds the run’s mark through every outcome, with a mark and no word in each', () => {
+		const button = runs(drawn()).address;
 		const shown = () =>
 			[...button.querySelectorAll<HTMLElement>('.copy-face')].filter(
 				(face) => getComputedStyle(face).visibility === 'visible'
 			);
+		const first = (button.querySelector('.mark') as HTMLElement).getBoundingClientRect();
 
 		for (const outcome of ['ready', 'copied', 'failed']) {
 			button.dataset.outcome = outcome;
 			expect(shown()).toHaveLength(1);
 			expect(shown()[0]?.querySelector('svg')?.getBoundingClientRect().width).toBeGreaterThan(0);
-			const box = button.getBoundingClientRect();
-			// the square is the target itself, so every outcome is the same square and nothing beside
-			// the button moves on a press.
+			const box = (button.querySelector('.mark') as HTMLElement).getBoundingClientRect();
+			// the same box in every state, so no word in the sentence moves on a press.
 			expect({
 				outcome,
 				words: shown()[0]?.textContent,
 				width: box.width,
 				height: box.height
-			}).toEqual({ outcome, words: '', width: target, height: target });
+			}).toEqual({ outcome, words: '', width: first.width, height: first.height });
 		}
 	});
 
-	it('rings a Copy on its own edge, the square being the 44px target', async () => {
+	it('rings the run on its own edge, and paints its ground under a press', async () => {
 		const root = drawn();
-		const button = groups(root).address.querySelector('button') as HTMLButtonElement;
+		const button = runs(root).address;
+		const resting = getComputedStyle(button).backgroundColor;
 		const ring = await caretOn(button);
-		const edge = button.getBoundingClientRect();
-		const target = Number.parseFloat(ring.getPropertyValue('--_row-min'));
 		const shadow = root.getRootNode() as ShadowRoot;
 
+		// the ring hugs the ground a donor presses, with no gap and in the card's own ring colour
+		// rather than in anything the control's own tone changes.
 		expect(ring.boxShadow).toContain(used(shadow, '--_focus-ring'));
-		expect({ width: edge.width, height: edge.height }).toEqual({ width: target, height: target });
-		const x = edge.left + edge.width / 2;
-		expect(shadow.elementFromPoint(x, edge.top + 1)?.closest('button')).toBe(button);
-		expect(shadow.elementFromPoint(x, edge.bottom - 1)?.closest('button')).toBe(button);
+		expect(ring.outlineOffset === '' || Number.parseFloat(ring.outlineOffset) === 0).toBe(true);
+		expect(bytes(resting)).not.toEqual(bytes(used(shadow, '--_n4')));
 	});
 
-	it('leaves no ring on a Copy a pointer pressed', async () => {
-		const button = groups(drawn()).address.querySelector('button') as HTMLButtonElement;
+	it('leaves no ring on a run a pointer pressed', async () => {
+		const button = runs(drawn()).address;
 		await userEvent.click(button);
 
 		expect(getComputedStyle(button).boxShadow).toBe('none');
+		// the pointer outlives this test, and the run is wide enough to park it over whatever the next
+		// card draws in that column — which would be read as a hover state nobody asked for.
+		await userEvent.unhover(button);
 	});
 
 	it('shows the whole address, selected, when the clipboard refuses', async () => {
 		const root = drawn();
-		const { address } = groups(root);
-		const line = address.querySelector('.line') as HTMLElement;
-		const button = address.querySelector('button') as HTMLButtonElement;
+		const button = runs(root).address;
+		const line = button.querySelector('.line') as HTMLElement;
 		vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
 
 		button.click();

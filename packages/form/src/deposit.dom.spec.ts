@@ -1,5 +1,10 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { createDepositBlock, type DepositScreen, type DepositView } from './deposit';
+import {
+	coinDifference,
+	createDepositBlock,
+	type DepositScreen,
+	type DepositView
+} from './deposit';
 
 // the dom pool: the address block's own behaviour — the one line it writes itself. everything else
 // on the block is words the card hands it and is read whole on the card in ./element.dom.spec.ts;
@@ -19,17 +24,17 @@ const DAY = 24 * HOUR;
 const words = (left: number, unit: string): string => `${left} ${unit}`;
 
 const SCREEN: DepositScreen = {
-	coinAmount: '19.36121163',
 	ticker: 'XRP',
-	about: 'About $25.00 today',
 	network: 'Ripple',
 	networkWarning: 'Send on this network only.',
+	gift: { figure: '19.36', worth: '$25.00' },
+	fee: { figure: '0.70', worth: '$0.90' },
+	total: { figure: '20.06', worth: '$25.90' },
+	instruction: { lead: 'Send ', toAddress: ' to this address ', andMemo: ' and include memo ' },
 	address: 'rLJsrwVTayaqCnQZnxLLLvcz6kS3LwqhkX',
 	memo: null,
-	memoWarning: '',
 	qr: null,
 	expiry: { left: 6 * DAY, moment: 'September 25, 2026 at 7:07 AM', words },
-	email: 'Also sent to ruth@example.org.',
 	status: 'Waiting for your gift'
 };
 
@@ -50,6 +55,87 @@ afterEach(() => {
 		block.root.remove();
 	}
 	vi.useRealTimers();
+});
+
+it('states the fee as what the two figures beside it differ by, on the digits', () => {
+	expect([
+		// the fee row is exactly the remainder of the two figures either side of it, so the three
+		// agree however each was rounded on the way here.
+		coinDifference('20.06', '19.36'),
+		// the places are the wider of the two, so nothing is cut off a figure that carries more.
+		coinDifference('20.06', '19.3'),
+		coinDifference('74', '71.42857143'),
+		// a fee that rounds away at the places the figures are shown to, and a gift the fee was
+		// declined on: no difference to state, and no row for it.
+		coinDifference('25', '25'),
+		// a total under its own gift is a quote that cannot be read, not a negative fee.
+		coinDifference('19.36', '20.06'),
+		coinDifference('20.06', '1e3'),
+		coinDifference('20.06', '')
+	]).toEqual(['0.70', '0.76', '2.57142857', null, null, null, null]);
+});
+
+it('keeps the network’s caution behind its mark, and closes it again on the next address', () => {
+	const { block } = mounted();
+	const mark = block.root.querySelector('.caution') as HTMLButtonElement;
+	const caution = block.root.querySelector('.attention') as HTMLElement;
+	const reads = () => ({
+		named: mark.getAttribute('aria-label'),
+		open: mark.getAttribute('aria-expanded'),
+		standing: !caution.hidden
+	});
+
+	const readings = [reads()];
+	mark.click();
+	readings.push(reads());
+	mark.click();
+	readings.push(reads());
+	mark.click();
+	block.update({ ...SCREEN, address: 'rSECONDxADDRESSxFORxTHExSAMExGIFT' });
+	readings.push(reads());
+
+	// one name in both states: `aria-expanded` is what says which way it is.
+	expect(readings).toEqual([
+		{ named: 'About sending on the Ripple network', open: 'false', standing: false },
+		{ named: 'About sending on the Ripple network', open: 'true', standing: true },
+		{ named: 'About sending on the Ripple network', open: 'false', standing: false },
+		{ named: 'About sending on the Ripple network', open: 'false', standing: false }
+	]);
+	expect(caution.textContent).toBe('Send on this network only.');
+});
+
+it('states the entries the quote gave it, and no row for one it did not', () => {
+	const { block } = mounted();
+	const entries = () =>
+		[...block.root.querySelectorAll<HTMLElement>('.entry')]
+			.filter((row) => !row.hidden)
+			.map((row) => row.textContent);
+
+	const whole = entries();
+	// no gift figure in coin is no fee either: a fee beside a gift no figure names is a deduction
+	// from nothing.
+	block.update({ ...SCREEN, gift: null, fee: null });
+
+	expect(whole).toEqual([
+		'NetworkRippleSend on this network only.',
+		'Amount19.36 XRP$25.00',
+		'Fee coverage0.70 XRP$0.90',
+		'Total20.06 XRP$25.90'
+	]);
+	expect(entries()).toEqual(['NetworkRippleSend on this network only.', 'Total20.06 XRP$25.90']);
+});
+
+it('sets the memo into the sentence only where the payment carries one', () => {
+	const { block } = mounted();
+	const sentence = block.root.querySelector('.instruction') as HTMLElement;
+	const withoutMemo = sentence.textContent;
+
+	block.update({ ...SCREEN, memo: '3198472051' });
+
+	expect(withoutMemo).toBe('Send 20.06 XRP to this address rLJsrwVTayaqCnQZnxLLLvcz6kS3LwqhkX');
+	expect(sentence.textContent).toBe(
+		'Send 20.06 XRP to this address rLJsrwVTayaqCnQZnxLLLvcz6kS3LwqhkX and include memo 3198472051'
+	);
 });
 
 it('states how long is left as one whole figure, in the coarsest unit that has one', () => {

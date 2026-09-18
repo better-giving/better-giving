@@ -18,7 +18,13 @@
 
 import type { CheckoutApi, PropTypes, State } from './connect';
 import { createCoinPicker } from './coin-picker';
-import { createDepositBlock, type DepositScreen, type ExpiryUnit } from './deposit';
+import {
+	coinDifference,
+	createDepositBlock,
+	type DepositScreen,
+	type ExpiryUnit,
+	isFigure
+} from './deposit';
 import type { AmountDecision, PayerField } from './value';
 import { RECONCILIATION_LABELS, type DeductedFee } from './fee';
 import { currencySymbol, formatFigure, formatMinor, formatOffer, parseMinor } from './money';
@@ -484,6 +490,14 @@ type Takeover = {
 	readonly deposit: DepositScreen | null;
 	/** the way out of the screen: beside the primary where there is one, alone where there is not. */
 	readonly secondary: { readonly label: string } | null;
+	/**
+	 * the line under the way out, on the one screen that has one.
+	 *
+	 * it stands there rather than among the notes because of what it is for: the details are in the
+	 * donor's inbox, which is the whole reason they may close this page — so it is read under the
+	 * control that leaves, where it reads as permission rather than as a note nobody needed.
+	 */
+	readonly secondaryNote: string;
 };
 
 const BLANK: Takeover = {
@@ -501,7 +515,8 @@ const BLANK: Takeover = {
 	primary: null,
 	primaryNote: '',
 	deposit: null,
-	secondary: null
+	secondary: null,
+	secondaryNote: ''
 };
 
 /**
@@ -560,25 +575,34 @@ function depositScreen(
 	const { deposit } = state;
 	const org = config.orgLegalName;
 	const coin = config.coins?.find((offered) => offered.coin === deposit.coin);
+	// the gift in coin is stated only where the quote stated it. the fee is then the difference
+	// between the two figures rather than a third one, so the three rows cannot disagree.
+	const stated = deposit.giftCoinAmount;
+	const gift = stated !== undefined && isFigure(stated) ? stated : null;
+	const fee = gift === null ? null : coinDifference(deposit.coinAmount, gift);
 	return {
-		coinAmount: deposit.coinAmount,
 		// the processor's ticker where the served list names the coin, and its own code where it does
 		// not: a figure with no unit beside it is not one a donor can type into a wallet.
 		ticker: (coin?.ticker ?? deposit.coin).toUpperCase(),
-		about: `About ${money(state.totalMinor)} today`,
 		network: deposit.network,
-		networkWarning: `Send on this network only, or your gift may not reach ${org}.`,
+		// both dangers of a crypto send, behind the one mark: the chain it goes out on, and — on a
+		// payment carrying a memo — the string that is the whole of how it is matched to this donor.
+		networkWarning:
+			`Send on this network only, or your gift may not reach ${org}.` +
+			(deposit.memo === null ? '' : ' Include the memo, or it cannot be matched to you.'),
+		gift: gift === null ? null : { figure: gift, worth: money(state.totalMinor - state.feeMinor) },
+		fee:
+			fee === null || state.feeMinor === 0 ? null : { figure: fee, worth: money(state.feeMinor) },
+		total: { figure: deposit.coinAmount, worth: money(state.totalMinor) },
+		instruction: { lead: 'Send ', toAddress: ' to this address ', andMemo: ' and include memo ' },
 		address: deposit.address,
 		memo: deposit.memo,
-		memoWarning:
-			coin?.memoRequired === true ? `Include this memo, or your gift may not reach ${org}.` : '',
 		qr: deposit.qr?.rows ?? null,
 		expiry: {
 			left: state.expiresIn,
 			moment: formatMoment(Date.parse(deposit.validUntil), config.locale),
 			words: expiresIn
 		},
-		email: `Also sent to ${state.email}.`,
 		status: 'Waiting for your gift'
 	};
 }
@@ -711,7 +735,8 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 				...BLANK,
 				heading: 'Send your gift',
 				deposit: depositScreen(state, config, money),
-				secondary: { label: 'Use a different coin' }
+				secondary: { label: 'Use a different coin' },
+				secondaryNote: `Also sent to ${state.email}.`
 			};
 
 		// no email is sent when an address closes, so this screen is the donor's only notice of it.
@@ -2180,6 +2205,12 @@ export function createCard(
 	primaryButton.addEventListener('click', () => onPrimary?.());
 	secondaryButton.addEventListener('click', () => onSecondary?.());
 
+	// the way out and the line that makes taking it safe are one group, so the line stands under the
+	// control at the group's own step rather than a screen's step away from it. every other takeover
+	// writes no line and the group is the control alone.
+	const secondaryNote = make(doc, 'p', { class: 'aside', hidden: true });
+	const foot = make(doc, 'div', { class: 'foot', hidden: true }, [secondaryButton, secondaryNote]);
+
 	const takeover = make(doc, 'section', { class: 'step takeover', hidden: true }, [
 		takeoverHeading,
 		takeoverBody,
@@ -2192,7 +2223,7 @@ export function createCard(
 		depositBlock.root,
 		primaryButton,
 		primaryNote,
-		secondaryButton
+		foot
 	]);
 
 	// ── the card ───────────────────────────────────────────────────────────────────────────────
@@ -3081,6 +3112,9 @@ export function createCard(
 		);
 		setText(secondaryButton, screen.secondary?.label ?? '');
 		setHidden(secondaryButton, screen.secondary === null);
+		setText(secondaryNote, screen.secondaryNote);
+		setHidden(secondaryNote, screen.secondaryNote === '');
+		setHidden(foot, screen.secondary === null && screen.secondaryNote === '');
 
 		// the two controls carry a different event on every screen, so what they send is read off
 		// the state at press time rather than bound once per node. a press that lands after the

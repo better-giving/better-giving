@@ -853,6 +853,7 @@ function wireDeposit(deposit: DepositInstructions): Deposit {
 		coin: deposit.coin,
 		network: deposit.network,
 		coinAmount: deposit.coinAmount,
+		...(deposit.giftCoinAmount === undefined ? {} : { giftCoinAmount: deposit.giftCoinAmount }),
 		validUntil: deposit.validUntil.toISOString(),
 		qr: depositQr(deposit.address)
 	};

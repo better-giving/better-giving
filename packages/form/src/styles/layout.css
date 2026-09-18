@@ -278,15 +278,17 @@ form {
 }
 
 /*
- * the address screen is one centred column (`.deposit` below), so the heading over it and the way
- * back under it stand on that same centre line rather than on the card's start edge.
+ * the way out of a takeover and the line under it, as one group.
+ *
+ * the group is drawn on every takeover and holds the control alone on all but one of them, so a
+ * screen that does write the line puts it a step under the control rather than a screen's step away
+ * from it. the control keeps its own `align-self: start` (`[part~='action-quiet']` in ./parts.css),
+ * which is what leaves both on the card's start edge.
  */
-.takeover:has(> .deposit:not([hidden])) {
-	text-align: center;
-}
-
-.takeover:has(> .deposit:not([hidden])) > [part~='action-quiet'] {
-	align-self: center;
+.foot {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp1);
 }
 
 /* the block the receipt is moved into when a takeover states the money. */
@@ -603,44 +605,121 @@ form {
 	text-wrap: balance;
 }
 
-.held {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: var(--_sp1);
-}
-
-.held > .attention {
-	align-self: stretch;
-	margin-block-start: var(--_sp1);
-}
-
 /*
- * a value a donor copies: its label, the value, and the Copy, on one line the width of the column.
- * the value is the only column that gives up width — the label and the square Copy are their own
- * size at every width — so what shrinks at 375px is the address, which is the one piece here built
- * to be cut (`.value.line` in ./parts.css), and the row keeps its shape instead of wrapping.
+ * the account: what the network is, what the gift comes to, the fee where one was covered, and the
+ * total that has to arrive.
  *
- * the memo's warning is the row's second line, under all three columns rather than under the value
- * alone: it is about the memo being sent at all, not about the string.
+ * one grid for the block and every row on its columns with `subgrid`, so one figure's width sets the
+ * same edge on every row: the label, the coin figure, and what it is worth. the separation between
+ * rows belongs to the block's own row gap — no row carries vertical padding of its own or a height
+ * it is propped open to, so every baseline stands the same distance from the last.
  */
-.held.row {
+.summary {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr) auto;
-	align-items: center;
 	gap: var(--_sp2);
 	text-align: start;
 }
 
-.held.row > .attention {
+.entry {
+	display: grid;
 	grid-column: 1 / -1;
-	/* back onto the column's centre line, which the row's own start alignment would take it off: the
-	 * screen draws two of these boxes and they are the same box. */
-	text-align: center;
+	grid-template-columns: subgrid;
+	align-items: baseline;
+	row-gap: var(--_sp2);
+}
+
+.entry > [part~='label'] {
+	grid-column: 1;
+}
+
+.entry > .value {
+	grid-column: 2;
+}
+
+.entry > .worth {
+	grid-column: 3;
+}
+
+/*
+ * the network is a name rather than a figure, so it takes both figure columns and ends on the same
+ * edge they do, with the mark that opens its caution at the end of the name itself.
+ */
+.entry > .value.name {
+	display: flex;
+	grid-column: 2 / 4;
+	align-items: baseline;
+	justify-content: end;
+	gap: var(--_sp1);
+}
+
+/*
+ * the caution, laid over the rows under it rather than taking a place among them: opening it moves
+ * nothing on the screen, which is the whole reason it is behind a mark. the row is the containing
+ * block and stands above its later siblings, which would otherwise paint through the caution.
+ */
+.entry.network {
+	position: relative;
+	z-index: 1;
+}
+
+.entry > .attention {
+	position: absolute;
+	z-index: 2;
+	inset-block-start: 100%;
+	inset-inline-end: 0;
+	inline-size: 100%;
+	text-align: start;
+}
+
+/*
+ * the one thing the donor is asked to do: the sentence, the code for the address in it, the send-by
+ * on that code, and what the card is doing while it waits.
+ *
+ * nothing inside this group is spaced by the column's own step. what stands between the sentence and
+ * the modules is the code's own quiet zone (`.qr svg` in ./parts.css) and nothing the layout added,
+ * and what separates the group from the account above and the way out below is this margin plus the
+ * column's step.
+ */
+.send {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	margin-block: var(--_inset-wide);
+}
+
+.instruction {
+	align-self: stretch;
+}
+
+/*
+ * a value and the control that copies it, which are one thing: the run is the control (`run` in
+ * ../deposit.ts). an inline flex, so it takes part in the sentence's line breaking and drops to its
+ * own line when what is left of the current one cannot hold it.
+ *
+ * the value is what gives up width inside it, so a long address cuts against the mark beside it
+ * rather than carrying the run off the card's edge.
+ */
+.run {
+	display: inline-flex;
+	align-items: center;
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	max-inline-size: 100%;
+}
+
+/* a refused copy shows the value whole, so the unit wraps with it (`.value.line.whole`). */
+.run:has(> .whole) {
+	display: inline;
 }
 
 .qr {
-	align-self: center;
+	/*
+	 * the empty tail of the line above, taken back and no further: the code's own quiet zone is what
+	 * stands between the sentence's ink and the modules, and anything the layout adds on top of it
+	 * makes the code read as a block of its own rather than as part of the sentence.
+	 */
+	margin-block-start: calc((var(--_t-sm) - var(--_t-sm) * var(--_lh-body)) / 2);
 }
 
 .status {
@@ -648,6 +727,8 @@ form {
 	align-items: start;
 	justify-content: center;
 	gap: var(--_sp2);
+	/* a short step, because this is the last beat of the instruction rather than a third block. */
+	margin-block-start: var(--_sp3);
 }
 
 /* the block a form that cannot be rendered says so in. */

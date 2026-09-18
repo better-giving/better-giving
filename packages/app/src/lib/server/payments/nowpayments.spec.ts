@@ -523,6 +523,7 @@ describe('createIntent — a payment minted to an address', () => {
 					coin: 'xrp',
 					network: 'Ripple',
 					coinAmount: '19.37',
+					giftCoinAmount: '19.16',
 					validUntil: new Date('2026-09-24T15:00:22.742Z')
 				}
 			}
@@ -855,6 +856,99 @@ describe('createIntent — the figure the donor is asked to send', () => {
 		const result = await createNowpaymentsProvider(CREDENTIALS).createIntent(REQUEST);
 
 		expect(result.ok && result.value.deposit?.coinAmount).toBe('19.36121163');
+	});
+});
+
+/** a coin the list gives no decimals at all, whose whole unit is most of a $25 gift. */
+const WHOLE = {
+	...BTC,
+	id: 900,
+	code: 'WHL',
+	name: 'Wholecoin',
+	network: 'whl',
+	ticker: 'whl',
+	precision: 0,
+	network_precision: '0'
+};
+
+describe('createIntent — the gift stated beside the total', () => {
+	// $24.75 of the $25.00 charged, at 19.36121163 XRP for the whole of it, is 19.1675995137 — cut
+	// down at the second decimal, where the total was cut up.
+	it('states the gift cut down at the place the total was cut up', async () => {
+		serving(minting());
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).createIntent(REQUEST);
+
+		expect(result.ok && result.value.deposit?.giftCoinAmount).toBe('19.16');
+		expect(result.ok && result.value.deposit?.coinAmount).toBe('19.37');
+	});
+
+	// the whole charge is the gift, and the total is cut up while a gift beside it would be cut down:
+	// two figures a cent apart, with the difference between them a fee this donor declined to cover.
+	it('states no gift where the donor declined the fee', async () => {
+		serving(minting());
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).createIntent({
+			...REQUEST,
+			metadata: { ...REQUEST.metadata, gift_minor: '2500' }
+		});
+
+		expect(result.ok && result.value.deposit?.giftCoinAmount).toBeUndefined();
+		expect(result.ok && result.value.deposit?.coinAmount).toBe('19.37');
+	});
+
+	// a cent of a coin worth $10,000,000 is its ninth decimal and the list gives BTC eight, so the
+	// coin's own precision is what both figures are cut at: 0.0000023760000396 down, 0.00000240000004 up.
+	it('cuts the gift at the coin’s own precision where that is the binding place', async () => {
+		serving(mintingIn(BTC, '0.00000240000004'));
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).createIntent({
+			...REQUEST,
+			coin: 'btc'
+		});
+
+		expect(result.ok && result.value.deposit?.giftCoinAmount).toBe('0.00000237');
+		expect(result.ok && result.value.deposit?.coinAmount).toBe('0.00000241');
+	});
+
+	// 0.99 of a coin sent in whole units, where a stated `0` beside a total of `2` would read as the
+	// whole gift being fee.
+	it('states no gift where it rounds down to nothing', async () => {
+		serving(mintingIn(WHOLE, '1.00000001'));
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).createIntent({
+			...REQUEST,
+			coin: 'whl'
+		});
+
+		expect(result.ok && result.value.deposit?.giftCoinAmount).toBeUndefined();
+		expect(result.ok && result.value.deposit?.coinAmount).toBe('2');
+	});
+
+	// the total is the figure NOWPayments priced, and a gift cut beside it would be cut at a place
+	// nothing named.
+	it('states no gift where the coin names no precision', async () => {
+		const { precision: _p, network_precision: _n, ...UNMEASURED } = XRP;
+		serving(mintingIn(UNMEASURED, '19.36121163'));
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).createIntent(REQUEST);
+
+		expect(result.ok && result.value.deposit?.giftCoinAmount).toBeUndefined();
+		expect(result.ok && result.value.deposit?.coinAmount).toBe('19.36121163');
+	});
+
+	// a request stating no `gift_minor` says nothing about whether a fee was covered, so it is the
+	// total alone rather than a refusal or a split guessed at.
+	it('states no gift where the request named none', async () => {
+		serving(minting());
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).createIntent({
+			...REQUEST,
+			metadata: { [DONATION_METADATA_KEY]: DONATION_ID }
+		});
+
+		expect(result.ok && result.value.deposit?.giftCoinAmount).toBeUndefined();
+		expect(result.ok && result.value.deposit?.coinAmount).toBe('19.37');
 	});
 });
 

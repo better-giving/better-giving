@@ -837,11 +837,15 @@ describe('a crypto gift', () => {
 		// a child of the takeover itself, where the element stands it.
 		const block = one(ending, ':scope > .deposit');
 		expect(block.hidden).toBe(false);
-		expect(one(block, '.value.amount').textContent).toBe('25.004187 USDT');
+		expect(one(block, '.entry.total .value.amount').textContent).toBe('25.004187 USDT');
 		expect(one(block, '.attention').textContent).toContain('Send on this network only,');
 		expect(one(ending, '.receipt-slot').hidden).toBe(true);
+		// the way out and the line that makes taking it safe, as the one group at the foot.
+		expect(one(ending, ':scope > .foot > .aside').textContent).toBe(
+			'Also sent to donor@example.org.'
+		);
 		expect(
-			every(ending, ':scope > button')
+			every(ending, ':scope > button, :scope > .foot > button')
 				.filter((node) => !node.hidden)
 				.map((node) => node.textContent)
 		).toEqual(['Use a different coin']);
@@ -866,7 +870,7 @@ describe('a crypto gift', () => {
 	it('goes back to the coin list for a different coin', async () => {
 		const { root } = await atAddress();
 
-		press(one(root, '.takeover > button[part~="action-quiet"]'));
+		press(one(root, '.takeover > .foot > button[part~="action-quiet"]'));
 
 		expect(screen(root).className).toContain('step-give');
 		expect(coins(root).activeElement).toBe(combobox(root));

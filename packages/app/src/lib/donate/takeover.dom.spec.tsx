@@ -305,7 +305,8 @@ const COINS: FormConfig = {
 		}
 	]
 };
-const DEPOSIT = {
+/** a quote that stated no gift figure in coin, which is the account the total alone is read from. */
+const UNSTATED = {
 	address: 'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',
 	memo: null,
 	coin: 'usdttrc20',
@@ -314,12 +315,15 @@ const DEPOSIT = {
 	validUntil: '2023-11-21T12:00:00.000Z',
 	qr: { rows: ['110', '011', '101'] }
 };
+/** the gift alone, whose difference from the total above is the fee the donor covered. */
+const DEPOSIT = { ...UNSTATED, giftCoinAmount: '24.754187' };
 /** six days and a bit, which is what a freshly minted address has (`expiresIn` in the same file). */
 const EXPIRES_IN = 6 * 24 * 60 * 60 * 1000 + 13 * 60 * 60 * 1000;
 const AWAITING = {
 	step: 'awaitingDeposit',
 	deposit: DEPOSIT,
 	totalMinor: 2525,
+	feeMinor: 25,
 	email: 'donor@example.org',
 	expiresIn: EXPIRES_IN,
 	closed: false
@@ -332,17 +336,22 @@ it('states where and how much to send a crypto gift, with a way back to the coin
 	expect(screen.receipt).toBe('none');
 	expect(screen.primary).toBe(null);
 	expect(screen.secondary).toEqual({ label: 'Use a different coin' });
+	// the way out is what makes this line the one screen that writes one: the details are in the
+	// donor's inbox, which is the whole reason they may close the page.
+	expect(screen.secondaryNote).toBe('Also sent to donor@example.org.');
 	expect(screen.deposit).toMatchObject({
-		coinAmount: '25.004187',
 		ticker: 'USDT',
-		about: 'About $25.25 today',
 		network: 'Tron',
 		networkWarning: 'Send on this network only, or your gift may not reach Helping Hands.',
+		// the three rows, and the fee is the difference between the other two rather than a third
+		// figure off the wire: whatever rounding each arrived with, the account still adds up.
+		gift: { figure: '24.754187', worth: '$25.00' },
+		fee: { figure: '0.250000', worth: '$0.25' },
+		total: { figure: '25.004187', worth: '$25.25' },
+		instruction: { lead: 'Send ', toAddress: ' to this address ', andMemo: ' and include memo ' },
 		address: 'TbdBAaeHZo9WeEtpitUFqfEuUXDRfLpjeV',
 		memo: null,
-		memoWarning: '',
 		qr: ['110', '011', '101'],
-		email: 'Also sent to donor@example.org.',
 		status: 'Waiting for your gift'
 	});
 	// the line itself is the block's to write and tick (`expiry` in @better-giving/form/deposit);
@@ -356,24 +365,46 @@ it('states where and how much to send a crypto gift, with a way back to the coin
 	expect(screen.deposit?.expiry.words(29, 'minute')).toBe('Expires in 29 min');
 });
 
-it('warns about the memo only where the coin requires one, and names an unlisted coin by its code', () => {
+it('puts the memo behind the same caution as the network, and names an unlisted coin by its code', () => {
 	const xrp = takeoverFor(
 		{ ...AWAITING, deposit: { ...DEPOSIT, coin: 'xrp', network: 'xrp', memo: '3198472051' } },
 		COINS,
 		money
 	);
 	expect(xrp.deposit?.memo).toBe('3198472051');
-	expect(xrp.deposit?.memoWarning).toBe(
-		'Include this memo, or your gift may not reach Helping Hands.'
+	// one caution rather than two: both dangers of a send are read behind the one mark on the
+	// network row, and the payment carrying a memo is what adds the second sentence.
+	expect(xrp.deposit?.networkWarning).toBe(
+		'Send on this network only, or your gift may not reach Helping Hands. Include the memo, or it cannot be matched to you.'
 	);
 
 	const unlisted = takeoverFor(
-		{ ...AWAITING, deposit: { ...DEPOSIT, coin: 'dogecoin', memo: 'tag-1' } },
+		{ ...AWAITING, deposit: { ...DEPOSIT, coin: 'dogecoin' } },
 		COINS,
 		money
 	);
 	expect(unlisted.deposit?.ticker).toBe('DOGECOIN');
-	expect(unlisted.deposit?.memoWarning).toBe('');
+});
+
+it('states the total alone where the quote named no gift figure, and no fee where none was covered', () => {
+	const unstated = takeoverFor({ ...AWAITING, deposit: UNSTATED }, COINS, money);
+	// a fee stated beside a gift no figure names would be a deduction from nothing, so both go.
+	expect(unstated.deposit?.gift).toBe(null);
+	expect(unstated.deposit?.fee).toBe(null);
+	expect(unstated.deposit?.total).toEqual({ figure: '25.004187', worth: '$25.25' });
+
+	const declined = takeoverFor(
+		{
+			...AWAITING,
+			feeMinor: 0,
+			totalMinor: 2500,
+			deposit: { ...UNSTATED, giftCoinAmount: UNSTATED.coinAmount }
+		},
+		COINS,
+		money
+	);
+	expect(declined.deposit?.gift).toEqual({ figure: '25.004187', worth: '$25.00' });
+	expect(declined.deposit?.fee).toBe(null);
 });
 
 it('withdraws the address once its send-by passes here, and offers no control', () => {

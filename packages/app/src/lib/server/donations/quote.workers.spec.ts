@@ -5,6 +5,7 @@ import type { TurnstileCheck, TurnstileResult } from '../api/turnstile';
 import { createDb, type Db } from '../db/client';
 import { contact, donation, entryGroup, lineItem, payment } from '../db/schema';
 import type {
+	DepositInstructions,
 	Intent,
 	PaymentFailureReason,
 	PaymentProvider,
@@ -1710,7 +1711,7 @@ describe('mintQuote() — a gift sent in crypto', () => {
 	} as const;
 	const VALID_UNTIL = new Date('2026-09-24T12:00:00.000Z');
 
-	const minted = (): PaymentResult<Intent> => ({
+	const minted = (deposit: Partial<DepositInstructions> = {}): PaymentResult<Intent> => ({
 		ok: true,
 		value: {
 			providerTxnId: PAYMENT_ID,
@@ -1722,7 +1723,8 @@ describe('mintQuote() — a gift sent in crypto', () => {
 				coin: 'xrp',
 				network: 'xrp',
 				coinAmount: '41.923071',
-				validUntil: VALID_UNTIL
+				validUntil: VALID_UNTIL,
+				...deposit
 			}
 		}
 	});
@@ -1793,6 +1795,16 @@ describe('mintQuote() — a gift sent in crypto', () => {
 			}
 		});
 		expect(result.quote.deposit?.qr.rows[0]).toMatch(/^1111111[01]*1111111$/);
+	});
+
+	// the fee the screen states is the difference between the two figures, so a gift dropped on the
+	// way to the wire is a fee stated against nothing.
+	it('carries the gift figure the adapter stated beside the total', async () => {
+		const port = nowpaymentsProvider([minted({ giftCoinAmount: '40.923071' })]);
+
+		const result = await mint(cryptoDeps(port.port), cryptoGift({ coversFee: true }));
+
+		expect(result.ok && result.quote.deposit?.giftCoinAmount).toBe('40.923071');
 	});
 
 	it('records a pending gift under NOWPayments’ payment id, with the coin and when the address closes', async () => {
