@@ -29,6 +29,13 @@
       "when": 1789602199374,
       "tag": "0003_nowpayments_provider_and_crypto",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1789751735815,
+      "tag": "0004_quickbooks_connection_and_sync",
+      "breakpoints": true
     }
   ]
 }

@@ -2172,6 +2172,214 @@ export const site = sqliteTable(
 	]
 );
 
+/**
+ * the one QuickBooks Online company this deployment's books are sent to.
+ *
+ * exactly one row, ever, and the check below is what makes that true rather than a habit —
+ * `org_profile` and `auth_signing_key` are the precedents it copies. one organisation, one
+ * company, so "which connection is live" is never a query with an ordering in it.
+ *
+ * **this is the one table that holds a credential**, and the split is which end issues it.
+ * Intuit's client id and secret are fixed, stated by the operator once, and stay plain Worker
+ * vars like every other processor's keys — CLAUDE.md -> Bans -> Boundaries governs those. what
+ * lives here is the pair the worker refreshes for itself, which a var cannot hold: rewriting a
+ * Worker var from inside the running worker takes a Cloudflare token able to edit its own
+ * deployment, a far larger key than the one it would protect.
+ */
+export const quickbooksConnection = sqliteTable(
+	'quickbooks_connection',
+	{
+		// not a uuidv7 and deliberately not `$defaultFn`: the row is a singleton, and the check
+		// below is what keeps it one. copied from `org_profile` above.
+		id: text('id').primaryKey(),
+
+		/** Intuit's id for the company, which every Accounting API call is addressed to. */
+		realmId: text('realm_id').notNull(),
+
+		/**
+		 * what Intuit calls the company, read back after the connection is made and shown so an
+		 * operator can tell they connected the books they meant to.
+		 *
+		 * nullable because the row exists before that read lands: the OAuth callback writes the
+		 * tokens, and the company name is a second request that may fail or be slow without the
+		 * connection being any less made.
+		 */
+		companyName: text('company_name'),
+
+		/** short-lived, and refreshed from `refresh_token` before it lapses. */
+		accessToken: text('access_token').notNull(),
+		accessTokenExpiresAt: at('access_token_expires_at').notNull(),
+
+		/**
+		 * the long-lived credential, and **it rotates**: Intuit returns a new refresh token on
+		 * some refreshes and retires the old one, so this column is rewritten by the running
+		 * worker rather than set once at connect. a refresh that persists the new token
+		 * anywhere but here loses the connection the next time the old one is presented.
+		 */
+		refreshToken: text('refresh_token').notNull(),
+		/** nullable: Intuit does not always state one. */
+		refreshTokenExpiresAt: at('refresh_token_expires_at'),
+
+		/**
+		 * the three accounts in the operator's own chart of accounts that a gift is posted
+		 * into — where the income lands, where the processor's fee lands, and which account
+		 * the money arrived in.
+		 *
+		 * all six nullable, and a connected row holding none of them is an ordinary state: the
+		 * accounts are picked on a console screen after the connection is made, and the adapter
+		 * reads a row without them as not yet ready to send. the name sits beside the id so a
+		 * screen can label a choice without asking Intuit for a word it already had.
+		 */
+		incomeAccountId: text('income_account_id'),
+		incomeAccountName: text('income_account_name'),
+		feeAccountId: text('fee_account_id'),
+		feeAccountName: text('fee_account_name'),
+		depositAccountId: text('deposit_account_id'),
+		depositAccountName: text('deposit_account_name'),
+
+		/**
+		 * the earliest business date a gift may be sent from — the operator's answer to "how
+		 * much of our history goes over".
+		 *
+		 * the same encoding `entry_group.occurred_at` carries, because it is compared against
+		 * that column and nothing else: a gift whose entry occurred before this instant is
+		 * never sent. business time on both sides, so a backdated gift is judged by when the
+		 * money moved rather than by when the row was written.
+		 */
+		startAt: at('start_at').notNull(),
+
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		// the singleton constraint. `org_profile_id_check` is the precedent.
+		check('quickbooks_connection_id_check', sql`${t.id} = 'quickbooks'`),
+		// `notNull` does not keep the promise each of these columns makes — `''` satisfies it,
+		// and `STRICT` constrains type rather than content. a blank realm id addresses every
+		// call to nothing, and a blank token is a connection that reads as made and refreshes
+		// into an error with no bad-looking row anywhere.
+		check('quickbooks_connection_realm_id_not_blank_check', notBlank(t.realmId)),
+		check('quickbooks_connection_access_token_not_blank_check', notBlank(t.accessToken)),
+		check('quickbooks_connection_refresh_token_not_blank_check', notBlank(t.refreshToken)),
+		// null means "not read back / not chosen yet", `''` means "chosen as nothing" — only
+		// the second is a bug, and it is the one an empty select submits.
+		check('quickbooks_connection_company_name_not_blank_check', optionalNotBlank(t.companyName)),
+		check(
+			'quickbooks_connection_income_account_id_not_blank_check',
+			optionalNotBlank(t.incomeAccountId)
+		),
+		check(
+			'quickbooks_connection_income_account_name_not_blank_check',
+			optionalNotBlank(t.incomeAccountName)
+		),
+		check('quickbooks_connection_fee_account_id_not_blank_check', optionalNotBlank(t.feeAccountId)),
+		check(
+			'quickbooks_connection_fee_account_name_not_blank_check',
+			optionalNotBlank(t.feeAccountName)
+		),
+		check(
+			'quickbooks_connection_deposit_account_id_not_blank_check',
+			optionalNotBlank(t.depositAccountId)
+		),
+		check(
+			'quickbooks_connection_deposit_account_name_not_blank_check',
+			optionalNotBlank(t.depositAccountName)
+		),
+		/**
+		 * a name with no id beside it labels a choice that was never made. the id is what a
+		 * request is built from and the name is only what a screen prints, so the pair is
+		 * written together or not at all — three checks rather than one, so a rejection names
+		 * which account it was. adding one later is the table rebuild rule 2 above describes.
+		 */
+		check(
+			'quickbooks_connection_income_account_name_needs_id_check',
+			sql`${t.incomeAccountName} is null or ${t.incomeAccountId} is not null`
+		),
+		check(
+			'quickbooks_connection_fee_account_name_needs_id_check',
+			sql`${t.feeAccountName} is null or ${t.feeAccountId} is not null`
+		),
+		check(
+			'quickbooks_connection_deposit_account_name_needs_id_check',
+			sql`${t.depositAccountName} is null or ${t.depositAccountId} is not null`
+		)
+	]
+);
+
+/**
+ * where one journal entry stands in its journey to QuickBooks.
+ *
+ * declared here rather than in a leaf, which is the default this file's `enums` rule states: no
+ * module this file imports needs it.
+ */
+export const QUICKBOOKS_SYNC_STATUSES = ['pending', 'sent', 'failed'] as const;
+export type QuickbooksSyncStatus = (typeof QUICKBOOKS_SYNC_STATUSES)[number];
+
+/**
+ * one row per journal entry that is owed to QuickBooks — the outbox the delivery reads.
+ *
+ * **`entry_group_id` is the whole primary key**, and that is where the idempotency comes from.
+ * `entry_group_source_idx` already refuses a second entry for one (source_type, source_id), so a
+ * redelivered webhook reaches the same entry group and therefore the same row here: one gift is
+ * sent once, with no second uniqueness rule to keep in step with that one. it is an owned detail
+ * of `entry_group` and nothing references it, which is the shape that earns a key borrowed from
+ * its parent instead of a surrogate.
+ *
+ * no column says which kind of QuickBooks record was created. `entry_group.source_type` already
+ * says it, and a second copy is what would disagree.
+ *
+ * a row is written in the same `batch()` as the posting it belongs to, so a posting that lands
+ * without its outbox row is not a state this schema has.
+ */
+export const quickbooksSync = sqliteTable(
+	'quickbooks_sync',
+	{
+		entryGroupId: text('entry_group_id')
+			.primaryKey()
+			.references(() => entryGroup.id),
+
+		status: text('status').$type<QuickbooksSyncStatus>().notNull().default('pending'),
+
+		/** how many times delivery has been tried. */
+		attempts: integer('attempts').notNull().default(0),
+
+		/**
+		 * what QuickBooks called the record it created.
+		 *
+		 * **a row holding one is finished and is never sent again**, whatever an accountant later
+		 * does to that record in QuickBooks — re-sending would duplicate a hand-edit or resurrect
+		 * something deliberately deleted.
+		 */
+		remoteId: text('remote_id'),
+
+		/** the last failure, in Intuit's own words, so the console can show why without a log. */
+		lastError: text('last_error'),
+
+		/**
+		 * when the failure notice for this row was sent.
+		 *
+		 * it is what makes the notice once per outage rather than once per row: a run that is
+		 * about to mail reads whether the failing rows have been notified already, so a hundred
+		 * gifts stuck behind one revoked connection cost one email.
+		 */
+		notifiedAt: at('notified_at'),
+
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check('quickbooks_sync_status_check', enumCheck(t.status, QUICKBOOKS_SYNC_STATUSES)),
+		check('quickbooks_sync_attempts_check', sql`${t.attempts} >= 0`),
+		check('quickbooks_sync_remote_id_not_blank_check', optionalNotBlank(t.remoteId)),
+		check('quickbooks_sync_last_error_not_blank_check', optionalNotBlank(t.lastError)),
+		// the sweep reads the rows that are not finished, and they are the minority of a table
+		// that grows with every gift the deployment ever took.
+		index('quickbooks_sync_status_idx').on(t.status)
+	]
+);
+
 export type Contact = typeof contact.$inferSelect;
 export type NewContact = typeof contact.$inferInsert;
 export type Account = typeof account.$inferSelect;
@@ -2196,6 +2404,10 @@ export type OrgProfile = typeof orgProfile.$inferSelect;
 export type NewOrgProfile = typeof orgProfile.$inferInsert;
 export type Site = typeof site.$inferSelect;
 export type NewSite = typeof site.$inferInsert;
+export type QuickbooksConnection = typeof quickbooksConnection.$inferSelect;
+export type NewQuickbooksConnection = typeof quickbooksConnection.$inferInsert;
+export type QuickbooksSync = typeof quickbooksSync.$inferSelect;
+export type NewQuickbooksSync = typeof quickbooksSync.$inferInsert;
 
 // tables better-auth owns, kept in their own file because their columns are dictated
 // by better-auth's core schema rather than by the domain. re-exported here — not
