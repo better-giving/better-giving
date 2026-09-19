@@ -63,6 +63,8 @@ beforeAll(async () => {
 
 beforeEach(async () => {
 	for (const table of [
+		'quickbooks_sync',
+		'quickbooks_connection',
 		'ledger_entry',
 		'entry_group',
 		'payment',
@@ -227,6 +229,32 @@ const DELIVERY = { body: '{"id":"evt_collect_1"}', headers: { 'stripe-signature'
 
 function deps(over: Partial<SettleDeps> = {}): SettleDeps {
 	return { db, provider: provider({}), email: mailer().port, ...over };
+}
+
+/** the company connected, taking everything posted on or after `startAt`. */
+async function connect(startAt = new Date('2026-01-01T00:00:00.000Z')): Promise<void> {
+	await env.DB.prepare(
+		`insert into quickbooks_connection (id, realm_id, access_token, access_token_expires_at,
+		                                    refresh_token, start_at, created_at, updated_at)
+		 values ('quickbooks', '4620816365', 'access', 0, 'refresh', ?, 0, 0)`
+	)
+		.bind(startAt.getTime())
+		.run();
+}
+
+/** the payment row one collection minted — `entry_group.source_id` for both of its entries. */
+async function paymentFor(providerTxnId: string): Promise<string> {
+	const [row] = await db.select().from(payment).where(eq(payment.providerTxnId, providerTxnId));
+	if (row === undefined) throw new Error(`no payment row for ${providerTxnId}`);
+	return row.id;
+}
+
+/** what the books owe QuickBooks, as the outbox holds it. */
+async function queuedForQuickbooks() {
+	const { results } = await env.DB.prepare(
+		'select entry_group_id, status, attempts from quickbooks_sync'
+	).all<{ entry_group_id: string; status: string; attempts: number }>();
+	return results;
 }
 
 /** every ledger line of one entry group, by source. */
@@ -2174,5 +2202,56 @@ describe('the processor an operator is sent to', () => {
 		expect(result).toMatchObject({ ok: true, outcome });
 		expect(operatorProse(mail.sent)).toContain('Stripe');
 		expect(operatorProse(mail.sent)).not.toContain('PayPal');
+	});
+});
+
+describe('settleDelivery() — what a collection owes QuickBooks', () => {
+	beforeEach(async () => {
+		await authorizeGift();
+		await connect();
+	});
+
+	it('queues the charge that opens a commitment, and not the cut taken from it', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		// the opening charge claims the gift the donor authorized, so the entry it queues is that
+		// claim's — and the fee beside it stays a line on the receipt that charge is sent as.
+		const paymentId = await paymentFor('pi_collect_1');
+		expect(await groupLines('fee', paymentId)).not.toBeNull();
+		const charge = await groupLines('payment', paymentId);
+		expect(await queuedForQuickbooks()).toEqual([
+			{ entry_group_id: charge?.group.id, status: 'pending', attempts: 0 }
+		]);
+	});
+
+	it('queues every later collection as its own', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		await settleDelivery(
+			deps({
+				provider: provider({
+					verify: { ok: true, value: secondCollection.event },
+					gift: { ok: true, value: secondCollection.notice },
+					settled: { ok: true, value: secondCollection.settlement }
+				})
+			}),
+			DELIVERY
+		);
+
+		const first = await groupLines('payment', await paymentFor('pi_collect_1'));
+		const second = await groupLines('payment', await paymentFor('pi_collect_2'));
+		const queued = await queuedForQuickbooks();
+		expect(queued.map((row) => row.entry_group_id).sort()).toEqual(
+			[first?.group.id, second?.group.id].sort()
+		);
+	});
+
+	it('queues nothing where no company is connected', async () => {
+		await env.DB.prepare('delete from quickbooks_connection').run();
+
+		const result = await settleDelivery(deps(), DELIVERY);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await queuedForQuickbooks()).toEqual([]);
 	});
 });

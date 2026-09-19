@@ -20,11 +20,32 @@ beforeAll(() => {
 });
 
 beforeEach(async () => {
-	// the lines first: `ledger_entry.entry_group_id` is a foreign key, so the other order is a
+	// the queue and the lines first: both point at `entry_group`, so the other order is a
 	// constraint violation rather than an empty table.
+	await env.DB.prepare('delete from quickbooks_sync').run();
+	await env.DB.prepare('delete from quickbooks_connection').run();
 	await env.DB.prepare('delete from ledger_entry').run();
 	await env.DB.prepare('delete from entry_group').run();
 });
+
+/** the company connected, taking everything posted on or after `startAt`. */
+async function connect(startAt = new Date('2026-01-01T00:00:00.000Z')): Promise<void> {
+	await env.DB.prepare(
+		`insert into quickbooks_connection (id, realm_id, access_token, access_token_expires_at,
+		                                    refresh_token, start_at, created_at, updated_at)
+		 values ('quickbooks', '4620816365', 'access', 0, 'refresh', ?, 0, 0)`
+	)
+		.bind(startAt.getTime())
+		.run();
+}
+
+/** what the books owe QuickBooks, as the outbox holds it. */
+async function queuedForQuickbooks() {
+	const { results } = await env.DB.prepare(
+		'select entry_group_id, status, attempts from quickbooks_sync'
+	).all<{ entry_group_id: string; status: string; attempts: number }>();
+	return results;
+}
 
 /** a fee that never posted, moved out of undeposited funds and into the expense it was taken for. */
 const correction = (over: Partial<Correction> = {}): Correction => ({
@@ -134,5 +155,35 @@ describe('postCorrection()', () => {
 		);
 
 		expect(await readRaisedByMonth(db)).toEqual([{ month: '2026-03', raisedMinor: 475 }]);
+	});
+});
+
+describe('postCorrection() — what a correction owes QuickBooks', () => {
+	it('queues the correcting entry in the commit that posted it', async () => {
+		await connect();
+		const input = correction();
+
+		expect(await postCorrection(db, input)).toEqual({ ok: true });
+
+		const group = await findEntryGroup(db, 'adjustment', input.sourceId);
+		expect(await queuedForQuickbooks()).toEqual([
+			{ entry_group_id: group?.id, status: 'pending', attempts: 0 }
+		]);
+	});
+
+	it('queues nothing where no company is connected', async () => {
+		expect(await postCorrection(db, correction())).toEqual({ ok: true });
+
+		expect(await queuedForQuickbooks()).toEqual([]);
+	});
+
+	it('queues nothing a second time for a correction presented again', async () => {
+		await connect();
+		const input = correction();
+		await postCorrection(db, input);
+
+		expect(await postCorrection(db, input)).toEqual({ ok: false, reason: 'already_posted' });
+
+		expect(await queuedForQuickbooks()).toHaveLength(1);
 	});
 });

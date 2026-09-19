@@ -3,6 +3,7 @@ import type { BatchItem } from 'drizzle-orm/batch';
 import { uuidv7 } from 'uuidv7';
 import { projectTribute } from '../../donations/tributes';
 import type { RecurringPlanStatus } from '../../recurring/statuses';
+import { outboxGate, outboxStatements, type OutboxGate } from '../accounting/outbox';
 import { readContactSummaries, type ContactSummary } from '../contacts/queries';
 import type { Db } from '../db/client';
 import type { PostableAccountId } from '../db/postable';
@@ -164,8 +165,10 @@ import { sendTributeNotice } from './tribute-notice';
  * deals with one verified delivery about a repeating gift: resolve it to a commitment, read the
  * money where money moved, and write.
  *
- * never throws, for the reason `settleDelivery` in ./settle.ts never throws: an exception here is
- * a 500, and the processor reads a 500 as "deliver this again" for three days.
+ * an exception here is a 500, and the processor reads a 500 as "deliver this again" for three days,
+ * so every port and every write answers with a result instead. the one exception is the QuickBooks
+ * connection read the two write arms take (../accounting/outbox.ts), which throws where it fails
+ * for the reason stated there — and a redelivery is the right answer to it.
  */
 export async function collectRecurringGift(
 	deps: SettleDeps,
@@ -667,7 +670,10 @@ async function openCommitment(
 		authorized.program,
 		giving.revenueAccountId,
 		notice,
-		settlement
+		settlement,
+		// read here rather than in the builder, which is synchronous and has no turn to spend: one
+		// read per settlement, handed down (../accounting/outbox.ts).
+		await outboxGate(deps.db)
 	);
 
 	const wrote = await attempt(deps.db, [
@@ -747,7 +753,9 @@ async function writeAgainstPlan(
 		// is written, since neither the dedication nor the cause reaches the processor.
 		await openingGift(deps.db, plan.id),
 		notice,
-		settlement
+		settlement,
+		// `openCommitment`'s reason: the builder is synchronous, so the read is the caller's.
+		await outboxGate(deps.db)
 	);
 	const wrote = await attempt(deps.db, [
 		...writes.statements,
@@ -1140,7 +1148,8 @@ function chargeWrites(
 	fund: PostableAccountId,
 	opening: OpeningGift,
 	notice: RecurringGiftNotice,
-	settlement: Settlement
+	settlement: Settlement,
+	gate: OutboxGate | null
 ): ChargeWrites {
 	const donationId = uuidv7();
 	const paymentId = uuidv7();
@@ -1216,18 +1225,20 @@ function chargeWrites(
 		donationId,
 		revenue: [{ accountId: fund, amountMinor: settlement.amountMinor }] as const
 	};
+	const charge = chargeEntry(gift, settlement);
 	const fee = feeEntry(gift, settlement);
 
 	return {
 		// foreign-key order: the gift, its line and its payment, then the entries keyed to that
-		// payment. one statement per row and never a multi-row INSERT — D1 caps a query at 100 bound
-		// parameters (CLAUDE.md).
+		// payment, then the queue row keyed to one of those entries. one statement per row and never
+		// a multi-row INSERT — D1 caps a query at 100 bound parameters (CLAUDE.md).
 		statements: [
 			db.insert(donation).values(giftRow),
 			db.insert(lineItem).values(lineRow),
 			db.insert(payment).values(paymentRow),
-			...postingStatements(db, chargeEntry(gift, settlement)),
-			...(fee === null ? [] : postingStatements(db, fee))
+			...postingStatements(db, charge),
+			...(fee === null ? [] : postingStatements(db, fee)),
+			...outboxStatements(db, gate, [charge, fee])
 		],
 		charge: {
 			donationId,
@@ -1289,7 +1300,8 @@ function claimWrites(
 	program: string | null,
 	fund: PostableAccountId,
 	notice: RecurringGiftNotice,
-	settlement: Settlement
+	settlement: Settlement,
+	gate: OutboxGate | null
 ): ChargeWrites {
 	const paymentId = uuidv7();
 	const coveredFeeMinor = coveredFeeOf(notice, settlement);
@@ -1315,6 +1327,7 @@ function claimWrites(
 		donationId: gift.id,
 		revenue: [{ accountId: fund, amountMinor: settlement.amountMinor }] as const
 	};
+	const charge = chargeEntry(posting, settlement);
 	const fee = feeEntry(posting, settlement);
 
 	return {
@@ -1337,8 +1350,9 @@ function claimWrites(
 				})
 				.where(eq(lineItem.donationId, gift.id)),
 			db.insert(payment).values(paymentRow),
-			...postingStatements(db, chargeEntry(posting, settlement)),
-			...(fee === null ? [] : postingStatements(db, fee))
+			...postingStatements(db, charge),
+			...(fee === null ? [] : postingStatements(db, fee)),
+			...outboxStatements(db, gate, [charge, fee])
 		],
 		charge: {
 			donationId: gift.id,

@@ -61,6 +61,8 @@ beforeAll(async () => {
 
 beforeEach(async () => {
 	for (const table of [
+		'quickbooks_sync',
+		'quickbooks_connection',
 		'ledger_entry',
 		'entry_group',
 		'payment',
@@ -284,6 +286,25 @@ const DELIVERY = { body: '{"id":"evt_1"}', headers: { 'stripe-signature': 't=1,v
 
 function deps(over: Partial<SettleDeps> = {}): SettleDeps {
 	return { db, provider: provider(), email: mailer().port, ...over };
+}
+
+/** the company connected, taking everything posted on or after `startAt`. */
+async function connect(startAt = new Date('2026-01-01T00:00:00.000Z')): Promise<void> {
+	await env.DB.prepare(
+		`insert into quickbooks_connection (id, realm_id, access_token, access_token_expires_at,
+		                                    refresh_token, start_at, created_at, updated_at)
+		 values ('quickbooks', '4620816365', 'access', 0, 'refresh', ?, 0, 0)`
+	)
+		.bind(startAt.getTime())
+		.run();
+}
+
+/** what the books owe QuickBooks, as the outbox holds it. */
+async function queuedForQuickbooks() {
+	const { results } = await env.DB.prepare(
+		'select entry_group_id, status, attempts from quickbooks_sync'
+	).all<{ entry_group_id: string; status: string; attempts: number }>();
+	return results;
 }
 
 /** every ledger line of one entry group, by source. */
@@ -1833,6 +1854,19 @@ describe('settleDelivery() — a crypto gift valued at what arrived', () => {
 			expect(receipt?.text).toContain('5.14');
 		});
 
+		it('queues the deposit’s own gift for QuickBooks', async () => {
+			await connect();
+			await pendingCrypto();
+
+			await settleDelivery(deps({ provider: repeat() }), DELIVERY);
+
+			const [child] = await db.select().from(payment).where(eq(payment.providerTxnId, CHILD_ID));
+			const charge = await groupLines('payment', child?.id ?? '');
+			expect(await queuedForQuickbooks()).toEqual([
+				{ entry_group_id: charge?.group.id, status: 'pending', attempts: 0 }
+			]);
+		});
+
 		it('never adds to or settles the first gift', async () => {
 			const first = await pendingCrypto();
 
@@ -1853,5 +1887,60 @@ describe('settleDelivery() — a crypto gift valued at what arrived', () => {
 			const [groups] = await db.select({ n: sql<number>`count(*)` }).from(entryGroup);
 			expect(groups?.n).toBe(0);
 		});
+	});
+});
+
+describe('settleDelivery() — what a settled gift owes QuickBooks', () => {
+	it('queues nothing where no company is connected', async () => {
+		await pendingGift();
+
+		const result = await settleDelivery(deps(), DELIVERY);
+
+		// not connected is the ordinary state of a deployment, and the books do not notice it.
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await queuedForQuickbooks()).toEqual([]);
+	});
+
+	it('queues the gift and not the processor’s cut, in the commit that posted it', async () => {
+		await connect();
+		const gift = await pendingGift();
+
+		await settleDelivery(deps(), DELIVERY);
+
+		// the fee posted too — it becomes a line on the sales receipt the gift is sent as, so a row
+		// of its own would send the same money twice.
+		expect(await groupLines('fee', gift.paymentId)).not.toBeNull();
+		const charge = await groupLines('payment', gift.paymentId);
+		expect(await queuedForQuickbooks()).toEqual([
+			{ entry_group_id: charge?.group.id, status: 'pending', attempts: 0 }
+		]);
+	});
+
+	it('queues nothing for a gift settled before the company was connected', async () => {
+		// the money moved on 3 August and the operator connected from September; what is already in
+		// the books from before a connect is the connect flow's backfill.
+		await connect(new Date('2026-09-01T00:00:00.000Z'));
+		await pendingGift();
+
+		const result = await settleDelivery(deps(), DELIVERY);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await queuedForQuickbooks()).toEqual([]);
+	});
+
+	it('queues nothing a second time for a delivery that arrives again', async () => {
+		await connect();
+		const gift = await pendingGift();
+		await settleDelivery(deps(), DELIVERY);
+		// the row as a delivery run already would have left it.
+		await env.DB.prepare(`update quickbooks_sync set status = 'sent', remote_id = '42'`).run();
+
+		const again = await settleDelivery(deps(), DELIVERY);
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		const charge = await groupLines('payment', gift.paymentId);
+		expect(await queuedForQuickbooks()).toEqual([
+			{ entry_group_id: charge?.group.id, status: 'sent', attempts: 0 }
+		]);
 	});
 });

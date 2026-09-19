@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import { donation, entryGroup, ledgerEntry } from '../db/schema';
@@ -177,3 +177,45 @@ async function donorRow(contactId: string) {
 		if (found || page >= read.pages) return found;
 	}
 }
+
+describe('recordGiftInHand() — what the gift owes QuickBooks', () => {
+	// this file stores per-file, so the connection is put up and taken down around these cases
+	// alone — a row left standing would queue every gift the cases above enter.
+	beforeEach(async () => {
+		await env.DB.prepare(
+			`insert into quickbooks_connection (id, realm_id, access_token, access_token_expires_at,
+			                                    refresh_token, start_at, created_at, updated_at)
+			 values ('quickbooks', '4620816365', 'access', 0, 'refresh', 0, 0, 0)`
+		).run();
+	});
+
+	afterEach(async () => {
+		await env.DB.prepare('delete from quickbooks_sync').run();
+		await env.DB.prepare('delete from quickbooks_connection').run();
+	});
+
+	it('queues the cheque in the commit that recorded it', async () => {
+		const input = gift();
+
+		await recordGiftInHand(db, input);
+
+		// no fee entry goes beside a gift in hand — nothing was withheld — so the one entry it makes
+		// is the one it owes.
+		const group = await findEntryGroup(db, 'payment', input.paymentId);
+		const { results } = await env.DB.prepare(
+			'select entry_group_id, status, attempts from quickbooks_sync'
+		).all<{ entry_group_id: string; status: string; attempts: number }>();
+		expect(results).toEqual([{ entry_group_id: group?.id, status: 'pending', attempts: 0 }]);
+	});
+
+	it('queues nothing a second time when the same ids are presented again', async () => {
+		const input = gift();
+		await recordGiftInHand(db, input);
+
+		const again = await recordGiftInHand(db, input);
+
+		expect(again).toEqual({ ok: false, reason: 'already_recorded' });
+		const { results } = await env.DB.prepare('select entry_group_id from quickbooks_sync').all();
+		expect(results).toHaveLength(1);
+	});
+});

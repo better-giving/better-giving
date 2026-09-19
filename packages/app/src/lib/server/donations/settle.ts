@@ -2,6 +2,7 @@ import { and, eq, ne } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import { uuidv7 } from 'uuidv7';
 import { projectTribute } from '../../donations/tributes';
+import { outboxGate, outboxStatements } from '../accounting/outbox';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import {
@@ -202,9 +203,12 @@ import { sendTributeNotice } from './tribute-notice';
 /**
  * deals with one delivery: verify, re-read, correct, post, then tell people.
  *
- * never throws. both ports are sealed by their factories and every write is a result, so the only
- * way out is a `SettleResult` — an exception here is a 500, and a processor reads a 500 as "deliver
- * this again" for three days.
+ * both ports are sealed by their factories and every write is a result, so the only way out is a
+ * `SettleResult` — an exception here is a 500, and a processor reads a 500 as "deliver this again"
+ * for three days. the one exception is the QuickBooks connection read `write` takes before it posts
+ * (../accounting/outbox.ts): it throws where it fails, deliberately, because the same handle the
+ * batch needs has just faulted and a gift owed to QuickBooks with no queue row is unrecoverable.
+ * a redelivery is the right answer to it.
  */
 export async function settleDelivery(
 	deps: SettleDeps,
@@ -671,7 +675,7 @@ async function recognitionOf(
 }
 
 /**
- * the correction and the postings, in one `batch()`.
+ * the correction, the postings and the queue row they owe QuickBooks, in one `batch()`.
  *
  * one statement per row and never a multi-row `INSERT` — D1 caps a query at 100 bound parameters
  * (CLAUDE.md) — and one commit, because a payment corrected without its posting, or a posting
@@ -726,9 +730,13 @@ async function write(
 	if (credits !== null) {
 		if (settlement.arrival !== null) writes.push(...restatement(db, target, settlement));
 		const gift = { paymentId: row.id, donationId: row.donationId, revenue: credits };
-		writes.push(...postingStatements(db, chargeEntry(gift, settlement)));
+		const charge = chargeEntry(gift, settlement);
 		const fee = feeEntry(gift, settlement);
+		writes.push(...postingStatements(db, charge));
 		if (fee !== null) writes.push(...postingStatements(db, fee));
+		// one read for the whole settlement, spent only where something is being posted — and last in
+		// the batch, because `quickbooks_sync.entry_group_id` points at the groups above it.
+		writes.push(...outboxStatements(db, await outboxGate(db), [charge, fee]));
 	}
 
 	const committed = await commit(db, writes);
@@ -1135,9 +1143,9 @@ async function revalued(deps: SettleDeps, target: Target, settlement: Settlement
  * of its own.
  *
  * nothing was authorized for it, so no row waits for it and it is inserted whole — the donation, its
- * one line, a payment pointing at the first one (`payment.parent_payment_id`) and the postings, in
- * one `batch()`. the donor, the form, the cause, the fund and the dedication are the first gift's;
- * the date is the day it arrived, and no covered fee is recorded because none was quoted. nobody the
+ * one line, a payment pointing at the first one (`payment.parent_payment_id`), the postings and the
+ * queue row they owe QuickBooks, in one `batch()`. the donor, the form, the cause, the fund and the
+ * dedication are the first gift's; the date is the day it arrived, and no covered fee is recorded because none was quoted. nobody the
  * donor named is told again: the notify columns stay null, as `chargeWrites` in ./collect.ts leaves
  * them. the first gift is read and never written.
  *
@@ -1174,7 +1182,9 @@ async function recordRepeatDeposit(
 		donationId,
 		revenue: [{ accountId: fund.accountId, amountMinor: settlement.amountMinor }] as const
 	};
+	const charge = chargeEntry(gift, settlement);
 	const fee = feeEntry(gift, settlement);
+	const gate = await outboxGate(deps.db);
 	const written = await commit(deps.db, [
 		deps.db.insert(donation).values({
 			id: donationId,
@@ -1213,8 +1223,9 @@ async function recordRepeatDeposit(
 			coinAmount: settlement.arrival?.coinAmount ?? null,
 			parentPaymentId: first.payment.id
 		}),
-		...postingStatements(deps.db, chargeEntry(gift, settlement)),
-		...(fee === null ? [] : postingStatements(deps.db, fee))
+		...postingStatements(deps.db, charge),
+		...(fee === null ? [] : postingStatements(deps.db, fee)),
+		...outboxStatements(deps.db, gate, [charge, fee])
 	]);
 	if (written === 'already_posted') {
 		return {

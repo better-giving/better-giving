@@ -2,6 +2,7 @@ import type { BatchItem } from 'drizzle-orm/batch';
 import { uuidv7 } from 'uuidv7';
 import type { InHandMethod } from '../../donations/methods';
 import { FORM_CURRENCY } from '../../forms/amounts';
+import { outboxGate, outboxStatements } from '../accounting/outbox';
 import type { ParsedContact } from '../contacts/contact-input';
 import { donationRevenueAccount } from '../db/accounts';
 import type { Db } from '../db/client';
@@ -165,12 +166,18 @@ export async function recordGiftInHand(db: Db, gift: GiftInHand): Promise<GiftIn
 			occurredAt: gift.dated
 		};
 
-		// foreign-key order: the donor, the gift, what names the gift, then the books.
+		// inside the `try`, so a connection read that faults is answered as `write_failed` — it is one
+		// read against the handle this write needs, so the write was not going to land either.
+		const gate = await outboxGate(db);
+
+		// foreign-key order: the donor, the gift, what names the gift, then the books, then what the
+		// books owe QuickBooks — `quickbooks_sync.entry_group_id` points at the group above it.
 		const rows: Writes = [
 			db.insert(donation).values(donationRow),
 			db.insert(lineItem).values(lineRow),
 			db.insert(payment).values(paymentRow),
-			...postingStatements(db, posting)
+			...postingStatements(db, posting),
+			...outboxStatements(db, gate, [posting])
 		];
 		await db.batch(donor.statement === null ? rows : [donor.statement, ...rows]);
 
@@ -178,7 +185,8 @@ export async function recordGiftInHand(db: Db, gift: GiftInHand): Promise<GiftIn
 	} catch (error) {
 		// every key this batch can collide on is one of the caller's two ids — the gift's and the
 		// payment's primary keys, and `entry_group_source_idx` over the payment id. the contact, line,
-		// group and entry ids are uuidv7s minted in this call.
+		// group and entry ids are uuidv7s minted in this call, and the queue row is keyed on the
+		// group's.
 		const code = sqliteResultCode(error);
 		if (code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || code === 'SQLITE_CONSTRAINT_UNIQUE') {
 			return { ok: false, reason: 'already_recorded' };
