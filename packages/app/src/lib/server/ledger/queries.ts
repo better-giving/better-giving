@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, between, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { ROLLUPS } from '../db/accounts';
 import type { Db } from '../db/client';
@@ -77,14 +77,18 @@ const GROUP_COLUMNS = {
 	memo: entryGroup.memo
 } satisfies Record<keyof Omit<EntryGroupListRow, 'lines'>, SQLiteColumn>;
 
+const ENTRY_LINE_COLUMNS = {
+	id: ledgerEntry.id,
+	accountId: ledgerEntry.accountId,
+	amountMinor: ledgerEntry.amountMinor
+} satisfies Record<keyof EntryLine, SQLiteColumn>;
+
 /** a line with the group it belongs to, which is the only extra column the grouping needs. */
 type LineRow = EntryLine & Pick<LedgerEntry, 'entryGroupId'>;
 
 const LINE_COLUMNS = {
-	id: ledgerEntry.id,
-	entryGroupId: ledgerEntry.entryGroupId,
-	accountId: ledgerEntry.accountId,
-	amountMinor: ledgerEntry.amountMinor
+	...ENTRY_LINE_COLUMNS,
+	entryGroupId: ledgerEntry.entryGroupId
 } satisfies Record<keyof LineRow, SQLiteColumn>;
 
 /**
@@ -134,6 +138,52 @@ export async function listEntryGroups(db: Db): Promise<EntryGroupPage> {
 	const hasMore = rows.length > ENTRY_GROUP_LIST_LIMIT;
 
 	return { groups: await withLines(db, page), hasMore };
+}
+
+/**
+ * every journal entry whose business time falls inside a closed range, oldest first, each with its
+ * lines — what an accountant's download is shaped from.
+ *
+ * **one join and one read, which is the opposite of `listEntryGroups` above — deliberately.** that
+ * function reads twice for two reasons and neither one reaches here. a `LIMIT` over a join caps
+ * lines rather than entries, and this read has no per-entry limit at all: a range is asked for
+ * whole or refused whole, and the cap on how big an export may be is applied to what comes back
+ * rather than by cutting the read short. and the second read's bound parameters are one per entry
+ * id, counted against D1's cap of 100 per query, where this one binds exactly two whatever the
+ * range holds. so the next reader "fixing" this into the two-read shape would be paying for a
+ * guard neither problem needs.
+ *
+ * **closed on both ends.** a month is asked for as its first and last instant, and a range open at
+ * either end drops the entries dated exactly on the boundary — which are the ones an export is
+ * checked against.
+ *
+ * ordered by `occurred_at` then `id` then the line's own id: oldest first, so a file reads as a
+ * ledger rather than as a feed, with the same uuidv7 tiebreak `listEntryGroups` argues and the
+ * posting order `withLines` reads lines in. the grouping below folds consecutive rows, which is
+ * what that order buys.
+ */
+export async function readEntryGroupsInRange(
+	db: Db,
+	from: Date,
+	to: Date
+): Promise<EntryGroupListRow[]> {
+	const rows = await db
+		.select({ group: GROUP_COLUMNS, line: ENTRY_LINE_COLUMNS })
+		.from(entryGroup)
+		.innerJoin(ledgerEntry, eq(ledgerEntry.entryGroupId, entryGroup.id))
+		.where(between(entryGroup.occurredAt, from, to))
+		.orderBy(entryGroup.occurredAt, entryGroup.id, ledgerEntry.id);
+
+	const groups: EntryGroupListRow[] = [];
+	let open: EntryGroupListRow | undefined;
+	for (const { group, line } of rows) {
+		if (open?.id !== group.id) {
+			open = { ...group, lines: [] };
+			groups.push(open);
+		}
+		open.lines.push(line);
+	}
+	return groups;
 }
 
 /**

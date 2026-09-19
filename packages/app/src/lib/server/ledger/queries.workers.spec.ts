@@ -9,6 +9,7 @@ import {
 	ENTRY_GROUP_LIST_LIMIT,
 	findEntryGroup,
 	listEntryGroups,
+	readEntryGroupsInRange,
 	readRaisedByMonth
 } from './queries';
 
@@ -321,5 +322,79 @@ describe('readRaisedByMonth()', () => {
 		// no row rather than a row of noughts, which is what `overMonths` in ../months.ts turns into
 		// twelve empty buckets — the zero state is the same screen with nothing in it.
 		expect(await readRaisedByMonth(db)).toEqual([]);
+	});
+});
+
+describe('readEntryGroupsInRange()', () => {
+	beforeEach(async () => {
+		await env.DB.prepare('delete from ledger_entry').run();
+		await env.DB.prepare('delete from entry_group').run();
+	});
+
+	it('takes both ends of the range and nothing outside it', async () => {
+		// a closed range on both ends. an accountant asks for a month by naming its first and
+		// last instant, and a read open at either end drops the entries posted exactly on the
+		// boundary — the two an export is most often checked against.
+		const from = new Date('2026-03-01T00:00:00.000Z');
+		const to = new Date('2026-03-31T23:59:59.999Z');
+		await postAll([
+			correction(new Date(from.getTime() - 1), { memo: 'before' }),
+			correction(from, { memo: 'on the first instant' }),
+			correction(new Date('2026-03-15T12:00:00.000Z'), { memo: 'inside' }),
+			correction(to, { memo: 'on the last instant' }),
+			correction(new Date(to.getTime() + 1), { memo: 'after' })
+		]);
+
+		const groups = await readEntryGroupsInRange(db, from, to);
+		expect(groups.map((g) => g.memo)).toEqual([
+			'on the first instant',
+			'inside',
+			'on the last instant'
+		]);
+	});
+	it('carries each entry its own lines, in posting order, oldest first', async () => {
+		// the claim a fold over a join has to earn: the rows arrive flat, one per line, and a
+		// line landing under the wrong entry is a journal file that imports clean and posts to
+		// the wrong account. the entries are written newest-first here so an unordered read
+		// comes back in exactly the wrong order.
+		await postAll([
+			correction(new Date('2026-06-02T00:00:00.000Z'), {
+				memo: 'second',
+				lines: [
+					{ accountId: postableId('processorFees'), amountMinor: 900 },
+					{ accountId: postableId('undepositedFunds'), amountMinor: -900 }
+				]
+			}),
+			correction(new Date('2026-06-01T00:00:00.000Z'), { memo: 'first' })
+		]);
+
+		const groups = await readEntryGroupsInRange(
+			db,
+			new Date('2026-06-01T00:00:00.000Z'),
+			new Date('2026-06-30T23:59:59.999Z')
+		);
+		expect(groups.map((g) => g.memo)).toEqual(['first', 'second']);
+		// the debit first, as `post()` was handed it — the order a reader expects a debit and the
+		// credit answering it in.
+		expect(groups[0]!.lines.map((l) => l.amountMinor)).toEqual([2_500, -2_500]);
+		expect(groups[1]!.lines.map((l) => l.amountMinor)).toEqual([900, -900]);
+		expect(groups[1]!.lines.map((l) => l.accountId)).toEqual([
+			POSTING_ACCOUNTS.processorFees.id,
+			POSTING_ACCOUNTS.undepositedFunds.id
+		]);
+	});
+
+	it('reads a range holding nothing as no entries at all', async () => {
+		// the empty download, which the shaping side turns into a header row and nothing under
+		// it rather than an error — see ./journal-file.ts.
+		await postAll([correction(new Date('2026-07-01T00:00:00.000Z'))]);
+
+		expect(
+			await readEntryGroupsInRange(
+				db,
+				new Date('2026-08-01T00:00:00.000Z'),
+				new Date('2026-08-31T23:59:59.999Z')
+			)
+		).toEqual([]);
 	});
 });
