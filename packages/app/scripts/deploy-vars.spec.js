@@ -72,8 +72,8 @@ describe('reading the file a deployment is configured from', () => {
 
 	/**
 	 * the case this parse exists for. a line the parser cannot read is a value that would not reach
-	 * the deployment, and a skip there is invisible: the deploy succeeds and one of the twenty-four is
-	 * quietly unset.
+	 * the deployment, and a skip there is invisible: the deploy succeeds and one of a deployment's
+	 * configuration values is quietly unset.
 	 */
 	it('refuses a line it cannot read, naming the line number', () => {
 		expect(() => pairs('A=one\nnot a pair\n', 'f')).toThrow('f:2');

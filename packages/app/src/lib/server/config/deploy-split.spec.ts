@@ -12,7 +12,7 @@ import { CONFIG_VAR_NAMES } from './env';
 // deployment keeps working, and the value they went looking for is not where the console reads it.
 // so it is asserted instead of reviewed.
 //
-// every one of the twenty-seven is a plain var, and `packages/operator/src/deploy-split.ts` argues
+// every name on `DEPLOY_VARS` is a plain var, and `packages/operator/src/deploy-split.ts` argues
 // why. what is left to hold is that nothing anywhere still tells an operator to store one as a
 // secret: a value written that way is a value the console cannot read back, which is the whole of
 // what that module's rule exists to prevent.
@@ -34,7 +34,7 @@ import { CONFIG_VAR_NAMES } from './env';
 // commands, and prose about the `wrangler secret put` prompt it can be typed at, stay true.
 
 /**
- * everything that could hold an instruction, plus the two documents beside it.
+ * everything that could hold an instruction, plus the three documents beside it.
  *
  * three packages rather than this one, because an instruction is spelled wherever an operator is
  * read to. the list itself lives in packages/operator now, and packages/console-ui is the surface
@@ -42,6 +42,10 @@ import { CONFIG_VAR_NAMES } from './env';
  * would pass over both. read by path and never imported: biome.jsonc refuses a *module* from here into
  * packages/console-ui, and reading a file the way a sweep does is what every gate across package
  * lines in this repository already does.
+ *
+ * `.dev.vars.example` is the third document and the one most exposed to this rule: it is organised
+ * value by value and says how each is set, so an instruction there stands directly beside the name
+ * it would misfile.
  */
 const SOURCES = [
 	...globSync('src/**/*.ts'),
@@ -51,7 +55,8 @@ const SOURCES = [
 	...globSync('../console-ui/src/**/*.ts'),
 	...globSync('../console-ui/src/**/*.tsx'),
 	'../../README.md',
-	'../../DEPLOY.md'
+	'../../DEPLOY.md',
+	'.dev.vars.example'
 ];
 
 /**
@@ -91,8 +96,8 @@ function setAsSecret(name: string): RegExp {
  * see one, because half of these never name a value at all.
  *
  * the bare wrangler form is deliberately not swept for here: `wrangler secret put` is still the way
- * `CONSOLE_TOKEN` is set by hand, and prose about that prompt is true. what would be wrong is one of
- * the twenty-seven names after it, which the pattern above does catch.
+ * `CONSOLE_TOKEN` is set by hand, and prose about that prompt is true. what would be wrong is a
+ * name off `DEPLOY_VARS` after it, which the pattern above does catch.
  */
 const SECRET_COMMANDS = new RegExp(SCRIPT_FORM, 'g');
 
@@ -116,6 +121,7 @@ describe('the command an operator is told to set a value with', () => {
 	it('reads the files it is guarding', () => {
 		expect(SOURCES.length).toBeGreaterThan(100);
 		expect(SOURCES).toContain('../../DEPLOY.md');
+		expect(SOURCES).toContain('.dev.vars.example');
 		// the two packages the sweep was widened to. a glob that stopped matching would otherwise
 		// only ever show as a sweep that got quieter.
 		expect(SOURCES).toContain('../operator/src/deploy-split.ts');

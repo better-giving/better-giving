@@ -21,7 +21,7 @@ export interface ConfigEnv {
 	 * not a credential: it is designed to sit in public HTML, and `/api/v1/forms/:id/config`
 	 * serves it to any browser that asks. so an operator sets it as a Worker var and can read
 	 * it back, where the secret key beside it is a secret and cannot be — DEPLOY.md draws that
-	 * split for all twenty-seven. either arrives here as a string on the platform env, which is why
+	 * split for every one of them. either arrives here as a string on the platform env, which is why
 	 * nothing below this line distinguishes them.
 	 */
 	readonly STRIPE_PUBLISHABLE_KEY?: string;

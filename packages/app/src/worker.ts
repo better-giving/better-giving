@@ -72,6 +72,11 @@ export default {
 
 	// every cron run, dispatched on the expression that fired. an expression with no entry above
 	// runs nothing, which is the state ./wrangler.jsonc and ./worker.spec.ts exist to keep empty.
+	//
+	// the run is handed to `ctx.waitUntil` and never merely started: this handler returns nothing,
+	// so the invocation ends the moment it returns and a run left off that call is abandoned
+	// mid-send with the rows it claimed untouched. ./worker.spec.ts asserts the promise reaches the
+	// runtime, because every other assertion there is about the mocks and passes without it.
 	scheduled(controller, env, ctx) {
 		const run = CRON_RUNS[controller.cron];
 		if (run === undefined) return;

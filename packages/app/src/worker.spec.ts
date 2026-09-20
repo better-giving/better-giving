@@ -49,8 +49,17 @@ type Scheduled = NonNullable<typeof worker.scheduled>;
 /** the platform env a run is handed. nothing below reaches a binding: both runs are mocked. */
 const env = { DB: {} } as unknown as Parameters<Scheduled>[1];
 
-/** one cron firing, run to the end of everything the handler put on `waitUntil`. */
-async function fires(cron: string): Promise<void> {
+/**
+ * one cron firing, run to the end of everything the handler put on `waitUntil`, and that list
+ * handed back.
+ *
+ * it comes back because handing the run over is the one thing `scheduled` does that nothing else
+ * in this file can see: the handler is not `async` and returns nothing, so a run started and left
+ * off `waitUntil` is a run the invocation ends underneath — sends abandoned mid-call, and the rows
+ * that run claimed sitting `pending` with `attempts` unincremented until the lease passes
+ * ($lib/server/accounting/deliver.ts). a mock called is a mock called either way.
+ */
+async function fires(cron: string): Promise<Promise<unknown>[]> {
 	const waited: Promise<unknown>[] = [];
 	const ctx = {
 		waitUntil: (promise: Promise<unknown>) => waited.push(promise),
@@ -69,6 +78,7 @@ async function fires(cron: string): Promise<void> {
 		ctx
 	);
 	await Promise.all(waited);
+	return waited;
 }
 
 // `restoreMocks` in ../vitest.config.ts restores a spy's implementation and leaves a module mock's
@@ -86,12 +96,15 @@ describe('the schedule this worker is deployed with', () => {
 	});
 
 	it.each(DECLARED)('runs work on %s', async (cron) => {
-		await fires(cron);
+		const waited = await fires(cron);
 
 		expect(
 			vi.mocked(readPendingCryptoGifts).mock.calls.length +
 				vi.mocked(sendDueEntries).mock.calls.length
 		).toBe(1);
+		// the run reached the runtime, which is what keeps the invocation open until it is done.
+		// `fires` awaited it on the way out, so a run that rejected never got this far.
+		expect(waited).toHaveLength(1);
 	});
 
 	// the list below is read off the parsed config, so an empty one registers no test at all and the

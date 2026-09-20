@@ -488,10 +488,10 @@ describe('the report this deployment answers with', () => {
 	/**
 	 * no configuration value crosses this wire, and neither does the name of one.
 	 *
-	 * the console reads all twenty-seven off the Cloudflare account it is signed in to, so a member
-	 * here that reported one too would be a second seed disagreeing with the first mid-deploy —
-	 * which is why the envelope carries none and why this is one case over the whole list rather
-	 * than an assertion per name. the name is checked as well as the value because a member is
+	 * the console reads every name on `DEPLOY_VARS` off the Cloudflare account it is signed in to, so
+	 * a member here that reported one too would be a second seed disagreeing with the first
+	 * mid-deploy — which is why the envelope carries none and why this is one case over the whole
+	 * list rather than an assertion per name. the name is checked as well as the value because a member is
 	 * keyed by it: an envelope that carried a value back would say `SMTP_PASSWORD` before anybody
 	 * looked at what was under it.
 	 */

@@ -1,5 +1,5 @@
-// the twenty-seven deploy-time values an operator configures a deployment with, and the one command
-// that sets one. every instruction a deployment prints or logs is built from here: a refusal's fix
+// the deploy-time values an operator configures a deployment with, and the one command that sets
+// one. every instruction a deployment prints or logs is built from here: a refusal's fix
 // sentence, a log line's `operatorFix`.
 //
 // one list, and every value on it is a plain Worker var. a var's value is handed back by the
@@ -15,38 +15,41 @@
 // the account holder. storing a credential as a secret protected nobody against that reader and
 // cost the operator the ability to verify it, because Cloudflare never returns a secret's value.
 //
-// **it is here rather than beside the readers because both ends need it.** the deployment reads all
-// twenty-seven off `platform.env` and builds the instruction beside each one, and the operator console
-// reads the same twenty-seven back off the Worker — one enumeration, in the leaf package the two
+// **it is here rather than beside the readers because both ends need it.** the deployment reads
+// every name below off `platform.env` and builds the instruction beside each one, and the operator
+// console reads the same list back off the Worker — one enumeration, in the leaf package the two
 // already share, for the reason ./console/report.ts is here. a second list on the console side
-// would be a twenty-eighth name, a missing name, or a command spelled the other way round, with
+// would be a name too many, a missing name, or a command spelled the other way round, with
 // nothing able to see the disagreement. DEPLOY.md's "Configuration values" section is this list
 // written for an operator.
 //
 // nothing that *reads* one of these can tell how it was stored: a var and a secret both arrive on
-// `platform.env`, and `packages/app/src/lib/server/config/env.ts` and `.../auth/env.ts` read all
-// twenty-seven the same way. that is exactly why a wrong instruction here is silent — an operator
+// `platform.env`, and `packages/app/src/lib/server/config/env.ts` and `.../auth/env.ts` read every
+// one of them the same way. that is exactly why a wrong instruction here is silent — an operator
 // who stores a value as a secret holds a working deployment whose console cannot show them what
 // they set. so the rule is asserted rather than reviewed:
 // `packages/app/src/lib/server/config/deploy-split.spec.ts` checks the command built for every
-// name, sweeps both packages' sources and the two operator documents for a literal that spells one
-// by hand as a secret, and holds this list to the names the app actually reads — in both
+// name, sweeps the sources of `packages/app`, this package and `packages/console-ui` and the
+// operator documents beside them for a literal that spells one by hand as a secret, and holds this
+// list to the names the app actually reads — in both
 // directions, which is more than a `satisfies` could say, and this leaf can name no env type to
 // write one against anyway. `.../config/deploy-vars.config.spec.ts` is the other half:
-// `keep_vars` in wrangler.jsonc, without which a plain deploy deletes all twenty-seven.
+// `keep_vars` in wrangler.jsonc, without which a plain deploy deletes every one of them.
 //
 // `CONSOLE_TOKEN` is on no list here and is not a configuration value: the console mints it for its
 // own session and writes it as a Worker secret. ./console/token.ts and
 // `packages/app/src/lib/server/console/access.ts` are where that one is argued.
 //
-// the QuickBooks pair is on the list for the reason every other processor's keys are, and the
-// sign-in token the worker holds for that company is off it: Intuit rotates that one on every
-// refresh, so the worker rewrites its own copy — which a var cannot be, since editing one takes a
-// key able to edit the worker itself. it is a row instead, and `quickbooksConnection` in
-// `packages/app/src/lib/server/db/schema.ts` argues it.
+// QuickBooks put three names on the list: the two keys, for the reason every other processor's
+// keys are there, and `QUICKBOOKS_API_URL` beside them for the reason `CHARIOT_API_URL` is —
+// which of Intuit's two addresses this deployment talks to is typed, because nothing here reads
+// which deployment it is. off the list is the sign-in token the worker holds for a connected
+// company: Intuit rotates that one on every refresh, so the worker rewrites its own copy — which a
+// var cannot be, since editing one takes a key able to edit the worker itself. it is a row
+// instead, and `quickbooksConnection` in `packages/app/src/lib/server/db/schema.ts` argues it.
 
 /**
- * the twenty-seven, in the order the app reads them — `CONFIG_VAR_NAMES` in
+ * every name, in the order the app reads them — `CONFIG_VAR_NAMES` in
  * `packages/app/src/lib/server/config/env.ts`, then `AUTH_VAR_NAMES` in `.../auth/env.ts`.
  *
  * `SMTP_PORT` is on it though its right answer is usually to leave it unset (`SMTP_PORT` in
