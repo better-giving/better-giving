@@ -10,9 +10,12 @@ import type { Takeover } from '../takeover';
 // the third numbered step: the receipt, the provider's own fields, and the control that spends the
 // money.
 //
-// this step shows nothing the donor typed. what closes that gap is the line under the receipt
-// stating where it is going, with the step head's mark for the details step as the way to change it
-// — a control here would be a second way to edit an address the step behind this one owns.
+// this step shows nothing the donor typed. what closes that gap is the line standing over the
+// control that spends the money, stating where the receipt is going, with the step head's mark for
+// the details step as the way to change it — a control here would be a second way to edit an
+// address the step behind this one owns. the sheet both surfaces share closes the gap on that pair
+// by adjacency (`.aside:has(+ [part~='submit'])` in packages/form/src/styles/layout.css), so the
+// order below is what that rule is written against and nothing may stand between the two.
 //
 // the receipt block itself travels: it is the same reading on this step, on the correction screen
 // and on every ending, which is what makes the total a donor authorizes recognisably the one they
@@ -301,15 +304,15 @@ export function GiveStep({
 		<section className="step step-give" hidden={hidden}>
 			{head}
 			{receipt}
-			<p className="aside" hidden={receiptTo === ''}>
-				{receiptTo}
-			</p>
 			<PaymentBox
 				mount={paymentMount}
 				prepared={paymentPrepared}
 				rows={paymentRows}
 				words={paymentWords}
 			/>
+			<p className="aside" hidden={receiptTo === ''}>
+				{receiptTo}
+			</p>
 			<button
 				part={partWhen('action', { submit: true, busy })}
 				type={submits ? 'submit' : 'button'}

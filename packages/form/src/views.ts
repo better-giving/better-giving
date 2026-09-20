@@ -2153,15 +2153,21 @@ export function createCard(
 	// the donor filled in, so it states where the receipt is going and leaves the step head's mark
 	// for the details step as the way to change it. it reuses the aside role rather than naming a
 	// surface of its own.
+	//
+	// it stands directly over the button: the last thing a donor takes in before the press is where
+	// the receipt is going, and a line standing at the step's own rhythm between two blocks reads as
+	// a third block rather than as part of either. the sheet closes the gap on that pair by
+	// adjacency (`.aside:has(+ [part~='submit'])` in ./styles/layout.css), so the order here is what
+	// that rule is written against and nothing may stand between the two.
 	const receiptTo = make(doc, 'p', { class: 'aside', hidden: true });
 
 	const giveHead = stepHead();
 	const giveStep = make(doc, 'section', { class: 'step step-give', hidden: true }, [
 		giveHead.head,
 		summary,
-		receiptTo,
 		paymentGroup,
 		paymentMessage,
+		receiptTo,
 		submitButton
 	]);
 
@@ -3121,7 +3127,7 @@ export function createCard(
 		setHidden(receiptSlot, !wanted);
 		const home = wanted ? receiptSlot : giveStep;
 		if (summary.parentElement !== home) {
-			if (home === giveStep) giveStep.insertBefore(summary, receiptTo);
+			if (home === giveStep) giveStep.insertBefore(summary, paymentGroup);
 			else put(doc, home, [summary]);
 		}
 

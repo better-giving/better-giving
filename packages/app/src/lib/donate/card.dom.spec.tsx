@@ -613,6 +613,19 @@ it('draws no header over a box listing one option, and names the box itself', as
 	expect(box.hasAttribute('aria-labelledby')).toBe(false);
 });
 
+// the sheet both surfaces share closes the gap on this pair by adjacency
+// (`.aside:has(+ [part~='submit'])` in packages/form/src/styles/layout.css), so anything standing
+// between the two leaves the line at the step's own rhythm between two blocks, reading as a third.
+it('stands the line saying where the receipt goes directly over the press', async () => {
+	const { root } = await card();
+	walkToGive(root);
+
+	const line = one(root, 'section.step-give > p.aside');
+	expect(line.hidden).toBe(false);
+	expect(line.textContent).toBe(copy.receiptTo('donor@example.org'));
+	expect(line.nextElementSibling).toBe(one(root, 'button[part~="submit"]'));
+});
+
 it('heads a box listing a choice, and names the box by the header', async () => {
 	const { root } = await card({ ...CONFIG, paymentMethods: ['card', 'ach'] });
 	walkToGive(root);

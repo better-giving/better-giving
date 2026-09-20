@@ -2491,6 +2491,19 @@ describe('the review step', () => {
 		expect(shows(card, '.step-give .aside')).toBe('Receipt to donor@example.org');
 	});
 
+	// and it stands against the control it is about, so the last thing read before the press is
+	// where the receipt is going. the sheet closes the gap on that pair by adjacency
+	// (`.aside:has(+ [part~='submit'])` in ./styles/layout.css), so a step assembled in any other
+	// order leaves the rule matching nothing and the line standing as a block of its own — which is
+	// a defect no sheet can see and this pool can.
+	it('stands that line against the control that spends the money', async () => {
+		const card = await atReview();
+
+		const line = card.find('.step-give .aside');
+
+		expect(line.nextElementSibling?.getAttribute('part')).toContain('submit');
+	});
+
 	// the sentence renders on every screen that states a total, and this is the one where a
 	// monthly donor would otherwise be charged having never been told the gift repeats.
 	it('states the ongoing obligation beside the first charge', async () => {

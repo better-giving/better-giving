@@ -1222,6 +1222,35 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
+ * the sentence is what the switch just did, so it belongs to the switch rather than standing as a
+ * row of its own. what stands between the two is not the gap alone: the row above carries
+ * `--_row-min` with one line centred in it, so about eleven pixels of target stand under its words
+ * at the default root before the row's own `--_sp1` is counted at all. both are taken back here,
+ * the way `.disclosure + .disclosure` in ./layout.css takes a gap and a step of slack together.
+ *
+ * `1lh` is the card's own line rather than the smaller one the label is set in, so the take-back is
+ * a pixel and a half short of the whole slack at either end of the clamp — which is the side to be
+ * short on: what is left over is a gap, where an overshoot is the sentence climbing into the words.
+ * it is stated here rather than on the sentence for the same reason: an `em` or a `lh` there
+ * resolves against the 12px floor below, which is not the size either length was spent at.
+ *
+ * the sentence comes to overlap the decision's box by the last few pixels of it — five at the
+ * default root, where the figure beside the sentence holds the two of them on one baseline and so
+ * stands them both that much lower than the row itself. the sentence is the later box and takes the
+ * press where they meet, so a donor pressing the words presses the words and does not flip the
+ * switch; what the decision keeps is 39px of its 44px floor in the label column and the whole of it
+ * in the switch's own, because the sentence stands in the label column alone (above). both are past
+ * the 24px `--_target-min` in ./tokens.css argues from.
+ *
+ * only while a sentence is drawn under it. the decision is covered with no fee to state on a form
+ * that publishes no rule to price one (`consequence` in ../views.ts), and a row pulled up under
+ * nothing would lift the figure beside it into the switch.
+ */
+.fee-decision:has(+ .fee-note:not([hidden])) {
+	margin-block-end: calc(-1 * (var(--_row-min) - 1lh) / 2 - var(--_sp1));
+}
+
+/*
  * the switch, and the one control on this card drawn as a shape instead of painted by the platform.
  * confined to this selector: the two disclosures and the contact consent carry the same part name
  * and stay the platform's own box, because a tick is what a donor expects of a thing they are

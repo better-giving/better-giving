@@ -76,6 +76,34 @@ function fill(tiles: HTMLElement, presets: number): void {
 	tiles.appendChild(entry);
 }
 
+/** one row of the receipt: its name, and the figure beside it. */
+function money(className: string, name: string, figure: string): HTMLElement {
+	const row = document.createElement('div');
+	row.className = className;
+	const label = document.createElement('span');
+	label.className = 'row-label';
+	label.textContent = name;
+	const amount = document.createElement('span');
+	amount.className = 'figure';
+	amount.textContent = figure;
+	row.appendChild(label);
+	row.appendChild(amount);
+	return row;
+}
+
+/**
+ * the space a donor actually reads between two things: the declared gap plus whatever the rows
+ * around it take back, which is the whole question wherever this is measured.
+ *
+ * so it is taken between whichever boxes the space is really spent between, and on a row laid
+ * against `--_row-min` that is the words rather than the row — the slack a target leaves around
+ * its own words is inside the row's box, and a measure taken between two row boxes is blind to
+ * exactly the space these cases are about.
+ */
+function between(above: Element, below: Element): number {
+	return below.getBoundingClientRect().top - above.getBoundingClientRect().bottom;
+}
+
 type Card = {
 	readonly host: HTMLElement;
 	readonly body: HTMLElement;
@@ -96,6 +124,12 @@ type Card = {
  * inside what is measured. each is the expression that file states, so a step moved there is a step
  * this fixture follows rather than a number copied off it.
  *
+ * the card's own line is set here for the same reason and is load-bearing in the same way: a row
+ * laid against `--_row-min` holds its words in a line of `--_lh-body` (`[part~='card']` in
+ * ../styles/parts.css), and the slack left over inside that floor is exactly what the spacing cases
+ * below measure — so a fixture left at the browser's own default line measures a row several pixels
+ * shorter than the card's and reads every gap around it wider than a donor sees it.
+ *
  * the tiles sit inside the padded interior the card draws them in, so a width named below is the
  * card's own and the grid is measured at what is left after the inset — which is what makes 375px
  * here the 375px viewport the form is laid out against.
@@ -111,7 +145,8 @@ function card(width: string, rootFontSize: string, cardFontSize = '16px'): Card 
 		`container-type: inline-size; container-name: donate; inline-size: ${width};` +
 		` font-size: ${cardFontSize}; --_root-size: ${cardFontSize}; --_sp1: 0.25em;` +
 		' --_sp2: 0.5em; --_sp3: 0.75em; --_sp4: 1em; --_sp5: 1.25em; --_border: 1px;' +
-		' --_t-sm: 0.875em; --_t-md: 1em;' +
+		' --_t-xs: 0.75em; --_t-sm: 0.875em; --_t-md: 1em;' +
+		' --_lh-body: 1.5; line-height: var(--_lh-body);' +
 		' --_inset: calc(var(--_root-size) * 1.25); --_inset-wide: calc(var(--_root-size) * 1.75);' +
 		' --_row-min: 44px;';
 
@@ -328,43 +363,101 @@ describe('the widths the card gives its screens', () => {
 // button and the card's own right edge off a 375px screen, with nothing to scroll after them.
 describe('the review step at the narrowest card', () => {
 	/**
-	 * the step that takes the money, as ../views.ts assembles it: the receipt block, the line saying
-	 * where the receipt goes, the box the provider paints in, and the button under them.
+	 * the step that takes the money, as ../views.ts assembles it: the receipt block with the fee
+	 * decision inside it, the box the provider paints in under its own heading, the line saying
+	 * where the receipt goes, and the button under them.
 	 */
-	function review(email: string): { body: HTMLElement; give: HTMLElement; receipt: HTMLElement } {
+	function review(email: string): {
+		body: HTMLElement;
+		give: HTMLElement;
+		receipt: HTMLElement;
+		summary: HTMLElement;
+		gift: HTMLElement;
+		fee: HTMLElement;
+		feeWords: HTMLElement;
+		feeNote: HTMLElement;
+		group: HTMLElement;
+		heading: HTMLElement;
+		box: HTMLElement;
+		submit: HTMLElement;
+	} {
 		const built = card('375px', '16px');
 
 		const summary = document.createElement('div');
 		summary.setAttribute('part', 'summary');
-		const row = document.createElement('div');
-		row.className = 'row total';
-		const label = document.createElement('span');
-		label.className = 'row-label';
-		label.textContent = 'Total';
-		const figure = document.createElement('span');
-		figure.className = 'figure';
-		figure.textContent = '$50.00';
-		row.appendChild(label);
-		row.appendChild(figure);
-		summary.appendChild(row);
+		const gift = money('row', 'One-time gift', '$50.00');
+		summary.appendChild(gift);
+
+		// the fee, which takes two of the ledger's rows: the decision across the width, and under it
+		// what that decision did to the money.
+		const fee = document.createElement('div');
+		fee.className = 'row fee';
+		const decision = document.createElement('label');
+		decision.className = 'fee-decision';
+		const feeWords = document.createElement('span');
+		feeWords.className = 'row-label';
+		feeWords.textContent = 'Cover the processing fee';
+		const control = document.createElement('span');
+		control.className = 'switch';
+		const box = document.createElement('input');
+		box.type = 'checkbox';
+		box.setAttribute('part', 'checkbox');
+		const thumb = document.createElement('span');
+		thumb.className = 'switch-thumb';
+		control.appendChild(box);
+		control.appendChild(thumb);
+		decision.appendChild(feeWords);
+		decision.appendChild(control);
+		const feeNote = document.createElement('p');
+		feeNote.className = 'fee-note';
+		feeNote.textContent = 'You add $2.15 so Acme Relief Fund receives the full $50.00.';
+		const feeFigure = document.createElement('span');
+		feeFigure.className = 'figure';
+		feeFigure.textContent = '+ $2.15';
+		fee.appendChild(decision);
+		fee.appendChild(feeNote);
+		fee.appendChild(feeFigure);
+		summary.appendChild(fee);
+
+		summary.appendChild(money('row total', 'Total today', '$52.15'));
 
 		const receipt = document.createElement('p');
 		receipt.className = 'aside';
 		receipt.textContent = `Receipt to ${email}`;
 
+		const group = document.createElement('div');
+		group.className = 'group';
+		const heading = document.createElement('h3');
+		heading.setAttribute('part', 'label');
+		heading.textContent = 'Select payment method';
 		const payment = document.createElement('div');
 		payment.setAttribute('part', 'payment');
+		group.appendChild(heading);
+		group.appendChild(payment);
 
 		const submit = document.createElement('button');
 		submit.type = 'submit';
-		submit.setAttribute('part', 'action');
-		submit.textContent = 'Donate $50.00';
+		submit.setAttribute('part', 'action submit');
+		submit.textContent = 'Donate $52.15';
 
 		built.give.appendChild(summary);
+		built.give.appendChild(group);
 		built.give.appendChild(receipt);
-		built.give.appendChild(payment);
 		built.give.appendChild(submit);
-		return { body: built.body, give: built.give, receipt };
+		return {
+			body: built.body,
+			give: built.give,
+			receipt,
+			summary,
+			gift,
+			fee,
+			feeWords,
+			feeNote,
+			group,
+			heading,
+			box: payment,
+			submit
+		};
 	}
 
 	// an address a donor types rather than a contrived one, and the card is at the floor this file is
@@ -388,6 +481,44 @@ describe('the review step at the narrowest card', () => {
 		// to fit would keep passing with both rules taken back out.
 		receipt.style.whiteSpace = 'nowrap';
 		expect(receipt.scrollWidth).toBeGreaterThan(receipt.clientWidth);
+	});
+
+	// the three groups the step is read as — the money, the payment method, and what the donor is
+	// about to commit to — and a donor squinting at it sees three blocks or one run of rows. which
+	// of the two it is, is the space inside a group measured against the space around it, so these
+	// are claims about laid-out boxes and this is the pool that can hold them.
+	it('stands the line naming the receipt with the control that spends the money', () => {
+		const { receipt, group, submit } = review('donor@example.org');
+
+		expect(between(receipt, submit)).toBeLessThan(between(group, receipt));
+	});
+
+	// the sentence pricing the decision is what the switch just did, so it belongs to the switch. it
+	// is measured off the words rather than off the label's box, because the box is a 44px target
+	// and the slack it leaves under the words is the whole of what stood the two a step apart.
+	it('stands the fee’s sentence with the switch that wrote it', () => {
+		const { feeWords, feeNote, gift, fee } = review('donor@example.org');
+
+		expect(between(feeWords, feeNote)).toBeLessThan(between(gift, fee));
+	});
+
+	// and the whole of it in one claim: a donor squinting at the step has to see three blocks, which
+	// is true only while every space inside a block is smaller than the two between them. tightening
+	// a group is legible in the space around the group and nowhere else — so this is the case that
+	// fails if a rule above takes a gap the step spends between its groups rather than inside one.
+	it('leaves the three groups further apart than anything standing inside one', () => {
+		const { summary, gift, fee, feeWords, feeNote, group, heading, box, receipt, submit } =
+			review('donor@example.org');
+
+		const inside = [
+			between(gift, fee),
+			between(feeWords, feeNote),
+			between(heading, box),
+			between(receipt, submit)
+		];
+		const apart = [between(summary, group), between(group, receipt)];
+
+		expect(Math.max(...inside)).toBeLessThan(Math.min(...apart));
 	});
 });
 
@@ -653,10 +784,13 @@ describe('the two ticks a step ends on', () => {
 		after: HTMLElement;
 		note: Tick;
 		tribute: Tick;
+		inner: number;
 	} {
 		const wrapper = document.createElement('div');
 		wrapper.style.cssText =
-			'inline-size: 400px; --_sp2: 0.5rem; --_sp3: 0.75rem; --_sp5: 1.25rem; --_row-min: 44px;';
+			'inline-size: 400px; --_sp2: 0.5rem; --_sp3: 0.75rem; --_sp4: 1rem; --_sp5: 1.25rem;' +
+			' --_row-min: 44px; --_t-xs: 0.75rem; --_t-sm: 0.875rem; --_box: 1.15em;' +
+			' --_lh-body: 1.5; line-height: var(--_lh-body);';
 
 		const node = document.createElement('div');
 		node.className = 'step';
@@ -671,6 +805,11 @@ describe('the two ticks a step ends on', () => {
 		node.appendChild(tribute.node);
 		node.appendChild(after);
 		wrapper.appendChild(node);
+		// the card's own inside-one-thing step, measured rather than written down: the pair is held
+		// to it below, and a step moved in ../styles/tokens.css is a step this follows.
+		const step = document.createElement('div');
+		step.style.cssText = 'block-size: var(--_sp2)';
+		wrapper.appendChild(step);
 
 		const paint = new CSSStyleSheet();
 		paint.replaceSync(partStyles);
@@ -678,18 +817,7 @@ describe('the two ticks a step ends on', () => {
 		sheet.replaceSync(layoutStyles);
 		document.adoptedStyleSheets = [paint, sheet];
 		document.body.appendChild(wrapper);
-		return { before, after, note, tribute };
-	}
-
-	/**
-	 * what an eye reads as the space between two things: the ink, not the boxes.
-	 *
-	 * a check row is `--_row-min` tall with its words centred in it (`.check-row` in
-	 * ./layout.css), so the slack a target leaves is inside the row's own box and a measure taken
-	 * between two row boxes is blind to exactly the space this is about.
-	 */
-	function gap(above: Element, below: Element): number {
-		return below.getBoundingClientRect().top - above.getBoundingClientRect().bottom;
+		return { before, after, note, tribute, inner: step.getBoundingClientRect().height };
 	}
 
 	// the two ticks are a pair, and a step that spends the same gap everywhere does not read as
@@ -698,10 +826,20 @@ describe('the two ticks a step ends on', () => {
 	it('sets the pair closer to each other than to the step around them', () => {
 		const { before, after, note, tribute } = tail('none');
 
-		const inside = gap(note.words, tribute.words);
+		const inside = between(note.words, tribute.words);
 
-		expect(inside).toBeLessThan(gap(before, note.words));
-		expect(inside).toBeLessThan(gap(tribute.words, after));
+		expect(inside).toBeLessThan(between(before, note.words));
+		expect(inside).toBeLessThan(between(tribute.words, after));
+	});
+
+	// and how close: the pair is one thing on the step, so what stands between the two asks is the
+	// step the card spends inside a thing rather than a length of the pair's own. left at the slack
+	// two `--_row-min` rows leave between their words, the pair is held together only by being
+	// nearer than the step — which is a pair a donor has to measure rather than one they see.
+	it('closes the pair to the step the card spends inside one thing', () => {
+		const { note, tribute, inner } = tail('none');
+
+		expect(between(note.words, tribute.words)).toBeLessThanOrEqual(inner);
 	});
 
 	// and the case the pair costs: with the step's gap gone from between them, a disclosure the
@@ -710,7 +848,7 @@ describe('the two ticks a step ends on', () => {
 	it('puts the step’s own rhythm back under a disclosure the donor opened', () => {
 		const { before, note, tribute } = tail('note');
 
-		expect(gap(note.field, tribute.words)).toBeCloseTo(gap(before, note.words), 0);
+		expect(between(note.field, tribute.words)).toBeCloseTo(between(before, note.words), 0);
 	});
 });
 

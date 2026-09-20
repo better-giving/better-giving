@@ -184,16 +184,25 @@ form {
 }
 
 /*
- * the line under the receipt saying where the receipt goes belongs to the receipt: a step's full
- * rhythm above it stands it as far from the total as from the rail below, and a line equidistant
- * from two blocks reads as a third. it takes the receipt's own row gap instead, by the rule
- * `.disclosure + .disclosure` below uses — the step's gap negated and the receipt's put back — so
- * a step drawn at a different rhythm keeps the line where it is. adjacency rather than a name,
- * because the receipt is moved off the step for the takeover (`receiptSlot` in ../views.ts) and
- * the line is hidden with the step, so the pair only ever stands together here.
+ * the line saying where the receipt goes belongs to the control that spends the money: it is the
+ * last thing a donor reads before pressing, and the step's full rhythm on both sides of it stands
+ * it as far from the payment box above as from the press below — a line equidistant from two
+ * blocks reads as a third. it takes the receipt's own row gap under it instead, the way
+ * `.disclosure + .disclosure` below takes one: the step's gap negated and the receipt's put back,
+ * so a step drawn at a different rhythm keeps the line against the button.
+ *
+ * the length is carried by the line rather than by the button, and that is what the card with no
+ * address turns on: the line is hidden where the donor gave none (`receiptTo` in ../views.ts), a
+ * hidden box spends no margin, and the button keeps the step's own rhythm under whatever stands
+ * above it. the same length on the button would lift it toward the payment box on every one of
+ * those cards.
+ *
+ * the pair rather than the line by name, because `.aside` is the role every quiet line on a
+ * takeover takes as well (../views.ts) and only this one stands against the press: `submit` is on
+ * the one control that spends the money and on no other (../../custom-elements.json).
  */
-[part~='summary'] + .aside {
-	margin-block-start: calc(var(--_sp2) - var(--_sp5));
+.aside:has(+ [part~='submit']) {
+	margin-block-end: calc(var(--_sp2) - var(--_sp5));
 }
 
 /*
@@ -574,10 +583,11 @@ form {
  * with the gap alone taken back, what stands between the two ticks is the slack `--_row-min`
  * leaves over and under each row's words (`.check-row` above) twice over — a target's height doing
  * the spacing, and doing more of it than the step spends between a tick and the field it reveals,
- * so the two asks read as further apart than an ask and its answer. the `--_sp3` on top of the gap
+ * so the two asks read as further apart than an ask and its answer. the `--_sp4` on top of the gap
  * is what closes that: the two rows overlap by that much of their slack, and the words come to sit
- * about a `--_sp3` apart. each row still holds the floor in layout; where the two overlap the later
- * one takes the press, and what the earlier one keeps is its floor less this step, which is still
+ * a `--_sp2` apart — the step this card spends inside one thing, rather than a length of the pair's
+ * own. each row still holds the floor in layout; where the two overlap the later one takes the
+ * press, and what the earlier one keeps is its floor less this step — 28px of 44px — which is still
  * past the 24px `--_target-min` in ./tokens.css argues from. the pair still sits a step from the
  * amount block above it and from the button below it, because the gaps the step spends there are
  * untouched.
@@ -589,7 +599,7 @@ form {
  */
 .disclosure + .disclosure,
 .skeleton-row + .skeleton-row {
-	margin-block-start: calc(-1 * var(--_sp5) - var(--_sp3));
+	margin-block-start: calc(-1 * var(--_sp5) - var(--_sp4));
 }
 
 /*
@@ -598,7 +608,7 @@ form {
  * than one row's slack under the field it revealed — which reads as that tick belonging to the
  * block that was just opened rather than as the next ask. a step's rhythm there is what tells them
  * apart again, and it is the step's own token because it is the step's own rhythm, with the
- * `--_sp3` the rule above took returned beside it so the two lengths cancel to exactly the step.
+ * `--_sp4` the rule above took returned beside it so the two lengths cancel to exactly the step.
  *
  * inside the row the disclosure opens rather than under the box it opens, and that is the whole
  * reason it is stated on the inner: the body is a grid row that grows from `0fr` (`.disclosure-body`
@@ -610,7 +620,7 @@ form {
  * closed one.
  */
 .disclosure:has(+ .disclosure) .disclosure-inner {
-	padding-block-end: calc(var(--_sp5) + var(--_sp3));
+	padding-block-end: calc(var(--_sp5) + var(--_sp4));
 }
 
 .skeleton {
