@@ -27,7 +27,7 @@ import type { Route } from './+types/_sections.payments.stripe';
 // /payments/stripe — Stripe's page, one of the two under the rail's donation processor heading.
 // what it draws is ../lib/stripe-section.tsx whole.
 //
-// the account, the worker and the twenty-seven values are the sections layout's reading
+// the account, the worker and the deploy-time values are the sections layout's reading
 // (./_sections.tsx); what this page reads on top of them is ../lib/processor-reading.ts's, which also
 // says why any face but ready is `/`, and it is kept between visits by ../lib/processor-cache.ts.
 

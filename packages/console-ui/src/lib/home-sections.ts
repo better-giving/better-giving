@@ -57,9 +57,10 @@ import { CHARGE_PAIRS } from './processor-links';
 // and no reading of any of them.
 //
 // `BETTER_AUTH_URL` has no fold and no box. the app falls back to the origin a request arrived on
-// when nothing is pinned (`packages/app/src/lib/server/auth/index.ts`), so a box would only create a
-// way to be wrong and a press would be a full deploy of this repository for it; pinning one is the
-// escape hatch DEPLOY.md documents.
+// when nothing is pinned (`packages/app/src/lib/server/auth/index.ts`), and a pinned one is also
+// the address registered at Intuit (`connectFlowOrigin` in
+// `packages/app/src/lib/server/accounting/connect-link.ts`); a press for it would be a full deploy
+// of this repository either way, and pinning one is the escape hatch DEPLOY.md documents.
 //
 // every input is a value and nothing here reaches a network, so ./home-sections.spec.ts looks at
 // all of it without a cloudflare account or a deployment.
@@ -188,7 +189,7 @@ export function heldNames(read: VarsRead): ReadonlySet<string> {
 /**
  * the six rows, from the reading the binary answered with.
  *
- * **a door that did not answer never reaches here.** the twenty-seven values come off the account in
+ * **a door that did not answer never reaches here.** the deploy-time values come off the account in
  * one read that is scoped to no fold, so a console that could not take it draws no fold at all —
  * the face is `blocked` and this is not called. `heldNames`'s empty fallback is what that arm would
  * read as, and it is stated rather than asserted because an assertion is a way for this to throw

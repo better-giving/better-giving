@@ -66,8 +66,12 @@ export type NoReport =
 	 * `fix` is the deployment's second sentence, carried for the reason `refused` carries its own: a
 	 * refusal outside 401 writes the same members, and the way out is the only one of them that says
 	 * what to do about the state.
+	 *
+	 * `error` is the code beside those sentences, and it is carried for a reason of its own: it is
+	 * the one member of a refusal written for a machine rather than read, so a console that dropped
+	 * it would hold the deployment's precise answer and hand on a vague one.
 	 */
-	| { kind: 'unreadable'; detail: string; fix: string | null };
+	| { kind: 'unreadable'; error: string | null; detail: string; fix: string | null };
 
 /**
  * the one face on screen.
@@ -90,14 +94,14 @@ export type HomeFace =
 	/** it is up, it answers, and the six folds are what is left. */
 	| { kind: 'ready'; address: string };
 
-/** one of the twenty-seven values an operator configures a deployment with, every one of them a var. */
+/** one of the deploy-time values an operator configures a deployment with, each of them a var. */
 export type DeployVarName = (typeof DEPLOY_VARS)[number];
 
 /**
  * one var, as the deployment holds it.
  *
- * three states and not two. `absent` is nothing in the slot; `withheld` is a binding under one of
- * the twenty-seven names that is not plain text, which is a deployment that stored the value as a
+ * three states and not two. `absent` is nothing in the slot; `withheld` is a binding under a
+ * {@link DeployVarName} that is not plain text, which is a deployment that stored the value as a
  * secret — the value is there and the deployment reads it, and the free press is the way out.
  * collapsing them would print the same cell over two deployments an operator has to do different
  * things to.
@@ -107,7 +111,7 @@ export type DeployedVar =
 	| { readonly name: DeployVarName; readonly kind: 'withheld' }
 	| { readonly name: DeployVarName; readonly kind: 'absent' };
 
-/** what the twenty-seven read as, or which way they did not. */
+/** what the deploy-time values read as, or which way they did not. */
 export type VarsRead =
 	| { kind: 'read'; vars: DeployedVar[] }
 	/** the worker is not in the account, which is every run before a first deploy. */
@@ -121,7 +125,7 @@ export type VarsRead =
 	/** it answered, and in a shape nothing was written against. */
 	| { kind: 'unreadable'; detail: string };
 
-/** the twenty-seven as the one door answered for them, whether or not it landed. */
+/** the deploy-time values as the one door answered for them, whether or not it landed. */
 export type DeployedValues = { vars: VarsRead };
 
 /**
@@ -195,7 +199,7 @@ export type HomeReading = {
 };
 
 /**
- * why there was nowhere to write one of the twenty-seven to.
+ * why there was nowhere to write a deploy-time value to.
  *
  * two members and not the seven an address read has: a write finds out from its own answer, and the
  * only two things it can find out are that the account holds no such worker and that the binary
@@ -204,7 +208,7 @@ export type HomeReading = {
 export type NoWhere = { kind: 'not-deployed' } | { kind: 'no-credential'; detail: string };
 
 /**
- * the ways a write of one of the twenty-seven did not happen.
+ * the ways a write of a deploy-time value did not happen.
  *
  * shared by both doors because they are the same four facts about the machine and the account:
  * every fold on this surface already draws the one it got.
@@ -219,8 +223,8 @@ export type ValuesRefusal =
 	| { kind: 'failed'; detail: string };
 
 /**
- * how a write of one or more of the twenty-seven went, which is the one answer every press on the page
- * gets: each of them is a var and they all go through one door.
+ * how a write of one or more deploy-time values went, which is the one answer every press on the
+ * page gets: each of them is a var and they all go through one door.
  *
  * `set` is the only one that left anything on the deployment. `nothing` is a press the binary
  * answered before cloudflare was asked — a write naming nothing changes nothing and answers 200,

@@ -1,19 +1,29 @@
 import type {
 	LedgerAccountLine,
-	QuickbooksCompany
+	QuickbooksCompany,
+	QuickbooksPress,
+	QuickbooksPressReport,
+	QuickbooksRecourse,
+	QuickbooksReport
 } from '@better-giving/operator/console/quickbooks';
 import { QUICKBOOKS_RECOURSES } from '@better-giving/operator/console/quickbooks';
 import { describe, expect, it } from 'vitest';
+import type { NoReport } from '../api/types';
+import type { QuickbooksAnswer } from './quickbooks-standing';
 import {
 	CHOOSE,
 	accountPicker,
 	backlogSays,
 	backlogStands,
+	connectAddress,
+	landedPress,
 	picksToSave,
 	quickbooksIntent,
-	retriedSays,
+	retriedGifts,
+	retriedStands,
 	startDay,
 	startToSave,
+	unanswered,
 	unpickableStands,
 	waitedSays
 } from './quickbooks-standing';
@@ -41,6 +51,38 @@ const company = (over: Partial<QuickbooksCompany> = {}): QuickbooksCompany => ({
 	deposit: { id: '2', name: 'Bank' },
 	startAt: '2026-01-31T00:00:00.000Z',
 	...over
+});
+
+/** the whole read the section is handed, connected and with nothing owed. */
+const report = (over: Partial<QuickbooksReport> = {}): QuickbooksReport => ({
+	connection: company(),
+	accounts: { state: 'read', accounts: CHART },
+	backlog: { failed: 0, oldestWaitingAt: null },
+	callbackAddress: 'https://give.example.org/quickbooks/callback',
+	...over
+});
+
+/**
+ * the address the deployment answered the connect press with, which this console hands on unread.
+ *
+ * the consent host itself is not spelled here and may not be: it lives in the adapter that builds
+ * this address and nowhere else, which
+ * packages/app/src/lib/server/accounting/sole-importer.spec.ts sweeps the whole tree for.
+ */
+const CONSENT = 'https://consent.example.org/connect/oauth2?state=abc';
+
+/** nothing came back about a press, which is the silence drawn at the press that made it. */
+const NOTHING_ANSWERED: NoReport = { kind: 'unreachable', detail: 'nothing answered' };
+
+const reported = (report: QuickbooksPressReport): QuickbooksAnswer => ({
+	kind: 'reported',
+	report
+});
+
+const silence = (press: QuickbooksPress): QuickbooksAnswer => ({
+	kind: 'unanswered',
+	press,
+	read: NOTHING_ANSWERED
 });
 
 describe('a picker over the company’s own chart', () => {
@@ -122,17 +164,38 @@ describe('how long the oldest has waited', () => {
 
 describe('the backlog speaks only where a gift was given up on', () => {
 	it('says nothing at all where none was, however many are still on their way', () => {
-		expect(backlogStands({ failed: 0, oldestWaitingAt: NOW.toISOString() }, NOW)).toBeNull();
+		expect(
+			backlogStands(report({ backlog: { failed: 0, oldestWaitingAt: NOW.toISOString() } }), NOW)
+		).toBeNull();
 	});
 
-	it('names how many and how long the oldest has waited', () => {
-		const stands = backlogStands({ failed: 3, oldestWaitingAt: '2026-09-16T12:00:00.000Z' }, NOW);
+	it('names how many were given up on and how far behind the books are', () => {
+		const stands = backlogStands(
+			report({ backlog: { failed: 3, oldestWaitingAt: '2026-09-16T12:00:00.000Z' } }),
+			NOW
+		);
 		expect(stands).toEqual({ failed: 3, waited: '4 days' });
 	});
 
-	it('says it in a fundraiser’s words', () => {
+	it('says nothing where no company is connected, whatever the rows say', () => {
+		// the press under it queues gifts for a deployment with nowhere to send them, and the
+		// deployment refuses it (`notConnected` in packages/app/src/routes/console.quickbooks.ts).
+		const stands = backlogStands(
+			report({
+				connection: { state: 'disconnected' },
+				accounts: null,
+				backlog: { failed: 3, oldestWaitingAt: '2026-09-16T12:00:00.000Z' }
+			}),
+			NOW
+		);
+		expect(stands).toBeNull();
+	});
+
+	it('says the two figures separately, each as what it is', () => {
+		// the wait spans every gift still owed and the count is the given-up-on ones alone, so one
+		// sentence over both would report a healthy gift's wait as a failure's.
 		expect(backlogSays({ failed: 3, waited: '4 days' })).toBe(
-			'3 gifts haven’t gone over. The oldest has been waiting 4 days.'
+			'3 gifts haven’t gone over. The books are 4 days behind.'
 		);
 	});
 
@@ -142,10 +205,48 @@ describe('the backlog speaks only where a gift was given up on', () => {
 });
 
 describe('what the retry press answers with', () => {
-	it('says what it queued', () => {
-		expect(retriedSays(0)).toBe('Nothing was left to send.');
-		expect(retriedSays(1)).toBe('1 gift is queued to go over again.');
-		expect(retriedSays(12)).toBe('12 gifts are queued to go over again.');
+	it('says what it queued, under a word off that sentence rather than off the press', () => {
+		expect(retriedStands(0)).toEqual({
+			word: 'Nothing queued',
+			tone: 'note',
+			says: 'Nothing was left to send.'
+		});
+		expect(retriedStands(1)).toEqual({
+			word: 'Queued',
+			tone: 'done',
+			says: '1 gift will be tried again.'
+		});
+		expect(retriedStands(12).says).toBe('12 gifts will be tried again.');
+	});
+});
+
+describe('which control an answer belongs to', () => {
+	it('is the press the report names, and no other', () => {
+		expect(landedPress(reported({ press: 'accounts' }), 'accounts')).toBe(true);
+		expect(landedPress(reported({ press: 'accounts' }), 'start-date')).toBe(false);
+		expect(landedPress(silence('accounts'), 'accounts')).toBe(false);
+		expect(landedPress(null, 'accounts')).toBe(false);
+	});
+
+	it('hands the connect press its address and every other press none', () => {
+		expect(connectAddress(reported({ press: 'connect', url: CONSENT }))).toBe(CONSENT);
+		expect(connectAddress(reported({ press: 'disconnect' }))).toBeNull();
+		expect(connectAddress(silence('connect'))).toBeNull();
+		expect(connectAddress(null)).toBeNull();
+	});
+
+	it('hands the retry press what it queued, counting none as a count and not as silence', () => {
+		expect(retriedGifts(reported({ press: 'retry', retried: 4 }))).toBe(4);
+		expect(retriedGifts(reported({ press: 'retry', retried: 0 }))).toBe(0);
+		expect(retriedGifts(reported({ press: 'accounts' }))).toBeNull();
+		expect(retriedGifts(null)).toBeNull();
+	});
+
+	it('draws the deployment’s silence at the press it was silent about and at no other', () => {
+		expect(unanswered(silence('retry'), 'retry')).toEqual(NOTHING_ANSWERED);
+		expect(unanswered(silence('retry'), 'disconnect')).toBeNull();
+		expect(unanswered(reported({ press: 'retry', retried: 1 }), 'retry')).toBeNull();
+		expect(unanswered(null, 'retry')).toBeNull();
 	});
 });
 
@@ -172,6 +273,13 @@ describe('where the three pickers would be, on a chart that could not be read', 
 		// what it said is the whole of what is said: a press here would ask for a round trip through
 		// Intuit over something like a rate limit.
 		expect(unpickableStands(null)).toEqual({ connect: false, says: null });
+	});
+
+	it('draws no recourse at all where the deployment names one this console does not hold', () => {
+		// the name arrives off the wire unread (`ask` in ../api/client.ts), so a deployment a release
+		// ahead of this console names one the record has no entry for — and the type says otherwise.
+		const ahead = 'rotate-keys' as QuickbooksRecourse;
+		expect(unpickableStands(ahead)).toEqual({ connect: false, says: null });
 	});
 
 	it('answers every recourse the closed set holds with something an operator can read', () => {

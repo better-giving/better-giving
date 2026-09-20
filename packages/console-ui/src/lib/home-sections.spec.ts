@@ -52,7 +52,7 @@ const reading = (over: Partial<HomeReading> = {}): HomeReading => ({
 	...over
 });
 
-/** the same reading with some of the twenty-seven unset. */
+/** the same reading with some of the deploy-time values unset. */
 const without = (...names: readonly string[]): HomeReading =>
 	reading({
 		values: {

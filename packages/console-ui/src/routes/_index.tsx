@@ -57,9 +57,11 @@ import type { Route } from './+types/_index';
 // one-way door the remote migration is. this page names the command and offers no press of its own.
 //
 // **`BETTER_AUTH_URL` has no box and no press.** the app falls back to the origin a request arrived
-// on when nothing is pinned (`packages/app/src/lib/server/auth/index.ts`), so a box would only
-// create a way to be wrong and a press would be a full deploy of this repository for it; pinning
-// one is the escape hatch DEPLOY.md documents.
+// on when nothing is pinned (`packages/app/src/lib/server/auth/index.ts`), and a pinned one decides
+// two things at once: where this deployment says it answers, and the address registered at Intuit
+// for the QuickBooks round trip (`connectFlowOrigin` in
+// `packages/app/src/lib/server/accounting/connect-link.ts`). a press for it would be a full deploy
+// of this repository either way; pinning one is the escape hatch DEPLOY.md documents.
 //
 // reads are the binary's and this `clientLoader`'s, writes are the presses below, and every
 // failure is a value: nothing here throws, because a rejected promise in a loader is a 500 in place
@@ -152,7 +154,7 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	 * ends the run this console is inside, and asks the browser for the tab back.
 	 *
 	 * nothing on cloudflare and nothing on the deployment changes: what stops is the process on this
-	 * machine, and the account, the session and the twenty-seven values are exactly where they were.
+	 * machine, and the account, the session and the deploy-time values are exactly where they were.
 	 *
 	 * **`window.close()` is a request the browser is free to refuse**, and chrome refuses it on a tab
 	 * no script opened — this one was opened by the binary. so the answer below is what the screen is
@@ -340,7 +342,7 @@ function BlockedFace({
 		);
 	}
 	if (why.kind === 'no-values') {
-		/* the deployment is up and answering, and one of the two doors its twenty-seven values come
+		/* the deployment is up and answering, and one of the two doors its deploy-time values come
 		   through is not (`packages/console/internal/deployment/values.go`). every section page reads
 		   them, so there is nothing to draw — and nothing here to repair by hand either: the way out
 		   is the read taken again, which is what a reload is.

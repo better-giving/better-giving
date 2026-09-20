@@ -2,7 +2,7 @@ import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { CodeSlab } from '@better-giving/operator/components/data/CodeSlab';
-import { DateField } from '@better-giving/operator/components/forms/DateField';
+import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { SelectWithNote } from '@better-giving/operator/components/forms/SelectWithNote';
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
@@ -12,29 +12,31 @@ import type {
 	LedgerAccountLine,
 	QuickbooksAccountsReading,
 	QuickbooksCompany,
-	QuickbooksPress,
-	QuickbooksPressReport,
 	QuickbooksRecourse,
 	QuickbooksReport
 } from '@better-giving/operator/console/quickbooks';
 import { useSavedFormState } from '@better-giving/operator/saved-form-state.react';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import type { DeployedValues, NoReport, VarsWritten } from '../api/types';
+import type { DeployedValues, QuickbooksRead, VarsWritten } from '../api/types';
 import { heldValues } from './held-values';
 import { keysTrouble, noAnswer, valuesGuard } from './processor-screen';
-import type { AccountPick, QuickbooksPicks } from './quickbooks-standing';
+import type { AccountPick, QuickbooksAnswer, QuickbooksPicks } from './quickbooks-standing';
 import {
 	PICKS,
 	accountPicker,
 	backlogSays,
 	backlogStands,
+	connectAddress,
+	landedPress,
 	picksHeld,
 	picksToSave,
 	quickbooksIntent,
-	retriedSays,
+	retriedGifts,
+	retriedStands,
 	startDay,
 	startToSave,
+	unanswered,
 	unpickableStands
 } from './quickbooks-standing';
 import { Said } from './said';
@@ -64,12 +66,13 @@ import { FREE_INTENT } from './withheld-values';
 // way every time.
 //
 // **nothing here confirms that the books are keeping up.** a connected deployment says which
-// company and what the three picks are, and the backlog speaks only where a gift was given up on
-// (./quickbooks-standing.ts).
+// company and what the three picks are, and the backlog speaks only under that company and only
+// where a gift was given up on (./quickbooks-standing.ts).
 //
-// **the address an operator registers is handed in.** it is this deployment's own address and the
-// path Intuit sends a browser back to, and neither is knowable here: no hostname is committed to
-// this repository (CLAUDE.md) and the path is packages/app's, which this package may not import.
+// **the address an operator registers arrives on the report, whole.** it is this deployment's own
+// address and the path Intuit sends a browser back to, and only the deployment can say either: no
+// hostname is committed to this repository (CLAUDE.md) and the path is packages/app's, which this
+// package may not import. so nothing here or above it composes one.
 
 /**
  * the three values this section's boxes set, taken out of the enumeration rather than named again.
@@ -107,33 +110,15 @@ const PICK_FIELD = (pick: AccountPick): string => `quickbooks-${pick}`;
 /** the same for the one box a day is typed in. */
 const START_FIELD = 'quickbooks-start';
 
-/**
- * how the last press on the connection was answered.
- *
- * the two kinds a repeating-gifts press answers in (`RecurringSetup` in ../api/types.ts):
- * `reported` is the deployment saying what the press did, and `unanswered` is nothing coming back
- * that says. the press is named on both arms, because an outcome reports at the control that
- * caused it and one section draws five of them.
- */
-export type QuickbooksAnswer =
-	| { kind: 'reported'; report: QuickbooksPressReport }
-	| { kind: 'unanswered'; press: QuickbooksPress; read: NoReport };
-
-/** where the books stand, or which way the deployment did not say. */
-export type QuickbooksRead =
-	| { kind: 'read'; report: QuickbooksReport }
-	| { kind: 'unread'; read: NoReport };
+/* the page this section is drawn on names an answer by the type it is handed
+   (./quickbooks-standing.ts), so the two spell one thing once. */
+export type { QuickbooksAnswer } from './quickbooks-standing';
 
 export type QuickbooksSectionProps = {
 	/** the values as cloudflare answered for them, which is what the boxes are drawn with. */
 	values: DeployedValues;
 	/** where the books stand, as the route resolved it. */
 	books: QuickbooksRead;
-	/**
-	 * the address to register in the operator's Intuit app: this deployment's own address and the
-	 * path Intuit sends a browser back to, composed by the route.
-	 */
-	callbackAddress: string;
 	workerName: string;
 	/** the cloudflare account every read is scoped to, named in every sentence about a refusal. */
 	accountName: string;
@@ -177,7 +162,6 @@ type Presses = Pick<
 export function QuickbooksSection({
 	values,
 	books,
-	callbackAddress,
 	workerName,
 	accountName,
 	secrets,
@@ -235,7 +219,6 @@ export function QuickbooksSection({
 			) : (
 				<Books
 					report={books.report}
-					callbackAddress={callbackAddress}
 					answer={answer}
 					busy={busy}
 					pending={pending}
@@ -250,26 +233,9 @@ export function QuickbooksSection({
 	);
 }
 
-/** whether the last answer is this press's, landed. */
-const landedPress = (answer: QuickbooksAnswer | null, press: QuickbooksPress): boolean =>
-	answer?.kind === 'reported' && answer.report.press === press;
-
-/** the address the connect press answered with, or `null` where the last answer is another press's. */
-const connectAddress = (answer: QuickbooksAnswer | null): string | null =>
-	answer?.kind === 'reported' && answer.report.press === 'connect' ? answer.report.url : null;
-
-/** how many gifts the retry press queued again, or `null` for the same reason. */
-const retriedGifts = (answer: QuickbooksAnswer | null): number | null =>
-	answer?.kind === 'reported' && answer.report.press === 'retry' ? answer.report.retried : null;
-
-/** the deployment answering nothing to one press, drawn at that press and at no other. */
-const unanswered = (answer: QuickbooksAnswer | null, press: QuickbooksPress): NoReport | null =>
-	answer?.kind === 'unanswered' && answer.press === press ? answer.read : null;
-
-/** the company, or the way to connect one, and the backlog under either. */
+/** the company and what it is owed, or the way to connect one. */
 function Books({
 	report,
-	callbackAddress,
 	answer,
 	busy,
 	pending,
@@ -278,45 +244,44 @@ function Books({
 	onStartDate,
 	onRetry,
 	onDisconnect
-}: { report: QuickbooksReport; callbackAddress: string } & Presses): ReactNode {
+}: { report: QuickbooksReport } & Presses): ReactNode {
 	const connection = report.connection;
-	return (
-		<>
-			{connection.state === 'connected' ? (
-				<Company
-					company={connection}
-					accounts={report.accounts}
+	if (connection.state !== 'connected')
+		return (
+			<div className="adm-named">
+				{/* the address is the deployment's and the round trip ends there: Intuit cannot reach this
+				    console at all, so a sentence saying "back here" would name the wrong machine. */}
+				<p className="adm-prose">
+					Register this address in your Intuit app. Without it, Intuit won’t send your browser back
+					to this deployment.
+				</p>
+				<CodeSlab oneline copyable content={report.callbackAddress} />
+				<ConnectPress
+					label="Connect a company"
 					answer={answer}
 					busy={busy}
 					pending={pending}
 					onConnect={onConnect}
-					onAccounts={onAccounts}
-					onStartDate={onStartDate}
-					onDisconnect={onDisconnect}
 				/>
-			) : (
-				<div className="adm-named">
-					<p className="adm-prose">
-						Register this address in your Intuit app — Intuit won’t send your browser back here
-						without it.
-					</p>
-					<CodeSlab oneline copyable content={callbackAddress} />
-					<ConnectPress
-						label="Connect a company"
-						answer={answer}
-						busy={busy}
-						pending={pending}
-						onConnect={onConnect}
-					/>
-				</div>
-			)}
-			<Backlog
-				backlog={report.backlog}
+			</div>
+		);
+	return (
+		<>
+			<Company
+				company={connection}
+				accounts={report.accounts}
 				answer={answer}
 				busy={busy}
 				pending={pending}
-				onRetry={onRetry}
+				onConnect={onConnect}
+				onAccounts={onAccounts}
+				onStartDate={onStartDate}
+				onDisconnect={onDisconnect}
 			/>
+			{/* under the company and nowhere else: what is owed is owed to it, and the press queues
+			    gifts for it. ./quickbooks-standing.ts's `backlogStands` refuses a disconnected read as
+			    well, which is where a case reaches the rule. */}
+			<Backlog report={report} answer={answer} busy={busy} pending={pending} onRetry={onRetry} />
 		</>
 	);
 }
@@ -342,11 +307,18 @@ function ConnectPress({
 	return (
 		<>
 			<div className="adm-actions">
+				{/* held with `aria-disabled` rather than `disabled`, and the press guarded behind it:
+				    a disabled button cannot hold focus, so the keyboard drops to the document at the
+				    moment the answer arrives beside it (packages/app/src/routes/_app.admin.books.tsx
+				    argues it at its own press). */}
 				<Button
 					type="button"
 					variant="primary"
-					onClick={onConnect}
-					disabled={busy || undefined}
+					onClick={() => {
+						if (busy) return;
+						onConnect();
+					}}
+					aria-disabled={busy || undefined}
 					aria-busy={own || undefined}
 				>
 					{label}
@@ -431,7 +403,6 @@ function Company({
 	);
 }
 
-/** the three as the pickers hold them right now. */
 /** the three as the deployment holds them, as one value a render can be compared against. */
 const seedOf = (picks: QuickbooksPicks): string => `${picks.income}|${picks.fee}|${picks.deposit}`;
 
@@ -570,7 +541,14 @@ function dayIn(form: HTMLFormElement): string {
 	return control instanceof HTMLInputElement ? control.value.trim() : '';
 }
 
-/** the day this deployment's history starts going over. */
+/**
+ * the earliest date a gift may carry to reach the books.
+ *
+ * it moves nothing that has already settled: the queue row is written in the settling gift's own
+ * batch and never swept up afterwards (`outboxStatements` in
+ * packages/app/src/lib/server/accounting/outbox.ts), so an earlier day sends no gift that is
+ * already in the past.
+ */
 function StartDateForm({
 	company,
 	answer,
@@ -602,11 +580,15 @@ function StartDateForm({
 				onStartDate(day);
 			}}
 		>
-			<DateField
+			{/* a box standing on its own, so its label stands over it — the floating construction
+			    packages/operator/src/components/forms/DateField.jsx draws is scoped by its own header
+			    to a date box inside a named group of them. */}
+			<Field
 				id={START_FIELD}
 				name={START_FIELD}
-				label="Send gifts given from"
-				hint="Gifts given before this day never go over."
+				type="date"
+				label="Send gifts dated from"
+				hint="Gifts dated before this day are never sent. Choosing an earlier day sends nothing that has already settled."
 				defaultValue={startDay(company.startAt)}
 				disabled={busy || undefined}
 			/>
@@ -636,11 +618,15 @@ function Disconnect({
 	return (
 		<>
 			<div className="adm-actions">
+				{/* `aria-disabled` and a guarded press, for `ConnectPress`'s reason above. */}
 				<Button
 					type="button"
 					variant="danger"
-					onClick={() => setAsking(true)}
-					disabled={busy || undefined}
+					onClick={() => {
+						if (busy) return;
+						setAsking(true);
+					}}
+					aria-disabled={busy || undefined}
 					aria-busy={own || undefined}
 				>
 					Disconnect
@@ -680,32 +666,37 @@ function Disconnect({
 
 /** the gifts that were given up on, and the press that queues them again. */
 function Backlog({
-	backlog,
+	report,
 	answer,
 	busy,
 	pending,
 	onRetry
-}: { backlog: QuickbooksReport['backlog'] } & Pick<
+}: { report: QuickbooksReport } & Pick<
 	Presses,
 	'answer' | 'busy' | 'pending' | 'onRetry'
 >): ReactNode {
 	const own = pending === quickbooksIntent('retry');
-	const stands = backlogStands(backlog, new Date());
+	const stands = backlogStands(report, new Date());
 	const queued = retriedGifts(answer);
 	const silent = unanswered(answer, 'retry');
 	/* the press's own outcome keeps the block standing on its own: a retry that queued everything
 	   leaves nothing behind it to say, and the answer would go with the block that reported it. */
 	if (stands === null && queued === null && silent === null) return null;
+	const said = queued === null ? null : retriedStands(queued);
 	return (
 		<div className="adm-named">
 			{stands === null ? null : (
 				<>
 					<FieldMessage>{backlogSays(stands)}</FieldMessage>
 					<div className="adm-actions">
+						{/* `aria-disabled` and a guarded press, for `ConnectPress`'s reason. */}
 						<Button
 							type="button"
-							onClick={onRetry}
-							disabled={busy || undefined}
+							onClick={() => {
+								if (busy) return;
+								onRetry();
+							}}
+							aria-disabled={busy || undefined}
 							aria-busy={own || undefined}
 						>
 							Try these again
@@ -713,9 +704,9 @@ function Backlog({
 					</div>
 				</>
 			)}
-			{queued === null ? null : (
-				<Banner tone="done" word="Queued">
-					{retriedSays(queued)}
+			{said === null ? null : (
+				<Banner tone={said.tone} word={said.word}>
+					{said.says}
 				</Banner>
 			)}
 			{silent === null ? null : noAnswer(silent, 'nothing was tried again')}

@@ -109,7 +109,7 @@ describe('the names a press carries a value for', () => {
 	});
 });
 
-describe('the groups the twenty-seven are set in', () => {
+describe('the groups the enumeration’s names are set in', () => {
 	it('covers the enumeration exactly, each name in one group or named as having none', () => {
 		const grouped = SECRET_GROUPS.flatMap((group) => group.names);
 		expect([...grouped, ...UNGROUPED_VARS].sort()).toEqual([...DEPLOY_VARS].sort());
@@ -134,8 +134,8 @@ describe('the boxes that arrive masked', () => {
 		]);
 	});
 
-	it('leaves the other nineteen of the twenty-seven legible, the three public halves among them', () => {
-		// held over the enumeration, so a twenty-eighth value lands unmasked and this case is where that
+	it('leaves every other name legible, the three public halves among them', () => {
+		// held over the enumeration, so a name added to it lands unmasked and this case is where that
 		// shows. the three named are the ones worth asserting: each stands beside a masked box in the
 		// same fold and carries a word that reads like a credential, and ./secret-groups.ts argues why
 		// none is one.

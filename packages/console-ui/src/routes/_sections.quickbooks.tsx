@@ -2,7 +2,6 @@ import { Column } from '@better-giving/operator/components/shell/Layout';
 import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import type { QuickbooksPress } from '@better-giving/operator/console/quickbooks';
 import { QUICKBOOKS_PRESSES } from '@better-giving/operator/console/quickbooks';
-import { holdBar } from '@better-giving/operator/progress-bar';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { redirect, useSubmit } from 'react-router';
 import { freeWithheldVars, pressQuickbooks, readQuickbooks } from '../api/client';
@@ -10,7 +9,7 @@ import type { QuickbooksPressBody } from '../api/types';
 import { readConsole } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { groupPress } from '../lib/group-press';
-import { forgetReadings } from '../lib/processor-cache';
+import { forgetReadings, readKeptPage } from '../lib/processor-cache';
 import type { QuickbooksAnswer } from '../lib/quickbooks-section';
 import { QuickbooksSection } from '../lib/quickbooks-section';
 import { quickbooksIntent } from '../lib/quickbooks-standing';
@@ -40,20 +39,30 @@ export function meta(): Route.MetaDescriptors {
 }
 
 /**
- * where the books stand, under the same ready check every page under this layout makes.
+ * where the books stand, under the same ready check every page under this layout makes, and kept
+ * between visits as every page that reads the deployment for itself is (../lib/processor-cache.ts).
  *
  * the face is read before the deployment is asked anything, for ../lib/processor-reading.ts's
- * reason: any other face is `/`'s, and the redirect is decided before this page renders. the bar is
- * held after it, so the pass this page finishes is the one taken for the read that follows it.
+ * reason: any other face is `/`'s, and the redirect is decided before this page renders.
+ *
+ * **a reading carrying no connected company is served to no second visit.** connecting finishes in
+ * a browser at the deployment and never on this console
+ * (packages/operator/src/console/quickbooks.ts), so a company connected between two visits to this
+ * page is learned by reading again — and a read that did not land is not an answer to keep either.
  */
-export async function clientLoader({ request }: Route.ClientLoaderArgs) {
-	const { reading } = await readConsole(request);
-	if (reading.face.kind !== 'ready') throw redirect('/', 307);
-
-	const bar = holdBar(new URL(request.url).pathname);
-	const books = await readQuickbooks();
-	await bar.finish();
-	return { books };
+export function clientLoader(args: Route.ClientLoaderArgs) {
+	return readKeptPage(
+		args,
+		async () => {
+			const { reading } = await readConsole(args.request);
+			if (reading.face.kind !== 'ready') throw redirect('/', 307);
+			return { books: await readQuickbooks() };
+		},
+		{
+			standing: ({ books }) =>
+				books.kind === 'read' && books.report.connection.state === 'connected'
+		}
+	);
 }
 
 /**
@@ -105,11 +114,6 @@ export default function QuickbooksPage({ loaderData, actionData, matches }: Rout
 	const submit = useSubmit();
 	const { intent, busy, revalidating } = usePress();
 
-	/* the address travels on the reading, so a reading that did not land carries none — and the
-	   section draws the deployment's silence in place of the block that would register it. */
-	const callbackAddress =
-		loaderData.books.kind === 'read' ? loaderData.books.report.callbackAddress : '';
-
 	const answered = actionData && 'quickbooks' in actionData ? actionData.quickbooks : null;
 	const answer: QuickbooksAnswer | null =
 		answered === null
@@ -134,7 +138,6 @@ export default function QuickbooksPage({ loaderData, actionData, matches }: Rout
 			<QuickbooksSection
 				values={shell.reading.values}
 				books={loaderData.books}
-				callbackAddress={callbackAddress}
 				workerName={shell.workerName}
 				accountName={shell.account}
 				secrets={actionData && 'secrets' in actionData ? actionData.secrets : null}

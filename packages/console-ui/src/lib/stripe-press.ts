@@ -249,8 +249,8 @@ function storedPair(run: StripeRunRead | null, sent: KeysSent | null): StripeKey
  * moment it says it stored it, so there is nothing left to wait for. `storedOrg` in ./org-form.ts
  * is the same seeding, from the same camp (./reseed.ts).
  *
- * **and the reading takes it back the moment it lands.** it reports the same two values — every one
- * of the twenty-seven is a plain var and the account hands each back (`heldValues` in ./held-values.ts)
+ * **and the reading takes it back the moment it lands.** it reports the same two values — every
+ * deploy-time value is a plain var and the account hands each back (`heldValues` in ./held-values.ts)
  * — so nothing moves under the operator when it does.
  *
  * **a press whose run has not stored the pair keeps the boxes holding what it sent**, going or

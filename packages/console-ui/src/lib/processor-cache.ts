@@ -7,9 +7,9 @@ import type { PaymentProcessor } from '../api/types';
 import { PROCESSORS } from './processor-links';
 import { readProcessorScreen } from './processor-reading';
 
-// what a processor page was last read as, kept between visits, so opening a processor's page from the
-// rail a second time draws at once rather than making the round trips of ./processor-reading.ts
-// again.
+// what a page that reads the deployment for itself was last read as, kept between visits, so opening
+// it a second time draws at once rather than taking those round trips again. every processor page is
+// one (./processor-reading.ts), and so is the books page (../routes/_sections.quickbooks.tsx).
 //
 // **the store is `remix-client-cache`'s own in-memory map and never a `Storage`**: the reading holds
 // the account's payments as promises, which no storage can hold, and nothing about a deployment
@@ -19,8 +19,11 @@ import { readProcessorScreen } from './processor-reading';
 // **an entry is served only to a move into its page**, and read past in three cases:
 // - a re-read of the page already on the screen — a press's revalidation, and the page asking again
 //   once a run stops (./stripe-section.tsx) — which wants what the binary says now;
-// - an entry carrying a run, going or ended: a going one has since moved on, and an ended one's report
-//   was consumed by the reading that kept it (../api/client.ts), so it is never drawn twice from here;
+// - an entry the page itself reads past (`standing`), because what it holds could have moved with
+//   nothing pressed here: a run going or ended — a going one has since moved on, and an ended one's
+//   report was consumed by the reading that kept it (../api/client.ts), so it is never drawn twice
+//   from here — and a books page with no company connected, since a company is connected in a
+//   browser at the deployment and never here;
 // - anything after a press, on any page: every `clientAction` forgets every entry first
 //   (`forgetReadings`), so nothing drawn after a write was read before it. a reading that was in
 //   flight when that happened is thrown away when it lands rather than kept.
@@ -95,50 +98,67 @@ function dropOnFailure(key: string, screen: Kept): void {
 }
 
 /** whether a kept entry may be drawn for a load of `key`. */
-function servable(key: string, kept: Kept | undefined): kept is Kept {
-	return kept !== undefined && !isDrawn(key) && kept.run === null;
+function servable<T>(key: string, kept: T | undefined, standing: (kept: T) => boolean): kept is T {
+	return kept !== undefined && !isDrawn(key) && standing(kept);
+}
+
+/**
+ * the `clientLoader` of a page whose reading is kept, on the rules above: `read` is what reaches the
+ * binary where nothing servable is kept, `standing` is what the page reads its own entry past, and
+ * `took` is handed the reading that reached the binary where one did.
+ */
+export async function readKeptPage<T>(
+	args: LoaderFunctionArgs,
+	read: () => Promise<T>,
+	{ standing, took }: { standing: (kept: T) => boolean; took?: (read: T) => void }
+): Promise<T> {
+	const key = new URL(args.request.url).pathname;
+	const under = forgotten;
+	const kept: T | undefined = await cache.getItem(key);
+
+	if (servable(key, kept, standing)) passOver(key);
+	else if (kept !== undefined) await cache.removeItem(key);
+
+	let taken: T | null = null;
+	return cacheClientLoader<LoaderFunctionArgs & { serverLoader: () => Promise<T> }>(
+		{
+			...args,
+			serverLoader: async () => {
+				const bar = holdBar(key);
+				taken = await read();
+				await bar.finish();
+				return taken;
+			}
+		},
+		{ type: 'normal', key, adapter: storeUnder(under) }
+	).then((loaded) => {
+		if (taken !== null) took?.(taken);
+		return loaded;
+	});
 }
 
 /** a processor page's `clientLoader`. */
-export async function readProcessorPage<P extends PaymentProcessor>(
+export function readProcessorPage<P extends PaymentProcessor>(
 	args: LoaderFunctionArgs,
 	processor: P
 ): Promise<ProcessorScreen<P>> {
 	const { request } = args;
 	const key = new URL(request.url).pathname;
-	const under = forgotten;
-	const kept: Kept | undefined = await cache.getItem(key);
-
-	if (servable(key, kept)) passOver(key);
-	else if (kept !== undefined) await cache.removeItem(key);
 
 	// a reading ahead is joined by a move into its page and never by a re-read of the page on the
 	// screen, which wants what the binary says now. one that failed is no answer for the press, which
 	// asks again for itself.
 	const warm = isDrawn(key) ? undefined : warming.get(key);
-	const joined = warm?.under === under ? warm.screen.catch(() => null) : null;
+	const joined = warm?.under === forgotten ? warm.screen.catch(() => null) : null;
 	const readRun = RUNS[processor] as () => Promise<RunOf<P>>;
 
-	let read: ProcessorScreen<P> | null = null;
-	return cacheClientLoader<
-		LoaderFunctionArgs & { serverLoader: () => Promise<ProcessorScreen<P>> }
-	>(
-		{
-			...args,
-			serverLoader: async () => {
-				const bar = holdBar(key);
-				read =
-					((await joined) as ProcessorScreen<P> | null) ??
-					(await readProcessorScreen(request, readRun));
-				await bar.finish();
-				return read;
-			}
-		},
-		{ type: 'normal', key, adapter: storeUnder(under) }
-	).then((loaded) => {
-		if (read !== null) dropOnFailure(key, read);
-		return loaded;
-	});
+	return readKeptPage<ProcessorScreen<P>>(
+		args,
+		async () =>
+			((await joined) as ProcessorScreen<P> | null) ??
+			(await readProcessorScreen(request, readRun)),
+		{ standing: (kept) => kept.run === null, took: (read) => dropOnFailure(key, read) }
+	);
 }
 
 /** every `clientAction`'s first step: nothing read before a press is drawn after it. */

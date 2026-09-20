@@ -120,7 +120,7 @@ export const homeReading = (): Promise<HomeReading> => ask('/home/reading', 'GET
 /**
  * sets and clears the values a fold's boxes carry, in one request to cloudflare.
  *
- * every one of the twenty-seven is a plain var, so this is the one door every press on the page writes
+ * every deploy-time value is a plain var, so this is the one door every press on the page writes
  * through — a read of the worker's bindings and one patch back. seconds and no deploy: the binary
  * replaces the named bindings and sends every other one back up as inherited, so the deployment's
  * database and its rate limiters are untouched.
@@ -130,9 +130,9 @@ export const homeReading = (): Promise<HomeReading> => ask('/home/reading', 'GET
  * a name mapped to `null` is deleted, and a name this does not carry is left exactly as it was.
  *
  * **every way it did not happen comes back as a value rather than thrown**, because each is a state
- * the fold draws at the control that was pressed. the binary refuses a name that is not one of the
- * twenty-seven, PayPal's three credentials, which only {@link startPaypalSetup} writes, and Chariot's
- * four values, which only {@link startChariotSetup} writes, and NOWPayments' three, which only
+ * the fold draws at the control that was pressed. the binary refuses a name that is not a
+ * deploy-time value, PayPal's three credentials, which only {@link startPaypalSetup} writes, and
+ * Chariot's four values, which only {@link startChariotSetup} writes, and NOWPayments' three, which only
  * {@link saveNowpayments} writes, before
  * cloudflare is asked — and that refusal is thrown: no control on this page can make one.
  */

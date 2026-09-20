@@ -7,9 +7,9 @@ import type { DeployValueName } from '@better-giving/operator/deploy-split';
 // the names to remove — so the two ends need the same vocabulary, and what is here is the half both
 // of them need and nothing that touches a network or a credential.
 //
-// **a group is a group of boxes and says nothing about how a value is stored.** all twenty-seven are
-// plain vars (`DEPLOY_VARS` in packages/operator/src/deploy-split.ts); a name here calls a value a
-// secret only where Stripe or a mail host calls it one.
+// **a group is a group of boxes and says nothing about how a value is stored.** every name in the
+// enumeration is a plain var (`DEPLOY_VARS` in packages/operator/src/deploy-split.ts); a name here
+// calls a value a secret only where Stripe or a mail host calls it one.
 //
 // **nothing here is a contract with anybody outside this repository, which is the opposite of
 // CLAUDE.md's packages/form rule.** a group's id travels between one form and one request to the
@@ -40,9 +40,9 @@ export type SecretGroup = {
  * the eight groups.
  *
  * the order is `DEPLOY_VARS`'s own, so a name added to the enumeration lands in a group here
- * without the screen and the split having an order each to drift from the other. four of the
- * twenty-seven are in no group and ./deploy-vars.ts names them: they are the values no group's press
- * sets, and that is where each is argued.
+ * without the screen and the split having an order each to drift from the other. four names are in
+ * no group and ./deploy-vars.ts names them: they are the values no group's press sets, and that is
+ * where each is argued.
  *
  * two of the grouped names belong to no fold's own errand, and they are the first group:
  * `ADMIN_PASSWORD` is the credential that opens the dashboard for the operator who set the
@@ -243,7 +243,7 @@ export const pressedNames = (group: SecretGroup): readonly string[] =>
  *
  * every box on this console is seeded with the value the deployment is holding (./held-values.ts),
  * which is what lets an operator check a stored credential against the page they copied it from —
- * and eight of the twenty-seven are values that reading over their shoulder is enough to take. the
+ * and eight of the names are values that reading over their shoulder is enough to take. the
  * dashboard password opens /admin, the mail password sends as the organisation, the Stripe
  * secret key, the PayPal client secret and the Chariot key move money, the NOWPayments key creates
  * and reads payments in the organisation's name (its payouts take a separate sign-in), the
