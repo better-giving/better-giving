@@ -42,7 +42,7 @@ catalog:
   # dist imports only `Await`, `useLoaderData`, `useNavigate` from `react-router`, all present in 8,
   # so the peerDependencyRules entry below allows 8 for that one peer of that one package, rather
   # than loosening what any other package may peer on react-router.
-  '@ark-ui/react': 5.23.0
+  '@ark-ui/react': 5.39.2
   '@conform-to/react': 1.21.1
   '@conform-to/zod': 1.21.1
   '@react-router/dev': 8.3.0

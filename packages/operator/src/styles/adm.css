@@ -2432,15 +2432,19 @@
 
 	/* ---------- the date field ---------------------------------------------------------
 
-	   a day typed into a box whose label stands inside it and rises onto its top edge
+	   a day written into a box whose label stands inside it and rises onto its top edge
 	   (packages/operator/src/components/forms/DateField.jsx). it is the one box on either operator
 	   surface whose label is not above it, and `.adm-field__label` above is every other box's.
 
-	   the machine is ark's date picker, so the open state, the chosen day, today and a day the
-	   range cannot reach all arrive as `data-*` attributes on its own parts and nothing here reads
-	   a class for them. the float is the one state the machine has no opinion about — a box is
-	   floated while it holds a day or holds the caret — so the component writes `data-floated` and
-	   this sheet reads it.
+	   the day is written in chunks — a year, a month and a day, each its own element — and not into
+	   a run of text, so what is dressed here is three elements on one line rather than one input.
+
+	   the machines are ark's date picker and its date input, so the open state, the chosen day,
+	   today, a day the range cannot reach, and which chunk holds the caret all arrive as `data-*`
+	   attributes on their own parts and nothing here reads a class for them. the float is the one
+	   state neither machine has an opinion about — a box is floated while it holds a day or holds
+	   the caret, and the caret walking from one chunk to the next never leaves the box — so the
+	   component writes `data-floated` and this sheet reads it.
 
 	   the box reserves nothing for either position and is drawn at one height in both, so the
 	   height never depends on whether a day has been typed. that height is the height a box with no
@@ -2499,11 +2503,11 @@
 		border-color: var(--admin-field-border-hover);
 	}
 
-	/* the ring is the box's and never the input's, for `.adm-coinbox`'s reason above: the field here
-	   is the whole box, and a ring round the input inside it would be a rectangle inside a
-	   rectangle. the input's own is taken back below rather than left to paint under this one. */
-	.adm-datebox:has(input:focus-visible),
-	.adm-datebox:has(input.is-focus) {
+	/* the ring is the box's and never a chunk's, for `.adm-coinbox`'s reason above: the field here is
+	   the whole box, and a ring round the chunk holding the caret would be a rectangle inside a
+	   rectangle. which chunk that is, is said by the band below instead. */
+	.adm-datebox:has(.adm-datebox__chunk:focus-visible),
+	.adm-datebox:has(.adm-datebox__chunk.is-focus) {
 		outline: var(--admin-focus-width) solid transparent;
 		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
 	}
@@ -2535,8 +2539,8 @@
 	   height anywhere, and neither the height nor what the row ends up sized by can put the label
 	   and the line out of step.
 
-	   the input is centred in the cell rather than stretched to it, which is what keeps the line
-	   the operator types on at that middle. */
+	   the chunks are centred in the cell rather than stretched to it, which is what keeps the line
+	   the operator writes on at that middle. */
 	.adm-datebox__words {
 		position: relative;
 		grid-column: 1;
@@ -2590,16 +2594,24 @@
 	   box and `.adm-field__error` and `.adm-field__needed` below it
 	   (packages/operator/src/components/forms/DateField.jsx).
 
-	   out of the pointer's way: a press anywhere in the box puts the caret in the input, and the
-	   label is the one thing in there that is not the input. it is still a real `<label>` pointing
-	   at the input's own id, so a reader is told the name and a press on the words this rule hides
-	   from the pointer never happens. */
+	   out of the pointer's way: a press anywhere in the box puts the caret in the chunks, and the
+	   label is the one thing in there that is not a chunk. it is still a real `<label>` pointing at
+	   the control the day is submitted under — which hands that focus straight on to the chunks —
+	   so a reader is told the name and a press on the words this rule hides from the pointer never
+	   happens. */
 	.adm-datefield__label {
 		position: absolute;
 		inset-block: 0;
-		inset-inline-start: 0;
-		max-inline-size: 100%;
+		/* the label's box starts inline-start of the words it holds, and the padding gives them
+		   back: the knockout below has to begin where the corner's arc ends, which is the box's
+		   inline padding less its radius short of the value's inset, and the words themselves have
+		   to stand on that inset at both steps, because it is the line the value is typed on. the
+		   two are the same length in opposite directions and neither is part of the move, so the
+		   words are on that line at rest, floated, and every frame between. */
+		inset-inline-start: calc((var(--admin-space-4) - var(--admin-radius)) * -1);
+		max-inline-size: calc(100% + var(--admin-space-4) - var(--admin-radius));
 		align-content: center;
+		padding-inline-start: calc(var(--admin-space-4) - var(--admin-radius));
 		/* what carries the knockout below past the last letter. */
 		padding-inline-end: var(--admin-space-2);
 		font-size: var(--admin-field-size);
@@ -2618,15 +2630,19 @@
 			color var(--admin-dur-state) var(--admin-ease-state);
 	}
 
-	/* floated: the label's middle on the box's top border, straddling it, and its start where the
-	   corner's arc ends rather than on the value's inset or on the box's own edge.
+	/* floated: the label's middle on the box's top border, straddling it, and its words still on the
+	   inset the value is drawn at.
 
-	   one `translate` states both. half the label's own box is half the cell, which is half the box's
-	   content, so the block half of the move is that plus the block padding and half the border — and
-	   it is half the label's box and not half its words, so neither step of type this label is drawn
-	   at disturbs it. the inline half is the box's inline padding less its radius. the padding alone
-	   is the whole of the distance between the value's inset and the box's edge, and the knockout
-	   below begins where these words do, so on that move the band starts one `--admin-border-width`
+	   the move is the block axis alone. half the label's own box is half the cell, which is half the
+	   box's content, so the move is that plus the block padding and half the border — and it is half
+	   the label's box and not half its words, so neither step of type this label is drawn at
+	   disturbs it. nothing moves on the inline axis, because nothing there differs between the two
+	   positions: the offset the knockout needs is on the label's box at rest as well, where it is
+	   4px of transparent padding behind no band at all.
+
+	   that offset is the box's inline padding less its radius, and it is what puts the band's start
+	   where the corner's arc ends. the padding alone is the whole of the distance between the
+	   value's inset and the box's edge, so a band beginning there begins one `--admin-border-width`
 	   in from the box's own edge, on the border's inner one, while the corner's arc starts on the
 	   outer. what the band then never reaches is that outermost border width of the arc, left
 	   standing inline-start of a knockout that has taken the rest of the corner and the straight run
@@ -2656,8 +2672,7 @@
 	   rise rather than fading in over it. what that costs is its upper half standing on the box's
 	   own fill for the length of the move, which is one rung of the neutral ramp. */
 	.adm-datebox[data-floated] .adm-datefield__label {
-		translate: calc((var(--admin-space-4) - var(--admin-radius)) * -1)
-			calc(-50% - var(--admin-space-3) - var(--admin-border-width) / 2);
+		translate: 0 calc(-50% - var(--admin-space-3) - var(--admin-border-width) / 2);
 		background:
 			linear-gradient(to bottom, var(--admin-page) 50%, var(--_datebox-fill) 50%) 0 50% / 100%
 			var(--admin-space-4) no-repeat;
@@ -2670,29 +2685,71 @@
 		color: var(--admin-ink-disabled);
 	}
 
-	/* the input draws nothing of its own: the box around it is the field, and where the caret is
-	   standing is the box's ring above. its face, its size and its ink are the box's, which is
-	   ./base.css's reset handing a form control the type it stands in. */
-	.adm-datebox__input {
-		display: block;
-		inline-size: 100%;
-		min-inline-size: 0;
-		padding: 0;
-		border: 0;
-		background: none;
-		line-height: var(--admin-field-lh);
-		outline: none;
+	/* the element the chunks' own machine finds them by querying
+	   (packages/operator/src/components/forms/DateField.jsx). it has to stand over every box it owns
+	   — over the pair, in a range — so it lays nothing out and the boxes inside it are arranged by
+	   whatever they really stand in. */
+	.adm-datefield__scope {
+		display: contents;
 	}
 
-	.adm-datebox__input:focus-visible,
-	.adm-datebox__input.is-focus {
+	/* the day, as the three chunks it is written in with the locale's separator between them.
+
+	   it draws nothing of its own: the box around it is the field, and where the caret is standing
+	   is the box's ring above and the band below. the line is stated here because the chunks are
+	   spans and the box is a grid, so there is no form control between the two for ./base.css's
+	   reset to have handed one down.
+
+	   the chunks are drawn out while the label is resting, for the reason the placeholder they
+	   replaced was withheld: the label stands on the line the day is written on, and two strings on
+	   one line is the state a floating label exists to avoid. they are faded rather than hidden,
+	   because a hidden chunk is one the keyboard cannot reach — and the box floats the moment the
+	   caret arrives, so what an operator meets is the chunks appearing as the label rises. */
+	.adm-datebox__chunks {
+		display: flex;
+		align-items: baseline;
+		min-inline-size: 0;
+		line-height: var(--admin-field-lh);
+		transition: opacity var(--admin-dur-state) var(--admin-ease-state);
+	}
+
+	.adm-datebox:not([data-floated]) .adm-datebox__chunks {
+		opacity: 0;
+	}
+
+	/* one chunk: a year, a month, a day, or the separator between two of them. the separators take
+	   no inset of their own, so the date reads as one string rather than as three words. */
+	.adm-datebox__chunk {
+		border-radius: var(--admin-radius);
+		transition: var(--admin-transition-state);
+	}
+
+	.adm-datebox__chunk:not([data-type='literal']) {
+		padding-inline: var(--admin-space-1);
+	}
+
+	/* a chunk nobody has written in yet stands at its own example — `yyyy`, `mm`, `dd` — and is
+	   drawn as `.adm-input::placeholder` is, for `.adm-datefield__label`'s reason: on these screens
+	   an example standing inside a box and a label standing inside one are drawn alike. */
+	.adm-datebox__chunk[data-placeholder-shown] {
+		color: var(--admin-field-placeholder);
+	}
+
+	/* the chunk the caret is in. the machine draws no caret in it — `caret-color` is transparent on
+	   every chunk — so this band is the whole of what says where the next digit lands, and it is a
+	   run of text standing selected: it is the pair ./base.css draws `::selection` in, because that
+	   is what it is. it outranks the example above by standing after it, so a chunk that is both
+	   still reads as the one being written in.
+
+	   the ring ./base.css gives every focused element is taken back here rather than left to paint
+	   under the box's own: a ring on the chunk inside a ring on the box is the rectangle inside a
+	   rectangle the box's rule above refuses. */
+	.adm-datebox__chunk:focus-visible,
+	.adm-datebox__chunk.is-focus {
+		background: var(--admin-selection-bg);
+		color: var(--admin-selection-ink);
 		outline: none;
 		box-shadow: none;
-	}
-
-	.adm-datebox__input::placeholder {
-		color: var(--admin-field-placeholder);
-		opacity: 1;
 	}
 
 	/* the press that opens the calendar. it is a real control — it is in the tab order and it is

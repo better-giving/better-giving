@@ -1,6 +1,5 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
-import { DateField } from '@better-giving/operator/components/forms/DateField';
-import { PairedFieldset } from '@better-giving/operator/components/forms/PairedFieldset';
+import { DateRangeField } from '@better-giving/operator/components/forms/DateRangeField';
 import { Column, Stack } from '@better-giving/operator/components/shell/Layout';
 import { Brand, type BrandName } from '@better-giving/operator/components/status/Brand';
 import { getFormProps } from '@conform-to/react';
@@ -77,9 +76,9 @@ type RangeBoxes = Record<(typeof JOURNAL_RANGE_FIELDS)['from' | 'to'], string>;
  * under `to` and with `RANGE_REVERSED`'s own sentence, so the box is told the same thing here as
  * `readJournalRange` tells the address — one wording for a refusal that is reachable both ways.
  *
- * the two days are compared as the text the boxes hold. `DateField` submits a day as `YYYY-MM-DD`
- * or nothing at all, and for that shape the lexical order is the calendar order, so reading either
- * one into a `Date` first would buy nothing this rule asks about.
+ * the two days are compared as the text the boxes hold. `DateRangeField` submits a day as
+ * `YYYY-MM-DD` or nothing at all, and for that shape the lexical order is the calendar order, so
+ * reading either one into a `Date` first would buy nothing this rule asks about.
  *
  * an object-level check rather than a field rule, because the rule reads two siblings and a
  * `.check()` on the key cannot — the arrangement `sameAccountRule` in `$lib/ledger/input-schema.ts`
@@ -290,14 +289,16 @@ export default function ExportGifts({ loaderData }: Route.ComponentProps) {
 					{/* the two days as one question, named once above them, so each box says which end
 					    of that range it is rather than naming the range again.
 
-					    the pair's own message row goes undrawn, and `error` is left unset for it. the one
+					    the pair's own message row goes undrawn: `error` here is an end's own. the one
 					    refusal a range can be walked into is the far end standing before the near one, and
 					    `reversedRangeRule` above puts that under `to`: the box that is wrong is the one the
 					    operator changes. */}
-					<PairedFieldset id={`${form.id}-days`} legend="Date range" side>
-						<DateField label="From" {...boxProps(fields.from)} />
-						<DateField label="To" {...boxProps(fields.to)} />
-					</PairedFieldset>
+					<DateRangeField
+						id={`${form.id}-days`}
+						legend="Date range"
+						from={{ label: 'From', ...boxProps(fields.from) }}
+						to={{ label: 'To', ...boxProps(fields.to) }}
+					/>
 					{/* what tells the file's route that this press was made on a screen, so a range no
 					    file can be made of comes back here to be worded rather than being answered as
 					    the text a hand-typed address gets. `$lib/ledger/journal-range.ts` argues it. */}

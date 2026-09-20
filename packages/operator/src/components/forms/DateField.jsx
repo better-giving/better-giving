@@ -1,3 +1,4 @@
+import { DateInput } from '@ark-ui/react/date-input';
 import { DatePicker, parseDate } from '@ark-ui/react/date-picker';
 import { useMemo, useRef, useState } from 'react';
 import { Mark } from '../status/Mark.jsx';
@@ -56,12 +57,13 @@ const NONE = /** @type {import('@ark-ui/react/date-picker').DateValue[]} */ ([])
 /**
  * the locale the machine formats, parses and punctuates by, pinned rather than read.
  *
- * it is the one locale whose own date format is `YYYY-MM-DD`: the box then shows the string that is
- * submitted, the separator the machine will accept from the keyboard is `-`, and the order the
- * machine parses in is year, month, day. picking it up from the reader's browser instead would put
- * a different string on the screen after hydration than the server drew, and would leave `01/02`
- * meaning January the 2nd on one deployment and the 1st of February on another — which on a range
- * whose two ends decide what is in an accounting export is a wrong answer nobody can see is wrong.
+ * it is the one locale whose own date format is `YYYY-MM-DD`: the chunks then run year, month, day
+ * in the order the day is submitted in, each chunk is zero-padded to the width it is submitted at,
+ * and the `-` between them is the separator that string carries. picking it up from the reader's
+ * browser instead would put a different order on the screen after hydration than the server drew,
+ * and would leave the first chunk meaning the month on one deployment and the day on another —
+ * which on a range whose two ends decide what is in an accounting export is a wrong answer nobody
+ * can see is wrong.
  */
 const LOCALE = 'en-CA';
 
@@ -89,6 +91,22 @@ function day(text) {
 const settled = (/** @type {string} */ text) => day(text)?.toString() ?? '';
 
 /**
+ * the first chunk a caret can land in, inside `group`.
+ *
+ * the separators between the chunks are chunks too and are drawn by the same part, so the one to
+ * move to is found by the tab stop rather than by position: the machine withholds `tabindex` from a
+ * separator, and from every chunk at once on a box that cannot be answered.
+ *
+ * @param {HTMLElement | null} group
+ */
+function intoChunks(group) {
+	const chunk = /** @type {HTMLElement | null} */ (
+		group?.querySelector('[data-part="segment"][tabindex]') ?? null
+	);
+	chunk?.focus();
+}
+
+/**
  * the line over a calendar's grid: a step back, what is on the grid, and a step forward.
  *
  * one function over all three views rather than three copies of it, and the machine is what makes
@@ -113,7 +131,7 @@ function CalendarHead() {
 }
 
 /*
- * a day typed into a box whose label stands inside it and rises onto its top edge.
+ * a day written into a box whose label stands inside it and rises onto its top edge.
  *
  * **the construction is for a date box inside a named group of boxes** — a range under a legend
  * naming the range, which is what packages/app/src/routes/_app.admin.donations.export.tsx draws
@@ -122,22 +140,35 @@ function CalendarHead() {
  * which end of the range each one is. a single date box on a screen is not that group and keeps
  * its label above it, which is what ./Field.jsx draws.
  *
+ * **the day is written into chunks and never into a run of text.** the year, the month and the day
+ * are three boxes of their own, tabbed between, highlighted where the caret is and each taking only
+ * the digits that belong in it — so a day that is not a day cannot be written in the first place,
+ * and nobody finds out on a press that what they typed was never read. that is ark's date *input*
+ * and it is a second machine beside the picker: the picker owns the calendar and the input owns the
+ * chunks, and both are handed this component's one value, so a day picked on the grid is the day
+ * standing in the chunks and the other way round.
+ *
  * **the label floats here and nowhere else on either operator surface.** ./Field.jsx's header says
  * "label above the box, always" and that rule still holds for every other box in this system; this
  * component is the one exception and is a component beside that one rather than a flag on it. a
- * native `<input type="date">` cannot carry a floating label at all — the browser draws `mm/dd/yyyy`
- * inside it, so the box is never visually empty and a resting label would stand on top of the
- * product's own text — which is why the box here is ark's date picker, whose control is a plain
- * text input that really is empty until a day is in it.
+ * native `<input type="date">` cannot carry a floating label at all — the browser draws its own
+ * `mm/dd/yyyy` inside it, so the box is never visually empty and a resting label would stand on top
+ * of the product's own text. the chunks have the same shape at rest, each standing at its own
+ * placeholder, so what the sheet does with them is what it did with that placeholder: they are
+ * drawn out until the label is off the line, which is the one state a floating label exists to
+ * avoid being in. **the float is therefore this component's and not the machine's** — a box is
+ * floated while it holds a day or holds the caret, and the caret half of that is read off the
+ * chunks as a group rather than off any one of them, because the caret moving from the month to
+ * the day never leaves the box.
  *
  * **the submitted value is `YYYY-MM-DD` and nothing else**, and two readers outside this package
  * are why. `reversedRangeRule` in packages/app/src/routes/_app.admin.donations.export.tsx compares
  * the two ends of a range as text, on the reasoning that for `YYYY-MM-DD` the lexical order is the
  * calendar order; `readJournalRange` in packages/app/src/lib/ledger/journal-range.ts reads the same
  * text off an address. so the value the form carries is a box of this component's own, as
- * ./CoinPicker.jsx's chosen code is, and never the box the operator types in: a browser submits
- * what is in a box at the moment of the press, and what is in that one halfway through typing is
- * half a date.
+ * ./CoinPicker.jsx's chosen code is, and never the chunks the operator writes in: a browser submits
+ * what is in a box at the moment of the press, and what is in the chunks halfway through writing a
+ * day is half a date.
  *
  * that carrier is then made to say it changed, for ./CoinPicker.jsx's reason: a value react wrote
  * fires no event, and both layers that read these forms are counting the events their boxes fire.
@@ -148,16 +179,21 @@ function CalendarHead() {
  * `type="hidden"` input cannot take focus, so the caret would stay wherever the press left it and
  * nobody would be told which box was refused. so it is a real text box wearing `.adm-vh`
  * (../../styles/base.css), which stays focusable on purpose, and the focus it is handed it hands
- * straight on to the box the operator types in. it is out of the tab order and out of the
- * accessibility tree, so the form still has one stop and one control per date.
+ * straight on to the first chunk. it is out of the tab order and out of the accessibility tree, so
+ * the form still has one stop and one control per date. it is also the element the label points at,
+ * which is what ark's own label part expects of the input a date input submits through: the id is
+ * handed over as that machine's, so `for` names an element that is really in the document and a
+ * press on the words lands the caret in the chunks.
  *
- * **the box the operator types in carries no `name`**, which is what keeps the carrier the only
- * element on this control under that name — `elements.namedItem(name)` then finds one control and
- * the body carries one value.
+ * **the chunks carry no `name`**, which is what keeps the carrier the only element on this control
+ * under that name — `elements.namedItem(name)` then finds one control and the body carries one
+ * value. ark's own hidden input is not drawn at all for the same reason, and because it is a
+ * `type="hidden"` one.
  *
- * the machine is ark's date picker and everything it already answers for is left to it: the grid
- * roles, the arrow keys, Escape, the dismissal, the announcements, and the parsing and formatting
- * of what is typed. what is stated here is the locale, above, and the float.
+ * the two machines are ark's and everything they already answer for is left to them: the grid
+ * roles, the arrow keys, Escape, the dismissal, the announcements, the chunk order the locale
+ * decides and the digits each chunk will take. what is stated here is the locale, above, and the
+ * float.
  */
 /** @param {DateFieldProps} props */
 export function DateField({
@@ -180,8 +216,8 @@ export function DateField({
 	const refused = error ? true : stated === true || stated === 'true';
 
 	const posted = useRef(/** @type {HTMLInputElement | null} */ (null));
-	/* the box the operator types in, held so that the carrier can hand a refusal's focus on to it. */
-	const typed = useRef(/** @type {HTMLInputElement | null} */ (null));
+	/* the chunks, held as their group so that the carrier can hand a refusal's focus on to them. */
+	const chunks = useRef(/** @type {HTMLDivElement | null} */ (null));
 	const [chosen, setChosen] = useState(() => settled(defaultValue));
 	/* the seed the control was last drawn against, as ./CoinPicker.jsx keeps one: a form redrawn
 	   from a new reading has to move the box to it rather than leave it standing at whatever was
@@ -192,18 +228,30 @@ export function DateField({
 		setChosen(settled(defaultValue));
 	}
 
-	/* the machine is held to this component's own value rather than left to keep its own, which is
-	   what lets the two above move it. `chosen` is only ever a day this module settled, so the
-	   parse below cannot fail. */
+	/* the one value both machines are held to, which is what keeps the chunks and the calendar
+	   saying the same thing. `chosen` is only ever a day this module settled, so the parse below
+	   cannot fail. */
 	const value = useMemo(() => {
 		const held = day(chosen);
 		return held === undefined ? NONE : [held];
 	}, [chosen]);
 
+	/** @param {{ valueAsString: string[] }} details */
+	const took = (details) => {
+		const next = details.valueAsString[0] ?? '';
+		if (next === chosen) return;
+		const element = posted.current;
+		if (element !== null) {
+			element.value = next;
+			element.dispatchEvent(new Event('input', { bubbles: true }));
+		}
+		setChosen(next);
+	};
+
 	/* where the caret is, and it is this component's because the float is drawn from it: a box
-	   holding nothing floats its label while it is being typed into and lets it back down when the
-	   caret leaves with nothing in it. the machine puts the typed text back to the day it parsed —
-	   or to nothing — as focus leaves, so a box that is unfocused and empty is really empty. */
+	   holding nothing floats its label while it is being written in and lets it back down when the
+	   caret leaves with nothing in it. it is the whole group of chunks rather than any one of them,
+	   which the machine reports as one thing for that reason. */
 	const [focused, setFocused] = useState(false);
 	const floated = focused || chosen !== '';
 
@@ -222,20 +270,11 @@ export function DateField({
 			<DatePicker.Root
 				className="adm-datefield"
 				id={`${id}-picker`}
-				ids={{ input: () => id }}
 				locale={LOCALE}
 				disabled={disabled}
 				value={value}
 				positioning={{ placement: 'bottom-start' }}
-				onValueChange={(details) => {
-					const next = details.valueAsString[0] ?? '';
-					const element = posted.current;
-					if (element !== null) {
-						element.value = next;
-						element.dispatchEvent(new Event('input', { bubbles: true }));
-					}
-					setChosen(next);
-				}}
+				onValueChange={took}
 			>
 				<DatePicker.Control
 					className={['adm-datebox', state ? `is-${state}` : '', className]
@@ -244,23 +283,61 @@ export function DateField({
 					data-floated={floated ? '' : undefined}
 					data-invalid={refused ? '' : undefined}
 				>
-					<span className="adm-datebox__words">
-						<DatePicker.Label className="adm-datefield__label">{label}</DatePicker.Label>
-						{/* the placeholder is the machine's own `yyyy-mm-dd` and is withheld until the
-						    label is out of the way: a resting label and a placeholder occupy the same
-						    line, and two strings in one box is the state a floating label exists to
-						    avoid. it is spread rather than passed as `undefined`, so that not stating
-						    it is really not stating it and the machine's own reaches the element. */}
-						<DatePicker.Input
-							className="adm-datebox__input"
-							ref={typed}
-							{...(floated ? {} : { placeholder: '' })}
-							aria-invalid={refused ? 'true' : undefined}
-							aria-describedby={described ?? describedBy}
-							onFocus={() => setFocused(true)}
-							onBlur={() => setFocused(false)}
-						/>
-					</span>
+					<DateInput.Root
+						className="adm-datebox__words"
+						/* the whole cell is the field, which is what `cursor: text` on the box promises: a
+						   press on the space beside the chunks puts the caret in them rather than
+						   nowhere. the chunks themselves stop the press before it reaches here, so this
+						   only ever answers for the space around them. */
+						onMouseDown={(event) => {
+							event.preventDefault();
+							intoChunks(chunks.current);
+						}}
+						id={`${id}-chunks`}
+						/* the carrier is what this machine submits through as far as its label is
+						   concerned, so `for` names an element that is really in the document. */
+						ids={{ hiddenInput: () => id }}
+						locale={LOCALE}
+						disabled={disabled}
+						invalid={refused}
+						value={value}
+						onValueChange={took}
+						onFocusChange={(details) => setFocused(details.focused)}
+					>
+						<DateInput.Label className="adm-datefield__label">{label}</DateInput.Label>
+						{/* the machine finds its chunks by querying this part for them, so the part has to
+						    stand over every chunk it owns and can therefore lay nothing out — see
+						    `.adm-datefield__scope` in ../../styles/adm.css. */}
+						<DateInput.Control className="adm-datefield__scope">
+							<DateInput.SegmentGroup
+								className="adm-datebox__chunks"
+								ref={chunks}
+								aria-invalid={refused ? 'true' : undefined}
+								aria-describedby={described ?? describedBy}
+							>
+								<DateInput.Context>
+									{(chunked) =>
+										chunked.getSegments().map((chunk, at) => (
+											/* the ring and the band under the caret are one state, and a specimen
+											   has to be able to pin both: the box's pinned focus reaches the chunk
+											   the caret would really be in, which is the first one that can hold
+											   it. */
+											<DateInput.Segment
+												className={[
+													'adm-datebox__chunk',
+													state === 'focus' && chunk.isEditable && at === 0 ? 'is-focus' : ''
+												]
+													.filter(Boolean)
+													.join(' ')}
+												key={`${chunk.type}-${at}`}
+												segment={chunk}
+											/>
+										))
+									}
+								</DateInput.Context>
+							</DateInput.SegmentGroup>
+						</DateInput.Control>
+					</DateInput.Root>
 					<DatePicker.Trigger className="adm-datebox__open">
 						<Mark name="calendar" />
 					</DatePicker.Trigger>
@@ -374,7 +451,7 @@ export function DateField({
 			{/* the value the form carries, and the element a refusal reaches this field by. the
 			    header argues why it is a text box off the screen rather than a `type="hidden"` one;
 			    everything here is what keeps it from being a second box on the form. `readOnly`
-			    because nothing types into it — what is in it is settled by the machine above —
+			    because nothing writes into it — what is in it is settled by the machines above —
 			    `tabIndex` because an operator tabbing the form meets one stop per date, `aria-hidden`
 			    because a reader meets one control per date, and `autoComplete` because a text box
 			    holding a date is something a browser will otherwise offer to fill.
@@ -383,14 +460,14 @@ export function DateField({
 			    order of thought: `.adm-field > * + *` in ../../styles/adm.css puts the step between
 			    two parts on the second of them, so a carrier drawn first would be the part the field
 			    starts with and the box would take a step above it that nothing on the screen is
-			    stepping away from. the box the caret goes into is then also the first input in the
-			    field, which is what anything walking this markup meets first.
+			    stepping away from.
 
 			    it is disabled with the control, which is what a box an operator cannot answer does by
 			    itself: the press is refused as blank rather than submitting a day nobody picked. */}
 			<input
 				className="adm-vh"
 				type="text"
+				id={id}
 				name={name}
 				value={chosen}
 				readOnly
@@ -399,7 +476,7 @@ export function DateField({
 				aria-hidden="true"
 				autoComplete="off"
 				ref={posted}
-				onFocus={() => typed.current?.focus()}
+				onFocus={() => intoChunks(chunks.current)}
 			/>
 			{/* both rows are ./FieldMessage.jsx's, which is where the refusal being the one live region
 			    on the control is argued: it is what a press answered with, and the standing sentence

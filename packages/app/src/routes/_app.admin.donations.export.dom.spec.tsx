@@ -29,10 +29,10 @@ import ExportGifts from './_app.admin.donations.export';
 // before it reaches the file at all, so a case reads the sentence under the box and the submit that
 // was prevented.
 //
-// **each end of the range is a date field whose label stands inside it**, so the box an operator
-// types into and the control the day is submitted under are two different elements: `dayBox` below
-// is the first and `carrier` the second. a case reaching for the wrong one reads a value nobody
-// submits, or names an element no label points at.
+// **each end of the range is a date field whose label stands inside it**, so the chunks an operator
+// writes a day into and the control that day is submitted under are two different elements:
+// `dayBox` below is the group of chunks and `carrier` is the control. a case reaching for the wrong
+// one reads a value nobody submits, or names an element no label points at.
 //
 // mounted rather than rendered to a string, and that is why this file is in the dom pool: the
 // refusals above are conform's, and nothing about them exists until the form is in a document
@@ -165,23 +165,40 @@ function carrier(root: HTMLElement, name: string): HTMLInputElement {
 }
 
 /**
- * the box one end of the range is typed into, which is the control the label names.
+ * the box one end of the range is written into: the group its year, month and day chunks stand in.
  *
  * found through the carrier's own field rather than by the name, because the name is on the
- * carrier: what a reader meets is the one box in that field the caret can go into.
+ * carrier: what a reader meets is the one group of chunks in that field the caret can go into.
  */
-function dayBox(root: HTMLElement, name: string): HTMLInputElement {
+function dayBox(root: HTMLElement, name: string): HTMLElement {
 	const field = carrier(root, name).closest('.adm-field');
 	if (field === null) throw new Error(`the control named "${name}" stands in no field`);
-	const typed = field.querySelector('input:not([type="hidden"])');
-	if (typed === null) throw new Error(`the field carrying "${name}" drew no box to type in`);
-	return typed as unknown as HTMLInputElement;
+	const group = field.querySelector('[data-part="segment-group"]');
+	if (group === null) throw new Error(`the field carrying "${name}" drew no chunks to write in`);
+	return group as unknown as HTMLElement;
 }
 
-/** the visible words labelling the box named `name`, which is what an operator reads. */
+/** the chunks of one end a caret can land in: the separators between them are not among them. */
+function chunks(root: HTMLElement, name: string): HTMLElement[] {
+	return [...dayBox(root, name).querySelectorAll<HTMLElement>('[data-part="segment"][tabindex]')];
+}
+
+/** what the chunks of one end are showing, separators included, as one string. */
+const written = (root: HTMLElement, name: string) =>
+	[...dayBox(root, name).querySelectorAll('[data-part="segment"]')]
+		.map((chunk) => chunk.textContent)
+		.join('');
+
+/**
+ * the visible words labelling the box named `name`, which is what an operator reads.
+ *
+ * read through the name the chunks actually carry rather than off a `for`: a group of chunks is
+ * named by `aria-labelledby`, and the `for` on the same label points at the control the day is
+ * submitted under — the one element of the two a label may point at.
+ */
 function labelOf(root: HTMLElement, name: string): string {
-	const control = dayBox(root, name);
-	const label = root.querySelector(`label[for="${control.id}"]`);
+	const named = dayBox(root, name).getAttribute('aria-labelledby');
+	const label = named === null ? null : root.querySelector(`#${named}`);
 	if (label === null) throw new Error(`the box named "${name}" carries no label`);
 	return label.textContent ?? '';
 }
@@ -241,30 +258,46 @@ const flushed = () =>
 	});
 
 /**
- * writes a day into one end of the range the way an operator does, caret and all.
+ * writes a day into one end of the range the way an operator does, a keystroke at a time.
  *
- * the caret leaving is part of the keystroke here rather than a step beside it: the machine settles
- * the text into a day as focus goes, and the box the form carries is written then — so a press made
- * before that would be a press over half a date.
+ * a chunk is a `contenteditable` span and what it reads is the text the platform is about to insert
+ * into it, which react hands a component as `onBeforeInput` and dispatches from `textInput`
+ * (`BeforeInputEventPlugin` in react-dom). the caret steps on to the next chunk as each one fills,
+ * so eight digits fill three chunks — and the control the form carries is written on the last of
+ * them, because half a date is not a day.
  */
 async function typeDay(root: HTMLElement, name: string, day: string): Promise<void> {
-	const typed = dayBox(root, name);
+	const first = chunks(root, name)[0];
+	if (first === undefined) throw new Error(`the box named "${name}" drew no chunk to write in`);
 	await act(async () => {
-		typed.focus();
-	});
-	await act(async () => {
-		typed.value = day;
-		typed.dispatchEvent(new Event('input', { bubbles: true }));
-	});
-	await act(async () => {
-		typed.blur();
+		first.focus();
 	});
 	await flushed();
+	for (const character of day.replace(/-/g, '')) {
+		const at = document.activeElement;
+		if (at === null) throw new Error('nothing is holding the caret');
+		await act(async () => {
+			at.dispatchEvent(
+				new InputEvent('textInput', {
+					data: character,
+					inputType: 'insertText',
+					bubbles: true,
+					cancelable: true
+				})
+			);
+		});
+		await flushed();
+	}
 }
 
-/** the refusal drawn under the box named `name`, or `null` where it carries none. */
+/**
+ * the refusal drawn under the box named `name`, or `null` where it carries none.
+ *
+ * named from the carrier's own id, which is the id `boxProps` in $lib/admin/use-admin-form.ts gives
+ * that field — the chunks are a group of elements and no one of them is the field.
+ */
 function refusalAt(root: HTMLElement, name: string): string | null {
-	const message = root.querySelector(`#${dayBox(root, name).id}-err`);
+	const message = root.querySelector(`#${carrier(root, name).id}-err`);
 	return message === null ? null : (message.textContent ?? '');
 }
 
@@ -334,13 +367,15 @@ it('names each end with a real label, on the box that end is typed into', () => 
 
 	for (const name of ['from', 'to']) {
 		const typed = dayBox(root, name);
-		// the words stand inside this box rather than over it, and they are still a label: an element
-		// with a `for`, pointing at the box the caret goes into and never at the one the day is
-		// carried in — which is hidden, and a label on it is a name nobody can reach.
-		expect(typed.id).not.toBe('');
-		expect(root.querySelector(`label[for="${typed.id}"]`)).not.toBeNull();
-		expect(typed).not.toBe(carrier(root, name));
-		expect(typed.getAttribute('name')).toBeNull();
+		// the words stand inside this box rather than over it, and they are still a label: a real
+		// `<label>` element, naming the chunks the caret goes into and pointing at the control this
+		// end submits through — which is the one element of the two a `for` may name.
+		const named = typed.getAttribute('aria-labelledby');
+		expect(named).not.toBeNull();
+		expect(root.querySelector(`label#${named}`)).not.toBeNull();
+		expect(root.querySelector(`label#${named}`)?.getAttribute('for')).toBe(carrier(root, name).id);
+		// no chunk carries the name, so `elements.namedItem` finds the carrier and nothing else.
+		for (const chunk of chunks(root, name)) expect(chunk.getAttribute('name')).toBeNull();
 		expect(root.querySelectorAll(`form [name="${name}"]`)).toHaveLength(1);
 	}
 });
@@ -477,7 +512,7 @@ it('refuses a range written backwards at the far end, before it reaches the file
 	// the one the day is carried in — the mark is what a reader is told about on arriving in it.
 	expect(dayBox(root, 'to').getAttribute('aria-invalid')).toBe('true');
 	expect(dayBox(root, 'to').getAttribute('aria-describedby')).toContain(
-		`${dayBox(root, 'to').id}-err`
+		`${carrier(root, 'to').id}-err`
 	);
 	expect(dayBox(root, 'from').getAttribute('aria-invalid')).toBeNull();
 	// under the far end rather than at the range it is about: the near day is a day the calendar
@@ -632,8 +667,8 @@ it('keeps the boxes holding the range a refusal came back over', () => {
 	// corrected in.
 	expect(carrier(root, 'from').value).toBe('2026-03-01');
 	expect(carrier(root, 'to').value).toBe('2026-03-31');
-	expect(dayBox(root, 'from').value).toBe('2026-03-01');
-	expect(dayBox(root, 'to').value).toBe('2026-03-31');
+	expect(written(root, 'from')).toBe('2026-03-01');
+	expect(written(root, 'to')).toBe('2026-03-31');
 });
 
 it('hands a seeded range to the browser with no box touched', async () => {
@@ -662,7 +697,7 @@ it('re-seeds the boxes from the range the address holds, however it was arrived 
 
 	expect(carrier(root, 'from').value).toBe('2026-04-01');
 	expect(carrier(root, 'to').value).toBe('2026-04-30');
-	expect(dayBox(root, 'from').value).toBe('2026-04-01');
+	expect(written(root, 'from')).toBe('2026-04-01');
 });
 
 it('draws no heading and no standing prose', () => {

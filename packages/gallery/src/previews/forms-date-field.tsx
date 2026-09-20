@@ -4,6 +4,10 @@ import { PairedFieldset } from '@better-giving/operator/components/forms/PairedF
 /*
  * the one box on either operator surface whose label stands inside it, in the states nobody opens.
  *
+ * the day is written in chunks — a year, a month and a day, each its own element, tabbed between
+ * and taking only the digits that belong in it. the chunks stand out while the label is resting,
+ * because the label is on the line they are drawn on; clicking into a box is what shows them.
+ *
  * the label has two positions. resting it is centred in the box, on the line the day will be drawn
  * on; floated its middle sits on the box's own top border, straddling it, knocking the border out
  * behind the words in the two fills that meet there. the pair under "Date range" below is the one
@@ -17,9 +21,10 @@ import { PairedFieldset } from '@better-giving/operator/components/forms/PairedF
  * paint with nothing animating on arrival — and the move between them is reached by clicking into
  * the first one, which is what a reader of this page can do and a screenshot cannot.
  *
- * the pinned focus below is therefore the ring and not the float: `.is-focus` is a class and the
- * float is state, so that specimen is what the box looks like while the ring is on it, with the
- * label still where an empty unfocused box leaves it.
+ * the pinned focus below is therefore the ring and the band under the caret rather than the float:
+ * both are classes and the float is state, so that specimen is what the box looks like while the
+ * ring is on it and the first chunk is the one being written in, with the label still where an
+ * empty unfocused box leaves it.
  *
  * the box is drawn at the height a box with no label at all is drawn at, and what is left over the
  * `.adm-input` in ./forms-field.tsx is the press at the end of the row rather than anything the
@@ -35,6 +40,10 @@ import { PairedFieldset } from '@better-giving/operator/components/forms/PairedF
  * what is on the screen is what an operator would be looking at. every day in this format is the
  * same width, so the string that is a layout constraint here is the label rather than the value —
  * which is what the last specimen is for.
+ *
+ * `state="focus"` is the one pinned specimen that reaches two rules at once: the box's ring and the
+ * band on the chunk the caret would be in. a box drawn with the ring and no band would be a state
+ * no operator ever meets.
  */
 export default function FormsDateFieldPreview() {
 	return (
