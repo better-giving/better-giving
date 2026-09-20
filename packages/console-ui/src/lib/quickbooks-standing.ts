@@ -229,9 +229,7 @@ export const retriedStands = (retried: number): RetriedStanding =>
 				word: 'Queued',
 				tone: 'done',
 				says:
-					retried === 1
-						? '1 gift will be tried again.'
-						: `${retried} gifts will be tried again.`
+					retried === 1 ? '1 gift will be tried again.' : `${retried} gifts will be tried again.`
 			};
 
 /** what stands where the three pickers would be, past the picks and the deployment's own sentence. */
