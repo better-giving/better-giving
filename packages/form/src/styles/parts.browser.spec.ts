@@ -501,6 +501,23 @@ describe('the labels on the pair under the name', () => {
 		return (rect.top + rect.bottom) / 2;
 	}
 
+	/** one device pixel, which is as close as a reading taken off drawn ink can be held. */
+	const DEVICE_PIXEL = 1;
+
+	/**
+	 * a reading off the label's own words, against the seat ../styles/parts.css gives them.
+	 *
+	 * within a device pixel rather than under half of one: one end of the comparison is a text ink
+	 * box, and where a face seats its ink inside the line it is given is the platform's own metric
+	 * rather than anything the sheet states — so the same rule, drawing the same label, puts the two
+	 * ends together on one platform and half a pixel apart on another.
+	 */
+	function seated(drawn: number, seat: number): void {
+		expect(Math.abs(drawn - seat), `the ink at ${drawn}, the seat at ${seat}`).toBeLessThanOrEqual(
+			DEVICE_PIXEL
+		);
+	}
+
 	/**
 	 * one of the pair's boxes and the two things the row draws with it: the label naming it, which
 	 * stands over the box and out of the row's flow, and the refusal it is carrying while it is
@@ -568,7 +585,7 @@ describe('the labels on the pair under the name', () => {
 		await atDetails(shadow);
 		const { box, words } = field(shadow, '#first-name');
 
-		expect(middle(ink(words))).toBeCloseTo(middle(box.getBoundingClientRect()), 0);
+		seated(middle(ink(words)), middle(box.getBoundingClientRect()));
 	});
 
 	// and it holds once a refused press has something to say about the box. the sentence lands under
@@ -582,7 +599,7 @@ describe('the labels on the pair under the name', () => {
 		const { box, words, refusal } = field(shadow, '#first-name');
 
 		expect(refusal.hidden).toBe(false);
-		expect(middle(ink(words))).toBeCloseTo(middle(box.getBoundingClientRect()), 0);
+		seated(middle(ink(words)), middle(box.getBoundingClientRect()));
 	});
 
 	// the two sizes, which is the whole of what the move says beyond the direction of it. floated the
@@ -729,7 +746,7 @@ describe('the labels on the pair under the name', () => {
 		fill(shadow, '#first-name', 'Ada');
 		await landed(label);
 
-		expect(middle(ink(words))).toBeCloseTo(box.getBoundingClientRect().top, 0);
+		seated(middle(ink(words)), box.getBoundingClientRect().top);
 	});
 
 	// the caret alone floats it too, so a donor who has tabbed into an empty box is typing under a
@@ -742,7 +759,7 @@ describe('the labels on the pair under the name', () => {
 		await caretOn(box);
 		await landed(label);
 
-		expect(middle(ink(words))).toBeCloseTo(box.getBoundingClientRect().top, 0);
+		seated(middle(ink(words)), box.getBoundingClientRect().top);
 	});
 
 	// the inline axis moves too, and the two ends of it are the whole of why the box's own inline
@@ -766,7 +783,7 @@ describe('the labels on the pair under the name', () => {
 			parseFloat(style.borderInlineStartWidth) +
 			parseFloat(style.paddingInlineStart);
 
-		expect(ink(words).left).toBeCloseTo(inset(), 0);
+		seated(ink(words).left, inset());
 
 		fill(shadow, '#first-name', 'Ada');
 		await landed(label);
@@ -774,7 +791,7 @@ describe('the labels on the pair under the name', () => {
 		const arc = corner(box);
 		expect(arc).toBeGreaterThan(0);
 		expect(ink(words).left - box.getBoundingClientRect().left).toBeGreaterThanOrEqual(arc);
-		expect(ink(words).left).toBeCloseTo(box.getBoundingClientRect().left + arc, 0);
+		seated(ink(words).left, box.getBoundingClientRect().left + arc);
 	});
 
 	// standing on the edge, the label has to be painted behind or the edge reads through its words.
