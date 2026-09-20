@@ -105,19 +105,30 @@
 	}
 
 	/* a press closed while its own write is going is working, not unavailable, and the rung it holds
-	   is the one `:active` holds: the control looks pressed because it still is. `disabled` is what
-	   closes it — one operator intent is one write — and without this twin the rank's disabled rung
+	   is the one `:active` holds: the control looks pressed because it still is.
+
+	   two spellings close it and this rung answers both, because both are the same press. `disabled`
+	   is one — one operator intent is one write — and without this rung the rank's disabled rung
 	   would grey it, which says the press cannot be made rather than that it is already going.
+	   `aria-disabled` with the press turned away in the control's own handler is the other, and it
+	   is what a press has to use where the reader is standing on it: a disabled control cannot hold
+	   focus, so the native attribute drops the caret on `<body>` for the whole of the write and the
+	   dots underneath are then a change nobody is standing on to hear. that press matches no
+	   `:disabled` rung at all, so without this rung it draws the resting ground and answers a press
+	   with nothing.
 
 	   every value here is the rank's own active rung above, restated and never re-picked. this
 	   rank's states a ground and a border and no ink, because what a press moves is the ground; the
 	   ink is therefore the rank's resting one, and it is written out because the disabled rung this
 	   is answering does state an ink of its own.
 
-	   the attribute is a third simple selector, so a twin outranks its own rank's disabled rung
-	   outright. the five twins tie each other instead, and a button takes the last one it matches —
-	   which is why each stands directly after the rung it answers, in the ranks' own order. */
-	.adm-btn[aria-busy='true']:disabled {
+	   each member is three simple selectors, so a twin outranks its own rank's disabled rung and
+	   its hover and active rungs alike — which is what the second spelling needs, since a press
+	   held that way is still under the pointer's rules. the five twins tie each other instead, and
+	   a button takes the last one it matches — which is why each stands directly after the rung it
+	   answers, in the ranks' own order. */
+	.adm-btn[aria-busy='true']:disabled,
+	.adm-btn[aria-busy='true'][aria-disabled='true'] {
 		background: var(--admin-control-bg-active);
 		border-color: var(--admin-control-border-active);
 		color: var(--admin-control-ink);
@@ -170,7 +181,8 @@
 
 	/* this rank's active rung, restated for a press in flight — the secondary rank above states the
 	   rule and where each value comes from. */
-	.adm-btn--primary[aria-busy='true']:disabled {
+	.adm-btn--primary[aria-busy='true']:disabled,
+	.adm-btn--primary[aria-busy='true'][aria-disabled='true'] {
 		background: var(--admin-primary-bg-active);
 		border-color: var(--admin-primary-bg-active);
 		color: var(--admin-primary-ink);
@@ -213,7 +225,8 @@
 	/* this rank's active rung, restated for a press in flight — the secondary rank above states the
 	   rule. the destructive rank stays red for the whole of the write and greys only where a press
 	   is genuinely unavailable, which the rung above is. */
-	.adm-btn--danger[aria-busy='true']:disabled {
+	.adm-btn--danger[aria-busy='true']:disabled,
+	.adm-btn--danger[aria-busy='true'][aria-disabled='true'] {
 		background: var(--admin-danger-bg-active);
 		border-color: var(--admin-danger-bg-active);
 		color: var(--admin-danger-ink);
@@ -272,7 +285,8 @@
 
 	/* this rank's active rung, restated for a press in flight — the secondary rank above states the
 	   rule. */
-	.adm-btn--quiet[aria-busy='true']:disabled {
+	.adm-btn--quiet[aria-busy='true']:disabled,
+	.adm-btn--quiet[aria-busy='true'][aria-disabled='true'] {
 		background: var(--admin-control-bg-active);
 		border-color: transparent;
 		color: var(--admin-ink);
@@ -320,7 +334,8 @@
 
 	/* this rank's active rung, restated for a press in flight — the secondary rank above states the
 	   rule. the rung states no ink, so the ink is this rank's resting one. */
-	.adm-btn--soft[aria-busy='true']:disabled {
+	.adm-btn--soft[aria-busy='true']:disabled,
+	.adm-btn--soft[aria-busy='true'][aria-disabled='true'] {
 		background: var(--admin-control-soft-bg-active);
 		border-color: transparent;
 		color: var(--admin-control-soft-ink);
@@ -2724,8 +2739,26 @@
 		transition: var(--admin-transition-state);
 	}
 
+	/* a chunk a caret can land in is a press, and it is held to the 24px floor ./tokens.css states
+	   at the control metrics in both directions. the separators are not presses and are not held to
+	   it: the machine withholds the tab stop from them, and `literal` is what it calls them.
+
+	   inline it is a stated minimum and never what two digits happen to advance to, so the number
+	   is one this file holds rather than one a rendered page has to be measured for. it is
+	   `--admin-control-height-sm`, which is what this is — a control standing against a line of
+	   type — and is what the press at the end of the same row already takes. the digits are centred
+	   in it, because a minimum wider than the digits with the digits at its start would put a gap
+	   between a month and the separator after it and none in front of it.
+
+	   block it is the line the operator types on and this padding either side of it:
+	   `--admin-field-lh` over `--admin-field-size` is 24.8px, and 21.7px where ./tokens.css parts
+	   that step on a fine pointer, so the padding is what carries the second of those over the
+	   floor. the box around it does not move with either: the row is sized by the press at its end,
+	   which is taller than both. */
 	.adm-datebox__chunk:not([data-type='literal']) {
-		padding-inline: var(--admin-space-1);
+		min-inline-size: var(--admin-control-height-sm);
+		padding: var(--admin-space-1);
+		text-align: center;
 	}
 
 	/* a chunk nobody has written in yet stands at its own example — `yyyy`, `mm`, `dd` — and is
@@ -2743,12 +2776,21 @@
 
 	   the ring ./base.css gives every focused element is taken back here rather than left to paint
 	   under the box's own: a ring on the chunk inside a ring on the box is the rectangle inside a
-	   rectangle the box's rule above refuses. */
+	   rectangle the box's rule above refuses.
+
+	   what is kept off that ring is the transparent outline under it, and it is drawn inside the
+	   chunk. the band above is an author colour and a forced-colours scheme paints its own in its
+	   place, so under one the whole of what says which chunk is being written in is gone — and the
+	   machine draws no caret either, `caret-color` being transparent on every chunk. the box's own
+	   outline survives that scheme and says the field has the caret; this one says which chunk
+	   holds it. it is inset because the chunks stand edge to edge: an outline drawn outside this
+	   one's box is drawn over the box of the chunk beside it. */
 	.adm-datebox__chunk:focus-visible,
 	.adm-datebox__chunk.is-focus {
 		background: var(--admin-selection-bg);
 		color: var(--admin-selection-ink);
-		outline: none;
+		outline: var(--admin-focus-width) solid transparent;
+		outline-offset: calc(var(--admin-focus-width) * -1);
 		box-shadow: none;
 	}
 
@@ -2831,14 +2873,6 @@
 		color: var(--admin-ink);
 	}
 
-	/* a step off the end of what the machine will show: the first view has no previous decade. it
-	   stays where it is rather than leaving, so the month in the middle does not shift sideways on
-	   the one press that reaches the end. */
-	.adm-cal__step:disabled {
-		color: var(--admin-ink-disabled);
-		cursor: not-allowed;
-	}
-
 	/* what is on the grid, and the press that climbs from days to months to years. */
 	.adm-cal__span {
 		padding: var(--admin-space-2) var(--admin-space-3);
@@ -2899,6 +2933,19 @@
 		background: var(--admin-control-soft-bg-hover);
 	}
 
+	/* what lies between the two ends of a range, and what would lie between them: the machine sets
+	   `data-in-range` from the chosen range and from the one the pointer is dragging out alike, so
+	   one rung draws the band and the preview of it. without it a range is two filled ends with
+	   nothing said about the days they enclose, which is the whole of what a range calendar is read
+	   by.
+
+	   it is a fill and no ink, so the day inside the band keeps the grid's own word and a day drawn
+	   in from the month either side keeps the quieter one the rule below gives it. it stands before
+	   the chosen ends so that those two keep the solid fill: the ends are in their own range. */
+	.adm-cal__pick[data-in-range] {
+		background: var(--admin-accent-tint);
+	}
+
 	/* today, as a hairline round the press rather than as a second ink: the chosen day is a fill and
 	   a second filled cell in the same grid is two answers to which day is selected. */
 	.adm-cal__pick[data-today] {
@@ -2914,13 +2961,11 @@
 		color: var(--admin-primary-ink);
 	}
 
-	/* a day belonging to the month either side of the one on the grid. it is drawn rather than
-	   blanked, because the week it is in is a real week and a gap in the row reads as a missing
-	   day. */
-	.adm-cal__pick[data-outside-range] {
-		color: var(--admin-ink-muted);
-	}
-
+	/* a day this calendar will not take, which here is only ever a day belonging to the month either
+	   side of the one on the grid: the machine spells that `data-disabled` as well as
+	   `data-outside-range`, and no date component passes it a `min`, a `max` or an unavailable day,
+	   so there is no other kind. it is drawn rather than blanked, because the week it is in is a
+	   real week and a gap in the row reads as a missing day. */
 	.adm-cal__pick[data-disabled] {
 		color: var(--admin-ink-disabled);
 		cursor: not-allowed;

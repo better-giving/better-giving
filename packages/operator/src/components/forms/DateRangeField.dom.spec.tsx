@@ -92,6 +92,19 @@ const flushed = () =>
 		await new Promise((resolve) => setTimeout(resolve, 0));
 	});
 
+/**
+ * lets the frame the picker hands focus back on run.
+ *
+ * `focusTriggerElement` in @zag-js/date-picker's machine defers into a `raf`, so the element
+ * holding the caret on the turn a calendar closes is still the one that was in it.
+ */
+const painted = () =>
+	act(async () => {
+		await new Promise((resolve) => {
+			requestAnimationFrame(() => resolve(undefined));
+		});
+	});
+
 /** moves the caret into an element, or out of it, with the redraw and the report finished. */
 async function caret(element: HTMLElement, into: boolean): Promise<void> {
 	await act(async () => {
@@ -322,6 +335,123 @@ describe('a date range mounted into a document', () => {
 		expect(root.querySelector('[data-part="content"]')?.getAttribute('data-state')).toBe('closed');
 	});
 
+	it('hands focus back to the press that opened the calendar, each end in turn', async () => {
+		// the machine names one trigger and this component draws two, so the press it hands focus
+		// back to is the one it has been told is answering. an operator who opened the far end's
+		// calendar is put back at the far end's press rather than one box to the left of the box
+		// they just filled.
+		const root = render(DateRangeField, {
+			id: 'range',
+			legend: 'Date range',
+			from: { ...ends.from, defaultValue: '2026-01-15' },
+			to: { ...ends.to, defaultValue: '2026-01-16' }
+		});
+
+		press(opener(root, FAR));
+		await flushed();
+		press(cell(root, '2026-01-20'));
+		await flushed();
+		await painted();
+
+		expect(document.activeElement).toBe(opener(root, FAR));
+
+		press(opener(root, NEAR));
+		await flushed();
+		press(cell(root, '2026-01-05'));
+		await flushed();
+		await painted();
+
+		expect(document.activeElement).toBe(opener(root, NEAR));
+	});
+
+	it('hands the caret back to the press the calendar was opened from when a press outside closes it', async () => {
+		// this one is the machine's own restoration rather than this component's, and it is made off
+		// the single trigger id the picker is told to look a press up by: `CONTROLLED.CLOSE` in
+		// @zag-js/date-picker's machine focuses that element a frame after the close has already been
+		// drawn. so the id has to still name the press the panel was opened from at that point — an
+		// index cleared on the way out would leave it standing on the near box, and an operator who
+		// dismissed the far end's calendar would be returned to a press they never made.
+		const root = render(DateRangeField, { id: 'range', legend: 'Date range', ...ends });
+
+		press(opener(root, FAR));
+		await flushed();
+
+		await act(async () => {
+			document.body.dispatchEvent(
+				new PointerEvent('pointerdown', { bubbles: true, cancelable: true, composed: true })
+			);
+		});
+		await flushed();
+		await painted();
+
+		expect(root.querySelector('[data-part="content"]')?.getAttribute('data-state')).toBe('closed');
+		expect(document.activeElement).toBe(opener(root, FAR));
+	});
+
+	it('hands the caret back to the press the calendar was opened from when Escape dismisses it', async () => {
+		// a dismissal is not an answer, so there is no box to move the caret into and the press is
+		// the only place it can go. the machine's own escape branch leaves it where it was on a
+		// picker whose open state is held out here, and where it was is a cell inside a panel that
+		// is no longer drawn — a caret on nothing, with the top of the page the only way back.
+		const root = render(DateRangeField, { id: 'range', legend: 'Date range', ...ends });
+
+		press(opener(root, FAR));
+		await flushed();
+
+		await act(async () => {
+			document.dispatchEvent(
+				new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+			);
+		});
+		await flushed();
+		await painted();
+
+		expect(root.querySelector('[data-part="content"]')?.getAttribute('data-state')).toBe('closed');
+		expect(document.activeElement).toBe(opener(root, FAR));
+	});
+
+	it('names each press by the end it opens, and marks only that end expanded', async () => {
+		// one machine draws both presses, so left alone they carry one generic name and one
+		// expanded state between them: a reader hears the same button twice with nothing saying
+		// From or To, and the near press announces a panel the far press opened.
+		const root = render(DateRangeField, { id: 'range', legend: 'Date range', ...ends });
+
+		for (const [index, word] of [
+			[NEAR, 'From'],
+			[FAR, 'To']
+		] as const) {
+			const named = opener(root, index).getAttribute('aria-labelledby')?.split(' ') ?? [];
+			expect(
+				named.map((token) => root.querySelector(`#${token}`)?.textContent).join(' ')
+			).toContain(word);
+		}
+		expect(opener(root, NEAR).getAttribute('aria-labelledby')).not.toBe(
+			opener(root, FAR).getAttribute('aria-labelledby')
+		);
+
+		press(opener(root, FAR));
+		await flushed();
+
+		expect(opener(root, FAR).getAttribute('aria-expanded')).toBe('true');
+		expect(opener(root, NEAR).getAttribute('aria-expanded')).toBe('false');
+	});
+
+	it('marks a refused end’s own chunks refused and leaves the other end’s unmarked', () => {
+		// the chunk is where the caret lands, so a chunk saying nothing is the element a reader is
+		// standing on while the box around it is refused. ./DateField.jsx hands its one machine
+		// `invalid` for this; a range holds both ends in one machine, so each end's chunks are
+		// marked on their own.
+		const root = render(DateRangeField, {
+			id: 'range',
+			legend: 'Date range',
+			from: ends.from,
+			to: { ...ends.to, error: 'must not be before the first day of the range' }
+		});
+
+		for (const chunk of chunks(root, FAR)) expect(chunk.getAttribute('aria-invalid')).toBe('true');
+		for (const chunk of chunks(root, NEAR)) expect(chunk.getAttribute('aria-invalid')).toBeNull();
+	});
+
 	it('keeps a day chosen for the far end out of the near box, backwards or not', async () => {
 		// the machine puts the range it makes in calendar order, and the far end standing before the
 		// near one is a range an operator can ask for: what they pressed has to land in the box they
@@ -451,10 +581,11 @@ describe('a date range mounted into a document', () => {
 		expect(floated(root, FAR)).toBe(true);
 	});
 
-	it('opens a seed written backwards in calendar order, in both boxes and in both values', () => {
-		// what arrives over an address is a range somebody asked for rather than two days somebody
-		// typed, and nobody is standing at either box when it arrives — so it is read in calendar
-		// order. what is asserted is that the two carriers agree with the two boxes.
+	it('opens a seed written backwards standing as it was written', () => {
+		// the far end standing before the near one is the one refusal a range has, and a seed put
+		// back in calendar order would be that refusal arriving under a pair that no longer shows
+		// it — `RANGE_REVERSED` in packages/app/src/lib/ledger/journal-range.ts is told to the far
+		// box, which has to be the box holding the day it is about.
 		const root = render(DateRangeField, {
 			id: 'range',
 			legend: 'Date range',
@@ -462,16 +593,15 @@ describe('a date range mounted into a document', () => {
 			to: { ...ends.to, defaultValue: '2025-04-06' }
 		});
 
-		expect(submitted(root, 'from')).toBe('2025-04-06');
-		expect(submitted(root, 'to')).toBe('2026-04-05');
-		expect(written(root, NEAR)).toBe('2025-04-06');
-		expect(written(root, FAR)).toBe('2026-04-05');
+		expect(submitted(root, 'from')).toBe('2026-04-05');
+		expect(submitted(root, 'to')).toBe('2025-04-06');
+		expect(written(root, NEAR)).toBe('2026-04-05');
+		expect(written(root, FAR)).toBe('2025-04-06');
 	});
 
-	it('opens empty on a seed naming the far end alone, rather than in the near box', () => {
-		// the machines hold the pair as a list from index 0, so a lone far day arriving over an
-		// address cannot be handed to them without landing in the near box. both boxes open ready to
-		// be written in instead.
+	it('opens the far box alone on a seed naming the far end alone', () => {
+		// the machines hold the pair as a list from index 0, so a lone far day is that list with a
+		// hole at the front — the state an operator also reaches by writing the last day first.
 		const root = render(DateRangeField, {
 			id: 'range',
 			legend: 'Date range',
@@ -480,18 +610,45 @@ describe('a date range mounted into a document', () => {
 		});
 
 		expect(submitted(root, 'from')).toBe('');
-		expect(submitted(root, 'to')).toBe('');
-		expect(floated(root, FAR)).toBe(false);
+		expect(submitted(root, 'to')).toBe('2026-04-05');
+		expect(written(root, FAR)).toBe('2026-04-05');
+		expect(floated(root, FAR)).toBe(true);
+		expect(floated(root, NEAR)).toBe(false);
 	});
 
-	it('opens empty on a seed that names no day, rather than holding what it cannot draw', () => {
+	it('keeps a readable near end when the far end names no day', () => {
 		// the seed reaches this component off an address an operator can edit, so a string that is
-		// not a day is a real arrival.
+		// not a day is a real arrival — and the end beside it that does name a day is still the day
+		// somebody asked for.
+		const root = render(DateRangeField, {
+			id: 'range',
+			legend: 'Date range',
+			from: { ...ends.from, defaultValue: '2025-04-06' },
+			to: { ...ends.to, defaultValue: 'next tuesday' }
+		});
+
+		expect(submitted(root, 'from')).toBe('2025-04-06');
+		expect(submitted(root, 'to')).toBe('');
+	});
+
+	it('keeps a readable far end when the near end names no day', () => {
 		const root = render(DateRangeField, {
 			id: 'range',
 			legend: 'Date range',
 			from: { ...ends.from, defaultValue: 'last tuesday' },
 			to: { ...ends.to, defaultValue: '2026-04-05' }
+		});
+
+		expect(submitted(root, 'from')).toBe('');
+		expect(submitted(root, 'to')).toBe('2026-04-05');
+	});
+
+	it('opens empty on a seed where neither end names a day', () => {
+		const root = render(DateRangeField, {
+			id: 'range',
+			legend: 'Date range',
+			from: { ...ends.from, defaultValue: 'last tuesday' },
+			to: { ...ends.to, defaultValue: 'next tuesday' }
 		});
 
 		expect(submitted(root, 'from')).toBe('');

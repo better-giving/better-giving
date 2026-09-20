@@ -83,35 +83,31 @@ function day(text) {
 const settled = (/** @type {string} */ text) => day(text)?.toString() ?? '';
 
 /**
- * the two seeds as the one range below opens holding them.
+ * the two seeds as the one range below opens holding them: each end as it was written, and nothing
+ * where it names no day.
  *
- * **a seed is read as a range, and a range's two ends are its earlier day and its later one.** an
- * address naming them the other way round is read in calendar order rather than kept backwards,
- * because what arrives over an address is a range somebody asked for and not two days somebody
- * typed: nobody is standing at either box when it arrives, so there is no box to put a refusal
- * under and nothing for an operator to have just done. a pair typed at the boxes is the other case
- * and is left exactly as written — `RANGE_REVERSED` in
- * packages/app/src/lib/ledger/journal-range.ts is what that one is refused with.
+ * **each end is read on its own.** the seed reaches this component off an address an operator can
+ * edit, so either string may be nonsense — and the one beside it that does name a day is still a
+ * day somebody asked for. dropping it because its neighbour could not be read answers a question
+ * nobody asked, and the pair that is left is a state the boxes already draw.
  *
- * **a seed naming only the far end is dropped.** the machines hold the pair as a list from index 0,
- * and a list whose first day is missing is the one state the range has that the calendar is drawn
- * around rather than in spite of — but it is not a state an address should be able to open in,
- * because the day that arrived would have to go in the near box, which is the wrong box, silently.
- * an empty pair is the smaller wrong, and both boxes are then ready to be written in.
+ * **a seed naming only the far end opens in the far box.** the machines hold the pair as a list
+ * from index 0, so that is the list with a hole at the front — the `value` memo below is what
+ * builds it, and an operator reaches the same state by writing the last day before the first.
  *
- * the comparison is lexical, which for `YYYY-MM-DD` is the calendar order —
- * `reversedRangeRule` in packages/app/src/routes/_app.admin.donations.export.tsx orders the same
- * two strings the same way.
+ * **a pair written backwards stands as it was written**, as it does everywhere else in this
+ * component: the far end standing before the near one is refused by `RANGE_REVERSED` in
+ * packages/app/src/lib/ledger/journal-range.ts, which is told to the far box — so the far box has
+ * to be the one holding the day that refusal is about. it is also the seed a refused form is
+ * redrawn from, `boxProps` in packages/app/src/lib/admin/use-admin-form.ts carrying back what was
+ * submitted, and a pair quietly put in calendar order there would be a refusal nobody could act on.
  *
  * @param {string | undefined} near
  * @param {string | undefined} far
  * @returns {[string, string]}
  */
 function seeded(near, far) {
-	const first = settled(near ?? '');
-	const last = settled(far ?? '');
-	if (first === '' || last === '') return [first, ''];
-	return last < first ? [last, first] : [first, last];
+	return [settled(near ?? ''), settled(far ?? '')];
 }
 
 /**
@@ -206,11 +202,18 @@ function CalendarHead() {
  * words over it.
  *
  * **both machines are held to this component's value**, which is what keeps the chunks, the
- * calendar and the two carriers saying one thing. neither machine reorders that pair, and that is
- * the point: the far end standing before the near one is a range an operator can type and has to be
- * able to see — `RANGE_REVERSED` in packages/app/src/lib/ledger/journal-range.ts is the sentence
- * they are refused with, and a pair quietly put back in order would be a refusal nobody could act
- * on. a seed that moves is a fresh reading of the form and moves both boxes to it.
+ * calendar and the two carriers saying one thing. the boxes and the two carriers keep the pair in
+ * the order it arrived in, whether it was typed or seeded, and that is the point: the far end
+ * standing before the near one is a range an operator can ask for and has to be able to see —
+ * `RANGE_REVERSED` in packages/app/src/lib/ledger/journal-range.ts is the sentence they are refused
+ * with, and a pair quietly put back in order would be a refusal nobody could act on. a seed that
+ * moves is a fresh reading of the form and moves both boxes to it.
+ *
+ * the input machine leaves that pair alone, which is what makes the above hold. the picker sorts
+ * the value it is handed, so over a backwards pair the calendar's marking, the head's range text
+ * and the end it resumes at are all worked out in calendar order while the boxes stand as written.
+ * nothing is drawn from those: the boxes are this component's and the panel is read while a day is
+ * being chosen, not while a refusal is being acted on.
  *
  * **a press in the calendar writes the box whose own press opened it, and closes.** the two presses
  * stand at the end of two named boxes, so the calendar one of them opens is that box's calendar and
@@ -251,6 +254,9 @@ export function DateRangeField({ id, legend, hint, needed, disabled, from, to })
 	/* the chunks of each box, held as their groups so that a refusal's focus can be handed on to
 	   the ones belonging to the carrier it landed on. */
 	const chunks = useRef(/** @type {(HTMLDivElement | null)[]} */ ([null, null]));
+	/* the press at the end of each box, held so that the one a calendar was opened from can be
+	   handed the caret back when it closes. */
+	const presses = useRef(/** @type {(HTMLButtonElement | null)[]} */ ([null, null]));
 
 	/* which end holds the caret, or neither. the float is drawn from it per box, so an empty box
 	   floats its label while it is being written in and lets it back down when the caret leaves
@@ -260,9 +266,45 @@ export function DateRangeField({ id, legend, hint, needed, disabled, from, to })
 
 	/* whether the calendar is showing, and which end's press opened it. the calendar is held open
 	   here rather than by the machine because a press that writes one end leaves the machine holding
-	   half a range, which is a state it stays open in — and the press was an answer. */
+	   half a range, which is a state it stays open in — and the press was an answer.
+
+	   the press outlives the panel it opened, and it has to: `dismiss` below is what hands the caret
+	   back, and the closes the machine makes reach this component once the end being written is
+	   already gone — an end forgotten on the way out would return an operator who dismissed the far
+	   end's calendar to the near end's press. */
 	const [open, setOpen] = useState(false);
-	const [editing, setEditing] = useState(/** @type {number} */ (-1));
+	const [opener, setOpener] = useState(/** @type {number} */ (0));
+
+	/* the end an open calendar writes, and none while it is down. it is read off the panel rather
+	   than held beside it, so there is no close this has to be remembered to be cleared at — the
+	   panel goes down by more than one route, and a stored end is latched by whichever of them
+	   forgets to clear it. */
+	const editing = open ? opener : -1;
+
+	/* the end whose press the calendar answers to. the picker names one trigger — `ids.trigger` in
+	   @zag-js/date-picker's `ElementIds` is one string, and its own range composition draws one
+	   press over two boxes — while this component draws two, so the id it looks that one press up
+	   by is pointed at the end the panel was opened from rather than left standing on whichever press
+	   was drawn first. it is read off `opener` and not off `editing`, which is none once the panel
+	   is down — the machine looks the press up after that.
+
+	   the machine excludes that one press from what dismisses the panel, so the end that opened the
+	   calendar is the end whose press shuts it again rather than the end drawn first — and it is the
+	   press the machine reaches for on the closes it restores focus after itself. */
+	const answering = opener === 1 ? to : from;
+
+	/* the panel down and the caret back on the press it was opened from, on every close and whatever
+	   made it. a close is not an answer to either box, so the press is the only place the caret can
+	   go — the cell it was standing on is inside a panel that is no longer drawn, which leaves it on
+	   nothing an operator can see and the top of the page as the way back.
+
+	   one mechanism rather than this component's on some closes and the machine's on the rest: the
+	   `TABLE.ESCAPE` branch @zag-js/date-picker's machine takes over a picker whose open state is
+	   held out here moves the caret onto a cell and restores nothing after it. */
+	const dismiss = () => {
+		setOpen(false);
+		presses.current[opener]?.focus();
+	};
 
 	/** the carriers and the pair moved to a written range, wherever it was written. */
 	const commit = (/** @type {[string, string]} */ next) => {
@@ -285,7 +327,10 @@ export function DateRangeField({ id, legend, hint, needed, disabled, from, to })
 		if (editing < 0) return typed(details);
 		const other = pair[editing === 0 ? 1 : 0] ?? '';
 		const landed = chosen(details.valueAsString, pair);
-		setOpen(false);
+		/* the panel goes down on a press that answers one box, whatever the machine makes of the
+		   other: the machine closes on a cell only where it reads the range as finished, and a press
+		   this component takes as an answer is one it may still be holding half of. */
+		dismiss();
 		commit(editing === 0 ? [landed, other] : [other, landed]);
 	};
 
@@ -300,13 +345,14 @@ export function DateRangeField({ id, legend, hint, needed, disabled, from, to })
 			<DatePicker.Root
 				className="adm-datefield"
 				id={`${id}-picker`}
+				ids={{ trigger: `${answering.id}-open` }}
 				locale={LOCALE}
 				selectionMode="range"
 				disabled={disabled}
 				value={value}
 				positioning={{ placement: 'bottom-start' }}
 				open={open}
-				onOpenChange={(details) => setOpen(details.open)}
+				onOpenChange={(details) => (details.open ? setOpen(true) : dismiss())}
 				onValueChange={picked}
 			>
 				<DateInput.Root
@@ -386,34 +432,53 @@ export function DateRangeField({ id, legend, hint, needed, disabled, from, to })
 													>
 														<DateInput.Context>
 															{(chunked) =>
-																chunked
-																	.getSegments({ index })
-																	.map((chunk, at) => (
-																		<DateInput.Segment
-																			className="adm-datebox__chunk"
-																			key={`${chunk.type}-${at}`}
-																			segment={chunk}
-																		/>
-																	))
+																chunked.getSegments({ index }).map((chunk, at) => (
+																	/* the chunk is where the caret lands, so a refused end has to be
+																	   refused on the chunks and not only on the group around them.
+																	   ./DateField.jsx hands its machine `invalid` for this; one machine
+																	   holds both ends here, so its own `invalid` would mark the end
+																	   that was not refused too. */
+																	<DateInput.Segment
+																		className="adm-datebox__chunk"
+																		key={`${chunk.type}-${at}`}
+																		segment={chunk}
+																		aria-invalid={refused ? 'true' : undefined}
+																	/>
+																))
 															}
 														</DateInput.Context>
 													</DateInput.SegmentGroup>
 												</div>
 												{/* one press per box, so neither box is the only way in, and the press says
-												    which box the calendar it opens will write. the machine names one trigger,
-												    so the far end's carries an id of this component's own. the press is read in
-												    the capture phase because the machine's own handler is merged ahead of
-												    anything passed here, and it would otherwise shut a calendar the other end's
-												    press is taking over. */}
+												    which box the calendar it opens will write. both ids are written here and
+												    the machine is handed whichever one is answering — `answering` above. the
+												    press is read in the capture phase because the machine's own handler is
+												    merged ahead of anything passed here, and it would otherwise shut a
+												    calendar the other end's press is taking over.
+
+												    the name and the expanded state are each end's own. one machine draws both
+												    presses, so left alone they carry one generic label and one `aria-expanded`
+												    between them — the same button heard twice, and the near press announcing a
+												    panel the far press opened. the words are taken from the label over the box
+												    rather than written again here, so the one that is already on the screen is
+												    the one that is read. */}
 												<DatePicker.Trigger
 													className="adm-datebox__open"
-													{...(index === 0 ? {} : { id: `${end.id}-open` })}
+													id={`${end.id}-open`}
+													ref={(element) => {
+														presses.current[index] = element;
+													}}
+													aria-labelledby={`${end.id}-label ${end.id}-open-word`}
+													aria-expanded={editing === index}
 													onClickCapture={(event) => {
 														if (open && editing !== index) event.preventDefault();
-														setEditing(index);
+														setOpener(index);
 													}}
 												>
 													<Mark name="calendar" />
+													<span className="adm-vh" id={`${end.id}-open-word`}>
+														Choose a day
+													</span>
 												</DatePicker.Trigger>
 											</div>
 										</div>

@@ -28,11 +28,12 @@ import { readFileSync } from 'node:fs';
 //
 // the split between the two is deliberate and is not symmetric. colour is gated everywhere,
 // because there is no legitimate raw one. length is gated only in the files a caller hands to
-// rawLengthViolations, and every caller hands screens: `1px` borders and `2px` outline offsets are
-// legitimate and everywhere, so a length rule over the sheets would be mostly allowlist, and an
-// allowlist is the thing that rots. ./adm.css holds drawing geometry no token covers — a caret's
-// triangle, a checkbox's own square, a track's bound — and a token per shape would be a scale
-// nobody counts along. a raw length there carries a `raw-length-ok:` note and is caught by review.
+// rawLengthViolations, and every caller hands screens — no sweep here reads a sheet for one. what
+// the sheets carry is lengths that are not steps of a scale at all: ./base.css's hairline rule and
+// the underline offsets that belong to the face, and the drawing geometry in ./adm.css — a caret's
+// triangle, a checkbox's own square, a track's bound — where a token per shape would be a scale
+// nobody counts along. a length rule over them would be mostly allowlist, and an allowlist is the
+// thing that rots. a raw length in a sheet carries a `raw-length-ok:` note and is caught by review.
 //
 // ./tokens.css is where literals belong and is the one file exempt from the colour sweep. a caller
 // leaves it out of the list it hands here and asserts that the exemption is still one file rather

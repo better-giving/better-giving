@@ -101,6 +101,19 @@ const flushed = () =>
 	});
 
 /**
+ * lets the frame the picker hands focus back on run.
+ *
+ * `focusTriggerElement` in @zag-js/date-picker's machine defers into a `raf`, so the element holding
+ * the caret on the turn a calendar closes is still the one that was in it.
+ */
+const painted = () =>
+	act(async () => {
+		await new Promise((resolve) => {
+			requestAnimationFrame(() => resolve(undefined));
+		});
+	});
+
+/**
  * one keystroke into whichever chunk holds the caret, as the browser delivers one.
  *
  * a chunk is a `contenteditable` span and what it reads is the text the platform is about to insert
@@ -406,6 +419,33 @@ describe('a date field mounted into a document', () => {
 		// the day picked on the grid is the day standing in the chunks: one value, two machines.
 		expect(submitted(root, 'from')).toBe('2026-01-22');
 		expect(written(root)).toBe('2026-01-22');
+	});
+
+	it('hands the caret back to the press when Escape dismisses the calendar', async () => {
+		// the panel's open state is the machine's here rather than this component's, which is what
+		// makes the escape branch that reaches a press the one that runs: ./DateRangeField.jsx holds
+		// its own open state for two ends over one calendar and takes the branch that does not, so
+		// this case is what says the two compositions differ and the single box needs nothing.
+		const root = render(DateField, {
+			id: 'given',
+			name: 'given',
+			label: 'Given',
+			defaultValue: '2026-01-15'
+		});
+
+		press(opener(root));
+		await flushed();
+
+		await act(async () => {
+			document.dispatchEvent(
+				new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+			);
+		});
+		await flushed();
+		await painted();
+
+		expect(root.querySelector('[data-part="content"]')?.getAttribute('data-state')).toBe('closed');
+		expect(document.activeElement).toBe(opener(root));
 	});
 
 	it('exposes no operable calendar press on a box that cannot be answered', () => {

@@ -117,6 +117,38 @@ describe('a table mounted into a document', () => {
 		expect(root.querySelector('table')?.getAttribute('aria-labelledby')).toBeNull();
 	});
 
+	it('takes a name the screen already draws over it, and says the word once', () => {
+		// a screen with a heading over its list has already named it: the plane and the table point
+		// at that heading rather than at a word of their own, so a reader moving from the heading
+		// into the region is not told the same noun twice — and the sentence that counts the rows
+		// stays a sentence rather than doubling as the name.
+		const empty = render(DataTable, {
+			caption: 'Gifts',
+			namedBy: 'gifts-heading',
+			columns: COLUMNS,
+			rows: [],
+			empty: 'No gifts yet.'
+		});
+
+		expect(empty.querySelector('table')?.getAttribute('aria-labelledby')).toBe('gifts-heading');
+		expect(empty.querySelector('table')?.getAttribute('aria-label')).toBeNull();
+		expect(empty.querySelector('.adm-plane')?.getAttribute('aria-labelledby')).toBe(
+			'gifts-heading'
+		);
+		expect(empty.querySelector('.adm-plane')?.getAttribute('aria-label')).toBeNull();
+
+		const counted = render(DataTable, {
+			caption: '2 gifts, newest first.',
+			captionId: 'gifts-caption',
+			namedBy: 'gifts-heading',
+			columns: COLUMNS,
+			rows: GIFTS
+		});
+
+		expect(counted.querySelector('table')?.getAttribute('aria-labelledby')).toBe('gifts-heading');
+		expect(counted.querySelector('#gifts-caption')?.textContent).toBe('2 gifts, newest first.');
+	});
+
 	it('leaves the plane a named section, which is what makes it a region', () => {
 		// the equivalence the plane rests on — a section with an accessible name is a region, so it
 		// needs no `role` — is argued in the component, and the two halves of it come apart in

@@ -11,8 +11,8 @@ import { DateRangeField } from '@better-giving/operator/components/forms/DateRan
  * the calendar is drawn by nothing here and opens from the press at the end of either box. over a
  * whole range the first day picked starts a new one and the second closes it; over a range holding
  * a near day and no far one it resumes at the end that is missing, so one press finishes it. the
- * days between the two ends draw nothing of their own: the sheet marks the two days that were
- * chosen and has no rung for what lies between them.
+ * days between the two ends carry the band the sheet draws for them, and dragging across the grid
+ * draws the same band over the range that press would make.
  *
  * the seeds are a real financial year rather than round days, so what is on the screen is what an
  * operator would be looking at. every day in this format is the same width, so the string that is
@@ -20,8 +20,10 @@ import { DateRangeField } from '@better-giving/operator/components/forms/DateRan
  *
  * the refusal is drawn under the far end alone, which is where the one refusal a range can be
  * walked into belongs: `RANGE_REVERSED` in packages/app/src/lib/ledger/journal-range.ts is told to
- * the box the operator changes. the near end beside it is the specimen that says an untouched end
- * keeps its own row empty rather than reserving one.
+ * the box the operator changes. the two days it is drawn over stand backwards, which is what that
+ * sentence is about — a seed is held as it was written, so the state is reachable from props and
+ * the specimen is the range it says it is. the near end beside it is the specimen that says an
+ * untouched end keeps its own row empty rather than reserving one.
  */
 export default function FormsDateRangeFieldPreview() {
 	return (

@@ -121,6 +121,10 @@ const WORN = {
  *   table is named by. it is stated only where a screen needs to name that paragraph from somewhere
  *   else; left alone it is the table's own, because two counted tables on one page taking one
  *   written-down id emit it twice and the second table's name resolves to the first one's sentence.
+ * @property {string | undefined} [namedBy] the id of a name the screen already draws over this
+ *   plane — a heading of its own. where it is stated the plane and the table are named from it
+ *   rather than from the caption, so a list standing under a heading is not named a second time in
+ *   the same words; `caption` is then only ever the sentence that counts the rows.
  */
 
 /**
@@ -164,7 +168,12 @@ function read(held, column) {
    free to change — `.adm-plane` is a class rule in packages/operator/src/styles/adm.css, and the
    ring sits on `:focus-visible` in that directory's base.css; neither names an element. where the
    caption is not drawn there is no name to take, and an unnamed section is exposed as nothing at
-   all — which is what an unnamed `region` was exposed as too. */
+   all — which is what an unnamed `region` was exposed as too.
+
+   a screen that draws a heading over its list hands it back as `namedBy`, and that heading is then
+   the name rather than the caption. a plane under a heading is named already: taking the caption's
+   word as well is the screen's noun read twice in a row, once as the heading and once as the
+   region the reader has just stepped into. */
 /** @param {DataTableProps} props */
 export function DataTable({
 	caption,
@@ -175,7 +184,8 @@ export function DataTable({
 	press,
 	add,
 	addHref = '#',
-	captionId
+	captionId,
+	namedBy
 }) {
 	// the caption's own id, stated from `useId` where the screen did not write one down —
 	// ./RecordCard.jsx does the same for the same reason. two counted tables on one page
@@ -184,7 +194,12 @@ export function DataTable({
 	const own = useId();
 	const captionedBy = captionId ?? own;
 	const counted = caption != null && rows.length > 0;
-	const named = !counted && typeof caption === 'string' ? caption : undefined;
+	// the name the plane and the table take, and it is one of three things: a heading the screen
+	// already draws over them, the sentence counting the rows, or the screen's own noun where
+	// neither is there. a heading outranks the caption because a plane standing under one is named
+	// already — the caption saying the same word again is the noun read twice in a row.
+	const namedFrom = namedBy ?? (counted ? captionedBy : undefined);
+	const named = namedFrom === undefined && typeof caption === 'string' ? caption : undefined;
 	// `false` as well as nothing, because a screen offering the press conditionally writes
 	// `press={mayAdd && <Button …/>}` and the falsy half of that is a boolean rather than nothing —
 	// held only against null, it draws an empty line and a step above the plane with no control on it.
@@ -209,14 +224,10 @@ export function DataTable({
 				   non-interactive element in general and wrong about this one: scrolling is the
 				   interaction, and a browser gives arrow keys to a scroll box only once it is focused. */
 				tabIndex={0}
-				aria-labelledby={counted ? captionedBy : undefined}
+				aria-labelledby={namedFrom}
 				aria-label={named}
 			>
-				<table
-					className="adm-table"
-					aria-labelledby={counted ? captionedBy : undefined}
-					aria-label={named}
-				>
+				<table className="adm-table" aria-labelledby={namedFrom} aria-label={named}>
 					{/* the shape the table keeps. without it every column is sized from whatever the
 					    rows on this page happen to hold, so a figure column lands somewhere else on
 					    the next page of results and a reader scanning down it has to find it again.
