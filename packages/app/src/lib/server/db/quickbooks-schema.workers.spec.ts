@@ -184,6 +184,22 @@ describe('a delivery row is in one of three states', () => {
 	});
 });
 
+describe('a delivery row is claimed by one run at a time', () => {
+	it('arrives claimed by nobody', async () => {
+		// nothing writes `leased_until` at insert and the column carries no default, so a row is
+		// owed and held by nobody from the moment it is queued — the rows a deployment already had
+		// when the column arrived included.
+		const entryGroupId = await postEntryGroup('don_unclaimed');
+		await insertSync(entryGroupId);
+		const row = await env.DB.prepare(
+			'select leased_until as l from quickbooks_sync where entry_group_id = ?'
+		)
+			.bind(entryGroupId)
+			.first();
+		expect(row).toEqual({ l: null });
+	});
+});
+
 describe('STRICT rejects a non-integer written to an integer column', () => {
 	it('refuses a fractional start_at on the connection', async () => {
 		// an update rather than an insert: the table holds one row and only one, so a second

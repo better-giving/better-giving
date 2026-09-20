@@ -36,6 +36,13 @@
       "when": 1789751735815,
       "tag": "0004_quickbooks_connection_and_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1789910616379,
+      "tag": "0005_quickbooks_sync_claim",
+      "breakpoints": true
     }
   ]
 }

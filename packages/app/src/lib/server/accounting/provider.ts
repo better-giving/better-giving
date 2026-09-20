@@ -12,6 +12,18 @@
 // the books, and ./quickbooks.ts is the one module that speaks to Intuit.
 //
 // ---------------------------------------------------------------------------
+// the port carries no vendor's word, and everything under it still does.
+//
+// nothing on this surface says realm, Intuit or QuickBooks: a caller holds a company id at whatever
+// ledger is connected, and ./quickbooks.ts maps Intuit's realm onto it. that is the whole of what a
+// second adapter would need, and it is the difference between a seam and a name.
+//
+// **the tables and the modules over them keep `quickbooks` in their names, deliberately.** one
+// adapter exists, `quickbooks_connection` and `quickbooks_sync` are what the schema holds, and a
+// remote migration is a one-way door (CLAUDE.md -> Bans) — too much to spend on a word. so
+// ./connection.ts reads `realm_id` into `companyId` in one select and the vendor stops there.
+//
+// ---------------------------------------------------------------------------
 // three roles and never nine accounts.
 //
 // this app's own chart is the nine seeded rows in ../db/accounts.ts, and a connected company's is
@@ -35,7 +47,9 @@
  *                         connected, and nothing about it is a fault.
  *   accounts_not_chosen — a company is connected and the three accounts have not been picked. the
  *                         connection is made on one screen and the accounts on another, so a send
- *                         in between is expected; `detail` names which of the three is missing.
+ *                         in between is expected. the three are picked together or not at all
+ *                         (`saveQuickbooksAccounts` in ./connection.ts), so this is one state
+ *                         rather than a partial set to name.
  *   reconnect_needed    — the credential is dead. a refresh the provider rejected, or a call still
  *                         refused after one. retrying spends attempts on a connection that cannot
  *                         come back without somebody re-authorising it.
@@ -106,9 +120,11 @@ export function isRetryable(reason: AccountingFailureReason): boolean {
 /**
  * why a call did not succeed, and whether to try it again.
  *
- * `retryable` is a field rather than something the caller derives, because the delivery reads
- * exactly it to choose between another attempt and a dead row — and it is set from the reason by
- * {@link failed} rather than written at a call site, so the two can never disagree.
+ * `retryable` is a field rather than something the caller derives: it is set from the reason by
+ * {@link failed} rather than written at a call site, so no two refusals of one reason can disagree
+ * about it. it answers whether the identical call is worth making again and nothing more — where a
+ * refusal *lands* is the delivery's own table (`LANDING_OF` in ./deliver.ts), which is finer than
+ * this partition and deliberately disagrees with it on two reasons.
  *
  * `detail` is read by an operator in the console and is written into `quickbooks_sync.last_error`.
  * it never carries a credential: a token is described, never quoted.
@@ -204,6 +220,20 @@ export type Sendable =
 	| { readonly kind: 'gift'; readonly gift: GiftRecord }
 	| { readonly kind: 'correction'; readonly correction: CorrectionRecord };
 
+/**
+ * whether the record being sent has been handed to the provider before.
+ *
+ *   first — nothing has tried this record. the queue claims a row before it sends it and gives the
+ *           claim back only once the row is written (../accounting/deliver.ts), so no other run
+ *           sent it and the provider cannot already be holding it.
+ *   again — an earlier attempt may have reached the provider, whether or not its answer did. an
+ *           adapter with no idempotency key of its own looks before it creates.
+ *
+ * it is the caller's to state rather than the record's, because the record is read out of the books
+ * (./record.ts) and this is a fact about the queue row carrying it.
+ */
+export type SendAttempt = 'first' | 'again';
+
 /** what the provider called the record it created — `quickbooks_sync.remote_id`. */
 export type RemoteRecord = {
 	readonly remoteId: string;
@@ -211,7 +241,8 @@ export type RemoteRecord = {
 
 /** the company a connection points at, as the screen that made it shows it. */
 export type CompanyIdentity = {
-	readonly realmId: string;
+	/** what the connected ledger calls this company. */
+	readonly companyId: string;
 	readonly companyName: string;
 };
 
@@ -247,16 +278,29 @@ export type TokenPair = {
 /**
  * what an adapter needs to make a call, read fresh each time.
  *
- * the three account ids are nullable together with nothing enforcing that they arrive as a set,
- * which is the state the schema allows and the console produces: connected on one screen, accounts
- * picked on another. an adapter names the missing one rather than refusing generically.
+ * the three account ids are nullable because a company is connected on one screen and its accounts
+ * picked on another, and they are null or set as a set: `saveQuickbooksAccounts` in ./connection.ts
+ * is the only writer and takes all three, and a reconnect against another company clears all three.
+ * three nullable fields rather than one nullable triple is the schema's shape read straight
+ * (../db/schema.ts), so an adapter refuses the whole absence rather than naming a missing one.
  */
 export type ConnectionSnapshot = TokenPair & {
-	readonly realmId: string;
+	/** {@link CompanyIdentity.companyId}, as the stored connection holds it. */
+	readonly companyId: string;
 	readonly incomeAccountId: string | null;
 	readonly feeAccountId: string | null;
 	readonly depositAccountId: string | null;
 };
+
+/**
+ * what became of a pair handed to {@link ConnectionStore.saveTokens}.
+ *
+ *   stored     — the stored credential is now this pair.
+ *   superseded — the stored refresh token is no longer the one presented, so another caller
+ *                renewed first and this pair is against a credential the provider has retired.
+ *                the caller reads the connection again and continues on what the winner stored.
+ */
+export type TokenSave = 'stored' | 'superseded';
 
 /**
  * the two operations an adapter performs against the stored connection, and nothing else.
@@ -269,8 +313,11 @@ export type ConnectionSnapshot = TokenPair & {
 export type ConnectionStore = {
 	/** the connection as it stands, or null where no company is connected. */
 	read(): Promise<ConnectionSnapshot | null>;
-	/** the pair just issued, replacing both tokens. */
-	saveTokens(tokens: TokenPair): Promise<void>;
+	/**
+	 * the pair just issued, replacing both tokens — but only while `presented` is still the stored
+	 * refresh token, which is what keeps two renewals at once from storing a dead one.
+	 */
+	saveTokens(presented: string, tokens: TokenPair): Promise<TokenSave>;
 };
 
 export interface AccountingProvider {
@@ -293,10 +340,29 @@ export interface AccountingProvider {
 	listAccounts(): Promise<AccountingResult<readonly LedgerAccount[]>>;
 
 	/** one gift into the company's books, keyed on {@link GiftRecord.key} so a retry lands once. */
-	sendGift(gift: GiftRecord): Promise<AccountingResult<RemoteRecord>>;
+	sendGift(gift: GiftRecord, attempt: SendAttempt): Promise<AccountingResult<RemoteRecord>>;
 
 	/** one correcting entry into the company's books, keyed the same way. */
-	sendCorrection(correction: CorrectionRecord): Promise<AccountingResult<RemoteRecord>>;
+	sendCorrection(
+		correction: CorrectionRecord,
+		attempt: SendAttempt
+	): Promise<AccountingResult<RemoteRecord>>;
+
+	/**
+	 * where a browser is sent to authorise, as the route that redirects asks for it.
+	 *
+	 * on the port for the reason {@link exchangeCode} is, and for one more: a deployment short of
+	 * the credentials this address is built from is refused here, in the same sentence every other
+	 * arm gives (./factory.ts). a route that read the client id itself would be a second module
+	 * deciding what a half-configured deployment is told, and the two would drift.
+	 *
+	 * `state` is the caller's to mint and to check on the way back: it has to ride a cookie on the
+	 * browser that is about to travel, which is something no module down here holds.
+	 */
+	authorizeUrl(input: {
+		readonly redirectUri: string;
+		readonly state: string;
+	}): Promise<AccountingResult<string>>;
 
 	/**
 	 * the authorization code from the redirect, exchanged for the first token pair.
@@ -304,7 +370,7 @@ export interface AccountingProvider {
 	 * on the port rather than in the callback route, because a route building the exchange itself
 	 * would be a second module speaking the provider's OAuth — which ./sole-importer.spec.ts
 	 * refuses. it reads nothing and writes nothing: the caller persists what comes back, together
-	 * with the `realmId` the redirect carried.
+	 * with the company id the redirect carried.
 	 *
 	 * **exchanged once.** a code presented twice can invalidate the tokens it already issued, so
 	 * the caller verifies the OAuth `state` and writes the result before anything else can retry.

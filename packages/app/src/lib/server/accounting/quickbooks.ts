@@ -12,7 +12,9 @@ import {
 	type GiftRecord,
 	type LedgerAccount,
 	type RemoteRecord,
-	type TokenPair
+	type SendAttempt,
+	type TokenPair,
+	type TokenSave
 } from './provider';
 
 // the QuickBooks Online adapter: this deployment's books, posted into one company's.
@@ -115,6 +117,14 @@ const QUERY_PAGE = 1000;
  */
 const KEY_PREFIX = 'better-giving';
 
+/**
+ * what Intuit calls a display name another name-list record already holds.
+ *
+ * the one fault this adapter recovers from rather than reports, because the name being taken says
+ * nothing about the gift.
+ */
+const DUPLICATE_NAME_FAULT = '6240';
+
 /** how much of a sentence Intuit wrote a message of ours may repeat. */
 const PROVIDER_QUOTE_MAX = 200;
 
@@ -131,15 +141,15 @@ export type QuickbooksCredentials = {
 /**
  * where a browser is sent to connect a company.
  *
- * built here rather than in the route that redirects, because ./sole-importer.spec.ts refuses an
- * Intuit address anywhere else — and because the scope and the response type are this module's
+ * reached through `authorizeUrl` on the port rather than called directly: ./sole-importer.spec.ts
+ * refuses an Intuit address anywhere else, and the scope and the response type are this module's
  * facts rather than a route's.
  *
  * `state` is the caller's to mint and to check on the way back: the callback verifies it before it
- * exchanges anything, and the `realmId` it reads off the redirect is what the connection is written
- * with.
+ * exchanges anything, and the company id it reads off the redirect is what the connection is
+ * written with.
  */
-export function quickbooksConnectUrl(input: {
+function consentUrl(input: {
 	readonly clientId: string;
 	readonly redirectUri: string;
 	readonly state: string;
@@ -156,6 +166,30 @@ export function quickbooksConnectUrl(input: {
 
 /** an answer Intuit gave, read as far as its status and its JSON. */
 type Answer = { readonly status: number; readonly body: unknown };
+
+/**
+ * what currencies a company will take, off its own preferences.
+ *
+ * `homeCurrency` is what Intuit reads a transaction naming no currency as being in
+ * (https://developer.intuit.com/app/developer/qbo/docs/learn/learn-quickbooks-online-basics), and
+ * `multicurrency` is the switch only a person can throw, inside QuickBooks — the API cannot, because
+ * turning it on cannot be undone.
+ */
+type CurrencyPosture = {
+	readonly homeCurrency: string | null;
+	readonly multicurrency: boolean;
+};
+
+/** a request body, in the one of Intuit's two content types the call takes. */
+type Payload = { readonly json: unknown } | { readonly text: string };
+
+function contentTypeOf(body: Payload): string {
+	return 'text' in body ? 'application/text' : 'application/json';
+}
+
+function bodyTextOf(body: Payload): string {
+	return 'text' in body ? body.text : JSON.stringify(body.json);
+}
 
 export function createQuickbooksProvider(
 	credentials: QuickbooksCredentials,
@@ -210,11 +244,10 @@ export function createQuickbooksProvider(
 	/**
 	 * the refresh this provider makes, at most once, whatever asks for it.
 	 *
-	 * the latch is the whole of it: Intuit rotates the refresh token and retires the one presented,
-	 * so two refreshes racing would have the second present a token the first had just retired —
-	 * and the connection would be lost by two calls that each succeeded. reading, calling and
-	 * writing is one serialized step, and a provider is built per request (CLAUDE.md -> Runtime), so
-	 * the latch bounds the request that holds it.
+	 * the latch bounds one request and no more than that: a provider is built per request
+	 * (CLAUDE.md -> Runtime), so it keeps a request whose gift and whose console read both want a
+	 * token from paying Intuit for two — and it says nothing at all about the run in the next
+	 * invocation. what makes two callers renewing at once safe is {@link persist}'s compare-and-set.
 	 *
 	 * a failed refresh is latched too: every arm behind it gets the same refusal rather than
 	 * presenting a dead token again.
@@ -224,13 +257,47 @@ export function createQuickbooksProvider(
 		refreshing ??= tokenGrant({
 			grant_type: 'refresh_token',
 			refresh_token: refreshToken
-		}).then(async (issued) => {
-			// persisted before the token is spent, and by the only writer this adapter has. a pair
-			// obtained and dropped is the connection lost the next time the old one is presented.
-			if (issued.ok) await store.saveTokens(issued.value);
-			return issued;
-		});
+		}).then(async (issued) => (issued.ok ? persist(refreshToken, issued.value) : issued));
 		return refreshing;
+	}
+
+	/**
+	 * the pair Intuit just issued, stored — or the pair whoever renewed first stored.
+	 *
+	 * written before the token is spent, and by the only writer this adapter has: a pair obtained
+	 * and dropped is the connection lost the next time the old one is presented. the write is
+	 * against `presented`, so the caller that lost the race writes nothing and reads the winner's
+	 * credential instead of overwriting it with one Intuit retired.
+	 *
+	 * a write that could not be made at all is where the connection dies: Intuit has already
+	 * retired `presented` by then, so the credential this deployment holds is spent and no later
+	 * call revives it. it is a refusal rather than a throw because every caller of this port reads
+	 * `ok` — a console read promises a 200 whatever the books answer, and the delivery reads the
+	 * reason to tell an operator (./deliver.ts).
+	 */
+	async function persist(
+		presented: string,
+		issued: TokenPair
+	): Promise<AccountingResult<TokenPair>> {
+		let save: TokenSave;
+		try {
+			save = await store.saveTokens(presented, issued);
+		} catch (error) {
+			return failed(
+				'reconnect_needed',
+				`QuickBooks issued this deployment a new credential and it could not be stored (${faultName(error)}), so the one being held is spent. The QuickBooks company has to be connected again.`
+			);
+		}
+		if (save === 'stored') return { ok: true, value: issued };
+
+		const stored = await store.read();
+		if (stored === null) {
+			return failed(
+				'not_connected',
+				'The QuickBooks company was disconnected while this deployment was renewing its credential, so there is nothing to send to.'
+			);
+		}
+		return { ok: true, value: stored };
 	}
 
 	/** the connection to spend, with an access token that has not lapsed. */
@@ -252,25 +319,29 @@ export function createQuickbooksProvider(
 		return { ok: true, value: { connection, accessToken: issued.value.accessToken } };
 	}
 
-	/** one Accounting API call, answered with Intuit's status and body, or with a refusal. */
+	/**
+	 * one Accounting API call, answered with Intuit's status and body, or with a refusal.
+	 *
+	 * always a POST: the two creates are posts by nature and the query endpoint is one by choice,
+	 * so that no donor is named in a url (see {@link ask}).
+	 */
 	async function send(
 		accessToken: string,
-		method: 'GET' | 'POST',
 		path: string,
 		params: Record<string, string>,
-		body?: unknown
+		body?: Payload
 	): Promise<Answer | AccountingFailure> {
 		const query = new URLSearchParams({ ...params, minorversion: QUICKBOOKS_MINOR_VERSION });
 		let response: Response;
 		try {
 			response = await fetch(`${credentials.apiBaseUrl}${path}?${query}`, {
-				method,
+				method: 'POST',
 				headers: {
 					authorization: `Bearer ${accessToken}`,
 					accept: 'application/json',
-					...(body === undefined ? {} : { 'content-type': 'application/json' })
+					...(body === undefined ? {} : { 'content-type': contentTypeOf(body) })
 				},
-				body: body === undefined ? null : JSON.stringify(body),
+				body: body === undefined ? null : bodyTextOf(body),
 				signal: AbortSignal.timeout(TIMEOUT_MS)
 			});
 		} catch (error) {
@@ -287,35 +358,47 @@ export function createQuickbooksProvider(
 	 * making the call again. still refused after that, the credential is dead and no number of
 	 * attempts revives it.
 	 */
-	async function request(
+	async function answerFor(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
-		method: 'GET' | 'POST',
 		path: string,
 		params: Record<string, string> = {},
-		body?: unknown
+		body?: Payload
+	): Promise<Answer | AccountingFailure> {
+		const answer = await send(auth.accessToken, path, params, body);
+		if ('ok' in answer || answer.status !== 401) return answer;
+
+		const issued = await refresh(auth.connection.refreshToken);
+		if (!issued.ok) return issued;
+		return send(issued.value.accessToken, path, params, body);
+	}
+
+	/** the same call, with Intuit's refusal already read as one of the port's reasons. */
+	async function request(
+		auth: { connection: ConnectionSnapshot; accessToken: string },
+		path: string,
+		params: Record<string, string> = {},
+		body?: Payload
 	): Promise<AccountingResult<unknown>> {
-		let answer = await send(auth.accessToken, method, path, params, body);
+		const answer = await answerFor(auth, path, params, body);
 		if ('ok' in answer) return answer;
-
-		if (answer.status === 401) {
-			const issued = await refresh(auth.connection.refreshToken);
-			if (!issued.ok) return issued;
-			answer = await send(issued.value.accessToken, method, path, params, body);
-			if ('ok' in answer) return answer;
-		}
-
 		if (answer.status >= 200 && answer.status < 300) return { ok: true, value: answer.body };
 		return classify(answer);
 	}
 
-	/** the query endpoint, which is how every read this adapter makes is made. */
+	/**
+	 * the query endpoint, which is how every read this adapter makes is made.
+	 *
+	 * the statement rides in the request body rather than in the `query` parameter the same endpoint
+	 * also takes, because a donor's name and email are what several of these statements match on and
+	 * a URL is written into Intuit's access log and every intermediary's. Intuit's own content type
+	 * for it is `application/text`
+	 * (https://developer.intuit.com/app/developer/qbo/docs/learn/explore-the-quickbooks-online-api/data-queries).
+	 */
 	async function ask(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
 		statement: string
 	): Promise<AccountingResult<unknown>> {
-		return request(auth, 'GET', `/v3/company/${auth.connection.realmId}/query`, {
-			query: statement
-		});
+		return request(auth, `/v3/company/${auth.connection.companyId}/query`, {}, { text: statement });
 	}
 
 	/** every page of a query, so a read is never quietly the first hundred rows. */
@@ -341,9 +424,12 @@ export function createQuickbooksProvider(
 	 * the record this app already created for `key`, or null.
 	 *
 	 * the whole of the idempotency: QuickBooks takes no idempotency key, so every record carries the
-	 * entry group's id in its `PrivateNote` and a send looks for it before creating anything. what
+	 * entry group's id in its `PrivateNote` and a retry looks for it before creating anything. what
 	 * this answers is the post whose reply never arrived — the delivery retries, and without this
 	 * the company's books hold the gift twice with nothing saying which is which.
+	 *
+	 * it is a paginated scan of every record the company dated that day, and reads are what Intuit
+	 * meters this app on, so it is paid by the attempts that can find something and by no others.
 	 *
 	 * bounded by the transaction's own date, which is the one field both a query can filter on and
 	 * this app knows before the record exists. `PrivateNote` is not filterable, so the match is made
@@ -351,10 +437,14 @@ export function createQuickbooksProvider(
 	 */
 	async function alreadyPosted(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
+		attempt: SendAttempt,
 		entity: 'Deposit' | 'JournalEntry',
 		key: string,
 		txnDate: string
 	): Promise<AccountingResult<string | null>> {
+		// a row is claimed before it is sent and the claim is held until it is written, so nothing
+		// else posted this key and a first attempt has nothing to find.
+		if (attempt === 'first') return { ok: true, value: null };
 		const rows = await askAll(auth, `select * from ${entity} where TxnDate = '${txnDate}'`, entity);
 		if (!rows.ok) return rows;
 		const mark = keyMark(key);
@@ -367,25 +457,72 @@ export function createQuickbooksProvider(
 		return { ok: true, value: null };
 	}
 
-	/** the one customer query, asked with whatever predicate the ladder reached. */
+	/**
+	 * the one customer query, asked with whatever predicate the ladder reached.
+	 *
+	 * active only, and said out loud rather than left to Intuit's default: what this lookup is for
+	 * is a customer to post a gift against, and an archived one is not that. the name a lookup does
+	 * not find is not a name that is free — {@link customerNamed} is what answers that.
+	 */
 	async function findCustomer(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
 		predicate: string
 	): Promise<AccountingResult<string | null>> {
-		const answered = await ask(auth, `select * from Customer where ${predicate}`);
+		const answered = await ask(auth, `select * from Customer where ${predicate} and Active = true`);
 		if (!answered.ok) return answered;
 		const [found] = queryRows(answered.value, 'Customer');
 		return { ok: true, value: stringField(found, 'Id') };
 	}
 
 	/**
+	 * one customer created, its id — or `null` where the company already holds that name.
+	 *
+	 * `null` rather than a refusal because a taken name is something to recover from rather than a
+	 * gift given up on: `DisplayName` is unique across every customer, vendor and employee a
+	 * company holds, so a donor who is also a supplier, or one somebody archived, has a name that
+	 * is taken by something this app can never post a gift against. Intuit answers that one case
+	 * with fault 6240
+	 * (https://developer.intuit.com/app/developer/qbo/docs/develop/troubleshooting/handling-common-errors),
+	 * and every other fault is read the way every other call's is.
+	 */
+	async function customerNamed(
+		auth: { connection: ConnectionSnapshot; accessToken: string },
+		displayName: string,
+		email: string | null
+	): Promise<AccountingResult<string | null>> {
+		const answer = await answerFor(
+			auth,
+			`/v3/company/${auth.connection.companyId}/customer`,
+			{},
+			{
+				json: {
+					DisplayName: displayName,
+					...(email === null ? {} : { PrimaryEmailAddr: { Address: email } })
+				}
+			}
+		);
+		if ('ok' in answer) return answer;
+		if (answer.status < 200 || answer.status >= 300) {
+			return faultCode(answer.body) === DUPLICATE_NAME_FAULT
+				? { ok: true, value: null }
+				: classify(answer);
+		}
+		const id = stringField(field(answer.body, 'Customer'), 'Id');
+		return id === null
+			? failed('provider_error', 'QuickBooks created a customer and named no id for it.')
+			: { ok: true, value: id };
+	}
+
+	/**
 	 * the donor's customer in the company's books: found by email, then by name, then created.
 	 *
-	 * the name lookup is made even where the email one found nothing and the donor has an email,
-	 * and that is not belt and braces: `DisplayName` is unique across every customer, vendor and
-	 * employee in the company, so a create under a name already taken is refused outright — and the
-	 * donor who gives twice under a name somebody typed into QuickBooks last year would never post
-	 * at all.
+	 * the name lookup is made even where the donor left an email and the email lookup found
+	 * nothing, and that is not belt and braces: it is the donor who gave before under a name
+	 * somebody typed into QuickBooks without one.
+	 *
+	 * where the name is taken, the donor is given one of their own — Intuit's own remedy for a
+	 * collision across the three name lists — and it is looked for before it is created, because a
+	 * donor with no email finds their way back to it on no other reading.
 	 */
 	async function customerFor(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
@@ -403,24 +540,86 @@ export function createQuickbooksProvider(
 		if (!byName.ok) return byName;
 		if (byName.value !== null) return { ok: true, value: byName.value };
 
-		const created = await request(
-			auth,
-			'POST',
-			`/v3/company/${auth.connection.realmId}/customer`,
-			{},
-			{
-				DisplayName: displayName,
-				...(donor.email === null ? {} : { PrimaryEmailAddr: { Address: donor.email } })
-			}
-		);
+		const created = await customerNamed(auth, displayName, donor.email);
 		if (!created.ok) return created;
-		const id = stringField(field(created.value, 'Customer'), 'Id');
-		return id === null
-			? failed('provider_error', 'QuickBooks created a customer and named no id for it.')
-			: { ok: true, value: id };
+		if (created.value !== null) return { ok: true, value: created.value };
+
+		const ownName = donorDisplayName(displayName);
+		const byOwnName = await findCustomer(auth, `DisplayName = '${escaped(ownName)}'`);
+		if (!byOwnName.ok) return byOwnName;
+		if (byOwnName.value !== null) return { ok: true, value: byOwnName.value };
+
+		const own = await customerNamed(auth, ownName, donor.email);
+		if (!own.ok) return own;
+		return own.value === null
+			? failed(
+					'invalid_record',
+					`The QuickBooks company already holds the names ${displayName} and ${ownName} for something other than this donor, so there is no customer to record the gift against. Rename one of them in QuickBooks and retry this gift.`
+				)
+			: { ok: true, value: own.value };
+	}
+
+	/**
+	 * the currency the company keeps its books in, and whether it keeps any others.
+	 *
+	 * read once per provider rather than per gift: a delivery run sends a batch of them through one
+	 * provider, reads are what Intuit meters this app on, and a company's home currency does not
+	 * move between two gifts. only an answer is held — a read that failed is made again, because
+	 * the reasons it fails with are the ones a later call answers differently.
+	 */
+	let posture: CurrencyPosture | null = null;
+	async function currencyPosture(auth: {
+		connection: ConnectionSnapshot;
+		accessToken: string;
+	}): Promise<AccountingResult<CurrencyPosture>> {
+		if (posture !== null) return { ok: true, value: posture };
+		const answered = await ask(auth, 'select * from Preferences');
+		if (!answered.ok) return answered;
+		const [preferences] = queryRows(answered.value, 'Preferences');
+		const prefs = field(preferences, 'CurrencyPrefs');
+		posture = {
+			homeCurrency: stringField(field(prefs, 'HomeCurrency'), 'value'),
+			multicurrency: field(prefs, 'MultiCurrencyEnabled') === true
+		};
+		return { ok: true, value: posture };
+	}
+
+	/**
+	 * the currency a record goes over in, or a refusal naming it.
+	 *
+	 * a company with multicurrency switched off holds exactly one currency, and Intuit reads a
+	 * transaction that names no other as being in it — so a gift taken in another currency posted
+	 * there is the right number under the wrong three letters, which every figure downstream reads
+	 * as correct. multicurrency on, the company decides: the currency is sent and Intuit refuses one
+	 * the company has not set up, in its own words.
+	 *
+	 * a company whose preferences name no home currency is left to Intuit the same way, because a
+	 * refusal built on a field that did not arrive is a gift stopped over this app's own reading.
+	 */
+	async function acceptedCurrency(
+		auth: { connection: ConnectionSnapshot; accessToken: string },
+		currency: string
+	): Promise<AccountingResult<string>> {
+		const held = await currencyPosture(auth);
+		if (!held.ok) return held;
+		const { homeCurrency, multicurrency } = held.value;
+		if (multicurrency || homeCurrency === null || homeCurrency === currency) {
+			return { ok: true, value: currency };
+		}
+		return failed(
+			'invalid_record',
+			`This gift is in ${currency} and the QuickBooks company keeps its books in ${homeCurrency}, with multicurrency switched off, so there is nowhere to put a ${currency} figure. Switch multicurrency on in QuickBooks and retry this gift, or record it there by hand.`
+		);
 	}
 
 	return {
+		async authorizeUrl(input: {
+			readonly redirectUri: string;
+			readonly state: string;
+		}): Promise<AccountingResult<string>> {
+			return { ok: true, value: consentUrl({ clientId: credentials.clientId, ...input }) };
+		},
+
 		async exchangeCode(input: {
 			readonly code: string;
 			readonly redirectUri: string;
@@ -444,7 +643,7 @@ export function createQuickbooksProvider(
 			if (companyName === null) {
 				return failed('provider_error', 'QuickBooks named no company for this connection.');
 			}
-			return { ok: true, value: { realmId: auth.value.connection.realmId, companyName } };
+			return { ok: true, value: { companyId: auth.value.connection.companyId, companyName } };
 		},
 
 		/**
@@ -454,14 +653,20 @@ export function createQuickbooksProvider(
 		 * it is the same two entry groups the books hold (../donations/entries.ts), read as the one
 		 * transaction they are — which is why ../accounting/outbox.ts queues the gift and not its fee.
 		 */
-		async sendGift(gift: GiftRecord): Promise<AccountingResult<RemoteRecord>> {
+		async sendGift(
+			gift: GiftRecord,
+			attempt: SendAttempt
+		): Promise<AccountingResult<RemoteRecord>> {
 			const auth = await authorized();
 			if (!auth.ok) return auth;
 			const accounts = chosenAccounts(auth.value.connection);
 			if (!accounts.ok) return accounts;
 
+			const currency = await acceptedCurrency(auth.value, gift.currency);
+			if (!currency.ok) return currency;
+
 			const txnDate = transactionDate(gift.occurredAt);
-			const posted = await alreadyPosted(auth.value, 'Deposit', gift.key, txnDate);
+			const posted = await alreadyPosted(auth.value, attempt, 'Deposit', gift.key, txnDate);
 			if (!posted.ok) return posted;
 			if (posted.value !== null) return { ok: true, value: { remoteId: posted.value } };
 
@@ -493,14 +698,16 @@ export function createQuickbooksProvider(
 			return createdRecord(
 				await request(
 					auth.value,
-					'POST',
-					`/v3/company/${auth.value.connection.realmId}/deposit`,
+					`/v3/company/${auth.value.connection.companyId}/deposit`,
 					{},
 					{
-						TxnDate: txnDate,
-						PrivateNote: privateNote(gift.key, gift.memo),
-						DepositToAccountRef: { value: accounts.value.deposit },
-						Line: lines
+						json: {
+							TxnDate: txnDate,
+							CurrencyRef: { value: currency.value },
+							PrivateNote: privateNote(gift.key, gift.memo),
+							DepositToAccountRef: { value: accounts.value.deposit },
+							Line: lines
+						}
 					}
 				),
 				'Deposit'
@@ -514,7 +721,10 @@ export function createQuickbooksProvider(
 		 * correction is: ../ledger/correct.ts builds it as one figure moved between two accounts, and
 		 * the debit and the credit are named here rather than signed.
 		 */
-		async sendCorrection(correction: CorrectionRecord): Promise<AccountingResult<RemoteRecord>> {
+		async sendCorrection(
+			correction: CorrectionRecord,
+			attempt: SendAttempt
+		): Promise<AccountingResult<RemoteRecord>> {
 			const auth = await authorized();
 			if (!auth.ok) return auth;
 			const accounts = chosenAccounts(auth.value.connection);
@@ -531,29 +741,40 @@ export function createQuickbooksProvider(
 				);
 			}
 
+			const currency = await acceptedCurrency(auth.value, correction.currency);
+			if (!currency.ok) return currency;
+
 			const txnDate = transactionDate(correction.occurredAt);
-			const posted = await alreadyPosted(auth.value, 'JournalEntry', correction.key, txnDate);
+			const posted = await alreadyPosted(
+				auth.value,
+				attempt,
+				'JournalEntry',
+				correction.key,
+				txnDate
+			);
 			if (!posted.ok) return posted;
 			if (posted.value !== null) return { ok: true, value: { remoteId: posted.value } };
 
 			return createdRecord(
 				await request(
 					auth.value,
-					'POST',
-					`/v3/company/${auth.value.connection.realmId}/journalentry`,
+					`/v3/company/${auth.value.connection.companyId}/journalentry`,
 					{},
 					{
-						TxnDate: txnDate,
-						PrivateNote: privateNote(correction.key, correction.memo),
-						Line: correction.lines.map((line) => ({
-							DetailType: 'JournalEntryLineDetail',
-							Amount: Number(majorText(line.amountMinor, correction.currency)),
-							...(correction.memo === null ? {} : { Description: correction.memo }),
-							JournalEntryLineDetail: {
-								PostingType: line.posting === 'debit' ? 'Debit' : 'Credit',
-								AccountRef: { value: accounts.value[line.role] }
-							}
-						}))
+						json: {
+							TxnDate: txnDate,
+							CurrencyRef: { value: currency.value },
+							PrivateNote: privateNote(correction.key, correction.memo),
+							Line: correction.lines.map((line) => ({
+								DetailType: 'JournalEntryLineDetail',
+								Amount: Number(majorText(line.amountMinor, correction.currency)),
+								...(correction.memo === null ? {} : { Description: correction.memo }),
+								JournalEntryLineDetail: {
+									PostingType: line.posting === 'debit' ? 'Debit' : 'Credit',
+									AccountRef: { value: accounts.value[line.role] }
+								}
+							}))
+						}
 					}
 				),
 				'JournalEntry'
@@ -626,22 +847,20 @@ export function createQuickbooksProvider(
 }
 
 /**
- * the three accounts a send needs, or a refusal naming the ones nobody has picked.
+ * the three accounts a send needs, or the refusal a company that has picked none gives.
  *
  * a connected company with no accounts chosen is an ordinary state rather than a fault: the
  * connection is made on one screen and the accounts on another, and a gift settling in between
  * arrives here. it is terminal, so the queued row waits for the sweep rather than spending its
  * attempts against a screen nobody has opened.
+ *
+ * one sentence for all three rather than a list of which are missing: they are written together and
+ * cleared together (`saveQuickbooksAccounts` and `connectQuickbooks` in ./connection.ts), so a
+ * connection holding one of them is a state nothing can produce.
  */
 function chosenAccounts(
 	connection: ConnectionSnapshot
 ): AccountingResult<{ income: string; fee: string; deposit: string }> {
-	const missing = [
-		connection.incomeAccountId === null ? 'income' : null,
-		connection.feeAccountId === null ? 'fee' : null,
-		connection.depositAccountId === null ? 'deposit' : null
-	].filter((role) => role !== null);
-
 	if (
 		connection.incomeAccountId === null ||
 		connection.feeAccountId === null ||
@@ -649,7 +868,7 @@ function chosenAccounts(
 	) {
 		return failed(
 			'accounts_not_chosen',
-			`No QuickBooks account is chosen for: ${missing.join(', ')}. Pick one for each on the QuickBooks screen before anything can be sent.`
+			'No QuickBooks accounts are chosen for this company. Pick the income, fee and deposit accounts on the QuickBooks screen before anything can be sent.'
 		);
 	}
 	return {
@@ -712,6 +931,17 @@ function quickbooksDisplayName(displayName: string): string {
 }
 
 /**
+ * the name a donor is given where the company already holds theirs.
+ *
+ * Intuit's own remedy for a name held across two of the three name lists is a scheme that tells
+ * them apart, and this is that scheme with one word in it. it is derived rather than stored, so the
+ * gift after this one finds the same customer by asking for the same name.
+ */
+function donorDisplayName(displayName: string): string {
+	return `${displayName} (donor)`;
+}
+
+/**
  * a value inside a query's string literal.
  *
  * Intuit's query language escapes with a backslash
@@ -769,14 +999,24 @@ function classify(answer: Answer): AccountingFailure {
  * operator can act on `quickbooks_sync.last_error` without a log.
  */
 function faultWords(body: unknown): string {
-	const errors = field(field(body, 'Fault'), 'Error');
-	const [first] = Array.isArray(errors) ? errors : [];
+	const first = firstFault(body);
 	const message = stringField(first, 'Message');
 	const detail = stringField(first, 'Detail');
 	const code = stringField(first, 'code');
 	const words = [message, detail].filter((part) => part !== null).join(' — ');
 	if (words === '') return '';
 	return `: ${words.slice(0, PROVIDER_QUOTE_MAX)}${code === null ? '' : ` (${code})`}`;
+}
+
+/** the code on the fault Intuit answered with, which is the only part of one anything branches on. */
+function faultCode(body: unknown): string | null {
+	return stringField(firstFault(body), 'code');
+}
+
+function firstFault(body: unknown): unknown {
+	const errors = field(field(body, 'Fault'), 'Error');
+	const [first] = Array.isArray(errors) ? errors : [];
+	return first;
 }
 
 /**
@@ -853,6 +1093,10 @@ function quoted(body: unknown): string {
 
 /** no answer settled whether the call took effect. */
 function unreachable(error: unknown): AccountingFailure {
-	const named = error instanceof Error ? error.name : 'an unnamed fault';
-	return failed('unreachable', `QuickBooks could not be reached (${named}).`);
+	return failed('unreachable', `QuickBooks could not be reached (${faultName(error)}).`);
+}
+
+/** what threw, in the one word an operator can carry to a log — never the message it came with. */
+function faultName(error: unknown): string {
+	return error instanceof Error ? error.name : 'an unnamed fault';
 }

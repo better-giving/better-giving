@@ -1,9 +1,27 @@
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
+import {
+	and,
+	asc,
+	desc,
+	eq,
+	gt,
+	inArray,
+	isNotNull,
+	isNull,
+	lte,
+	or,
+	sql,
+	type SQL
+} from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { quickbooksSync } from '../db/schema';
 import { alert } from '../donations/delivery';
 import type { EmailProvider } from '../email/provider';
-import type { AccountingFailure, AccountingFailureReason, AccountingProvider } from './provider';
+import type {
+	AccountingFailure,
+	AccountingFailureReason,
+	AccountingProvider,
+	SendAttempt
+} from './provider';
 import { readSendable } from './record';
 
 // the outbox, delivered: what reads `quickbooks_sync` and sends what it names.
@@ -18,6 +36,22 @@ import { readSendable } from './record';
 // ../donations/pending-crypto-read.ts takes one off `Processors` — so every case below can be run
 // against a provider written in a test file, and the client id, the secret and the API address
 // reach this module through nobody.
+//
+// ---------------------------------------------------------------------------
+// a run sends only what it claimed, and that is the whole of why a gift is posted once.
+//
+// the cron fires every minute and a run can outlast a minute, so two runs over one backlog is
+// ordinary. `leased_until` is what keeps them apart (../db/schema.ts): a row is taken by the
+// update's own `where` — due, and held by nobody — and only what that update *returns* is sent.
+// the second run's update matches nothing and it sends nothing. there is no read of the row in
+// front of that write, because the ledger's rule is that no invariant is enforced by an atomic
+// read-then-write (../ledger/posting.ts), and this one could not be: Intuit has no idempotency
+// key, so a gift posted twice is two records in the company's books and a correcting entry in
+// *this* app's ledger cannot settle it.
+//
+// the claim is given back the moment the row is written — sent, given up on, or waiting — so
+// nothing waits out a lease it no longer needs. a run that died mid-send writes nothing at all,
+// and its rows come back on their own once the lease passes.
 //
 // ---------------------------------------------------------------------------
 // the three statuses, and every one a *run* writes is written here.
@@ -39,9 +73,12 @@ import { readSendable } from './record';
 //
 // five of the port's reasons are one fault the whole backlog is behind — no company connected, the
 // three accounts not picked, a dead credential, a throttled provider, a provider that cannot be
-// reached. none of them is about the row being sent, so none of them touches a row: the run ends
-// and the backlog is read again next time. marking a hundred gifts over one revoked credential
-// would leave an operator repairing rows instead of the one thing that is wrong.
+// reached. none of them is about the row being sent, so none of them marks a row: the claim is
+// given back, nothing else is written, and the backlog is read again next time. marking a hundred
+// gifts over one revoked credential would leave an operator repairing rows instead of the one thing
+// that is wrong. the one exception is `attempts` on a provider that could not be reached, because
+// that call may have created the record before the wait ran out — and `attempts` is what the next
+// send reads to know it has to look before it posts (./quickbooks.ts).
 //
 // four are about this row and no later run answers them differently — an id nothing carries, an
 // account outside the three, a payload the provider refused, a record this app should never have
@@ -58,15 +95,20 @@ import { readSendable } from './record';
 // countdown. what keeps a row nothing can fix cheap is the backoff, not a limit.
 //
 // ---------------------------------------------------------------------------
-// the notice is once per outage, and there are two of them.
+// the notice re-arms on a cooldown, and there are two of them.
 //
-// **rows failing.** a run that ends with rows given up on, or waiting after a failure, sends one
-// alert and stamps `notified_at` on every one of them, so the second run over the same backlog
-// sends nothing. a row that reaches `sent` leaves the failing set, so a backlog that clears and
-// then fails again is a new outage and is reported again. a row given up on stays in the set until
-// somebody retries it, which is what keeps a hundred stuck gifts down to one email.
+// a run with something to report sends one alert and stamps `notified_at` on every row of the set
+// it reported. a set holding a stamp newer than `NOTICE_COOLDOWN_MS` is quiet, so the run a minute
+// later says nothing and a backlog still stuck tomorrow is told about again. **what re-arms it is
+// the clock and not the rows**: a gift given up on that nobody retries never leaves the failing
+// set, so a notice suppressed on a stamp existing at all would be one row silencing every outage
+// behind it for good.
 //
-// **the run blocked.** a run that stopped has marked no row, so row state says nothing at all
+// **rows failing.** a run that ends with rows given up on, or waiting after a failure, reports the
+// whole of that set. a row that reaches `sent` leaves it, so a backlog that clears and then fails
+// again is a fresh outage and is reported whatever the cooldown says.
+//
+// **the run blocked.** a run that stopped has failed no row, so row state says nothing at all
 // about a backlog piling up behind a dead credential — which is the outage most worth an email. it
 // is reported off the blocking reason instead, over every unfinished row and stamped the same way.
 // two of the five reasons say nothing here: a throttled provider clears itself within a run or
@@ -89,19 +131,30 @@ export type AccountingDeliveryDeps = {
  * entry groups sent per run, oldest queued first.
  *
  * a send costs a handful of D1 statements — the entry and its lines, the cut posted beside it, the
- * donor it names — one call to the provider, two where the access token had lapsed, and one write.
- * far inside the paid plan's 10,000 subrequests per invocation, and inside what Intuit meters per
- * realm per minute. what bounds a run is time rather than count: see `RUN_DEADLINE_MS`.
+ * donor it names — three to five calls to the provider, and one write. ten of those finish well
+ * inside {@link RUN_DEADLINE_MS} and inside what Intuit meters per realm per minute, and a run a
+ * minute drains a backlog steadily rather than in one invocation that cannot finish.
  */
-const SENDS_PER_RUN = 100;
+const SENDS_PER_RUN = 10;
 
 /**
- * no send starts this long after the run's scheduled time. a cron invocation is killed at fifteen
- * minutes of wall clock and one send can wait out the provider's timeout twice, so the margin is
- * for the send already under way. what is left is read on the next run, because nothing here is
- * finished by a run ending — the row is still `pending` and still owed.
+ * no send starts this long after the run's scheduled time.
+ *
+ * the schedule is every minute, and a cron invocation at a cadence under an hour is killed at
+ * thirty seconds of CPU — the fifteen-minute figure is the wall-clock row, for an hourly or longer
+ * trigger, and does not apply here. the margin left is for the send already under way. what is not
+ * reached is read on the next run, because nothing here is finished by a run ending — the row is
+ * still `pending` and still owed.
  */
-const RUN_DEADLINE_MS = 10 * 60_000;
+const RUN_DEADLINE_MS = 20_000;
+
+/**
+ * how long a claimed row is the claiming run's alone, measured from that run's scheduled time.
+ *
+ * it covers a send still in flight and nothing longer: this is what a gift waits when the run
+ * holding it died before it could write anything.
+ */
+const LEASE_MS = 5 * 60_000;
 
 /** what a row that has failed once waits before it is tried again. */
 const BACKOFF_FIRST_MS = 60_000;
@@ -119,6 +172,18 @@ const BACKOFF_CEILING_MS = 60 * 60_000;
  * dead credential, and accounts nobody has picked — wait for nothing.
  */
 const BLIP_GRACE_MS = 60 * 60_000;
+
+/**
+ * how long one notice keeps the next one over the same set quiet.
+ *
+ * what it buys is the second outage being reported at all. a notice suppressed on a stamp existing
+ * anywhere in the set is a notice one row can end for good: a gift given up on that nobody ever
+ * retries keeps its stamp and never leaves the failing set, so every later backlog — a revoked
+ * credential, a hundred gifts piling up — goes out to nobody. a day is long enough that an outage
+ * nobody is repairing costs one email a day rather than one a minute, and short enough that the
+ * next one is told about while it is still news.
+ */
+const NOTICE_COOLDOWN_MS = 24 * 60 * 60_000;
 
 /**
  * how long a row that has failed `attempts` times waits, doubling from a minute to the ceiling.
@@ -153,6 +218,20 @@ function waitIsOver(now: Date): SQL {
 		(wait, attempts) => sql`when ${quickbooksSync.attempts} = ${attempts} then ${wait}`
 	);
 	return sql`${quickbooksSync.updatedAt} + (case ${sql.join(rungs, sql` `)} else ${BACKOFF_CEILING_MS} end) <= ${now.getTime()}`;
+}
+
+/**
+ * the rows a run may take: owed, and held by nobody.
+ *
+ * a lease that has run out is no lease — the run that wrote it is gone and the gift is owed either
+ * way. `pending` and no other status: a row given up on waits for a person, and a sent one is
+ * finished.
+ */
+function unclaimed(now: Date) {
+	return and(
+		eq(quickbooksSync.status, 'pending'),
+		or(isNull(quickbooksSync.leasedUntil), lte(quickbooksSync.leasedUntil, now))
+	);
 }
 
 /**
@@ -245,7 +324,8 @@ export function blockedNoticeOf(reason: AccountingFailureReason): BlockedNotice 
  * what one queued entry group came to, and what it asks of the caller.
  *
  *   sent         — it is in the company's books, under `remoteId`.
- *   nothing_owed — no queue row carries that id, or the row is finished. nothing was sent.
+ *   nothing_owed — nothing for this call to send: no queue row carries that id, the row is
+ *                  finished or given up on, or another run is holding it. nothing was sent.
  *   given_up     — the row is `failed`. a person decides whether it is ever sent.
  *   waiting      — the row is still `pending` and is read again once its backoff is over.
  *   blocked      — nothing about this row: the deployment cannot send at all. **a caller working
@@ -262,18 +342,61 @@ export type QueuedEntryResult =
 /**
  * one queued entry group sent, and its row written to say so.
  *
+ * **the row is claimed before anything is sent**, by the update's own `where` — so a second run
+ * over the same row claims nothing and sends nothing, and this one posts the gift once.
+ *
  * `now` is the run's scheduled time and is what the row's `updated_at` is set to, so the backoff is
  * measured against the clock the next run reads rather than against whenever the write landed.
  *
- * it is what the sweep below is built from, and what a retry on the console reaches: a row put back
- * to `pending` and handed here is one gift tried again, with no sweep in the middle.
+ * the sweep below is what calls it. a retry on the console does not: ./backlog.ts puts every
+ * given-up row back to `pending`, and the next sweep is what sends them.
  */
 export async function sendQueuedEntry(
 	deps: AccountingDeliveryDeps,
 	entryGroupId: string,
 	now: Date
 ): Promise<QueuedEntryResult> {
-	const [queued] = await deps.db
+	const [claimed] = await deps.db
+		.update(quickbooksSync)
+		.set({
+			leasedUntil: new Date(now.getTime() + LEASE_MS),
+			// held where it is, the way `stamp` below holds it: `updated_at` is what the backoff is
+			// measured from, and being claimed is not an attempt.
+			updatedAt: sql`${quickbooksSync.updatedAt}`
+		})
+		.where(and(eq(quickbooksSync.entryGroupId, entryGroupId), unclaimed(now)))
+		.returning({ attempts: quickbooksSync.attempts });
+
+	if (claimed === undefined) return unclaimable(deps.db, entryGroupId);
+
+	const sendable = await readSendable(deps.db, entryGroupId);
+	if (!sendable.ok) return land(deps.db, entryGroupId, sendable, now);
+
+	// what the adapter spends on looking for a record it may already have posted: the claim above
+	// is what makes a row nobody has tried a row nothing else can have sent (./quickbooks.ts).
+	const attempt: SendAttempt = claimed.attempts > 0 ? 'again' : 'first';
+	const sent =
+		sendable.value.kind === 'gift'
+			? await deps.provider.sendGift(sendable.value.gift, attempt)
+			: await deps.provider.sendCorrection(sendable.value.correction, attempt);
+	if (!sent.ok) return land(deps.db, entryGroupId, sent, now);
+
+	await deps.db
+		.update(quickbooksSync)
+		.set({
+			status: 'sent',
+			remoteId: sent.value.remoteId,
+			lastError: null,
+			leasedUntil: null,
+			updatedAt: now
+		})
+		.where(eq(quickbooksSync.entryGroupId, entryGroupId));
+	return { disposition: 'sent', remoteId: sent.value.remoteId };
+}
+
+/** why nothing was claimed, in the words a person reads. nothing was sent on any of these paths. */
+async function unclaimable(db: Db, entryGroupId: string): Promise<QueuedEntryResult> {
+	const [queued] = await db
 		.select({ status: quickbooksSync.status })
 		.from(quickbooksSync)
 		.where(eq(quickbooksSync.entryGroupId, entryGroupId));
@@ -292,21 +415,16 @@ export async function sendQueuedEntry(
 			detail: `The journal entry ${entryGroupId} is already in QuickBooks.`
 		};
 	}
-
-	const sendable = await readSendable(deps.db, entryGroupId);
-	if (!sendable.ok) return land(deps.db, entryGroupId, sendable, now);
-
-	const sent =
-		sendable.value.kind === 'gift'
-			? await deps.provider.sendGift(sendable.value.gift)
-			: await deps.provider.sendCorrection(sendable.value.correction);
-	if (!sent.ok) return land(deps.db, entryGroupId, sent, now);
-
-	await deps.db
-		.update(quickbooksSync)
-		.set({ status: 'sent', remoteId: sent.value.remoteId, lastError: null, updatedAt: now })
-		.where(eq(quickbooksSync.entryGroupId, entryGroupId));
-	return { disposition: 'sent', remoteId: sent.value.remoteId };
+	if (queued.status === 'failed') {
+		return {
+			disposition: 'nothing_owed',
+			detail: `The journal entry ${entryGroupId} was given up on, and reaches QuickBooks only if somebody retries it.`
+		};
+	}
+	return {
+		disposition: 'nothing_owed',
+		detail: `Another delivery run is sending the journal entry ${entryGroupId}.`
+	};
 }
 
 /** the refusal written where it belongs, or left alone where it is not about this row. */
@@ -317,14 +435,31 @@ async function land(
 	now: Date
 ): Promise<QueuedEntryResult> {
 	const landing = landingOf(failure.reason);
-	if (landing === 'run') return { disposition: 'blocked', failure };
+	if (landing === 'run') {
+		// the row is left exactly as it stands, minus the claim: nothing about it is why the run
+		// stopped, and the next run has to be free to read it again.
+		await db
+			.update(quickbooksSync)
+			.set({
+				// `unreachable` is the one of the five that counts, because it is the one that can
+				// have reached the provider: a call whose answer never came may have created the
+				// record, and `attempts` is what tells the next one to look before it posts.
+				...(failure.reason === 'unreachable'
+					? { attempts: sql`${quickbooksSync.attempts} + 1` }
+					: {}),
+				leasedUntil: null,
+				updatedAt: sql`${quickbooksSync.updatedAt}`
+			})
+			.where(eq(quickbooksSync.entryGroupId, entryGroupId));
+		return { disposition: 'blocked', failure };
+	}
 
 	if (landing === 'row') {
 		// `attempts` is left where it is: it exists to say how long the next run waits, and a row
 		// given up on waits for a person rather than for a clock.
 		await db
 			.update(quickbooksSync)
-			.set({ status: 'failed', lastError: failure.detail, updatedAt: now })
+			.set({ status: 'failed', lastError: failure.detail, leasedUntil: null, updatedAt: now })
 			.where(eq(quickbooksSync.entryGroupId, entryGroupId));
 		return { disposition: 'given_up', failure };
 	}
@@ -336,6 +471,9 @@ async function land(
 			// row cost two attempts.
 			attempts: sql`${quickbooksSync.attempts} + 1`,
 			lastError: failure.detail,
+			// given back rather than left to expire: the backoff is what decides when this row is
+			// read again, and a lease outliving it would be a second, longer wait nobody asked for.
+			leasedUntil: null,
 			updatedAt: now
 		})
 		.where(eq(quickbooksSync.entryGroupId, entryGroupId));
@@ -349,14 +487,7 @@ async function land(
  * backlog is behind does, and leaves every row unsent for the next run to read again.
  */
 export async function sendDueEntries(deps: AccountingDeliveryDeps, now: Date): Promise<void> {
-	const due = await deps.db
-		.select({ entryGroupId: quickbooksSync.entryGroupId })
-		.from(quickbooksSync)
-		// on `status` alone, which is what `quickbooks_sync_status_idx` is for (../db/schema.ts);
-		// the wait is a condition over the rows that index already narrowed to.
-		.where(and(eq(quickbooksSync.status, 'pending'), waitIsOver(now)))
-		.orderBy(asc(quickbooksSync.createdAt), asc(quickbooksSync.entryGroupId))
-		.limit(SENDS_PER_RUN);
+	const due = await dueRows(deps.db, now);
 
 	const deadline = now.getTime() + RUN_DEADLINE_MS;
 	let blocked: AccountingFailure | null = null;
@@ -383,13 +514,31 @@ export async function sendDueEntries(deps: AccountingDeliveryDeps, now: Date): P
 	await notifyFailing(deps, now);
 }
 
-/** one alert for the whole failing backlog, and never a second for the same one. */
+/**
+ * what one run reads: the oldest entry groups nobody is holding whose wait is over.
+ *
+ * exported for its query rather than its rows — `quickbooks_sync_status_due_idx` has to answer
+ * both the filter and the order, and ./deliver.workers.spec.ts reads sqlite's plan for this
+ * statement to say so. a second copy of the query written there would be a second query.
+ *
+ * the lease and the backoff are both conditions over the rows the index narrowed to.
+ */
+export function dueRows(db: Db, now: Date) {
+	return db
+		.select({ entryGroupId: quickbooksSync.entryGroupId })
+		.from(quickbooksSync)
+		.where(and(unclaimed(now), waitIsOver(now)))
+		.orderBy(asc(quickbooksSync.createdAt), asc(quickbooksSync.entryGroupId))
+		.limit(SENDS_PER_RUN);
+}
+
+/** one alert for the whole failing backlog, and no second one until the cooldown is out. */
 async function notifyFailing(deps: AccountingDeliveryDeps, now: Date): Promise<void> {
 	const [tally] = await deps.db
 		.select({
 			waiting: sql<number>`count(case when ${quickbooksSync.status} = 'pending' then 1 end)`,
 			givenUp: sql<number>`count(case when ${quickbooksSync.status} = 'failed' then 1 end)`,
-			reported: sql<number>`count(${quickbooksSync.notifiedAt})`
+			reported: reportedSince(now)
 		})
 		.from(quickbooksSync)
 		.where(FAILING);
@@ -409,8 +558,8 @@ async function notifyFailing(deps: AccountingDeliveryDeps, now: Date): Promise<v
 		body:
 			'Journal entries this deployment owes to QuickBooks were refused. The gifts are in this ' +
 			'app’s own books and nothing has been lost. What is waiting is sent again on its own; what ' +
-			'has been given up on is sent only if somebody retries it. This is sent once per backlog, ' +
-			'not once per gift.',
+			'has been given up on is sent only if somebody retries it. This is sent once a day while the ' +
+			'backlog stands, not once per gift.',
 		facts: [
 			{ label: 'Waiting to be sent', value: String(tally.waiting) },
 			{ label: 'Given up on', value: String(tally.givenUp) },
@@ -425,7 +574,8 @@ async function notifyFailing(deps: AccountingDeliveryDeps, now: Date): Promise<v
 }
 
 /**
- * one alert for a run that could not send anything at all, and never a second for the same fault.
+ * one alert for a run that could not send anything at all, and no second one until the cooldown
+ * is out.
  *
  * the count is every unfinished row rather than the rows this run read: what is waiting is the
  * whole backlog, and the run stopped before reading most of it.
@@ -442,7 +592,7 @@ async function notifyBlocked(
 		.select({
 			waiting: sql<number>`count(*)`,
 			oldest: sql<number | null>`min(${quickbooksSync.createdAt})`,
-			reported: sql<number>`count(${quickbooksSync.notifiedAt})`
+			reported: reportedSince(now)
 		})
 		.from(quickbooksSync)
 		.where(UNFINISHED);
@@ -455,8 +605,8 @@ async function notifyBlocked(
 		headline: 'Nothing is reaching QuickBooks at all',
 		body:
 			'Every gift this deployment owes to QuickBooks is behind one fault, and no journal entry ' +
-			'was sent. Nothing has been lost — the gifts are in this app’s own books and the whole ' +
-			'backlog goes over once the fault is put right. This is sent once, not once per run.',
+			'was sent. Nothing has been lost: the gifts are in this app’s own books and the whole ' +
+			'backlog goes over once the fault is put right. This is sent once a day, not once per run.',
 		facts: [
 			{ label: 'Reason', value: failure.detail },
 			{ label: 'Waiting to be sent', value: String(backlog.waiting) },
@@ -470,8 +620,18 @@ async function notifyBlocked(
 	await stamp(deps.db, UNFINISHED, now);
 }
 
+/** how many rows of the set were reported inside {@link NOTICE_COOLDOWN_MS} of `now`. */
+function reportedSince(now: Date): SQL<number> {
+	const since = now.getTime() - NOTICE_COOLDOWN_MS;
+	return sql<number>`count(case when ${quickbooksSync.notifiedAt} > ${since} then 1 end)`;
+}
+
 /**
- * `notified_at` written on every row of `set` carrying none.
+ * `notified_at` written on every row of `set`, whatever it carried.
+ *
+ * every row and not only the unstamped ones, because the stamp is what the next cooldown is
+ * measured from: a row left holding an older one would put the set back over the rung the moment
+ * that one aged out, and report a backlog already reported.
  *
  * `updated_at` is held where it is, because it is what the wait is measured from: a row costed
  * another interval for having been reported is a gift that reaches the books later for no reason.
@@ -481,7 +641,7 @@ async function stamp(db: Db, set: SQL | undefined, now: Date): Promise<void> {
 	await db
 		.update(quickbooksSync)
 		.set({ notifiedAt: now, updatedAt: sql`${quickbooksSync.updatedAt}` })
-		.where(and(set, isNull(quickbooksSync.notifiedAt)));
+		.where(set);
 }
 
 /** how long the oldest gift has waited, in the words somebody reading it would use. */

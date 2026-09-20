@@ -35,11 +35,15 @@ import type { Posting } from '../ledger/posting';
 // nothing is queued at all. that is the ordinary state of a deployment nobody has connected, not a
 // fault.
 //
-// **on or after the connection's own start date.** `start_at` is the operator's answer to how much
-// of their history goes over, compared against the entry group's `occurred_at` — business time on
+// **on or after the connection's own start date.** `start_at` is the earliest business date this
+// deployment sends a gift from, compared against the entry group's `occurred_at` — business time on
 // both sides, so a backdated gift is judged by when the money moved. inclusive at the start: an
-// entry dated exactly at `start_at` is queued. gifts already in the books from before a connect are
-// the connect flow's backfill and reach this table by another path.
+// entry dated exactly at `start_at` is queued.
+//
+// **the date is read here and nowhere else, as a gift settles.** nothing in this tree queues a gift
+// a second time, so a gift is judged once, by the date as it stood then: moving the date earlier
+// queues nothing already settled, and moving it later takes nothing back. a gift that settled
+// before a company was connected is never queued and nothing sends it afterwards.
 //
 // what is owed is read off the posting rather than off the call site, so a fifth poster gets the
 // right answer without a line of its own. `payment` is a gift that reached the organisation and
@@ -48,12 +52,7 @@ import type { Posting } from '../ledger/posting';
 // assembles the pair), and a row for it would send the same money twice. `donation` and `refund` are source types nothing in
 // this tree posts today.
 
-/**
- * the source types a posting has to carry to be owed to QuickBooks.
- *
- * the connect flow's backfill selects on the same rule, and the day it is written this is what it
- * widens to reach — restating the list there is how the two come to disagree.
- */
+/** the source types a posting has to carry to be owed to QuickBooks. */
 const OWED_SOURCE_TYPES: readonly EntrySourceType[] = ['payment', 'adjustment'];
 
 /**

@@ -7,12 +7,13 @@
 		"0001_paypal_provider_and_rails.sql",
 		"0002_chariot_provider_and_daf.sql",
 		"0003_nowpayments_provider_and_crypto.sql",
-		"0004_quickbooks_connection_and_sync.sql"
+		"0004_quickbooks_connection_and_sync.sql",
+		"0005_quickbooks_sync_claim.sql"
 	],
 	"crons": [
 		"*/30 * * * *",
 		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "bf41f9818eb7f5a7fe5e0a20ae3b4c4426561175"
+	"commit": "08b1878f85e70fb19cbcf192f51d3df1d27f7e7e"
 }

@@ -76,7 +76,8 @@ const BY_ACCOUNT_ID = new Map<string, { key: PostingAccountKey; role: AccountRol
  *
  * the refusals are terminal, every one of them: an id nothing carries, a `fee` group the outbox
  * never queues, a source type nothing sends, and an account outside the three the operator picked.
- * none of those is answered by asking again, and the delivery reads `retryable` to know it.
+ * none of those is answered by asking again, and `LANDING_OF` in ./deliver.ts is where each of them
+ * is read as a row to give up on rather than a call to make later.
  */
 export async function readSendable(
 	db: Db,

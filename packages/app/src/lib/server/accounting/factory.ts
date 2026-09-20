@@ -79,6 +79,7 @@ function unconfigured(unset: readonly (keyof ConfigEnv)[]): AccountingProvider {
 		listAccounts: async () => refusal,
 		sendGift: async () => refusal,
 		sendCorrection: async () => refusal,
+		authorizeUrl: async () => refusal,
 		exchangeCode: async () => refusal,
 		revokeTokens: async () => refusal
 	};

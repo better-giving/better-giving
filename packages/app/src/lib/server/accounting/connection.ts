@@ -1,7 +1,8 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, sql, type SQL } from 'drizzle-orm';
+import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
 import { quickbooksConnection } from '../db/schema';
-import type { ConnectionSnapshot, ConnectionStore, TokenPair } from './provider';
+import type { ConnectionSnapshot, ConnectionStore, TokenPair, TokenSave } from './provider';
 
 // the one QuickBooks company this deployment is connected to, read and written.
 //
@@ -41,7 +42,7 @@ export type ChosenAccount = {
  * the connection as the screen that made it reads it back.
  *
  * no token on it, and that is the whole shape: a screen renders the company, the three accounts and
- * the date history starts from, and none of those is a credential. the adapter's own read is
+ * the date gifts are sent from, and none of those is a credential. the adapter's own read is
  * {@link quickbooksStore} and is the only one that carries tokens at all.
  */
 export type QuickbooksConnectionView = {
@@ -73,9 +74,17 @@ export type NewConnection = {
  *
  * an upsert on the one id rather than an insert, because connecting again is the ordinary way out
  * of a dead credential: the row's check pins it to one, so an insert would be refused on exactly
- * the path an operator is using to fix something. the accounts, the company name and the date
- * history starts from are left where they were — a reconnect keeps every answer an operator has
- * already given, and a different realm is corrected by picking again on the screen that lists them.
+ * the path an operator is using to fix something.
+ *
+ * **what the company's own books said is kept only while it is the same company.** the three
+ * accounts and the name Intuit gave are that realm's words — against a different realm those ids
+ * name nothing, every gift is refused as an invalid reference, and a screen drawing the new
+ * company's name beside the old company's accounts reads as correct. so they are cleared by the
+ * same statement that writes the credential, on a `case` over the realm the row already held:
+ * reading first and writing after would be a window in which a gift settles against either.
+ *
+ * `start_at` is untouched on both arms. it is the operator's own answer rather than the company's,
+ * and it is as true of the books they have just connected as of the ones they left.
  */
 export async function connectQuickbooks(db: Db, connection: NewConnection): Promise<void> {
 	const credential = {
@@ -88,7 +97,33 @@ export async function connectQuickbooks(db: Db, connection: NewConnection): Prom
 	await db
 		.insert(quickbooksConnection)
 		.values({ id: CONNECTION_ID, ...credential, startAt: connection.startAt })
-		.onConflictDoUpdate({ target: quickbooksConnection.id, set: credential });
+		.onConflictDoUpdate({
+			target: quickbooksConnection.id,
+			set: {
+				...credential,
+				companyName: keptForTheSameCompany(quickbooksConnection.companyName),
+				// each id with the name beside it, because `..._name_needs_id_check` in ../db/schema.ts
+				// refuses a name whose id has gone.
+				incomeAccountId: keptForTheSameCompany(quickbooksConnection.incomeAccountId),
+				incomeAccountName: keptForTheSameCompany(quickbooksConnection.incomeAccountName),
+				feeAccountId: keptForTheSameCompany(quickbooksConnection.feeAccountId),
+				feeAccountName: keptForTheSameCompany(quickbooksConnection.feeAccountName),
+				depositAccountId: keptForTheSameCompany(quickbooksConnection.depositAccountId),
+				depositAccountName: keptForTheSameCompany(quickbooksConnection.depositAccountName)
+			}
+		});
+}
+
+/**
+ * what `column` holds where the incoming realm is the one the row already carried, and null where
+ * it is not.
+ *
+ * every column reference on this side of a `do update` is the row as it stood before the write, so
+ * the comparison is the stored realm against `excluded`'s — which is how one statement decides
+ * something a read would have had to go first to learn.
+ */
+function keptForTheSameCompany(column: SQLiteColumn): SQL {
+	return sql`case when ${quickbooksConnection.realmId} = excluded.${sql.identifier(quickbooksConnection.realmId.name)} then ${column} end`;
 }
 
 /** what Intuit calls the company, read back after the connection was made. */
@@ -100,12 +135,14 @@ export async function saveQuickbooksCompanyName(db: Db, companyName: string): Pr
 }
 
 /**
- * how much of this deployment's history goes over, moved.
+ * the earliest business date a gift is sent from, moved.
  *
  * the callback writes the moment the connection was made, which is the only answer available while
- * nobody has been asked — and this is where the operator answers it afterwards. it moves nothing
- * already queued: what `start_at` decides is whether a settling gift is owed at all
- * (../accounting/outbox.ts), asked once, at the settlement.
+ * nobody has been asked, and this is where the operator answers it afterwards.
+ *
+ * **it moves no gift, in either direction.** the date is read once per settlement and decides
+ * whether that gift is owed at all (./outbox.ts), so an earlier date queues nothing already settled
+ * and a later one takes nothing back.
  */
 export async function saveQuickbooksStartAt(db: Db, startAt: Date): Promise<void> {
 	await db
@@ -191,13 +228,22 @@ export async function disconnectQuickbooks(db: Db): Promise<void> {
  *
  * `saveTokens` writes the two tokens and nothing else, so a refresh cannot touch the accounts an
  * operator picked or the date their history starts from.
+ *
+ * it writes against the refresh token the caller presented, because two renewals can be in flight
+ * at once — a delivery run and a console read, or two runs — and Intuit retires the token each of
+ * them presented. the write that matches is the one whose pair was issued against the credential
+ * the row actually holds; a write that matches nothing is a caller holding a pair Intuit has
+ * already retired, and it is refused rather than landed on top of a live one. the loser settles by
+ * reading what the winner stored, never by rolling anything back (CLAUDE.md -> Bans -> The ledger).
  */
 export function quickbooksStore(db: Db): ConnectionStore {
 	return {
 		async read(): Promise<ConnectionSnapshot | null> {
 			const [row] = await db
 				.select({
-					realmId: quickbooksConnection.realmId,
+					// the port's word for it: the adapter addresses Intuit's realm through it, and the
+					// column keeps the vendor's name the way the table does (./provider.ts).
+					companyId: quickbooksConnection.realmId,
 					accessToken: quickbooksConnection.accessToken,
 					accessTokenExpiresAt: quickbooksConnection.accessTokenExpiresAt,
 					refreshToken: quickbooksConnection.refreshToken,
@@ -211,8 +257,8 @@ export function quickbooksStore(db: Db): ConnectionStore {
 			return row ?? null;
 		},
 
-		async saveTokens(tokens: TokenPair): Promise<void> {
-			await db
+		async saveTokens(presented: string, tokens: TokenPair): Promise<TokenSave> {
+			const [written] = await db
 				.update(quickbooksConnection)
 				.set({
 					accessToken: tokens.accessToken,
@@ -220,7 +266,15 @@ export function quickbooksStore(db: Db): ConnectionStore {
 					refreshToken: tokens.refreshToken,
 					refreshTokenExpiresAt: tokens.refreshTokenExpiresAt
 				})
-				.where(eq(quickbooksConnection.id, CONNECTION_ID));
+				.where(
+					and(
+						eq(quickbooksConnection.id, CONNECTION_ID),
+						eq(quickbooksConnection.refreshToken, presented)
+					)
+				)
+				// the id alone: what this read is for is whether a row matched, never what is in it.
+				.returning({ id: quickbooksConnection.id });
+			return written === undefined ? 'superseded' : 'stored';
 		}
 	};
 }

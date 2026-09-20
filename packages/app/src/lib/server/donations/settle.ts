@@ -280,7 +280,8 @@ export type TransactionToSettle = {
  * the half of a delivery after verification: re-read, correct, post, then tell people.
  *
  * exported so a scheduled read holding a transaction id and no delivery settles it through the same
- * write. never throws, for `settleDelivery`'s reason.
+ * write. it throws on exactly what `settleDelivery` says it throws on, and answers everything else
+ * with a `SettleResult`.
  */
 export async function settleTransaction(
 	deps: SettleDeps,

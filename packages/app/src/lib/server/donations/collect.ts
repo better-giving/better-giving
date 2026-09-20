@@ -828,9 +828,10 @@ async function answerTo(
 		// the books. ./receipt.ts and ./settled-notice.ts report their own failures and raise none,
 		// and this covers what is left: the alert and the donor read, each against a binding that can
 		// fault like any other.
-		// an exception escaping here is a 500 (`collectRecurringGift` promises it never throws),
-		// which the processor reads as "deliver this again" for three days against a collection
-		// `payment_provider_txn_idx` refuses every time — the gift banked and nobody told.
+		// an exception escaping here is a 500 — everything `collectRecurringGift` may throw is in
+		// front of the commit, and a 500 behind it is one the processor reads as "deliver this again"
+		// for three days against a collection `payment_provider_txn_idx` refuses every time: the gift
+		// banked and nobody told.
 		//
 		// the alert is inside the guard rather than in front of it, which is what makes a fault in it
 		// reported as the receipt fault it causes: it runs first, so a throw there is also a receipt

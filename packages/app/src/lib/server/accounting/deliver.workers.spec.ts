@@ -10,12 +10,13 @@ import { chargeEntry, feeEntry } from '../donations/entries';
 import type { EmailMessage, EmailProvider } from '../email/provider';
 import { post, postingStatements, type Posting } from '../ledger/posting';
 import type { Settlement } from '../payments/provider';
-import { sendDueEntries, sendQueuedEntry } from './deliver';
+import { dueRows, sendDueEntries, sendQueuedEntry } from './deliver';
 import {
 	failed,
 	type AccountingProvider,
 	type AccountingResult,
-	type RemoteRecord
+	type RemoteRecord,
+	type SendAttempt
 } from './provider';
 
 // the outbox delivered, against a real D1 and a provider written here.
@@ -96,21 +97,25 @@ function provider(
 	) => AccountingResult<RemoteRecord> | Promise<AccountingResult<RemoteRecord>> = accepted
 ) {
 	const asked: string[] = [];
+	const attempts: SendAttempt[] = [];
 	const port: AccountingProvider = {
-		async sendGift(gift) {
+		async sendGift(gift, attempt) {
 			asked.push(gift.key);
+			attempts.push(attempt);
 			return answer(gift.key);
 		},
-		async sendCorrection(correction) {
+		async sendCorrection(correction, attempt) {
 			asked.push(correction.key);
+			attempts.push(attempt);
 			return answer(correction.key);
 		},
 		readCompany: notAsked,
 		listAccounts: notAsked,
+		authorizeUrl: notAsked,
 		exchangeCode: notAsked,
 		revokeTokens: notAsked
 	};
-	return { port, asked };
+	return { port, asked, attempts };
 }
 
 const accepted = (key: string): AccountingResult<RemoteRecord> => ({
@@ -252,6 +257,26 @@ async function tried(entryGroupId: string, attempts: number, agoMs: number): Pro
 		.run();
 }
 
+/** a row as an outage nobody repaired left it: given up on and reported `agoMs` before `NOW`. */
+async function givenUpOn(entryGroupId: string, agoMs: number): Promise<void> {
+	const at = NOW.getTime() - agoMs;
+	await env.DB.prepare(
+		`update quickbooks_sync
+		 set status = 'failed', attempts = 3, last_error = 'Intuit refused the payload.',
+		     notified_at = ?, created_at = ?, updated_at = ?
+		 where entry_group_id = ?`
+	)
+		.bind(at, at, at, entryGroupId)
+		.run();
+}
+
+/** a row as a run that took it left it: claimed until `inMs` from `NOW`. */
+async function lease(entryGroupId: string, inMs: number): Promise<void> {
+	await env.DB.prepare('update quickbooks_sync set leased_until = ? where entry_group_id = ?')
+		.bind(NOW.getTime() + inMs, entryGroupId)
+		.run();
+}
+
 describe('one queued entry group', () => {
 	it('sends a gift and writes what QuickBooks called it', async () => {
 		const entryGroupId = await queuedGift();
@@ -313,6 +338,113 @@ describe('the due backlog', () => {
 		expect(qb.asked.sort()).toEqual([first, second].sort());
 		expect((await row(first)).status).toBe('sent');
 		expect((await row(second)).status).toBe('sent');
+	});
+
+	it('sends a gift once where a second run reads the same backlog', async () => {
+		const entryGroupId = await queuedGift();
+		const overlapping = provider();
+		const qb = provider(async (key) => {
+			// a second run starts while this one's send is still in flight, which is what a minute's
+			// cadence and a run that can outlast it make ordinary rather than exotic.
+			await sendDueEntries(deps(overlapping.port), NOW);
+			return accepted(key);
+		});
+
+		await sendDueEntries(deps(qb.port), NOW);
+
+		// Intuit has no idempotency key, so a second post is a second record in the company's own
+		// books and nothing in this app or that one repairs it.
+		expect(qb.asked).toEqual([entryGroupId]);
+		expect(overlapping.asked).toEqual([]);
+		expect((await row(entryGroupId)).status).toBe('sent');
+	});
+
+	it('reads no row a live run is still holding', async () => {
+		const entryGroupId = await queuedGift();
+		await lease(entryGroupId, MINUTE);
+		const qb = provider();
+
+		await sendDueEntries(deps(qb.port), NOW);
+
+		expect(qb.asked).toEqual([]);
+		expect(await row(entryGroupId)).toMatchObject({ status: 'pending', attempts: 0 });
+	});
+
+	it('takes back a row whose lease has run out', async () => {
+		const entryGroupId = await queuedGift();
+		await lease(entryGroupId, -1);
+		const qb = provider();
+
+		await sendDueEntries(deps(qb.port), NOW);
+
+		// the run that claimed it died before it could write anything. the gift is still owed, and
+		// waiting for a run that no longer exists is how it would never reach the books at all.
+		expect(qb.asked).toEqual([entryGroupId]);
+		expect((await row(entryGroupId)).status).toBe('sent');
+	});
+
+	it('leaves a sent row claimed by nobody', async () => {
+		const entryGroupId = await queuedGift();
+
+		await sendDueEntries(deps(provider().port), NOW);
+
+		expect(await row(entryGroupId)).toMatchObject({ status: 'sent', leasedUntil: null });
+	});
+
+	it('tells the provider whether this row has been handed over before', async () => {
+		const entryGroupId = await queuedGift();
+		const faulting = provider(() => failed('provider_error', 'QuickBooks answered 502.'));
+
+		await sendDueEntries(deps(faulting.port), NOW);
+		const qb = provider();
+		await sendDueEntries(deps(qb.port), new Date(NOW.getTime() + MINUTE + 1_000));
+
+		// what it buys the adapter: the scan for a record it may already have posted is paid by the
+		// attempt that can find one, and by no other.
+		expect(faulting.attempts).toEqual(['first']);
+		expect(qb.attempts).toEqual(['again']);
+		expect(qb.asked).toEqual([entryGroupId]);
+	});
+
+	it('counts a send that never answered, whatever else the run does about it', async () => {
+		const entryGroupId = await queuedGift();
+		const qb = provider(() =>
+			failed('unreachable', 'QuickBooks could not be reached (TimeoutError).')
+		);
+
+		await sendDueEntries(deps(qb.port), NOW);
+
+		// the run stopped and the row is left for the next one to read — but the call may have
+		// created the record before the wait ran out, so the attempt is on the row and the next one
+		// looks before it posts.
+		expect(await row(entryGroupId)).toMatchObject({
+			status: 'pending',
+			leasedUntil: null,
+			attempts: 1
+		});
+	});
+
+	it('gives the claim back on the row a blocked run stopped at', async () => {
+		const entryGroupId = await queuedGift();
+		const qb = provider(() => failed('reconnect_needed', 'The refresh token was rejected.'));
+
+		await sendDueEntries(deps(qb.port), NOW);
+
+		expect(await row(entryGroupId)).toMatchObject({ status: 'pending', leasedUntil: null });
+	});
+
+	it('reads the backlog through the index, filter and order alike', async () => {
+		const { sql: statement, params } = dueRows(db, NOW).toSQL();
+
+		const plan = await env.DB.prepare(`explain query plan ${statement}`)
+			.bind(...params)
+			.all<{ detail: string }>();
+
+		// the whole of what the index is for: on `status` alone sqlite answers the filter and then
+		// sorts, so a backlog parked behind an outage is re-sorted on every run.
+		const detail = plan.results.map((step) => step.detail).join(' | ');
+		expect(detail).toContain('quickbooks_sync_status_due_idx');
+		expect(detail).not.toContain('TEMP B-TREE');
 	});
 
 	it('leaves a provider fault waiting, and tries it again once the wait is over', async () => {
@@ -398,14 +530,14 @@ describe('the due backlog', () => {
 		}
 	});
 
-	it('sends a hundred entry groups in a run and leaves the hundred and first queued', async () => {
-		const postings = Array.from({ length: 101 }, () => correction('donationsDeductible'));
+	it('sends ten entry groups in a run and leaves the eleventh queued', async () => {
+		const postings = Array.from({ length: 11 }, () => correction('donationsDeductible'));
 		await commit(postings, postings);
 		const qb = provider();
 
 		await sendDueEntries(deps(qb.port), NOW);
 
-		expect(qb.asked).toHaveLength(100);
+		expect(qb.asked).toHaveLength(10);
 		const statuses = await Promise.all(postings.map(async (p) => (await row(idOf(p))).status));
 		expect(statuses.filter((status) => status === 'pending')).toHaveLength(1);
 	});
@@ -427,12 +559,12 @@ describe('the due backlog', () => {
 		expect((await row(behind)).status).toBe('sent');
 	});
 
-	it('starts no send ten minutes after the run was scheduled', async () => {
+	it('starts no send twenty seconds after the run was scheduled', async () => {
 		const entryGroupId = await queuedGift();
 		await tried(entryGroupId, 0, 30 * MINUTE);
 		const qb = provider();
 
-		await sendDueEntries(deps(qb.port), new Date(NOW.getTime() - 11 * MINUTE));
+		await sendDueEntries(deps(qb.port), new Date(NOW.getTime() - 25_000));
 
 		expect(qb.asked).toEqual([]);
 		expect(await row(entryGroupId)).toMatchObject({ status: 'pending', attempts: 0 });
@@ -482,15 +614,46 @@ describe('the failure notice', () => {
 		expect(await row(entryGroupId)).toMatchObject({ notifiedAt: NOW, updatedAt: NOW });
 	});
 
-	it('is not sent a second time for the same backlog', async () => {
+	it('reports a fresh backlog behind a row given up on and stamped months ago', async () => {
+		const abandoned = await queuedGift();
+		await givenUpOn(abandoned, 60 * 24 * 60 * MINUTE);
 		await queuedGift();
 		const mail = mailer();
 		const faulting = provider(() => failed('provider_error', 'QuickBooks answered 502.'));
 
 		await sendDueEntries(deps(faulting.port, mail.port), NOW);
-		await sendDueEntries(deps(faulting.port, mail.port), new Date(NOW.getTime() + MINUTE + 1_000));
+
+		// a row nobody ever retried never leaves the failing set, so a stamp that silenced on
+		// existing at all would silence every outage behind that one gift, forever.
+		expect(mail.sent).toHaveLength(1);
+		// re-armed rather than left standing: the stamp is what the next day's cooldown is measured
+		// from, and a row keeping its old one would report the same backlog again tomorrow.
+		expect((await row(abandoned)).notifiedAt).toEqual(NOW);
+	});
+
+	it('says nothing about a backlog reported an hour ago', async () => {
+		await queuedGift();
+		const mail = mailer();
+		const faulting = provider(() => failed('provider_error', 'QuickBooks answered 502.'));
+
+		await sendDueEntries(deps(faulting.port, mail.port), NOW);
+		await sendDueEntries(deps(faulting.port, mail.port), new Date(NOW.getTime() + 60 * MINUTE));
 
 		expect(mail.sent).toHaveLength(1);
+	});
+
+	it('is sent again for a backlog nobody has repaired in a day', async () => {
+		await queuedGift();
+		const mail = mailer();
+		const faulting = provider(() => failed('provider_error', 'QuickBooks answered 502.'));
+
+		await sendDueEntries(deps(faulting.port, mail.port), NOW);
+		await sendDueEntries(
+			deps(faulting.port, mail.port),
+			new Date(NOW.getTime() + 25 * 60 * MINUTE)
+		);
+
+		expect(mail.sent).toHaveLength(2);
 	});
 
 	it('is sent again for a backlog that cleared and then failed again', async () => {
@@ -570,6 +733,19 @@ describe('the notice for a run that could not send anything', () => {
 		await sendDueEntries(deps(provider(DEAD).port, mail.port), new Date(NOW.getTime() + MINUTE));
 
 		expect(mail.sent).toHaveLength(1);
+	});
+
+	it('takes the same rung as the failing notice, and re-arms after a day', async () => {
+		await queuedGift();
+		const mail = mailer();
+
+		await sendDueEntries(deps(provider(DEAD).port, mail.port), NOW);
+		await sendDueEntries(
+			deps(provider(DEAD).port, mail.port),
+			new Date(NOW.getTime() + 25 * 60 * MINUTE)
+		);
+
+		expect(mail.sent).toHaveLength(2);
 	});
 
 	it('says nothing where the backlog was finished while the run was waiting', async () => {

@@ -46,6 +46,24 @@ describe('a deployment short of the values Intuit is called with', () => {
 		});
 	});
 
+	it('refuses to start a connection, naming the value that has to be set first', async () => {
+		const { QUICKBOOKS_CLIENT_ID: _unset, ...halfway } = CONFIGURED;
+
+		// the same sentence every other arm gives, because it is the same absence: the route that
+		// sends a browser to Intuit asks the port rather than reading the value itself, so there is
+		// one module that knows what a deployment short of a credential is told.
+		expect(
+			await createAccountingProvider(halfway, db).authorizeUrl({
+				redirectUri: 'https://give.example.org/quickbooks/callback',
+				state: 'a-minted-state'
+			})
+		).toMatchObject({
+			ok: false,
+			reason: 'not_connected',
+			detail: expect.stringContaining('`QUICKBOOKS_CLIENT_ID` is not set')
+		});
+	});
+
 	it('names the one value that is short and not the two the operator has set', async () => {
 		const { QUICKBOOKS_API_URL: _unset, ...halfway } = CONFIGURED;
 
@@ -85,7 +103,7 @@ describe('a deployment holding all three', () => {
 
 		expect(result).toEqual({
 			ok: true,
-			value: { realmId: '4620816365', companyName: 'Riverside Shelter' }
+			value: { companyId: '4620816365', companyName: 'Riverside Shelter' }
 		});
 		const [call] = calls;
 		expect(new URL(call?.url ?? '').origin).toBe(QUICKBOOKS_SANDBOX_URL);

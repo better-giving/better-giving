@@ -75,9 +75,15 @@ describe('connecting a company', () => {
 		expect(results).toEqual([{ realm_id: '9999999999', refresh_token: 'refresh-two' }]);
 	});
 
-	it('keeps the date history starts from when a dead credential is reconnected', async () => {
+	it('keeps every answer already given when a dead credential is reconnected', async () => {
 		await connect();
+		await saveQuickbooksCompanyName(db, 'Riverside Shelter');
 		await saveQuickbooksStartAt(db, new Date('2025-07-01T00:00:00.000Z'));
+		await saveQuickbooksAccounts(db, {
+			income: { id: '79', name: 'Donations' },
+			fee: { id: '80', name: 'Merchant fees' },
+			deposit: { id: '35', name: 'Checking' }
+		});
 
 		await connectQuickbooks(db, {
 			realmId: '4620816365',
@@ -85,9 +91,45 @@ describe('connecting a company', () => {
 			startAt: new Date('2026-05-01T00:00:00.000Z')
 		});
 
-		expect((await readQuickbooksConnection(db))?.startAt).toEqual(
-			new Date('2025-07-01T00:00:00.000Z')
-		);
+		expect(await readQuickbooksConnection(db)).toEqual({
+			realmId: '4620816365',
+			companyName: 'Riverside Shelter',
+			income: { id: '79', name: 'Donations' },
+			fee: { id: '80', name: 'Merchant fees' },
+			deposit: { id: '35', name: 'Checking' },
+			startAt: new Date('2025-07-01T00:00:00.000Z')
+		});
+	});
+
+	it('forgets the previous company’s accounts where a different company is connected', async () => {
+		await connect();
+		await saveQuickbooksCompanyName(db, 'Riverside Shelter');
+		await saveQuickbooksStartAt(db, new Date('2025-07-01T00:00:00.000Z'));
+		await saveQuickbooksAccounts(db, {
+			income: { id: '79', name: 'Donations' },
+			fee: { id: '80', name: 'Merchant fees' },
+			deposit: { id: '35', name: 'Checking' }
+		});
+
+		await connectQuickbooks(db, {
+			realmId: '9999999999',
+			tokens: { ...TOKENS, accessToken: 'access-two', refreshToken: 'refresh-two' },
+			startAt: new Date('2026-05-01T00:00:00.000Z')
+		});
+
+		// an id out of the old company's chart names nothing in the new one, so a gift sent against
+		// it is refused as an invalid reference — and a screen drawing the new company's name beside
+		// the old company's accounts reads as correct.
+		expect(await readQuickbooksConnection(db)).toEqual({
+			realmId: '9999999999',
+			companyName: null,
+			income: null,
+			fee: null,
+			deposit: null,
+			// the operator's own answer rather than the company's, and as true of the books they have
+			// just connected as of the ones they left.
+			startAt: new Date('2025-07-01T00:00:00.000Z')
+		});
 	});
 
 	it('names no company until one has been read back', async () => {
@@ -111,7 +153,7 @@ describe('the store the adapter takes', () => {
 		});
 
 		expect(await quickbooksStore(db).read()).toEqual({
-			realmId: '4620816365',
+			companyId: '4620816365',
 			...TOKENS,
 			incomeAccountId: '79',
 			feeAccountId: '80',
@@ -123,7 +165,7 @@ describe('the store the adapter takes', () => {
 		expect(await quickbooksStore(db).read()).toBeNull();
 	});
 
-	it('persists a rotated refresh token over the one that was stored', async () => {
+	it('persists a rotated refresh token over the one that was presented', async () => {
 		await connect();
 		const rotated = {
 			accessToken: 'access-two',
@@ -132,11 +174,28 @@ describe('the store the adapter takes', () => {
 			refreshTokenExpiresAt: new Date('2027-01-01T00:00:00.000Z')
 		};
 
-		await quickbooksStore(db).saveTokens(rotated);
+		expect(await quickbooksStore(db).saveTokens(TOKENS.refreshToken, rotated)).toBe('stored');
 
 		// Intuit retires the token it rotated away from, so a pair written anywhere but this column
 		// is the connection lost the next time the old one is presented.
 		expect(await quickbooksStore(db).read()).toMatchObject(rotated);
+	});
+
+	it('stores nothing where another caller has already rotated the token presented', async () => {
+		await connect();
+		const winner = { ...TOKENS, accessToken: 'access-two', refreshToken: 'refresh-two' };
+		await quickbooksStore(db).saveTokens(TOKENS.refreshToken, winner);
+
+		const outcome = await quickbooksStore(db).saveTokens(TOKENS.refreshToken, {
+			...TOKENS,
+			accessToken: 'access-three',
+			refreshToken: 'refresh-three'
+		});
+
+		// Intuit retired `refresh-one` when it issued the winner its pair, so a write landing here
+		// would replace a live credential with one that was already dead.
+		expect(outcome).toBe('superseded');
+		expect(await quickbooksStore(db).read()).toMatchObject(winner);
 	});
 
 	it('leaves the chosen accounts alone when it writes a rotated pair', async () => {
@@ -147,7 +206,10 @@ describe('the store the adapter takes', () => {
 			deposit: { id: '35', name: 'Checking' }
 		});
 
-		await quickbooksStore(db).saveTokens({ ...TOKENS, refreshToken: 'refresh-two' });
+		await quickbooksStore(db).saveTokens(TOKENS.refreshToken, {
+			...TOKENS,
+			refreshToken: 'refresh-two'
+		});
 
 		expect(await quickbooksStore(db).read()).toMatchObject({ incomeAccountId: '79' });
 	});
@@ -171,7 +233,7 @@ describe('the accounts an operator picks', () => {
 	});
 });
 
-describe('how much history goes over', () => {
+describe('the date gifts are sent from', () => {
 	it('moves the date a gift is sent from', async () => {
 		await connect();
 		const later = new Date('2026-04-01T00:00:00.000Z');
