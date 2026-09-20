@@ -533,9 +533,15 @@
 		   so the border is the boundary and 1.4.11's 3:1 falls on it alone. rung 7 is the
 		   ladder's own border rung and reaches 1.49:1 on the page, which is the same cliff this
 		   file has always worked around; rung 9 reaches 3.16:1 and rung 10 reaches 4.85:1 on
-		   `--admin-page` and 4.97:1 on `--admin-surface`. the hover and active rungs step down
-		   from there. */
-		--admin-control-border: var(--admin-neutral-10);
+		   `--admin-page` and 4.97:1 on `--admin-surface`.
+
+		   rung 9 is the resting rung because it is the lightest one that clears that 3:1, and
+		   because it is the rung `--admin-field-border` rests at: a press and a box standing
+		   beside each other are then bounded at one weight, where rung 10 drew the press as the
+		   heavier of the two. the hover and active rungs step up from there, and the step is the
+		   two rungs `--admin-field-border-hover` takes for the same reason — what a pointer
+		   answers has to be read against a rung already this dark. */
+		--admin-control-border: var(--admin-neutral-9);
 		--admin-control-border-hover: var(--admin-neutral-11);
 		--admin-control-border-active: var(--admin-neutral-12);
 		--admin-control-border-disabled: var(--admin-neutral-5);
@@ -933,7 +939,13 @@
 		   other. */
 		--admin-edge: 3px;
 
-		--admin-focus-width: 2px;
+		/* the ring is a band outside the control's own edge rather than a weight on it, so it is
+		   not the state rung above: it adds to whatever border the control already draws, and at
+		   2px a focused box was carrying a 3px perimeter against the 1px every box beside it
+		   rests at. 1px puts the focused perimeter at 2px, which is still twice the resting one
+		   and is a rung the eye reads as a band rather than as a thicker line. the ring's own
+		   3:1 is a colour and not a width, and `--admin-focus-ring` above holds it. */
+		--admin-focus-width: 1px;
 		/* how far a focused link's tint reaches past its own box. a link takes this instead of
 		   a ring, and the header above holds why. */
 		--admin-focus-bleed: 3px;
