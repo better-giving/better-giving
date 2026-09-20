@@ -1,20 +1,23 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, Link, Outlet, useLoaderData } from 'react-router';
-import { expect, it, onTestFinished } from 'vitest';
+import { expect, it, onTestFinished, vi } from 'vitest';
 import {
+	JOURNAL_PRESS_COOKIE,
+	JOURNAL_PRESS_FIELD,
 	JOURNAL_REFUSAL_FIELD,
 	RANGE_REVERSED,
 	readJournalProblem,
 	REFUSAL_ON_SCREEN
 } from '$lib/ledger/journal-range';
-import ExportGifts from './_app.admin.donations.export';
+import ExportEntries from './_app.admin.donations.export';
 
 // the Export screen, drawn.
 //
 // what it covers is everything the workers spec beside it cannot reach. that file drives the
 // `loader` and renders nothing — so the markup this screen composes has no reader at all: which
-// boxes exist, which presses are drawn, what each press carries, and where a refusal lands.
+// boxes exist, which presses are drawn, what each press carries, where a refusal lands, how long
+// it stands there, and how long the press that caused it is held.
 //
 // **a press goes at the file itself and never at this screen**, so what a case reads is the submit
 // rather than a navigation: whether the press was let through, and the body it would have carried.
@@ -57,7 +60,10 @@ const STUB_ROUTE = 'export';
 /** the range a case reaches by pressing the link beside the screen, rather than by a submit. */
 const ELSEWHERE = '?from=2026-04-01&to=2026-04-30&target=xero';
 
-type LoaderData = Parameters<typeof ExportGifts>[0]['loaderData'];
+/** a refused range reached the same way, which is a refusal arriving under a screen already open. */
+const REFUSED_ELSEWHERE = `${ELSEWHERE}&problem=nothing_posted`;
+
+type LoaderData = Parameters<typeof ExportEntries>[0]['loaderData'];
 
 /** the two packages this app shapes a file for, as the loader hands them over. */
 const TARGETS = [
@@ -79,6 +85,7 @@ function loaderData(search: string): LoaderData {
 			target: params.get('target') ?? ''
 		},
 		problem: readJournalProblem(params),
+		answering: params.get(JOURNAL_PRESS_FIELD) ?? '',
 		targets: TARGETS
 	} as LoaderData;
 }
@@ -107,6 +114,7 @@ function screen(options: { search?: string } = {}): { root: HTMLElement; visited
 					'div',
 					null,
 					createElement(Link, { to: SCREEN + ELSEWHERE }, 'elsewhere'),
+					createElement(Link, { to: SCREEN + REFUSED_ELSEWHERE }, 'refused elsewhere'),
 					createElement(Outlet)
 				),
 			children: [
@@ -119,7 +127,7 @@ function screen(options: { search?: string } = {}): { root: HTMLElement; visited
 						return loaderData(asked);
 					},
 					Component: () =>
-						createElement(ExportGifts as never, {
+						createElement(ExportEntries as never, {
 							loaderData: useLoaderData(),
 							params: {},
 							matches: []
@@ -244,6 +252,19 @@ function describing(root: HTMLElement, press: HTMLButtonElement): HTMLElement | 
 /** every sentence the screen draws under the row. */
 function sentences(root: HTMLElement): HTMLElement[] {
 	return [...root.querySelectorAll('form .adm-hint')] as HTMLElement[];
+}
+
+/**
+ * presses one of the links the frame draws, which is how a case reaches another range without a
+ * submit — a press on this screen goes at the file and never at the router.
+ */
+async function goTo(root: HTMLElement, words: string): Promise<void> {
+	const link = [...root.querySelectorAll('a')].find((anchor) => anchor.textContent === words);
+	if (link === undefined) throw new Error(`the frame drew no link reading "${words}"`);
+	await act(async () => {
+		link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	});
+	await flushed();
 }
 
 /**
@@ -467,6 +488,116 @@ it('carries the other target when the other press is the one made', async () => 
 	expect(pressed.body.get('target')).toBe('xero');
 });
 
+/** the range every case about the press itself starts from, so no case has to write one in. */
+const SEEDED = { search: '?from=2026-03-01&to=2026-03-31&target=xero' };
+
+/**
+ * the deployment answering a press of this browser's own, which is one cookie and two readings: a
+ * file releases the press with it, and a refusal says with it that a press caused the document
+ * that came back.
+ *
+ * written at the document's root path rather than the screen's, because that is the one this
+ * document is at — what the deployment scopes the real cookie to is the journal route's
+ * (`_app.admin.donations.export_.journal.ts`).
+ */
+function answeredPress(token: string): void {
+	// biome-ignore-start lint/suspicious/noDocumentCookie: the screen reads the cookie the same way, for the reason its own `fileArrived` states.
+	document.cookie = `${JOURNAL_PRESS_COOKIE}=${token}; path=/`;
+	onTestFinished(() => {
+		document.cookie = `${JOURNAL_PRESS_COOKIE}=; path=/; max-age=0`;
+	});
+	// biome-ignore-end lint/suspicious/noDocumentCookie: as above.
+}
+
+/** waits for the screen's own look at that cookie, which is what lets the press go again. */
+async function rearmed(press: HTMLButtonElement): Promise<void> {
+	for (let look = 0; look < 40 && press.getAttribute('aria-disabled') !== null; look += 1) {
+		await act(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 25));
+		});
+	}
+}
+
+it('holds the press while the file it asked for is on its way', async () => {
+	const { root } = screen(SEEDED);
+	const press = pressNamed(root, 'Xero');
+
+	const pressed = await pressTarget(press);
+
+	expect(pressed.allowed).toBe(true);
+	// the token that press was minted with, which is the whole of what the file has to echo back
+	// for this screen to learn its answer landed.
+	expect(pressed.body.get(JOURNAL_PRESS_FIELD)).toMatch(/^[0-9a-f-]{36}$/);
+	expect(press.getAttribute('aria-busy')).toBe('true');
+	expect(press.getAttribute('aria-disabled')).toBe('true');
+});
+
+it('sends nothing on a second press while the first is still in flight', async () => {
+	const { root } = screen(SEEDED);
+	const press = pressNamed(root, 'Xero');
+	await pressTarget(press);
+
+	const again = await pressTarget(press);
+	// the other package is held too: a second press of either kind is the same range read out of
+	// the books a second time, and nothing on this screen knows the first one has landed.
+	const other = await pressTarget(pressNamed(root, 'QuickBooks Online'));
+
+	expect(again.allowed).toBe(false);
+	expect(other.allowed).toBe(false);
+	expect(pressNamed(root, 'QuickBooks Online').getAttribute('aria-disabled')).toBe('true');
+	// only the press that asked is working; the other is merely held.
+	expect(pressNamed(root, 'QuickBooks Online').getAttribute('aria-busy')).toBeNull();
+});
+
+it('lets the press go again once the file answers with the token it carried', async () => {
+	const { root } = screen(SEEDED);
+	const press = pressNamed(root, 'Xero');
+	const pressed = await pressTarget(press);
+
+	answeredPress(pressed.body.get(JOURNAL_PRESS_FIELD) ?? '');
+	await rearmed(press);
+
+	expect(press.getAttribute('aria-disabled')).toBeNull();
+	expect(press.getAttribute('aria-busy')).toBeNull();
+	const again = await pressTarget(press);
+	expect(again.allowed).toBe(true);
+	// a press of its own, so the file answering the first one cannot release the second.
+	expect(again.body.get(JOURNAL_PRESS_FIELD)).not.toBe(pressed.body.get(JOURNAL_PRESS_FIELD));
+});
+
+it('holds the press over another press’s answer', async () => {
+	const { root } = screen(SEEDED);
+	const press = pressNamed(root, 'Xero');
+	await pressTarget(press);
+
+	answeredPress('019fb400-0000-7000-8000-00000000ffff');
+	await rearmed(press);
+
+	expect(press.getAttribute('aria-disabled')).toBe('true');
+});
+
+it('lets the press go after a bound, so an answer that never comes cannot leave it dead', async () => {
+	const { root } = screen(SEEDED);
+	const press = pressNamed(root, 'Xero');
+	// installed before the press, because the hold is set going by it: the clock this case moves
+	// has to be the one that hold is scheduled against.
+	vi.useFakeTimers();
+	onTestFinished(() => {
+		vi.useRealTimers();
+	});
+	await pressTarget(press);
+	expect(press.getAttribute('aria-disabled')).toBe('true');
+
+	// no cookie ever lands: the file was refused by something outside this app, the request was
+	// dropped, the operator cancelled the download. a minute is longer than the hold, which is
+	// what this reads rather than the figure itself.
+	await act(async () => {
+		await vi.advanceTimersByTimeAsync(60_000);
+	});
+
+	expect(press.getAttribute('aria-disabled')).toBeNull();
+});
+
 it('leaves the browser nothing to bubble over the page', () => {
 	const { root } = screen();
 
@@ -553,13 +684,13 @@ it('clears a refusal as the box it is about is typed in, and keeps the other', a
 	expect(refusalAt(root, 'to')).toBe('required');
 });
 
-it('says nothing was given over a range the books hold nothing in', () => {
+it('says nothing was posted over a range the books hold nothing in', () => {
 	const { root } = screen({
-		search: '?from=2026-03-01&to=2026-03-31&target=quickbooks&problem=nothing_given'
+		search: '?from=2026-03-01&to=2026-03-31&target=quickbooks&problem=nothing_posted'
 	});
 
 	expect(describing(root, pressNamed(root, 'QuickBooks Online'))?.textContent).toContain(
-		'Nothing was given'
+		'Nothing was posted'
 	);
 });
 
@@ -586,47 +717,112 @@ it('says a range holding more than one currency holds more than one', () => {
 
 it('draws a refusal beside the press that asked and nowhere else', () => {
 	const { root } = screen({
-		search: '?from=2026-03-01&to=2026-03-31&target=xero&problem=nothing_given'
+		search: '?from=2026-03-01&to=2026-03-31&target=xero&problem=nothing_posted'
 	});
 
 	// an answer about the other package is an answer about a file this press never asked for, and
 	// the row holds both presses now — so the one sentence on the screen is the refused press's.
 	expect(describing(root, pressNamed(root, 'QuickBooks Online'))).toBeNull();
 	expect(sentences(root).map((sentence) => sentence.textContent)).toEqual([
-		'Nothing was given between those two days.'
+		'Nothing was posted to the books between those two days.'
 	]);
-	expect(describing(root, pressNamed(root, 'Xero'))?.textContent).toContain('Nothing was given');
+	expect(describing(root, pressNamed(root, 'Xero'))?.textContent).toContain('Nothing was posted');
 });
 
-it('leaves the refused press holding focus, so the reason is read on arrival', () => {
+it('moves focus nowhere on a first render carrying a refusal', () => {
 	const { root } = screen({
-		search: '?from=2026-03-01&to=2026-03-31&target=xero&problem=nothing_given'
+		search: '?from=2026-03-01&to=2026-03-31&target=xero&problem=nothing_posted'
 	});
 
-	// the document came back with no file and a reason: the press that asked is where the operator
-	// has to be, and it is the thing they press again once the range is changed.
+	// an address holding a refusal is one that can be pasted, bookmarked or restored, and the
+	// operator who opens it pressed nothing — taking focus off the document there is an answer to
+	// a question nobody asked. the sentence is drawn all the same, and the press points at it.
+	expect(document.activeElement).toBe(document.body);
+	expect(describing(root, pressNamed(root, 'Xero'))).not.toBeNull();
+});
+
+it('puts the reader on the press a refusal came back from', () => {
+	const token = '019fb400-0000-7000-8000-0000000000aa';
+	// the cookie the journal route sent with the redirect, which only the browser that pressed gets.
+	answeredPress(token);
+
+	const { root } = screen({
+		search: `?from=2026-03-01&to=2026-03-31&target=xero&problem=nothing_posted&press=${token}`
+	});
+
+	// the press is what asked, what the reason is about and what they press again once the range is
+	// changed — and a fresh document otherwise lands them at the top of a page they did not ask for.
+	expect(document.activeElement).toBe(pressNamed(root, 'Xero'));
+});
+
+it('moves focus nowhere for a press this browser never made', () => {
+	const token = '019fb400-0000-7000-8000-0000000000aa';
+
+	const { root } = screen({
+		search: `?from=2026-03-01&to=2026-03-31&target=xero&problem=nothing_posted&press=${token}`
+	});
+
+	// the same address, pasted: the token rides on it and says nothing, because an address is
+	// handed about and the cookie is not.
+	expect(document.activeElement).toBe(document.body);
+	expect(describing(root, pressNamed(root, 'Xero'))).not.toBeNull();
+});
+
+it('puts the reader on the press when a refusal arrives under an open screen', async () => {
+	const { root } = screen({ search: '?from=2026-03-01&to=2026-03-31&target=xero' });
+
+	await goTo(root, 'refused elsewhere');
+
+	// arriving rather than standing there: the reason is beside a press the reader is not on, and
+	// `aria-describedby` reads it out with that press's own name the moment it takes focus.
 	expect(document.activeElement).toBe(pressNamed(root, 'Xero'));
 });
 
 it('describes the refused press by the sentence beside it', () => {
 	const { root } = screen({
-		search: '?from=2026-03-01&to=2026-03-31&target=xero&problem=nothing_given'
+		search: '?from=2026-03-01&to=2026-03-31&target=xero&problem=nothing_posted'
 	});
 
 	const press = pressNamed(root, 'Xero');
 	// the name and the reason arrive together on focus, which is what makes a live region
 	// unnecessary here rather than merely absent.
-	expect(describing(root, press)?.textContent).toBe('Nothing was given between those two days.');
+	expect(describing(root, press)?.textContent).toBe(
+		'Nothing was posted to the books between those two days.'
+	);
 });
 
 it('describes the press nobody was refused at by nothing at all', () => {
 	const { root } = screen({
-		search: '?from=2026-03-01&to=2026-03-31&target=xero&problem=nothing_given'
+		search: '?from=2026-03-01&to=2026-03-31&target=xero&problem=nothing_posted'
 	});
 
 	// its own sentence is empty, and a description that is the empty string is a description
 	// announced as nothing.
 	expect(pressNamed(root, 'QuickBooks Online').getAttribute('aria-describedby')).toBeNull();
+});
+
+it('drops a refusal as the near end of the range is written in', async () => {
+	const { root } = screen({
+		search: '?from=2026-03-01&to=2026-03-31&target=xero&problem=nothing_posted'
+	});
+
+	await typeDay(root, 'from', '2026-03-10');
+
+	// the refusal belongs to the range that produced it, and that range is no longer in the boxes.
+	// every other refusal on this screen clears as the box it is about is typed in.
+	expect(sentences(root)).toEqual([]);
+	expect(pressNamed(root, 'Xero').getAttribute('aria-describedby')).toBeNull();
+});
+
+it('drops a refusal as the far end of the range is written in', async () => {
+	const { root } = screen({
+		search: '?from=2026-03-01&to=2026-03-31&target=xero&problem=too_many_rows'
+	});
+
+	await typeDay(root, 'to', '2026-03-10');
+
+	expect(sentences(root)).toEqual([]);
+	expect(pressNamed(root, 'Xero').getAttribute('aria-describedby')).toBeNull();
 });
 
 it('moves focus nowhere on a load carrying no refusal', () => {
@@ -640,8 +836,8 @@ it('moves focus nowhere on a load carrying no refusal', () => {
 
 it('names the two packages’ sentences apart, so neither press can point at the other’s', () => {
 	const days = '?from=2026-03-01&to=2026-03-31';
-	const onXero = screen({ search: `${days}&target=xero&problem=nothing_given` });
-	const onQuickBooks = screen({ search: `${days}&target=quickbooks&problem=nothing_given` });
+	const onXero = screen({ search: `${days}&target=xero&problem=nothing_posted` });
+	const onQuickBooks = screen({ search: `${days}&target=quickbooks&problem=nothing_posted` });
 
 	const named = [
 		describing(onXero.root, pressNamed(onXero.root, 'Xero'))?.id,
@@ -660,7 +856,7 @@ it('says nothing about a problem the address does not name', () => {
 
 it('keeps the boxes holding the range a refusal came back over', () => {
 	const { root } = screen({
-		search: '?from=2026-03-01&to=2026-03-31&target=xero&problem=nothing_given'
+		search: '?from=2026-03-01&to=2026-03-31&target=xero&problem=nothing_posted'
 	});
 
 	// in both: the day the form would carry, and the same text standing in the box it is read and
@@ -700,13 +896,28 @@ it('re-seeds the boxes from the range the address holds, however it was arrived 
 	expect(written(root, 'from')).toBe('2026-04-01');
 });
 
-it('draws no heading and no standing prose', () => {
+it('names itself once, at the rank the frame leaves free', () => {
 	const { root } = screen();
 
-	// the trail above this screen is what names it, and two boxes and two presses named after what
-	// they do say the rest. a sentence here would be the screen described to somebody looking at it.
-	expect(root.querySelector('h1, h2, h3')).toBeNull();
-	// the one `p` on the screen names the row of presses, which is a label and not a sentence
-	// about the screen.
-	expect([...root.querySelectorAll('p')].map((words) => words.className)).toEqual(['adm-caption']);
+	// the frame draws the trail in its top strip for a screen stating one and no heading at all
+	// (../routes/_app.tsx), so the page's own `h1` is this screen's to draw.
+	expect(
+		[...root.querySelectorAll('h1, h2, h3')].map((held) => [held.tagName, held.textContent])
+	).toEqual([['H1', 'Export']]);
+});
+
+it('says the one thing about an export the screen cannot show', () => {
+	const { root } = screen();
+
+	// what a second export of the same days does is not visible anywhere here: no file, no range
+	// and no press on this screen carries a trace of the one before it.
+	const standing = [...root.querySelectorAll('p.adm-standfirst')].map((words) => words.textContent);
+	expect(standing).toHaveLength(1);
+	expect(standing[0]).toContain('the same entries twice');
+	// and nothing else stands: the only other `p` is the row of presses' own name, which is a
+	// label rather than a sentence about the screen.
+	expect([...root.querySelectorAll('p')].map((words) => words.className)).toEqual([
+		'adm-standfirst',
+		'adm-caption'
+	]);
 });

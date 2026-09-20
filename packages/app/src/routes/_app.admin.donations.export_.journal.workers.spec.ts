@@ -1,7 +1,12 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { FORM_CURRENCY } from '$lib/forms/amounts';
-import { JOURNAL_REFUSAL_FIELD, REFUSAL_ON_SCREEN } from '$lib/ledger/journal-range';
+import {
+	JOURNAL_PRESS_COOKIE,
+	JOURNAL_PRESS_FIELD,
+	JOURNAL_REFUSAL_FIELD,
+	REFUSAL_ON_SCREEN
+} from '$lib/ledger/journal-range';
 import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { postableId } from '$lib/server/db/accounts';
@@ -17,7 +22,8 @@ import * as journal from './_app.admin.donations.export_.journal';
 // a workers spec because every case is about a range read out of a real D1: what the read includes
 // at each end of it, and what the shaping refuses once it has the rows. the shaping itself is
 // `$lib/server/ledger/journal-file.spec.ts`'s — what is here is the route's own half, which is the
-// three values off the query string, the read they name, and the answer each outcome gets.
+// three values off the query string, the read they name, the answer each outcome gets, and the
+// cookie a file carries back to release the press that asked for it.
 
 /** the origin every request in this file arrives on. not loopback, so the cookie is `__Secure-`. */
 const ORIGIN = 'https://give.example';
@@ -76,18 +82,24 @@ async function signIn(): Promise<string> {
  * raw insert, so what the download reads is a row the settlement path could have produced. the
  * currency is a parameter because one case is about a range holding two of them.
  */
-function entry(occurredAt: Date, over: { currency?: string; amountMinor?: number } = {}) {
+function entry(
+	occurredAt: Date,
+	over: { currency?: string; amountMinor?: number; pairs?: number } = {}
+) {
 	const amountMinor = over.amountMinor ?? 475;
+	// balanced by construction, whatever the count: every pair debits the fee account and credits
+	// what the money came out of.
+	const pairs = Array.from({ length: over.pairs ?? 1 }, () => [
+		{ accountId: postableId('processorFees'), amountMinor },
+		{ accountId: postableId('undepositedFunds'), amountMinor: -amountMinor }
+	]).flat();
 	return post({
 		sourceType: 'adjustment',
 		sourceId: uuidv7(),
 		currency: over.currency ?? FORM_CURRENCY,
 		occurredAt,
 		memo: 'Stripe fee that never posted.',
-		lines: [
-			{ accountId: postableId('processorFees'), amountMinor },
-			{ accountId: postableId('undepositedFunds'), amountMinor: -amountMinor }
-		]
+		lines: pairs
 	});
 }
 
@@ -107,9 +119,9 @@ async function download(query: Record<string, string>) {
 	return { response, body: await response.text() };
 }
 
-/** the rows of a file, header first. */
+/** the rows of a file, header first — every row is terminated, so the split leaves a tail. */
 function rows(body: string): string[] {
-	return body.split('\r\n');
+	return body.split('\r\n').slice(0, -1);
 }
 
 /** the range every case that is not about the range itself asks for. */
@@ -229,7 +241,7 @@ describe('a request the three values cannot be read from', () => {
 });
 
 describe('a range no file can be made of', () => {
-	it('refuses more lines than the target takes in one file, and sends no file', async () => {
+	it('refuses more lines than the target takes in one file, naming the cap', async () => {
 		// Xero takes 300 data rows in one manual journal, and every entry here is two lines — so
 		// 151 of them is the first count over it. the cap itself is `journal-file.ts`'s.
 		const many = Array.from({ length: 151 }, (_, day) =>
@@ -240,8 +252,25 @@ describe('a range no file can be made of', () => {
 		const { response, body } = await download({ ...MARCH, target: 'xero' });
 
 		expect(response.status).toBe(422);
-		expect(body).toContain('302');
+		expect(body).toContain('300');
+		// and not what the range holds: the read stops one line past the cap, so nothing on this
+		// path ever counts the range.
+		expect(body).not.toContain('302');
 		expect(response.headers.get('content-type')).not.toContain('text/csv');
+	});
+
+	it('tells a range past the cap to narrow even where it folds into no whole entry', async () => {
+		// one entry wider than Xero's whole file, which is wider than anything the settlement path
+		// posts. the read stops one line past the cap and drops the entry the bound cut
+		// (`$lib/server/ledger/queries.ts`), so a range like this comes back over the cap and
+		// holding nothing — and what an operator is told then is which refusal was read first.
+		await seed(entry(new Date(Date.UTC(2026, 2, 15)), { pairs: 151 }));
+
+		const { response, body } = await download({ ...MARCH, target: 'xero' });
+
+		expect(response.status).toBe(422);
+		expect(body).toContain('300');
+		expect(body).not.toContain('nothing was given');
 	});
 
 	it('refuses a range holding two currencies, naming both', async () => {
@@ -307,8 +336,80 @@ describe('a range the books hold nothing in', () => {
 			pathname: '/admin/donations/export',
 			...MARCH,
 			target: 'xero',
-			problem: 'nothing_given'
+			problem: 'nothing_posted'
 		});
+	});
+});
+
+describe('the press an answer belongs to', () => {
+	/** a token shaped the way the screen mints them, which is a uuid. */
+	const TOKEN = '019fb400-0000-7000-8000-0000000000aa';
+
+	it('sends a refused press back carrying its own token, and the cookie that says it pressed', async () => {
+		await seed(entry(new Date(Date.UTC(2026, 3, 2))));
+
+		const { response } = await press({ ...MARCH, target: 'xero', [JOURNAL_PRESS_FIELD]: TOKEN });
+
+		expect(response.status).toBe(302);
+		// the token on the address alone says nothing — it is as easily pasted as pressed. the
+		// cookie is what only the browser that made this press has, and the screen spends it
+		// reading it, so it lands the reader on that press exactly once.
+		const location = new URL(response.headers.get('location') ?? '', ORIGIN);
+		expect(location.searchParams.get(JOURNAL_PRESS_FIELD)).toBe(TOKEN);
+		expect(response.headers.get('set-cookie') ?? '').toContain(`${JOURNAL_PRESS_COOKIE}=${TOKEN}`);
+	});
+
+	it('sends a press that named none back naming none', async () => {
+		await seed(entry(new Date(Date.UTC(2026, 3, 2))));
+
+		const { response } = await press({ ...MARCH, target: 'xero' });
+
+		expect(response.status).toBe(302);
+		const location = new URL(response.headers.get('location') ?? '', ORIGIN);
+		expect(location.searchParams.get(JOURNAL_PRESS_FIELD)).toBeNull();
+		expect(response.headers.get('set-cookie')).toBeNull();
+	});
+
+	it('echoes the token back as a cookie, which is what lets the press go again', async () => {
+		await seed(entry(new Date(Date.UTC(2026, 2, 15))));
+
+		const { response } = await press({
+			...MARCH,
+			target: 'quickbooks',
+			[JOURNAL_PRESS_FIELD]: TOKEN
+		});
+
+		const cookie = response.headers.get('set-cookie') ?? '';
+		expect(cookie).toContain(`${JOURNAL_PRESS_COOKIE}=${TOKEN}`);
+		// a file download navigates nothing, so the screen that pressed is still standing there and
+		// reads this cookie itself — which it cannot do through `HttpOnly`.
+		expect(cookie.toLowerCase()).not.toContain('httponly');
+		// scoped to the screen that minted it rather than to the whole deployment.
+		expect(cookie).toContain('Path=/admin/donations/export');
+	});
+
+	it('sets no cookie where nothing pressed, so a hand-typed address leaves none', async () => {
+		await seed(entry(new Date(Date.UTC(2026, 2, 15))));
+
+		const { response } = await download({ ...MARCH, target: 'quickbooks' });
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('set-cookie')).toBeNull();
+	});
+
+	it('echoes nothing back for a token this screen could not have minted', async () => {
+		await seed(entry(new Date(Date.UTC(2026, 2, 15))));
+
+		// the value is written into a response header, so what is echoed is held to the shape the
+		// screen mints rather than taken off the address.
+		const { response } = await download({
+			...MARCH,
+			target: 'quickbooks',
+			[JOURNAL_PRESS_FIELD]: 'not a token\r\nset-cookie: taken=over'
+		});
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('set-cookie')).toBeNull();
 	});
 });
 

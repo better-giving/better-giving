@@ -1,7 +1,7 @@
 import { minorUnitDigits } from '../../donations/money';
 import { ENTRY_SOURCE_LABELS } from '../../ledger/sources';
 import { pickableAccounts } from '../db/accounts';
-import type { EntryGroupListRow } from './queries';
+import type { EntryGroupListRow, EntryGroupRange } from './queries';
 
 // the accountant's download: the entries a range holds, shaped into a file one accounting
 // package will import. it reads entries and returns text — no database, no request, no response
@@ -26,19 +26,20 @@ export const JOURNAL_TARGETS = ['quickbooks', 'xero'] as const;
 export type JournalTarget = (typeof JOURNAL_TARGETS)[number];
 
 /**
- * why a range produced no file, with the number that caused it.
+ * why a range produced no file.
  *
  * a refusal and never a truncation or a split: an export missing rows nobody was told about is a
  * set of books that does not balance in the target, and a range silently cut in two is the same
- * entry arriving under two journal numbers. the screen words these; the figures are here so it
- * can name what the operator has to narrow.
+ * entry arriving under two journal numbers.
+ *
+ * the range's own size is not among them and cannot be: the read is bounded at the cap and stops
+ * one line past it (./queries.ts), so no total exists to report. what an operator does about
+ * either refusal is narrow the range, and the cap says how far on its own.
  */
 export type JournalFileRefusal =
 	| {
 			readonly reason: 'too_many_rows';
-			/** data rows the range would produce — one per ledger line. */
-			readonly rows: number;
-			/** the most the target accepts in one file. */
+			/** the most data rows the target accepts in one file — one per ledger line. */
 			readonly cap: number;
 	  }
 	| {
@@ -66,6 +67,17 @@ const ROW_CAPS: Record<JournalTarget, number> = {
 	quickbooks: 998,
 	xero: 300
 };
+
+/**
+ * the most data rows `target` takes in one file, as the bound its read is given.
+ *
+ * the cap leaves this module because the read is what applies it now: shaping never sees a range
+ * past it, so nothing here can count one. `readEntryGroupsInRange` in ./queries.ts takes this and
+ * reads one line past it, and `journalFile` below turns that into the refusal.
+ */
+export function journalRowCap(target: JournalTarget): number {
+	return ROW_CAPS[target];
+}
 
 /**
  * the account a line names, by the id `ledger_entry.account_id` carries.
@@ -120,26 +132,69 @@ function majorUnits(amountMinor: number, digits: number): string {
 }
 
 /**
- * the words an entry is filed under.
+ * text a person typed, kept from running as a formula when the file is opened in a spreadsheet.
+ *
+ * a cell opening with `=`, `+`, `-`, `@`, a tab or a carriage return is evaluated rather than
+ * shown by Excel, Sheets and LibreOffice, and the accountant opens this file as often as they
+ * import it. the leading apostrophe is what all three read as "the rest of this is text".
+ *
+ * **it is not part of `cell` below, and must not become part of it.** Xero's amount column is one
+ * signed figure, where a credit legitimately opens with a minus — an apostrophe there is a figure
+ * Xero cannot read, so the guard that protects a note would corrupt every credit in the file. the
+ * cells this is for are the ones built out of `memo`: QuickBooks' `Journal/Description`, and
+ * Xero's `Narration` and `Description`.
+ */
+function freeText(value: string): string {
+	return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+}
+
+/**
+ * the words an entry is filed under, as a cell a spreadsheet will not evaluate.
  *
  * `memo` is nullable and an empty narration is an error in Xero, so a missing one falls back to
  * what the entry was posted because of rather than to a blank. the label is the same word
  * /admin/books draws over the entry, so the file and the screen name it the same way.
+ *
+ * the guard sits here because this is where an operator's own words enter the file — every cell
+ * carrying them is built from this one.
  */
 function narrative(group: EntryGroupListRow): string {
-	return group.memo ?? `${ENTRY_SOURCE_LABELS[group.sourceType]} ${group.sourceId}`;
+	return freeText(group.memo ?? `${ENTRY_SOURCE_LABELS[group.sourceType]} ${group.sourceId}`);
 }
 
 /**
  * the narrative with the entry's own id after it.
  *
- * the id rides here because neither file has room for it anywhere else: QuickBooks' journal
- * number is the file's own sequence (a uuid is thirty-six characters into a field with no
- * documented cap) and Xero has no journal-number column at all. without it a row in the target
- * cannot be traced back to the entry group it came from.
+ * the id rides here because it is the only column with room for the whole thirty-six characters:
+ * QuickBooks' journal number takes the first twenty-one of them (`journalNo` below) and Xero has
+ * no journal-number column at all. without it a row in the target cannot be traced back to the
+ * entry group it came from.
+ *
+ * it opens with the narrative, so the spreadsheet guard that value carries covers this cell too.
  */
 function description(group: EntryGroupListRow): string {
 	return `${narrative(group)} (${group.id})`;
+}
+
+/**
+ * the number QuickBooks groups an entry's rows under: the entry's own id, cut to the field.
+ *
+ * **off the entry and never off its place in the file.** a range is what an operator picks, so a
+ * number counting position gives one entry two numbers across two overlapping ranges and two
+ * entries one number — inside the column the importer groups rows by. off the id it means the
+ * same thing in every file, and a second import of an entry arrives under a number the company's
+ * books already carry, which is the only sign of one there is: nothing records what a range
+ * handed out.
+ *
+ * twenty-one characters because that is the field it lands in — `DocNumber`, "a string of up to
+ * 21 characters"
+ * (https://developer.intuit.com/app/developer/qbo/docs/learn/learn-basic-field-definitions). the
+ * cut falls two characters into the id's fourth group rather than on the dash before it: past the
+ * timestamp those characters are what tell two entries minted in the same millisecond apart, and
+ * the whole id rides in the description column beside this either way.
+ */
+function journalNo(group: EntryGroupListRow): string {
+	return group.id.slice(0, 21);
 }
 
 // how each target identifies an account: QuickBooks matches on the name, Xero on the code. each
@@ -169,7 +224,19 @@ function cell(value: string): string {
 	return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
 }
 
-/** CRLF, which is what RFC 4180 specifies and both importers read. */
+/**
+ * CRLF, which is what RFC 4180 specifies and both importers read.
+ *
+ * it *terminates* a row rather than separating two, the last row included: a final record running
+ * into the end of the file is one a reader may take short, and the row it would drop is a ledger
+ * line.
+ *
+ * nothing precedes the first row — no byte-order mark. neither importer documents whether it
+ * accepts one, and Xero matches its header text exactly (the module header above), so a mark
+ * riding on `Narration` is the whole import failing rather than one cell reading oddly. the
+ * charset reaches a reader over the response instead, in the route's `content-type`
+ * (`src/routes/_app.admin.donations.export_.journal.ts`).
+ */
 const ROW_SEPARATOR = '\r\n';
 
 const QUICKBOOKS_HEADER = [
@@ -193,12 +260,12 @@ const QUICKBOOKS_HEADER = [
  * one entry into several journals here.
  */
 function quickbooksRows(groups: readonly EntryGroupListRow[], digits: number): string[][] {
-	return groups.flatMap((group, index) => {
-		const journalNo = String(index + 1);
+	return groups.flatMap((group) => {
+		const number = journalNo(group);
 		const date = usDate(group.occurredAt);
 		const text = description(group);
 		return group.lines.map((line) => [
-			journalNo,
+			number,
 			date,
 			accountName(line.accountId),
 			text,
@@ -255,23 +322,24 @@ const SHAPES: Record<
  * the two refusals are checked before anything is shaped, so a range that cannot produce a usable
  * file produces no text at all rather than text the operator has to be told not to import.
  *
- * an empty range is not one of them: it returns the header row and nothing under it. a range an
- * organisation took no gifts in is an ordinary answer, and a file saying so imports as zero
- * journals — an error there would read as a broken download.
+ * an empty range is not one of them: this returns the header row and nothing under it, which is a
+ * file that imports as zero journals. what an operator gets for such a range is the route's
+ * decision and not this one — `src/routes/_app.admin.donations.export_.journal.ts` refuses it by
+ * name rather than handing over a file that answers nothing about the range they asked about.
  */
-export function journalFile(
-	target: JournalTarget,
-	groups: readonly EntryGroupListRow[]
-): JournalFileResult {
+export function journalFile(target: JournalTarget, range: EntryGroupRange): JournalFileResult {
+	// first of the two, because a read that stopped at the bound read part of a period: the
+	// currencies below would be the truncated range's rather than the range's, and a file refused
+	// for a second currency nobody can find is worse than one refused for its size.
+	if (range.overCap)
+		return { ok: false, refusal: { reason: 'too_many_rows', cap: ROW_CAPS[target] } };
+
+	const groups = range.groups;
 	const currencies = [...new Set(groups.map((group) => group.currency))].sort();
 	// no template has a currency column and Xero takes base currency only, so there is nowhere for
 	// a second currency to go — the amounts would silently be read as the company's own.
 	if (currencies.length > 1)
 		return { ok: false, refusal: { reason: 'mixed_currency', currencies } };
-
-	const rows = groups.reduce((total, group) => total + group.lines.length, 0);
-	const cap = ROW_CAPS[target];
-	if (rows > cap) return { ok: false, refusal: { reason: 'too_many_rows', rows, cap } };
 
 	// one currency per file, the refusal above having settled that, so the minor-unit width is read
 	// once here rather than per line. an empty range names no currency and has no amount for a
@@ -281,5 +349,8 @@ export function journalFile(
 
 	const shape = SHAPES[target];
 	const lines = [shape.header, ...shape.rows(groups, digits)];
-	return { ok: true, csv: lines.map((row) => row.map(cell).join(',')).join(ROW_SEPARATOR) };
+	return {
+		ok: true,
+		csv: lines.map((row) => `${row.map(cell).join(',')}${ROW_SEPARATOR}`).join('')
+	};
 }

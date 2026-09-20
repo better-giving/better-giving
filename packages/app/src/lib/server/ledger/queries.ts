@@ -141,17 +141,35 @@ export async function listEntryGroups(db: Db): Promise<EntryGroupPage> {
 }
 
 /**
+ * what a range holds, as far as the bound it was read under.
+ *
+ * the pair travels together because neither half answers alone: entries that stop at a bound are
+ * not the range, and a caller handed them without `overCap` would shape a file covering part of a
+ * period and say nothing about the rest.
+ */
+export type EntryGroupRange = {
+	/** the entries, oldest first, each whole — the one the bound landed inside is not here. */
+	groups: EntryGroupListRow[];
+	/** true where the range holds more lines than the bound allowed. */
+	overCap: boolean;
+};
+
+/**
  * every journal entry whose business time falls inside a closed range, oldest first, each with its
- * lines — what an accountant's download is shaped from.
+ * lines — what an accountant's download is shaped from — up to `lineCap` lines.
  *
  * **one join and one read, which is the opposite of `listEntryGroups` above — deliberately.** that
- * function reads twice for two reasons and neither one reaches here. a `LIMIT` over a join caps
- * lines rather than entries, and this read has no per-entry limit at all: a range is asked for
- * whole or refused whole, and the cap on how big an export may be is applied to what comes back
- * rather than by cutting the read short. and the second read's bound parameters are one per entry
- * id, counted against D1's cap of 100 per query, where this one binds exactly two whatever the
- * range holds. so the next reader "fixing" this into the two-read shape would be paying for a
- * guard neither problem needs.
+ * function reads twice, and the second read's bound parameters are one per entry id, counted
+ * against D1's cap of 100 per query, where this one binds three — the two ends and the bound —
+ * whatever the range holds. so the next reader "fixing" this into the two-read shape would be
+ * paying for a guard this has no problem to solve.
+ *
+ * **the bound is lines and not entries, because the file's cap is lines** — one row per ledger line
+ * in both templates (./journal-file.ts). it reads one past it rather than counting first: a range
+ * over the cap is refused whole, so what that extra row buys is the answer "more than the cap"
+ * without the widest ranges — exactly the ones the refusal is for — being materialised in the
+ * worker to reach it. the last entry read is the one the bound may have cut, and it is dropped
+ * rather than shaped: a journal arriving in the target with half its lines does not balance.
  *
  * **closed on both ends.** a month is asked for as its first and last instant, and a range open at
  * either end drops the entries dated exactly on the boundary — which are the ones an export is
@@ -160,19 +178,21 @@ export async function listEntryGroups(db: Db): Promise<EntryGroupPage> {
  * ordered by `occurred_at` then `id` then the line's own id: oldest first, so a file reads as a
  * ledger rather than as a feed, with the same uuidv7 tiebreak `listEntryGroups` argues and the
  * posting order `withLines` reads lines in. the grouping below folds consecutive rows, which is
- * what that order buys.
+ * what that order buys — and what makes the cut entry the last one.
  */
 export async function readEntryGroupsInRange(
 	db: Db,
 	from: Date,
-	to: Date
-): Promise<EntryGroupListRow[]> {
+	to: Date,
+	lineCap: number
+): Promise<EntryGroupRange> {
 	const rows = await db
 		.select({ group: GROUP_COLUMNS, line: ENTRY_LINE_COLUMNS })
 		.from(entryGroup)
 		.innerJoin(ledgerEntry, eq(ledgerEntry.entryGroupId, entryGroup.id))
 		.where(between(entryGroup.occurredAt, from, to))
-		.orderBy(entryGroup.occurredAt, entryGroup.id, ledgerEntry.id);
+		.orderBy(entryGroup.occurredAt, entryGroup.id, ledgerEntry.id)
+		.limit(lineCap + 1);
 
 	const groups: EntryGroupListRow[] = [];
 	let open: EntryGroupListRow | undefined;
@@ -183,7 +203,10 @@ export async function readEntryGroupsInRange(
 		}
 		open.lines.push(line);
 	}
-	return groups;
+
+	const overCap = rows.length > lineCap;
+	if (overCap) groups.pop();
+	return { groups, overCap };
 }
 
 /**

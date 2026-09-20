@@ -29,12 +29,12 @@ const entry = (over: Partial<EntryGroupListRow> = {}): EntryGroupListRow => ({
 	...over
 });
 
-/** the file's rows, header included, as a reader of the csv sees them. */
-const rowsOf = (csv: string): string[] => csv.split('\r\n');
+/** the file's rows, header included — every one of them terminated, so the split leaves a tail. */
+const rowsOf = (csv: string): string[] => csv.split('\r\n').slice(0, -1);
 
 /** the csv, or a failure naming the refusal the case did not expect. */
 const csvOf = (target: 'quickbooks' | 'xero', groups: EntryGroupListRow[]): string => {
-	const result = journalFile(target, groups);
+	const result = journalFile(target, { groups, overCap: false });
 	if (!result.ok) throw new Error(`refused: ${JSON.stringify(result.refusal)}`);
 	return result.csv;
 };
@@ -46,31 +46,40 @@ describe('journalFile() for QuickBooks Online', () => {
 		);
 	});
 
-	it('repeats one journal number across an entry’s rows and counts entries from one', () => {
-		// the number is the file's own sequence and not the entry's uuid — thirty-six characters
-		// into a field with no documented cap. every row of one entry carries the same number,
-		// which is how the importer knows the rows are one journal.
-		const csv = csvOf('quickbooks', [
-			entry({ occurredAt: new Date('2026-03-04T09:00:00.000Z') }),
-			entry({
-				id: '019fb0b4-ec6e-7ff7-960c-a441e2c603d7',
-				occurredAt: new Date('2026-03-05T09:00:00.000Z')
-			})
-		]);
-
-		expect(
-			rowsOf(csv)
+	it('repeats one journal number across an entry’s rows, and takes it from the entry’s own id', () => {
+		// every row of one entry carries the same number, which is how the importer knows the rows
+		// are one journal — and the number is the entry's, not its place in the file. a number
+		// counting position gives the same entry two numbers across two overlapping ranges and two
+		// entries the same one, inside the column QuickBooks groups by.
+		const later = entry({
+			id: '019fb0b4-ec6e-7ff7-960c-a441e2c603d7',
+			occurredAt: new Date('2026-03-05T09:00:00.000Z')
+		});
+		const numbers = (groups: EntryGroupListRow[]): string[] =>
+			rowsOf(csvOf('quickbooks', groups))
 				.slice(1)
-				.map((row) => row.split(',')[0])
-		).toEqual(['1', '1', '2', '2']);
+				.map((row) => row.split(',')[0]!);
+
+		// twenty-one characters, which is what the field the importer writes it into takes.
+		expect(numbers([entry(), later])).toEqual([
+			'019fb0b4-ec6c-7fbb-aa',
+			'019fb0b4-ec6c-7fbb-aa',
+			'019fb0b4-ec6e-7ff7-96',
+			'019fb0b4-ec6e-7ff7-96'
+		]);
+		// and the same entry, exported again under a range the first one did not cover, arrives
+		// under the number it already has: a second import repeats a journal number rather than
+		// opening a fresh journal, which is the only sign of it there is — nothing records what a
+		// range handed out.
+		expect(numbers([later])).toEqual(['019fb0b4-ec6e-7ff7-96', '019fb0b4-ec6e-7ff7-96']);
 	});
 	it('puts a debit and a credit in their own columns, both positive, and names the account', () => {
 		// the ledger stores one signed amount (`+` debit, `−` credit; ./posting.ts) and this
 		// importer takes two columns with exactly one of them filled. a sign left on a credit, or
 		// both cells filled, is a journal QuickBooks rejects or posts twice over.
 		expect(rowsOf(csvOf('quickbooks', [entry()])).slice(1)).toEqual([
-			'1,03/04/2026,Bank / Cash,Corrects a miskeyed cheque (019fb0b4-ec6c-7fbb-aa36-4ff01f1781b9),25.00,',
-			'1,03/04/2026,Tax-Deductible Donations,Corrects a miskeyed cheque (019fb0b4-ec6c-7fbb-aa36-4ff01f1781b9),,25.00'
+			'019fb0b4-ec6c-7fbb-aa,03/04/2026,Bank / Cash,Corrects a miskeyed cheque (019fb0b4-ec6c-7fbb-aa36-4ff01f1781b9),25.00,',
+			'019fb0b4-ec6c-7fbb-aa,03/04/2026,Tax-Deductible Donations,Corrects a miskeyed cheque (019fb0b4-ec6c-7fbb-aa36-4ff01f1781b9),,25.00'
 		]);
 	});
 
@@ -83,22 +92,25 @@ describe('journalFile() for QuickBooks Online', () => {
 		);
 	});
 
-	it('refuses a range past its row cap, naming the count and the cap', () => {
+	it('refuses a range the read stopped short of, naming the cap and no total', () => {
 		// never truncated and never split: rows dropped without being reported are books that do
 		// not balance in QuickBooks, and one range across two files is one entry under two journal
 		// numbers.
 		//
-		// the cap is data rows and the figure it reports is data rows, with the header counted
-		// against Intuit's thousand inside the constant rather than out here.
-		const many = Array.from({ length: 500 }, () => entry());
-		expect(journalFile('quickbooks', many)).toEqual({
+		// no count travels with it. the read behind this stops one line past the cap
+		// (./queries.ts), so the total is a figure nothing here holds — and what the operator does
+		// about it is narrow the range, which the cap says on its own.
+		expect(journalFile('quickbooks', { groups: [entry()], overCap: true })).toEqual({
 			ok: false,
-			refusal: { reason: 'too_many_rows', rows: 1_000, cap: 998 }
+			refusal: { reason: 'too_many_rows', cap: 998 }
 		});
 		// 499 entries is 998 lines — the cap exactly, and the file it writes is 999 rows with its
 		// header, which is the number Intuit bounds.
-		const atTheCap = journalFile('quickbooks', many.slice(0, 499));
-		expect(atTheCap.ok && atTheCap.csv.split('\r\n')).toHaveLength(999);
+		const atTheCap = journalFile('quickbooks', {
+			groups: Array.from({ length: 499 }, () => entry()),
+			overCap: false
+		});
+		expect(atTheCap.ok && rowsOf(atTheCap.csv)).toHaveLength(999);
 	});
 });
 
@@ -125,15 +137,14 @@ describe('journalFile() for Xero', () => {
 		]);
 	});
 
-	it('refuses a range past its own cap, which is not QuickBooks’', () => {
-		const many = Array.from({ length: 151 }, () => entry());
-		expect(journalFile('xero', many)).toEqual({
+	it('names its own cap in the refusal, which is not QuickBooks’', () => {
+		expect(journalFile('xero', { groups: [entry()], overCap: true })).toEqual({
 			ok: false,
-			refusal: { reason: 'too_many_rows', rows: 302, cap: 300 }
+			refusal: { reason: 'too_many_rows', cap: 300 }
 		});
-		expect(journalFile('xero', many.slice(0, 150)).ok).toBe(true);
-		// and the same range QuickBooks takes without complaint.
-		expect(journalFile('quickbooks', many).ok).toBe(true);
+		// 150 entries is 300 lines — the cap exactly, and a file the read never stopped short of.
+		const many = Array.from({ length: 150 }, () => entry());
+		expect(journalFile('xero', { groups: many, overCap: false }).ok).toBe(true);
 	});
 });
 
@@ -150,10 +161,39 @@ describe('journalFile(), whichever target', () => {
 		expect(rowsOf(csvOf('xero', [none]))[1]).toMatch(/^Gift settled pay-991,03\/04\/2026,/);
 	});
 
+	it('prefixes a note a spreadsheet would run as a formula, whichever character opens it', () => {
+		// a correction note is free text an operator typed, and the accountant opens this file in a
+		// spreadsheet as often as they import it. a cell beginning `=`, `+`, `-`, `@`, a tab or a
+		// carriage return is evaluated there rather than read — a formula running on their machine
+		// off a file this app handed them. the leading apostrophe is what every spreadsheet reads
+		// as "the rest of this is text".
+		for (const memo of ['=2+3', '+2', '@SUM(A1)', '\tcheque', '\rcheque']) {
+			expect(rowsOf(csvOf('quickbooks', [entry({ memo })]))[1]).toContain(`'${memo}`);
+			expect(rowsOf(csvOf('xero', [entry({ memo })]))[1]).toContain(`'${memo}`);
+		}
+	});
+
+	it('leaves a credit’s minus sign alone, which that same guard would have corrupted', () => {
+		// the amount column is the reason the guard is not in `cell`: Xero takes one signed column,
+		// so an apostrophe in front of a credit is a figure Xero cannot read — the books arrive
+		// short by every credit in the file.
+		const csv = csvOf('xero', [entry({ memo: '-5 short, re-keyed' })]);
+
+		expect(
+			rowsOf(csv)
+				.slice(1)
+				.map((row) => row.split(',').at(-1))
+		).toEqual(['25.00', '-25.00']);
+		// and the note that legitimately opens with the same character is still neutralised.
+		expect(rowsOf(csv)[1]).toContain(`"'-5 short, re-keyed"`);
+	});
+
 	it('refuses a range holding two currencies, naming both', () => {
 		// no template carries a currency column and Xero takes base currency only, so a euro
 		// amount imports as whatever the company's own currency is, silently.
-		expect(journalFile('xero', [entry(), entry({ currency: 'EUR' })])).toEqual({
+		expect(
+			journalFile('xero', { groups: [entry(), entry({ currency: 'EUR' })], overCap: false })
+		).toEqual({
 			ok: false,
 			refusal: { reason: 'mixed_currency', currencies: ['EUR', 'USD'] }
 		});
@@ -163,9 +203,17 @@ describe('journalFile(), whichever target', () => {
 		// an ordinary answer rather than an error: a month with no gifts in it imports as zero
 		// journals, and a refusal here would read as a broken download.
 		expect(csvOf('quickbooks', [])).toBe(
-			'Journal No.,Journal Date,Account Name,Journal/Description,Debits,Credits'
+			'Journal No.,Journal Date,Account Name,Journal/Description,Debits,Credits\r\n'
 		);
-		expect(csvOf('xero', [])).toBe('Narration,Date,Description,AccountCode,TaxRate,Amount');
+		expect(csvOf('xero', [])).toBe('Narration,Date,Description,AccountCode,TaxRate,Amount\r\n');
+	});
+
+	it('terminates the last row the way it terminates every other one', () => {
+		// a record separator ends a record, including the last: a file whose final row runs into
+		// the end of the file is one an importer or a spreadsheet may read short by a row, and the
+		// row it would drop is a ledger line.
+		expect(csvOf('quickbooks', [entry()]).endsWith('\r\n')).toBe(true);
+		expect(csvOf('xero', [entry()]).endsWith('\r\n')).toBe(true);
 	});
 
 	it('converts minor units exactly at a magnitude where dividing by a hundred stops being', () => {

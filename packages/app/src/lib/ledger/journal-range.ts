@@ -48,18 +48,53 @@ export const JOURNAL_REFUSAL_FIELD = 'refusal';
 export const REFUSAL_ON_SCREEN = 'screen';
 
 /**
+ * the one press, named by the screen that made it and named back on whichever answer it gets.
+ *
+ * a press downloads, so the browser makes that navigation and the router is not in it. **the token
+ * is what makes an answer traceable to the press that caused it, and the cookie is what makes it
+ * that browser's** — the token rides on an address, and an address is pasted, bookmarked and
+ * restored as easily as it is pressed.
+ *
+ * the two answers read the pair differently because they land differently. a file navigates
+ * nothing, so the screen is still standing there and reads the cookie to release a press it would
+ * otherwise hold forever. a refusal replaces the document, so the hold goes with it and what is
+ * left to decide is where the reader is put: on the press that asked, and only where the cookie
+ * says this browser is the one that asked.
+ *
+ * so the cookie is deliberately not `HttpOnly` — the screen reads it — and is scoped to the export
+ * screen's own path. `src/routes/_app.admin.donations.export.tsx` mints the token and spends the
+ * cookie; `src/routes/_app.admin.donations.export_.journal.ts` sends both back.
+ */
+export const JOURNAL_PRESS_FIELD = 'press';
+export const JOURNAL_PRESS_COOKIE = 'bg_export_press';
+
+/**
+ * whether `token` is one a press could have minted, which is a uuid and nothing else.
+ *
+ * the value arrives on a query string and leaves in a response header, so it is held to a shape
+ * rather than echoed: a carriage return in a `set-cookie` is a second header of somebody else's
+ * choosing. what it stands for is one press by one browser, so nothing downstream reads it and
+ * there is nothing here to authorise.
+ */
+export function isJournalPressToken(token: string): boolean {
+	return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token);
+}
+
+/**
  * why a range produced no file, as the address the operator is sent back to carries it.
  *
  * a closed set of codes and never the sentence itself: the screen renders what this names, and an
  * address is something an operator can be handed, so a sentence off the wire would be a sentence
  * anybody could put on /admin. the words are the screen's (`src/routes/_app.admin.donations.export.tsx`).
  *
- * the figures behind two of them — how many lines, which currencies — stay in the route's own text
- * answer and do not travel. what the operator does about either is the same without them: ask for a
- * shorter range, or one holding a single currency.
+ * no figure travels with a code. which currencies a range holds stays in the route's own text
+ * answer; how many lines it holds is a figure nothing anywhere counts, because the read stops one
+ * line past the target's cap rather than materialising the range (`$lib/server/ledger/queries.ts`).
+ * what the operator does is the same without either: ask for a shorter range, or one holding a
+ * single currency.
  */
 export const JOURNAL_PROBLEM_FIELD = 'problem';
-export const JOURNAL_PROBLEMS = ['nothing_given', 'too_many_rows', 'mixed_currency'] as const;
+export const JOURNAL_PROBLEMS = ['nothing_posted', 'too_many_rows', 'mixed_currency'] as const;
 export type JournalProblem = (typeof JOURNAL_PROBLEMS)[number];
 
 /** the problem an address names, or `null` where it names none this app states. */
@@ -202,6 +237,11 @@ function day(at: Date): string {
  * the target and both ends of the range, because a downloads folder is where two of these meet: a
  * second month, or the same month shaped for the other package, under one name is the file an
  * operator imports twice without being able to tell.
+ *
+ * and the name is all there is: nothing records what a range handed out, so two ranges that
+ * overlap produce two files that both carry every entry in the overlap and neither says so. what
+ * shows the second import is inside the file — `journalNo` in `$lib/server/ledger/journal-file.ts`
+ * argues it.
  */
 export function journalFileName(target: JournalTarget, from: Date, to: Date): string {
 	return `${target}-journal-${day(from)}-to-${day(to)}.csv`;

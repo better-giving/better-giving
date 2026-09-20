@@ -79,6 +79,7 @@ async function visit(query: Record<string, string> = {}) {
 	expect(response.status).toBe(200);
 	return (await response.json()) as {
 		asked: { from: string; to: string; target: string };
+		answering: string;
 		problem: string | null;
 		targets: { value: string; label: string; brand: string }[];
 	};
@@ -111,7 +112,10 @@ describe('the range the boxes go back to holding', () => {
 		expect(asked).toEqual({ from: '', to: '', target: '' });
 	});
 
-	it('keeps a day the calendar does not have, so it can be corrected rather than cleared', async () => {
+	it('hands an end that is no day back unread, because nothing here reads the range', async () => {
+		// this loader parses nothing and counts nothing: what it answers with is the address. what a
+		// date box does with text naming no day is that field's own
+		// (`DateRangeField` in packages/operator/src/components/forms/).
 		const { asked } = await visit({ from: 'last March', to: '2026-03-31', target: 'xero' });
 
 		expect(asked.from).toBe('last March');
@@ -119,15 +123,33 @@ describe('the range the boxes go back to holding', () => {
 });
 
 describe('what a refused press was sent back with', () => {
+	it('names the press it answers, so the screen can tell its own from a pasted one', async () => {
+		const { answering } = await visit({
+			from: '2026-03-01',
+			to: '2026-03-31',
+			target: 'xero',
+			problem: 'nothing_posted',
+			press: '019fb400-0000-7000-8000-0000000000aa'
+		});
+
+		expect(answering).toBe('019fb400-0000-7000-8000-0000000000aa');
+	});
+
+	it('names no press where the address names none', async () => {
+		const { answering } = await visit({ from: '2026-03-01', to: '2026-03-31', target: 'xero' });
+
+		expect(answering).toBe('');
+	});
+
 	it('reaches the screen as the problem the file’s route named', async () => {
 		const { problem } = await visit({
 			from: '2026-03-01',
 			to: '2026-03-31',
 			target: 'xero',
-			problem: 'nothing_given'
+			problem: 'nothing_posted'
 		});
 
-		expect(problem).toBe('nothing_given');
+		expect(problem).toBe('nothing_posted');
 	});
 
 	it('is nothing where the address names none', async () => {

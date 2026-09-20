@@ -325,6 +325,9 @@ describe('readRaisedByMonth()', () => {
 	});
 });
 
+/** a bound no case below is testing, wide enough that the rows it seeds all fit under it. */
+const ROOMY = 100;
+
 describe('readEntryGroupsInRange()', () => {
 	beforeEach(async () => {
 		await env.DB.prepare('delete from ledger_entry').run();
@@ -345,7 +348,7 @@ describe('readEntryGroupsInRange()', () => {
 			correction(new Date(to.getTime() + 1), { memo: 'after' })
 		]);
 
-		const groups = await readEntryGroupsInRange(db, from, to);
+		const { groups } = await readEntryGroupsInRange(db, from, to, ROOMY);
 		expect(groups.map((g) => g.memo)).toEqual([
 			'on the first instant',
 			'inside',
@@ -368,10 +371,11 @@ describe('readEntryGroupsInRange()', () => {
 			correction(new Date('2026-06-01T00:00:00.000Z'), { memo: 'first' })
 		]);
 
-		const groups = await readEntryGroupsInRange(
+		const { groups } = await readEntryGroupsInRange(
 			db,
 			new Date('2026-06-01T00:00:00.000Z'),
-			new Date('2026-06-30T23:59:59.999Z')
+			new Date('2026-06-30T23:59:59.999Z'),
+			ROOMY
 		);
 		expect(groups.map((g) => g.memo)).toEqual(['first', 'second']);
 		// the debit first, as `post()` was handed it — the order a reader expects a debit and the
@@ -393,8 +397,60 @@ describe('readEntryGroupsInRange()', () => {
 			await readEntryGroupsInRange(
 				db,
 				new Date('2026-08-01T00:00:00.000Z'),
-				new Date('2026-08-31T23:59:59.999Z')
+				new Date('2026-08-31T23:59:59.999Z'),
+				ROOMY
 			)
-		).toEqual([]);
+		).toEqual({ groups: [], overCap: false });
+	});
+});
+
+describe('readEntryGroupsInRange() under its line bound', () => {
+	beforeEach(async () => {
+		await env.DB.prepare('delete from ledger_entry').run();
+		await env.DB.prepare('delete from entry_group').run();
+	});
+
+	it('stops one row past the bound and says the range holds more', async () => {
+		// the widest ranges are the ones the export's row cap exists to refuse by name, so the read
+		// behind that refusal may not read them whole to find out — that is the worker's memory
+		// spent on entries nothing will shape.
+		await postAll([
+			correction(new Date('2026-05-01T00:00:00.000Z'), { memo: 'first' }),
+			correction(new Date('2026-05-02T00:00:00.000Z'), { memo: 'second' }),
+			correction(new Date('2026-05-03T00:00:00.000Z'), { memo: 'third' }),
+			correction(new Date('2026-05-04T00:00:00.000Z'), { memo: 'fourth' })
+		]);
+
+		const range = await readEntryGroupsInRange(
+			db,
+			new Date('2026-05-01T00:00:00.000Z'),
+			new Date('2026-05-31T23:59:59.999Z'),
+			5
+		);
+
+		expect(range.overCap).toBe(true);
+		// the entry the bound landed inside is dropped rather than handed over half-read: two lines
+		// under one journal number is a journal that does not balance in the target.
+		expect(range.groups.map((g) => g.memo)).toEqual(['first', 'second']);
+		expect(range.groups.flatMap((g) => g.lines)).toHaveLength(4);
+	});
+
+	it('reads a range filling the bound exactly as one that is not over it', async () => {
+		// the boundary the refusal turns on: at the bound the file is shaped, one line past it the
+		// export is refused, and an off-by-one here refuses a range the target would have taken.
+		await postAll([
+			correction(new Date('2026-05-01T00:00:00.000Z'), { memo: 'first' }),
+			correction(new Date('2026-05-02T00:00:00.000Z'), { memo: 'second' })
+		]);
+
+		const range = await readEntryGroupsInRange(
+			db,
+			new Date('2026-05-01T00:00:00.000Z'),
+			new Date('2026-05-31T23:59:59.999Z'),
+			4
+		);
+
+		expect(range.overCap).toBe(false);
+		expect(range.groups.map((g) => g.memo)).toEqual(['first', 'second']);
 	});
 });

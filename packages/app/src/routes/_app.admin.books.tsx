@@ -52,8 +52,8 @@ import type { Route } from './+types/_app.admin.books';
 // it answers has to be readable beside the boxes that answer it.
 //
 // **the way out of these books is not here.** the accountant's file is asked for on
-// ./_app.admin.donations.export.tsx, under Gifts, because what it holds is what was given — the
-// income, the processor's cut and the money received, per gift.
+// ./_app.admin.donations.export.tsx, under Gifts, because that is where the operator asking for it
+// comes from — what it holds is every entry the range covers, the corrections posted here included.
 //
 // **the press reports at the button, and the screen never navigates away.** the action answers with
 // what it did rather than with a redirect, so the boxes keep what was posted and the id it was
@@ -121,8 +121,8 @@ const SCREEN_TITLE = 'Books';
 /** the blank a picker opens on, so no account is chosen by the browser falling to the first one. */
 const CHOOSE_ACCOUNT = { value: '', label: 'Choose an account' };
 
-/** the element the table's caption is named by. */
-const CAPTION_ID = 'books-caption';
+/** the heading over the entry list, which is what names the plane under it. */
+const ENTRIES_ID = 'books-entries';
 
 /**
  * what each column of the entry list is worth, in the order an operator reads a row.
@@ -715,6 +715,19 @@ export default function Books({ loaderData, actionData }: Route.ComponentProps) 
 				</Form>
 			</Section>
 
+			{/* the list's own heading, beside the form's: the frame draws this page's one `h1`
+			    (./_app.tsx), so both halves of the screen stand under it at this rank. without it the
+			    table falls under the heading about the form above it, and a reader moving by heading
+			    reaches the form half and never the list.
+
+			    it stands in the column directly, like the table under it and for the same reason —
+			    a wrapper holding the two would be the plain element between the column and the plane
+			    the comment below refuses. the stack's gap is under it either way, and the section
+			    above adds its own padding on top of that, so the heading already sits closer to what
+			    it names than to what it follows. and it is outside the two arms below because the
+			    list is named whether or not it could be read. */}
+			<h2 id={ENTRIES_ID}>Entries</h2>
+
 			{entries === null ? (
 				// attention and not blocker: the form above still posts, and what is missing is the
 				// list — a list that could not be read is never drawn as one with nothing in it.
@@ -724,12 +737,14 @@ export default function Books({ loaderData, actionData }: Route.ComponentProps) 
 				// the column and the plane is one the column can never make narrower than the whole
 				// table (./_app.admin.donations._index.tsx argues it at length).
 				<DataTable
-					captionId={CAPTION_ID}
-					// with rows, the sentence that says what the table holds and is what names it. with
-					// none there is no count worth stating and none is drawn — the word is the screen's
-					// own noun, which `DataTable` gives the plane as its name.
+					// the heading above is the name, so the table takes it rather than saying the word
+					// again: with no rows the caption is the only name a plane has, and here it would be
+					// the heading's own noun read a second time.
+					namedBy={ENTRIES_ID}
+					// with rows, the sentence that says what the table holds. with none there is no count
+					// worth stating and none is drawn.
 					caption={
-						count > 0 ? `${count} ${count === 1 ? 'entry' : 'entries'}, newest first.` : 'Entries'
+						count > 0 ? `${count} ${count === 1 ? 'entry' : 'entries'}, newest first.` : undefined
 					}
 					capNote={hasMore ? `Only the most recent ${limit} are shown.` : undefined}
 					columns={COLUMNS}

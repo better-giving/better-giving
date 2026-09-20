@@ -29,7 +29,7 @@ import Books from './_app.admin.books';
 /** the address the screen is served on in every stub below. */
 const SCREEN = '/admin/books';
 
-/** the id the stub's one route is mounted under, which is what its hydration data is keyed by. */
+/** the id every stub below mounts its route under, which is what its hydration data is keyed by. */
 const STUB_ROUTE = 'books';
 
 /**
@@ -333,6 +333,20 @@ it('carries the id the loader minted, in a box nobody can edit', () => {
 	expect(held.value).toBe(SOURCE_ID);
 });
 
+it('names the list under a heading of its own, beside the form’s', () => {
+	const { root } = screen({ entries: [entry()] });
+
+	// the frame draws this page's one `h1` in its top strip (./_app.tsx), so both halves of the
+	// screen are `h2`s under it. without its own, the list falls under a heading about the form
+	// above it and a reader moving by heading never reaches it.
+	expect(
+		[...root.querySelectorAll('h1, h2, h3')].map((held) => [held.tagName, held.textContent])
+	).toEqual([
+		['H2', 'Corrections'],
+		['H2', 'Entries']
+	]);
+});
+
 it('says what a deployment with empty books is waiting for', () => {
 	const { root } = screen();
 
@@ -507,7 +521,7 @@ it('keeps the press held through the load that follows the answer', async () => 
 	// second — with the boxes still holding the correction.
 	const Stub = createRoutesStub([
 		{
-			id: 'books',
+			id: STUB_ROUTE,
 			path: SCREEN,
 			loader: () => new Promise<never>(() => {}),
 			Component: () =>
@@ -523,7 +537,7 @@ it('keeps the press held through the load that follows the answer', async () => 
 	const root = mount(
 		createElement(Stub, {
 			initialEntries: [SCREEN],
-			hydrationData: { loaderData: { books: null } }
+			hydrationData: { loaderData: { [STUB_ROUTE]: null } }
 		})
 	);
 	await fillCorrection(root);
@@ -561,7 +575,7 @@ function liveScreen(
 	const posted: FormData[] = [];
 	const Stub = createRoutesStub([
 		{
-			id: 'books',
+			id: STUB_ROUTE,
 			path: SCREEN,
 			loader: () => loaderData({ sourceId: ids.shift() ?? LATER_ID }),
 			action: async ({ request }) => {
@@ -581,7 +595,7 @@ function liveScreen(
 	const root = mount(
 		createElement(Stub, {
 			initialEntries: [SCREEN],
-			hydrationData: { loaderData: { books: loaderData() } }
+			hydrationData: { loaderData: { [STUB_ROUTE]: loaderData() } }
 		})
 	);
 	return { root, posted };
