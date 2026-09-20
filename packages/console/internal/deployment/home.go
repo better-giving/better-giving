@@ -19,10 +19,10 @@
 // words and the sentence a fold that is not done carries. a second statement of those words here
 // would be the two surfaces coming to disagree about what a job is called.
 //
-// **a read that did not land takes the whole page and never a fold.** the twenty-seven values come off
-// the account in one read that is scoped to no fold, so a console that could not take them cannot
-// say anything about any of the six. reported per fold it would be six findings from one failure,
-// five of them over jobs that may already be done.
+// **a read that did not land takes the whole page and never a fold.** the configuration values come
+// off the account in one read that is scoped to no fold, so a console that could not take them
+// cannot say anything about any of the six. reported per fold it would be six findings from one
+// failure, five of them over jobs that may already be done.
 //
 // every failure is a value: nothing here returns an error, and an error handed up to a handler
 // would be a 500 in place of the state that explains it.
@@ -159,15 +159,15 @@ type Inputs struct {
 
 // Read is the whole reading, from the account and from the deployment.
 //
-// **the halves overlap rather than queue.** the account's own reads, the twenty-seven values and the
-// deployment's report are not each other's inputs, and a page that waited on each in turn would hold
-// the operator for the sum of them. what is sequenced is the pair inside the first: a refused
+// **the halves overlap rather than queue.** the account's own reads, the configuration values and
+// the deployment's report are not each other's inputs, and a page that waited on each in turn would
+// hold the operator for the sum of them. what is sequenced is the pair inside the first: a refused
 // account read decides the face on its own, and asking about an address there would be a call made
 // for a line the screen is not going to draw.
 func Read(ctx context.Context, inputs Inputs) Reading {
 	if inputs.Credential.Kind == cf.NoCredential {
-		// nothing is asked of the account at all, so what the reading says about why the twenty-seven
-		// were not read is that they were not asked for.
+		// nothing is asked of the account at all, so what the reading says about why the values were
+		// not read is that they were not asked for.
 		detail := inputs.Credential.Detail
 		return Reading{
 			Face:   Face{Kind: FaceBlocked, Why: &Blocked{Kind: NoCredential, Detail: detail}},
@@ -206,7 +206,7 @@ func Read(ctx context.Context, inputs Inputs) Reading {
 	return assemble(databases, address, values, report)
 }
 
-// the twenty-seven, which is one read of the worker's own bindings.
+// the configuration values, which is one read of the worker's own bindings.
 func readValues(ctx context.Context, inputs Inputs) Values {
 	return Values{Vars: DeployedVars(ctx, inputs.Account, inputs.AccountID, inputs.WorkerName)}
 }
@@ -225,9 +225,9 @@ func readSurface(ctx context.Context, inputs Inputs) ReportRead {
 
 // the face, from what the three reads answered.
 func assemble(databases DatabaseList, address Address, values Values, report ReportRead) Reading {
-	// the twenty-seven and the rows are carried on every face and never only on the one that draws
-	// them: what the read answered is the same answer whichever face the reading landed on, and a
-	// face carrying none would be a value read as unset rather than as unasked.
+	// the configuration values and the rows are carried on every face and never only on the one that
+	// draws them: what the read answered is the same answer whichever face the reading landed on,
+	// and a face carrying none would be a value read as unset rather than as unasked.
 	read := Reading{Values: values, Sites: []string{}}
 	blocked := func(why Blocked) Reading {
 		read.Face = Face{Kind: FaceBlocked, Why: &why}

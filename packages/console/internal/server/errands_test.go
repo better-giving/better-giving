@@ -264,10 +264,19 @@ func TestTheOtherErrandsReachTheirOwnAddress(t *testing.T) {
 			},
 		},
 		// the books, carried whole: nothing in this binary branches on a line of either report.
+		// what the lines are called is packages/operator/src/console/quickbooks.ts's, and
+		// ../deployment/quickbooks_test.go is what holds a fixture of one to it.
 		"GET /console/quickbooks": map[string]any{
-			"connection":      map[string]any{"state": "connected", "companyName": "Hope Springs"},
+			"connection": map[string]any{
+				"state": "connected", "realmId": "9341454792073042",
+				"companyName": "Hope Springs",
+				"income":      map[string]any{"id": "42", "name": "Donations"},
+				"fee":         map[string]any{"id": "7", "name": "Merchant fees"},
+				"deposit":     map[string]any{"id": "9", "name": "Undeposited funds"},
+				"startAt":     "2026-01-01T00:00:00.000Z",
+			},
 			"accounts":        map[string]any{"state": "read", "accounts": []any{}},
-			"backlog":         map[string]any{"pending": float64(0), "abandoned": float64(0)},
+			"backlog":         map[string]any{"failed": float64(0), "oldestWaitingAt": nil},
 			"callbackAddress": "https://give.example.org/quickbooks/callback",
 		},
 		"POST /console/quickbooks":     map[string]any{"press": "connect", "url": "https://intuit.example"},
@@ -327,6 +336,24 @@ func TestTheOtherErrandsReachTheirOwnAddress(t *testing.T) {
 	for _, call := range asked() {
 		if call.bearer != "Bearer "+errandToken {
 			t.Errorf("%s %s was asked without the session", call.method, call.path)
+		}
+	}
+}
+
+// which presses the deployment answers only once Intuit has, which is what decides the door they go
+// through.
+//
+// the two of them are the two that reach a third party before the deployment answers at all: the
+// accounts press fetches the company's chart to settle the three ids against, and the disconnect
+// revokes the credential at Intuit before it deletes the row. every other press is answered out of
+// the deployment's own rows and is held to a read's own deadline.
+func TestThePressesIntuitIsBehindAreTheOnesTheLongDoorIsFor(t *testing.T) {
+	for press, waits := range map[string]bool{
+		"accounts": true, "disconnect": true,
+		"connect": false, "retry": false, "start-date": false,
+	} {
+		if held := waitsOnIntuit(press); held != waits {
+			t.Errorf("the %s press waits on Intuit: %v", press, held)
 		}
 	}
 }

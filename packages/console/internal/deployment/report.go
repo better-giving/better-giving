@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/better-giving/console/internal/cf"
 )
@@ -99,7 +100,29 @@ type ReportRead struct {
 // function and never a token. One binding for reads and writes alike, because the errands write
 // through the same door a reading reads through.
 func Calls(origin, token string) cf.Send {
-	return cf.JSONSend(origin, map[string]string{"Authorization": "Bearer " + token})
+	return cf.JSONSendWithin(origin, surfaceHeaders(token), cf.ReadTimeout)
+}
+
+// how long an errand the deployment answers only once a third party has may take before it counts
+// as unreachable.
+//
+// far past the bound a read takes (cf.ReadTimeout), because what the deployment does before it
+// answers one of these is a round trip of its own: ../server/errands.go names the three errands
+// this bounds and argues what a cut on the disconnect would leave behind.
+const patientTimeout = time.Minute
+
+// PatientCalls is that same binding held to the longer deadline above, for the errands the
+// deployment answers only once a third party has.
+//
+// The bound belongs to the call rather than to the client, which is internal/cf's arrangement and
+// its header's argument: one of these errands is not a read.
+func PatientCalls(origin, token string) cf.Send {
+	return cf.JSONSendWithin(origin, surfaceHeaders(token), patientTimeout)
+}
+
+// the session, as every call to that surface carries it: in a header, and on no url.
+func surfaceHeaders(token string) map[string]string {
+	return map[string]string{"Authorization": "Bearer " + token}
 }
 
 // Reads is the read half of such a binding, which is the whole of what a reading of the deployment
@@ -176,6 +199,10 @@ func readReport(answer cf.Answer) ReportRead {
 //
 // Both sentences, never the first alone: a refusal outside 401 carries a way out the same way a 401
 // does, and dropping it here would drop it from every screen at once.
+//
+// The code beside them, and for a reason of its own: it is the one member of a refusal that is
+// written for a machine rather than read, so a console dropping it holds the deployment's precise
+// answer and hands on a vague one.
 func unreadable(answer cf.Answer, body map[string]any) ReportRead {
 	detail := "This deployment answered " + strconv.Itoa(answer.Status)
 	if said := text(body["message"]); said != nil {
@@ -183,6 +210,7 @@ func unreadable(answer cf.Answer, body map[string]any) ReportRead {
 	}
 	return ReportRead{NoReport: NoReport{
 		Kind:   NoReportUnreadable,
+		Error:  text(body["error"]),
 		Detail: detail,
 		Fix:    text(body["fix"]),
 	}}

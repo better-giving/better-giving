@@ -15,7 +15,7 @@ import (
 	"github.com/better-giving/console/internal/state"
 )
 
-// the two presses that set the twenty-seven, and what each of them refuses.
+// the two presses that set the configuration values, and what each of them refuses.
 
 // a cloudflare that answers everything and remembers what it was asked.
 func writes(t *testing.T, answers map[string]any) (*httptest.Server, *[]string) {
@@ -86,7 +86,7 @@ func TestNothingIsWrittenForAMachineThatHasChosenNoAccount(t *testing.T) {
 }
 
 // **the names a press may carry are the enumeration's and never the body's own keys.** a name off
-// that list is a value written under whatever a page said, and the twenty-seven are what this console
+// that list is a value written under whatever a page said, and those values are what this console
 // is for — the console's own session credential among the names it refuses.
 func TestANameOffTheEnumerationIsRefusedBeforeCloudflareIsAsked(t *testing.T) {
 	api, asked := writes(t, nil)
@@ -95,6 +95,13 @@ func TestANameOffTheEnumerationIsRefusedBeforeCloudflareIsAsked(t *testing.T) {
 	status, answer := press(t, handler, "/api/values/vars", `{"values":{"CONSOLE_TOKEN":"bg1.x"}}`)
 	if status != http.StatusBadRequest || answer["error"] == "" {
 		t.Fatalf("%d %v", status, answer)
+	}
+	// the refusal names the value it is about and where the list of them is stated: a 4xx body here
+	// is read by an agent rather than by a reader, and what it owes them is the offending value and
+	// where to fix it (CLAUDE.md).
+	said, _ := answer["error"].(string)
+	if !strings.Contains(said, "CONSOLE_TOKEN") || !strings.Contains(said, "deploy-split.ts") {
+		t.Fatalf("refused with %q", said)
 	}
 	if len(*asked) != 0 {
 		t.Fatalf("cloudflare was asked %v", *asked)

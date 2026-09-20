@@ -14,15 +14,16 @@ import (
 	"github.com/better-giving/console/internal/release"
 )
 
-// the two presses over the twenty-seven values this deployment is configured with: one sets them and
-// takes them off, and one frees a name the deployment is holding as a credential.
+// the two presses over the values this deployment is configured with — internal/release's
+// DeployVars — one setting them and taking them off, and one freeing a name the deployment is
+// holding as a credential.
 //
 // **what a browser posts is names and values, and a name mapped to `null` is a removal.** setting
 // and removing are one door because they are one patch of the worker's bindings — internal/deployment
 // is where that is argued.
 //
-// **a body is refused in four cases.** internal/release holds the twenty-seven, and a name off that
-// list is refused here rather than written under whatever the page said — the console's own session
+// **a body is refused in four cases.** internal/release holds that list, and a name off it is
+// refused here rather than written under whatever the page said — the console's own session
 // credential is on no enumeration and is not reachable through this door. the second is PayPal's
 // three credentials, Chariot's four values and NOWPayments' three, argued at ./paypalSetUpOnly,
 // ./chariotSetUpOnly and ./nowpaymentsSetUpOnly.
@@ -77,8 +78,8 @@ var nowpaymentsSetUpOnly = nowpayments.SetUpOnly
 
 // how much of a press's body is read before it is a request nobody made.
 //
-// The whole enumeration is the largest thing posted here — twenty-seven names and their values — and
-// anything past that is not this page.
+// The whole enumeration is the largest thing posted here — every name on internal/release's
+// DeployVars and the value under it — and anything past that is not this page.
 const writtenBytes = 32 << 10
 
 func valuesRoutes(
@@ -277,7 +278,8 @@ func enumerated(enumeration []string, name string) bool {
 
 func refuseName(w http.ResponseWriter, name string) {
 	answer(w, http.StatusBadRequest, map[string]string{
-		"error": "this console sets the twenty-seven values a deployment is configured with, and " +
-			name + " is not one of them",
+		"error": "this console sets the values a deployment is configured with, which are " +
+			"DEPLOY_VARS in packages/operator/src/deploy-split.ts, and " + name +
+			" is not one of them",
 	})
 }

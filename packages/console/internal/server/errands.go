@@ -55,6 +55,9 @@ type testEmailPress struct {
 // while the console is open, and it reaches no answer: it is closed over by the two calls
 // internal/deployment is handed, which is internal/cf's arrangement for every credential this
 // binary holds.
+//
+// It is bound twice over, once per deadline: the read of the books always goes through the longer
+// of the two, and ./waitsOnIntuit is which presses do.
 func surfaceDoors(records state.Store, surface func(origin, token string) cf.Send) func() (cf.Get, cf.Post) {
 	return func() (cf.Get, cf.Post) {
 		mine := session.Held(records, release.Baked.Name, time.Now())
@@ -70,7 +73,21 @@ func surfaceDoors(records state.Store, surface func(origin, token string) cf.Sen
 	}
 }
 
-func errandRoutes(routes *http.ServeMux, held func() (cf.Get, cf.Post)) {
+// which presses the deployment answers only once Intuit has, and so which go through the longer
+// door ./surfaceDoors is bound twice for.
+//
+// the accounts press fetches the company's whole chart to settle the three ids against before it
+// stores anything, and the disconnect revokes the credential at Intuit before it deletes the row.
+// every other press is answered out of the deployment's own rows.
+//
+// **this reads the press's name and never a value on it**, which is the line this file's header
+// draws: how long the deployment takes over a press is a fact about that press and not a second
+// opinion about the books.
+func waitsOnIntuit(press string) bool {
+	return enumerated([]string{"accounts", "disconnect"}, press)
+}
+
+func errandRoutes(routes *http.ServeMux, held, patient func() (cf.Get, cf.Post)) {
 
 	// stores the organisation's profile, whole, from whichever of the two folds pressed.
 	routes.HandleFunc("POST /api/deployment/org", func(w http.ResponseWriter, r *http.Request) {
@@ -134,8 +151,12 @@ func errandRoutes(routes *http.ServeMux, held func() (cf.Get, cf.Post)) {
 	//
 	// The connection is the deployment's alone: the tokens are rows in its own D1 and the chart of
 	// accounts is read with them, so this console holds no Intuit credential and asks Intuit nothing.
+	//
+	// Through the longer door, because the deployment refreshes that credential at Intuit and
+	// fetches the company's chart of accounts before it answers this at all — two round trips of
+	// somebody else's, behind one of ours.
 	routes.HandleFunc("GET /api/deployment/quickbooks", func(w http.ResponseWriter, r *http.Request) {
-		get, _ := held()
+		get, _ := patient()
 		answer(w, http.StatusOK, deployment.ReadQuickbooks(r.Context(), get))
 	})
 
@@ -145,12 +166,22 @@ func errandRoutes(routes *http.ServeMux, held func() (cf.Get, cf.Post)) {
 	// belongs on which press: the deployment settles that against the connected company's own chart
 	// and refuses an id those books do not hold, and a rule written here would be a second opinion on
 	// a chart this binary cannot see.
+	//
+	// **the two presses Intuit is behind go through the longer door** (./waitsOnIntuit), and the
+	// disconnect is why it is worth the second binding: the deployment revokes the credential at
+	// Intuit and only then deletes the row, so a call cut at a read's own deadline leaves this
+	// console saying nothing was found out either way over a revoke that may well have landed — and
+	// the deployment carrying on with it regardless, because nothing about that press is this
+	// console's to undo. What says where it ended up is the next read of the report.
 	routes.HandleFunc("POST /api/deployment/quickbooks", func(w http.ResponseWriter, r *http.Request) {
 		var posted deployment.QuickbooksPress
 		if !decoded(w, r, &posted) {
 			return
 		}
 		_, post := held()
+		if waitsOnIntuit(posted.Press) {
+			_, post = patient()
+		}
 		answer(w, http.StatusOK, deployment.PressQuickbooks(r.Context(), post, posted))
 	})
 

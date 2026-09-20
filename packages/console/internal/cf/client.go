@@ -41,12 +41,15 @@ import (
 	"time"
 )
 
-// how long one call may take before it counts as unreachable.
+// ReadTimeout is how long one call may take before it counts as unreachable.
 //
 // a call with no bound would hold the handler open for as long as the browser waits on it, which
 // leaves the screen saying `Checking` for as long as the tab is open. the caller's own context
 // bounds it further wherever it has a shorter deadline of its own.
-const timeout = 10 * time.Second
+//
+// it is exported because a caller with a longer bound of its own states that bound against this
+// one — ../deployment's PatientCalls binds the errands a third party is behind.
+const ReadTimeout = 10 * time.Second
 
 // how long one upload may take before it counts as unreachable.
 //
@@ -110,7 +113,7 @@ type Send func(ctx context.Context, method, path string, body any) Answer
 // MergePatchHeaders in ./cloudflare.go binds `application/merge-patch+json` and is the only binding
 // that names the header at all.
 func JSONSend(base string, headers map[string]string) Send {
-	return JSONSendWithin(base, headers, timeout)
+	return JSONSendWithin(base, headers, ReadTimeout)
 }
 
 // JSONSendWithin is that same call bound to a deadline the caller states rather than to the one a
@@ -166,7 +169,7 @@ type FormCall func(ctx context.Context, method, path string, form url.Values) An
 // type on it.
 func FormSender(base string, headers map[string]string) FormCall {
 	return func(ctx context.Context, method, path string, form url.Values) Answer {
-		bound, stop := context.WithTimeout(ctx, timeout)
+		bound, stop := context.WithTimeout(ctx, ReadTimeout)
 		defer stop()
 
 		var reader io.Reader

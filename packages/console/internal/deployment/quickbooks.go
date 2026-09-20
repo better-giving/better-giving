@@ -114,7 +114,7 @@ func PressQuickbooks(ctx context.Context, post cf.Post, press QuickbooksPress) Q
 		}
 	}
 	answer := post(ctx, QuickbooksPath, body)
-	if report := quickbooksPressReport(answer); report != nil {
+	if report := quickbooksPressReport(answer, press.Press); report != nil {
 		return QuickbooksPressed{Kind: QuickbooksReported, Report: report}
 	}
 	read := readNoReport(answer)
@@ -139,13 +139,14 @@ func quickbooksReport(answer cf.Answer) any {
 	return body
 }
 
-// the answer as a report of a press, or nil where it is not one.
+// the answer as a report of the press that was sent, or nil where it is not one.
 //
-// The press it names is what says this came from that surface, and a report of a press the
-// deployment did not name is one no screen has a sentence for. A refusal is not read for one: what
-// the deployment would not do it answers outside 200 with the words to act on, and those reach the
-// page as the unanswered arm's own.
-func quickbooksPressReport(answer cf.Answer) any {
+// The press it names is read against the press this console sent, and not merely for being there: a
+// report naming another press is the deployment answering about something nobody asked it, which a
+// screen would draw at the control that was pressed as what that press did. A refusal is not read
+// for one: what the deployment would not do it answers outside 200 with the words to act on, and
+// those reach the page as the unanswered arm's own.
+func quickbooksPressReport(answer cf.Answer, sent string) any {
 	if answer.Kind != cf.Answered || answer.Status != http.StatusOK {
 		return nil
 	}
@@ -153,7 +154,7 @@ func quickbooksPressReport(answer cf.Answer) any {
 	if !mapped {
 		return nil
 	}
-	if named, isText := body["press"].(string); !isText || named == "" {
+	if named, isText := body["press"].(string); !isText || named != sent {
 		return nil
 	}
 	return body

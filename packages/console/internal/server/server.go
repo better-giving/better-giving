@@ -100,8 +100,14 @@ func New(options Options) http.Handler {
 		settings = cf.APIMultipart
 	}
 	surface := options.Surface
+	// the same surface held to a longer deadline, for the errands the deployment answers only once
+	// a third party has (./errands.go). a case that binds one binds both: what it answers with is
+	// already immediate, so a second deadline over it would be one nothing ever waits out.
+	patient := deployment.PatientCalls
 	if surface == nil {
 		surface = deployment.Calls
+	} else {
+		patient = surface
 	}
 	processor := options.Processor
 	if processor == nil {
@@ -128,12 +134,13 @@ func New(options Options) http.Handler {
 		presses = &Presses{}
 	}
 	doors := surfaceDoors(options.Records, surface)
+	patientDoors := surfaceDoors(options.Records, patient)
 
 	routes := http.NewServeMux()
 	homeRoutes(routes, options.Flow, reads, options.Accounts, options.Records, surface)
 	valuesRoutes(routes, options.Flow, reads, patches, settings, options.Accounts)
 	sessionRoutes(routes, options.Flow, reads, patches, options.Accounts, options.Records, surface)
-	errandRoutes(routes, doors)
+	errandRoutes(routes, doors, patientDoors)
 	widgetRoutes(routes, options.Flow, reads, sends, options.Accounts)
 	stripeRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, doors, processor,
 		presses)

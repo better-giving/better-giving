@@ -9,25 +9,25 @@ import (
 	"github.com/better-giving/console/internal/release"
 )
 
-// the twenty-seven values this deployment was configured with, read off the account rather than off
-// the deployment.
+// the values this deployment was configured with — internal/release's DeployVars — read off the
+// account rather than off the deployment.
 //
 // **this is what a screen shows when the deployment is the thing that is wrong**: a configuration
-// that 500s, a session that has lapsed, a worker that was never deployed. reading the twenty-seven out
-// of the account is what lets it still show what a deployment refusing to talk is holding.
+// that 500s, a session that has lapsed, a worker that was never deployed. reading them out of the
+// account is what lets it still show what a deployment refusing to talk is holding.
 //
-// **one door, and every row carries its value.** all twenty-seven are plain-text bindings on the
+// **one door, and every row carries its value.** every one of them is a plain-text binding on the
 // worker's own settings, so one read of that endpoint answers for the whole of what a deployment is
 // configured with — and a value cloudflare hands back is a value a screen can draw, which is what
 // lets an operator check the credential they pasted rather than a mask over it.
 //
-// **the enumeration is the list and there is no second one.** internal/release states the
-// twenty-seven, and the read below returns a row for every name on it whatever came back — the same
-// rows in the same order in every state, which is what stops an operator's eye being the thing that
-// notices one is missing. a name the deployment holds that is off the list is dropped: the
-// console's own session credential is deliberately on no enumeration.
+// **the enumeration is the list and there is no second one.** internal/release states it, and the
+// read below returns a row for every name on it whatever came back — the same rows in the same
+// order in every state, which is what stops an operator's eye being the thing that notices one is
+// missing. a name the deployment holds that is off the list is dropped: the console's own session
+// credential is deliberately on no enumeration.
 
-// ValuesKind is which of the six ways a read of the twenty-seven ended.
+// ValuesKind is which of the six ways a read of those values ended.
 type ValuesKind string
 
 const (
@@ -46,10 +46,10 @@ const (
 )
 
 // VarKind is what one var's slot holds. Three states and not two: `withheld` is a binding under one
-// of the twenty-seven names that is not `plain_text`, which is a deployment that stored the value as a
-// secret. Collapsing it into `absent` would print the same cell over two deployments an
-// operator has to do different things to — the value is there and the deployment reads it, and what
-// gets one out of the state is the press that frees the names (./write.go's FreeWithheldVars).
+// of those names that is not `plain_text`, which is a deployment that stored the value as a secret.
+// Collapsing it into `absent` would print the same cell over two deployments an operator has to do
+// different things to — the value is there and the deployment reads it, and what gets one out of
+// the state is the press that frees the names (./write.go's FreeWithheldVars).
 type VarKind string
 
 const (
@@ -69,14 +69,14 @@ type DeployedVar struct {
 	Value string  `json:"value"`
 }
 
-// VarsRead is what the twenty-seven read as, or which way they did not.
+// VarsRead is what those values read as, or which way they did not.
 type VarsRead struct {
 	Kind   ValuesKind    `json:"kind"`
 	Vars   []DeployedVar `json:"vars"`
 	Detail string        `json:"detail"`
 }
 
-// Values is the twenty-seven as the door answered for them, whether or not it landed.
+// Values is that list as the door answered for it, whether or not it landed.
 //
 // One member and still a struct, so that the wire it is carried on (./home.go's Reading) narrows
 // rather than moves: what every reader of it names is still `values.vars`.
@@ -156,7 +156,7 @@ func settingsPath(accountID, workerName string) string {
 	return "/accounts/" + accountID + "/workers/scripts/" + url.PathEscape(workerName) + "/settings"
 }
 
-// DeployedVars is the twenty-seven as `workerName` in `accountID` holds them.
+// DeployedVars is release.DeployVars as `workerName` in `accountID` holds them.
 func DeployedVars(ctx context.Context, get cf.Get, accountID, workerName string) VarsRead {
 	read := cf.ReadShaped(get(ctx, settingsPath(accountID, workerName)), func(value any) ([]any, bool) {
 		held, ok := value.(map[string]any)
@@ -203,9 +203,9 @@ func toVar(name string, binding map[string]any) DeployedVar {
 		}
 		return DeployedVar{Name: name, Kind: VarValue, Value: strings.TrimSpace(text)}
 	}
-	// anything else under one of the twenty-seven names is filled and unreadable: `secret_text` is a
-	// value the deployment stored as a secret, and a binding of some other type is a name this
-	// console cannot read a value out of either.
+	// anything else under one of those names is filled and unreadable: `secret_text` is a value the
+	// deployment stored as a secret, and a binding of some other type is a name this console cannot
+	// read a value out of either.
 	return DeployedVar{Name: name, Kind: VarWithheld}
 }
 

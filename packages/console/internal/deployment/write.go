@@ -9,10 +9,10 @@ import (
 	"github.com/better-giving/console/internal/release"
 )
 
-// the door the twenty-seven are written and taken off through, which is the door ./values.go reads
-// them back off.
+// the door the configuration values are written and taken off through — internal/release's
+// DeployVars — which is the door ./values.go reads them back off.
 //
-// **a var is one press and seconds.** all twenty-seven are plain-text bindings on the worker's own
+// **a var is one press and seconds.** every one of them is a plain-text binding on the worker's own
 // settings, so setting one is a read of what the deployment is bound to, the named bindings
 // replaced, and one patch back — no build, no migration and no upload, which is what the deploy
 // path costs and what its one-way door is kept in front of.
@@ -62,7 +62,7 @@ type Door struct {
 	Settings cf.MultipartUpload
 }
 
-// WrittenKind is how one write of the twenty-seven ended.
+// WrittenKind is how one write of those values ended.
 type WrittenKind string
 
 const (
@@ -121,10 +121,10 @@ func NoCredentialWrite(detail string) Written {
 // SetVars sets the vars `wanted` names and takes off the ones it maps to nil, in one press.
 //
 // **the compare is a fresh read and never what a browser remembered.** a var's value reads back,
-// which is the whole reason the twenty-seven are vars, so a press is decided against what cloudflare
-// says the deployment holds now: a name already at the asked-for value is not written, a name
-// already holding nothing is not taken off, and a name held as a credential refuses a write of it
-// instead — freeing it is FreeWithheldVars below.
+// which is the whole reason they are vars, so a press is decided against what cloudflare says the
+// deployment holds now: a name already at the asked-for value is not written, a name already
+// holding nothing is not taken off, and a name held as a credential refuses a write of it instead —
+// freeing it is FreeWithheldVars below.
 //
 // **nil is a removal, and it is the only way a value comes off a deployment.** nil over a name held
 // as a credential is a removal like any other rather than the refusal a write of it earns: that
@@ -261,7 +261,7 @@ func bindingList(held []any, send map[string]string, remove map[string]bool, nam
 		}
 		list = append(list, map[string]any{"name": name, "type": "inherit"})
 	}
-	// a name no binding carried, which is every one of the twenty-seven before the press that sets it.
+	// a name no binding carried, which is every one of those names before the press that sets it.
 	for _, name := range names {
 		if value, named := send[name]; named && !written[name] {
 			list = append(list, plainText(name, value))
@@ -289,7 +289,7 @@ func unnamedBinding() Written {
 // A name mapped to nil is deleted and a name the payload does not mention is left exactly as it
 // was, which is what makes a store and a clear one press.
 //
-// **no configuration value is written through here, and every deletion of one is.** the twenty-seven
+// **no configuration value is written through here, and every deletion of one is.** those values
 // are vars and go up through SetVars, which sends this door the `null` that takes a name off a
 // deployment still holding it as a credential; FreeWithheldVars below sends the same `null` for
 // every such name at once, and WriteConsoleToken stores this console's own session, which is the
@@ -302,7 +302,7 @@ func SetSecrets(ctx context.Context, door Door, payload map[string]*string) Writ
 		secretsBulkPath(door.AccountID, door.WorkerName), secretsBulkBody(payload)))
 }
 
-// FreeWithheldVars takes every one of the twenty-seven this deployment is holding as a credential off
+// FreeWithheldVars takes every configuration value this deployment is holding as a credential off
 // it, so that the press beside it can set the value.
 //
 // **which names are freed is read here and never posted.** what it reads is cloudflare's own answer,
@@ -394,7 +394,7 @@ func unwritten(kind ValuesKind, detail string) Written {
 // ConsoleTokenName is the name the deployment reads this console's session out of.
 //
 // It is deliberately off release.DeployVars: that enumeration is what a browser may name, and this
-// console's own credential is not one of the twenty-seven an operator sets. The door is here instead,
+// console's own credential is not one of the values an operator sets. The door is here instead,
 // where the only caller is the press that mints one.
 const ConsoleTokenName = "CONSOLE_TOKEN"
 

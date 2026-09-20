@@ -10,11 +10,11 @@ import (
 // the release this console last put on the deployment, recorded on the worker by the act that
 // uploaded it.
 //
-// **it is the console's own record about the deployment and is not a configuration value.** the
-// twenty-seven are what an operator sets and what every screen draws (./values.go); this is a note the
-// console wrote to itself, on no enumeration and drawn as configuration nowhere — which is the
-// reading ./write.go's ConsoleTokenName already argues for the one Worker secret (CLAUDE.md →
-// Boundaries). ./values.go drops a name off the enumeration, so this is read on its own.
+// **it is the console's own record about the deployment and is not a configuration value.** those
+// are what an operator sets and what every screen draws (./values.go); this is a note the console
+// wrote to itself, on no enumeration and drawn as configuration nowhere — which is the reading
+// ./write.go's ConsoleTokenName already argues for the one Worker secret (CLAUDE.md → Boundaries).
+// ./values.go drops a name off the enumeration, so this is read on its own.
 //
 // **it is written by the upload and read with the cloudflare sign-in, and that is the whole point
 // of it.** what a deployment says about itself is read over a session the console holds for that
