@@ -74,36 +74,51 @@ export function DetailsStep({
 		<section className="step step-details" hidden={hidden}>
 			{head}
 
+			{/*
+			 * the one box on this step standing on its own, so its label stands over it like every
+			 * other single box on the card.
+			 */}
 			<TextField
 				id="email"
 				label={copy.EMAIL}
 				autoComplete="email"
 				field={api.emailField}
+				floating={false}
 				wrong={missing.includes('email')}
 				problem={fieldProblem('email', api.emailField.box.value)}
 				inputRef={refs.email}
 			/>
 
-			<div className="names">
-				<TextField
-					id="first-name"
-					label={copy.FIRST_NAME}
-					autoComplete="given-name"
-					field={api.firstNameField}
-					wrong={missing.includes('firstName')}
-					problem={copy.NAME_PROBLEM}
-					inputRef={refs.firstName}
-				/>
-				<TextField
-					id="last-name"
-					label={copy.LAST_NAME}
-					autoComplete="family-name"
-					field={api.lastNameField}
-					wrong={missing.includes('lastName')}
-					problem={copy.NAME_PROBLEM}
-					inputRef={refs.lastName}
-				/>
-			</div>
+			{/*
+			 * the pair is one ask, so it is one group with one legend — the construction the amount
+			 * step's two groups already use, down to the class. `.names` stays the pair's own grid
+			 * inside it, which is what keeps the breakpoint the tribute's row reuses one decision.
+			 */}
+			<fieldset className="group">
+				<legend part={part('label')}>{copy.YOUR_NAME}</legend>
+				<div className="names">
+					<TextField
+						id="first-name"
+						label={copy.FIRST_NAME}
+						autoComplete="given-name"
+						field={api.firstNameField}
+						floating
+						wrong={missing.includes('firstName')}
+						problem={copy.NAME_PROBLEM}
+						inputRef={refs.firstName}
+					/>
+					<TextField
+						id="last-name"
+						label={copy.LAST_NAME}
+						autoComplete="family-name"
+						field={api.lastNameField}
+						floating
+						wrong={missing.includes('lastName')}
+						problem={copy.NAME_PROBLEM}
+						inputRef={refs.lastName}
+					/>
+				</div>
+			</fieldset>
 
 			{/*
 			 * unticked until the donor ticks it. pre-ticked consent is not consent under GDPR/UK GDPR,
@@ -136,18 +151,29 @@ export function DetailsStep({
 }
 
 /**
- * one labelled text field, with the sentence that says what is wrong with it under the control.
+ * one labelled text field, with the sentence that says what is wrong with it.
  *
- * the sentence is tied to the field by `aria-describedby` while it is shown, so it is read out with
- * the field rather than found by looking for it. it carries no part name, for the reason the form
- * package's parts.ts gives for every error surface: a host who could restyle it could restyle it
- * into nothing.
+ * `floating` is where the label stands, and it is a question about where the box stands: a box
+ * inside a named group of boxes takes a label standing inside it, centred on the box while the box
+ * is empty and on the box's own top edge once it has a caret or a value (`.floating` in
+ * @better-giving/form's styles/parts.css). a box standing on its own keeps its label over it, the
+ * way every other single box on the card is drawn. it is a real `<label htmlFor>` either way — a
+ * floating label is a label that moved, so it is still on screen once the donor starts typing,
+ * which is the whole of what a placeholder is not.
+ *
+ * the sentence does not follow it. on either construction it is the row's own child under the box,
+ * at the row's own gap — `.field-row.floating` in the form package's layout.css moves the label
+ * and nothing else — tied to the field by `aria-describedby` while it is shown so that it is read
+ * out with the field rather than found by looking for it, and carrying no part name, for the reason
+ * the form package's parts.ts gives for every error surface: a host who could restyle it could
+ * restyle it into nothing.
  */
 function TextField({
 	id,
 	label,
 	autoComplete,
 	field,
+	floating,
 	wrong,
 	problem,
 	inputRef
@@ -156,27 +182,41 @@ function TextField({
 	readonly label: string;
 	readonly autoComplete: string;
 	readonly field: FieldProps;
+	readonly floating: boolean;
 	readonly wrong: boolean;
 	readonly problem: string;
 	readonly inputRef: RefObject<HTMLInputElement | null>;
 }) {
 	const problemId = `${id}-problem`;
+	const sentence = wrong ? problem : '';
 	return (
-		<div className="field-row">
+		<div className={floating ? 'field-row floating' : 'field-row'}>
+			{/*
+			 * the words and nothing else in either construction, so the box is named by the label
+			 * itself and needs no naming attribute. the span a floating row wraps them in is what
+			 * carries the two steps and the resting weight the move is drawn with, which is a split a
+			 * host's `::part(label)` rule is written against (the form package's custom-elements.json).
+			 */}
 			<label part={part('label')} htmlFor={id}>
-				{label}
+				{floating ? <span className="label-words">{label}</span> : label}
 			</label>
 			<input
 				{...field.box}
 				id={id}
 				ref={inputRef}
 				autoComplete={autoComplete}
+				// blank on purpose, and it is not a placeholder anybody reads: `:placeholder-shown`
+				// is how @better-giving/form's parts.css asks whether the box is empty, so the label
+				// standing inside it knows when to float. a placeholder with words in it would be a
+				// second label competing with the real one for the same line. it rides the same
+				// opt-in the sheet does: a box labelled over the top has nothing to ask.
+				placeholder={floating ? ' ' : undefined}
 				part={partWhen('field', { invalid: wrong })}
 				aria-invalid={wrong ? true : undefined}
 				aria-describedby={wrong ? problemId : undefined}
 			/>
 			<p className="message" id={problemId} hidden={!wrong}>
-				{wrong ? problem : ''}
+				{sentence}
 			</p>
 		</div>
 	);

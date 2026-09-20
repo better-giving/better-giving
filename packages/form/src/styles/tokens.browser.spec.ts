@@ -554,13 +554,18 @@ describe('text on the card', () => {
 	// the card is not the only ground a word is drawn on, and a floor read against `--_n1` alone
 	// says nothing about the others. the receipt block is `--_n2` and carries the ledger's labels,
 	// its notes and the quoted mandate; the denominations are `--_n3` and step to `--_n4` and
-	// `--_n5` under the pointer, carrying their figure the whole way.
+	// `--_n5` under the pointer, carrying their figure the whole way. a field's fill is `--_n3` as
+	// well, and two things stand on it at the ladder's quietest ink: the label resting inside one of
+	// the pair under the name, and the placeholder in the amount entry where a form suggesting no
+	// amounts draws that entry on a bare tray (`.floating` and `[part~='amount-input']` in
+	// ./parts.css) — the tightest reading in this list.
 	it('clears 4.5:1 on every other ground a word is drawn on', () => {
 		seed('');
 		const pairs: [string, string][] = [
 			['--_n10', '--_n2'],
 			['--_n11', '--_n2'],
 			['--_n12', '--_n2'],
+			['--_n10', '--_n3'],
 			['--_n11', '--_n3'],
 			['--_n11', '--_n4'],
 			['--_n12', '--_n3'],

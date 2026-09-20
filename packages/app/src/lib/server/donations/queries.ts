@@ -496,6 +496,34 @@ export type RecordedGift = Pick<
 	readonly method: Payment['method'] | null;
 };
 
+/** the donor behind one settlement attempt, as an outside ledger names a payer. */
+export type PaymentDonor = {
+	readonly displayName: string;
+	readonly email: string | null;
+};
+
+/**
+ * who gave the gift one payment settled, or `null` where no payment carries the id.
+ *
+ * `payment.donation_id` and `donation.contact_id` are both NOT NULL, so the join cannot lose a
+ * donor a payment has; `null` is a payment row that is not there at all. the contact itself is read
+ * through `readContactSummaries` rather than joined, for the reason this file's header states:
+ * `contact` belongs to ../contacts/queries.ts.
+ */
+export async function findPaymentDonor(db: Db, paymentId: string): Promise<PaymentDonor | null> {
+	const [row] = await db
+		.select({ contactId: donation.contactId })
+		.from(payment)
+		.innerJoin(donation, eq(donation.id, payment.donationId))
+		.where(eq(payment.id, paymentId));
+	if (row === undefined) return null;
+
+	const summary = (await readContactSummaries(db, [row.contactId])).get(row.contactId);
+	return summary === undefined
+		? null
+		: { displayName: summary.displayName, email: summary.primaryEmail };
+}
+
 /**
  * one gift's figure, day, donor, cause, source and method, or `null` where no gift has the id.
  *

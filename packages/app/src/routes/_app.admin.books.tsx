@@ -21,29 +21,15 @@ import {
 	readAccountingDate
 } from '$lib/ledger/input-schema';
 import { ENTRY_SOURCE_LABELS } from '$lib/ledger/sources';
-import {
-	JOURNAL_RANGE_FIELDS,
-	JOURNAL_TARGET_LABELS,
-	JOURNAL_TARGETS_OFFERED,
-	RANGE_REVERSED,
-	journalRangeQuery,
-	readJournalRange
-} from '$lib/ledger/journal-range';
 import { invalid, parseForm } from '$lib/server/conform';
 import { pickableAccounts, postableIdFromSubmitted } from '$lib/server/db/accounts';
 import { postCorrection } from '$lib/server/ledger/correct';
-import {
-	journalFile,
-	type JournalFileRefusal,
-	type JournalTarget
-} from '$lib/server/ledger/journal-file';
 import {
 	ENTRY_GROUP_LIST_LIMIT,
 	type EntryGroupListRow,
 	type EntryGroupPage,
 	findEntryGroup,
-	listEntryGroups,
-	readEntryGroupsInRange
+	listEntryGroups
 } from '$lib/server/ledger/queries';
 import { database } from '../context';
 import type { Route } from './+types/_app.admin.books';
@@ -65,14 +51,9 @@ import type { Route } from './+types/_app.admin.books';
 // the corrections: a correction is aimed at what the settlement path already posted, so the entry
 // it answers has to be readable beside the boxes that answer it.
 //
-// **the accountant's download is the block above both**, and it is first because it is why somebody
-// who is not posting a correction is on this screen: it is the only way out of these books. the
-// form and the list under it are one pair, so a block put between them would separate a correction
-// from the entry it answers. what a range and a target are is `$lib/ledger/journal-range.ts`, what
-// a file holds is `$lib/server/ledger/journal-file.ts`, and the file itself is
-// ./_app.admin.books_.journal.ts's — this screen reads the same three values off the same address
-// and states what that range would produce, so nothing about it is discovered after the file is on
-// disk.
+// **the way out of these books is not here.** the accountant's file is asked for on
+// ./_app.admin.donations.export.tsx, under Gifts, because what it holds is what was given — the
+// income, the processor's cut and the money received, per gift.
 //
 // **the press reports at the button, and the screen never navigates away.** the action answers with
 // what it did rather than with a redirect, so the boxes keep what was posted and the id it was
@@ -100,39 +81,6 @@ const CORRECTION_FORM = defineForm({ id: 'correction', schema: CORRECTION_INPUT 
 
 /** the address this screen answers on, and the one its form posts to. */
 const SCREEN = '/admin/books';
-
-/** the address the file itself is served at (./_app.admin.books_.journal.ts). */
-const JOURNAL = `${SCREEN}/journal`;
-
-/**
- * what a range whose entries could not be read is told, at the download control.
- *
- * it stands where the count would, rather than beside the banner the entry list draws: the two
- * reads fail together on a database that is not answering, and one sentence in each place is what
- * keeps the download from silently offering a file over books nobody could read.
- */
-const JOURNAL_READ_FAILED = 'That range could not be read. Try again.';
-
-/**
- * what a range whose ends are the wrong way round is told, at the download control.
- *
- * the only refusal `readJournalRange` gives that the two date boxes above can be walked into — the
- * rest need a hand-typed address — so it is the only one this screen words for a person. it is
- * said rather than left to the empty file it would otherwise produce: a header row with nothing
- * under it reads as a period this organisation posted nothing in, which is an accountant's answer
- * and the wrong one.
- */
-const RANGE_BACKWARDS = 'That range ends before it starts. Swap the two days.';
-
-/**
- * the one thing about this file an operator cannot see from the screen.
- *
- * neither importer creates an account it cannot find, so a company that does not already hold this
- * deployment's chart fails the import after the file is on disk. the chart itself is on this screen
- * already — the correction form's pickers draw it — so this names the constraint and lists nothing.
- */
-const ACCOUNTS_MUST_EXIST =
-	'The QuickBooks or Xero company you import into must already hold this deployment’s accounts — neither creates one that is missing.';
 
 /**
  * what a write that failed says, keyed to no box.
@@ -172,14 +120,6 @@ const SCREEN_TITLE = 'Books';
 
 /** the blank a picker opens on, so no account is chosen by the browser falling to the first one. */
 const CHOOSE_ACCOUNT = { value: '', label: 'Choose an account' };
-
-/**
- * the blank the accounting system opens on, for the same reason.
- *
- * there is no default target: the file is shaped for one package and named after it, so a package
- * the browser fell to is a file that imports into the other one as unmatched accounts.
- */
-const CHOOSE_TARGET = { value: '', label: 'Choose one' };
 
 /** the element the table's caption is named by. */
 const CAPTION_ID = 'books-caption';
@@ -321,30 +261,8 @@ export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
 }
 
-/**
- * what the download control says and offers, or `null` where there is nothing to say yet.
- *
- * `null` covers a first visit and an address whose range cannot be read alike: neither is a range
- * an operator asked a question about, and there is no count to state for either.
- */
-type JournalState = { href: string; lines: number } | { refusal: string } | null;
-
-/**
- * what the range refused by the shaping is told, with the figures that refusal carries.
- *
- * worded here and not in the page for the reason the movement lines are: the refusal is read off a
- * shape only the server half has, and what the screen draws is the sentence. it names what the
- * operator has to narrow and never how — the range is two boxes directly above it.
- */
-function refusalOf(refusal: JournalFileRefusal, target: JournalTarget): string {
-	return refusal.reason === 'too_many_rows'
-		? `That range holds ${refusal.rows} lines and ${JOURNAL_TARGET_LABELS[target]} takes ${refusal.cap} in one file. Ask for a shorter range.`
-		: `That range holds gifts in ${refusal.currencies.join(', ')}, and one file holds one currency. Ask for a range holding one.`;
-}
-
-export async function loader({ context, request }: Route.LoaderArgs) {
+export async function loader({ context }: Route.LoaderArgs) {
 	const db = context.get(database);
-	const params = new URL(request.url).searchParams;
 
 	// derived from the seeded chart with no read, so the pickers stand whether or not the list
 	// below them could be read.
@@ -363,56 +281,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		console.error('reading the books failed:', e);
 	}
 
-	// the same read and the same shaping the file itself is made by, so the count stated before the
-	// press and the refusal drawn in place of it are the download's own answers rather than a second
-	// reading of what a target takes. the file is shaped and thrown away; the caps in
-	// `$lib/server/ledger/journal-file.ts` are what bound how big the thing thrown away can be.
-	//
-	// here rather than in a helper beside this loader: a module-scope function survives the bundler
-	// dropping the export that called it, so a `$lib/server/**` import reached from one is in the
-	// browser bundle — ../routes.spec.ts sweeps for exactly that.
-	const range = readJournalRange(params);
-	let journal: JournalState = null;
-	if (!range.ok) {
-		// a range nobody asked for and one no box could have produced are both left unsaid; the two
-		// days in the wrong order is neither.
-		if (range.problems.some(({ problem }) => problem === RANGE_REVERSED)) {
-			journal = { refusal: RANGE_BACKWARDS };
-		}
-	} else {
-		try {
-			const groups = await readEntryGroupsInRange(db, range.from, range.to);
-			const file = journalFile(range.target, groups);
-			journal = file.ok
-				? {
-						href: `${JOURNAL}?${journalRangeQuery(range.target, range.from, range.to)}`,
-						// one row per ledger line, which is what both files are counted in.
-						lines: groups.reduce((total, group) => total + group.lines.length, 0)
-					}
-				: { refusal: refusalOf(file.refusal, range.target) };
-		} catch (e) {
-			// the same diagnostic the list's own read logs, and for the same reason.
-			console.error('reading a range of the books failed:', e);
-			journal = { refusal: JOURNAL_READ_FAILED };
-		}
-	}
-
 	return {
 		accounts: [...labels].map(([value, label]) => ({ value, label })),
-		// the range as it was asked for, echoed so the boxes keep it. the text and never the read
-		// values: a box holding what was typed is what lets an unreadable day be corrected rather
-		// than cleared.
-		asked: {
-			from: params.get(JOURNAL_RANGE_FIELDS.from) ?? '',
-			to: params.get(JOURNAL_RANGE_FIELDS.to) ?? '',
-			target: params.get(JOURNAL_RANGE_FIELDS.target) ?? ''
-		},
-		journal,
-		// what an operator may shape the file for, worded here for the same reason the chart is.
-		targets: JOURNAL_TARGETS_OFFERED.map((target) => ({
-			value: target,
-			label: JOURNAL_TARGET_LABELS[target]
-		})),
 		// the id the next correction is posted under, minted here rather than in the action — see
 		// `source_id` in `$lib/ledger/input-schema.ts` for what it buys and `postingId` in the
 		// component for when the screen holds an earlier one instead.
@@ -582,7 +452,7 @@ type Asked = {
 // every message beside the box it is about, a press that states what it will move before it moves
 // it, and the entries the correction is aimed at readable underneath.
 export default function Books({ loaderData, actionData }: Route.ComponentProps) {
-	const { accounts, sourceId, entries, limit, hasMore, asked, journal, targets } = loaderData;
+	const { accounts, sourceId, entries, limit, hasMore } = loaderData;
 
 	// the operator's own day, filled in once the page is in the browser. the server renders the box
 	// empty rather than with a day of its own: the Worker's clock is UTC and knows nothing of the
@@ -642,12 +512,8 @@ export default function Books({ loaderData, actionData }: Route.ComponentProps) 
 	const navigation = useNavigation();
 	// `!== 'idle'` and not `=== 'submitting'`: the revalidating load that follows the answer is
 	// `loading`, and a press held only through the first state is live again over boxes that still
-	// hold the correction. `formAction` is what keeps the sign-out form's own post from holding it,
-	// and `formMethod` what keeps the download block's own range check from holding it — that one
-	// submits to this same address, so the two forms are told apart by their method and nothing else.
-	const submitting = navigation.state !== 'idle' && navigation.formAction === SCREEN;
-	const posting = submitting && navigation.formMethod === 'POST';
-	const checking = submitting && navigation.formMethod === 'GET';
+	// hold the correction. `formAction` is what keeps the sign-out form's own post from holding it.
+	const posting = navigation.state !== 'idle' && navigation.formAction === SCREEN;
 
 	// what a refused attempt says about the attempt as a whole. the sentences about the boxes are
 	// under the boxes and are each field's own — with one exception, and it is the hidden box: a
@@ -694,98 +560,11 @@ export default function Books({ loaderData, actionData }: Route.ComponentProps) 
 	const options = [CHOOSE_ACCOUNT, ...accounts];
 	const count = entries?.length ?? 0;
 
-	// what the download control says, or nothing where no range has been asked about. it is dropped
-	// while a check is in flight: what the loader is still holding is the range before this press,
-	// and a count standing over boxes holding a different one is a figure about nothing on screen.
-	const journalNow = checking ? null : journal;
-	const statement =
-		journalNow === null
-			? null
-			: 'refusal' in journalNow
-				? journalNow.refusal
-				: `${journalNow.lines} ${journalNow.lines === 1 ? 'line' : 'lines'} in that range.`;
-
 	return (
 		// the narrow measure, not the wide one: what this screen is for is the form, and the table
 		// under it has four columns and its own scroll box, so it reads at this width where a form
 		// stretched to a table's measure does not.
 		<Column>
-			{/* the way out of the books, first: it is the reason someone who is not posting a
-			    correction is on this screen, and the form below it and the list under that are one
-			    pair — a block put between them would separate a correction from the entry it answers. */}
-			<Section>
-				<h2>For your accountant</h2>
-				{/* a `get`, so the range is the address: the screen and the file are asked the same
-				    three values the same way, and a link to either is a link to that range. no `action`
-				    attribute, so it submits to this screen. */}
-				<Form method="get" preventScrollReset>
-					<Stack>
-						{/* keyed on what was asked rather than seeded once: the boxes are uncontrolled and
-						    this form never unmounts, so a range arrived at by the browser's own back
-						    would leave them holding a different one. the keys are on the boxes and not
-						    on the form, which keeps the press that caused the move holding focus. */}
-						<div className="adm-pair adm-pair--side">
-							<Field
-								key={asked.from}
-								id="journal-from"
-								name={JOURNAL_RANGE_FIELDS.from}
-								label="From"
-								type="date"
-								required
-								defaultValue={asked.from}
-							/>
-							<Field
-								key={asked.to}
-								id="journal-to"
-								name={JOURNAL_RANGE_FIELDS.to}
-								label="To"
-								type="date"
-								required
-								defaultValue={asked.to}
-							/>
-						</div>
-						<SelectWithNote
-							key={asked.target}
-							id="journal-target"
-							name={JOURNAL_RANGE_FIELDS.target}
-							label="Accounting system"
-							required
-							options={[CHOOSE_TARGET, ...targets]}
-							defaultValue={asked.target}
-						/>
-						<p className="adm-prose">{ACCOUNTS_MUST_EXIST}</p>
-						<div className="adm-actions">
-							<Button
-								type="submit"
-								aria-busy={checking}
-								aria-disabled={checking || undefined}
-								onClick={(event) => {
-									if (checking) event.preventDefault();
-								}}
-							>
-								Check the range
-							</Button>
-							{/* a plain anchor and deliberately not the router's link: the address answers
-							    with a file rather than a screen, and react router would try to route to it
-							    (react-router/docs/how-to/resource-routes.md). it is drawn only over a range
-							    the file can be made of, so a refusal is not something to meet after the
-							    file is on disk. */}
-							{journalNow !== null && 'href' in journalNow ? (
-								<Button as="a" variant="primary" href={journalNow.href}>
-									Download
-								</Button>
-							) : null}
-							{/* what the press answered, beside the press — the count the file would hold,
-							    or why it would hold none. in a region mounted empty, so the words arriving
-							    are announced, and the row wraps them onto a line of their own where they
-							    are longer than a word. */}
-							<span className="adm-hint" role="status">
-								{statement}
-							</span>
-						</div>
-					</Stack>
-				</Form>
-			</Section>
 			{/* no `action` attribute, so this posts to the current url. conform's `getFormProps` puts
 			    the form's own id on the element, which is what its focus move looks the form up by
 			    — see the header of `$lib/admin/use-admin-form.ts`. `preventScrollReset` because the

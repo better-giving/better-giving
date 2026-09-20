@@ -1,11 +1,13 @@
 import { readAccountingDate } from './input-schema';
 import type { JournalTarget } from '../server/ledger/journal-file';
 
-// the three values the accountant's download is asked for, in the one place the screen that asks
-// for them and the route that answers may both import from.
+// the wire between the export screen and the accountant's download, both ways: the three values
+// the file is asked for, the box that says where a refusal is answered, and the codes a refusal
+// travels back under. one module, because every name here is written by one of those two files and
+// read by the other.
 //
-// not under `$lib/server/**`, for the reason ./sources.ts is not: `/admin/books` names these boxes
-// and builds the link that carries them, and a component cannot import a value from
+// not under `$lib/server/**`, for the reason ./sources.ts is not: the export screen names these
+// boxes and draws the sentence a code stands for, and a component cannot import a value from
 // `$lib/server/**` at all. what crosses from there is `JournalTarget`'s type, which leaves no
 // runtime edge; the targets themselves are the keys of `JOURNAL_TARGET_LABELS` below, so the set a
 // screen offers and the set a request is read against are one set.
@@ -28,6 +30,43 @@ export const JOURNAL_RANGE_FIELDS = {
 } as const;
 
 export type JournalRangeField = (typeof JOURNAL_RANGE_FIELDS)[keyof typeof JOURNAL_RANGE_FIELDS];
+
+/**
+ * the box the export screen's form carries, and the one value it holds.
+ *
+ * a press on that screen goes straight at the file, so a range the file cannot be made of is met
+ * *after* the press rather than before it — and the operator is standing on the screen when it
+ * happens. this box is what says so: carrying it, the route sends the reason back to the screen to
+ * be worded there; without it, the route answers the reason as text, which is what a hand-typed
+ * address gets.
+ *
+ * a box inside the form and not a query on the form's `action`, because a `get` form replaces the
+ * whole query string of whatever it submits to — an `action` carrying one would lose it on every
+ * press.
+ */
+export const JOURNAL_REFUSAL_FIELD = 'refusal';
+export const REFUSAL_ON_SCREEN = 'screen';
+
+/**
+ * why a range produced no file, as the address the operator is sent back to carries it.
+ *
+ * a closed set of codes and never the sentence itself: the screen renders what this names, and an
+ * address is something an operator can be handed, so a sentence off the wire would be a sentence
+ * anybody could put on /admin. the words are the screen's (`src/routes/_app.admin.donations.export.tsx`).
+ *
+ * the figures behind two of them — how many lines, which currencies — stay in the route's own text
+ * answer and do not travel. what the operator does about either is the same without them: ask for a
+ * shorter range, or one holding a single currency.
+ */
+export const JOURNAL_PROBLEM_FIELD = 'problem';
+export const JOURNAL_PROBLEMS = ['nothing_given', 'too_many_rows', 'mixed_currency'] as const;
+export type JournalProblem = (typeof JOURNAL_PROBLEMS)[number];
+
+/** the problem an address names, or `null` where it names none this app states. */
+export function readJournalProblem(params: URLSearchParams): JournalProblem | null {
+	const asked = params.get(JOURNAL_PROBLEM_FIELD);
+	return JOURNAL_PROBLEMS.find((problem) => problem === asked) ?? null;
+}
 
 /**
  * what an accounting package is called on a screen.
@@ -55,13 +94,14 @@ export const JOURNAL_TARGETS_OFFERED = Object.keys(
 /**
  * what a far end standing before the near one is told, under `to`.
  *
- * exported so ./journal-range.spec.ts asserts the sentence rather than a copy of it, and so
- * `/admin/books` can tell this refusal from the others: it is the only one of them the two date
- * boxes can be walked into, and the only one that screen words for a person.
+ * exported so ./journal-range.spec.ts asserts the sentence rather than a copy of it, and so the
+ * export screen's own rules can refuse the same range in the same words: it is the one refusal here
+ * the two date boxes can be walked into, and so the one an operator meets before a press rather
+ * than after it.
  *
  * it names no box, unlike `SAME_ACCOUNT` in ./input-schema.ts, because it is read in two registers
- * — under the wire name on a 4xx line and under the screen's own label beside the press — and a
- * sentence naming `From` would be right in one of them and odd in the other.
+ * — under the wire name on a 4xx line, and under the `To` box on the screen — and a sentence naming
+ * `From` would be right in one of them and odd in the other.
  */
 export const RANGE_REVERSED = 'must not be before the first day of the range';
 
@@ -74,10 +114,9 @@ export type JournalRangeProblem = {
 /**
  * the range and target a request asks for, or every value that stopped it being read.
  *
- * one shape for a value that is absent and one that is malformed, and that is deliberate: a
- * request carrying neither end is the screen's own first visit, which shows no count, and a
- * request carrying one bad end is a hand-typed address. neither produces a file, and nothing
- * downstream branches on which it was.
+ * one shape for a value that is absent and one that is malformed, and that is deliberate: both are
+ * a hand-typed address, because the screen's form carries two date boxes it checks before it lets a
+ * press through. neither produces a file, and nothing downstream branches on which it was.
  */
 export type JournalRangeRead =
 	| {
@@ -169,11 +208,13 @@ export function journalFileName(target: JournalTarget, from: Date, to: Date): st
 }
 
 /**
- * the three values written back out, as the query string a link to this range carries.
+ * the three values written back out, as the query string an address for this range carries.
  *
- * built from what was read rather than from what arrived, so the address the screen offers is one
- * `readJournalRange` reads back to the same range — anything else the caller was standing on is
- * left off rather than carried into the link.
+ * built from what was read rather than from what arrived, so the address is one `readJournalRange`
+ * reads back to the same range — anything else the caller was standing on is left off rather than
+ * carried along. it is what puts the range on the address a refused press is sent back to
+ * (`src/routes/_app.admin.donations.export_.journal.ts`), so the boxes land holding what was asked
+ * about.
  */
 export function journalRangeQuery(target: JournalTarget, from: Date, to: Date): string {
 	return new URLSearchParams({

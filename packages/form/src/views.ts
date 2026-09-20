@@ -1904,52 +1904,87 @@ export function createCard(
 		labelText: string,
 		autocomplete: string,
 		read: (api: DomApi) => FieldProps,
-		wording: (validity: ValidityState) => string
+		wording: (validity: ValidityState) => string,
+		// whether the label stands inside the box rather than over it, which is a question about
+		// where the box stands: a box inside a named group of boxes takes a floating label, a box
+		// standing on its own keeps a label over it. `.floating` in ./styles/parts.css argues it, and
+		// every call site answers it because neither answer is the one to fall into.
+		{ floating }: { readonly floating: boolean }
 	) => {
 		field.setAttribute('autocomplete', autocomplete);
+		// blank on purpose, and it is not a placeholder anybody reads: `:placeholder-shown` is how
+		// ./styles/parts.css asks whether the box is empty, so the label standing inside it knows
+		// when to float. a placeholder with words in it would be a second label competing with the
+		// real one for the same line, and gone the moment a donor needed it. it rides the same
+		// opt-in the sheet does: a box labelled over the top has nothing to ask.
+		if (floating) field.setAttribute('placeholder', ' ');
 		field.addEventListener('input', () => read(now()).onChange(field.value));
-		// the sentence sits in the row, under the control it is about, and is tied to it by
-		// `aria-describedby` while it is shown — so it is read out with the field rather than
-		// found by looking for it. it carries no `::part()` name for the reason ./parts.ts gives
-		// for every error surface: a host who could restyle it could restyle it into nothing.
+		// the sentence, drawn one way on every row the card has: the row's own child under the box,
+		// tied to it by `aria-describedby` while it is shown so that it is read out with the field
+		// rather than found by looking for it. where the label stands does not reach it — a floating
+		// row lays the box and the sentence out exactly as a row labelled over the top does
+		// (`.field-row.floating` in ./styles/layout.css). it carries no `::part()` name for the
+		// reason ./parts.ts gives for every error surface: a host who could restyle it could restyle
+		// it into nothing.
 		const problemId = `${field.id}-problem`;
 		const message = make(doc, 'p', { class: 'message', id: problemId, hidden: true });
 		detailsFields.push({ key, field, message, problemId, wording });
-		return make(doc, 'div', { class: 'field-row' }, [
-			make(doc, 'label', { part: part('label'), for: field.id }, [labelText]),
+		// the label holds the words and nothing else in either construction, so the box is named by
+		// the label itself and needs no naming attribute. the span a floating row wraps them in is
+		// what carries the two steps and the resting weight the move is drawn with, which is a split
+		// a host's `::part(label)` rule is written against (../custom-elements.json).
+		return make(doc, 'div', { class: floating ? 'field-row floating' : 'field-row' }, [
+			make(
+				doc,
+				'label',
+				{ part: part('label'), for: field.id },
+				floating ? [make(doc, 'span', { class: 'label-words' }, [labelText])] : [labelText]
+			),
 			field,
 			message
 		]);
 	};
 
+	// the one box on this step standing on its own, so its label stands over it like every other
+	// single box on the card.
 	const emailRow = textField(
 		'email',
 		emailField,
 		'Email',
 		'email',
 		(api) => api.emailField,
-		(validity) => (validity.valueMissing ? 'required for your receipt' : 'not an email address')
+		(validity) => (validity.valueMissing ? 'required for your receipt' : 'not an email address'),
+		{ floating: false }
 	);
+	// the pair is one ask, so it is one group with one legend — the same construction the two groups
+	// on the amount step take. `.names` stays the pair's own grid inside it, because the breakpoint
+	// it states is the one the tribute's row reuses (./styles/layout.css).
+	//
 	// one sentence for both rules a name can break. an empty field and a field holding a space are
 	// the same thing to the donor looking at it, and `patternMismatch` is what the second arrives
 	// as — see `NAME_PATTERN` in ./value.ts.
-	const namesRow = make(doc, 'div', { class: 'names' }, [
-		textField(
-			'firstName',
-			firstNameField,
-			'First name',
-			'given-name',
-			(api) => api.firstNameField,
-			() => 'required'
-		),
-		textField(
-			'lastName',
-			lastNameField,
-			'Last name',
-			'family-name',
-			(api) => api.lastNameField,
-			() => 'required'
-		)
+	const namesGroup = make(doc, 'fieldset', { class: 'group' }, [
+		make(doc, 'legend', { part: part('label') }, ['Your name']),
+		make(doc, 'div', { class: 'names' }, [
+			textField(
+				'firstName',
+				firstNameField,
+				'First name',
+				'given-name',
+				(api) => api.firstNameField,
+				() => 'required',
+				{ floating: true }
+			),
+			textField(
+				'lastName',
+				lastNameField,
+				'Last name',
+				'family-name',
+				(api) => api.lastNameField,
+				() => 'required',
+				{ floating: true }
+			)
+		])
 	]);
 
 	const consentToggle = make(doc, 'input', { part: part('checkbox'), type: 'checkbox' });
@@ -2024,7 +2059,7 @@ export function createCard(
 	const detailsStep = make(doc, 'section', { class: 'step step-details', hidden: true }, [
 		detailsHead.head,
 		emailRow,
-		namesRow,
+		namesGroup,
 		consentRow,
 		detailsContinue,
 		challenge

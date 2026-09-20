@@ -188,7 +188,7 @@ export function heldNames(read: VarsRead): ReadonlySet<string> {
 /**
  * the six rows, from the reading the binary answered with.
  *
- * **a door that did not answer never reaches here.** the twenty-four values come off the account in
+ * **a door that did not answer never reaches here.** the twenty-seven values come off the account in
  * one read that is scoped to no fold, so a console that could not take it draws no fold at all —
  * the face is `blocked` and this is not called. `heldNames`'s empty fallback is what that arm would
  * read as, and it is stated rather than asserted because an assertion is a way for this to throw

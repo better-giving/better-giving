@@ -54,6 +54,7 @@ A slice reaching a stack no seat above covers is a question for the user, naming
 | ----------------------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | double-entry ledger                 | `packages/app/src/lib/server/ledger/`                                                        | `posting.ts` header                                                         |
 | schema, encodings, `STRICT`         | `packages/app/src/lib/server/db/`                                                            | `schema.ts` header                                                          |
+| the books sent to an outside ledger | `packages/app/src/lib/server/accounting/`                                                    | `provider.ts` header for the port, `deliver.ts`'s for what is sent when     |
 | migrations                          | `packages/app/migrations/`                                                                   | `CONTRIBUTING.md` → Migrations                                              |
 | tests and their pools               | `*.spec.ts`, `*.workers.spec.ts`, `*.dom.spec.ts`, `*.browser.spec.ts`                       | `CONTRIBUTING.md` → Tests                                                   |
 | deploy, secrets, operating          | —                                                                                            | `DEPLOY.md`                                                                 |

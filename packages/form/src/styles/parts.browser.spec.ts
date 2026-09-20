@@ -152,35 +152,48 @@ async function mount(config: FormConfig = CONFIG): Promise<Mounted> {
 	return { tag, host, shadow, card: card as HTMLElement };
 }
 
+/** one box given what a donor would have typed into it, the way a keystroke reaches the flow. */
+function fill(shadow: ShadowRoot, id: string, value: string): void {
+	const field = shadow.querySelector(id) as HTMLInputElement;
+	field.value = value;
+	field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/** the press onto the next step, on whichever step is on screen. */
+function onward(shadow: ShadowRoot): void {
+	(
+		shadow.querySelector(
+			".step:not([hidden]) [part~='action']:not([part~='submit'])"
+		) as HTMLElement
+	).click();
+}
+
 /**
- * the donor on the review step, which is the only step the fee control and the payment box are
- * drawn on.
+ * the donor on the details step, which is where the three boxes a receipt is addressed from are.
  *
  * walked rather than un-hidden by hand: a `display: none` subtree has no used size at all, so a
  * shortcut here would measure `NaN` and pass every comparison written the other way round.
  */
-async function atReview(shadow: ShadowRoot): Promise<void> {
+async function atDetails(shadow: ShadowRoot): Promise<void> {
 	const pick = (selector: string, at = 0) =>
 		(shadow.querySelectorAll(selector)[at] as HTMLElement).click();
-	const fill = (id: string, value: string) => {
-		const field = shadow.querySelector(id) as HTMLInputElement;
-		field.value = value;
-		field.dispatchEvent(new Event('input', { bubbles: true }));
-	};
-	const onward = () =>
-		(
-			shadow.querySelector(
-				".step:not([hidden]) [part~='action']:not([part~='submit'])"
-			) as HTMLElement
-		).click();
 
 	pick("[part~='frequency-option'] input");
 	pick("[part~='amount-option'] input");
-	onward();
-	fill('#email', 'donor@example.org');
-	fill('#first-name', 'Ada');
-	fill('#last-name', 'Lovelace');
-	onward();
+	onward(shadow);
+	await settle();
+}
+
+/**
+ * the donor on the review step, which is the only step the fee control and the payment box are
+ * drawn on.
+ */
+async function atReview(shadow: ShadowRoot): Promise<void> {
+	await atDetails(shadow);
+	fill(shadow, '#email', 'donor@example.org');
+	fill(shadow, '#first-name', 'Ada');
+	fill(shadow, '#last-name', 'Lovelace');
+	onward(shadow);
 	await settle();
 }
 
@@ -192,6 +205,16 @@ function used(shadow: ShadowRoot, token: string): string {
 	const color = getComputedStyle(probe).color;
 	probe.remove();
 	return color;
+}
+
+/** one length token as the px an engine resolves it to inside the card. */
+function step(shadow: ShadowRoot, token: string): number {
+	const probe = document.createElement('div');
+	probe.style.cssText = `font-size: var(${token})`;
+	shadow.appendChild(probe);
+	const size = parseFloat(getComputedStyle(probe).fontSize);
+	probe.remove();
+	return size;
 }
 
 /**
@@ -427,6 +450,10 @@ describe('the sizes the card draws its type at', () => {
 	// the floor's slack above and below it — never a block step wider than the inline one. every box
 	// a donor types or picks in is measured, the amount entry through the input that carries its
 	// padding; the textarea is the one box drawn taller than a line and is not one of these.
+	//
+	// it holds with no exception, the boxes carrying a label inside them included: that label is
+	// seated against the box's own box rather than in room the box keeps for it, so there is no
+	// band above the words for this rule to have to make an allowance for.
 	it('pads no box a donor types in more above and below the words than beside them', async () => {
 		const { shadow } = await mount();
 		const boxes = Array.from(
@@ -443,6 +470,397 @@ describe('the sizes the card draws its type at', () => {
 			expect(block, box.id).toBeLessThanOrEqual(parseFloat(style.paddingInlineStart));
 			expect(block, box.id).toBeLessThanOrEqual(parseFloat(style.paddingInlineEnd));
 		}
+	});
+});
+
+/*
+ * the pair of boxes under "Your name", whose labels stand inside them.
+ *
+ * a floating label is a label that moved, so what is measured is where its words are drawn rather
+ * than whether a rule declaring it exists: resting they sit on the box's own middle, and once the
+ * box has the caret or a value they sit on its top edge with the border knocked out behind them, at
+ * a step smaller than they rested at and in from the corner the box is drawn with. the refusal the
+ * box is carrying is no part of that — it stands under the box, where every other row on the card
+ * stands its own. a lightweight DOM lays out none of it, and a rule that floated nothing would read
+ * as a fix.
+ */
+describe('the labels on the pair under the name', () => {
+	/**
+	 * where a label's own words are drawn, which is not where its box is: the box is stretched
+	 * across the control it stands in so that half of it is half of the control (`.floating` in
+	 * ../styles/parts.css), and only the words inside it move against the box's edge.
+	 */
+	function ink(label: HTMLElement): DOMRect {
+		const range = document.createRange();
+		range.selectNodeContents(label);
+		return range.getBoundingClientRect();
+	}
+
+	/** the middle of a box, on the axis the label travels along. */
+	function middle(rect: DOMRect): number {
+		return (rect.top + rect.bottom) / 2;
+	}
+
+	/**
+	 * one of the pair's boxes and the two things the row draws with it: the label naming it, which
+	 * stands over the box and out of the row's flow, and the refusal it is carrying while it is
+	 * refused, which is the row's own child under the box. the label holds the naming span and
+	 * nothing else, so neither of the two is read off the other.
+	 */
+	function field(
+		shadow: ShadowRoot,
+		id: string
+	): {
+		box: HTMLElement;
+		label: HTMLElement;
+		row: HTMLElement;
+		words: HTMLElement;
+		refusal: HTMLElement;
+	} {
+		const box = shadow.querySelector(id) as HTMLElement;
+		const label = shadow.querySelector(`label[for="${id.slice(1)}"]`) as HTMLElement;
+		return {
+			box,
+			label,
+			row: box.closest('.field-row') as HTMLElement,
+			words: label.querySelector('.label-words') as HTMLElement,
+			refusal: shadow.querySelector(`${id}-problem`) as HTMLElement
+		};
+	}
+
+	/** the corner the box is drawn with, which is what the floated label has to start clear of. */
+	function corner(box: HTMLElement): number {
+		return parseFloat(getComputedStyle(box).borderStartStartRadius);
+	}
+
+	/**
+	 * a weight token as the engine resolved it, read the way `step` above reads a size: what the two
+	 * positions are measured against is the token the sheet spends, not a number restated here.
+	 */
+	function weight(shadow: ShadowRoot, token: string): string {
+		const probe = document.createElement('div');
+		probe.style.cssText = `font-weight: var(${token})`;
+		shadow.appendChild(probe);
+		const resolved = getComputedStyle(probe).fontWeight;
+		probe.remove();
+		return resolved;
+	}
+
+	// resting: the label is centred on the box, so an empty box reads as one thing rather than as a
+	// box with a caption sitting low in it. nothing is drawn beside it in this state — the box is
+	// empty and holds no caret.
+	it('centres the label on the box while it is empty and holds no caret', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { box, words } = field(shadow, '#first-name');
+
+		expect(middle(ink(words))).toBeCloseTo(middle(box.getBoundingClientRect()), 0);
+	});
+
+	// and it holds once a refused press has something to say about the box. the sentence lands under
+	// the box, in the row's own second track, and the label's seat is measured against the box's own
+	// track alone — so nothing the refusal added to the column moves the words off the box's middle.
+	it('keeps it there once the box is refused', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		onward(shadow);
+		await settle();
+		const { box, words, refusal } = field(shadow, '#first-name');
+
+		expect(refusal.hidden).toBe(false);
+		expect(middle(ink(words))).toBeCloseTo(middle(box.getBoundingClientRect()), 0);
+	});
+
+	// the two sizes, which is the whole of what the move says beyond the direction of it. floated the
+	// label is an annotation on the box's edge and takes the smallest step the card has; resting it
+	// stands where the value will and is drawn at the value's own reading size. one box, both
+	// readings: what a donor read as a second heading was a resolved step and not a declaration.
+	it('draws the floated label a step smaller than the resting one', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { label, words } = field(shadow, '#first-name');
+
+		const resting = parseFloat(getComputedStyle(words).fontSize);
+
+		fill(shadow, '#first-name', 'Ada');
+		await landed(label);
+		const floated = parseFloat(getComputedStyle(words).fontSize);
+
+		expect(resting).toBeCloseTo(step(shadow, '--_t-md'), 1);
+		expect(floated).toBeCloseTo(step(shadow, '--_t-xs'), 1);
+		expect(floated).toBeLessThan(resting);
+	});
+
+	// and the two weights, which is the other half of that reading. resting, the words stand where the
+	// value will and are drawn as this card's own placeholder is — the quiet weight, so what a donor
+	// reads inside the box is the box waiting rather than something already typed into it
+	// (`[part~='amount-input'] input::placeholder` in ../styles/parts.css is where that pair is stated).
+	it('draws the resting label at the weight this card draws a placeholder at', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { words } = field(shadow, '#first-name');
+
+		expect(getComputedStyle(words).fontWeight).toBe(weight(shadow, '--_w-normal'));
+	});
+
+	// and floated they are the box's name, at the weight every other label on the card is drawn at.
+	// measured against the resting reading too: one weight in both positions is a resting label that
+	// reads as a value, and it is a reading no declaration in the sheet states.
+	it('returns it to a label’s own weight once it floats', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { label, words } = field(shadow, '#first-name');
+
+		const resting = Number(getComputedStyle(words).fontWeight);
+
+		fill(shadow, '#first-name', 'Ada');
+		await landed(label);
+
+		expect(getComputedStyle(words).fontWeight).toBe(weight(shadow, '--_w-bold'));
+		expect(Number(getComputedStyle(words).fontWeight)).toBeGreaterThan(resting);
+	});
+
+	// and the two inks, which is the third of those readings. resting, the words stand where the value
+	// will and take the quietest rung this card can set words in on a field's fill; floated they are
+	// the box's name and are back at the ink every other label on the card is drawn at. both rungs are
+	// read off the sheet rather than restated here, and the two are read against each other as well:
+	// one ink in both positions is a resting label that reads as a value, and no declaration says it.
+	it('draws the resting label a rung quieter than it is floated', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { label, words } = field(shadow, '#first-name');
+
+		expect(getComputedStyle(words).color).toBe(used(shadow, '--_n10'));
+
+		fill(shadow, '#first-name', 'Ada');
+		await landed(label);
+
+		expect(getComputedStyle(words).color).toBe(used(shadow, '--_n11'));
+		expect(used(shadow, '--_n10')).not.toBe(used(shadow, '--_n11'));
+	});
+
+	// and the resting rung is the placeholder's own, because the two are the same thing on this card:
+	// words standing in a value's place until a donor types. both inks are read off what was drawn
+	// rather than off the token alone, so a sheet moving one of them and not the other fails here
+	// (`[part~='amount-input'] input::placeholder` in ../styles/parts.css argues the pair).
+	it('draws the resting label at the ink this card draws a placeholder at', async () => {
+		const { shadow } = await mount();
+		const entry = shadow.querySelector("[part~='amount-input'] input") as HTMLElement;
+		const placeholder = getComputedStyle(entry, '::placeholder').color;
+
+		await atDetails(shadow);
+		const { words } = field(shadow, '#first-name');
+
+		expect(placeholder).toBe(used(shadow, '--_n10'));
+		expect(getComputedStyle(words).color).toBe(placeholder);
+	});
+
+	// and both of those rungs are declared on the part itself, which is the whole of what a host's
+	// one `::part(label)` rule governs: an ink declared on the naming span inside the label is an ink
+	// no outer rule reaches, so a host's colour would land on the floated position and be ignored
+	// under it. the refusal is outside the part altogether and keeps its own ink in both positions,
+	// which is what keeps a host's label colour off a sentence saying the box was refused.
+	it('hands a host’s one ::part(label) rule the ink in both positions', async () => {
+		const { tag, shadow } = await mount();
+		await atDetails(shadow);
+		onward(shadow);
+		await settle();
+		const { box, label, words, refusal } = field(shadow, '#first-name');
+		// the case's own literal, and neither rung the sheet spends: a position still taking its own
+		// declaration reads as that rung rather than as this one.
+		const host = 'rgb(0, 128, 0)';
+		page(`${tag}::part(label) { color: ${host}; }`);
+
+		expect(host).not.toBe(used(shadow, '--_n10'));
+		expect(host).not.toBe(used(shadow, '--_n11'));
+		expect(refusal.hidden).toBe(false);
+
+		expect(getComputedStyle(words).color).toBe(host);
+		expect(getComputedStyle(refusal).color).toBe(used(shadow, '--_bad'));
+
+		// the caret rather than a value: a value would answer the refusal and take the sentence away
+		// before the floated position could be read with it.
+		await caretOn(box);
+		await landed(label);
+
+		expect(getComputedStyle(words).color).toBe(host);
+		expect(getComputedStyle(refusal).color).toBe(used(shadow, '--_bad'));
+	});
+
+	// and floated, the label straddles the edge rather than rising into a band inside the box: its
+	// middle is on the box's own top edge, which is what leaves the box no room to reserve.
+	it('sets the label on the box\u2019s top edge once the box holds a value', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { box, label, words } = field(shadow, '#first-name');
+
+		fill(shadow, '#first-name', 'Ada');
+		await landed(label);
+
+		expect(middle(ink(words))).toBeCloseTo(box.getBoundingClientRect().top, 0);
+	});
+
+	// the caret alone floats it too, so a donor who has tabbed into an empty box is typing under a
+	// label rather than over one.
+	it('floats it the same way for a caret in an empty box', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { box, label, words } = field(shadow, '#last-name');
+
+		await caretOn(box);
+		await landed(label);
+
+		expect(middle(ink(words))).toBeCloseTo(box.getBoundingClientRect().top, 0);
+	});
+
+	// the inline axis moves too, and the two ends of it are the whole of why the box's own inline
+	// inset is a token rather than the step every other box pads by: resting, the label starts
+	// exactly where the words that replace it will.
+	//
+	// floated it comes in to the corner the box is drawn with and no further, which is the one end
+	// of this axis a declaration cannot settle: a label flush with the control's own edge leaves the
+	// top-left arc standing outside the knockout as a stub beside the first letter, and what says
+	// the arc is clear is the used radius of the box itself.
+	it('starts the label on the words\u2019 own inset resting and clear of the corner floated', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { box, label, words } = field(shadow, '#first-name');
+		const style = getComputedStyle(box);
+		// read off the box at the moment of each reading rather than once: the step is still
+		// arriving (`screen-enter` in ../styles/motion.css travels it by `0.75em`), so a box
+		// measured before the fill and a label measured after it are a step apart on this axis.
+		const inset = () =>
+			box.getBoundingClientRect().left +
+			parseFloat(style.borderInlineStartWidth) +
+			parseFloat(style.paddingInlineStart);
+
+		expect(ink(words).left).toBeCloseTo(inset(), 0);
+
+		fill(shadow, '#first-name', 'Ada');
+		await landed(label);
+
+		const arc = corner(box);
+		expect(arc).toBeGreaterThan(0);
+		expect(ink(words).left - box.getBoundingClientRect().left).toBeGreaterThanOrEqual(arc);
+		expect(ink(words).left).toBeCloseTo(box.getBoundingClientRect().left + arc, 0);
+	});
+
+	// standing on the edge, the label has to be painted behind or the edge reads through its words.
+	// two fills and not one: the half above the edge covers the card and the half below covers the
+	// box, and a single flat colour would match one of them and show as a patch on the other. the
+	// band is at least the words' own line, which is what makes it an edge knocked out rather than a
+	// line the words happen to sit above.
+	it('knocks the edge out behind the floated label, one fill per side of it', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { box, label, words } = field(shadow, '#first-name');
+
+		// resting there is no edge behind the words, so there is nothing to knock out.
+		expect(getComputedStyle(words).backgroundImage).toBe('none');
+
+		fill(shadow, '#first-name', 'Ada');
+		await landed(label);
+		const painted = getComputedStyle(words);
+
+		// the band's own block extent, which is the second half of `background-size`.
+		const [, band = ''] = painted.backgroundSize.split(' ');
+
+		expect(painted.backgroundImage).toContain(used(shadow, '--_n1'));
+		expect(painted.backgroundImage).toContain(used(shadow, '--_n3'));
+		expect(parseFloat(band)).toBeGreaterThanOrEqual(ink(words).height);
+		// across the words and past the last letter, so no run of the edge is left inside the band's
+		// own span of it.
+		expect(words.getBoundingClientRect().width).toBeGreaterThan(ink(words).width);
+		// and no further than that: the label hugs its words rather than standing across the box, so
+		// the band covers the words alone. a band the width of the box is a box drawn with no top
+		// edge, which is the whole reason the words are what carries it.
+		expect(label.getBoundingClientRect().width).toBeLessThan(box.getBoundingClientRect().width);
+	});
+
+	// and the band is spent upward into the gap above the box and no further. it is centred on the
+	// edge and half of it stands over the box, so its own height is the whole of the clearance — a
+	// band drawn at the size the label used to be reaches past the legend's line and knocks a bite
+	// out of the words naming the pair.
+	it('keeps the band out of the row above the box', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { box, label, words } = field(shadow, '#first-name');
+		const legend = shadow.querySelector('fieldset.group > legend') as HTMLElement;
+
+		fill(shadow, '#first-name', 'Ada');
+		await landed(label);
+		const [, band = ''] = getComputedStyle(words).backgroundSize.split(' ');
+
+		const reach = box.getBoundingClientRect().top - parseFloat(band) / 2;
+		expect(parseFloat(band)).toBeGreaterThan(0);
+		expect(reach).toBeGreaterThan(legend.getBoundingClientRect().bottom);
+	});
+
+	// the box keeps one height through both states and reserves nothing for either, so a donor
+	// typing their name moves nothing on the step and the card's height never depends on what they
+	// typed.
+	it('draws the box at one height in both states and leaves the step where it is', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { box, label } = field(shadow, '#first-name');
+		const step = shadow.querySelector('.step-details') as HTMLElement;
+		const drawn = box.getBoundingClientRect().height;
+		const standing = step.getBoundingClientRect().height;
+
+		fill(shadow, '#first-name', 'Ada');
+		await landed(label);
+
+		expect(box.getBoundingClientRect().height).toBe(drawn);
+		expect(step.getBoundingClientRect().height).toBe(standing);
+	});
+
+	// the refusal, drawn under the box the way every other row on the card draws its own: the row's
+	// own child in the row's own column, at `.message`'s ink and step wherever it stands. nothing
+	// about the label's construction reaches it, which is why it is one element on every row.
+	it('draws a refused box’s refusal under the box, as a row labelled over the top draws one', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		onward(shadow);
+		await settle();
+		const { box, row, refusal } = field(shadow, '#first-name');
+
+		expect(refusal.hidden).toBe(false);
+		expect(refusal.tagName).toBe('P');
+		expect(refusal.parentElement).toBe(row);
+		expect(getComputedStyle(refusal).position).toBe('static');
+		// in the refusal's own ink and at its own step, which is `.message`'s wherever it is drawn.
+		expect(getComputedStyle(refusal).color).toBe(used(shadow, '--_bad'));
+		expect(parseFloat(getComputedStyle(refusal).fontSize)).toBeCloseTo(step(shadow, '--_t-xs'), 1);
+		expect(refusal.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+			box.getBoundingClientRect().bottom
+		);
+	});
+
+	// and the box that is not in the pair is drawn the way every other single box on the card is:
+	// its label over it, in the row's own flow, with none of the pair's construction reaching it —
+	// neither the seat, nor the knockout, nor the blank placeholder the two states are told apart by.
+	// the sentence is the one thing the two rows do share, and it stands under the box on both.
+	it('draws the email box\u2019s label over it, in the row\u2019s own flow', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		onward(shadow);
+		await settle();
+		const { box, label, row, refusal } = field(shadow, '#email');
+		const style = getComputedStyle(label);
+
+		expect(style.position).toBe('static');
+		expect(style.backgroundImage).toBe('none');
+		expect(label.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+			box.getBoundingClientRect().top
+		);
+		expect(box.hasAttribute('placeholder')).toBe(false);
+		expect(box.closest('.floating')).toBe(null);
+		expect(label.querySelector('.label-words')).toBe(null);
+		expect(refusal.hidden).toBe(false);
+		expect(refusal.parentElement).toBe(row);
+		expect(refusal.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+			box.getBoundingClientRect().bottom
+		);
 	});
 });
 
@@ -851,6 +1269,16 @@ describe('the coin list inside the crypto option', () => {
 		expect(shown(sol?.querySelector('.tick') ?? null)).toBe(false);
 		expect(shown(btc?.querySelector('.message') ?? null)).toBe(false);
 		expect(shown(sol?.querySelector('.message') ?? null)).toBe(true);
+	});
+
+	// the search box stands in a value's place exactly as the card's own boxes do, so it is drawn at
+	// the rung they are (`[part~='amount-input'] input::placeholder` in ../styles/parts.css argues the pair):
+	// this sheet is adopted into a root of its own and is the one place the card's rung can drift.
+	it('draws its placeholder at the rung the card draws a placeholder at', () => {
+		const root = drawn(false);
+		const input = root.querySelector('.picker input') as HTMLInputElement;
+
+		expect(getComputedStyle(input, '::placeholder').color).toBe(used(root, '--_n10'));
 	});
 
 	// the box is the field and its input draws nothing, so a ring given only to the open box leaves a

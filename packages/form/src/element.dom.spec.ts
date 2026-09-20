@@ -3334,6 +3334,29 @@ describe('the details step’s refusals', () => {
 		expect(card.find('#email').getAttribute('aria-invalid')).toBe('true');
 	});
 
+	// the refusal is the row's own child under the box, on a row whose label stands inside the box
+	// as on every other, and never a child of the label: the label holds the name alone, so the box
+	// is named by its own `<label for>` and described by the refusal while that is shown. both ids
+	// are in the same root as the control — an ARIA reference crosses no shadow boundary.
+	it('names a refused pair box by its label and describes it with the refusal', async () => {
+		const card = await atDetailsStep();
+		proceed(card);
+
+		const box = card.find('#first-name');
+		const refusal = card.find('#first-name-problem');
+
+		expect(box.hasAttribute('aria-labelledby')).toBe(false);
+		expect(card.text('label[for="first-name"]')).toBe('First name');
+		expect(box.getAttribute('aria-describedby')).toBe('first-name-problem');
+		expect(refusal.parentElement).toBe(box.parentElement);
+		expect(refusal.previousElementSibling).toBe(box);
+		expect(refusal.tagName).toBe('P');
+		// and the box standing on its own is drawn the same way, down to the element the sentence is
+		// written as: one construction, so nothing about it follows where the label went.
+		expect(card.find('#email').hasAttribute('aria-labelledby')).toBe(false);
+		expect(card.find('#email-problem').tagName).toBe('P');
+	});
+
 	it('stays on the step it refused rather than carrying the donor forward', async () => {
 		const card = await atDetailsStep();
 		proceed(card);

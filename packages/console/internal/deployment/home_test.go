@@ -114,7 +114,7 @@ func TestAConsoleHoldingNoSessionIsTheGateAndNotAFinding(t *testing.T) {
 	}
 }
 
-// every fold is read against the twenty-four, so a read that did not answer is the page and not a
+// every fold is read against the twenty-seven, so a read that did not answer is the page and not a
 // row.
 func TestValuesThatCouldNotBeReadTakeThePageAndNeverAFold(t *testing.T) {
 	answers := whole()

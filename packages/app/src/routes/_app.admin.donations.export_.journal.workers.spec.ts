@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { FORM_CURRENCY } from '$lib/forms/amounts';
+import { JOURNAL_REFUSAL_FIELD, REFUSAL_ON_SCREEN } from '$lib/ledger/journal-range';
 import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { postableId } from '$lib/server/db/accounts';
@@ -9,7 +10,7 @@ import { post, postingStatements } from '$lib/server/ledger/posting';
 import { uuidv7 } from 'uuidv7';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as layout from './_app';
-import * as journal from './_app.admin.books_.journal';
+import * as journal from './_app.admin.donations.export_.journal';
 
 // the accountant's download, driven through the chain the deployment serves it under.
 //
@@ -25,7 +26,7 @@ const ORIGIN = 'https://give.example';
 const PASSWORD = 'a-long-enough-password';
 
 /** the address the file is asked for at. */
-const ROUTE = '/admin/books/journal';
+const ROUTE = '/admin/donations/export/journal';
 
 let db: Db;
 let request: RouteRequester;
@@ -35,7 +36,7 @@ beforeAll(async () => {
 	db = createDb(env.DB);
 	request = mountRoutes([
 		{ path: undefined, module: layout },
-		{ path: 'admin/books/journal', module: journal }
+		{ path: 'admin/donations/export/journal', module: journal }
 	]);
 	session = await signIn();
 });
@@ -114,6 +115,30 @@ function rows(body: string): string[] {
 /** the range every case that is not about the range itself asks for. */
 const MARCH = { from: '2026-03-01', to: '2026-03-31' };
 
+/**
+ * asks for the file the way the export screen's own press asks for it.
+ *
+ * the one difference is the box that press carries: it says the operator is standing on a screen,
+ * so a range no file can be made of is sent back there to be worded rather than answered as text.
+ */
+async function press(query: Record<string, string>) {
+	return download({ ...query, [JOURNAL_REFUSAL_FIELD]: REFUSAL_ON_SCREEN });
+}
+
+/** where a refused press was sent, as the range and the problem the screen reads off it. */
+function sentBack(response: Response): Record<string, string | null> {
+	const location = response.headers.get('location');
+	if (location === null) throw new Error('that answer sent the operator nowhere');
+	const { pathname, searchParams } = new URL(location, ORIGIN);
+	return {
+		pathname,
+		from: searchParams.get('from'),
+		to: searchParams.get('to'),
+		target: searchParams.get('target'),
+		problem: searchParams.get('problem')
+	};
+}
+
 describe('a range the two importers can take', () => {
 	it('answers with the file its target is shaped for, named for the target and the range', async () => {
 		await seed(entry(new Date(Date.UTC(2026, 2, 15))));
@@ -133,6 +158,18 @@ describe('a range the two importers can take', () => {
 		);
 		expect(rows(body)).toHaveLength(3);
 		expect(rows(body)[1]).toContain('03/15/2026');
+	});
+
+	it('answers a press made on the screen with that same file', async () => {
+		await seed(entry(new Date(Date.UTC(2026, 2, 15))));
+
+		// the box that press carries says where a refusal is answered and nothing else, so a range
+		// that produces a file produces it either way.
+		const { response, body } = await press({ ...MARCH, target: 'quickbooks' });
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('content-disposition')).toContain('quickbooks-journal');
+		expect(rows(body)).toHaveLength(3);
 	});
 });
 
@@ -178,6 +215,17 @@ describe('a request the three values cannot be read from', () => {
 		expect(body).toContain('quickbooks');
 		expect(body).toContain('xero');
 	});
+
+	it('answers as text even where the press claims to have been made on a screen', async () => {
+		// the screen's own form cannot produce one of these — the boxes are date boxes and the
+		// target is the pressed button's value — so there is no sentence on that screen for it, and
+		// what is left is the value and the predicate of it.
+		const { response, body } = await press({ from: 'last March', to: MARCH.to, target: 'xero' });
+
+		expect(response.status).toBe(400);
+		expect(body).toBe('from must be a date');
+		expect(response.headers.get('location')).toBeNull();
+	});
 });
 
 describe('a range no file can be made of', () => {
@@ -208,16 +256,59 @@ describe('a range no file can be made of', () => {
 		expect(body).toContain('EUR');
 		expect(body).toContain('USD');
 	});
+
+	it('sends a press made on the screen back to it, naming which of the two refused it', async () => {
+		const many = Array.from({ length: 151 }, (_, day) =>
+			entry(new Date(Date.UTC(2026, 2, 1 + (day % 31))))
+		);
+		await seed(...many);
+
+		const { response } = await press({ ...MARCH, target: 'xero' });
+
+		expect(response.status).toBe(302);
+		expect(sentBack(response).problem).toBe('too_many_rows');
+	});
+
+	it('sends a press made on the screen back for a second currency too', async () => {
+		await seed(
+			entry(new Date(Date.UTC(2026, 2, 10))),
+			entry(new Date(Date.UTC(2026, 2, 11)), { currency: 'EUR' })
+		);
+
+		const { response } = await press({ ...MARCH, target: 'quickbooks' });
+
+		expect(response.status).toBe(302);
+		expect(sentBack(response).problem).toBe('mixed_currency');
+	});
 });
 
 describe('a range the books hold nothing in', () => {
-	it('answers with the file, holding its header row and nothing under it', async () => {
+	it('refuses it rather than answering with a file covering nothing', async () => {
 		await seed(entry(new Date(Date.UTC(2026, 3, 2))));
 
 		const { response, body } = await download({ ...MARCH, target: 'xero' });
 
-		expect(response.status).toBe(200);
-		expect(rows(body)).toEqual(['Narration,Date,Description,AccountCode,TaxRate,Amount']);
+		// a header row with nothing under it is a valid file that imports as zero, which is why
+		// `$lib/server/ledger/journal-file.ts` still shapes one. what it is not is an answer: an
+		// operator handed it has been told nothing about the range they asked about.
+		expect(response.status).toBe(422);
+		expect(body).toContain('nothing');
+		expect(response.headers.get('content-disposition')).toBeNull();
+	});
+
+	it('sends a press made on the screen back to it, saying so', async () => {
+		await seed(entry(new Date(Date.UTC(2026, 3, 2))));
+
+		const { response } = await press({ ...MARCH, target: 'xero' });
+
+		expect(response.status).toBe(302);
+		// the range travels back with it, so the boxes go on holding what was asked about.
+		expect(sentBack(response)).toEqual({
+			pathname: '/admin/donations/export',
+			...MARCH,
+			target: 'xero',
+			problem: 'nothing_given'
+		});
 	});
 });
 

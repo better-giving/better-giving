@@ -12,10 +12,10 @@ import (
 	"github.com/better-giving/console/internal/state"
 )
 
-// the seven errands this console proxies to the deployment: the organisation's legal identity and
-// where it reaches the operator, the test send, the payments reading, the repeating-gifts standing
-// and the press that provisions it, the site list, and the press that registers the hostnames a
-// donor is drawn wallet buttons on.
+// the errands this console proxies to the deployment: the organisation's legal identity and where
+// it reaches the operator, the test send, the payments reading, the repeating-gifts standing and
+// the press that provisions it, where the books stand and every press over that connection, the
+// site list, and the press that registers the hostnames a donor is drawn wallet buttons on.
 //
 // **the deployment is the authority for every one of them.** what a value may be, what a send did,
 // what the processor account holds and whether a site may be dropped are decided inside the worker,
@@ -128,6 +128,30 @@ func errandRoutes(routes *http.ServeMux, held func() (cf.Get, cf.Post)) {
 	routes.HandleFunc("POST /api/deployment/recurring", func(w http.ResponseWriter, r *http.Request) {
 		_, post := held()
 		answer(w, http.StatusOK, deployment.SetUpRecurring(r.Context(), post, ""))
+	})
+
+	// where this deployment's books stand.
+	//
+	// The connection is the deployment's alone: the tokens are rows in its own D1 and the chart of
+	// accounts is read with them, so this console holds no Intuit credential and asks Intuit nothing.
+	routes.HandleFunc("GET /api/deployment/quickbooks", func(w http.ResponseWriter, r *http.Request) {
+		get, _ := held()
+		answer(w, http.StatusOK, deployment.ReadQuickbooks(r.Context(), get))
+	})
+
+	// one press over that connection, forwarded as it was typed.
+	//
+	// The body is decoded into the press itself and nothing here reads which of the three accounts
+	// belongs on which press: the deployment settles that against the connected company's own chart
+	// and refuses an id those books do not hold, and a rule written here would be a second opinion on
+	// a chart this binary cannot see.
+	routes.HandleFunc("POST /api/deployment/quickbooks", func(w http.ResponseWriter, r *http.Request) {
+		var posted deployment.QuickbooksPress
+		if !decoded(w, r, &posted) {
+			return
+		}
+		_, post := held()
+		answer(w, http.StatusOK, deployment.PressQuickbooks(r.Context(), post, posted))
 	})
 
 	// asks the deployment to register the hostnames a donor is drawn wallet buttons on.

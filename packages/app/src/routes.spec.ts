@@ -2,6 +2,10 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { API_BASE_PATH } from '$lib/server/api/surface';
+import {
+	QUICKBOOKS_CALLBACK_PATH,
+	QUICKBOOKS_CONNECT_PATH
+} from '$lib/server/accounting/connect-link';
 import { CONSOLE_BASE_PATH } from '$lib/server/console/surface';
 import { CHARIOT_WEBHOOK_PATH } from '@better-giving/operator/chariot/webhook-subscription';
 import { NOWPAYMENTS_IPN_PATH } from '@better-giving/operator/nowpayments/ipn-callback';
@@ -186,6 +190,19 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// in for all of it is the delivery being verified against the raw body, checked before anything
 	// is parsed — which is also why none is under a layout at all, held below.
 	...Object.keys(PROCESSOR_CALLBACKS),
+	// where connecting a QuickBooks company begins, opened by the operator's own browser from an
+	// address the console handed them. it cannot sit behind the dashboard's login — the operator is
+	// holding the console, which is a different sign-in — and it cannot sit on the console's wire
+	// surface, because what has to happen is a browser redirect and that surface's credential is a
+	// bearer header a browser attaches to nothing. what stands in for a session is a short-lived
+	// signed address minted behind the console's own check and verified here
+	// ($lib/server/accounting/connect-link.ts), which is what stops an outsider connecting their own
+	// books and taking this organisation's gifts into them.
+	'routes/quickbooks.connect.tsx',
+	// where Intuit sends that browser back. it is unauthenticated for the same reason, and what
+	// stands in for a session is the `state` that went out with it, in a cookie on that same browser
+	// and cleared on every arm — so the round trip cannot be made twice.
+	'routes/quickbooks.callback.tsx',
 	// the donor's page, opened from a link the organisation published. it is unauthenticated
 	// because a donor holds no session and never could — there is nobody for a gate here to ask
 	// about. it initiates no payment itself and takes no submission: the gift goes through the
@@ -235,7 +252,12 @@ const CONSOLE_ROUTE_FILES: readonly string[] = [
 	// so a donor is drawn the wallet buttons. a press and no read — which hostnames the account
 	// holds is on the payments reading two files above, and the hostnames are settled here rather
 	// than sent, so nothing a caller says registers anything.
-	'routes/console.wallet-domains.ts'
+	'routes/console.wallet-domains.ts',
+	// where this deployment's books stand and every press an operator has over them: the company,
+	// the chart the three accounts are picked out of, how far behind the queue is, and the signed
+	// address that begins a connection. the connection's tokens are this deployment's own rows, so
+	// no console can read any of it.
+	'routes/console.quickbooks.ts'
 ];
 
 /**
@@ -520,6 +542,20 @@ describe('the route surface', () => {
 	});
 
 	/**
+	 * the accountant's file is served beside the screen that asks for it.
+	 *
+	 * the link to it is a plain anchor rather than the router's, so an address left under
+	 * /admin/books would be a pointer at a screen that exports nothing —
+	 * ./routes/_app.admin.donations.export.tsx is the one that asks for a range.
+	 */
+	it('serves the accountant\u2019s file beside the screen that asks for it', async () => {
+		expect(await matchedFileAt('/admin/donations/export/journal')).toBe(
+			'routes/_app.admin.donations.export_.journal.ts'
+		);
+		expect(await statusAt('/admin/books/journal')).toBe(404);
+	});
+
+	/**
 	 * an address nothing claims matches no route, so it matches nothing under the protected layout
 	 * either and the gate never runs for it — which is what puts the error page in front of a
 	 * caller with no session and keeps a deployment whose database is not answering able to say
@@ -570,6 +606,24 @@ describe('the route surface', () => {
 		{ address: API_BASE_PATH, file: API_LAYOUT },
 		{ address: CONSOLE_BASE_PATH, file: CONSOLE_LAYOUT }
 	])('keeps $address on $file', async ({ address, file }) => {
+		expect(await matchedFileAt(address)).toBe(file);
+	});
+
+	/**
+	 * the two addresses of the QuickBooks connection, pinned to the constants the rest of the tree
+	 * builds them from rather than to the file names.
+	 *
+	 * the same pin `PROCESSOR_CALLBACKS` above is, and for a failure of the same shape: the address
+	 * the console hands the operator and the `redirect_uri` sent to Intuit are both built from those
+	 * constants, and the one registered in Intuit's developer dashboard is typed from them too. a
+	 * route file renamed changes the path react router resolves and nothing else, so the constants
+	 * would go on naming an address that is now a 404 — and what reports it is Intuit refusing the
+	 * round trip on a deployment, with nothing here having gone red.
+	 */
+	it.each([
+		{ address: QUICKBOOKS_CONNECT_PATH, file: 'routes/quickbooks.connect.tsx' },
+		{ address: QUICKBOOKS_CALLBACK_PATH, file: 'routes/quickbooks.callback.tsx' }
+	])('answers $address with $file', async ({ address, file }) => {
 		expect(await matchedFileAt(address)).toBe(file);
 	});
 });

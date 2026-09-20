@@ -109,7 +109,7 @@ describe('the names a press carries a value for', () => {
 	});
 });
 
-describe('the groups the twenty-four are set in', () => {
+describe('the groups the twenty-seven are set in', () => {
 	it('covers the enumeration exactly, each name in one group or named as having none', () => {
 		const grouped = SECRET_GROUPS.flatMap((group) => group.names);
 		expect([...grouped, ...UNGROUPED_VARS].sort()).toEqual([...DEPLOY_VARS].sort());
@@ -118,7 +118,7 @@ describe('the groups the twenty-four are set in', () => {
 });
 
 describe('the boxes that arrive masked', () => {
-	it('is the seven values reading over a shoulder is enough to take, and no others', () => {
+	it('is the eight values reading over a shoulder is enough to take, and no others', () => {
 		// what makes a value one of these is what somebody could do with it after reading it off the
 		// screen, and the only place that judgement is recorded is the list itself — so this case is
 		// what makes changing the list deliberate.
@@ -129,12 +129,13 @@ describe('the boxes that arrive masked', () => {
 			'PAYPAL_CLIENT_SECRET',
 			'CHARIOT_API_KEY',
 			'NOWPAYMENTS_API_KEY',
-			'NOWPAYMENTS_IPN_SECRET'
+			'NOWPAYMENTS_IPN_SECRET',
+			'QUICKBOOKS_CLIENT_SECRET'
 		]);
 	});
 
-	it('leaves the other seventeen of the twenty-four legible, the three public halves among them', () => {
-		// held over the enumeration, so a twenty-fifth value lands unmasked and this case is where that
+	it('leaves the other nineteen of the twenty-seven legible, the three public halves among them', () => {
+		// held over the enumeration, so a twenty-eighth value lands unmasked and this case is where that
 		// shows. the three named are the ones worth asserting: each stands beside a masked box in the
 		// same fold and carries a word that reads like a credential, and ./secret-groups.ts argues why
 		// none is one.

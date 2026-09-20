@@ -71,11 +71,18 @@ function processorStatus(link: ProcessorLink): DestinationStatus {
 }
 
 /**
- * the rail, in three groups: the two sections an operator opens on, the processors under their own
- * heading, and the three that carry a gift out to the world.
+ * the rail, in four groups: the two sections an operator opens on, the processors under their own
+ * heading, the three that carry a gift out to the world, and the books on their own.
  *
  * every label is the section's own row label, except the site list's: its row label is a sentence
  * (`FOLD_LABELS.sites`), which the page states under its name rather than a cell carrying it.
+ *
+ * **the books cell is no section, so it is written out rather than made by `cell`** — that helper
+ * is keyed to a `SectionId` and reads a set-up row, and there is no row here. it carries no status
+ * for the same reason: no job waits on these books and a deployment that keeps them somewhere else
+ * is not half set up (packages/app/src/routes/console.quickbooks.ts). its mark is the one the
+ * dashboard gives its own books screen (packages/app/src/lib/admin/destinations.ts), so the two
+ * operator surfaces keep one vocabulary.
  */
 export function railGroups(
 	sections: readonly HomeSection[],
@@ -116,6 +123,11 @@ export function railGroups(
 				cell('sites', SITES_TITLE, 'globe', SITES_TITLE),
 				cell('smtp', FOLD_LABELS.smtp, 'mail'),
 				cell('notifications', FOLD_LABELS.notifications, 'bell')
+			]
+		},
+		{
+			destinations: [
+				{ label: 'QuickBooks', short: 'QuickBooks', href: '/quickbooks', mark: 'book-open' }
 			]
 		}
 	];

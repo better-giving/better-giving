@@ -21,7 +21,7 @@ export interface ConfigEnv {
 	 * not a credential: it is designed to sit in public HTML, and `/api/v1/forms/:id/config`
 	 * serves it to any browser that asks. so an operator sets it as a Worker var and can read
 	 * it back, where the secret key beside it is a secret and cannot be — DEPLOY.md draws that
-	 * split for all twenty-four. either arrives here as a string on the platform env, which is why
+	 * split for all twenty-seven. either arrives here as a string on the platform env, which is why
 	 * nothing below this line distinguishes them.
 	 */
 	readonly STRIPE_PUBLISHABLE_KEY?: string;
@@ -82,6 +82,23 @@ export interface ConfigEnv {
 	 * against it, so it is typed.
 	 */
 	readonly NOWPAYMENTS_OUTCOME_CURRENCY?: string;
+	/**
+	 * the client id of the org's own Intuit app, which is the half of the pair that names it.
+	 *
+	 * not a credential, for `STRIPE_PUBLISHABLE_KEY`'s reason: connecting a company sends the
+	 * operator's browser to Intuit with it in the query string.
+	 */
+	readonly QUICKBOOKS_CLIENT_ID?: string;
+	/** the matching client secret, which is what buys an OAuth token and every refresh of one. */
+	readonly QUICKBOOKS_CLIENT_SECRET?: string;
+	/**
+	 * the address Intuit's Accounting API answers on — `QUICKBOOKS_PRODUCTION_URL` for a real
+	 * company and `QUICKBOOKS_SANDBOX_URL` for a sandbox one (../accounting/quickbooks.ts).
+	 *
+	 * which of the two a token may be spent against is decided by the pair above rather than by the
+	 * address, and nothing in this app reads a stage, so it is typed the way `CHARIOT_API_URL` is.
+	 */
+	readonly QUICKBOOKS_API_URL?: string;
 	/** the mail host's submission hostname, e.g. `smtp.resend.com`. */
 	readonly SMTP_HOST?: string;
 	/**
@@ -184,7 +201,10 @@ export const CONFIG_VAR_NAMES = [
 	'CHARIOT_WEBHOOK_SECRET',
 	'NOWPAYMENTS_API_KEY',
 	'NOWPAYMENTS_IPN_SECRET',
-	'NOWPAYMENTS_OUTCOME_CURRENCY'
+	'NOWPAYMENTS_OUTCOME_CURRENCY',
+	'QUICKBOOKS_CLIENT_ID',
+	'QUICKBOOKS_CLIENT_SECRET',
+	'QUICKBOOKS_API_URL'
 ] as const satisfies readonly (keyof ConfigEnv)[];
 
 /**

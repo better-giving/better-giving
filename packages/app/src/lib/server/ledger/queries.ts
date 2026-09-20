@@ -217,6 +217,19 @@ export async function findEntryGroup(
 }
 
 /**
+ * one journal entry by its own id, with its lines — or `null` where no row carries it.
+ *
+ * the read the delivery to QuickBooks makes, and the only one keyed on the id rather than on the
+ * pair: `quickbooks_sync.entry_group_id` is what a queued row holds (../db/schema.ts), and it holds
+ * that because it is the foreign key to this table. no `limit`, because the id is the primary key.
+ */
+export async function findEntryGroupById(db: Db, id: string): Promise<EntryGroupListRow | null> {
+	const rows = await db.select(GROUP_COLUMNS).from(entryGroup).where(eq(entryGroup.id, id));
+	const [found] = await withLines(db, rows);
+	return found ?? null;
+}
+
+/**
  * the headers handed back with each one's lines under it, in posting order.
  *
  * one read for however many headers it is given, which is what keeps the parameter count

@@ -115,6 +115,16 @@ it('links to adding a donation that arrived in hand, on the line that counts the
 	expect(root.querySelector('.adm-tablelead')?.contains(link ?? null)).toBe(true);
 });
 
+it('opens the accountant’s export, beside the press that adds a gift', () => {
+	const root = screen([gift()]);
+	const link = [...root.querySelectorAll('a')].find((a) => a.textContent === 'Export');
+
+	expect(link?.getAttribute('href')).toBe('/admin/donations/export');
+	// on the same line as the press that adds one: both act on the list, and the export is the only
+	// way out of what the list holds.
+	expect(root.querySelector('.adm-tablelead')?.contains(link ?? null)).toBe(true);
+});
+
 it('keeps the press on a deployment that has taken no gifts', () => {
 	// the screen an operator is most likely to be pressing it on, and the one where the line it
 	// now sits on states no count.

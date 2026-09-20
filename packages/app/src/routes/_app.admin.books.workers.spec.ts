@@ -2,11 +2,8 @@ import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
-import { FORM_CURRENCY } from '$lib/forms/amounts';
-import { POSTING_ACCOUNTS, ROLLUPS, postableId } from '$lib/server/db/accounts';
+import { POSTING_ACCOUNTS, ROLLUPS } from '$lib/server/db/accounts';
 import { createDb, type Db } from '$lib/server/db/client';
-import { post as postEntryGroup, postingStatements } from '$lib/server/ledger/posting';
-import { uuidv7 } from 'uuidv7';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as layout from './_app';
 import * as books from './_app.admin.books';
@@ -129,48 +126,18 @@ async function stored() {
 	return { groups: groups.results, lines: lines.results };
 }
 
-/**
- * what the screen is handed, off one visit through the chain the deployment serves it under.
- *
- * `query` is the range and target the download block is looking at, which the screen reads off the
- * address it is standing on ($lib/ledger/journal-range.ts) — so a visit with none is the first one.
- */
-async function visit(query: Record<string, string> = {}) {
-	const url = new URL(SCREEN, ORIGIN);
-	for (const [name, value] of Object.entries(query)) url.searchParams.set(name, value);
-	const response = await request(new Request(url, { headers: { cookie: session } }));
+/** what the screen is handed, off one visit through the chain the deployment serves it under. */
+async function visit() {
+	const response = await request(
+		new Request(`${ORIGIN}${SCREEN}`, { headers: { cookie: session } })
+	);
 	expect(response.status).toBe(200);
 	return (await response.json()) as {
 		accounts: { value: string; label: string }[];
 		sourceId: string;
 		entries: { datedOn: string; source: string; movement: string[]; memo: string | null }[] | null;
 		hasMore: boolean;
-		asked: { from: string; to: string; target: string };
-		journal: { href: string; lines: number } | { refusal: string } | null;
 	};
-}
-
-/**
- * one balanced entry straight into the books, dated and denominated as a case needs it.
- *
- * through the ledger's own writer rather than by raw insert, and it is here beside `post()` rather
- * than posted through the screen because the screen's action writes one currency and one day's
- * worth of shape — the download block's refusals are about ranges no correction form can produce.
- */
-async function inTheBooks(occurredAt: Date, currency = FORM_CURRENCY): Promise<void> {
-	const posting = postEntryGroup({
-		sourceType: 'adjustment',
-		sourceId: uuidv7(),
-		currency,
-		occurredAt,
-		memo: 'Stripe fee that never posted.',
-		lines: [
-			{ accountId: postableId('processorFees'), amountMinor: 475 },
-			{ accountId: postableId('undepositedFunds'), amountMinor: -475 }
-		]
-	});
-	const [first, ...rest] = postingStatements(db, posting);
-	await db.batch([first, ...rest]);
 }
 
 /**
@@ -373,63 +340,5 @@ describe('the screen as it is served', () => {
 
 		expect(served.entries).toBe(null);
 		expect(served.accounts).toHaveLength(9);
-	});
-});
-
-describe('the accountant’s download', () => {
-	it('states nothing about a file until a range is asked for', async () => {
-		await inTheBooks(new Date(Date.UTC(2026, 2, 15)));
-
-		const { journal } = await visit();
-
-		// no default range: a guessed one is a count of something the operator never asked about.
-		expect(journal).toBeNull();
-	});
-
-	it('states how many lines the range would produce, and where the file is', async () => {
-		await inTheBooks(new Date(Date.UTC(2026, 2, 15)));
-
-		const { journal, asked } = await visit({
-			from: '2026-03-01',
-			to: '2026-03-31',
-			target: 'quickbooks'
-		});
-
-		expect(journal).toEqual({
-			lines: 2,
-			href: '/admin/books/journal?from=2026-03-01&to=2026-03-31&target=quickbooks'
-		});
-		// echoed, so the boxes keep the range that was asked for.
-		expect(asked).toEqual({ from: '2026-03-01', to: '2026-03-31', target: 'quickbooks' });
-	});
-
-	it('says why the file cannot be made, in place of a count and a link', async () => {
-		await inTheBooks(new Date(Date.UTC(2026, 2, 10)));
-		await inTheBooks(new Date(Date.UTC(2026, 2, 11)), 'EUR');
-
-		const { journal } = await visit({ from: '2026-03-01', to: '2026-03-31', target: 'quickbooks' });
-
-		// the figures the refusal carries, so the operator knows what to narrow.
-		expect(journal).toEqual({ refusal: expect.stringContaining('EUR') });
-	});
-
-	it('says a range written backwards ends before it starts, and offers no file', async () => {
-		await inTheBooks(new Date(Date.UTC(2026, 2, 15)));
-
-		const { journal } = await visit({
-			from: '2026-03-31',
-			to: '2026-03-01',
-			target: 'quickbooks'
-		});
-
-		// stated rather than left silent, unlike the refusals no box can produce: the two date
-		// boxes are what an operator walks into this one with.
-		expect(journal).toEqual({ refusal: expect.stringContaining('ends before it starts') });
-	});
-
-	it('states nothing about a file for a range that cannot be read', async () => {
-		const { journal } = await visit({ from: 'last March', to: '2026-03-31', target: 'quickbooks' });
-
-		expect(journal).toBeNull();
 	});
 });

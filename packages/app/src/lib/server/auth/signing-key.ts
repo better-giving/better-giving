@@ -14,7 +14,16 @@ import type { AuthEnv } from './env';
  * it is a row rather than a secret because of what it guards: cookie integrity only. it
  * is a tamper check over a session token whose authority is the `auth_session` row it
  * names, so anyone who can read it from D1 can already read the session tokens
- * themselves and gains nothing. that is what makes this the carve-out in CLAUDE.md's
+ * themselves and gains nothing.
+ *
+ * **it signs one other thing, and that one grants no more than the cookie does.** the
+ * short-lived address that begins a QuickBooks connection is signed with this key, under
+ * a purpose label of its own so the two can never be read as each other
+ * (`$lib/server/accounting/connect-link.ts`). what a valid one grants is the right to
+ * begin a flow that still cannot be finished without signing in at Intuit and choosing a
+ * company there — so the key guards who may start, and never who may connect.
+ *
+ * that is what makes this the carve-out in CLAUDE.md's
  * "integration credentials are deploy-time secrets" rule rather than a breach of it —
  * `ADMIN_PASSWORD` and the Stripe keys grant capability outside the database, and this
  * does not. see the note above `authSigningKey` in `db/auth-schema.ts`.

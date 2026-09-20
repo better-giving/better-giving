@@ -493,6 +493,40 @@ form {
 }
 
 /*
+ * a row whose label stands inside its box, and the three things that construction needs of the row.
+ *
+ * only the label moves. the box and the sentence under it are laid out here exactly as the row above
+ * lays them out — same order, same gap — and `.floating` in ./parts.css places the label alone.
+ *
+ * the column is a grid rather than a flex column, and that is what the label is positioned against:
+ * an out-of-flow child of a grid container that names a row resolves against that row's area
+ * (https://www.w3.org/TR/css-grid-1/#abspos) rather than against the whole column — so the label's
+ * box is the box's box, and neither the gap above it nor the sentence under it is in the arithmetic.
+ *
+ * the first cost is the column: the row states it rather than inheriting a flex item's stretch. an
+ * `auto` track is sized off its items, and a text box's intrinsic measure is a size the engine chose
+ * rather than one this card asked for, so the track would set the row's width instead of the row
+ * setting the box's. that is the same trap `.card-body` above states, and the same answer.
+ *
+ * the second is the block axis, and `start` is the answer to it. a grid distributes leftover block
+ * space into its own `auto` rows and a flex column leaves it at the end, so where the row is given
+ * more height than it asked for the box is what grows — and `.names` above gives it exactly that,
+ * stretching both of its columns to the taller of the two. one refused box of a pair would then
+ * draw the box beside it taller than itself, which is the one thing a pair cannot do: only the
+ * column carrying a sentence may reach further down the card. the flex row needs no such line, which
+ * is what says the stretch is this display's own and not something `.names` hands down.
+ * ./layout.browser.spec.ts measures the pair with one of the two refused.
+ *
+ * where the label goes and what it paints is `.floating` in ./parts.css.
+ */
+.field-row.floating {
+	position: relative;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	align-content: start;
+}
+
+/*
  * the box and its sentence, with the box in a fixed gutter. `start` rather than centred, because
  * the sentence wraps on a narrow card and a box centred against two lines sits against neither of
  * them — ./parts.css offsets it onto the first line's own box instead.

@@ -1,3 +1,7 @@
+import type {
+	QuickbooksPressReport,
+	QuickbooksReport
+} from '@better-giving/operator/console/quickbooks';
 import type { DEPLOY_VARS } from '@better-giving/operator/deploy-split';
 
 // what the binary answers, in the shapes it answers in.
@@ -86,14 +90,14 @@ export type HomeFace =
 	/** it is up, it answers, and the six folds are what is left. */
 	| { kind: 'ready'; address: string };
 
-/** one of the twenty-four values an operator configures a deployment with, every one of them a var. */
+/** one of the twenty-seven values an operator configures a deployment with, every one of them a var. */
 export type DeployVarName = (typeof DEPLOY_VARS)[number];
 
 /**
  * one var, as the deployment holds it.
  *
  * three states and not two. `absent` is nothing in the slot; `withheld` is a binding under one of
- * the twenty-four names that is not plain text, which is a deployment that stored the value as a
+ * the twenty-seven names that is not plain text, which is a deployment that stored the value as a
  * secret — the value is there and the deployment reads it, and the free press is the way out.
  * collapsing them would print the same cell over two deployments an operator has to do different
  * things to.
@@ -103,7 +107,7 @@ export type DeployedVar =
 	| { readonly name: DeployVarName; readonly kind: 'withheld' }
 	| { readonly name: DeployVarName; readonly kind: 'absent' };
 
-/** what the twenty-four read as, or which way they did not. */
+/** what the twenty-seven read as, or which way they did not. */
 export type VarsRead =
 	| { kind: 'read'; vars: DeployedVar[] }
 	/** the worker is not in the account, which is every run before a first deploy. */
@@ -117,7 +121,7 @@ export type VarsRead =
 	/** it answered, and in a shape nothing was written against. */
 	| { kind: 'unreadable'; detail: string };
 
-/** the twenty-four as the one door answered for them, whether or not it landed. */
+/** the twenty-seven as the one door answered for them, whether or not it landed. */
 export type DeployedValues = { vars: VarsRead };
 
 /**
@@ -191,7 +195,7 @@ export type HomeReading = {
 };
 
 /**
- * why there was nowhere to write one of the twenty-four to.
+ * why there was nowhere to write one of the twenty-seven to.
  *
  * two members and not the seven an address read has: a write finds out from its own answer, and the
  * only two things it can find out are that the account holds no such worker and that the binary
@@ -200,7 +204,7 @@ export type HomeReading = {
 export type NoWhere = { kind: 'not-deployed' } | { kind: 'no-credential'; detail: string };
 
 /**
- * the ways a write of one of the twenty-four did not happen.
+ * the ways a write of one of the twenty-seven did not happen.
  *
  * shared by both doors because they are the same four facts about the machine and the account:
  * every fold on this surface already draws the one it got.
@@ -215,7 +219,7 @@ export type ValuesRefusal =
 	| { kind: 'failed'; detail: string };
 
 /**
- * how a write of one or more of the twenty-four went, which is the one answer every press on the page
+ * how a write of one or more of the twenty-seven went, which is the one answer every press on the page
  * gets: each of them is a var and they all go through one door.
  *
  * `set` is the only one that left anything on the deployment. `nothing` is a press the binary
@@ -649,6 +653,43 @@ export type RecurringSetupReport = {
 
 export type RecurringSetup =
 	| { kind: 'reported'; report: RecurringSetupReport }
+	| { kind: 'unanswered'; read: NoReport };
+
+/**
+ * where this deployment's books stand, or which way the binary did not find out.
+ *
+ * the envelope is the binary's, as every answer here is, and what it carries is the deployment's
+ * own report taken from the module both ends of that wire are named in
+ * (`packages/operator/src/console/quickbooks.ts`). it is the one answer on this surface read off a
+ * shared type rather than spelled again: the page hands the report straight to a section written
+ * against those names (../lib/quickbooks-section.tsx), so a second spelling here would be a shape
+ * to convert between rather than a mirror to keep level.
+ */
+export type QuickbooksRead =
+	| { kind: 'read'; report: QuickbooksReport }
+	| { kind: 'unread'; read: NoReport };
+
+/**
+ * what one press carries: the press, and whatever that press acts on.
+ *
+ * the three picks and the day are sent, where every other press on this console names nothing — the
+ * deployment settles what they mean against the connected company's own chart, and refuses an id
+ * those books do not hold.
+ */
+export type QuickbooksPressBody =
+	| { press: 'connect' | 'retry' | 'disconnect' }
+	| { press: 'accounts'; income: string; fee: string; deposit: string }
+	| { press: 'start-date'; startAt: string };
+
+/**
+ * how one press on the connection went.
+ *
+ * the same two kinds a repeating-gifts press answers in ({@link RecurringSetup}): `reported` is the
+ * deployment saying what the press did, and `unanswered` is nothing coming back that says. which
+ * press it was is not on the wire — the page that made it knows, and a report names its own.
+ */
+export type QuickbooksPressed =
+	| { kind: 'reported'; report: QuickbooksPressReport }
 	| { kind: 'unanswered'; read: NoReport };
 
 /**

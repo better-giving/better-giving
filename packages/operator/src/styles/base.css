@@ -447,14 +447,16 @@
 	   it is resolved against this sheet, so every surface that imports it emits the file into its
 	   own output and none of them has to serve a public directory holding a second copy.
 
-	   the height is the mark box's and the width follows the picture. `aspect-ratio` is the file's
-	   own 246 × 111 rather than a value from ./tokens.css, and no token could hold it: it is a fact
-	   about a binary somebody else drew, and squaring it would squash the logo. what
-	   packages/operator/src/components/status/Brand.jsx says about the trademark is the rest of
-	   this rule's reason for existing.
+	   the height is the mark box's and the width follows the picture. each `aspect-ratio` is that
+	   file's own pixel dimensions rather than a value from ./tokens.css, and no token could hold
+	   one: it is a fact about a binary somebody else drew, and squaring Cloudflare's 246 × 111
+	   wordmark would squash it. the two `1 / 1`s beside it are their files' shape as well, not a
+	   default a square-looking logo falls back to. what
+	   packages/operator/src/components/status/Brand.jsx says about the trademarks is the rest of
+	   these rules' reason for existing.
 
-	   the box is on `.adm-brand` and the picture on the modifier, so what a second brand would add
-	   is a url and a shape and nothing else. a bare `.adm-brand` draws no picture and, with no
+	   the box is on `.adm-brand` and the picture on the modifier, so what a further brand adds is
+	   a url and a shape and nothing else. a bare `.adm-brand` draws no picture and, with no
 	   aspect of its own, no box either — which is the right answer for a class that names no
 	   brand. */
 	.adm-brand {
@@ -469,5 +471,15 @@
 	.adm-brand--cloudflare {
 		aspect-ratio: 246 / 111;
 		background-image: url('./brand/cloudflare.png');
+	}
+
+	.adm-brand--quickbooks {
+		aspect-ratio: 1 / 1;
+		background-image: url('./brand/quickbooks.png');
+	}
+
+	.adm-brand--xero {
+		aspect-ratio: 1 / 1;
+		background-image: url('./brand/xero.png');
 	}
 }

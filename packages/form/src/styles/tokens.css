@@ -661,6 +661,30 @@
 	--_adorn-lead: calc(var(--_root-size) * 2.25);
 
 	/*
+	 * the floating label's geometry, and the whole of it is one length: the inline inset both a
+	 * box's own words and the label resting inside it start at (`.floating` in ./parts.css).
+	 *
+	 * the block axis is not here and is no omission. where the label stands is stated against the
+	 * box's own box in both states — centred in it, and half of it higher — so the only length that
+	 * construction spends is one the box already had. a token for it would be this file stating a
+	 * height the field's own rule is what settles.
+	 *
+	 * off the clamped root rather than in `em`, for the reason `--_adorn-trail` above is: the box
+	 * and the label standing inside it are drawn at two sizes — the words at `max(16px, 1em)` and
+	 * the label at `--_t-md` resting and `--_t-xs` floated — so an `em` resolves to a different
+	 * length on each of them, and this is the length the box and the resting label have to agree on
+	 * exactly. a resting label whose inline start missed the words' by a pixel is the one
+	 * misalignment a donor reads, because the label is what the words replace. the floated seat is
+	 * the box's own corner and reads nothing from here, so this length holds whatever step the label
+	 * shrinks to.
+	 *
+	 * it is `--_sp3`'s own step, off the root rather than off whatever box reads it, and a box in
+	 * one of these rows pads to it instead of to `--_sp3`: one length for the two rules rather than
+	 * one each, so they cannot come to disagree.
+	 */
+	--_label-lead: calc(var(--_root-size) * 0.75);
+
+	/*
 	 * how far each mark stands off the field's own border — not off the strip it stands in, which is
 	 * a box wide enough to hold it rather than a measurement of where it sits.
 	 *

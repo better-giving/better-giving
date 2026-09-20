@@ -594,12 +594,17 @@
 		   the tone's text rung instead, at 4.67:1 — the second role the ochre's shape pushes
 		   off the solid rung. */
 		--admin-field-border-needed: var(--admin-attention-11);
-		/* placeholder text is read rather than decorative — inside a card field it is what
-		   names the field — so 4.5:1 applies to it, and both text rungs now clear that on the
-		   field ground: rung 10 reaches 4.97:1 and rung 11 reaches 6.15:1. it takes rung 11 so
-		   it stays a rung below `--admin-ink-muted` rather than beside it: what a reader has to
-		   be able to read inside a box cannot follow how quiet an annotation is. */
-		--admin-field-placeholder: var(--admin-neutral-11);
+		/* placeholder text is read rather than decorative — it is the example of the value a
+		   box is waiting for — so 4.5:1 applies to it, and this is the lightest rung that
+		   clears it on both grounds a placeholder is drawn on: 4.97:1 on `--admin-field-bg`
+		   and 4.56:1 on `--admin-field-bg-disabled`, where a box an operator cannot type in
+		   goes on showing its example. the rung under it carries words on neither —
+		   `--admin-neutral-9` is 3.24:1 on the first and 2.98:1 on the second.
+
+		   `--admin-ink-muted` resolves to this same rung and is not the same decision: an
+		   example standing inside a box and an annotation standing beside one are two roles,
+		   and either may be re-cut without the other. neither is an alias of the other. */
+		--admin-field-placeholder: var(--admin-neutral-10);
 		/* one ring, one hue, everywhere, and it does not change with the control's tone. */
 		--admin-focus-ring: var(--admin-accent-11);
 		/* the ring a control filled with a solid step draws inside itself: 4.62:1 against

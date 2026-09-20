@@ -42,6 +42,7 @@
 		"wrangler": "4.124.0"
 	},
 	"dependencies": {
+		"@ark-ui/react": "catalog:",
 		"@better-giving/emails": "workspace:*",
 		"@better-giving/form": "workspace:*",
 		"@better-giving/operator": "workspace:*",

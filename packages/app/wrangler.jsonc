@@ -63,14 +63,26 @@
 		"enabled": true
 	},
 
-	// every thirty minutes, src/worker.ts's `scheduled` reads back the crypto gifts no IPN settled
-	// (src/lib/server/donations/pending-crypto-read.ts).
+	// this deployment's whole schedule. src/worker.ts's `scheduled` branches on which of these
+	// fired, off the expression Cloudflare hands it verbatim on `controller.cron`
+	// (https://developers.cloudflare.com/workers/runtime-apis/handlers/scheduled/).
+	//
+	// every thirty minutes, the crypto gifts no IPN settled are read back
+	// (src/lib/server/donations/pending-crypto-read.ts). every minute, what this deployment owes the
+	// organisation's books is sent (src/lib/server/accounting/deliver.ts) — a minute because a gift
+	// is meant to reach the books while it is still the thing somebody is looking at, and a run on a
+	// deployment owing nothing is one indexed read of `quickbooks_sync` and no call to anybody. what
+	// a row that has already failed waits is the backoff on the row rather than this interval.
+	//
+	// an expression added here is a branch to add there, and the two sets are held equal by
+	// src/worker.spec.ts: a schedule with no branch behind it is a cron firing into nothing every
+	// time it comes round, and nothing else reports it.
 	//
 	// top-level and only top-level: wrangler runs `triggers` through its `inheritable` helper, so the
 	// `test` environment below carries the same schedule without repeating it — unlike the bindings,
 	// which it has to. an environment declaring `triggers` of its own replaces this one outright.
 	"triggers": {
-		"crons": ["*/30 * * * *"]
+		"crons": ["*/30 * * * *", "* * * * *"]
 	},
 
 	"d1_databases": [

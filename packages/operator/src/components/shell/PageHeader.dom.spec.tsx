@@ -108,6 +108,30 @@ describe('a page header mounted into a document', () => {
 		expect(root.querySelector('.adm-standfirst')).toBeNull();
 	});
 
+	it('draws no heading at all where the caller states no title', () => {
+		// a screen whose name is already read directly above the header — the trail's last crumb, or
+		// the head strip's title — hands none, and what would otherwise be drawn is that word twice a
+		// line apart. the whole name row goes rather than its contents: an empty heading is a
+		// name-shaped gap, and the block's `gap` would then spend a step over the standfirst for a
+		// line that draws nothing.
+		const root = render(PageHeader, {
+			standfirst: 'What was given in a range of days, as the file your accountant imports.'
+		});
+
+		expect([...titleBlock(root).children].map((child) => child.className)).toEqual([
+			'adm-standfirst'
+		]);
+		expect(root.querySelector('h1')).toBeNull();
+		expect(root.querySelector('.adm-pageheader__name')).toBeNull();
+	});
+
+	it('drops the word beside a title where no title was stated', () => {
+		// `beside` qualifies the name, so a word beside a name that is not there qualifies nothing.
+		const root = render(PageHeader, { beside: <span>Draft</span>, standfirst: 'A sentence.' });
+
+		expect(root.textContent).not.toContain('Draft');
+	});
+
 	it('draws the crumbs above the row, as the header’s first block', () => {
 		// the trail names the pages above this one and the heading names this one, so the trail is
 		// read first. inside the row it would be spaced apart from the title like anything else there.

@@ -110,11 +110,11 @@ const WORN = {
  * @property {readonly Column[] | undefined} [columns]
  * @property {readonly Row[] | undefined} [rows]
  * @property {ReactNode} [empty]
- * @property {ReactNode} [press] the one control acting on the list, drawn at the trailing edge of
- *   the caption's line. the table draws no control of its own: only the screen knows what pressing
- *   it does, so what arrives here is already the element it wants pressed. it is a press and not a
- *   name — a plane holding one is named by its caption or by the screen's noun exactly as a plane
- *   without one is.
+ * @property {ReactNode} [press] what acts on the list, drawn at the trailing edge of the caption's
+ *   line. the table draws no control of its own: only the screen knows what pressing it does, so
+ *   what arrives here is already the element it wants pressed — one press, or a row of them the
+ *   screen has already arranged. it is a press and not a name — a plane holding one is named by its
+ *   caption or by the screen's noun exactly as a plane without one is.
  * @property {ReactNode} [add]
  * @property {string | undefined} [addHref]
  * @property {string | undefined} [captionId] the id the caption paragraph is drawn with and the
@@ -148,8 +148,8 @@ function read(held, column) {
    it is drawn only where there are rows to count. with none there is no count worth stating, and
    the row inside the table says what the screen is waiting for.
 
-   the sentence and the screen's one press share a line, and `.adm-tablelead` is what holds them
-   on it. a press has nowhere else to sit that is both above the plane and tied to it: standing on
+   the sentence and what the screen hands as `press` share a line, and `.adm-tablelead` is what
+   holds them on it. a press has nowhere else to sit that is both above the plane and tied to it: standing on
    its own row above the caption it lines up with neither the strip over the page nor the plane's
    own edge. the wrapper is drawn where there is either thing to hold, so a plane with a caption
    and no press keeps the sentence it already had, and a plane with neither draws nothing at all.

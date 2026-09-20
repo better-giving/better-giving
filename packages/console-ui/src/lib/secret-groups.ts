@@ -7,7 +7,7 @@ import type { DeployValueName } from '@better-giving/operator/deploy-split';
 // the names to remove — so the two ends need the same vocabulary, and what is here is the half both
 // of them need and nothing that touches a network or a credential.
 //
-// **a group is a group of boxes and says nothing about how a value is stored.** all twenty-four are
+// **a group is a group of boxes and says nothing about how a value is stored.** all twenty-seven are
 // plain vars (`DEPLOY_VARS` in packages/operator/src/deploy-split.ts); a name here calls a value a
 // secret only where Stripe or a mail host calls it one.
 //
@@ -37,11 +37,11 @@ export type SecretGroup = {
 };
 
 /**
- * the seven groups.
+ * the eight groups.
  *
  * the order is `DEPLOY_VARS`'s own, so a name added to the enumeration lands in a group here
  * without the screen and the split having an order each to drift from the other. four of the
- * twenty-four are in no group and ./deploy-vars.ts names them: they are the values no group's press
+ * twenty-seven are in no group and ./deploy-vars.ts names them: they are the values no group's press
  * sets, and that is where each is argued.
  *
  * two of the grouped names belong to no fold's own errand, and they are the first group:
@@ -98,6 +98,17 @@ export const SECRET_GROUPS: readonly SecretGroup[] = [
 		id: 'nowpayments',
 		label: 'Taking crypto gifts',
 		names: ['NOWPAYMENTS_API_KEY', 'NOWPAYMENTS_IPN_SECRET', 'NOWPAYMENTS_OUTCOME_CURRENCY']
+	},
+	/* where the gifts are sent rather than a processor they arrive on: no money moves on these three
+	   and no set-up job waits on them. it is a group of its own for the second processor's reason,
+	   and the three are one press because an operator holds all three off one app in Intuit's
+	   developer dashboard — the pair that authenticates every call, and which of Intuit's two hosts
+	   that pair is good against (`QUICKBOOKS_API_URL` in
+	   packages/app/src/lib/server/config/env.ts). */
+	{
+		id: 'quickbooks',
+		label: 'Sending gifts to QuickBooks',
+		names: ['QUICKBOOKS_CLIENT_ID', 'QUICKBOOKS_CLIENT_SECRET', 'QUICKBOOKS_API_URL']
 	}
 ];
 
@@ -134,6 +145,9 @@ export const CHARIOT_GROUP = 'chariot';
 
 /** the group the NOWPayments section draws, named here for {@link SIGN_IN_GROUP}'s reason. */
 export const NOWPAYMENTS_GROUP = 'nowpayments';
+
+/** the group Intuit's credentials are set in, named here for {@link SIGN_IN_GROUP}'s reason. */
+export const QUICKBOOKS_GROUP = 'quickbooks';
 
 /** what a press posts to save `group`, which is the submitting button's own value. */
 export const groupIntent = (group: SecretGroup): string => `secrets:${group.id}`;
@@ -229,13 +243,14 @@ export const pressedNames = (group: SecretGroup): readonly string[] =>
  *
  * every box on this console is seeded with the value the deployment is holding (./held-values.ts),
  * which is what lets an operator check a stored credential against the page they copied it from —
- * and seven of the twenty-four are values that reading over their shoulder is enough to take. the
+ * and eight of the twenty-seven are values that reading over their shoulder is enough to take. the
  * dashboard password opens /admin, the mail password sends as the organisation, the Stripe
  * secret key, the PayPal client secret and the Chariot key move money, the NOWPayments key creates
- * and reads payments in the organisation's name (its payouts take a separate sign-in), and the
- * NOWPayments IPN secret is what a notification that a crypto payment settled is signed with. so
- * those seven are drawn masked and the press is how they are read, rather than standing legible
- * through a screen share for as long as the fold is open. `masked` in packages/operator/src/components/forms/Field.jsx is
+ * and reads payments in the organisation's name (its payouts take a separate sign-in), the
+ * NOWPayments IPN secret is what a notification that a crypto payment settled is signed with, and
+ * the QuickBooks client secret buys every token this deployment writes the organisation's books
+ * with. so those eight are drawn masked and the press is how they are read, rather than standing
+ * legible through a screen share for as long as the fold is open. `masked` in packages/operator/src/components/forms/Field.jsx is
  * what draws it.
  *
  * **`STRIPE_PUBLISHABLE_KEY` is deliberately not one of them.** it ships inside the donation form
@@ -256,9 +271,9 @@ export const pressedNames = (group: SecretGroup): readonly string[] =>
  * receipts leave under — and a box that made an operator press to read their own sending address
  * would be ceremony over nothing.
  *
- * the seven are drawn by three different folds — ./password-fold.tsx through
+ * the boxes that draw them are spread over three folds — ./password-fold.tsx through
  * ./secret-group-form.tsx, ./smtp-fold.tsx, and the payments fold's processor sections — and each
- * takes its answer from here, so an eighth credential is decided once and not at whichever fold
+ * takes its answer from here, so the next credential is decided once and not at whichever fold
  * draws it.
  */
 export const MASKED_VALUES: readonly string[] = [
@@ -268,7 +283,8 @@ export const MASKED_VALUES: readonly string[] = [
 	'PAYPAL_CLIENT_SECRET',
 	'CHARIOT_API_KEY',
 	'NOWPAYMENTS_API_KEY',
-	'NOWPAYMENTS_IPN_SECRET'
+	'NOWPAYMENTS_IPN_SECRET',
+	'QUICKBOOKS_CLIENT_SECRET'
 ];
 
 /** whether the box for `name` is drawn masked ({@link MASKED_VALUES}). */

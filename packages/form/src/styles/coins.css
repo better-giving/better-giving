@@ -96,8 +96,13 @@ button {
 	box-shadow: none;
 }
 
+/*
+ * words standing in a value's place until a donor types, at the rung this card draws those at, and
+ * the opacity that keeps it that rung in an engine that fades a placeholder on its own
+ * (`[part~='amount-input'] input::placeholder` in ./parts.css argues both).
+ */
 .picker input::placeholder {
-	color: var(--_n11);
+	color: var(--_n10);
 	opacity: 1;
 }
 

@@ -20,7 +20,8 @@ import type { Route } from './+types/_app.admin.donations._index';
 // the gifts a deployment has taken: a `loader` and nothing else. there is no write on this screen —
 // a gift given online is recorded by the public endpoint under `/api/v1` and settled by the payment
 // processor's webhook, and one that arrived in hand is added on ./_app.admin.donations.new.tsx,
-// which this screen links to. /admin reads the result of all three.
+// which this screen links to. /admin reads the result of all three. the way out of the list is
+// ./_app.admin.donations.export.tsx, which this screen links to as well.
 //
 // this file is deliberately thin. what a gift's state is lives in
 // `$lib/server/donations/queries.ts`, what each state is called lives in
@@ -234,12 +235,22 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 			    margin-block-end of the line the caption shares with the press together. */}
 			<DataTable
 				captionId={CAPTION_ID}
-				// the page's one press, drawn at the trailing edge of the caption's line. a link
-				// dressed as a button, because it navigates.
+				// the page's presses, drawn at the trailing edge of the caption's line — links
+				// dressed as buttons, because both navigate. the way out of the list leads and is
+				// the quieter of the two: adding a gift is what an operator is here to do.
+				//
+				// wrapped in a row of their own rather than handed over as two children:
+				// `.adm-tablelead` spreads its own children apart, so the second would stand at the
+				// caption's end with the first left in the middle of the line.
 				press={
-					<Button as={Link} to={href('/admin/donations/new')}>
-						Add donation
-					</Button>
+					<div className="adm-actions">
+						<Button as={Link} to={href('/admin/donations/export')} variant="quiet">
+							Export
+						</Button>
+						<Button as={Link} to={href('/admin/donations/new')}>
+							Add donation
+						</Button>
+					</div>
 				}
 				// with rows, the sentence that says what the table holds and is what names it.
 				// with none there is no count worth stating and none is drawn — the word is the

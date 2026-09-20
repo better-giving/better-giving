@@ -50,6 +50,27 @@ describe('the page `/` opens on', () => {
 	it('is the password page when that is unfinished, ahead of every job', () => {
 		expect(firstUnfinishedPage(rows('payments', 'password'))).toBe('/password');
 	});
+
+	it('is unmoved by a rail cell that is no section, which the books are', () => {
+		// it reads the set-up rows and never the rail, so every answer above stands whatever the rail
+		// gained — and the books page is on no answer at all.
+		const asked = [
+			rows(),
+			rows('smtp', 'organisation'),
+			rows('notifications', 'smtp'),
+			rows('notifications'),
+			rows('payments', 'smtp'),
+			rows('payments', 'password')
+		];
+		expect(asked.map(firstUnfinishedPage)).toEqual([
+			'/password',
+			'/organisation',
+			'/smtp',
+			'/notifications',
+			'/payments/stripe',
+			'/password'
+		]);
+	});
 });
 
 const LOGOS = {
@@ -75,13 +96,33 @@ describe('the rail', () => {
 			'NOWPayments → /payments/nowpayments',
 			'Sites → /sites',
 			'SMTP → /smtp',
-			'Notifications → /notifications'
+			'Notifications → /notifications',
+			'QuickBooks → /quickbooks'
 		]);
 		expect(groups.map((group) => group.heading)).toEqual([
 			undefined,
 			'Donation processor',
+			undefined,
 			undefined
 		]);
+	});
+
+	it('ends with the books on their own, marked as the dashboard marks its own books screen', () => {
+		const groups = railGroups(rows(), processorLinks(new Set()), LOGOS);
+		expect(groups.at(-1)).toEqual({
+			destinations: [
+				{ label: 'QuickBooks', short: 'QuickBooks', href: '/quickbooks', mark: 'book-open' }
+			]
+		});
+	});
+
+	it('marks the books cell with no status, however the set-up jobs stand', () => {
+		// no set-up job waits on these books, so there is no row to read one off and nothing for a
+		// reader to hear after the name.
+		const status = (...todo: readonly SectionId[]) =>
+			railGroups(rows(...todo), processorLinks(new Set()), LOGOS).at(-1)?.destinations[0]?.status;
+		expect(status()).toBeUndefined();
+		expect(status(...IDS)).toBeUndefined();
 	});
 
 	it('marks each processor by whether its own pair is held, not by the payments job', () => {

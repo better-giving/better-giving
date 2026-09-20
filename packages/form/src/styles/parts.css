@@ -76,7 +76,7 @@
  * verdict chooses which sentence a marked field shows and decides nothing about the paint.
  * "leaves an email the flow accepted unmarked" in ./validity.browser.spec.ts is what holds it.
  *
- * nothing in this file transitions or animates. see ./layout.css.
+ * nothing in this file transitions or animates. see ./motion.css.
  *
  * ../../package.json exports this file as `./styles/parts.css`, second of the four the card is
  * dressed from — after ./tokens.css, which every value here reads, and before ./layout.css, which
@@ -148,6 +148,190 @@ textarea[part~='field'] {
 	min-block-size: 5em;
 	line-height: var(--_lh-body);
 	resize: vertical;
+}
+
+/*
+ * a box whose label stands inside it, and it is a row that asks for one rather than a step: the
+ * construction is for a box inside a named group of boxes — the pair under "Your name", and an
+ * address group after it — where a label drawn over every box would read as a caption under the
+ * group's own legend. a box standing on its own keeps its label over it, which is how every other
+ * box on the card is drawn. `.floating` is the row saying which it is (`textField` in ../views.ts
+ * writes it).
+ *
+ * a floating label is a label that moved, not a placeholder that stayed: it is the same
+ * `<label for>` the card draws over every other box, so it is still there once the donor starts
+ * typing and a host's `::part(label)` rule still reaches it. what changes is where it stands —
+ * centred on the box while the box is empty and holds no caret, and centred on the box's own top
+ * edge the moment it has either.
+ *
+ * the label holds `.label-words` and nothing else, and the label is the whole of what this block
+ * governs. the refusal the box is carrying is `.message`, the row's own child under the box, drawn
+ * there on this row exactly as on every other row of the card — nothing below places it, paints it
+ * or moves with it, and `.field-row.floating` in ./layout.css is what keeps a refused box of a pair
+ * the height of the box beside it. the box is named by its `<label for>` in either construction and
+ * the refusal reaches it as a description while it is shown (`textField` in ../views.ts ties it).
+ *
+ * the label's box is the control's box on the block axis, and that is the whole of how the second
+ * position is stated without any rule here knowing how tall the control was drawn: the label is laid
+ * into the control's own grid area (./layout.css makes the row a grid for it, and
+ * https://www.w3.org/TR/css-grid-1/#abspos is the placement that resolves an out-of-flow child
+ * against one), stretched across it on that axis with its words centred in it. so resting is that
+ * centring and floated is `translate: 0 -50%` — half the label's own box, which is half the
+ * control's, whatever the root resolved to. nothing here restates the control's height or its
+ * padding, and neither one moving can put the two out of step.
+ *
+ * on the inline axis it hugs its words instead: it starts at the box's own inline start and is held
+ * to the box's width, so a name longer than its box is cut at the box's end rather than running past
+ * it. that is what lets the knockout below cover the words alone — a band as wide as the box is a
+ * box drawn with no top edge at all.
+ *
+ * the box reserves nothing for either state and is drawn at one height in both, so the step's
+ * height never depends on what a donor has typed.
+ *
+ * two sizes, and the shrink is part of what the move says. resting, the label stands where the
+ * value will and is the value's own reading size; floated, it is an annotation on the box's edge and
+ * takes the smallest step this card has.
+ *
+ * and two weights and two inks. resting, the words stand where the value will, so they are drawn as
+ * a placeholder is — the quiet weight, at `--_n10`, and a donor reads the box as waiting rather than
+ * as one already holding what it says. that rung is the quietest this card can set words in on a
+ * field's fill and there is nothing under it: `--_n9` reads 2.98:1 on `--_n3`, and rung 10 clears
+ * the floor there only because ./tokens.css authors it below its own distribution. floated, the
+ * words are the box's name and take the weight and the ink every other label on the card is drawn
+ * at — the base `[part~='label']` rule's own `--_w-bold` and `--_n11`, both left to it. so the words
+ * do darken as they move, because what they are changed: a value's stand-in resting, the box's name
+ * floated.
+ *
+ * what a host governs follows from where each of those is declared, and the two inks are on the
+ * label for that reason: `color` on `::part(label)` reaches the words in both positions, because
+ * neither position declares an ink anywhere an outer rule cannot reach. `font-weight` reaches the
+ * floated position alone and stops at the naming span resting, where the placeholder weight is.
+ * `font-size` reaches neither: both steps are on that span, and every step is an `em`, so a size set
+ * on the part is the basis the two resolve against rather than the size of any word on screen. that
+ * is what the span is still for now the label holds one thing — the two steps and the resting weight
+ * are what an outer rule must not carry off, and the label is the part. the refusal is outside the
+ * part altogether and takes none of this. ../../custom-elements.json publishes the split.
+ *
+ * the label carries the card's base size for the span's steps to resolve against, which is what
+ * keeps that reading honest: `em` resolves against the parent, so a label left at a label's own step
+ * would draw the floated words at 0.65625em of the card.
+ *
+ * the edge must not strike through the name, so the span paints its own knockout behind its words: a
+ * band one line tall, centred on the words as they are, split at its own middle. the half above the
+ * edge is the card's own fill and the half below is the box's, because that is exactly what each
+ * half covers — one flat colour would match one of them and read as a patch on the other. on the
+ * span and not on the label around it, because the band is the words' own line: `1lh` on the label
+ * is the base step it carries for the span rather than the step the span is drawn at.
+ *
+ * `1lh` is the span's own line, so the band is re-derived by whatever size that span is drawn at
+ * rather than stating a length here. half of it is the whole of what stands above the box, and at
+ * the floated step that half stays inside the gap the group leaves over the box — at the resting
+ * step it does not, which is the clearance the band is drawn at the words' own line to keep.
+ *
+ * floated, the words start at the corner the box is drawn with and no closer to it: words flush with
+ * the box's inline start leave the arc of that corner standing outside the band as a stub beside the
+ * first letter, so the inset is the box's own radius and the edge runs unbroken from the corner into
+ * the band and out the other side. the other end takes the same inset, which is where a name too
+ * long for its box is cut — the arc at that corner is what the band would otherwise run over.
+ *
+ * the rise is transitioned and nothing else about the move is (./motion.css): the band is painted
+ * from the first frame rather than fading in over it, and what that costs is its upper half standing
+ * on the box's own fill for the length of the move — `--_n1` on `--_n3` is 1.07:1, the reading
+ * ./tokens.css already refuses to spend a state on at `--_p-hover`.
+ *
+ * the label takes no pointer. it stands over the box a donor clicks into, and a click landing on a
+ * `<label for>` focuses the control rather than placing the caret where it fell — so a donor could
+ * otherwise not click into the middle of what they had already typed.
+ *
+ * `:placeholder-shown` is the whole of how a box says it is empty, and it is why a box in one of
+ * these rows carries a blank placeholder (`textField` in ../views.ts). a real one would be a second
+ * label competing with the one standing in the box, and it would be gone the moment it was needed.
+ * resting is that and no caret, floated is everything else, so the two states are exclusive by
+ * construction rather than by the order these rules are written in.
+ */
+.floating > [part~='field'] {
+	/*
+	 * one length for the box's own text inset and for where the resting label starts, so the two
+	 * cannot disagree by the fraction of a pixel their two sizes resolve `--_sp3` to
+	 * (`--_label-lead` in ./tokens.css). the block padding is the field's own and even: this
+	 * construction reserves nothing above the words.
+	 */
+	padding-inline: var(--_label-lead);
+}
+
+.floating > [part~='label'] {
+	position: absolute;
+	/* the control's own row of the grid ./layout.css makes of this one. */
+	grid-row: 1 / 2;
+	inset-block: 0;
+	inset-inline-start: 0;
+	/* the box's own width, which is where a name longer than it is cut. */
+	max-inline-size: 100%;
+	display: flex;
+	align-items: center;
+	/* the corner the box is drawn with, at both ends of it. */
+	padding-inline: var(--_r-in);
+	/* the card's base, so the span's own step resolves against the root rather than compounding. */
+	font-size: var(--_t-md);
+	/*
+	 * declared rather than inherited: `1lh` below is the knockout's own height and the words' line
+	 * is what it has to cover, and the card's body line would draw a band a step taller than the
+	 * words standing in it.
+	 */
+	line-height: var(--_lh-tight);
+	translate: 0 -50%;
+	pointer-events: none;
+}
+
+.floating > [part~='label'] > .label-words {
+	/*
+	 * the name gives way at the box's own end rather than running past it: a flex item's automatic
+	 * minimum is its own content, which no unbroken line shrinks below, and `0` is what lets the
+	 * bound on the label reach the words inside it.
+	 */
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-size: var(--_t-xs);
+	/* what carries the knockout past the last letter. */
+	padding-inline-end: var(--_sp1);
+	background: linear-gradient(to bottom, var(--_n1) 50%, var(--_n3) 50%) 0 50% / 100% 1lh no-repeat;
+}
+
+/*
+ * resting, and every length in it is logical: the inline seat is the label's own padding, so a
+ * right-to-left document needs no companion rule to undo a physical axis — which is where this
+ * parts from the switch's thumb (`.fee-decision [part~='checkbox']:checked + .switch-thumb` below).
+ * `translate` is left carrying the block axis alone, where a positive offset means the same thing in
+ * either direction.
+ *
+ * the seat is the box's own text inset, so the words stand exactly where the words that replace them
+ * will.
+ */
+.floating:not(:focus-within):has(> [part~='field']:placeholder-shown) > [part~='label'] {
+	padding-inline: calc(var(--_border) + var(--_label-lead));
+	translate: 0;
+	/*
+	 * the resting ink, on the part and not on the span it paints: an outer `::part(label)` rule
+	 * cannot reach a declaration on `.label-words`, so a host's colour would take the floated
+	 * position — which declares none and is left the base rule's `--_n11` — while this one silently
+	 * kept the rung.
+	 */
+	color: var(--_n10);
+}
+
+/* standing in the value's place, and drawn there as a placeholder is: the value's reading size, at a
+ * placeholder's weight. the ink is the placeholder's as well and is on the label above; these two
+ * cannot follow it, because a host's one rule on the part is what sets the ink in both positions.
+ * the knockout goes with the movement — resting the words stand on the box's own fill and there is
+ * no edge behind them to knock out. */
+.floating:not(:focus-within):has(> [part~='field']:placeholder-shown)
+	> [part~='label']
+	> .label-words {
+	font-size: var(--_t-md);
+	font-weight: var(--_w-normal);
+	background-image: none;
 }
 
 /*
@@ -803,16 +987,23 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 /*
  * the placeholder is not a figure. it sits on the figure's own line and at its size, so it takes the
- * quiet weight and the muted ink the currency code beside it takes — left at the figure's own bold
- * it reads as an amount already typed in.
+ * quiet weight rather than the figure's own bold, which would read as an amount already typed in.
  *
- * the ladder's secondary ink rather than its muted one, and the difference is not the shade: what a
- * donor has to read inside a box cannot follow how quiet an annotation elsewhere on the card is.
- * `--_n11` holds 5.96:1 on the card across the whole band a host may seed.
+ * and the quietest rung this card sets words in, which is the rung the naming span resting inside a
+ * floating row takes (`.floating` above): the two are one thing — words standing in a value's place
+ * until a donor types — so they are drawn alike, and this rule is where that pair is stated. there
+ * is no step under it. `--_n10` reads 4.99:1 on `--_n1` and 4.57:1 on the `--_n3` this box takes on
+ * a bare tray; rung 9 reads 3.25:1 and 2.98:1 on the two, under the floor a word has to clear.
+ *
+ * and the opacity, which is what keeps it that rung on screen. an engine fades a placeholder of
+ * its own accord, and the fade is over the ink rather than instead of it, so left at the default
+ * the rung a donor reads is one nothing here chose — and which engine a pasted embed runs in is not
+ * ours to pick. `.picker input::placeholder` in ./coins.css declares it for the same reason.
  */
 [part~='amount-input'] input::placeholder {
-	color: var(--_n11);
+	color: var(--_n10);
 	font-weight: var(--_w-normal);
+	opacity: 1;
 }
 
 /*
@@ -825,10 +1016,11 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * in one would move whenever the other end's did (`--_adorn-lead-inset` in ./tokens.css carries the
  * pair and why they are a step apart).
  *
- * both take the ladder's secondary ink, which is the step the placeholder between them takes and for
- * that entry's reason: which currency a figure is in is something a donor has to be able to read.
- * neither is the figure — the symbol is drawn at the figure's size so the two read as one amount,
- * and at the figure's weight it would read as a digit the donor had typed.
+ * both take the ladder's secondary ink, a rung above the placeholder they stand either side of:
+ * which currency a figure is in is something a donor reads off the box, not a stand-in for what
+ * they are about to type into it. neither is the figure — the symbol is drawn at the figure's size
+ * so the two read as one amount, and at the figure's weight it would read as a digit the donor had
+ * typed.
  */
 .adorn-lead,
 .adorn-trail {
@@ -858,6 +1050,10 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * inset shadow where it does not, and no fill anywhere — this line renders under the group, and
  * `aria-describedby` ties the two together so it is read out with the control rather than found by
  * looking for it.
+ *
+ * one size, one weight and one ink wherever it is drawn, and one seat with it: under the box, in the
+ * row's own column, on every row the card draws. a row whose label stands inside its box is no
+ * exception — `.floating` above moves the label and says nothing about this sentence.
  */
 .message {
 	margin: 0;

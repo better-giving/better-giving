@@ -2,6 +2,7 @@ import { type ReactNode, act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub } from 'react-router';
 import { describe, expect, it, onTestFinished } from 'vitest';
+import { handle as exportHandle } from '../../routes/_app.admin.donations.export';
 import { handle as formHandle } from '../../routes/_app.admin.forms.$id';
 import { handle as newFormHandle } from '../../routes/_app.admin.forms.new';
 import { handle as programHandle } from '../../routes/_app.admin.programs.$id';
@@ -132,6 +133,20 @@ describe('the trail each screen states', () => {
 		expect(trail(root)).toEqual([
 			{ label: 'Programs', href: '/admin/programs', current: false },
 			{ label: 'Add a program', href: null, current: true }
+		]);
+	});
+
+	it('the accountant’s export: Gifts, then the screen that asks for a range', async () => {
+		const root = await screen({
+			path: '/admin/donations/export',
+			at: '/admin/donations/export',
+			handle: exportHandle,
+			section: '/admin/donations'
+		});
+
+		expect(trail(root)).toEqual([
+			{ label: 'Gifts', href: '/admin/donations', current: false },
+			{ label: 'Export', href: null, current: true }
 		]);
 	});
 

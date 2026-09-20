@@ -6,11 +6,13 @@
 		"0000_initial_schema.sql",
 		"0001_paypal_provider_and_rails.sql",
 		"0002_chariot_provider_and_daf.sql",
-		"0003_nowpayments_provider_and_crypto.sql"
+		"0003_nowpayments_provider_and_crypto.sql",
+		"0004_quickbooks_connection_and_sync.sql"
 	],
 	"crons": [
-		"*/30 * * * *"
+		"*/30 * * * *",
+		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "98bdabd7cb0c94cc666a422ee5bae08c36a34633"
+	"commit": "bf41f9818eb7f5a7fe5e0a20ae3b4c4426561175"
 }

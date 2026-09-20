@@ -44,8 +44,8 @@ import type { Posting } from '../ledger/posting';
 // what is owed is read off the posting rather than off the call site, so a fifth poster gets the
 // right answer without a line of its own. `payment` is a gift that reached the organisation and
 // `adjustment` is a correction a human posted; `fee` is deliberately not one of them, because a
-// processor's cut becomes a line on the sales receipt its sibling `payment` group is sent as, and a
-// row for it would send the same money twice. `donation` and `refund` are source types nothing in
+// processor's cut becomes a line on the record its sibling `payment` group is sent as (./record.ts
+// assembles the pair), and a row for it would send the same money twice. `donation` and `refund` are source types nothing in
 // this tree posts today.
 
 /**

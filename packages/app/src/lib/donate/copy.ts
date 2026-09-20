@@ -98,6 +98,8 @@ export function amountProblem(offer: (minor: number) => string, min: number, max
 // ── the details step ─────────────────────────────────────────────────────────────────────────
 
 export const EMAIL = 'Email';
+/** what the pair of name boxes is asked as, on the legend over them. */
+export const YOUR_NAME = 'Your name';
 export const FIRST_NAME = 'First name';
 export const LAST_NAME = 'Last name';
 

@@ -2430,6 +2430,445 @@
 		color: var(--admin-net-5-ink);
 	}
 
+	/* ---------- the date field ---------------------------------------------------------
+
+	   a day typed into a box whose label stands inside it and rises onto its top edge
+	   (packages/operator/src/components/forms/DateField.jsx). it is the one box on either operator
+	   surface whose label is not above it, and `.adm-field__label` above is every other box's.
+
+	   the machine is ark's date picker, so the open state, the chosen day, today and a day the
+	   range cannot reach all arrive as `data-*` attributes on its own parts and nothing here reads
+	   a class for them. the float is the one state the machine has no opinion about — a box is
+	   floated while it holds a day or holds the caret — so the component writes `data-floated` and
+	   this sheet reads it.
+
+	   the box reserves nothing for either position and is drawn at one height in both, so the
+	   height never depends on whether a day has been typed. that height is the height a box with no
+	   label at all is drawn at — the block padding and the minimum `.adm-input` takes — and what is
+	   left over one is the press at the end of the row, which is read at
+	   `--admin-control-height-sm` and is taller than the line the operator types on. */
+
+	.adm-datefield {
+		position: relative;
+		display: block;
+		inline-size: 100%;
+	}
+
+	/* the box's row in the field, stated here rather than added to the `:is()` list above, for
+	   `.adm-field > .adm-coinwrap`'s reason: that list is copied verbatim into the artboards
+	   packages/design holds and reports drift against (./design-copy.spec.ts). the row is the same
+	   one every other box takes. */
+	.adm-field > .adm-datefield {
+		grid-row: 3;
+	}
+
+	/* the box: the words, and the press that opens the calendar at its end.
+
+	   the block padding is even and the minimum is `.adm-input`'s own: the floated label stands on
+	   this box's top edge rather than inside it, so there is no band over the words for it to rise
+	   into and nothing here to reserve one. `cursor: text` because the whole box is the field, as
+	   it is on the coin picker above.
+
+	   the row's items are left to fill it, which is the grid's own default and is what hands the
+	   cell below a height to centre the line in. the press at the end takes itself back out of that
+	   at `align-self` further down, because a press stretched to the row is a target the size of
+	   the box.
+
+	   the fill is named once here and read by the knockout the floated label paints, so that the
+	   half of that band standing inside the box is the box's own fill in every state it has. */
+	.adm-datebox {
+		--_datebox-fill: var(--admin-field-bg);
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		column-gap: var(--admin-space-3);
+		inline-size: 100%;
+		min-block-size: var(--admin-field-height);
+		padding-block: var(--admin-space-3);
+		padding-inline: var(--admin-space-4);
+		font-size: var(--admin-field-size);
+		color: var(--admin-ink);
+		background: var(--_datebox-fill);
+		border: var(--admin-border-width) solid var(--admin-field-border);
+		border-radius: var(--admin-radius);
+		cursor: text;
+		transition: var(--admin-transition-state);
+	}
+
+	.adm-datebox:hover,
+	.adm-datebox.is-hover {
+		border-color: var(--admin-field-border-hover);
+	}
+
+	/* the ring is the box's and never the input's, for `.adm-coinbox`'s reason above: the field here
+	   is the whole box, and a ring round the input inside it would be a rectangle inside a
+	   rectangle. the input's own is taken back below rather than left to paint under this one. */
+	.adm-datebox:has(input:focus-visible),
+	.adm-datebox:has(input.is-focus) {
+		outline: var(--admin-focus-width) solid transparent;
+		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
+	}
+
+	/* refused. the component writes the attribute off either the message it holds or an
+	   `aria-invalid` something larger than the one box marked it with, which is the same pair
+	   packages/operator/src/components/forms/Field.jsx's modifier class is assembled from. the hover twin is named with it so the
+	   refusal outranks the hover rung, which on touch stays on a box after a tap. */
+	.adm-datebox[data-invalid],
+	.adm-datebox[data-invalid]:hover,
+	.adm-datebox[data-invalid].is-hover {
+		border-color: var(--admin-field-border-invalid);
+		border-width: var(--admin-border-width-strong);
+	}
+
+	.adm-datebox[data-disabled] {
+		--_datebox-fill: var(--admin-field-bg-disabled);
+		border-color: var(--admin-control-border-disabled);
+		color: var(--admin-ink-disabled);
+		cursor: not-allowed;
+	}
+
+	/* the cell the label and the input share, and the label's positioning context.
+
+	   it fills the row rather than hugging the input, and that is what the two positions below are
+	   both stated against: the cell's own middle is then the middle of the box's content, so the
+	   resting label is centred by standing in this cell and the floated one is a move off that
+	   middle whose block half is half this cell plus the box's padding. nothing states the box's
+	   height anywhere, and neither the height nor what the row ends up sized by can put the label
+	   and the line out of step.
+
+	   the input is centred in the cell rather than stretched to it, which is what keeps the line
+	   the operator types on at that middle. */
+	.adm-datebox__words {
+		position: relative;
+		grid-column: 1;
+		min-inline-size: 0;
+		align-content: center;
+	}
+
+	/* the label, which has two positions and no third.
+
+	   resting is this rule alone and no move: the label fills the cell above, so it is centred on
+	   the line the value will appear on, and it starts at the cell's own inline start, which is the
+	   inset the value is drawn at. the words therefore stand exactly where the day will, and they are
+	   drawn quiet rather than solid, so an operator reads them as the box waiting for a day rather
+	   than as a day already in it.
+
+	   the two positions are two sizes, two weights and two inks, and all three part together.
+	   resting the size is the value's own step, which is why this rule restates the box's
+	   `--admin-field-size` rather than leaving it to inherit — both steps then stand in this section
+	   instead of one of them living in the box's `font-size`, and the resting one follows the box
+	   wherever that step parts. floated it is `--admin-caption-size`, the rank this system draws an
+	   annotation at, because a label over the box's edge is an annotation on it and no longer words
+	   standing in the day's place. resting the weight and the ink are `--admin-weight-regular` and
+	   `--admin-ink-muted`: the weight `.adm-input::placeholder` inherits from its box, and the rung
+	   the ink that rule draws in resolves to — `--admin-field-placeholder` is `--admin-neutral-10`,
+	   as this alias is. the two are one thing and are drawn alike — quiet weight, quiet ink, words
+	   standing where the value will — because on these screens a placeholder and a label standing
+	   inside a box are the same thing. they go no lighter than this rung: `--admin-ink-muted` is
+	   4.97:1 on `--admin-field-bg`, and the rung under it, `--admin-neutral-9`, is 3.24:1 on that
+	   same fill and is the one `--admin-ink-disabled` takes — so a label an operator can still
+	   answer has nowhere lighter to go. floated the weight and the ink are `--admin-label-weight` and `--admin-ink`, the
+	   register every other `.adm-field__label` is read at, because over the box's edge the words are
+	   the field's name. the move is what carries all of that, and the three steps are part of what
+	   the move says rather than three things happening to one word.
+
+	   `translate` rather than an inset, so the move is composited and nothing around it is laid out
+	   again; and a transition runs on a change rather than on a first paint, so a box drawn already
+	   holding a day is drawn already floated and animates nothing on arrival. neither the size nor
+	   the weight is on the transition list below, so each lands at the instant the rise begins
+	   rather than a word being laid out again every frame of it.
+
+	   it hugs its own words and is held to the cell by `max-inline-size`, so a label too long for
+	   the box is cut at the cell's end rather than run under the press at the end of the row.
+	   `align-content` centres those words without making this a flex or a grid box: either would
+	   put them in an anonymous item, and `text-overflow` is answered by the block container holding
+	   the words directly — so the ellipsis would go and nothing would say it had gone.
+
+	   no sentence rides these words. the field draws three kinds — a hint over the box and, under
+	   it, the refusal and the sentence naming what else wants this field — and only the refusal is
+	   the sort of thing a label could carry, so a label that took it would make where a sentence
+	   appears depend on which kind it is. all three stay in rows of their own, `.adm-hint` above the
+	   box and `.adm-field__error` and `.adm-field__needed` below it
+	   (packages/operator/src/components/forms/DateField.jsx).
+
+	   out of the pointer's way: a press anywhere in the box puts the caret in the input, and the
+	   label is the one thing in there that is not the input. it is still a real `<label>` pointing
+	   at the input's own id, so a reader is told the name and a press on the words this rule hides
+	   from the pointer never happens. */
+	.adm-datefield__label {
+		position: absolute;
+		inset-block: 0;
+		inset-inline-start: 0;
+		max-inline-size: 100%;
+		align-content: center;
+		/* what carries the knockout below past the last letter. */
+		padding-inline-end: var(--admin-space-2);
+		font-size: var(--admin-field-size);
+		/* type-ok: the resting rung, which is the weight `.adm-input::placeholder` inherits from
+		   this same box — the header above argues why the two are drawn alike. */
+		font-weight: var(--admin-weight-regular);
+		letter-spacing: var(--admin-label-track);
+		line-height: var(--admin-field-lh);
+		color: var(--admin-ink-muted);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		pointer-events: none;
+		transition:
+			translate var(--admin-dur-state) var(--admin-ease-state),
+			color var(--admin-dur-state) var(--admin-ease-state);
+	}
+
+	/* floated: the label's middle on the box's top border, straddling it, and its start where the
+	   corner's arc ends rather than on the value's inset or on the box's own edge.
+
+	   one `translate` states both. half the label's own box is half the cell, which is half the box's
+	   content, so the block half of the move is that plus the block padding and half the border — and
+	   it is half the label's box and not half its words, so neither step of type this label is drawn
+	   at disturbs it. the inline half is the box's inline padding less its radius. the padding alone
+	   is the whole of the distance between the value's inset and the box's edge, and the knockout
+	   below begins where these words do, so on that move the band starts one `--admin-border-width`
+	   in from the box's own edge, on the border's inner one, while the corner's arc starts on the
+	   outer. what the band then never reaches is that outermost border width of the arc, left
+	   standing inline-start of a knockout that has taken the rest of the corner and the straight run
+	   beside it: a stub at the corner with the box's edge erased either side of it, beside the first
+	   letter. taking the radius off instead starts the band one border width past where the arc ends,
+	   so the knockout interrupts the straight run only and the corner is drawn whole.
+
+	   the border must not strike through the words, so the label paints a knockout behind them: a
+	   band split at its own middle, which after the move is the border's. the half above that line
+	   is the fill of the page the box stands on and the half below it is the box's own, because
+	   that is exactly what each half covers — one flat colour would match one of them and read as a
+	   patch on the other. the lower stop reads the box's fill rather than naming it, so that a box
+	   an operator cannot answer knocks out in the fill it is actually drawn in.
+
+	   the band's height is a length rather than the words' own line, so it does not move with the
+	   step the label is drawn at, and it is as tall as it has to be and no taller: the border is the
+	   only thing it is there to cover, and above and below the border the two fills it paints are
+	   already what is there. `--admin-space-4` is 8px, so half the band stands 4px over the border's
+	   centre line and into the `--admin-space-3` — 6px — that `.adm-field > * + *` leaves over the
+	   box, which is 2px of that gap left for a hint's descenders to hang into. the words' own line
+	   fits there at neither step: floated it is `--admin-caption-size` over `--admin-field-lh`, 12px
+	   by 1.55, so half of it is 9.3px against that 6px, and resting the same arithmetic on
+	   `--admin-field-size` gives 12.4px, or 6.8px where ./tokens.css parts that step on a fine
+	   pointer — every one of them past the gap.
+
+	   the band is not transitioned and the move is, so it is painted from the first frame of the
+	   rise rather than fading in over it. what that costs is its upper half standing on the box's
+	   own fill for the length of the move, which is one rung of the neutral ramp. */
+	.adm-datebox[data-floated] .adm-datefield__label {
+		translate: calc((var(--admin-space-4) - var(--admin-radius)) * -1)
+			calc(-50% - var(--admin-space-3) - var(--admin-border-width) / 2);
+		background:
+			linear-gradient(to bottom, var(--admin-page) 50%, var(--_datebox-fill) 50%) 0 50% / 100%
+			var(--admin-space-4) no-repeat;
+		font-size: var(--admin-caption-size);
+		font-weight: var(--admin-label-weight);
+		color: var(--admin-ink);
+	}
+
+	.adm-datebox[data-disabled] .adm-datefield__label {
+		color: var(--admin-ink-disabled);
+	}
+
+	/* the input draws nothing of its own: the box around it is the field, and where the caret is
+	   standing is the box's ring above. its face, its size and its ink are the box's, which is
+	   ./base.css's reset handing a form control the type it stands in. */
+	.adm-datebox__input {
+		display: block;
+		inline-size: 100%;
+		min-inline-size: 0;
+		padding: 0;
+		border: 0;
+		background: none;
+		line-height: var(--admin-field-lh);
+		outline: none;
+	}
+
+	.adm-datebox__input:focus-visible,
+	.adm-datebox__input.is-focus {
+		outline: none;
+		box-shadow: none;
+	}
+
+	.adm-datebox__input::placeholder {
+		color: var(--admin-field-placeholder);
+		opacity: 1;
+	}
+
+	/* the press that opens the calendar. it is a real control — it is in the tab order and it is
+	   what the keyboard opens the calendar with — so it draws the quiet rank's own hover rung where
+	   it stands, unlike the coin picker's caret, which the machine keeps out of the tab order
+	   because the box beside it already opens that list. */
+	.adm-datebox__open {
+		display: grid;
+		place-items: center;
+		align-self: center;
+		min-inline-size: var(--admin-control-height-sm);
+		min-block-size: var(--admin-control-height-sm);
+		padding: 0;
+		background: none;
+		border: 0;
+		border-radius: var(--admin-radius);
+		color: var(--admin-ink-2);
+		cursor: pointer;
+		transition: var(--admin-transition-state);
+	}
+
+	.adm-datebox__open:hover,
+	.adm-datebox__open.is-hover {
+		background: var(--admin-control-soft-bg-hover);
+		color: var(--admin-ink);
+	}
+
+	.adm-datebox__open:disabled {
+		color: var(--admin-ink-disabled);
+		cursor: not-allowed;
+	}
+
+	/* the calendar, over whatever follows the box. the step and the reason it is taken while the
+	   calendar is open rather than held are `.adm-coinwrap`'s above, and so is why it goes on this
+	   wrapper rather than on the machine's positioner. */
+	.adm-datefield:has(.adm-cal[data-state='open']) {
+		z-index: 1;
+	}
+
+	/* the panel. it states no `pointer-events` of its own: the machine's positioner withholds them
+	   until it has worked out where the panel goes, and a rule taking them back here would hand the
+	   panel a press while it was still standing at the corner of the page. */
+	.adm-cal {
+		padding: var(--admin-space-3);
+		background: var(--admin-surface);
+		border: var(--admin-hairline);
+		border-radius: var(--admin-radius);
+		box-shadow: var(--admin-elevation-dialog);
+	}
+
+	/* the line over the grid: a step back, what is on the grid, and a step forward. three columns
+	   rather than a flex line with the middle pushed apart, so the two steps stay at the panel's
+	   two edges whatever the month in the middle runs to. */
+	.adm-cal__head {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		align-items: center;
+		gap: var(--admin-space-2);
+		margin-block-end: var(--admin-space-3);
+	}
+
+	.adm-cal__step {
+		display: grid;
+		place-items: center;
+		min-inline-size: var(--admin-control-height-sm);
+		min-block-size: var(--admin-control-height-sm);
+		padding: 0;
+		background: none;
+		border: 0;
+		border-radius: var(--admin-radius);
+		color: var(--admin-ink-2);
+		cursor: pointer;
+		transition: var(--admin-transition-state);
+	}
+
+	.adm-cal__step:hover,
+	.adm-cal__step.is-hover {
+		background: var(--admin-control-soft-bg-hover);
+		color: var(--admin-ink);
+	}
+
+	/* a step off the end of what the machine will show: the first view has no previous decade. it
+	   stays where it is rather than leaving, so the month in the middle does not shift sideways on
+	   the one press that reaches the end. */
+	.adm-cal__step:disabled {
+		color: var(--admin-ink-disabled);
+		cursor: not-allowed;
+	}
+
+	/* what is on the grid, and the press that climbs from days to months to years. */
+	.adm-cal__span {
+		padding: var(--admin-space-2) var(--admin-space-3);
+		background: none;
+		border: 0;
+		border-radius: var(--admin-radius);
+		font-size: var(--admin-label-size);
+		font-weight: var(--admin-label-weight);
+		color: var(--admin-ink);
+		cursor: pointer;
+		transition: var(--admin-transition-state);
+	}
+
+	.adm-cal__span:hover,
+	.adm-cal__span.is-hover {
+		background: var(--admin-control-soft-bg-hover);
+	}
+
+	.adm-cal__grid {
+		border-collapse: collapse;
+	}
+
+	/* the weekday letters, which are a scale the eye counts along rather than a rank of heading. */
+	.adm-cal__weekday {
+		padding-block-end: var(--admin-space-2);
+		font-size: var(--admin-caption-size);
+		/* type-ok: the resting weight, stated to take back the bold a `<th>` carries by default. */
+		font-weight: var(--admin-weight-regular);
+		color: var(--admin-ink-muted);
+	}
+
+	.adm-cal__cell {
+		padding: 0;
+	}
+
+	/* one cell, dressed once for all three views. a day, a month and a year are the same press with
+	   different words in it, so the only thing that changes with the view is how wide the press has
+	   to be to hold its own word. */
+	.adm-cal__pick {
+		display: grid;
+		place-items: center;
+		min-inline-size: var(--admin-control-height);
+		min-block-size: var(--admin-control-height);
+		border-radius: var(--admin-radius);
+		font-size: var(--admin-control-size);
+		color: var(--admin-ink);
+		cursor: pointer;
+		transition: var(--admin-transition-state);
+	}
+
+	.adm-cal__pick[data-view='month'],
+	.adm-cal__pick[data-view='year'] {
+		min-inline-size: var(--admin-space-10);
+	}
+
+	.adm-cal__pick:hover,
+	.adm-cal__pick.is-hover {
+		background: var(--admin-control-soft-bg-hover);
+	}
+
+	/* today, as a hairline round the press rather than as a second ink: the chosen day is a fill and
+	   a second filled cell in the same grid is two answers to which day is selected. */
+	.adm-cal__pick[data-today] {
+		box-shadow: inset 0 0 0 var(--admin-border-width) var(--admin-accent-ink);
+	}
+
+	/* the chosen day. the hover twin is named with it so the fill outranks the hover rung, which on
+	   touch stays on a cell after a tap. */
+	.adm-cal__pick[data-selected],
+	.adm-cal__pick[data-selected]:hover,
+	.adm-cal__pick[data-selected].is-hover {
+		background: var(--admin-primary-bg);
+		color: var(--admin-primary-ink);
+	}
+
+	/* a day belonging to the month either side of the one on the grid. it is drawn rather than
+	   blanked, because the week it is in is a real week and a gap in the row reads as a missing
+	   day. */
+	.adm-cal__pick[data-outside-range] {
+		color: var(--admin-ink-muted);
+	}
+
+	.adm-cal__pick[data-disabled] {
+		color: var(--admin-ink-disabled);
+		cursor: not-allowed;
+	}
+
 	/* a masked box's press, inside the box rather than on the row beside it. the arrangement is the
 	   select's above and for the arrangement's own reason — a box cannot draw outside itself, so the
 	   wrapper positions and the box reserves the room, and a revealed value never runs under the

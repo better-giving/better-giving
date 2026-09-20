@@ -15,7 +15,7 @@ import (
 	"github.com/better-giving/console/internal/state"
 )
 
-// the two presses that set the twenty-four, and what each of them refuses.
+// the two presses that set the twenty-seven, and what each of them refuses.
 
 // a cloudflare that answers everything and remembers what it was asked.
 func writes(t *testing.T, answers map[string]any) (*httptest.Server, *[]string) {
@@ -86,7 +86,7 @@ func TestNothingIsWrittenForAMachineThatHasChosenNoAccount(t *testing.T) {
 }
 
 // **the names a press may carry are the enumeration's and never the body's own keys.** a name off
-// that list is a value written under whatever a page said, and the twenty-four are what this console
+// that list is a value written under whatever a page said, and the twenty-seven are what this console
 // is for — the console's own session credential among the names it refuses.
 func TestANameOffTheEnumerationIsRefusedBeforeCloudflareIsAsked(t *testing.T) {
 	api, asked := writes(t, nil)

@@ -1,0 +1,234 @@
+import { POSTING_ACCOUNTS, type PostingAccountKey } from '../db/accounts';
+import type { Db } from '../db/client';
+import { findPaymentDonor } from '../donations/queries';
+import {
+	findEntryGroup,
+	findEntryGroupById,
+	type EntryGroupListRow,
+	type EntryLine
+} from '../ledger/queries';
+import {
+	failed,
+	type AccountingResult,
+	type AccountRole,
+	type CorrectionLine,
+	type Sendable
+} from './provider';
+
+// what one queued entry group turns out to be, read out of the books.
+//
+// the delivery holds an id off `quickbooks_sync` and nothing else (../db/schema.ts), and what an
+// adapter needs is a gift or a correction. this is the whole of the distance between those two,
+// and it is a module of its own for the reason ./provider.ts is: it reads this app's books and
+// knows nothing about QuickBooks, while ./quickbooks.ts speaks to QuickBooks and knows nothing
+// about `entry_group`.
+//
+// nothing here reads or writes `quickbooks_sync`. the outbox is written by the posting that owes it
+// and read by the delivery that sends it; this reads neither.
+//
+// ---------------------------------------------------------------------------
+// two entry groups, one record.
+//
+// a settled charge posts the gift and the processor's cut as separate entry groups sharing a source
+// id (../donations/entries.ts), and the company's books hold them as one transaction — so the fee
+// is read here, off the `fee` sibling, rather than sent as a record of its own. that is the same
+// fact ../accounting/outbox.ts states from the other side, where it queues no row for a `fee`
+// group at all, and it is why a `fee` id arriving here is a defect rather than something to map.
+
+/**
+ * which of the operator's three accounts each of this app's nine stands for.
+ *
+ * total over `PostingAccountKey`, so an account added to ../db/accounts.ts is a compile error here
+ * rather than a posting that silently has nowhere to go. `null` is deliberate on four of them:
+ *
+ *   accountsReceivable — a pledge, which this app does not yet post and a company records as an
+ *                        invoice rather than as money arrived.
+ *   salesTaxPayable    — owed to a jurisdiction, and never one of the three a donation screen asks
+ *                        an operator to pick.
+ *   the two net-asset classes — closing entries, which a bookkeeper makes in their own books.
+ *
+ * an entry naming one of those is refused by name rather than posted to whichever of the three
+ * looked closest: the operator picked three accounts for gifts, and nothing they picked says where
+ * a tax liability belongs.
+ */
+const ROLE_OF: Readonly<Record<PostingAccountKey, AccountRole | null>> = {
+	bankCash: 'deposit',
+	undepositedFunds: 'deposit',
+	accountsReceivable: null,
+	salesTaxPayable: null,
+	netAssetsWithoutRestrictions: null,
+	netAssetsWithRestrictions: null,
+	donationsDeductible: 'income',
+	donationsNonDeductible: 'income',
+	processorFees: 'fee'
+};
+
+/** the same table by account id, which is what a ledger line carries. */
+const BY_ACCOUNT_ID = new Map<string, { key: PostingAccountKey; role: AccountRole | null }>(
+	(Object.keys(POSTING_ACCOUNTS) as PostingAccountKey[]).map((key) => [
+		POSTING_ACCOUNTS[key].id,
+		{ key, role: ROLE_OF[key] }
+	])
+);
+
+/**
+ * what a queued entry group is to be sent as, or why it cannot be.
+ *
+ * the refusals are terminal, every one of them: an id nothing carries, a `fee` group the outbox
+ * never queues, a source type nothing sends, and an account outside the three the operator picked.
+ * none of those is answered by asking again, and the delivery reads `retryable` to know it.
+ */
+export async function readSendable(
+	db: Db,
+	entryGroupId: string
+): Promise<AccountingResult<Sendable>> {
+	const group = await findEntryGroupById(db, entryGroupId);
+	if (group === null) {
+		return failed(
+			'not_found',
+			`No journal entry carries the id ${entryGroupId}, so there is nothing to send for it.`
+		);
+	}
+
+	if (group.sourceType === 'payment') return giftOf(db, group);
+	if (group.sourceType === 'adjustment') return correctionOf(group);
+
+	// `fee` is the one worth naming: it is posted beside every charge that carried one, and sending
+	// it on its own would send the same money twice. the outbox queues none, so arriving here means
+	// something upstream queued an entry group by a rule of its own.
+	return failed(
+		'internal_error',
+		`A ${group.sourceType} journal entry was handed to the QuickBooks delivery, which sends gifts and corrections only. Nothing was sent.`
+	);
+}
+
+/**
+ * a gift as one record: what was recognised, what the processor kept, and who gave it.
+ *
+ * the two figures are read off the lines rather than off the donation row, because the lines are
+ * what the books actually hold — a partial capture, a fee the processor restated, and a gift split
+ * across funds all show up here and in no other reading.
+ */
+async function giftOf(db: Db, group: EntryGroupListRow): Promise<AccountingResult<Sendable>> {
+	const income = totalIn(group.lines, 'income', (amount) => -amount);
+	if (!income.ok) return income;
+	if (income.value <= 0) {
+		return failed(
+			'internal_error',
+			`The journal entry ${group.id} credits no income account, so there is no gift in it to send.`
+		);
+	}
+
+	const feeGroup = await findEntryGroup(db, 'fee', group.sourceId);
+	const fee =
+		feeGroup === null
+			? ({ ok: true, value: 0 } as const)
+			: totalIn(feeGroup.lines, 'fee', (amount) => amount);
+	if (!fee.ok) return fee;
+
+	const donor = await findPaymentDonor(db, group.sourceId);
+	if (donor === null) {
+		return failed(
+			'internal_error',
+			`The books hold a gift against payment ${group.sourceId} and no payment row carries that id, so there is no donor to name on it.`
+		);
+	}
+
+	return {
+		ok: true,
+		value: {
+			kind: 'gift',
+			gift: {
+				key: group.id,
+				occurredAt: group.occurredAt,
+				currency: group.currency,
+				donor: { displayName: donor.displayName, email: donor.email },
+				memo: group.memo,
+				incomeMinor: income.value,
+				feeMinor: fee.value
+			}
+		}
+	};
+}
+
+/** a correcting entry, one line per line, each in the role its account maps to. */
+function correctionOf(group: EntryGroupListRow): AccountingResult<Sendable> {
+	const lines: CorrectionLine[] = [];
+	for (const line of group.lines) {
+		const role = roleOf(line);
+		if (!role.ok) return role;
+		lines.push({
+			role: role.value,
+			// `+` is a debit and `−` a credit project-wide (../ledger/posting.ts). the direction is
+			// named here rather than carried as a sign, so nothing downstream has to know that.
+			posting: line.amountMinor >= 0 ? 'debit' : 'credit',
+			amountMinor: Math.abs(line.amountMinor)
+		});
+	}
+
+	const [first, second, ...rest] = lines;
+	if (first === undefined || second === undefined) {
+		// unreachable: `post()` refuses an entry group with fewer than two lines, so this is the
+		// tuple being a tuple rather than a state the books can hold.
+		return failed(
+			'internal_error',
+			`The journal entry ${group.id} has fewer than two lines, which nothing in this app can post.`
+		);
+	}
+
+	return {
+		ok: true,
+		value: {
+			kind: 'correction',
+			correction: {
+				key: group.id,
+				occurredAt: group.occurredAt,
+				currency: group.currency,
+				memo: group.memo,
+				lines: [first, second, ...rest]
+			}
+		}
+	};
+}
+
+/**
+ * what the lines in one role net to, each amount read in the direction the caller asked for.
+ *
+ * net rather than a sum of one side, because a gift split across funds is several lines in the one
+ * role and the figure that goes over is what they come to together. lines in the other roles are
+ * the entry's own counterparts and are passed over; a line naming an account with no role at all
+ * refuses the whole read, because a figure summed past one is a gift sent at the wrong amount with
+ * nothing anywhere looking wrong.
+ */
+function totalIn(
+	lines: readonly EntryLine[],
+	role: AccountRole,
+	read: (amountMinor: number) => number
+): AccountingResult<number> {
+	let total = 0;
+	for (const line of lines) {
+		const lineRole = roleOf(line);
+		if (!lineRole.ok) return lineRole;
+		if (lineRole.value !== role) continue;
+		total += read(line.amountMinor);
+	}
+	return { ok: true, value: total };
+}
+
+/** the role a line's account stands for, or a refusal naming the account that has none. */
+function roleOf(line: EntryLine): AccountingResult<AccountRole> {
+	const known = BY_ACCOUNT_ID.get(line.accountId);
+	if (known === undefined) {
+		return failed(
+			'unmapped_account',
+			`The journal entry names the account ${line.accountId}, which is not one this deployment's chart of accounts holds. Nothing was sent.`
+		);
+	}
+	if (known.role === null) {
+		return failed(
+			'unmapped_account',
+			`The journal entry moves money through ${POSTING_ACCOUNTS[known.key].name}, and only income, processor fees and the account gifts are deposited into are sent to QuickBooks. Post this correction in QuickBooks instead.`
+		);
+	}
+	return { ok: true, value: known.role };
+}

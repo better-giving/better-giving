@@ -1,0 +1,353 @@
+import { env } from 'cloudflare:test';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+	CONSOLE_SESSION_SECONDS,
+	CONSOLE_TOKEN_MIN_RANDOM,
+	formatConsoleToken
+} from '@better-giving/operator/console/token';
+import type {
+	QuickbooksPressReport,
+	QuickbooksReport
+} from '@better-giving/operator/console/quickbooks';
+import { readConnectLink } from '$lib/server/accounting/connect-link';
+import { QUICKBOOKS_PRODUCTION_URL } from '$lib/server/accounting/quickbooks';
+import { connectQuickbooks, readQuickbooksConnection } from '$lib/server/accounting/connection';
+import {
+	failed,
+	type AccountingProvider,
+	type AccountingResult,
+	type LedgerAccount
+} from '$lib/server/accounting/provider';
+import { postableId } from '$lib/server/db/accounts';
+import { createDb, type Db } from '$lib/server/db/client';
+import { quickbooksSync } from '$lib/server/db/schema';
+import { post, postingStatements } from '$lib/server/ledger/posting';
+import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import * as quickbooks from './console.quickbooks';
+import * as surface from './console';
+
+// the console's QuickBooks address, against a real D1.
+//
+// a workers spec because every answer is assembled out of rows — the connection, the three picks,
+// the queue — and standing in for D1 would prove the stand-in (CLAUDE.md). the request is mounted
+// through the surface's own layout rather than handed to a handler, which is what puts the
+// credential check in front of it: ../route-request.testing.ts states why.
+//
+// the provider is stood in for because nothing here is about Intuit's wire
+// ($lib/server/accounting/quickbooks.spec.ts holds that), and a refusal is handed over as the
+// port's own `failed(...)` so the two cannot disagree about what a reason is called.
+
+const OWN = 'https://give.example.workers.dev';
+const REALM = '4620816365';
+
+const EXPIRES_AT = new Date(
+	Math.floor((Date.now() + CONSOLE_SESSION_SECONDS * 1000) / 1000) * 1000
+);
+const TOKEN = formatConsoleToken(EXPIRES_AT, 'z'.repeat(CONSOLE_TOKEN_MIN_RANDOM));
+
+const SECRET = 'a-signing-key-as-long-as-a-real-one-would-be';
+const DEPLOYMENT = {
+	CONSOLE_TOKEN: TOKEN,
+	BETTER_AUTH_SECRET: SECRET,
+	QUICKBOOKS_CLIENT_ID: 'ABCintuitClientId',
+	QUICKBOOKS_CLIENT_SECRET: 'intuit-client-secret',
+	// taken off the adapter rather than spelled: no Intuit address is written a second time
+	// anywhere in this repository ($lib/server/accounting/sole-importer.spec.ts).
+	QUICKBOOKS_API_URL: QUICKBOOKS_PRODUCTION_URL
+};
+
+const CHART: readonly LedgerAccount[] = [
+	{ id: '79', name: 'Contributions', type: 'Income', classification: 'Revenue' },
+	{ id: '80', name: 'Merchant fees', type: 'Expense', classification: 'Expense' },
+	{ id: '35', name: 'Checking', type: 'Bank', classification: 'Asset' }
+];
+
+const stub = vi.hoisted(() => ({
+	accounts: null as AccountingResult<readonly LedgerAccount[]> | null,
+	revoked: null as AccountingResult<null> | null
+}));
+
+vi.mock('$lib/server/accounting/factory', () => ({
+	createAccountingProvider: (): AccountingProvider => {
+		// every arm, so the stub is the port rather than a cast over part of it — and the four this
+		// route never calls refuse loudly, which is what turns a route that reached for one into a
+		// failing case instead of an undefined.
+		const unasked = async () => failed('internal_error', 'this route does not call this arm');
+		return {
+			listAccounts: async () => stub.accounts ?? failed('internal_error', 'no case set a chart'),
+			revokeTokens: async () => stub.revoked ?? failed('internal_error', 'no case set a revoke'),
+			readCompany: unasked,
+			sendGift: unasked,
+			sendCorrection: unasked,
+			exchangeCode: unasked
+		};
+	}
+}));
+
+const routes: RouteRequester = mountRoutes([
+	{ path: 'console', module: surface },
+	{ path: 'quickbooks', module: quickbooks }
+]);
+
+function envWith(values: Record<string, string | undefined>): Env {
+	return new Proxy(env, {
+		get: (target, property) =>
+			typeof property === 'string' && property in values
+				? values[property]
+				: Reflect.get(target, property)
+	}) as Env;
+}
+
+const headers = { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` };
+
+const read = (): Promise<Response> =>
+	routes(new Request(`${OWN}/console/quickbooks`, { headers }), {
+		env: envWith(DEPLOYMENT)
+	});
+
+const press = (body: unknown): Promise<Response> =>
+	routes(
+		new Request(`${OWN}/console/quickbooks`, {
+			method: 'POST',
+			headers,
+			body: JSON.stringify(body)
+		}),
+		{ env: envWith(DEPLOYMENT) }
+	);
+
+let db: Db;
+
+beforeEach(async () => {
+	db = createDb(env.DB);
+	// the lines before the group they hang off, and the queue before both: both are foreign keys,
+	// so any other order is a constraint violation rather than an empty table.
+	for (const table of ['quickbooks_sync', 'ledger_entry', 'entry_group', 'quickbooks_connection']) {
+		await env.DB.prepare(`delete from ${table}`).run();
+	}
+	stub.accounts = { ok: true, value: CHART };
+	stub.revoked = { ok: true, value: null };
+});
+
+const CONNECTED_FROM = new Date('2026-01-01T00:00:00.000Z');
+
+async function connect(): Promise<void> {
+	await connectQuickbooks(db, {
+		realmId: REALM,
+		tokens: {
+			accessToken: 'access-one',
+			accessTokenExpiresAt: new Date('2026-03-01T11:00:00.000Z'),
+			refreshToken: 'refresh-one',
+			refreshTokenExpiresAt: null
+		},
+		startAt: CONNECTED_FROM
+	});
+}
+
+/** one gift given up on, so the backlog and the retry press have something to act on. */
+async function givenUp(): Promise<string> {
+	const at = new Date('2026-02-01T00:00:00.000Z');
+	// through `post()` rather than around it: a group written straight in is a group with no lines,
+	// which is the unbalanced write $lib/server/ledger/sole-writer.spec.ts exists to refuse.
+	const entry = post({
+		sourceType: 'donation',
+		sourceId: crypto.randomUUID(),
+		currency: 'USD',
+		occurredAt: at,
+		memo: null,
+		lines: [
+			{ accountId: postableId('undepositedFunds'), amountMinor: 10_000 },
+			{ accountId: postableId('donationsDeductible'), amountMinor: -10_000 }
+		]
+	});
+	const id = entry.group.id;
+	if (id === undefined) throw new Error('post() minted no entry group id');
+	await db.batch([
+		...postingStatements(db, entry),
+		db.insert(quickbooksSync).values({
+			entryGroupId: id,
+			status: 'failed',
+			attempts: 3,
+			lastError: 'Intuit refused the payload.',
+			notifiedAt: at,
+			createdAt: at,
+			updatedAt: at
+		})
+	]);
+	return id;
+}
+
+describe('GET /console/quickbooks', () => {
+	it('says no company is connected, and asks Intuit nothing', async () => {
+		const answered = await read();
+
+		expect(answered.status).toBe(200);
+		expect(await answered.json<QuickbooksReport>()).toEqual({
+			connection: { state: 'disconnected' },
+			accounts: null,
+			backlog: { failed: 0, oldestWaitingAt: null },
+			callbackAddress: `${OWN}/quickbooks/callback`
+		});
+	});
+
+	it('draws the connected company beside the chart the three are picked out of', async () => {
+		await connect();
+		await givenUp();
+
+		const report = await (await read()).json<QuickbooksReport>();
+
+		expect(report.connection).toEqual({
+			state: 'connected',
+			realmId: REALM,
+			companyName: null,
+			income: null,
+			fee: null,
+			deposit: null,
+			startAt: CONNECTED_FROM.toISOString()
+		});
+		expect(report.accounts).toEqual({ state: 'read', accounts: CHART });
+		expect(report.backlog).toEqual({
+			failed: 1,
+			oldestWaitingAt: new Date('2026-02-01T00:00:00.000Z').toISOString()
+		});
+	});
+
+	it('says a lapsed credential is one to connect again', async () => {
+		await connect();
+		stub.accounts = failed('reconnect_needed', 'The stored credential was refused.');
+
+		const report = await (await read()).json<QuickbooksReport>();
+
+		expect(report.accounts).toEqual({
+			state: 'unreadable',
+			recourse: 'reconnect',
+			detail: 'The stored credential was refused.'
+		});
+	});
+
+	it('says a provider it could not reach is one to wait on', async () => {
+		await connect();
+		stub.accounts = failed('unreachable', 'Intuit did not answer.');
+
+		const report = await (await read()).json<QuickbooksReport>();
+
+		expect(report.accounts).toEqual({
+			state: 'unreadable',
+			recourse: 'wait',
+			detail: 'Intuit did not answer.'
+		});
+	});
+
+	it('names no way out of a refusal that is neither', async () => {
+		await connect();
+		stub.accounts = failed('rate_limited', 'Intuit is shedding load.');
+
+		const report = await (await read()).json<QuickbooksReport>();
+
+		expect(report.accounts).toEqual({
+			state: 'unreadable',
+			recourse: null,
+			detail: 'Intuit is shedding load.'
+		});
+	});
+});
+
+describe('the connect press', () => {
+	it('answers an address this deployment will honour', async () => {
+		const answered = await press({ press: 'connect' });
+
+		expect(answered.status).toBe(200);
+		const report = await answered.json<QuickbooksPressReport>();
+		if (report.press !== 'connect') throw new Error(`answered ${report.press}`);
+		expect(
+			await readConnectLink({ secret: SECRET, url: new URL(report.url), now: new Date() })
+		).toBe(true);
+	});
+});
+
+describe('the three accounts', () => {
+	it('stores each pick with the name it carries in the company’s own books', async () => {
+		await connect();
+
+		const answered = await press({ press: 'accounts', income: '79', fee: '80', deposit: '35' });
+
+		expect(answered.status).toBe(200);
+		expect(await readQuickbooksConnection(db)).toMatchObject({
+			income: { id: '79', name: 'Contributions' },
+			fee: { id: '80', name: 'Merchant fees' },
+			deposit: { id: '35', name: 'Checking' }
+		});
+	});
+
+	it('refuses a pick the company’s books do not hold', async () => {
+		await connect();
+
+		const answered = await press({ press: 'accounts', income: '79', fee: '80', deposit: '999' });
+
+		expect(answered.status).toBe(400);
+		expect(await readQuickbooksConnection(db)).toMatchObject({ income: null });
+	});
+
+	it('refuses the press where no company is connected', async () => {
+		const answered = await press({ press: 'accounts', income: '79', fee: '80', deposit: '35' });
+
+		expect(answered.status).toBe(409);
+	});
+});
+
+describe('how much history goes over', () => {
+	it('moves the date gifts are sent from', async () => {
+		await connect();
+
+		const answered = await press({ press: 'start-date', startAt: '2026-04-01T00:00:00.000Z' });
+
+		expect(answered.status).toBe(200);
+		expect((await readQuickbooksConnection(db))?.startAt).toEqual(
+			new Date('2026-04-01T00:00:00.000Z')
+		);
+	});
+
+	it('refuses a date it cannot read', async () => {
+		await connect();
+
+		const answered = await press({ press: 'start-date', startAt: 'the first of April' });
+
+		expect(answered.status).toBe(400);
+		expect((await readQuickbooksConnection(db))?.startAt).toEqual(CONNECTED_FROM);
+	});
+});
+
+describe('the retry press', () => {
+	it('queues every gift that was given up on again', async () => {
+		await givenUp();
+
+		const answered = await press({ press: 'retry' });
+
+		expect(await answered.json<QuickbooksPressReport>()).toEqual({ press: 'retry', retried: 1 });
+		const [row] = await db
+			.select({ status: quickbooksSync.status, notifiedAt: quickbooksSync.notifiedAt })
+			.from(quickbooksSync);
+		expect(row).toEqual({ status: 'pending', notifiedAt: null });
+	});
+});
+
+describe('the disconnect press', () => {
+	it('leaves no credential behind even where Intuit refused the revoke', async () => {
+		await connect();
+		stub.revoked = failed('unreachable', 'Intuit did not answer.');
+
+		const answered = await press({ press: 'disconnect' });
+
+		expect(answered.status).toBe(200);
+		expect(await readQuickbooksConnection(db)).toBeNull();
+	});
+});
+
+describe('a press this address does not take', () => {
+	it('refuses a body naming no press at all', async () => {
+		expect((await press({})).status).toBe(400);
+	});
+
+	it('refuses a press by a name nothing here answers to', async () => {
+		expect((await press({ press: 'reconnect' })).status).toBe(400);
+	});
+});

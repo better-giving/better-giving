@@ -1,0 +1,134 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readWranglerConfig } from './lib/server/wrangler-config.testing';
+import { sendDueEntries } from '$lib/server/accounting/deliver';
+import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
+import worker, { CRON_RUNS } from './worker';
+
+// the join between the schedule this worker is deployed with and the work its `scheduled` handler
+// runs.
+//
+// nothing in the language holds them together: ./wrangler.jsonc's `triggers.crons` are strings
+// Cloudflare hands back on `controller.cron`, and a branch keyed on one that nobody declared is a
+// branch that never runs, while an expression declared with no branch is a cron firing into
+// nothing, every time, with nothing anywhere saying so. so the config is read here rather than
+// restated, the way src/lib/server/api/rate-limit.config.spec.ts reads the same file for the
+// buckets.
+//
+// the same read is what notices a named environment declaring `triggers` of its own, which
+// replaces the top level's rather than adding to it — a rehearsal deployment that runs neither of
+// the two.
+//
+// the two runs are mocked, because what is under test is which one an expression reaches and with
+// what time — their own behaviour is held by
+// $lib/server/donations/pending-crypto-read.workers.spec.ts and
+// $lib/server/accounting/deliver.workers.spec.ts, against a real database.
+
+vi.mock('$lib/server/donations/pending-crypto-read', () => ({
+	readPendingCryptoGifts: vi.fn(async () => {})
+}));
+vi.mock('$lib/server/accounting/deliver', () => ({
+	sendDueEntries: vi.fn(async () => {})
+}));
+
+/** the fields this file reads. everything else in the config is somebody else's concern. */
+interface WranglerConfig {
+	readonly triggers?: { readonly crons?: string[] };
+	readonly env?: Readonly<
+		Record<string, { readonly triggers?: { readonly crons?: readonly unknown[] } } | undefined>
+	>;
+}
+
+const config = readWranglerConfig() as WranglerConfig;
+const DECLARED = config.triggers?.crons ?? [];
+const ENVIRONMENTS = Object.keys(config.env ?? {});
+
+const SCHEDULED_AT = new Date('2026-09-20T12:30:00.000Z');
+
+type Scheduled = NonNullable<typeof worker.scheduled>;
+
+/** the platform env a run is handed. nothing below reaches a binding: both runs are mocked. */
+const env = { DB: {} } as unknown as Parameters<Scheduled>[1];
+
+/** one cron firing, run to the end of everything the handler put on `waitUntil`. */
+async function fires(cron: string): Promise<void> {
+	const waited: Promise<unknown>[] = [];
+	const ctx = {
+		waitUntil: (promise: Promise<unknown>) => waited.push(promise),
+		passThroughOnException: () => {},
+		props: {}
+	} as unknown as Parameters<Scheduled>[2];
+
+	await worker.scheduled(
+		{
+			cron,
+			scheduledTime: SCHEDULED_AT.getTime(),
+			type: 'scheduled',
+			noRetry: () => {}
+		} as unknown as Parameters<Scheduled>[0],
+		env,
+		ctx
+	);
+	await Promise.all(waited);
+}
+
+// `restoreMocks` in ../vitest.config.ts restores a spy's implementation and leaves a module mock's
+// call history alone, so a case that read it would be reading every case before it.
+beforeEach(() => {
+	vi.mocked(readPendingCryptoGifts).mockClear();
+	vi.mocked(sendDueEntries).mockClear();
+});
+
+describe('the schedule this worker is deployed with', () => {
+	it('is answered expression for expression, with no branch for one nothing fires', () => {
+		// a guard on the guard: an unread config would make the comparison pass against nothing.
+		expect(DECLARED.length).toBeGreaterThan(0);
+		expect([...Object.keys(CRON_RUNS)].sort()).toEqual([...DECLARED].sort());
+	});
+
+	it.each(DECLARED)('runs work on %s', async (cron) => {
+		await fires(cron);
+
+		expect(
+			vi.mocked(readPendingCryptoGifts).mock.calls.length +
+				vi.mocked(sendDueEntries).mock.calls.length
+		).toBe(1);
+	});
+
+	// the list below is read off the parsed config, so an empty one registers no test at all and the
+	// rule goes uncovered under a green file.
+	it('has environments to inherit it', () => {
+		expect(ENVIRONMENTS.length).toBeGreaterThan(0);
+	});
+
+	// an environment's own `triggers` replaces the top level's rather than adding to it, so a
+	// rehearsal deployment declaring one of its own runs neither of the two above.
+	it.each(ENVIRONMENTS)('is inherited by the %s environment', (name) => {
+		expect(config.env?.[name]?.triggers).toBeUndefined();
+	});
+});
+
+describe('which run an expression reaches', () => {
+	it('reads back the crypto gifts no IPN settled every half hour, from the run’s own time', async () => {
+		await fires('*/30 * * * *');
+
+		expect(readPendingCryptoGifts).toHaveBeenCalledWith(expect.anything(), SCHEDULED_AT);
+		expect(sendDueEntries).not.toHaveBeenCalled();
+	});
+
+	it('sends what the books are owed every minute, from the run’s own time', async () => {
+		await fires('* * * * *');
+
+		expect(sendDueEntries).toHaveBeenCalledWith(expect.anything(), SCHEDULED_AT);
+		expect(readPendingCryptoGifts).not.toHaveBeenCalled();
+	});
+
+	it('runs nothing at all on an expression it does not answer', async () => {
+		// a deployment's live schedule and the code it runs are put up by two calls rather than one
+		// (packages/console/internal/deploy/upload.go), so an expression being retired fires against
+		// a bundle that has already dropped it. running nothing is what that has to cost.
+		await fires('0 3 * * *');
+
+		expect(readPendingCryptoGifts).not.toHaveBeenCalled();
+		expect(sendDueEntries).not.toHaveBeenCalled();
+	});
+});

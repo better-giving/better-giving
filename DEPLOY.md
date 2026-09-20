@@ -21,7 +21,7 @@ Run operator commands from the repo root, never raw `wrangler`: the scripts carr
 
 ## 1. Configuration values
 
-Twenty-four values, all of them plain Worker **vars**: readable on the Worker (**Workers & Pages → your Worker → Settings → Variables and Secrets**) and shown as values in the console, so you can check what you pasted. `packages/app/.dev.vars.example` describes every one.
+Twenty-seven values, all of them plain Worker **vars**: readable on the Worker (**Workers & Pages → your Worker → Settings → Variables and Secrets**) and shown as values in the console, so you can check what you pasted. `packages/app/.dev.vars.example` describes every one.
 
 ```sh
 # packages/app/.deploy.vars (gitignored, single-quote every value)
@@ -58,10 +58,10 @@ pnpm run deploy:vars      # one deploy, carrying every line of the file as a var
 - **Take each processor's pair from one place too.** Stripe's two keys are one pair from one dashboard page, and PayPal's client id and secret are one pair from one app in PayPal's developer dashboard. A mismatched pair is refused by the processor at the first charge, and nothing here checks it for you.
 - Single-quote every value: quoting keeps a `#` or backslash in a password from being read as syntax.
 - `wrangler.jsonc` carries `keep_vars: true`, so every value survives every later deploy. A deploy therefore cannot remove one. Clear it on the Variables and Secrets page, or set it to an empty string.
-- Anyone who can open this Cloudflare account can read all twenty-four, and that is the trade: the console shows you a stored processor key and a stored SMTP password rather than four dots, because it already runs on your Cloudflare session. Treat account access as credential access.
+- Anyone who can open this Cloudflare account can read all twenty-seven, and that is the trade: the console shows you a stored processor key and a stored SMTP password rather than four dots, because it already runs on your Cloudflare session. Treat account access as credential access.
 - `.deploy.vars` is not `.dev.vars`, which feeds `pnpm dev` and is never uploaded.
-- `CONSOLE_TOKEN` sits beside the twenty-four and is not one of them: a Worker secret holding the console's session, minted when a console connects, twelve hours, replaced by the next connect. `pnpm run secret:list` names it, and `pnpm run secret:delete CONSOLE_TOKEN` closes the console surface until a console connects again.
-- `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are escape hatches, not setup steps: the first revokes every session, the second pins a canonical origin (read the caveat in `.dev.vars.example` first). `SMTP_PORT` is the third of the twenty-four that is usually left unset; the app refuses every port but 465.
+- `CONSOLE_TOKEN` sits beside the twenty-seven and is not one of them: a Worker secret holding the console's session, minted when a console connects, twelve hours, replaced by the next connect. `pnpm run secret:list` names it, and `pnpm run secret:delete CONSOLE_TOKEN` closes the console surface until a console connects again.
+- `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are escape hatches, not setup steps: the first revokes every session, the second pins a canonical origin (read the caveat in `.dev.vars.example` first). `SMTP_PORT` is the third of the twenty-seven that is usually left unset; the app refuses every port but 465.
 
 ## 2. The console jobs
 
@@ -114,6 +114,26 @@ Sign in at `/` as `admin` with `ADMIN_PASSWORD`. Forms and their paste-ready sni
 The console's **Organisation** page: registered name, EIN, address, all rows on your deployment rather than Cloudflare values. **Registered name and EIN gate every form.** US 501(c)(3) only: the EIN is checked to the digit, stored `12-3456789`; another jurisdiction forks and changes the rule.
 
 Every form prints the standard receipt sentence, *"No goods or services were provided in exchange for this gift."* Gifts carrying a benefit (a gala ticket, member perks) make it wrong: edit `SUGGESTED_DEDUCTIBILITY_STATEMENT` in `packages/operator/src/deductibility.ts` and deploy, or write `org_profile.deductibility_statement` directly, where a non-empty value wins. Your organisation makes the claim; a tax professional reviews it.
+
+## Sending gifts to QuickBooks
+
+Optional, and not a processor: QuickBooks takes no money and finishes no set-up job, so a deployment that never connects it is complete. What it does is post every settled gift and every correcting entry into the organisation's own books.
+
+**Register an app with Intuit first.** At [developer.intuit.com](https://developer.intuit.com), create an app and take its client id and secret from **Keys and credentials**. Each app carries two pairs — Development, which works only against sandbox companies, and Production, which works only against real ones — and the Production pair does not exist until Intuit approves the questionnaire behind it. Take both halves from the same pair: a Development client id beside a Production secret is refused at the first call.
+
+**Register the return address on that same app, under Redirect URIs**: this deployment's address followed by `/quickbooks/callback`, for example `https://donate.example.org/quickbooks/callback`. **Without it registered, Intuit refuses the round trip** and no company can be connected — the address sent to Intuit has to match one on the app to the character. Intuit redirects only to an `https` address and refuses an IP, so connecting a company against `pnpm dev` needs a tunnel. A rehearsal deployment answers at its own address, so register that one too, or use a second app for it.
+
+**Then connect the company on the console's QuickBooks page.** Paste the client id, the secret and the API address under **Sending gifts to QuickBooks**, press **Connect a company**, and a browser tab opens Intuit's consent screen. Choosing a company sends that tab back here and the connection is stored on your deployment. The API address is which of Intuit's two this deployment talks to: `https://sandbox-quickbooks.api.intuit.com` for a sandbox company's Development pair, `https://quickbooks.api.intuit.com` for a real company's.
+
+Back on the same page, three things finish it:
+
+- **The three accounts** a gift is posted into — income, the processor's fee, and the account the money lands in — picked from the connected company's own chart. All three at once: a gift needs all of them and two saved alone would leave the books half told where to go.
+- **The start date**, which is how much of this deployment's history goes over. Gifts before it are never sent. It is answered once, at connect, and a later reconnect keeps it.
+- **Nothing else.** Gifts go over every minute from then on, and a page that says nothing about them is a page with nothing wrong.
+
+**When it stops.** A gift that could not be sent is retried on its own, and one email arrives per outage rather than per gift. Gifts given up on show as a failed count with a **Try these again** press beside it. A credential Intuit has stopped honouring shows **Connect again** — reconnecting keeps the accounts and the start date, and flushes whatever is waiting. An Intuit outage says so and offers no press, because the deployment keeps trying without you.
+
+**Disconnect** revokes the credential at Intuit and drops the connection here. Nothing already in the books is touched, and nothing further is sent.
 
 ## Checking a deployment
 
@@ -180,7 +200,7 @@ pnpm run deploy:test
 pnpm run deploy:test --var <NAME>:<value>
 ```
 
-`deploy:test` sets `CLOUDFLARE_ENV=test` on the build, which is where the environment is decided; `--env test` on the upload alone cannot, which is why you run the script. Result: `better-giving-test` Worker and database, holding none of the twenty-four. `deploy:vars` deploys the real one, so a rehearsal is configured a value at a time.
+`deploy:test` sets `CLOUDFLARE_ENV=test` on the build, which is where the environment is decided; `--env test` on the upload alone cannot, which is why you run the script. Result: `better-giving-test` Worker and database, holding none of the twenty-seven. `deploy:vars` deploys the real one, so a rehearsal is configured a value at a time.
 
 The app has no test mode and cannot tell which deployment it runs as. **Do not paste a rehearsal snippet where real donors reach**: a typed card declines loudly, but an Apple Pay / Google Pay gift *succeeds*: Stripe substitutes a test token by design, the success state renders, the receipt sends, and no money moved. Nothing in this repository guards that; you knowing is the guard.
 
@@ -206,14 +226,14 @@ Upstream owns every file, so a clean fork merges fast-forward; a conflict means 
 
 ## Without a checkout
 
-The console binary does the whole job (deploy, all twenty-four values, webhooks, widget, sites, org identity) for an operator who holds no source:
+The console binary does the whole job (deploy, all twenty-seven values, webhooks, widget, sites, org identity) for an operator who holds no source:
 
 ```sh
 curl -fsSL https://github.com/better-giving/better-giving/releases/latest/download/install.sh | sh
 better-giving start
 ```
 
-Typed again on a deployment behind this console's release, `start` offers to carry the release onto it, and applies its migrations only once you agree. Connecting signs out any other console connected to that deployment. Everything after that (the twenty-four values, Stripe, PayPal, Chariot, NOWPayments, the widget, the site list, the org identity) is a screen in that console.
+Typed again on a deployment behind this console's release, `start` offers to carry the release onto it, and applies its migrations only once you agree. Connecting signs out any other console connected to that deployment. Everything after that (the twenty-seven values, Stripe, PayPal, Chariot, NOWPayments, the widget, the site list, the org identity) is a screen in that console.
 
 Three more you will want later. **`better-giving update`** brings this console binary up to the newest release and touches your deployment for nothing. `start` is the only command that carries code onto a deployment, and it offers you the newer console itself before it does anything else: a binary deploys the release it was built with, so an out-of-date console would otherwise carry out-of-date code onto your deployment. Accept and it installs that console and carries on as it; decline and it goes on with the binary you ran. **`better-giving login`** signs this machine in to Cloudflare in a browser and asks which account this deployment is in; `start` takes both itself, and the other commands send you here when this machine holds neither. **`better-giving logout`** gives that sign-in up, at Cloudflare and on this machine.
 

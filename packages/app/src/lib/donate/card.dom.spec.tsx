@@ -382,6 +382,67 @@ it('carries the cadence a donor picked onto the receipt', async () => {
 	);
 });
 
+// the label on each of the three boxes is a real `<label for>`, and the words in it are what the box
+// is named by: a placeholder or an `aria-label` standing in for a label would be neither announced
+// on every reading nor left on screen once the donor starts typing.
+//
+// a floating label holds the name alone — the refusal the box is carrying stands beside the box
+// rather than inside the label — so every box on the step is named by its own label's words, and
+// none of them carries a naming attribute of any kind.
+it('binds a real label to every box a donor types their details into', async () => {
+	const { root } = await card();
+
+	press(one(root, '.tiles > label:nth-of-type(2)'));
+	press(one(root, CONTINUE));
+
+	for (const [id, words] of [
+		['email', copy.EMAIL],
+		['first-name', copy.FIRST_NAME],
+		['last-name', copy.LAST_NAME]
+	] as const) {
+		const label = one(root, `label[for="${id}"]`);
+		expect(label.textContent).toBe(words);
+		expect(input(root, `#${id}`).hasAttribute('aria-label'), id).toBe(false);
+		expect(input(root, `#${id}`).hasAttribute('aria-labelledby'), id).toBe(false);
+	}
+});
+
+// the pair is one question and says so structurally, so the two boxes are announced under the name
+// the group asks for rather than as two unrelated asks between the address and the consent.
+it('groups the two name boxes under one legend', async () => {
+	const { root } = await card();
+
+	press(one(root, '.tiles > label:nth-of-type(2)'));
+	press(one(root, CONTINUE));
+
+	const group = one(root, 'fieldset:has(#first-name)');
+	expect(one(group, 'legend').textContent).toBe(copy.YOUR_NAME);
+	expect(group.contains(input(root, '#last-name'))).toBe(true);
+	// the address is its own ask and stays outside the pair.
+	expect(group.contains(input(root, '#email'))).toBe(false);
+});
+
+// which of the two constructions a box is drawn with is the row's to say, and this authorship has
+// to say the same thing the element's own does: a box inside a named group of boxes carries the
+// hook the stylesheet keys on and the blank placeholder those rules tell its two states apart by,
+// and a box standing on its own carries neither and keeps its label over it.
+it('asks for a label inside the box on the pair and never on the address', async () => {
+	const { root } = await card();
+
+	press(one(root, '.tiles > label:nth-of-type(2)'));
+	press(one(root, CONTINUE));
+
+	for (const id of ['first-name', 'last-name']) {
+		const box = input(root, `#${id}`);
+		expect(box.closest('.field-row')?.className, id).toBe('field-row floating');
+		expect(box.getAttribute('placeholder'), id).toBe(' ');
+	}
+
+	const email = input(root, '#email');
+	expect(email.closest('.field-row')?.className).toBe('field-row');
+	expect(email.hasAttribute('placeholder')).toBe(false);
+});
+
 it('marks only the payer fields the press was refused for and puts the caret on the first', async () => {
 	const { root } = await card();
 
@@ -395,6 +456,14 @@ it('marks only the payer fields the press was refused for and puts the caret on 
 	expect(one(root, '#first-name-problem').textContent).toBe(copy.NAME_PROBLEM);
 	expect(input(root, '#first-name').getAttribute('aria-describedby')).toBe('first-name-problem');
 	expect(document.activeElement).toBe(input(root, '#first-name'));
+	// and it is said under the box, in the row's own column, on this row as on every other: one
+	// construction, so nothing about the sentence follows where the box's label stands.
+	expect(one(root, '#first-name-problem').parentElement).toBe(
+		input(root, '#first-name').parentElement
+	);
+	expect(one(root, '#first-name-problem').tagName).toBe('P');
+	expect(one(root, '#email-problem').tagName).toBe('P');
+	expect(one(root, '#email-problem').parentElement?.className).toBe('field-row');
 });
 
 it('says which of the two rules an address broke', async () => {

@@ -12,6 +12,9 @@ import type {
 	PaymentsRead,
 	PaypalRunRead,
 	PaypalStarted,
+	QuickbooksPressBody,
+	QuickbooksPressed,
+	QuickbooksRead,
 	RecurringRead,
 	RecurringSetup,
 	SitesWrite,
@@ -117,7 +120,7 @@ export const homeReading = (): Promise<HomeReading> => ask('/home/reading', 'GET
 /**
  * sets and clears the values a fold's boxes carry, in one request to cloudflare.
  *
- * every one of the twenty-four is a plain var, so this is the one door every press on the page writes
+ * every one of the twenty-seven is a plain var, so this is the one door every press on the page writes
  * through — a read of the worker's bindings and one patch back. seconds and no deploy: the binary
  * replaces the named bindings and sends every other one back up as inherited, so the deployment's
  * database and its rate limiters are untouched.
@@ -128,7 +131,7 @@ export const homeReading = (): Promise<HomeReading> => ask('/home/reading', 'GET
  *
  * **every way it did not happen comes back as a value rather than thrown**, because each is a state
  * the fold draws at the control that was pressed. the binary refuses a name that is not one of the
- * twenty-four, PayPal's three credentials, which only {@link startPaypalSetup} writes, and Chariot's
+ * twenty-seven, PayPal's three credentials, which only {@link startPaypalSetup} writes, and Chariot's
  * four values, which only {@link startChariotSetup} writes, and NOWPayments' three, which only
  * {@link saveNowpayments} writes, before
  * cloudflare is asked — and that refusal is thrown: no control on this page can make one.
@@ -196,6 +199,26 @@ export const readRecurring = (): Promise<RecurringRead> => ask('/deployment/recu
 
 /** asks the deployment to put what a repeating gift is charged against on that account. */
 export const setUpRecurring = (): Promise<RecurringSetup> => ask('/deployment/recurring', 'POST');
+
+/**
+ * where this deployment's books stand: the company it is connected to, what it posts where, and
+ * how far behind the books are.
+ *
+ * the read changes nothing, and the connection is the deployment's alone — the tokens are rows in
+ * its own D1 and the chart of accounts is read with them, so this console holds no Intuit
+ * credential and asks Intuit nothing.
+ */
+export const readQuickbooks = (): Promise<QuickbooksRead> => ask('/deployment/quickbooks', 'GET');
+
+/**
+ * one press over that connection.
+ *
+ * connecting starts here and finishes in a browser: the press answers an address, the operator
+ * opens it, and Intuit sends that browser back to the deployment — never to this console, which is
+ * a binary on somebody's laptop Intuit cannot reach.
+ */
+export const pressQuickbooks = (body: QuickbooksPressBody): Promise<QuickbooksPressed> =>
+	post('/deployment/quickbooks', body);
 
 /**
  * asks the deployment to register the hostnames a donor is drawn wallet buttons on.

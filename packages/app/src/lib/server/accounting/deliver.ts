@@ -1,0 +1,505 @@
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
+import type { Db } from '../db/client';
+import { quickbooksSync } from '../db/schema';
+import { alert } from '../donations/delivery';
+import type { EmailProvider } from '../email/provider';
+import type { AccountingFailure, AccountingFailureReason, AccountingProvider } from './provider';
+import { readSendable } from './record';
+
+// the outbox, delivered: what reads `quickbooks_sync` and sends what it names.
+//
+// it is ../donations/pending-crypto-read.ts for the books — the same shape, for the same reasons: a
+// bound on what one run reads, a deadline measured against the run's own scheduled time, one row's
+// fault not stopping the rest, and a fault the whole backlog is behind ending the run. what is
+// different is that this table is a queue rather than a recovery read, so a row here carries where
+// it got to, and every run that moves it is this one.
+//
+// **it builds no provider and holds no credential.** an `AccountingProvider` is handed in, the way
+// ../donations/pending-crypto-read.ts takes one off `Processors` — so every case below can be run
+// against a provider written in a test file, and the client id, the secret and the API address
+// reach this module through nobody.
+//
+// ---------------------------------------------------------------------------
+// the three statuses, and every one a *run* writes is written here.
+//
+// the one other writer is ./backlog.ts, and it writes one transition: `failed` back to `pending`,
+// when an operator presses retry on the console. so a status moves by a run or by a person and by
+// nothing else.
+//
+//   pending — owed and not finished, whether or not it has failed before. `attempts` counts the
+//             tries and `last_error` holds the last one's words.
+//   sent    — finished. `remote_id` is written by the same statement, so a row cannot read as sent
+//             with nothing to point at; a row holding one is never sent again, whatever an
+//             accountant does to that record afterwards (../db/schema.ts).
+//   failed  — given up on, and reached only from a row-level terminal refusal. it is what the
+//             console counts, and a retry there is that row put back to `pending`.
+//
+// ---------------------------------------------------------------------------
+// where a refusal lands, and it is not `retryable` alone.
+//
+// five of the port's reasons are one fault the whole backlog is behind — no company connected, the
+// three accounts not picked, a dead credential, a throttled provider, a provider that cannot be
+// reached. none of them is about the row being sent, so none of them touches a row: the run ends
+// and the backlog is read again next time. marking a hundred gifts over one revoked credential
+// would leave an operator repairing rows instead of the one thing that is wrong.
+//
+// four are about this row and no later run answers them differently — an id nothing carries, an
+// account outside the three, a payload the provider refused, a record this app should never have
+// queued. the row becomes `failed` and the run carries on to the row behind it.
+//
+// `provider_error` is the one that waits: the row stays `pending`, `attempts` goes up, and the
+// backoff below decides when it is read again.
+//
+// ---------------------------------------------------------------------------
+// no attempt cap, and that is deliberate.
+//
+// a gift owed to the books stays owed. a row abandoned after n tries is money in the ledger that
+// nothing will ever send, with nothing anywhere saying so — `attempts` is a diagnostic and never a
+// countdown. what keeps a row nothing can fix cheap is the backoff, not a limit.
+//
+// ---------------------------------------------------------------------------
+// the notice is once per outage, and there are two of them.
+//
+// **rows failing.** a run that ends with rows given up on, or waiting after a failure, sends one
+// alert and stamps `notified_at` on every one of them, so the second run over the same backlog
+// sends nothing. a row that reaches `sent` leaves the failing set, so a backlog that clears and
+// then fails again is a new outage and is reported again. a row given up on stays in the set until
+// somebody retries it, which is what keeps a hundred stuck gifts down to one email.
+//
+// **the run blocked.** a run that stopped has marked no row, so row state says nothing at all
+// about a backlog piling up behind a dead credential — which is the outage most worth an email. it
+// is reported off the blocking reason instead, over every unfinished row and stamped the same way.
+// two of the five reasons say nothing here: a throttled provider clears itself within a run or
+// two, and a deployment nobody has connected is a deliberate act the console's connection screen
+// already shows. a provider that could not be reached waits an hour, so a blip between two runs
+// costs no email.
+//
+// one notice a run, never two. a blocked run marked nothing, so whatever the failing-set arm would
+// have said is about a backlog some earlier run has already reported.
+
+/** everything one run needs, all per request: the books, the company to send to, and the mail. */
+export type AccountingDeliveryDeps = {
+	readonly db: Db;
+	readonly provider: AccountingProvider;
+	/** the mail transport the failure notice rides. its failures are reported, never raised. */
+	readonly email: EmailProvider;
+};
+
+/**
+ * entry groups sent per run, oldest queued first.
+ *
+ * a send costs a handful of D1 statements — the entry and its lines, the cut posted beside it, the
+ * donor it names — one call to the provider, two where the access token had lapsed, and one write.
+ * far inside the paid plan's 10,000 subrequests per invocation, and inside what Intuit meters per
+ * realm per minute. what bounds a run is time rather than count: see `RUN_DEADLINE_MS`.
+ */
+const SENDS_PER_RUN = 100;
+
+/**
+ * no send starts this long after the run's scheduled time. a cron invocation is killed at fifteen
+ * minutes of wall clock and one send can wait out the provider's timeout twice, so the margin is
+ * for the send already under way. what is left is read on the next run, because nothing here is
+ * finished by a run ending — the row is still `pending` and still owed.
+ */
+const RUN_DEADLINE_MS = 10 * 60_000;
+
+/** what a row that has failed once waits before it is tried again. */
+const BACKOFF_FIRST_MS = 60_000;
+
+/**
+ * the longest a row ever waits. a day-long outage costs a row about one attempt an hour, which is
+ * what makes a cap on attempts unnecessary rather than merely unkind.
+ */
+const BACKOFF_CEILING_MS = 60 * 60_000;
+
+/**
+ * how long a provider that could not be reached is given before a stopped run is worth an email.
+ *
+ * a timeout between two runs is not an outage. the two faults that never clear on their own — a
+ * dead credential, and accounts nobody has picked — wait for nothing.
+ */
+const BLIP_GRACE_MS = 60 * 60_000;
+
+/**
+ * how long a row that has failed `attempts` times waits, doubling from a minute to the ceiling.
+ *
+ * zero at zero: a row nobody has tried is due the moment it is queued, which is what makes the
+ * sweep the delivery rather than a delay in front of one.
+ */
+export function backoffMs(attempts: number): number {
+	if (attempts <= 0) return 0;
+	return Math.min(BACKOFF_CEILING_MS, BACKOFF_FIRST_MS * 2 ** (attempts - 1));
+}
+
+/**
+ * every rung up to the ceiling, read out of {@link backoffMs} itself.
+ *
+ * the query below has to express the same ladder in SQL, and a ladder written twice is two ladders:
+ * generating the `case` from the function is what keeps the row a run reads and the row a test
+ * calls `backoffMs` for the same row. it terminates because the ladder saturates.
+ */
+const LADDER: readonly number[] = (() => {
+	const rungs: number[] = [];
+	for (let attempts = 0; ; attempts++) {
+		const wait = backoffMs(attempts);
+		rungs.push(wait);
+		if (wait === BACKOFF_CEILING_MS) return rungs;
+	}
+})();
+
+/** the rows whose wait is over at `now`, as a condition on `updated_at` and `attempts`. */
+function waitIsOver(now: Date): SQL {
+	const rungs = LADDER.map(
+		(wait, attempts) => sql`when ${quickbooksSync.attempts} = ${attempts} then ${wait}`
+	);
+	return sql`${quickbooksSync.updatedAt} + (case ${sql.join(rungs, sql` `)} else ${BACKOFF_CEILING_MS} end) <= ${now.getTime()}`;
+}
+
+/**
+ * the rows an operator is told about: given up on, or waiting after a failure.
+ *
+ * a `pending` row with no attempt behind it is a gift queued a moment ago and is nobody's problem,
+ * which is what keeps an ordinary minute's gifts out of an outage's count.
+ */
+const FAILING = or(
+	eq(quickbooksSync.status, 'failed'),
+	and(eq(quickbooksSync.status, 'pending'), gt(quickbooksSync.attempts, 0))
+);
+
+/**
+ * the backlog: every row still owed to QuickBooks, whatever it has been through.
+ *
+ * `in` rather than "not sent", so the read is one the status index can answer. it is what a blocked
+ * run counts, because such a run marked nothing and row state says nothing about what is stuck.
+ */
+const UNFINISHED = inArray(quickbooksSync.status, ['pending', 'failed']);
+
+/**
+ * where a refusal lands.
+ *
+ *   run     — the whole backlog is behind this one fault. no row is touched and the run ends.
+ *   row     — this row will be refused the same way forever. it becomes `failed`.
+ *   attempt — worth asking again. the row stays `pending` and waits out its backoff.
+ */
+export type FailureLanding = 'run' | 'row' | 'attempt';
+
+/**
+ * total over the port's reasons, so one added to ./provider.ts is a compile error here rather than
+ * a row quietly given up on. ./deliver.spec.ts holds the same table a second time, which is what
+ * makes the decision somebody's rather than the default's.
+ */
+const LANDING_OF: Readonly<Record<AccountingFailureReason, FailureLanding>> = {
+	not_connected: 'run',
+	accounts_not_chosen: 'run',
+	reconnect_needed: 'run',
+	rate_limited: 'run',
+	unreachable: 'run',
+	not_found: 'row',
+	unmapped_account: 'row',
+	invalid_record: 'row',
+	internal_error: 'row',
+	provider_error: 'attempt'
+};
+
+export function landingOf(reason: AccountingFailureReason): FailureLanding {
+	return LANDING_OF[reason];
+}
+
+/**
+ * whether a run stopped by a reason tells an operator, and how soon.
+ *
+ *   at_once       — nothing clears this without somebody acting, so a backlog behind it is a
+ *                   backlog nobody will otherwise notice.
+ *   after_a_while — worth an email only once the oldest gift has waited out {@link BLIP_GRACE_MS}.
+ *   never         — a throttled provider comes back on its own, and a deployment nobody has
+ *                   connected is a deliberate act the console's connection screen shows.
+ */
+export type BlockedNotice = 'at_once' | 'after_a_while' | 'never';
+
+/**
+ * total over the port's reasons the way {@link LANDING_OF} is, so a reason added to ./provider.ts
+ * is a compile error rather than one that silently never tells anybody.
+ *
+ * the row-level reasons are `never` because they cannot arrive here at all — `landingOf` is what
+ * decides whether a refusal stops a run — and they are written out rather than left to a default,
+ * because a default is how a reason that *should* stop a run comes to say nothing.
+ */
+const BLOCKED_NOTICE_OF: Readonly<Record<AccountingFailureReason, BlockedNotice>> = {
+	reconnect_needed: 'at_once',
+	accounts_not_chosen: 'at_once',
+	unreachable: 'after_a_while',
+	rate_limited: 'never',
+	not_connected: 'never',
+	not_found: 'never',
+	unmapped_account: 'never',
+	invalid_record: 'never',
+	internal_error: 'never',
+	provider_error: 'never'
+};
+
+export function blockedNoticeOf(reason: AccountingFailureReason): BlockedNotice {
+	return BLOCKED_NOTICE_OF[reason];
+}
+
+/**
+ * what one queued entry group came to, and what it asks of the caller.
+ *
+ *   sent         — it is in the company's books, under `remoteId`.
+ *   nothing_owed — no queue row carries that id, or the row is finished. nothing was sent.
+ *   given_up     — the row is `failed`. a person decides whether it is ever sent.
+ *   waiting      — the row is still `pending` and is read again once its backoff is over.
+ *   blocked      — nothing about this row: the deployment cannot send at all. **a caller working
+ *                  through a backlog stops here**, because every row behind it answers the same.
+ */
+export type QueuedEntryResult =
+	| { readonly disposition: 'sent'; readonly remoteId: string }
+	| { readonly disposition: 'nothing_owed'; readonly detail: string }
+	| {
+			readonly disposition: 'given_up' | 'waiting' | 'blocked';
+			readonly failure: AccountingFailure;
+	  };
+
+/**
+ * one queued entry group sent, and its row written to say so.
+ *
+ * `now` is the run's scheduled time and is what the row's `updated_at` is set to, so the backoff is
+ * measured against the clock the next run reads rather than against whenever the write landed.
+ *
+ * it is what the sweep below is built from, and what a retry on the console reaches: a row put back
+ * to `pending` and handed here is one gift tried again, with no sweep in the middle.
+ */
+export async function sendQueuedEntry(
+	deps: AccountingDeliveryDeps,
+	entryGroupId: string,
+	now: Date
+): Promise<QueuedEntryResult> {
+	const [queued] = await deps.db
+		.select({ status: quickbooksSync.status })
+		.from(quickbooksSync)
+		.where(eq(quickbooksSync.entryGroupId, entryGroupId));
+
+	if (queued === undefined) {
+		return {
+			disposition: 'nothing_owed',
+			detail: `No journal entry is queued for QuickBooks under the id ${entryGroupId}.`
+		};
+	}
+	if (queued.status === 'sent') {
+		// finished is finished: re-sending would duplicate a hand-edit or resurrect a record
+		// somebody deleted in QuickBooks on purpose (../db/schema.ts).
+		return {
+			disposition: 'nothing_owed',
+			detail: `The journal entry ${entryGroupId} is already in QuickBooks.`
+		};
+	}
+
+	const sendable = await readSendable(deps.db, entryGroupId);
+	if (!sendable.ok) return land(deps.db, entryGroupId, sendable, now);
+
+	const sent =
+		sendable.value.kind === 'gift'
+			? await deps.provider.sendGift(sendable.value.gift)
+			: await deps.provider.sendCorrection(sendable.value.correction);
+	if (!sent.ok) return land(deps.db, entryGroupId, sent, now);
+
+	await deps.db
+		.update(quickbooksSync)
+		.set({ status: 'sent', remoteId: sent.value.remoteId, lastError: null, updatedAt: now })
+		.where(eq(quickbooksSync.entryGroupId, entryGroupId));
+	return { disposition: 'sent', remoteId: sent.value.remoteId };
+}
+
+/** the refusal written where it belongs, or left alone where it is not about this row. */
+async function land(
+	db: Db,
+	entryGroupId: string,
+	failure: AccountingFailure,
+	now: Date
+): Promise<QueuedEntryResult> {
+	const landing = landingOf(failure.reason);
+	if (landing === 'run') return { disposition: 'blocked', failure };
+
+	if (landing === 'row') {
+		// `attempts` is left where it is: it exists to say how long the next run waits, and a row
+		// given up on waits for a person rather than for a clock.
+		await db
+			.update(quickbooksSync)
+			.set({ status: 'failed', lastError: failure.detail, updatedAt: now })
+			.where(eq(quickbooksSync.entryGroupId, entryGroupId));
+		return { disposition: 'given_up', failure };
+	}
+
+	await db
+		.update(quickbooksSync)
+		.set({
+			// counted in the statement rather than from the row this call read, so two runs over one
+			// row cost two attempts.
+			attempts: sql`${quickbooksSync.attempts} + 1`,
+			lastError: failure.detail,
+			updatedAt: now
+		})
+		.where(eq(quickbooksSync.entryGroupId, entryGroupId));
+	return { disposition: 'waiting', failure };
+}
+
+/**
+ * every entry group whose wait is over, sent, and an operator told where the backlog is stuck.
+ *
+ * `now` is the run's scheduled time. one row's fault does not stop the rest; a fault the whole
+ * backlog is behind does, and leaves every row unsent for the next run to read again.
+ */
+export async function sendDueEntries(deps: AccountingDeliveryDeps, now: Date): Promise<void> {
+	const due = await deps.db
+		.select({ entryGroupId: quickbooksSync.entryGroupId })
+		.from(quickbooksSync)
+		// on `status` alone, which is what `quickbooks_sync_status_idx` is for (../db/schema.ts);
+		// the wait is a condition over the rows that index already narrowed to.
+		.where(and(eq(quickbooksSync.status, 'pending'), waitIsOver(now)))
+		.orderBy(asc(quickbooksSync.createdAt), asc(quickbooksSync.entryGroupId))
+		.limit(SENDS_PER_RUN);
+
+	const deadline = now.getTime() + RUN_DEADLINE_MS;
+	let blocked: AccountingFailure | null = null;
+	for (const { entryGroupId } of due) {
+		if (Date.now() >= deadline) break;
+		try {
+			const result = await sendQueuedEntry(deps, entryGroupId, now);
+			if (result.disposition === 'blocked') {
+				blocked = result.failure;
+				report('the QuickBooks delivery stopped:', result.failure.detail);
+				break;
+			}
+		} catch (error) {
+			// the row is left as it stands, unattempted: what throws here is the database or a defect
+			// in the adapter, and neither is something this row did. the next run reads it again.
+			report(`sending the journal entry ${entryGroupId} to QuickBooks faulted:`, error);
+		}
+	}
+
+	if (blocked !== null) {
+		await notifyBlocked(deps, blocked, now);
+		return;
+	}
+	await notifyFailing(deps, now);
+}
+
+/** one alert for the whole failing backlog, and never a second for the same one. */
+async function notifyFailing(deps: AccountingDeliveryDeps, now: Date): Promise<void> {
+	const [tally] = await deps.db
+		.select({
+			waiting: sql<number>`count(case when ${quickbooksSync.status} = 'pending' then 1 end)`,
+			givenUp: sql<number>`count(case when ${quickbooksSync.status} = 'failed' then 1 end)`,
+			reported: sql<number>`count(${quickbooksSync.notifiedAt})`
+		})
+		.from(quickbooksSync)
+		.where(FAILING);
+
+	if (tally === undefined || tally.waiting + tally.givenUp === 0) return;
+	if (tally.reported > 0) return;
+
+	const [latest] = await deps.db
+		.select({ lastError: quickbooksSync.lastError })
+		.from(quickbooksSync)
+		.where(and(FAILING, isNotNull(quickbooksSync.lastError)))
+		.orderBy(desc(quickbooksSync.updatedAt))
+		.limit(1);
+
+	await alert(deps, {
+		headline: 'QuickBooks would not take some of this deployment’s gifts',
+		body:
+			'Journal entries this deployment owes to QuickBooks were refused. The gifts are in this ' +
+			'app’s own books and nothing has been lost. What is waiting is sent again on its own; what ' +
+			'has been given up on is sent only if somebody retries it. This is sent once per backlog, ' +
+			'not once per gift.',
+		facts: [
+			{ label: 'Waiting to be sent', value: String(tally.waiting) },
+			{ label: 'Given up on', value: String(tally.givenUp) },
+			{ label: 'Last error', value: latest?.lastError ?? 'none recorded' }
+		],
+		action:
+			'Open the console (`better-giving start`) and look at what QuickBooks refused. A gift given ' +
+			'up on reaches the books only when it is retried there.'
+	});
+
+	await stamp(deps.db, FAILING, now);
+}
+
+/**
+ * one alert for a run that could not send anything at all, and never a second for the same fault.
+ *
+ * the count is every unfinished row rather than the rows this run read: what is waiting is the
+ * whole backlog, and the run stopped before reading most of it.
+ */
+async function notifyBlocked(
+	deps: AccountingDeliveryDeps,
+	failure: AccountingFailure,
+	now: Date
+): Promise<void> {
+	const notice = blockedNoticeOf(failure.reason);
+	if (notice === 'never') return;
+
+	const [backlog] = await deps.db
+		.select({
+			waiting: sql<number>`count(*)`,
+			oldest: sql<number | null>`min(${quickbooksSync.createdAt})`,
+			reported: sql<number>`count(${quickbooksSync.notifiedAt})`
+		})
+		.from(quickbooksSync)
+		.where(UNFINISHED);
+
+	if (backlog === undefined || backlog.waiting === 0 || backlog.oldest === null) return;
+	if (notice === 'after_a_while' && backlog.oldest > now.getTime() - BLIP_GRACE_MS) return;
+	if (backlog.reported > 0) return;
+
+	await alert(deps, {
+		headline: 'Nothing is reaching QuickBooks at all',
+		body:
+			'Every gift this deployment owes to QuickBooks is behind one fault, and no journal entry ' +
+			'was sent. Nothing has been lost — the gifts are in this app’s own books and the whole ' +
+			'backlog goes over once the fault is put right. This is sent once, not once per run.',
+		facts: [
+			{ label: 'Reason', value: failure.detail },
+			{ label: 'Waiting to be sent', value: String(backlog.waiting) },
+			{ label: 'Oldest has waited', value: waited(now.getTime() - backlog.oldest) }
+		],
+		action:
+			'Open the console (`better-giving start`) and put the QuickBooks connection right: whether ' +
+			'a company is still connected, and which accounts gifts are posted to.'
+	});
+
+	await stamp(deps.db, UNFINISHED, now);
+}
+
+/**
+ * `notified_at` written on every row of `set` carrying none.
+ *
+ * `updated_at` is held where it is, because it is what the wait is measured from: a row costed
+ * another interval for having been reported is a gift that reaches the books later for no reason.
+ * `attempts` is untouched for the same reason — being reported is not an attempt.
+ */
+async function stamp(db: Db, set: SQL | undefined, now: Date): Promise<void> {
+	await db
+		.update(quickbooksSync)
+		.set({ notifiedAt: now, updatedAt: sql`${quickbooksSync.updatedAt}` })
+		.where(and(set, isNull(quickbooksSync.notifiedAt)));
+}
+
+/** how long the oldest gift has waited, in the words somebody reading it would use. */
+function waited(ms: number): string {
+	const minutes = Math.max(0, Math.round(ms / 60_000));
+	if (minutes < 90) return counted(minutes, 'minute');
+	const hours = Math.round(minutes / 60);
+	return hours < 48 ? counted(hours, 'hour') : counted(Math.round(hours / 24), 'day');
+}
+
+function counted(n: number, word: string): string {
+	return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+function report(message: string, detail: unknown): void {
+	try {
+		console.error(message, detail);
+	} catch {
+		// nothing to report it to, and nothing here may throw.
+	}
+}

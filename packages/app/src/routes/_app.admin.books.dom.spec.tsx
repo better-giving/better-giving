@@ -88,12 +88,6 @@ function entry(over: Partial<Entry> = {}): Entry {
 	} as Entry;
 }
 
-/** the two packages the download block offers, as the loader hands them over. */
-const TARGETS = [
-	{ value: 'quickbooks', label: 'QuickBooks Online' },
-	{ value: 'xero', label: 'Xero' }
-];
-
 /** what a screen a case did not spoil is handed. */
 function loaderData(over: Partial<LoaderData> = {}): LoaderData {
 	return {
@@ -102,10 +96,6 @@ function loaderData(over: Partial<LoaderData> = {}): LoaderData {
 		entries: [],
 		limit: 50,
 		hasMore: false,
-		// a visit with no range asked about, which is what every case but the download block's is.
-		asked: { from: '', to: '', target: '' },
-		journal: null,
-		targets: TARGETS,
 		...over
 	} as LoaderData;
 }
@@ -122,12 +112,8 @@ function answered(kind: 'posted' | 'already_posted', sourceId = SOURCE_ID) {
  * to report without a router above it. the action never settles, which holds the screen in the
  * state an operator is looking at while a correction is in flight.
  */
-function screen(
-	over: Partial<LoaderData> = {},
-	options: { holdCheck?: boolean } = {}
-): { root: HTMLElement; posted: FormData[]; visited: string[] } {
+function screen(over: Partial<LoaderData> = {}): { root: HTMLElement; posted: FormData[] } {
 	const posted: FormData[] = [];
-	const visited: string[] = [];
 	const Stub = createRoutesStub([
 		{
 			id: STUB_ROUTE,
@@ -138,13 +124,6 @@ function screen(
 					params: {},
 					matches: []
 				}),
-			// the screen is handed its data above rather than through this, which is here for the
-			// address a range check moves to — the landing is hydrated, so every call of this is a
-			// check. it is held where a case wants to read the screen while one is in flight.
-			loader: ({ request }: { request: Request }) => {
-				visited.push(new URL(request.url).search);
-				return options.holdCheck === true ? new Promise<never>(() => {}) : null;
-			},
 			action: async ({ request }) => {
 				posted.push(await request.formData());
 				return new Promise<never>(() => {});
@@ -152,17 +131,10 @@ function screen(
 		}
 	]);
 	return {
-		// hydrated, so the landing renders in one synchronous pass: a route carrying a `loader` is
-		// otherwise entered through an initial load, and every case below reads the screen as soon
-		// as it is mounted.
-		root: mount(
-			createElement(Stub, {
-				initialEntries: [SCREEN],
-				hydrationData: { loaderData: { [STUB_ROUTE]: null } }
-			})
-		),
-		posted,
-		visited
+		// the route carries no `loader`, so the landing renders in one synchronous pass and every
+		// case below reads the screen as soon as it is mounted.
+		root: mount(createElement(Stub, { initialEntries: [SCREEN] })),
+		posted
 	};
 }
 
@@ -220,11 +192,11 @@ function unboxed(root: HTMLElement): string[] {
 }
 
 /**
- * the correction's own form.
+ * the correction's own form, found by the hidden box it carries.
  *
- * found by the hidden box only it carries, rather than by position: the screen draws a second form
- * above it — the range the accountant's download is asked for — and the first `<form>` in the
- * document is that one.
+ * the box rather than the element, because what makes the form the right one is the id it posts
+ * under: `press` below reads its actions row off this, and a `<form>` found by position would be
+ * whichever one the screen drew first.
  */
 function correctionForm(root: HTMLElement): HTMLFormElement {
 	const found = [...root.querySelectorAll('form')].find(
@@ -279,39 +251,6 @@ async function fillCorrection(root: HTMLElement): Promise<void> {
 		fill(box(root, 'note'), 'Stripe fee that never posted.');
 		fill(box(root, 'out_of'), 'acc_1020');
 		fill(box(root, 'into'), 'acc_5200');
-	});
-}
-
-/** the range the accountant's download is asked for, found by a box only it carries. */
-function rangeForm(root: HTMLElement): HTMLFormElement {
-	const found = [...root.querySelectorAll('form')].find(
-		(form) => form.querySelector('[name="from"]') !== null
-	);
-	if (found === undefined) throw new Error('the screen drew no range form');
-	return found;
-}
-
-/** the press that asks what a range holds. */
-function pressCheck(root: HTMLElement): HTMLButtonElement {
-	const found = rangeForm(root).querySelector('.adm-actions button[type="submit"]');
-	if (found === null) throw new Error('the range form drew no press');
-	return found as HTMLButtonElement;
-}
-
-/** fills the range and asks what it holds. */
-async function askRange(
-	root: HTMLElement,
-	from: string,
-	to: string,
-	target: string
-): Promise<void> {
-	await act(async () => {
-		fill(box(root, 'from'), from);
-		fill(box(root, 'to'), to);
-		fill(box(root, 'target'), target);
-	});
-	await act(async () => {
-		rangeForm(root).requestSubmit(pressCheck(root));
 	});
 }
 
@@ -865,54 +804,4 @@ it('opens both account boxes on their blank, and sends them, after the date fill
 	expect(body.get('out_of')).toBe('');
 	expect(body.get('into')).toBe('');
 	expect(posted).toHaveLength(0);
-});
-
-it('asks what a range holds over the address, so the screen and the file take the same three values', async () => {
-	const { root, visited, posted } = screen();
-
-	await askRange(root, '2026-03-01', '2026-03-31', 'quickbooks');
-
-	expect(visited.at(-1)).toBe('?from=2026-03-01&to=2026-03-31&target=quickbooks');
-	// a read and never a write: nothing about a range reaches the action that posts corrections.
-	expect(posted).toHaveLength(0);
-});
-
-it('offers the file over a range that makes one, and says how many lines it holds', () => {
-	const { root } = screen({
-		asked: { from: '2026-03-01', to: '2026-03-31', target: 'quickbooks' },
-		journal: {
-			href: '/admin/books/journal?from=2026-03-01&to=2026-03-31&target=quickbooks',
-			lines: 2
-		}
-	} as Partial<LoaderData>);
-
-	const link = rangeForm(root).querySelector('a');
-	expect(link?.getAttribute('href')).toBe(
-		'/admin/books/journal?from=2026-03-01&to=2026-03-31&target=quickbooks'
-	);
-	expect(rangeForm(root).textContent).toContain('2 lines in that range');
-});
-
-it('offers no file over a range the shaping refuses, and says why instead', () => {
-	const { root } = screen({
-		asked: { from: '2026-01-01', to: '2026-12-31', target: 'xero' },
-		journal: { refusal: 'That range holds 1402 lines and Xero takes 300 in one file.' }
-	} as Partial<LoaderData>);
-
-	// unpressable by not being there: a refusal is not a thing to meet after the file is on disk.
-	expect(rangeForm(root).querySelector('a')).toBeNull();
-	expect(rangeForm(root).textContent).toContain('takes 300 in one file');
-});
-
-it('holds the range press while a check is in flight, and leaves the correction press alone', async () => {
-	const { root } = screen({}, { holdCheck: true });
-
-	await askRange(root, '2026-03-01', '2026-03-31', 'quickbooks');
-
-	// both forms submit to this same address, so a press held on `formAction` alone would hold the
-	// correction's too — over boxes holding a correction nobody has sent.
-	expect(pressCheck(root).getAttribute('aria-busy')).toBe('true');
-	expect(pressCheck(root).getAttribute('aria-disabled')).toBe('true');
-	expect(press(root).getAttribute('aria-busy')).toBe('false');
-	expect(press(root).getAttribute('aria-disabled')).toBeNull();
 });

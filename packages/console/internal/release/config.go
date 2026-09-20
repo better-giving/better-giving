@@ -143,13 +143,13 @@ func mustParse(source []byte) Config {
 	return config
 }
 
-// DeployVars is the twenty-four values a deployment is configured with, and every one of them is a
+// DeployVars is the twenty-seven values a deployment is configured with, and every one of them is a
 // plain worker var.
 //
 // **stated here rather than baked, and gated rather than trusted.** the list is
 // packages/operator/src/deploy-split.ts's — both operator surfaces read it — and ./config_test.go
 // holds this one to that module's, so a name added there and not here fails `go test` rather than
-// shipping a console that draws twenty-three rows. it is a list rather than a bake because it is this
+// shipping a console that draws twenty-six rows. it is a list rather than a bake because it is this
 // binary's own reading of the deployment and not a fact about the checkout it was baked from.
 //
 // **the order is the source's and is not a preference**: it is the order every screen draws the
@@ -181,6 +181,9 @@ var DeployVars = []string{
 	"NOWPAYMENTS_API_KEY",
 	"NOWPAYMENTS_IPN_SECRET",
 	"NOWPAYMENTS_OUTCOME_CURRENCY",
+	"QUICKBOOKS_CLIENT_ID",
+	"QUICKBOOKS_CLIENT_SECRET",
+	"QUICKBOOKS_API_URL",
 	"BETTER_AUTH_SECRET",
 	"BETTER_AUTH_URL",
 	"ADMIN_PASSWORD",
@@ -188,7 +191,7 @@ var DeployVars = []string{
 
 // the closed sets a deployment answers its own console surface in.
 //
-// **stated here and gated rather than trusted, the way the twenty-four above are.** each of them is
+// **stated here and gated rather than trusted, the way the twenty-seven above are.** each of them is
 // one operator surface's statement in packages/operator/src/console/, and ./config_test.go holds
 // these lists to it — so a member added there and not here fails `go test` rather than shipping a
 // console that reads a real answer as one it has no state for. what a member means is written
@@ -265,7 +268,7 @@ const PaypalProcessor = "paypal"
 // what the deployment's webhook endpoint is: the path it answers on, the version its deliveries are
 // serialised in, and everything it subscribes to.
 //
-// **stated here and gated rather than trusted, the way the twenty-four above are.** the source is
+// **stated here and gated rather than trusted, the way the twenty-seven above are.** the source is
 // packages/operator/src/stripe/webhook-endpoint.ts, which both ends of the endpoint read — this
 // binary registers it on the processor account and the deployment serves it — and ./config_test.go
 // holds these to that module's. what each of them costs when the two ends disagree is written

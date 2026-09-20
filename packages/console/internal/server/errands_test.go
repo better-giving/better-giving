@@ -17,7 +17,7 @@ import (
 	"github.com/better-giving/console/internal/state"
 )
 
-// the seven errands this console proxies to the deployment, and the session they all ride.
+// the errands this console proxies to the deployment, and the session they all ride.
 
 // a token far enough out that a case never meets an expired session.
 const errandToken = "bg1.99999999999.0123456789012345678901234567890123456789012"
@@ -160,6 +160,7 @@ func TestEveryErrandWithNoSessionMakesNoRequestAtAll(t *testing.T) {
 		"/api/deployment/org":        `{"values":{}}`,
 		"/api/deployment/test-email": `{"to":"you@example.org"}`,
 		"/api/deployment/recurring":  `{}`,
+		"/api/deployment/quickbooks": `{"press":"connect"}`,
 		"/api/deployment/sites":      `{"sites":[]}`,
 
 		"/api/deployment/wallet-domains": `{}`,
@@ -170,7 +171,9 @@ func TestEveryErrandWithNoSessionMakesNoRequestAtAll(t *testing.T) {
 			t.Errorf("%s answered %d %v", path, status, answer)
 		}
 	}
-	for _, path := range []string{"/api/deployment/payments", "/api/deployment/recurring"} {
+	for _, path := range []string{
+		"/api/deployment/payments", "/api/deployment/recurring", "/api/deployment/quickbooks",
+	} {
 		status, answer := ask(t, handler, path)
 		read, _ := answer["read"].(map[string]any)
 		if status != http.StatusOK || read["kind"] != "no-session" {
@@ -209,7 +212,7 @@ func TestARefusedProfileAndAnUnreachableDeploymentStayApart(t *testing.T) {
 	}
 }
 
-func TestTheFiveOtherErrandsReachTheirOwnAddress(t *testing.T) {
+func TestTheOtherErrandsReachTheirOwnAddress(t *testing.T) {
 	handler, asked := errands(t, map[string]any{
 		"POST /console/test-email": map[string]any{"outcome": "sent", "to": "you@example.org"},
 		// one entry per processor and always all of them, whether or not the deployment holds a
@@ -260,6 +263,14 @@ func TestTheFiveOtherErrandsReachTheirOwnAddress(t *testing.T) {
 				map[string]any{"processor": "paypal", "label": "PayPal", "outcome": "set_up"},
 			},
 		},
+		// the books, carried whole: nothing in this binary branches on a line of either report.
+		"GET /console/quickbooks": map[string]any{
+			"connection":      map[string]any{"state": "connected", "companyName": "Hope Springs"},
+			"accounts":        map[string]any{"state": "read", "accounts": []any{}},
+			"backlog":         map[string]any{"pending": float64(0), "abandoned": float64(0)},
+			"callbackAddress": "https://give.example.org/quickbooks/callback",
+		},
+		"POST /console/quickbooks":     map[string]any{"press": "connect", "url": "https://intuit.example"},
 		"POST /console/sites":          reported(),
 		"POST /console/wallet-domains": map[string]any{"state": "levelled", "hosts": []any{}},
 	}, "here")
@@ -282,6 +293,21 @@ func TestTheFiveOtherErrandsReachTheirOwnAddress(t *testing.T) {
 	for _, call := range asked() {
 		if call.path == deployment.RecurringPath && len(call.body) != 0 {
 			t.Errorf("the recurring press posted %v", call.body)
+		}
+	}
+	if _, answer := ask(t, handler, "/api/deployment/quickbooks"); answer["kind"] != "read" {
+		t.Errorf("the quickbooks read answered %v", answer)
+	}
+	if _, answer := press(t, handler, "/api/deployment/quickbooks", `{"press":"connect"}`); answer["kind"] != "reported" {
+		t.Errorf("the quickbooks press answered %v", answer)
+	}
+	// only what the press carries travels: a box it has no use for is a value the deployment is
+	// never told about.
+	for _, call := range asked() {
+		if call.path == deployment.QuickbooksPath && call.method == http.MethodPost {
+			if len(call.body) != 1 || call.body["press"] != "connect" {
+				t.Errorf("the quickbooks press posted %v", call.body)
+			}
 		}
 	}
 	if _, answer := press(t, handler, "/api/deployment/sites", `{"sites":["https://hound-haven.org"]}`); answer["kind"] != "saved" {
@@ -325,6 +351,7 @@ func TestABodyThisConsoleWillNotActOnIsRefused(t *testing.T) {
 		"/api/deployment/org":        `{"whatever":1}`,
 		"/api/deployment/sites":      `{"sites":"one"}`,
 		"/api/deployment/test-email": `not json`,
+		"/api/deployment/quickbooks": `{"whatever":1}`,
 	} {
 		if status, _ := press(t, handler, path, body); status != http.StatusBadRequest {
 			t.Errorf("%s answered %d", path, status)

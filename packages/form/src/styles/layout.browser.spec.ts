@@ -764,25 +764,95 @@ describe('the tribute’s first line', () => {
 		return { row: node, select, name, message };
 	}
 
-	/** the same container, holding the pair of equals the recipient row is. */
-	function names(width: string): { first: HTMLElement } {
+	/**
+	 * the same container, holding the pair of equals the recipient row is — as ../views.ts builds
+	 * it, which is a grid of rows inside the group that asks for both names at once. two boxes the
+	 * fixture cannot leave out: the fieldset, because the platform gives one its own
+	 * `min-inline-size` and ../styles/layout.css taking that back is what keeps the pair as wide as
+	 * the card rather than as wide as its content; and each box's own row, because a row whose
+	 * label stands inside it is a grid of its own (`.field-row.floating` there) and what is
+	 * measured here is the box at the bottom of all three.
+	 *
+	 * both sheets are adopted, in the order ../element.ts adopts them: the box's own floor and inset
+	 * are ../styles/parts.css's, and a column's height is what those and this file's own rules come
+	 * to together.
+	 *
+	 * `refused` is which of the two is carrying a sentence, which is the state the pair is read at:
+	 * one column holding a box and a sentence, the other holding a box alone.
+	 */
+	function names(
+		width: string,
+		refused?: 'last'
+	): { first: HTMLElement; last: HTMLElement; refusal: HTMLElement } {
 		const wrapper = document.createElement('div');
 		wrapper.style.cssText =
 			`container-type: inline-size; container-name: donate; inline-size: ${width};` +
-			' font-size: 16px; --_sp2: 0.5rem; --_sp3: 0.75rem;';
+			' font-size: 16px; --_root-size: 16px; --_sp1: 0.25em; --_sp2: 0.5rem;' +
+			' --_sp3: 0.75rem; --_t-xs: 0.75em; --_t-md: 1em; --_lh-tight: 1.25;' +
+			' --_border: 1px; --_r-in: 4px; --_row-min: 44px;' +
+			' --_label-lead: calc(var(--_root-size) * 0.75);';
+		const group = document.createElement('fieldset');
+		group.className = 'group';
+		const legend = document.createElement('legend');
+		legend.textContent = 'Your name';
+		group.appendChild(legend);
 		const node = document.createElement('div');
 		node.className = 'names';
-		const first = document.createElement('input');
-		node.appendChild(first);
-		node.appendChild(document.createElement('input'));
-		wrapper.appendChild(node);
+		const rows: HTMLElement[] = [];
+		const boxes = ['First name', 'Last name'].map((words) => {
+			const row = document.createElement('div');
+			row.className = 'field-row floating';
+			const label = document.createElement('label');
+			label.setAttribute('part', 'label');
+			const span = document.createElement('span');
+			span.className = 'label-words';
+			span.textContent = words;
+			label.appendChild(span);
+			const box = document.createElement('input');
+			box.setAttribute('part', 'field');
+			// blank on purpose: `:placeholder-shown` is how the paint sheet asks whether the box is
+			// empty, and an empty box is the state the pair is measured in.
+			box.setAttribute('placeholder', ' ');
+			const message = document.createElement('p');
+			message.className = 'message';
+			message.textContent = 'required';
+			message.hidden = true;
+			row.append(label, box, message);
+			node.appendChild(row);
+			rows.push(row);
+			return box;
+		});
+		const first = boxes[0] as HTMLElement;
+		const last = boxes[1] as HTMLElement;
+		const refusal = (rows[1] as HTMLElement).lastElementChild as HTMLElement;
+		if (refused === 'last') refusal.hidden = false;
+		group.appendChild(node);
+		wrapper.appendChild(group);
 
+		const paint = new CSSStyleSheet();
+		paint.replaceSync(partStyles);
 		const sheet = new CSSStyleSheet();
 		sheet.replaceSync(layoutStyles);
-		document.adoptedStyleSheets = [sheet];
+		document.adoptedStyleSheets = [paint, sheet];
 		document.body.appendChild(wrapper);
-		return { first };
+		return { first, last, refusal };
 	}
+
+	// the pair's own legend, which is the third consumer of `.group > legend` and the first that is
+	// a grid rather than a track. a legend left to the platform is the fieldset's rendered legend,
+	// laid on that box's block-start border outside any flow the fieldset lays out — which puts the
+	// words on the pair's own edge at whatever width they happen to need. the rule floats it back
+	// into the column, and what says it landed there is that it spans the group and the pair starts
+	// under it.
+	it('stands the pair’s legend over it rather than on the group’s own edge', () => {
+		names(PAIRED);
+		const group = document.querySelector('fieldset.group') as HTMLElement;
+		const legend = (group.firstElementChild as HTMLElement).getBoundingClientRect();
+		const pair = (group.lastElementChild as HTMLElement).getBoundingClientRect();
+
+		expect(legend.width).toBeCloseTo(group.getBoundingClientRect().width, 0);
+		expect(pair.top).toBeGreaterThanOrEqual(legend.bottom);
+	});
 
 	// the remainder is what the name is left holding, and on a phone it is not worth a line: the
 	// select takes the better part of half the row and the name gets what is under 150px of it, for
@@ -829,6 +899,20 @@ describe('the tribute’s first line', () => {
 		const { first } = names(PAIRED);
 
 		expect(honoree).toBeGreaterThanOrEqual(first.getBoundingClientRect().width);
+	});
+
+	// one of the pair refused and the other not. the sentence lands in the refused box's own column,
+	// under the box, and `.names` stretches both columns to the taller of the two — so what the row
+	// must not do is hand that height on to the box standing in it. the two are read as a pair, and a
+	// name box drawn taller than the one beside it is what this measures for.
+	it('leaves the pair level when one of the two is refused', () => {
+		const { first, last, refusal } = names(PAIRED, 'last');
+		const empty = first.getBoundingClientRect();
+		const marked = last.getBoundingClientRect();
+
+		expect(refusal.hidden).toBe(false);
+		expect(marked.height).toBe(empty.height);
+		expect(marked.top).toBe(empty.top);
 	});
 
 	// the sentence spans the pair rather than stacking into the name's own third of the card, where

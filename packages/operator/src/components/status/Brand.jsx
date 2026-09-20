@@ -1,8 +1,9 @@
 /**
- * every brand an operator surface may draw. one member, and that is the point of the type: a screen
- * cannot reach for a second brand without this name gaining one, which is a diff somebody reads.
+ * every brand an operator surface may draw. three members, and that is the point of the type: a
+ * screen cannot reach for a fourth brand without this name gaining one, which is a diff somebody
+ * reads.
  *
- * @typedef {'cloudflare'} BrandName
+ * @typedef {'cloudflare' | 'quickbooks' | 'xero'} BrandName
  */
 
 /**
@@ -22,18 +23,20 @@
 
 /* a company's own mark, drawn from an image.
 
-   the file is packages/operator/src/styles/brand/cloudflare.png, taken from Cloudflare's brand
-   download at https://www.cloudflare.com/logo/. it is Cloudflare's trademark and is used here to
-   name a Cloudflare account and nothing else — not as decoration, not as a tone, and not to say
-   that anything on these screens is Cloudflare's.
+   the files are in packages/operator/src/styles/brand/, each taken from the company's own site:
+   cloudflare.png from Cloudflare's brand download at https://www.cloudflare.com/logo/,
+   quickbooks.png from https://quickbooks.intuit.com and xero.png from https://xero.com. each is
+   that company's trademark and is used here to name that company's own thing and nothing else —
+   an account, a set of books — not as decoration, not as a tone, and not to say that anything on
+   these screens is theirs.
 
-   it is not a ./Mark.jsx and could not be one. a mark takes its ink from the text it stands with
-   and belongs to a tone ladder; this is two colours of the company's own that answer to neither, so
-   it takes no `color` and appears on no ladder. it is drawn from css — ../../styles/base.css holds
-   the url, the way ../../styles/fonts.css holds its faces' — so every surface's bundler resolves
-   one relative url and nothing here imports a binary.
+   a logo is not a ./Mark.jsx and could not be one. a mark takes its ink from the text it stands
+   with and belongs to a tone ladder; this is colours of the company's own that answer to neither,
+   so it takes no `color` and appears on no ladder. it is drawn from css — ../../styles/base.css
+   holds the url, the way ../../styles/fonts.css holds its faces' — so every surface's bundler
+   resolves one relative url and nothing here imports a binary.
 
-   a second brand is a decision made out loud: a name added to `BrandName`, a rule added to the
+   a further brand is a decision made out loud: a name added to `BrandName`, a rule added to the
    sheet, and a member added to each of the two maps below. dropping a file into that folder does
    nothing at all. */
 /** @param {BrandProps} props */
@@ -55,12 +58,26 @@ export function Brand({ name, label, className = '' }) {
 				role="img"
 				aria-label={label}
 			/>
+		),
+		quickbooks: (
+			<span
+				className={`adm-brand adm-brand--quickbooks ${className}`}
+				role="img"
+				aria-label={label}
+			/>
+		),
+		xero: (
+			<span className={`adm-brand adm-brand--xero ${className}`} role="img" aria-label={label} />
 		)
 	};
 	const decoration = {
 		cloudflare: (
 			<span className={`adm-brand adm-brand--cloudflare ${className}`} aria-hidden="true" />
-		)
+		),
+		quickbooks: (
+			<span className={`adm-brand adm-brand--quickbooks ${className}`} aria-hidden="true" />
+		),
+		xero: <span className={`adm-brand adm-brand--xero ${className}`} aria-hidden="true" />
 	};
 	return label ? named[name] : decoration[name];
 }

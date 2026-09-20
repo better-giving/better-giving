@@ -7,7 +7,7 @@ A donation app for a **single** nonprofit, deployed to your own Cloudflare accou
 ## Two operator surfaces
 
 - **The dashboard** is `/admin` on a deployment. Donation forms, donations, donors, recurring gifts. The only thing a staff member opens.
-- **The console** is a program the operator runs on their own machine: `better-giving start` puts this release on the deployment from the terminal, then serves the console's screens at `http://127.0.0.1:5320`. Never deployed; the screens are built into the binary. Between the terminal half and the screens it sets the deployment up: the Cloudflare account, the D1 database, all twenty-four configuration values, the payment processor keys, the site list, the org's legal identity.
+- **The console** is a program the operator runs on their own machine: `better-giving start` puts this release on the deployment from the terminal, then serves the console's screens at `http://127.0.0.1:5320`. Never deployed; the screens are built into the binary. Between the terminal half and the screens it sets the deployment up: the Cloudflare account, the D1 database, all twenty-seven configuration values, the payment processor keys, the site list, the org's legal identity.
 
 ## Get started
 
@@ -174,7 +174,7 @@ The console covers the same jobs without a checkout: every credential, every var
 
 An append-only ledger is corrected by posting a compensating entry rather than by restoring. Tearing a rehearsal deployment down is two raw wrangler commands; [`DEPLOY.md`](./DEPLOY.md) gives them in full.
 
-Every configuration value is a plain Worker var, stored from the console and read back there as a value. The console runs on your own Cloudflare session, so masking a credential from the person holding the account bought nothing and cost them the ability to check it. Deleting a Worker deletes all twenty-four; from a checkout `pnpm run deploy:vars` re-arms them from a local gitignored `.deploy.vars` in one deploy. [`DEPLOY.md`](./DEPLOY.md) has the file's shape and its one escaping trap. The Worker's Variables and Secrets page is the other place to read or change one.
+Every configuration value is a plain Worker var, stored from the console and read back there as a value. The console runs on your own Cloudflare session, so masking a credential from the person holding the account bought nothing and cost them the ability to check it. Deleting a Worker deletes all twenty-seven; from a checkout `pnpm run deploy:vars` re-arms them from a local gitignored `.deploy.vars` in one deploy. [`DEPLOY.md`](./DEPLOY.md) has the file's shape and its one escaping trap. The Worker's Variables and Secrets page is the other place to read or change one.
 
 ## Contributing
 
