@@ -11,25 +11,28 @@ import type { AuthEnv } from './env';
  * `migrations/0000_initial_schema.sql` into `auth_signing_key`, so there is no second
  * value for a fork to generate, paste or lose.
  *
- * it is a row rather than a secret because of what it guards: cookie integrity only. it
- * is a tamper check over a session token whose authority is the `auth_session` row it
- * names, so anyone who can read it from D1 can already read the session tokens
- * themselves and gains nothing.
+ * it is a row rather than a secret because there is nothing for anybody to set and no
+ * moment to set it in: a deploy-time value is one an operator pastes, and the migration
+ * that mints this one runs before a Worker exists to hold a secret. that is what makes
+ * it the carve-out in CLAUDE.md's "secrets are deploy-time" rule — a key the app mints
+ * for itself — rather than a breach of it. see the note above `authSigningKey` in
+ * `db/auth-schema.ts`.
  *
- * **it signs one other thing, and that one grants no more than the cookie does.** the
- * short-lived address that begins a QuickBooks connection is signed with this key, under
- * a purpose label of its own so the two can never be read as each other
- * (`$lib/server/accounting/connect-link.ts`). what a valid one grants is the right to
- * begin a flow that still cannot be finished without signing in at Intuit and choosing a
- * company there — so the key guards who may start, and never who may connect.
- *
- * that is what makes this the carve-out in CLAUDE.md's
- * "integration credentials are deploy-time secrets" rule rather than a breach of it —
- * `ADMIN_PASSWORD` and the Stripe keys grant capability outside the database, and this
- * does not. see the note above `authSigningKey` in `db/auth-schema.ts`.
+ * **what it signs is worth more than cookie integrity, and reading it out of D1 is not
+ * inert.** over a session cookie it is a tamper check on a token whose authority is the
+ * `auth_session` row it names. but it also signs the short-lived address that begins a
+ * QuickBooks connection, under a purpose label of its own so the two can never be read
+ * as each other (`$lib/server/accounting/connect-link.ts`), and that address is minted
+ * on the console — behind a credential no session token holds. whoever can forge one
+ * connects **their own** company, and every gift this organisation takes is posted into
+ * books they control. signing in at Intuit is not a second gate: the person signing in
+ * is the one who forged the address. so the carve-out above is about where the value
+ * comes from and never about the value being inert, and a change that widens what this
+ * key signs widens what reading this database is worth.
  *
  * the ordering — env first — makes `BETTER_AUTH_SECRET` an emergency lever: setting or
- * changing it revokes every live session at once without touching the database.
+ * changing it revokes every live session at once, and voids every unspent connect
+ * address with them, without touching the database.
  *
  * not derived from `ADMIN_PASSWORD`. deriving it (HKDF, or any single-pass KDF that
  * fits the 10 ms CPU cap) would make every signed session cookie an offline oracle for

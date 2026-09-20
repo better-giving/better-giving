@@ -3,14 +3,14 @@ import { data, redirect } from 'react-router';
 import { operatorLinks } from '$lib/admin/operator-links';
 import { APP_NAME } from '$lib/admin/screen-title';
 import {
+	connectFlowOrigin,
 	connectStateCookie,
 	mintConnectState,
 	QUICKBOOKS_CALLBACK_PATH,
 	readConnectLink
 } from '$lib/server/accounting/connect-link';
-import { quickbooksConnectUrl } from '$lib/server/accounting/quickbooks';
+import { createAccountingProvider } from '$lib/server/accounting/factory';
 import { readAuthEnv, resolveAuthSecret } from '$lib/server/auth';
-import { readConfigEnv } from '$lib/server/config/env';
 import { database, platform } from '../context';
 import type { Route } from './+types/quickbooks.connect';
 
@@ -33,9 +33,10 @@ import type { Route } from './+types/quickbooks.connect';
 // that is about to travel, and the console is not that browser. a replayed start address therefore
 // mints a fresh one, which is exactly what makes replaying it worth nothing.
 //
-// **the address this deployment answers on is learned from the request that reached it**: no
-// hostname is committed to this repository (CLAUDE.md), and the `redirect_uri` sent to Intuit has to
-// be the one the callback is served at or the round trip is refused at their end.
+// **the `redirect_uri` sent to Intuit is the deployment's own address rather than this request's
+// host.** it has to be the one registered with them, byte for byte, or the round trip is refused at
+// their end — and a deployment answering on a second hostname can be opened at one it never
+// registered. $lib/server/accounting/connect-link.ts holds that address for every spelling of it.
 //
 // the page below is drawn on the refusal arms alone — a start that landed is a redirect and renders
 // nothing.
@@ -59,9 +60,11 @@ type Refusal = 'link' | 'setup';
 
 export async function loader({ context, request }: Route.LoaderArgs) {
 	const { env } = context.get(platform);
+	const db = context.get(database);
 	const url = new URL(request.url);
 
-	const signingKey = await resolveAuthSecret(context.get(database), readAuthEnv(env));
+	const authEnv = readAuthEnv(env);
+	const signingKey = await resolveAuthSecret(db, authEnv);
 	if (!signingKey.ok) {
 		// 500 for $lib/server/auth/gate.ts's reason: nothing the caller sent is wrong, and the
 		// message names the table and the command that mints the row.
@@ -75,21 +78,18 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		return data({ refusal: 'link' as Refusal }, { status: 403 });
 	}
 
-	const clientId = readConfigEnv(env).QUICKBOOKS_CLIENT_ID;
-	// checked here rather than where the address was minted, because this is the request that cannot
-	// be completed without it. 409 rather than 400: nothing the caller sent is wrong and no value
-	// they could send would fix it.
-	if (clientId === undefined) return data({ refusal: 'setup' as Refusal }, { status: 409 });
-
 	const state = mintConnectState();
-	return redirect(
-		quickbooksConnectUrl({
-			clientId,
-			redirectUri: `${url.origin}${QUICKBOOKS_CALLBACK_PATH}`,
-			state
-		}),
-		{ headers: { 'set-cookie': connectStateCookie(state) } }
-	);
+	const started = await createAccountingProvider(env, db).authorizeUrl({
+		redirectUri: `${connectFlowOrigin(authEnv, url)}${QUICKBOOKS_CALLBACK_PATH}`,
+		state
+	});
+	// a deployment short of Intuit's credentials is refused by the port rather than by a read of the
+	// values here: $lib/server/accounting/factory.ts owns what a half-configured deployment is told,
+	// and a second reader would be a second answer to the same absence. 409 rather than 400: nothing
+	// the caller sent is wrong and no value they could send would fix it.
+	if (!started.ok) return data({ refusal: 'setup' as Refusal }, { status: 409 });
+
+	return redirect(started.value, { headers: { 'set-cookie': connectStateCookie(state) } });
 }
 
 /**

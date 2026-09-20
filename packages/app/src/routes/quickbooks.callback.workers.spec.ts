@@ -27,6 +27,8 @@ import type { Route } from './+types/quickbooks.callback';
 // ./$formId.workers.spec.ts gives.
 
 const OWN = 'https://give.example.workers.dev';
+/** the second hostname the same deployment answers on, and the one an operator pinned it to. */
+const PINNED = 'https://donate.example.org';
 const REALM = '4620816365';
 const STATE = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2';
 
@@ -41,24 +43,28 @@ const TOKENS: TokenPair = {
 const stub = vi.hoisted(() => ({
 	exchanged: null as AccountingResult<TokenPair> | null,
 	company: null as AccountingResult<CompanyIdentity> | null,
-	exchanges: 0
+	exchanges: 0,
+	/** the address the exchange was made against, which Intuit compares byte for byte. */
+	redirectUri: null as string | null
 }));
 
 vi.mock('$lib/server/accounting/factory', () => ({
 	createAccountingProvider: (): AccountingProvider => {
-		// every arm, so the stub is the port rather than a cast over part of it — and the four this
+		// every arm, so the stub is the port rather than a cast over part of it — and the five this
 		// route never calls refuse loudly, which is what turns a route that reached for one into a
 		// failing case instead of an undefined.
 		const unasked = async () => failed('internal_error', 'this route does not call this arm');
 		return {
-			exchangeCode: async () => {
+			exchangeCode: async (input) => {
 				stub.exchanges += 1;
+				stub.redirectUri = input.redirectUri;
 				return stub.exchanged ?? failed('internal_error', 'no case set an exchange');
 			},
 			readCompany: async () => stub.company ?? failed('internal_error', 'no case set a company'),
 			listAccounts: unasked,
 			sendGift: unasked,
 			sendCorrection: unasked,
+			authorizeUrl: unasked,
 			revokeTokens: unasked
 		};
 	}
@@ -70,9 +76,20 @@ beforeEach(async () => {
 	db = createDb(env.DB);
 	await env.DB.prepare('delete from quickbooks_connection').run();
 	stub.exchanged = { ok: true, value: TOKENS };
-	stub.company = { ok: true, value: { realmId: REALM, companyName: 'Hope Foundation' } };
+	stub.company = { ok: true, value: { companyId: REALM, companyName: 'Hope Foundation' } };
 	stub.exchanges = 0;
+	stub.redirectUri = null;
 });
+
+/** the pool's env with this deployment's values, as a proxy rather than a copy. */
+function envWith(values: Record<string, string | undefined>): Env {
+	return new Proxy(env, {
+		get: (target, property) =>
+			typeof property === 'string' && property in values
+				? values[property]
+				: Reflect.get(target, property)
+	}) as Env;
+}
 
 const ROUTE_ID = 'quickbooks-callback';
 const handler = createStaticHandler([
@@ -88,13 +105,14 @@ type LoaderData = Route.ComponentProps['loaderData'];
 /** the trip back, as Intuit makes it: a code, the realm it is for, and the `state` that went out. */
 async function back(
 	query: Record<string, string> = { code: 'intuit-code', realmId: REALM, state: STATE },
-	cookie: string | null = `quickbooks_connect_state=${STATE}`
+	cookie: string | null = `quickbooks_connect_state=${STATE}`,
+	vars: Record<string, string | undefined> = {}
 ): Promise<{ status: number; data: LoaderData; headers: Headers }> {
 	const url = new URL(`${OWN}/quickbooks/callback`);
 	for (const [name, value] of Object.entries(query)) url.searchParams.set(name, value);
 	const answered = await handler.query(
 		new Request(url, { headers: cookie === null ? {} : { cookie } }),
-		{ requestContext: requestContext(env, createExecutionContext()) }
+		{ requestContext: requestContext(envWith(vars), createExecutionContext()) }
 	);
 	if (answered instanceof Response) throw new Error(`the loader short-circuited`);
 	return {
@@ -114,6 +132,22 @@ describe('GET /quickbooks/callback', () => {
 			realmId: REALM,
 			companyName: 'Hope Foundation'
 		});
+	});
+
+	// Intuit compares the `redirect_uri` on the exchange against the one the consent screen was
+	// opened with, byte for byte. both are built from the pin where there is one, so a deployment
+	// answering on a second hostname exchanges against the address it registered rather than the
+	// one this browser happened to arrive on.
+	it('exchanges against the address this deployment is pinned to', async () => {
+		await back(undefined, undefined, { BETTER_AUTH_URL: PINNED });
+
+		expect(stub.redirectUri).toBe(`${PINNED}/quickbooks/callback`);
+	});
+
+	it('exchanges against the host it was reached on where nothing is pinned', async () => {
+		await back();
+
+		expect(stub.redirectUri).toBe(`${OWN}/quickbooks/callback`);
 	});
 
 	it('leaves the connection standing where the company name could not be read', async () => {

@@ -38,6 +38,8 @@ import * as surface from './console';
 // port's own `failed(...)` so the two cannot disagree about what a reason is called.
 
 const OWN = 'https://give.example.workers.dev';
+/** the second hostname the same deployment answers on, and the one an operator pinned it to. */
+const PINNED = 'https://donate.example.org';
 const REALM = '4620816365';
 
 const EXPIRES_AT = new Date(
@@ -69,7 +71,7 @@ const stub = vi.hoisted(() => ({
 
 vi.mock('$lib/server/accounting/factory', () => ({
 	createAccountingProvider: (): AccountingProvider => {
-		// every arm, so the stub is the port rather than a cast over part of it — and the four this
+		// every arm, so the stub is the port rather than a cast over part of it — and the five this
 		// route never calls refuse loudly, which is what turns a route that reached for one into a
 		// failing case instead of an undefined.
 		const unasked = async () => failed('internal_error', 'this route does not call this arm');
@@ -79,6 +81,7 @@ vi.mock('$lib/server/accounting/factory', () => ({
 			readCompany: unasked,
 			sendGift: unasked,
 			sendCorrection: unasked,
+			authorizeUrl: unasked,
 			exchangeCode: unasked
 		};
 	}
@@ -100,19 +103,24 @@ function envWith(values: Record<string, string | undefined>): Env {
 
 const headers = { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` };
 
-const read = (): Promise<Response> =>
+// every request arrives on `OWN`, so a case handing `vars` a pin is asking what this address says
+// about a deployment reachable on a hostname other than the one the console reached it on.
+const read = (vars: Record<string, string | undefined> = DEPLOYMENT): Promise<Response> =>
 	routes(new Request(`${OWN}/console/quickbooks`, { headers }), {
-		env: envWith(DEPLOYMENT)
+		env: envWith(vars)
 	});
 
-const press = (body: unknown): Promise<Response> =>
+const press = (
+	body: unknown,
+	vars: Record<string, string | undefined> = DEPLOYMENT
+): Promise<Response> =>
 	routes(
 		new Request(`${OWN}/console/quickbooks`, {
 			method: 'POST',
 			headers,
 			body: JSON.stringify(body)
 		}),
-		{ env: envWith(DEPLOYMENT) }
+		{ env: envWith(vars) }
 	);
 
 let db: Db;
@@ -189,6 +197,17 @@ describe('GET /console/quickbooks', () => {
 		});
 	});
 
+	// what an operator registers at Intuit is this sentence, and what is sent on the round trip is
+	// built from the same value — so a pinned deployment naming the host the console happened to
+	// reach would have them register an address Intuit then refuses.
+	it('names the callback at the address this deployment is pinned to', async () => {
+		const report = await (
+			await read({ ...DEPLOYMENT, BETTER_AUTH_URL: PINNED })
+		).json<QuickbooksReport>();
+
+		expect(report.callbackAddress).toBe(`${PINNED}/quickbooks/callback`);
+	});
+
 	it('draws the connected company beside the chart the three are picked out of', async () => {
 		await connect();
 		await givenUp();
@@ -215,9 +234,12 @@ describe('GET /console/quickbooks', () => {
 		await connect();
 		stub.accounts = failed('reconnect_needed', 'The stored credential was refused.');
 
-		const report = await (await read()).json<QuickbooksReport>();
+		const response = await read();
 
-		expect(report.accounts).toEqual({
+		// a dead credential is the one refusal this address has to answer *with* rather than fail
+		// on: it is what a console shows an operator the way out of.
+		expect(response.status).toBe(200);
+		expect((await response.json<QuickbooksReport>()).accounts).toEqual({
 			state: 'unreadable',
 			recourse: 'reconnect',
 			detail: 'The stored credential was refused.'
@@ -262,6 +284,14 @@ describe('the connect press', () => {
 			await readConnectLink({ secret: SECRET, url: new URL(report.url), now: new Date() })
 		).toBe(true);
 	});
+
+	it('mints it at the address this deployment is pinned to, not the one the press arrived on', async () => {
+		const answered = await press({ press: 'connect' }, { ...DEPLOYMENT, BETTER_AUTH_URL: PINNED });
+
+		const report = await answered.json<QuickbooksPressReport>();
+		if (report.press !== 'connect') throw new Error(`answered ${report.press}`);
+		expect(new URL(report.url).origin).toBe(PINNED);
+	});
 });
 
 describe('the three accounts', () => {
@@ -294,7 +324,7 @@ describe('the three accounts', () => {
 	});
 });
 
-describe('how much history goes over', () => {
+describe('the date gifts are sent from', () => {
 	it('moves the date gifts are sent from', async () => {
 		await connect();
 
@@ -317,7 +347,20 @@ describe('how much history goes over', () => {
 });
 
 describe('the retry press', () => {
+	it('refuses the press where no company is connected', async () => {
+		await givenUp();
+
+		const answered = await press({ press: 'retry' });
+
+		expect(answered.status).toBe(409);
+		// and repairs nothing: a row put back to `pending` on a deployment with nowhere to send it
+		// is a count reported over a press that did nothing.
+		const [row] = await db.select({ status: quickbooksSync.status }).from(quickbooksSync);
+		expect(row).toEqual({ status: 'failed' });
+	});
+
 	it('queues every gift that was given up on again', async () => {
+		await connect();
 		await givenUp();
 
 		const answered = await press({ press: 'retry' });

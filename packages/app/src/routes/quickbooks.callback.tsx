@@ -4,11 +4,13 @@ import { operatorLinks } from '$lib/admin/operator-links';
 import { APP_NAME } from '$lib/admin/screen-title';
 import {
 	CLEARED_CONNECT_STATE_COOKIE,
+	connectFlowOrigin,
 	connectStateFrom,
 	QUICKBOOKS_CALLBACK_PATH
 } from '$lib/server/accounting/connect-link';
 import { connectQuickbooks, saveQuickbooksCompanyName } from '$lib/server/accounting/connection';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
+import { readAuthEnv } from '$lib/server/auth';
 import { secretEquals } from '$lib/server/secret-compare';
 import { database, platform } from '../context';
 import type { Route } from './+types/quickbooks.callback';
@@ -88,12 +90,16 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	if (code === null || realmId === null) return refused('request', 400);
 
 	const db = context.get(database);
-	const provider = createAccountingProvider(context.get(platform).env, db);
+	const { env } = context.get(platform);
+	const provider = createAccountingProvider(env, db);
 
 	const tokens = await provider.exchangeCode({
 		code,
 		// byte for byte what ./quickbooks.connect.tsx sent, which is what Intuit compares it against.
-		redirectUri: `${url.origin}${QUICKBOOKS_CALLBACK_PATH}`
+		// the host this request arrived on is not that: Intuit sends the browser to the address it
+		// holds, and a deployment answering on a second hostname could be reached at one it was never
+		// registered with ($lib/server/accounting/connect-link.ts).
+		redirectUri: `${connectFlowOrigin(readAuthEnv(env), url)}${QUICKBOOKS_CALLBACK_PATH}`
 	});
 	// 502 rather than 400: the code was Intuit's to issue and this deployment's to spend, and
 	// nothing the browser carried is what went wrong.

@@ -85,6 +85,11 @@ export type QuickbooksConnectionLine = { readonly state: 'disconnected' } | Quic
  * a fact rather than a sentence read for one, for the reason `RecurringSetupReason` in
  * ./recurring.ts is: `detail` is prose written for an operator and free to change wording, and a
  * console matching a fragment of it silently stops matching the next time somebody edits a string.
+ *
+ * **closed here and open on the wire.** the two ends are two binaries an operator upgrades
+ * separately, so a deployment a release ahead names a recourse the installed console has never
+ * heard of — a console reading one off this surface checks it against this set and draws nothing
+ * where it is not in it, rather than trusting the type it was handed.
  */
 export const QUICKBOOKS_RECOURSES = ['reconnect', 'wait'] as const;
 
@@ -114,7 +119,8 @@ export interface QuickbooksBacklogLine {
 	 * when the oldest gift still owed was queued, as an ISO-8601 instant, or null where none is.
 	 *
 	 * every gift not yet sent counts, whether it is waiting on a backoff or was given up on: what
-	 * it answers is how far behind the books are.
+	 * it answers is how far behind the books are. so it is never {@link failed}'s own wait, and a
+	 * screen saying it was would read a gift queued behind a backfill back as a failure that old.
 	 */
 	readonly oldestWaitingAt: string | null;
 }
@@ -145,7 +151,7 @@ export interface QuickbooksReport {
  *   accounts    — the three accounts a gift is posted into, by id. the names are read off the
  *                 company's own chart rather than sent, so a pick is checked against the books it
  *                 claims to be in.
- *   start-date  — how much of this deployment's history goes over.
+ *   start-date  — the earliest business date a gift is sent from.
  *   retry       — every gift that was given up on, queued again.
  *   disconnect  — the credential revoked at Intuit and the connection gone from here.
  */

@@ -18,6 +18,10 @@ export interface AuthEnv {
 	 * request — which is what makes a deployment answer correctly on workers.dev and on
 	 * a custom domain at the same time. set it only to pin one canonical origin and stop
 	 * trusting the others. see the `baseURL` note in ./index.ts.
+	 *
+	 * it settles one thing outside auth: the address a QuickBooks connection is
+	 * registered at and exchanged against, which Intuit compares byte for byte
+	 * (../accounting/connect-link.ts).
 	 */
 	readonly BETTER_AUTH_URL?: string;
 	/** the v0 staff sign-in password. compared, never stored, never hashed. */

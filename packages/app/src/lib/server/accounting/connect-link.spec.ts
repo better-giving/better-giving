@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	CONNECT_LINK_LIFETIME_MS,
+	connectFlowOrigin,
 	connectStateCookie,
 	connectStateFrom,
 	mintConnectLink,
@@ -48,6 +49,33 @@ describe('the start address', () => {
 
 	it('is refused by a deployment holding a different signing key', async () => {
 		expect(await reads(await start(), NOW, 'some-other-deployments-key')).toBe(false);
+	});
+});
+
+describe('the address this deployment answers on', () => {
+	const arrived = new URL(`${ORIGIN}/quickbooks/callback`);
+
+	it('is the host the request arrived on where nothing is pinned', () => {
+		expect(connectFlowOrigin({}, arrived)).toBe(ORIGIN);
+	});
+
+	it('is the pin where there is one, whichever host the request arrived on', () => {
+		expect(connectFlowOrigin({ BETTER_AUTH_URL: 'https://donate.example.org' }, arrived)).toBe(
+			'https://donate.example.org'
+		);
+	});
+
+	// the operator types this one, and every address built from it is compared byte for byte at
+	// Intuit — so a pasted trailing slash or path has to come out as the same origin the deployment
+	// would have derived for itself.
+	it('is the origin of the pin and never the rest of what was typed', () => {
+		expect(
+			connectFlowOrigin({ BETTER_AUTH_URL: 'https://donate.example.org/admin/' }, arrived)
+		).toBe('https://donate.example.org');
+	});
+
+	it('is the host the request arrived on where the pin is blank', () => {
+		expect(connectFlowOrigin({ BETTER_AUTH_URL: '  ' }, arrived)).toBe(ORIGIN);
 	});
 });
 

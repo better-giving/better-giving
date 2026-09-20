@@ -239,12 +239,17 @@ export const authVerification = sqliteTable(
  * deploy-time" rule rather than an exception to it. `BETTER_AUTH_SECRET`, when set,
  * overrides it.
  *
- * what it guards: cookie integrity only. it is a tamper check over a value whose
- * authority lives in `auth_session` — a forged cookie still has to name a session row
- * that exists and has not expired. so it guards nothing that D1 access does not
- * already grant, which is what makes storing it here sound.
+ * what it guards is more than the cookie. over a session cookie it is a tamper check
+ * on a value whose authority lives in `auth_session` — a forged cookie still has to
+ * name a session row that exists and has not expired. but it also signs the address
+ * that begins a QuickBooks connection, which a session opens no path to, and forging
+ * one of those connects somebody else's company to this deployment's gifts. the
+ * argument in full is the header on `../auth/signing-key.ts`; what it comes to here is
+ * that this row is not inert, and the reason it is a row is the mint rather than the
+ * grant.
  *
- * rotation logs the admin out and does nothing else:
+ * rotation logs the admin out, voids any unspent connect address, and does nothing
+ * else:
  *   pnpm wrangler d1 execute better-giving --remote --command "UPDATE auth_signing_key set value = '$(openssl rand -hex 32)' where id = 'default'"
  *
  * that generates the replacement on the operator's machine on purpose. the migration mints

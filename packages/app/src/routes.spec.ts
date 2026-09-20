@@ -194,10 +194,11 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// address the console handed them. it cannot sit behind the dashboard's login — the operator is
 	// holding the console, which is a different sign-in — and it cannot sit on the console's wire
 	// surface, because what has to happen is a browser redirect and that surface's credential is a
-	// bearer header a browser attaches to nothing. what stands in for a session is a short-lived
-	// signed address minted behind the console's own check and verified here
-	// ($lib/server/accounting/connect-link.ts), which is what stops an outsider connecting their own
-	// books and taking this organisation's gifts into them.
+	// bearer header a browser attaches to nothing. what stops an outsider connecting their own books
+	// and taking this organisation's gifts into them is the console's own credential, on the press
+	// that mints the address; the signature is only how that check reaches a route no credential can
+	// be presented to ($lib/server/accounting/connect-link.ts). nothing downstream adds a second one
+	// — whoever opens the address is whoever signs in at Intuit.
 	'routes/quickbooks.connect.tsx',
 	// where Intuit sends that browser back. it is unauthenticated for the same reason, and what
 	// stands in for a session is the `state` that went out with it, in a cookie on that same browser

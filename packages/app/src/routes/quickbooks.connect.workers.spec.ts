@@ -2,7 +2,7 @@ import { createExecutionContext, env } from 'cloudflare:test';
 import { createStaticHandler, type LoaderFunction } from 'react-router';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { CONNECT_LINK_LIFETIME_MS, mintConnectLink } from '$lib/server/accounting/connect-link';
-import { QUICKBOOKS_PRODUCTION_URL, quickbooksConnectUrl } from '$lib/server/accounting/quickbooks';
+import { INTUIT_AUTHORIZE_URL, QUICKBOOKS_PRODUCTION_URL } from '$lib/server/accounting/quickbooks';
 import { requestContext } from '../request-context';
 import * as connect from './quickbooks.connect';
 import type { Route } from './+types/quickbooks.connect';
@@ -21,6 +21,8 @@ import type { Route } from './+types/quickbooks.connect';
 /** this deployment's signing key, set as the variable so a case can mint an address with it. */
 const SECRET = 'a-signing-key-as-long-as-a-real-one-would-be';
 const OWN = 'https://give.example.workers.dev';
+/** the second hostname the same deployment answers on, and the one an operator pinned it to. */
+const PINNED = 'https://donate.example.org';
 /** the clock, because an address minted at a fixed date is expired by the time a case opens it. */
 const NOW = new Date();
 
@@ -39,9 +41,7 @@ const INTUIT = {
  * ($lib/server/accounting/sole-importer.spec.ts), and what this case is about is the route sending
  * the browser to the address the port builds — the address itself is that module's to pin.
  */
-const INTUIT_CONSENT_ORIGIN = new URL(
-	quickbooksConnectUrl({ clientId: 'x', redirectUri: 'https://example.test/back', state: 'z' })
-).origin;
+const INTUIT_CONSENT_ORIGIN = new URL(INTUIT_AUTHORIZE_URL).origin;
 
 const ROUTE_ID = 'quickbooks-connect';
 const handler = createStaticHandler([
@@ -106,6 +106,17 @@ describe('GET /quickbooks/connect', () => {
 		const cookie = answered.redirect.headers.get('set-cookie') ?? '';
 		expect(cookie).toContain(`=${sent.searchParams.get('state')};`);
 		expect(cookie).toContain('HttpOnly');
+	});
+
+	// the same value the callback exchanges against, and Intuit compares the two byte for byte —
+	// so a deployment answering on a second hostname sends the address it registered rather than
+	// whichever one this browser opened.
+	it('sends the address this deployment is pinned to as the one to come back to', async () => {
+		const answered = await open(link, { ...INTUIT, BETTER_AUTH_URL: PINNED });
+		if (!('redirect' in answered)) throw new Error(`no redirect: ${answered.status}`);
+
+		const sent = new URL(answered.redirect.headers.get('location') ?? '');
+		expect(sent.searchParams.get('redirect_uri')).toBe(`${PINNED}/quickbooks/callback`);
 	});
 
 	it('refuses an address whose expiry was pushed out', async () => {

@@ -9,14 +9,14 @@
 //
 // **two different values, doing two different jobs.**
 //
-//   - the **start address** is the guard on who may begin. it carries an expiry and a signature
-//     over it, and nothing else: there is no caller's identity to carry, because the only thing it
-//     grants is the right to begin a flow that still cannot be finished without signing in at
-//     Intuit.
+//   - the **start address** is the guard on who may begin, and it is the only guard there is. it
+//     carries an expiry and a signature over it, and nothing else: there is no caller's identity to
+//     carry, because what the signature stands in for is the console's own credential on the press
+//     that minted it. signing in at Intuit afterwards checks nothing on this deployment's behalf —
+//     whoever opened the address is the one signing in, and the company they pick is theirs.
 //   - the **OAuth `state`** is the check that the browser coming back is the one that went. it is
 //     minted per start, set in a cookie, and compared against what Intuit hands back
-//     (./quickbooks.ts's `quickbooksConnectUrl` states that it is the caller's to mint and to
-//     check).
+//     (`authorizeUrl` in ./provider.ts states that it is the caller's to mint and to check).
 //
 // **single use belongs to the cookie rather than to the link.** nothing is spendable-once without
 // storage, and the only store here is D1 — a table for a value with a ten-minute life is a
@@ -26,13 +26,40 @@
 // **the key is the one ../auth/signing-key.ts resolves, under a purpose label of its own.** the
 // message signed below opens with {@link PURPOSE}, which no session token can contain — so a
 // signature minted here can never be read as a cookie's and a cookie's can never be read as one of
-// these. that module's header states what this signs and what it grants.
+// these. what reading that key out of D1 would let somebody do is this flow, and that module's
+// header states it.
 
+import type { AuthEnv } from '../auth/env';
 import { secretEquals } from '../secret-compare';
 
 /** where a browser begins, and where Intuit sends it back. both are addresses on this deployment. */
 export const QUICKBOOKS_CONNECT_PATH = '/quickbooks/connect';
 export const QUICKBOOKS_CALLBACK_PATH = '/quickbooks/callback';
+
+/**
+ * the address this deployment answers on, as every spelling of those two paths is built from.
+ *
+ * Intuit compares every one of them byte for byte against what is registered: the console mints the
+ * start address and prints the callback for an operator to register there
+ * (`src/routes/console.quickbooks.ts`), `src/routes/quickbooks.connect.tsx` sends a `redirect_uri`
+ * with the consent screen, and `src/routes/quickbooks.callback.tsx` sends the same one again on the
+ * exchange. a deployment reachable on both workers.dev and a custom domain derives a different
+ * answer per request, and what reports the disagreement is Intuit's own sentence about a mismatch
+ * rather than one of ours naming a host.
+ *
+ * so the pin decides where an operator set one — `BETTER_AUTH_URL` is where this deployment answers
+ * (../auth/env.ts), and the same value decides better-auth's `baseURL` (../auth/index.ts). where
+ * none is set, the request is the only thing that knows, and a deployment on one hostname is a
+ * deployment that never had the problem. no hostname is committed to this repository (CLAUDE.md),
+ * which is why there is no third answer.
+ *
+ * `.origin` and never the value as typed: an operator pastes the pin, and a trailing slash or a
+ * path on it would spell an address Intuit was never registered with.
+ */
+export function connectFlowOrigin(env: AuthEnv, requestUrl: URL): string {
+	const pinned = env.BETTER_AUTH_URL?.trim();
+	return pinned ? new URL(pinned).origin : requestUrl.origin;
+}
 
 /**
  * how long a start address is good for, and how long the cookie beside it lives.
