@@ -364,10 +364,18 @@ describe('the widths the card gives its screens', () => {
 describe('the review step at the narrowest card', () => {
 	/**
 	 * the step that takes the money, as ../views.ts assembles it: the receipt block with the fee
-	 * decision inside it, the box the provider paints in under its own heading, the line saying
-	 * where the receipt goes, and the button under them.
+	 * decision inside it, the box the provider paints in under its own heading, the sentence the
+	 * step says when a press is refused, the line saying where the receipt goes, and the button
+	 * under them.
+	 *
+	 * the refusal is built on every card and shown on the ones that pass words for it, the way
+	 * `paymentMessage` in ../views.ts is: a step assembled without it is the step in one of its two
+	 * states, and it is the state the line naming the receipt was moved past.
 	 */
-	function review(email: string): {
+	function review(
+		email: string,
+		refusal = ''
+	): {
 		body: HTMLElement;
 		give: HTMLElement;
 		receipt: HTMLElement;
@@ -379,6 +387,7 @@ describe('the review step at the narrowest card', () => {
 		group: HTMLElement;
 		heading: HTMLElement;
 		box: HTMLElement;
+		message: HTMLElement;
 		submit: HTMLElement;
 	} {
 		const built = card('375px', '16px');
@@ -435,6 +444,12 @@ describe('the review step at the narrowest card', () => {
 		group.appendChild(heading);
 		group.appendChild(payment);
 
+		const message = document.createElement('p');
+		message.className = 'message';
+		message.id = 'payment-problem';
+		message.hidden = refusal === '';
+		message.textContent = refusal;
+
 		const submit = document.createElement('button');
 		submit.type = 'submit';
 		submit.setAttribute('part', 'action submit');
@@ -442,6 +457,7 @@ describe('the review step at the narrowest card', () => {
 
 		built.give.appendChild(summary);
 		built.give.appendChild(group);
+		built.give.appendChild(message);
 		built.give.appendChild(receipt);
 		built.give.appendChild(submit);
 		return {
@@ -456,8 +472,19 @@ describe('the review step at the narrowest card', () => {
 			group,
 			heading,
 			box: payment,
+			message,
 			submit
 		};
+	}
+
+	/** one spacing step as the step itself resolves it, which is where an `em` of it means the card. */
+	function stepOf(give: HTMLElement, token: string): number {
+		const probe = document.createElement('div');
+		probe.style.cssText = `block-size: var(${token})`;
+		give.appendChild(probe);
+		const size = probe.getBoundingClientRect().height;
+		probe.remove();
+		return size;
 	}
 
 	// an address a donor types rather than a contrived one, and the card is at the floor this file is
@@ -500,6 +527,47 @@ describe('the review step at the narrowest card', () => {
 		const { feeWords, feeNote, gift, fee } = review('donor@example.org');
 
 		expect(between(feeWords, feeNote)).toBeLessThan(between(gift, fee));
+	});
+
+	// and the length it takes, which is the half of it an arithmetic in the sheet can get wrong
+	// without moving the reading: the sentence is meant to stand off the box at the gap a refusal
+	// takes under the box it is about on every other row of the card (`.field-row` in
+	// ../styles/layout.css). a length spent in `em` resolves on the element spending it, and the
+	// sentence is drawn a step smaller than the card — so the same expression means one thing on the
+	// box above it and a shorter one on the sentence itself.
+	it('leaves a refused payment\u2019s sentence at the gap a refusal takes under its box', () => {
+		const { give, group, message } = review(
+			'donor@example.org',
+			'Choose how you would like to pay.'
+		);
+
+		expect(message.hidden).toBe(false);
+		expect(between(group, message)).toBeCloseTo(stepOf(give, '--_sp2'), 0);
+	});
+
+	// and the same claim with the step in the state a refused press puts it in, which is the question
+	// drawing that state was for: the sentence about the payment stands between the payment box and
+	// the line naming the receipt, so a donor squinting at the step has to still see three blocks
+	// and not four. the sentence belongs to the box it was refused in, and the space on either side
+	// of it is the whole of what says so. it reads on the line under it too — the rule holding that
+	// line against the button is written on the pair rather than on what stands above it
+	// (`.aside:has(+ [part~='submit'])` in ../styles/layout.css), so a sentence arriving between the
+	// two must not take the line back off the press.
+	it('leaves the three groups further apart than anything standing inside one, once a payment is refused', () => {
+		const { summary, gift, fee, feeWords, feeNote, group, heading, box, message, receipt, submit } =
+			review('donor@example.org', 'Choose how you would like to pay.');
+
+		expect(message.hidden).toBe(false);
+		const inside = [
+			between(gift, fee),
+			between(feeWords, feeNote),
+			between(heading, box),
+			between(group, message),
+			between(receipt, submit)
+		];
+		const apart = [between(summary, group), between(message, receipt)];
+
+		expect(Math.max(...inside)).toBeLessThan(Math.min(...apart));
 	});
 
 	// and the whole of it in one claim: a donor squinting at the step has to see three blocks, which

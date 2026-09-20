@@ -534,6 +534,20 @@ describe('the labels on the pair under the name', () => {
 	}
 
 	/**
+	 * the colour a donor reads the box's own top edge in, whatever is putting it there: the ring
+	 * where the box draws one, and the border where it does not. the two are not always one colour
+	 * — a refused box with the caret in it rings itself in the refusal's red over a border the
+	 * focus rule has already taken — and the ring is the outer of the two, so it is what the edge
+	 * reads as.
+	 */
+	function drawnEdge(box: HTMLElement): string {
+		const painted = getComputedStyle(box);
+		const ring = painted.boxShadow;
+		if (ring === 'none' || ring.includes('inset')) return painted.borderTopColor;
+		return (/^(?:\w+\([^)]*\)|\S+)/.exec(ring) ?? [''])[0];
+	}
+
+	/**
 	 * a weight token as the engine resolved it, read the way `step` above reads a size: what the two
 	 * positions are measured against is the token the sheet spends, not a number restated here.
 	 */
@@ -589,6 +603,24 @@ describe('the labels on the pair under the name', () => {
 		expect(resting).toBeCloseTo(step(shadow, '--_t-md'), 1);
 		expect(floated).toBeCloseTo(step(shadow, '--_t-xs'), 1);
 		expect(floated).toBeLessThan(resting);
+	});
+
+	// and the floor under the smaller of them, on the smallest root the card allows. this label is
+	// the field's own visible name — the one thing a donor checks a typed value against — rather
+	// than the fine print `--_t-xs` in ./tokens.css leaves unfloored, so it takes the floor the four
+	// other sites under that step take instead of drawing at the bottom of the clamp band.
+	it('holds the floated label at its floor on the smallest root the card allows', async () => {
+		document.documentElement.style.fontSize = '15px';
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { label, words } = field(shadow, '#first-name');
+
+		fill(shadow, '#first-name', 'Ada');
+		await landed(label);
+
+		// and it is a case only while the step itself is genuinely under the floor here.
+		expect(step(shadow, '--_t-xs')).toBeLessThan(12);
+		expect(parseFloat(getComputedStyle(words).fontSize)).toBeGreaterThanOrEqual(12);
 	});
 
 	// and the two weights, which is the other half of that reading. resting, the words stand where the
@@ -794,6 +826,44 @@ describe('the labels on the pair under the name', () => {
 		const reach = box.getBoundingClientRect().top - parseFloat(band) / 2;
 		expect(parseFloat(band)).toBeGreaterThan(0);
 		expect(reach).toBeGreaterThan(legend.getBoundingClientRect().bottom);
+	});
+
+	// and what the band knocks out, it re-states. the label stands over the box's own top edge and
+	// paints behind its words, so for the width of the name it takes whatever that edge is carrying
+	// — and the states it carries something in are the states this label floats in: a caret in an
+	// empty box floats it, and a donor tabbing back into a refused one loses the top run of the red
+	// edge behind the words naming it. so the band carries the edge the box is drawing rather than
+	// the pair it draws at rest, and the interruption reads as part of it.
+	it('carries whatever edge the box is drawing into the band behind the label', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { box, label, words } = field(shadow, '#first-name');
+		const band = () => getComputedStyle(words).backgroundImage;
+
+		// a value in the box, and nothing else: the resting hairline every box on the card carries.
+		fill(shadow, '#first-name', 'Ada');
+		await landed(label);
+		await landed(box);
+		expect(band(), 'the box at rest').toContain(drawnEdge(box));
+
+		await userEvent.hover(box);
+		await landed(box);
+		expect(band(), 'the box under a pointer').toContain(drawnEdge(box));
+
+		await userEvent.unhover(box);
+		await caretOn(box);
+		await landed(box);
+		expect(band(), 'the box with the caret in it').toContain(drawnEdge(box));
+
+		// and the one a donor actually walks into: the press is refused, and the caret comes back to
+		// a box whose edge is the refusal's own.
+		fill(shadow, '#first-name', '');
+		onward(shadow);
+		await settle();
+		await caretOn(box);
+		await landed(box);
+		expect(shadow.querySelector('#first-name-problem')?.hasAttribute('hidden')).toBe(false);
+		expect(band(), 'the box refused, with the caret back in it').toContain(drawnEdge(box));
 	});
 
 	// the box keeps one height through both states and reserves nothing for either, so a donor

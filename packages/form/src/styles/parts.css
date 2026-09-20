@@ -9,11 +9,12 @@
  *
  *   - `max(16px, 1em)` on `[part~='field']`. iOS Safari zooms the page when a focused control
  *     computes below 16px, and this form is on someone else's page.
- *   - `max(12px, var(--_t-xs))`, four times: `.mandate`, `.fee-note`, the `(optional)` beside
- *     a label and the notify press inside the tribute. `em` compounds against a parent already at
- *     `--_t-sm`, so the step documented as 12px draws at 10.5px and lower — the floor is what stops
- *     the compounding, and the token is what the size still follows above it. the press compounds
- *     against nothing and takes the floor for the clamp band alone.
+ *   - `max(12px, var(--_t-xs))`, five times: `.mandate`, `.fee-note`, the `(optional)` beside
+ *     a label, the notify press inside the tribute and the words of a floated label. `em` compounds
+ *     against a parent already at `--_t-sm`, so the step documented as 12px draws at 10.5px and
+ *     lower — the floor is what stops the compounding, and the token is what the size still follows
+ *     above it. the press and the floated label compound against nothing and take the floor for the
+ *     clamp band alone.
  *   - `min-block-size: 5em` on the textarea. how many lines the box opens at, which is a shape of
  *     that box and not a measure anything else on the card shares.
  *   - `overflow-clip-margin: 6px` on `.disclosure-inner`. the room a focus ring painted outside a
@@ -234,6 +235,23 @@ textarea[part~='field'] {
  * the band and out the other side. the other end takes the same inset, which is where a name too
  * long for its box is cut — the arc at that corner is what the band would otherwise run over.
  *
+ * and what the band knocks out it re-states around the words, rather than leaving a hole where the
+ * edge was: the edge's own colour runs along the band's top and turns back down onto the box at
+ * either end, so the edge rises over the name and drops back into its own line — an interruption
+ * that is part of the edge rather than a bite out of it. every state this card puts on that edge is
+ * a state this label floats in, and a donor tabbing back into a refused box would otherwise lose
+ * the top run of the red one behind the words naming it. carried over the words and not let through
+ * them: the edge's own line is the band's own middle, which is the middle of the name.
+ *
+ * `--_label-edge` is the colour that run is drawn in, and it is stated on the row rather than on
+ * the label because the box is the label's sibling: no selector here reaches a computed border, so
+ * the row is what holds the two together and the label reads it by inheritance. it is not a step of
+ * a scale — every value it can hold is one of ./tokens.css's, and the three rules under the default
+ * name the same states the field's own rules above do, in that cascade's order: the pointer, then
+ * the caret, then the refusal. the refusal is last because it outranks both on the box itself — a
+ * refused box with the caret in it rings itself in the refusal's red over a border the focus rule
+ * has already taken, and the ring is the outer of the two.
+ *
  * the rise is transitioned and nothing else about the move is (./motion.css): the band is painted
  * from the first frame rather than fading in over it, and what that costs is its upper half standing
  * on the box's own fill for the length of the move — `--_n1` on `--_n3` is 1.07:1, the reading
@@ -249,6 +267,22 @@ textarea[part~='field'] {
  * resting is that and no caret, floated is everything else, so the two states are exclusive by
  * construction rather than by the order these rules are written in.
  */
+.floating {
+	--_label-edge: var(--_edge-control);
+}
+
+.floating:has(> [part~='field']:hover) {
+	--_label-edge: var(--_n11);
+}
+
+.floating:has(> [part~='field']:focus-visible) {
+	--_label-edge: var(--_focus-ring);
+}
+
+.floating:has(> [part~='field'][part~='invalid']) {
+	--_label-edge: var(--_bad);
+}
+
 .floating > [part~='field'] {
 	/*
 	 * one length for the box's own text inset and for where the resting label starts, so the two
@@ -293,10 +327,28 @@ textarea[part~='field'] {
 	overflow: hidden;
 	white-space: nowrap;
 	text-overflow: ellipsis;
-	font-size: var(--_t-xs);
+	/*
+	 * the floor the four other sites under this step state, for the reason the notify press states
+	 * it: this span's parent is the card's own base, so nothing compounds into it and the floor is
+	 * for the clamp band alone. it is the field's visible name rather than fine print, which is why
+	 * it is not one of the two ./tokens.css leaves to draw at 11.25px.
+	 */
+	font-size: max(12px, var(--_t-xs));
 	/* what carries the knockout past the last letter. */
 	padding-inline-end: var(--_sp1);
-	background: linear-gradient(to bottom, var(--_n1) 50%, var(--_n3) 50%) 0 50% / 100% 1lh no-repeat;
+	/*
+	 * the edge's own run first, because a layer earlier in the list is painted over the ones after
+	 * it: the top of the band, then the two turns down onto the box at either end, then the
+	 * knockout those three are drawn on.
+	 */
+	background:
+		linear-gradient(to bottom, var(--_label-edge) 0 var(--_border), transparent var(--_border)) 0
+		50% / 100% 1lh no-repeat,
+		linear-gradient(to bottom, var(--_label-edge) 0 50%, transparent 50%) 0 50% / var(--_border) 1lh
+		no-repeat,
+		linear-gradient(to bottom, var(--_label-edge) 0 50%, transparent 50%) 100% 50% / var(--_border)
+		1lh no-repeat,
+		linear-gradient(to bottom, var(--_n1) 50%, var(--_n3) 50%) 0 50% / 100% 1lh no-repeat;
 }
 
 /*

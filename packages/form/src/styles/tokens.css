@@ -306,6 +306,15 @@
 	 * reaches 4.99:1 and 4.86:1, and it stays its own step at 1.53:1 against rung 9 above and
 	 * 1.24:1 against rung 11 below.
 	 *
+	 * a field's own fill is the third ground it is read on and the tightest of them. two things
+	 * stand on rung 3 at this rung: the words of a floated label while the box under them is empty
+	 * and holds no caret, and the placeholder in the amount entry where a form suggesting no amounts
+	 * draws that entry on a bare tray (`.floating` and `[part~='amount-input']` in ./parts.css). it
+	 * reads 4.57:1 there, which is the tightest reading of any word this card draws, and rung 9
+	 * reads 2.98:1 on that same fill — which is the other half of why the quietest ink has nowhere
+	 * under it. "clears 4.5:1 on every other ground a word is drawn on" in ./tokens.browser.spec.ts
+	 * holds the pair.
+	 *
 	 * rungs 8 and 9 are unread and stay, and they are the whole of the exemption. a rung of a ladder
 	 * is exempt from deleting what nothing reads, because a scale is read by counting along it and
 	 * one with holes in it is no longer one anybody can count along. every other name in this file

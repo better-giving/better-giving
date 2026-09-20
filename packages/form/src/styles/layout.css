@@ -187,9 +187,16 @@ form {
  * the line saying where the receipt goes belongs to the control that spends the money: it is the
  * last thing a donor reads before pressing, and the step's full rhythm on both sides of it stands
  * it as far from the payment box above as from the press below — a line equidistant from two
- * blocks reads as a third. it takes the receipt's own row gap under it instead, the way
+ * blocks reads as a third. it takes close to the receipt's own row gap under it instead, the way
  * `.disclosure + .disclosure` below takes one: the step's gap negated and the receipt's put back,
  * so a step drawn at a different rhythm keeps the line against the button.
+ *
+ * close to rather than exactly, because the length is spent on the line and the line is drawn a
+ * step smaller than the card's base: both halves of the expression resolve against that smaller
+ * size, so it negates a fraction of the step's gap and puts back the same fraction of the row's,
+ * and settles a little wider than the row's own gap. the reading is unaffected and the look has
+ * stood there all along. the rule below carries its length on the box instead, which is why that
+ * one is exact.
  *
  * the length is carried by the line rather than by the button, and that is what the card with no
  * address turns on: the line is hidden where the donor gave none (`receiptTo` in ../views.ts), a
@@ -202,6 +209,35 @@ form {
  * the one control that spends the money and on no other (../../custom-elements.json).
  */
 .aside:has(+ [part~='submit']) {
+	margin-block-end: calc(var(--_sp2) - var(--_sp5));
+}
+
+/*
+ * and the sentence a refused press says about the payment belongs to the box it was refused in, for
+ * the reason the line above gives: the step's full rhythm on both sides of it stands it as far from
+ * the box it names as from the line under it, and a sentence equidistant from two blocks reads as a
+ * third. it takes the gap a refusal takes under the box it is about on every other row of the card
+ * instead — the step's gap negated and the row's own put back (`.field-row` below) — so a step
+ * drawn at a different rhythm keeps the sentence against the box it is about.
+ *
+ * the length is carried by the box rather than by the sentence, which is where this parts from the
+ * line above and the reason is the `em` both of them are written in: a step resolves on the element
+ * spending it, and the sentence is drawn at `--_t-xs` while the box is at the card's own base — so
+ * the same expression on the sentence negates three quarters of the step's gap and puts back three
+ * quarters of the row's, landing it at a length nothing on this card names.
+ *
+ * so the box takes it, and what the line above gets from being hidden this gets from the gate: the
+ * sentence is hidden until there is something to say (`paymentMessage` in ../views.ts), and the box
+ * keeps the step's own rhythm under the receipt block on every card nobody refused.
+ * `.fee-decision:has(+ .fee-note:not([hidden]))` in ./parts.css closes a gap on that same gate for
+ * that same reason.
+ *
+ * the pair rather than either by name, because `.message` is the role every refusal on this card
+ * takes: the others are children of the row or the group they belong to, and this is the one
+ * standing in the step's own column. the `.group` it is gated on is the payment box under its
+ * heading (`paymentGroup` in ../views.ts), and no other group on the card is followed by one.
+ */
+.group:has(+ .message:not([hidden])) {
 	margin-block-end: calc(var(--_sp2) - var(--_sp5));
 }
 
