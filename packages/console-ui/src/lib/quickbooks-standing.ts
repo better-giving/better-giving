@@ -10,7 +10,7 @@ import type {
 } from '@better-giving/operator/console/quickbooks';
 import { QUICKBOOKS_RECOURSES } from '@better-giving/operator/console/quickbooks';
 import { z } from 'zod';
-import type { NoReport } from '../api/types';
+import type { NoReport, VarsWritten } from '../api/types';
 import { VALUE_FIELD } from './secret-groups';
 import type { StatedForm } from './use-console-form';
 
@@ -31,28 +31,6 @@ import type { StatedForm } from './use-console-form';
 // **how long the oldest has waited is said in the coarsest unit that is still true.** an operator
 // reading it is deciding whether the books are behind, and a figure to the minute over four days
 // is a precision that answers a question nobody asked.
-
-/**
- * where live Intuit answers, and what the address box opens holding where the deployment stores
- * none.
- *
- * `QUICKBOOKS_PRODUCTION_URL` in packages/app/src/lib/server/accounting/quickbooks.ts is the same
- * address at the other end. it is stated again rather than imported because this package may not
- * reach into packages/app at all (CLAUDE.md), and it is stated here rather than in the section so
- * that a spec can read it.
- */
-export const QUICKBOOKS_LIVE = 'https://quickbooks.api.intuit.com';
-
-/**
- * what one of the three boxes opens holding where the deployment stores nothing under its name
- * (`boxValue` in ./held-values.ts).
- *
- * **only the address has one.** the pair is one Intuit app's own and there is nothing to suggest
- * for either, where the address is the same string on every deployment posting to a real company
- * and a developer connecting a sandbox one edits it.
- */
-export const quickbooksSeed = (name: string): string | undefined =>
-	name === 'QUICKBOOKS_API_URL' ? QUICKBOOKS_LIVE : undefined;
 
 /**
  * the three boxes the credentials press carries, keyed by what each of them posts.
@@ -101,6 +79,84 @@ export const quickbooksRefused = (
 	if (named.length === 0) return null;
 	return Object.fromEntries(named.map((name) => [VALUE_FIELD(name), said[name] as string]));
 };
+
+/** what the press answers with where it stored nothing because there was nothing to store. */
+const NOTHING_TO_STORE = 'Your deployment was already holding these, so nothing was stored.';
+
+/** what one press of the three boxes did, as the form under them reads its own answer. */
+export type CredentialsStanding = {
+	/** the write left something on the deployment, which is what the button confirms. */
+	readonly landed: boolean;
+	/** the boxes have nothing left to say: stored now, or already what the deployment holds. */
+	readonly settled: boolean;
+	/** the one sentence a press that stored nothing is answered by, or `null`. */
+	readonly says: string | null;
+};
+
+/**
+ * how the last press of the three boxes went, or nothing where none has been made.
+ *
+ * **three of the arms are one fact to whoever pressed.** `unchanged` is the deployment already
+ * holding what the boxes asked for and `nothing` is no box differing from it in the first place
+ * (`secretEdits` in ./secret-edits.ts), so both leave a deployment configured exactly as the boxes
+ * read — and both leave the boxes to be put back, or the same press stays armed to do the same
+ * nothing (`useSavedFormState` in packages/operator/src/saved-form-state.react.ts).
+ *
+ * **neither of those two is a save, so neither draws the button's confirmation.** what they are is
+ * a press answered by nothing moving, which is a press an operator makes again — so they carry a
+ * sentence of their own, at the control, and the word for the write is kept for the write
+ * ({@link retriedStands} is the same rule over the retry press).
+ *
+ * the two arms this says nothing about are drawn elsewhere and are the whole of what is left: a
+ * refusal goes under the press (`refusalIn` in ./secret-trouble.tsx), and a name the deployment
+ * holds in a form nothing can read back goes at the block that frees it (./withheld-values.tsx).
+ */
+export function credentialsStands(written: VarsWritten | null): CredentialsStanding {
+	if (written === null) return { landed: false, settled: false, says: null };
+	const nothingToStore = written.kind === 'unchanged' || written.kind === 'nothing';
+	return {
+		landed: written.kind === 'set',
+		settled: written.kind === 'set' || nothingToStore,
+		says: nothingToStore ? NOTHING_TO_STORE : null
+	};
+}
+
+/**
+ * where the press of the three boxes stands, and whether they are closed with it.
+ *
+ * **a press is two router phases and the answer lands between them** (./stripe-press.ts), so the
+ * posted intent alone is true for the whole of the re-read that press sets off — and that re-read
+ * is every reading of the deployment, which takes seconds. what the phase adds is which half.
+ *
+ * **the one thing that does not close them is a press that settled nothing being re-read.** it
+ * began nothing on the deployment and what has to change is a box, so those seconds are seconds an
+ * operator spends in front of a sentence about a box they cannot type in — and it is the whole of
+ * why the answer can place focus at all, because a disabled box takes none and the move runs on the
+ * render the answer arrives in (`useConsoleForm` in ./use-console-form.ts).
+ *
+ * **a press that settled holds them closed until the boxes have been put back.** the put-back is a
+ * reset onto the reading that write left behind (./reseed.ts), so a box open in between is one
+ * whose contents are taken away under the hand typing them.
+ *
+ * `busy` is the page's one flag for "something on this screen is writing" and is true of this
+ * form's own press as well, so what is taken from it is the rest of the page.
+ */
+export function credentialsPhase(press: {
+	/** this form's own press is the one in flight, both phases of it. */
+	readonly own: boolean;
+	/** the router has the answer and is reading the page again over it. */
+	readonly revalidating: boolean;
+	/** a press anywhere on the page is in flight. */
+	readonly busy: boolean;
+	/** the answer standing leaves the boxes with nothing left to say ({@link credentialsStands}). */
+	readonly settled: boolean;
+	/** the reading after that press is on the screen, and the boxes have been put back. */
+	readonly spent: boolean;
+}): { readonly underway: boolean; readonly closed: boolean } {
+	const inFlight = press.own && !press.revalidating;
+	const underway = inFlight || (press.settled && !press.spent);
+	return { underway, closed: underway || (press.busy && !press.own) };
+}
 
 /**
  * how the last press on the connection was answered.
@@ -156,9 +212,9 @@ export type AccountOption = { readonly value: string; readonly label: string };
 export type AccountPicker = {
 	readonly options: readonly AccountOption[];
 	/**
-	 * the account this connection posts to that is not in the chart any more — deactivated in the
-	 * company's books since it was picked. it stays selected until another is chosen, so a screen
-	 * never silently moves where gifts are posted.
+	 * the account the picker is showing that the chart does not offer — deactivated in the company's
+	 * books since it was picked. it stays in the list until another is chosen, so a screen never
+	 * silently moves where gifts are posted.
 	 */
 	readonly retired: AccountOption | undefined;
 };
@@ -173,12 +229,21 @@ export const CHOOSE = 'Choose an account';
  * tells them apart by it. it is Intuit's own word, carried rather than translated
  * (packages/operator/src/console/quickbooks.ts).
  *
- * **the empty line is keyed to what the picker is showing and not to what the company stores.** the
- * two are different readings — the selection is the operator's and the stored account is the
- * deployment's — and a list with no line matching the selection does not draw an empty box: the
- * browser falls to the first line in it, which is displayed and posted as an account nobody chose.
- * so the list always holds the selection, whether that is a line of the chart, an account the chart
- * no longer offers ({@link AccountPicker.retired}), or nothing at all.
+ * **the list always holds what the picker is showing**, whether that is a line of the chart, an
+ * account the chart no longer offers ({@link AccountPicker.retired}), or nothing at all. a list
+ * with no line matching the selection does not draw an empty box: the browser falls to the first
+ * line in it, which is displayed and posted as an account nobody chose. the selection is the
+ * operator's and the stored account is the deployment's, so neither reading answers for the other —
+ * an account picked off one read of the chart and deactivated at Intuit before the next is showing
+ * and in neither.
+ *
+ * that account has no name anywhere on this screen, so the line carries the id the press would
+ * send. a stored one does have a name and is drawn under it.
+ *
+ * **the empty line is what "nothing chosen" is, so it stands while the company stores nothing.** a
+ * list that lost it on the first pick leaves a mis-pick on a fresh connection with no way back to
+ * it, and the three are stored together (`picksToSave` below) — so there is nothing to go back to
+ * once the connection holds one.
  */
 export function accountPicker(
 	chart: readonly LedgerAccountLine[],
@@ -189,10 +254,12 @@ export function accountPicker(
 		value: account.id,
 		label: `${account.name} — ${account.type}`
 	}));
-	const held = pick === null ? undefined : chart.find((account) => account.id === pick.id);
+	const offered = showing === '' || options.some((option) => option.value === showing);
 	return {
-		options: showing === '' ? [{ value: '', label: CHOOSE }, ...options] : options,
-		retired: pick !== null && held === undefined ? { value: pick.id, label: pick.name } : undefined
+		options: pick === null || showing === '' ? [{ value: '', label: CHOOSE }, ...options] : options,
+		retired: offered
+			? undefined
+			: { value: showing, label: pick !== null && pick.id === showing ? pick.name : showing }
 	};
 }
 

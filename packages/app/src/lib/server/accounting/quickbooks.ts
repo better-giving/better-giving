@@ -53,9 +53,15 @@ import {
 // is a bookkeeper's to change. no batch endpoint: the delivery sends one queued entry at a time.
 // each of those is an arm to add the day something asks for it, not a branch to leave unexercised.
 
-/** the production Accounting API. a realm, an account and a token exist in one host or the other. */
-export const QUICKBOOKS_PRODUCTION_URL = 'https://quickbooks.api.intuit.com';
-/** the sandbox Accounting API, whose companies and tokens are not the production ones. */
+// the production host is stated where the console reads it too, and re-exported here because this
+// is the module everything in this app asks for it by.
+export { QUICKBOOKS_PRODUCTION_URL } from '@better-giving/operator/console/quickbooks';
+
+/**
+ * the sandbox Accounting API, whose companies and tokens are not the production ones.
+ *
+ * a realm, an account and a token exist in one host or the other.
+ */
 export const QUICKBOOKS_SANDBOX_URL = 'https://sandbox-quickbooks.api.intuit.com';
 
 /**

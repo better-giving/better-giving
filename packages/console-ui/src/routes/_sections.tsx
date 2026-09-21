@@ -9,7 +9,7 @@ import { Link, Outlet, redirect, useLocation, useSearchParams } from 'react-rout
 import chariotLogo from '../assets/processors/chariot.png';
 import nowpaymentsLogo from '../assets/processors/nowpayments.png';
 import paypalLogo from '../assets/processors/paypal.png';
-import quickbooksLogo from '../assets/processors/quickbooks.png';
+import quickbooksLogo from '../assets/integrations/quickbooks.png';
 import stripeLogo from '../assets/processors/stripe.png';
 import github from '../assets/social/github.webp';
 import { CloseConfirm, useClosed } from '../lib/close-confirm';

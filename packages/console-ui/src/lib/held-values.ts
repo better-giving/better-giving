@@ -41,26 +41,6 @@ export function heldValues(vars: readonly DeployedVar[]): HeldValues {
 }
 
 /**
- * what one box opens holding: what the deployment stores under that name, or the fold's seed where
- * it stores nothing at all.
- *
- * **a stored value always wins, so re-opening a box never swaps what is held for a suggestion.**
- * the reading is `held` rather than the seed being empty, which is the one that tells a name the
- * deployment stores nothing under from a name it holds in a form nothing can read back — the
- * second draws an empty box and takes no seed, because what is stored there may be nothing like
- * the fold's suggestion and the operator cannot see that it was replaced.
- *
- * the caller states the seed, because a seed is what a name means on a real deployment and nothing
- * here knows what the names mean. ./quickbooks-section.tsx is the one screen with one to state, and
- * `quickbooksSeed` in ./quickbooks-standing.ts is it.
- */
-export const boxValue = (
-	values: HeldValues,
-	name: string,
-	seed?: (name: string) => string | undefined
-): string => (values.held.has(name) ? (values.seeds[name] ?? '') : (seed?.(name) ?? ''));
-
-/**
  * the names of `among` this deployment is holding in a form nothing can read back.
  *
  * a fold says it of the names its own press writes and of no others, because the sentence stands

@@ -76,11 +76,6 @@ function unusable(name: string, value: string): string | null {
  * consulted and none is drawn: emptying the box is the removal. the dashboard password is the one
  * name that gesture is refused for, and {@link irremovable} argues why.
  *
- * **a box a screen drew holding a suggestion is a value to store like any other.** a screen may
- * draw one over a name the deployment holds nothing under (`quickbooksSeed` in
- * ./quickbooks-standing.ts), where the seed here is empty — so the first press stores what was
- * suggested whether or not the operator typed in it, which is what suggesting it was for.
- *
  * **the seeds are the account's own answer and never the body's.** the press reads what cloudflare
  * says the deployment holds before it reads the boxes, so a body claiming a name is stored cannot
  * turn an empty box into a delete, and a body claiming one is not cannot turn an untouched box into

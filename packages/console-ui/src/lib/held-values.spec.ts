@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DeployVarName, DeployedVar } from '../api/types';
-import { boxValue, heldValues, withheldInGroup } from './held-values';
+import { heldValues, withheldInGroup } from './held-values';
 import {
 	MAIL_GROUP,
 	PAYMENTS_GROUP,
@@ -73,45 +73,5 @@ describe('the group a withheld name is named in', () => {
 		const values = heldValues([{ name: 'ADMIN_PASSWORD', kind: 'value', value: 'twelve chars' }]);
 		const signIn = SECRET_GROUPS.find((one) => one.id === SIGN_IN_GROUP);
 		expect(signIn === undefined ? null : withheldInGroup(values, signIn)).toEqual([]);
-	});
-});
-
-describe('what one box opens holding', () => {
-	it('draws the fold’s seed where the deployment holds nothing under that name', () => {
-		const values = heldValues([{ name: 'QUICKBOOKS_API_URL', kind: 'absent' }]);
-		expect(boxValue(values, 'QUICKBOOKS_API_URL', () => 'https://seed.test')).toBe(
-			'https://seed.test'
-		);
-	});
-
-	it('draws what the deployment stores, over a seed and never under one', () => {
-		const values = heldValues([
-			{ name: 'QUICKBOOKS_API_URL', kind: 'value', value: 'https://stored.test' }
-		]);
-		expect(boxValue(values, 'QUICKBOOKS_API_URL', () => 'https://seed.test')).toBe(
-			'https://stored.test'
-		);
-	});
-
-	it('draws a name held in a form nothing can read back empty, seed or no seed', () => {
-		// a value is there and the seed is not it, so a box filled with the suggestion would say this
-		// deployment holds an address it does not.
-		const values = heldValues([{ name: 'QUICKBOOKS_API_URL', kind: 'withheld' }]);
-		expect(boxValue(values, 'QUICKBOOKS_API_URL', () => 'https://seed.test')).toBe('');
-	});
-
-	it('draws what the deployment holds and nothing else where the fold seeds none', () => {
-		const values = heldValues([
-			{ name: 'QUICKBOOKS_CLIENT_ID', kind: 'absent' },
-			{ name: 'SMTP_PASSWORD', kind: 'withheld' },
-			{ name: 'ADMIN_PASSWORD', kind: 'value', value: 'twelve chars' }
-		]);
-		const drawn = (name: string) => boxValue(values, name);
-		expect(['QUICKBOOKS_CLIENT_ID', 'SMTP_PASSWORD', 'STRIPE_SECRET_KEY'].map(drawn)).toEqual([
-			'',
-			'',
-			''
-		]);
-		expect(drawn('ADMIN_PASSWORD')).toBe('twelve chars');
 	});
 });

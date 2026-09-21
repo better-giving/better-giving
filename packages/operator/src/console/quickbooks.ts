@@ -25,6 +25,18 @@
 // nothing here states a rule about the books. what a connection may hold is decided in
 // `packages/app/src/lib/server/accounting/`, and its sentences arrive in `detail`.
 
+/**
+ * the Accounting API host a real company's books answer on.
+ *
+ * both ends name it: the deployment posts to it, and the console draws it as the example an empty
+ * address box stands on.
+ *
+ * **it is the only Intuit host stated here.** which host a deployment is built against is a
+ * configuration value, and a second one sitting in vocabulary every surface can reach is something
+ * for a screen to branch on — nothing in this repository reads which host it holds.
+ */
+export const QUICKBOOKS_PRODUCTION_URL = 'https://quickbooks.api.intuit.com';
+
 /** an account in the company's books as the connection holds it: what to post to, and what to print. */
 export interface ChosenAccountLine {
 	readonly id: string;

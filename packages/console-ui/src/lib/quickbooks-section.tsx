@@ -15,6 +15,7 @@ import type {
 	QuickbooksRecourse,
 	QuickbooksReport
 } from '@better-giving/operator/console/quickbooks';
+import { QUICKBOOKS_PRODUCTION_URL } from '@better-giving/operator/console/quickbooks';
 import { useSavedFormState } from '@better-giving/operator/saved-form-state.react';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
@@ -27,7 +28,7 @@ import type {
 	VarsWritten
 } from '../api/types';
 import type { HeldValues } from './held-values';
-import { boxValue, heldValues, withheldInGroup } from './held-values';
+import { heldValues, withheldInGroup } from './held-values';
 import { keysTrouble, noAnswer, valuesGuard } from './processor-screen';
 import type { AccountPick, QuickbooksAnswer, QuickbooksPicks } from './quickbooks-standing';
 import {
@@ -37,12 +38,13 @@ import {
 	backlogSays,
 	backlogStands,
 	connectAddress,
+	credentialsPhase,
+	credentialsStands,
 	landedPress,
 	picksHeld,
 	picksToSave,
 	quickbooksIntent,
 	quickbooksRefused,
-	quickbooksSeed,
 	retriedGifts,
 	retriedStands,
 	startDay,
@@ -120,6 +122,20 @@ const HINT: Record<string, ReactNode> = {
 		'Intuit’s production address for a real company, and its sandbox address for a test one.'
 };
 
+/**
+ * the example the address box stands on while it is empty, which is every deployment holding no
+ * address of its own.
+ *
+ * **a placeholder is an example and never a value** — the rule ./smtp-fold.tsx's boxes are drawn
+ * under, and this box is where it bites. the production address is the same string on every
+ * deployment posting to a real company, and a developer connecting a sandbox one types their own:
+ * a box drawn holding it is a box the next press stores whether or not anybody read it, and the
+ * press an operator makes about the other two boxes is then a deployment posting to a real
+ * company's books. nothing here is posted and nothing here is seeded, so an address the operator
+ * removed stays removed.
+ */
+const PLACEHOLDER: Record<string, string> = { QUICKBOOKS_API_URL: QUICKBOOKS_PRODUCTION_URL };
+
 /** what each picker is called. every one says what it is for without the heading over it. */
 const PICK_LABEL: Record<AccountPick, string> = {
 	income: 'Account gifts are recorded in',
@@ -155,6 +171,8 @@ export type QuickbooksSectionProps = {
 	busy: boolean;
 	/** which intent is in flight, or `null` where none is. */
 	pending: string | null;
+	/** the router is re-reading the page over an answer it has already committed. */
+	revalidating: boolean;
 	/** the press that answers the address the operator's browser opens to connect a company. */
 	onConnect: () => void;
 	/** the three accounts a gift is posted into, by id, and all three together. */
@@ -190,6 +208,7 @@ export function QuickbooksSection({
 	freed,
 	busy,
 	pending,
+	revalidating,
 	onConnect,
 	onAccounts,
 	onStartDate,
@@ -217,6 +236,7 @@ export function QuickbooksSection({
 					connected={connected}
 					busy={busy}
 					pending={pending}
+					revalidating={revalidating}
 					trouble={keysTrouble({ workerName, accountName })}
 				/>
 			))}
@@ -263,6 +283,7 @@ function Credentials({
 	connected,
 	busy,
 	pending,
+	revalidating,
 	trouble
 }: {
 	group: SecretGroup;
@@ -279,47 +300,53 @@ function Credentials({
 	busy: boolean;
 	/** which intent is in flight, or `null` where none is. */
 	pending: string | null;
+	/** the router is re-reading the page over an answer it has already committed. */
+	revalidating: boolean;
 	/** what a failed write says, in the words the screen holding the account name has for it. */
 	trouble: (written: ValuesRefusal) => ReactNode;
 }): ReactNode {
 	const errors = report !== null && 'errors' in report ? report.errors : null;
 	const written = report !== null && 'written' in report ? report.written : null;
-	/* the failure inside that answer, or nothing: the arms that changed something, found nothing to
-	   change, or refused over a value held in a form nothing can read back are each drawn elsewhere
-	   (`refusalIn` in ./secret-trouble.tsx). */
+	/* the failure inside that answer, or nothing: the two arms that stored something or found
+	   nothing to store are `stands` below, and the one over a value held in a form nothing can read
+	   back is drawn at the block that frees it (./withheld-values.tsx). */
 	const failure = written === null ? null : refusalIn(written);
-	const landed = written?.kind === 'set';
+	/* what that answer leaves on the screen: the button's confirmation, whether the boxes have
+	   anything left to say, and the sentence a press that stored nothing carries
+	   (./quickbooks-standing.ts). */
+	const stands = credentialsStands(written);
 	const intent = groupIntent(group);
 	/** this form's own request in flight; every other press on this page writes somewhere else. */
 	const own = pending === intent;
 	/* the boxes go back to what the deployment holds on the reading that lands after this press and
 	   not on the answer that arrives ahead of it: these seeds are a reading of the deployment, and
 	   the answer commits two router phases before one does (./reseed.ts). */
-	const spent = useReseeded({ landed, pending: own, reading });
-	/* this press from end to end, which is what the boxes are closed for and what the button
-	   reports: the write, and then the reading that shows what the write left behind
-	   (../closed-while-writing.spec.ts). */
-	const underway = own || (landed && !spent);
+	const spent = useReseeded({ landed: stands.settled, pending: own, reading });
+	/* this press from end to end, and what the boxes are closed for
+	   (../closed-while-writing.spec.ts): the request, and then the reading that shows what it left
+	   behind. a press that settled nothing ends both on the render its answer arrives in. */
+	const { underway, closed } = credentialsPhase({
+		own,
+		revalidating,
+		busy,
+		settled: stands.settled,
+		spent
+	});
 
 	const credentials = useConsoleForm(QUICKBOOKS_FORM, {
 		report,
-		landed,
+		landed: stands.landed,
 		spent,
 		refused: quickbooksRefused(errors, group.names),
-		/* the boxes seeded from what the deployment holds, keyed by what they post — and the address
-		   box from Intuit's own production address where it holds none (`quickbooksSeed` in
-		   ./quickbooks-standing.ts). the marking is still the pass and not the seeding: nothing is
-		   said about a box until a submit runs the rules (./use-console-form.ts). */
+		/* the boxes seeded from what the deployment holds, keyed by what they post. the marking is
+		   still the pass and not the seeding: nothing is said about a box until a submit runs the
+		   rules (./use-console-form.ts). */
 		defaultValue: Object.fromEntries(
-			group.names.map((name) => [VALUE_FIELD(name), boxValue(held, name, quickbooksSeed)])
+			group.names.map((name) => [VALUE_FIELD(name), held.seeds[name] ?? ''])
 		),
 		busy,
 		pending: underway
 	});
-	/* closed for the whole of this press, and while another press on the page writes: the press
-	   reads these boxes once, and a value typed into one behind it is a credential the operator
-	   believes they stored. */
-	const closed = busy || underway;
 
 	/**
 	 * one box bound: the id every describing block on it is named from, what it posts, what it was
@@ -351,6 +378,13 @@ function Credentials({
 							autoComplete="off"
 							spellCheck={false}
 							defaultValue={bound.defaultValue}
+							// the example the box stands on while it is empty, which is one box and every
+							// deployment holding no address of its own ({@link PLACEHOLDER}).
+							placeholder={PLACEHOLDER[name]}
+							// closed while the press that reads them is in flight and while another press on
+							// the page writes ({@link credentialsPhase}): the press reads these boxes once,
+							// and a value typed into one behind it is a credential the operator believes
+							// they stored.
 							disabled={closed}
 							/* the deployment's sentence about this box ended by the keystroke that changes
 							   it (./use-console-form.ts). */
@@ -393,7 +427,12 @@ function Credentials({
 					// usually takes a moment. what it says is where the value is going and how long, and
 					// never what Cloudflare is doing to get it there.
 					<p className="adm-hint">Storing it on your deployment. A few seconds.</p>
-				) : null}
+				) : stands.says === null ? null : (
+					// a press that stored nothing, at the button that made it: the confirmation is the
+					// write's and this is what stands in its place, so the press is answered by something
+					// moving rather than by the button going quiet ({@link credentialsStands}).
+					<p className="adm-hint">{stands.says}</p>
+				)}
 			</div>
 
 			{failure === null ? null : trouble(failure)}
