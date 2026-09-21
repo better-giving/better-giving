@@ -854,6 +854,8 @@ describe('the root size', () => {
 		const unresolved = [
 			'--_mark',
 			'--_box',
+			'--_glyph-among',
+			'--_glyph-beside',
 			'--_spinner',
 			'--_spinner-stroke',
 			'--_switch-inline',

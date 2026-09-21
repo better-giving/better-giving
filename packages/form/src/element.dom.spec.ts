@@ -4465,7 +4465,12 @@ describe('the stylesheets', () => {
 	// length — including the words `transition`, `animation` and `!important`, each written to say
 	// there isn't one — so a scan of the raw text asserts against the prose rather than against
 	// what the browser is handed.
-	const declarations = (sheet: string) => sheet.replace(/\/\*[\s\S]*?\*\//g, '');
+	//
+	// what a comment is, is stated once. the length sweep below blanks these same spans rather than
+	// removing them, and two answers to that question is how one case comes to sweep text no other
+	// case in this block is reading.
+	const COMMENT = /\/\*[\s\S]*?\*\//g;
+	const declarations = (sheet: string) => sheet.replace(COMMENT, '');
 	const still = `${declarations(partStyles)}\n${declarations(layoutStyles)}`;
 	const moving = declarations(motionStyles);
 	const css = `${still}\n${moving}`;
@@ -4478,6 +4483,90 @@ describe('the stylesheets', () => {
 	// literal in this component is authored, so a sheet holding the ramp cannot be swept by the
 	// case below that refuses one.
 	const tokenSheet = declarations(tokenStyles);
+
+	// the length half of the colour sweep below, and it cannot read `declarations` above: a
+	// deliberate literal says so in a `raw-length-ok:` note, and a note is a comment — a sweep over
+	// stripped text is one that cannot see its own exceptions. so the comment is blanked to spaces
+	// instead, which leaves every line its number and its columns.
+	//
+	// a `url()` value is blanked the same way. what is inside the one this component writes is a
+	// drawing in its own viewBox — coordinates along a path, and a percent-encoded `<` that reads
+	// as a number followed by a letter — and none of it is a length the sheet spends.
+	const blankOut = (span: string) => span.replace(/[^\n]/g, ' ');
+	const blanked = (sheet: string) =>
+		sheet.replace(COMMENT, blankOut).replace(/url\((?:[^()]|\([^()]*\))*\)/g, blankOut);
+
+	// a number carrying a unit, whatever that unit is, less the few that are not a length. the
+	// match is written this way round on purpose: a list of units to catch is a list a unit nobody
+	// thought of walks straight past — `svh` beside the `dvh` these sheets already write, `vmin`,
+	// `cqw`, `pt` — and no such list ever closes. a list of what to let past does close, and
+	// anything outside it fails until somebody says why it should not.
+	const NUMBERED = /(?<![\w.#])-?\d*\.?\d+(%|[a-zA-Z]+)(?![\w-])/g;
+	// `%`, `fr`, `cqi` and `lh` are each a share of something the rule already has — the box's own
+	// width, the grid's free space, the line's own height — rather than a size taken off a scale,
+	// which ./styles/parts.css's header states from the other side. `deg` is an angle and `s` and
+	// `ms` are time, and none of the three is a kind of length.
+	//
+	// letting a duration past here is not letting it past: it is refused by name below, in the
+	// sheets that have no duration case of their own. a gate reporting one as a raw length names
+	// the wrong thing at the rule it stopped, and a reader sent looking for a scale that was never
+	// the problem is a reader the gate has cost rather than saved.
+	const NOT_A_LENGTH = new Set(['%', 'fr', 'cqi', 'lh', 'deg', 's', 'ms']);
+
+	// a number carrying a time unit, swept the same way and reported under its own noun. no note
+	// excuses one and there is no marker that could: a duration is where reduced motion collapses
+	// (./styles/tokens.css re-points `--_dur-*` under `reduce`), so a literal one is a rule that
+	// goes on moving for a reader who asked for none — which is a decision nobody gets to take at
+	// a single rule.
+	const DURATION = /(?<![\w.#])-?\d*\.?\d+m?s(?![\w-])/g;
+
+	const rawDurations = (name: string, sheet: string) =>
+		blanked(sheet)
+			.split('\n')
+			.flatMap((line, i) =>
+				[...line.matchAll(DURATION)].map(([value]) => `${name}:${i + 1} ${value} — ${line.trim()}`)
+			);
+
+	// a note has to open the comment line it is written on — after the `/*` that starts the comment,
+	// or after the `*` that continues one. both sheet headers name the marker inside a sentence,
+	// and a mention of it is not a grant of it.
+	const LENGTH_OK = /(?:^|\/\*+)[\s*]*raw-length-ok:/;
+
+	// every raw length a sheet writes, as `file:line value — rule`, less the ones a note excuses.
+	// a note excuses the declaration it stands in rather than one line of it: a value wrapped over
+	// several lines is one decision, and a note per wrapped line would be three notes for one
+	// length.
+	const rawLengths = (name: string, sheet: string) => {
+		const raw = sheet.split('\n');
+		const stripped = blanked(sheet).split('\n');
+		const excused = (at: number) => {
+			// back to the first line of the declaration the length is written in.
+			let start = at;
+			while (
+				start > 0 &&
+				!/[;{}]\s*$/.test(stripped[start - 1] ?? '') &&
+				(stripped[start - 1] ?? '').trim() !== ''
+			)
+				start -= 1;
+			for (let i = start; i <= at; i++) if (LENGTH_OK.test(raw[i] ?? '')) return true;
+			// then up through the comment standing directly above it. a comment line is blank once
+			// blanked and its raw line is not, which is what stops the walk at an empty line rather
+			// than carrying a note down from wherever one was last written.
+			for (let i = start - 1; i >= 0; i--) {
+				if ((stripped[i] ?? '').trim() !== '' || (raw[i] ?? '').trim() === '') return false;
+				if (LENGTH_OK.test(raw[i] ?? '')) return true;
+			}
+			return false;
+		};
+
+		return stripped.flatMap((line, i) => {
+			const found = [...line.matchAll(NUMBERED)].filter(
+				([, unit]) => !NOT_A_LENGTH.has(unit ?? '')
+			);
+			if (found.length === 0 || excused(i)) return [];
+			return found.map(([value]) => `${name}:${i + 1} ${value} — ${line.trim()}`);
+		});
+	};
 
 	// every absence below is checked against a non-empty string first. vitest replaces a CSS
 	// import with `''` unless `css: true` is set on the pool, and an assertion that a stylesheet
@@ -4568,6 +4657,141 @@ describe('the stylesheets', () => {
 		expect(css.length).toBeGreaterThan(1000);
 		expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
 		expect(css).not.toMatch(/\b(rgb|rgba|hsl|oklch)\(/);
+	});
+
+	// every sheet in the styles directory, read off the directory rather than listed: a sixth one
+	// written there is swept by existing, where a list held here would leave it swept by nobody
+	// while every case in this block stayed green.
+	const styleSheets = import.meta.glob<string>('./styles/*.css', {
+		query: '?inline',
+		import: 'default',
+		eager: true
+	});
+	const drawnFrom = Object.entries(styleSheets)
+		.map(([path, sheet]) => [path.slice('./styles/'.length), sheet] as const)
+		.sort(([left], [right]) => left.localeCompare(right));
+
+	it('takes every length from a token, and says so at the ones it takes from nowhere', async () => {
+		// the directory is named here as well as swept, because the other cases in this block reach
+		// their sheets by a named import: a sixth file is swept for lengths the moment it lands and
+		// has to be carried into the colour cases by hand, and this is what says so.
+		expect(drawnFrom.map(([name]) => name)).toEqual([
+			'coins.css',
+			'layout.css',
+			'motion.css',
+			'parts.css',
+			'rows.css',
+			'tokens.css'
+		]);
+
+		// the token file is left out of the sweep for the reason it is left out of the colour sweep
+		// above: it is where every length this component draws is authored, so the sheet holding
+		// the ladder cannot be swept by the case that refuses a literal.
+		const sheets = drawnFrom.filter(([name]) => name !== 'tokens.css');
+
+		expect(sheets.filter(([, sheet]) => sheet.length < 300).map(([name]) => name)).toEqual([]);
+		expect(sheets.flatMap(([name, sheet]) => rawLengths(name, sheet))).toEqual([]);
+	});
+
+	it('spells a duration as a token in every sheet the motion case does not read', async () => {
+		// `reads every duration from a token` above reads ./styles/motion.css, the one sheet that
+		// moves. the rest are swept here. `declares no transition and no animation outside the
+		// motion sheet` holds ./styles/parts.css and ./styles/layout.css, and the coin list's own
+		// colour case holds ./styles/coins.css to the same — but ./styles/rows.css is held by
+		// neither, and it is adopted into a shadow root of its own, so the collapse under `reduce`
+		// reaches it only through the tokens a rule there spells.
+		//
+		// the token file is left out for the reason it is left out of both sweeps above: it is
+		// where `--_dur-fast` and `--_dur-screen` are authored.
+		const sheets = drawnFrom.filter(([name]) => name !== 'tokens.css' && name !== 'motion.css');
+
+		expect(sheets.length).toBeGreaterThan(0);
+		expect(sheets.filter(([, sheet]) => sheet.length < 300).map(([name]) => name)).toEqual([]);
+		expect(sheets.flatMap(([name, sheet]) => rawDurations(name, sheet))).toEqual([]);
+	});
+
+	// one declaration in a rule of its own, which is the shape every sample below is written in,
+	// read once for its lengths and once for its durations.
+	const sample = (declaration: string) => `a {\n\t${declaration};\n}`;
+	const one = (declaration: string) => rawLengths('sample.css', sample(declaration));
+	const timed = (declaration: string) => rawDurations('sample.css', sample(declaration));
+
+	it('sees a length at every unit, and lets past only the ones it is told to', async () => {
+		// every literal left in those sheets carries a note, so the two sweeps above pass just as
+		// well on a sweep that finds nothing at all. each is therefore run over text held here too,
+		// where what it has to find and what it has to let past are both known — and what it has to
+		// find is one sample per shape a length is written in, because a sweep that knows `px` and
+		// nothing else reports those same sheets clean while a new `em` or `ch` walks past it.
+		for (const value of [
+			// absolute
+			'3px',
+			'3pt',
+			'3Q',
+			// font-relative, which is what these sheets are mostly written in
+			'11em',
+			'3rem',
+			'46ch',
+			'2ex',
+			// viewport, in each of the shapes it is written in
+			'50vh',
+			'80svh',
+			'70lvh',
+			'40vmin',
+			// container
+			'90cqw',
+			'20cqb'
+		])
+			expect(one(`gap: ${value}`)).toEqual([`sample.css:2 ${value} — gap: ${value};`]);
+
+		// a duration is not a length, so it is let past here and caught by the case below under its
+		// own name. a gate that reported one as a raw length would be naming the wrong thing at the
+		// rule it stopped, which is the whole defect this block is written against.
+		for (const [declaration, value] of [
+			['transition-duration: 200ms', '200ms'],
+			['transition: opacity 0.2s', '0.2s']
+		] as const) {
+			expect(one(declaration)).toEqual([]);
+			expect(timed(declaration)).toEqual([`sample.css:2 ${value} — ${declaration};`]);
+		}
+
+		// and the whole of what is let past, each written the way a sheet writes it. a share of
+		// something the rule already has, the line's own height, and an angle, which is not a
+		// length at all.
+		for (const declaration of [
+			'inline-size: 33%',
+			'grid-template-columns: 1fr',
+			'max-block-size: 1lh',
+			'inline-size: 100cqi',
+			'rotate: 360deg'
+		])
+			expect(one(declaration)).toEqual([]);
+	});
+
+	it('excuses a length by a note written at it, and excuses nothing by proximity', async () => {
+		expect(one('gap: 3px')).toEqual(['sample.css:2 3px — gap: 3px;']);
+		expect(one('gap: 3px; /* raw-length-ok: a note. */')).toEqual([]);
+		expect(rawLengths('sample.css', 'a {\n\t/* raw-length-ok: a note. */\n\tgap: 3px;\n}')).toEqual(
+			[]
+		);
+		// an empty line between the note and the value is where the note stops reaching.
+		expect(
+			rawLengths('sample.css', 'a {\n\t/* raw-length-ok: a note. */\n\n\tgap: 3px;\n}')
+		).toEqual(['sample.css:4 3px — gap: 3px;']);
+		// and the note excuses the declaration it stands above, never the one after it.
+		expect(
+			rawLengths(
+				'sample.css',
+				'a {\n\t/* raw-length-ok: a note. */\n\tgap: 3px;\n\tmargin: 4px;\n}'
+			)
+		).toEqual(['sample.css:4 4px — margin: 4px;']);
+		// a marker quoted inside a sentence is a mention and not a grant, which is what lets both
+		// sheet headers say the word. it has to open the comment line it is written on.
+		expect(
+			rawLengths(
+				'sample.css',
+				'a {\n\t/* each one carries a `raw-length-ok:` note of its own. */\n\tgap: 3px;\n}'
+			)
+		).toEqual(['sample.css:3 3px — gap: 3px;']);
 	});
 
 	// the coin list inside the crypto option carries a sheet of its own (./coin-picker.ts), held to it too.

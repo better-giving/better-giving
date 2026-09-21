@@ -573,6 +573,34 @@
 	--_w-medium: 500;
 	--_w-bold: 600;
 
+	/*
+	 * the two line heights, and the rule for picking between them is what the line is rather than
+	 * what size it is set at: `--_lh-tight` is for a line read as a unit — a heading, a label
+	 * floated into the box it names — and `--_lh-body` is for anything a donor reads as a sentence
+	 * or more.
+	 *
+	 * the type ladder above does not partition along it, which is why the rule is stated in those
+	 * terms and not as a table of steps. a step carries whatever the rules setting it are setting,
+	 * and the steps through the middle of the ladder carry both — one of them is a heading in one
+	 * rule and a receipt's total in another, another is the card's own prose and a floated label —
+	 * so the size a rule states says nothing about the line it is read at.
+	 *
+	 * and most rules state no line at all, because a line is inherited: a rule spells one only
+	 * where the line its chain already carries is not the line that rule wants. so what a rule is
+	 * drawn at is not readable off that rule alone, and a table of steps would be a second place
+	 * for that to be got wrong.
+	 *
+	 * a rule deriving a length from a line — the head's height, a code's quiet zone — states the
+	 * step and the height together rather than copying the product, so it follows the type it was
+	 * derived from (`.step-dots` in ./layout.css, `.qr svg` in ./parts.css).
+	 *
+	 * the unitless `1` and `0` in ./coins.css and ./parts.css are neither of these and are not a
+	 * pick between them. each is one line standing alone in a box whose height is set by something
+	 * other than that line — the letter standing in for a coin's missing logo, the figure a donor
+	 * types in a field the surface's own floor holds open, and the drawn code, which takes `0`
+	 * because it has no line to set at all. a reading rhythm is the room between two lines, and
+	 * none of the three has a second one.
+	 */
 	--_lh-tight: 1.25;
 	--_lh-body: 1.5;
 
@@ -892,6 +920,37 @@
 	 * glyph among them.
 	 */
 	--_box: 1.15em;
+
+	/*
+	 * the two sizes a glyph is drawn at, and which one a rule takes is where the glyph stands
+	 * rather than what it depicts.
+	 *
+	 * `--_glyph-among` is the line's own `em`: a mark set among the words and read as one of them —
+	 * the chevron and the search mark inside the coin field (`.glyph` in ./coins.css), where a mark
+	 * a shade over the line would be the one shape in that box drawn larger than the ticker beside
+	 * it.
+	 *
+	 * `--_glyph-beside` is a shade over that line: a mark standing beside the words rather than in
+	 * them, and the shade is what keeps it from reading small against them. every other mark this
+	 * card draws takes it — the coin's round mark and the tick that says which coin is chosen
+	 * (./coins.css), the deposit screen's copy, caution and outcome marks together with the cells
+	 * they are centred in (./parts.css), and the mark that says which rail a payment row is
+	 * (./rows.css). a mount sizing a cell around one of them reads this token and not `--_box`,
+	 * which is what keeps the sentence below true where the two lengths are equal.
+	 *
+	 * it is the same shade `--_box` above carries and for the same reason, and it is written twice
+	 * rather than pointed once: a box a donor ticks and a mark that says something are two
+	 * decisions, and retuning one is not retuning the other.
+	 *
+	 * `em` for the reason `--_box` above is: a glyph is drawn against the words around it, and one
+	 * sized off the root would drift off them wherever a rule set those words at a step of their
+	 * own.
+	 *
+	 * the stroke is not here and is not this system's to move: every glyph is drawn at its own
+	 * source's stroke, which ../glyph.ts states.
+	 */
+	--_glyph-among: 1em;
+	--_glyph-beside: 1.15em;
 
 	/*
 	 * the busy spinner drawn on the action (`.spinner` in ./parts.css): the ring's box and its

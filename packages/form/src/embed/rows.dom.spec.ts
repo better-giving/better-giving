@@ -126,7 +126,7 @@ describe('the payment rows drawn beside the provider’s frame', () => {
 		const rowPx = em('--_t-sm') * ROOT_PX;
 		// the mark's box and the column it stands in are at the name's size; the head's gap is at the
 		// head's own, which is the card's root.
-		const ours = (em('--_box') + em('--_sp4')) * rowPx + em('--_sp3') * ROOT_PX;
+		const ours = (em('--_glyph-beside') + em('--_sp4')) * rowPx + em('--_sp3') * ROOT_PX;
 		const rail = 3 * rowPx;
 
 		expect(stripeAppearance(read).variables.fontSizeBase).toBe(`${rowPx}px`);

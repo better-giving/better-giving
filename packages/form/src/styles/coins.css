@@ -115,8 +115,8 @@ button {
 }
 
 .glyph {
-	inline-size: 1em;
-	block-size: 1em;
+	inline-size: var(--_glyph-among);
+	block-size: var(--_glyph-among);
 	color: var(--_n11);
 }
 
@@ -187,8 +187,8 @@ button {
 	display: grid;
 	place-items: center;
 	flex: none;
-	inline-size: var(--_box);
-	block-size: var(--_box);
+	inline-size: var(--_glyph-beside);
+	block-size: var(--_glyph-beside);
 	border-radius: 50%;
 	background: var(--_n5);
 	color: var(--_n11);
@@ -323,8 +323,8 @@ button {
 
 .option .tick {
 	grid-column: 3;
-	inline-size: var(--_box);
-	block-size: var(--_box);
+	inline-size: var(--_glyph-beside);
+	block-size: var(--_glyph-beside);
 	color: var(--_p);
 }
 

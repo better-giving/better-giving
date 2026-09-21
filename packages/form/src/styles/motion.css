@@ -270,6 +270,10 @@
 @keyframes screen-enter {
 	from {
 		opacity: 0;
+		/*
+		 * raw-length-ok: how far a screen is read as having come from, which is a distance in a
+		 * movement rather than a box's padding — the offset is argued at the top of this file.
+		 */
 		translate: 0.75em 0;
 	}
 }
@@ -277,6 +281,7 @@
 @keyframes screen-enter-back {
 	from {
 		opacity: 0;
+		/* raw-length-ok: the offset above, the other way. */
 		translate: -0.75em 0;
 	}
 }

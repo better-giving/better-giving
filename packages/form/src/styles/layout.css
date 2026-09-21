@@ -26,10 +26,21 @@
  * defend against. a host running `html { font-size: 62.5% }` would otherwise move a 22rem
  * breakpoint to 220px and put three tiles in a 240px sidebar.
  *
- * every length here is a token from ./tokens.css. the exceptions are the four shapes rather than
+ * every length here is a token from ./tokens.css. the exceptions are the six shapes rather than
  * measures — the segment's own track minimum, a tile's, the reading measure the takeovers are held
- * to, and the box a host page holds before the upgrade — which are geometry rather than steps of a
- * scale, and a token apiece would be a scale nobody counts along.
+ * to, the well the mandate scrolls in measured in lines, the box a host page holds before the
+ * upgrade, and the smallest box that is still laid out, which carries a label to a screen reader
+ * and nothing to the page — which are geometry rather than steps of a scale, and a token apiece
+ * would be a scale nobody counts along.
+ *
+ * each of the six carries a `raw-length-ok:` note at its own rule, and so do the two breakpoints
+ * above: that note is what carries a literal past the length sweep in ../element.dom.spec.ts, and
+ * the silence a seventh would otherwise be written in is what that sweep refuses.
+ *
+ * the `100%`, `50%`, `1fr` and `1lh` written elsewhere are relative constructions rather than
+ * values — a share of the box, of the grid's free space, of the line's own height — and the
+ * `-0.75` the tribute's press is pulled up by is a multiplier on a token rather than a length of
+ * its own. none of them is what the count above is counting.
  *
  * ../../package.json exports this file as `./styles/layout.css`, third of the four the card is
  * dressed from. it comes after ./parts.css so that `[hidden]` is the last word on what is on
@@ -101,9 +112,9 @@ form {
  */
 .vh {
 	position: absolute;
-	inline-size: 1px;
-	block-size: 1px;
-	margin: -1px;
+	inline-size: 1px; /* raw-length-ok: the smallest box that is still laid out. */
+	block-size: 1px; /* raw-length-ok: as above. */
+	margin: -1px; /* raw-length-ok: as above, taken back out of the flow. */
 	padding: 0;
 	overflow: hidden;
 	clip-path: inset(50%);
@@ -150,6 +161,7 @@ form {
  * between the two is textual.
  */
 .loading {
+	/* raw-length-ok: the reserve, at the top of a range rather than fitted, as argued above. */
 	min-height: 620px;
 }
 
@@ -319,6 +331,7 @@ form {
  * right edge reads as a defect rather than as a measure.
  */
 .takeover {
+	/* raw-length-ok: a measure in characters, which is what the paragraph above states it as. */
 	max-inline-size: 46ch;
 }
 
@@ -349,6 +362,7 @@ form {
  * user cannot read.
  */
 .mandate {
+	/* raw-length-ok: a measure of lines rather than of pixels, as argued above. */
 	max-block-size: 11em;
 	overflow-y: auto;
 }
@@ -378,6 +392,7 @@ form {
  */
 .segment {
 	display: grid;
+	/* raw-length-ok: an option's own track minimum, which is a shape rather than a step. */
 	grid-template-columns: repeat(auto-fit, minmax(5.5em, 1fr));
 	gap: var(--_sp2);
 }
@@ -413,6 +428,7 @@ form {
  */
 .tiles {
 	display: grid;
+	/* raw-length-ok: a tile's own floor and the pixel of rounding slack under the cap, both above. */
 	grid-template-columns: repeat(
 			auto-fill,
 			minmax(max(6em, calc((100% - 2 * var(--_sp2)) / 3 - 1px)), 1fr)
@@ -817,6 +833,7 @@ form {
 	gap: var(--_sp2);
 }
 
+/* raw-length-ok: a breakpoint, and `em` is the whole of why — the header argues it. */
 @container donate (min-width: 24em) {
 	.names {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -828,6 +845,7 @@ form {
 	}
 }
 
+/* raw-length-ok: as the breakpoint above. */
 @container donate (min-width: 26em) {
 	.card-body {
 		padding: var(--_inset-wide);

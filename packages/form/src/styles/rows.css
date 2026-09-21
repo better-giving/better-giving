@@ -85,21 +85,22 @@
 }
 
 /*
- * the provider's icons are a box a shade over the name's own `em`, which is `--_box` resolved at the
- * name's size, and it is centred on the name's first line so a name that wraps keeps its mark there
- * (`[part~='checkbox']` in ./parts.css centres its box the same way).
+ * the provider's icons say which rail a row is, so they are `--_glyph-beside` — a mark standing
+ * beside the words rather than among them — resolved at the name's size, and each is centred on the
+ * name's first line so a name that wraps keeps its mark there (`[part~='checkbox']` in ./parts.css
+ * centres the box a donor ticks the same way).
  *
  * the glyph stands at the start of a column `--_sp4` wider than itself, which with the head's gap
  * starts the name where the provider starts its rows' names: 42px from the mark's start on a 16px
- * root, `--_box` and `--_sp4` at the name's size plus `--_sp3` at the head's. what the provider's
- * own column is, and why those three tokens come to the same length, is derived and held in
- * ../embed/rows.dom.spec.ts — nothing here can measure it, because it is drawn inside the frame.
+ * root, `--_glyph-beside` and `--_sp4` at the name's size plus `--_sp3` at the head's. what the
+ * provider's own column is, and why those three tokens come to the same length, is derived and held
+ * in ../embed/rows.dom.spec.ts — nothing here can measure it, because it is drawn inside the frame.
  */
 .mark {
 	flex: none;
-	block-size: var(--_box);
-	inline-size: var(--_box);
-	margin-block-start: calc((1lh - var(--_box)) / 2);
+	block-size: var(--_glyph-beside);
+	inline-size: var(--_glyph-beside);
+	margin-block-start: calc((1lh - var(--_glyph-beside)) / 2);
 	margin-inline-end: var(--_sp4);
 }
 
