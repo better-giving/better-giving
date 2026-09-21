@@ -6,12 +6,16 @@
 
    complete and closed, and that is a claim about the tree rather than an intention: no scoped
    style block on either operator surface spells a colour, a length, a type bundle, a radius, a
-   duration or an easing of its own. each surface keeps its own gate over its own screens —
+   duration or an easing of its own. a gate holds the first four of those and the last two are
+   read off the tree rather than held: each surface keeps its own gate over its own screens —
    packages/app/src/lib/admin/styles/raw-color.spec.ts and styles/conformance.spec.ts are the
    dashboard's, packages/console-ui/src/raw-values.spec.ts the console's,
    packages/operator/src/components/raw-values.spec.ts the shared components' and
    packages/emails/src/raw-values.spec.ts the mail templates' — and each hands
-   its file list to the one assertion in ./raw-values.ts. what a screen may still write is what no token could hold — the two
+   its file list to the one assertion in ./raw-values.ts. the duration and the curve are swept in
+   the stylesheets alone — the motion cases in packages/app/src/lib/admin/styles/conformance.spec.ts
+   read no screen file — so a screen spelling its own pace is caught by review and by nothing else.
+   what a screen may still write is what no token could hold — the two
    breakpoints named below, a `0`, a grid line number, a table column's share of its own width
    as a percentage, and the `100dvh` a full-height column is measured against. a value a screen
    needs past those and this file cannot express is a gap to report, never one to invent: that
@@ -1056,6 +1060,20 @@
 		/* symmetric: each dot leaves its dim and arrives at its lit at rest, so the three read as one
 		   light passing along the row rather than three lamps switching. */
 		--admin-ease-pulse: cubic-bezier(0.42, 0, 0.58, 1);
+		/* the last two are named for the job rather than for one motion, because each paces more than
+		   one of the motions above. this one is for a motion whose shape is already in its keyframe
+		   stops — the line's schedule, the dot's fade and then its hold — so the curve is asked to
+		   add nothing over them; ./adm.css states it at `adm-navigation-line`, where the stops are
+		   the curve. the dot loader and the navigation line's fill read it — the line's rush out to
+		   full is an arrival and takes the state curve instead. */
+		--admin-ease-sweep: linear;
+		/* twenty braille cells and no position between two of them. what is animated is `content`,
+		   which is discrete and interpolates for nothing, so a curve here decides when each whole
+		   string swaps rather than how the bar moves: under the default easing the swap lands
+		   halfway along its interval and every stop shifts by half its gap, and this puts each swap
+		   on the percentage that wrote it. ./adm.css states it at `adm-braille-bar`. the console's
+		   start-up bar and its rush out to all twenty read it. */
+		--admin-ease-cell: step-end;
 		--admin-transition-state:
 			background-color var(--admin-dur-state) var(--admin-ease-state),
 			border-color var(--admin-dur-state) var(--admin-ease-state),

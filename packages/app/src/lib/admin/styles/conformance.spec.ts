@@ -451,8 +451,11 @@ const WEIGHT_ROLES = rolesOf(/-weight(?:-[\w-]+)?$/, /var\(\s*--admin-weight-/);
 // modifies, an emphasis inside a run, and the three declarations in
 // packages/operator/src/styles/base.css's reset that state no rank at all. the note is read off the
 // raw line and the value off the stripped one, so a note inside a comment is not a hatch that is
-// documented and dead.
-const TYPE_ESCAPE = /type-ok:/;
+// documented and dead. it opens the comment it stands in, which is the shape the two markers in
+// that file take and is argued beside them; it matters most here, because this is the one of the
+// three whose walk reads a whole comment line above the declaration rather than the declaration's
+// own line alone.
+const TYPE_ESCAPE = /(?:^|\/\*+|\/\/)[\s*]*type-ok:/;
 
 // the note stands on the declaration's own line or in the comment immediately above it, and both
 // are read because the sheets' formatter folds a trailing comment long enough to carry a reason
@@ -583,16 +586,42 @@ const REDUCED_MOTION = /prefers-reduced-motion/;
 const MOTION_PROPERTY = /^(transition|animation)(-|$)/;
 // a time with a number in front of it. `linear`, `infinite` and a keyframe name called `adm-pulse`
 // hold an `s` and none of them holds a digit before one, which is what the lookbehind and the
-// leading digits together are for.
-const LITERAL_TIME = /(?<![\w.-])\d*\.?\d+m?s(?![\w-])/;
+// leading digits together are for. case-insensitive, as
+// packages/operator/src/styles/raw-values.ts's colour pattern is and for the same reason: css
+// keywords and units are matched case-insensitively by the parser, so `200MS` renders as `200ms`
+// and a case-sensitive gate reads it as on-system.
+const LITERAL_TIME = /(?<![\w.-])\d*\.?\d+m?s(?![\w-])/i;
 const DURATION_TOKEN = /^--admin-dur-/;
+// a pacing curve spelled at its own rule. a curve read from the ladder arrives as
+// `var(--admin-ease-*)`, so a literal one is the whole of what this has to find: the keywords, and
+// the two functional forms a hand-written curve takes. `linear(…)` is the `linear` keyword with an
+// argument list after it and needs no entry of its own. the boundaries are what keep a keyframe
+// name out of it — `adm-navigation-line` is not `linear`, and `--admin-ease-state` holds `ease`
+// behind a hyphen. case-insensitive for the reason `LITERAL_TIME` above is.
+const LITERAL_CURVE =
+	/(?<![\w-])(?:linear|ease(?:-in-out|-in|-out)?|step-start|step-end|steps|cubic-bezier)(?![\w-])/i;
 
 // every transition and animation an /admin sheet declares, with the value it declares it at.
-function motionDeclarations(file: string) {
-	return blocks(read(file))
+function motionDeclarationsIn(css: string, file: string) {
+	return blocks(css)
 		.flatMap((b) => b.declarations.map((d) => ({ ...d, file })))
 		.filter((d) => MOTION_PROPERTY.test(d.property));
 }
+
+const motionDeclarations = (file: string) => motionDeclarationsIn(read(file), file);
+
+// the declarations that spell their own pace, in the shape the cases below report. one spelling
+// for the sweep over the sheets and for the fixture that proves the sweep can go red.
+const literalPaces = (declarations: ReturnType<typeof motionDeclarations>, pace: RegExp) =>
+	declarations
+		.filter((d) => pace.test(d.value))
+		.map((d) => `${d.file}:${d.line} ${d.property}: ${d.value}`);
+
+const literalCurves = (declarations: ReturnType<typeof motionDeclarations>) =>
+	literalPaces(declarations, LITERAL_CURVE);
+
+const literalTimes = (declarations: ReturnType<typeof motionDeclarations>) =>
+	literalPaces(declarations, LITERAL_TIME);
 
 // the `--admin-dur-*` names packages/operator/src/styles/tokens.css defines, split by whether the definition stands inside the
 // reduced-motion block. a name in the first set and not the second goes on running at its full
@@ -773,6 +802,10 @@ describe('every font-size and font-weight in /admin reads a type role', () => {
 				font-size: 0.9rem;
 			}
 		}
+		.adm-l {
+			/* each rule below carries a type-ok: note of its own. */
+			font-weight: 600;
+		}
 	`;
 	const caught = offRoleType(fixture, 'fixture.css');
 
@@ -798,7 +831,8 @@ describe('every font-size and font-weight in /admin reads a type role', () => {
 			'fixture.css:5 .adm-c — font-weight: 600',
 			'fixture.css:17 .adm-h — font-weight: 600',
 			'fixture.css:20 .adm-i — font-weight: 600',
-			'fixture.css:21 .adm-j — font-weight: 600'
+			'fixture.css:21 .adm-j — font-weight: 600',
+			'fixture.css:29 .adm-l — font-weight: 600'
 		]);
 	});
 
@@ -854,8 +888,7 @@ describe('every motion in /admin collapses at source', () => {
 	});
 
 	it('writes no literal duration outside tokens.css', () => {
-		const literal = swept.filter((d) => LITERAL_TIME.test(d.value));
-		expect(literal.map((d) => `${d.file}:${d.line} ${d.property}: ${d.value}`)).toEqual([]);
+		expect(literalTimes(swept)).toEqual([]);
 	});
 
 	it('takes every duration from a token', () => {
@@ -863,6 +896,59 @@ describe('every motion in /admin collapses at source', () => {
 		// which is the same failure as a literal one step further from the eye.
 		const untokened = swept.filter((d) => !d.value.includes('var(--admin-'));
 		expect(untokened.map((d) => `${d.file}:${d.line} ${d.property}: ${d.value}`)).toEqual([]);
+	});
+
+	// a curve is held the same way a duration is, and for the same reason: a keyword at its own rule
+	// is a pace nothing can read, retune or collapse. `LITERAL_TIME` requires a digit, so a bare
+	// keyword passes both cases above clean and reads as on-system — which is what this one is for.
+	// a declaration carrying no curve at all is not a finding: a `transition` that leaves the pace
+	// to the initial value has spelled nothing, and the sequenced `adm-dwell` entries are a duration
+	// and a delay with no third word.
+	//
+	// `.adm-f` is a pace spelled in the case css permits and nobody writes, and it is here for both
+	// patterns: it renders as `120ms ease-out` and a gate that read case would pass it.
+	const motionFixture = `
+		.adm-a {
+			animation: adm-dot var(--admin-dur-dots) linear infinite;
+		}
+		.adm-b {
+			animation: adm-braille-bar var(--admin-dur-braille-bar) step-end forwards;
+		}
+		.adm-c {
+			transition: opacity var(--admin-dur-state) var(--admin-ease-state);
+		}
+		.adm-d {
+			animation: adm-dwell var(--admin-dur-dwell) var(--admin-dur-state);
+		}
+		.adm-e {
+			animation:
+				adm-navigation-line var(--admin-dur-braille-bar) var(--admin-ease-sweep) forwards,
+				adm-navigation-line-finish var(--admin-dur-state) ease-out forwards;
+		}
+		.adm-f {
+			transition: opacity 120MS Ease-Out;
+		}
+	`;
+
+	it('catches a keyword curve, in any case, and passes a token and a declaration with no curve at all', () => {
+		expect(literalCurves(motionDeclarationsIn(motionFixture, 'fixture.css'))).toEqual([
+			'fixture.css:3 animation: adm-dot var(--admin-dur-dots) linear infinite',
+			'fixture.css:6 animation: adm-braille-bar var(--admin-dur-braille-bar) step-end forwards',
+			'fixture.css:15 animation: adm-navigation-line var(--admin-dur-braille-bar) var(--admin-ease-sweep) forwards, adm-navigation-line-finish var(--admin-dur-state) ease-out forwards',
+			'fixture.css:20 transition: opacity 120MS Ease-Out'
+		]);
+	});
+
+	it('catches a literal duration in any case', () => {
+		expect(literalTimes(motionDeclarationsIn(motionFixture, 'fixture.css'))).toEqual([
+			'fixture.css:20 transition: opacity 120MS Ease-Out'
+		]);
+	});
+
+	it('takes every pacing curve from a token', () => {
+		// the ladder is what a reader retunes and what the reduced-motion block could collapse. a
+		// keyword at its own rule is neither, whichever of the two it is right about.
+		expect(literalCurves(swept)).toEqual([]);
 	});
 
 	it('re-points every --admin-dur-* inside the reduced-motion block', () => {

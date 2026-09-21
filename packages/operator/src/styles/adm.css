@@ -514,9 +514,9 @@
 	   twentieth cell belongs to `adm-braille-bar-finish` below, which runs when the screen is
 	   actually done.
 
-	   `step-end` on the class is what makes each percentage the moment its string appears: a
-	   discrete value flips halfway along an interval under the default easing, which would shift
-	   every step below by half its gap. */
+	   `--admin-ease-cell` on the class is what makes each percentage the moment its string
+	   appears: a discrete value flips halfway along an interval under the default easing, which
+	   would shift every step below by half its gap. */
 	@keyframes adm-braille-bar {
 		0% {
 			content: '⣿⣿⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀';
@@ -574,9 +574,9 @@
 	/* the finish of `.adm-braille-bar`: the rush out to all twenty cells, where the class's
 	   `forwards` holds it. every bar in this system completes and is seen complete before the
 	   screen it stands on is replaced — a bar taken away part-full reports that the screen gave up
-	   on it, which is the opposite of what happened. `step-end` is what puts the twentieth cell on
-	   the run's last instant, so the seeing is `adm-dwell` below rather than this list: the rush
-	   arrives at full and the dwell is how long full is on screen.
+	   on it, which is the opposite of what happened. `--admin-ease-cell` is what puts the twentieth
+	   cell on the run's last instant, so the seeing is `adm-dwell` below rather than this list: the
+	   rush arrives at full and the dwell is how long full is on screen.
 
 	   it opens at the seventh cell because `content` cannot be interpolated: nothing here can read
 	   the cell the fill had reached, so the first frame is a fixed string, and the one chosen is
@@ -584,8 +584,8 @@
 	   a bar already past that cell drops back to it for one frame before the rush overtakes it,
 	   and over this duration that reads as the rush starting rather than as the bar losing ground.
 
-	   four frames rather than one, so twenty is arrived at rather than cut to. `step-end` for the
-	   reason the fill above gives. */
+	   four frames rather than one, so twenty is arrived at rather than cut to. `--admin-ease-cell`
+	   for the reason the fill above gives. */
 	@keyframes adm-braille-bar-finish {
 		0% {
 			content: '⣿⣿⣿⣿⣿⣿⣿⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀';
@@ -605,7 +605,7 @@
 	   cells: a tenth of the width at once, seven twentieths by a tenth of the run, thirteen by a
 	   third of it, then the crawl to nine tenths, where the class's `forwards` holds it. no frame
 	   reaches the full width, for the reason that list gives, and each stop is its cell count as a
-	   share of twenty. `linear` on the class, because the stops are the curve. */
+	   share of twenty. `--admin-ease-sweep` on the class, because the stops are the curve. */
 	@keyframes adm-navigation-line {
 		0% {
 			transform: scaleX(0.1);
@@ -1066,7 +1066,7 @@
 	   drawing it takes apart, and this rule is the one exception: the movement is the state, and
 	   there is nothing else in the box to carry it. */
 	.adm-dots circle {
-		animation: adm-dot var(--admin-dur-dots) linear infinite;
+		animation: adm-dot var(--admin-dur-dots) var(--admin-ease-sweep) infinite;
 	}
 
 	.adm-dots circle:nth-of-type(2) {
@@ -1126,7 +1126,7 @@
 
 	.adm-braille-bar::before {
 		content: '⣿⣿⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀';
-		animation: adm-braille-bar var(--admin-dur-braille-bar) step-end forwards;
+		animation: adm-braille-bar var(--admin-dur-braille-bar) var(--admin-ease-cell) forwards;
 	}
 
 	/* carried-ok: .is-finishing — packages/console-ui/src/root.tsx puts it on the span once the
@@ -1139,7 +1139,7 @@
 	   `content` of its own, which is what leaves those cells to the rush's `forwards`. */
 	.adm-braille-bar.is-finishing::before {
 		animation:
-			adm-braille-bar-finish var(--admin-dur-state) step-end forwards,
+			adm-braille-bar-finish var(--admin-dur-state) var(--admin-ease-cell) forwards,
 			adm-dwell var(--admin-dur-dwell) var(--admin-dur-state);
 	}
 
@@ -1187,7 +1187,7 @@
 		block-size: 100%;
 		background: var(--admin-accent-solid-1);
 		transform-origin: 0 50%;
-		animation: adm-navigation-line var(--admin-dur-braille-bar) linear forwards;
+		animation: adm-navigation-line var(--admin-dur-braille-bar) var(--admin-ease-sweep) forwards;
 	}
 
 	/* carried-ok: .is-finishing — the same done state, put on this span by the same component.
@@ -1199,7 +1199,7 @@
 	   is last because root.tsx's backstop reads the last entry of the list. */
 	.adm-navigation-bar__line.is-finishing::before {
 		animation:
-			adm-navigation-line var(--admin-dur-braille-bar) linear forwards,
+			adm-navigation-line var(--admin-dur-braille-bar) var(--admin-ease-sweep) forwards,
 			adm-navigation-line-finish var(--admin-dur-state) var(--admin-ease-state) forwards,
 			adm-dwell var(--admin-dur-dwell) var(--admin-dur-state);
 	}

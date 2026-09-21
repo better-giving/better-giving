@@ -126,8 +126,14 @@ const VIEWPORT_LENGTHS = new Set(['100dvh']);
 // a deliberate raw value says so out loud on its own line and gives its reason: the value is
 // allowed, the silence is not. moving these assertions between packages never moves where an
 // exception is recorded — it stays a note on the line it excuses.
-const COLOUR_ESCAPE = /raw-colour-ok:/;
-const LENGTH_ESCAPE = /raw-length-ok:/;
+//
+// on its own line means at the head of the comment it is written in: after the `/*` or the `//`
+// that opens one, or after the `*` that continues one. every sheet header in this system names
+// these markers inside a sentence, and a mention of a marker is not a grant of one — a pattern
+// that matched anywhere would let a header excuse whatever stood on its lines.
+// packages/form/src/element.dom.spec.ts's copy is the same shape over the form's sheets.
+const COLOUR_ESCAPE = /(?:^|\/\*+|\/\/)[\s*]*raw-colour-ok:/;
+const LENGTH_ESCAPE = /(?:^|\/\*+|\/\/)[\s*]*raw-length-ok:/;
 
 // a comment is blanked rather than removed, so a line keeps both its number and its columns. the
 // number is what a failure names, and the columns are what let an escape note be read off the same

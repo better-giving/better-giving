@@ -58,6 +58,17 @@ describe('raw-colour-ok:', () => {
 		);
 		expect(rawColourViolations(files)).toHaveLength(1);
 	});
+
+	it('refuses a mention of the marker inside a sentence', () => {
+		// the note opens the comment it is written in. every sheet header in this system names the
+		// marker while explaining it, and a header that granted what it described would be the one
+		// comment in the tree able to excuse the rules under it by talking about them.
+		const files = fixture(
+			'colour-mentioned',
+			'a {\n\tcolor: #ff0000; /* the header names raw-colour-ok: in a sentence. */\n}'
+		);
+		expect(rawColourViolations(files)).toHaveLength(1);
+	});
 });
 
 describe('raw-length-ok:', () => {
@@ -78,6 +89,14 @@ describe('raw-length-ok:', () => {
 		const files = fixture(
 			'length-above',
 			'/* raw-length-ok: the fixture says why. */\na {\n\tpadding: 7px;\n}'
+		);
+		expect(rawLengthViolations(files)).toHaveLength(1);
+	});
+
+	it('refuses a mention of the marker inside a sentence', () => {
+		const files = fixture(
+			'length-mentioned',
+			'a {\n\tpadding: 7px; /* each rule below carries a raw-length-ok: note. */\n}'
 		);
 		expect(rawLengthViolations(files)).toHaveLength(1);
 	});
