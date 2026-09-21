@@ -143,9 +143,9 @@ export default function QuickbooksPage({ loaderData, actionData, matches }: Rout
 				secrets={actionData && 'secrets' in actionData ? actionData.secrets : null}
 				answer={answer}
 				freed={actionData && 'freed' in actionData ? actionData.freed : null}
-				revalidating={revalidating}
 				busy={busy}
 				pending={intent}
+				revalidating={revalidating}
 				onConnect={() => make('connect')}
 				onAccounts={(picks) => make('accounts', { ...picks })}
 				onStartDate={(day) => make('start-date', { startAt: day })}

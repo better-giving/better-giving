@@ -70,7 +70,7 @@ function unusable(name: string, value: string): string | null {
  *
  * **there is one reading and the seed is the whole of it.** every value a deployment is configured
  * with is a plain var and reads back off the account (`DEPLOY_VARS` in
- * packages/operator/src/deploy-split.ts), so every box on this console is drawn holding what the
+ * packages/operator/src/deploy-split.ts), so every box over a stored value is drawn holding what the
  * deployment holds — a box that came back at its seed is a box nobody went near, an emptied box
  * over a stored value is that value taken away, and anything else is a value to store. no tick is
  * consulted and none is drawn: emptying the box is the removal. the dashboard password is the one

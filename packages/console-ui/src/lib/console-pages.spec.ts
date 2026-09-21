@@ -80,13 +80,16 @@ const LOGOS = {
 	nowpayments: '/nowpayments.png'
 };
 
+/** the books' own mark, which the caller resolves the same way it resolves the four above. */
+const BOOKS = '/quickbooks.png';
+
 /** every cell of the rail, flat, as `label → href`. */
 const cells = (groups: ReturnType<typeof railGroups>) =>
 	groups.flatMap((group) => group.destinations.map((d) => `${d.label} → ${d.href}`));
 
 describe('the rail', () => {
 	it('lists every page in set-up order, the processors under their own heading', () => {
-		const groups = railGroups(rows(), processorLinks(new Set()), LOGOS);
+		const groups = railGroups(rows(), processorLinks(new Set()), LOGOS, BOOKS);
 		expect(cells(groups)).toEqual([
 			'Dashboard password → /password',
 			'Organisation → /organisation',
@@ -103,15 +106,21 @@ describe('the rail', () => {
 			undefined,
 			'Donation processor',
 			undefined,
-			undefined
+			'Integration'
 		]);
 	});
 
-	it('ends with the books on their own, marked as the dashboard marks its own books screen', () => {
-		const groups = railGroups(rows(), processorLinks(new Set()), LOGOS);
+	it('ends with the books under a heading of their own, marked as the cells beside them are', () => {
+		const groups = railGroups(rows(), processorLinks(new Set()), LOGOS, BOOKS);
 		expect(groups.at(-1)).toEqual({
+			heading: 'Integration',
 			destinations: [
-				{ label: 'QuickBooks', short: 'QuickBooks', href: '/quickbooks', mark: 'book-open' }
+				{
+					label: 'QuickBooks',
+					short: 'QuickBooks',
+					href: '/quickbooks',
+					mark: { src: '/quickbooks.png' }
+				}
 			]
 		});
 	});
@@ -120,14 +129,15 @@ describe('the rail', () => {
 		// no set-up job waits on these books, so there is no row to read one off and nothing for a
 		// reader to hear after the name.
 		const status = (...todo: readonly SectionId[]) =>
-			railGroups(rows(...todo), processorLinks(new Set()), LOGOS).at(-1)?.destinations[0]?.status;
+			railGroups(rows(...todo), processorLinks(new Set()), LOGOS, BOOKS).at(-1)?.destinations[0]
+				?.status;
 		expect(status()).toBeUndefined();
 		expect(status(...IDS)).toBeUndefined();
 	});
 
 	it('marks each processor by whether its own pair is held, not by the payments job', () => {
 		const held = new Set(['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET']);
-		const [, processors] = railGroups(rows(), processorLinks(held), LOGOS);
+		const [, processors] = railGroups(rows(), processorLinks(held), LOGOS, BOOKS);
 		expect(processors?.destinations.map((d) => d.status)).toEqual([
 			{ tone: 'attention', mark: 'circle-dashed', label: 'Not set up' },
 			{ tone: 'done', mark: 'check', label: 'Configured' },
@@ -143,7 +153,7 @@ describe('the rail', () => {
 	});
 
 	it('marks a job by its row: a tick when done, an outline when not', () => {
-		const [first] = railGroups(rows('organisation'), processorLinks(new Set()), LOGOS);
+		const [first] = railGroups(rows('organisation'), processorLinks(new Set()), LOGOS, BOOKS);
 		expect(first?.destinations.map((d) => d.status)).toEqual([
 			{ tone: 'done', mark: 'check', label: 'Configured' },
 			{ tone: 'attention', mark: 'circle-dashed', label: 'Incomplete' }
@@ -157,7 +167,8 @@ describe('the rail', () => {
 					row.id === 'sites' ? { ...row, word, mark: 'circle-dashed' as const } : row
 				),
 				processorLinks(new Set()),
-				LOGOS
+				LOGOS,
+				BOOKS
 			)[2]?.destinations[0]?.status;
 		expect(sites('2 listed')).toEqual({ tone: 'note', mark: 'circle-dashed', label: '2 listed' });
 		expect(sites(null)).toBeUndefined();
