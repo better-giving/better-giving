@@ -9,6 +9,7 @@ import { Link, Outlet, redirect, useLocation, useSearchParams } from 'react-rout
 import chariotLogo from '../assets/processors/chariot.png';
 import nowpaymentsLogo from '../assets/processors/nowpayments.png';
 import paypalLogo from '../assets/processors/paypal.png';
+import quickbooksLogo from '../assets/processors/quickbooks.png';
 import stripeLogo from '../assets/processors/stripe.png';
 import github from '../assets/social/github.webp';
 import { CloseConfirm, useClosed } from '../lib/close-confirm';
@@ -78,12 +79,17 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 	if (closed) return null;
 
 	const { reading } = loaderData;
-	const groups = railGroups(reading.sections, reading.processors, {
-		stripe: stripeLogo,
-		paypal: paypalLogo,
-		chariot: chariotLogo,
-		nowpayments: nowpaymentsLogo
-	});
+	const groups = railGroups(
+		reading.sections,
+		reading.processors,
+		{
+			stripe: stripeLogo,
+			paypal: paypalLogo,
+			chariot: chariotLogo,
+			nowpayments: nowpaymentsLogo
+		},
+		quickbooksLogo
+	);
 	const here = groups
 		.flatMap((group) => group.destinations)
 		.find((destination) => destination.href === pathname);

@@ -1,4 +1,5 @@
 import type {
+	ChosenAccountLine,
 	LedgerAccountLine,
 	QuickbooksCompany,
 	QuickbooksPress,
@@ -8,7 +9,8 @@ import type {
 } from '@better-giving/operator/console/quickbooks';
 import { QUICKBOOKS_RECOURSES } from '@better-giving/operator/console/quickbooks';
 import { describe, expect, it } from 'vitest';
-import type { NoReport } from '../api/types';
+import type { DeployedVar, NoReport } from '../api/types';
+import { boxValue, heldValues } from './held-values';
 import type { QuickbooksAnswer } from './quickbooks-standing';
 import {
 	CHOOSE,
@@ -18,7 +20,10 @@ import {
 	connectAddress,
 	landedPress,
 	picksToSave,
+	QUICKBOOKS_FORM,
 	quickbooksIntent,
+	quickbooksRefused,
+	quickbooksSeed,
 	retriedGifts,
 	retriedStands,
 	startDay,
@@ -27,6 +32,7 @@ import {
 	unpickableStands,
 	waitedSays
 } from './quickbooks-standing';
+import { QUICKBOOKS_GROUP, SECRET_GROUPS, VALUE_FIELD } from './secret-groups';
 
 // the QuickBooks section's own decisions, read where they are made rather than through a render:
 // this package pins one node pool and no dom (../../vite.config.ts).
@@ -87,23 +93,61 @@ const silence = (press: QuickbooksPress): QuickbooksAnswer => ({
 
 describe('a picker over the company’s own chart', () => {
 	it('opens on an empty line where nothing is picked, so no account is chosen by standing still', () => {
-		const picker = accountPicker(CHART, null);
+		const picker = accountPicker(CHART, null, '');
 		expect(picker.options[0]).toEqual({ value: '', label: CHOOSE });
 		expect(picker.retired).toBeUndefined();
 	});
 
 	it('rides the type on the name, which is how two accounts called the same thing are told apart', () => {
-		expect(accountPicker(CHART, { id: '1', name: 'Donations' }).options).toEqual([
+		expect(accountPicker(CHART, { id: '1', name: 'Donations' }, '1').options).toEqual([
 			{ value: '1', label: 'Donations — Income' },
 			{ value: '2', label: 'Bank — Income' }
 		]);
 	});
 
 	it('keeps a pick the chart no longer offers, so nothing silently moves where gifts are posted', () => {
-		expect(accountPicker(CHART, { id: '9', name: 'Old donations' }).retired).toEqual({
+		expect(accountPicker(CHART, { id: '9', name: 'Old donations' }, '9').retired).toEqual({
 			value: '9',
 			label: 'Old donations'
 		});
+	});
+
+	it('offers the empty line whenever the picker is showing nothing, stored account or not', () => {
+		// the list is built off the stored account and the selection is the operator's, so the two
+		// can disagree: a picker showing nothing against a list that starts at the first account in
+		// the chart displays that account, and posts it.
+		const picker = accountPicker(CHART, { id: '1', name: 'Donations' }, '');
+		expect(picker.options[0]).toEqual({ value: '', label: CHOOSE });
+	});
+
+	it('always offers a line matching what the picker is showing', () => {
+		const retiredPick = { id: '9', name: 'Old donations' };
+		const shown = (pick: ChosenAccountLine | null, showing: string): string => {
+			const picker = accountPicker(CHART, pick, showing);
+			const found =
+				picker.options.some((option) => option.value === showing) ||
+				picker.retired?.value === showing;
+			return `${pick?.id ?? 'none'}/${showing === '' ? 'nothing' : showing}: ${found}`;
+		};
+		expect([
+			shown(null, ''),
+			shown(null, '1'),
+			shown({ id: '1', name: 'Donations' }, '1'),
+			shown({ id: '1', name: 'Donations' }, '2'),
+			shown({ id: '1', name: 'Donations' }, ''),
+			shown(retiredPick, '9'),
+			shown(retiredPick, '2'),
+			shown(retiredPick, '')
+		]).toEqual([
+			'none/nothing: true',
+			'none/1: true',
+			'1/1: true',
+			'1/2: true',
+			'1/nothing: true',
+			'9/9: true',
+			'9/2: true',
+			'9/nothing: true'
+		]);
 	});
 });
 
@@ -290,5 +334,84 @@ describe('where the three pickers would be, on a chart that could not be read', 
 			return !stands.connect && stands.says === null;
 		});
 		expect(mute).toEqual([]);
+	});
+});
+
+/** the three boxes as the section draws them, in the order the group lists, as `name → value`. */
+const boxes = (...vars: readonly DeployedVar[]): string[] => {
+	const group = SECRET_GROUPS.find((one) => one.id === QUICKBOOKS_GROUP);
+	const values = heldValues(vars);
+	return (group?.names ?? []).map((name) => `${name} → ${boxValue(values, name, quickbooksSeed)}`);
+};
+
+describe('what the three QuickBooks boxes open holding', () => {
+	it('opens the address box on Intuit’s production address, and the pair empty', () => {
+		// the address is the same string on every deployment posting to a real company, so a box
+		// drawn empty is one every operator but a developer has to go and find.
+		expect(boxes()).toEqual([
+			'QUICKBOOKS_CLIENT_ID → ',
+			'QUICKBOOKS_CLIENT_SECRET → ',
+			'QUICKBOOKS_API_URL → https://quickbooks.api.intuit.com'
+		]);
+	});
+
+	it('opens a name held in a form nothing can read back blank, production address or not', () => {
+		// the deployment holds an address and cannot hand it back, so a box drawn on the production
+		// one would report an address it may well not be storing.
+		expect(boxes({ name: 'QUICKBOOKS_API_URL', kind: 'withheld' })).toEqual([
+			'QUICKBOOKS_CLIENT_ID → ',
+			'QUICKBOOKS_CLIENT_SECRET → ',
+			'QUICKBOOKS_API_URL → '
+		]);
+	});
+
+	it('opens the address box on the address the deployment stores, which a sandbox one is', () => {
+		expect(
+			boxes({
+				name: 'QUICKBOOKS_API_URL',
+				kind: 'value',
+				value: 'https://sandbox-quickbooks.api.intuit.com'
+			})
+		).toEqual([
+			'QUICKBOOKS_CLIENT_ID → ',
+			'QUICKBOOKS_CLIENT_SECRET → ',
+			'QUICKBOOKS_API_URL → https://sandbox-quickbooks.api.intuit.com'
+		]);
+	});
+});
+
+/** the three names the group's press carries, which is what the boxes are drawn from. */
+const NAMES = SECRET_GROUPS.find((one) => one.id === QUICKBOOKS_GROUP)?.names ?? [];
+
+describe('the form the three boxes are mounted through', () => {
+	it('states a box for every name the press writes, keyed by what that box posts', () => {
+		// the seam counts a form dirty over the boxes the schema states and no others, so a name
+		// missing here is a box whose value never arms the save.
+		expect(Object.keys(QUICKBOOKS_FORM.schema.shape)).toEqual(NAMES.map(VALUE_FIELD));
+	});
+
+	it('takes an empty box, which is how a stored value is asked to be removed', () => {
+		// the rule over these three is the deployment's and not the browser's (./secret-edits.ts):
+		// a box the pass refused as required would be a value nothing on this page could take away.
+		const empty = Object.fromEntries(NAMES.map((name) => [VALUE_FIELD(name), '']));
+		expect(QUICKBOOKS_FORM.schema.safeParse(empty).success).toBe(true);
+	});
+});
+
+describe('the deployment’s refusal carried onto these boxes', () => {
+	it('keys it to the box that posts the name it is about', () => {
+		expect(quickbooksRefused({ QUICKBOOKS_API_URL: 'Not an address.' }, NAMES)).toEqual({
+			[VALUE_FIELD('QUICKBOOKS_API_URL')]: 'Not an address.'
+		});
+	});
+
+	it('drops a name this section draws no box for', () => {
+		// a sentence keyed to a box nobody has on the screen puts focus nowhere and holds the next
+		// press back over a box that cannot be put right.
+		expect(quickbooksRefused({ SMTP_HOST: 'No.' }, NAMES)).toBeNull();
+	});
+
+	it('answers nothing where the last press was not refused', () => {
+		expect(quickbooksRefused(null, NAMES)).toBeNull();
 	});
 });

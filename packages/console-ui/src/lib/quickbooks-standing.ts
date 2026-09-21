@@ -9,7 +9,10 @@ import type {
 	QuickbooksReport
 } from '@better-giving/operator/console/quickbooks';
 import { QUICKBOOKS_RECOURSES } from '@better-giving/operator/console/quickbooks';
+import { z } from 'zod';
 import type { NoReport } from '../api/types';
+import { VALUE_FIELD } from './secret-groups';
+import type { StatedForm } from './use-console-form';
 
 // every decision the QuickBooks section makes about a value, out of the drawing so that a case can
 // be written against it — ./chariot-setup.ts beside ./chariot-section.tsx is the arrangement, and
@@ -28,6 +31,76 @@ import type { NoReport } from '../api/types';
 // **how long the oldest has waited is said in the coarsest unit that is still true.** an operator
 // reading it is deciding whether the books are behind, and a figure to the minute over four days
 // is a precision that answers a question nobody asked.
+
+/**
+ * where live Intuit answers, and what the address box opens holding where the deployment stores
+ * none.
+ *
+ * `QUICKBOOKS_PRODUCTION_URL` in packages/app/src/lib/server/accounting/quickbooks.ts is the same
+ * address at the other end. it is stated again rather than imported because this package may not
+ * reach into packages/app at all (CLAUDE.md), and it is stated here rather than in the section so
+ * that a spec can read it.
+ */
+export const QUICKBOOKS_LIVE = 'https://quickbooks.api.intuit.com';
+
+/**
+ * what one of the three boxes opens holding where the deployment stores nothing under its name
+ * (`boxValue` in ./held-values.ts).
+ *
+ * **only the address has one.** the pair is one Intuit app's own and there is nothing to suggest
+ * for either, where the address is the same string on every deployment posting to a real company
+ * and a developer connecting a sandbox one edits it.
+ */
+export const quickbooksSeed = (name: string): string | undefined =>
+	name === 'QUICKBOOKS_API_URL' ? QUICKBOOKS_LIVE : undefined;
+
+/**
+ * the three boxes the credentials press carries, keyed by what each of them posts.
+ *
+ * **every one is optional, because an empty box is not a box left blank.** over a stored value it
+ * is that value asked to be removed, and over nothing at all it is a name this deployment goes on
+ * holding nothing under (`secretEdits` in ./secret-edits.ts) — so a rule marking an empty box as
+ * wanted would be a value with no way off the deployment.
+ *
+ * **and there is no rule beyond the shape, because nothing about these three is decidable here.**
+ * what a client id may be is Intuit's, and what this deployment will store is the deployment's:
+ * a whitespace-only box is the one refusal either end makes, and it is made at the press with the
+ * words the deployment uses for it. what the schema is for is the seam — it states which boxes the
+ * form counts as its own, which is what the save is armed over (./use-console-form.ts).
+ */
+const quickbooksBoxes = z.object({
+	[VALUE_FIELD('QUICKBOOKS_CLIENT_ID')]: z.string().optional(),
+	[VALUE_FIELD('QUICKBOOKS_CLIENT_SECRET')]: z.string().optional(),
+	[VALUE_FIELD('QUICKBOOKS_API_URL')]: z.string().optional()
+});
+
+/** the boxes as the seam takes them, with the id every box id on the section is composed off. */
+export const QUICKBOOKS_FORM: StatedForm<typeof quickbooksBoxes> = {
+	id: 'quickbooks',
+	schema: quickbooksBoxes
+};
+
+/**
+ * the deployment's own refusal carried onto the boxes this section draws, or `null` where it named
+ * none of them.
+ *
+ * **the two ends name a box differently and this is the one place that is reconciled.** the binary
+ * answers by the value's own name — `QUICKBOOKS_API_URL`, what it is called on the deployment
+ * (`secretEdits` in ./secret-edits.ts) — and the seam finds a box by what that box posts, which is
+ * `VALUE_FIELD`'s name. a key that is neither is a sentence drawn under nothing, with focus moved
+ * to nothing, and the next press held back over a box the operator has already put right.
+ *
+ * a name no box is drawn for is dropped rather than carried, for the same reason.
+ */
+export const quickbooksRefused = (
+	said: Record<string, string> | null,
+	names: readonly string[]
+): Record<string, string> | null => {
+	if (said === null) return null;
+	const named = names.filter((name) => said[name] !== undefined);
+	if (named.length === 0) return null;
+	return Object.fromEntries(named.map((name) => [VALUE_FIELD(name), said[name] as string]));
+};
 
 /**
  * how the last press on the connection was answered.
@@ -90,19 +163,27 @@ export type AccountPicker = {
 	readonly retired: AccountOption | undefined;
 };
 
-/** the empty line a picker opens on where nothing has been picked yet. */
+/** the empty line a picker offers while it is showing nothing. */
 export const CHOOSE = 'Choose an account';
 
 /**
- * one picker over the company's own chart.
+ * one picker over the company's own chart, for a picker showing `showing`.
  *
  * the type rides the name because a chart holds several accounts called Donations and an operator
  * tells them apart by it. it is Intuit's own word, carried rather than translated
  * (packages/operator/src/console/quickbooks.ts).
+ *
+ * **the empty line is keyed to what the picker is showing and not to what the company stores.** the
+ * two are different readings — the selection is the operator's and the stored account is the
+ * deployment's — and a list with no line matching the selection does not draw an empty box: the
+ * browser falls to the first line in it, which is displayed and posted as an account nobody chose.
+ * so the list always holds the selection, whether that is a line of the chart, an account the chart
+ * no longer offers ({@link AccountPicker.retired}), or nothing at all.
  */
 export function accountPicker(
 	chart: readonly LedgerAccountLine[],
-	pick: ChosenAccountLine | null
+	pick: ChosenAccountLine | null,
+	showing: string
 ): AccountPicker {
 	const options = chart.map((account) => ({
 		value: account.id,
@@ -110,7 +191,7 @@ export function accountPicker(
 	}));
 	const held = pick === null ? undefined : chart.find((account) => account.id === pick.id);
 	return {
-		options: pick === null ? [{ value: '', label: CHOOSE }, ...options] : options,
+		options: showing === '' ? [{ value: '', label: CHOOSE }, ...options] : options,
 		retired: pick !== null && held === undefined ? { value: pick.id, label: pick.name } : undefined
 	};
 }

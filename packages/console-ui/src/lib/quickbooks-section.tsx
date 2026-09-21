@@ -18,12 +18,21 @@ import type {
 import { useSavedFormState } from '@better-giving/operator/saved-form-state.react';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import type { DeployedValues, QuickbooksRead, VarsWritten } from '../api/types';
-import { heldValues } from './held-values';
+import { Form } from 'react-router';
+import type {
+	DeployedValues,
+	QuickbooksRead,
+	ValuesRefusal,
+	VarsRead,
+	VarsWritten
+} from '../api/types';
+import type { HeldValues } from './held-values';
+import { boxValue, heldValues, withheldInGroup } from './held-values';
 import { keysTrouble, noAnswer, valuesGuard } from './processor-screen';
 import type { AccountPick, QuickbooksAnswer, QuickbooksPicks } from './quickbooks-standing';
 import {
 	PICKS,
+	QUICKBOOKS_FORM,
 	accountPicker,
 	backlogSays,
 	backlogStands,
@@ -32,6 +41,8 @@ import {
 	picksHeld,
 	picksToSave,
 	quickbooksIntent,
+	quickbooksRefused,
+	quickbooksSeed,
 	retriedGifts,
 	retriedStands,
 	startDay,
@@ -39,20 +50,32 @@ import {
 	unanswered,
 	unpickableStands
 } from './quickbooks-standing';
+import { useReseeded } from './reseed';
 import { Said } from './said';
 import type { GroupReport } from './secret-group-form';
-import { SecretGroupForm } from './secret-group-form';
-import { QUICKBOOKS_GROUP, SECRET_GROUPS, groupIntent } from './secret-groups';
-import { FREE_INTENT } from './withheld-values';
+import { refusalIn } from './secret-trouble';
+import type { SecretGroup } from './secret-groups';
+import {
+	QUICKBOOKS_GROUP,
+	SECRET_GROUPS,
+	VALUE_FIELD,
+	groupIntent,
+	isMasked
+} from './secret-groups';
+import type { Box as BoundBox } from './use-console-form';
+import { useConsoleForm } from './use-console-form';
+import { FREE_INTENT, WithheldValues } from './withheld-values';
 
 // where this deployment's books go, and every press an operator has over them — the three values
 // off their Intuit app, the company they connect, where a gift is posted in its chart, and the
 // gifts that have not gone over.
 //
 // **it is the screen's body and not its route.** every read it draws was taken by whatever mounts
-// it and every press it makes is a callback answered there — ./chariot-section.tsx's arrangement
-// with the router taken out of it: nothing here fetches, navigates or reads a loader, so the one
-// place a press becomes a request is the route.
+// it and every press over the books is a callback answered there — ./chariot-section.tsx's
+// arrangement with the router taken out of it: nothing here fetches or reads a loader, so the one
+// place such a press becomes a request is the route. the three boxes are the one exception and post
+// for themselves, as ./chariot-section.tsx's own do: the group's intent (`groupIntent` in
+// ./secret-groups.ts), answered by that same route's `clientAction`.
 //
 // **it is not a processor and draws no reading of one.** no money moves on these three values and
 // no set-up job waits on them (packages/operator/src/console/quickbooks.ts), so there is no rail,
@@ -128,8 +151,6 @@ export type QuickbooksSectionProps = {
 	answer: QuickbooksAnswer | null;
 	/** how the last press that frees a value held in a form nothing can read back went, or `null`. */
 	freed: VarsWritten | null;
-	/** the router is re-reading the page over an answer it has already committed. */
-	revalidating: boolean;
 	/** something on the page is writing, which holds every control on it closed. */
 	busy: boolean;
 	/** which intent is in flight, or `null` where none is. */
@@ -167,7 +188,6 @@ export function QuickbooksSection({
 	secrets,
 	answer,
 	freed,
-	revalidating,
 	busy,
 	pending,
 	onConnect,
@@ -187,28 +207,17 @@ export function QuickbooksSection({
 			{/* the boxes carry no band of their own, for ./chariot-section.tsx's reason: the page's
 			    title already names what they set. */}
 			{SECRET_GROUPS.filter((group) => group.id === QUICKBOOKS_GROUP).map((group) => (
-				<SecretGroupForm
+				<Credentials
 					key={group.id}
 					group={group}
-					values={holding}
+					held={holding}
+					reading={values.vars}
 					report={secrets?.group === group.id ? secrets : null}
+					freed={freed}
+					connected={connected}
 					busy={busy}
-					pending={pending === groupIntent(group)}
-					revalidating={revalidating}
+					pending={pending}
 					trouble={keysTrouble({ workerName, accountName })}
-					boxLabel={(name) => LABEL[name] ?? name}
-					boxHint={(name) => HINT[name]}
-					consequence={
-						connected ? (
-							<p className="adm-prose">
-								A token is bought with these, so storing a different pair leaves the connected
-								company unreachable until you connect again.
-							</p>
-						) : undefined
-					}
-					withheldSays="Until these are saved again, this deployment sends nothing to your books."
-					withheldWritten={freed}
-					freeing={pending === FREE_INTENT}
 				/>
 			))}
 
@@ -230,6 +239,165 @@ export function QuickbooksSection({
 				/>
 			)}
 		</Section>
+	);
+}
+
+/**
+ * the three values off the operator's Intuit app, in three boxes that are always on the screen.
+ *
+ * **it draws no stated-value row and no press that reveals the boxes.** the whole of this section
+ * is behind these three, so an operator who opened this page opened it over them — a row saying a
+ * value is stored and a press to reach the box under it are two readings of the same fact, one
+ * press apart. ./stripe-section.tsx draws its pair the same way.
+ *
+ * a component of its own because it holds what the section around it must not see: conform's
+ * reading of its own boxes, the element a landed save puts back, and which reading that save was
+ * made against.
+ */
+function Credentials({
+	group,
+	held,
+	reading,
+	report,
+	freed,
+	connected,
+	busy,
+	pending,
+	trouble
+}: {
+	group: SecretGroup;
+	/** what cloudflare says this deployment holds, which is what the boxes are drawn with. */
+	held: HeldValues;
+	/** the reading those seeds came out of, compared by identity to tell one re-read from the next. */
+	reading: VarsRead;
+	report: GroupReport | null;
+	/** how the last press that frees a value held in a form nothing can read back went, or `null`. */
+	freed: VarsWritten | null;
+	/** a company is connected, which is what makes storing a different pair cost something. */
+	connected: boolean;
+	/** something on the page is writing, which holds every control on it closed. */
+	busy: boolean;
+	/** which intent is in flight, or `null` where none is. */
+	pending: string | null;
+	/** what a failed write says, in the words the screen holding the account name has for it. */
+	trouble: (written: ValuesRefusal) => ReactNode;
+}): ReactNode {
+	const errors = report !== null && 'errors' in report ? report.errors : null;
+	const written = report !== null && 'written' in report ? report.written : null;
+	/* the failure inside that answer, or nothing: the arms that changed something, found nothing to
+	   change, or refused over a value held in a form nothing can read back are each drawn elsewhere
+	   (`refusalIn` in ./secret-trouble.tsx). */
+	const failure = written === null ? null : refusalIn(written);
+	const landed = written?.kind === 'set';
+	const intent = groupIntent(group);
+	/** this form's own request in flight; every other press on this page writes somewhere else. */
+	const own = pending === intent;
+	/* the boxes go back to what the deployment holds on the reading that lands after this press and
+	   not on the answer that arrives ahead of it: these seeds are a reading of the deployment, and
+	   the answer commits two router phases before one does (./reseed.ts). */
+	const spent = useReseeded({ landed, pending: own, reading });
+	/* this press from end to end, which is what the boxes are closed for and what the button
+	   reports: the write, and then the reading that shows what the write left behind
+	   (../closed-while-writing.spec.ts). */
+	const underway = own || (landed && !spent);
+
+	const credentials = useConsoleForm(QUICKBOOKS_FORM, {
+		report,
+		landed,
+		spent,
+		refused: quickbooksRefused(errors, group.names),
+		/* the boxes seeded from what the deployment holds, keyed by what they post — and the address
+		   box from Intuit's own production address where it holds none (`quickbooksSeed` in
+		   ./quickbooks-standing.ts). the marking is still the pass and not the seeding: nothing is
+		   said about a box until a submit runs the rules (./use-console-form.ts). */
+		defaultValue: Object.fromEntries(
+			group.names.map((name) => [VALUE_FIELD(name), boxValue(held, name, quickbooksSeed)])
+		),
+		busy,
+		pending: underway
+	});
+	/* closed for the whole of this press, and while another press on the page writes: the press
+	   reads these boxes once, and a value typed into one behind it is a credential the operator
+	   believes they stored. */
+	const closed = busy || underway;
+
+	/**
+	 * one box bound: the id every describing block on it is named from, what it posts, what it was
+	 * drawn holding, and the one sentence standing under it (./use-console-form.ts).
+	 *
+	 * the index is asserted because the schema states a box for every name in the group, which
+	 * ./quickbooks-standing.spec.ts holds — so a name with no metadata behind it is not a state this
+	 * reaches.
+	 */
+	const box = (name: string) => credentials.box(credentials.fields[VALUE_FIELD(name)] as BoundBox);
+
+	return (
+		<Form {...credentials.mount} className="adm-stack" method="post" preventScrollReset>
+			<div className="adm-stack">
+				{group.names.map((name) => {
+					const bound = box(name);
+					return (
+						<Field
+							key={name}
+							id={bound.id}
+							name={bound.name}
+							label={LABEL[name] ?? name}
+							hint={HINT[name]}
+							// the code face. these are literals an operator checks character for character
+							// against their Intuit app.
+							code
+							// which of the three arrives masked is ./secret-groups.ts's.
+							masked={isMasked(name)}
+							autoComplete="off"
+							spellCheck={false}
+							defaultValue={bound.defaultValue}
+							disabled={closed}
+							/* the deployment's sentence about this box ended by the keystroke that changes
+							   it (./use-console-form.ts). */
+							onInput={bound.onInput}
+							error={bound.error}
+						/>
+					);
+				})}
+			</div>
+
+			{/* the names of this group the deployment holds in a form nothing can read back, which are
+			    the boxes drawn empty over a value that is there. no save can set one of them until it
+			    comes off (./withheld-values.tsx). */}
+			<WithheldValues
+				names={withheldInGroup(held, group)}
+				all={held.withheld}
+				consequence="Until these are saved again, this deployment sends nothing to your books."
+				written={freed}
+				trouble={trouble}
+				busy={busy}
+				freeing={pending === FREE_INTENT}
+			/>
+
+			{/* what storing these costs, beside the press that does it rather than over the boxes: it
+			    is read by somebody who has already typed. */}
+			{connected ? (
+				<p className="adm-prose">
+					A token is bought with these, so storing a different pair leaves the connected company
+					unreachable until you connect again.
+				</p>
+			) : null}
+
+			<div className="adm-actions">
+				{/* the three words are the button's own defaults
+				    (`@better-giving/operator/components/controls/SaveButton`): the page this press
+				    stands on already names what is being saved. */}
+				<SaveButton type="submit" name="intent" value={intent} state={credentials.state} />
+				{underway ? (
+					// said at the control while it waits, because this press takes seconds where a save
+					// usually takes a moment. what it says is where the value is going and how long, and
+					// never what Cloudflare is doing to get it there.
+					<p className="adm-hint">Storing it on your deployment. A few seconds.</p>
+				) : null}
+			</div>
+
+			{failure === null ? null : trouble(failure)}
+		</Form>
 	);
 }
 
@@ -356,50 +524,71 @@ function Company({
 	'answer' | 'busy' | 'pending' | 'onConnect' | 'onAccounts' | 'onStartDate' | 'onDisconnect'
 >): ReactNode {
 	return (
-		<div className="adm-named">
-			<StatedValue label="Company" value={company.companyName ?? company.realmId}>
-				{company.companyName === null
-					? 'Intuit hasn’t said what this company is called yet.'
-					: undefined}
-			</StatedValue>
+		/* four blocks, each opening a subject of its own and told apart by the one boundary the sheet
+		   draws over them (`* + .adm-named` in packages/operator/src/styles/adm.css). they stand
+		   directly in the section rather than inside a wrapper of their own: the rule keys on a
+		   sibling, so a wrapper would take the one boundary for the four of them and leave the blocks
+		   inside it at the container's gap — a block's save as near the block below it as it is to
+		   its own boxes, which is what was on the screen. the class goes on a wrapper around each
+		   block rather than on the block's own element, because the step inside a named block is the
+		   close one a heading takes from what it names, and these hold a column of controls and the
+		   press that saves them at the stack's step. */
+		<>
+			<div className="adm-named">
+				<StatedValue label="Company" value={company.companyName ?? company.realmId}>
+					{company.companyName === null
+						? 'Intuit hasn’t said what this company is called yet.'
+						: undefined}
+				</StatedValue>
+			</div>
 
-			{accounts?.state === 'read' ? (
-				<AccountsForm
+			<div className="adm-named">
+				{accounts?.state === 'read' ? (
+					<AccountsForm
+						company={company}
+						chart={accounts.accounts}
+						answer={answer}
+						busy={busy}
+						pending={pending}
+						onAccounts={onAccounts}
+					/>
+				) : (
+					<Unpickable
+						company={company}
+						detail={accounts?.state === 'unreadable' ? accounts.detail : null}
+						recourse={accounts?.state === 'unreadable' ? accounts.recourse : null}
+						answer={answer}
+						busy={busy}
+						pending={pending}
+						onConnect={onConnect}
+					/>
+				)}
+			</div>
+
+			<div className="adm-named">
+				<StartDateForm
 					company={company}
-					chart={accounts.accounts}
 					answer={answer}
 					busy={busy}
 					pending={pending}
-					onAccounts={onAccounts}
+					onStartDate={onStartDate}
 				/>
-			) : (
-				<Unpickable
+			</div>
+
+			{/* the way out is a block of its own, though it is a press with no heading over it: it
+			    belongs to none of the blocks above — ./withheld-values.tsx draws its own bare press
+			    inside the form whose values it is about, and takes no boundary for that reason — and
+			    this class is the whole of what the sheet has for a break between blocks. */}
+			<div className="adm-named">
+				<Disconnect
 					company={company}
-					detail={accounts?.state === 'unreadable' ? accounts.detail : null}
-					recourse={accounts?.state === 'unreadable' ? accounts.recourse : null}
 					answer={answer}
 					busy={busy}
 					pending={pending}
-					onConnect={onConnect}
+					onDisconnect={onDisconnect}
 				/>
-			)}
-
-			<StartDateForm
-				company={company}
-				answer={answer}
-				busy={busy}
-				pending={pending}
-				onStartDate={onStartDate}
-			/>
-
-			<Disconnect
-				company={company}
-				answer={answer}
-				busy={busy}
-				pending={pending}
-				onDisconnect={onDisconnect}
-			/>
-		</div>
+			</div>
+		</>
 	);
 }
 
@@ -411,10 +600,11 @@ const seedOf = (picks: QuickbooksPicks): string => `${picks.income}|${picks.fee}
  *
  * **the pickers hold their choice here rather than in the document**, which is what lets a reading
  * that lands behind them move them: a `<select>` seeded through `defaultValue` keeps whatever it
- * was mounted with however many readings arrive, and the put-back a landed write performs
+ * was mounted with however many readings arrive, and a put-back on the element
  * (`useSavedFormState` in packages/operator/src/saved-form-state.react.ts) would then put the boxes
- * back to the picks the press was made against. the seed is compared as a value rather than as the
- * reading's identity, so a read that changed nothing leaves what an operator has chosen alone —
+ * back to the picks the press was made against — so this form asks for none, and the put-back is
+ * the comparison below ({@link spent} at the press). the seed is compared as a value rather than as
+ * the reading's identity, so a read that changed nothing leaves what an operator has chosen alone —
  * packages/operator/src/components/forms/CoinPicker.jsx and DateField.jsx keep theirs the same way.
  */
 function AccountsForm({
@@ -439,6 +629,15 @@ function AccountsForm({
 	const saved = useSavedFormState({
 		report: answer,
 		landed: landedPress(answer, 'accounts'),
+		/* **a landed answer empties nothing here**, which is what `spent` is asked. the three are
+		   held in state above and the put-back is the seed comparison, so there is nothing for the
+		   element's own reset to restore: it takes each `<select>` to the first line of its list —
+		   the browser's reset is against the `selected` attribute, and a react-controlled select has
+		   none on any option — while the state behind them still holds what the operator chose. the
+		   answer commits as the re-read begins (./reseed.ts), so nothing renders these again until
+		   that read lands, and three pickers spend the whole of it showing the first account in the
+		   company's chart. */
+		spent: false,
 		changed: picksToSave(picks, company),
 		busy,
 		pending: own
@@ -457,7 +656,10 @@ function AccountsForm({
 			}}
 		>
 			{PICKS.map((pick) => {
-				const box = accountPicker(chart, company[pick]);
+				/* the list is built for what this picker is showing rather than for what the company
+				   stores: the two are different readings, and a list missing the selection is drawn
+				   and posted as the first account in the chart (./quickbooks-standing.ts). */
+				const box = accountPicker(chart, company[pick], picks[pick]);
 				return (
 					<SelectWithNote
 						key={pick}

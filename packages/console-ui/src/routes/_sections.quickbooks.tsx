@@ -112,7 +112,7 @@ export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean {
 export default function QuickbooksPage({ loaderData, actionData, matches }: Route.ComponentProps) {
 	const shell = matches[1].loaderData;
 	const submit = useSubmit();
-	const { intent, busy, revalidating } = usePress();
+	const { intent, busy } = usePress();
 
 	const answered = actionData && 'quickbooks' in actionData ? actionData.quickbooks : null;
 	const answer: QuickbooksAnswer | null =
@@ -143,7 +143,6 @@ export default function QuickbooksPage({ loaderData, actionData, matches }: Rout
 				secrets={actionData && 'secrets' in actionData ? actionData.secrets : null}
 				answer={answer}
 				freed={actionData && 'freed' in actionData ? actionData.freed : null}
-				revalidating={revalidating}
 				busy={busy}
 				pending={intent}
 				onConnect={() => make('connect')}

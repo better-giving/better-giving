@@ -72,22 +72,30 @@ function processorStatus(link: ProcessorLink): DestinationStatus {
 
 /**
  * the rail, in four groups: the two sections an operator opens on, the processors under their own
- * heading, the three that carry a gift out to the world, and the books on their own.
+ * heading, the three that carry a gift out to the world, and the books under a heading of their
+ * own.
  *
  * every label is the section's own row label, except the site list's: its row label is a sentence
  * (`FOLD_LABELS.sites`), which the page states under its name rather than a cell carrying it.
  *
  * **the books cell is no section, so it is written out rather than made by `cell`** — that helper
- * is keyed to a `SectionId` and reads a set-up row, and there is no row here. it carries no status
- * for the same reason: no job waits on these books and a deployment that keeps them somewhere else
- * is not half set up (packages/app/src/routes/console.quickbooks.ts). its mark is the one the
- * dashboard gives its own books screen (packages/app/src/lib/admin/destinations.ts), so the two
- * operator surfaces keep one vocabulary.
+ * is keyed to a `SectionId` and reads a set-up row, and there is no row here. its heading is a
+ * literal for the same reason: `FOLD_LABELS` is keyed by set-up section, and these books are none
+ * of them. it carries no status either: no job waits on these books and a deployment that keeps
+ * them somewhere else is not half set up (packages/app/src/routes/console.quickbooks.ts). its mark
+ * is the brand's own, in the image form the processor cells above it carry, so the rail draws one
+ * kind of thing one way.
+ *
+ * **that mark arrives on its own and is never in `logos`.** {@link ProcessorLogos} is keyed by
+ * `PaymentProcessor` and these books are no processor — no money moves on them and they are on no
+ * processor enumeration (./quickbooks-section.tsx) — so carrying it in that record would put the
+ * books inside the vocabulary the payments rail is keyed by.
  */
 export function railGroups(
 	sections: readonly HomeSection[],
 	processors: readonly ProcessorLink[],
-	logos: ProcessorLogos
+	logos: ProcessorLogos,
+	booksLogo: string
 ): DestinationGroup[] {
 	const row = (id: SectionId) => sections.find((section) => section.id === id);
 	const cell = (id: SectionId, short: string, mark: MarkName, label?: string): Destination => {
@@ -126,8 +134,14 @@ export function railGroups(
 			]
 		},
 		{
+			heading: 'Integration',
 			destinations: [
-				{ label: 'QuickBooks', short: 'QuickBooks', href: '/quickbooks', mark: 'book-open' }
+				{
+					label: 'QuickBooks',
+					short: 'QuickBooks',
+					href: '/quickbooks',
+					mark: { src: booksLogo }
+				}
 			]
 		}
 	];
