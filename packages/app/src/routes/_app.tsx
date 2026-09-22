@@ -150,6 +150,12 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 					</Form>
 				}
 			>
+				{
+					// a screen that is its destination's own page draws no title, and the tab title and the
+					// marked rail cell name it to the eye; this is the in-document name a screen reader
+					// jumps to. a screen under a section draws its own `h1`, so it gets none here.
+					at?.kind === 'page' ? <h1 className="adm-vh">{at.label}</h1> : null
+				}
 				<Outlet />
 			</AppShell>
 		</>

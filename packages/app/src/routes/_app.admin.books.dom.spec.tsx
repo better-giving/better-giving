@@ -350,7 +350,7 @@ it('carries the id the loader minted, in a box nobody can edit', () => {
 it('names the list under a heading of its own, beside the form’s', () => {
 	const { root } = screen({ entries: [entry()] });
 
-	// the frame draws this page's one `h1` in its top strip (./_app.tsx), so both halves of the
+	// the frame draws this page's one `h1`, visually hidden (./_app.tsx), so both halves of the
 	// screen are `h2`s under it. without its own, the list falls under a heading about the form
 	// above it and a reader moving by heading never reaches it.
 	expect(

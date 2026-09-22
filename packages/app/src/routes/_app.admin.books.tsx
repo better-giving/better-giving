@@ -115,7 +115,7 @@ const ID_HELD =
 const NO_SUCH_ACCOUNT =
 	'That account is not one this deployment can post to. Reload the page and choose again.';
 
-/** the screen's name in the document title. the frame's strip names the page (./_app.tsx). */
+/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
 const SCREEN_TITLE = 'Books';
 
 /** the blank a picker opens on, so no account is chosen by the picker falling to the first one. */
@@ -715,10 +715,10 @@ export default function Books({ loaderData, actionData }: Route.ComponentProps) 
 				</Form>
 			</Section>
 
-			{/* the list's own heading, beside the form's: the frame draws this page's one `h1`
-			    (./_app.tsx), so both halves of the screen stand under it at this rank. without it the
-			    table falls under the heading about the form above it, and a reader moving by heading
-			    reaches the form half and never the list.
+			{/* the list's own heading, beside the form's: the frame draws this page's one `h1`,
+			    visually hidden (./_app.tsx), so both halves of the screen stand under it at this rank.
+			    without it the table falls under the heading about the form above it, and a reader
+			    moving by heading reaches the form half and never the list.
 
 			    it stands in the column directly, like the table under it and for the same reason —
 			    a wrapper holding the two would be the plain element between the column and the plane

@@ -27,7 +27,7 @@ import type { Route } from './+types/_app.admin.programs._index';
 // `$lib/server/programs/queries.ts`; the only job here is a projection. neither `D1Database` nor
 // the `program` table object is named anywhere in this route, and neither may be.
 
-/** the screen's name in the document title. the frame's strip names the page (./_app.tsx). */
+/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
 const SCREEN_TITLE = 'Programs';
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
@@ -154,8 +154,8 @@ export default function Programs({ loaderData }: Route.ComponentProps) {
 								<Mark name="folder-heart" />
 							</span>
 							{/* level 2, because a record on this list stands directly under the page's
-							    own `<h1>` and nothing sits between them. how loud the words are is
-							    `.adm-record__title`'s to say. */}
+							    `<h1>`, which the frame draws hidden, and nothing sits between them. how
+							    loud the words are is `.adm-record__title`'s to say. */}
 							<h2 className="adm-record__title">
 								<Link to={href('/admin/programs/:id', { id: program.id })}>{program.name}</Link>
 							</h2>

@@ -109,11 +109,10 @@ describe('a page header mounted into a document', () => {
 	});
 
 	it('draws no heading at all where the caller states no title', () => {
-		// a screen whose name is already read directly above the header — the trail's last crumb, or
-		// the head strip's title — hands none, and what would otherwise be drawn is that word twice a
-		// line apart. the whole name row goes rather than its contents: an empty heading is a
-		// name-shaped gap, and the block's `gap` would then spend a step over the standfirst for a
-		// line that draws nothing.
+		// a screen whose name is already read directly above the header — the trail's last crumb —
+		// hands none, and what would otherwise be drawn is that word twice a line apart. the whole
+		// name row goes rather than its contents: an empty heading is a name-shaped gap, and the
+		// block's `gap` would then spend a step over the standfirst for a line that draws nothing.
 		const root = render(PageHeader, {
 			standfirst: 'What was given in a range of days, as the file your accountant imports.'
 		});

@@ -101,7 +101,7 @@ function cell(root: HTMLElement, label: string): string {
 	return held?.textContent ?? '';
 }
 
-it('draws no heading of its own: the frame names the page', () => {
+it('draws no heading of its own: the frame names the page in a hidden one', () => {
 	expect(screen([gift({})]).querySelector('h1')).toBe(null);
 });
 

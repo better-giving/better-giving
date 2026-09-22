@@ -51,7 +51,7 @@ const COLUMNS = [
 	{ key: 'next', label: 'Next charge', kind: 'date', width: '14%' }
 ] as const;
 
-/** the screen's name in the document title. the frame's strip names the page (./_app.tsx). */
+/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
 const SCREEN_TITLE = 'Recurring gifts';
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {

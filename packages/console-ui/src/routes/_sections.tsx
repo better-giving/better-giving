@@ -24,7 +24,8 @@ import { TITLE } from './_index';
 import type { Route } from './+types/_sections';
 
 // the shell every section page of a ready deployment stands in: the rail of pages and the foot naming
-// the account and the release. no strip stands over a page: a page's heading, where it has one, is its own.
+// the account and the release. no strip stands over a page and no page draws a title: the tab title
+// and the marked rail cell name it to the eye, and a visually hidden `h1` here names it in the document.
 //
 // **there is no home page, and the rail is the overview.** every cell carries where its section
 // stands (../lib/console-pages.ts), so a screen summarising the sections would be the rail read
@@ -165,6 +166,7 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 				wayOut={closeControl}
 				foot={foot}
 			>
+				{here === undefined ? null : <h1 className="adm-vh">{here.label}</h1>}
 				<Stack>
 					{/* the lines about this machine stand in the page's column, a step above the page. */}
 					{machineNoted(loaderData) ? (
