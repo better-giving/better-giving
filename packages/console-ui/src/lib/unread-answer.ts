@@ -1,3 +1,5 @@
+import type { NoReport } from '../api/types';
+
 // what a console screen says about an answer it could not read, which is not a claim about which
 // side is behind.
 //
@@ -20,6 +22,22 @@
 // package's pool is node-only and collects `*.spec.ts` (packages/console-ui/vite.config.ts): a
 // sentence written inline in a component is one nothing here can hold. ./widget-level.ts is in
 // the same shape.
+
+/**
+ * the deployment's own refusal, where the answer that did not fit the envelope carried one.
+ *
+ * `readReport` sorts every non-2xx outside the two it names into `unreadable`, and a refusal the
+ * deployment wrote — a 400 with its code, its sentence and its way out — is one of them. that
+ * answer was read perfectly well, so {@link unreadAnswer} saying it was not is the wrong sentence:
+ * the code is what marks it, because it is the member only a deployment writing a refusal on
+ * purpose sets. `message` is the deployment's sentence, or the status line where it wrote none.
+ */
+export function readableRefusal(
+	read: NoReport
+): { readonly message: string; readonly fix: string | null } | null {
+	if (read.kind !== 'unreadable' || read.error === null) return null;
+	return { message: read.detail, fix: read.fix };
+}
 
 /**
  * the sentence a screen says about an unreadable answer, with what the request cost.

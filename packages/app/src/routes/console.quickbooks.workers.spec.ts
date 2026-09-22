@@ -59,9 +59,9 @@ const DEPLOYMENT = {
 };
 
 const CHART: readonly LedgerAccount[] = [
-	{ id: '79', name: 'Contributions', type: 'Income', classification: 'Revenue' },
-	{ id: '80', name: 'Merchant fees', type: 'Expense', classification: 'Expense' },
-	{ id: '35', name: 'Checking', type: 'Bank', classification: 'Asset' }
+	{ id: '79', name: 'Contributions', type: 'Income', subType: null, classification: 'Revenue' },
+	{ id: '80', name: 'Merchant fees', type: 'Expense', subType: null, classification: 'Expense' },
+	{ id: '35', name: 'Checking', type: 'Bank', subType: null, classification: 'Asset' }
 ];
 
 const stub = vi.hoisted(() => ({
@@ -223,7 +223,14 @@ describe('GET /console/quickbooks', () => {
 			deposit: null,
 			startAt: CONNECTED_FROM.toISOString()
 		});
-		expect(report.accounts).toEqual({ state: 'read', accounts: CHART });
+		expect(report.accounts).toEqual({
+			state: 'read',
+			accounts: [
+				{ ...CHART[0], roles: ['income'] },
+				{ ...CHART[1], roles: ['fee'] },
+				{ ...CHART[2], roles: ['deposit'] }
+			]
+		});
 		expect(report.backlog).toEqual({
 			failed: 1,
 			oldestWaitingAt: new Date('2026-02-01T00:00:00.000Z').toISOString()
@@ -315,6 +322,51 @@ describe('the three accounts', () => {
 
 		expect(answered.status).toBe(400);
 		expect(await readQuickbooksConnection(db)).toMatchObject({ income: null });
+	});
+
+	// Intuit refuses every gift posted into a deposit account of this type (fault 6430), so the
+	// pick is refused here rather than stored and failed on at every send.
+	it('refuses an account the company holds but the role does not take', async () => {
+		await connect();
+		const receivable: LedgerAccount = {
+			id: '84',
+			name: 'Accounts Receivable (A/R)',
+			type: 'Accounts Receivable',
+			subType: 'AccountsReceivable',
+			classification: 'Asset'
+		};
+		stub.accounts = { ok: true, value: [...CHART, receivable] };
+
+		const answered = await press({ press: 'accounts', income: '79', fee: '80', deposit: '84' });
+
+		expect(answered.status).toBe(400);
+		const refusal = await answered.json<{ error: string; message: string }>();
+		expect(refusal.error).toBe('account_wrong_type');
+		expect(refusal.message).toContain('Accounts Receivable (A/R)');
+		expect(await readQuickbooksConnection(db)).toMatchObject({ deposit: null });
+	});
+
+	// its type is one deposit takes, so a refusal naming the types would read as a contradiction.
+	it('refuses undeposited funds as the deposit account, and names a bank account instead', async () => {
+		await connect();
+		const undeposited: LedgerAccount = {
+			id: '4',
+			name: 'Undeposited Funds',
+			type: 'Other Current Asset',
+			subType: 'UndepositedFunds',
+			classification: 'Asset'
+		};
+		stub.accounts = { ok: true, value: [...CHART, undeposited] };
+
+		const answered = await press({ press: 'accounts', income: '79', fee: '80', deposit: '4' });
+
+		expect(answered.status).toBe(400);
+		const refusal = await answered.json<{ error: string; message: string; fix: string }>();
+		expect(refusal.error).toBe('account_wrong_type');
+		expect(refusal.message).toContain('Undeposited Funds cannot hold deposits');
+		expect(refusal.fix).toContain('Bank');
+		expect(refusal.message).not.toContain('Other Current Asset');
+		expect(await readQuickbooksConnection(db)).toMatchObject({ deposit: null });
 	});
 
 	it('refuses the press where no company is connected', async () => {

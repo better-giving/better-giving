@@ -22,11 +22,12 @@ import { describe, expect, it } from 'vitest';
 //
 // it reads the ports rather than the elements: `Field`, `RepeatingRows`, `SelectWithNote` and
 // `CoinPicker` (`@better-giving/operator/components/forms/`) are the whole of what a console screen
-// draws a typed or chosen value in — `Field` and `SelectWithNote` spread a caller's `disabled` onto
-// the box, `CoinPicker` hands its own to the machine it is built on and to the input that carries
-// the value, and `RepeatingRows` states it on every row and on both of its presses — and the sheet
-// draws the closed rung for all four (`.adm-input:disabled`, `.adm-select:disabled` and
-// `.adm-coinbox[data-disabled]` in packages/operator/src/styles/adm.css).
+// draws a typed or chosen value in — `Field` spreads a caller's `disabled` onto the box,
+// `SelectWithNote` and `CoinPicker` hand theirs to the machine each is built on, which closes the
+// box and the element carrying the value, and `RepeatingRows` states it on every row and on both of
+// its presses — and the sheet draws the closed rung for all four (`.adm-input:disabled`,
+// `.adm-select[data-disabled]` and `.adm-coinbox[data-disabled]` in
+// packages/operator/src/styles/adm.css).
 //
 // **the press is swept as well as the box, because the box being closed says nothing about the
 // press beside it.** a send that stays pressable while its own send is in flight is one errand and

@@ -4,6 +4,7 @@ import { createDb, type Db } from '../db/client';
 import {
 	connectQuickbooks,
 	disconnectQuickbooks,
+	fillQuickbooksAccounts,
 	quickbooksStore,
 	readQuickbooksConnection,
 	saveQuickbooksAccounts,
@@ -230,6 +231,34 @@ describe('the accounts an operator picks', () => {
 			fee: { id: '80', name: 'Merchant fees' },
 			deposit: { id: '35', name: 'Checking' }
 		});
+	});
+});
+
+describe('the accounts filled in at connect', () => {
+	const DEFAULTS = {
+		income: { id: '81', name: 'Contributions' },
+		fee: { id: '82', name: 'Bank Charges' },
+		deposit: { id: '36', name: 'Savings' }
+	};
+
+	it('are written where none is held', async () => {
+		await connect();
+
+		expect(await fillQuickbooksAccounts(db, DEFAULTS)).toBe(true);
+		expect(await readQuickbooksConnection(db)).toMatchObject(DEFAULTS);
+	});
+
+	it('never overwrite accounts an operator already picked', async () => {
+		await connect();
+		const picked = {
+			income: { id: '79', name: 'Donations' },
+			fee: { id: '80', name: 'Merchant fees' },
+			deposit: { id: '35', name: 'Checking' }
+		};
+		await saveQuickbooksAccounts(db, picked);
+
+		expect(await fillQuickbooksAccounts(db, DEFAULTS)).toBe(false);
+		expect(await readQuickbooksConnection(db)).toMatchObject(picked);
 	});
 });
 

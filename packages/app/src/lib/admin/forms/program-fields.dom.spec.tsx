@@ -79,10 +79,18 @@ function group(state: Case = {}): HTMLElement {
 	);
 }
 
-function select(root: HTMLElement, id: string): HTMLSelectElement {
+/** the box an operator presses, which carries the id every description on it is named from. */
+function select(root: HTMLElement, id: string): HTMLButtonElement {
 	const box = root.querySelector(`[id="${id}"]`);
-	if (!(box instanceof HTMLSelectElement)) throw new Error(`no select for ${id}`);
+	if (!(box instanceof HTMLButtonElement)) throw new Error(`no box for ${id}`);
 	return box;
+}
+
+/** the lines the form would submit a choice out of, off the element that carries the name. */
+function options(root: HTMLElement, id: string): HTMLOptionElement[] {
+	const list = select(root, id).closest('.adm-selectwrap')?.querySelector('select');
+	if (!(list instanceof HTMLSelectElement)) throw new Error(`no form control for ${id}`);
+	return [...list.options];
 }
 
 /** whether the program box is on the screen — hidden is a wrapper of the field's, not the field. */
@@ -97,11 +105,15 @@ function submitted(root: HTMLElement): [string, string][] {
 	return [...new FormData(form)].map(([name, value]) => [name, String(value)]);
 }
 
-function choose(root: HTMLElement, mode: string): void {
-	act(() => {
-		select(root, MODE).value = mode;
-		select(root, MODE).dispatchEvent(new Event('change', { bubbles: true }));
-	});
+/**
+ * a mode chosen the way an operator chooses one: the box pressed open and the line pressed. async,
+ * because the machine behind the box settles on a microtask.
+ */
+async function choose(root: HTMLElement, mode: string): Promise<void> {
+	await act(async () => select(root, MODE).click());
+	const line = root.querySelector<HTMLElement>(`[data-part="item"][data-value="${mode}"]`);
+	if (line === null) throw new Error(`no line for ${mode}`);
+	await act(async () => line.click());
 }
 
 it('opens with the heading its sibling groups open with', () => {
@@ -134,15 +146,15 @@ it('keeps the program box in the body while the mode names no program', () => {
 	]);
 });
 
-it('draws the program box for a pinned form, and takes it away again', () => {
+it('draws the program box for a pinned form, and takes it away again', async () => {
 	const root = group({ mode: 'none' });
 
-	choose(root, 'pinned');
+	await choose(root, 'pinned');
 	expect(drawn(root)).toBe(true);
 
 	// and back: the box a mode change put on the screen is a box the next change takes off it,
 	// rather than one that stays because it has been drawn once.
-	choose(root, 'none');
+	await choose(root, 'none');
 	expect(drawn(root)).toBe(false);
 });
 
@@ -154,7 +166,7 @@ it('names the program box for what it asks rather than for the group holding it'
 	expect(root.querySelector(`label[for="${PROGRAM}"]`)?.textContent).toBe('Which program');
 });
 
-it('says a program is now being asked for, once the mode change asks for one', () => {
+it('says a program is now being asked for, once the mode change asks for one', async () => {
 	const root = group({ mode: 'none' });
 	const said = root.querySelector('[aria-live="polite"]');
 
@@ -162,12 +174,12 @@ it('says a program is now being asked for, once the mode change asks for one', (
 	// operator, including the one whose form names no program at all.
 	expect(said?.textContent).toBe('');
 
-	choose(root, 'pinned');
+	await choose(root, 'pinned');
 	expect(said?.textContent).toBe('Choose which program below.');
 
 	// and taken back when the box goes: the sentence is a standing fact about the screen rather
 	// than a record of what was pressed.
-	choose(root, 'none');
+	await choose(root, 'none');
 	expect(said?.textContent).toBe('');
 });
 
@@ -177,14 +189,14 @@ it('draws the program box on a form already pinned to one', () => {
 	expect(drawn(group({ mode: 'pinned' }))).toBe(true);
 });
 
-it('says what the chosen mode does to a gift, and follows the choice', () => {
+it('says what the chosen mode does to a gift, and follows the choice', async () => {
 	const root = group({ mode: 'none' });
 
 	// the sentence is the whole difference between the three labels, so a sentence left on the mode
 	// the screen opened with is one describing something the operator is no longer choosing.
 	expect(root.querySelector(`[id="${MODE}-hint"]`)?.textContent).toBe(PROGRAM_MODE_NOTES.none);
 
-	choose(root, 'choice');
+	await choose(root, 'choice');
 	expect(root.querySelector(`[id="${MODE}-hint"]`)?.textContent).toBe(PROGRAM_MODE_NOTES.choice);
 	expect(root.textContent).not.toContain(PROGRAM_MODE_NOTES.none);
 });
@@ -205,12 +217,10 @@ it('offers the archived program a form is still pinned to, and says it is retire
 		retired: { value: 'prg_gala', label: 'Gala appeal' }
 	});
 
-	const options = [...select(root, PROGRAM).options].map((option) => option.value);
+	const values = options(root, PROGRAM).map((option) => option.value);
 	// last, after the active ones: it is the choice this form holds rather than one on offer.
-	expect(options).toEqual(['', 'prg_water', 'prg_school', 'prg_gala']);
-	expect([...select(root, PROGRAM).options].at(-1)?.textContent).toBe(
-		'No longer offered: Gala appeal'
-	);
+	expect(values).toEqual(['', 'prg_water', 'prg_school', 'prg_gala']);
+	expect(options(root, PROGRAM).at(-1)?.textContent).toBe('No longer offered: Gala appeal');
 });
 
 it('says where a program is made when there is none to choose', () => {
@@ -218,7 +228,7 @@ it('says where a program is made when there is none to choose', () => {
 
 	// the list is the blank line alone, and the sentence is the errand rather than a refusal:
 	// nothing has been pressed and a deployment with no causes is an ordinary state.
-	expect([...select(root, PROGRAM).options].map((option) => option.value)).toEqual(['']);
+	expect(options(root, PROGRAM).map((option) => option.value)).toEqual(['']);
 	const described = select(root, PROGRAM).getAttribute('aria-describedby');
 	expect(described).toBe(`${PROGRAM}-hint`);
 	expect(root.querySelector(`[id="${PROGRAM}-hint"]`)?.textContent).toBe(
@@ -231,7 +241,7 @@ it('says a refusal under the box it belongs to, and marks that box alone', () =>
 
 	expect(root.querySelector(`[id="${boxErrorId(PROGRAM)}"]`)?.textContent).toBe('is required');
 	expect(select(root, PROGRAM).getAttribute('aria-invalid')).toBe('true');
-	expect(select(root, MODE).getAttribute('aria-invalid')).toBeNull();
+	expect(select(root, MODE).getAttribute('aria-invalid')).not.toBe('true');
 });
 
 it('draws a marked value in a refusal as code rather than showing the marks', () => {

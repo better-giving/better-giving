@@ -637,13 +637,14 @@ const seedOf = (picks: QuickbooksPicks): string => `${picks.income}|${picks.fee}
 /**
  * the three pickers over the company's own chart, saved together.
  *
- * **the pickers hold their choice here rather than in the document**, which is what lets a reading
- * that lands behind them move them: a `<select>` seeded through `defaultValue` keeps whatever it
- * was mounted with however many readings arrive, and a put-back on the element
- * (`useSavedFormState` in packages/operator/src/saved-form-state.react.ts) would then put the boxes
- * back to the picks the press was made against — so this form asks for none, and the put-back is
- * the comparison below ({@link spent} at the press). the seed is compared as a value rather than as
- * the reading's identity, so a read that changed nothing leaves what an operator has chosen alone —
+ * **the pickers hold their choice here rather than in the document**, because what each one offers
+ * is a function of what it is showing (`accountPicker` in ./quickbooks-standing.ts) and whether the
+ * press is armed is a comparison of all three against what is stored — both are read off this
+ * state rather than off the elements. a reading that lands behind them moves them through the seed
+ * comparison below, and a put-back on the element (`useSavedFormState` in
+ * packages/operator/src/saved-form-state.react.ts) is asked for by nobody ({@link spent} at the
+ * press). the seed is compared as a value rather than as the reading's identity, so a read that
+ * changed nothing leaves what an operator has chosen alone —
  * packages/operator/src/components/forms/CoinPicker.jsx and DateField.jsx keep theirs the same way.
  */
 function AccountsForm({
@@ -670,14 +671,13 @@ function AccountsForm({
 		landed: landedPress(answer, 'accounts'),
 		/* **a landed answer empties nothing here**, which is what `spent` is asked. the three are
 		   held in state above and the put-back is the seed comparison, so there is nothing for the
-		   element's own reset to restore: it takes each `<select>` to the first line of its list —
-		   the browser's reset is against the `selected` attribute, and a react-controlled select has
-		   none on any option — while the state behind them still holds what the operator chose. the
-		   answer commits as the re-read begins (./reseed.ts), so nothing renders these again until
-		   that read lands, and three pickers spend the whole of it showing the first account in the
-		   company's chart. */
+		   form's own reset to restore: it takes each picker back to the pick it was first drawn with
+		   and hands that to the state above as a choice — the picks as they stood before the
+		   operator changed them, over the ones this press just stored. the answer commits as the
+		   re-read begins (./reseed.ts), so nothing moves them again until that read lands, and three
+		   pickers would spend the whole of it showing picks that are no longer stored. */
 		spent: false,
-		changed: picksToSave(picks, company),
+		changed: picksToSave(picks, company, chart),
 		busy,
 		pending: own
 	});
@@ -690,15 +690,16 @@ function AccountsForm({
 				// the press is a callback and never a navigation: whatever mounts this section is what
 				// turns it into a request.
 				event.preventDefault();
-				if (!picksToSave(picks, company)) return;
+				if (!picksToSave(picks, company, chart)) return;
 				onAccounts(picks);
 			}}
 		>
 			{PICKS.map((pick) => {
 				/* the list is built for what this picker is showing rather than for what the company
 				   stores: the two are different readings, and a list missing the selection is drawn
-				   and posted as the first account in the chart (./quickbooks-standing.ts). */
-				const box = accountPicker(chart, company[pick], picks[pick]);
+				   and posted as the first account in it (./quickbooks-standing.ts). it holds only the
+				   accounts that fit this picker, and a stored one that does not is its retired line. */
+				const box = accountPicker(chart, pick, company[pick], picks[pick]);
 				return (
 					<SelectWithNote
 						key={pick}
@@ -708,7 +709,7 @@ function AccountsForm({
 						options={box.options}
 						retired={box.retired}
 						value={picks[pick]}
-						onChange={(event) => setPicks({ ...picks, [pick]: event.currentTarget.value })}
+						onValueChange={(value) => setPicks({ ...picks, [pick]: value })}
 						disabled={busy || undefined}
 					/>
 				);

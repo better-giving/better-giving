@@ -16,8 +16,13 @@ import { SelectWithNote } from '@better-giving/operator/components/forms/SelectW
  *
  * the two pointer states are the whole of what the control pins: packages/operator/src/styles/adm.css
  * gives `.adm-select` a hover twin and packages/operator/src/styles/base.css draws every
- * `.is-focus`. unavailable is not pinned at all — the sheet draws `:disabled` with no twin beside
- * it — so the specimen for it is the real attribute the control passes through.
+ * `.is-focus`. unavailable is not pinned at all — the sheet draws the machine's `data-disabled`
+ * with no twin beside it — so the specimen for it is the real attribute the control hands on.
+ *
+ * the open list is the one specimen drawn open, and it is last so that it opens over nothing: the
+ * list is the machine's, a press anywhere else on the page closes it, and a reader opens any other
+ * specimen with a press of their own. it holds the retired line, so the marked row and the tick on
+ * the chosen one are both in view.
  */
 const funds = [
 	{ value: 'general', label: 'General fund' },
@@ -111,6 +116,15 @@ export default function FormsSelectWithNotePreview() {
 					{ value: 'general', label: 'General fund' }
 				]}
 				defaultValue="winter-2026"
+			/>
+			<SelectWithNote
+				id="forms-select-open"
+				label="Fund"
+				name="fund-open"
+				options={funds}
+				retired={{ value: 'appeal-2019', label: 'Flood appeal 2019' }}
+				defaultValue="kitchen"
+				defaultOpen
 			/>
 		</div>
 	);

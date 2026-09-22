@@ -249,14 +249,17 @@ export type CompanyIdentity = {
 /**
  * one account in the company's own chart, as the screen that picks the three offers it.
  *
- * `type` and `classification` are the provider's own words and are carried rather than translated:
- * the picker groups by them and the operator recognises them from their own books, and a closed
- * vocabulary here would be a list to keep in step with somebody else's.
+ * `type`, `subType` and `classification` are the provider's own words and are carried rather than
+ * translated: the picker groups by them and the operator recognises them from their own books, and
+ * a closed vocabulary here would be a list to keep in step with somebody else's. which of them may
+ * fill an {@link AccountRole} is the provider's own rule, derived from these words beside the
+ * adapter (./quickbooks-accounts.ts) rather than folded into them.
  */
 export type LedgerAccount = {
 	readonly id: string;
 	readonly name: string;
 	readonly type: string;
+	readonly subType: string | null;
 	readonly classification: string | null;
 };
 

@@ -8,8 +8,16 @@ import {
 	connectStateFrom,
 	QUICKBOOKS_CALLBACK_PATH
 } from '$lib/server/accounting/connect-link';
-import { connectQuickbooks, saveQuickbooksCompanyName } from '$lib/server/accounting/connection';
+import {
+	connectQuickbooks,
+	fillQuickbooksAccounts,
+	readQuickbooksConnection,
+	saveQuickbooksCompanyName
+} from '$lib/server/accounting/connection';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
+import type { AccountingProvider } from '$lib/server/accounting/provider';
+import { defaultAccounts } from '$lib/server/accounting/quickbooks-accounts';
+import type { Db } from '$lib/server/db/client';
 import { readAuthEnv } from '$lib/server/auth';
 import { secretEquals } from '$lib/server/secret-compare';
 import { database, platform } from '../context';
@@ -36,6 +44,15 @@ import type { Route } from './+types/quickbooks.callback';
 // tokens and the realm; the name is what an operator reads to tell they connected the books they
 // meant to. a read that did not land leaves the row exactly as connected as it was, with the name
 // null until something reads it again ($lib/server/accounting/connection.ts).
+//
+// **the three accounts are filled from the company's own chart, afterwards and on the same terms.**
+// an operator connecting books has nothing picked, and a connection with nothing picked sends
+// nothing; so where the chart holds an account fitting each role
+// ($lib/server/accounting/quickbooks-accounts.ts), those three are saved and the console's pickers
+// open on them. a chart that could not be read, a role nothing in it fits, or a fault anywhere in
+// the fill leaves them unpicked and says nothing here: the console is where they are picked either way. a reconnect to the same
+// company keeps what was picked before ($lib/server/accounting/connection.ts), and nothing
+// overwrites it.
 //
 // **it ends on a page rather than a redirect into either operator surface.** Intuit cannot be
 // pointed at a console running on somebody's laptop, and /admin is a different sign-in from the one
@@ -109,11 +126,38 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 
 	const company = await provider.readCompany();
 	if (company.ok) await saveQuickbooksCompanyName(db, company.value.companyName);
+	await fillAccounts(db, provider);
 
 	return data(
 		{ outcome: 'connected' as const, companyName: company.ok ? company.value.companyName : null },
 		{ headers: spent }
 	);
+}
+
+/**
+ * the three accounts from the chart's defaults, where nothing is picked and every role has one.
+ *
+ * nothing it throws escapes: the connection is already stored, and a fault here turning the page
+ * into a 500 would tell the operator a connect that landed had failed.
+ */
+async function fillAccounts(db: Db, provider: AccountingProvider): Promise<void> {
+	try {
+		// skips the chart read on a same-company reconnect, which kept its picks.
+		const connection = await readQuickbooksConnection(db);
+		if (connection === null || connection.deposit !== null) return;
+
+		const chart = await provider.listAccounts();
+		if (!chart.ok) return;
+		const { income, fee, deposit } = defaultAccounts(chart.value);
+		if (income === null || fee === null || deposit === null) return;
+		await fillQuickbooksAccounts(db, {
+			income: { id: income.id, name: income.name },
+			fee: { id: fee.id, name: fee.name },
+			deposit: { id: deposit.id, name: deposit.name }
+		});
+	} catch {
+		return;
+	}
 }
 
 /**

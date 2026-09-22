@@ -1,4 +1,4 @@
-import { and, eq, sql, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
 import { quickbooksConnection } from '../db/schema';
@@ -158,25 +158,51 @@ export async function saveQuickbooksStartAt(db: Db, startAt: Date): Promise<void
  * name with no id, and a send needs all three anyway — a screen that could save one of them would
  * be a screen an operator leaves half-done with nothing saying so.
  */
-export async function saveQuickbooksAccounts(
-	db: Db,
-	accounts: {
-		readonly income: ChosenAccount;
-		readonly fee: ChosenAccount;
-		readonly deposit: ChosenAccount;
-	}
-): Promise<void> {
+export async function saveQuickbooksAccounts(db: Db, accounts: ChosenAccounts): Promise<void> {
 	await db
 		.update(quickbooksConnection)
-		.set({
-			incomeAccountId: accounts.income.id,
-			incomeAccountName: accounts.income.name,
-			feeAccountId: accounts.fee.id,
-			feeAccountName: accounts.fee.name,
-			depositAccountId: accounts.deposit.id,
-			depositAccountName: accounts.deposit.name
-		})
+		.set(accountColumns(accounts))
 		.where(eq(quickbooksConnection.id, CONNECTION_ID));
+}
+
+/**
+ * the three accounts, written only where none is held yet; whether they were.
+ *
+ * the callback fills defaults from a chart it read a moment earlier, and an operator's save on the
+ * console can land in between. the null check is in the UPDATE's own where clause rather than a
+ * read before it, so that save is never overwritten by a guess made before it.
+ */
+export async function fillQuickbooksAccounts(db: Db, accounts: ChosenAccounts): Promise<boolean> {
+	const [written] = await db
+		.update(quickbooksConnection)
+		.set(accountColumns(accounts))
+		.where(
+			and(
+				eq(quickbooksConnection.id, CONNECTION_ID),
+				isNull(quickbooksConnection.incomeAccountId),
+				isNull(quickbooksConnection.feeAccountId),
+				isNull(quickbooksConnection.depositAccountId)
+			)
+		)
+		.returning({ id: quickbooksConnection.id });
+	return written !== undefined;
+}
+
+type ChosenAccounts = {
+	readonly income: ChosenAccount;
+	readonly fee: ChosenAccount;
+	readonly deposit: ChosenAccount;
+};
+
+function accountColumns(accounts: ChosenAccounts) {
+	return {
+		incomeAccountId: accounts.income.id,
+		incomeAccountName: accounts.income.name,
+		feeAccountId: accounts.fee.id,
+		feeAccountName: accounts.fee.name,
+		depositAccountId: accounts.deposit.id,
+		depositAccountName: accounts.deposit.name
+	};
 }
 
 /**

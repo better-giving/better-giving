@@ -993,6 +993,7 @@ describe('the chart of accounts', () => {
 										Id: '35',
 										Name: 'Checking',
 										AccountType: 'Bank',
+										AccountSubType: 'Checking',
 										Classification: 'Asset',
 										Active: true
 									},
@@ -1012,8 +1013,20 @@ describe('the chart of accounts', () => {
 		expect(result).toEqual({
 			ok: true,
 			value: [
-				{ id: '79', name: 'Donations', type: 'Income', classification: 'Revenue' },
-				{ id: '35', name: 'Checking', type: 'Bank', classification: 'Asset' }
+				{
+					id: '79',
+					name: 'Donations',
+					type: 'Income',
+					subType: null,
+					classification: 'Revenue'
+				},
+				{
+					id: '35',
+					name: 'Checking',
+					type: 'Bank',
+					subType: 'Checking',
+					classification: 'Asset'
+				}
 			]
 		});
 	});

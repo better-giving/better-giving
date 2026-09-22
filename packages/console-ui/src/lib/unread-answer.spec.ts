@@ -1,6 +1,6 @@
 import { globSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { UNREAD_ANSWER_TITLE, unreadAnswer } from './unread-answer';
+import { UNREAD_ANSWER_TITLE, readableRefusal, unreadAnswer } from './unread-answer';
 
 // the console's gate over one claim it cannot make.
 //
@@ -34,6 +34,36 @@ describe('the sentence for an answer the console could not read', () => {
 
 	it('heads the face that draws nothing else with the same finding', () => {
 		expect(UNREAD_ANSWER_TITLE).toBe("Can't read this deployment's answer");
+	});
+});
+
+describe('a refusal the deployment wrote on purpose', () => {
+	it('is its own words and its way out, not an answer the console could not read', () => {
+		// a 400 from a save naming an account outside its place: sorted as unreadable by the binary,
+		// and read perfectly well.
+		expect(
+			readableRefusal({
+				kind: 'unreadable',
+				error: 'account_wrong_type',
+				detail: '`deposit` names Accounts receivable, whose type is Accounts Receivable.',
+				fix: 'Send the `id` of an account of type Bank.'
+			})
+		).toEqual({
+			message: '`deposit` names Accounts receivable, whose type is Accounts Receivable.',
+			fix: 'Send the `id` of an account of type Bank.'
+		});
+	});
+
+	it('is nothing where the answer carried no code, which is an answer genuinely not read', () => {
+		expect(
+			readableRefusal({
+				kind: 'unreadable',
+				error: null,
+				detail: 'This deployment answered 502',
+				fix: null
+			})
+		).toBeNull();
+		expect(readableRefusal({ kind: 'unreachable', detail: 'EOF' })).toBeNull();
 	});
 });
 

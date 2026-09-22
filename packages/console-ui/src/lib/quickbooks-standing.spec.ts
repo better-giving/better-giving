@@ -11,7 +11,7 @@ import { QUICKBOOKS_RECOURSES } from '@better-giving/operator/console/quickbooks
 import { describe, expect, it } from 'vitest';
 import type { DeployedVar, NoReport } from '../api/types';
 import { heldValues } from './held-values';
-import type { QuickbooksAnswer } from './quickbooks-standing';
+import type { AccountPick, QuickbooksAnswer } from './quickbooks-standing';
 import {
 	CHOOSE,
 	accountPicker,
@@ -41,11 +41,18 @@ import { QUICKBOOKS_GROUP, SECRET_GROUPS, VALUE_FIELD } from './secret-groups';
 
 const NOW = new Date('2026-09-20T12:00:00.000Z');
 
-const account = (id: string, name: string): LedgerAccountLine => ({
+/** a line of the chart, fitting all three pickers unless it is said to fit fewer. */
+const account = (
+	id: string,
+	name: string,
+	roles: LedgerAccountLine['roles'] = ['income', 'fee', 'deposit']
+): LedgerAccountLine => ({
 	id,
 	name,
 	type: 'Income',
-	classification: 'Revenue'
+	subType: null,
+	classification: 'Revenue',
+	roles
 });
 
 const CHART: LedgerAccountLine[] = [account('1', 'Donations'), account('2', 'Bank')];
@@ -95,30 +102,32 @@ const silence = (press: QuickbooksPress): QuickbooksAnswer => ({
 
 describe('a picker over the company’s own chart', () => {
 	it('opens on an empty line where nothing is picked, so no account is chosen by standing still', () => {
-		const picker = accountPicker(CHART, null, '');
+		const picker = accountPicker(CHART, 'income', null, '');
 		expect(picker.options[0]).toEqual({ value: '', label: CHOOSE });
 		expect(picker.retired).toBeUndefined();
 	});
 
 	it('rides the type on the name, which is how two accounts called the same thing are told apart', () => {
-		expect(accountPicker(CHART, { id: '1', name: 'Donations' }, '1').options).toEqual([
+		expect(accountPicker(CHART, 'income', { id: '1', name: 'Donations' }, '1').options).toEqual([
 			{ value: '1', label: 'Donations — Income' },
 			{ value: '2', label: 'Bank — Income' }
 		]);
 	});
 
 	it('keeps a pick the chart no longer offers, so nothing silently moves where gifts are posted', () => {
-		expect(accountPicker(CHART, { id: '9', name: 'Old donations' }, '9').retired).toEqual({
-			value: '9',
-			label: 'Old donations'
-		});
+		expect(accountPicker(CHART, 'income', { id: '9', name: 'Old donations' }, '9').retired).toEqual(
+			{
+				value: '9',
+				label: 'Old donations'
+			}
+		);
 	});
 
 	it('offers the empty line whenever the picker is showing nothing, stored account or not', () => {
 		// the list is built off the stored account and the selection is the operator's, so the two
 		// can disagree: a picker showing nothing against a list that starts at the first account in
 		// the chart displays that account, and posts it.
-		const picker = accountPicker(CHART, { id: '1', name: 'Donations' }, '');
+		const picker = accountPicker(CHART, 'income', { id: '1', name: 'Donations' }, '');
 		expect(picker.options[0]).toEqual({ value: '', label: CHOOSE });
 	});
 
@@ -126,26 +135,28 @@ describe('a picker over the company’s own chart', () => {
 		// the line is what "nothing chosen" is, and a connection storing nothing is a connection an
 		// operator can still be at that: a list that lost a row by being used leaves a mis-pick on a
 		// fresh connection with no way back but a reload.
-		const picker = accountPicker(CHART, null, '1');
+		const picker = accountPicker(CHART, 'income', null, '1');
 		expect(picker.options[0]).toEqual({ value: '', label: CHOOSE });
 	});
 
 	it('drops the no-longer-offered line once another account is chosen', () => {
 		// it is kept for the picker showing it and for nothing else
 		// (`SelectWithNote` in packages/operator/src/components/forms/SelectWithNote.jsx).
-		expect(accountPicker(CHART, { id: '9', name: 'Old donations' }, '2').retired).toBeUndefined();
+		expect(
+			accountPicker(CHART, 'income', { id: '9', name: 'Old donations' }, '2').retired
+		).toBeUndefined();
 	});
 
 	it('names an account deactivated between two reads by the id the press posts', () => {
 		// it was picked off a chart that held it and the next read does not, so there is no name for
 		// it anywhere on this screen — and the id is what the press would send.
-		expect(accountPicker(CHART, null, '8').retired).toEqual({ value: '8', label: '8' });
+		expect(accountPicker(CHART, 'income', null, '8').retired).toEqual({ value: '8', label: '8' });
 	});
 
 	it('always offers a line matching what the picker is showing', () => {
 		const retiredPick: ChosenAccountLine = { id: '9', name: 'Old donations' };
 		const shown = (pick: ChosenAccountLine | null, showing: string): string => {
-			const picker = accountPicker(CHART, pick, showing);
+			const picker = accountPicker(CHART, 'income', pick, showing);
 			const found =
 				picker.options.some((option) => option.value === showing) ||
 				picker.retired?.value === showing;
@@ -178,22 +189,84 @@ describe('a picker over the company’s own chart', () => {
 	});
 });
 
+describe('a picker offers only the accounts that fit it', () => {
+	/** a chart as a company holds one: an account per role, and one that fits none of them. */
+	const MIXED: LedgerAccountLine[] = [
+		account('10', 'Donations', ['income']),
+		account('20', 'Merchant fees', ['fee']),
+		account('30', 'Checking', ['deposit']),
+		account('40', 'Accounts receivable', [])
+	];
+	const offered = (role: AccountPick) =>
+		accountPicker(MIXED, role, null, '').options.map((option) => option.value);
+
+	it('holds each picker to the accounts whose roles name it', () => {
+		// the one list, filtered three ways: an account offered where it does not fit is a save the
+		// deployment is certain to refuse.
+		expect([offered('income'), offered('fee'), offered('deposit')]).toEqual([
+			['', '10'],
+			['', '20'],
+			['', '30']
+		]);
+	});
+
+	it('keeps a stored pick that does not fit, chosen and retired, until it is replaced', () => {
+		// a deployment holding Accounts Receivable as its deposit account: the screen says so rather
+		// than drawing the picker on an account the books do not post to.
+		const stored = { id: '40', name: 'Accounts receivable' };
+		const picker = accountPicker(MIXED, 'deposit', stored, '40');
+
+		expect(picker.options.map((option) => option.value)).toEqual(['30']);
+		expect(picker.retired).toEqual({ value: '40', label: 'Accounts receivable' });
+		// and gone once another is chosen, as a deactivated one is.
+		expect(accountPicker(MIXED, 'deposit', stored, '30').retired).toBeUndefined();
+	});
+
+	it('retires an account that fits another picker and not this one', () => {
+		// the deployment holding an expense as its income account.
+		const stored = { id: '20', name: 'Merchant fees' };
+
+		expect(accountPicker(MIXED, 'income', stored, '20').retired).toEqual({
+			value: '20',
+			label: 'Merchant fees'
+		});
+	});
+});
+
 describe('the three are one press', () => {
 	it('is no press while one of them is unchosen', () => {
-		expect(picksToSave({ income: '1', fee: '2', deposit: '' }, company())).toBe(false);
+		expect(picksToSave({ income: '1', fee: '2', deposit: '' }, company(), CHART)).toBe(false);
 	});
 
 	it('is no press where all three are what is already stored', () => {
-		expect(picksToSave({ income: '1', fee: '2', deposit: '2' }, company())).toBe(false);
+		expect(picksToSave({ income: '1', fee: '2', deposit: '2' }, company(), CHART)).toBe(false);
 	});
 
 	it('is a press where one of them moved', () => {
-		expect(picksToSave({ income: '2', fee: '2', deposit: '2' }, company())).toBe(true);
+		expect(picksToSave({ income: '2', fee: '2', deposit: '2' }, company(), CHART)).toBe(true);
+	});
+
+	it('is no press while one of them still shows a pick its picker does not offer', () => {
+		// Accounts Receivable held as the deposit account, carried as the picker's retired line: the
+		// income moved, and the save would still be refused over the deposit.
+		const chart = [
+			account('1', 'Donations', ['income']),
+			account('3', 'Sponsorships', ['income']),
+			account('2', 'Bank', ['fee', 'deposit']),
+			account('4', 'Accounts receivable', [])
+		];
+		const stored = company({ deposit: { id: '4', name: 'Accounts receivable' } });
+
+		expect(picksToSave({ income: '3', fee: '2', deposit: '4' }, stored, chart)).toBe(false);
+		// and armed again once it is replaced.
+		expect(picksToSave({ income: '3', fee: '2', deposit: '2' }, stored, chart)).toBe(true);
+		// an account the chart no longer holds at all is refused the same way.
+		expect(picksToSave({ income: '9', fee: '2', deposit: '2' }, stored, chart)).toBe(false);
 	});
 
 	it('is a press on a connection holding none of the three', () => {
 		const fresh = company({ income: null, fee: null, deposit: null });
-		expect(picksToSave({ income: '1', fee: '2', deposit: '2' }, fresh)).toBe(true);
+		expect(picksToSave({ income: '1', fee: '2', deposit: '2' }, fresh, CHART)).toBe(true);
 	});
 });
 

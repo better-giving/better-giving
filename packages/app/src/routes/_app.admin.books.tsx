@@ -118,7 +118,7 @@ const NO_SUCH_ACCOUNT =
 /** the screen's name in the document title. the frame's strip names the page (./_app.tsx). */
 const SCREEN_TITLE = 'Books';
 
-/** the blank a picker opens on, so no account is chosen by the browser falling to the first one. */
+/** the blank a picker opens on, so no account is chosen by the picker falling to the first one. */
 const CHOOSE_ACCOUNT = { value: '', label: 'Choose an account' };
 
 /** the heading over the entry list, which is what names the plane under it. */

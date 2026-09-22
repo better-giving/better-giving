@@ -1927,8 +1927,8 @@
 	   list rather than by a `class` attribute: the first two by
 	   `as === 'textarea' ? 'adm-textarea' : 'adm-input'` in
 	   packages/operator/src/components/forms/Field.jsx, and the select by
-	   packages/operator/src/components/forms/SelectWithNote.jsx. between them those two components
-	   are every box either surface draws. */
+	   packages/operator/src/components/forms/SelectWithNote.jsx, where it is the machine's trigger.
+	   between them those two components are every box either surface draws. */
 	.adm-input,
 	.adm-select,
 	.adm-textarea {
@@ -1961,10 +1961,11 @@
 	}
 
 	/* the ground, the ink and the border are the whole of unavailable, and `opacity` is reset
-	   rather than left alone: a user agent puts 0.7 on a disabled select and one arriving by
-	   inheritance is still an opacity used as a lightener, which ./tokens.css bans. */
+	   rather than left alone: a user agent lightens a disabled control and one arriving by
+	   inheritance is still an opacity used as a lightener, which ./tokens.css bans. the select is
+	   read off the machine's own `data-disabled`, which it writes on its trigger. */
 	.adm-input:disabled,
-	.adm-select:disabled,
+	.adm-select[data-disabled],
 	.adm-textarea:disabled {
 		background: var(--admin-field-bg-disabled);
 		border-color: var(--admin-control-border-disabled);
@@ -1982,22 +1983,34 @@
 	   box, and a multi-line box is refused for the same reasons a single-line one is — so the rung
 	   is written across the trio the way the resting, hover and disabled rungs above are. the hover
 	   twins are named with it so the refusal outranks the hover rung, which on touch stays on a box
-	   after a tap. */
-	/* carried-ok: .adm-input--invalid .adm-textarea--invalid .adm-select--invalid — put on the box
-	   by the derived class list in packages/operator/src/components/forms/Field.jsx and
-	   packages/operator/src/components/forms/SelectWithNote.jsx, off either the message that
-	   control holds or an `aria-invalid` something larger than the one box marked it with. */
+	   after a tap.
+
+	   the second pixel of border is taken back out of the padding on the same rung, so the words in
+	   a refused box stand where they stood before it was refused. a box whose end padding is stated
+	   more narrowly — the masked one's, at `.adm-maskwrap > .adm-input` — keeps its own there, which
+	   moves nothing but where a long value stops. */
+	/* carried-ok: .adm-input--invalid .adm-textarea--invalid — put on the box by the derived class
+	   list in packages/operator/src/components/forms/Field.jsx, off either the message that control
+	   holds or an `aria-invalid` something larger than the one box marked it with. the select is
+	   marked by the machine's own `data-invalid`, off the same two in
+	   packages/operator/src/components/forms/SelectWithNote.jsx. */
 	.adm-input--invalid,
 	.adm-input--invalid:hover,
 	.adm-input--invalid.is-hover,
-	.adm-select--invalid,
-	.adm-select--invalid:hover,
-	.adm-select--invalid.is-hover,
+	.adm-select[data-invalid],
+	.adm-select[data-invalid]:hover,
+	.adm-select[data-invalid].is-hover,
 	.adm-textarea--invalid,
 	.adm-textarea--invalid:hover,
 	.adm-textarea--invalid.is-hover {
 		border-color: var(--admin-field-border-invalid);
 		border-width: var(--admin-border-width-strong);
+		padding: calc(
+				var(--admin-space-3) -
+				var(--admin-border-width-strong) +
+				var(--admin-border-width)
+			)
+			calc(var(--admin-space-4) - var(--admin-border-width-strong) + var(--admin-border-width));
 	}
 
 	/* needed but not invalid: something elsewhere on the page requires this box to be filled
@@ -2019,40 +2032,35 @@
 		font-size: var(--admin-code-size);
 	}
 
-	/* the select's own caret. the native arrow is drawn by the user agent in a colour and at
-	   a size this system does not choose, so the box takes `appearance: none` and the wrapper
-	   draws one: a square turned on its corner with two of its four sides inked. it is a
-	   hairline rather than the strong width, because 2px in /admin means state and a caret is
-	   not one. the wrapper is what positions it, because a box cannot draw outside itself. */
+	/* the select: ark's select machine (packages/operator/src/components/forms/SelectWithNote.jsx),
+	   read off the `data-*` attributes it writes on its own parts, and ./CoinPicker.jsx's family —
+	   the list and its rows below are drawn with the coin picker's.
+
+	   the wrapper is the machine's root. it is what stands in the field's row, and it is positioned
+	   so the list's positioner has something to place against. */
 	.adm-selectwrap {
 		position: relative;
 		display: block;
 		inline-size: 100%;
 	}
 
+	/* the box is the machine's trigger, a button: the chosen line at its start and the caret at its
+	   end. a button centres its words by default, and a box holding a value reads from its start. */
 	.adm-select {
-		appearance: none;
-		padding-inline-end: var(--admin-space-9);
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: center;
+		gap: var(--admin-space-3);
+		text-align: start;
+		cursor: pointer;
+	}
+
+	/* the chosen line, on one line. a name longer than the box is cut at its end. */
+	.adm-select__value {
+		min-inline-size: 0;
+		overflow: hidden;
+		white-space: nowrap;
 		text-overflow: ellipsis;
-	}
-
-	.adm-selectwrap::after {
-		content: '';
-		position: absolute;
-		inset-inline-end: var(--admin-space-5);
-		inset-block-start: 50%;
-		/* raw-length-ok: the caret's geometry is a shape rather than a measure, and a token
-		   per shape is a scale nobody counts along. */
-		inline-size: 0.4375rem;
-		block-size: 0.4375rem; /* raw-length-ok: as above; the caret is square. */
-		border-inline-end: var(--admin-border-width) solid var(--admin-ink-2);
-		border-block-end: var(--admin-border-width) solid var(--admin-ink-2);
-		transform: translateY(-65%) rotate(45deg);
-		pointer-events: none;
-	}
-
-	.adm-selectwrap:has(.adm-select:disabled)::after {
-		border-color: var(--admin-ink-disabled);
 	}
 
 	/* ---------- the coin picker --------------------------------------------------------
@@ -2113,15 +2121,22 @@
 		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
 	}
 
-	/* refused, as `.adm-select--invalid` is: the machine writes `data-invalid` onto its own control
-	   part off the `invalid` the component states, so there is no modifier class to assemble. the
-	   hover twin is named with it so the refusal outranks the hover rung, which on touch stays on a
-	   box after a tap. */
+	/* refused, as `.adm-select[data-invalid]` is: the machine writes `data-invalid` onto its own
+	   control part off the `invalid` the component states, so there is no modifier class to
+	   assemble. the hover twin is named with it so the refusal outranks the hover rung, which on
+	   touch stays on a box after a tap, and the second pixel comes out of the padding for that
+	   rule's reason. */
 	.adm-coinbox[data-invalid],
 	.adm-coinbox[data-invalid]:hover,
 	.adm-coinbox[data-invalid].is-hover {
 		border-color: var(--admin-field-border-invalid);
 		border-width: var(--admin-border-width-strong);
+		padding: calc(
+				var(--admin-space-3) -
+				var(--admin-border-width-strong) +
+				var(--admin-border-width)
+			)
+			calc(var(--admin-space-4) - var(--admin-border-width-strong) + var(--admin-border-width));
 	}
 
 	.adm-coinbox[data-disabled] {
@@ -2202,10 +2217,12 @@
 		color: var(--admin-ink-2);
 	}
 
-	/* the caret. it is the machine's own toggle and is out of the tab order — the box beside it is
-	   what the keyboard reaches — so it is drawn as the select's caret is drawn rather than as a
-	   control of its own. */
-	.adm-coinbox__caret {
+	/* the caret. here it is the machine's own toggle and is out of the tab order — the box beside it
+	   is what the keyboard reaches — so it is drawn as a mark inside the box rather than as a control
+	   of its own, which is what the select's is: that one is the machine's indicator, inside the
+	   box that is its trigger. */
+	.adm-coinbox__caret,
+	.adm-select__caret {
 		display: grid;
 		place-items: center;
 		padding: 0;
@@ -2216,7 +2233,8 @@
 	}
 
 	.adm-coinbox[data-disabled] .adm-coinbox__glyph,
-	.adm-coinbox[data-disabled] .adm-coinbox__caret {
+	.adm-coinbox[data-disabled] .adm-coinbox__caret,
+	.adm-select__caret[data-disabled] {
 		color: var(--admin-ink-disabled);
 	}
 
@@ -2233,23 +2251,20 @@
 
 	   it is taken while the list is open and not held, so a picker resting on a form stacks in
 	   document order like every other box on it. */
-	.adm-coinwrap:has(.adm-coinlist[data-state='open']) {
+	.adm-coinwrap:has(.adm-coinlist[data-state='open']),
+	.adm-selectwrap:has(.adm-selectlist[data-state='open']) {
 		z-index: 1;
 	}
 
 	/* the positioner is `pointer-events: none`, so that the ground beside a floating list stays
 	   live; the list takes them back at its own rule below. */
 
-	/* it is also the grid every row is laid out on, which is why the three columns are declared
-	   here and not on the row: the mark, the words and the tick. a row takes them with `subgrid`
-	   below, so the words start at one x down the whole list — sized once against the widest mark
-	   any row drew rather than against each row's own.
-
+	/* the list is the select's as well as this one's: one surface, one height, one highlighted row.
 	   its height is four and a half rows, so the half row says there is more to scroll to. no token
 	   names a list's height; the row it counts is the token's. */
-	.adm-coinlist {
+	.adm-coinlist,
+	.adm-selectlist {
 		display: grid;
-		grid-template-columns: auto minmax(0, 1fr) auto;
 		align-content: start;
 		max-block-size: calc(var(--admin-field-height) * 4.5);
 		padding: var(--admin-space-2);
@@ -2259,6 +2274,28 @@
 		box-shadow: var(--admin-elevation-dialog);
 		overflow-y: auto;
 		pointer-events: auto;
+	}
+
+	/* it is also the grid every row is laid out on, which is why the three columns are declared
+	   here and not on the row: the mark, the words and the tick. a row takes them with `subgrid`
+	   below, so the words start at one x down the whole list — sized once against the widest mark
+	   any row drew rather than against each row's own. */
+	.adm-coinlist {
+		grid-template-columns: auto minmax(0, 1fr) auto;
+	}
+
+	/* the select's list: the line and the tick. it is at least as wide as the box it opens from and
+	   never wider than the viewport beside it — `--reference-width` and `--available-width` are the
+	   positioner's, written per placement, and read with a stated fallback for the frame before the
+	   first one, for `.adm-anchored`'s reason below.
+
+	   the list takes focus while it is open and the row the keys stand on is what says where it
+	   is, so it draws no ring of its own: the shadow above is in a layer after ./base.css's
+	   `:focus-visible` and is the one that stands. */
+	.adm-selectlist {
+		grid-template-columns: minmax(0, 1fr) auto;
+		min-inline-size: var(--reference-width, auto);
+		max-inline-size: var(--available-width, var(--admin-measure-panel));
 	}
 
 	/* a row: the mark, and beside it the ticker on one line with the network's pill under it. three
@@ -2280,8 +2317,23 @@
 	/* the option the arrow keys stand on, and the one a pointer is over: ground alone, never
 	   weight. the machine writes `data-highlighted` for both, so there is one rung here and no
 	   `:hover` beside it. */
-	.adm-coinrow[data-highlighted] {
+	.adm-coinrow[data-highlighted],
+	.adm-selectrow[data-highlighted] {
 		background: var(--admin-control-soft-bg);
+	}
+
+	/* a row of the select's list: the line, and the tick on the one chosen. one line of words at the
+	   box's own size, so the list reads as the box's lines rather than as a second kind of text. */
+	.adm-selectrow {
+		display: grid;
+		grid-column: 1 / -1;
+		grid-template-columns: subgrid;
+		align-items: start;
+		column-gap: var(--admin-space-3);
+		padding: var(--admin-space-2) var(--admin-space-3);
+		font-size: var(--admin-field-size);
+		border-radius: var(--admin-radius);
+		cursor: pointer;
 	}
 
 	/* the mark and the tick stand on the middle of the two lines rather than on the first of them:
@@ -2332,7 +2384,19 @@
 
 	.adm-coinrow__tick {
 		grid-column: 3;
+	}
+
+	.adm-coinrow__tick,
+	.adm-selectrow__tick {
 		color: var(--admin-accent-ink);
+	}
+
+	/* the select's tick stands on the first line of a row that wraps, centred on that line's own
+	   box: one line tall, so it adds nothing to the row's height either. */
+	.adm-selectrow__tick {
+		display: grid;
+		place-items: center;
+		block-size: 1lh;
 	}
 
 	/* what the list says when a search matches no coin. it is the machine's own empty part, so it
