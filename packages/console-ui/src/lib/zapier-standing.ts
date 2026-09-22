@@ -33,9 +33,11 @@ export type ZapierAnswer =
 /** what one press posts as its intent. */
 export const zapierIntent = (press: ZapierPress): string => `zapier:${press}`;
 
-/** the key the last press made, or `null` where the last answer carries none. */
-export const freshKey = (answer: ZapierAnswer | null): string | null =>
-	answer?.kind === 'reported' && answer.report.ok ? answer.report.key : null;
+/** the key the last press made, and when, or `null` where the last answer carries none. */
+export const freshKey = (answer: ZapierAnswer | null): { key: string; madeAt: string } | null =>
+	answer?.kind === 'reported' && answer.report.ok
+		? { key: answer.report.key, madeAt: answer.report.madeAt }
+		: null;
 
 /** what stands under the press after an answer that did not land, or `null` where it landed. */
 export type PressTrouble =

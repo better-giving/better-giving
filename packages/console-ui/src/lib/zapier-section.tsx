@@ -61,20 +61,12 @@ export function ZapierSection({
 	const report = zapier.report;
 	const made = freshKey(answer);
 	const trouble = <Trouble answer={answer} />;
+	// the answer's instant before the reading's: after a replace, the reading that has not landed
+	// yet still carries the old key's.
+	const madeAt = made?.madeAt ?? report.key?.madeAt ?? null;
 	return (
 		<Section>
-			{made === null ? null : <Connect keyText={made} address={address} />}
-			{report.key !== null ? (
-				<Standing
-					report={report}
-					madeAt={report.key.madeAt}
-					pending={pending}
-					onPress={onPress}
-					trouble={trouble}
-				/>
-			) : made === null ? (
-				// a key made a moment ago whose re-read has not landed yet draws no make press: the
-				// press would be refused, and the key it made is on the screen above.
+			{madeAt === null ? (
 				<div className="adm-named">
 					<div className="adm-actions">
 						<Press press="make" variant="primary" pending={pending} onPress={onPress}>
@@ -83,7 +75,17 @@ export function ZapierSection({
 					</div>
 					{trouble}
 				</div>
-			) : null}
+			) : (
+				<Standing
+					report={report}
+					madeAt={madeAt}
+					keyText={made?.key ?? null}
+					address={address}
+					pending={pending}
+					onPress={onPress}
+					trouble={trouble}
+				/>
+			)}
 			<Deliveries report={report} />
 		</Section>
 	);
@@ -130,27 +132,11 @@ function Trouble({ answer }: { answer: ZapierAnswer | null }): ReactNode {
 }
 
 /**
- * the two things Zapier asks for when an account is connected, while the key is still in hand.
+ * one value an operator copies into Zapier, named by the caption over it.
  *
- * each slab is a group named by the caption over it: the one-line slab carries no caption of its
- * own, and two copy controls both called Copy need the name of what they copy from somewhere.
+ * a group because the one-line slab carries no caption of its own, and two copy controls both
+ * called Copy need the name of what they copy from somewhere.
  */
-function Connect({ keyText, address }: { keyText: string; address: string }): ReactNode {
-	return (
-		<div className="adm-named">
-			<Copyable label="Deployment address" content={address} />
-			<Copyable label="Key" content={keyText}>
-				It isn’t shown again.
-			</Copyable>
-			<p className="adm-prose">
-				<a href={ZAPIER_APP_INVITE} target="_blank" rel="noreferrer">
-					Open Better Giving Self-Hosted on Zapier
-				</a>
-			</p>
-		</div>
-	);
-}
-
 function Copyable({
 	label,
 	content,
@@ -174,16 +160,28 @@ function Copyable({
 	);
 }
 
-/** the key that exists, what listens on it, and the way to a new one. */
+/**
+ * the key that exists, what Zapier asks for to connect with it, what listens on it, and the way to
+ * a new one.
+ *
+ * **one layout whether the key was made a moment ago or long before**, so the reading that lands
+ * after a make moves nothing: the key's own row is the one thing the press adds, and it goes with
+ * the answer that carried it.
+ */
 function Standing({
 	report,
 	madeAt,
+	keyText,
+	address,
 	pending,
 	onPress,
 	trouble
 }: {
 	report: ZapierReport;
 	madeAt: string;
+	/** the key the last press made, or `null` where it is no longer in hand. */
+	keyText: string | null;
+	address: string;
 	pending: ZapierPress | null;
 	onPress: (press: ZapierPress) => void;
 	trouble: ReactNode;
@@ -192,9 +190,21 @@ function Standing({
 	const listening = listeningTotal(report);
 	return (
 		<div className="adm-named">
+			<Copyable label="Deployment address" content={address} />
+			{keyText === null ? null : (
+				<Copyable label="Key" content={keyText}>
+					It isn’t shown again.
+				</Copyable>
+			)}
+			<p className="adm-prose">
+				<a href={ZAPIER_APP_INVITE} target="_blank" rel="noreferrer">
+					Open Better Giving Self-Hosted on Zapier
+				</a>
+			</p>
 			<StatedValue label="Key made" value={madeOn(madeAt) ?? madeAt} />
-			<StatedValue label="Zaps listening for new gifts" value={report.listening.newGift} num />
-			<StatedValue label="Zaps listening for new donors" value={report.listening.newDonor} num />
+			{/* no `num`: its figure set draws a slashed zero, which reads as a literal to retype. */}
+			<StatedValue label="Zaps listening for new gifts" value={report.listening.newGift} />
+			<StatedValue label="Zaps listening for new donors" value={report.listening.newDonor} />
 			<div className="adm-actions">
 				<Press press="replace" variant="danger" pending={pending} onPress={() => setAsking(true)}>
 					Replace key
