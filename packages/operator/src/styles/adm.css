@@ -2083,10 +2083,13 @@
 		gap: var(--admin-space-2);
 	}
 
+	/* the thumbs are centred on their stops, so one at either end overhangs the track by half its
+	   own size; the inset is that half, and lands the thumb flush with the scale's edge. */
 	.adm-range__control {
 		display: flex;
 		align-items: center;
 		block-size: var(--admin-control-height);
+		margin-inline: calc(var(--admin-space-8) / 2);
 	}
 
 	.adm-range__track {

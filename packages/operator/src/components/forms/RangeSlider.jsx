@@ -14,6 +14,9 @@ import { Slider } from '@ark-ui/react/slider';
  * @property {readonly [number, number]} value the two thumbs' positions in `stops`, lower first.
  * @property {(value: [number, number]) => void} onValueChange a thumb moved, by pointer or key.
  * @property {readonly [string, string]} thumbLabels each thumb's accessible name, lower first.
+ * @property {readonly [string, string]} [readings] what each thumb is read out as, lower first,
+ *   where it stands for a figure its stop only approximates — a bound typed between two stops, or
+ *   past the last. left out, each thumb reads as its stop.
  */
 
 /*
@@ -29,23 +32,29 @@ import { Slider } from '@ark-ui/react/slider';
  * keeps in step through `value` and `onValueChange`.
  *
  * a thumb is announced by its name and by what its stop reads as — `$25` rather than `7`, which is
- * only where the stop sits on the scale.
+ * only where the stop sits on the scale — or by its reading, where the caller hands one.
+ *
+ * the thumbs are centred on their stops rather than kept inside the track, because a thumb kept
+ * inside is placed from its measured size and zag hides it until it has measured one — a bare track
+ * on the server's first paint. `.adm-range__control` in ../../styles/adm.css insets the track by
+ * half a thumb, so a thumb at either end still lands flush with the scale's edge.
  */
 /** @param {RangeSliderProps} props */
-export function RangeSlider({ stops, value, onValueChange, thumbLabels }) {
+export function RangeSlider({ stops, value, onValueChange, thumbLabels, readings }) {
 	return (
 		<Slider.Root
 			className="adm-range"
 			min={0}
 			max={stops.length - 1}
 			step={1}
+			thumbAlignment="center"
 			value={[...value]}
 			onValueChange={(details) => {
 				const [lower = value[0], upper = value[1]] = details.value;
 				onValueChange([lower, upper]);
 			}}
 			aria-label={[...thumbLabels]}
-			getAriaValueText={(details) => stops[details.value] ?? ''}
+			getAriaValueText={(details) => readings?.[details.index] ?? stops[details.value] ?? ''}
 		>
 			<Slider.Control className="adm-range__control">
 				<Slider.Track className="adm-range__track">

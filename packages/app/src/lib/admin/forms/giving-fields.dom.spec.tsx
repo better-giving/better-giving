@@ -182,11 +182,19 @@ it('writes the stop a thumb moves to into its own box, as a keystroke would', as
 	expect(lower.getAttribute('aria-valuetext')).toBe('$10');
 });
 
-it('moves a thumb to the nearest stop as its box is typed in', async () => {
+// where a thumb stands on the ladder: $1 is position 0 and $10,000 is 15.
+const AT_25 = '5';
+const AT_500 = '10';
+const AT_END = '15';
+
+it('moves a thumb to the nearest stop as its box is typed in, and reads it as the box', async () => {
 	const { upper, max } = bounds(group({ rows: [row(0)] }));
 
 	await type(max, '30');
-	expect(upper.getAttribute('aria-valuetext')).toBe('$25');
+	expect(upper.getAttribute('aria-valuenow')).toBe(AT_25);
+	// the thumb and the box share one name, so the thumb reads the figure typed rather than the
+	// stop it only approximates.
+	expect(upper.getAttribute('aria-valuetext')).toBe('$30');
 	// and the box keeps the figure typed, which is between two stops.
 	expect(max.value).toBe('30');
 });
@@ -194,15 +202,118 @@ it('moves a thumb to the nearest stop as its box is typed in', async () => {
 it('puts a thumb at the end of the scale for a figure past the last stop', async () => {
 	const { upper, max } = bounds(group({ rows: [row(0)] }));
 
-	await type(max, '25000');
-	expect(upper.getAttribute('aria-valuetext')).toBe('$10,000');
+	await type(max, '20000');
+	expect(upper.getAttribute('aria-valuenow')).toBe(AT_END);
+	expect(upper.getAttribute('aria-valuetext')).toBe('$20,000');
 });
 
 it('leaves a thumb where it is while its box holds text that is not an amount', async () => {
 	const { upper, max } = bounds(group({ rows: [row(0)] }));
 
 	await type(max, '5,000');
+	expect(upper.getAttribute('aria-valuenow')).toBe(AT_500);
 	expect(upper.getAttribute('aria-valuetext')).toBe('$500');
+});
+
+/** a key pressed on a thumb. the machine takes each event on a microtask after react's handler. */
+async function press(thumb: HTMLElement, key: string) {
+	await act(async () => thumb.focus());
+	await act(async () => {
+		thumb.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+	});
+}
+
+it('never writes a smallest gift above the largest one typed', async () => {
+	// the largest gift is $23, which stands its thumb on the $25 stop. the smallest thumb run up to
+	// meet it lands on that stop too, and what it writes is the largest gift itself, never $25.
+	const { lower, min, max } = bounds(group({ rows: [row(0)] }));
+	await type(max, '23');
+
+	await press(lower, 'End');
+
+	expect(min.value).toBe('23');
+	expect(lower.getAttribute('aria-valuenow')).toBe(AT_25);
+	expect(lower.getAttribute('aria-valuetext')).toBe('$23');
+});
+
+it('never writes a largest gift below the smallest one typed', async () => {
+	const { upper, min, max } = bounds(group({ rows: [row(0)] }));
+	await type(min, '27');
+
+	await press(upper, 'Home');
+
+	expect(max.value).toBe('27');
+	expect(upper.getAttribute('aria-valuenow')).toBe(AT_25);
+	expect(upper.getAttribute('aria-valuetext')).toBe('$27');
+});
+
+/** the group inside a form of its own, remountable with the bounds a new seed carries. */
+function inForm(seed: { min: string; max: string }) {
+	const root = document.createElement('div');
+	document.body.appendChild(root);
+	const mounted = createRoot(root);
+	const draw = (next: { min: string; max: string }) =>
+		act(() =>
+			mounted.render(
+				createElement(
+					'form',
+					null,
+					createElement(FormGivingFields, {
+						boxes: {
+							min_minor: { id: MIN_BOX, name: 'min_minor', defaultValue: next.min },
+							max_minor: { id: MAX_BOX, name: 'max_minor', defaultValue: next.max }
+						},
+						amounts: { id: GROUP, rows: [row(0)], add: intent, remove: () => intent },
+						currency: 'USD'
+					})
+				)
+			)
+		);
+	draw(seed);
+	onTestFinished(() => {
+		act(() => mounted.unmount());
+		root.remove();
+	});
+	const form = root.querySelector('form');
+	if (!form) throw new Error('no form');
+	return { root, form, draw };
+}
+
+/** the form put back, and the task after it, which is when the boxes hold what was put back. */
+async function reset(form: HTMLFormElement) {
+	await act(async () => {
+		form.reset();
+		await new Promise((settled) => setTimeout(settled, 0));
+	});
+}
+
+it('puts the thumbs back with the boxes when the form is reset', async () => {
+	const { root, form } = inForm({ min: '5', max: '500' });
+	const { lower, upper, min, max } = bounds(root);
+	await type(min, '20');
+	await type(max, '2000');
+
+	await reset(form);
+
+	expect([min.value, max.value]).toEqual(['5', '500']);
+	expect(lower.getAttribute('aria-valuetext')).toBe('$5');
+	expect(upper.getAttribute('aria-valuenow')).toBe(AT_500);
+	expect(upper.getAttribute('aria-valuetext')).toBe('$500');
+});
+
+it('moves the thumbs to a new seed when the form is reset onto it', async () => {
+	// what ../use-admin-form.ts does when the record moves under a mounted group: the boxes take
+	// the new seed as their default, and the form is reset onto it.
+	const { root, form, draw } = inForm({ min: '5', max: '500' });
+	const { lower, upper } = bounds(root);
+
+	draw({ min: '30', max: '20000' });
+	await reset(form);
+
+	expect(lower.getAttribute('aria-valuenow')).toBe(AT_25);
+	expect(lower.getAttribute('aria-valuetext')).toBe('$30');
+	expect(upper.getAttribute('aria-valuenow')).toBe(AT_END);
+	expect(upper.getAttribute('aria-valuetext')).toBe('$20,000');
 });
 
 it('gives the bounds no named field but the two boxes', () => {

@@ -3,7 +3,7 @@ import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { RangeSlider } from '@better-giving/operator/components/forms/RangeSlider';
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
-import { type MouseEventHandler, type ReactNode, useRef, useState } from 'react';
+import { type MouseEventHandler, type ReactNode, useEffect, useRef, useState } from 'react';
 import { formatMinorBrief, minorUnitDigits } from '$lib/donations/money';
 import { majorEntry, readAmount } from '$lib/forms/amounts';
 import { FORM_FIELD_LABELS } from '$lib/forms/fields';
@@ -54,8 +54,8 @@ import { type Box, boxErrorId, boxProps } from '../use-admin-form';
 //
 // the bounds carry a slider over their two boxes, and it is the one control here that is not a
 // box: it moves along `BOUND_STOPS` below, writes the stop a thumb lands on into that thumb's box,
-// and follows a box as it is typed in. it submits nothing, so the boxes stay the whole of what the
-// group posts and every rule above reads them exactly as before.
+// and follows a box as it is typed in and as the form is reset. it submits nothing, so the boxes
+// stay the whole of what the group posts and every rule above reads them exactly as before.
 //
 // each bound draws its own message, under its own box: `parseFormGiving` keys every sentence to the
 // box whose label it names, the two bounds being the right way round included. every box in this
@@ -70,6 +70,11 @@ import { type Box, boxErrorId, boxProps } from '../use-admin-form';
  */
 const BOUND_STOPS = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000];
 
+/** `BOUND_STOPS` in `currency`'s minor units. */
+function ladderFor(currency: string): number[] {
+	return BOUND_STOPS.map((major) => major * 10 ** minorUnitDigits(currency));
+}
+
 /** the stop nearest `minor` by distance; a tie goes to the lower stop, and past the last is the last. */
 function nearestStop(ladder: readonly number[], minor: number): number {
 	let nearest = 0;
@@ -77,6 +82,36 @@ function nearestStop(ladder: readonly number[], minor: number): number {
 		if (Math.abs(stop - minor) < Math.abs((ladder[nearest] ?? 0) - minor)) nearest = index;
 	}
 	return nearest;
+}
+
+/**
+ * where a thumb stands, and the figure its box holds — which is the stop's own figure unless the box
+ * was typed between two stops or past the last.
+ */
+type Mark = { readonly stop: number; readonly minor: number };
+
+/** the mark a box's text stands for, or `held` where the text is not an amount. */
+function markOf(text: string, ladder: readonly number[], currency: string, held: Mark): Mark {
+	const { minor } = readAmount(text, currency);
+	return minor === null ? held : { stop: nearestStop(ladder, minor), minor };
+}
+
+/** both marks read off the two boxes' text, the lower never standing past the upper. */
+function marksOf(
+	texts: readonly [string, string],
+	ladder: readonly number[],
+	currency: string,
+	held: readonly [Mark, Mark]
+): [Mark, Mark] {
+	const upper = markOf(texts[1], ladder, currency, held[1]);
+	const lower = markOf(texts[0], ladder, currency, held[0]);
+	return [{ ...lower, stop: Math.min(lower.stop, upper.stop) }, upper];
+}
+
+/** the text in the box `name` inside `within`, or `''` where no such box is there. */
+function textIn(within: HTMLFormElement | HTMLFieldSetElement | null, name: string): string {
+	const box = within?.elements.namedItem(name);
+	return box instanceof HTMLInputElement ? box.value : '';
 }
 
 /**
@@ -173,47 +208,102 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 	// keystrokes an operator would actually make: `50`, not `50.00`.
 	const suggestedExample = majorEntry(5000, currency);
 
-	const ladder = BOUND_STOPS.map((major) => major * 10 ** minorUnitDigits(currency));
+	const ladder = ladderFor(currency);
 	const stops = ladder.map((minor) => formatMinorBrief(minor, currency));
 	const last = ladder.length - 1;
 
-	/** the stop a box's text stands at, or `null` where the text is not an amount. */
-	const stopOf = (text: string | undefined): number | null => {
-		const { minor } = readAmount(text ?? '', currency);
-		return minor === null ? null : nearestStop(ladder, minor);
-	};
-
 	const bounds = useRef<HTMLFieldSetElement>(null);
-	const [thumbs, setThumbs] = useState<[number, number]>(() => {
-		const upper = stopOf(boxes.max_minor.defaultValue) ?? last;
-		return [Math.min(stopOf(boxes.min_minor.defaultValue) ?? 0, upper), upper];
-	});
+	const [marks, setMarks] = useState<[Mark, Mark]>(() =>
+		marksOf(
+			[boxes.min_minor.defaultValue ?? '', boxes.max_minor.defaultValue ?? ''],
+			ladder,
+			currency,
+			[
+				{ stop: 0, minor: ladder[0] ?? 0 },
+				{ stop: last, minor: ladder[last] ?? 0 }
+			]
+		)
+	);
+
+	// set from the form's reset until the boxes hold what it put back. the slider's own machine
+	// answers a reset by moving the thumbs to where they were at mount, and that is not a thumb an
+	// operator moved, so nothing is written into a box for it.
+	const resetting = useRef(false);
+
+	// a reset puts each box back on its default — the new seed, where ../use-admin-form.ts reset the
+	// form onto one — and fires no `input`, so the thumbs are read off the boxes again once it has.
+	// a browser fires `reset` before it puts the boxes back, so they are read on the task after.
+	// the listener is the document's, in the capture phase, so it runs ahead of the machine's own
+	// listener on the form.
+	useEffect(() => {
+		const form = bounds.current?.form;
+		if (!form) return;
+		const ladder = ladderFor(currency);
+		let settling: ReturnType<typeof setTimeout> | undefined;
+		const reset = (event: Event) => {
+			if (event.target !== form) return;
+			resetting.current = true;
+			clearTimeout(settling);
+			settling = setTimeout(() => {
+				resetting.current = false;
+				const texts = [
+					textIn(form, boxes.min_minor.name),
+					textIn(form, boxes.max_minor.name)
+				] as const;
+				setMarks((held) => marksOf(texts, ladder, currency, held));
+			}, 0);
+		};
+		document.addEventListener('reset', reset, true);
+		return () => {
+			document.removeEventListener('reset', reset, true);
+			clearTimeout(settling);
+		};
+	}, [boxes.min_minor.name, boxes.max_minor.name, currency]);
 
 	// a thumb that moved writes its stop into its own box, as the operator would have typed it. only
 	// the thumb whose stop changed writes: the other box may hold a figure between two stops, and
 	// the stop it sits nearest is not what was typed there.
-	const moved = (next: [number, number]) => {
-		for (const [index, box] of [boxes.min_minor, boxes.max_minor].entries()) {
-			const stop = next[index];
-			if (stop === undefined || stop === thumbs[index]) continue;
-			const element = bounds.current?.elements.namedItem(box.name);
-			if (element instanceof HTMLInputElement)
-				typeInto(element, majorEntry(ladder[stop] ?? 0, currency));
-		}
-		setThumbs(next);
+	//
+	// a thumb run up against the other stands on the stop the other box's figure is nearest, which
+	// may be past that figure — $25 for a box holding $23. what it writes is capped at the other
+	// box's figure, so a thumb never writes a smallest gift above the largest or the other way.
+	const step = (
+		mark: Mark,
+		stop: number,
+		own: string,
+		other: string,
+		cap: (reached: number, held: number) => number
+	): Mark => {
+		const box = bounds.current?.elements.namedItem(own);
+		if (stop === mark.stop || !(box instanceof HTMLInputElement)) return mark;
+		const held = readAmount(textIn(bounds.current, other), currency).minor;
+		const reached = ladder[stop] ?? 0;
+		const minor = held === null ? reached : cap(reached, held);
+		typeInto(box, majorEntry(minor, currency));
+		return { stop, minor };
+	};
+	const moved = ([lower, upper]: [number, number]) => {
+		if (resetting.current) return;
+		const { min_minor: min, max_minor: max } = boxes;
+		setMarks([
+			step(marks[0], lower, min.name, max.name, Math.min),
+			step(marks[1], upper, max.name, min.name, Math.max)
+		]);
 	};
 
 	// a box being typed in moves its thumb to the nearest stop, and never past the other thumb.
 	// text that is not an amount leaves the thumb where it is: the box's own message says what is
 	// wrong with it when the group is saved.
-	const typedLower = (text: string) => {
-		const stop = stopOf(text);
-		if (stop !== null) setThumbs(([, upper]) => [Math.min(stop, upper), upper]);
-	};
-	const typedUpper = (text: string) => {
-		const stop = stopOf(text);
-		if (stop !== null) setThumbs(([lower]) => [lower, Math.max(stop, lower)]);
-	};
+	const typedLower = (text: string) =>
+		setMarks(([lower, upper]) => {
+			const mark = markOf(text, ladder, currency, lower);
+			return [{ ...mark, stop: Math.min(mark.stop, upper.stop) }, upper];
+		});
+	const typedUpper = (text: string) =>
+		setMarks(([lower, upper]) => {
+			const mark = markOf(text, ladder, currency, upper);
+			return [lower, { ...mark, stop: Math.max(mark.stop, lower.stop) }];
+		});
 
 	return (
 		<>
@@ -233,11 +323,16 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 				<fieldset className="adm-fieldset" ref={bounds}>
 					<legend className="adm-fieldset__legend">Gift bounds</legend>
 
-					{/* each thumb is named by its box's own label, so a screen reader hears the thumbs and
-					    the boxes as the same two bounds. */}
+					{/* each thumb is named by its box's own label and read out as its box's figure, so
+					    a screen reader hears the thumbs and the boxes as the same two bounds — $30 and
+					    not the $25 stop a box holding $30 stands its thumb on. */}
 					<RangeSlider
 						stops={stops}
-						value={thumbs}
+						value={[marks[0].stop, marks[1].stop]}
+						readings={[
+							formatMinorBrief(marks[0].minor, currency),
+							formatMinorBrief(marks[1].minor, currency)
+						]}
 						onValueChange={moved}
 						thumbLabels={[FORM_FIELD_LABELS.min_minor, FORM_FIELD_LABELS.max_minor]}
 					/>
