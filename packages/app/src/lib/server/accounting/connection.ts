@@ -166,27 +166,46 @@ export async function saveQuickbooksAccounts(db: Db, accounts: ChosenAccounts): 
 }
 
 /**
- * the three accounts, written only where none is held yet; whether they were.
+ * the roles the company's chart named, written only where no account is held yet and only while
+ * `realmId` is still the company connected. a role the chart named none for stays null.
  *
- * the callback fills defaults from a chart it read a moment earlier, and an operator's save on the
- * console can land in between. the null check is in the UPDATE's own where clause rather than a
- * read before it, so that save is never overwritten by a guess made before it.
+ * the callback fills these from a chart it read a moment earlier, and two things can land in
+ * between: an operator's save on the console, and a reconnect to a different company. both checks
+ * are in the UPDATE's own where clause rather than a read before it, so neither is overwritten by a
+ * guess made before it — and one company's account ids, small integers that name real and different
+ * accounts in another, never reach the other's connection.
  */
-export async function fillQuickbooksAccounts(db: Db, accounts: ChosenAccounts): Promise<boolean> {
-	const [written] = await db
+export async function fillQuickbooksAccounts(
+	db: Db,
+	realmId: string,
+	accounts: FilledAccounts
+): Promise<void> {
+	await db
 		.update(quickbooksConnection)
-		.set(accountColumns(accounts))
+		.set({
+			incomeAccountId: accounts.income?.id ?? null,
+			incomeAccountName: accounts.income?.name ?? null,
+			feeAccountId: accounts.fee?.id ?? null,
+			feeAccountName: accounts.fee?.name ?? null,
+			depositAccountId: accounts.deposit?.id ?? null,
+			depositAccountName: accounts.deposit?.name ?? null
+		})
 		.where(
 			and(
 				eq(quickbooksConnection.id, CONNECTION_ID),
+				eq(quickbooksConnection.realmId, realmId),
 				isNull(quickbooksConnection.incomeAccountId),
 				isNull(quickbooksConnection.feeAccountId),
 				isNull(quickbooksConnection.depositAccountId)
 			)
-		)
-		.returning({ id: quickbooksConnection.id });
-	return written !== undefined;
+		);
 }
+
+type FilledAccounts = {
+	readonly income: ChosenAccount | null;
+	readonly fee: ChosenAccount | null;
+	readonly deposit: ChosenAccount | null;
+};
 
 type ChosenAccounts = {
 	readonly income: ChosenAccount;

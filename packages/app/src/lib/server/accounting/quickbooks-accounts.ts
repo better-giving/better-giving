@@ -28,33 +28,51 @@ export function fitsRole(account: LedgerAccount, role: AccountRole): boolean {
 	return ROLE_TYPES[role].has(account.type);
 }
 
-/** one account per role, or null where the chart holds none that fits it. */
+/** one account per role, or null where the chart names none for it. */
 export type DefaultAccounts = Readonly<Record<AccountRole, LedgerAccount | null>>;
 
-/** the three roles filled from a company's own chart, so a connection needs nothing picked. */
+/**
+ * the roles the chart's own names settle, so a connection opens with them picked.
+ *
+ * a name match or nothing: which account a gift lands in is the operator's call, and a role left
+ * null keeps every send held on `accounts_not_chosen` until they make it on the console. a guess by
+ * account type alone would post real gifts into rent or sales with nobody having said so.
+ */
 export function defaultAccounts(chart: readonly LedgerAccount[]): DefaultAccounts {
 	return {
-		// an other current asset fits, but a gift landing in prepaid expenses is nobody's first guess.
-		deposit: chart.find((account) => account.type === 'Bank') ?? null,
-		income: preferNamed(chart, 'income', [/donation/i, /contribution/i]),
-		fee: preferNamed(chart, 'fee', [/bank charge/i, /merchant/i, /processing/i, /fee/i])
+		// bank only: an other current asset fits the role, but a reserve or prepaid account named
+		// "operating" is not where a payout lands.
+		deposit: firstNamed(
+			chart.filter((account) => account.type === 'Bank'),
+			[/checking/i, /operating/i]
+		),
+		income: firstNamed(fitting(chart, 'income'), [/donation/i, /contribution/i]),
+		// fees for moving money only; a bare /fee/ also answers "Legal & Professional Fees".
+		fee: firstNamed(fitting(chart, 'fee'), [
+			/bank (service )?charge/i,
+			/merchant/i,
+			/processing/i,
+			/processor/i,
+			/\b(bank|card|transaction|payment|stripe|paypal) fees?\b/i
+		])
 	};
 }
 
+function fitting(chart: readonly LedgerAccount[], role: AccountRole): LedgerAccount[] {
+	return chart.filter((account) => fitsRole(account, role));
+}
+
 /**
- * the first account fitting `role` named by the earliest of `names` that names any, else the first
- * fitting at all. each name is tried over the whole chart before the next, so a broad late one
- * ("fee", which "Legal & Professional Fees" answers) never wins over a narrow early one.
+ * the first of `candidates` named by the earliest of `names` that names any, else null. each name
+ * is tried over every candidate before the next, so an early narrow name wins wherever it sits.
  */
-function preferNamed(
-	chart: readonly LedgerAccount[],
-	role: AccountRole,
+function firstNamed(
+	candidates: readonly LedgerAccount[],
 	names: readonly RegExp[]
 ): LedgerAccount | null {
-	const fitting = chart.filter((account) => fitsRole(account, role));
 	for (const name of names) {
-		const named = fitting.find((account) => name.test(account.name));
+		const named = candidates.find((account) => name.test(account.name));
 		if (named !== undefined) return named;
 	}
-	return fitting[0] ?? null;
+	return null;
 }

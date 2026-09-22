@@ -244,8 +244,35 @@ describe('the accounts filled in at connect', () => {
 	it('are written where none is held', async () => {
 		await connect();
 
-		expect(await fillQuickbooksAccounts(db, DEFAULTS)).toBe(true);
+		await fillQuickbooksAccounts(db, '4620816365', DEFAULTS);
+
 		expect(await readQuickbooksConnection(db)).toMatchObject(DEFAULTS);
+	});
+
+	it('write only the roles the chart named, leaving the rest unpicked', async () => {
+		await connect();
+
+		await fillQuickbooksAccounts(db, '4620816365', { ...DEFAULTS, fee: null, deposit: null });
+
+		expect(await readQuickbooksConnection(db)).toMatchObject({
+			income: DEFAULTS.income,
+			fee: null,
+			deposit: null
+		});
+	});
+
+	// a reconnect to another company can land between the chart read and this write, and account
+	// ids are per-company small integers, so the old company's would name real accounts in the new.
+	it('write nothing once a different company is connected than the chart was read from', async () => {
+		await connect();
+
+		await fillQuickbooksAccounts(db, '9999999999', DEFAULTS);
+
+		expect(await readQuickbooksConnection(db)).toMatchObject({
+			income: null,
+			fee: null,
+			deposit: null
+		});
 	});
 
 	it('never overwrite accounts an operator already picked', async () => {
@@ -257,7 +284,8 @@ describe('the accounts filled in at connect', () => {
 		};
 		await saveQuickbooksAccounts(db, picked);
 
-		expect(await fillQuickbooksAccounts(db, DEFAULTS)).toBe(false);
+		await fillQuickbooksAccounts(db, '4620816365', DEFAULTS);
+
 		expect(await readQuickbooksConnection(db)).toMatchObject(picked);
 	});
 });

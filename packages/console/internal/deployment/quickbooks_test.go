@@ -51,7 +51,8 @@ func quickbooksReported() map[string]any {
 		"accounts": map[string]any{"state": "read", "accounts": []any{
 			map[string]any{
 				"id": "42", "name": "Donations",
-				"type": "Income", "classification": "Revenue",
+				"type": "Income", "subType": "NonProfitIncome", "classification": "Revenue",
+				"roles": []any{"income"},
 			},
 		}},
 		"backlog": map[string]any{

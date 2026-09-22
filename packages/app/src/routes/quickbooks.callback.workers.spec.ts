@@ -83,6 +83,7 @@ const stub = vi.hoisted(() => ({
 	accounts: null as AccountingResult<readonly LedgerAccount[]> | null,
 	/** a chart read that throws rather than answering, as a D1 or network fault would. */
 	chartThrows: false,
+	chartReads: 0,
 	exchanges: 0,
 	/** the address the exchange was made against, which Intuit compares byte for byte. */
 	redirectUri: null as string | null
@@ -102,6 +103,7 @@ vi.mock('$lib/server/accounting/factory', () => ({
 			},
 			readCompany: async () => stub.company ?? failed('internal_error', 'no case set a company'),
 			listAccounts: async () => {
+				stub.chartReads += 1;
 				if (stub.chartThrows) throw new Error('D1_ERROR: the chart read fell over');
 				return stub.accounts ?? failed('internal_error', 'no case set a chart');
 			},
@@ -122,6 +124,7 @@ beforeEach(async () => {
 	stub.company = { ok: true, value: { companyId: REALM, companyName: 'Hope Foundation' } };
 	stub.accounts = null;
 	stub.chartThrows = false;
+	stub.chartReads = 0;
 	stub.exchanges = 0;
 	stub.redirectUri = null;
 });
@@ -217,7 +220,7 @@ describe('GET /quickbooks/callback', () => {
 		});
 	});
 
-	it('connects with nothing picked where a role has no account that fits it', async () => {
+	it('fills the roles the chart names and leaves the one it names none for unpicked', async () => {
 		stub.accounts = { ok: true, value: CHART.filter((account) => account.type !== 'Expense') };
 
 		const answered = await back();
@@ -225,20 +228,50 @@ describe('GET /quickbooks/callback', () => {
 		expect(answered.data).toEqual({ outcome: 'connected', companyName: 'Hope Foundation' });
 		expect(await readQuickbooksConnection(db)).toMatchObject({
 			realmId: REALM,
-			income: null,
+			income: { id: '79', name: 'Donations' },
 			fee: null,
-			deposit: null
+			deposit: { id: '35', name: 'Checking' }
 		});
 	});
 
-	it('answers connected where filling the accounts threw', async () => {
+	it('logs why the chart could not be read, without its detail, and answers connected', async () => {
+		stub.accounts = failed('rate_limited', 'Intuit is throttling realm 4620816365.');
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const answered = await back();
+
+		expect(answered.status).toBe(200);
+		expect(answered.data).toEqual({ outcome: 'connected', companyName: 'Hope Foundation' });
+		expect(logged).toHaveBeenCalledTimes(1);
+		const line = logged.mock.calls[0]?.join(' ') ?? '';
+		expect(line).toContain('rate_limited');
+		expect(line).not.toContain('throttling');
+		logged.mockRestore();
+	});
+
+	it('logs a fill that threw, without its message, and answers connected', async () => {
 		stub.chartThrows = true;
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
 		const answered = await back();
 
 		expect(answered.status).toBe(200);
 		expect(answered.data).toEqual({ outcome: 'connected', companyName: 'Hope Foundation' });
 		expect(await readQuickbooksConnection(db)).toMatchObject({ realmId: REALM, deposit: null });
+		expect(logged).toHaveBeenCalledTimes(1);
+		const line = logged.mock.calls[0]?.join(' ') ?? '';
+		expect(line).toContain('Error');
+		expect(line).not.toContain('fell over');
+		logged.mockRestore();
+	});
+
+	it('reads no chart when the same company is connected again with a role already filled', async () => {
+		stub.accounts = { ok: true, value: CHART.filter((account) => account.type !== 'Bank') };
+		await back();
+
+		await back();
+
+		expect(stub.chartReads).toBe(1);
 	});
 
 	it('keeps what was picked when the same company is connected again', async () => {

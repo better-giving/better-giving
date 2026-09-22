@@ -53,6 +53,23 @@ describe('the default deposit account', () => {
 
 		expect(defaultAccounts(chart).deposit).toBe(checking);
 	});
+
+	it('is left unpicked where no bank account is named checking or operating', () => {
+		const chart = [
+			account('Bank', 'Savings', 'Savings'),
+			account('Bank', 'Checking', 'PayPal bank'),
+			account('Other Current Asset', 'OtherCurrentAssets', 'Operating reserve')
+		];
+
+		expect(defaultAccounts(chart).deposit).toBeNull();
+	});
+
+	it('is an operating account where none is named checking', () => {
+		const operating = account('Bank', 'Checking', 'Operating account');
+		const chart = [account('Bank', 'Savings', 'Savings'), operating];
+
+		expect(defaultAccounts(chart).deposit).toBe(operating);
+	});
 });
 
 describe('the default income account', () => {
@@ -75,49 +92,61 @@ describe('the default income account', () => {
 		expect(defaultAccounts(chart).income).toBe(donations);
 	});
 
-	it('is the first income account where none is named for gifts', () => {
-		const sales = account('Income', null, 'Sales');
+	it('is left unpicked where no income account is named for gifts', () => {
 		const chart = [
 			account('Bank', null, 'Checking'),
-			sales,
+			account('Income', null, 'Sales'),
 			account('Other Income', null, 'Interest')
 		];
 
-		expect(defaultAccounts(chart).income).toBe(sales);
+		expect(defaultAccounts(chart).income).toBeNull();
 	});
 });
 
 describe('the default fee account', () => {
-	it.each(['Bank Charges', 'Merchant account', 'Card processing', 'Stripe fees'])(
-		'is the first expense account named like %s',
-		(name) => {
-			const named = account('Expense', null, name);
-			const chart = [
-				account('Income', null, 'Fee income'),
-				account('Expense', null, 'Rent'),
-				named
-			];
+	it.each([
+		'Bank Charges',
+		'Bank service charges',
+		'Bank fees',
+		'Merchant account',
+		'Card processing',
+		'Payment processor',
+		'Payment processing fees',
+		'Stripe fees',
+		'PayPal fees',
+		'Credit card fees',
+		'Transaction fees'
+	])('is the expense account named like %s', (name) => {
+		const named = account('Expense', null, name);
+		const chart = [account('Income', null, 'Fee income'), account('Expense', null, 'Rent'), named];
 
-			expect(defaultAccounts(chart).fee).toBe(named);
-		}
-	);
+		expect(defaultAccounts(chart).fee).toBe(named);
+	});
 
-	it('prefers bank charges, then merchant, then processing, then any fee, wherever each sits', () => {
-		const legal = account('Expense', null, 'Legal & Professional Fees');
+	it('prefers bank charges, then merchant, then processing, wherever each sits', () => {
 		const processing = account('Expense', null, 'Card processing');
 		const merchant = account('Expense', null, 'Merchant account');
 		const bank = account('Expense', null, 'Bank Charges');
 
-		expect(defaultAccounts([legal, processing, merchant, bank]).fee).toBe(bank);
-		expect(defaultAccounts([legal, processing, merchant]).fee).toBe(merchant);
-		expect(defaultAccounts([legal, processing]).fee).toBe(processing);
+		expect(defaultAccounts([processing, merchant, bank]).fee).toBe(bank);
+		expect(defaultAccounts([processing, merchant]).fee).toBe(merchant);
 	});
 
-	it('is the first expense account where none is named for fees', () => {
-		const rent = account('Expense', null, 'Rent');
-		const chart = [account('Income', null, 'Donations'), rent, account('Expense', null, 'Postage')];
+	it.each(['Legal & Professional Fees', 'Dues & subscriptions fees', 'Licenses and fees'])(
+		'is not %s, which is a fee nobody charged for moving a gift',
+		(name) => {
+			expect(defaultAccounts([account('Expense', null, name)]).fee).toBeNull();
+		}
+	);
 
-		expect(defaultAccounts(chart).fee).toBe(rent);
+	it('is left unpicked where no expense account is named for processing fees', () => {
+		const chart = [
+			account('Income', null, 'Donations'),
+			account('Expense', null, 'Rent'),
+			account('Expense', null, 'Postage')
+		];
+
+		expect(defaultAccounts(chart).fee).toBeNull();
 	});
 });
 
