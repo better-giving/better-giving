@@ -2,7 +2,11 @@ import type {
 	QuickbooksPressReport,
 	QuickbooksReport
 } from '@better-giving/operator/console/quickbooks';
-import type { ZapierPressReport, ZapierReport } from '@better-giving/operator/console/zapier';
+import type {
+	ZapierPress,
+	ZapierPressReport,
+	ZapierReport
+} from '@better-giving/operator/console/zapier';
 import type { DEPLOY_VARS } from '@better-giving/operator/deploy-split';
 
 // what the binary answers, in the shapes it answers in.
@@ -704,6 +708,9 @@ export type QuickbooksPressed =
 export type ZapierRead =
 	| { kind: 'read'; report: ZapierReport }
 	| { kind: 'unread'; read: NoReport };
+
+/** what one press on the Zapier key posts. */
+export type ZapierPressBody = { press: ZapierPress };
 
 /**
  * how a make or replace went. a refusal is `reported` with `ok: false`: the deployment answered,

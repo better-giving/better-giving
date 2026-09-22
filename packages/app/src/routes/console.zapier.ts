@@ -38,7 +38,7 @@ export async function loader({ context }: Route.LoaderArgs): Promise<Response> {
 	const [key, listening, deliveries] = await Promise.all([
 		readZapierKey(db),
 		countListening(db),
-		readZapierDeliveries(db)
+		readZapierDeliveries(db, new Date())
 	]);
 
 	const report: ZapierReport = {

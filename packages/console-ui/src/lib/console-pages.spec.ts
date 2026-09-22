@@ -80,8 +80,8 @@ const LOGOS = {
 	nowpayments: '/nowpayments.png'
 };
 
-/** the books' own mark, which the caller resolves the same way it resolves the four above. */
-const BOOKS = '/quickbooks.png';
+/** the integrations' own marks, which the caller resolves the same way it resolves the four above. */
+const INTEGRATIONS = { quickbooks: '/quickbooks.png', zapier: '/zapier.png' };
 
 /** every cell of the rail, flat, as `label → href`. */
 const cells = (groups: ReturnType<typeof railGroups>) =>
@@ -89,7 +89,7 @@ const cells = (groups: ReturnType<typeof railGroups>) =>
 
 describe('the rail', () => {
 	it('lists every page in set-up order, the processors under their own heading', () => {
-		const groups = railGroups(rows(), processorLinks(new Set()), LOGOS, BOOKS);
+		const groups = railGroups(rows(), processorLinks(new Set()), LOGOS, INTEGRATIONS);
 		expect(cells(groups)).toEqual([
 			'Dashboard password → /password',
 			'Organisation → /organisation',
@@ -100,44 +100,47 @@ describe('the rail', () => {
 			'Sites → /sites',
 			'SMTP → /smtp',
 			'Notifications → /notifications',
-			'QuickBooks → /quickbooks'
+			'QuickBooks → /quickbooks',
+			'Zapier → /zapier'
 		]);
 		expect(groups.map((group) => group.heading)).toEqual([
 			undefined,
 			'Donation processor',
 			undefined,
-			'Integration'
+			'Integrations'
 		]);
 	});
 
-	it('ends with the books under a heading of their own, marked as the cells beside them are', () => {
-		const groups = railGroups(rows(), processorLinks(new Set()), LOGOS, BOOKS);
+	it('ends with the integrations under a heading of their own, marked as the cells beside them are', () => {
+		const groups = railGroups(rows(), processorLinks(new Set()), LOGOS, INTEGRATIONS);
 		expect(groups.at(-1)).toEqual({
-			heading: 'Integration',
+			heading: 'Integrations',
 			destinations: [
 				{
 					label: 'QuickBooks',
 					short: 'QuickBooks',
 					href: '/quickbooks',
 					mark: { src: '/quickbooks.png' }
-				}
+				},
+				{ label: 'Zapier', short: 'Zapier', href: '/zapier', mark: { src: '/zapier.png' } }
 			]
 		});
 	});
 
-	it('marks the books cell with no status, however the set-up jobs stand', () => {
-		// no set-up job waits on these books, so there is no row to read one off and nothing for a
-		// reader to hear after the name.
-		const status = (...todo: readonly SectionId[]) =>
-			railGroups(rows(...todo), processorLinks(new Set()), LOGOS, BOOKS).at(-1)?.destinations[0]
-				?.status;
-		expect(status()).toBeUndefined();
-		expect(status(...IDS)).toBeUndefined();
+	it('marks the integration cells with no status, however the set-up jobs stand', () => {
+		// no set-up job waits on either, so there is no row to read one off and nothing for a reader
+		// to hear after the name.
+		const statuses = (...todo: readonly SectionId[]) =>
+			railGroups(rows(...todo), processorLinks(new Set()), LOGOS, INTEGRATIONS)
+				.at(-1)
+				?.destinations.map((d) => d.status);
+		expect(statuses()).toEqual([undefined, undefined]);
+		expect(statuses(...IDS)).toEqual([undefined, undefined]);
 	});
 
 	it('marks each processor by whether its own pair is held, not by the payments job', () => {
 		const held = new Set(['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET']);
-		const [, processors] = railGroups(rows(), processorLinks(held), LOGOS, BOOKS);
+		const [, processors] = railGroups(rows(), processorLinks(held), LOGOS, INTEGRATIONS);
 		expect(processors?.destinations.map((d) => d.status)).toEqual([
 			{ tone: 'attention', mark: 'circle-dashed', label: 'Not set up' },
 			{ tone: 'done', mark: 'check', label: 'Configured' },
@@ -153,7 +156,12 @@ describe('the rail', () => {
 	});
 
 	it('marks a job by its row: a tick when done, an outline when not', () => {
-		const [first] = railGroups(rows('organisation'), processorLinks(new Set()), LOGOS, BOOKS);
+		const [first] = railGroups(
+			rows('organisation'),
+			processorLinks(new Set()),
+			LOGOS,
+			INTEGRATIONS
+		);
 		expect(first?.destinations.map((d) => d.status)).toEqual([
 			{ tone: 'done', mark: 'check', label: 'Configured' },
 			{ tone: 'attention', mark: 'circle-dashed', label: 'Incomplete' }
@@ -168,7 +176,7 @@ describe('the rail', () => {
 				),
 				processorLinks(new Set()),
 				LOGOS,
-				BOOKS
+				INTEGRATIONS
 			)[2]?.destinations[0]?.status;
 		expect(sites('2 listed')).toEqual({ tone: 'note', mark: 'circle-dashed', label: '2 listed' });
 		expect(sites(null)).toBeUndefined();

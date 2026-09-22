@@ -35,7 +35,7 @@ export interface ZapierReport {
 	readonly deliveries: {
 		/** events still owed to a Zap, whether due now or waiting on a backoff. */
 		readonly waiting: number;
-		/** events given up on. */
+		/** events given up on in the last seven days, so a line over them clears on its own. */
 		readonly failed: number;
 		/** when the oldest event still owed was queued, as an ISO-8601 instant, or null where none is. */
 		readonly oldestWaitingAt: string | null;
