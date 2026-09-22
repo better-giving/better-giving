@@ -2,7 +2,14 @@ import { and, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
 import { quickbooksConnection } from '../db/schema';
-import type { ConnectionSnapshot, ConnectionStore, TokenPair, TokenSave } from './provider';
+import type {
+	AccountingProvider,
+	ConnectionSnapshot,
+	ConnectionStore,
+	TokenPair,
+	TokenSave
+} from './provider';
+import { defaultAccounts } from './quickbooks-accounts';
 
 // the one QuickBooks company this deployment is connected to, read and written.
 //
@@ -206,6 +213,41 @@ type FilledAccounts = {
 	readonly fee: ChosenAccount | null;
 	readonly deposit: ChosenAccount | null;
 };
+
+/**
+ * each role the chart names an account for, where nothing is picked yet.
+ *
+ * nothing it throws escapes: the connection is already stored, and a fault here turning the page
+ * into a 500 would tell the operator a connect that landed had failed. a failure logs its reason or
+ * the thrown error's name and nothing more — a detail or message can quote Intuit's answer.
+ */
+export async function fillAccountsFromChart(
+	db: Db,
+	provider: AccountingProvider,
+	realmId: string
+): Promise<void> {
+	try {
+		// skips the chart read on a same-company reconnect, which kept its picks.
+		const connection = await readQuickbooksConnection(db);
+		if (connection === null || hasPicks(connection)) return;
+
+		const chart = await provider.listAccounts();
+		if (!chart.ok) {
+			console.error('quickbooks account fill: chart read failed', chart.reason);
+			return;
+		}
+		await fillQuickbooksAccounts(db, realmId, defaultAccounts(chart.value));
+	} catch (error) {
+		console.error(
+			'quickbooks account fill: threw',
+			error instanceof Error ? error.name : typeof error
+		);
+	}
+}
+
+function hasPicks(connection: QuickbooksConnectionView): boolean {
+	return connection.income !== null || connection.fee !== null || connection.deposit !== null;
+}
 
 type ChosenAccounts = {
 	readonly income: ChosenAccount;
