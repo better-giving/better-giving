@@ -1,5 +1,4 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { freeWithheldVars, saveNowpayments } from '../api/client';
 import type { VarsWritten } from '../api/types';
@@ -82,7 +81,6 @@ export default function NowpaymentsPage({ loaderData, actionData, matches }: Rou
 
 	return (
 		<Column>
-			<PageHeader title={TITLE} />
 			<NowpaymentsSection
 				values={shell.reading.values}
 				payments={loaderData.payments}

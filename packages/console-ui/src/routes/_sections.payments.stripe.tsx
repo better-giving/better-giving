@@ -1,5 +1,4 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import {
 	freeWithheldVars,
@@ -177,7 +176,6 @@ export default function StripePage({ loaderData, actionData, matches }: Route.Co
 
 	return (
 		<Column>
-			<PageHeader title={TITLE} />
 			<StripeSection
 				values={shell.reading.values}
 				payments={loaderData.payments}

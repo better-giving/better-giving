@@ -69,8 +69,9 @@ import { Button } from '../controls/Button.jsx';
  * @property {ReactNode} [foot] what the rail's foot holds in place of `wayOut` — the console's
  * account and release lines, which carry its close. absent, the foot holds `wayOut`; a foot that
  * comes to `null` either way is not drawn.
- * @property {ReactNode} [head] the panel's strip, over the page: `.adm-headstrip`, whose two ends
- * are the caller's (`.adm-headstrip__title` for the page's name). absent, no strip.
+ * @property {ReactNode} [head] the panel's strip, over the page: `.adm-headstrip`, holding what the
+ * caller hands it — the dashboard's trail of pages on a nested screen. absent, no strip: a screen
+ * named by its tab title and its marked rail cell has nothing for one to add.
  * @property {ReactNode} [children]
  *
  * @typedef {object} PanelRouteProps

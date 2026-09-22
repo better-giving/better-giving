@@ -5113,14 +5113,18 @@
 		border-block-start: var(--admin-hairline);
 	}
 
+	/* the panel's head is a line over the page and no band: no rule closes it and it pads no block
+	   end, so the global `.adm-head` below keeps both for the bare shell and the panel route alone.
+	   it stands the panel inset's step from the top, and what parts it from the page is the body's
+	   own top step, `.adm-head + .adm-panelbody` below. */
 	.adm-rail ~ .adm-main > .adm-head {
-		padding-block: var(--admin-space-4);
+		padding-block: var(--admin-space-6) 0;
+		border-block-end: 0;
 	}
 
 	/* one left edge for the panel: the strip's title, the page heading and the content all start
 	   at `--_panel-inset`. */
 	.adm-rail ~ .adm-main > .adm-head > .adm-headstrip {
-		min-block-size: var(--admin-touch-min);
 		padding-inline: var(--_panel-inset);
 	}
 
@@ -5135,11 +5139,20 @@
 		padding: var(--admin-space-6) var(--_panel-inset);
 	}
 
+	/* under a head the body's top step is the one gap between the crumb line and the page, a step
+	   inside the section separation the spacing ladder reserves from 9, at both widths — two classes
+	   of weight, so the wide width's `.adm-panelbody` padding never restates it. */
+	.adm-head + .adm-panelbody {
+		padding-block-start: var(--admin-space-8);
+	}
+
 	/* the page's name on the panel's strip, and the page's `h1` over a screen that states none of its
-	   own: packages/app/src/routes/_app.tsx writes it. it is set as the strip's own line and not
-	   as a title, so it states the body type ./base.css's `body` hands the rest of the strip — every
-	   one of the `h1` rank's declarations there would otherwise reach it — and `text-wrap` goes back
-	   to what the strip inherits from the same rule rather than the headings' balance. */
+	   own. no surface writes it; packages/gallery/src/previews/shell-app-shell.tsx does, for the
+	   strip with a name in it. it is set as the strip's own line and not as a title, so it states
+	   the body type ./base.css's `body` hands the rest of the strip — every one of the `h1` rank's
+	   declarations there would otherwise reach it — and `text-wrap` goes back to what the strip
+	   inherits from the same rule rather than the headings' balance.
+	   carried-ok: .adm-headstrip__title — the gallery preview above is its only writer. */
 	.adm-headstrip__title {
 		font-family: var(--admin-font-sans);
 		font-size: var(--admin-body-size);

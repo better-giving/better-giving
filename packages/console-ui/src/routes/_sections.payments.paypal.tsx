@@ -1,5 +1,4 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { freeWithheldVars, setUpRecurring, setVars, startPaypalSetup } from '../api/client';
 import type { RecurringSetup, VarsWritten } from '../api/types';
@@ -122,7 +121,6 @@ export default function PaypalPage({ loaderData, actionData, matches }: Route.Co
 
 	return (
 		<Column>
-			<PageHeader title={TITLE} />
 			<PaypalSection
 				values={shell.reading.values}
 				payments={loaderData.payments}

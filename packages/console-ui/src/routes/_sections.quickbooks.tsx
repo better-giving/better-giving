@@ -1,5 +1,4 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import type { QuickbooksPress } from '@better-giving/operator/console/quickbooks';
 import { QUICKBOOKS_PRESSES } from '@better-giving/operator/console/quickbooks';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
@@ -134,7 +133,6 @@ export default function QuickbooksPage({ loaderData, actionData, matches }: Rout
 
 	return (
 		<Column>
-			<PageHeader title={TITLE} />
 			<QuickbooksSection
 				values={shell.reading.values}
 				books={loaderData.books}

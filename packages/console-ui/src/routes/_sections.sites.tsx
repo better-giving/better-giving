@@ -108,7 +108,7 @@ export default function SitesPage({ actionData, matches }: Route.ComponentProps)
 	return (
 		<Column>
 			{/* the cell is named for what it opens and the page states the question it answers. */}
-			<PageHeader title={SITES_TITLE} standfirst={FOLD_LABELS.sites} />
+			<PageHeader standfirst={FOLD_LABELS.sites} />
 			<SitesFold
 				sites={shell.reading.sites}
 				donatePage={shell.reading.donatePage}

@@ -1,5 +1,4 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { FOLD_LABELS } from '@better-giving/operator/setup-folds';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { freeWithheldVars, sendTestEmail } from '../api/client';
@@ -63,7 +62,6 @@ export default function SmtpPage({ actionData, matches }: Route.ComponentProps) 
 	const { intent } = usePress();
 	return (
 		<Column>
-			<PageHeader title={FOLD_LABELS.smtp} />
 			<SmtpFold
 				values={shell.reading.values}
 				workerName={shell.workerName}
