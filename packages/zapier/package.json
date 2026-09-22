@@ -1,0 +1,23 @@
+{
+	"name": "@better-giving/zapier",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"exports": "./dist/index.js",
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"_zapier-build": "pnpm run build",
+		"check": "tsc --noEmit",
+		"test": "vitest --run"
+	},
+	"dependencies": {
+		"zapier-platform-core": "19.1.0"
+	},
+	"devDependencies": {
+		"@types/node": "24.13.3",
+		"nock": "14.0.17",
+		"typescript": "6.0.3",
+		"vitest": "4.1.10",
+		"zapier-platform-cli": "19.1.0"
+	}
+}

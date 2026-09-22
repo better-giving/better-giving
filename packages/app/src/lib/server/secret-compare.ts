@@ -2,13 +2,14 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 
 // the one constant-time compare in this repository, and there is exactly one on purpose.
 //
-// two secrets are checked over HTTP here — `ADMIN_PASSWORD` at the staff sign-in
-// (./auth/credential.ts) and `CONSOLE_TOKEN` on the console surface (./console/access.ts) — and a
-// second implementation is how one of them ends up with an early `return` in it. the hazard is not
+// several secrets are checked over HTTP through it — among them `ADMIN_PASSWORD` at the staff
+// sign-in (./auth/credential.ts), `CONSOLE_TOKEN` on the console surface (./console/access.ts) and
+// the Zapier key (./zapier/key.ts) — and a second implementation is how one of them ends up with
+// an early `return` in it. the hazard is not
 // obvious at a call site: `timingSafeEqual` throws unless both buffers are the same length, so the
 // natural fix is a length check in front of it, and that check is the leak.
 //
-// a module at this level rather than inside either caller's folder, for the reason ./flash.ts and
+// a module at this level rather than inside any caller's folder, for the reason ./flash.ts and
 // ./zod-issues.ts are here: it belongs to no one capability, and putting it under `auth/` would
 // make the console's import read as the console holding a session.
 

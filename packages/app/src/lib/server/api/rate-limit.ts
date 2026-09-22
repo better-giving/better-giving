@@ -1,7 +1,10 @@
+import { ZAPIER_BASE_PATH } from '../zapier/surface';
 import { API_BASE_PATH } from './surface';
 
-// the bound on `/api/v1`, spent in `src/routes/api.v1.ts`'s middleware above everything that costs
-// a read.
+// the rate limits this deployment charges, and the one place a caller's key is minted.
+//
+// the surface bound on `/api/v1` is spent in `src/routes/api.v1.ts`'s middleware above everything
+// that costs a read.
 //
 // CLAUDE.md names rate limiting among the things an endpoint on this surface owes before it
 // ships, alongside CORS. the two are not alternatives and they answer different questions: CORS
@@ -15,7 +18,7 @@ import { API_BASE_PATH } from './surface';
 // byte sent is bounded: an id nothing matches still reads `form` before anyone can say there is no
 // form. a request answered ahead of the match is not charged and none of them costs a read.
 //
-// two tighter buckets are charged by the code that answers them and are also minted here: the
+// tighter buckets are charged by the code that answers them and are also minted here: the
 // quote submission (`src/routes/api.v1.forms.$id.donations.ts`) and the sign-in credential, which
 // is charged at each of the three forms that spend a guess at it — the login's own form action,
 // the reset request at `src/routes/forgot.tsx`, and the password change at
@@ -26,17 +29,20 @@ import { API_BASE_PATH } from './surface';
 // can key on a whole ipv6 `/128` and hand one caller an address per request. the sign-in is not on
 // this surface and reaches across for exactly that: the key is the shared thing, not the surface.
 //
-// the three are not answered alike when the binding is missing, and not answered alike for a
+// `/zapier` is a second surface charged through the same binding under its own key
+// (`zapierRateLimitKey`), in `src/routes/zapier.ts`'s middleware.
+//
+// the buckets are not answered alike when the binding is missing, and not answered alike for a
 // caller the edge did not attribute. both differences are written down once, at the foot of this
 // file on `refuseIfRateLimited` and `isRateLimited`, and the call sites point here rather than
-// restate them. `./rate-limit.config.spec.ts` holds all three bindings to wrangler.jsonc, so none
-// of them can go missing through `pnpm run deploy` in the first place.
+// restate them. `./rate-limit.config.spec.ts` holds every binding to wrangler.jsonc, so none of
+// them can go missing through `pnpm run deploy` in the first place.
 
 /**
  * how long a refused caller is told to wait, in seconds — and every binding's own period, which
  * is the longest a bucket can hold them.
  *
- * the binding accepts 10 or 60 and `wrangler.jsonc` sets 60 on all three. the numbers have to
+ * the binding accepts 10 or 60 and `wrangler.jsonc` sets 60 on every one. the numbers have to
  * agree, because this one is a promise about when the same request works — a bucket that reset
  * forty seconds ago while the answer says to keep waiting is a donor sent away for nothing.
  * nothing in the language joins them, so `./rate-limit.config.spec.ts` reads the config file and
@@ -84,9 +90,9 @@ const UNATTRIBUTED = 'unattributed';
  * on, every request to this deployment counts in one bucket and the per-address limit becomes a
  * single tap that one caller can hold closed on every donor at once.
  *
- * this key accepts that and the two below do not — `attributedCaller` is where that split is
- * argued, and it is a split about which bucket is the only meter on its surface rather than about
- * how an address is read.
+ * this key and `zapierRateLimitKey` accept that and the tighter keys below do not —
+ * `attributedCaller` is where that split is argued, and it is a split about which bucket is the
+ * only meter on its surface rather than about how an address is read.
  *
  * the surface prefix is a constant today and is in the key anyway: the counter is named after
  * what it bounds, so a second public surface metered through this binding gets its own count
@@ -131,6 +137,20 @@ export function quoteRateLimitKey(request: Request): string | null {
 export function signInRateLimitKey(request: Request): string | null {
 	const payer = attributedCaller(request);
 	return payer === null ? null : `sign-in ${payer}`;
+}
+
+/**
+ * what one request on `/zapier` that failed the key check counts against: that surface and the
+ * caller, charged against the surface binding in `src/routes/zapier.ts`'s middleware.
+ *
+ * the same shape as `apiRateLimitKey` — its own prefix, so Zapier's calls never spend a donation
+ * form's count, and an unattributed caller in one shared bucket. a caller holding the key is never
+ * charged: Zapier's egress addresses are shared by every Zapier user, so a stranger looping a
+ * keyless request would otherwise spend this organisation's own subscribes. it is charged through
+ * `isRateLimited`, which fails open: the 256-bit key is the bound on guessing.
+ */
+export function zapierRateLimitKey(request: Request): string {
+	return `${ZAPIER_BASE_PATH} ${caller(request)}`;
 }
 
 /** the caller half of every key here: one payer, however they spelled their address. */
@@ -232,7 +252,8 @@ function ipv4Octets(text: string): number[] | null {
 }
 
 /**
- * the answer to a caller that has asked too often.
+ * the answer to a caller that has asked too often. `fix` is the surface's own sentence: the
+ * default is `/api/v1`'s, and `/zapier` passes its own ($lib/server/zapier/surface.ts).
  *
  * no `error` code, and the absence is deliberate: `API_ERROR_CODES` in `packages/form/src/v1.ts` is a
  * permanent wire vocabulary minted in that file, and every member of it names the screen that
@@ -249,13 +270,15 @@ function ipv4Octets(text: string): number[] | null {
  * one the endpoint's own not-found answer takes, and it is easier here: a caller asking hundreds
  * of times a minute is not a page that needed to read the reason.
  */
-export function rateLimitRefusal(): Response {
+export function rateLimitRefusal(
+	fix = `Wait ${PERIOD_SECONDS} seconds and send it again. A donation form loads this once per page view, so a page hitting this limit is asking in a loop.`
+): Response {
 	return Response.json(
 		{
 			message:
 				'This deployment is answering too many requests from your address to answer another ' +
 				'one right now. Nothing about the request is wrong.',
-			fix: `Wait ${PERIOD_SECONDS} seconds and send it again. A donation form loads this once per page view, so a page hitting this limit is asking in a loop.`
+			fix
 		},
 		{
 			status: 429,

@@ -4,6 +4,7 @@ import {
 	foreignKey,
 	index,
 	integer,
+	primaryKey,
 	sqliteTable,
 	text,
 	uniqueIndex
@@ -2397,6 +2398,196 @@ export const quickbooksSync = sqliteTable(
 	]
 );
 
+/**
+ * the one key Zapier presents on every call it makes to this deployment.
+ *
+ * at most one row — `quickbooks_connection` is the precedent the check copies — and none until a
+ * key is minted. replacing the key deletes this row and inserts the new one in one batch, so there
+ * is never a second key to choose between and `created_at` is always the current key's.
+ *
+ * only the hash is stored. the key is shown once, when it is minted, and a request is admitted by
+ * hashing what it presents and comparing — so a read of this table hands nobody a working key.
+ */
+export const zapierKey = sqliteTable(
+	'zapier_key',
+	{
+		// not a uuidv7 and deliberately not `$defaultFn`: the row is a singleton, and the check
+		// below is what keeps it one.
+		id: text('id').primaryKey(),
+
+		/** the lowercase hex SHA-256 of the whole key string. */
+		keyHash: text('key_hash').notNull(),
+
+		/** what the console shows as the date the key was made — a replace re-inserts the row. */
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check('zapier_key_id_check', sql`${t.id} = 'zapier'`),
+		/**
+		 * `glob` and not `like`: glob is case-sensitive, so an uppercase digest — the same hash in
+		 * the case a lowercase comparison never matches — is refused rather than stored. the length
+		 * half refuses the key itself written where its hash belongs.
+		 */
+		check(
+			'zapier_key_key_hash_check',
+			sql`length(${t.keyHash}) = 64 and ${t.keyHash} not glob '*[^0-9a-f]*'`
+		)
+	]
+);
+
+/**
+ * the events a Zap can subscribe to. declared here rather than in a leaf, on this file's `enums`
+ * rule: no module this file imports needs it.
+ */
+export const ZAPIER_TRIGGERS = ['new_gift', 'new_donor'] as const;
+export type ZapierTrigger = (typeof ZAPIER_TRIGGERS)[number];
+
+/**
+ * why a subscription stopped: Zapier unsubscribed it, its hook answered 410, or the key it was
+ * made under was replaced.
+ */
+export const ZAPIER_END_REASONS = ['unsubscribed', 'gone', 'key_replaced'] as const;
+export type ZapierEndReason = (typeof ZAPIER_END_REASONS)[number];
+
+/**
+ * one row per Zap subscribed to a trigger, and **a row is ended, never deleted**.
+ *
+ * delivery rows point at their subscription with a `NO ACTION` key — rule 2 above allows no
+ * second cascade — so deleting a subscription that was ever sent to would fail on that key. an
+ * ended row keeps its deliveries' history readable and stops new ones: the fan-out reads only
+ * rows whose `ended_at` is null.
+ */
+export const zapierSubscription = sqliteTable(
+	'zapier_subscription',
+	{
+		/** what Zapier stores as `subscribeData.id` and sends back to unsubscribe. */
+		id: id(),
+
+		trigger: text('trigger').$type<ZapierTrigger>().notNull(),
+
+		/** where Zapier asked for this trigger's events to be posted. */
+		hookUrl: text('hook_url').notNull(),
+
+		endedAt: at('ended_at'),
+		endedReason: text('ended_reason').$type<ZapierEndReason>(),
+
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check('zapier_subscription_trigger_check', enumCheck(t.trigger, ZAPIER_TRIGGERS)),
+		/**
+		 * `substr` and never `like 'https://%'`: like folds ASCII case, so it admits `HTTPS://`,
+		 * which no hook this app accepts carries. `site_origin_scheme_check` is the precedent.
+		 */
+		check('zapier_subscription_hook_url_check', sql`substr(${t.hookUrl}, 1, 8) = 'https://'`),
+		check(
+			'zapier_subscription_ended_reason_check',
+			sql`${t.endedReason} is null or ${enumCheck(t.endedReason, ZAPIER_END_REASONS)}`
+		),
+		// an end with no reason reads as ended for nothing, and a reason with no end as a
+		// subscription the fan-out still posts to while claiming it stopped.
+		check(
+			'zapier_subscription_ended_check',
+			sql`(${t.endedAt} is null) = (${t.endedReason} is null)`
+		),
+		/**
+		 * one open subscription per hook, so subscribing an open hook again finds the row it
+		 * already has instead of doubling every event to it. over open rows only: ended rows are
+		 * kept, and a Zap switched off and on again subscribes the same hook afresh.
+		 */
+		uniqueIndex('zapier_subscription_open_hook_idx').on(t.hookUrl).where(sql`${t.endedAt} is null`)
+	]
+);
+
+/**
+ * where one delivery stands. `dropped` is a row its subscription ended before it was sent, which
+ * is not a failure: nobody was listening for it any more.
+ */
+export const ZAPIER_DELIVERY_STATUSES = ['pending', 'sent', 'failed', 'dropped'] as const;
+export type ZapierDeliveryStatus = (typeof ZAPIER_DELIVERY_STATUSES)[number];
+
+/**
+ * one row per (event, subscription) — the outbox the Zapier delivery reads — written in the same
+ * `batch()` as the posting it belongs to.
+ *
+ * **the row holds a pointer, not a payload**: `payment_id` names the gift, and the send renders it
+ * at send time through the same read the sample endpoint uses, so a live event and a sample cannot
+ * disagree on their fields. no donor field is copied here.
+ *
+ * **`(subscription_id, event_id)` is the whole primary key**, and it is where "once" comes from.
+ * one row per subscription rather than per event, so a retry toward a Zap that is down resends to
+ * that Zap alone; and `event_id` is the contact id for `new_donor`, so one donor fires that
+ * trigger at most once per Zap, refused by the key rather than checked for.
+ *
+ * no `trigger` column. a subscription belongs to exactly one trigger, and a copy here is what
+ * would disagree with it.
+ */
+export const zapierDelivery = sqliteTable(
+	'zapier_delivery',
+	{
+		subscriptionId: text('subscription_id')
+			.notNull()
+			.references(() => zapierSubscription.id),
+
+		/**
+		 * the stable id sent as the payload's `id`, which a Zap filters a redelivery on: the
+		 * payment id for `new_gift`, the contact id for `new_donor`.
+		 */
+		eventId: text('event_id').notNull(),
+
+		/** the gift to render. for `new_donor`, the donor's first gift. */
+		paymentId: text('payment_id')
+			.notNull()
+			.references(() => payment.id),
+
+		status: text('status').$type<ZapierDeliveryStatus>().notNull().default('pending'),
+
+		/** how many times delivery has been tried. */
+		attempts: integer('attempts').notNull().default(0),
+
+		/** when the next try is due. */
+		nextAttemptAt: at('next_attempt_at').notNull(),
+
+		/**
+		 * while this is in the future, the row belongs to the delivery run that wrote it — the claim
+		 * `quickbooks_sync.leased_until` argues, taken with an update's own `where`.
+		 */
+		leasedUntil: at('leased_until'),
+
+		/** the last failure: the status line and the head of the body Zapier answered with. */
+		lastError: text('last_error'),
+
+		// the fan-out writes these rows with an INSERT…SELECT, which never runs a `$defaultFn`,
+		// so it binds both itself.
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		primaryKey({ columns: [t.subscriptionId, t.eventId] }),
+		check('zapier_delivery_event_id_not_blank_check', notBlank(t.eventId)),
+		check('zapier_delivery_status_check', enumCheck(t.status, ZAPIER_DELIVERY_STATUSES)),
+		check('zapier_delivery_attempts_check', sql`${t.attempts} >= 0`),
+		check('zapier_delivery_last_error_not_blank_check', optionalNotBlank(t.lastError)),
+		// the claim reads pending rows due by `next_attempt_at`, in that order, and returns them by
+		// key; `leased_until` is its last filter. every column it reads is here, so sqlite neither
+		// sorts nor reads the table to choose the rows.
+		index('zapier_delivery_due_idx').on(
+			t.status,
+			t.nextAttemptAt,
+			t.subscriptionId,
+			t.eventId,
+			t.leasedUntil
+		),
+		// rule 2 above: without it a rebuild of `payment` deletes each row by scanning this table.
+		index('zapier_delivery_payment_idx').on(t.paymentId)
+	]
+);
+
 export type Contact = typeof contact.$inferSelect;
 export type NewContact = typeof contact.$inferInsert;
 export type Account = typeof account.$inferSelect;
@@ -2425,6 +2616,12 @@ export type QuickbooksConnection = typeof quickbooksConnection.$inferSelect;
 export type NewQuickbooksConnection = typeof quickbooksConnection.$inferInsert;
 export type QuickbooksSync = typeof quickbooksSync.$inferSelect;
 export type NewQuickbooksSync = typeof quickbooksSync.$inferInsert;
+export type ZapierKey = typeof zapierKey.$inferSelect;
+export type NewZapierKey = typeof zapierKey.$inferInsert;
+export type ZapierSubscription = typeof zapierSubscription.$inferSelect;
+export type NewZapierSubscription = typeof zapierSubscription.$inferInsert;
+export type ZapierDelivery = typeof zapierDelivery.$inferSelect;
+export type NewZapierDelivery = typeof zapierDelivery.$inferInsert;
 
 // tables better-auth owns, kept in their own file because their columns are dictated
 // by better-auth's core schema rather than by the domain. re-exported here — not

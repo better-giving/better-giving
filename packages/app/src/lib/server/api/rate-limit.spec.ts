@@ -7,7 +7,8 @@ import {
 	rateLimitRefusal,
 	refuseIfRateLimited,
 	signInRateLimitKey,
-	signInRateLimitMessage
+	signInRateLimitMessage,
+	zapierRateLimitKey
 } from './rate-limit';
 
 // the two halves of the limiter that decide nothing about the binding: what a request counts
@@ -373,6 +374,31 @@ describe('what the tighter buckets count against', () => {
 			signInRateLimitKey(request('/api/auth/sign-in/staff', FROM, 'POST'))
 		]);
 		expect(keys.size).toBe(1);
+	});
+});
+
+/**
+ * the bucket in front of `/zapier`, charged through the surface binding under a name of its own —
+ * the surface prefix in the key is what keeps Zapier's polling from eating a donation form's count.
+ */
+describe('what a request from Zapier counts against', () => {
+	it('is the /zapier surface and the payer', () => {
+		expect(zapierRateLimitKey(request('/zapier/me', FROM))).toBe('/zapier 203.0.113.7');
+		expect(zapierRateLimitKey(request('/zapier/me', FROM))).not.toBe(
+			apiRateLimitKey(request('/zapier/me', FROM))
+		);
+	});
+
+	it('puts every caller it cannot attribute in one bucket', () => {
+		expect(zapierRateLimitKey(request('/zapier/me'))).toBe(
+			zapierRateLimitKey(request('/zapier/hooks', { 'cf-connecting-ip': 'not-an-ip' }, 'POST'))
+		);
+	});
+
+	it('is refused with the surface\u2019s own fix line', async () => {
+		const response = rateLimitRefusal('Wait and retry the Zap step.');
+		expect(response.status).toBe(429);
+		expect(await response.json()).toMatchObject({ fix: 'Wait and retry the Zap step.' });
 	});
 });
 

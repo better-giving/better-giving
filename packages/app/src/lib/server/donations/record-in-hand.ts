@@ -16,6 +16,7 @@ import {
 	type NewPayment
 } from '../db/schema';
 import { postingStatements } from '../ledger/posting';
+import { zapierStatements } from '../zapier/events';
 import { resolveDonor } from './donor';
 import { receivedInHandEntry } from './entries';
 
@@ -171,13 +172,15 @@ export async function recordGiftInHand(db: Db, gift: GiftInHand): Promise<GiftIn
 		const gate = await outboxGate(db);
 
 		// foreign-key order: the donor, the gift, what names the gift, then the books, then what the
-		// books owe QuickBooks — `quickbooks_sync.entry_group_id` points at the group above it.
+		// books owe QuickBooks — `quickbooks_sync.entry_group_id` points at the group above it — then
+		// what the gift owes each listening Zap, keyed to the payment above.
 		const rows: Writes = [
 			db.insert(donation).values(donationRow),
 			db.insert(lineItem).values(lineRow),
 			db.insert(payment).values(paymentRow),
 			...postingStatements(db, posting),
-			...outboxStatements(db, gate, [posting])
+			...outboxStatements(db, gate, [posting]),
+			...zapierStatements(db, { paymentId: gift.paymentId, contactId: donor.contactId })
 		];
 		await db.batch(donor.statement === null ? rows : [donor.statement, ...rows]);
 
@@ -185,8 +188,8 @@ export async function recordGiftInHand(db: Db, gift: GiftInHand): Promise<GiftIn
 	} catch (error) {
 		// every key this batch can collide on is one of the caller's two ids — the gift's and the
 		// payment's primary keys, and `entry_group_source_idx` over the payment id. the contact, line,
-		// group and entry ids are uuidv7s minted in this call, and the queue row is keyed on the
-		// group's.
+		// group and entry ids are uuidv7s minted in this call, the queue row is keyed on the
+		// group's, and the Zapier rows answer their own key with `on conflict do nothing`.
 		const code = sqliteResultCode(error);
 		if (code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || code === 'SQLITE_CONSTRAINT_UNIQUE') {
 			return { ok: false, reason: 'already_recorded' };

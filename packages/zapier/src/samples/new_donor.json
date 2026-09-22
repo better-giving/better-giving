@@ -1,0 +1,28 @@
+{
+	"id": "01920000-0000-7000-8000-000000000001",
+	"name": "Ada Okafor",
+	"email": "ada@example.org",
+	"first_gift": {
+		"id": "01920000-0000-7000-8000-000000000003",
+		"donation_id": "01920000-0000-7000-8000-000000000002",
+		"occurred_at": "2026-01-15T17:30:00.000Z",
+		"amount": "51.50",
+		"amount_minor": 5150,
+		"currency": "USD",
+		"covered_fee_minor": 150,
+		"method": "card",
+		"recurring": true,
+		"frequency": "monthly",
+		"form_id": "01920000-0000-7000-8000-000000000004",
+		"form_name": "General Fund",
+		"program_name": "Clean water",
+		"dedication_kind": "memory",
+		"dedication_honoree": "Margaret Chen",
+		"note": "For the new well.",
+		"donor_id": "01920000-0000-7000-8000-000000000001",
+		"donor_name": "Ada Okafor",
+		"donor_email": "ada@example.org",
+		"coin": null,
+		"coin_amount": null
+	}
+}
