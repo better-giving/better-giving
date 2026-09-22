@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { embedConfig, importAllowed } from '../../vite.embed.config';
+import { embedConfig, importAllowed, importerJudged } from '../../vite.embed.config';
 import { RUNTIME_PATH_PREFIX } from './loader';
 
 // the embed build's two halves, asserted as configuration rather than by running one.
@@ -118,6 +118,19 @@ describe('the boundary the build enforces', () => {
 	// another plugin's virtual module, which is not a specifier this has any business judging.
 	it('lets a virtual module through', () => {
 		expect(importAllowed('\0vite/preload-helper', declared)).toBe(true);
+	});
+
+	// a declared dependency's own imports are its manifest's to answer for — `@zag-js/select`
+	// reaching `@zag-js/core` is resolved from beside it in the store — so what the gate reads is an
+	// import this package's own source makes.
+	it('judges an import made by this package and not one a dependency makes', () => {
+		expect(importerJudged('/repo/packages/form/src/select.ts')).toBe(true);
+		expect(
+			importerJudged(
+				'/repo/node_modules/.pnpm/@zag-js+select@1.43.3/node_modules/@zag-js/select/dist/index.mjs'
+			)
+		).toBe(false);
+		expect(importerJudged('C:\\repo\\node_modules\\@zag-js\\vanilla\\dist\\index.mjs')).toBe(false);
 	});
 });
 

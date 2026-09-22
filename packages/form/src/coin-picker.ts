@@ -6,13 +6,20 @@
 // every id below is inside that root, which is what lets the label, the list and the sentence under
 // the box be referenced from it.
 //
-// the combobox pattern with a listbox (https://www.w3.org/WAI/ARIA/apg/patterns/combobox/): the box is
-// an editable `role="combobox"`, the highlight is `aria-activedescendant`, and the caret never leaves
-// the box. a refused coin stays listed, `aria-disabled` and passed over by the arrow keys.
+// zag's combobox machine (`@zag-js/combobox`, driven through `@zag-js/vanilla`) runs it — the machine
+// `@ark-ui/react`'s `Combobox` is built on — with the combobox pattern and a listbox
+// (https://www.w3.org/WAI/ARIA/apg/patterns/combobox/): the box is an editable `role="combobox"`, the
+// highlight is `aria-activedescendant`, and the caret never leaves the box. what the machine owns is
+// the arrow keys, Enter, Escape, the pointer, and the dismissal on a press or a focus outside, Tab
+// out of the box included. a refused coin stays listed, and the machine reads it as a disabled item:
+// `aria-disabled`, passed over by the arrow keys and taken by no press.
+//
+// the list stands in the top layer, and the machine's style is written property by property, for
+// the reasons ./zag.ts gives; the machine's root node is this shadow root.
 //
 // the search is the whole of how a donor narrows the list, and nothing else in this root takes a
 // press: the box and the rows are all a pointer can reach, so nothing `aria-activedescendant` can
-// name is anything but an option and Tab out of the box closes the list behind it.
+// name is anything but an option. a press anywhere on the box is a press on its input.
 //
 // a row is a mark and two lines: the ticker on the first, the network's pill on the second, and the
 // closed box reads the same way along one line. the coin's name is drawn nowhere — it says again
@@ -22,13 +29,17 @@
 // lettered mark a missing logo falls back to.
 //
 // no flow logic: which coins, which is picked and which were refused are `coinSelect` (./connect.ts),
-// the order a search lists them in is ./coins.ts, and the sentence under the box is the card's.
+// the order a search lists them in is ./coins.ts — the machine's collection is that search's answer,
+// never a filter of its own — and the sentence under the box is the card's.
 
+import * as zag from '@zag-js/combobox';
+import { normalizeProps, VanillaMachine } from '@zag-js/vanilla';
 import partStyles from './styles/parts.css?inline';
 import coinStyles from './styles/coins.css?inline';
 import { networkTint, searchCoins } from './coins';
 import { glyph } from './glyph';
 import { part, partWhen } from './parts';
+import { lostWhileOpen, type Props, rootNodeOf, showWhile, spread } from './zag';
 
 /**
  * one coin as `coinSelect` lists it.
@@ -60,6 +71,10 @@ export type CoinPicker = {
 	update(choice: CoinChoice, problem: string): void;
 	/** the caret into the box, which is where a refusal about the coin sends it. */
 	focus(): void;
+	/** closes a list a move took off the screen (`lostWhileOpen` in ./zag.ts). */
+	reattached(): void;
+	/** stops the machine and every listener it holds on the host's document; safe to repeat. */
+	stop(): void;
 };
 
 /** what the box asks while closed with nothing picked, and while open for a search. */
@@ -149,6 +164,15 @@ function words(doc: Document, option: CoinOption): HTMLElement {
 	]);
 }
 
+/** the machine's id, and the id of the box its label names. */
+const ID = 'coin';
+
+/** what the machine holds as picked: the flow's coin, unless the account refused it since. */
+function held(choice: CoinChoice): string[] {
+	const picked = choice.options.find((option) => option.value === choice.value);
+	return picked === undefined || picked.refused ? [] : [picked.value];
+}
+
 export function createCoinPicker(doc: Document): CoinPicker {
 	const host = doc.createElement('div');
 	const root = host.attachShadow({ mode: 'open' });
@@ -156,18 +180,8 @@ export function createCoinPicker(doc: Document): CoinPicker {
 
 	const label = node(doc, 'label', '', ['Which coin']);
 	label.setAttribute('part', part('label'));
-	label.htmlFor = 'coin';
 
 	const input = node(doc, 'input', '');
-	input.id = 'coin';
-	input.type = 'text';
-	input.autocomplete = 'off';
-	input.spellcheck = false;
-	input.setAttribute('role', 'combobox');
-	input.setAttribute('aria-autocomplete', 'list');
-	input.setAttribute('aria-expanded', 'false');
-	input.setAttribute('aria-controls', 'coin-list');
-
 	const chosen = node(doc, 'span', 'chosen');
 	chosen.id = 'coin-chosen';
 	const lead = node(doc, 'span', 'lead');
@@ -178,220 +192,207 @@ export function createCoinPicker(doc: Document): CoinPicker {
 		glyph(doc, 'chevron', 'glyph')
 	]);
 
-	const list = node(doc, 'div', 'coin-list');
-	list.id = 'coin-list';
-	list.setAttribute('role', 'listbox');
-	list.setAttribute('aria-label', 'Which coin');
-	list.hidden = true;
+	// the rows, and the sentence standing where they would when a search finds none: either is the
+	// open list's surface.
+	const content = node(doc, 'div', 'coin-list');
+	content.setAttribute('part', part('select-list'));
 	const noMatch = node(doc, 'p', 'no-match', ['No coin matches']);
+	noMatch.setAttribute('part', part('select-list'));
 	noMatch.hidden = true;
+	const list = node(doc, 'div', '', [content, noMatch]);
+	list.setAttribute('popover', 'manual');
 	const message = node(doc, 'p', 'message');
 	message.id = 'coin-problem';
 	message.hidden = true;
 
-	root.appendChild(node(doc, 'div', 'field-row', [label, box, list, noMatch, message]));
+	root.appendChild(node(doc, 'div', 'field-row', [label, box, list, message]));
 
 	let current: CoinChoice | null = null;
+	let invalid = false;
+	/** the search as typed, which is what the machine's collection is narrowed by. */
+	let query = '';
 	/** one row per coin, built from the first choice: the coins a card lists never change. */
-	let rows: {
-		readonly option: CoinOption;
-		readonly row: HTMLElement;
-		readonly note: HTMLElement;
-		readonly tick: SVGElement;
-	}[] = [];
-	let open = false;
-	/** the coins the search is showing, in the order it shows them. */
-	let shown: CoinOption[] = [];
-	let highlighted: string | null = null;
+	const rows = new Map<
+		string,
+		{ readonly row: HTMLElement; readonly note: HTMLElement; readonly tick: SVGElement }
+	>();
 
-	const now = (): CoinChoice => {
-		if (current === null) throw new Error('unreachable: the list is patched before it is shown');
-		return current;
+	/**
+	 * the coins the search finds, in `searchCoins`' order, as the machine's collection — rebuilt only
+	 * when the search or the list changed, because the machine reads it on every lookup.
+	 */
+	let found: {
+		readonly query: string;
+		readonly options: readonly CoinOption[];
+		readonly collection: ReturnType<typeof zag.collection<CoinOption>>;
+	} | null = null;
+	const collectionNow = () => {
+		const options = current?.options ?? [];
+		if (found === null || found.query !== query || found.options !== options) {
+			found = {
+				query,
+				options,
+				collection: zag.collection({
+					items: searchCoins(options, query),
+					itemToValue: (option) => option.value,
+					itemToString: (option) => `${option.label} ${option.network}`,
+					isItemDisabled: (option) => option.refused
+				})
+			};
+		}
+		return found.collection;
 	};
 
-	const build = (choice: CoinChoice): void => {
-		rows = choice.options.map((option, at) => {
-			const note = node(doc, 'span', 'message', [REFUSED]);
-			const tick = glyph(doc, 'tick', 'tick');
-			const row = node(doc, 'div', 'option', [logo(doc, option), words(doc, option), note, tick]);
-			row.id = `coin-option-${at}`;
-			row.setAttribute('role', 'option');
-			// the caret stays in the box while a pointer picks.
-			row.addEventListener('mousedown', (event) => event.preventDefault());
-			row.addEventListener('click', () => pick(option.value));
-			list.appendChild(row);
-			return { option, row, note, tick };
-		});
-	};
+	const getRootNode = rootNodeOf(box, doc);
+	const run = (choice: CoinChoice) =>
+		new VanillaMachine(zag.machine, () => ({
+			id: ID,
+			ids: {
+				root: `${ID}-root`,
+				label: `${ID}-label`,
+				control: `${ID}-control`,
+				input: ID,
+				positioner: `${ID}-positioner`,
+				content: `${ID}-list`,
+				item: (value: string) => `${ID}-option-${value}`
+			},
+			getRootNode,
+			collection: collectionNow(),
+			defaultValue: held(choice),
+			invalid,
+			openOnClick: true,
+			inputBehavior: 'autohighlight' as const,
+			// the box shows the picked coin in words of its own (`chosen`), so the input holds a search
+			// and nothing else.
+			selectionBehavior: 'clear' as const,
+			positioning: { placement: 'bottom-start' as const, strategy: 'fixed' as const, gutter: 0 },
+			onInputValueChange: ({ inputValue }: zag.InputValueChangeDetails) => {
+				query = inputValue;
+			},
+			onValueChange: ({ value }: zag.ValueChangeDetails<CoinOption>) => {
+				const next = value[0];
+				if (next !== undefined && next !== current?.value) current?.onChange(next);
+			},
+			// the box is the list's own control, and a press on its mark or its chevron is a press on
+			// the input rather than one outside the list.
+			onPointerDownOutside: (event: zag.PointerDownOutsideEvent) => {
+				if (event.detail.originalEvent.composedPath().includes(box)) event.preventDefault();
+			}
+		}));
 
-	/** the option a keyboard or a pointer landed on, taken if the account still takes it. */
-	const pick = (value: string): void => {
-		const option = now().options.find((candidate) => candidate.value === value);
-		if (option === undefined || option.refused) return;
-		close();
-		now().onChange(value);
-	};
+	let machine: ReturnType<typeof run> | null = null;
+	const connected = () => (machine === null ? null : zag.connect(machine.service, normalizeProps));
 
 	/**
 	 * the picked coin's mark in the box, one node per coin.
 	 *
-	 * held rather than rebuilt, because `paint` runs on every keystroke and a fresh `<img>` each time
-	 * is a fresh request on a page whose cache this element does not control.
+	 * held rather than rebuilt, because the box is patched on every keystroke and a fresh `<img>`
+	 * each time is a fresh request on a page whose cache this element does not control.
 	 */
 	const leadMarks = new Map<string, HTMLElement>();
 	const leadMark = (option: CoinOption): HTMLElement => {
-		const held = leadMarks.get(option.value);
-		if (held !== undefined) return held;
+		const kept = leadMarks.get(option.value);
+		if (kept !== undefined) return kept;
 		const built = logo(doc, option);
 		leadMarks.set(option.value, built);
 		return built;
 	};
 
-	const paint = (): void => {
-		const choice = now();
+	const render = (): void => {
+		const api = connected();
+		if (api === null || current === null) return;
+		const choice = current;
+		spread(label, api.getLabelProps() as Props, ID);
+		spread(box, api.getControlProps() as Props, ID);
+		spread(input, api.getInputProps() as Props, ID);
+		spread(list, api.getPositionerProps() as Props, ID);
+		spread(content, api.getContentProps() as Props, ID);
+
+		const collection = collectionNow();
+		for (const option of choice.options) {
+			const entry = rows.get(option.value);
+			if (entry === undefined) continue;
+			spread(entry.row, api.getItemProps({ item: option }) as Props, ID);
+			entry.row.setAttribute(
+				'part',
+				partWhen('select-option', { selected: api.getItemState({ item: option }).selected })
+			);
+			spread(entry.tick, api.getItemIndicatorProps({ item: option }) as Props, ID);
+			entry.row.hidden = !collection.has(option.value);
+			entry.note.hidden = !option.refused;
+		}
+		// the rows in the search's ranking, moved only where one is out of place: a row moved under a
+		// resting pointer loses its hover.
+		let at = 0;
+		for (const option of collection.items) {
+			const row = rows.get(option.value)?.row;
+			if (row === undefined) continue;
+			const there = content.children[at] ?? null;
+			if (there !== row) content.insertBefore(row, there);
+			at += 1;
+		}
+		noMatch.hidden = !api.open || collection.size > 0;
+
 		const picked = choice.options.find((option) => option.value === choice.value);
-		box.classList.toggle('open', open);
-		input.setAttribute('aria-expanded', String(open));
-		input.placeholder = open ? SEARCH : picked === undefined ? CHOOSE : '';
+		input.placeholder = api.open ? SEARCH : picked === undefined ? CHOOSE : '';
 		lead.replaceChildren(
-			open ? search : picked === undefined ? node(doc, 'span', 'logo-slot') : leadMark(picked)
+			api.open ? search : picked === undefined ? node(doc, 'span', 'logo-slot') : leadMark(picked)
 		);
-		chosen.replaceChildren(...(open || picked === undefined ? [] : [words(doc, picked)]));
-
-		const refusedNow = new Map(choice.options.map((option) => [option.value, option.refused]));
-		const visible = new Set(shown.map((option) => option.value));
-		for (const { option, row, note, tick } of rows) {
-			const refused = refusedNow.get(option.value) === true;
-			row.hidden = !visible.has(option.value);
-			row.setAttribute('aria-selected', String(option.value === choice.value));
-			if (refused) row.setAttribute('aria-disabled', 'true');
-			else row.removeAttribute('aria-disabled');
-			row.classList.toggle('highlighted', option.value === highlighted);
-			note.hidden = !refused;
-			tick.toggleAttribute('hidden', option.value !== choice.value);
-		}
-		// reordered only while open, so a search's ranking is what the list reads in.
-		if (open) {
-			for (const option of shown) {
-				const entry = rows.find((candidate) => candidate.option.value === option.value);
-				if (entry !== undefined) list.appendChild(entry.row);
-			}
-		}
-		list.hidden = !open || shown.length === 0;
-		noMatch.hidden = !open || shown.length > 0;
-
-		const active = rows.find((entry) => entry.option.value === highlighted);
-		if (open && active !== undefined) {
-			input.setAttribute('aria-activedescendant', active.row.id);
-			active.row.scrollIntoView?.({ block: 'nearest' });
-		} else {
-			input.removeAttribute('aria-activedescendant');
-		}
+		chosen.replaceChildren(...(api.open || picked === undefined ? [] : [words(doc, picked)]));
+		showWhile(list, api.open);
+		// Escape closes the list with the search still typed, and the closed box shows the picked
+		// coin rather than a search nobody is running.
+		if (!api.open && api.inputValue !== '') api.setInputValue('');
 	};
 
-	/**
-	 * the coins the text finds, with the highlight on the first of those the account still takes.
-	 */
-	const narrow = (): void => {
-		const choice = now();
-		shown = searchCoins(choice.options, input.value);
-		const first = shown.find((option) => !option.refused);
-		const keep = shown.some((option) => option.value === highlighted && !option.refused);
-		highlighted = keep ? highlighted : (first?.value ?? null);
-	};
-
-	const openList = (): void => {
-		if (open) return;
-		open = true;
-		input.value = '';
-		narrow();
-		// the picked coin is where the arrow keys start, where the account still takes it. read off
-		// `shown` rather than off the whole list, because a highlight on a coin the search is hiding
-		// is a combobox naming a row nobody can see.
-		const choice = now();
-		if (shown.some((option) => option.value === choice.value && !option.refused)) {
-			highlighted = choice.value;
+	const build = (choice: CoinChoice): void => {
+		for (const option of choice.options) {
+			const note = node(doc, 'span', 'message', [REFUSED]);
+			const tick = glyph(doc, 'tick', 'tick');
+			const row = node(doc, 'div', 'option', [logo(doc, option), words(doc, option), note, tick]);
+			content.appendChild(row);
+			rows.set(option.value, { row, note, tick });
 		}
-		paint();
+		machine = run(choice);
+		machine.subscribe(render);
+		machine.start();
 	};
 
-	function close(): void {
-		if (!open) return;
-		open = false;
-		input.value = '';
-		highlighted = null;
-		paint();
-	}
-
-	/** the highlight moved to the next coin the account still takes, in `step`'s direction. */
-	const move = (step: 1 | -1): void => {
-		const takeable = shown.filter((option) => !option.refused);
-		if (takeable.length === 0) return;
-		const at = takeable.findIndex((option) => option.value === highlighted);
-		const next =
-			at === -1
-				? step === 1
-					? 0
-					: takeable.length - 1
-				: (at + step + takeable.length) % takeable.length;
-		highlighted = takeable[next]?.value ?? null;
-		paint();
-	};
-
-	box.addEventListener('click', () => {
+	box.addEventListener('click', (event) => {
+		if (event.target === input) return;
 		input.focus();
-		openList();
+		if (connected()?.open !== true) input.click();
 	});
-	input.addEventListener('input', () => {
-		const wasOpen = open;
-		if (!wasOpen) {
-			const typed = input.value;
-			openList();
-			input.value = typed;
-		}
-		narrow();
-		paint();
-	});
-	input.addEventListener('keydown', (event) => {
-		switch (event.key) {
-			case 'ArrowDown':
-			case 'ArrowUp':
-				event.preventDefault();
-				if (!open) openList();
-				else move(event.key === 'ArrowDown' ? 1 : -1);
-				return;
-			case 'Enter':
-				if (!open) return;
-				event.preventDefault();
-				if (highlighted !== null) pick(highlighted);
-				return;
-			case 'Escape':
-				if (!open) return;
-				event.preventDefault();
-				close();
-				return;
-		}
-	});
-	input.addEventListener('blur', () => close());
 
 	return {
 		host,
 		update(choice, problem) {
-			if (current === null) build(choice);
+			const first = current === null;
 			current = choice;
-			if (open) narrow();
-			else shown = [...choice.options];
-			paint();
-			const invalid = problem !== '';
+			invalid = problem !== '';
+			if (first) build(choice);
+			// the flow is the one holding the answer. the machine is told only when the two disagree,
+			// which is a value the flow settled without a pick — a resumed gift, a coin refused since.
+			const api = connected();
+			const value = held(choice);
+			if (api !== null && api.value.join() !== value.join()) api.setValue(value);
+			render();
 			message.textContent = problem;
 			message.hidden = !invalid;
 			box.setAttribute('part', partWhen('field', { invalid }));
-			if (invalid) input.setAttribute('aria-invalid', 'true');
-			else input.removeAttribute('aria-invalid');
 			input.setAttribute('aria-describedby', invalid ? 'coin-chosen coin-problem' : 'coin-chosen');
 		},
 		focus() {
 			input.focus();
+		},
+		reattached() {
+			const api = connected();
+			if (api !== null && lostWhileOpen(list, api.open)) api.setOpen(false);
+		},
+		stop() {
+			machine?.stop();
+			machine = null;
+			showWhile(list, false);
 		}
 	};
 }

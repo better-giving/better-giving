@@ -1,3 +1,8 @@
+import {
+	createListCollection,
+	type ListCollection,
+	type SelectValueChangeDetails
+} from '@ark-ui/react/select';
 import type { CheckoutApi, PropTypes } from '@better-giving/form/connect';
 import type { DeductedFee } from '@better-giving/form/fee';
 import type { ChangeEvent } from 'react';
@@ -13,7 +18,9 @@ import type { ChangeEvent } from 'react';
 //     states `onChange(value)` and react states `onChange(event)`, so the conversion is here and a
 //     view writes `<input {...api.emailField.box} />` — the name, the value, the platform's own
 //     `required`/`pattern`/`maxlength` rule and the handler in one, with nothing to unpack and
-//     nothing to forget.
+//     nothing to forget. a closed choice is the same move onto `@ark-ui/react`'s `Select.Root`
+//     (`<Select.Root {...api.programSelect.root}>`): the options as its collection, the one value as
+//     the array it keys by, and its `onValueChange` into the flow's `onChange`.
 //   - what is not legal to spread is kept out of that record. a select's options are nodes to
 //     render rather than attributes to set, and a field's raw setter is the door a *press* writes a
 //     box through — the tribute's notify press empties both of its boxes, and it does that through
@@ -66,21 +73,27 @@ export type FieldProps = {
 	readonly set: (value: string) => void;
 };
 
+/** one option of a closed choice, as the flow states it. */
+export type SelectOption = {
+	readonly value: string;
+	readonly label: string;
+	/** the coin's name, on the coin choice alone, shown after its ticker. */
+	readonly name?: string;
+	/** whether the account refused this coin on this card, on the coin choice alone. */
+	readonly refused?: boolean;
+};
+
 export type SelectProps = {
-	readonly box: {
-		readonly name: string;
-		readonly value: string;
-		readonly onChange: (event: ChangeEvent<HTMLSelectElement>) => void;
+	/** the option the flow holds, `''` where it holds none. */
+	readonly value: string;
+	readonly options: readonly SelectOption[];
+	/** what `Select.Root` takes, legal to spread onto it whole. */
+	readonly root: {
+		readonly collection: ListCollection<SelectOption>;
+		readonly value: string[];
+		readonly onValueChange: (details: SelectValueChangeDetails<SelectOption>) => void;
 	};
-	readonly options: readonly {
-		readonly value: string;
-		readonly label: string;
-		/** the coin's name, on the coin choice alone, shown after its ticker. */
-		readonly name?: string;
-		/** whether the account refused this coin on this card, on the coin choice alone. */
-		readonly refused?: boolean;
-	}[];
-	/** the same door the box's own handler goes through, for a control that is not a native select. */
+	/** the same door the root's own handler goes through, for a control that is not ark's select. */
 	readonly set: (value: string) => void;
 };
 
@@ -105,6 +118,28 @@ type Shapes = {
 /** the whole surface this page's card renders from. */
 export type ReactApi = CheckoutApi<Shapes>;
 
+/**
+ * each choice's last collection, by the choice's name, and the options it was built from as text.
+ * `connect` builds the options afresh on every projection, so identity says nothing; the text is the
+ * whole of an option, so the same text is the same collection and ark is handed the one it holds.
+ */
+const collections = new Map<
+	string,
+	{ readonly key: string; readonly collection: ListCollection<SelectOption> }
+>();
+
+function collectionOf(
+	name: string,
+	options: readonly SelectOption[]
+): ListCollection<SelectOption> {
+	const key = JSON.stringify(options);
+	const held = collections.get(name);
+	if (held !== undefined && held.key === key) return held.collection;
+	const collection = createListCollection({ items: [...options] });
+	collections.set(name, { key, collection });
+	return collection;
+}
+
 export const reactPropTypes: PropTypes<Shapes> = {
 	button: (props) => props as unknown as ButtonProps,
 	group: (props) => props as unknown as GroupProps,
@@ -118,16 +153,25 @@ export const reactPropTypes: PropTypes<Shapes> = {
 		};
 	},
 	select: (props) => {
-		const { onChange, options, ...rest } = props as unknown as Omit<
-			SelectProps['box'],
-			'onChange'
-		> & {
+		const { name, value, options, onChange } = props as unknown as {
+			name: string;
+			value: string;
+			options: readonly SelectOption[];
 			onChange: (value: string) => void;
-			options: SelectProps['options'];
 		};
 		return {
-			box: { ...rest, onChange: (event) => onChange(event.currentTarget.value) },
+			value,
 			options,
+			root: {
+				collection: collectionOf(name, options),
+				value: [value],
+				// a select that cannot be emptied reports one value per pick, and never a pick of the
+				// value it already holds.
+				onValueChange: ({ value: picked }) => {
+					const next = picked[0];
+					if (next !== undefined) onChange(next);
+				}
+			},
 			set: onChange
 		};
 	}

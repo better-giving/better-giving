@@ -19,7 +19,9 @@ import { act, createRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { DonateCard } from './card';
+import { Choice } from './choice';
 import * as copy from './copy';
+import { reactPropTypes } from './normalize';
 import { PaymentBox } from './payment';
 
 // the card a donor uses, driven the way a donor drives it.
@@ -36,6 +38,12 @@ import { PaymentBox } from './payment';
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// happy-dom has no top layer and no popover methods, and the open lists — the closed choices'
+// (./choice.tsx) and the coin list's — are shown as popovers; here the methods only have to exist.
+if (!('showPopover' in HTMLElement.prototype)) {
+	Object.assign(HTMLElement.prototype, { showPopover() {}, hidePopover() {} });
+}
 
 const FEE_RULES: FeeRules = {
 	card: { percent: 0.029, fixedMinor: 30 },
@@ -269,13 +277,120 @@ it('draws the amounts, the cadences and the causes the configuration offers', as
 	expect(every(root, '.segment > label')).toHaveLength(3);
 	// three suggestions and the way past them, which is drawn as one of them.
 	expect(every(root, '.tiles > label')).toHaveLength(4);
-	expect(every(root, '#program > option').map((option) => option.textContent)).toEqual([
+	expect(every(root, '#program-list [role="option"]').map((row) => row.textContent)).toEqual([
 		'Where it’s needed most',
 		'Clean water',
 		'Schools'
 	]);
 	// the entry is closed behind the way past the presets until a donor takes it.
 	expect(one(root, '.tile.entry').hidden).toBe(true);
+});
+
+/** a closed choice opened from its box and a row pressed, the way a pointer does it. */
+async function choose(root: HTMLElement, id: string, words: string): Promise<void> {
+	press(one(root, `#${id}`));
+	await act(async () => {});
+	const row = every(root, `#${id}-list [role="option"]`).find((node) => node.textContent === words);
+	if (row === undefined) throw new Error(`no ${words} in #${id}`);
+	press(row);
+	await act(async () => {});
+}
+
+// the box is a `role="combobox"` button rather than a native select, so what names it is the label
+// ark points `aria-labelledby` at: the program's is on screen, the dedication's is for the name alone
+// because the resting option already says what the box is for.
+it('names each closed choice by its own label', async () => {
+	const { root } = await card();
+	press(input(root, '.disclosure.tribute input[type="checkbox"]'));
+
+	for (const [id, words, hidden] of [
+		['program', copy.PROGRAM, false],
+		['tribute-kind', copy.TRIBUTE_KIND_LABEL, true]
+	] as const) {
+		const box = one(root, `#${id}`);
+		expect(box.getAttribute('role'), id).toBe('combobox');
+		const label = one(root, `#${box.getAttribute('aria-labelledby')}`);
+		expect(label.tagName, id).toBe('LABEL');
+		expect(label.textContent, id).toBe(words);
+		expect(label.classList.contains('vh'), id).toBe(hidden);
+	}
+});
+
+it('carries the cause a donor chose onto the review step', async () => {
+	const { root } = await card();
+
+	await choose(root, 'program', 'Schools');
+	expect(one(root, '#program').getAttribute('aria-expanded')).toBe('false');
+	expect(one(root, '#program [data-chosen]').textContent).toBe('Schools');
+
+	walkToGive(root);
+	expect(one(root, '.row.program .program-name').textContent).toBe('Schools');
+});
+
+it('holds the dedication a donor chose, on the box and on its row', async () => {
+	const { root } = await card();
+	press(input(root, '.disclosure.tribute input[type="checkbox"]'));
+
+	expect(one(root, '#tribute-kind [data-chosen]').textContent).toBe('In honor of');
+	await choose(root, 'tribute-kind', 'In memory of');
+
+	expect(one(root, '#tribute-kind [data-chosen]').textContent).toBe('In memory of');
+	const chosen = every(root, '#tribute-kind-list [role="option"]').filter((row) =>
+		(row.getAttribute('part') ?? '').split(/\s+/).includes('selected')
+	);
+	expect(chosen.map((row) => row.textContent)).toEqual(['In memory of']);
+});
+
+// `connect` builds its options afresh on every projection; ark is handed a new collection only when
+// what they say changed.
+it('hands ark one collection for as long as the options say the same thing', () => {
+	const project = (label: string) =>
+		reactPropTypes.select({
+			name: 'tributeKind',
+			value: 'honor',
+			options: [
+				{ value: 'honor', label: 'In honor of' },
+				{ value: 'memory', label }
+			],
+			onChange: () => {}
+		}).root.collection;
+
+	const first = project('In memory of');
+	expect(project('In memory of')).toBe(first);
+	expect(project('In remembrance of')).not.toBe(first);
+});
+
+// the flow is told once per pick, and not at all for a pick of what it already holds.
+it('reports a pick to the flow once, with the value picked', async () => {
+	const onChange = vi.fn();
+	const choice = reactPropTypes.select({
+		name: 'programId',
+		value: '',
+		options: [
+			{ value: '', label: 'Where it’s needed most' },
+			{ value: 'p1', label: 'Clean water' }
+		],
+		onChange
+	});
+	const host = document.createElement('div');
+	document.body.appendChild(host);
+	const mounted = createRoot(host);
+	act(() => {
+		mounted.render(
+			<Choice id="program" label={copy.PROGRAM} choice={choice} className="field-row" />
+		);
+	});
+	onTestFinished(() => {
+		act(() => {
+			mounted.unmount();
+		});
+		host.remove();
+	});
+
+	await choose(host, 'program', 'Where it’s needed most');
+	expect(onChange).not.toHaveBeenCalled();
+	await choose(host, 'program', 'Clean water');
+	expect(onChange.mock.calls).toEqual([['p1']]);
 });
 
 it('writes a pressed preset into the entry and lights that tile alone', async () => {
@@ -827,13 +942,15 @@ describe('a crypto gift', () => {
 	const combobox = (root: HTMLElement) =>
 		coins(root).querySelector('[role="combobox"]') as HTMLInputElement;
 
-	function pick(root: HTMLElement, ticker: string): void {
+	async function pick(root: HTMLElement, ticker: string): Promise<void> {
 		press(coins(root).querySelector('.picker') as HTMLElement);
+		await act(async () => {});
 		const option = [...coins(root).querySelectorAll<HTMLElement>('[role="option"]')].find(
 			(node) => node.querySelector('.coin-ticker')?.textContent === ticker
 		);
 		if (option === undefined) throw new Error(`no ${ticker} in the coin list`);
 		press(option);
+		await act(async () => {});
 	}
 
 	/** the review step of a one-time gift with the crypto option open. */
@@ -859,7 +976,7 @@ describe('a crypto gift', () => {
 	/** the address screen, for a USDT gift. */
 	async function atAddress() {
 		const reached = await onCrypto();
-		pick(reached.root, 'USDT');
+		await pick(reached.root, 'USDT');
 		await donate(reached.root);
 		return reached;
 	}
@@ -1041,7 +1158,7 @@ describe('a crypto gift', () => {
 		const { root } = await onCrypto(() =>
 			json({ error: 'below_minimum', message: 'too small', minAmountMinor: 1200 }, 422)
 		);
-		pick(root, 'USDT');
+		await pick(root, 'USDT');
 
 		await donate(root);
 
@@ -1063,7 +1180,7 @@ describe('a crypto gift', () => {
 		['below_minimum', 'too small for Tether USD (Tron), raise it or pick another coin']
 	])('words a %s refusal with no figure', async (code, words) => {
 		const { root } = await onCrypto(() => json({ error: code, message: 'refused' }, 422));
-		pick(root, 'USDT');
+		await pick(root, 'USDT');
 
 		await donate(root);
 
@@ -1074,7 +1191,7 @@ describe('a crypto gift', () => {
 		const { root } = await onCrypto(() =>
 			json({ error: 'coin_not_accepted', message: 'refused' }, 422)
 		);
-		pick(root, 'USDT');
+		await pick(root, 'USDT');
 
 		await donate(root);
 

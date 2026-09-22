@@ -30,6 +30,15 @@ catalogs:
     '@types/react-dom':
       specifier: 19.2.4
       version: 19.2.4
+    '@zag-js/combobox':
+      specifier: 1.43.3
+      version: 1.43.3
+    '@zag-js/select':
+      specifier: 1.43.3
+      version: 1.43.3
+    '@zag-js/vanilla':
+      specifier: 1.43.3
+      version: 1.43.3
     happy-dom:
       specifier: 20.11.1
       version: 20.11.1
@@ -294,6 +303,15 @@ importers:
       '@stripe/stripe-js':
         specifier: 9.12.1
         version: 9.12.1
+      '@zag-js/combobox':
+        specifier: 'catalog:'
+        version: 1.43.3
+      '@zag-js/select':
+        specifier: 'catalog:'
+        version: 1.43.3
+      '@zag-js/vanilla':
+        specifier: 'catalog:'
+        version: 1.43.3
       xstate:
         specifier: 'catalog:'
         version: 5.32.5
@@ -2336,6 +2354,9 @@ packages:
 
   '@zag-js/utils@1.43.3':
     resolution: {integrity: sha512-9P9fvFFxuiDcLqX0BYgGNkf0/a/id32nHvQpwgv/Xv3b9n5yeyw2U8nKefpWr+1VfFsrpf2XMXiA2CDSWZgt2g==}
+
+  '@zag-js/vanilla@1.43.3':
+    resolution: {integrity: sha512-wHb5vvUFuThJfNEk1lCKxKOFfdsvvNYy5TJbnnSRdlxXUD6w2OxiPPPc7bu+PUxJDpEA7Eu3Xr1lGf5IGYRxgg==}
 
   accepts@1.3.8:
     resolution: {integrity: sha512-PYAthTa2m2VKxuvSD3DPC/Gy+U+sOA1LAuT8mkmRuvw+NACSaeXEQ+NHcVF7rONl6qcaxV3Uuemwawk+7+SJLw==}
@@ -5667,6 +5688,13 @@ snapshots:
       csstype: 3.2.3
 
   '@zag-js/utils@1.43.3': {}
+
+  '@zag-js/vanilla@1.43.3':
+    dependencies:
+      '@zag-js/core': 1.43.3
+      '@zag-js/store': 1.43.3
+      '@zag-js/types': 1.43.3
+      '@zag-js/utils': 1.43.3
 
   accepts@1.3.8:
     dependencies:

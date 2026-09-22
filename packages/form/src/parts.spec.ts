@@ -111,12 +111,11 @@ const documentedTokens = (element?.cssParts ?? []).map((cssPart) => ({
 }));
 
 describe('the part vocabulary', () => {
-	it('is twelve names, and a thirteenth is a decision rather than an edit', () => {
+	it('is fourteen names, and a fifteenth is a decision rather than an edit', () => {
 		// the number is asserted on purpose. every name is permanent the day it ships, so growing
-		// the list has to be something a reader of the diff cannot miss. it went 13 → 12 once, when
-		// the identity footer left the card and `legal` went with it — the one withdrawal, argued at
-		// the top of ./parts.ts and available only while nothing is deployed.
-		expect(PART_NAMES).toHaveLength(12);
+		// the list has to be something a reader of the diff cannot miss. the one withdrawal the list
+		// has had is argued at the top of ./parts.ts.
+		expect(PART_NAMES).toHaveLength(14);
 	});
 
 	it('holds no duplicate name', () => {

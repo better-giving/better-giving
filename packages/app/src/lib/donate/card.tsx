@@ -314,7 +314,7 @@ function CheckoutCard({
 	// `connect` states the whole of a coin — the network, the logo and the two flags the picker's chips
 	// read — where ./normalize.ts's `SelectProps` describes only what a select needs of an option.
 	const coinOptions = coinChoice.options as readonly CoinOption[];
-	const pickedCoin = coinOptions.find((option) => option.value === coinChoice.box.value);
+	const pickedCoin = coinOptions.find((option) => option.value === coinChoice.value);
 	// a coin the account refused is said whenever it is the one picked — the quote that refused it was
 	// the press — and every coin refused is said as the way on being another rail. a coin never picked
 	// is said only once a press asked for one.
@@ -329,7 +329,7 @@ function CheckoutCard({
 	useEffect(() => {
 		live?.coins.update(
 			{
-				value: coinChoice.box.value,
+				value: coinChoice.value,
 				options: coinOptions,
 				onChange: (value) => coinChoice.set(value)
 			},

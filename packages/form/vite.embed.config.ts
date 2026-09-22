@@ -74,6 +74,18 @@ export function importAllowed(source: string, allowed: readonly string[]): boole
 }
 
 /**
+ * whether an import is one this package's own source makes, which is the only kind the gate judges.
+ *
+ * a declared dependency's own imports are resolved from beside it in the store and answered for by
+ * its own manifest — `@zag-js/select` reaching `@zag-js/core` is not this package reaching for
+ * something it never declared. either separator, for the reason `importAllowed` takes a windows
+ * path.
+ */
+export function importerJudged(importer: string): boolean {
+	return !/[\\/]node_modules[\\/]/.test(importer);
+}
+
+/**
  * refuses an import this package does not declare, at the moment it would enter the bundle.
  *
  * biome.jsonc states the same boundary and is the gate that covers app source as well as this
@@ -95,7 +107,9 @@ function refuseUndeclaredImports(): Plugin {
 		name: 'bg-donate-refuse-undeclared-imports',
 		enforce: 'pre',
 		resolveId(source, importer) {
-			if (importer === undefined || importAllowed(source, allowed)) return null;
+			if (importer === undefined || !importerJudged(importer) || importAllowed(source, allowed)) {
+				return null;
+			}
 			throw new Error(
 				`packages/form/src imports "${source}", which packages/form/package.json does not declare — it was reached through the workspace root's node_modules, and this build would bundle it into the script served to every site that pasted the snippet. Imported by ${importer}. Either drop the import or widen this package's \`dependencies\` deliberately; the same boundary is stated for app source in biome.jsonc.`
 			);

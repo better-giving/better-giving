@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { createSelect } from '../select';
 import layoutStyles from './layout.css?inline';
 import partStyles from './parts.css?inline';
 
@@ -176,7 +177,11 @@ function card(width: string, rootFontSize: string, cardFontSize = '16px'): Card 
 	return { host, body, tiles, give, takeover };
 }
 
+/** the machines a fixture started (`dedication` below), stopped with the page they stood on. */
+const stops: (() => void)[] = [];
+
 afterEach(() => {
+	for (const stop of stops.splice(0)) stop();
 	document.documentElement.style.fontSize = '';
 	document.adoptedStyleSheets = [];
 	document.body.replaceChildren();
@@ -934,9 +939,13 @@ describe('the tribute’s first line', () => {
 	 * drawn is a `@container donate` question and a wrapper that names no container answers it the
 	 * same way at every width.
 	 */
-	function dedication(width: string): {
+	function dedication(
+		width: string,
+		kind: 'honor' | 'memory' = 'honor'
+	): {
 		row: HTMLElement;
 		select: HTMLElement;
+		chosen: () => HTMLElement | null;
 		name: HTMLElement;
 		message: HTMLElement;
 	} {
@@ -947,18 +956,25 @@ describe('the tribute’s first line', () => {
 
 		const node = document.createElement('div');
 		node.className = 'dedication';
-		const select = document.createElement('select');
-		for (const words of ['In honor of', 'In memory of']) {
-			const option = document.createElement('option');
-			option.textContent = words;
-			select.appendChild(option);
-		}
+		const box = createSelect(document, 'tribute-kind', 'How this gift is dedicated', true);
+		box.update({
+			value: kind,
+			options: [
+				{ value: 'honor', label: 'In honor of' },
+				{ value: 'memory', label: 'In memory of' }
+			],
+			onChange: () => {}
+		});
+		stops.push(() => box.stop());
+		const select = box.trigger;
 		const name = document.createElement('input');
 		name.placeholder = 'Their name';
 		const message = document.createElement('p');
 		message.className = 'message';
 		message.textContent = 'required, or untick to skip';
+		node.appendChild(box.label);
 		node.appendChild(select);
+		node.appendChild(box.list);
 		node.appendChild(name);
 		node.appendChild(message);
 		wrapper.appendChild(node);
@@ -967,7 +983,13 @@ describe('the tribute’s first line', () => {
 		sheet.replaceSync(layoutStyles);
 		document.adoptedStyleSheets = [sheet];
 		document.body.appendChild(wrapper);
-		return { row: node, select, name, message };
+		return {
+			row: node,
+			select,
+			chosen: () => select.querySelector<HTMLElement>('[data-chosen]'),
+			name,
+			message
+		};
 	}
 
 	/**
@@ -1077,10 +1099,22 @@ describe('the tribute’s first line', () => {
 	// stretching into a second question, and it is the same track that keeps `In memory of` whole.
 	// a truncated option would be the fix that traded one unreadable string for another.
 	it('leaves the kind at its own measure, undertruncated, on that same card', () => {
-		const { row, select } = dedication(PHONE);
+		const { row, select, chosen } = dedication(PHONE, 'memory');
+		const words = chosen();
 
-		expect(select.scrollWidth).toBe(select.clientWidth);
+		expect(words?.textContent).toBe('In memory of');
+		expect(words?.scrollWidth).toBe(words?.clientWidth);
 		expect(select.getBoundingClientRect().width).toBeLessThan(row.getBoundingClientRect().width);
+	});
+
+	// the box is as wide as its longest option whichever is chosen, so the name beside it holds
+	// still when the donor changes the kind.
+	it('draws the kind at one width whichever option it holds', () => {
+		const honor = dedication(PAIRED, 'honor').select.getBoundingClientRect().width;
+		document.body.replaceChildren();
+		const memory = dedication(PAIRED, 'memory').select.getBoundingClientRect().width;
+
+		expect(honor).toBe(memory);
 	});
 
 	// the two are one sentence — `In honor of` starts it and the name finishes it — so where the

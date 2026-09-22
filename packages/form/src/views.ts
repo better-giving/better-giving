@@ -18,6 +18,7 @@
 
 import type { CheckoutApi, PropTypes, State } from './connect';
 import { createCoinPicker, type CoinOption } from './coin-picker';
+import { createSelect } from './select';
 import {
 	coinDifference,
 	createDepositBlock,
@@ -73,7 +74,7 @@ type FieldProps = {
 };
 
 /**
- * a native `<select>` over a closed vocabulary, as ./connect.ts states it.
+ * one choice from a closed vocabulary, as ./connect.ts states it, drawn by ./select.ts.
  *
  * every option carries its words, unlike `Option` above where a frequency's label is optional and
  * an amount tile draws a formatted figure instead. a select has nothing but its words.
@@ -188,10 +189,7 @@ function toggleAttribute(node: Element, name: string, value: string | null): voi
 }
 
 /** writes a value only when it differs, so the caret does not move under a donor mid-word. */
-function setValue(
-	field: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
-	value: string
-): void {
+function setValue(field: HTMLInputElement | HTMLTextAreaElement, value: string): void {
 	if (field.value !== value) field.value = value;
 }
 
@@ -951,16 +949,23 @@ export type CardView = {
 	/**
 	 * everything this card holds outside its own subtree, let go of.
 	 *
-	 * two things today, and both are held by the host page's own `window` rather than by anything in
-	 * this tree, so removing the card does not remove either. the `resize` listener the frequency chip
-	 * is put back on closes over the track, which would keep a card that has left the page alive and
-	 * being measured on every rotation; the address screen's countdown (`stop` in ./deposit.ts) closes
-	 * over the block it is redrawing. `#stop` in ./element.ts is the seam that calls this, alongside
-	 * the flow, the payment surface and the challenge widget.
+	 * three kinds of thing today, and each is held by the host page's own `window` or `document`
+	 * rather than by anything in this tree, so removing the card does not remove any of them. the
+	 * `resize` listener the frequency chip is put back on closes over the track, which would keep a
+	 * card that has left the page alive and being measured on every rotation; the address screen's
+	 * countdown (`stop` in ./deposit.ts) closes over the block it is redrawing; and the two closed
+	 * choices' machines (./select.ts) and the coin list's (./coin-picker.ts) hold the outside-press
+	 * and positioning listeners an open list sets on the document. `#stop` in ./element.ts is the
+	 * seam that calls this, alongside the flow, the payment surface and the challenge widget.
 	 *
 	 * it is safe in any order and any number of times, like every other stop that seam reaches.
 	 */
 	stop(): void;
+	/**
+	 * the card back on a page after a move, which took any open list off the screen without telling
+	 * the machine that holds it open (`lostWhileOpen` in ./zag.ts). safe on a card nothing moved.
+	 */
+	reattached(): void;
 };
 
 /**
@@ -1438,17 +1443,17 @@ export function createCard(
 	// face and this one rests on `Where it’s needed most`, which says where the gift goes and not
 	// what the box is for — so the words are on the card rather than only in the accessible name.
 	//
-	// `part('field')`, no `appearance: none`, and nothing else: the keyboard, the popup and the
-	// arrow are all the platform's, the same as the tribute's.
+	// the box carries `part('field')` and the keyboard, the list and its dismissal are zag's
+	// (./select.ts), the same as the tribute's.
 
 	/** whether the org left the cause to the donor, which is the one shape that draws a control. */
 	const choosesProgram = config.program?.mode === 'choice';
 
-	const programSelect = make(doc, 'select', { part: part('field'), id: 'program' });
-	programSelect.addEventListener('change', () => now().programSelect.onChange(programSelect.value));
+	const programSelect = createSelect(doc, 'program', 'Program');
 	const programField = make(doc, 'div', { class: 'field-row program' }, [
-		make(doc, 'label', { part: part('label'), for: 'program' }, ['Program']),
-		programSelect
+		programSelect.label,
+		programSelect.trigger,
+		programSelect.list
 	]);
 
 	// ── the tribute ────────────────────────────────────────────────────────────────────────────
@@ -1513,17 +1518,17 @@ export function createCard(
 	const tributeRowOf = (nodes: readonly HTMLElement[]): HTMLElement =>
 		make(doc, 'div', { class: 'field-row' }, nodes);
 
-	// the kind, drawn as the platform's own select. two members and no unset reading — the flow is
-	// seeded with what this control shows (`OPENED_TRIBUTE` in ./value.ts) — so it is a control
-	// whose resting state is an answer rather than a blank.
+	// the kind, a closed choice of two members and no unset reading — the flow is seeded with what
+	// this control shows (`OPENED_TRIBUTE` in ./value.ts) — so it is a control whose resting state is
+	// an answer rather than a blank.
 	//
 	// it carries `part('field')`: it is a box a donor operates and a host styling their fields has
-	// no reason to be told this one is a select. no `appearance: none` anywhere near it, so the
-	// keyboard, the popup and the arrow are all the platform's.
-	const tributeKindSelect = make(doc, 'select', { part: part('field'), id: 'tribute-kind' });
-	tributeKindSelect.addEventListener('change', () =>
-		now().tributeKindSelect.onChange(tributeKindSelect.value)
-	);
+	// no reason to be told this one is a select. the keyboard, the list and its dismissal are zag's
+	// (./select.ts).
+	//
+	// the label is hidden: the box says `In honor of` on its face, so the accessible name says what
+	// the control is rather than repeating the option a donor is already read.
+	const tributeKindSelect = createSelect(doc, 'tribute-kind', 'How this gift is dedicated', true);
 
 	// the kind and the name on one line, which is what makes them read as the sentence they are:
 	// `In honor of` starts it and the name finishes it.
@@ -1531,12 +1536,9 @@ export function createCard(
 	// flat rather than two wrapped rows, so the honoree's sentence is a grid item of its own and can
 	// span the pair (./styles/layout.css). the hidden labels are out of flow and take no cell.
 	const tributeDedication = make(doc, 'div', { class: 'dedication' }, [
-		// the select says `In honor of` on its face, so the accessible name says what the control is
-		// rather than repeating the option a donor is already read.
-		make(doc, 'label', { part: part('label'), class: 'vh', for: 'tribute-kind' }, [
-			'How this gift is dedicated'
-		]),
-		tributeKindSelect,
+		tributeKindSelect.label,
+		tributeKindSelect.trigger,
+		tributeKindSelect.list,
 		...tributeBox(
 			'tribute-honoree',
 			make(doc, 'input', { part: part('field'), id: 'tribute-honoree' }),
@@ -2430,29 +2432,6 @@ export function createCard(
 		// the amount is one decision in one place rather than a row of shortcuts with an escape
 		// hatch under it.
 		put(doc, amountTiles, [entryTile]);
-
-		// the causes, off the projection for the reason the kind's options below are: which causes a
-		// form offers is the configuration's answer, and a list read out of `config` here would be
-		// that answer derived a second time on a page nobody here can reach.
-		put(
-			doc,
-			programSelect,
-			api.programSelect.options.map((option) =>
-				make(doc, 'option', { value: option.value }, [option.label])
-			)
-		);
-
-		// the kind's options, off the projection like every other set of choices on this card. the
-		// vocabulary is fixed and this file could have spelled it out, which is exactly what the
-		// header refuses: a list typed here is the same answer derived twice, and the second copy is
-		// the one on a page nobody here can reach.
-		put(
-			doc,
-			tributeKindSelect,
-			api.tributeKindSelect.options.map((option) =>
-				make(doc, 'option', { value: option.value }, [option.label])
-			)
-		);
 	}
 
 	// ── the patch ──────────────────────────────────────────────────────────────────────────────
@@ -2754,7 +2733,11 @@ export function createCard(
 		setValue(noteField, api.noteField.value);
 		// never invalid, for the tribute select's reason: it rests on an answer and a donor cannot
 		// empty it, so there is no state here for a mark to report.
-		setValue(programSelect, api.programSelect.value);
+		//
+		// the causes come off the projection for the reason the kind's options below do: which causes
+		// a form offers is the configuration's answer, and a list read out of `config` here would be
+		// that answer derived a second time on a page nobody here can reach.
+		if (choosesProgram) programSelect.update(api.programSelect);
 		setValue(emailField, api.emailField.value);
 		setValue(firstNameField, api.firstNameField.value);
 		setValue(lastNameField, api.lastNameField.value);
@@ -2929,9 +2912,13 @@ export function createCard(
 		});
 
 		// the select is never invalid: it holds one of two options at rest and a donor cannot empty
-		// it, so there is no state for a mark to report. assigned rather than compared for the reason
-		// the value fields are — writing the value it already holds is what a patch does.
-		setValue(tributeKindSelect, api.tributeKindSelect.value);
+		// it, so there is no state for a mark to report.
+		//
+		// the kind's options, off the projection like every other set of choices on this card. the
+		// vocabulary is fixed and this file could have spelled it out, which is exactly what the
+		// header refuses: a list typed here is the same answer derived twice, and the second copy is
+		// the one on a page nobody here can reach.
+		tributeKindSelect.update(api.tributeKindSelect);
 
 		// the notify pair, open on the donor's press or on a gift that already names someone.
 		const asked =
@@ -3370,8 +3357,16 @@ export function createCard(
 				payment.setAttribute('aria-label', PAYMENT_NAME);
 			}
 		},
+		reattached() {
+			programSelect.reattached();
+			tributeKindSelect.reattached();
+			coinPicker.reattached();
+		},
 		stop() {
 			depositBlock.stop();
+			programSelect.stop();
+			tributeKindSelect.stop();
+			coinPicker.stop();
 			view?.removeEventListener('resize', rewrapped);
 			if (repositioning !== 0) view?.cancelAnimationFrame(repositioning);
 			repositioning = 0;
@@ -3490,7 +3485,7 @@ export function createUnavailable(
 	}
 	const body = make(doc, 'div', { class: 'card-body' }, [alert]);
 	if (retry !== undefined) {
-		// the published `action` name rather than one of its own: the vocabulary is closed at twelve
+		// the published `action` name rather than one of its own: the vocabulary is closed at fourteen
 		// (./parts.ts), and a host who has painted the form's primary control has painted this one.
 		// the words directly in the control rather than in a `.action-label` span: that span is where
 		// the patch writes a label beside a spinner, and this card is never patched and never busy.

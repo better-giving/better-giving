@@ -22,6 +22,9 @@ import { playwright } from '@vitest/browser-playwright';
 // about `deploy`'s gate, not about who runs the suite at all.
 
 export default defineConfig({
+	// pre-bundled up front: discovered mid-run, vite re-optimizes and reloads the page under the spec
+	// that imported them, which fails or repeats whatever that spec was doing.
+	optimizeDeps: { include: ['@zag-js/combobox', '@zag-js/select', '@zag-js/vanilla'] },
 	test: {
 		name: 'browser',
 		expect: { requireAssertions: true },
