@@ -2344,6 +2344,15 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	box-shadow: 0 0 0 var(--_focus-width) var(--_focus-ring);
 }
 
+/*
+ * a list opened from the keys holds the focus itself (`tabindex="-1"`, zag's initial focus), and the
+ * rule above would trade its lift for a ring. the open box already rings, and the highlighted row
+ * says where the keys are, so the list keeps its lift.
+ */
+[part~='select-list']:focus-visible {
+	box-shadow: var(--_lift);
+}
+
 [part~='field']:focus-visible {
 	border-color: var(--_focus-ring);
 }

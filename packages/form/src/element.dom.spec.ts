@@ -1105,10 +1105,10 @@ describe('the style adoption', () => {
 
 describe('the part vocabulary as rendered', () => {
 	it('emits no token that is not in the published vocabulary', async () => {
-		// the assertion that keeps a permanent contract permanent: a fourteenth name shipped by
+		// the assertion that keeps a permanent contract permanent: a fifteenth name shipped by
 		// accident fails here rather than being discovered by a host whose rule stops working.
 		const known = new Set<string>([...PART_NAMES, ...STATE_TOKENS, ...ROLE_TOKENS]);
-		// a takeover rather than a numbered step: the takeovers are where a fourteenth name
+		// a takeover rather than a numbered step: the takeovers are where a fifteenth name
 		// is most tempting, because each of them has a heading, a message and two controls that
 		// look like they want naming of their own.
 		const card = await atSubmitted();

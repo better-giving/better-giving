@@ -3072,6 +3072,29 @@ describe('the list a closed choice opens', () => {
 		);
 	});
 
+	/** a `box-shadow` value as this card resolves it. */
+	function shadowOf(root: ShadowRoot, value: string): string {
+		const probe = document.createElement('div');
+		probe.style.boxShadow = value;
+		root.appendChild(probe);
+		const drawn = getComputedStyle(probe).boxShadow;
+		probe.remove();
+		return drawn;
+	}
+
+	// opened from the keys, the machine focuses the list itself, and that focus is keyboard-visible.
+	it('lifts a list the keys opened rather than ringing it, and the open box keeps its ring', async () => {
+		const { shadow, box, list } = await opened();
+		await vi.waitFor(() => {
+			if (!list.matches(':focus-visible')) throw new Error('the list holds no visible focus');
+		});
+
+		expect(getComputedStyle(list).boxShadow).toBe(shadowOf(shadow, 'var(--_lift)'));
+		expect(getComputedStyle(box).boxShadow).toBe(
+			shadowOf(shadow, '0 0 0 var(--_focus-width) var(--_focus-ring)')
+		);
+	});
+
 	it('marks the chosen row `selected` and no other', async () => {
 		const { list } = await opened();
 		const rows = Array.from(list.querySelectorAll<HTMLElement>("[role='option']"));

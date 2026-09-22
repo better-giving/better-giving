@@ -16,6 +16,15 @@
 // replacing the whole attribute would also wipe the `--x`/`--y`/`--reference-width` the positioning
 // writes onto the same node between renders. `style.setProperty` is never refused and touches only
 // the property it names.
+//
+// two things the machines write outside the card, which no zag prop scopes and no `stop()`
+// takes back. the first list to open on a page runs `@zag-js/focus-visible`'s global setup: it
+// wraps the host window's `HTMLElement.prototype.focus`, and adds keydown, keyup, click and pointer
+// capture listeners on the host document and focus and blur listeners on its window. it runs once
+// per window, and zag undoes it only on `beforeunload`. and while the coin list is open on an Apple
+// platform, `@zag-js/combobox` announces each highlighted row through
+// `<span id="__live-region__" role="alert">` appended to the host's `document.body`; on close, on
+// any platform, it removes whatever element in that document carries the id.
 
 import { spreadProps } from '@zag-js/vanilla';
 

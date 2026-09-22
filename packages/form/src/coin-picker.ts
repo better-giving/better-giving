@@ -73,7 +73,10 @@ export type CoinPicker = {
 	focus(): void;
 	/** closes a list a move took off the screen (`lostWhileOpen` in ./zag.ts). */
 	reattached(): void;
-	/** stops the machine and every listener it holds on the host's document; safe to repeat. */
+	/**
+	 * stops the machine and the listeners an open list sets on the host's document; safe to repeat.
+	 * what zag writes to the host's window and body past this is in ./zag.ts's header.
+	 */
 	stop(): void;
 };
 

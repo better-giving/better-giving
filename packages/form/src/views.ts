@@ -947,7 +947,7 @@ export type CardView = {
 	 */
 	paymentRows(count: number): void;
 	/**
-	 * everything this card holds outside its own subtree, let go of.
+	 * everything this card holds outside its own subtree and can let go of, let go of.
 	 *
 	 * three kinds of thing today, and each is held by the host page's own `window` or `document`
 	 * rather than by anything in this tree, so removing the card does not remove any of them. the
@@ -955,7 +955,8 @@ export type CardView = {
 	 * card that has left the page alive and being measured on every rotation; the address screen's
 	 * countdown (`stop` in ./deposit.ts) closes over the block it is redrawing; and the two closed
 	 * choices' machines (./select.ts) and the coin list's (./coin-picker.ts) hold the outside-press
-	 * and positioning listeners an open list sets on the document. `#stop` in ./element.ts is the
+	 * and positioning listeners an open list sets on the document; what zag writes to the host's window
+	 * and body that no stop reaches is in ./zag.ts's header. `#stop` in ./element.ts is the
 	 * seam that calls this, alongside the flow, the payment surface and the challenge widget.
 	 *
 	 * it is safe in any order and any number of times, like every other stop that seam reaches.
