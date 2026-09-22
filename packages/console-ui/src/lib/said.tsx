@@ -1,3 +1,4 @@
+import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
 
@@ -37,6 +38,33 @@ export function Said({ answer }: { answer: { detail: string; fix?: string | null
 			{answer.fix ? (
 				<p className="adm-prose">
 					<MarkedText text={answer.fix} />
+				</p>
+			) : null}
+		</>
+	);
+}
+
+/**
+ * a refusal the deployment wrote on purpose (`readableRefusal` in ./unread-answer.ts), said in its
+ * own words and in the refusal's register — no sentence of this console's over it, because there is
+ * nothing to add to an answer that was read.
+ *
+ * its sentence is marked, unlike the quotation above: it is written for a reader, as a refusal's
+ * `message` is where ./deployment-states.tsx's `WhyNot` draws one.
+ */
+export function Refusal({
+	refusal
+}: {
+	refusal: { readonly message: string; readonly fix: string | null };
+}): ReactNode {
+	return (
+		<>
+			<FieldMessage>
+				<MarkedText text={refusal.message} />
+			</FieldMessage>
+			{refusal.fix ? (
+				<p className="adm-prose">
+					<MarkedText text={refusal.fix} />
 				</p>
 			) : null}
 		</>

@@ -50,7 +50,7 @@ import type { Route } from './+types/_app.admin.members';
 // address ($lib/server/flash.ts), which the loader matches against the rows it has already read —
 // the same shape ./_app.admin.forms._index.tsx uses for the form a create just made.
 
-/** the screen's name in the document title. the frame's strip names the page (./_app.tsx). */
+/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
 const SCREEN_TITLE = 'Members';
 
 /** the address this screen answers on, and the one a write redirects back to. */

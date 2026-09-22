@@ -122,6 +122,13 @@ function view(
 }
 
 /** lets a configuration read settle before the card is inspected. */
+// happy-dom has no top layer and no popover methods, and the closed choices' list is shown as a
+// popover (./select.ts). where the list stands is ./element.browser.spec.ts's question; here the
+// methods only have to exist.
+if (!('showPopover' in HTMLElement.prototype)) {
+	Object.assign(HTMLElement.prototype, { showPopover() {}, hidePopover() {} });
+}
+
 function settle(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -316,6 +323,28 @@ function press(node: HTMLElement): void {
 function type(node: HTMLElement, value: string): void {
 	(node as HTMLInputElement).value = value;
 	node.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/** the words a closed choice's box is showing (./select.ts): the one option of its stack drawn. */
+function showing(card: Mounted, id: string): string {
+	return card.text(`#${id} [data-chosen]`);
+}
+
+/** what a closed choice lists, each row as its value and its words. */
+function listed(card: Mounted, id: string): (string | null)[][] {
+	return card
+		.all(`#${id}-list [role="option"]`)
+		.map((row) => [row.id.slice(`${id}-option-`.length), row.textContent]);
+}
+
+/** a closed choice, operated the way a donor operates one: the box pressed, then the row. */
+async function choose(card: Mounted, id: string, words: string): Promise<void> {
+	card.find(`#${id}`).click();
+	await settle();
+	const row = card.all(`#${id}-list [role="option"]`).find((node) => node.textContent === words);
+	if (row === undefined) throw new Error(`#${id} lists no row reading ${words}`);
+	row.click();
+	await settle();
 }
 
 /**
@@ -1076,10 +1105,10 @@ describe('the style adoption', () => {
 
 describe('the part vocabulary as rendered', () => {
 	it('emits no token that is not in the published vocabulary', async () => {
-		// the assertion that keeps a permanent contract permanent: a fourteenth name shipped by
+		// the assertion that keeps a permanent contract permanent: a fifteenth name shipped by
 		// accident fails here rather than being discovered by a host whose rule stops working.
 		const known = new Set<string>([...PART_NAMES, ...STATE_TOKENS, ...ROLE_TOKENS]);
-		// a takeover rather than a numbered step: the takeovers are where a fourteenth name
+		// a takeover rather than a numbered step: the takeovers are where a fifteenth name
 		// is most tempting, because each of them has a heading, a message and two controls that
 		// look like they want naming of their own.
 		const card = await atSubmitted();
@@ -1947,13 +1976,13 @@ describe('the gift the donor dedicates', () => {
 		// the flow is seeded with the same value, which is what stops the screen and the model
 		// saying different things about one gift.
 		const card = await withTributeOpened();
-		const select = card.find('#tribute-kind') as HTMLSelectElement;
 
-		expect(Array.from(select.options).map((option) => [option.value, option.textContent])).toEqual([
+		expect(listed(card, 'tribute-kind')).toEqual([
 			['honor', 'In honor of'],
 			['memory', 'In memory of']
 		]);
-		expect(select.value).toBe('honor');
+		expect(showing(card, 'tribute-kind')).toBe('In honor of');
+		expect(card.find('#tribute-kind-option-honor').getAttribute('aria-selected')).toBe('true');
 	});
 
 	it('says nothing about an unnamed honoree until a press has asked', async () => {
@@ -2206,14 +2235,15 @@ describe('the gift the donor dedicates', () => {
 		// — the disclosure is the flow's answer rather than the checkbox's own `checked`.
 		const card = await withTributeOpened();
 		type(card.find('#tribute-honoree'), 'Margaret Chen');
-		(card.find('#tribute-kind') as HTMLSelectElement).value = 'memory';
-		card.find('#tribute-kind').dispatchEvent(new Event('change', { bubbles: true }));
+		await choose(card, 'tribute-kind', 'In memory of');
 		proceed(card);
+		expect(card.all('.step')[0]?.hidden).toBe(true);
 		card.find('.step:not([hidden]) .step-dot')?.click();
+		await settle();
 
 		expect(card.find('.tribute .disclosure-body').hidden).toBe(false);
 		expect((card.find('#tribute-honoree') as HTMLInputElement).value).toBe('Margaret Chen');
-		expect((card.find('#tribute-kind') as HTMLSelectElement).value).toBe('memory');
+		expect(showing(card, 'tribute-kind')).toBe('In memory of');
 	});
 });
 
@@ -2229,8 +2259,8 @@ describe('the cause a gift is credited to', () => {
 	};
 	const PINNED: Program = { mode: 'pinned', name: 'Clean water' };
 
-	/** the picker, or `null` on a card that draws none. */
-	function picker(card: Mounted): HTMLSelectElement | null {
+	/** the picker's box, or `null` on a card that draws none. */
+	function picker(card: Mounted): HTMLElement | null {
 		return card.shadow.querySelector('#program');
 	}
 
@@ -2239,19 +2269,12 @@ describe('the cause a gift is credited to', () => {
 		return card.shadow.querySelector('.row.program');
 	}
 
-	/** the picker, operated the way a donor operates one. */
-	function pick(card: Mounted, id: string): void {
-		const select = picker(card) as HTMLSelectElement;
-		select.value = id;
-		select.dispatchEvent(new Event('change', { bubbles: true }));
-	}
-
 	/** a donor at the review step of a form that offered them a choice, having made it or not. */
-	async function reviewing(program: Program, id?: string): Promise<Mounted> {
+	async function reviewing(program: Program, words?: string): Promise<Mounted> {
 		const card = await mount({ config: { ...CONFIG, program } });
 		press(card.all('[part~="frequency-option"] input')[0] as HTMLElement);
 		press(card.all('[part~="amount-option"] input')[0] as HTMLElement);
-		if (id !== undefined) pick(card, id);
+		if (words !== undefined) await choose(card, 'program', words);
 		proceed(card);
 		type(card.find('#email'), 'donor@example.org');
 		type(card.find('#first-name'), 'Ada');
@@ -2271,16 +2294,15 @@ describe('the cause a gift is credited to', () => {
 
 	it('offers the org’s causes under the gift going where it is needed most', async () => {
 		const card = await mount({ config: { ...CONFIG, program: CHOICE } });
-		const select = picker(card) as HTMLSelectElement;
 
-		expect(Array.from(select.options).map((option) => [option.value, option.textContent])).toEqual([
+		expect(listed(card, 'program')).toEqual([
 			['', 'Where it’s needed most'],
 			['prg_water', 'Clean water'],
 			['prg_school', 'Schools']
 		]);
 		// the resting option is an answer rather than a blank, so the card asks nothing of a donor
 		// who leaves it alone.
-		expect(select.value).toBe('');
+		expect(showing(card, 'program')).toBe('Where it’s needed most');
 	});
 
 	it('stands under the amount and over the note, on the step the gift is decided on', async () => {
@@ -2315,7 +2337,7 @@ describe('the cause a gift is credited to', () => {
 	});
 
 	it('names the cause the donor chose on the review step', async () => {
-		const card = await reviewing(CHOICE, 'prg_school');
+		const card = await reviewing(CHOICE, 'Schools');
 
 		expect(card.text('.row.program .program-name')).toBe('Schools');
 	});
@@ -2332,11 +2354,13 @@ describe('the cause a gift is credited to', () => {
 		const card = await mount({ config: { ...CONFIG, program: CHOICE } });
 		press(card.all('[part~="frequency-option"] input')[0] as HTMLElement);
 		press(card.all('[part~="amount-option"] input')[0] as HTMLElement);
-		pick(card, 'prg_water');
+		await choose(card, 'program', 'Clean water');
 		proceed(card);
+		expect(card.all('.step')[0]?.hidden).toBe(true);
 		card.find('.step:not([hidden]) .step-dot')?.click();
+		await settle();
 
-		expect((picker(card) as HTMLSelectElement).value).toBe('prg_water');
+		expect(showing(card, 'program')).toBe('Clean water');
 	});
 });
 
@@ -5468,12 +5492,14 @@ describe('a crypto gift', () => {
 	};
 	const combobox = (card: Mounted) => coins(card).querySelector('input') as HTMLInputElement;
 	/** the donor picking a coin in the list, by its ticker. */
-	const pick = (card: Mounted, ticker: string) => {
+	const pick = async (card: Mounted, ticker: string) => {
 		(coins(card).querySelector('.picker') as HTMLElement).click();
+		await settle();
 		const option = [...coins(card).querySelectorAll<HTMLElement>('[role="option"]')].find(
 			(node) => node.querySelector('.coin-ticker')?.textContent === ticker
 		);
 		option?.click();
+		await settle();
 	};
 	/** the review step of a one-time gift with the crypto option open. */
 	const onCrypto = async (options: Options = {}) => {
@@ -5494,7 +5520,7 @@ describe('a crypto gift', () => {
 				...options.ports
 			}
 		});
-		pick(card, ticker);
+		await pick(card, ticker);
 		card.find('[part~="submit"]').click();
 		await settle();
 		return { card, quotes };
@@ -5802,7 +5828,7 @@ describe('a crypto gift', () => {
 					Promise.reject({ code: 'below_minimum', message: 'too small', minAmountMinor: 1200 })
 			}
 		});
-		pick(card, 'USDT');
+		await pick(card, 'USDT');
 		card.find('[part~="submit"]').click();
 		await settle();
 
@@ -5825,7 +5851,7 @@ describe('a crypto gift', () => {
 		const card = await onCrypto({
 			ports: { quote: () => Promise.reject({ ...refusal, message: 'refused' }) }
 		});
-		pick(card, 'USDT');
+		await pick(card, 'USDT');
 		card.find('[part~="submit"]').click();
 		await settle();
 
@@ -5836,7 +5862,7 @@ describe('a crypto gift', () => {
 		const card = await onCrypto({
 			ports: { quote: () => Promise.reject({ code: 'coin_not_accepted', message: 'refused' }) }
 		});
-		pick(card, 'USDT');
+		await pick(card, 'USDT');
 		card.find('[part~="submit"]').focus();
 		card.find('[part~="submit"]').click();
 		await settle();

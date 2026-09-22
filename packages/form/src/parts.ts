@@ -13,9 +13,9 @@
 // a part list carries one name and any number of tokens. `part="action submit busy"` is matched
 // by `::part(action)`, `::part(submit)`, `::part(action submit)` and `::part(action busy)` alike,
 // because `::part()` matches on token presence. that is the single decision keeping this list at
-// twelve: state never spawns a name. there is no `amount-option-selected` and no
+// fourteen: state never spawns a name. there is no `amount-option-selected` and no
 // `submit-loading`, and the way to serve a host who needs one more hook is a token on a part that
-// already exists, never a thirteenth name.
+// already exists, never a fifteenth name.
 //
 // what is absent is load-bearing. across the shadow boundary a host's normal declaration beats an
 // inner one, so naming a surface is handing over control of it. layout containers are unnamed
@@ -45,6 +45,8 @@ export const PART_NAMES = [
 	'heading',
 	'label',
 	'field',
+	'select-list',
+	'select-option',
 	'checkbox',
 	'frequency-option',
 	'amount-option',

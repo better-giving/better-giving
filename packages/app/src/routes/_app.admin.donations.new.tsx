@@ -830,9 +830,9 @@ export default function AddDonation({ loaderData, actionData }: Route.ComponentP
 									label={CONTACT_FIELD_LABELS.kind}
 									options={CONTACT_KINDS.map((value) => ({ value, label: KIND_LABELS[value] }))}
 									{...boxProps(fields.kind)}
-									defaultValue={region.kind}
-									onChange={(event) => {
-										const kind = CONTACT_KINDS.find((k) => k === event.currentTarget.value);
+									value={region.kind}
+									onValueChange={(value) => {
+										const kind = CONTACT_KINDS.find((k) => k === value);
 										if (kind !== undefined) {
 											setHeld({ for: donationId, region: { ...region, kind } });
 										}

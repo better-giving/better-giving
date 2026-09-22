@@ -7,10 +7,10 @@ import { handle as formHandle } from './_app.admin.forms.$id';
 
 // what the panel's top strip holds over each screen the layout frames.
 //
-// the strip is the layout's, and what it carries is read off two places at once: the address, for
-// the destination the reader is in, and the deepest matched route's `handle`, for a trail
-// ($lib/admin/crumbs.tsx). a screen standing under a section names the trail; a screen that is its
-// destination's own page names the destination. either reading alone passes on half of the screens.
+// the strip is the layout's, and it is drawn only for a trail: the deepest matched route's `handle`
+// ($lib/admin/crumbs.tsx). a screen standing under a section names the trail; every other screen is
+// named by its tab title and the marked rail cell, and draws no strip. a destination's own page
+// carries its name in a visually hidden `h1` instead.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -65,25 +65,16 @@ function strip(root: HTMLElement): Element | null {
 	return root.querySelector('.adm-headstrip');
 }
 
-it('names the destination over a screen that is its own page', async () => {
+it('draws no strip over a screen that is its own page', async () => {
 	const root = await frameAt('/admin/forms');
 
-	expect(strip(root)?.querySelector('.adm-headstrip__title')?.textContent).toBe('Donation forms');
-	expect(strip(root)?.querySelector('nav[aria-label="Breadcrumb"]')).toBeNull();
+	expect(strip(root)).toBeNull();
 });
 
-it('makes that name the one heading the page has', async () => {
-	const root = await frameAt('/admin/forms');
-
-	expect([...root.querySelectorAll('h1')].map((h1) => h1.className)).toEqual([
-		'adm-headstrip__title'
-	]);
-});
-
-it('names the section without a heading over a screen that states its own', async () => {
+it('draws no strip over a screen under a section with no trail', async () => {
 	const root = await frameAt('/admin/members/password');
 
-	expect(strip(root)?.querySelector('.adm-headstrip__title')?.tagName).toBe('SPAN');
+	expect(strip(root)).toBeNull();
 	expect([...root.querySelectorAll('h1')].map((h1) => h1.textContent)).toEqual(['Your password']);
 });
 
@@ -92,7 +83,20 @@ it('carries the trail over a screen standing under a section', async () => {
 	const items = [...(strip(root)?.querySelectorAll('nav[aria-label="Breadcrumb"] li') ?? [])];
 
 	expect(items.map((li) => li.textContent)).toEqual(['Donation forms', 'Spring appeal']);
-	expect(strip(root)?.querySelector('.adm-headstrip__title')).toBeNull();
+});
+
+it('names a screen that is its own page with a heading only a screen reader gets', async () => {
+	const root = await frameAt('/admin/forms');
+	const headings = [...root.querySelectorAll('h1')];
+
+	expect(headings.map((h1) => h1.textContent)).toEqual(['Donation forms']);
+	expect(headings[0]?.classList.contains('adm-vh')).toBe(true);
+});
+
+it('adds no heading over a screen that carries a trail', async () => {
+	const root = await frameAt('/admin/forms/1');
+
+	expect(root.querySelectorAll('h1')).toHaveLength(0);
 });
 
 it('draws no strip under no destination', async () => {

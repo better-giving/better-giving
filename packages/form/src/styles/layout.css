@@ -547,6 +547,49 @@ form {
 	margin-block-start: max(calc(-0.75 * var(--_root-size)), calc(-1 * (var(--_row-min) - 1lh) / 2));
 }
 
+/*
+ * the closed choices' box (../select.ts): its words, then the chevron. every option's words stand in
+ * the one cell with only the chosen one visible, so the box is as wide as its longest option
+ * whichever is chosen — the measure `.dedication`'s `auto` column is spent on — and a name longer
+ * than the box is cut at its end.
+ */
+[data-scope='select'][data-part='trigger'] {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--_sp2);
+	text-align: start;
+}
+
+.select-words {
+	display: grid;
+	min-inline-size: 0;
+}
+
+.select-words > * {
+	grid-area: 1 / 1;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	visibility: hidden;
+}
+
+.select-words > [data-chosen] {
+	visibility: visible;
+}
+
+/* the list and a row, whose surface, size and ground are ./parts.css's (`[part~='select-list']`). */
+[data-scope='select'][data-part='content'] {
+	display: grid;
+}
+
+[data-scope='select'][data-part='item'] {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	column-gap: var(--_sp3);
+}
+
 .field-row {
 	display: flex;
 	flex-direction: column;

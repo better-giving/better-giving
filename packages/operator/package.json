@@ -53,6 +53,7 @@
 		"./components/forms/Field": "./src/components/forms/Field.jsx",
 		"./components/forms/FieldMessage": "./src/components/forms/FieldMessage.jsx",
 		"./components/forms/PairedFieldset": "./src/components/forms/PairedFieldset.jsx",
+		"./components/forms/RangeSlider": "./src/components/forms/RangeSlider.jsx",
 		"./components/forms/RepeatingRows": "./src/components/forms/RepeatingRows.jsx",
 		"./components/forms/SelectWithNote": "./src/components/forms/SelectWithNote.jsx",
 		"./components/forms/StatedValue": "./src/components/forms/StatedValue.jsx",

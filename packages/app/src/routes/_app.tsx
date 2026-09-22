@@ -128,18 +128,9 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 				link={RouterLink}
 				current={at}
 				head={
-					// a screen under a section states its trail, and the strip carries it in place of the
-					// section's name, which is the trail's first crumb. a screen that is its destination's
-					// own page states none and is named by the destination, and that name is the page's one
-					// `h1`: the screen draws no title of its own. a screen under a section with no trail
-					// states its own heading, so the section's name over it is no heading.
-					crumbs.length >= 2 ? (
-						<ScreenCrumbs />
-					) : at?.kind === 'page' ? (
-						<h1 className="adm-headstrip__title">{at.label}</h1>
-					) : at ? (
-						<span className="adm-headstrip__title">{at.label}</span>
-					) : undefined
+					// the strip is drawn only for a trail, the section's name being its first crumb. every
+					// other screen is named by its tab title and the marked rail cell, so no strip repeats it.
+					crumbs.length >= 2 ? <ScreenCrumbs /> : undefined
 				}
 				wayOut={
 					// a form and not a button that calls something: writes are form actions in this app
@@ -159,6 +150,12 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 					</Form>
 				}
 			>
+				{
+					// a screen that is its destination's own page draws no title, and the tab title and the
+					// marked rail cell name it to the eye; this is the in-document name a screen reader
+					// jumps to. a screen under a section draws its own `h1`, so it gets none here.
+					at?.kind === 'page' ? <h1 className="adm-vh">{at.label}</h1> : null
+				}
 				<Outlet />
 			</AppShell>
 		</>

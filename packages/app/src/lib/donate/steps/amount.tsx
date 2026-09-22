@@ -3,6 +3,7 @@ import { part, partWhen } from '@better-giving/form/parts';
 import type { AmountDecision } from '@better-giving/form/value';
 import type { FormConfig } from '@better-giving/form/v1';
 import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { Choice } from '../choice';
 import * as copy from '../copy';
 import type { ReactApi } from '../normalize';
 
@@ -347,18 +348,12 @@ export function AmountStep({
 			</fieldset>
 
 			{choosesProgram ? (
-				<div className="field-row program">
-					<label part={part('label')} htmlFor="program">
-						{copy.PROGRAM}
-					</label>
-					<select part={part('field')} id="program" {...api.programSelect.box}>
-						{api.programSelect.options.map((option) => (
-							<option key={option.value} value={option.value}>
-								{option.label}
-							</option>
-						))}
-					</select>
-				</div>
+				<Choice
+					id="program"
+					label={copy.PROGRAM}
+					choice={api.programSelect}
+					className="field-row program"
+				/>
 			) : null}
 
 			{/*
@@ -426,17 +421,13 @@ export function AmountStep({
 						 * wrapped rows, so the honoree's sentence is a grid item of its own and can span the
 						 * pair.
 						 */}
-						<div className="dedication">
-							<label part={part('label')} className="vh" htmlFor="tribute-kind">
-								{copy.TRIBUTE_KIND_LABEL}
-							</label>
-							<select part={part('field')} id="tribute-kind" {...api.tributeKindSelect.box}>
-								{api.tributeKindSelect.options.map((option) => (
-									<option key={option.value} value={option.value}>
-										{option.label}
-									</option>
-								))}
-							</select>
+						<Choice
+							id="tribute-kind"
+							label={copy.TRIBUTE_KIND_LABEL}
+							hideLabel
+							choice={api.tributeKindSelect}
+							className="dedication"
+						>
 							<TributeBox
 								id="tribute-honoree"
 								label={copy.TRIBUTE_HONOREE_LABEL}
@@ -446,7 +437,7 @@ export function AmountStep({
 								wrong={missing.includes('tribute-honoree')}
 								inputRef={refs.honoree}
 							/>
-						</div>
+						</Choice>
 
 						<div className="field-row">
 							{/*

@@ -1330,15 +1330,28 @@ describe('the coin list inside the crypto option', () => {
 		};
 		const rest = edge();
 		await caretOn(input);
-		const closed = { open: box.classList.contains('open'), ...edge() };
+		const closed = { open: box.dataset.state === 'open', ...edge() };
 		await userEvent.keyboard('{ArrowDown}');
-		const open = { open: box.classList.contains('open'), ...edge() };
+		await vi.waitFor(() => {
+			if (box.dataset.state !== 'open') throw new Error('the list is not open');
+		});
+		const open = { open: box.dataset.state === 'open', ...edge() };
 		return { rest, closed, open };
 	}
+	// drawn, rather than laid out: an unchosen row's tick keeps its box and hides the mark.
 	const shown = (node: Element | null) =>
-		node !== null && getComputedStyle(node).display !== 'none';
+		node !== null && node.checkVisibility({ visibilityProperty: true });
 
-	it('draws no list, no tick and no refusal while closed and nothing is refused', () => {
+	/** the box pressed, and the list once the machine has opened it (../coin-picker.ts). */
+	async function opened(root: ShadowRoot): Promise<void> {
+		(root.querySelector('.picker') as HTMLElement).click();
+		await vi.waitFor(() => {
+			if (!root.querySelector('.coin-list')?.checkVisibility())
+				throw new Error('the list is not open');
+		});
+	}
+
+	it('draws no list, no tick and no refusal while closed and nothing is refused', async () => {
 		const root = drawn(false);
 
 		expect(shown(root.querySelector('.coin-list'))).toBe(false);
@@ -1346,9 +1359,9 @@ describe('the coin list inside the crypto option', () => {
 		expect(shown(root.querySelector('#coin-problem'))).toBe(false);
 	});
 
-	it('opens the list on a press, ticks only the picked coin and says the refusal under a refused one', () => {
+	it('opens the list on a press, ticks only the picked coin and says the refusal under a refused one', async () => {
 		const root = drawn(true);
-		(root.querySelector('.picker') as HTMLElement).click();
+		await opened(root);
 		const [btc, sol] = [...root.querySelectorAll('[role="option"]')];
 
 		expect(shown(root.querySelector('.coin-list'))).toBe(true);
@@ -1361,7 +1374,7 @@ describe('the coin list inside the crypto option', () => {
 	// the search box stands in a value's place exactly as the card's own boxes do, so it is drawn at
 	// the rung they are (`[part~='amount-input'] input::placeholder` in ../styles/parts.css argues the pair):
 	// this sheet is adopted into a root of its own and is the one place the card's rung can drift.
-	it('draws its placeholder at the rung the card draws a placeholder at', () => {
+	it('draws its placeholder at the rung the card draws a placeholder at', async () => {
 		const root = drawn(false);
 		const input = root.querySelector('.picker input') as HTMLInputElement;
 
@@ -1388,7 +1401,7 @@ describe('the coin list inside the crypto option', () => {
 	// at the size and weight a field beside it is, so nothing in it reads larger than the words around.
 	it.each(['16px', '18px'])(
 		'sets every word of the list at the size and weight of a field beside it, at a %s card',
-		(size) => {
+		async (size) => {
 			const root = drawn(false);
 			const card = (root.host as HTMLElement).parentElement as HTMLElement;
 			card.style.fontSize = size;
@@ -1408,7 +1421,7 @@ describe('the coin list inside the crypto option', () => {
 			const closed = ['input', '.chosen .coin-ticker'].map((selector) =>
 				type(root.querySelector(selector))
 			);
-			(root.querySelector('.picker') as HTMLElement).click();
+			await opened(root);
 			const open = [type(root.querySelector('[role="option"] .coin-ticker'))];
 
 			expect([...closed, ...open]).toEqual(Array(3).fill(type(field)));
@@ -1416,12 +1429,12 @@ describe('the coin list inside the crypto option', () => {
 	);
 
 	// a ticker is read against a wallet's, character for character; a network's name is prose.
-	it('sets the ticker in the monospace stack and the network in the card’s face', () => {
+	it('sets the ticker in the monospace stack and the network in the card’s face', async () => {
 		const root = drawn(false);
 		const family = (selector: string) =>
 			getComputedStyle(root.querySelector(selector) as Element).fontFamily;
 		const closed = family('.chosen .coin-ticker');
-		(root.querySelector('.picker') as HTMLElement).click();
+		await opened(root);
 
 		expect(closed).toBe(family('[role="option"] .coin-ticker'));
 		expect(family('[role="option"] .coin-ticker')).toContain('ui-monospace');
@@ -1431,9 +1444,9 @@ describe('the coin list inside the crypto option', () => {
 	// the mark's width is the row's to lose: a logo that was blocked leaves the lettered shape under
 	// it, and a text column measured against each row's own mark would start the words at one x on
 	// the rows whose image arrived and at another on the rows whose did not.
-	it('starts every row’s words at one x, whichever mark the row drew', () => {
+	it('starts every row’s words at one x, whichever mark the row drew', async () => {
 		const root = drawn(false);
-		(root.querySelector('.picker') as HTMLElement).click();
+		await opened(root);
 		const rows = [...root.querySelectorAll<HTMLElement>('[role="option"]')];
 		const marks = rows.map((row) => (row.querySelector('img') === null ? 'letter' : 'logo'));
 		const lefts = () =>
@@ -1456,9 +1469,9 @@ describe('the coin list inside the crypto option', () => {
 
 	// the ticker and the pill are two lines rather than one run that wraps, so a network of two words
 	// settles on the second line instead of pushing the row's height around.
-	it('sets the ticker over the pill on lines of their own, whatever the network is called', () => {
+	it('sets the ticker over the pill on lines of their own, whatever the network is called', async () => {
 		const root = drawn(false);
-		(root.querySelector('.picker') as HTMLElement).click();
+		await opened(root);
 		const row = root.querySelector('[role="option"]') as HTMLElement;
 		const ticker = row.querySelector('.coin-ticker') as HTMLElement;
 		const pill = row.querySelector('.net') as HTMLElement;
@@ -1473,9 +1486,9 @@ describe('the coin list inside the crypto option', () => {
 
 	// the mark stands on the middle of the pair rather than on the first line of it: the two lines are
 	// fixed, so there is no wrap for it to drift away from.
-	it('centres the mark on the two lines beside it', () => {
+	it('centres the mark on the two lines beside it', async () => {
 		const root = drawn(false);
-		(root.querySelector('.picker') as HTMLElement).click();
+		await opened(root);
 		const row = root.querySelector('[role="option"]') as HTMLElement;
 		const mark = (row.querySelector('.logo') as HTMLElement).getBoundingClientRect();
 		const ticker = (row.querySelector('.coin-ticker') as HTMLElement).getBoundingClientRect();
@@ -1488,7 +1501,7 @@ describe('the coin list inside the crypto option', () => {
 	// table, so the only thing a sheet can get wrong is whether the entry it picked paints at all: a
 	// `data-tint` no rule answers leaves the pill with no ground, which renders as a word among words
 	// and reads as finished.
-	it('gives every entry of the network palette a ground and an ink of its own', () => {
+	it('gives every entry of the network palette a ground and an ink of its own', async () => {
 		const root = drawn(false);
 		const row = root.querySelector('.field-row') as HTMLElement;
 		const painted = [...Array(NETWORK_TINTS).keys()].map((tint) => {
@@ -1509,9 +1522,9 @@ describe('the coin list inside the crypto option', () => {
 	// the logo is the processor's own image and the letter under it is what a blocked or broken one
 	// leaves showing, so the two share the mark's one cell: an image that did not fill it would leave
 	// the letter beside it, and one drawn on its own transparency would leave the letter under it.
-	it('stands the coin’s logo in the mark, over the letter it falls back to', () => {
+	it('stands the coin’s logo in the mark, over the letter it falls back to', async () => {
 		const root = drawn(false);
-		(root.querySelector('.picker') as HTMLElement).click();
+		await opened(root);
 		const mark = root.querySelector('[role="option"] .logo') as HTMLElement;
 		const image = mark.querySelector('img') as HTMLImageElement;
 		const letter = mark.querySelector('.initial') as HTMLElement;
@@ -1522,6 +1535,42 @@ describe('the coin list inside the crypto option', () => {
 		expect(image.getBoundingClientRect()).toEqual(mark.getBoundingClientRect());
 		expect(getComputedStyle(letter).visibility).toBe('hidden');
 		expect(getComputedStyle(bare).visibility).toBe('visible');
+	});
+
+	// the crypto option stands in the card, which clips its own overflow, and the card in whatever box
+	// a host puts it in: a list opened inside either is cut at its edge, or covered by the host's own
+	// stacking.
+	it('floats the open list over a host box that clips, transforms and stacks above it', async () => {
+		const root = drawn(false);
+		const card = (root.host as HTMLElement).parentElement as HTMLElement;
+		const frame = document.createElement('div');
+		frame.style.cssText =
+			'position: relative; overflow: hidden; transform: translateZ(0); inline-size: 400px;';
+		frame.appendChild(card);
+		document.body.appendChild(frame);
+		mounts.push(frame);
+		const cover = document.createElement('div');
+		cover.style.cssText = 'position: fixed; inset: 0; z-index: 2147483647;';
+		document.body.appendChild(cover);
+		mounts.push(cover);
+
+		await opened(root);
+		const last = await vi.waitFor(() => {
+			const rows = [...root.querySelectorAll<HTMLElement>('[role="option"]')];
+			const row = rows.at(-1);
+			if (row === undefined || !row.checkVisibility()) throw new Error('the list is not open');
+			if (row.getBoundingClientRect().top < frame.getBoundingClientRect().bottom)
+				throw new Error('the list is not placed');
+			return row;
+		});
+		const at = last.getBoundingClientRect();
+
+		expect(at.bottom).toBeGreaterThan(frame.getBoundingClientRect().bottom);
+		expect(
+			root
+				.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2)
+				?.closest('[role="option"]')
+		).toBe(last);
 	});
 
 	it('rings a refused closed box its caret is in with the refused open box’s ring', async () => {
@@ -2977,5 +3026,158 @@ describe('the ring a primary-filled control draws inside itself, as painted', ()
 		// the two neighbours are one colour, which is what makes the ring a line within the control
 		// rather than its rim: the fill is on both sides of it.
 		expect(apart(outside, inside)).toBeLessThanOrEqual(8);
+	});
+});
+
+// the two closed choices' list (../select.ts) stands in the top layer, a flattening away from the
+// card it belongs to, and is still in the element's own shadow tree — so the element's sheets dress
+// it and a host's `::part()` reaches it like any other surface.
+describe('the list a closed choice opens', () => {
+	const CHOICE: FormConfig = {
+		...CONFIG,
+		program: {
+			mode: 'choice',
+			options: [
+				{ id: 'prg_water', name: 'Clean water' },
+				{ id: 'prg_school', name: 'Schools' }
+			]
+		}
+	};
+
+	async function opened(): Promise<Mounted & { box: HTMLElement; list: HTMLElement }> {
+		const mounted = await mount(CHOICE);
+		const box = mounted.shadow.querySelector<HTMLElement>('#program');
+		if (box === null) throw new Error('no program box');
+		box.focus();
+		await userEvent.keyboard('{ArrowDown}');
+		const list = await vi.waitFor(() => {
+			const found = mounted.shadow.querySelector<HTMLElement>("[part~='select-list']");
+			if (found === null || !found.checkVisibility()) throw new Error('the list is not open');
+			return found;
+		});
+		return { ...mounted, box, list };
+	}
+
+	it('draws the list on the card’s ground and the row under the keys on a field’s fill', async () => {
+		const { card, box, list } = await opened();
+		const highlighted = await vi.waitFor(() => {
+			const row = list.querySelector<HTMLElement>("[part~='select-option'][data-highlighted]");
+			if (row === null) throw new Error('no row is highlighted');
+			return row;
+		});
+
+		expect(getComputedStyle(list).backgroundColor).toBe(getComputedStyle(card).backgroundColor);
+		expect(getComputedStyle(highlighted).backgroundColor).toBe(
+			getComputedStyle(box).backgroundColor
+		);
+	});
+
+	/** a `box-shadow` value as this card resolves it. */
+	function shadowOf(root: ShadowRoot, value: string): string {
+		const probe = document.createElement('div');
+		probe.style.boxShadow = value;
+		root.appendChild(probe);
+		const drawn = getComputedStyle(probe).boxShadow;
+		probe.remove();
+		return drawn;
+	}
+
+	// opened from the keys, the machine focuses the list itself, and that focus is keyboard-visible.
+	it('lifts a list the keys opened rather than ringing it, and the open box keeps its ring', async () => {
+		const { shadow, box, list } = await opened();
+		await vi.waitFor(() => {
+			if (!list.matches(':focus-visible')) throw new Error('the list holds no visible focus');
+		});
+
+		expect(getComputedStyle(list).boxShadow).toBe(shadowOf(shadow, 'var(--_lift)'));
+		expect(getComputedStyle(box).boxShadow).toBe(
+			shadowOf(shadow, '0 0 0 var(--_focus-width) var(--_focus-ring)')
+		);
+	});
+
+	it('marks the chosen row `selected` and no other', async () => {
+		const { list } = await opened();
+		const rows = Array.from(list.querySelectorAll<HTMLElement>("[role='option']"));
+
+		expect(rows.map((row) => row.getAttribute('part'))).toEqual([
+			'select-option selected',
+			'select-option',
+			'select-option'
+		]);
+	});
+
+	it('lets a host restyle the box, the list and a row with the published selectors', async () => {
+		const { tag, box, list } = await opened();
+		page(
+			`${tag}::part(field) { cursor: help; } ${tag}::part(select-list) { cursor: wait; } ${tag}::part(select-option) { cursor: move; }`
+		);
+		const row = list.querySelector<HTMLElement>("[part~='select-option']");
+		if (row === null) throw new Error('no row');
+
+		expect(getComputedStyle(box).cursor).toBe('help');
+		expect(getComputedStyle(list).cursor).toBe('wait');
+		expect(getComputedStyle(row).cursor).toBe('move');
+	});
+
+	// an operator names the causes, and a long one is a list a phone cannot hold at its one line. the
+	// list stops at the room the viewport leaves it and the row's words wrap inside that.
+	it('keeps a long cause inside a phone’s width, wrapping its words', async () => {
+		const held = [window.innerWidth, window.innerHeight] as const;
+		await browser.viewport(375, 812);
+		try {
+			const long = 'Emergency shelter, food and clean water for families displaced by flooding';
+			const mounted = await mount({
+				...CHOICE,
+				program: { mode: 'choice', options: [{ id: 'prg_flood', name: long }] }
+			});
+			const box = mounted.shadow.querySelector<HTMLElement>('#program');
+			if (box === null) throw new Error('no program box');
+			box.focus();
+			await userEvent.keyboard('{ArrowDown}');
+			const row = await vi.waitFor(() => {
+				const found = Array.from(
+					mounted.shadow.querySelectorAll<HTMLElement>("[part~='select-option']")
+				).find((option) => option.textContent === long);
+				if (found === undefined || !found.checkVisibility()) throw new Error('no long row');
+				return found;
+			});
+			const list = row.closest<HTMLElement>("[part~='select-list']");
+
+			await vi.waitFor(() => {
+				expect(list?.getBoundingClientRect().right).toBeLessThanOrEqual(window.innerWidth);
+				expect(list?.getBoundingClientRect().left).toBeGreaterThanOrEqual(0);
+			});
+			expect(row.scrollWidth).toBe(row.clientWidth);
+		} finally {
+			await browser.viewport(held[0], held[1]);
+		}
+	});
+
+	// the tick stands on the chosen row alone, and a row without it keeps its column: a list whose
+	// width followed which row held the tick would overhang the box by a tick when the longest
+	// option is the chosen one.
+	it('draws the list at one width whichever row is chosen', async () => {
+		const mounted = await mount(CHOICE);
+		mounted.shadow.querySelector<HTMLElement>(".tribute [part~='checkbox']")?.click();
+		const box = mounted.shadow.querySelector<HTMLElement>('#tribute-kind');
+		if (box === null) throw new Error('no tribute kind box');
+		const widthOpen = async (): Promise<number> => {
+			box.focus();
+			await userEvent.keyboard('{ArrowDown}');
+			const list = await vi.waitFor(() => {
+				const found = mounted.shadow.querySelector<HTMLElement>('#tribute-kind-list');
+				if (found === null || !found.checkVisibility()) throw new Error('the list is not open');
+				return found;
+			});
+			return list.getBoundingClientRect().width;
+		};
+		const resting = await widthOpen();
+		await userEvent.keyboard('{End}');
+		await userEvent.keyboard('{Enter}');
+		await vi.waitFor(() =>
+			expect(box.querySelector('[data-chosen]')?.textContent).toBe('In memory of')
+		);
+
+		expect(await widthOpen()).toBe(resting);
 	});
 });

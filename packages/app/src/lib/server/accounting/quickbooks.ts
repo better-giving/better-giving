@@ -806,6 +806,7 @@ export function createQuickbooksProvider(
 					id,
 					name,
 					type: stringField(row, 'AccountType') ?? '',
+					subType: stringField(row, 'AccountSubType'),
 					classification: stringField(row, 'Classification')
 				});
 			}

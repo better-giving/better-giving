@@ -1,4 +1,4 @@
-import { and, eq, sql, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
 import { quickbooksConnection } from '../db/schema';
@@ -158,25 +158,70 @@ export async function saveQuickbooksStartAt(db: Db, startAt: Date): Promise<void
  * name with no id, and a send needs all three anyway — a screen that could save one of them would
  * be a screen an operator leaves half-done with nothing saying so.
  */
-export async function saveQuickbooksAccounts(
+export async function saveQuickbooksAccounts(db: Db, accounts: ChosenAccounts): Promise<void> {
+	await db
+		.update(quickbooksConnection)
+		.set(accountColumns(accounts))
+		.where(eq(quickbooksConnection.id, CONNECTION_ID));
+}
+
+/**
+ * the roles the company's chart named, written only where no account is held yet and only while
+ * `realmId` is still the company connected. a role the chart named none for stays null.
+ *
+ * the callback fills these from a chart it read a moment earlier, and two things can land in
+ * between: an operator's save on the console, and a reconnect to a different company. both checks
+ * are in the UPDATE's own where clause rather than a read before it, so neither is overwritten by a
+ * guess made before it — and one company's account ids, small integers that name real and different
+ * accounts in another, never reach the other's connection.
+ */
+export async function fillQuickbooksAccounts(
 	db: Db,
-	accounts: {
-		readonly income: ChosenAccount;
-		readonly fee: ChosenAccount;
-		readonly deposit: ChosenAccount;
-	}
+	realmId: string,
+	accounts: FilledAccounts
 ): Promise<void> {
 	await db
 		.update(quickbooksConnection)
 		.set({
-			incomeAccountId: accounts.income.id,
-			incomeAccountName: accounts.income.name,
-			feeAccountId: accounts.fee.id,
-			feeAccountName: accounts.fee.name,
-			depositAccountId: accounts.deposit.id,
-			depositAccountName: accounts.deposit.name
+			incomeAccountId: accounts.income?.id ?? null,
+			incomeAccountName: accounts.income?.name ?? null,
+			feeAccountId: accounts.fee?.id ?? null,
+			feeAccountName: accounts.fee?.name ?? null,
+			depositAccountId: accounts.deposit?.id ?? null,
+			depositAccountName: accounts.deposit?.name ?? null
 		})
-		.where(eq(quickbooksConnection.id, CONNECTION_ID));
+		.where(
+			and(
+				eq(quickbooksConnection.id, CONNECTION_ID),
+				eq(quickbooksConnection.realmId, realmId),
+				isNull(quickbooksConnection.incomeAccountId),
+				isNull(quickbooksConnection.feeAccountId),
+				isNull(quickbooksConnection.depositAccountId)
+			)
+		);
+}
+
+type FilledAccounts = {
+	readonly income: ChosenAccount | null;
+	readonly fee: ChosenAccount | null;
+	readonly deposit: ChosenAccount | null;
+};
+
+type ChosenAccounts = {
+	readonly income: ChosenAccount;
+	readonly fee: ChosenAccount;
+	readonly deposit: ChosenAccount;
+};
+
+function accountColumns(accounts: ChosenAccounts) {
+	return {
+		incomeAccountId: accounts.income.id,
+		incomeAccountName: accounts.income.name,
+		feeAccountId: accounts.fee.id,
+		feeAccountName: accounts.fee.name,
+		depositAccountId: accounts.deposit.id,
+		depositAccountName: accounts.deposit.name
+	};
 }
 
 /**

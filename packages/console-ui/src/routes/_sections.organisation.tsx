@@ -1,5 +1,4 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { FOLD_LABELS } from '@better-giving/operator/setup-folds';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { saveOrgProfile } from '../api/client';
@@ -46,7 +45,6 @@ export default function OrganisationPage({ actionData, matches }: Route.Componen
 	const write = actionData && 'write' in actionData ? actionData.write : null;
 	return (
 		<Column>
-			<PageHeader title={FOLD_LABELS.organisation} />
 			<OrgFold
 				/* taken from the press's own answer from the moment one stores a profile: the reading is
 				   taken again after every press, but it commits a render later than the answer does

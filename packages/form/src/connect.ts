@@ -101,15 +101,15 @@ export type WorkingPhase = 'quoting' | 'authorizing' | 'confirming' | 'resuming'
 /**
  * the normalizer a consumer supplies, one function per shape of node the flow describes.
  *
- * four kinds, one per native element the flow needs, and the smallness is the rule: a kind
- * exists because the platform has an element for it, never because a widget needs building.
- * `group` is a native `<fieldset>` of radios — roving focus, arrow-key traversal and form
- * semantics come free; `field` is a native text input; `select` is a native `<select>`; `button`
- * is a button. the genuinely hard accessible widget in this form is the payment provider's
- * iframe, which we do not control. a fifth kind would mean something was being re-implemented
- * that the platform already does.
+ * four kinds, one per shape of control the flow needs, and the smallness is the rule: a kind
+ * exists because a donor operates a different kind of thing, never because a widget needs
+ * building. `group` is a native `<fieldset>` of radios — roving focus, arrow-key traversal and
+ * form semantics come free; `field` is a native text input; `button` is a button; `select` is one
+ * choice from a closed list in one control, and what draws it is the renderer's (./select.ts for
+ * the element). a fifth kind would mean something was being re-implemented that one of these
+ * already does.
  *
- * `select` and `group` are both closed choices and are separate because the platform draws them
+ * `select` and `group` are both closed choices and are separate because they are drawn
  * differently, not because the flow does: a `group` spends a row per option and says every option
  * out loud, and a `select` spends one control. the tribute's kind is the second — it sits beside
  * the name it qualifies and reads as the start of the sentence that name finishes.
@@ -623,9 +623,9 @@ function isWorking(snapshot: CheckoutSnapshot): boolean {
 /**
  * what the option choosing no cause carries as its value.
  *
- * `''` because it is what a `<select>` reports for an option with nothing of its own, so this seam
- * is where it becomes the flow's `null` and back again (`SET_PROGRAM` in ./checkout.machine.ts). a
- * control's encoding rather than a wire one: no request ever carries it.
+ * `''` because a closed choice keys its options by string and cannot key one by `null`, so this
+ * seam is where it becomes the flow's `null` and back again (`SET_PROGRAM` in
+ * ./checkout.machine.ts). a control's encoding rather than a wire one: no request ever carries it.
  */
 const NO_PROGRAM = '';
 
@@ -715,9 +715,9 @@ export function connect<
 		// answer rather than a placeholder — the gift going where it is needed most — which is why it
 		// is here rather than being an empty select a renderer marks as unanswered.
 		//
-		// `''` is the DOM's own word for a selection carrying nothing, and it is the whole of why the
+		// `''` is the string standing for a selection carrying nothing, and it is the whole of why the
 		// value is a string on both sides of this seam while the flow's own is `string | null`: a
-		// `<select>` reports the empty option as `''` and cannot report a null.
+		// select keys its options by string and cannot key one by a null (`NO_PROGRAM` above).
 		programSelect: normalize.select({
 			name: 'programId',
 			value: draft.programId ?? NO_PROGRAM,

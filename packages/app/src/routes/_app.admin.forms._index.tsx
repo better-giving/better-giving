@@ -49,7 +49,7 @@ import type { Route } from './+types/_app.admin.forms._index';
 // `$lib/server/forms/queries.ts`; the only job here is a projection. neither `D1Database` nor the
 // `form` table object is named anywhere in this route, and neither may be.
 
-/** the screen's name in the document title. the frame's strip names the page (./_app.tsx). */
+/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
 const SCREEN_TITLE = 'Donation forms';
 
 /** the address this screen answers on, which is also where its own question is asked and dropped. */
@@ -292,9 +292,9 @@ export default function DonationForms({ loaderData }: Route.ComponentProps) {
 							{/* the name is a plain link and takes the title's own type role, rather than
 							    arriving at a button's and being pushed back out of it.
 
-							    level 2, because a record on this list stands directly under the page's own
-							    `<h1>` and nothing sits between them. how loud the words are is
-							    `.adm-record__title`'s to say. */}
+							    level 2, because a record on this list stands directly under the page's
+							    `<h1>`, which the frame draws hidden, and nothing sits between them. how
+							    loud the words are is `.adm-record__title`'s to say. */}
 							<h2 className="adm-record__title">
 								<Link to={href('/admin/forms/:id', { id: form.id })}>{form.name}</Link>
 							</h2>

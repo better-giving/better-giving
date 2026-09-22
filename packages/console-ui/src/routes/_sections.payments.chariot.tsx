@@ -1,5 +1,4 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { freeWithheldVars, startChariotSetup } from '../api/client';
 import type { VarsWritten } from '../api/types';
@@ -91,7 +90,6 @@ export default function ChariotPage({ loaderData, actionData, matches }: Route.C
 
 	return (
 		<Column>
-			<PageHeader title={TITLE} />
 			<ChariotSection
 				values={shell.reading.values}
 				payments={loaderData.payments}

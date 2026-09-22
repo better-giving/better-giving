@@ -8,8 +8,17 @@ import {
 	connectStateFrom,
 	QUICKBOOKS_CALLBACK_PATH
 } from '$lib/server/accounting/connect-link';
-import { connectQuickbooks, saveQuickbooksCompanyName } from '$lib/server/accounting/connection';
+import {
+	connectQuickbooks,
+	fillQuickbooksAccounts,
+	type QuickbooksConnectionView,
+	readQuickbooksConnection,
+	saveQuickbooksCompanyName
+} from '$lib/server/accounting/connection';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
+import type { AccountingProvider } from '$lib/server/accounting/provider';
+import { defaultAccounts } from '$lib/server/accounting/quickbooks-accounts';
+import type { Db } from '$lib/server/db/client';
 import { readAuthEnv } from '$lib/server/auth';
 import { secretEquals } from '$lib/server/secret-compare';
 import { database, platform } from '../context';
@@ -36,6 +45,15 @@ import type { Route } from './+types/quickbooks.callback';
 // tokens and the realm; the name is what an operator reads to tell they connected the books they
 // meant to. a read that did not land leaves the row exactly as connected as it was, with the name
 // null until something reads it again ($lib/server/accounting/connection.ts).
+//
+// **the three accounts are filled from the company's own chart, afterwards and on the same terms.**
+// an operator connecting books has nothing picked, and a connection with nothing picked sends
+// nothing; so each role the chart names an account for ($lib/server/accounting/quickbooks-accounts.ts)
+// is saved and the console's pickers open on it. a role it names none for stays unpicked, and so
+// sends stay held until the operator picks it on the console. a chart that could not be read, or a
+// fault anywhere in the fill, leaves all three unpicked and logs why. a reconnect to the same
+// company keeps what was picked before ($lib/server/accounting/connection.ts), and nothing
+// overwrites it.
 //
 // **it ends on a page rather than a redirect into either operator surface.** Intuit cannot be
 // pointed at a console running on somebody's laptop, and /admin is a different sign-in from the one
@@ -109,11 +127,43 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 
 	const company = await provider.readCompany();
 	if (company.ok) await saveQuickbooksCompanyName(db, company.value.companyName);
+	await fillAccounts(db, provider, realmId);
 
 	return data(
 		{ outcome: 'connected' as const, companyName: company.ok ? company.value.companyName : null },
 		{ headers: spent }
 	);
+}
+
+/**
+ * each role the chart names an account for, where nothing is picked yet.
+ *
+ * nothing it throws escapes: the connection is already stored, and a fault here turning the page
+ * into a 500 would tell the operator a connect that landed had failed. a failure logs its reason or
+ * the thrown error's name and nothing more — a detail or message can quote Intuit's answer.
+ */
+async function fillAccounts(db: Db, provider: AccountingProvider, realmId: string): Promise<void> {
+	try {
+		// skips the chart read on a same-company reconnect, which kept its picks.
+		const connection = await readQuickbooksConnection(db);
+		if (connection === null || hasPicks(connection)) return;
+
+		const chart = await provider.listAccounts();
+		if (!chart.ok) {
+			console.error('quickbooks account fill: chart read failed', chart.reason);
+			return;
+		}
+		await fillQuickbooksAccounts(db, realmId, defaultAccounts(chart.value));
+	} catch (error) {
+		console.error(
+			'quickbooks account fill: threw',
+			error instanceof Error ? error.name : typeof error
+		);
+	}
+}
+
+function hasPicks(connection: QuickbooksConnectionView): boolean {
+	return connection.income !== null || connection.fee !== null || connection.deposit !== null;
 }
 
 /**

@@ -76,7 +76,7 @@ function press(root: HTMLElement): HTMLButtonElement {
 	return found as HTMLButtonElement;
 }
 
-it('draws no heading of its own: the frame names the page', () => {
+it('draws no heading of its own: the frame names the page in a hidden one', () => {
 	expect(screen({ sentTo: null }).querySelector('h1')).toBe(null);
 });
 

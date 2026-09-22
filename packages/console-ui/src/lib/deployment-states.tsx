@@ -4,9 +4,9 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
-import { Said } from './said';
+import { Refusal, Said } from './said';
 import type { NoReport } from '../api/types';
-import { unreadAnswer } from './unread-answer';
+import { readableRefusal, unreadAnswer } from './unread-answer';
 
 // the five ways a deployment does not answer, drawn the same on every screen that asks it something.
 //
@@ -109,6 +109,9 @@ export function WhyNot({
 			</Banner>
 		);
 	}
+
+	const refusal = readableRefusal(answer);
+	if (refusal !== null) return <Refusal refusal={refusal} />;
 
 	return (
 		<>

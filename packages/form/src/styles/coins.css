@@ -11,6 +11,10 @@
  * the box and the list take the card's own ground rather than a field's, because the open row they
  * stand in is drawn a field's ground (`.band.open` in ./rows.css) and a box that matched it would
  * disappear into it. nothing here moves.
+ *
+ * the open list is the closed choices' list (`[part~='select-list']` and `[part~='select-option']`
+ * in ./parts.css, which draw its surface and its rows' ground, size and tick), and what is here is
+ * what a coin's row has and a choice's does not: a mark and two lines.
  */
 
 :host {
@@ -55,13 +59,13 @@ button {
  * always holds it, and a closed one does wherever its input matches `:focus-visible`, which is that
  * pseudo-class's own call on a keyboard or a pointer.
  */
-.picker.open,
+.picker[data-state='open'],
 .picker:has(input:focus-visible) {
 	border-color: var(--_focus-ring);
 	box-shadow: 0 0 0 var(--_focus-width) var(--_focus-ring);
 }
 
-.picker.open[part~='invalid'],
+.picker[data-state='open'][part~='invalid'],
 .picker:has(input:focus-visible)[part~='invalid'] {
 	border-color: var(--_bad);
 	box-shadow:
@@ -230,29 +234,22 @@ button {
 }
 
 /*
- * the list opens in flow, under the box, pushing what follows down: the card clips its own overflow
- * (`[part~='card']` in ./parts.css), so a list floating over the bottom of the card would be cut off.
+ * the list stands in the top layer, under the box or over it by where there is room (../zag.ts).
  *
- * its height is four and a half rows, so the half row says there is more to scroll to. no token names
- * a list's height; the rows are the token's.
- *
- * it is also the grid every row is laid out on, which is why the three columns are declared here and
- * not on the row: the mark, the words and the tick. a row takes them with `subgrid` below, so the
- * words start at one x down the whole list — sized once against the widest mark any row drew rather
- * than against each row's own, which is what a column per row would give.
+ * it is the grid every row is laid out on, which is why the three columns are declared here and not
+ * on the row: the mark, the words and the tick. a row takes them with `subgrid` below, so the words
+ * start at one x down the whole list — sized once against the widest mark any row drew rather than
+ * against each row's own, which is what a column per row would give.
  */
 .coin-list {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr) auto;
 	align-content: start;
-	margin-block-start: var(--_sp1);
-	padding: var(--_sp1);
-	background: var(--_n1);
-	border: var(--_border) solid var(--_edge-control);
-	border-radius: var(--_r-in);
-	box-shadow: var(--_lift);
-	max-block-size: calc(var(--_row-min) * 4.5);
-	overflow-y: auto;
+}
+
+/* a search that finds no coin draws no empty surface over the sentence saying so. */
+.coin-list[data-empty] {
+	display: none;
 }
 
 /*
@@ -268,11 +265,6 @@ button {
 	grid-template-rows: auto auto auto;
 	align-content: center;
 	column-gap: var(--_sp3);
-	min-block-size: var(--_row-min);
-	padding: var(--_sp2) var(--_sp3);
-	border-radius: var(--_r-in);
-	font-size: var(--_t-md);
-	cursor: pointer;
 }
 
 /*
@@ -315,17 +307,8 @@ button {
 	grid-row: 3;
 }
 
-/* the option the arrow keys stand on, and the one a pointer is over: ground alone, never weight. */
-.option.highlighted,
-.option:hover {
-	background: var(--_n3);
-}
-
 .option .tick {
 	grid-column: 3;
-	inline-size: var(--_glyph-beside);
-	block-size: var(--_glyph-beside);
-	color: var(--_p);
 }
 
 .option[aria-disabled='true'] {
@@ -337,7 +320,6 @@ button {
 }
 
 .no-match {
-	margin: 0;
 	padding: var(--_sp2) var(--_sp3);
 	color: var(--_n10);
 	font-size: var(--_t-sm);

@@ -5,8 +5,8 @@
 /**
  * @typedef {object} PageHeaderProps
  * @property {ReactNode} [title] the page's name as its heading. left out where the name is already
- *   read directly above — the last crumb of the trail, or `.adm-headstrip__title` — and drawing it
- *   here would be that name twice, a line apart.
+ *   read directly above — the last crumb of the trail — and drawing it here would be that name
+ *   twice, a line apart.
  * @property {ReactNode} [beside] a word about the page as a whole, on the heading's own baseline —
  *   a status, a count, the state the thing being looked at is in. it qualifies the title, which is
  *   why it is beside it; anything qualifying what the page holds belongs in the page.
@@ -29,12 +29,11 @@
 
    **no title is a shape this header has, and the sheet is already written for it.** a heading is
    drawn only where one was handed in, so a screen whose name is already read directly above it —
-   the trail's last crumb, or the head strip's title — says it once rather than twice. an empty
-   heading would be a name-shaped gap and an empty step above the standfirst, so the whole name row
-   goes rather than its contents. `.adm-pageheader__row:not(:has(h1))` in ../../styles/adm.css is
-   what stands the page's action at the far end of a row that starts with nothing, and that rule is
-   older than this branch: the head-strip case reached it first. `beside` qualifies the title and
-   goes with it — a word beside a name that is not there qualifies nothing.
+   the trail's last crumb — says it once rather than twice. an empty heading would be a name-shaped
+   gap and an empty step above the standfirst, so the whole name row goes rather than its contents.
+   `.adm-pageheader__row:not(:has(h1))` in ../../styles/adm.css is what stands the page's action at
+   the far end of a row that starts with nothing. `beside` qualifies the title and goes with it — a
+   word beside a name that is not there qualifies nothing.
 
    no slot here carries the name of a route-module export react router strips — `loader`,
    `action`, `middleware`, `headers` — which is why the trailing one is `pageAction`.

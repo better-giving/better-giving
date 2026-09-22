@@ -127,8 +127,8 @@ export function FormProgramFields({ boxes, programs, retired, footer }: FormProg
 					defaultValue={boxes.program_mode.defaultValue}
 					options={MODE_OPTIONS}
 					hint={PROGRAM_MODE_NOTES[mode]}
-					onChange={(event) => {
-						const chosen = asMode(event.currentTarget.value);
+					onValueChange={(value) => {
+						const chosen = asMode(value);
 						setMode(chosen);
 						setRevealed(chosen === 'pinned' ? REVEALED : '');
 					}}

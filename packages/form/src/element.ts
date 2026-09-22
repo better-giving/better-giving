@@ -5,7 +5,7 @@
 // ./checkout.machine.ts through ./connect.ts and renders it; it re-implements none of it.
 //
 // the public surface is closed and permanent. two attributes (`form`, `variant`), one seed custom
-// property, twelve `::part()` names and two slots — all published in `custom-elements.json`,
+// property, fourteen `::part()` names and two slots — all published in `custom-elements.json`,
 // all add-never-rename, exactly like `v1` (CLAUDE.md, "Permanent contracts"). one object-valued
 // attribute would make React support version-dependent, so the attributes stay primitive.
 //
@@ -434,10 +434,13 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		 * what the live card holds outside its own subtree, or nothing while none is live.
 		 *
 		 * the card's own nodes go with the card when `#show` replaces it; this is for what does not —
-		 * `CardView.stop` in ./views.ts is where the list is. held as the function rather than the
-		 * view, because that is the whole of what this class ever asks a card for after it is built.
+		 * `CardView.stop` in ./views.ts is where the list is. held as a function rather than the view,
+		 * because this and `#reattachCard` below are the whole of what this class asks a card for after
+		 * it is built.
 		 */
 		#letGoOfCard: (() => void) | null = null;
+		/** the live card asked after a move (`CardView.reattached`), latched and cleared with the above. */
+		#reattachCard: (() => void) | null = null;
 		/**
 		 * the live region every card in this element speaks through, built with the shadow root.
 		 *
@@ -519,6 +522,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 
 		connectedCallback(): void {
 			this.#stay();
+			this.#reattachCard?.();
 			this.#bootIfNeeded();
 		}
 
@@ -550,10 +554,13 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		 * the pair everywhere. what declaring it buys is the move said outright, in place of the
 		 * deferred round trip, on the engines that have it.
 		 *
-		 * empty because a move changes nothing this element holds. the shadow root, the flow, the
-		 * payment mount and the challenge all travel with it.
+		 * a move changes nothing else this element holds — the shadow root, the flow, the payment
+		 * mount and the challenge all travel with it — but an open list is a popover, and the card is
+		 * asked whether one was taken off the screen, as it is on the pair's connect.
 		 */
-		connectedMoveCallback(): void {}
+		connectedMoveCallback(): void {
+			this.#reattachCard?.();
+		}
 
 		/** a deferred teardown dropped, because the element is not leaving after all. */
 		#stay(): void {
@@ -1023,6 +1030,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 			// latched before the card is shown because from here on every path out of this method ends
 			// at a stop.
 			this.#letGoOfCard = () => view.stop();
+			this.#reattachCard = () => view.reattached();
 			// the card goes into the shadow root before the runtime is asked for anything: a payment
 			// provider's own fields are painted from this component's ramp, and a detached subtree has
 			// no computed style to read one off. it is all one task, so nothing is painted between
@@ -1164,6 +1172,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 			this.#unsay = null;
 			const letGo = this.#letGoOfCard;
 			this.#letGoOfCard = null;
+			this.#reattachCard = null;
 			letGo?.();
 			this.#disarm();
 			this.#reading?.abort();

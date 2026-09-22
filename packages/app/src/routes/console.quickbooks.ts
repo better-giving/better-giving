@@ -1,4 +1,6 @@
 import type {
+	LedgerAccountLine,
+	QuickbooksAccountRole,
 	QuickbooksAccountsReading,
 	QuickbooksConnectionLine,
 	QuickbooksPress,
@@ -6,7 +8,10 @@ import type {
 	QuickbooksRecourse,
 	QuickbooksReport
 } from '@better-giving/operator/console/quickbooks';
-import { QUICKBOOKS_PRESSES } from '@better-giving/operator/console/quickbooks';
+import {
+	QUICKBOOKS_ACCOUNT_ROLES,
+	QUICKBOOKS_PRESSES
+} from '@better-giving/operator/console/quickbooks';
 import { readQuickbooksBacklog, retryFailedEntries } from '$lib/server/accounting/backlog';
 import {
 	connectFlowOrigin,
@@ -22,7 +27,16 @@ import {
 	type QuickbooksConnectionView
 } from '$lib/server/accounting/connection';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
-import type { AccountingFailureReason, LedgerAccount } from '$lib/server/accounting/provider';
+import type {
+	AccountingFailureReason,
+	AccountRole,
+	LedgerAccount
+} from '$lib/server/accounting/provider';
+import {
+	fitsRole,
+	ROLE_TYPES,
+	UNDEPOSITED_FUNDS
+} from '$lib/server/accounting/quickbooks-accounts';
 import { readAuthEnv, resolveAuthSecret } from '$lib/server/auth';
 import { consoleJson } from '$lib/server/console/surface';
 import type { Db } from '$lib/server/db/client';
@@ -54,7 +68,8 @@ import type { Route } from './+types/console.quickbooks';
 //
 // **the three accounts are picked by id and the names are read off the company's own chart.** a
 // name the caller sent would be a label on this deployment's row that nothing in the books ever
-// agreed to, and an id the chart does not hold is refused rather than stored — the same decision
+// agreed to, and an id the chart does not hold, or one whose type Intuit refuses in that role
+// ($lib/server/accounting/quickbooks-accounts.ts), is refused rather than stored — the same decision
 // ./console.webhook-repair.ts makes about the endpoint it acts on, for the same reason: what a press
 // acts on is settled here rather than sent.
 //
@@ -67,6 +82,15 @@ import type { Route } from './+types/console.quickbooks';
 // ./console.payments.ts both state: a deployment that keeps its books elsewhere is not half set up,
 // and a line on the run an operator works down until it is clear would be a permanent unfinished
 // item on every fork that never connects QuickBooks.
+
+// the wire's roles are the port's, both ways round: operator cannot import from this package, so
+// the two unions are spelled twice and a role on one side only fails to compile here.
+type SameRoles = [AccountRole] extends [QuickbooksAccountRole]
+	? [QuickbooksAccountRole] extends [AccountRole]
+		? true
+		: false
+	: false;
+true satisfies SameRoles;
 
 /** where a caller reads what this address takes, on every refusal of a body. */
 const PRESS_BODY_FIX =
@@ -182,7 +206,8 @@ async function act(
 		);
 
 	const picked = pickedAccounts(body, chart.value);
-	if (picked === null)
+	if (picked.state === 'misfit') return misfit(picked.role, picked.account);
+	if (picked.state === 'absent')
 		return consoleJson(
 			{
 				error: 'bad_body',
@@ -194,7 +219,7 @@ async function act(
 			400
 		);
 
-	await saveQuickbooksAccounts(db, picked);
+	await saveQuickbooksAccounts(db, picked.accounts);
 	return consoleJson({ press } satisfies QuickbooksPressReport);
 }
 
@@ -217,7 +242,12 @@ async function accountsReading(env: unknown, db: Db): Promise<QuickbooksAccounts
 	const chart = await createAccountingProvider(env, db).listAccounts();
 	if (!chart.ok)
 		return { state: 'unreadable', recourse: recourseFor(chart.reason), detail: chart.detail };
-	return { state: 'read', accounts: chart.value };
+	return { state: 'read', accounts: chart.value.map(accountLine) };
+}
+
+/** one account as the picker offers it, with the roles it may be picked for. */
+function accountLine(account: LedgerAccount): LedgerAccountLine {
+	return { ...account, roles: QUICKBOOKS_ACCOUNT_ROLES.filter((role) => fitsRole(account, role)) };
 }
 
 /**
@@ -235,8 +265,9 @@ function recourseFor(reason: AccountingFailureReason): QuickbooksRecourse | null
 }
 
 /**
- * the three picks as the connection stores them, or null where any of the three names an account
- * the company's books do not hold.
+ * the three picks as the connection stores them — or `absent` where any of the three names an
+ * account the company's books do not hold, or `misfit` where one names an account whose type
+ * Intuit refuses in that role ($lib/server/accounting/quickbooks-accounts.ts).
  *
  * all three together, because the schema takes them that way and a send needs all three
  * ($lib/server/accounting/connection.ts): a press that saved two of them would leave an operator
@@ -245,18 +276,68 @@ function recourseFor(reason: AccountingFailureReason): QuickbooksRecourse | null
 function pickedAccounts(
 	body: Record<string, unknown>,
 	chart: readonly LedgerAccount[]
-): { income: ChosenAccount; fee: ChosenAccount; deposit: ChosenAccount } | null {
+):
+	| { state: 'picked'; accounts: Record<AccountRole, ChosenAccount> }
+	| { state: 'absent' }
+	| { state: 'misfit'; role: AccountRole; account: LedgerAccount } {
 	const income = inChart(body.income, chart);
 	const fee = inChart(body.fee, chart);
 	const deposit = inChart(body.deposit, chart);
-	if (income === null || fee === null || deposit === null) return null;
-	return { income, fee, deposit };
+	if (income === undefined || fee === undefined || deposit === undefined)
+		return { state: 'absent' };
+
+	const accounts = { income, fee, deposit };
+	for (const role of QUICKBOOKS_ACCOUNT_ROLES) {
+		if (!fitsRole(accounts[role], role)) return { state: 'misfit', role, account: accounts[role] };
+	}
+	return {
+		state: 'picked',
+		accounts: {
+			income: chosen(income),
+			fee: chosen(fee),
+			deposit: chosen(deposit)
+		}
+	};
 }
 
 /** one id, as the account the company's books hold under it. */
-function inChart(id: unknown, chart: readonly LedgerAccount[]): ChosenAccount | null {
-	const account = chart.find((entry) => entry.id === id);
-	return account === undefined ? null : { id: account.id, name: account.name };
+function inChart(id: unknown, chart: readonly LedgerAccount[]): LedgerAccount | undefined {
+	return chart.find((entry) => entry.id === id);
+}
+
+/** the account as the connection stores it: the id to post to and the company's own name for it. */
+const chosen = (account: LedgerAccount): ChosenAccount => ({ id: account.id, name: account.name });
+
+/**
+ * a pick the company holds in a place Intuit will not post to.
+ *
+ * 400 like the pick the books do not hold: the body named it, and a different id is the fix.
+ */
+function misfit(role: AccountRole, account: LedgerAccount): Response {
+	// its type is one deposit takes, so the refusal names why this one account is left out.
+	if (role === 'deposit' && account.subType === UNDEPOSITED_FUNDS)
+		return consoleJson(
+			{
+				error: 'account_wrong_type',
+				message:
+					`\`deposit\` names ${account.name}. Undeposited Funds cannot hold deposits: a ` +
+					'deposit moves money out of it and into the account `deposit` names.',
+				fix: 'Send the `id` of the company’s Bank account for `deposit`, which is the usual choice.'
+			},
+			400
+		);
+
+	const takes = [...ROLE_TYPES[role]].join(' or ');
+	return consoleJson(
+		{
+			error: 'account_wrong_type',
+			message:
+				`\`${role}\` names ${account.name}, whose type is ${account.type}, and QuickBooks ` +
+				`refuses ${role} posts into that type. \`${role}\` takes an account of type ${takes}.`,
+			fix: `Send the \`id\` of an account of type ${takes} from the company’s chart for \`${role}\`.`
+		},
+		400
+	);
 }
 
 /** the body as an object, or null where it is not one. */

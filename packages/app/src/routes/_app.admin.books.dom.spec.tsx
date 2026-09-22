@@ -151,9 +151,23 @@ function box<T = HTMLElement>(root: HTMLElement, name: string): T {
 	return found as unknown as T;
 }
 
+/**
+ * the element an operator reaches for the box named `name`. a select's named element is its
+ * machine's hidden copy, and what is labelled, described and pressed is the box beside it.
+ */
+function face(root: HTMLElement, name: string): HTMLElement {
+	const control = box(root, name);
+	if (control.getAttribute('aria-hidden') !== 'true') return control;
+	const pressed = control
+		.closest('.adm-selectwrap')
+		?.querySelector<HTMLElement>('[role="combobox"]');
+	if (pressed == null) throw new Error(`the box named "${name}" has nothing to press`);
+	return pressed;
+}
+
 /** the visible words labelling the box named `name`, which is what an operator reads. */
 function labelOf(root: HTMLElement, name: string): string {
-	const control = box(root, name);
+	const control = face(root, name);
 	const label = root.querySelector(`label[for="${control.id}"]`);
 	if (label === null) throw new Error(`the box named "${name}" carries no label`);
 	return label.textContent ?? '';
@@ -161,7 +175,7 @@ function labelOf(root: HTMLElement, name: string): string {
 
 /** the message drawn under the box named `name`, or nothing where the box carries none. */
 function messageUnder(root: HTMLElement, name: string): string | null {
-	const control = box(root, name);
+	const control = face(root, name);
 	const described = control.getAttribute('aria-describedby');
 	if (described === null) return null;
 	const message = described
@@ -336,7 +350,7 @@ it('carries the id the loader minted, in a box nobody can edit', () => {
 it('names the list under a heading of its own, beside the form’s', () => {
 	const { root } = screen({ entries: [entry()] });
 
-	// the frame draws this page's one `h1` in its top strip (./_app.tsx), so both halves of the
+	// the frame draws this page's one `h1`, visually hidden (./_app.tsx), so both halves of the
 	// screen are `h2`s under it. without its own, the list falls under a heading about the form
 	// above it and a reader moving by heading never reaches it.
 	expect(

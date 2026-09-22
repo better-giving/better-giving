@@ -41,6 +41,9 @@
 	"dependencies": {
 		"@paypal/paypal-js": "11.0.1",
 		"@stripe/stripe-js": "9.12.1",
+		"@zag-js/combobox": "catalog:",
+		"@zag-js/select": "catalog:",
+		"@zag-js/vanilla": "catalog:",
 		"xstate": "catalog:"
 	},
 	"devDependencies": {

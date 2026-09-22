@@ -36,7 +36,7 @@ import type { Route } from './+types/_app.admin._index';
 // their own and are guarded alone — that read failing costs one figure, and the screen says which
 // rather than drawing a nought in its place.
 
-/** the screen's name in the document title. the frame's strip names the page (./_app.tsx). */
+/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
 const SCREEN_TITLE = 'Dashboard';
 
 /**

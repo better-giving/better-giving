@@ -44,17 +44,35 @@ export interface ChosenAccountLine {
 }
 
 /**
+ * the three places a gift is posted into, each one account an operator picks.
+ *
+ *   income  — where the gift is counted as income.
+ *   fee     — where the processor's fee is counted as a cost.
+ *   deposit — the asset the gift arrived in.
+ */
+export const QUICKBOOKS_ACCOUNT_ROLES = ['income', 'fee', 'deposit'] as const;
+
+export type QuickbooksAccountRole = (typeof QUICKBOOKS_ACCOUNT_ROLES)[number];
+
+/**
  * one account in the company's own chart, as the picker offers it.
  *
- * `type` and `classification` are Intuit's own words and are carried rather than translated: an
- * operator recognises them from their own books, and a closed vocabulary here would be a list to
- * keep in step with somebody else's.
+ * `type`, `subType` and `classification` are Intuit's own words and are carried rather than
+ * translated: an operator recognises them from their own books, and a closed vocabulary here would
+ * be a list to keep in step with somebody else's.
+ *
+ * `roles` is which of the three this account may be picked for, decided on the deployment: Intuit
+ * refuses a post into an account whose type does not fit the place it is posted to, so the one list
+ * is filtered per picker and an account fitting none is offered by none of them. a save naming an
+ * account outside its role is refused whatever the screen offered.
  */
 export interface LedgerAccountLine {
 	readonly id: string;
 	readonly name: string;
 	readonly type: string;
+	readonly subType: string | null;
 	readonly classification: string | null;
+	readonly roles: readonly QuickbooksAccountRole[];
 }
 
 /**

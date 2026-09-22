@@ -14,8 +14,8 @@ import { expireAfter } from '@better-giving/operator/save-state';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Form } from 'react-router';
-import { Said } from './said';
-import { unreadAnswer } from './unread-answer';
+import { Refusal, Said } from './said';
+import { readableRefusal, unreadAnswer } from './unread-answer';
 import type { MailAct, MailAfter, MailBoxAct, MailSeeds } from './smtp-fold-state';
 import {
 	TEST_TO_FIELD,
@@ -436,38 +436,44 @@ export function SmtpFold({
 	 * face that already holds a session, so a session refused between the page load and the press is
 	 * a page whose next reading is sent to the connect press at `/` (../routes/_index.tsx). the two that
 	 * are neither say the one thing this console genuinely does not know — the deployment may have
-	 * sent the message anyway, so the way out is an inbox rather than a second press.
+	 * sent the message anyway, so the way out is an inbox rather than a second press. a refusal the
+	 * deployment wrote on purpose is none of those: it was read, nothing was sent, and it is said in
+	 * the deployment's own words.
 	 */
-	const unanswered = (read: NoReport) => (
-		<>
-			<Banner tone="blocker" word="Nothing came back">
-				{read.kind === 'no-session' ? (
-					'This console is no longer connected to this deployment, so it could not ask it for anything. Reload this page and connect again.'
-				) : read.kind === 'refused' ? (
-					<>
-						This deployment turned this console session down, so nothing was sent.
-						{/* the deployment's own sentence, drawn rather than spliced into this one as
+	const unanswered = (read: NoReport) => {
+		const refusal = readableRefusal(read);
+		if (refusal !== null) return <Refusal refusal={refusal} />;
+		return (
+			<>
+				<Banner tone="blocker" word="Nothing came back">
+					{read.kind === 'no-session' ? (
+						'This console is no longer connected to this deployment, so it could not ask it for anything. Reload this page and connect again.'
+					) : read.kind === 'refused' ? (
+						<>
+							This deployment turned this console session down, so nothing was sent.
+							{/* the deployment's own sentence, drawn rather than spliced into this one as
 						    text: it marks the variable name and the command in it
 						    (`@better-giving/operator/code-spans`). */}
-						{read.message === null ? null : (
-							<>
-								{' '}
-								<MarkedText text={read.message} />
-							</>
-						)}{' '}
-						Reload this page and connect again.
-					</>
-				) : read.kind === 'no-surface' ? (
-					"Something is deployed at that address and it isn't answering this console, so nothing was sent. It is either older than this console or not this deployment at all."
-				) : read.kind === 'unreachable' ? (
-					"The console couldn't get an answer out of this deployment, so it can't say whether the message went. Check the inbox before pressing again."
-				) : (
-					`${unreadAnswer("it can't say whether the message went")} Check the inbox before pressing again.`
-				)}
-			</Banner>
-			{read.kind === 'unreachable' || read.kind === 'unreadable' ? <Said answer={read} /> : null}
-		</>
-	);
+							{read.message === null ? null : (
+								<>
+									{' '}
+									<MarkedText text={read.message} />
+								</>
+							)}{' '}
+							Reload this page and connect again.
+						</>
+					) : read.kind === 'no-surface' ? (
+						"Something is deployed at that address and it isn't answering this console, so nothing was sent. It is either older than this console or not this deployment at all."
+					) : read.kind === 'unreachable' ? (
+						"The console couldn't get an answer out of this deployment, so it can't say whether the message went. Check the inbox before pressing again."
+					) : (
+						`${unreadAnswer("it can't say whether the message went")} Check the inbox before pressing again.`
+					)}
+				</Banner>
+				{read.kind === 'unreachable' || read.kind === 'unreadable' ? <Said answer={read} /> : null}
+			</>
+		);
+	};
 
 	/**
 	 * what the last press said, under the button that made it — and nothing at all where it went.

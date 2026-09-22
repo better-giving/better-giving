@@ -29,7 +29,8 @@ import { processorLinks } from './lib/processor-links';
 // packages/operator/src/styles/raw-values.ts's header argues against in its own terms. so it
 // catches a page renamed on the rail and does not catch a page the document invented.
 //
-// **a page name is a heading, which is why it is here and not beside the controls.**
+// **a page name is the rail cell's and the tab title's, never a press's, which is why it is here and
+// not beside the controls.**
 // ./every-control-named.spec.ts holds the word a press carries and says in its own header that a
 // heading over a reading is not one; folding these in would contradict it.
 

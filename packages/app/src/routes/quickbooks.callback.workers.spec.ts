@@ -1,13 +1,17 @@
 import { createExecutionContext, env } from 'cloudflare:test';
 import { createStaticHandler, type LoaderFunction } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { readQuickbooksConnection } from '$lib/server/accounting/connection';
+import {
+	readQuickbooksConnection,
+	saveQuickbooksAccounts
+} from '$lib/server/accounting/connection';
 import { createDb, type Db } from '$lib/server/db/client';
 import {
 	failed,
 	type AccountingProvider,
 	type AccountingResult,
 	type CompanyIdentity,
+	type LedgerAccount,
 	type TokenPair
 } from '$lib/server/accounting/provider';
 import { requestContext } from '../request-context';
@@ -32,6 +36,39 @@ const PINNED = 'https://donate.example.org';
 const REALM = '4620816365';
 const STATE = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2';
 
+/** a chart holding an account that fits each of the three roles. */
+const CHART: readonly LedgerAccount[] = [
+	{
+		id: '84',
+		name: 'Accounts Receivable (A/R)',
+		type: 'Accounts Receivable',
+		subType: 'AccountsReceivable',
+		classification: 'Asset'
+	},
+	{
+		id: '4',
+		name: 'Undeposited Funds',
+		type: 'Other Current Asset',
+		subType: 'UndepositedFunds',
+		classification: 'Asset'
+	},
+	{ id: '35', name: 'Checking', type: 'Bank', subType: 'Checking', classification: 'Asset' },
+	{
+		id: '79',
+		name: 'Donations',
+		type: 'Income',
+		subType: 'NonProfitIncome',
+		classification: 'Revenue'
+	},
+	{
+		id: '80',
+		name: 'Bank charges',
+		type: 'Expense',
+		subType: 'BankCharges',
+		classification: 'Expense'
+	}
+];
+
 const TOKENS: TokenPair = {
 	accessToken: 'access-one',
 	accessTokenExpiresAt: new Date('2026-03-01T11:00:00.000Z'),
@@ -43,6 +80,10 @@ const TOKENS: TokenPair = {
 const stub = vi.hoisted(() => ({
 	exchanged: null as AccountingResult<TokenPair> | null,
 	company: null as AccountingResult<CompanyIdentity> | null,
+	accounts: null as AccountingResult<readonly LedgerAccount[]> | null,
+	/** a chart read that throws rather than answering, as a D1 or network fault would. */
+	chartThrows: false,
+	chartReads: 0,
 	exchanges: 0,
 	/** the address the exchange was made against, which Intuit compares byte for byte. */
 	redirectUri: null as string | null
@@ -61,7 +102,11 @@ vi.mock('$lib/server/accounting/factory', () => ({
 				return stub.exchanged ?? failed('internal_error', 'no case set an exchange');
 			},
 			readCompany: async () => stub.company ?? failed('internal_error', 'no case set a company'),
-			listAccounts: unasked,
+			listAccounts: async () => {
+				stub.chartReads += 1;
+				if (stub.chartThrows) throw new Error('D1_ERROR: the chart read fell over');
+				return stub.accounts ?? failed('internal_error', 'no case set a chart');
+			},
 			sendGift: unasked,
 			sendCorrection: unasked,
 			authorizeUrl: unasked,
@@ -77,6 +122,9 @@ beforeEach(async () => {
 	await env.DB.prepare('delete from quickbooks_connection').run();
 	stub.exchanged = { ok: true, value: TOKENS };
 	stub.company = { ok: true, value: { companyId: REALM, companyName: 'Hope Foundation' } };
+	stub.accounts = null;
+	stub.chartThrows = false;
+	stub.chartReads = 0;
 	stub.exchanges = 0;
 	stub.redirectUri = null;
 });
@@ -157,6 +205,89 @@ describe('GET /quickbooks/callback', () => {
 
 		expect(answered.data).toEqual({ outcome: 'connected', companyName: null });
 		expect(await readQuickbooksConnection(db)).toMatchObject({ realmId: REALM, companyName: null });
+	});
+
+	it('fills the three accounts from the company’s own chart', async () => {
+		stub.accounts = { ok: true, value: CHART };
+
+		const answered = await back();
+
+		expect(answered.data).toEqual({ outcome: 'connected', companyName: 'Hope Foundation' });
+		expect(await readQuickbooksConnection(db)).toMatchObject({
+			income: { id: '79', name: 'Donations' },
+			fee: { id: '80', name: 'Bank charges' },
+			deposit: { id: '35', name: 'Checking' }
+		});
+	});
+
+	it('fills the roles the chart names and leaves the one it names none for unpicked', async () => {
+		stub.accounts = { ok: true, value: CHART.filter((account) => account.type !== 'Expense') };
+
+		const answered = await back();
+
+		expect(answered.data).toEqual({ outcome: 'connected', companyName: 'Hope Foundation' });
+		expect(await readQuickbooksConnection(db)).toMatchObject({
+			realmId: REALM,
+			income: { id: '79', name: 'Donations' },
+			fee: null,
+			deposit: { id: '35', name: 'Checking' }
+		});
+	});
+
+	it('logs why the chart could not be read, without its detail, and answers connected', async () => {
+		stub.accounts = failed('rate_limited', 'Intuit is throttling realm 4620816365.');
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const answered = await back();
+
+		expect(answered.status).toBe(200);
+		expect(answered.data).toEqual({ outcome: 'connected', companyName: 'Hope Foundation' });
+		expect(logged).toHaveBeenCalledTimes(1);
+		const line = logged.mock.calls[0]?.join(' ') ?? '';
+		expect(line).toContain('rate_limited');
+		expect(line).not.toContain('throttling');
+		logged.mockRestore();
+	});
+
+	it('logs a fill that threw, without its message, and answers connected', async () => {
+		stub.chartThrows = true;
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const answered = await back();
+
+		expect(answered.status).toBe(200);
+		expect(answered.data).toEqual({ outcome: 'connected', companyName: 'Hope Foundation' });
+		expect(await readQuickbooksConnection(db)).toMatchObject({ realmId: REALM, deposit: null });
+		expect(logged).toHaveBeenCalledTimes(1);
+		const line = logged.mock.calls[0]?.join(' ') ?? '';
+		expect(line).toContain('Error');
+		expect(line).not.toContain('fell over');
+		logged.mockRestore();
+	});
+
+	it('reads no chart when the same company is connected again with a role already filled', async () => {
+		stub.accounts = { ok: true, value: CHART.filter((account) => account.type !== 'Bank') };
+		await back();
+
+		await back();
+
+		expect(stub.chartReads).toBe(1);
+	});
+
+	it('keeps what was picked when the same company is connected again', async () => {
+		stub.accounts = { ok: true, value: CHART };
+		await back();
+		await saveQuickbooksAccounts(db, {
+			income: { id: '79', name: 'Donations' },
+			fee: { id: '80', name: 'Bank charges' },
+			deposit: { id: '36', name: 'Savings' }
+		});
+
+		await back();
+
+		expect(await readQuickbooksConnection(db)).toMatchObject({
+			deposit: { id: '36', name: 'Savings' }
+		});
 	});
 
 	it('spends the state cookie whether the trip landed or not', async () => {

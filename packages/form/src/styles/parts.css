@@ -161,6 +161,124 @@ textarea[part~='field'] {
 }
 
 /*
+ * the closed choices (../select.ts): the cause a gift is credited to and how a tribute is dedicated.
+ * the box is a `field` like every other box on the card and takes the rules above; what is drawn
+ * here is what a field has and a text box does not — a chevron, and the list the box opens.
+ *
+ * a surface that is not a part is selected by the `data-scope`/`data-part` pair zag writes onto it,
+ * which is the anatomy `@ark-ui/react`'s `Select` writes too, so a page drawing that component is
+ * dressed by these rules without a class of its own.
+ *
+ * the chevron is `--_glyph-among` in the quiet ink, as the coin list's box draws its own
+ * (./coins.css), and the open box takes the ring a box holding the caret takes: the caret is in the
+ * list while it is open, and the ring says which box the list belongs to.
+ */
+[data-scope='select'][data-part='trigger'] {
+	cursor: pointer;
+}
+
+[data-scope='select'][data-part='trigger'] .glyph {
+	inline-size: var(--_glyph-among);
+	block-size: var(--_glyph-among);
+	color: var(--_n11);
+}
+
+[data-scope='select'][data-part='trigger'][data-state='open'] {
+	border-color: var(--_focus-ring);
+	box-shadow: 0 0 0 var(--_focus-width) var(--_focus-ring);
+}
+
+/*
+ * the list's positioner is a popover in the top layer, and every property the UA sheet gives a
+ * popover is taken back here: the box is zag's to place (`top`, `left` and the translate it writes
+ * inline), so a UA inset, margin or border would move it off the box it is measured against. the
+ * coin list's (./coins.css) is one too, and this sheet is the one both roots adopt.
+ */
+[data-scope='select'][data-part='positioner'],
+[data-scope='combobox'][data-part='positioner'] {
+	inset: auto;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	overflow: visible;
+}
+
+/*
+ * the open list, the closed choices' and the coin list's alike: the card's own ground on a control's
+ * edge, at the inner radius, raised by the one elevation this component draws. it stands in the top
+ * layer rather than on the card (../zag.ts), and `--_lift` is a rung of the card's ramp, so the
+ * shade under it is one the card already carries.
+ *
+ * at least the box's own width (`--reference-width` is the box's, as zag measures it) and never
+ * wider than the room the viewport leaves beside it (`--available-width`, zag's too): zag sizes the
+ * wrapper to the list's longest line, and a cause an operator named at length would otherwise run
+ * the list off a phone. capped, a row's words wrap in its first column. four and a half rows at
+ * most, so the half row says there is more to scroll to; no token names a list's height, and the
+ * rows are the token's. the margin is the step between the box and the list, on both ends
+ * because the list opens under the box or over it by where there is room.
+ */
+[part~='select-list'] {
+	margin-block: var(--_sp1);
+	min-inline-size: var(--reference-width);
+	max-inline-size: var(--available-width);
+	max-block-size: calc(var(--_row-min) * 4.5);
+	overflow-y: auto;
+	padding: var(--_sp1);
+	background: var(--_n1);
+	color: var(--_n12);
+	border: var(--_border) solid var(--_edge-control);
+	border-radius: var(--_r-in);
+	box-shadow: var(--_lift);
+}
+
+/*
+ * a row. the row the arrow keys or a pointer stand on is said by ground alone and never by weight;
+ * `data-highlighted` is zag's one word for both, so a pointer resting on one row while the keys move
+ * to another does not draw two. the chosen row is said by the tick.
+ */
+[part~='select-option'] {
+	min-block-size: var(--_row-min);
+	padding: var(--_sp2) var(--_sp3);
+	border-radius: var(--_r-in);
+	font-size: var(--_t-md);
+	cursor: pointer;
+}
+
+[part~='select-option'][data-highlighted] {
+	background: var(--_n3);
+}
+
+[part~='select-option'] .tick {
+	inline-size: var(--_glyph-beside);
+	block-size: var(--_glyph-beside);
+	color: var(--_p);
+}
+
+/*
+ * a row that is not the chosen one keeps its tick's box and hides the mark. zag hides the indicator
+ * with `hidden`, which the sheets take to `display: none`, and a row without the column would make
+ * the list as wide as its longest option plus a tick only while that option is the chosen one.
+ */
+[part~='select-option'] .tick[hidden] {
+	display: block;
+	visibility: hidden;
+}
+
+/*
+ * forced colours flatten every ground to `Canvas`, which takes the highlighted row back to the rows
+ * around it. `Highlight` is the mode's own word for it, for the reason the checkbox block below
+ * gives for the ticked box.
+ */
+@media (forced-colors: active) {
+	[part~='select-option'][data-highlighted] {
+		background: Highlight;
+		color: HighlightText;
+	}
+}
+
+/*
  * a box whose label stands inside it, and it is a row that asks for one rather than a step: the
  * construction is for a box inside a named group of boxes — the pair under "Your name", and an
  * address group after it — where a label drawn over every box would read as a caption under the
@@ -2224,6 +2342,15 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 [part~='amount-option']:has(:focus-visible) {
 	outline: var(--_focus-width) solid transparent;
 	box-shadow: 0 0 0 var(--_focus-width) var(--_focus-ring);
+}
+
+/*
+ * a list opened from the keys holds the focus itself (`tabindex="-1"`, zag's initial focus), and the
+ * rule above would trade its lift for a ring. the open box already rings, and the highlighted row
+ * says where the keys are, so the list keeps its lift.
+ */
+[part~='select-list']:focus-visible {
+	box-shadow: var(--_lift);
 }
 
 [part~='field']:focus-visible {

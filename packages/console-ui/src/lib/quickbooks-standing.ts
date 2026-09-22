@@ -212,9 +212,10 @@ export type AccountOption = { readonly value: string; readonly label: string };
 export type AccountPicker = {
 	readonly options: readonly AccountOption[];
 	/**
-	 * the account the picker is showing that the chart does not offer — deactivated in the company's
-	 * books since it was picked. it stays in the list until another is chosen, so a screen never
-	 * silently moves where gifts are posted.
+	 * the account the picker is showing that its list does not offer — deactivated in the company's
+	 * books since it was picked, or stored before the list was held to what fits the picker. it
+	 * stays in the list until another is chosen, so a screen never silently moves where gifts are
+	 * posted.
 	 */
 	readonly retired: AccountOption | undefined;
 };
@@ -225,13 +226,20 @@ export const CHOOSE = 'Choose an account';
 /**
  * one picker over the company's own chart, for a picker showing `showing`.
  *
+ * **it offers only the accounts that fit it.** the deployment says which of the three each account
+ * may be picked for (`roles` on `LedgerAccountLine` in packages/operator/src/console/quickbooks.ts)
+ * and refuses a save naming one outside its role, so an account offered where it does not fit is a
+ * pick the press is certain to be refused over. a stored pick that does not fit is kept the way a
+ * deactivated one is — shown, and retired — so the screen says what the books post to today until
+ * the operator replaces it.
+ *
  * the type rides the name because a chart holds several accounts called Donations and an operator
  * tells them apart by it. it is Intuit's own word, carried rather than translated
  * (packages/operator/src/console/quickbooks.ts).
  *
  * **the list always holds what the picker is showing**, whether that is a line of the chart, an
- * account the chart no longer offers ({@link AccountPicker.retired}), or nothing at all. a list
- * with no line matching the selection does not draw an empty box: the browser falls to the first
+ * account its list does not offer ({@link AccountPicker.retired}), or nothing at all. a list
+ * with no line matching the selection does not draw an empty box: the picker falls to the first
  * line in it, which is displayed and posted as an account nobody chose. the selection is the
  * operator's and the stored account is the deployment's, so neither reading answers for the other —
  * an account picked off one read of the chart and deactivated at Intuit before the next is showing
@@ -247,13 +255,13 @@ export const CHOOSE = 'Choose an account';
  */
 export function accountPicker(
 	chart: readonly LedgerAccountLine[],
+	role: AccountPick,
 	pick: ChosenAccountLine | null,
 	showing: string
 ): AccountPicker {
-	const options = chart.map((account) => ({
-		value: account.id,
-		label: `${account.name} — ${account.type}`
-	}));
+	const options = chart
+		.filter((account) => account.roles.includes(role))
+		.map((account) => ({ value: account.id, label: `${account.name} — ${account.type}` }));
 	const offered = showing === '' || options.some((option) => option.value === showing);
 	return {
 		options: pick === null || showing === '' ? [{ value: '', label: CHOOSE }, ...options] : options,
@@ -271,14 +279,22 @@ export const picksHeld = (company: QuickbooksCompany): QuickbooksPicks => ({
 });
 
 /**
- * whether the three in the boxes are a press: all of them chosen, and not what is already stored.
+ * whether the three in the boxes are a press: all of them chosen, every one an account its picker
+ * offers, and not what is already stored.
  *
- * it is both halves rather than the second alone because the three are stored together — two
- * chosen and one empty is a press the deployment refuses, and arming it would spend a round trip
- * to be told so.
+ * it is all three halves rather than the last alone because the three are stored together — two
+ * chosen and one empty is a press the deployment refuses, and so is one still showing a retired
+ * pick ({@link accountPicker}): an account that does not fit its place, or that the chart no longer
+ * holds. arming either would spend a round trip to be told so.
  */
-export function picksToSave(held: QuickbooksPicks, company: QuickbooksCompany): boolean {
-	if (PICKS.some((pick) => held[pick] === '')) return false;
+export function picksToSave(
+	held: QuickbooksPicks,
+	company: QuickbooksCompany,
+	chart: readonly LedgerAccountLine[]
+): boolean {
+	const offered = (pick: AccountPick): boolean =>
+		chart.some((account) => account.id === held[pick] && account.roles.includes(pick));
+	if (!PICKS.every(offered)) return false;
 	const stored = picksHeld(company);
 	return PICKS.some((pick) => held[pick] !== stored[pick]);
 }

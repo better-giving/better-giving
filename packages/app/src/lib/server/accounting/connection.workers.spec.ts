@@ -4,6 +4,7 @@ import { createDb, type Db } from '../db/client';
 import {
 	connectQuickbooks,
 	disconnectQuickbooks,
+	fillQuickbooksAccounts,
 	quickbooksStore,
 	readQuickbooksConnection,
 	saveQuickbooksAccounts,
@@ -230,6 +231,62 @@ describe('the accounts an operator picks', () => {
 			fee: { id: '80', name: 'Merchant fees' },
 			deposit: { id: '35', name: 'Checking' }
 		});
+	});
+});
+
+describe('the accounts filled in at connect', () => {
+	const DEFAULTS = {
+		income: { id: '81', name: 'Contributions' },
+		fee: { id: '82', name: 'Bank Charges' },
+		deposit: { id: '36', name: 'Savings' }
+	};
+
+	it('are written where none is held', async () => {
+		await connect();
+
+		await fillQuickbooksAccounts(db, '4620816365', DEFAULTS);
+
+		expect(await readQuickbooksConnection(db)).toMatchObject(DEFAULTS);
+	});
+
+	it('write only the roles the chart named, leaving the rest unpicked', async () => {
+		await connect();
+
+		await fillQuickbooksAccounts(db, '4620816365', { ...DEFAULTS, fee: null, deposit: null });
+
+		expect(await readQuickbooksConnection(db)).toMatchObject({
+			income: DEFAULTS.income,
+			fee: null,
+			deposit: null
+		});
+	});
+
+	// a reconnect to another company can land between the chart read and this write, and account
+	// ids are per-company small integers, so the old company's would name real accounts in the new.
+	it('write nothing once a different company is connected than the chart was read from', async () => {
+		await connect();
+
+		await fillQuickbooksAccounts(db, '9999999999', DEFAULTS);
+
+		expect(await readQuickbooksConnection(db)).toMatchObject({
+			income: null,
+			fee: null,
+			deposit: null
+		});
+	});
+
+	it('never overwrite accounts an operator already picked', async () => {
+		await connect();
+		const picked = {
+			income: { id: '79', name: 'Donations' },
+			fee: { id: '80', name: 'Merchant fees' },
+			deposit: { id: '35', name: 'Checking' }
+		};
+		await saveQuickbooksAccounts(db, picked);
+
+		await fillQuickbooksAccounts(db, '4620816365', DEFAULTS);
+
+		expect(await readQuickbooksConnection(db)).toMatchObject(picked);
 	});
 });
 
