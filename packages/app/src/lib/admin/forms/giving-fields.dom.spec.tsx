@@ -125,3 +125,91 @@ it('describes every row by the standing hint, refused or not', () => {
 		`${boxErrorId(`${GROUP}[1]`)} ${HINT}`
 	);
 });
+
+// the bounds slider and the two boxes it stands over. the boxes are the fields and the slider only
+// ever moves in step with them, so every case reads a box's value or a thumb's announced stop.
+
+const MIN_BOX = 'form-edit-giving-min_minor';
+const MAX_BOX = 'form-edit-giving-max_minor';
+
+function bounds(root: HTMLElement) {
+	const fieldset = root.querySelector('fieldset');
+	const [lower, upper] = [...(fieldset?.querySelectorAll<HTMLElement>('[role="slider"]') ?? [])];
+	const min = root.querySelector(`[id="${MIN_BOX}"]`);
+	const max = root.querySelector(`[id="${MAX_BOX}"]`);
+	if (!fieldset || !lower || !upper) throw new Error('no bounds slider');
+	if (!(min instanceof HTMLInputElement) || !(max instanceof HTMLInputElement)) {
+		throw new Error('no bound boxes');
+	}
+	return { fieldset, lower, upper, min, max };
+}
+
+/** text put in a box the way a keystroke puts it there. */
+async function type(box: HTMLInputElement, text: string) {
+	await act(async () => {
+		Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(box, text);
+		box.dispatchEvent(new Event('input', { bubbles: true }));
+	});
+}
+
+it('seeds each thumb at the stop nearest its box', () => {
+	const { lower, upper } = bounds(group({ rows: [row(0)] }));
+
+	expect(lower.getAttribute('aria-label')).toBe('Smallest gift');
+	expect(lower.getAttribute('aria-valuetext')).toBe('$5');
+	expect(upper.getAttribute('aria-label')).toBe('Largest gift');
+	expect(upper.getAttribute('aria-valuetext')).toBe('$500');
+});
+
+it('writes the stop a thumb moves to into its own box, as a keystroke would', async () => {
+	const { fieldset, lower, min, max } = bounds(group({ rows: [row(0)] }));
+	const heard: string[] = [];
+	// the form's listeners sit above the box, so the event has to bubble to reach them.
+	fieldset.addEventListener('input', (event) => {
+		if (event.target instanceof HTMLInputElement) heard.push(event.target.name);
+	});
+
+	// the machine takes each event on a microtask after react's handler, so the act is awaited.
+	await act(async () => lower.focus());
+	await act(async () => {
+		lower.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+	});
+
+	expect(min.value).toBe('10');
+	expect(heard).toEqual(['min_minor']);
+	// the other box keeps what it held.
+	expect(max.value).toBe('500');
+	expect(lower.getAttribute('aria-valuetext')).toBe('$10');
+});
+
+it('moves a thumb to the nearest stop as its box is typed in', async () => {
+	const { upper, max } = bounds(group({ rows: [row(0)] }));
+
+	await type(max, '30');
+	expect(upper.getAttribute('aria-valuetext')).toBe('$25');
+	// and the box keeps the figure typed, which is between two stops.
+	expect(max.value).toBe('30');
+});
+
+it('puts a thumb at the end of the scale for a figure past the last stop', async () => {
+	const { upper, max } = bounds(group({ rows: [row(0)] }));
+
+	await type(max, '25000');
+	expect(upper.getAttribute('aria-valuetext')).toBe('$10,000');
+});
+
+it('leaves a thumb where it is while its box holds text that is not an amount', async () => {
+	const { upper, max } = bounds(group({ rows: [row(0)] }));
+
+	await type(max, '5,000');
+	expect(upper.getAttribute('aria-valuetext')).toBe('$500');
+});
+
+it('gives the bounds no named field but the two boxes', () => {
+	// the slider submits nothing: what the group posts for its bounds is the two boxes alone.
+	const { fieldset } = bounds(group({ rows: [row(0)] }));
+
+	expect(
+		[...fieldset.querySelectorAll('[name]')].map((field) => field.getAttribute('name'))
+	).toEqual(['min_minor', 'max_minor']);
+});

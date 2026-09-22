@@ -1,9 +1,11 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
+import { RangeSlider } from '@better-giving/operator/components/forms/RangeSlider';
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
-import type { MouseEventHandler, ReactNode } from 'react';
-import { majorEntry } from '$lib/forms/amounts';
+import { type MouseEventHandler, type ReactNode, useRef, useState } from 'react';
+import { formatMinorBrief, minorUnitDigits } from '$lib/donations/money';
+import { majorEntry, readAmount } from '$lib/forms/amounts';
 import { FORM_FIELD_LABELS } from '$lib/forms/fields';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { type Box, boxErrorId, boxProps } from '../use-admin-form';
@@ -48,11 +50,48 @@ import { type Box, boxErrorId, boxProps } from '../use-admin-form';
 // row leaves react re-using the box below it for the row that took its place — see `AmountRow`
 // below, which is why a row carries a `key` the form minted as well as an id.
 //
-// nothing new is drawn and no value is stated.
+// the rows draw nothing new and state no value.
+//
+// the bounds carry a slider over their two boxes, and it is the one control here that is not a
+// box: it moves along `BOUND_STOPS` below, writes the stop a thumb lands on into that thumb's box,
+// and follows a box as it is typed in. it submits nothing, so the boxes stay the whole of what the
+// group posts and every rule above reads them exactly as before.
 //
 // each bound draws its own message, under its own box: `parseFormGiving` keys every sentence to the
 // box whose label it names, the two bounds being the right way round included. every box in this
 // group is bound the same way, the amounts' rows included.
+
+/**
+ * the stops the bounds slider moves along, in major units, lowest first.
+ *
+ * round amounts rather than an even scale: a thumb one step from $25 is $50 and not $26, because
+ * the slider is for finding the size of a bound and the box under it is for the exact figure — and
+ * for anything past the last stop, which the slider cannot reach and the box takes as typed.
+ */
+const BOUND_STOPS = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000];
+
+/** the stop nearest `minor` by distance; a tie goes to the lower stop, and past the last is the last. */
+function nearestStop(ladder: readonly number[], minor: number): number {
+	let nearest = 0;
+	for (const [index, stop] of ladder.entries()) {
+		if (Math.abs(stop - minor) < Math.abs((ladder[nearest] ?? 0) - minor)) nearest = index;
+	}
+	return nearest;
+}
+
+/**
+ * writes `text` into a box the way typing would, so every listener on it hears it.
+ *
+ * the value goes through the platform's own setter rather than `box.value =`, because react keeps
+ * its own copy of an input's last value and an assignment updates that copy too — react would then
+ * see no change and the box's `onChange` would never fire. conform and the save button's dirty
+ * reading (`useSavedFormState` in packages/operator/src/saved-form-state.react.ts) both count the
+ * bubbling `input`.
+ */
+function typeInto(box: HTMLInputElement, text: string): void {
+	Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(box, text);
+	box.dispatchEvent(new Event('input', { bubbles: true }));
+}
 
 /**
  * one control that changes the boxes rather than the record.
@@ -134,6 +173,48 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 	// keystrokes an operator would actually make: `50`, not `50.00`.
 	const suggestedExample = majorEntry(5000, currency);
 
+	const ladder = BOUND_STOPS.map((major) => major * 10 ** minorUnitDigits(currency));
+	const stops = ladder.map((minor) => formatMinorBrief(minor, currency));
+	const last = ladder.length - 1;
+
+	/** the stop a box's text stands at, or `null` where the text is not an amount. */
+	const stopOf = (text: string | undefined): number | null => {
+		const { minor } = readAmount(text ?? '', currency);
+		return minor === null ? null : nearestStop(ladder, minor);
+	};
+
+	const bounds = useRef<HTMLFieldSetElement>(null);
+	const [thumbs, setThumbs] = useState<[number, number]>(() => {
+		const upper = stopOf(boxes.max_minor.defaultValue) ?? last;
+		return [Math.min(stopOf(boxes.min_minor.defaultValue) ?? 0, upper), upper];
+	});
+
+	// a thumb that moved writes its stop into its own box, as the operator would have typed it. only
+	// the thumb whose stop changed writes: the other box may hold a figure between two stops, and
+	// the stop it sits nearest is not what was typed there.
+	const moved = (next: [number, number]) => {
+		for (const [index, box] of [boxes.min_minor, boxes.max_minor].entries()) {
+			const stop = next[index];
+			if (stop === undefined || stop === thumbs[index]) continue;
+			const element = bounds.current?.elements.namedItem(box.name);
+			if (element instanceof HTMLInputElement)
+				typeInto(element, majorEntry(ladder[stop] ?? 0, currency));
+		}
+		setThumbs(next);
+	};
+
+	// a box being typed in moves its thumb to the nearest stop, and never past the other thumb.
+	// text that is not an amount leaves the thumb where it is: the box's own message says what is
+	// wrong with it when the group is saved.
+	const typedLower = (text: string) => {
+		const stop = stopOf(text);
+		if (stop !== null) setThumbs(([, upper]) => [Math.min(stop, upper), upper]);
+	};
+	const typedUpper = (text: string) => {
+		const stop = stopOf(text);
+		if (stop !== null) setThumbs(([lower]) => [lower, Math.max(stop, lower)]);
+	};
+
 	return (
 		<>
 			<h2>What a donor may give</h2>
@@ -149,8 +230,17 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 				{/* a fieldset in every state, and never only when something is wrong: the two bounds
 				    are one decision and the legend is what names it, and a group that appeared on a
 				    failed save would be a page re-arranging itself around a mistake. */}
-				<fieldset className="adm-fieldset">
+				<fieldset className="adm-fieldset" ref={bounds}>
 					<legend className="adm-fieldset__legend">Gift bounds</legend>
+
+					{/* each thumb is named by its box's own label, so a screen reader hears the thumbs and
+					    the boxes as the same two bounds. */}
+					<RangeSlider
+						stops={stops}
+						value={thumbs}
+						onValueChange={moved}
+						thumbLabels={[FORM_FIELD_LABELS.min_minor, FORM_FIELD_LABELS.max_minor]}
+					/>
 
 					{/* the two bounds are one decision read together, so they sit side by side once
 					    there is room for them to. the pair layout without a fieldset, because a
@@ -177,6 +267,7 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 							inputMode="decimal"
 							required
 							{...boxProps(boxes.min_minor)}
+							onInput={(event) => typedLower(event.currentTarget.value)}
 							error={
 								boxes.min_minor.errors?.[0] === undefined ? undefined : (
 									<MarkedText text={boxes.min_minor.errors[0]} />
@@ -189,6 +280,7 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 							inputMode="decimal"
 							required
 							{...boxProps(boxes.max_minor)}
+							onInput={(event) => typedUpper(event.currentTarget.value)}
 							error={
 								boxes.max_minor.errors?.[0] === undefined ? undefined : (
 									<MarkedText text={boxes.max_minor.errors[0]} />

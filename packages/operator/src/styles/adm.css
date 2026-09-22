@@ -2063,6 +2063,79 @@
 		text-overflow: ellipsis;
 	}
 
+	/* ---------- the range slider -------------------------------------------------------
+
+	   two thumbs along one track, marking a lower and an upper bound
+	   (packages/operator/src/components/forms/RangeSlider.jsx). the machine is ark's slider: it
+	   places each thumb and the fill between them with inline positions of its own, and says a
+	   thumb is being dragged as `data-dragging`, so nothing here places anything or reads a class
+	   for that state.
+
+	   the thumb is a control and dressed as one — the control ground, the control border, the one
+	   corner — and square-cornered for the reason ./tokens.css keeps the round corner to the status
+	   word. it is drawn at the 24px that clears 2.5.8's minimum, and the row it runs along is a
+	   control's height, so the band a finger can land in is taller than the thumb.
+
+	   the track is a fill with no border, so under forced colours it would vanish with its ground;
+	   the transparent outline is what that scheme paints instead, as ./base.css's ring does. */
+	.adm-range {
+		display: grid;
+		gap: var(--admin-space-2);
+	}
+
+	.adm-range__control {
+		display: flex;
+		align-items: center;
+		block-size: var(--admin-control-height);
+	}
+
+	.adm-range__track {
+		position: relative;
+		flex: 1;
+		block-size: var(--admin-space-2);
+		border-radius: var(--admin-radius);
+		background: var(--admin-surface-fill);
+		outline: var(--admin-border-width) solid transparent;
+	}
+
+	.adm-range__fill {
+		block-size: 100%;
+		border-radius: var(--admin-radius);
+		background: var(--admin-primary-bg);
+	}
+
+	.adm-range__thumb {
+		inline-size: var(--admin-space-8);
+		block-size: var(--admin-space-8);
+		border: var(--admin-border-width) solid var(--admin-control-border);
+		border-radius: var(--admin-radius);
+		background: var(--admin-control-bg);
+		cursor: grab;
+		transition: var(--admin-transition-state);
+	}
+
+	.adm-range__thumb:hover,
+	.adm-range__thumb.is-hover {
+		border-color: var(--admin-control-border-hover);
+		background: var(--admin-control-bg-hover);
+	}
+
+	.adm-range__thumb[data-dragging] {
+		border-color: var(--admin-control-border-active);
+		background: var(--admin-control-bg-active);
+		cursor: grabbing;
+	}
+
+	/* the scale's two ends, one under each end of the track. */
+	.adm-range__ends {
+		display: flex;
+		justify-content: space-between;
+		font-size: var(--admin-caption-size);
+		line-height: var(--admin-caption-lh);
+		font-feature-settings: var(--admin-figures-tabular);
+		color: var(--admin-ink-muted);
+	}
+
 	/* ---------- the coin picker --------------------------------------------------------
 
 	   the box a payout coin is chosen in and the list it narrows
