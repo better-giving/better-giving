@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readWranglerConfig } from './lib/server/wrangler-config.testing';
 import { sendDueEntries } from '$lib/server/accounting/deliver';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
+import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
 import worker, { CRON_RUNS } from './worker';
 
 // the join between the schedule this worker is deployed with and the work its `scheduled` handler
@@ -18,16 +19,20 @@ import worker, { CRON_RUNS } from './worker';
 // replaces the top level's rather than adding to it — a rehearsal deployment that runs neither of
 // the two.
 //
-// the two runs are mocked, because what is under test is which one an expression reaches and with
+// the jobs are mocked, because what is under test is which ones an expression reaches and with
 // what time — their own behaviour is held by
-// $lib/server/donations/pending-crypto-read.workers.spec.ts and
-// $lib/server/accounting/deliver.workers.spec.ts, against a real database.
+// $lib/server/donations/pending-crypto-read.workers.spec.ts,
+// $lib/server/accounting/deliver.workers.spec.ts and $lib/server/zapier/deliver.workers.spec.ts,
+// against a real database.
 
 vi.mock('$lib/server/donations/pending-crypto-read', () => ({
 	readPendingCryptoGifts: vi.fn(async () => {})
 }));
 vi.mock('$lib/server/accounting/deliver', () => ({
 	sendDueEntries: vi.fn(async () => {})
+}));
+vi.mock('$lib/server/zapier/deliver', () => ({
+	sendDueZapierEvents: vi.fn(async () => {})
 }));
 
 /** the fields this file reads. everything else in the config is somebody else's concern. */
@@ -46,7 +51,7 @@ const SCHEDULED_AT = new Date('2026-09-20T12:30:00.000Z');
 
 type Scheduled = NonNullable<typeof worker.scheduled>;
 
-/** the platform env a run is handed. nothing below reaches a binding: both runs are mocked. */
+/** the platform env a run is handed. nothing below reaches a binding: every job is mocked. */
 const env = { DB: {} } as unknown as Parameters<Scheduled>[1];
 
 /**
@@ -81,11 +86,14 @@ async function fires(cron: string): Promise<Promise<unknown>[]> {
 	return waited;
 }
 
+/** every job a cron can reach, for the cases asserting on none of them or all. */
+const JOBS = [readPendingCryptoGifts, sendDueEntries, sendDueZapierEvents] as const;
+
 // `restoreMocks` in ../vitest.config.ts restores a spy's implementation and leaves a module mock's
-// call history alone, so a case that read it would be reading every case before it.
+// call history and a rejection a case set on it alone, so a case would be reading every case
+// before it.
 beforeEach(() => {
-	vi.mocked(readPendingCryptoGifts).mockClear();
-	vi.mocked(sendDueEntries).mockClear();
+	for (const job of JOBS) vi.mocked(job).mockReset().mockResolvedValue(undefined);
 });
 
 describe('the schedule this worker is deployed with', () => {
@@ -98,10 +106,7 @@ describe('the schedule this worker is deployed with', () => {
 	it.each(DECLARED)('runs work on %s', async (cron) => {
 		const waited = await fires(cron);
 
-		expect(
-			vi.mocked(readPendingCryptoGifts).mock.calls.length +
-				vi.mocked(sendDueEntries).mock.calls.length
-		).toBe(1);
+		expect(JOBS.some((job) => vi.mocked(job).mock.calls.length > 0)).toBe(true);
 		// the run reached the runtime, which is what keeps the invocation open until it is done.
 		// `fires` awaited it on the way out, so a run that rejected never got this far.
 		expect(waited).toHaveLength(1);
@@ -128,11 +133,40 @@ describe('which run an expression reaches', () => {
 		expect(sendDueEntries).not.toHaveBeenCalled();
 	});
 
-	it('sends what the books are owed every minute, from the run’s own time', async () => {
+	it('sends what the books and the Zaps are owed every minute, from the run’s own time', async () => {
 		await fires('* * * * *');
 
 		expect(sendDueEntries).toHaveBeenCalledWith(expect.anything(), SCHEDULED_AT);
+		expect(sendDueZapierEvents).toHaveBeenCalledWith(
+			{ db: expect.anything(), fetch: expect.any(Function) },
+			SCHEDULED_AT
+		);
 		expect(readPendingCryptoGifts).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['the books', sendDueEntries, sendDueZapierEvents],
+		['the Zaps', sendDueZapierEvents, sendDueEntries]
+	] as const)(
+		'still runs the other minute job when %s one throws, and reports the throw',
+		async (_, failing, other) => {
+			const fault = new Error('the database went away');
+			vi.mocked(failing).mockRejectedValue(fault);
+
+			await expect(fires('* * * * *')).rejects.toBe(fault);
+			expect(other).toHaveBeenCalledWith(expect.anything(), SCHEDULED_AT);
+		}
+	);
+
+	it('reports both throws when both minute jobs throw', async () => {
+		const books = new Error('books');
+		const zaps = new Error('zaps');
+		vi.mocked(sendDueEntries).mockRejectedValue(books);
+		vi.mocked(sendDueZapierEvents).mockRejectedValue(zaps);
+
+		const thrown = await fires('* * * * *').catch((error: unknown) => error);
+		expect(thrown).toBeInstanceOf(AggregateError);
+		expect((thrown as AggregateError).errors).toEqual([books, zaps]);
 	});
 
 	it('runs nothing at all on an expression it does not answer', async () => {
@@ -141,7 +175,6 @@ describe('which run an expression reaches', () => {
 		// a bundle that has already dropped it. running nothing is what that has to cost.
 		await fires('0 3 * * *');
 
-		expect(readPendingCryptoGifts).not.toHaveBeenCalled();
-		expect(sendDueEntries).not.toHaveBeenCalled();
+		for (const job of JOBS) expect(job).not.toHaveBeenCalled();
 	});
 });

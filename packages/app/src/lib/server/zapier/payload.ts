@@ -1,0 +1,237 @@
+import type { Frequency, TributeKind } from '@better-giving/form/v1';
+import { and, desc, eq, inArray, lt, notExists, or, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/sqlite-core';
+import { projectTribute } from '../../donations/tributes';
+import { majorText } from '../../forms/amounts';
+import type { Db } from '../db/client';
+import {
+	contact,
+	donation,
+	form,
+	payment,
+	program,
+	recurringPlan,
+	type PaymentMethod,
+	type ZapierTrigger
+} from '../db/schema';
+
+// what a Zap is handed about a gift — the public contract every field a user maps into a Zap is
+// read from, and the one render both the live send and the sample list go through.
+//
+// **the keys are permanent.** each is a field some organisation's Zap has mapped, so a rename
+// breaks that Zap silently on its next run: add a key, never rename or drop one. every key is
+// present on every event, null where the gift has nothing to say, because a Zap maps the fields
+// the sample showed it and a key missing from a live event is a blank in whatever it writes.
+//
+// the tribute's notify name and address are not here: they name a third person who gave nothing
+// and asked for nothing, and the gift reaches a Zap without them.
+
+/** one settled gift, as a `new_gift` Zap receives it. `id` is the payment's, stable across retries. */
+export type GiftEvent = {
+	readonly id: string;
+	readonly donation_id: string;
+	/** when the money moved, ISO 8601 in UTC. */
+	readonly occurred_at: string;
+	/** major units as a decimal string in the currency's own digits: `51.50`, `2500` for JPY. */
+	readonly amount: string;
+	readonly amount_minor: number;
+	readonly currency: string;
+	/** the processor fee the donor chose to add on top, included in `amount`. */
+	readonly covered_fee_minor: number;
+	readonly method: PaymentMethod;
+	readonly recurring: boolean;
+	readonly frequency: Frequency;
+	readonly form_id: string | null;
+	readonly form_name: string | null;
+	readonly program_name: string | null;
+	readonly dedication_kind: TributeKind | null;
+	readonly dedication_honoree: string | null;
+	readonly note: string | null;
+	readonly donor_id: string;
+	readonly donor_name: string;
+	readonly donor_email: string | null;
+	/** a crypto gift's coin and how much of it arrived; null on every other rail. */
+	readonly coin: string | null;
+	readonly coin_amount: string | null;
+};
+
+/**
+ * one donor's first settled gift, as a `new_donor` Zap receives it. `id` is the donor's, so a Zap
+ * hears of each donor once however many gifts follow.
+ */
+export type DonorEvent = {
+	readonly id: string;
+	readonly name: string;
+	readonly email: string | null;
+	readonly first_gift: GiftEvent;
+};
+
+/** the `new_donor` event for the donor whose first gift `gift` is. derived, never read. */
+export function donorEventOf(gift: GiftEvent): DonorEvent {
+	return { id: gift.donor_id, name: gift.donor_name, email: gift.donor_email, first_gift: gift };
+}
+
+/**
+ * payment ids per query. D1 caps a query at 100 bound parameters
+ * (https://developers.cloudflare.com/d1/platform/limits/), and each id is one.
+ */
+const IDS_PER_READ = 90;
+
+/**
+ * the events for `paymentIds`, keyed by payment id. an id with no payment behind it has no entry,
+ * which is the caller's to answer for — the map never holds a half-rendered event.
+ */
+export async function readGiftEvents(
+	db: Db,
+	paymentIds: readonly string[]
+): Promise<Map<string, GiftEvent>> {
+	const ids = [...new Set(paymentIds)];
+	const events = new Map<string, GiftEvent>();
+	for (let start = 0; start < ids.length; start += IDS_PER_READ) {
+		const rows = await selectGifts(db).where(
+			inArray(payment.id, ids.slice(start, start + IDS_PER_READ))
+		);
+		for (const row of rows) events.set(row.id, render(row));
+	}
+	return events;
+}
+
+/**
+ * the gift the Zap editor shows a deployment that has taken none yet, so a Zap can be built before
+ * the first gift arrives. every field filled, so each one is there to map.
+ */
+export const SAMPLE_GIFT: GiftEvent = {
+	id: '01920000-0000-7000-8000-000000000003',
+	donation_id: '01920000-0000-7000-8000-000000000002',
+	occurred_at: '2026-01-15T17:30:00.000Z',
+	amount: '51.50',
+	amount_minor: 5_150,
+	currency: 'USD',
+	covered_fee_minor: 150,
+	method: 'card',
+	recurring: true,
+	frequency: 'monthly',
+	form_id: '01920000-0000-7000-8000-000000000004',
+	form_name: 'General Fund',
+	program_name: 'Clean water',
+	dedication_kind: 'memory',
+	dedication_honoree: 'Margaret Chen',
+	note: 'For the new well.',
+	donor_id: '01920000-0000-7000-8000-000000000001',
+	donor_name: 'Ada Okafor',
+	donor_email: 'ada@example.org',
+	coin: null,
+	coin_amount: null
+};
+
+/** the new-donor sample, the donor whose first gift is `SAMPLE_GIFT`. */
+export const SAMPLE_DONOR: DonorEvent = donorEventOf(SAMPLE_GIFT);
+
+/** what each trigger's Zap receives. */
+export type ZapierEvent = { readonly new_gift: GiftEvent; readonly new_donor: DonorEvent };
+
+/** how many events the Zap editor is shown to map fields from. */
+const SAMPLE_COUNT = 3;
+
+/**
+ * what the Zap editor shows for `trigger`: the latest real events, newest first, rendered by the
+ * same read a live send makes.
+ */
+export async function readSamples<T extends ZapierTrigger>(
+	db: Db,
+	trigger: T
+): Promise<ZapierEvent[T][]> {
+	const settled = and(eq(payment.status, 'succeeded'), eq(payment.direction, 'inbound'));
+	const rows = await selectGifts(db)
+		.where(trigger === 'new_donor' ? and(settled, notExists(earlierGiftOfDonor(db))) : settled)
+		.orderBy(desc(payment.occurredAt), desc(payment.id))
+		.limit(SAMPLE_COUNT);
+	const gifts = rows.length === 0 ? [SAMPLE_GIFT] : rows.map(render);
+	return (trigger === 'new_donor' ? gifts.map(donorEventOf) : gifts) as ZapierEvent[T][];
+}
+
+/**
+ * a settled gift from the same donor as the outer row's, dated before it — so the outer row with
+ * none is that donor's first. a tie on the date falls to the lower id, so exactly one row per
+ * donor is first.
+ */
+function earlierGiftOfDonor(db: Db) {
+	const earlier = alias(payment, 'earlier');
+	const earlierDonation = alias(donation, 'earlier_donation');
+	return db
+		.select({ one: sql`1` })
+		.from(earlier)
+		.innerJoin(earlierDonation, eq(earlierDonation.id, earlier.donationId))
+		.where(
+			and(
+				eq(earlierDonation.contactId, donation.contactId),
+				eq(earlier.status, 'succeeded'),
+				eq(earlier.direction, 'inbound'),
+				or(
+					lt(earlier.occurredAt, payment.occurredAt),
+					and(eq(earlier.occurredAt, payment.occurredAt), lt(earlier.id, payment.id))
+				)
+			)
+		);
+}
+
+/** every column a `GiftEvent` is rendered from, joined from the payment out. */
+function selectGifts(db: Db) {
+	return db
+		.select({
+			id: payment.id,
+			donationId: payment.donationId,
+			occurredAt: payment.occurredAt,
+			amountMinor: payment.amountMinor,
+			currency: payment.currency,
+			method: payment.method,
+			coin: payment.coin,
+			coinAmount: payment.coinAmount,
+			coveredFeeMinor: donation.feeMinor,
+			note: donation.note,
+			tributeKind: donation.tributeKind,
+			tributeHonoree: donation.tributeHonoree,
+			formId: donation.formId,
+			formName: form.name,
+			programName: program.name,
+			interval: recurringPlan.interval,
+			donorId: contact.id,
+			donorName: contact.displayName,
+			donorEmail: contact.primaryEmail
+		})
+		.from(payment)
+		.innerJoin(donation, eq(donation.id, payment.donationId))
+		.innerJoin(contact, eq(contact.id, donation.contactId))
+		.leftJoin(form, eq(form.id, donation.formId))
+		.leftJoin(program, eq(program.id, donation.programId))
+		.leftJoin(recurringPlan, eq(recurringPlan.id, donation.recurringId));
+}
+
+type GiftRow = Awaited<ReturnType<ReturnType<typeof selectGifts>['all']>>[number];
+
+function render(row: GiftRow): GiftEvent {
+	const dedication = projectTribute(row.tributeKind, row.tributeHonoree);
+	return {
+		id: row.id,
+		donation_id: row.donationId,
+		occurred_at: row.occurredAt.toISOString(),
+		amount: majorText(row.amountMinor, row.currency),
+		amount_minor: row.amountMinor,
+		currency: row.currency,
+		covered_fee_minor: row.coveredFeeMinor,
+		method: row.method,
+		recurring: row.interval !== null,
+		frequency: row.interval ?? 'one_time',
+		form_id: row.formId,
+		form_name: row.formName,
+		program_name: row.programName,
+		dedication_kind: dedication?.kind ?? null,
+		dedication_honoree: dedication?.honoree ?? null,
+		note: row.note,
+		donor_id: row.donorId,
+		donor_name: row.donorName,
+		donor_email: row.donorEmail,
+		coin: row.coin,
+		coin_amount: row.coinAmount
+	};
+}

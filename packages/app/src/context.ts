@@ -87,3 +87,14 @@ export const auth = createContext<Auth>();
  * screen that could narrow one into the other is a screen able to be entered by the wrong one.
  */
 export const consoleSession = createContext<ConsoleSession>();
+
+/**
+ * the hash of the Zapier key a caller on `/zapier` presented, set by the key check on that
+ * surface (src/routes/zapier.ts) once it has matched.
+ *
+ * a write that must only land while that key is still current — `subscribe` in
+ * $lib/server/zapier/subscriptions.ts — checks it in the same statement, so a replace racing the
+ * request cannot leave a Zap open on the key it cut. no `null` case: a route beneath that layout
+ * cannot be reached by a caller the check refused.
+ */
+export const zapierKeyHash = createContext<string>();

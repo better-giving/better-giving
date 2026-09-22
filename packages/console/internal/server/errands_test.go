@@ -1,12 +1,17 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io/fs"
+	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -161,6 +166,7 @@ func TestEveryErrandWithNoSessionMakesNoRequestAtAll(t *testing.T) {
 		"/api/deployment/test-email": `{"to":"you@example.org"}`,
 		"/api/deployment/recurring":  `{}`,
 		"/api/deployment/quickbooks": `{"press":"connect"}`,
+		"/api/deployment/zapier":     `{"press":"make"}`,
 		"/api/deployment/sites":      `{"sites":[]}`,
 
 		"/api/deployment/wallet-domains": `{}`,
@@ -173,6 +179,7 @@ func TestEveryErrandWithNoSessionMakesNoRequestAtAll(t *testing.T) {
 	}
 	for _, path := range []string{
 		"/api/deployment/payments", "/api/deployment/recurring", "/api/deployment/quickbooks",
+		"/api/deployment/zapier",
 	} {
 		status, answer := ask(t, handler, path)
 		read, _ := answer["read"].(map[string]any)
@@ -379,6 +386,7 @@ func TestABodyThisConsoleWillNotActOnIsRefused(t *testing.T) {
 		"/api/deployment/sites":      `{"sites":"one"}`,
 		"/api/deployment/test-email": `not json`,
 		"/api/deployment/quickbooks": `{"whatever":1}`,
+		"/api/deployment/zapier":     `{"press":"make","key":"bgz_x"}`,
 	} {
 		if status, _ := press(t, handler, path, body); status != http.StatusBadRequest {
 			t.Errorf("%s answered %d", path, status)
@@ -414,5 +422,89 @@ func TestTheSurfaceIsTheSeamACaseBinds(t *testing.T) {
 	}
 	if bound != "https://hound-haven.org" {
 		t.Fatalf("the deployment was reached at %q", bound)
+	}
+}
+
+// the key crosses this binary once, in the answer to the press that made it: it reaches the page
+// and nothing else — no log line, no file among this machine's records.
+//
+// a refused press is the deployment's 200 carrying why, and reaches the page as reported too.
+func TestTheZapierKeyReachesThePageAndNothingElse(t *testing.T) {
+	var logged bytes.Buffer
+	log.SetOutput(&logged)
+	restoring := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() {
+		log.SetOutput(os.Stderr)
+		slog.SetDefault(restoring)
+	})
+
+	const key = "bgz_q7Rk3vYh0cXw9LmN2pAe5sTu8jBf1gHd4iKo6lZyC0M"
+	records, flow, accounts := machine(t, "an-account")
+	surface, asked := deployed(t, map[string]any{
+		"GET /console/zapier": map[string]any{
+			"key":       map[string]any{"madeAt": "2026-09-22T10:00:00.000Z"},
+			"listening": map[string]any{"newGift": float64(1), "newDonor": float64(0)},
+			"deliveries": map[string]any{
+				"waiting": float64(0), "failed": float64(0), "oldestWaitingAt": nil,
+			},
+		},
+		"POST /console/zapier": map[string]any{
+			"ok": true, "press": "replace", "key": key,
+			"madeAt": "2026-09-22T10:00:00.000Z", "disconnected": float64(1),
+		},
+	})
+	connected(t, records, surface.URL)
+	handler := New(Options{UI: http.NotFoundHandler(), Flow: flow, Accounts: accounts, Records: records})
+
+	if status, answer := ask(t, handler, "/api/deployment/zapier"); status != http.StatusOK || answer["kind"] != "read" {
+		t.Fatalf("the zapier read answered %d %v", status, answer)
+	}
+	status, answer := press(t, handler, "/api/deployment/zapier", `{"press":"replace"}`)
+	report, _ := answer["report"].(map[string]any)
+	if status != http.StatusOK || answer["kind"] != "reported" || report["key"] != key {
+		t.Fatalf("the zapier press answered %d %v", status, answer)
+	}
+	for _, call := range asked() {
+		if call.path == deployment.ZapierPath && call.method == http.MethodPost {
+			if len(call.body) != 1 || call.body["press"] != "replace" {
+				t.Errorf("the zapier press posted %v", call.body)
+			}
+		}
+	}
+
+	if strings.Contains(logged.String(), "bgz_") {
+		t.Errorf("a log line carries a zapier key: %s", logged.String())
+	}
+	err := filepath.WalkDir(records.Dir(), func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		held, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if bytes.Contains(held, []byte("bgz_")) {
+			t.Errorf("%s holds a zapier key", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// a make over a key that exists is the deployment's refusal, answered 200 and drawn at the control.
+func TestARefusedZapierPressIsReported(t *testing.T) {
+	refused := map[string]any{
+		"ok": false, "press": "make",
+		"detail": "This deployment already has a Zapier key. Press replace to make a new one.",
+	}
+	handler, _ := errands(t, map[string]any{"POST /console/zapier": refused}, "here")
+	status, answer := press(t, handler, "/api/deployment/zapier", `{"press":"make"}`)
+	report, _ := answer["report"].(map[string]any)
+	if status != http.StatusOK || answer["kind"] != "reported" || report["ok"] != false ||
+		report["detail"] != refused["detail"] {
+		t.Fatalf("answered %d %v", status, answer)
 	}
 }

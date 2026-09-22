@@ -24,6 +24,7 @@
 		"./console/stripe-read": "./src/console/stripe-read.ts",
 		"./console/test-send": "./src/console/test-send.ts",
 		"./console/token": "./src/console/token.ts",
+		"./console/zapier": "./src/console/zapier.ts",
 		"./chariot/webhook-subscription": "./src/chariot/webhook-subscription.ts",
 		"./nowpayments/ipn-callback": "./src/nowpayments/ipn-callback.ts",
 		"./paypal/webhook-listener": "./src/paypal/webhook-listener.ts",

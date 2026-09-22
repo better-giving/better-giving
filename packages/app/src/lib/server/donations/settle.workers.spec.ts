@@ -61,6 +61,8 @@ beforeAll(async () => {
 
 beforeEach(async () => {
 	for (const table of [
+		'zapier_delivery',
+		'zapier_subscription',
 		'quickbooks_sync',
 		'quickbooks_connection',
 		'ledger_entry',
@@ -304,6 +306,26 @@ async function queuedForQuickbooks() {
 	const { results } = await env.DB.prepare(
 		'select entry_group_id, status, attempts from quickbooks_sync'
 	).all<{ entry_group_id: string; status: string; attempts: number }>();
+	return results;
+}
+
+/** a Zap subscribed to both triggers. */
+async function subscribeZaps(): Promise<void> {
+	await env.DB.prepare(
+		`insert into zapier_subscription (id, trigger, hook_url, created_at, updated_at)
+		 values ('019fb6ff-0000-7000-8000-000000000001', 'new_gift',
+		         'https://hooks.zapier.com/hooks/standard/1/gift/', 0, 0),
+		        ('019fb6ff-0000-7000-8000-000000000002', 'new_donor',
+		         'https://hooks.zapier.com/hooks/standard/1/donor/', 0, 0)`
+	).run();
+}
+
+/** what the listening Zaps are owed, by trigger. */
+async function owedToZaps() {
+	const { results } = await env.DB.prepare(
+		`select s.trigger, d.payment_id from zapier_delivery d
+		 join zapier_subscription s on s.id = d.subscription_id order by s.trigger`
+	).all<{ trigger: string; payment_id: string }>();
 	return results;
 }
 
@@ -1867,6 +1889,18 @@ describe('settleDelivery() — a crypto gift valued at what arrived', () => {
 			]);
 		});
 
+		it('owes a listening Zap the deposit’s own gift, and the donor no second time', async () => {
+			await subscribeZaps();
+			const first = await pendingCrypto();
+			// the first deposit settled, as it has by the time an address takes a second.
+			await db.update(payment).set({ status: 'succeeded' }).where(eq(payment.id, first.paymentId));
+
+			await settleDelivery(deps({ provider: repeat() }), DELIVERY);
+
+			const [child] = await db.select().from(payment).where(eq(payment.providerTxnId, CHILD_ID));
+			expect(await owedToZaps()).toEqual([{ trigger: 'new_gift', payment_id: child?.id }]);
+		});
+
 		it('never adds to or settles the first gift', async () => {
 			const first = await pendingCrypto();
 
@@ -1941,6 +1975,20 @@ describe('settleDelivery() — what a settled gift owes QuickBooks', () => {
 		const charge = await groupLines('payment', gift.paymentId);
 		expect(await queuedForQuickbooks()).toEqual([
 			{ entry_group_id: charge?.group.id, status: 'sent', attempts: 0 }
+		]);
+	});
+});
+
+describe('settleDelivery() — what a settled gift owes a listening Zap', () => {
+	it('owes the new gift and the new donor, in the commit that posted it', async () => {
+		await subscribeZaps();
+		const gift = await pendingGift();
+
+		await settleDelivery(deps(), DELIVERY);
+
+		expect(await owedToZaps()).toEqual([
+			{ trigger: 'new_donor', payment_id: gift.paymentId },
+			{ trigger: 'new_gift', payment_id: gift.paymentId }
 		]);
 	});
 });

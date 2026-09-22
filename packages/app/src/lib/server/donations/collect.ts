@@ -37,6 +37,7 @@ import {
 	type RecurringGiftNotice,
 	type Settlement
 } from '../payments/provider';
+import { zapierStatements } from '../zapier/events';
 import { alert, processorLabel, type SettleDeps, type SettleResult } from './delivery';
 import { chargeEntry, feeEntry, unpostable } from './entries';
 import { sendReceipt, type ReceiptOutcome } from './receipt';
@@ -1231,15 +1232,18 @@ function chargeWrites(
 
 	return {
 		// foreign-key order: the gift, its line and its payment, then the entries keyed to that
-		// payment, then the queue row keyed to one of those entries. one statement per row and never
-		// a multi-row INSERT — D1 caps a query at 100 bound parameters (CLAUDE.md).
+		// payment, then the queue row keyed to one of those entries, then the rows each listening
+		// Zap is owed, keyed to the payment. one statement per row and never a multi-row INSERT — D1
+		// caps a query at 100 bound parameters
+		// (https://developers.cloudflare.com/d1/platform/limits/).
 		statements: [
 			db.insert(donation).values(giftRow),
 			db.insert(lineItem).values(lineRow),
 			db.insert(payment).values(paymentRow),
 			...postingStatements(db, charge),
 			...(fee === null ? [] : postingStatements(db, fee)),
-			...outboxStatements(db, gate, [charge, fee])
+			...outboxStatements(db, gate, [charge, fee]),
+			...zapierStatements(db, { paymentId, contactId })
 		],
 		charge: {
 			donationId,
@@ -1353,7 +1357,8 @@ function claimWrites(
 			db.insert(payment).values(paymentRow),
 			...postingStatements(db, charge),
 			...(fee === null ? [] : postingStatements(db, fee)),
-			...outboxStatements(db, gate, [charge, fee])
+			...outboxStatements(db, gate, [charge, fee]),
+			...zapierStatements(db, { paymentId, contactId: gift.contactId })
 		],
 		charge: {
 			donationId: gift.id,

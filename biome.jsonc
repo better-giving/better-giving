@@ -106,6 +106,10 @@
 										// self-reference as if it were the escape.
 										"group": ["**/app/src/**", "**/app/scripts/**"],
 										"message": "packages/form may not reach the app by relative path either, into src/ or scripts/ — a relative path carries no alias to be absent, so this is what makes that escape a lint error instead of a silent resolve."
+									},
+									{
+										"group": ["**/packages/zapier/src/**", "**/zapier/src/**"],
+										"message": "packages/zapier is a leaf with no consumer — packages/form has no reason to reach it and a relative path is the one escape the graph does not catch."
 									}
 								]
 							}
@@ -157,6 +161,10 @@
 									{
 										"group": ["**/packages/emails/src/**", "**/emails/src/**"],
 										"message": "reach @better-giving/emails only through its published exports (@better-giving/emails, /render) — a relative path into packages/emails/src bypasses the package boundary."
+									},
+									{
+										"group": ["**/packages/zapier/src/**", "**/zapier/src/**"],
+										"message": "packages/zapier is a leaf with no consumer — the app's own zapier feature code lives under packages/app/src, and a relative path into packages/zapier/src is not that, it's a reach into a standalone Zapier CLI project that ships alone."
 									}
 								]
 							}
@@ -201,6 +209,10 @@
 									{
 										"group": ["**/app/src/**", "**/app/scripts/**"],
 										"message": "packages/console-ui may not reach packages/app by relative path — packages/app has no exports map, so a bare specifier already fails and a relative path is the one escape left uncaught."
+									},
+									{
+										"group": ["**/packages/zapier/src/**", "**/zapier/src/**"],
+										"message": "packages/zapier is a leaf with no consumer — packages/console-ui has no reason to reach it and a relative path is the one escape the graph does not catch."
 									}
 								]
 							}
@@ -242,9 +254,11 @@
 											"**/packages/console-ui/src/**",
 											"**/console-ui/src/**",
 											"**/packages/gallery/src/**",
-											"**/gallery/src/**"
+											"**/gallery/src/**",
+											"**/packages/zapier/src/**",
+											"**/zapier/src/**"
 										],
-										"message": "packages/operator is a leaf and may not reach into packages/app, packages/console-ui or packages/gallery by relative path either — a leaf that names one consumer is not a leaf."
+										"message": "packages/operator is a leaf and may not reach into packages/app, packages/console-ui, packages/gallery or packages/zapier by relative path either — a leaf that names one consumer is not a leaf, and packages/zapier is a leaf with no consumer at all."
 									}
 								]
 							}
@@ -280,9 +294,11 @@
 											"**/app/src/**",
 											"**/app/scripts/**",
 											"**/packages/console-ui/src/**",
-											"**/console-ui/src/**"
+											"**/console-ui/src/**",
+											"**/packages/zapier/src/**",
+											"**/zapier/src/**"
 										],
-										"message": "packages/gallery may not reach packages/app or packages/console-ui by relative path — it is a consumer of packages/operator only, exactly like packages/console-ui, and reaches neither app-like package."
+										"message": "packages/gallery may not reach packages/app, packages/console-ui or packages/zapier by relative path — it is a consumer of packages/operator only, exactly like packages/console-ui, and reaches neither app-like package nor the zapier leaf, which has no consumer at all."
 									}
 								]
 							}
@@ -323,9 +339,11 @@
 											"**/packages/form/src/**",
 											"**/form/src/**",
 											"**/packages/gallery/src/**",
-											"**/packages/emails-preview/**"
+											"**/packages/emails-preview/**",
+											"**/packages/zapier/src/**",
+											"**/zapier/src/**"
 										],
-										"message": "packages/emails reaches this repo only through @better-giving/operator's export map — a relative path is the one escape the graph does not catch."
+										"message": "packages/emails reaches this repo only through @better-giving/operator's export map — a relative path is the one escape the graph does not catch, and packages/zapier is a leaf with no consumer at all."
 									}
 								]
 							}
@@ -364,9 +382,54 @@
 											"**/operator/src/**",
 											"**/packages/form/src/**",
 											"**/form/src/**",
-											"**/packages/gallery/src/**"
+											"**/packages/gallery/src/**",
+											"**/packages/zapier/src/**",
+											"**/zapier/src/**"
 										],
-										"message": "packages/emails-preview may not reach any app-like package by relative path either — it is a consumer of packages/emails only."
+										"message": "packages/emails-preview may not reach any app-like package by relative path either, nor packages/zapier — it is a consumer of packages/emails only, and packages/zapier is a leaf with no consumer at all."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			// packages/zapier is a leaf with no consumer at all: it is not imported by anything —
+			// it is a standalone zapier-platform-core project that Zapier's own CLI pushes to
+			// Zapier's infrastructure, never to this deployment — and it imports nothing back. its
+			// package.json declares no workspace:* dependency, so the graph already refuses a bare
+			// specifier into any other package for want of one, in tsc before lint ever runs; a
+			// relative path carries no specifier and no alias to be absent, so it is the one escape
+			// left uncaught. its own tsconfig.json argues the same shape from the build side: `zapier
+			// platform build` copies this directory alone into a temp dir with no monorepo tsconfig
+			// above it, so a relative path out of src/ would not even resolve there.
+			"includes": ["packages/zapier/src/**/*.ts", "packages/zapier/*.ts"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": [
+											"**/app/src/**",
+											"**/app/scripts/**",
+											"**/packages/console-ui/src/**",
+											"**/console-ui/src/**",
+											"**/packages/operator/src/**",
+											"**/operator/src/**",
+											"**/packages/form/src/**",
+											"**/form/src/**",
+											"**/packages/gallery/src/**",
+											"**/gallery/src/**",
+											"**/packages/emails/src/**",
+											"**/emails/src/**",
+											"**/packages/emails-preview/**"
+										],
+										"message": "packages/zapier is a leaf and reaches no workspace package by relative path — it ships alone to Zapier's own infrastructure, never bundled with the rest of this repo."
 									}
 								]
 							}

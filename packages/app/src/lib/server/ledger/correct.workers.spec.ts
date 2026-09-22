@@ -22,6 +22,8 @@ beforeAll(() => {
 beforeEach(async () => {
 	// the queue and the lines first: both point at `entry_group`, so the other order is a
 	// constraint violation rather than an empty table.
+	await env.DB.prepare('delete from zapier_delivery').run();
+	await env.DB.prepare('delete from zapier_subscription').run();
 	await env.DB.prepare('delete from quickbooks_sync').run();
 	await env.DB.prepare('delete from quickbooks_connection').run();
 	await env.DB.prepare('delete from ledger_entry').run();
@@ -185,5 +187,23 @@ describe('postCorrection() — what a correction owes QuickBooks', () => {
 		expect(await postCorrection(db, input)).toEqual({ ok: false, reason: 'already_posted' });
 
 		expect(await queuedForQuickbooks()).toHaveLength(1);
+	});
+});
+
+describe('postCorrection() — what a correction owes a listening Zap', () => {
+	it('owes nothing: a correction is an edit to the books, not a gift', async () => {
+		await env.DB.prepare(
+			`insert into zapier_subscription (id, trigger, hook_url, created_at, updated_at)
+			 values ('019fb6ff-0000-7000-8000-000000000001', 'new_gift',
+			         'https://hooks.zapier.com/hooks/standard/1/gift/', 0, 0),
+			        ('019fb6ff-0000-7000-8000-000000000002', 'new_donor',
+			         'https://hooks.zapier.com/hooks/standard/1/donor/', 0, 0)`
+		).run();
+
+		const result = await postCorrection(db, correction());
+
+		expect(result).toEqual({ ok: true });
+		const { results } = await env.DB.prepare('select event_id from zapier_delivery').all();
+		expect(results).toEqual([]);
 	});
 });

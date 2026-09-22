@@ -43,6 +43,13 @@
       "when": 1789910616379,
       "tag": "0005_quickbooks_sync_claim",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1790076354438,
+      "tag": "0006_zapier_key_subscription_and_delivery",
+      "breakpoints": true
     }
   ]
 }

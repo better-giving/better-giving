@@ -31,6 +31,7 @@ import {
 	type Settlement,
 	type WebhookDelivery
 } from '../payments/provider';
+import { zapierStatements } from '../zapier/events';
 import { collectRecurringGift } from './collect';
 import { alert, processorLabel, type SettleDeps, type SettleResult } from './delivery';
 import { chargeEntry, feeEntry, unpostable, type GiftRevenue, type RevenueShare } from './entries';
@@ -676,7 +677,8 @@ async function recognitionOf(
 }
 
 /**
- * the correction, the postings and the queue row they owe QuickBooks, in one `batch()`.
+ * the correction, the postings and the rows they owe QuickBooks and every listening Zap, in one
+ * `batch()`.
  *
  * one statement per row and never a multi-row `INSERT` — D1 caps a query at 100 bound parameters
  * (CLAUDE.md) — and one commit, because a payment corrected without its posting, or a posting
@@ -735,9 +737,12 @@ async function write(
 		const fee = feeEntry(gift, settlement);
 		writes.push(...postingStatements(db, charge));
 		if (fee !== null) writes.push(...postingStatements(db, fee));
-		// one read for the whole settlement, spent only where something is being posted — and last in
-		// the batch, because `quickbooks_sync.entry_group_id` points at the groups above it.
+		// one read for the whole settlement, spent only where something is being posted — and after
+		// the groups, because `quickbooks_sync.entry_group_id` points at them.
 		writes.push(...outboxStatements(db, await outboxGate(db), [charge, fee]));
+		writes.push(
+			...zapierStatements(db, { paymentId: row.id, contactId: target.donation.contactId })
+		);
 	}
 
 	const committed = await commit(db, writes);
@@ -1226,7 +1231,8 @@ async function recordRepeatDeposit(
 		}),
 		...postingStatements(deps.db, charge),
 		...(fee === null ? [] : postingStatements(deps.db, fee)),
-		...outboxStatements(deps.db, gate, [charge, fee])
+		...outboxStatements(deps.db, gate, [charge, fee]),
+		...zapierStatements(deps.db, { paymentId, contactId: first.donation.contactId })
 	]);
 	if (written === 'already_posted') {
 		return {

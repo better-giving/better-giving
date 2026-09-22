@@ -1,0 +1,5 @@
+node_modules/
+dist/
+build/
+# the app id `zapier-platform register` or `link` writes; a fork has no access to the app it names
+.zapierapprc

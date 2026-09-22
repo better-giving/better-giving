@@ -7,6 +7,7 @@ import {
 	QUICKBOOKS_CONNECT_PATH
 } from '$lib/server/accounting/connect-link';
 import { CONSOLE_BASE_PATH } from '$lib/server/console/surface';
+import { ZAPIER_BASE_PATH } from '$lib/server/zapier/surface';
 import { CHARIOT_WEBHOOK_PATH } from '@better-giving/operator/chariot/webhook-subscription';
 import { NOWPAYMENTS_IPN_PATH } from '@better-giving/operator/nowpayments/ipn-callback';
 import { PAYPAL_WEBHOOK_PATH } from '@better-giving/operator/paypal/webhook-listener';
@@ -59,6 +60,10 @@ import {
 // surface's rate limit, and none of them may charge it again. the console's credential is held the
 // same way, under the layout that checks it. the three rules are one rule about three surfaces:
 // what a request owes is decided where the surface is, never per endpoint.
+//
+// `/zapier` is the console's shape one credential over: Zapier's servers present the deployment's
+// Zapier key ($lib/server/zapier/key.ts), checked by the layout's middleware, so every route
+// served there is held to sitting under that layout and is none of the three categories above.
 
 /** the layout the gate is mounted on, and being under it is what makes a route gated. */
 const PROTECTED_LAYOUT = 'routes/_app.tsx';
@@ -258,7 +263,10 @@ const CONSOLE_ROUTE_FILES: readonly string[] = [
 	// the chart the three accounts are picked out of, how far behind the queue is, and the signed
 	// address that begins a connection. the connection's tokens are this deployment's own rows, so
 	// no console can read any of it.
-	'routes/console.quickbooks.ts'
+	'routes/console.quickbooks.ts',
+	// the key Zapier presents to this deployment and the Zaps listening on it: a read that never
+	// carries the key, and the two presses that make and replace it.
+	'routes/console.zapier.ts'
 ];
 
 /**
@@ -272,6 +280,12 @@ const CONSOLE_ROUTE_FILES: readonly string[] = [
  */
 const CONSOLE_LAYOUT = 'routes/console.ts';
 
+/**
+ * the layout the Zapier key check and that surface's rate limit are mounted on — one more
+ * mounting of the same shape. src/routes/zapier.ts argues it.
+ */
+const ZAPIER_LAYOUT = 'routes/zapier.ts';
+
 let routes: RouteRecord[];
 beforeAll(async () => {
 	routes = await routeManifest();
@@ -280,6 +294,11 @@ beforeAll(async () => {
 /** whether a route is served on the operator console's wire surface rather than as a screen. */
 function consoleRoute(route: RouteRecord): boolean {
 	return route.path === CONSOLE_BASE_PATH || route.path.startsWith(`${CONSOLE_BASE_PATH}/`);
+}
+
+/** whether a route is served on the surface Zapier's servers call. */
+function zapierRoute(route: RouteRecord): boolean {
+	return route.path === ZAPIER_BASE_PATH || route.path.startsWith(`${ZAPIER_BASE_PATH}/`);
 }
 
 /** whether a route is served on the public api. */
@@ -318,7 +337,10 @@ function ungatedRoutes(manifest: readonly RouteRecord[], allowed: readonly strin
 	return manifest
 		.filter(
 			(route) =>
-				!under(route, PROTECTED_LAYOUT) && !allowed.includes(route.file) && !consoleRoute(route)
+				!under(route, PROTECTED_LAYOUT) &&
+				!allowed.includes(route.file) &&
+				!consoleRoute(route) &&
+				!zapierRoute(route)
 		)
 		.map(
 			(route) =>
@@ -383,6 +405,16 @@ function uncheckedConsoleRoutes(manifest: readonly RouteRecord[]): string[] {
 		.map(
 			(route) =>
 				`${route.file} is served at ${route.path} and is not under ${CONSOLE_LAYOUT}, so nothing checks the console credential for it. Name it so it nests under that layout — see $lib/server/console/gate.ts.`
+		);
+}
+
+/** every route on the Zapier surface that is not under the layout checking the key. */
+function uncheckedZapierRoutes(manifest: readonly RouteRecord[]): string[] {
+	return manifest
+		.filter((route) => zapierRoute(route) && !under(route, ZAPIER_LAYOUT))
+		.map(
+			(route) =>
+				`${route.file} is served at ${route.path} and is not under ${ZAPIER_LAYOUT}, so nothing checks the Zapier key for it. Name it so it nests under that layout.`
 		);
 }
 
@@ -468,6 +500,20 @@ describe('the rules the sweep runs on', () => {
 		]);
 	});
 
+	it('reports a Zapier route that sits outside the checked layout', () => {
+		const manifest = [route('routes/zapier_.me.ts', '/zapier/me')];
+		expect(uncheckedZapierRoutes(manifest)).toHaveLength(1);
+		expect(ungatedRoutes(manifest, [])).toEqual([]);
+	});
+
+	it('passes a Zapier route that is under it, and the layout itself', () => {
+		const manifest = [
+			route(ZAPIER_LAYOUT, '/zapier'),
+			route('routes/zapier.me.ts', '/zapier/me', [ZAPIER_LAYOUT])
+		];
+		expect(uncheckedZapierRoutes(manifest)).toEqual([]);
+	});
+
 	it('passes a console route that is under it, and the layout itself', () => {
 		const manifest = [
 			route(CONSOLE_LAYOUT, '/console'),
@@ -519,6 +565,11 @@ describe('the route surface', () => {
 
 	it('names every route on the console surface', () => {
 		expect(unnamedConsoleRoutes(routes, CONSOLE_ROUTE_FILES)).toEqual([]);
+	});
+
+	it('checks the key for every route it serves on the Zapier surface', () => {
+		expect(routes.map((r) => r.file)).toContain(ZAPIER_LAYOUT);
+		expect(uncheckedZapierRoutes(routes)).toEqual([]);
 	});
 
 	it('lists no console route as public', () => {
@@ -663,22 +714,23 @@ describe('reaching for middleware', () => {
 });
 
 describe('where middleware is mounted', () => {
-	// three layouts and nothing else, each covering one surface: the session gate over every screen
-	// behind the login, the meter over every route on the public api, and the credential check over
-	// every route on the operator console. a fourth name here is a route that took a decision one
-	// of those three makes for a whole surface, which is the shape all three exist to remove.
+	// the surface layouts and nothing else, each covering one surface: the session gate over every
+	// screen behind the login, the meter over every route on the public api, the credential check
+	// over every route on the operator console, and the key check over every route Zapier calls.
+	// any other name here is a route that took a decision one of those makes for a whole surface,
+	// which is the shape they all exist to remove.
 	//
 	// the console's is not the session gate and must never be confused for one. it reads a bearer
 	// header against a value only an account holder could have written
 	// ($lib/server/console/access.ts) and sets no session — so a caller it refuses gets a JSON 401
 	// rather than the 303 to an HTML login the gate on the protected layout answers with, which is
 	// the whole reason that surface may not sit under that layout.
-	it('is the three surface layouts, and no other route', () => {
+	it('is the surface layouts, and no other route', () => {
 		const mounted = routes
 			.filter((r) => exportsMiddleware(readFromDisk(r.file) ?? ''))
 			.map((r) => r.file)
 			.sort();
-		expect(mounted).toEqual([API_LAYOUT, CONSOLE_LAYOUT, PROTECTED_LAYOUT].sort());
+		expect(mounted).toEqual([API_LAYOUT, CONSOLE_LAYOUT, PROTECTED_LAYOUT, ZAPIER_LAYOUT].sort());
 	});
 
 	it('is never the root route, which every request passes through', () => {

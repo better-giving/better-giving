@@ -1,0 +1,16 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"target": "es2023",
+		// dist/ runs on node as native ESM with no bundler, so imports resolve as node resolves them.
+		"module": "nodenext",
+		"moduleResolution": "nodenext",
+		"verbatimModuleSyntax": true,
+		"isolatedModules": true,
+		"types": ["node"],
+		"rootDir": "./src",
+		"outDir": "./dist",
+		"noEmit": true
+	},
+	"include": ["src/**/*.ts", "src/**/*.json"]
+}

@@ -63,6 +63,8 @@ beforeAll(async () => {
 
 beforeEach(async () => {
 	for (const table of [
+		'zapier_delivery',
+		'zapier_subscription',
 		'quickbooks_sync',
 		'quickbooks_connection',
 		'ledger_entry',
@@ -2253,5 +2255,59 @@ describe('settleDelivery() — what a collection owes QuickBooks', () => {
 
 		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
 		expect(await queuedForQuickbooks()).toEqual([]);
+	});
+});
+
+describe('settleDelivery() — what a collection owes a listening Zap', () => {
+	beforeEach(async () => {
+		await authorizeGift();
+		await env.DB.prepare(
+			`insert into zapier_subscription (id, trigger, hook_url, created_at, updated_at)
+			 values ('019fb6ff-0000-7000-8000-000000000001', 'new_gift',
+			         'https://hooks.zapier.com/hooks/standard/1/gift/', 0, 0),
+			        ('019fb6ff-0000-7000-8000-000000000002', 'new_donor',
+			         'https://hooks.zapier.com/hooks/standard/1/donor/', 0, 0)`
+		).run();
+	});
+
+	/** what the listening Zaps are owed, by trigger. */
+	async function owedToZaps() {
+		const { results } = await env.DB.prepare(
+			`select s.trigger, d.payment_id from zapier_delivery d
+			 join zapier_subscription s on s.id = d.subscription_id order by s.trigger, d.payment_id`
+		).all<{ trigger: string; payment_id: string }>();
+		return results;
+	}
+
+	it('owes the charge that opens a commitment as a new gift and a new donor', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		const paymentId = await paymentFor('pi_collect_1');
+		expect(await owedToZaps()).toEqual([
+			{ trigger: 'new_donor', payment_id: paymentId },
+			{ trigger: 'new_gift', payment_id: paymentId }
+		]);
+	});
+
+	it('owes every later collection as a new gift, and the donor no second time', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		await settleDelivery(
+			deps({
+				provider: provider({
+					verify: { ok: true, value: secondCollection.event },
+					gift: { ok: true, value: secondCollection.notice },
+					settled: { ok: true, value: secondCollection.settlement }
+				})
+			}),
+			DELIVERY
+		);
+
+		const first = await paymentFor('pi_collect_1');
+		const second = await paymentFor('pi_collect_2');
+		expect(await owedToZaps()).toEqual([
+			{ trigger: 'new_donor', payment_id: first },
+			...[first, second].sort().map((payment_id) => ({ trigger: 'new_gift', payment_id }))
+		]);
 	});
 });

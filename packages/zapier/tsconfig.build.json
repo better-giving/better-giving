@@ -1,0 +1,6 @@
+{
+	// what `zapier-platform build` runs as `_zapier-build`: src/ into dist/, specs left out.
+	"extends": "./tsconfig.json",
+	"compilerOptions": { "noEmit": false },
+	"exclude": ["src/**/*.spec.ts"]
+}

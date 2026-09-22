@@ -24,7 +24,10 @@ import type {
 	ValuesRefusal,
 	VarsWritten,
 	WalletsLevel,
-	WidgetLevel
+	WidgetLevel,
+	ZapierPressBody,
+	ZapierPressed,
+	ZapierRead
 } from './types';
 
 // the console's own process, reached from the page it serves.
@@ -219,6 +222,16 @@ export const readQuickbooks = (): Promise<QuickbooksRead> => ask('/deployment/qu
  */
 export const pressQuickbooks = (body: QuickbooksPressBody): Promise<QuickbooksPressed> =>
 	post('/deployment/quickbooks', body);
+
+/**
+ * where this deployment's Zapier key stands, how many Zaps are listening on it, and how its
+ * deliveries are going. the deployment keeps a hash of the key, so no reading carries the key.
+ */
+export const readZapier = (): Promise<ZapierRead> => ask('/deployment/zapier', 'GET');
+
+/** makes the key, or replaces it; the answer is the one place the new key is ever read. */
+export const pressZapier = (body: ZapierPressBody): Promise<ZapierPressed> =>
+	post('/deployment/zapier', body);
 
 /**
  * asks the deployment to register the hostnames a donor is drawn wallet buttons on.

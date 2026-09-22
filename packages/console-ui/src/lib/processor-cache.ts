@@ -9,7 +9,8 @@ import { readProcessorScreen } from './processor-reading';
 
 // what a page that reads the deployment for itself was last read as, kept between visits, so opening
 // it a second time draws at once rather than taking those round trips again. every processor page is
-// one (./processor-reading.ts), and so is the books page (../routes/_sections.quickbooks.tsx).
+// one (./processor-reading.ts), and so are the books page (../routes/_sections.quickbooks.tsx) and
+// the Zapier page (../routes/_sections.zapier.tsx).
 //
 // **the store is `remix-client-cache`'s own in-memory map and never a `Storage`**: the reading holds
 // the account's payments as promises, which no storage can hold, and nothing about a deployment
@@ -22,8 +23,9 @@ import { readProcessorScreen } from './processor-reading';
 // - an entry the page itself reads past (`standing`), because what it holds could have moved with
 //   nothing pressed here: a run going or ended — a going one has since moved on, and an ended one's
 //   report was consumed by the reading that kept it (../api/client.ts), so it is never drawn twice
-//   from here — and a books page with no company connected, since a company is connected in a
-//   browser at the deployment and never here;
+//   from here — a books page with no company connected, since a company is connected in a
+//   browser at the deployment and never here, and a Zapier page with a key, since a Zap is turned
+//   on at Zapier;
 // - anything after a press, on any page: every `clientAction` forgets every entry first
 //   (`forgetReadings`), so nothing drawn after a write was read before it. a reading that was in
 //   flight when that happened is thrown away when it lands rather than kept.

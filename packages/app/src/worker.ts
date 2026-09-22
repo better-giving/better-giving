@@ -6,6 +6,7 @@ import { requestDb } from '$lib/server/db/client';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { createPaymentProviders } from '$lib/server/payments/factory';
+import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
 import { requestContext } from './request-context';
 
 // the worker ./wrangler.jsonc names: every request this deployment answers enters here, and every
@@ -55,15 +56,31 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, now: Date) => Promise
 		),
 
 	'* * * * *': (env, now) => {
-		// one handle, shared by the delivery and by the connection the provider reads its tokens
-		// through: the store the factory builds is over this same database.
+		// one handle, shared by both deliveries and by the connection the accounting provider reads
+		// its tokens through: the store the factory builds is over this same database.
 		const db = requestDb(env);
-		return sendDueEntries(
-			{ db, provider: createAccountingProvider(env, db), email: createEmailProvider(env) },
-			now
-		);
+		return allRun([
+			sendDueEntries(
+				{ db, provider: createAccountingProvider(env, db), email: createEmailProvider(env) },
+				now
+			),
+			sendDueZapierEvents({ db, fetch }, now)
+		]);
 	}
 };
+
+/**
+ * every job run to its end, a throw in one stopping none of the others, and then every throw
+ * rethrown: one alone as itself, several as an `AggregateError` in the order the jobs were given.
+ * the rethrow is what reaches `waitUntil`, and so the invocation's logs.
+ */
+async function allRun(jobs: readonly Promise<void>[]): Promise<void> {
+	const thrown = (await Promise.allSettled(jobs)).flatMap((settled) =>
+		settled.status === 'rejected' ? [settled.reason as unknown] : []
+	);
+	if (thrown.length === 1) throw thrown[0];
+	if (thrown.length > 1) throw new AggregateError(thrown, 'more than one scheduled job threw');
+}
 
 export default {
 	fetch(request, env, ctx) {

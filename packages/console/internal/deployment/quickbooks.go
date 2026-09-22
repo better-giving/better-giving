@@ -114,7 +114,7 @@ func PressQuickbooks(ctx context.Context, post cf.Post, press QuickbooksPress) Q
 		}
 	}
 	answer := post(ctx, QuickbooksPath, body)
-	if report := quickbooksPressReport(answer, press.Press); report != nil {
+	if report := pressReport(answer, press.Press); report != nil {
 		return QuickbooksPressed{Kind: QuickbooksReported, Report: report}
 	}
 	read := readNoReport(answer)
@@ -143,10 +143,10 @@ func quickbooksReport(answer cf.Answer) any {
 //
 // The press it names is read against the press this console sent, and not merely for being there: a
 // report naming another press is the deployment answering about something nobody asked it, which a
-// screen would draw at the control that was pressed as what that press did. A refusal is not read
-// for one: what the deployment would not do it answers outside 200 with the words to act on, and
-// those reach the page as the unanswered arm's own.
-func quickbooksPressReport(answer cf.Answer, sent string) any {
+// screen would draw at the control that was pressed as what that press did. A refusal outside 200
+// is not read for one: the deployment answers it with the words to act on, and those reach the page
+// as the unanswered arm's own. One inside 200 names its press and is a report (./zapier.go).
+func pressReport(answer cf.Answer, sent string) any {
 	if answer.Kind != cf.Answered || answer.Status != http.StatusOK {
 		return nil
 	}

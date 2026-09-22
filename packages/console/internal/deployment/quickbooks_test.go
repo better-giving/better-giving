@@ -111,7 +111,7 @@ func quickbooksFixtures() []map[string]any {
 // lines nothing ever writes. it is ../release/config_test.go's arrangement and its reason: the
 // source is read as text, and what is asserted is the names.
 func TestTheQuickbooksFixturesAreTheShapeTheDeploymentAnswersWith(t *testing.T) {
-	source := wire(t)
+	source := wire(t, "quickbooks.ts")
 
 	connected, _ := quickbooksReported()["connection"].(map[string]any)
 	chart, _ := quickbooksReported()["accounts"].(map[string]any)
@@ -151,20 +151,20 @@ func TestTheQuickbooksFixturesAreTheShapeTheDeploymentAnswersWith(t *testing.T) 
 	}
 }
 
-// packages/operator/src/console/quickbooks.ts, with its comments taken out.
+// one module of packages/operator/src/console/, with its comments taken out.
 //
-// the deployment answers that wire and both operator surfaces read it, and that module is where
-// every line of it is named once.
+// the deployment answers each of those wires and both operator surfaces read it, and that module
+// is where every line of it is named once.
 //
-// the comments go first because a doc comment in it carries braces of its own (`{@link failed}`),
+// the comments go first because a doc comment in one carries braces of its own (`{@link failed}`),
 // and a reader taking a declaration as far as its closing brace would stop inside one.
-func wire(t *testing.T) string {
+func wire(t *testing.T, module string) string {
 	t.Helper()
 	root, err := release.RepoRoot(".")
 	if err != nil {
 		t.Fatal(err)
 	}
-	at := filepath.Join(root, filepath.FromSlash("packages/operator/src/console/quickbooks.ts"))
+	at := filepath.Join(root, filepath.FromSlash("packages/operator/src/console/"+module))
 	source, err := os.ReadFile(at)
 	if err != nil {
 		t.Fatalf("ReadFile %s: %v", at, err)
