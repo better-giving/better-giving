@@ -297,8 +297,8 @@ describe('how long the oldest has waited', () => {
 	it('is the coarsest unit still true', () => {
 		expect(waitedSays('2026-09-20T11:30:00.000Z', NOW)).toBe('under an hour');
 		expect(waitedSays('2026-09-20T10:30:00.000Z', NOW)).toBe('an hour');
-		expect(waitedSays('2026-09-20T02:00:00.000Z', NOW)).toBe('10 hours');
-		expect(waitedSays('2026-09-16T12:00:00.000Z', NOW)).toBe('4 days');
+		expect(waitedSays('2026-09-20T02:00:00.000Z', NOW)).toBe('10\u00a0hours');
+		expect(waitedSays('2026-09-16T12:00:00.000Z', NOW)).toBe('4\u00a0days');
 	});
 
 	it('says the same of a gift queued on a clock running ahead of this one', () => {
@@ -318,7 +318,7 @@ describe('the backlog speaks only where a gift was given up on', () => {
 			report({ backlog: { failed: 3, oldestWaitingAt: '2026-09-16T12:00:00.000Z' } }),
 			NOW
 		);
-		expect(stands).toEqual({ failed: 3, waited: '4 days' });
+		expect(stands).toEqual({ failed: 3, waited: '4\u00a0days' });
 	});
 
 	it('says nothing where no company is connected, whatever the rows say', () => {

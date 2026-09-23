@@ -19,10 +19,10 @@ import (
 // have landed — so what reaches the page is the reported arm either way, and only a press that
 // never got a 200 back is unanswered.
 //
-// **the press answer carries the plaintext key**, and it is in this answer and no other: the
-// deployment keeps a hash. so neither body is logged, stored or copied anywhere by this binary —
-// it is handed to the page and dropped. a make that timed out has lost its key for good, and the
-// next read says whether one was made.
+// **both answers carry the plaintext key**: the read hands back the stored key (null for one made
+// before the deployment stored it), and a press hands back the key it made. so no body is logged,
+// stored or copied anywhere by this binary — each is handed to the page and dropped. a make that
+// timed out loses nothing: the next read carries the key if one was made.
 //
 // every failure is a value, for the reason ./quickbooks.go states.
 

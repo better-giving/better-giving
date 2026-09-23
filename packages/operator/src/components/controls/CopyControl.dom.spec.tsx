@@ -1,5 +1,6 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { closedRungOf } from '../closed-look.testing';
 import { render } from '../render.testing';
 import { CopyControl } from './CopyControl.jsx';
 
@@ -72,6 +73,44 @@ describe('a copy control mounted into a document', () => {
 		button(root).click();
 
 		expect(writeText).toHaveBeenCalledWith('pnpm run deploy');
+	});
+
+	it('copies nothing while closed, and keeps the focus a closed native button would drop', () => {
+		const root = render(CopyControl, { text: 'bgz_key', disabled: true });
+		button(root).focus();
+
+		button(root).click();
+
+		expect(writeText).not.toHaveBeenCalled();
+		expect(button(root).getAttribute('aria-disabled')).toBe('true');
+		expect(button(root).hasAttribute('disabled')).toBe(false);
+		expect(document.activeElement).toBe(button(root));
+	});
+
+	it('draws closed while closed, rather than at rest under a press that does nothing', () => {
+		const root = render(CopyControl, { text: 'bgz_key', disabled: true });
+
+		expect(closedRungOf(button(root))).not.toBeNull();
+	});
+
+	it('draws at rest while open', () => {
+		const root = render(CopyControl, { text: 'bgz_key' });
+
+		expect(closedRungOf(button(root))).toBeNull();
+	});
+
+	it('hands a refused copy to its caller, and a landed one to nobody', async () => {
+		// the caller is what can put the text where it can be taken by hand — ../forms/Field.jsx
+		// shows a masked box's value on a refusal.
+		const onBlocked = vi.fn();
+		const root = render(CopyControl, { text: 'bgz_key', onBlocked });
+
+		await press(root);
+		expect(onBlocked).not.toHaveBeenCalled();
+
+		writeText.mockRejectedValue(new Error('permission refused'));
+		await press(root);
+		expect(onBlocked).toHaveBeenCalledOnce();
 	});
 
 	it('is named for what it copies rather than for the act', () => {

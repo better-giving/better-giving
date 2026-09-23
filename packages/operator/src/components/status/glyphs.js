@@ -38,9 +38,11 @@ import {
 	Server,
 	Settings,
 	ShieldCheck,
+	Stamp,
 	Trash2,
 	TriangleAlert,
 	Unplug,
+	UserPlus,
 	Users,
 	X
 } from 'lucide-react';
@@ -101,9 +103,11 @@ export const GLYPHS = {
 	server: Server,
 	settings: Settings,
 	'shield-check': ShieldCheck,
+	stamp: Stamp,
 	'trash-2': Trash2,
 	'triangle-alert': TriangleAlert,
 	unplug: Unplug,
+	'user-plus': UserPlus,
 	users: Users,
 	x: X
 };

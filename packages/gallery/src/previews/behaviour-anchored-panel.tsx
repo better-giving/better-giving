@@ -29,7 +29,7 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  * press. what appears is `AnchoredPanelCard`, which ./data-disclosure.tsx draws.
  *
  * **a dismissed panel is discarded, not hidden**, and that is the one behaviour here worth pressing
- * twice to see: `unmountOnExit` (packages/operator/src/behaviour/AnchoredPanel.tsx:44) is why a box
+ * twice to see: `unmountOnExit` (packages/operator/src/behaviour/AnchoredPanel.tsx:54) is why a box
  * typed into and then dismissed comes back empty. left mounted and `hidden` — which is the machine's
  * own default — a panel carrying a credential would hand it back in the clear the next time the
  * press was made. the first specimen holds a real field so that is something a reader can check

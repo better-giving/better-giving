@@ -8,13 +8,13 @@ import { endSubscriptionStatements } from './subscriptions';
 // the one key Zapier presents on every call it makes to this deployment: made and replaced from
 // the console, checked on every `/zapier` request.
 //
-// the key is shown once, in the answer to the press that made it, and never stored — the row
-// holds its SHA-256 (`zapier_key`'s header in ../db/schema.ts). it is the carve-out CLAUDE.md
-// names as a key the app mints for itself.
+// the row holds the key, so the console can show it on every visit, and its SHA-256, which is
+// what a request is admitted by — never the stored key (`zapier_key`'s header in ../db/schema.ts).
+// it is the carve-out CLAUDE.md names as a key the app mints for itself.
 
 const KEY_ID = 'zapier';
 
-/** what a made key answers with. `key` is the plaintext and appears nowhere else. */
+/** what a made key answers with. `key` is the plaintext, the same one `readZapierKey` gives after. */
 export type MadeZapierKey = { readonly ok: true; readonly key: string; readonly madeAt: Date };
 
 /** a make refused because a key already exists: only `replace` cuts one. */
@@ -29,15 +29,23 @@ export type ReplacedZapierKey = MadeZapierKey & { readonly disconnected: number 
  */
 export type ZapierKeyNotReplaced = { readonly ok: false; readonly reason: 'no_key' | 'conflict' };
 
-/** when the key was made, or `null` before one is. */
-export async function readZapierKey(db: Db): Promise<{ readonly madeAt: Date } | null> {
-	const row = await currentKey(db);
-	return row === undefined ? null : { madeAt: row.madeAt };
+/**
+ * the current key and when it was made, or `null` before one is. a row with no stored key reads
+ * as none (`zapierKey.key` in ../db/schema.ts).
+ */
+export async function readZapierKey(
+	db: Db
+): Promise<{ readonly madeAt: Date; readonly key: string } | null> {
+	const [row] = await db
+		.select({ madeAt: zapierKey.createdAt, key: zapierKey.key })
+		.from(zapierKey)
+		.where(eq(zapierKey.id, KEY_ID));
+	return row?.key == null ? null : { madeAt: row.madeAt, key: row.key };
 }
 
 async function currentKey(db: Db) {
 	const [row] = await db
-		.select({ keyHash: zapierKey.keyHash, madeAt: zapierKey.createdAt })
+		.select({ keyHash: zapierKey.keyHash })
 		.from(zapierKey)
 		.where(eq(zapierKey.id, KEY_ID));
 	return row;
@@ -52,7 +60,7 @@ export async function makeZapierKey(db: Db): Promise<MadeZapierKey | ZapierKeyEx
 	const key = newKey();
 	const [row] = await db
 		.insert(zapierKey)
-		.values({ id: KEY_ID, keyHash: hashOf(key) })
+		.values({ id: KEY_ID, key, keyHash: hashOf(key) })
 		.onConflictDoNothing()
 		.returning({ madeAt: zapierKey.createdAt });
 	if (row === undefined) return { ok: false, reason: 'key_exists' };
@@ -68,7 +76,7 @@ export async function makeZapierKey(db: Db): Promise<MadeZapierKey | ZapierKeyEx
  *
  * the write is conditional on the hash read here, and the ends on that write having landed: of
  * two replaces racing, the second changes nothing — it ends no Zap made on the first's key — and
- * answers `conflict`. `created_at` moves with the hash, so it stays the current key's make date.
+ * answers `conflict`. `created_at` moves with the key, so it stays the current key's make date.
  */
 export async function replaceZapierKey(db: Db): Promise<ReplacedZapierKey | ZapierKeyNotReplaced> {
 	const current = await currentKey(db);
@@ -83,7 +91,7 @@ export async function replaceZapierKey(db: Db): Promise<ReplacedZapierKey | Zapi
 	const [written, , ended] = await db.batch([
 		db
 			.update(zapierKey)
-			.set({ keyHash, createdAt: now, updatedAt: now })
+			.set({ key, keyHash, createdAt: now, updatedAt: now })
 			.where(and(eq(zapierKey.id, KEY_ID), eq(zapierKey.keyHash, current.keyHash)))
 			.returning({ madeAt: zapierKey.createdAt }),
 		...endSubscriptionStatements(db, 'every_open', 'key_replaced', now, landed)

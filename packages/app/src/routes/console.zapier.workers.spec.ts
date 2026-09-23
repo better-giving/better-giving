@@ -115,6 +115,7 @@ describe('GET /console/zapier', () => {
 		const response = await read();
 
 		expect(response.status).toBe(200);
+		expect(response.headers.get('cache-control')).toBe('no-store');
 		expect((await response.json()) as ZapierReport).toEqual({
 			key: null,
 			listening: { newGift: 0, newDonor: 0 },
@@ -141,7 +142,7 @@ describe('GET /console/zapier', () => {
 });
 
 describe('the make press', () => {
-	it('answers the key once, and the reading after it carries only when it was made', async () => {
+	it('answers the key, and the reading after it carries the same key', async () => {
 		const response = await press({ press: 'make' });
 
 		expect(response.status).toBe(200);
@@ -150,9 +151,8 @@ describe('the make press', () => {
 		expect(made).toMatchObject({ press: 'make', disconnected: 0 });
 		expect(made.key.length).toBeGreaterThan(0);
 
-		const reading = await (await read()).text();
-		expect(JSON.parse(reading)).toMatchObject({ key: { madeAt: made.madeAt } });
-		expect(reading).not.toContain(made.key);
+		const reading = (await (await read()).json()) as ZapierReport;
+		expect(reading.key).toEqual({ madeAt: made.madeAt, key: made.key });
 	});
 
 	it('refuses a second make, and names replace as the press that cuts a new key', async () => {
@@ -163,19 +163,21 @@ describe('the make press', () => {
 		const refused = (await response.json()) as ZapierPressReport;
 		expect(refused).toMatchObject({ ok: false, press: 'make' });
 		if (refused.ok) throw new Error('second make landed');
-		expect(refused.detail).toContain('replace');
+		expect(refused.detail).toContain('Replace key');
 	});
 });
 
 describe('the replace press', () => {
-	it('refuses where no key is made, and names make', async () => {
+	it('refuses where no key is made, and names the create press', async () => {
 		const response = await press({ press: 'replace' });
 
 		expect(response.status).toBe(200);
 		const refused = (await response.json()) as ZapierPressReport;
 		expect(refused).toMatchObject({ ok: false, press: 'replace' });
 		if (refused.ok) throw new Error('replace landed with no key');
-		expect(refused.detail).toContain('make');
+		expect(refused.detail).toBe(
+			'This deployment has no Zapier key to replace. Press Create key to make the first one.'
+		);
 	});
 
 	it('answers a new key, the old one stops verifying, and every Zap on it is disconnected', async () => {
@@ -193,12 +195,11 @@ describe('the replace press', () => {
 		expect(await verifyZapierKey(db, `Bearer ${old}`)).toBeNull();
 		expect(await verifyZapierKey(db, `Bearer ${replaced.key}`)).not.toBeNull();
 
-		const reading = await (await read()).text();
-		expect(JSON.parse(reading)).toMatchObject({
-			key: { madeAt: replaced.madeAt },
+		const reading = (await (await read()).json()) as ZapierReport;
+		expect(reading).toMatchObject({
+			key: { madeAt: replaced.madeAt, key: replaced.key },
 			listening: { newGift: 0, newDonor: 0 }
 		});
-		expect(reading).not.toContain(replaced.key);
 	});
 });
 
@@ -263,5 +264,24 @@ describe('a request this address does not take', () => {
 
 		expect(response.status).toBe(401);
 		expect(((await (await read()).json()) as ZapierReport).key).toBeNull();
+	});
+
+	it.each([
+		['no credential', {}],
+		[
+			'a wrong bearer',
+			{
+				authorization: `Bearer ${formatConsoleToken(EXPIRES_AT, 'y'.repeat(CONSOLE_TOKEN_MIN_RANDOM))}`
+			}
+		]
+	])('refuses a reading under %s, and its body carries no key', async (_, credential) => {
+		const key = await made();
+
+		const response = await routes(new Request(`${OWN}/console/zapier`, { headers: credential }), {
+			env: deployment
+		});
+
+		expect(response.status).toBe(401);
+		expect(await response.text()).not.toContain(key);
 	});
 });

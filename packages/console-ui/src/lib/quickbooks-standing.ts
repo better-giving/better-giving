@@ -316,7 +316,8 @@ const DAY = 24 * HOUR;
 
 /**
  * how long the oldest gift still owed has been waiting, and `null` where there is none or where
- * the instant is not one.
+ * the instant is not one. a figure and its unit are joined by a no-break space, so "3 hours" never
+ * splits across two lines.
  *
  * a deployment's clock and this machine's are two clocks, so a gift queued a moment ago can read
  * as queued in the future here. that is the same answer as a gift queued a minute ago and is said
@@ -330,9 +331,9 @@ export function waitedSays(since: string | null, now: Date): string | null {
 	if (waited < HOUR) return 'under an hour';
 	if (waited < 2 * DAY) {
 		const hours = Math.floor(waited / HOUR);
-		return hours === 1 ? 'an hour' : `${hours} hours`;
+		return hours === 1 ? 'an hour' : `${hours}\u00a0hours`;
 	}
-	return `${Math.floor(waited / DAY)} days`;
+	return `${Math.floor(waited / DAY)}\u00a0days`;
 }
 
 /** what the backlog has to say, or `null` where it has nothing: no gift was given up on. */

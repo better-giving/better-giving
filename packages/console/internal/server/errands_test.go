@@ -425,8 +425,8 @@ func TestTheSurfaceIsTheSeamACaseBinds(t *testing.T) {
 	}
 }
 
-// the key crosses this binary once, in the answer to the press that made it: it reaches the page
-// and nothing else — no log line, no file among this machine's records.
+// the key crosses this binary in every zapier reading and in the answer to the press that made it:
+// both reach the page unchanged and nothing else — no log line, no file among this machine's records.
 //
 // a refused press is the deployment's 200 carrying why, and reaches the page as reported too.
 func TestTheZapierKeyReachesThePageAndNothingElse(t *testing.T) {
@@ -443,7 +443,7 @@ func TestTheZapierKeyReachesThePageAndNothingElse(t *testing.T) {
 	records, flow, accounts := machine(t, "an-account")
 	surface, asked := deployed(t, map[string]any{
 		"GET /console/zapier": map[string]any{
-			"key":       map[string]any{"madeAt": "2026-09-22T10:00:00.000Z"},
+			"key":       map[string]any{"madeAt": "2026-09-22T10:00:00.000Z", "key": key},
 			"listening": map[string]any{"newGift": float64(1), "newDonor": float64(0)},
 			"deliveries": map[string]any{
 				"waiting": float64(0), "failed": float64(0), "oldestWaitingAt": nil,
@@ -457,10 +457,13 @@ func TestTheZapierKeyReachesThePageAndNothingElse(t *testing.T) {
 	connected(t, records, surface.URL)
 	handler := New(Options{UI: http.NotFoundHandler(), Flow: flow, Accounts: accounts, Records: records})
 
-	if status, answer := ask(t, handler, "/api/deployment/zapier"); status != http.StatusOK || answer["kind"] != "read" {
+	status, answer := ask(t, handler, "/api/deployment/zapier")
+	read, _ := answer["report"].(map[string]any)
+	standing, _ := read["key"].(map[string]any)
+	if status != http.StatusOK || answer["kind"] != "read" || standing["key"] != key {
 		t.Fatalf("the zapier read answered %d %v", status, answer)
 	}
-	status, answer := press(t, handler, "/api/deployment/zapier", `{"press":"replace"}`)
+	status, answer = press(t, handler, "/api/deployment/zapier", `{"press":"replace"}`)
 	report, _ := answer["report"].(map[string]any)
 	if status != http.StatusOK || answer["kind"] != "reported" || report["key"] != key {
 		t.Fatalf("the zapier press answered %d %v", status, answer)
@@ -491,6 +494,37 @@ func TestTheZapierKeyReachesThePageAndNothingElse(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// a body carrying the key is kept by no cache between this binary and the page.
+func TestAZapierAnswerIsNeverStored(t *testing.T) {
+	const key = "bgz_q7Rk3vYh0cXw9LmN2pAe5sTu8jBf1gHd4iKo6lZyC0M"
+	handler, _ := errands(t, map[string]any{
+		"GET /console/zapier": map[string]any{
+			"key":       map[string]any{"madeAt": "2026-09-22T10:00:00.000Z", "key": key},
+			"listening": map[string]any{"newGift": float64(0), "newDonor": float64(0)},
+			"deliveries": map[string]any{
+				"waiting": float64(0), "failed": float64(0), "oldestWaitingAt": nil,
+			},
+		},
+		"POST /console/zapier": map[string]any{
+			"ok": true, "press": "make", "key": key,
+			"madeAt": "2026-09-22T10:00:00.000Z", "disconnected": float64(0),
+		},
+	}, "here")
+	for _, request := range []*http.Request{
+		httptest.NewRequest(http.MethodGet, "/api/deployment/zapier", nil),
+		httptest.NewRequest(http.MethodPost, "/api/deployment/zapier", strings.NewReader(`{"press":"make"}`)),
+	} {
+		request.Host = loopback
+		request.Header.Set("Content-Type", "application/json")
+		recorded := httptest.NewRecorder()
+		handler.ServeHTTP(recorded, request)
+		if recorded.Code != http.StatusOK || recorded.Header().Get("Cache-Control") != "no-store" {
+			t.Errorf("%s answered %d with Cache-Control %q", request.Method, recorded.Code,
+				recorded.Header().Get("Cache-Control"))
+		}
 	}
 }
 

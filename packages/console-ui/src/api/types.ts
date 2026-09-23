@@ -17,11 +17,15 @@ import type { DEPLOY_VARS } from '@better-giving/operator/deploy-split';
 // `undefined` on a page rather than a type error. every field a handler emits is stated here, and
 // none is optional: the go side writes them all, empty strings and empty lists included.
 //
-// **no answer here carries a credential and none may.** the token this console signs in with stays
-// in the binary — it travels into a cloudflare header and reaches nothing a browser reads — so what
-// crosses this boundary about it is an account id, a name and a folder on this machine. a field
-// carrying a token would be a token in the document, in the browser's memory and in whatever a page
+// **the cloudflare credential never crosses this boundary and never may.** the token this console
+// signs in with stays in the binary — it travels into a cloudflare header and reaches nothing a
+// browser reads — so what crosses about it is an account id, a name and a folder on this machine. a
+// field carrying it would be a token in the document, in the browser's memory and in whatever a page
 // extension can read.
+//
+// **the zapier key is the one credential that does**, in `ZapierRead` and `ZapierPressed`: the
+// operator is shown it to paste into zapier, so the page is where it is meant to arrive. the binary
+// answers both `Cache-Control: no-store` and logs and keeps neither.
 
 /** the cloudflare account this deployment is in. */
 export type Account = { id: string; name: string };
@@ -714,7 +718,8 @@ export type ZapierPressBody = { press: ZapierPress };
 
 /**
  * how a make or replace went. a refusal is `reported` with `ok: false`: the deployment answered,
- * and said why. the key is in this answer and in no read.
+ * and said why. the answer carries the new key, as every reading does after it (or null in a
+ * reading, for a key made before the deployment stored it).
  */
 export type ZapierPressed =
 	| { kind: 'reported'; report: ZapierPressReport }

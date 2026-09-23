@@ -135,6 +135,18 @@ Back on the same page, three things finish it:
 
 **Disconnect** revokes the credential at Intuit and drops the connection here. Nothing already in the books is touched, and nothing further is sent.
 
+## Sending gifts to Zapier
+
+Optional, and not a set-up job. It starts a Zap on two events: a settled gift (each charge of a recurring gift included) and a donor's first settled gift. Each reaches your Zaps within about a minute.
+
+**On the console's Zapier page, press Create key.** The page then holds the two things Zapier asks for: this deployment's address and the key, each with a copy press. The key stays there on every visit, behind the eye.
+
+**Then open the Better Giving Zapier app** from the link on that page. It is private for now and reached only through that link. Connect an account with the address and the key, and build Zaps on New Donor or New Gift. Each card on the console page counts the Zaps listening on it.
+
+**Replace key** makes a new one and disconnects every Zap on the old one. Reconnect each Zap with the new key, then turn it off and on again: Zapier only subscribes a Zap when it is turned on, so a reconnected Zap left on hears nothing.
+
+**When it stops.** A delivery Zapier turns away is retried with a growing wait, and given up after three days. The page says so in a strip at the top, red when deliveries were given up in the past week and amber when your Zaps are more than an hour behind, both with a link to your Zaps on Zapier: a Zap that is off or erroring is the usual cause. A Zap that is turned off or deleted is dropped at once and never leaves anything behind.
+
 ## Checking a deployment
 
 ```sh

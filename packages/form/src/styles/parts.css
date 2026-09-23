@@ -373,11 +373,17 @@ textarea[part~='field'] {
  * `--_label-edge` is the colour that run is drawn in, and it is stated on the row rather than on
  * the label because the box is the label's sibling: no selector here reaches a computed border, so
  * the row is what holds the two together and the label reads it by inheritance. it is not a step of
- * a scale — every value it can hold is one of ./tokens.css's, and the three rules under the default
+ * a scale — every value it can hold is one of ./tokens.css's, and the rules under the default
  * name the same states the field's own rules above do, in that cascade's order: the pointer, then
  * the caret, then the refusal. the refusal is last because it outranks both on the box itself — a
- * refused box with the caret in it rings itself in the refusal's red over a border the focus rule
- * has already taken, and the ring is the outer of the two.
+ * refused box with the caret in it keeps its red border under the ring (the focus block at the end
+ * of this sheet), so the edge is one colour however many lines draw it.
+ *
+ * `--_label-edge-width` is that run's thickness, read off the same states for the same reason: the
+ * rise is the edge lifted, so it is as thick as everything the box stacks on its top run — the
+ * border alone at rest and under the pointer, the border and the ring with the caret in it, the
+ * border and the inset mark refused. a hairline rise off a two-pixel edge reads as a second box
+ * standing on the first rather than the edge lifting.
  *
  * the rise is transitioned and nothing else about the move is (./motion.css): the band is painted
  * from the first frame rather than fading in over it, and what that costs is its upper half standing
@@ -396,6 +402,12 @@ textarea[part~='field'] {
  */
 .floating {
 	--_label-edge: var(--_edge-control);
+	--_label-edge-width: var(--_border);
+	/*
+	 * how much of that width lies inside the box, below its outer top: the rise's two sides run that
+	 * far past the band's middle, so each turns onto the whole of the edge rather than its outer line.
+	 */
+	--_label-edge-depth: var(--_border);
 }
 
 .floating:has(> [part~='field']:hover) {
@@ -404,10 +416,18 @@ textarea[part~='field'] {
 
 .floating:has(> [part~='field']:focus-visible) {
 	--_label-edge: var(--_focus-ring);
+	--_label-edge-width: calc(var(--_border) + var(--_focus-width));
 }
 
 .floating:has(> [part~='field'][part~='invalid']) {
 	--_label-edge: var(--_bad);
+	--_label-edge-width: calc(var(--_border) + var(--_border));
+	--_label-edge-depth: calc(var(--_border) + var(--_border));
+}
+
+.floating:has(> [part~='field'][part~='invalid']:focus-visible) {
+	--_label-edge-width: calc(var(--_border) + var(--_focus-width));
+	--_label-edge-depth: var(--_border);
 }
 
 .floating > [part~='field'] {
@@ -471,12 +491,24 @@ textarea[part~='field'] {
 	 * knockout those three are drawn on.
 	 */
 	background:
-		linear-gradient(to bottom, var(--_label-edge) 0 var(--_border), transparent var(--_border)) 0
-		50% / 100% 1lh no-repeat,
-		linear-gradient(to bottom, var(--_label-edge) 0 50%, transparent 50%) 0 50% / var(--_border) 1lh
-		no-repeat,
-		linear-gradient(to bottom, var(--_label-edge) 0 50%, transparent 50%) 100% 50% / var(--_border)
-		1lh no-repeat,
+		linear-gradient(
+			to bottom,
+			var(--_label-edge) 0 var(--_label-edge-width),
+			transparent var(--_label-edge-width)
+		)
+		0 50% / 100% 1lh no-repeat,
+		linear-gradient(
+			to bottom,
+			var(--_label-edge) 0 calc(50% + var(--_label-edge-depth)),
+			transparent calc(50% + var(--_label-edge-depth))
+		)
+		0 50% / var(--_label-edge-width) 1lh no-repeat,
+		linear-gradient(
+			to bottom,
+			var(--_label-edge) 0 calc(50% + var(--_label-edge-depth)),
+			transparent calc(50% + var(--_label-edge-depth))
+		)
+		100% 50% / var(--_label-edge-width) 1lh no-repeat,
 		linear-gradient(to bottom, var(--_n1) 50%, var(--_n3) 50%) 0 50% / 100% 1lh no-repeat;
 }
 
@@ -2355,6 +2387,15 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 [part~='field']:focus-visible {
 	border-color: var(--_focus-ring);
+}
+
+/*
+ * a refused box keeps its red border under the ring rather than giving it to the rule above: a dark
+ * border inside a red ring draws the edge as two lines of two colours, and a floating label's rise
+ * (`.floating` above) lifts one edge, not a pair.
+ */
+[part~='field'][part~='invalid']:focus-visible {
+	border-color: var(--_bad);
 }
 
 /*

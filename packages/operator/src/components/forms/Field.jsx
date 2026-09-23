@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Button } from '../controls/Button.jsx';
+import { CopyControl } from '../controls/CopyControl.jsx';
 import { FieldMessage } from './FieldMessage.jsx';
 
 /**
- * @import { HTMLInputTypeAttribute, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react'
+ * @import { HTMLInputTypeAttribute, InputHTMLAttributes, ReactNode, Ref, TextareaHTMLAttributes } from 'react'
  * @import { PointerState } from '../closed-sets.js'
  */
 
@@ -36,6 +37,15 @@ import { FieldMessage } from './FieldMessage.jsx';
  *
  *   an input's alone: a textarea takes no type, so a masked one holds nothing back and draws no
  *   press at all.
+ * @property {boolean | undefined} [copyable] a copy control inside the box, beside the masked
+ *   box's press, taking the value the box was handed (`value`, else `defaultValue`). it is for a
+ *   read-only box holding a credential somebody pastes elsewhere: copied from the box, the value
+ *   need never be shown to be taken. it stands in the same place the masked press does and for the
+ *   same reason, and the two share one trailing cluster. an input's alone, as `masked` is.
+ * @property {string | undefined} [copyLabel] the copy control's accessible name, where a bare Copy
+ *   would not say what of.
+ * @property {Ref<HTMLButtonElement> | undefined} [copyRef] the copy control's button, for a caller
+ *   moving focus onto it once the value it copies has arrived.
  * @property {boolean | undefined} [code]
  * @property {string | undefined} [placeholder]
  * @property {HTMLInputTypeAttribute | undefined} [type]
@@ -74,6 +84,9 @@ export function Field({
 	needed,
 	beside,
 	masked,
+	copyable,
+	copyLabel,
+	copyRef,
 	code,
 	placeholder,
 	type = 'text',
@@ -95,7 +108,10 @@ export function Field({
 	   no name of its own (../status/Mark.jsx draws an unlabelled one out of the tree), so the button
 	   is what a reader is told, and `aria-controls` is what says which box it is about.
 	   it closes with the box: a live press inside a box shut for a write in flight reads as a
-	   control that missed the state its own field is in.
+	   control that missed the state its own field is in. it closes as the copy control beside it
+	   does, with `aria-disabled` and the press turned away here, so the two in one cluster draw one
+	   closed look and neither drops the focus standing on it — ../controls/CopyControl.jsx's
+	   `disabled` argues the spelling.
 
 	   and it is drawn for an input alone. a textarea takes no `type`, so there is nothing to swap:
 	   the press would stand in a box already legible, promising a change it cannot make. */
@@ -108,19 +124,43 @@ export function Field({
 				mark={hidden ? 'eye' : 'eye-off'}
 				aria-controls={id}
 				aria-label={hidden ? 'Show the value' : 'Hide the value'}
-				disabled={rest.disabled}
-				onClick={() => setShown((was) => !was)}
+				aria-disabled={rest.disabled || undefined}
+				onClick={() => {
+					if (!rest.disabled) setShown((was) => !was);
+				}}
 			/>
 		) : null;
-	/* the box with its own press inside it: `.adm-maskwrap` in packages/operator/src/styles/adm.css
-	   is what places the press and reserves the room for it. a box with no press draws no wrapper. */
+	/* the copy control, whole: its live region stands beside its button and is out of the flow
+	   (`.adm-vh`), so the cluster below lays out the button alone. a refused copy shows a masked
+	   value, because dots are nothing a reader can select by hand. */
+	const copy =
+		copyable && as !== 'textarea' ? (
+			<CopyControl
+				text={String(rest.value ?? rest.defaultValue ?? '')}
+				{...(copyLabel ? { label: copyLabel } : {})}
+				disabled={rest.disabled}
+				onBlocked={() => setShown(true)}
+				ref={copyRef}
+			/>
+		) : null;
+	/* the box with its own presses inside it: `.adm-maskwrap` in packages/operator/src/styles/adm.css
+	   is what places them and reserves the room. one press stands in the wrapper on its own; two
+	   stand in `.adm-maskwrap__presses`, the copy first so the reveal keeps the trailing end it has
+	   on every other masked box. a box with no press draws no wrapper. */
 	const inBox = (/** @type {ReactNode} */ box) =>
-		reveal === null ? (
+		reveal === null && copy === null ? (
 			box
 		) : (
 			<div className="adm-maskwrap">
 				{box}
-				{reveal}
+				{copy === null ? (
+					reveal
+				) : (
+					<div className="adm-maskwrap__presses">
+						{copy}
+						{reveal}
+					</div>
+				)}
 			</div>
 		);
 	/* the box, alone on its row or sharing it. what shares it is wrapped rather than placed beside

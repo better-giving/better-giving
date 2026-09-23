@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { env } from 'cloudflare:test';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -21,22 +22,24 @@ beforeEach(async () => {
 	await env.DB.prepare('delete from zapier_key').run();
 });
 
-async function storedRows() {
-	const { results } = await env.DB.prepare('select * from zapier_key').all<
-		Record<string, unknown>
-	>();
+async function storedKeys() {
+	const { results } = await env.DB.prepare('select key, key_hash from zapier_key').all<{
+		key: string;
+		key_hash: string;
+	}>();
 	return results;
 }
 
+/** the digest worked out apart from ./key.ts, so a hash that drifts from its key is caught. */
+const sha256Hex = (key: string) => createHash('sha256').update(key).digest('hex');
+
 describe('making the key', () => {
-	it('hands the key over once and stores only its hash', async () => {
+	it('stores the key it hands over beside the hash a request is checked against', async () => {
 		const made = await makeZapierKey(db);
 		if (!made.ok) throw new Error('a first make was refused');
 		expect(made.key).toMatch(/^bgz_[A-Za-z0-9_-]{43}$/);
 
-		const rows = await storedRows();
-		expect(rows).toHaveLength(1);
-		expect(JSON.stringify(rows)).not.toContain(made.key.slice(4));
+		expect(await storedKeys()).toEqual([{ key: made.key, key_hash: sha256Hex(made.key) }]);
 	});
 
 	it('refuses a second make and keeps the first key working', async () => {
@@ -64,6 +67,18 @@ describe('checking a presented key', () => {
 
 	it('turns away every key while none is made', async () => {
 		expect(await verifyZapierKey(db, bearer(`bgz_${'A'.repeat(43)}`))).toBeNull();
+	});
+
+	it('admits by the stored hash, never by the stored key', async () => {
+		const [shown, hashed] = [`bgz_${'A'.repeat(43)}`, `bgz_${'B'.repeat(43)}`];
+		await env.DB.prepare(
+			`insert into zapier_key (id, key, key_hash, created_at, updated_at) values ('zapier', ?, ?, 0, 0)`
+		)
+			.bind(shown, sha256Hex(hashed))
+			.run();
+
+		expect(await verifyZapierKey(db, bearer(shown))).toBeNull();
+		expect(await verifyZapierKey(db, bearer(hashed))).toBe(sha256Hex(hashed));
 	});
 
 	it('reads the scheme in any case', async () => {
@@ -108,11 +123,11 @@ async function owe(subscriptionId: string): Promise<void> {
 }
 
 describe('reading the key', () => {
-	it('says when the current key was made, and nothing before one is', async () => {
+	it('gives the current key and when it was made, and nothing before one is', async () => {
 		expect(await readZapierKey(db)).toBeNull();
 		const made = await makeZapierKey(db);
 		if (!made.ok) throw new Error('a first make was refused');
-		expect(await readZapierKey(db)).toEqual({ madeAt: made.madeAt });
+		expect(await readZapierKey(db)).toEqual({ madeAt: made.madeAt, key: made.key });
 	});
 });
 
@@ -127,7 +142,15 @@ describe('replacing the key', () => {
 		expect(replaced.key).not.toBe(old.key);
 		expect(await verifyZapierKey(db, bearer(old.key))).toBeNull();
 		expect(await verifyZapierKey(db, bearer(replaced.key))).not.toBeNull();
-		expect(await storedRows()).toHaveLength(1);
+	});
+
+	it('stores the new key and its hash in place of the old pair', async () => {
+		await makeZapierKey(db);
+
+		const replaced = await replaceZapierKey(db);
+		if (!replaced.ok) throw new Error('the replace was refused');
+
+		expect(await storedKeys()).toEqual([{ key: replaced.key, key_hash: sha256Hex(replaced.key) }]);
 	});
 
 	it('ends every open Zap as key_replaced and drops what they were still owed', async () => {
@@ -200,7 +223,7 @@ describe('replacing the key', () => {
 
 	it('refuses while there is no key to replace', async () => {
 		expect(await replaceZapierKey(db)).toEqual({ ok: false, reason: 'no_key' });
-		expect(await storedRows()).toHaveLength(0);
+		expect(await storedKeys()).toEqual([]);
 	});
 });
 

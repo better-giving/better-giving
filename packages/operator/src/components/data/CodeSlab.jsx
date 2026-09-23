@@ -21,6 +21,7 @@ import { CopyControl } from '../controls/CopyControl.jsx';
  * @property {string | undefined} [label] the short caption on the slab's own top line, naming what
  *   is in it — `snippet`. it is a caption and not a heading: a page that needs a heading over a slab
  *   writes one above.
+ * @property {never} [copyLabel] the caption, with `record`, is what names this form's control.
  *
  * @typedef {object} SlabOneLine the one-line form, asked for by name.
  * @property {true} oneline the value drawn as one band: the code runs the width of the box and
@@ -32,6 +33,9 @@ import { CopyControl } from '../controls/CopyControl.jsx';
  *   after the first would be hidden rather than shortened, and a snippet is the case that proves it.
  * @property {never} [label] no caption: there is no head in this form to put one in, and the
  *   sentence above the box is what names the value.
+ * @property {string | undefined} [copyLabel] the copy control's accessible name, for a page drawing
+ *   more than one one-line slab — two controls both called Copy say nothing about which value each
+ *   takes. unset, the control is the bare Copy.
  *
  * @typedef {SlabContent & (SlabCaptioned | SlabOneLine)} CodeSlabProps
  *
@@ -52,7 +56,8 @@ import { CopyControl } from '../controls/CopyControl.jsx';
 
    the one-line form is the exception to the head and to nothing else. it is asked for by name, by
    a screen holding a value that is one unbroken literal — an address, a key, an id — where a head
-   would be a second row over a box a line high, and where nobody reads the value at all. there the
+   would be a second row over a box a line high, and where nobody reads the value at all. with no
+   caption to name the control after, a page drawing two of them names each control itself. the
    control stands over the trailing end of the line, and the fade
    ../../styles/adm.css draws under it is what keeps the moving surface from reaching the control.
    a value with newlines in it stays the block form whatever it is: one line of a snippet is the
@@ -65,9 +70,9 @@ import { CopyControl } from '../controls/CopyControl.jsx';
    pasted somewhere that cares. the content expression sits hard against the tags below and must
    stay there.
 
-   the slab is the only dark surface an operator screen has and one rule draws it: `.adm-slab`. */
+   one rule draws the slab wherever an operator screen has one: `.adm-slab`. */
 /** @param {CodeSlabProps} props */
-export function CodeSlab({ content, label, copyable = false, record, oneline = false }) {
+export function CodeSlab({ content, label, copyable = false, record, oneline = false, copyLabel }) {
 	// stated from `useId` rather than written down, because a page draws one slab per record and two
 	// elements sharing an id would name the wrong box.
 	const labelId = `${useId()}-slabhead-label`;
@@ -75,11 +80,9 @@ export function CodeSlab({ content, label, copyable = false, record, oneline = f
 	// the control is written once and stands in one of two places: in the head, or over the trailing
 	// end of the line. it is the same control either way — what changes is which side of the block
 	// it is drawn on, and in the one-line form that is what puts it over the code in paint order.
+	const controlLabel = record && label ? `Copy the ${label} for ${record}` : copyLabel;
 	const control = copyable ? (
-		<CopyControl
-			text={content}
-			{...(record && label ? { label: `Copy the ${label} for ${record}` } : {})}
-		/>
+		<CopyControl text={content} {...(controlLabel ? { label: controlLabel } : {})} />
 	) : null;
 
 	return (

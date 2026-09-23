@@ -1,13 +1,11 @@
 // the one key Zapier presents to this deployment, and the Zaps listening on it — named once for
 // both ends of the wire.
 //
-// it is here for the reason ./quickbooks.ts is here: the deployment holds the key's hash and the
+// it is here for the reason ./quickbooks.ts is here: the deployment holds the key and the
 // subscriptions, answers with these values, the operator console draws them, and the two packages
 // import nothing of each other's.
 //
-// **the key crosses once.** the deployment stores a hash and never the key, so the plaintext is in
-// the answer to the press that made it and in no reading after — a console that lost it makes a
-// new one with `replace`.
+// **the key is in every reading**, as it is in the answer to the press that made it.
 //
 // **it is a block and never a member of the report**, the decision ./quickbooks.ts states: a
 // deployment nobody connects to Zapier is not half set up.
@@ -26,10 +24,10 @@ export const ZAPIER_PRESSES = ['make', 'replace'] as const;
 
 export type ZapierPress = (typeof ZAPIER_PRESSES)[number];
 
-/** everything the screen draws, in one read. no key is ever in it. */
+/** everything the screen draws, in one read. */
 export interface ZapierReport {
-	/** when the key was made, as an ISO-8601 instant, or null before one is. */
-	readonly key: { readonly madeAt: string } | null;
+	/** the key, or null before one is made. `madeAt` is an ISO-8601 instant; `key` is the plaintext. */
+	readonly key: { readonly madeAt: string; readonly key: string } | null;
 	/** the open subscriptions per trigger — what `replace` would disconnect. */
 	readonly listening: { readonly newGift: number; readonly newDonor: number };
 	readonly deliveries: {
@@ -45,7 +43,7 @@ export interface ZapierReport {
 /**
  * what a press answers with.
  *
- * `key` is the plaintext, and this is the only answer that carries it. `disconnected` is how many
+ * `key` is the plaintext, the same the next reading carries. `disconnected` is how many
  * subscriptions the old key took down with it, and 0 on `make`. a refusal's `detail` names the
  * press that would have landed.
  */

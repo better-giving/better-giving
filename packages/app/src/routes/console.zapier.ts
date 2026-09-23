@@ -24,15 +24,13 @@ import type { Route } from './+types/console.zapier';
 // on the same surface and behind the same check as the report: the check is the `middleware` on
 // ./console.ts and this file makes no decision about who may read or press.
 //
-// **the plaintext key is in the answer to the press that made it and in nothing else.** the row
-// holds a hash ($lib/server/zapier/key.ts), so the reading below cannot carry one, and a console
-// that lost the key presses replace.
+// **the reading carries the key itself**, so the console shows it on every visit.
 //
 // **make and replace are two presses, each refused in the other's state**, so two consoles
 // pressing at once cannot replace a key by accident: the second make is refused rather than
 // cutting a key the first console just handed out.
 
-/** where this deployment's Zapier connection stands, changing nothing. never the key. */
+/** where this deployment's Zapier connection stands, the key included, changing nothing. */
 export async function loader({ context }: Route.LoaderArgs): Promise<Response> {
 	const db = context.get(database);
 	const [key, listening, deliveries] = await Promise.all([
@@ -42,7 +40,7 @@ export async function loader({ context }: Route.LoaderArgs): Promise<Response> {
 	]);
 
 	const report: ZapierReport = {
-		key: key === null ? null : { madeAt: key.madeAt.toISOString() },
+		key: key === null ? null : { madeAt: key.madeAt.toISOString(), key: key.key },
 		listening,
 		deliveries: {
 			waiting: deliveries.waiting,
@@ -89,8 +87,8 @@ type RefusalReason = ZapierKeyExists['reason'] | ZapierKeyNotReplaced['reason'];
 
 const REFUSALS: Record<RefusalReason, string> = {
 	key_exists:
-		'This deployment already has a Zapier key. Press replace to make a new one; every Zap on the old key is disconnected.',
-	no_key: 'This deployment has no Zapier key to replace. Press make to make the first one.',
+		'This deployment already has a Zapier key. Press Replace key to make a new one; every Zap on the old key is disconnected.',
+	no_key: 'This deployment has no Zapier key to replace. Press Create key to make the first one.',
 	conflict:
 		'Another console replaced the Zapier key at the same moment, and its key is the one in use. Read this section again.'
 };

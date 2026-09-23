@@ -47,8 +47,8 @@ export function consoleJson(body: unknown, status = 200): Response {
 	return Response.json(body, {
 		status,
 		headers: {
-			// the report says which of this deployment's secrets are set. nothing between here and
-			// the console may keep a copy of that.
+			// the zapier reading carries a live key, and the report says which of this deployment's
+			// secrets are set. nothing between here and the console may keep a copy of either.
 			'cache-control': 'no-store'
 		}
 	});

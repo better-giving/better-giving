@@ -20,6 +20,9 @@ const FORM_ID = 'frm_migrationprobe';
 const PLAN_ID = '019fb300-0000-7000-8000-000000000002';
 const ONE_TIME_ID = '019fb300-0000-7000-8000-000000000003';
 const CHARGE_ID = '019fb300-0000-7000-8000-000000000004';
+const ZAPIER_KEY = `bgz_${'AZaz09-_'.repeat(5)}abc`;
+const OPEN_ZAP = '019fb300-0000-7000-8000-000000000005';
+const ENDED_ZAP = '019fb300-0000-7000-8000-000000000006';
 
 const db = () => env.UNMIGRATED_DB;
 
@@ -86,7 +89,21 @@ async function seed() {
 				                       recurring_id)
 				 values (?, ?, 2500, 'USD', 0, 0, ?)`
 			)
-			.bind(CHARGE_ID, CONTACT_ID, PLAN_ID)
+			.bind(CHARGE_ID, CONTACT_ID, PLAN_ID),
+		db()
+			.prepare(
+				`insert into zapier_key (id, key_hash, key, created_at, updated_at)
+				 values ('zapier', '${'a'.repeat(64)}', ?, 0, 0)`
+			)
+			.bind(ZAPIER_KEY),
+		db()
+			.prepare(
+				`insert into zapier_subscription
+				   (id, "trigger", hook_url, ended_at, ended_reason, created_at, updated_at)
+				 values (?, 'new_gift', 'https://hooks.zapier.com/hooks/standard/1/open/', null, null, 0, 0),
+				        (?, 'new_donor', 'https://hooks.zapier.com/hooks/standard/1/ended/', 5, 'unsubscribed', 0, 5)`
+			)
+			.bind(OPEN_ZAP, ENDED_ZAP)
 	];
 	// a row of each nullable shape `payment` holds — a processor with its id, staff entry with and
 	// without a provider, a refund — so a rebuild's copy step has every combination to lose.
@@ -111,6 +128,31 @@ async function seed() {
 		);
 	}
 	await db().batch(statements);
+	// after the payments, which it points at
+	await db()
+		.prepare(
+			`insert into zapier_delivery
+			   (subscription_id, event_id, payment_id, status, attempts, next_attempt_at, leased_until,
+			    created_at, updated_at)
+			 values (?, 'evt-probe', 'p-card', 'pending', 1, 3, 4, 0, 0)`
+		)
+		.bind(OPEN_ZAP)
+		.run();
+}
+
+let migrated: Promise<{ before: Map<string, Row[]>; after: Map<string, Row[]> }> | undefined;
+
+/** the chain stopped one short, seeded, then finished — once, for every block in this file. */
+function migrateOverSeed() {
+	migrated ??= (async () => {
+		const chain = env.TEST_MIGRATIONS;
+		await applyD1Migrations(db(), chain.slice(0, -1));
+		await seed();
+		const before = await snapshot();
+		await applyD1Migrations(db(), chain);
+		return { before, after: await snapshot() };
+	})();
+	return migrated;
 }
 
 describe('the newest migration keeps every row the database already held', () => {
@@ -121,11 +163,7 @@ describe('the newest migration keeps every row the database already held', () =>
 
 	beforeAll(async () => {
 		if (squashed) return;
-		await applyD1Migrations(db(), chain.slice(0, -1));
-		await seed();
-		before = await snapshot();
-		await applyD1Migrations(db(), chain);
-		after = await snapshot();
+		({ before, after } = await migrateOverSeed());
 	});
 
 	it('has an earlier migration to stop short of', () => {
@@ -162,11 +200,73 @@ describe('the newest migration keeps every row the database already held', () =>
 			]);
 			expect(after.get('donation')?.find((r) => r.id === CHARGE_ID)?.recurring_id).toBe(PLAN_ID);
 			expect(after.get('recurring_plan')?.map((r) => r.id)).toEqual([PLAN_ID]);
+			expect(after.get('zapier_key')?.map((r) => r.id)).toEqual(['zapier']);
+			expect(after.get('zapier_subscription')?.map((r) => r.id)).toEqual([OPEN_ZAP, ENDED_ZAP]);
+			expect(after.get('zapier_delivery')?.map((r) => r.event_id)).toEqual(['evt-probe']);
 		}
 	);
+
+	it.skipIf(squashed)('keeps a key already stored, and every Zap on it stays subscribed', () => {
+		expect(after.get('zapier_key')?.map((r) => r.key)).toEqual([ZAPIER_KEY]);
+		expect(after.get('zapier_subscription')?.find((r) => r.id === OPEN_ZAP)).toMatchObject({
+			ended_at: null,
+			ended_reason: null
+		});
+		expect(after.get('zapier_delivery')?.[0]).toMatchObject({ status: 'pending', leased_until: 4 });
+	});
 
 	it.skipIf(squashed)('leaves no foreign key pointing at nothing', async () => {
 		const { results } = await db().prepare('select * from pragma_foreign_key_check').all();
 		expect(results).toEqual([]);
+	});
+});
+
+// a key minted before 0007 stored it has nothing for the console to show, so 0008 drops its row and
+// ends every Zap on it the way a replace ends them. the seed above holds a stored key, so this
+// clears it and runs 0008 again, one batch, the way wrangler applies a file.
+describe('0008 drops a key that was never stored, and ends every Zap on it', () => {
+	const squashed = env.TEST_MIGRATIONS.length < 2;
+	let zapierKeys: Row[];
+	let subscriptions: Row[];
+	let deliveries: Row[];
+
+	beforeAll(async () => {
+		if (squashed) return;
+		await migrateOverSeed();
+		await db().prepare(`update zapier_key set key = null`).run();
+		const dropped = env.TEST_MIGRATIONS.find(
+			(m) => m.name === '0008_zapier_keyless_row_dropped.sql'
+		);
+		await db().batch(dropped!.queries.map((q) => db().prepare(q)));
+		zapierKeys = (await db().prepare(`select * from zapier_key`).all<Row>()).results;
+		subscriptions = (
+			await db().prepare(`select * from zapier_subscription order by rowid`).all<Row>()
+		).results;
+		deliveries = (await db().prepare(`select * from zapier_delivery`).all<Row>()).results;
+	});
+
+	it.skipIf(squashed)('leaves no key row', () => {
+		expect(zapierKeys).toEqual([]);
+	});
+
+	it.skipIf(squashed)('ends the open subscription as key_replaced, now', () => {
+		const open = subscriptions.find((r) => r.id === OPEN_ZAP)!;
+		expect(open.ended_reason).toBe('key_replaced');
+		expect(open.ended_at).toBeGreaterThan(Date.now() - 60_000);
+		expect(open.updated_at).toBe(open.ended_at);
+	});
+
+	it.skipIf(squashed)('leaves a subscription that had already ended as it ended', () => {
+		expect(subscriptions.find((r) => r.id === ENDED_ZAP)).toMatchObject({
+			ended_at: 5,
+			ended_reason: 'unsubscribed',
+			updated_at: 5
+		});
+	});
+
+	it.skipIf(squashed)('drops what the ended subscription was still owed', () => {
+		expect(deliveries).toHaveLength(1);
+		expect(deliveries[0]).toMatchObject({ status: 'dropped', leased_until: null });
+		expect(deliveries[0]!.updated_at).toBeGreaterThan(Date.now() - 60_000);
 	});
 });

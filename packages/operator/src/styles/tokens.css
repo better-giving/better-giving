@@ -34,13 +34,13 @@
    reader looking for the token that does a job has to rule it out first. what is exempt is
    a member of a scale — a rung of a ramp, a spacing step, a type step, a weight — because a
    scale is read by counting along it and one with holes in it is no longer one anybody can
-   count along. nineteen of the forty-eight rungs are unread today and stay for
-   that reason: `--admin-accent-1`, `-2`, `-7`, `-8` and `-9`; `--admin-blocker-1`, `-2`, `-4`,
-   `-5`, `-7` and `-8`; `--admin-attention-1`, `-2`, `-4`, `-5`, `-7`, `-8`, `-9` and `-10`.
-   the neutral ladder is read end to end. four more are unread outside colour:
+   count along. twenty-one of the forty-eight rungs are unread today and stay for
+   that reason: `--admin-accent-1`, `-2`, `-7`, `-8`, `-9` and `-10`; `--admin-blocker-1`, `-2`,
+   `-4`, `-5`, `-7` and `-8`; `--admin-attention-1`, `-2`, `-4`, `-5`, `-7`, `-8`, `-9` and
+   `-10`; `--admin-neutral-8`. four more are unread outside colour:
    `--admin-text-xl`, `--admin-weight-bold`,
    `--admin-space-11` and `--admin-space-12`. the exemption is membership of a scale and never
-   a token that has merely not been reached for yet. those twenty-four are named again in packages/app/src/lib/admin/styles/conformance.spec.ts, which is what fails when the two
+   a token that has merely not been reached for yet. those twenty-five are named again in packages/app/src/lib/admin/styles/conformance.spec.ts, which is what fails when the two
    lists stop agreeing — in both directions, so a rung this paragraph calls unread that something
    has since reached for fails it as well.
 
@@ -201,15 +201,12 @@
    4.5:1 on every ground it is drawn on. it is drawn here at 0.54, where those three become
    4.85:1, 4.97:1 and 4.56:1, and it stays its own step: 1.53:1 against rung 9 above and 1.24:1
    against rung 11 below, which is the separation the accent and the blocker already carry at
-   that position — 1.26:1 and 1.23:1. the cost is paid on the dark slab, where the ladder runs
-   the other way and a darker rung is a quieter one: rung 10 falls from 3.82:1 to 2.98:1 on
-   `--admin-slab-bg`, so the control standing there takes rung 9 and says so at its entry.
+   that position — 1.26:1 and 1.23:1.
 
    the band off the ladder is the accent's, at `--admin-accent-solid-1` to `-3`, and it exists
    because the accent cannot take the blocker's remedy. re-cutting rungs 9, 10 and 11 downward
-   would move rung 11, which is the resting link word, the outside focus ring and the done mark;
-   that rung already reaches its tightest number at 3.20:1 on the code slab, so a darker one loses
-   the ring there. the band starts at rung 11 instead and adds two steps under it, at oklch
+   would move rung 11, which is the resting link word, the outside focus ring and the done mark,
+   so one re-cut would move all three. the band starts at rung 11 instead and adds two steps under it, at oklch
    lightness 0.515 and 0.47, so a primary fill descends 4.62:1, 5.49:1 and 6.65:1 under a
    near-white label where the blocker's own three reach 4.76:1, 5.62:1 and 6.91:1. the two added
    values are drawn beside the ladder and not in it because the rung number is the job in every
@@ -221,21 +218,20 @@
    split is arithmetic rather than taste. a hugging ring abuts two grounds at once — whatever
    fills the control on its inner edge, whatever the control stands on at its outer one — so a
    single ring colour would have to reach 3:1 against every ground a ring can touch here. there
-   are seven: `--admin-page`, `--admin-surface`, `--admin-surface-sunken`,
-   `--admin-surface-fill`, `--admin-primary-bg`, `--admin-danger-bg` and `--admin-slab-bg`.
+   are six: `--admin-page`, `--admin-surface`, `--admin-surface-sunken` — which the code slab's
+   `--admin-slab-bg` is the same rung as — `--admin-surface-fill`, `--admin-primary-bg` and
+   `--admin-danger-bg`.
 
-   no colour reaches all seven, and the demands contradict each other rather than merely going
-   unmet — so this is not something a re-cut of any ladder here can close. in relative luminance:
-   nothing is bright enough to clear `--admin-page` from above, so a ring has to sit at or below
-   0.286. that closes the light branch on both solid fills, so it has to be darker than those
-   too — at or below 0.0245 for `--admin-primary-bg` and at or below 0.0222 for
-   `--admin-danger-bg`. and nothing is dark enough to clear `--admin-slab-bg` from below, so on
-   the slab a ring has to sit at or above 0.1594. 0.1594 and 0.0222 do not overlap. the set is
-   empty and both tokens stay.
+   in relative luminance: nothing is bright enough to clear `--admin-page` from above, so a ring
+   has to sit at or below 0.286. that closes the light branch on both solid fills, so it has to be
+   darker than those too — at or below 0.0245 for `--admin-primary-bg` and at or below 0.0222 for
+   `--admin-danger-bg`. the outside ring is the accent, and no accent rung is that dark: rung 12,
+   the darkest, reaches 2.78:1 and 2.70:1 on the two fills. so no accent reaches all six and both
+   tokens stay.
 
    `--admin-focus-ring` is the outside one: 4.52:1 on `--admin-page`, 4.25:1 on
-   `--admin-surface-sunken`, 3.92:1 on `--admin-surface-fill` and 3.20:1 on the code slab, which
-   are the four tightest of the five grounds it is drawn on. it is the same value as
+   `--admin-surface-sunken` and the code slab alike, and 3.92:1 on `--admin-surface-fill`, which
+   are the three tightest of the four grounds it is drawn on. it is the same value as
    `--admin-primary-bg`, so it reaches 1.00:1 on that fill and a solid-filled control cannot wear
    it. `--admin-focus-ring-solid` is the inset one, near-white, at 4.62:1 on `--admin-primary-bg`
    and 4.76:1 on `--admin-danger-bg` and higher on every step under those two, and its own entry
@@ -629,8 +625,8 @@
 		   on the page. rungs 7 and 8 clear nothing anywhere. rungs 9, 10 and 11 clear the page at
 		   3.06:1, 3.58:1 and 4.52:1 and no fill at all — 1.48:1, 1.26:1 and 1.00:1 on
 		   `--admin-primary-bg`, the last of those because rung 11 *is* that fill. rung 12 clears
-		   the page at 12.55:1, reaches 2.78:1 and 2.70:1 on the two fills and 1.15:1 on the code
-		   slab, so it is neither ring. the neutral's ladder splits the same way and this is its
+		   the page at 12.55:1 and reaches 2.78:1 and 2.70:1 on the two fills, so it is not the inset
+		   one. the neutral's ladder splits the same way and this is its
 		   light end. */
 		--admin-focus-ring-solid: var(--admin-neutral-1);
 		--admin-selection-bg: var(--admin-accent-4);
@@ -640,27 +636,14 @@
 
 		/* ---- the code slab ------------------------------------------------------------
 
-		   the only dark surface in /admin, and a dark surface inside a light system is where the
-		   ladder runs the other way: the slab is rung 12 and the hover fill is rung 11, so a
-		   control here *lightens* under the pointer. that is correct on a dark ground and looks
-		   odd only beside the light surfaces above, where every other fill darkens.
-
-		   the control that stands on the slab is named here rather than reaching a rung at its
-		   rule, so the "a component reads an alias and never a rung" rule above holds with no
-		   exceptions at all.
-
-		   the border is the control's boundary and each state is measured on the ground that
-		   state actually has. at rest that ground is the slab, and this is the one place the
-		   re-cut rung 10 costs something: it reaches 2.98:1 there where at 0.6 it reached
-		   3.82:1, so the resting border is rung 9 at 4.57:1 and rung 11 reaches 2.41:1. on hover
-		   the ground is the lighter fill, so the border steps *up* the ladder to keep ahead of
-		   it: rung 9 reaches 1.90:1 on that fill and rung 8 reaches 3.28:1. */
-		--admin-slab-bg: var(--admin-neutral-12);
-		--admin-slab-ink: var(--admin-neutral-3);
-		--admin-slab-control-ink: var(--admin-neutral-3);
-		--admin-slab-control-border: var(--admin-neutral-9);
-		--admin-slab-control-bg-hover: var(--admin-neutral-11);
-		--admin-slab-control-border-hover: var(--admin-neutral-8);
+		   a quiet block on the light ladder, and every rung it takes is one the page already
+		   spends: the sunken band's ground, the border rung's edge, the page's own ink. it is
+		   named rather than reaching those aliases so that re-cutting a band or a border moves
+		   the slab only when someone says it should. the edge is what tells a slab from the
+		   `.adm-cmd--oneline` row, which stands on the same ground with none. */
+		--admin-slab-bg: var(--admin-neutral-3);
+		--admin-slab-border: var(--admin-neutral-7);
+		--admin-slab-ink: var(--admin-neutral-12);
 
 		/* ---- the rail's current destination -------------------------------------------
 
