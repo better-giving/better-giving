@@ -57,6 +57,11 @@ import { Mark } from './Mark.jsx';
  *   thing is real — and takes the whole row back to muted ink: the label and any link inside it and
  *   the sentence, as well as the mark and the word. a run of lines lit one at a time is what a
  *   chain making those things reports as it reaches each one.
+ * @property {boolean | undefined} [locked] a section whose step cannot be taken until the one
+ *   before it is done. it is drawn as `dim` is and shut, and the summary refuses to open by pointer
+ *   and by keyboard alike and says so with `aria-disabled` — a fold that opened onto a form nothing
+ *   can be done with yet would be a step offered out of order. `open` and `onToggle` are ignored
+ *   while it holds. a line without `beneath` has nothing to open and takes no notice of it.
  * @property {MarkName | undefined} [mark] the mark the tone would otherwise choose.
  * @property {ReactNode} [beneath] a whole screen's worth of detail, which opens in place.
  * @property {boolean | undefined} [open]
@@ -256,6 +261,7 @@ export function StatusLine({
 	children,
 	steps,
 	dim = false,
+	locked = false,
 	mark,
 	beneath,
 	open = false,
@@ -346,11 +352,19 @@ export function StatusLine({
 		return (
 			<li>
 				<details
-					className={`adm-status adm-status--${tone} adm-status--section${dim ? ' adm-status--dim' : ''}`}
-					open={open}
-					onToggle={(event) => onToggle?.(event.currentTarget.open)}
+					className={`adm-status adm-status--${tone} adm-status--section${dim || locked ? ' adm-status--dim' : ''}`}
+					open={locked ? false : open}
+					onToggle={locked ? undefined : (event) => onToggle?.(event.currentTarget.open)}
 				>
-					<summary>
+					{/* a browser opens a summary from the keyboard by firing the click a pointer would,
+					    so cancelling that one click refuses both. it is cancelled on the way down:
+					    happy-dom toggles the element as the click bubbles through it, before react's
+					    bubbling listener at the root has heard it. the summary stays in the tab order —
+					    a step skipped by focus is a step a reader is never told is there. */}
+					<summary
+						aria-disabled={locked || undefined}
+						onClickCapture={locked ? (event) => event.preventDefault() : undefined}
+					>
 						<div className="adm-status__mark">{glyph}</div>
 						{body}
 						<span className="adm-status__caret">

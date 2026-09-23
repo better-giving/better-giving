@@ -760,6 +760,15 @@
 		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
 	}
 
+	/* the offset above centres a box one mark tall on the label's first line, so the box has to be
+	   the mark. left inline, as ./base.css sets every mark, the glyph stands on a line box of its
+	   own — the line plus the face's descender, 21.6px against a 19.6px line — and the offset
+	   lands on top of that, so a line with no sentence is 23.4px tall beside a 19.6px label. the
+	   caret below is placed by the same arithmetic and takes the same rule. */
+	:is(.adm-status__mark, .adm-status__caret) > .adm-mark {
+		display: block;
+	}
+
 	.adm-status__body {
 		grid-column: 2;
 		min-inline-size: 0;
@@ -782,6 +791,10 @@
 	.adm-status__label {
 		font-family: var(--admin-font-sans);
 		font-size: var(--admin-body-size);
+		/* the head's leading, which the mark and the caret are centred on. a label ranked `h2`
+		   would otherwise take the section leading ../styles/base.css gives that rank and sit high
+		   in its own row. */
+		line-height: inherit;
 		font-weight: var(--admin-label-weight);
 		color: var(--admin-ink);
 	}
@@ -1446,6 +1459,13 @@
 		display: none;
 	}
 
+	/* a section whose step cannot be taken yet refuses the press
+	   (packages/operator/src/components/status/StatusLine.jsx, `locked`), so nothing under the
+	   pointer offers one: no hand, and no caret moving on hover below. */
+	.adm-status--section > summary[aria-disabled='true'] {
+		cursor: default;
+	}
+
 	/* the caret stands at the trailing edge and not in the mark gutter: the gutter is the tone's,
 	   and two marks at one edge is a reader working out which of them the press is on. it aligns
 	   to the first line of the label the way the tone mark does, off that line's own box, so a
@@ -1471,7 +1491,7 @@
 	/* hover moves the caret and nothing else. the label is a heading and the status word carries
 	   the tone, and a summary that recoloured either under a pointer would report a state change
 	   on a press that only folds. */
-	.adm-status--section > summary:hover .adm-status__caret,
+	.adm-status--section > summary:not([aria-disabled='true']):hover .adm-status__caret,
 	.adm-status--section > summary.is-hover .adm-status__caret {
 		color: var(--admin-ink);
 	}
@@ -3209,10 +3229,11 @@
 	   is wider than the step a field spends between its own parts: a label reads as belonging to
 	   the box under it only while the step down to that box is visibly shorter than the step down
 	   to the next field's label, and one token for both leaves every label floating between two
-	   boxes. the narrower is under the legend and only where a sentence follows it — the two are
-	   one head and stand as close as a label does to its own box. what the head names stands off at
-	   the group's own step and needs no third: the legend is set a rank above a label below, so
-	   nothing is asked of the space to say which of the two is the name of the other. */
+	   boxes. the narrower is under the legend, whatever follows it: the legend is the group's
+	   heading and stands as close to what it names as a label does to its own box, and a legend
+	   stood off at the group's own step reads as one more item of the run rather than the name over
+	   it. a sentence under the legend takes the same close step, because the two are one head, and
+	   what follows that sentence stands off at the group's step again. */
 	/* the column's floor is zero: an implicit track sizes to its widest item's min-content, so one
 	   unbroken word inside — a search echoed back — would widen the group, and the page, past the
 	   viewport. that same floor is the fieldset's own min-content, so its user-agent
@@ -3226,7 +3247,7 @@
 		margin-block-start: var(--admin-space-5);
 	}
 
-	.adm-fieldset > .adm-fieldset__legend + .adm-hint {
+	.adm-fieldset > .adm-fieldset__legend + * {
 		margin-block-start: var(--admin-space-3);
 	}
 
