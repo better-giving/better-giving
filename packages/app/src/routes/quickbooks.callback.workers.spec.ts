@@ -319,7 +319,7 @@ describe('GET /quickbooks/callback', () => {
 		expect(answered.data).toMatchObject({ outcome: 'refused', refusal: 'state' });
 		const page = markup(answered.data);
 		expect(page).toContain('This link has expired');
-		expect(page).toContain('Press Choose a company on the console for a new one.');
+		expect(page).toContain('Go back to the console for a new one.');
 		expect(stub.exchanges).toBe(0);
 		expect(await readQuickbooksConnection(db)).toBeNull();
 	});
@@ -374,7 +374,9 @@ describe('GET /quickbooks/callback', () => {
 
 		expect(answered.status).toBe(400);
 		expect(answered.data).toMatchObject({ outcome: 'refused', refusal: 'cancelled' });
-		expect(markup(answered.data)).toContain('You cancelled at Intuit.');
+		const page = markup(answered.data);
+		expect(page).toContain('You cancelled at Intuit.');
+		expect(page).toContain('Go back to the console to try again.');
 		expect(stub.exchanges).toBe(0);
 	});
 });

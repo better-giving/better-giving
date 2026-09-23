@@ -105,7 +105,7 @@ export default function QuickbooksConnect({ loaderData }: Route.ComponentProps) 
 			<PanelRoute>
 				<h1>This deployment has no QuickBooks credentials</h1>
 				<p className="adm-prose">
-					Put your Intuit app’s credentials in on the console, then press Choose a company.
+					Put your Intuit app’s credentials in on the console, then try again.
 				</p>
 			</PanelRoute>
 		);
@@ -114,7 +114,7 @@ export default function QuickbooksConnect({ loaderData }: Route.ComponentProps) 
 	return (
 		<PanelRoute>
 			<h1>This link has expired</h1>
-			<p className="adm-prose">Press Choose a company on the console for a new one.</p>
+			<p className="adm-prose">Go back to the console for a new one.</p>
 		</PanelRoute>
 	);
 }

@@ -1,4 +1,6 @@
-import { createMemoryRouter } from 'react-router';
+import { createElement } from 'react';
+import { renderToString } from 'react-dom/server';
+import { createMemoryRouter, RouterProvider } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HomeFace, HomeReading } from '../api/types';
 
@@ -67,6 +69,7 @@ async function open() {
 				id: LAYOUT,
 				loader: sections.clientLoader as never,
 				shouldRevalidate: sections.shouldRevalidate,
+				ErrorBoundary: sections.ErrorBoundary as never,
 				children: [{ path: '/zapier', loader: zapier.clientLoader as never }]
 			}
 		],
@@ -114,6 +117,35 @@ describe('a page cloudflare did not answer for', () => {
 
 			expect(binary.homeReads).toBe(before + 1);
 			expect(gatedBy(router.state.errors?.[LAYOUT])?.gate.retry).toBe(true);
+		} finally {
+			off();
+			router.dispose();
+		}
+	});
+});
+
+describe('the gate', () => {
+	it('opens its close confirm without an address to navigate to', async () => {
+		const { router, off } = await open();
+		try {
+			const page = renderToString(createElement(RouterProvider, { router }));
+
+			expect(page).toContain('aria-label="Close console"');
+			expect(page).not.toContain('?close');
+		} finally {
+			off();
+			router.dispose();
+		}
+	});
+
+	it('marks its read again busy only while a read is out, beside a region that can say it landed', async () => {
+		const { router, off } = await open();
+		try {
+			const page = renderToString(createElement(RouterProvider, { router }));
+
+			expect(page).toContain('Try again');
+			expect(page).not.toContain('aria-busy');
+			expect(page).toContain('aria-live="polite"');
 		} finally {
 			off();
 			router.dispose();

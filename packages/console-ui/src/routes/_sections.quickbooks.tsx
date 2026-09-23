@@ -1,6 +1,7 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import type { QuickbooksPress } from '@better-giving/operator/console/quickbooks';
 import { QUICKBOOKS_PRESSES } from '@better-giving/operator/console/quickbooks';
+import { useMemo } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { useSubmit } from 'react-router';
 import { freeWithheldVars, pressQuickbooks, readQuickbooks } from '../api/client';
@@ -114,13 +115,15 @@ export default function QuickbooksPage({ loaderData, actionData, matches }: Rout
 	const submit = useSubmit();
 	const { intent, busy, revalidating } = usePress();
 
-	const answered = actionData && 'quickbooks' in actionData ? actionData.quickbooks : null;
-	const answer: QuickbooksAnswer | null =
-		answered === null
-			? null
-			: answered.pressed.kind === 'reported'
-				? { kind: 'reported', report: answered.pressed.report }
-				: { kind: 'unanswered', press: answered.press, read: answered.pressed.read };
+	/* one object per answer rather than per render: the section tells a new answer from the one it
+	   has already met by identity, and resets the date box on each one it meets. */
+	const answer = useMemo((): QuickbooksAnswer | null => {
+		const answered = actionData && 'quickbooks' in actionData ? actionData.quickbooks : null;
+		if (answered === null) return null;
+		return answered.pressed.kind === 'reported'
+			? { kind: 'reported', report: answered.pressed.report }
+			: { kind: 'unanswered', press: answered.press, read: answered.pressed.read };
+	}, [actionData]);
 
 	/* every press posts on its own rather than through a `<Form>`: the section's forms are about the
 	   values in them and hand what was typed back as a callback, so what is posted here is the

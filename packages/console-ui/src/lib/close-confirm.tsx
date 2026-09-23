@@ -1,6 +1,7 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
-import type { ReactNode } from 'react';
+import type { ButtonProps } from '@better-giving/operator/components/controls/Button';
+import type { ElementType, ReactNode } from 'react';
 import { Link, useFetcher, useNavigate } from 'react-router';
 import { saidClosing } from './close-answer';
 
@@ -52,7 +53,8 @@ export function useClosed(): boolean {
  * the `<form>` stands around the whole dialog rather than around the control that submits it, which
  * is the rule `Dialog` states: the actions row holds controls, and a submit belongs to the form
  * enclosing it whether or not the element has been lifted into the top layer. the way out is a link,
- * so it posts nothing and the form around it is inert for that press.
+ * or a plain button where the confirm opened from state, so it posts nothing and the form around it
+ * is inert for that press.
  *
  * it takes the `danger` slot rather than the exit one: that slot draws the confirm ahead of the way
  * out, and this is the consequential control on the card.
@@ -60,16 +62,19 @@ export function useClosed(): boolean {
 export function CloseConfirm({
 	back
 }: {
-	/** the address the confirm was opened over, without the parameter that opened it. */
-	back: string;
+	/**
+	 * the address the confirm was opened over, without the parameter that opened it — or, where it
+	 * was opened from state rather than the address, the call that puts it away.
+	 */
+	back: string | (() => void);
 }): ReactNode {
 	const navigate = useNavigate();
 	const close = useFetcher({ key: CLOSE_FETCHER });
-	return (
+	const ask = <X extends ElementType>(dismiss: () => void, cancelProps: ButtonProps<X>) => (
 		<close.Form method="post" action={SHELL_ACTION}>
 			<Modal
 				title="Close this console?"
-				onDismiss={() => navigate(back, { preventScrollReset: true })}
+				onDismiss={dismiss}
 				danger="Close console"
 				dangerProps={{
 					type: 'submit',
@@ -78,7 +83,7 @@ export function CloseConfirm({
 					'aria-busy': close.state !== 'idle'
 				}}
 				cancel="Back"
-				cancelProps={{ as: Link, to: back, preventScrollReset: true }}
+				cancelProps={cancelProps}
 			>
 				<p className="adm-prose">
 					The console stops. Type <InlineCode>better-giving start</InlineCode> to open it again.
@@ -86,4 +91,11 @@ export function CloseConfirm({
 			</Modal>
 		</close.Form>
 	);
+	return typeof back === 'string'
+		? ask(() => navigate(back, { preventScrollReset: true }), {
+				as: Link,
+				to: back,
+				preventScrollReset: true
+			})
+		: ask(back, { type: 'button', onClick: back });
 }

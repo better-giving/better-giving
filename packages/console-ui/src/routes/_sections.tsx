@@ -5,6 +5,7 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
 import { Column, Stack } from '@better-giving/operator/components/shell/Layout';
 import { holdBar } from '@better-giving/operator/progress-bar';
 import type { CSSProperties } from 'react';
+import { useState } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { Link, Outlet, useLocation, useSearchParams } from 'react-router';
 import chariotLogo from '../assets/processors/chariot.png';
@@ -208,8 +209,10 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
  * stands with no release in it, because nothing here read what this binary is.
  */
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
-	const { pathname } = useLocation();
-	const [params] = useSearchParams();
+	/* the confirm opens from state here rather than off `?close` as it does over a page: the layout
+	   threw, so it holds no reading, and the router re-runs a loader with nothing kept whatever
+	   `shouldRevalidate` says — a navigation to open the confirm would ask cloudflare again first. */
+	const [closing, setClosing] = useState(false);
 	const closed = useClosed();
 	const gated = gatedBy(error);
 	if (closed) return null;
@@ -230,9 +233,8 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 						accountId={gated.accountId}
 						control={
 							<Button
-								as={Link}
-								to={`${pathname}?${CLOSE_PARAM}`}
-								preventScrollReset
+								type="button"
+								onClick={() => setClosing(true)}
 								variant="soft"
 								size="sm"
 								mark="unplug"
@@ -249,7 +251,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 				<title>{TITLE}</title>
 				<CloudflareGateFace gate={gated.gate} />
 			</BareShell>
-			{params.has(CLOSE_PARAM) ? <CloseConfirm back={pathname} /> : null}
+			{closing ? <CloseConfirm back={() => setClosing(false)} /> : null}
 		</>
 	);
 }

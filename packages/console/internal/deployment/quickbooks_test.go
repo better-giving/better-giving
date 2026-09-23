@@ -100,7 +100,8 @@ func quickbooksPressReports() []map[string]any {
 // touching records and the other none.
 func quickbooksPreviewed() map[string]any {
 	return map[string]any{
-		"press": "start-date-preview",
+		"press":   "start-date-preview",
+		"startAt": "2025-12-01T00:00:00.000Z",
 		"queues": map[string]any{
 			"gifts": float64(3), "corrections": float64(1),
 			"earliest": "2026-01-02T00:00:00.000Z", "latest": "2026-02-14T00:00:00.000Z",

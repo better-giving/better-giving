@@ -201,6 +201,7 @@ async function act(
 		const move = await previewQuickbooksStartAt(db, startAt, new Date());
 		const report: QuickbooksPressReport = {
 			press,
+			startAt: startAt.toISOString(),
 			queues: startAtSide(move.queues),
 			drops: startAtSide(move.drops)
 		};

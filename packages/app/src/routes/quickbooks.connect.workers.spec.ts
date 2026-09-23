@@ -137,7 +137,7 @@ describe('GET /quickbooks/connect', () => {
 		expect(answered.headers.get('set-cookie')).toBeNull();
 		const page = markup(answered.data);
 		expect(page).toContain('This link has expired');
-		expect(page).toContain('Press Choose a company on the console for a new one.');
+		expect(page).toContain('Go back to the console for a new one.');
 	});
 
 	it('refuses an address carrying no signature at all', async () => {
@@ -157,8 +157,6 @@ describe('GET /quickbooks/connect', () => {
 		expect(answered.data.refusal).toBe('setup');
 		const page = markup(answered.data);
 		expect(page).toContain('This deployment has no QuickBooks credentials');
-		expect(page).toContain(
-			'Put your Intuit app’s credentials in on the console, then press Choose a company.'
-		);
+		expect(page).toContain('Put your Intuit app’s credentials in on the console, then try again.');
 	});
 });

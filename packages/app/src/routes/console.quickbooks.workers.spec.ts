@@ -449,6 +449,7 @@ describe('the preview of a date move', () => {
 
 		expect(await answered.json<QuickbooksPressReport>()).toEqual({
 			press: 'start-date-preview',
+			startAt: '2025-11-01T00:00:00.000Z',
 			queues: {
 				gifts: 1,
 				corrections: 1,
@@ -472,6 +473,7 @@ describe('the preview of a date move', () => {
 
 		expect(await answered.json<QuickbooksPressReport>()).toEqual({
 			press: 'start-date-preview',
+			startAt: '2026-03-01T00:00:00.000Z',
 			queues: TOUCHES_NOTHING,
 			drops: {
 				gifts: 2,
@@ -479,6 +481,16 @@ describe('the preview of a date move', () => {
 				earliest: '2026-02-01T00:00:00.000Z',
 				latest: '2026-02-20T00:00:00.000Z'
 			}
+		});
+	});
+
+	it('names the date it counted, as the instant it read', async () => {
+		await connect();
+
+		const answered = await press({ press: 'start-date-preview', startAt: '2026-03-01' });
+
+		expect(await answered.json<QuickbooksPressReport>()).toMatchObject({
+			startAt: '2026-03-01T00:00:00.000Z'
 		});
 	});
 

@@ -162,7 +162,7 @@ export default function QuickbooksCallback({ loaderData }: Route.ComponentProps)
 		return (
 			<PanelRoute>
 				<h1>This link has expired</h1>
-				<p className="adm-prose">Press Choose a company on the console for a new one.</p>
+				<p className="adm-prose">Go back to the console for a new one.</p>
 			</PanelRoute>
 		);
 	}
@@ -175,7 +175,7 @@ export default function QuickbooksCallback({ loaderData }: Route.ComponentProps)
 					? 'You cancelled at Intuit.'
 					: 'Intuit turned the connection down.'}
 			</p>
-			<p className="adm-prose">Press Choose a company on the console to try again.</p>
+			<p className="adm-prose">Go back to the console to try again.</p>
 		</PanelRoute>
 	);
 }

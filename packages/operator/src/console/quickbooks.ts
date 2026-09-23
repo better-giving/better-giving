@@ -224,6 +224,8 @@ export type QuickbooksPressReport =
 	| { readonly press: 'retry'; readonly retried: number }
 	| {
 			readonly press: 'start-date-preview';
+			/** the date counted from, as the instant the deployment read the body's `startAt` as. */
+			readonly startAt: string;
 			/** records owed from the new date on that nothing has queued yet. */
 			readonly queues: QuickbooksStartAtSide;
 			/** queued records before the new date that no send has touched. */

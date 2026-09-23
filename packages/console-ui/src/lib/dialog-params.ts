@@ -6,8 +6,9 @@ import { saidClosing } from './close-answer';
 //
 // **the dialogs are parameters on the address rather than component state**, which is what makes
 // the way out of each a link and what makes Escape and the browser's own back button answer the
-// same way (./close-confirm.tsx draws the one there is). the cost of that
-// is a link press being a navigation: without a word from `shouldRevalidate` the router re-reads
+// same way (./close-confirm.tsx draws the one there is), save the close over the cloudflare gate,
+// which opens from state (../routes/_sections.tsx's `ErrorBoundary` says why). the cost of that is
+// a link press being a navigation: without a word from `shouldRevalidate` the router re-reads
 // the page before the dialog can draw, and the whole of that read is loopback round trips — so the
 // press an operator made sits doing nothing for as long as the binary takes to answer.
 //
