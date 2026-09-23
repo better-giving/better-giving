@@ -398,6 +398,121 @@ describe('the date gifts are sent from', () => {
 	});
 });
 
+/** one record owed to QuickBooks dated `at`, queued `pending` or not queued at all. */
+async function owed(
+	sourceType: 'payment' | 'adjustment',
+	at: string,
+	queued: boolean
+): Promise<void> {
+	const occurredAt = new Date(at);
+	const entry = post({
+		sourceType,
+		sourceId: crypto.randomUUID(),
+		currency: 'USD',
+		occurredAt,
+		memo: null,
+		lines: [
+			{ accountId: postableId('undepositedFunds'), amountMinor: 10_000 },
+			{ accountId: postableId('donationsDeductible'), amountMinor: -10_000 }
+		]
+	});
+	const id = entry.group.id;
+	if (id === undefined) throw new Error('post() minted no entry group id');
+	await db.batch([
+		...postingStatements(db, entry),
+		...(queued
+			? [
+					db.insert(quickbooksSync).values({
+						entryGroupId: id,
+						status: 'pending',
+						attempts: 0,
+						createdAt: occurredAt,
+						updatedAt: occurredAt
+					})
+				]
+			: [])
+	]);
+}
+
+const TOUCHES_NOTHING = { gifts: 0, corrections: 0, earliest: null, latest: null };
+
+describe('the preview of a date move', () => {
+	it('counts what an earlier date would queue', async () => {
+		await connect();
+		await owed('payment', '2025-11-15T00:00:00.000Z', false);
+		await owed('adjustment', '2025-12-10T00:00:00.000Z', false);
+
+		const answered = await press({
+			press: 'start-date-preview',
+			startAt: '2025-11-01T00:00:00.000Z'
+		});
+
+		expect(await answered.json<QuickbooksPressReport>()).toEqual({
+			press: 'start-date-preview',
+			queues: {
+				gifts: 1,
+				corrections: 1,
+				earliest: '2025-11-15T00:00:00.000Z',
+				latest: '2025-12-10T00:00:00.000Z'
+			},
+			drops: TOUCHES_NOTHING
+		});
+	});
+
+	it('counts what a later date would drop', async () => {
+		await connect();
+		await owed('payment', '2026-02-01T00:00:00.000Z', true);
+		await owed('payment', '2026-02-20T00:00:00.000Z', true);
+		await owed('payment', '2026-03-15T00:00:00.000Z', true);
+
+		const answered = await press({
+			press: 'start-date-preview',
+			startAt: '2026-03-01T00:00:00.000Z'
+		});
+
+		expect(await answered.json<QuickbooksPressReport>()).toEqual({
+			press: 'start-date-preview',
+			queues: TOUCHES_NOTHING,
+			drops: {
+				gifts: 2,
+				corrections: 0,
+				earliest: '2026-02-01T00:00:00.000Z',
+				latest: '2026-02-20T00:00:00.000Z'
+			}
+		});
+	});
+
+	it('moves nothing and queues nothing', async () => {
+		await connect();
+		await owed('payment', '2025-11-15T00:00:00.000Z', false);
+		await owed('payment', '2026-02-01T00:00:00.000Z', true);
+
+		await press({ press: 'start-date-preview', startAt: '2026-03-01T00:00:00.000Z' });
+		await press({ press: 'start-date-preview', startAt: '2025-11-01T00:00:00.000Z' });
+
+		expect((await readQuickbooksConnection(db))?.startAt).toEqual(CONNECTED_FROM);
+		const rows = await db.select({ status: quickbooksSync.status }).from(quickbooksSync);
+		expect(rows).toEqual([{ status: 'pending' }]);
+	});
+
+	it('refuses a date it cannot read', async () => {
+		await connect();
+
+		const answered = await press({ press: 'start-date-preview', startAt: 'the first of April' });
+
+		expect(answered.status).toBe(400);
+	});
+
+	it('refuses the press where no company is connected', async () => {
+		const answered = await press({
+			press: 'start-date-preview',
+			startAt: '2026-03-01T00:00:00.000Z'
+		});
+
+		expect(answered.status).toBe(409);
+	});
+});
+
 describe('the retry press', () => {
 	it('refuses the press where no company is connected', async () => {
 		await givenUp();

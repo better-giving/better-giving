@@ -6,7 +6,8 @@ import type {
 	QuickbooksPress,
 	QuickbooksPressReport,
 	QuickbooksRecourse,
-	QuickbooksReport
+	QuickbooksReport,
+	QuickbooksStartAtSide
 } from '@better-giving/operator/console/quickbooks';
 import {
 	QUICKBOOKS_ACCOUNT_ROLES,
@@ -26,7 +27,11 @@ import {
 	type QuickbooksConnectionView
 } from '$lib/server/accounting/connection';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
-import { moveQuickbooksStartAt } from '$lib/server/accounting/outbox';
+import {
+	moveQuickbooksStartAt,
+	previewQuickbooksStartAt,
+	type StartAtMoveSide
+} from '$lib/server/accounting/outbox';
 import type {
 	AccountingFailureReason,
 	AccountRole,
@@ -174,9 +179,10 @@ async function act(
 		return consoleJson({ press } satisfies QuickbooksPressReport);
 	}
 
-	// every press left needs a company: two of them write onto the connection row, and the third
-	// queues gifts again for a deployment that has nowhere to send them. connecting and
-	// disconnecting are above this line because both have to work with no row at all.
+	// every press left needs a company: two of them write onto the connection row, one queues gifts
+	// again for a deployment that has nowhere to send them, and the preview answers for a move that
+	// could not be made. connecting and disconnecting are above this line because both have to work
+	// with no row at all.
 	if ((await readQuickbooksConnection(db)) === null) return notConnected();
 
 	if (press === 'retry') {
@@ -184,12 +190,21 @@ async function act(
 		return consoleJson(report);
 	}
 
-	if (press === 'start-date') {
+	if (press === 'start-date' || press === 'start-date-preview') {
 		const startAt = new Date(String(body.startAt));
 		if (Number.isNaN(startAt.getTime()))
 			return badBody('`startAt` is not a date. Send an ISO-8601 instant.');
-		await moveQuickbooksStartAt(db, startAt, new Date());
-		return consoleJson({ press } satisfies QuickbooksPressReport);
+		if (press === 'start-date') {
+			await moveQuickbooksStartAt(db, startAt, new Date());
+			return consoleJson({ press } satisfies QuickbooksPressReport);
+		}
+		const move = await previewQuickbooksStartAt(db, startAt, new Date());
+		const report: QuickbooksPressReport = {
+			press,
+			queues: startAtSide(move.queues),
+			drops: startAtSide(move.drops)
+		};
+		return consoleJson(report);
 	}
 
 	// what is left is the `accounts` press, and the chart is read before anything is stored: the
@@ -234,6 +249,16 @@ function connectionLine(connection: QuickbooksConnectionView | null): Quickbooks
 		fee: connection.fee,
 		deposit: connection.deposit,
 		startAt: connection.startAt.toISOString()
+	};
+}
+
+/** one side of a start-date move with its dates as instants on the wire. */
+function startAtSide(side: StartAtMoveSide): QuickbooksStartAtSide {
+	return {
+		gifts: side.gifts,
+		corrections: side.corrections,
+		earliest: side.earliest?.toISOString() ?? null,
+		latest: side.latest?.toISOString() ?? null
 	};
 }
 

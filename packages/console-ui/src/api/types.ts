@@ -692,7 +692,7 @@ export type QuickbooksRead =
 export type QuickbooksPressBody =
 	| { press: 'connect' | 'retry' | 'disconnect' }
 	| { press: 'accounts'; income: string; fee: string; deposit: string }
-	| { press: 'start-date'; startAt: string };
+	| { press: 'start-date' | 'start-date-preview'; startAt: string };
 
 /**
  * how one press on the connection went.

@@ -100,7 +100,8 @@ function pressBody(press: QuickbooksPress, posted: FormData): QuickbooksPressBod
 			fee: String(posted.get('fee') ?? ''),
 			deposit: String(posted.get('deposit') ?? '')
 		};
-	if (press === 'start-date') return { press, startAt: String(posted.get('startAt') ?? '') };
+	if (press === 'start-date' || press === 'start-date-preview')
+		return { press, startAt: String(posted.get('startAt') ?? '') };
 	return { press };
 }
 

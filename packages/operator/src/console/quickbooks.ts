@@ -182,6 +182,10 @@ export interface QuickbooksReport {
  *                 company's own chart rather than sent, so a pick is checked against the books it
  *                 claims to be in.
  *   start-date  — the earliest business date a gift is sent from.
+ *   start-date-preview
+ *               — what moving that date would queue and drop, written nowhere: it takes the same
+ *                 `startAt` and is judged by the same rules, so an operator sees the move before
+ *                 making it.
  *   retry       — every gift that was given up on, queued again.
  *   disconnect  — the credential revoked at Intuit and the connection gone from here.
  */
@@ -189,6 +193,7 @@ export const QUICKBOOKS_PRESSES = [
 	'connect',
 	'accounts',
 	'start-date',
+	'start-date-preview',
 	'retry',
 	'disconnect'
 ] as const;
@@ -196,13 +201,31 @@ export const QUICKBOOKS_PRESSES = [
 export type QuickbooksPress = (typeof QUICKBOOKS_PRESSES)[number];
 
 /**
+ * the owed records one side of a start-date move touches: gifts and corrections counted apart, and
+ * the business dates they span as ISO-8601 instants, both null where the side touches nothing.
+ */
+export interface QuickbooksStartAtSide {
+	readonly gifts: number;
+	readonly corrections: number;
+	readonly earliest: string | null;
+	readonly latest: string | null;
+}
+
+/**
  * what a press that landed answers with.
  *
- * only two of them have anything to say beyond having happened, and what the rest change is read
+ * only three of them have anything to say beyond having happened, and what the rest change is read
  * back off {@link QuickbooksReport} — so there is no arm carrying a field that is null for every
  * press but one.
  */
 export type QuickbooksPressReport =
 	| { readonly press: 'connect'; readonly url: string }
 	| { readonly press: 'accounts' | 'start-date' | 'disconnect' }
-	| { readonly press: 'retry'; readonly retried: number };
+	| { readonly press: 'retry'; readonly retried: number }
+	| {
+			readonly press: 'start-date-preview';
+			/** records owed from the new date on that nothing has queued yet. */
+			readonly queues: QuickbooksStartAtSide;
+			/** queued records before the new date that no send has touched. */
+			readonly drops: QuickbooksStartAtSide;
+	  };
