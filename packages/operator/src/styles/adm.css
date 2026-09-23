@@ -233,10 +233,9 @@
 	}
 
 	/* the two controls filled with a solid step draw their ring inside themselves, in the near-white
-	   ink both fills already carry. ./tokens.css holds the arithmetic and why no re-cut closes it: a
-	   hugging ring abuts the fill on one edge and the page on the other, and no colour at all
-	   reaches 3:1 against both of those and the dark code slab. growing the control is not an
-	   escape because the sum is about colour. */
+	   ink both fills already carry. ./tokens.css holds the arithmetic: a hugging ring abuts the fill
+	   on one edge and the page on the other, and no accent rung reaches 3:1 against both. growing
+	   the control is not an escape because the sum is about colour. */
 	.adm-btn--primary:focus-visible,
 	.adm-btn--primary.is-focus,
 	.adm-btn--danger:focus-visible,
@@ -3605,8 +3604,8 @@
 
 	/* ---------- the command row --------------------------------------------------------
 
-	   a literal an operator runs, on the page's own ground. the slab below is the dark
-	   surface and is a different object: this is the light one, written for a stack of rows
+	   a literal an operator runs, on the page's own ground. the slab below is a bounded block
+	   and is a different object: this is a line of the page, written for a stack of rows
 	   where the rule is what separates one from the next and the column is what makes a stack
 	   of them align at one x.
 
@@ -3705,7 +3704,7 @@
 
 	/* ---------- the code slab ----------------------------------------------------------
 
-	   the only dark surface in /admin. it scrolls sideways rather than wrapping — a snippet
+	   a quiet block with an edge of its own. it scrolls sideways rather than wrapping — a snippet
 	   is one long line more often than not — and the block of code is what scrolls, never the
 	   box around it: a scrolling box carries its head off to the right with the code, and a
 	   copy control hundreds of pixels past the visible edge is one nobody goes looking for.
@@ -3719,6 +3718,7 @@
 		padding: var(--admin-space-5);
 		background: var(--admin-slab-bg);
 		color: var(--admin-slab-ink);
+		border: var(--admin-border-width) solid var(--admin-slab-border);
 		border-radius: var(--admin-radius);
 	}
 
@@ -3761,25 +3761,23 @@
 		color: var(--admin-slab-ink);
 	}
 
-	/* the control that stands on the slab reads the slab's own ladder and no ramp step: its
-	   border is measured against the slab and the hover border steps *up* the ramp, because
-	   the hover fill darkens under it. */
-	.adm-slab .adm-btn {
-		background: transparent;
-		border-color: var(--admin-slab-control-border);
-		color: var(--admin-slab-control-ink);
+	/* the control on the slab is the quiet rank and keeps every rung of it but the two fills. the
+	   quiet rank's pointed-at fill is the sunken band's rung, which is the slab's own ground, so a
+	   pointer arriving would change nothing; it takes the soft rank's steps instead, which are
+	   measured from that same ground and step the same way. */
+	.adm-slab .adm-btn--quiet:hover,
+	.adm-slab .adm-btn--quiet.is-hover {
+		background: var(--admin-control-soft-bg-hover);
 	}
 
-	.adm-slab .adm-btn:hover,
-	.adm-slab .adm-btn.is-hover {
-		background: var(--admin-slab-control-bg-hover);
-		border-color: var(--admin-slab-control-border-hover);
-		color: var(--admin-slab-control-ink);
+	.adm-slab .adm-btn--quiet:active,
+	.adm-slab .adm-btn--quiet.is-active {
+		background: var(--admin-control-soft-bg-active);
 	}
 
 	/* ---------- the slab's one-line form ------------------------------------------------
 
-	   the same dark box holding a value with no second line in it: an address, a key, an id —
+	   the same box holding a value with no second line in it: an address, a key, an id —
 	   one unbroken literal nobody reads and everybody copies. a value with newlines in it is
 	   never this form, because a form holding one line would hide every line after the first.
 
@@ -3836,7 +3834,7 @@
 	}
 
 	/* the fade, and it is the control's: a line running under a box with a transparent ground
-	   (`.adm-slab .adm-btn` above) would be read through the control that is standing on it, and
+	   (`.adm-btn--quiet` at rest) would be read through the control that is standing on it, and
 	   a line stopped at that box's edge would be a cut with no mark saying so. so the trailing
 	   end of the line loses its alpha instead, and what is left where the mask is transparent is
 	   the slab's own ground. the mask reads alpha and nothing else, which is why the opaque stop
@@ -6031,6 +6029,16 @@
 		   and turn at this one. */
 		.adm-pair--side {
 			grid-template-columns: 1fr 1fr;
+		}
+
+		/* two cards of the same kind, weighed alike, abreast from here rather than from the wide
+		   breakpoint: neither holds a list, so neither needs the shell's width. alike in height as
+		   well, so a sentence that wraps in one card leaves no ragged foot. the class is doubled
+		   because the wide query's tracks on `.adm-cardpair` stand later in this layer and would
+		   otherwise take the pair back to its uneven split. */
+		.adm-cardpair.adm-cardpair--even {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			align-items: stretch;
 		}
 
 		/* the two figures take the width their own values need and the series takes what is left,

@@ -89,7 +89,7 @@ type RefusalReason = ZapierKeyExists['reason'] | ZapierKeyNotReplaced['reason'];
 
 const REFUSALS: Record<RefusalReason, string> = {
 	key_exists:
-		'This deployment already has a Zapier key. Press replace to make a new one; every Zap on the old key is disconnected.',
+		'This deployment already has a Zapier key. Press Replace key to make a new one; every Zap on the old key is disconnected.',
 	no_key: 'This deployment has no Zapier key to replace. Press make to make the first one.',
 	conflict:
 		'Another console replaced the Zapier key at the same moment, and its key is the one in use. Read this section again.'

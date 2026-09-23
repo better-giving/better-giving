@@ -24,6 +24,7 @@ import {
 	Form,
 	Globe,
 	GripVertical,
+	HandCoins,
 	HandHeart,
 	Info,
 	KeyRound,
@@ -41,6 +42,7 @@ import {
 	Trash2,
 	TriangleAlert,
 	Unplug,
+	UserPlus,
 	Users,
 	X
 } from 'lucide-react';
@@ -87,6 +89,7 @@ export const GLYPHS = {
 	form: Form,
 	globe: Globe,
 	'grip-vertical': GripVertical,
+	'hand-coins': HandCoins,
 	'hand-heart': HandHeart,
 	info: Info,
 	'key-round': KeyRound,
@@ -104,6 +107,7 @@ export const GLYPHS = {
 	'trash-2': Trash2,
 	'triangle-alert': TriangleAlert,
 	unplug: Unplug,
+	'user-plus': UserPlus,
 	users: Users,
 	x: X
 };

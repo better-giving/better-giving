@@ -33,11 +33,9 @@ export type ZapierAnswer =
 /** what one press posts as its intent. */
 export const zapierIntent = (press: ZapierPress): string => `zapier:${press}`;
 
-/** the key the last press made, and when, or `null` where the last answer carries none. */
-export const freshKey = (answer: ZapierAnswer | null): { key: string; madeAt: string } | null =>
-	answer?.kind === 'reported' && answer.report.ok
-		? { key: answer.report.key, madeAt: answer.report.madeAt }
-		: null;
+/** the key the last press made, or `null` where the last answer carries none. */
+export const freshKey = (answer: ZapierAnswer | null): string | null =>
+	answer?.kind === 'reported' && answer.report.ok ? answer.report.key : null;
 
 /** what stands under the press after an answer that did not land, or `null` where it landed. */
 export type PressTrouble =
@@ -55,6 +53,24 @@ export const UNKNOWN: Record<ZapierPress, string> = {
 	make: 'it can’t say whether a key was made',
 	replace: 'it can’t say whether the key was replaced'
 };
+
+/** the two events the app hands to a Zap, keyed as the reading counts their listeners. */
+export type ZapierTrigger = keyof ZapierReport['listening'];
+
+/** the title on each trigger's card. */
+export const TRIGGER_NAME: Record<ZapierTrigger, string> = {
+	newGift: 'Settled gifts',
+	newDonor: 'New donors'
+};
+
+/**
+ * the listeners on one trigger, for the trailing end of its card's row, or `null` where there are
+ * none: a trigger nothing listens on is the default and says nothing.
+ */
+export function listeningSays(count: number): string | null {
+	if (count === 0) return null;
+	return count === 1 ? '1 Zap listening' : `${count} Zaps listening`;
+}
 
 /** every subscription the current key holds open, which is what a replace ends. */
 export const listeningTotal = (report: ZapierReport): number =>
@@ -78,13 +94,6 @@ export function replaceCosts(listening: number): string[] {
 			: `${listening} Zaps listening on the current key stop.`,
 		'Each has to be connected again with the new key.'
 	];
-}
-
-/** the day a key was made, in this machine's own words for a date, or `null` where it is not one. */
-export function madeOn(madeAt: string): string | null {
-	const at = Date.parse(madeAt);
-	if (Number.isNaN(at)) return null;
-	return new Intl.DateTimeFormat(undefined, { dateStyle: 'long' }).format(at);
 }
 
 const HOUR = 60 * 60_000;

@@ -136,6 +136,18 @@ describe('a code slab mounted into a document', () => {
 		expect(names(root)).toEqual(['Copy']);
 	});
 
+	it('names the one-line control where the page names it', () => {
+		// two one-line slabs on one page would otherwise be two controls both called Copy.
+		const root = render(CodeSlab, {
+			oneline: true,
+			content: ADDRESS,
+			copyable: true,
+			copyLabel: 'Copy address'
+		});
+
+		expect(names(root)).toEqual(['Copy address']);
+	});
+
 	it('offers no control on a slab that is only being read', () => {
 		const root = render(CodeSlab, { label: 'snippet', content: SNIPPET });
 
