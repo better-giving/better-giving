@@ -65,7 +65,7 @@ export function clientLoader(args: Route.ClientLoaderArgs) {
 }
 
 /**
- * the five presses over the connection, the three boxes' own press, and the press that frees a
+ * the six presses over the connection, the three boxes' own press, and the press that frees a
  * value held in a form nothing can read back — each one call on the loopback address.
  *
  * the boxes post the shared group intent and are answered by the press every other group's are
@@ -147,6 +147,7 @@ export default function QuickbooksPage({ loaderData, actionData, matches }: Rout
 				revalidating={revalidating}
 				onConnect={() => make('connect')}
 				onAccounts={(picks) => make('accounts', { ...picks })}
+				onPreviewStartDate={(day) => make('start-date-preview', { startAt: day })}
 				onStartDate={(day) => make('start-date', { startAt: day })}
 				onRetry={() => make('retry')}
 				onDisconnect={() => make('disconnect')}

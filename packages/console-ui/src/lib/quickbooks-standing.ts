@@ -1,16 +1,16 @@
-import type { Tone } from '@better-giving/operator/components/closed-sets';
 import type {
 	ChosenAccountLine,
 	LedgerAccountLine,
 	QuickbooksCompany,
 	QuickbooksPress,
 	QuickbooksPressReport,
-	QuickbooksRecourse,
-	QuickbooksReport
+	QuickbooksReport,
+	QuickbooksStartAtSide
 } from '@better-giving/operator/console/quickbooks';
 import { QUICKBOOKS_RECOURSES } from '@better-giving/operator/console/quickbooks';
 import { z } from 'zod';
-import type { NoReport, VarsWritten } from '../api/types';
+import type { NoReport, QuickbooksRead, VarsWritten } from '../api/types';
+import type { SecretEdits } from './secret-edits';
 import { VALUE_FIELD } from './secret-groups';
 import type { StatedForm } from './use-console-form';
 
@@ -19,7 +19,7 @@ import type { StatedForm } from './use-console-form';
 // the reason is this package's pool: ../../vite.config.ts pins `node` and there is no dom, so a
 // rule left inside the component is one no spec can reach.
 //
-// **which control an answer belongs to is one of those decisions.** one section draws five presses
+// **which control an answer belongs to is one of those decisions.** one section draws six presses
 // and one answer comes back for whichever was made, so the four readings at the top of this file
 // are what put an outcome at the control that caused it — and a mismatch there reports a save at
 // the button that disconnected.
@@ -27,6 +27,10 @@ import type { StatedForm } from './use-console-form';
 // **the three picks are one act.** a connection holding one of the three is a state the deployment
 // refuses to write (packages/operator/src/console/quickbooks.ts), so what arms the save is all
 // three chosen and at least one of them different — never a box at a time.
+//
+// **no sentence here quotes the deployment.** its own detail names status codes and exception
+// names an operator does nothing with, so every trouble is one plain sentence at the step it
+// blocks, and every press answered by nothing reads {@link UNANSWERED}.
 //
 // **how long the oldest has waited is said in the coarsest unit that is still true.** an operator
 // reading it is deciding whether the books are behind, and a figure to the minute over four days
@@ -164,7 +168,7 @@ export function credentialsPhase(press: {
  * the two kinds a repeating-gifts press answers in (`RecurringSetup` in ../api/types.ts):
  * `reported` is the deployment saying what the press did, and `unanswered` is nothing coming back
  * that says. the press is named on both arms, because an outcome reports at the control that
- * caused it and one section draws five of them.
+ * caused it and one section draws six of them.
  */
 export type QuickbooksAnswer =
 	| { kind: 'reported'; report: QuickbooksPressReport }
@@ -265,10 +269,23 @@ export function accountPicker(
 	const offered = showing === '' || options.some((option) => option.value === showing);
 	return {
 		options: pick === null || showing === '' ? [{ value: '', label: CHOOSE }, ...options] : options,
-		retired: offered
-			? undefined
-			: { value: showing, label: pick !== null && pick.id === showing ? pick.name : showing }
+		retired: offered ? undefined : { value: showing, label: retiredLabel(chart, pick, showing) }
 	};
+}
+
+/**
+ * what a line the picker does not offer is called: `name — type` off the chart where it still
+ * holds the account, since the type is why it does not fit; the stored name where the chart has
+ * dropped it; the id the press would send where neither knows it.
+ */
+function retiredLabel(
+	chart: readonly LedgerAccountLine[],
+	pick: ChosenAccountLine | null,
+	showing: string
+): string {
+	const held = chart.find((account) => account.id === showing);
+	if (held !== undefined) return `${held.name} — ${held.type}`;
+	return pick !== null && pick.id === showing ? pick.name : showing;
 }
 
 /** the three this connection posts to, as the boxes are drawn with them. */
@@ -298,6 +315,25 @@ export function picksToSave(
 	const stored = picksHeld(company);
 	return PICKS.some((pick) => held[pick] !== stored[pick]);
 }
+
+/** what a picker left unchosen at the press says. */
+export const PICK_BLANK = 'required';
+
+/** the pickers showing nothing, in the order they are drawn. */
+export const picksMissing = (held: QuickbooksPicks): AccountPick[] =>
+	PICKS.filter((pick) => held[pick] === '');
+
+/**
+ * whether the pickers' save can be pressed: a press ({@link picksToSave}), or one left unchosen —
+ * pressing then marks it (`PICK_BLANK`) rather than leaving an operator in front of a closed
+ * button with no word on why. a connect fills what it can off the chart and can leave one of the
+ * three empty, so a save closed over that is a step with no way on.
+ */
+export const picksArmed = (
+	held: QuickbooksPicks,
+	company: QuickbooksCompany,
+	chart: readonly LedgerAccountLine[]
+): boolean => picksMissing(held).length > 0 || picksToSave(held, company, chart);
 
 /** the day a box is drawn holding, out of the instant the connection stores. */
 export function startDay(startAt: string): string {
@@ -369,81 +405,326 @@ export function backlogStands(report: QuickbooksReport, now: Date): BacklogStand
  * would report a gift queued behind a backfill as a failure four days old.
  */
 export function backlogSays({ failed, waited }: BacklogStanding): string {
-	const gifts = failed === 1 ? '1 gift hasn’t gone over' : `${failed} gifts haven’t gone over`;
-	return waited === null ? `${gifts}.` : `${gifts}. The books are ${waited} behind.`;
+	const gifts = failed === 1 ? '1 gift didn’t sync' : `${failed} gifts didn’t sync`;
+	return waited === null ? `${gifts}.` : `${gifts}. QuickBooks is ${waited} behind.`;
 }
 
-/** what the press that queues them again reports, as the band over it is drawn. */
+/** what the press that queues them again reports, at itself. */
 export type RetriedStanding = {
-	readonly word: string;
-	readonly tone: Tone;
-	readonly says: string;
+	/** the button's own confirmation, or `null` where nothing moved and there is none. */
+	readonly doneLabel: string | null;
+	/** the sentence beside the button where nothing moved, or `null`. */
+	readonly says: string | null;
 };
 
 /**
  * what the press that queues them again says it did.
  *
- * **the word comes off the sentence and never off the press.** none left to send is a real answer
- * — a sweep drained the queue between the read and the press, or this is the second press — and
- * "Queued" over it would be a heading contradicting the line under it.
+ * **a tick is for a press that moved something.** none left to send is a real answer — a sweep
+ * drained the queue between the read and the press, or this is the second press — and a tick over
+ * it would confirm a write that did not happen, so it is a sentence at the button instead
+ * ({@link credentialsStands} is the same rule over the boxes).
  */
 export const retriedStands = (retried: number): RetriedStanding =>
 	retried === 0
-		? { word: 'Nothing queued', tone: 'note', says: 'Nothing was left to send.' }
-		: {
-				word: 'Queued',
-				tone: 'done',
-				says:
-					retried === 1 ? '1 gift will be tried again.' : `${retried} gifts will be tried again.`
-			};
+		? { doneLabel: null, says: 'Nothing was left to send.' }
+		: { doneLabel: `${retried} retrying`, says: null };
 
-/** what stands where the three pickers would be, past the picks and the deployment's own sentence. */
-export type UnpickableStanding = {
-	/** whether the press that connects the company again stands here. */
-	readonly connect: boolean;
-	/** the one sentence this console adds of its own, or `null` where it adds none. */
-	readonly says: string | null;
+/** the retry press as its one button draws it, or not at all. */
+export type RetryButton = {
+	readonly shown: boolean;
+	readonly state: 'idle' | 'pending' | 'done';
 };
 
 /**
- * what an unreadable chart offers, off what the deployment said an operator can do about it.
- *
- * a lapsed credential is the only one of the three a press mends, so it is the only one that draws
- * one: a button offered over an Intuit that was briefly unreachable asks for a whole round trip
- * through Intuit to fix nothing, and one offered over a recourse the deployment did not name asks
- * for it over something like a rate limit (`recourseFor` in
- * packages/app/src/routes/console.quickbooks.ts).
- *
- * the sentence is added only where there is something the screen cannot otherwise show. a reader
- * seeing no press over an unreachable Intuit has no way to tell that the read comes back by
- * itself; a reader seeing no press over an unnamed recourse is told the whole of what the
- * deployment said, which is its own sentence and nothing after it.
- *
- * the sentence opens on a pronoun because it is drawn directly under the one naming the deployment
- * (`Unpickable` in ./quickbooks-section.tsx), which is what the pronoun binds to.
- *
- * a record rather than a chain of tests, so a recourse added to the closed set in this repository
- * is a type error here rather than one more falling quietly through to the silent arm.
+ * the retry press through a press: one button from rest to its report, so the element the keyboard
+ * is on is the one that says what it queued. it stands while there is anything to retry, while its
+ * own press is going, and while its report is showing — the backlog has gone by then, and the
+ * button going with it would take the report and the reader's place together.
  */
-const UNPICKABLE: Record<QuickbooksRecourse, UnpickableStanding> = {
-	reconnect: { connect: true, says: null },
-	wait: { connect: false, says: 'It keeps trying on its own.' }
+export function retryButton(facts: {
+	/** gifts were given up on and are there to retry ({@link backlogStands}). */
+	readonly backlog: boolean;
+	readonly pending: boolean;
+	/** the press's report is inside its four seconds (packages/operator/src/save-state.ts). */
+	readonly done: boolean;
+	/** the report's own words, or `null` where nothing moved ({@link retriedStands}). */
+	readonly doneLabel: string | null;
+}): RetryButton {
+	const reporting = facts.done && facts.doneLabel !== null;
+	return {
+		shown: facts.backlog || facts.pending || reporting,
+		state: facts.pending ? 'pending' : reporting ? 'done' : 'idle'
+	};
+}
+
+/** the one sentence every press answered by nothing reads, wherever it was made. */
+export const UNANSWERED = 'This deployment didn’t answer.';
+
+/** where an unreadable chart is said, and what is said there. */
+export type ChartStanding = {
+	/**
+	 * the step it blocks. a lapsed credential is Connect's — connecting again is what mends it —
+	 * and anything else leaves the connection standing and the three unpickable.
+	 */
+	readonly step: 'connect' | 'accounts';
+	readonly says: string;
 };
 
-/** nothing to do about it here: the deployment's own sentence is the whole of what is said. */
-const NO_RECOURSE: UnpickableStanding = { connect: false, says: null };
-
 /**
- * the block as it stands, where no recourse was named as well as where one was.
+ * what a chart that could not be read says, and where, or `null` where it was read or nothing is
+ * connected.
  *
  * **the name is checked against the set rather than trusted to be in it.** it arrives off the wire
  * with no parse in front of it (`ask` in ../api/client.ts) and the binary forwards the
- * deployment's body unread, so a deployment a release ahead of this console names a recourse the
- * record above has no entry for — and the type says otherwise. drawing nothing is what keeps the
- * screen opening: a console one thing short still says which company is connected and still offers
- * the way out.
+ * deployment's body unread, so a deployment a release ahead of this console names a recourse this
+ * has no entry for — and the type says otherwise. that one, and none at all, read as the plain
+ * fact, at the step the three would be picked in.
  */
-export const unpickableStands = (recourse: QuickbooksRecourse | null): UnpickableStanding => {
-	const known = QUICKBOOKS_RECOURSES.find((name) => name === recourse);
-	return known === undefined ? NO_RECOURSE : UNPICKABLE[known];
+export function chartStands(accounts: QuickbooksReport['accounts']): ChartStanding | null {
+	if (accounts === null || accounts.state === 'read') return null;
+	const known = QUICKBOOKS_RECOURSES.find((name) => name === accounts.recourse);
+	if (known === 'reconnect')
+		return { step: 'connect', says: 'QuickBooks turned this connection down.' };
+	if (known === 'wait')
+		return {
+			step: 'accounts',
+			says: 'QuickBooks can’t be reached right now. This deployment keeps trying.'
+		};
+	return { step: 'accounts', says: 'This deployment couldn’t read your chart of accounts.' };
+}
+
+/** the three steps the section draws as a checklist, in order. */
+export const STEPS = ['setup', 'connect', 'accounts'] as const;
+
+export type StepName = (typeof STEPS)[number];
+
+/** where one step stands. */
+export type StepStanding = {
+	readonly done: boolean;
+	/** something blocks it, which is what opens it and turns its mark. */
+	readonly trouble: boolean;
+	/** it cannot be taken until the one before it is done, so it is drawn shut and refuses to open. */
+	readonly locked: boolean;
+	readonly open: boolean;
 };
+
+export type StepsStanding = Readonly<Record<StepName, StepStanding>> & {
+	/** the sync group under the checklist, drawn only once every step is done and untroubled. */
+	readonly sync: boolean;
+};
+
+/**
+ * which step is open, shut, locked or in trouble, and whether sync is drawn at all.
+ *
+ * **the order is the code's.** Connect is locked until the keys are held, because every call to
+ * Intuit is built from all three; Accounts until a company is connected, because the connect is
+ * what fills them off the chart (`fillAccountsFromChart` in
+ * packages/app/src/routes/quickbooks.callback.tsx); and sync is out of sight until all three are
+ * picked, because nothing is sent before (`chosenAccounts` in
+ * packages/app/src/lib/server/accounting/quickbooks.ts) — never drawn locked, since it is not a
+ * step.
+ *
+ * **the first unfinished step is open and a finished one is shut** — once its button has shown
+ * the save that finished it: `confirming` is the step whose button is drawing `Saving` or `Saved`,
+ * and it stays open under that. trouble opens its step, and so does a press on it that went
+ * unanswered or a company Intuit has not named yet. a locked step opens for nothing.
+ */
+export function stepsStand(facts: {
+	/** all three keys are held. */
+	readonly configured: boolean;
+	readonly books: QuickbooksRead;
+	readonly answer: QuickbooksAnswer | null;
+	readonly confirming: StepName | null;
+}): StepsStanding {
+	const { configured, books, answer, confirming } = facts;
+	const connection = books.kind === 'read' ? books.report.connection : null;
+	const company = connection?.state === 'connected' ? connection : null;
+	const chart = books.kind === 'read' ? chartStands(books.report.accounts) : null;
+
+	const done: Record<StepName, boolean> = {
+		setup: configured,
+		connect: company !== null,
+		accounts: company !== null && PICKS.every((pick) => company[pick] !== null)
+	};
+	const trouble: Record<StepName, boolean> = {
+		setup: false,
+		connect:
+			books.kind === 'unread' ||
+			unanswered(answer, 'connect') !== null ||
+			chart?.step === 'connect',
+		accounts: chart?.step === 'accounts'
+	};
+	const locked: Record<StepName, boolean> = {
+		setup: false,
+		connect: !done.setup,
+		accounts: !done.connect
+	};
+	const asked: Record<StepName, boolean> = {
+		setup: false,
+		connect: company !== null && company.companyName === null,
+		accounts: unanswered(answer, 'accounts') !== null
+	};
+	const current = STEPS.find((name) => !done[name]);
+	const step = (name: StepName): StepStanding => ({
+		done: done[name],
+		trouble: trouble[name],
+		locked: locked[name],
+		open: !locked[name] && (name === current || trouble[name] || asked[name] || confirming === name)
+	});
+	return {
+		setup: step('setup'),
+		connect: step('connect'),
+		accounts: step('accounts'),
+		sync: STEPS.every((name) => done[name] && !trouble[name])
+	};
+}
+
+/** what the company is called on this screen: its name, or the id Intuit addresses it by. */
+export const companyCalled = (company: QuickbooksCompany): string =>
+	company.companyName ?? company.realmId;
+
+/** a sentence ending on a name that already ends in a stop takes no second one. */
+const stopped = (text: string): string => (text.endsWith('.') ? text : `${text}.`);
+
+/** what disconnecting costs, itemised for the confirm. */
+export const disconnectLines = (company: QuickbooksCompany): string[] => [
+	stopped(`Gifts stop syncing to ${companyCalled(company)}`),
+	'This deployment forgets the company, its accounts and the day gifts sync from.'
+];
+
+/** what each of the three boxes is called. the pair takes Intuit's own labels. */
+export const KEY_LABEL: Readonly<Record<string, string>> = {
+	QUICKBOOKS_CLIENT_ID: 'Client ID',
+	QUICKBOOKS_CLIENT_SECRET: 'Client secret',
+	QUICKBOOKS_API_URL: 'API address'
+};
+
+/**
+ * the lines the confirm over changed keys itemises, or `null` where the press goes without one.
+ *
+ * one per box the press changes, named against the value it was, then the cost: a token was
+ * bought with the old pair, so the company is unreachable until it is connected again. a press
+ * that changes nothing, or that the rules refuse before it goes (./secret-edits.ts), asks nothing —
+ * there is nothing to agree to.
+ */
+export function keysAsk(
+	edits: SecretEdits,
+	seeds: Readonly<Record<string, string>>,
+	company: QuickbooksCompany
+): string[] | null {
+	if (!edits.ok) return null;
+	const changed = Object.entries(edits.payload);
+	if (changed.length === 0) return null;
+	return [
+		...changed.map(([name, value]) => {
+			const act = value === null ? 'Removed' : (seeds[name] ?? '') === '' ? 'Set' : 'Replaced';
+			return `${KEY_LABEL[name] ?? name} · ${act}`;
+		}),
+		`${companyCalled(company)} stops syncing until you sign in again.`
+	];
+}
+
+/** the confirm a move of the start date puts up. */
+export type StartDateAsk = {
+	readonly title: string;
+	readonly press: string;
+	/** sending is the job asked for and takes the primary rank; skipping loses gifts and is danger. */
+	readonly rank: 'exit' | 'danger';
+	readonly lines: readonly string[];
+};
+
+/** the two sides of a move, as the preview press answers them. */
+export type StartDatePreview = {
+	readonly queues: QuickbooksStartAtSide;
+	readonly drops: QuickbooksStartAtSide;
+};
+
+/** business dates are days and not instants, so they are said in utc, where the day was stored. */
+const DAY_WORDS = new Intl.DateTimeFormat('en-GB', {
+	day: 'numeric',
+	month: 'long',
+	year: 'numeric',
+	timeZone: 'UTC'
+});
+
+/**
+ * the business dates a side spans, each part said once: `2 to 12 September 2026`,
+ * `3 June to 31 August 2026`, `30 December 2025 to 2 January 2026`, or the one day.
+ */
+function datedSays(earliest: string, latest: string): string {
+	const from = DAY_WORDS.formatToParts(new Date(earliest));
+	const to = DAY_WORDS.formatToParts(new Date(latest));
+	const part = (parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes): string =>
+		parts.find((one) => one.type === type)?.value ?? '';
+	const whole = DAY_WORDS.format(new Date(latest));
+	if (DAY_WORDS.format(new Date(earliest)) === whole) return whole;
+	const sameYear = part(from, 'year') === part(to, 'year');
+	const sameMonth = sameYear && part(from, 'month') === part(to, 'month');
+	const start = sameMonth
+		? part(from, 'day')
+		: sameYear
+			? `${part(from, 'day')} ${part(from, 'month')}`
+			: DAY_WORDS.format(new Date(earliest));
+	return `${start} to ${whole}`;
+}
+
+/** a side's counts, a line each, leaving out a count that is zero, then the dates they span. */
+function counted(side: QuickbooksStartAtSide): string[] {
+	return [
+		side.gifts > 0 ? `Gifts · ${side.gifts}` : null,
+		side.corrections > 0 ? `Corrections · ${side.corrections}` : null,
+		side.earliest !== null && side.latest !== null
+			? `Dated · ${datedSays(side.earliest, side.latest)}`
+			: null
+	].filter((line): line is string => line !== null);
+}
+
+/**
+ * the confirm moving the start date to `day` puts up, off the deployment's count of what the move
+ * touches — or `null`, where the press goes without one.
+ *
+ * **a move earlier only ever queues and a move later only ever drops**, so the side read is the
+ * direction's and the other is ignored. a side counting nothing is a move with nothing to agree to
+ * and asks nothing.
+ */
+export function startDateAsk(
+	day: string,
+	company: QuickbooksCompany,
+	preview: StartDatePreview
+): StartDateAsk | null {
+	const earlier = day < startDay(company.startAt);
+	const side = earlier ? preview.queues : preview.drops;
+	if (side.gifts + side.corrections === 0) return null;
+	const name = companyCalled(company);
+	return earlier
+		? {
+				title: 'Send past gifts?',
+				press: 'Send gifts',
+				rank: 'exit',
+				lines: [
+					...counted(side),
+					`Company · ${name}`,
+					'Any of these already entered in QuickBooks by hand will appear there twice.'
+				]
+			}
+		: {
+				title: 'Skip unsent gifts?',
+				press: 'Skip gifts',
+				rank: 'danger',
+				lines: [...counted(side), stopped(`These won’t be sent to ${name}`)]
+			};
+}
+
+/** the preview the last answer carries, or `null` where it is another press's. */
+export const previewed = (answer: QuickbooksAnswer | null): StartDatePreview | null =>
+	answer?.kind === 'reported' && answer.report.press === 'start-date-preview'
+		? answer.report
+		: null;
+
+/**
+ * whether the intent in flight is one of this control's presses. a control can make more than one
+ * — the day's save previews and then moves — and is closed under either.
+ */
+export const ownPress = (pending: string | null, ...presses: readonly QuickbooksPress[]): boolean =>
+	presses.some((press) => pending === quickbooksIntent(press));

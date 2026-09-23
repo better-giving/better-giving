@@ -727,105 +727,101 @@ function ChariotKeysForm({
 	};
 
 	return (
-		/* the boundary `.adm-named` stands between blocks (packages/operator/src/styles/adm.css), with
-		   no heading: the page's title already names what the boxes set, and without the step the form
-		   reads as the tail of the block above it. a div rather than the class on the form, which is
-		   already a `.adm-stack` and would have the two contest one gap. */
-		<div className="adm-named">
-			<Form
-				{...keys.mount}
-				className="adm-stack"
-				method="post"
-				preventScrollReset
-				/* the seam goes first and answers both ways a press starts nothing; a press past it keeps
+		/* the break between blocks (`.adm-break` in packages/operator/src/styles/adm.css), with no
+		   heading: the page's title already names what the boxes set, and without the step the form
+		   reads as the tail of the block above it. */
+		<Form
+			{...keys.mount}
+			className="adm-stack adm-break"
+			method="post"
+			preventScrollReset
+			/* the seam goes first and answers both ways a press starts nothing; a press past it keeps
 			   the boxes it sent and puts up the card that reports the run. */
-				onSubmit={(event) => {
-					keys.mount.onSubmit(event);
-					if (event.defaultPrevented) return;
-					typed.current = boxes(event.currentTarget);
-					setReporting('pressed');
-				}}
-			>
-				<div className="adm-stack">
-					{CHARIOT_BOXES.map((box) => (
-						<Field
-							key={box}
-							id={bound[box].id}
-							name={bound[box].name}
-							label={LABEL[box]}
-							hint={HINT[box]}
-							code
-							masked={box === 'apiKey' && isMasked('CHARIOT_API_KEY')}
-							autoComplete="off"
-							spellCheck={false}
-							defaultValue={bound[box].defaultValue}
-							disabled={closed}
-							onInput={bound[box].onInput}
-							error={bound[box].message}
-						/>
-					))}
-					<WithheldValues
-						names={withheldAmong(values, CHARIOT_WRITES)}
-						all={values.withheld}
-						consequence="Until these are saved again, this deployment takes no fund gift through Chariot."
-						written={freed}
-						trouble={trouble}
-						busy={busy || working}
-						freeing={pending === FREE_INTENT}
+			onSubmit={(event) => {
+				keys.mount.onSubmit(event);
+				if (event.defaultPrevented) return;
+				typed.current = boxes(event.currentTarget);
+				setReporting('pressed');
+			}}
+		>
+			<div className="adm-stack">
+				{CHARIOT_BOXES.map((box) => (
+					<Field
+						key={box}
+						id={bound[box].id}
+						name={bound[box].name}
+						label={LABEL[box]}
+						hint={HINT[box]}
+						code
+						masked={box === 'apiKey' && isMasked('CHARIOT_API_KEY')}
+						autoComplete="off"
+						spellCheck={false}
+						defaultValue={bound[box].defaultValue}
+						disabled={closed}
+						onInput={bound[box].onInput}
+						error={bound[box].message}
 					/>
-				</div>
+				))}
+				<WithheldValues
+					names={withheldAmong(values, CHARIOT_WRITES)}
+					all={values.withheld}
+					consequence="Until these are saved again, this deployment takes no fund gift through Chariot."
+					written={freed}
+					trouble={trouble}
+					busy={busy || working}
+					freeing={pending === FREE_INTENT}
+				/>
+			</div>
 
-				{/* the key turned down, at the press that asked and gone the moment either box is edited:
+			{/* the key turned down, at the press that asked and gone the moment either box is edited:
 			    `standing` is the answer cut down to the boxes nobody has typed in since. */}
-				{(keyRefused || doorTurnedDown) &&
-				keys.standing?.[CHARIOT_FIELD('apiKey')] !== undefined ? (
-					<FieldMessage>{doorTurnedDown ? doorSentence : keySentence}</FieldMessage>
-				) : null}
+			{(keyRefused || doorTurnedDown) && keys.standing?.[CHARIOT_FIELD('apiKey')] !== undefined ? (
+				<FieldMessage>{doorTurnedDown ? doorSentence : keySentence}</FieldMessage>
+			) : null}
 
-				<div className="adm-actions">
-					<SaveButton
-						id={SET_UP_PRESS}
-						type="submit"
-						name="intent"
-						value={CHARIOT_SETUP_INTENT}
-						state={keys.state}
-						label="Save"
-						doneLabel="Set up"
-						disabled={closed || undefined}
-					/>
-				</div>
+			<div className="adm-actions">
+				<SaveButton
+					id={SET_UP_PRESS}
+					type="submit"
+					name="intent"
+					value={CHARIOT_SETUP_INTENT}
+					state={keys.state}
+					label="Save"
+					doneLabel="Set up"
+					disabled={closed || undefined}
+				/>
+			</div>
 
-				{/* a Connect Chariot holds switched off, at the press that stored it: the card that drew the
+			{/* a Connect Chariot holds switched off, at the press that stored it: the card that drew the
 			    run has gone by the time it lands. */}
-				{connectWaiting(live) && reporting === null ? (
-					<Banner tone="note" word="Chariot hasn’t switched on your fund gifts yet" />
-				) : null}
+			{connectWaiting(live) && reporting === null ? (
+				<Banner tone="note" word="Chariot hasn’t switched on your fund gifts yet" />
+			) : null}
 
-				{/* a press the binary could not write at all, at the button that made it. */}
-				{press.unwritten === null || phase.pending ? null : trouble(press.unwritten)}
+			{/* a press the binary could not write at all, at the button that made it. */}
+			{press.unwritten === null || phase.pending ? null : trouble(press.unwritten)}
 
-				{/* a run that stopped, standing as the report of the press once no card is up. */}
-				{reportStands(live, reporting !== null) ? ledger(live) : null}
+			{/* a run that stopped, standing as the report of the press once no card is up. */}
+			{reportStands(live, reporting !== null) ? ledger(live) : null}
 
-				{reporting === null ? null : (
-					<Modal
-						title="Setting up Chariot"
-						// a run that is going cannot be left: this card is its only report.
-						onDismiss={() => {
-							if (underway) return;
-							setReporting(null);
-						}}
-						exit="Close"
-						exitProps={{
-							type: 'button' as const,
-							disabled: underway || undefined,
-							onClick: () => setReporting(null)
-						}}
-					>
-						{ledger(reporting === 'reading' ? live : null)}
-					</Modal>
-				)}
-			</Form>
-		</div>
+			{reporting === null ? null : (
+				<Modal
+					title="Setting up Chariot"
+					// a run that is going cannot be left: this card is its only report.
+					onDismiss={() => {
+						if (underway) return;
+						setReporting(null);
+					}}
+					exit="Close"
+					exitProps={{
+						type: 'button' as const,
+						disabled: underway || undefined,
+						onClick: () => setReporting(null)
+					}}
+				>
+					{ledger(reporting === 'reading' ? live : null)}
+				</Modal>
+			)}
+		</Form>
 	);
 }

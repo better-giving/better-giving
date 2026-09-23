@@ -1492,7 +1492,7 @@
 	   the tone, and a summary that recoloured either under a pointer would report a state change
 	   on a press that only folds. */
 	.adm-status--section > summary:not([aria-disabled='true']):hover .adm-status__caret,
-	.adm-status--section > summary.is-hover .adm-status__caret {
+	.adm-status--section > summary:not([aria-disabled='true']).is-hover .adm-status__caret {
 		color: var(--admin-ink);
 	}
 
@@ -1596,6 +1596,18 @@
 	   sibling for the rule above to key on — and the heading then sits the container's gap under the
 	   block before it, closer than two lines of that block's ledger sit to each other. */
 	* + form > .adm-named:first-child {
+		margin-block-start: var(--admin-space-8);
+	}
+
+	/* the break between two blocks where neither carries a heading — a press standing on its own
+	   under what it acts on, a form under the block before it. it is `.adm-named`'s boundary and
+	   none of that class's grid: `.adm-named` is a heading and what it names, so a block with one
+	   child wearing it for the step alone reads as a named block with the name missing, and its gap
+	   contests whatever gap the block's own class already sets. this is the step and nothing else,
+	   so it sits on the block's own element beside whatever class lays it out. keyed on a preceding
+	   sibling for the same reason the boundary above is: first in its parent, there is nothing to
+	   break from. */
+	* + .adm-break {
 		margin-block-start: var(--admin-space-8);
 	}
 

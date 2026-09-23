@@ -6,20 +6,21 @@ import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { SelectWithNote } from '@better-giving/operator/components/forms/SelectWithNote';
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
-import { Section } from '@better-giving/operator/components/shell/Layout';
-import { Banner } from '@better-giving/operator/components/status/Banner';
+import { Stack } from '@better-giving/operator/components/shell/Layout';
+import { Mark } from '@better-giving/operator/components/status/Mark';
+import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import type {
 	LedgerAccountLine,
-	QuickbooksAccountsReading,
 	QuickbooksCompany,
-	QuickbooksRecourse,
 	QuickbooksReport
 } from '@better-giving/operator/console/quickbooks';
 import { QUICKBOOKS_PRODUCTION_URL } from '@better-giving/operator/console/quickbooks';
+import { useSaveState } from '@better-giving/operator/save-state.react';
+import type { SavedFormState } from '@better-giving/operator/saved-form-state.react';
 import { useSavedFormState } from '@better-giving/operator/saved-form-state.react';
 import type { ReactNode } from 'react';
-import { useState } from 'react';
-import { Form } from 'react-router';
+import { useCallback, useEffect, useState } from 'react';
+import { Form, useRevalidator } from 'react-router';
 import type {
 	DeployedValues,
 	QuickbooksRead,
@@ -29,31 +30,48 @@ import type {
 } from '../api/types';
 import type { HeldValues } from './held-values';
 import { heldValues, withheldInGroup } from './held-values';
-import { keysTrouble, noAnswer, valuesGuard } from './processor-screen';
-import type { AccountPick, QuickbooksAnswer, QuickbooksPicks } from './quickbooks-standing';
+import { keysTrouble, valuesGuard } from './processor-screen';
+import type {
+	QuickbooksAnswer,
+	QuickbooksPicks,
+	StepName,
+	StepStanding
+} from './quickbooks-standing';
 import {
+	KEY_LABEL,
+	PICK_BLANK,
 	PICKS,
 	QUICKBOOKS_FORM,
+	UNANSWERED,
 	accountPicker,
 	backlogSays,
 	backlogStands,
+	chartStands,
+	companyCalled,
 	connectAddress,
 	credentialsPhase,
 	credentialsStands,
+	disconnectLines,
+	keysAsk,
 	landedPress,
+	ownPress,
+	picksArmed,
 	picksHeld,
+	picksMissing,
 	picksToSave,
-	quickbooksIntent,
+	previewed,
 	quickbooksRefused,
 	retriedGifts,
 	retriedStands,
+	retryButton,
+	startDateAsk,
 	startDay,
 	startToSave,
-	unanswered,
-	unpickableStands
+	stepsStand,
+	unanswered
 } from './quickbooks-standing';
 import { useReseeded } from './reseed';
-import { Said } from './said';
+import { secretEdits } from './secret-edits';
 import type { GroupReport } from './secret-group-form';
 import { refusalIn } from './secret-trouble';
 import type { SecretGroup } from './secret-groups';
@@ -69,35 +87,39 @@ import { useConsoleForm } from './use-console-form';
 import { FREE_INTENT, WithheldValues } from './withheld-values';
 
 // where this deployment's books go, and every press an operator has over them — the three values
-// off their Intuit app, the company they connect, where a gift is posted in its chart, and the
-// gifts that have not gone over.
+// off their Intuit app, the company they connect, where a gift is posted in its chart, the gifts
+// that have not gone over and the day they are sent from.
 //
 // **it is the screen's body and not its route.** every read it draws was taken by whatever mounts
 // it and every press over the books is a callback answered there — ./chariot-section.tsx's
 // arrangement with the router taken out of it: nothing here fetches or reads a loader, so the one
 // place such a press becomes a request is the route. the three boxes are the one exception and post
 // for themselves, as ./chariot-section.tsx's own do: the group's intent (`groupIntent` in
-// ./secret-groups.ts), answered by that same route's `clientAction`.
+// ./secret-groups.ts), answered by that same route's `clientAction`. a read that did not land is
+// asked again through the router's revalidator, as ./chariot-section.tsx does.
+//
+// **it is a checklist and one group under it.** Setup, Connect and Accounts are steps, one fold
+// each in a ledger of sections; Sync is not a step and is drawn only once all three are done.
+// which step is open, shut or locked is `stepsStand` in ./quickbooks-standing.ts, and every other
+// decision about a value is beside it there — this package's pool is node-only, so a rule left in
+// this file is one no spec can reach (../../vite.config.ts).
 //
 // **it is not a processor and draws no reading of one.** no money moves on these three values and
 // no set-up job waits on them (packages/operator/src/console/quickbooks.ts), so there is no rail,
 // no webhook and no account standing here — a deployment that keeps its books somewhere else is
 // not half set up.
 //
-// **the whole of it is behind the three boxes.** every call to Intuit is built from all three and
-// there is no default for any of them (`REQUIRED` in
-// packages/app/src/lib/server/accounting/factory.ts), so a deployment short of one can connect
-// nothing and read no chart — and a block offering either would be a press that answers the same
-// way every time.
-//
 // **nothing here confirms that the books are keeping up.** a connected deployment says which
-// company and what the three picks are, and the backlog speaks only under that company and only
-// where a gift was given up on (./quickbooks-standing.ts).
+// company, and the backlog speaks only under that company and only where a gift was given up on
+// (./quickbooks-standing.ts).
 //
 // **the address an operator registers arrives on the report, whole.** it is this deployment's own
 // address and the path Intuit sends a browser back to, and only the deployment can say either: no
 // hostname is committed to this repository (CLAUDE.md) and the path is packages/app's, which this
 // package may not import. so nothing here or above it composes one.
+
+/** where an operator makes the Intuit app whose three values go in the boxes. */
+const INTUIT_DEVELOPER = 'https://developer.intuit.com/app/developer/dashboard';
 
 /**
  * the three values this section's boxes set, taken out of the enumeration rather than named again.
@@ -108,19 +130,6 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 const CREDENTIALS = SECRET_GROUPS.filter((group) => group.id === QUICKBOOKS_GROUP).flatMap(
 	(group) => group.names
 );
-
-/** what each box is called. the pair takes Intuit's own labels, which is where they are read off. */
-const LABEL: Record<string, string> = {
-	QUICKBOOKS_CLIENT_ID: 'Client ID',
-	QUICKBOOKS_CLIENT_SECRET: 'Client secret',
-	QUICKBOOKS_API_URL: 'API address'
-};
-
-/** where a box's value comes from, for the box whose label cannot say it. */
-const HINT: Record<string, ReactNode> = {
-	QUICKBOOKS_API_URL:
-		'Intuit’s production address for a real company, and its sandbox address for a test one.'
-};
 
 /**
  * the example the address box stands on while it is empty, which is every deployment holding no
@@ -136,15 +145,22 @@ const HINT: Record<string, ReactNode> = {
  */
 const PLACEHOLDER: Record<string, string> = { QUICKBOOKS_API_URL: QUICKBOOKS_PRODUCTION_URL };
 
-/** what each picker is called. every one says what it is for without the heading over it. */
-const PICK_LABEL: Record<AccountPick, string> = {
-	income: 'Account gifts are recorded in',
-	fee: 'Account processor fees are recorded in',
-	deposit: 'Account money is deposited into'
+/** each step's word, and the line under it where it has one. Accounts has none. */
+const STEP_LINE: Record<StepName, { label: string; note?: string }> = {
+	setup: { label: 'Setup', note: 'Create an Intuit app and put its credentials here' },
+	connect: { label: 'Connect', note: 'Connect to your app' },
+	accounts: { label: 'Accounts' }
+};
+
+/** what each picker is called. every one says what it is for without a heading over it. */
+const PICK_LABEL: Record<(typeof PICKS)[number], string> = {
+	income: 'Gifts go to',
+	fee: 'Processing fees go to',
+	deposit: 'Net amount goes to'
 };
 
 /** what a picker submits under, and the id every description on it is named from. */
-const PICK_FIELD = (pick: AccountPick): string => `quickbooks-${pick}`;
+const PICK_FIELD = (pick: (typeof PICKS)[number]): string => `quickbooks-${pick}`;
 
 /** the same for the one box a day is typed in. */
 const START_FIELD = 'quickbooks-start';
@@ -177,6 +193,11 @@ export type QuickbooksSectionProps = {
 	onConnect: () => void;
 	/** the three accounts a gift is posted into, by id, and all three together. */
 	onAccounts: (picks: QuickbooksPicks) => void;
+	/**
+	 * what moving the day to `day` would send and skip, written nowhere. its answer arrives on
+	 * `answer` as the `start-date-preview` report, and decides whether the move asks first.
+	 */
+	onPreviewStartDate: (day: string) => void;
 	/** the earliest day a gift goes over, as `YYYY-MM-DD`. */
 	onStartDate: (day: string) => void;
 	/** every gift that was given up on, queued again. */
@@ -193,10 +214,23 @@ type Presses = Pick<
 	| 'pending'
 	| 'onConnect'
 	| 'onAccounts'
+	| 'onPreviewStartDate'
 	| 'onStartDate'
 	| 'onRetry'
 	| 'onDisconnect'
 >;
+
+/** a step's button saying `Saving` or `Saved`, reported up so the step stays open under it. */
+type OnConfirming = (active: boolean) => void;
+
+/** the step held open as its button starts or stops drawing its save. */
+const holdOpen =
+	(step: StepName, active: boolean) =>
+	(held: StepName | null): StepName | null =>
+		active ? step : held === step ? null : held;
+
+/** whether a button's rung is one a finished step stays open for. */
+const confirmingIn = (state: SavedFormState): boolean => state === 'pending' || state === 'done';
 
 export function QuickbooksSection({
 	values,
@@ -211,54 +245,142 @@ export function QuickbooksSection({
 	revalidating,
 	onConnect,
 	onAccounts,
+	onPreviewStartDate,
 	onStartDate,
 	onRetry,
 	onDisconnect
 }: QuickbooksSectionProps): ReactNode {
+	/* which step's button is drawing its save, keyed by the step: a finished step shuts only once
+	   the tick that finished it has been seen (`stepsStand` in ./quickbooks-standing.ts). */
+	const [confirming, setConfirming] = useState<StepName | null>(null);
+	const holdSetup = useCallback<OnConfirming>(
+		(active) => setConfirming(holdOpen('setup', active)),
+		[]
+	);
+	const holdAccounts = useCallback<OnConfirming>(
+		(active) => setConfirming(holdOpen('accounts', active)),
+		[]
+	);
+
 	const guard = valuesGuard(values.vars, { workerName, accountName });
 	if (guard !== null || values.vars.kind !== 'read') return guard;
 	const holding = heldValues(values.vars.vars);
 	const configured = CREDENTIALS.every((name) => holding.held.has(name));
-	const connected = books.kind === 'read' && books.report.connection.state === 'connected';
+	const steps = stepsStand({ configured, books, answer, confirming });
+	const report = books.kind === 'read' ? books.report : null;
+	const company = report?.connection.state === 'connected' ? report.connection : null;
+	const presses: Presses = {
+		answer,
+		busy,
+		pending,
+		onConnect,
+		onAccounts,
+		onPreviewStartDate,
+		onStartDate,
+		onRetry,
+		onDisconnect
+	};
 
 	return (
-		<Section>
-			{/* the boxes carry no band of their own, for ./chariot-section.tsx's reason: the page's
-			    title already names what they set. */}
-			{SECRET_GROUPS.filter((group) => group.id === QUICKBOOKS_GROUP).map((group) => (
-				<Credentials
-					key={group.id}
-					group={group}
-					held={holding}
-					reading={values.vars}
-					report={secrets?.group === group.id ? secrets : null}
-					freed={freed}
-					connected={connected}
-					busy={busy}
-					pending={pending}
-					revalidating={revalidating}
-					trouble={keysTrouble({ workerName, accountName })}
-				/>
-			))}
+		<>
+			<StatusLedger sections>
+				<Step name="setup" standing={steps.setup}>
+					<Stack>
+						<p>
+							<a href={INTUIT_DEVELOPER} target="_blank" rel="noreferrer">
+								Intuit Developer <Mark name="external-link" />
+							</a>
+						</p>
+						{SECRET_GROUPS.filter((group) => group.id === QUICKBOOKS_GROUP).map((group) => (
+							<Credentials
+								key={group.id}
+								group={group}
+								held={holding}
+								reading={values.vars}
+								report={secrets?.group === group.id ? secrets : null}
+								freed={freed}
+								company={company}
+								busy={busy}
+								pending={pending}
+								revalidating={revalidating}
+								trouble={keysTrouble({ workerName, accountName })}
+								onConfirming={holdSetup}
+							/>
+						))}
+						{/* apart from the form above: this is copied out to Intuit, where the boxes are
+						    typed in from it. */}
+						{report === null ? null : (
+							<div className="adm-stated adm-break">
+								<span className="adm-field__label">
+									Add this to your Intuit app’s redirect URIs
+								</span>
+								<CodeSlab
+									oneline
+									copyable
+									content={report.callbackAddress}
+									copyLabel="Copy address"
+								/>
+							</div>
+						)}
+					</Stack>
+				</Step>
+				<Step name="connect" standing={steps.connect}>
+					<ConnectPanel books={books} {...presses} />
+				</Step>
+				<Step name="accounts" standing={steps.accounts}>
+					{report === null || company === null ? (
+						/* locked until a company is connected, so this is never opened — but a fold with
+						   nothing beneath it draws no caret and no lock, so it holds an empty panel. */
+						<Stack />
+					) : (
+						<AccountsPanel
+							report={report}
+							company={company}
+							onConfirming={holdAccounts}
+							{...presses}
+						/>
+					)}
+				</Step>
+			</StatusLedger>
 
-			{/* nothing below the boxes until all three are held: no company can be connected and no
-			    chart read, so every press down there would answer the same way every time. */}
-			{!configured ? null : books.kind === 'unread' ? (
-				noAnswer(books.read, 'it can’t say where your books stand')
-			) : (
-				<Books
-					report={books.report}
-					answer={answer}
-					busy={busy}
-					pending={pending}
-					onConnect={onConnect}
-					onAccounts={onAccounts}
-					onStartDate={onStartDate}
-					onRetry={onRetry}
-					onDisconnect={onDisconnect}
-				/>
-			)}
-		</Section>
+			{/* not a step: a plain group under the checklist, headed by its word and drawn only once
+			    every step above is done. */}
+			{steps.sync && report !== null && company !== null ? (
+				<div className="adm-named">
+					<h2>Sync</h2>
+					<Stack>
+						<Backlog report={report} {...presses} />
+						<StartDateForm company={company} {...presses} />
+					</Stack>
+				</div>
+			) : null}
+		</>
+	);
+}
+
+/** one step of the checklist: its word, its line, its mark, and what it opens onto. */
+function Step({
+	name,
+	standing,
+	children
+}: {
+	name: StepName;
+	standing: StepStanding;
+	children: ReactNode;
+}): ReactNode {
+	const { label, note } = STEP_LINE[name];
+	return (
+		<StatusLine
+			label={label}
+			note={note}
+			labelAs="h2"
+			tone={standing.trouble ? 'blocker' : standing.done ? 'done' : 'note'}
+			// a step not yet done is the unfilled outline, which the note tone would draw as `info`.
+			mark={standing.trouble || standing.done ? undefined : 'circle-dashed'}
+			locked={standing.locked}
+			open={standing.open}
+			beneath={children}
+		/>
 	);
 }
 
@@ -266,13 +388,17 @@ export function QuickbooksSection({
  * the three values off the operator's Intuit app, in three boxes that are always on the screen.
  *
  * **it draws no stated-value row and no press that reveals the boxes.** the whole of this section
- * is behind these three, so an operator who opened this page opened it over them — a row saying a
+ * is behind these three, so an operator who opened this step opened it over them — a row saying a
  * value is stored and a press to reach the box under it are two readings of the same fact, one
  * press apart. ./stripe-section.tsx draws its pair the same way.
  *
  * a component of its own because it holds what the section around it must not see: conform's
  * reading of its own boxes, the element a landed save puts back, and which reading that save was
  * made against.
+ *
+ * **a change over a connected company asks first.** a token was bought with the pair it replaces,
+ * so the press is what leaves the company unreachable until it is connected again — the confirm
+ * itemises the boxes it changes and that cost, and nothing about it is said on the page.
  */
 function Credentials({
 	group,
@@ -280,11 +406,12 @@ function Credentials({
 	reading,
 	report,
 	freed,
-	connected,
+	company,
 	busy,
 	pending,
 	revalidating,
-	trouble
+	trouble,
+	onConfirming
 }: {
 	group: SecretGroup;
 	/** what cloudflare says this deployment holds, which is what the boxes are drawn with. */
@@ -294,8 +421,8 @@ function Credentials({
 	report: GroupReport | null;
 	/** how the last press that frees a value held in a form nothing can read back went, or `null`. */
 	freed: VarsWritten | null;
-	/** a company is connected, which is what makes storing a different pair cost something. */
-	connected: boolean;
+	/** the company connected, which is what makes storing a different pair cost something. */
+	company: QuickbooksCompany | null;
 	/** something on the page is writing, which holds every control on it closed. */
 	busy: boolean;
 	/** which intent is in flight, or `null` where none is. */
@@ -304,6 +431,7 @@ function Credentials({
 	revalidating: boolean;
 	/** what a failed write says, in the words the screen holding the account name has for it. */
 	trouble: (written: ValuesRefusal) => ReactNode;
+	onConfirming: OnConfirming;
 }): ReactNode {
 	const errors = report !== null && 'errors' in report ? report.errors : null;
 	const written = report !== null && 'written' in report ? report.written : null;
@@ -332,6 +460,7 @@ function Credentials({
 		settled: stands.settled,
 		spent
 	});
+	const seeds = Object.fromEntries(group.names.map((name) => [name, held.seeds[name] ?? '']));
 
 	const credentials = useConsoleForm(QUICKBOOKS_FORM, {
 		report,
@@ -341,12 +470,16 @@ function Credentials({
 		/* the boxes seeded from what the deployment holds, keyed by what they post. the marking is
 		   still the pass and not the seeding: nothing is said about a box until a submit runs the
 		   rules (./use-console-form.ts). */
-		defaultValue: Object.fromEntries(
-			group.names.map((name) => [VALUE_FIELD(name), held.seeds[name] ?? ''])
-		),
+		defaultValue: Object.fromEntries(group.names.map((name) => [VALUE_FIELD(name), seeds[name]])),
 		busy,
 		pending: underway
 	});
+
+	const saving = confirmingIn(credentials.state);
+	useEffect(() => onConfirming(saving), [saving, onConfirming]);
+
+	/** the lines the confirm over the press itemises, while it is up. */
+	const [asking, setAsking] = useState<readonly string[] | null>(null);
 
 	/**
 	 * one box bound: the id every describing block on it is named from, what it posts, what it was
@@ -359,41 +492,61 @@ function Credentials({
 	const box = (name: string) => credentials.box(credentials.fields[VALUE_FIELD(name)] as BoundBox);
 
 	return (
-		<Form {...credentials.mount} className="adm-stack" method="post" preventScrollReset>
-			<div className="adm-stack">
-				{group.names.map((name) => {
-					const bound = box(name);
-					return (
-						<Field
-							key={name}
-							id={bound.id}
-							name={bound.name}
-							label={LABEL[name] ?? name}
-							hint={HINT[name]}
-							// the code face. these are literals an operator checks character for character
-							// against their Intuit app.
-							code
-							// which of the three arrives masked is ./secret-groups.ts's.
-							masked={isMasked(name)}
-							autoComplete="off"
-							spellCheck={false}
-							defaultValue={bound.defaultValue}
-							// the example the box stands on while it is empty, which is one box and every
-							// deployment holding no address of its own ({@link PLACEHOLDER}).
-							placeholder={PLACEHOLDER[name]}
-							// closed while the press that reads them is in flight and while another press on
-							// the page writes ({@link credentialsPhase}): the press reads these boxes once,
-							// and a value typed into one behind it is a credential the operator believes
-							// they stored.
-							disabled={closed}
-							/* the deployment's sentence about this box ended by the keystroke that changes
-							   it (./use-console-form.ts). */
-							onInput={bound.onInput}
-							error={bound.error}
-						/>
-					);
-				})}
-			</div>
+		<Form
+			{...credentials.mount}
+			className="adm-stack"
+			method="post"
+			preventScrollReset
+			onSubmit={(event) => {
+				credentials.mount.onSubmit(event);
+				if (event.defaultPrevented) return;
+				// the press inside the confirm, which is the one the confirm was put up to ask about.
+				if (asking !== null) {
+					setAsking(null);
+					return;
+				}
+				if (company === null) return;
+				const lines = keysAsk(
+					secretEdits(group.names, new FormData(event.currentTarget), seeds),
+					seeds,
+					company
+				);
+				if (lines === null) return;
+				event.preventDefault();
+				setAsking(lines);
+			}}
+		>
+			{group.names.map((name) => {
+				const bound = box(name);
+				return (
+					<Field
+						key={name}
+						id={bound.id}
+						name={bound.name}
+						label={KEY_LABEL[name] ?? name}
+						// the code face. these are literals an operator checks character for character
+						// against their Intuit app.
+						code
+						// which of the three arrives masked is ./secret-groups.ts's.
+						masked={isMasked(name)}
+						autoComplete="off"
+						spellCheck={false}
+						defaultValue={bound.defaultValue}
+						// the example the box stands on while it is empty, which is one box and every
+						// deployment holding no address of its own ({@link PLACEHOLDER}).
+						placeholder={PLACEHOLDER[name]}
+						// closed while the press that reads them is in flight and while another press on
+						// the page writes ({@link credentialsPhase}): the press reads these boxes once,
+						// and a value typed into one behind it is a credential the operator believes
+						// they stored.
+						disabled={closed}
+						/* the deployment's sentence about this box ended by the keystroke that changes
+						   it (./use-console-form.ts). */
+						onInput={bound.onInput}
+						error={bound.error}
+					/>
+				);
+			})}
 
 			{/* the names of this group the deployment holds in a form nothing can read back, which are
 			    the boxes drawn empty over a value that is there. no save can set one of them until it
@@ -408,19 +561,10 @@ function Credentials({
 				freeing={pending === FREE_INTENT}
 			/>
 
-			{/* what storing these costs, beside the press that does it rather than over the boxes: it
-			    is read by somebody who has already typed. */}
-			{connected ? (
-				<p className="adm-prose">
-					A token is bought with these, so storing a different pair leaves the connected company
-					unreachable until you connect again.
-				</p>
-			) : null}
-
 			<div className="adm-actions">
 				{/* the three words are the button's own defaults
-				    (`@better-giving/operator/components/controls/SaveButton`): the page this press
-				    stands on already names what is being saved. */}
+				    (`@better-giving/operator/components/controls/SaveButton`): the step this press
+				    stands in already names what is being saved. */}
 				<SaveButton type="submit" name="intent" value={intent} state={credentials.state} />
 				{underway ? (
 					// said at the control while it waits, because this press takes seconds where a save
@@ -436,60 +580,90 @@ function Credentials({
 			</div>
 
 			{failure === null ? null : trouble(failure)}
+
+			{/* inside the form, so the press in it submits the boxes the operator typed. */}
+			{asking === null ? null : (
+				<Modal
+					title="Replace the keys?"
+					onDismiss={() => setAsking(null)}
+					danger="Replace keys"
+					dangerProps={{ type: 'submit' as const, name: 'intent', value: intent }}
+					cancel="Go back"
+					cancelProps={{ type: 'button' as const, onClick: () => setAsking(null) }}
+				>
+					<Lines lines={asking} />
+				</Modal>
+			)}
 		</Form>
 	);
 }
 
-/** the company and what it is owed, or the way to connect one. */
-function Books({
-	report,
+/** what a confirm itemises, a line each. */
+function Lines({ lines }: { lines: readonly string[] }): ReactNode {
+	return (
+		<ul className="adm-list">
+			{lines.map((line) => (
+				<li key={line}>{line}</li>
+			))}
+		</ul>
+	);
+}
+
+/** the company this deployment posts into, or the way to connect one. */
+function ConnectPanel({
+	books,
 	answer,
 	busy,
 	pending,
 	onConnect,
-	onAccounts,
-	onStartDate,
-	onRetry,
 	onDisconnect
-}: { report: QuickbooksReport } & Presses): ReactNode {
-	const connection = report.connection;
+}: { books: QuickbooksRead } & Pick<
+	Presses,
+	'answer' | 'busy' | 'pending' | 'onConnect' | 'onDisconnect'
+>): ReactNode {
+	/* the page read again, which is the one way back from a read that did not land. */
+	const revalidator = useRevalidator();
+	if (books.kind === 'unread')
+		return (
+			<Stack tight>
+				<FieldMessage>{UNANSWERED}</FieldMessage>
+				<div className="adm-actions">
+					<Button
+						type="button"
+						onClick={() => void revalidator.revalidate()}
+						aria-busy={revalidator.state === 'loading' || undefined}
+					>
+						Try again
+					</Button>
+				</div>
+			</Stack>
+		);
+	const { connection, accounts } = books.report;
+	const pressing = { answer, busy, pending, onConnect };
 	if (connection.state !== 'connected')
 		return (
-			<div className="adm-named">
-				{/* the address is the deployment's and the round trip ends there: Intuit cannot reach this
-				    console at all, so a sentence saying "back here" would name the wrong machine. */}
-				<p className="adm-prose">
-					Register this address in your Intuit app. Without it, Intuit won’t send your browser back
-					to this deployment.
-				</p>
-				<CodeSlab oneline copyable content={report.callbackAddress} />
-				<ConnectPress
-					label="Connect a company"
-					answer={answer}
-					busy={busy}
-					pending={pending}
-					onConnect={onConnect}
-				/>
-			</div>
+			<Stack tight>
+				<ConnectPress label="Choose a company" {...pressing} />
+			</Stack>
 		);
+	const chart = chartStands(accounts);
 	return (
-		<>
-			<Company
+		<Stack>
+			<h3>{companyCalled(connection)}</h3>
+			{chart?.step === 'connect' ? (
+				<Stack tight>
+					<FieldMessage>{chart.says}</FieldMessage>
+					<ConnectPress label="Sign in again" {...pressing} />
+				</Stack>
+			) : null}
+			<Disconnect
 				company={connection}
-				accounts={report.accounts}
 				answer={answer}
 				busy={busy}
 				pending={pending}
-				onConnect={onConnect}
-				onAccounts={onAccounts}
-				onStartDate={onStartDate}
 				onDisconnect={onDisconnect}
 			/>
-			{/* under the company and nowhere else: what is owed is owed to it, and the press queues
-			    gifts for it. ./quickbooks-standing.ts's `backlogStands` refuses a disconnected read as
-			    well, which is where a case reaches the rule. */}
-			<Backlog report={report} answer={answer} busy={busy} pending={pending} onRetry={onRetry} />
-		</>
+		</Stack>
 	);
 }
 
@@ -499,7 +673,8 @@ function Books({
  * **the address is a link the operator follows rather than somewhere this console sends them.**
  * Intuit sends the browser back to the deployment and never here, so a console that navigated to
  * it would leave the operator on a page of the deployment's with this one gone; the link opens
- * beside this page and they come back to it.
+ * beside this page and they come back to it. it stands where the press stood, since the press
+ * has done its whole job once it has answered.
  */
 function ConnectPress({
 	label,
@@ -508,126 +683,141 @@ function ConnectPress({
 	pending,
 	onConnect
 }: { label: string } & Pick<Presses, 'answer' | 'busy' | 'pending' | 'onConnect'>): ReactNode {
-	const own = pending === quickbooksIntent('connect');
+	const own = ownPress(pending, 'connect');
 	const address = connectAddress(answer);
 	const silent = unanswered(answer, 'connect');
 	return (
 		<>
 			<div className="adm-actions">
-				{/* held with `aria-disabled` rather than `disabled`, and the press guarded behind it:
-				    a disabled button cannot hold focus, so the keyboard drops to the document at the
-				    moment the answer arrives beside it (packages/app/src/routes/_app.admin.books.tsx
-				    argues it at its own press). */}
-				<Button
-					type="button"
-					variant="primary"
-					onClick={() => {
-						if (busy) return;
-						onConnect();
-					}}
-					aria-disabled={busy || undefined}
-					aria-busy={own || undefined}
-				>
-					{label}
-				</Button>
+				{address === null ? (
+					/* held with `aria-disabled` rather than `disabled`, and the press guarded behind it:
+					   a disabled button cannot hold focus, so the keyboard drops to the document at the
+					   moment the answer arrives beside it (packages/app/src/routes/_app.admin.books.tsx
+					   argues it at its own press). */
+					<Button
+						type="button"
+						variant="primary"
+						onClick={() => {
+							if (busy) return;
+							onConnect();
+						}}
+						aria-disabled={busy || undefined}
+						aria-busy={own || undefined}
+					>
+						{label}
+					</Button>
+				) : (
+					<Button
+						as="a" // full-load-ok: the deployment's address, never this console's.
+						href={address}
+						target="_blank"
+						rel="noreferrer"
+						variant="primary"
+						markAfter="external-link"
+					>
+						Continue at Intuit
+					</Button>
+				)}
 			</div>
-			{address === null ? null : (
-				<p className="adm-prose">
-					<a href={address} target="_blank" rel="noreferrer">
-						Choose a company at Intuit
-					</a>
-					, then come back to this page.
-				</p>
-			)}
-			{silent === null ? null : noAnswer(silent, 'there is no address to open')}
+			{address === null ? null : <p className="adm-hint">Then come back to this page.</p>}
+			{silent === null ? null : <FieldMessage>{UNANSWERED}</FieldMessage>}
 		</>
 	);
 }
 
-/** the company this deployment posts into, what it posts where, and the way out. */
-function Company({
+/** the way out, and the confirm that says what it costs. */
+function Disconnect({
 	company,
-	accounts,
 	answer,
 	busy,
 	pending,
-	onConnect,
-	onAccounts,
-	onStartDate,
 	onDisconnect
-}: {
-	company: QuickbooksCompany;
-	accounts: QuickbooksAccountsReading | null;
-} & Pick<
+}: { company: QuickbooksCompany } & Pick<
 	Presses,
-	'answer' | 'busy' | 'pending' | 'onConnect' | 'onAccounts' | 'onStartDate' | 'onDisconnect'
+	'answer' | 'busy' | 'pending' | 'onDisconnect'
 >): ReactNode {
+	const own = ownPress(pending, 'disconnect');
+	const [asking, setAsking] = useState(false);
+	const silent = unanswered(answer, 'disconnect');
 	return (
-		/* four blocks, each opening a subject of its own and told apart by the one boundary the sheet
-		   draws over them (`* + .adm-named` in packages/operator/src/styles/adm.css). they stand
-		   directly in the section rather than inside a wrapper of their own: the rule keys on a
-		   sibling, so a wrapper would take the one boundary for the four of them and leave the blocks
-		   inside it at the container's gap — a block's save as near the block below it as it is to
-		   its own boxes, which is what was on the screen. the class goes on a wrapper around each
-		   block rather than on the block's own element, because the step inside a named block is the
-		   close one a heading takes from what it names, and these hold a column of controls and the
-		   press that saves them at the stack's step. */
 		<>
-			<div className="adm-named">
-				<StatedValue label="Company" value={company.companyName ?? company.realmId}>
-					{company.companyName === null
-						? 'Intuit hasn’t said what this company is called yet.'
-						: undefined}
-				</StatedValue>
+			{/* its own block under the company, with no heading of its own to open it. */}
+			<div className="adm-actions adm-break">
+				{/* `aria-disabled` and a guarded press, for `ConnectPress`'s reason above. */}
+				<Button
+					type="button"
+					onClick={() => {
+						if (busy) return;
+						setAsking(true);
+					}}
+					aria-disabled={busy || undefined}
+					aria-busy={own || undefined}
+				>
+					Disconnect
+				</Button>
 			</div>
-
-			<div className="adm-named">
-				{accounts?.state === 'read' ? (
-					<AccountsForm
-						company={company}
-						chart={accounts.accounts}
-						answer={answer}
-						busy={busy}
-						pending={pending}
-						onAccounts={onAccounts}
-					/>
-				) : (
-					<Unpickable
-						company={company}
-						detail={accounts?.state === 'unreadable' ? accounts.detail : null}
-						recourse={accounts?.state === 'unreadable' ? accounts.recourse : null}
-						answer={answer}
-						busy={busy}
-						pending={pending}
-						onConnect={onConnect}
-					/>
-				)}
-			</div>
-
-			<div className="adm-named">
-				<StartDateForm
-					company={company}
-					answer={answer}
-					busy={busy}
-					pending={pending}
-					onStartDate={onStartDate}
-				/>
-			</div>
-
-			{/* the way out is a block of its own, though it is a press with no heading over it: it
-			    belongs to none of the blocks above — ./withheld-values.tsx draws its own bare press
-			    inside the form whose values it is about, and takes no boundary for that reason — and
-			    this class is the whole of what the sheet has for a break between blocks. */}
-			<div className="adm-named">
-				<Disconnect
-					company={company}
-					answer={answer}
-					busy={busy}
-					pending={pending}
-					onDisconnect={onDisconnect}
-				/>
-			</div>
+			{/* a press that landed is reported by the step it leaves: the company and this button are
+			    gone, and the way to connect one stands where they were. */}
+			{silent === null ? null : <FieldMessage>{UNANSWERED}</FieldMessage>}
+			{asking ? (
+				<Modal
+					title={`Disconnect ${companyCalled(company)}?`}
+					onDismiss={() => setAsking(false)}
+					danger="Disconnect"
+					dangerProps={{
+						type: 'button' as const,
+						disabled: busy || undefined,
+						onClick: () => {
+							setAsking(false);
+							onDisconnect();
+						}
+					}}
+					cancel="Go back"
+					cancelProps={{ type: 'button' as const, onClick: () => setAsking(false) }}
+				>
+					<Lines lines={disconnectLines(company)} />
+				</Modal>
+			) : null}
 		</>
+	);
+}
+
+/** where a gift is posted, as pickers over the chart, or as stored where the chart was not read. */
+function AccountsPanel({
+	report,
+	company,
+	onConfirming,
+	...presses
+}: {
+	report: QuickbooksReport;
+	company: QuickbooksCompany;
+	onConfirming: OnConfirming;
+} & Presses): ReactNode {
+	if (report.accounts?.state === 'read')
+		return (
+			<AccountsForm
+				company={company}
+				chart={report.accounts.accounts}
+				onConfirming={onConfirming}
+				{...presses}
+			/>
+		);
+	/* they do not disappear and do not fall back to a box an operator types an id into: what a gift
+	   is posted to is settled against the company's own books or not at all. what is wrong is said
+	   at the step it blocks (`chartStands` in ./quickbooks-standing.ts) — a lapsed credential at
+	   Connect, anything else here. */
+	const chart = chartStands(report.accounts);
+	return (
+		<Stack>
+			{PICKS.map((pick) => (
+				<StatedValue
+					key={pick}
+					label={PICK_LABEL[pick]}
+					value={company[pick]?.name ?? 'Not picked'}
+				/>
+			))}
+			{chart?.step === 'accounts' ? <FieldMessage>{chart.says}</FieldMessage> : null}
+		</Stack>
 	);
 }
 
@@ -646,6 +836,10 @@ const seedOf = (picks: QuickbooksPicks): string => `${picks.income}|${picks.fee}
  * press). the seed is compared as a value rather than as the reading's identity, so a read that
  * changed nothing leaves what an operator has chosen alone —
  * packages/operator/src/components/forms/CoinPicker.jsx and DateField.jsx keep theirs the same way.
+ *
+ * **an unchosen picker is marked by the press and not before it**, and from then on as it changes
+ * (`picksArmed` in ./quickbooks-standing.ts): the connect fills what it can, so the one left empty
+ * is found by pressing save.
  */
 function AccountsForm({
 	company,
@@ -653,15 +847,18 @@ function AccountsForm({
 	answer,
 	busy,
 	pending,
-	onAccounts
+	onAccounts,
+	onConfirming
 }: {
 	company: QuickbooksCompany;
 	chart: readonly LedgerAccountLine[];
+	onConfirming: OnConfirming;
 } & Pick<Presses, 'answer' | 'busy' | 'pending' | 'onAccounts'>): ReactNode {
-	const own = pending === quickbooksIntent('accounts');
+	const own = ownPress(pending, 'accounts');
 	const held = picksHeld(company);
 	const [picks, setPicks] = useState(held);
 	const [seed, setSeed] = useState(seedOf(held));
+	const [tried, setTried] = useState(false);
 	if (seed !== seedOf(held)) {
 		setSeed(seedOf(held));
 		setPicks(held);
@@ -677,10 +874,12 @@ function AccountsForm({
 		   re-read begins (./reseed.ts), so nothing moves them again until that read lands, and three
 		   pickers would spend the whole of it showing picks that are no longer stored. */
 		spent: false,
-		changed: picksToSave(picks, company, chart),
+		changed: picksArmed(picks, company, chart),
 		busy,
 		pending: own
 	});
+	const saving = confirmingIn(saved.state);
+	useEffect(() => onConfirming(saving), [saving, onConfirming]);
 	const silent = unanswered(answer, 'accounts');
 	return (
 		<form
@@ -690,6 +889,12 @@ function AccountsForm({
 				// the press is a callback and never a navigation: whatever mounts this section is what
 				// turns it into a request.
 				event.preventDefault();
+				const [first] = picksMissing(picks);
+				if (first !== undefined) {
+					setTried(true);
+					document.getElementById(PICK_FIELD(first))?.focus();
+					return;
+				}
 				if (!picksToSave(picks, company, chart)) return;
 				onAccounts(picks);
 			}}
@@ -710,6 +915,7 @@ function AccountsForm({
 						retired={box.retired}
 						value={picks[pick]}
 						onValueChange={(value) => setPicks({ ...picks, [pick]: value })}
+						error={tried && picks[pick] === '' ? PICK_BLANK : undefined}
 						disabled={busy || undefined}
 					/>
 				);
@@ -717,63 +923,61 @@ function AccountsForm({
 			<div className="adm-actions">
 				<SaveButton type="submit" state={saved.state} disabled={busy || undefined} />
 			</div>
-			{silent === null ? null : noAnswer(silent, 'nothing was changed')}
+			{silent === null ? null : <FieldMessage>{UNANSWERED}</FieldMessage>}
 		</form>
 	);
 }
 
 /**
- * where the three pickers would be, on a deployment whose chart could not be read.
- *
- * they do not disappear and do not fall back to a box an operator types an id into: what a gift is
- * posted to is settled against the company's own books or not at all. what stands here on every
- * arm is the three as they are stored and the deployment's own sentence about the read.
- *
- * **what varies is the way back, and only a lapsed credential has one.** which press and which
- * sentence stand is `unpickableStands` in ./quickbooks-standing.ts, which argues it — a decision
- * left in this file is one no spec can reach, because this package pins one node pool and no dom
- * (../../vite.config.ts).
+ * the gifts that were given up on, and the press that queues them again — which reports what it
+ * queued on itself, and stands until that report has been seen.
  */
-function Unpickable({
-	company,
-	detail,
-	recourse,
+function Backlog({
+	report,
 	answer,
 	busy,
 	pending,
-	onConnect
-}: {
-	company: QuickbooksCompany;
-	detail: string | null;
-	recourse: QuickbooksRecourse | null;
-} & Pick<Presses, 'answer' | 'busy' | 'pending' | 'onConnect'>): ReactNode {
-	const stands = unpickableStands(recourse);
+	onRetry
+}: { report: QuickbooksReport } & Pick<
+	Presses,
+	'answer' | 'busy' | 'pending' | 'onRetry'
+>): ReactNode {
+	const own = ownPress(pending, 'retry');
+	const stands = backlogStands(report, new Date());
+	const queued = retriedGifts(answer);
+	const said = queued === null ? null : retriedStands(queued);
+	const save = useSaveState({ landed: said?.doneLabel != null, changed: false, pending: own });
+	const silent = unanswered(answer, 'retry');
+	const button = retryButton({
+		backlog: stands !== null,
+		pending: own,
+		done: save.done,
+		doneLabel: said?.doneLabel ?? null
+	});
+	if (!button.shown && said?.says == null && silent === null) return null;
 	return (
-		<div className="adm-stack">
-			{PICKS.map((pick) => (
-				<StatedValue
-					key={pick}
-					label={PICK_LABEL[pick]}
-					value={company[pick]?.name ?? 'Not picked'}
-				/>
-			))}
-			<FieldMessage>
-				This deployment couldn’t read your chart of accounts, so the three can’t be picked here.
-			</FieldMessage>
-			{/* above the quotation: it follows on from the sentence over it rather than from what the
-			    deployment said. */}
-			{stands.says === null ? null : <p className="adm-prose">{stands.says}</p>}
-			{detail === null ? null : <Said answer={{ detail }} />}
-			{stands.connect ? (
-				<ConnectPress
-					label="Connect again"
-					answer={answer}
-					busy={busy}
-					pending={pending}
-					onConnect={onConnect}
-				/>
-			) : null}
-		</div>
+		<Stack tight>
+			{stands === null ? null : <FieldMessage>{backlogSays(stands)}</FieldMessage>}
+			<div className="adm-actions">
+				{button.shown ? (
+					/* one element from rest to report, so the keyboard stays on the press that
+					   reported. `aria-disabled` and a guarded press, for `ConnectPress`'s reason. */
+					<SaveButton
+						type="button"
+						state={button.state}
+						label="Try these again"
+						doneLabel={said?.doneLabel ?? undefined}
+						onClick={() => {
+							if (busy) return;
+							onRetry();
+						}}
+						aria-disabled={busy || undefined}
+					/>
+				) : null}
+				{said?.says == null ? null : <p className="adm-hint">{said.says}</p>}
+			</div>
+			{silent === null ? null : <FieldMessage>{UNANSWERED}</FieldMessage>}
+		</Stack>
 	);
 }
 
@@ -786,172 +990,96 @@ function dayIn(form: HTMLFormElement): string {
 /**
  * the earliest date a gift may carry to reach the books.
  *
- * it moves nothing that has already settled: the queue row is written in the settling gift's own
- * batch and never swept up afterwards (`outboxStatements` in
- * packages/app/src/lib/server/accounting/outbox.ts), so an earlier day sends no gift that is
- * already in the past.
+ * **the save asks the deployment what the move touches before it makes it.** a move earlier
+ * queues every gift owed from the new day on and a move later skips the unsent ones before it, so
+ * the press previews first and the move goes only once that answer is read: straight away where
+ * it touches nothing, and behind a confirm naming what it sends or skips where it does
+ * (`startDateAsk` in ./quickbooks-standing.ts).
  */
 function StartDateForm({
 	company,
 	answer,
 	busy,
 	pending,
+	onPreviewStartDate,
 	onStartDate
 }: { company: QuickbooksCompany } & Pick<
 	Presses,
-	'answer' | 'busy' | 'pending' | 'onStartDate'
+	'answer' | 'busy' | 'pending' | 'onPreviewStartDate' | 'onStartDate'
 >): ReactNode {
-	const own = pending === quickbooksIntent('start-date');
+	const own = ownPress(pending, 'start-date-preview', 'start-date');
+	/* the day the preview was asked for, and the answer standing when it was: only an answer that
+	   arrived after the press is that press's preview. */
+	const [asked, setAsked] = useState<{ day: string; over: QuickbooksAnswer | null } | null>(null);
+	const preview = asked === null || answer === asked.over ? null : previewed(answer);
+	const ask = asked === null || preview === null ? null : startDateAsk(asked.day, company, preview);
+	const touchesNothing = asked !== null && preview !== null && ask === null;
+
+	useEffect(() => {
+		if (!touchesNothing || asked === null) return;
+		setAsked(null);
+		onStartDate(asked.day);
+	}, [touchesNothing, asked, onStartDate]);
+
 	const saved = useSavedFormState({
 		report: answer,
 		landed: landedPress(answer, 'start-date'),
 		changed: (form) => startToSave(dayIn(form), company),
 		busy,
-		pending: own
+		pending: own || touchesNothing
 	});
-	const silent = unanswered(answer, 'start-date');
+	const silent = unanswered(answer, 'start-date-preview') ?? unanswered(answer, 'start-date');
+	/* the confirm's own press, which makes the move it was put up to ask about. */
+	const move =
+		asked === null
+			? undefined
+			: {
+					type: 'button' as const,
+					onClick: () => {
+						setAsked(null);
+						onStartDate(asked.day);
+					}
+				};
 	return (
 		<form
 			ref={saved.form}
-			className="adm-stack"
+			className="adm-stack adm-break"
 			onInput={saved.onInput}
 			onSubmit={(event) => {
 				event.preventDefault();
 				const day = dayIn(event.currentTarget);
 				if (!startToSave(day, company)) return;
-				onStartDate(day);
+				setAsked({ day, over: answer });
+				onPreviewStartDate(day);
 			}}
 		>
-			{/* a box standing on its own, so its label stands over it — the floating construction
-			    packages/operator/src/components/forms/DateField.jsx draws is scoped by its own header
-			    to a date box inside a named group of them. */}
+			{/* broken off the backlog above where that stands, and first in the group where it does not. */}
 			<Field
 				id={START_FIELD}
 				name={START_FIELD}
 				type="date"
-				label="Send gifts dated from"
-				hint="Gifts dated before this day are never sent. Choosing an earlier day sends nothing that has already settled."
+				label="Sync gifts from"
 				defaultValue={startDay(company.startAt)}
 				disabled={busy || undefined}
 			/>
 			<div className="adm-actions">
 				<SaveButton type="submit" state={saved.state} disabled={busy || undefined} />
 			</div>
-			{silent === null ? null : noAnswer(silent, 'the day was not changed')}
-		</form>
-	);
-}
-
-/** the way out, and the card that says what it costs. */
-function Disconnect({
-	company,
-	answer,
-	busy,
-	pending,
-	onDisconnect
-}: { company: QuickbooksCompany } & Pick<
-	Presses,
-	'answer' | 'busy' | 'pending' | 'onDisconnect'
->): ReactNode {
-	const own = pending === quickbooksIntent('disconnect');
-	const [asking, setAsking] = useState(false);
-	const silent = unanswered(answer, 'disconnect');
-	const name = company.companyName ?? 'this company';
-	return (
-		<>
-			<div className="adm-actions">
-				{/* `aria-disabled` and a guarded press, for `ConnectPress`'s reason above. */}
-				<Button
-					type="button"
-					variant="danger"
-					onClick={() => {
-						if (busy) return;
-						setAsking(true);
-					}}
-					aria-disabled={busy || undefined}
-					aria-busy={own || undefined}
-				>
-					Disconnect
-				</Button>
-			</div>
-			{/* a press that landed is reported by the section it leaves: the company, the pickers and
-			    this button are gone, and the way to connect one stands where they were. */}
-			{silent === null ? null : noAnswer(silent, 'nothing was disconnected')}
-			{asking ? (
+			{silent === null ? null : <FieldMessage>{UNANSWERED}</FieldMessage>}
+			{asked === null || ask === null ? null : (
 				<Modal
-					title="Disconnect these books?"
-					onDismiss={() => setAsking(false)}
-					danger="Disconnect"
-					dangerProps={{
-						type: 'button' as const,
-						disabled: busy || undefined,
-						onClick: () => {
-							setAsking(false);
-							onDisconnect();
-						}
-					}}
+					title={ask.title}
+					onDismiss={() => setAsked(null)}
+					exit={ask.rank === 'exit' ? ask.press : undefined}
+					exitProps={ask.rank === 'exit' ? move : undefined}
+					danger={ask.rank === 'danger' ? ask.press : undefined}
+					dangerProps={ask.rank === 'danger' ? move : undefined}
 					cancel="Go back"
-					cancelProps={{ type: 'button' as const, onClick: () => setAsking(false) }}
+					cancelProps={{ type: 'button' as const, onClick: () => setAsked(null) }}
 				>
-					{/* what the press costs, itemised, and nothing about it said on the page behind. what
-					    it leaves alone is left off: a line nobody has to act on is a line spent making
-					    the two that matter harder to count. */}
-					<ul className="adm-list">
-						<li>Gifts stop being sent to {name}.</li>
-						<li>This deployment forgets the company and the three accounts.</li>
-					</ul>
+					<Lines lines={ask.lines} />
 				</Modal>
-			) : null}
-		</>
-	);
-}
-
-/** the gifts that were given up on, and the press that queues them again. */
-function Backlog({
-	report,
-	answer,
-	busy,
-	pending,
-	onRetry
-}: { report: QuickbooksReport } & Pick<
-	Presses,
-	'answer' | 'busy' | 'pending' | 'onRetry'
->): ReactNode {
-	const own = pending === quickbooksIntent('retry');
-	const stands = backlogStands(report, new Date());
-	const queued = retriedGifts(answer);
-	const silent = unanswered(answer, 'retry');
-	/* the press's own outcome keeps the block standing on its own: a retry that queued everything
-	   leaves nothing behind it to say, and the answer would go with the block that reported it. */
-	if (stands === null && queued === null && silent === null) return null;
-	const said = queued === null ? null : retriedStands(queued);
-	return (
-		<div className="adm-named">
-			{stands === null ? null : (
-				<>
-					<FieldMessage>{backlogSays(stands)}</FieldMessage>
-					<div className="adm-actions">
-						{/* `aria-disabled` and a guarded press, for `ConnectPress`'s reason. */}
-						<Button
-							type="button"
-							onClick={() => {
-								if (busy) return;
-								onRetry();
-							}}
-							aria-disabled={busy || undefined}
-							aria-busy={own || undefined}
-						>
-							Try these again
-						</Button>
-					</div>
-				</>
 			)}
-			{said === null ? null : (
-				<Banner tone={said.tone} word={said.word}>
-					{said.says}
-				</Banner>
-			)}
-			{silent === null ? null : noAnswer(silent, 'nothing was tried again')}
-		</div>
+		</form>
 	);
 }
