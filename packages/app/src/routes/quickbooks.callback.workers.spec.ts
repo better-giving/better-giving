@@ -1,4 +1,6 @@
 import { createExecutionContext, env } from 'cloudflare:test';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { createStaticHandler, type LoaderFunction } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -170,6 +172,13 @@ async function back(
 	};
 }
 
+/** the page drawn from what the loader handed it; the cast is the props react router injects. */
+function markup(loaderData: LoaderData): string {
+	return renderToStaticMarkup(
+		createElement(callback.default, { loaderData } as unknown as Route.ComponentProps)
+	);
+}
+
 describe('GET /quickbooks/callback', () => {
 	it('connects the company Intuit named and labels it with what it is called', async () => {
 		const answered = await back();
@@ -180,6 +189,11 @@ describe('GET /quickbooks/callback', () => {
 			realmId: REALM,
 			companyName: 'Hope Foundation'
 		});
+		// the accounts are filled from the chart on the way through, so the page sends nobody to pick them.
+		const page = markup(answered.data);
+		expect(page).toContain('Hope Foundation is connected');
+		expect(page).toContain('You can close this tab.');
+		expect(page).not.toContain('choose which accounts');
 	});
 
 	// Intuit compares the `redirect_uri` on the exchange against the one the consent screen was
@@ -303,6 +317,9 @@ describe('GET /quickbooks/callback', () => {
 
 		expect(answered.status).toBe(403);
 		expect(answered.data).toMatchObject({ outcome: 'refused', refusal: 'state' });
+		const page = markup(answered.data);
+		expect(page).toContain('This link has expired');
+		expect(page).toContain('Press Choose a company on the console for a new one.');
 		expect(stub.exchanges).toBe(0);
 		expect(await readQuickbooksConnection(db)).toBeNull();
 	});
@@ -335,17 +352,29 @@ describe('GET /quickbooks/callback', () => {
 		expect(await readQuickbooksConnection(db)).toBeNull();
 	});
 
-	it('writes nothing where the code could not be exchanged, and says what Intuit answered', async () => {
+	it('writes nothing where the code could not be exchanged, and shows none of what the port said', async () => {
 		stub.exchanged = failed('reconnect_needed', 'Intuit refused the authorization code.');
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
 		const answered = await back();
 
+		expect(logged.mock.calls[0]?.join(' ') ?? '').toContain('reconnect_needed');
+		logged.mockRestore();
 		expect(answered.status).toBe(502);
-		expect(answered.data).toEqual({
-			outcome: 'refused',
-			refusal: 'exchange',
-			detail: 'Intuit refused the authorization code.'
-		});
+		expect(answered.data).toEqual({ outcome: 'refused', refusal: 'exchange' });
+		const page = markup(answered.data);
+		expect(page).toContain('Intuit turned the connection down.');
+		expect(page).not.toContain('authorization code');
 		expect(await readQuickbooksConnection(db)).toBeNull();
+	});
+
+	// RFC 6749 §4.1.2.1: a cancel at Intuit comes back with `error=access_denied` and no code.
+	it('says the operator cancelled where Intuit came back with access_denied', async () => {
+		const answered = await back({ error: 'access_denied', state: STATE });
+
+		expect(answered.status).toBe(400);
+		expect(answered.data).toMatchObject({ outcome: 'refused', refusal: 'cancelled' });
+		expect(markup(answered.data)).toContain('You cancelled at Intuit.');
+		expect(stub.exchanges).toBe(0);
 	});
 });

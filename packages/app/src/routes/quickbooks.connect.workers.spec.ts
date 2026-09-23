@@ -1,4 +1,6 @@
 import { createExecutionContext, env } from 'cloudflare:test';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { createStaticHandler, type LoaderFunction } from 'react-router';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { CONNECT_LINK_LIFETIME_MS, mintConnectLink } from '$lib/server/accounting/connect-link';
@@ -86,6 +88,13 @@ async function open(
 	};
 }
 
+/** the page drawn from what the loader handed it; the cast is the props react router injects. */
+function markup(loaderData: LoaderData): string {
+	return renderToStaticMarkup(
+		createElement(connect.default, { loaderData } as unknown as Route.ComponentProps)
+	);
+}
+
 /** an address whose expiry was pushed out without the signature being re-made. */
 function altered(address: string): string {
 	const url = new URL(address);
@@ -126,6 +135,9 @@ describe('GET /quickbooks/connect', () => {
 		expect(answered.status).toBe(403);
 		expect(answered.data.refusal).toBe('link');
 		expect(answered.headers.get('set-cookie')).toBeNull();
+		const page = markup(answered.data);
+		expect(page).toContain('This link has expired');
+		expect(page).toContain('Press Choose a company on the console for a new one.');
 	});
 
 	it('refuses an address carrying no signature at all', async () => {
@@ -143,5 +155,10 @@ describe('GET /quickbooks/connect', () => {
 
 		expect(answered.status).toBe(409);
 		expect(answered.data.refusal).toBe('setup');
+		const page = markup(answered.data);
+		expect(page).toContain('This deployment has no QuickBooks credentials');
+		expect(page).toContain(
+			'Put your Intuit app’s credentials in on the console, then press Choose a company.'
+		);
 	});
 });

@@ -73,12 +73,15 @@ export function meta({ loaderData }: Route.MetaArgs): Route.MetaDescriptors {
 /**
  * why a trip back was refused.
  *
- *   state    — the browser carried no `state` cookie, or not the one that went out. the round trip
- *              was not this deployment's, or it has already been spent.
- *   request  — Intuit sent no code, or named no company.
- *   exchange — the code could not be exchanged. `detail` is the port's own sentence.
+ *   state     — the browser carried no `state` cookie, or not the one that went out. the round
+ *               trip was not this deployment's, or it has already been spent.
+ *   cancelled — the operator cancelled on Intuit's consent screen, which comes back as
+ *               `error=access_denied` and no code (RFC 6749 §4.1.2.1).
+ *   request   — Intuit sent no code, or named no company.
+ *   exchange  — the code could not be exchanged. the port's reason is logged; its sentence is
+ *               shown nowhere, because this page is read by whoever holds the tab.
  */
-type Refusal = 'state' | 'request' | 'exchange';
+type Refusal = 'state' | 'cancelled' | 'request' | 'exchange';
 
 export async function loader({ context, request }: Route.LoaderArgs) {
 	// every answer carries it: what makes this trip unrepeatable is the cookie being gone
@@ -86,8 +89,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	// component and a bundler keeps a module-scope binding after dropping the export that used it
 	// (../routes.spec.ts).
 	const spent = { 'set-cookie': CLEARED_CONNECT_STATE_COOKIE };
-	const refused = (refusal: Refusal, status: number, detail: string | null = null) =>
-		data({ outcome: 'refused' as const, refusal, detail }, { status, headers: spent });
+	const refused = (refusal: Refusal, status: number) =>
+		data({ outcome: 'refused' as const, refusal }, { status, headers: spent });
 
 	const url = new URL(request.url);
 	const sent = connectStateFrom(request.headers);
@@ -95,6 +98,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	if (sent === null || returned === null || !secretEquals(sent, returned)) {
 		return refused('state', 403);
 	}
+
+	if (url.searchParams.get('error') === 'access_denied') return refused('cancelled', 400);
 
 	const code = url.searchParams.get('code');
 	// Intuit names the company on the redirect rather than inside the token, and it is what every
@@ -116,7 +121,10 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	});
 	// 502 rather than 400: the code was Intuit's to issue and this deployment's to spend, and
 	// nothing the browser carried is what went wrong.
-	if (!tokens.ok) return refused('exchange', 502, tokens.detail);
+	if (!tokens.ok) {
+		console.error('quickbooks connect: code exchange failed', tokens.reason);
+		return refused('exchange', 502);
+	}
 
 	await connectQuickbooks(db, { realmId, tokens: tokens.value, startAt: new Date() });
 
@@ -145,23 +153,29 @@ export default function QuickbooksCallback({ loaderData }: Route.ComponentProps)
 						? 'QuickBooks is connected'
 						: `${loaderData.companyName} is connected`}
 				</h1>
-				<p className="adm-prose">
-					You can close this tab. Go back to the console to choose which accounts gifts are posted
-					into.
-				</p>
+				<p className="adm-prose">You can close this tab.</p>
+			</PanelRoute>
+		);
+	}
+
+	if (loaderData.refusal === 'state') {
+		return (
+			<PanelRoute>
+				<h1>This link has expired</h1>
+				<p className="adm-prose">Press Choose a company on the console for a new one.</p>
 			</PanelRoute>
 		);
 	}
 
 	return (
 		<PanelRoute>
-			<h1>QuickBooks is not connected</h1>
+			<h1>QuickBooks isn’t connected</h1>
 			<p className="adm-prose">
-				{loaderData.refusal === 'exchange'
-					? loaderData.detail
-					: 'This page was reached without a connection having been started here, or the one that was started has already finished.'}
+				{loaderData.refusal === 'cancelled'
+					? 'You cancelled at Intuit.'
+					: 'Intuit turned the connection down.'}
 			</p>
-			<p className="adm-prose">Go back to the console and press Connect again.</p>
+			<p className="adm-prose">Press Choose a company on the console to try again.</p>
 		</PanelRoute>
 	);
 }
