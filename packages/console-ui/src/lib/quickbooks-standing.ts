@@ -10,6 +10,7 @@ import type {
 import { QUICKBOOKS_RECOURSES } from '@better-giving/operator/console/quickbooks';
 import { z } from 'zod';
 import type { NoReport, QuickbooksRead, VarsWritten } from '../api/types';
+import { readableRefusal } from './unread-answer';
 import type { SecretEdits } from './secret-edits';
 import { VALUE_FIELD } from './secret-groups';
 import type { StatedForm } from './use-console-form';
@@ -19,10 +20,10 @@ import type { StatedForm } from './use-console-form';
 // the reason is this package's pool: ../../vite.config.ts pins `node` and there is no dom, so a
 // rule left inside the component is one no spec can reach.
 //
-// **which control an answer belongs to is one of those decisions.** one section draws six presses
-// and one answer comes back for whichever was made, so the four readings at the top of this file
-// are what put an outcome at the control that caused it — and a mismatch there reports a save at
-// the button that disconnected.
+// **which control an answer belongs to is one of those decisions.** one section draws several
+// presses and one answer comes back for whichever was made, so the readings of an answer here are
+// what put an outcome at the control that caused it — and a mismatch there reports a save at the
+// button that disconnected.
 //
 // **the three picks are one act.** a connection holding one of the three is a state the deployment
 // refuses to write (packages/operator/src/console/quickbooks.ts), so what arms the save is all
@@ -30,7 +31,8 @@ import type { StatedForm } from './use-console-form';
 //
 // **no sentence here quotes the deployment.** its own detail names status codes and exception
 // names an operator does nothing with, so every trouble is one plain sentence at the step it
-// blocks, and every press answered by nothing reads {@link UNANSWERED}.
+// blocks: a press answered by nothing reads {@link UNANSWERED}, and one the deployment refused
+// reads {@link REFUSED} ({@link unansweredSays}).
 //
 // **how long the oldest has waited is said in the coarsest unit that is still true.** an operator
 // reading it is deciding whether the books are behind, and a figure to the minute over four days
@@ -461,6 +463,13 @@ export function retryButton(facts: {
 /** the one sentence every press answered by nothing reads, wherever it was made. */
 export const UNANSWERED = 'This deployment didn’t answer.';
 
+/** the sentence a press the deployment refused reads — a coded 4xx is an answer, and a no. */
+export const REFUSED = 'This deployment turned that down.';
+
+/** which of the two a press that did not land reads (`readableRefusal` in ./unread-answer.ts). */
+export const unansweredSays = (read: NoReport): string =>
+	readableRefusal(read) === null ? UNANSWERED : REFUSED;
+
 /** where an unreadable chart is said, and what is said there. */
 export type ChartStanding = {
 	/**
@@ -510,7 +519,7 @@ export type StepStanding = {
 };
 
 export type StepsStanding = Readonly<Record<StepName, StepStanding>> & {
-	/** the sync group under the checklist, drawn only once every step is done and untroubled. */
+	/** the sync group under the checklist, drawn once every step is done, trouble or not. */
 	readonly sync: boolean;
 };
 
@@ -523,7 +532,8 @@ export type StepsStanding = Readonly<Record<StepName, StepStanding>> & {
  * packages/app/src/routes/quickbooks.callback.tsx); and sync is out of sight until all three are
  * picked, because nothing is sent before (`chosenAccounts` in
  * packages/app/src/lib/server/accounting/quickbooks.ts) — never drawn locked, since it is not a
- * step.
+ * step. trouble does not take it away: an outage is when an operator needs the backlog and its
+ * retry.
  *
  * **the first unfinished step is open and a finished one is shut** — once its button has shown
  * the save that finished it: `confirming` is the step whose button is drawing `Saving` or `Saved`,
@@ -576,9 +586,41 @@ export function stepsStand(facts: {
 		setup: step('setup'),
 		connect: step('connect'),
 		accounts: step('accounts'),
-		sync: STEPS.every((name) => done[name] && !trouble[name])
+		sync: STEPS.every((name) => done[name])
 	};
 }
+
+/** what a step's mark is called for a reader who cannot see its shape. */
+export const stepWord = (step: StepStanding): string =>
+	step.trouble ? 'Needs attention' : step.done ? 'Done' : 'To do';
+
+/** what each step and the sync group are called on the screen. */
+export const STEP_LABEL: Readonly<Record<StepName | 'sync', string>> = {
+	setup: 'Setup',
+	connect: 'Connect',
+	accounts: 'Accounts',
+	sync: 'Sync'
+};
+
+/**
+ * where a save that shuts `saved` sends the reader: the first open step after it, else the sync
+ * group where it stands and `saved` is the last step, else nowhere.
+ *
+ * a step open before the one saved is not what the save opened, and is not where a reader standing
+ * on that save is taken.
+ */
+export function opensNext(steps: StepsStanding, saved: StepName): StepName | 'sync' | null {
+	const next = STEPS.slice(STEPS.indexOf(saved) + 1).find((name) => steps[name].open);
+	if (next !== undefined) return next;
+	return saved === 'accounts' && steps.sync ? 'sync' : null;
+}
+
+/**
+ * what a save that opened `next` says after its confirmation, or `undefined` for the button's own
+ * sentence, which is true of a save that opened nothing.
+ */
+export const openedSays = (next: StepName | 'sync' | null): string | undefined =>
+	next === null ? undefined : `${STEP_LABEL[next]} is open.`;
 
 /** what the company is called on this screen: its name, or the id Intuit addresses it by. */
 export const companyCalled = (company: QuickbooksCompany): string =>
@@ -716,11 +758,31 @@ export function startDateAsk(
 			};
 }
 
-/** the preview the last answer carries, or `null` where it is another press's. */
-export const previewed = (answer: QuickbooksAnswer | null): StartDatePreview | null =>
-	answer?.kind === 'reported' && answer.report.press === 'start-date-preview'
-		? answer.report
-		: null;
+/** what a press of the day does next: waits on its preview, asks over it, or moves. */
+export type StartDateNext =
+	| { readonly kind: 'wait' }
+	| { readonly kind: 'ask'; readonly ask: StartDateAsk }
+	| { readonly kind: 'move' };
+
+/**
+ * what the answer standing does to a press moving the day to `day`.
+ *
+ * **only a preview of that day counts.** a preview counted for another day reads that day's
+ * direction and not this one's — an earlier day's preview has no drops, so against a later day it
+ * says the move touches nothing and the move goes unasked. so a preview whose `startAt` is not the
+ * day asked, on the calendar day the box posted, is ignored exactly as another press's answer is.
+ */
+export function startDateNext(
+	day: string,
+	company: QuickbooksCompany,
+	answer: QuickbooksAnswer | null
+): StartDateNext {
+	if (answer?.kind !== 'reported' || answer.report.press !== 'start-date-preview')
+		return { kind: 'wait' };
+	if (startDay(answer.report.startAt) !== day) return { kind: 'wait' };
+	const ask = startDateAsk(day, company, answer.report);
+	return ask === null ? { kind: 'move' } : { kind: 'ask', ask };
+}
 
 /**
  * whether the intent in flight is one of this control's presses. a control can make more than one

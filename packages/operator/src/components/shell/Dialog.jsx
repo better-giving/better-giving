@@ -106,6 +106,10 @@ export function Dialog({
 }) {
 	const minted = useId();
 	const heading = titleId ?? minted;
+	/* the body is the dialog's description, so opening it reads the costs with the question rather
+	   than the question alone. a card with no body is described by nothing. */
+	const body = `${heading}-body`;
+	const hasBody = children !== undefined && children !== null && children !== false;
 	return (
 		// biome-ignore lint/a11y/useKeyWithClickEvents: what this carries is a press on the ground outside the card, and the keyboard already spells that act — Escape reaches this element as `cancel`, which ../../behaviour/Dialog.tsx answers with the same dismissal.
 		<dialog
@@ -114,11 +118,16 @@ export function Dialog({
 			tabIndex={-1}
 			className={inPage ? 'adm-dialog adm-dialog--inline' : 'adm-dialog'}
 			aria-labelledby={heading}
+			aria-describedby={hasBody ? body : undefined}
 			onCancel={onCancel}
 			onClick={onClick}
 		>
 			<h2 id={heading}>{title}</h2>
-			{children}
+			{hasBody ? (
+				<div className="adm-dialog__body" id={body}>
+					{children}
+				</div>
+			) : null}
 			<div className="adm-dialog__actions">
 				{danger ? (
 					<Control variant="danger" {...(dangerProps ?? {})}>

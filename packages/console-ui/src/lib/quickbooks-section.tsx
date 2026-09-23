@@ -19,7 +19,7 @@ import { useSaveState } from '@better-giving/operator/save-state.react';
 import type { SavedFormState } from '@better-giving/operator/saved-form-state.react';
 import { useSavedFormState } from '@better-giving/operator/saved-form-state.react';
 import type { ReactNode } from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Form, useRevalidator } from 'react-router';
 import type {
 	DeployedValues,
@@ -42,7 +42,7 @@ import {
 	PICK_BLANK,
 	PICKS,
 	QUICKBOOKS_FORM,
-	UNANSWERED,
+	STEP_LABEL,
 	accountPicker,
 	backlogSays,
 	backlogStands,
@@ -59,16 +59,19 @@ import {
 	picksHeld,
 	picksMissing,
 	picksToSave,
-	previewed,
+	openedSays,
+	opensNext,
 	quickbooksRefused,
 	retriedGifts,
 	retriedStands,
 	retryButton,
-	startDateAsk,
+	startDateNext,
 	startDay,
 	startToSave,
+	stepWord,
 	stepsStand,
-	unanswered
+	unanswered,
+	unansweredSays
 } from './quickbooks-standing';
 import { useReseeded } from './reseed';
 import { secretEdits } from './secret-edits';
@@ -145,12 +148,29 @@ const CREDENTIALS = SECRET_GROUPS.filter((group) => group.id === QUICKBOOKS_GROU
  */
 const PLACEHOLDER: Record<string, string> = { QUICKBOOKS_API_URL: QUICKBOOKS_PRODUCTION_URL };
 
-/** each step's word, and the line under it where it has one. Accounts has none. */
-const STEP_LINE: Record<StepName, { label: string; note?: string }> = {
-	setup: { label: 'Setup', note: 'Create an Intuit app and put its credentials here' },
-	connect: { label: 'Connect', note: 'Connect to your app' },
-	accounts: { label: 'Accounts' }
+/** the line under each step's word, where it has one. Accounts has none. */
+const STEP_NOTE: Partial<Record<StepName, string>> = {
+	setup: 'Create an Intuit app and put its credentials here',
+	connect: 'Connect to your app'
 };
+
+/** where focus is sent to reach a step, or the sync group: its label, and never a tab stop. */
+const LABEL_ID = (name: StepName | 'sync'): string => `quickbooks-${name}-label`;
+
+/** the redirect address's caption, which names the box it is copied from. */
+const REDIRECT_CAPTION = 'quickbooks-redirect-caption';
+
+/**
+ * whether the reader has been dropped: focus on nothing, or still inside `within`, a part of the
+ * page that has just shut. a reader who has moved on elsewhere is left where they are.
+ */
+function dropped(within: Element | null | undefined): boolean {
+	const active = document.activeElement;
+	return active === null || active === document.body || (within?.contains(active) ?? false);
+}
+
+const focusLabel = (name: StepName | 'sync'): void =>
+	document.getElementById(LABEL_ID(name))?.focus();
 
 /** what each picker is called. every one says what it is for without a heading over it. */
 const PICK_LABEL: Record<(typeof PICKS)[number], string> = {
@@ -262,13 +282,37 @@ export function QuickbooksSection({
 		[]
 	);
 
-	// never drawn: the sections layout stands a gate in this page's place (../lib/cloudflare-gate.ts).
-	if (values.vars.kind !== 'read') return null;
-	const holding = heldValues(values.vars.vars);
-	const configured = CREDENTIALS.every((name) => holding.held.has(name));
+	const holding = values.vars.kind === 'read' ? heldValues(values.vars.vars) : null;
+	const configured = CREDENTIALS.every((name) => holding?.held.has(name) ?? false);
 	const steps = stepsStand({ configured, books, answer, confirming });
 	const report = books.kind === 'read' ? books.report : null;
 	const company = report?.connection.state === 'connected' ? report.connection : null;
+
+	/* a step shutting after its tick takes the save the reader is standing on out of sight, so the
+	   reader goes to what that save opened. keyed on the step leaving `confirming`, which is the
+	   shut itself. */
+	const heldOpen = useRef<StepName | null>(null);
+	useEffect(() => {
+		const shut = heldOpen.current;
+		heldOpen.current = confirming;
+		if (shut === null || confirming !== null) return;
+		const next = opensNext(steps, shut);
+		if (next !== null && dropped(document.getElementById(LABEL_ID(shut))?.closest('details')))
+			focusLabel(next);
+	}, [confirming, steps]);
+
+	/* a disconnect that lands takes its own button away and puts the way to connect where it was,
+	   so the reader goes to the Connect step. keyed on the connection going. */
+	const connected = company !== null;
+	const wasConnected = useRef(connected);
+	useEffect(() => {
+		const went = wasConnected.current && !connected;
+		wasConnected.current = connected;
+		if (went && dropped(null)) focusLabel('connect');
+	}, [connected]);
+
+	// never drawn: the sections layout stands a gate in this page's place (../lib/cloudflare-gate.ts).
+	if (values.vars.kind !== 'read' || holding === null) return null;
 	const presses: Presses = {
 		answer,
 		busy,
@@ -305,13 +349,14 @@ export function QuickbooksSection({
 								revalidating={revalidating}
 								trouble={keysTrouble({ workerName, accountName })}
 								onConfirming={holdSetup}
+								elsewhere={openedSays(opensNext(steps, 'setup'))}
 							/>
 						))}
 						{/* apart from the form above: this is copied out to Intuit, where the boxes are
 						    typed in from it. */}
 						{report === null ? null : (
 							<div className="adm-stated adm-break">
-								<span className="adm-field__label">
+								<span className="adm-field__label" id={REDIRECT_CAPTION}>
 									Add this to your Intuit app’s redirect URIs
 								</span>
 								<CodeSlab
@@ -319,6 +364,7 @@ export function QuickbooksSection({
 									copyable
 									content={report.callbackAddress}
 									copyLabel="Copy address"
+									labelledBy={REDIRECT_CAPTION}
 								/>
 							</div>
 						)}
@@ -337,6 +383,7 @@ export function QuickbooksSection({
 							report={report}
 							company={company}
 							onConfirming={holdAccounts}
+							elsewhere={openedSays(opensNext(steps, 'accounts'))}
 							{...presses}
 						/>
 					)}
@@ -347,7 +394,10 @@ export function QuickbooksSection({
 			    every step above is done. */}
 			{steps.sync && report !== null && company !== null ? (
 				<div className="adm-named">
-					<h2>Sync</h2>
+					{/* `-1` as a step's label takes it: focus is sent here after Accounts shuts, never tabbed. */}
+					<h2 id={LABEL_ID('sync')} tabIndex={-1}>
+						{STEP_LABEL.sync}
+					</h2>
 					<Stack>
 						<Backlog report={report} {...presses} />
 						<StartDateForm company={company} {...presses} />
@@ -368,11 +418,15 @@ function Step({
 	standing: StepStanding;
 	children: ReactNode;
 }): ReactNode {
-	const { label, note } = STEP_LINE[name];
 	return (
 		<StatusLine
-			label={label}
-			note={note}
+			id={LABEL_ID(name)}
+			label={STEP_LABEL[name]}
+			note={STEP_NOTE[name]}
+			// the mark alone is shape and colour and the label is the whole subject, so the state is
+			// the mark's name.
+			word={stepWord(standing)}
+			wordOnMark
 			labelAs="h2"
 			tone={standing.trouble ? 'blocker' : standing.done ? 'done' : 'note'}
 			// a step not yet done is the unfilled outline, which the note tone would draw as `info`.
@@ -411,7 +465,8 @@ function Credentials({
 	pending,
 	revalidating,
 	trouble,
-	onConfirming
+	onConfirming,
+	elsewhere
 }: {
 	group: SecretGroup;
 	/** what cloudflare says this deployment holds, which is what the boxes are drawn with. */
@@ -432,6 +487,8 @@ function Credentials({
 	/** what a failed write says, in the words the screen holding the account name has for it. */
 	trouble: (written: ValuesRefusal) => ReactNode;
 	onConfirming: OnConfirming;
+	/** what the save says after its confirmation about the rest of the page. */
+	elsewhere: string | undefined;
 }): ReactNode {
 	const errors = report !== null && 'errors' in report ? report.errors : null;
 	const written = report !== null && 'written' in report ? report.written : null;
@@ -565,18 +622,19 @@ function Credentials({
 				{/* the three words are the button's own defaults
 				    (`@better-giving/operator/components/controls/SaveButton`): the step this press
 				    stands in already names what is being saved. */}
-				<SaveButton type="submit" name="intent" value={intent} state={credentials.state} />
-				{underway ? (
-					// said at the control while it waits, because this press takes seconds where a save
-					// usually takes a moment. what it says is where the value is going and how long, and
-					// never what Cloudflare is doing to get it there.
-					<p className="adm-hint">Storing it on your deployment. A few seconds.</p>
-				) : stands.says === null ? null : (
-					// a press that stored nothing, at the button that made it: the confirmation is the
-					// write's and this is what stands in its place, so the press is answered by something
-					// moving rather than by the button going quiet ({@link credentialsStands}).
-					<p className="adm-hint">{stands.says}</p>
-				)}
+				<SaveButton
+					type="submit"
+					name="intent"
+					value={intent}
+					state={credentials.state}
+					elsewhere={elsewhere}
+				/>
+				{/* said at the control while it waits, because this press takes seconds where a save
+				    usually takes a moment: where the value is going and how long, and never what
+				    Cloudflare is doing to get it there. then, over a press that stored nothing, what
+				    stands in the confirmation's place, so the press is answered by something moving
+				    rather than by the button going quiet ({@link credentialsStands}). */}
+				<Hint>{underway ? 'Storing it on your deployment. A few seconds.' : stands.says}</Hint>
 			</div>
 
 			{failure === null ? null : trouble(failure)}
@@ -609,6 +667,19 @@ function Lines({ lines }: { lines: readonly string[] }): ReactNode {
 	);
 }
 
+/**
+ * a line said at a press about how it went. it is a status region mounted empty and written into,
+ * because a region that arrives carrying its text is announced by nobody — and it stands out of the
+ * row while it has nothing to say (`.adm-vh`), so it is no gap in the row of actions.
+ */
+function Hint({ children }: { children: string | null }): ReactNode {
+	return (
+		<p role="status" className={children === null ? 'adm-vh' : 'adm-hint'}>
+			{children}
+		</p>
+	);
+}
+
 /** the company this deployment posts into, or the way to connect one. */
 function ConnectPanel({
 	books,
@@ -626,7 +697,7 @@ function ConnectPanel({
 	if (books.kind === 'unread')
 		return (
 			<Stack tight>
-				<FieldMessage>{UNANSWERED}</FieldMessage>
+				<FieldMessage>{unansweredSays(books.read)}</FieldMessage>
 				<div className="adm-actions">
 					<Button
 						type="button"
@@ -686,14 +757,20 @@ function ConnectPress({
 	const own = ownPress(pending, 'connect');
 	const address = connectAddress(answer);
 	const silent = unanswered(answer, 'connect');
+	/* the link stands where the press stood, so the press the reader was on is gone: they go to
+	   the link. keyed on the address arriving. */
+	const onward = useRef<HTMLAnchorElement>(null);
+	useEffect(() => {
+		if (address !== null && dropped(null)) onward.current?.focus();
+	}, [address]);
 	return (
 		<>
 			<div className="adm-actions">
 				{address === null ? (
 					/* held with `aria-disabled` rather than `disabled`, and the press guarded behind it:
-					   a disabled button cannot hold focus, so the keyboard drops to the document at the
-					   moment the answer arrives beside it (packages/app/src/routes/_app.admin.books.tsx
-					   argues it at its own press). */
+					   a disabled button cannot hold focus, so the keyboard drops to the document for the
+					   whole wait (packages/app/src/routes/_app.admin.books.tsx argues it at its own
+					   press). */
 					<Button
 						type="button"
 						variant="primary"
@@ -709,6 +786,7 @@ function ConnectPress({
 				) : (
 					<Button
 						as="a" // full-load-ok: the deployment's address, never this console's.
+						ref={onward}
 						href={address}
 						target="_blank"
 						rel="noreferrer"
@@ -719,8 +797,8 @@ function ConnectPress({
 					</Button>
 				)}
 			</div>
-			{address === null ? null : <p className="adm-hint">Then come back to this page.</p>}
-			{silent === null ? null : <FieldMessage>{UNANSWERED}</FieldMessage>}
+			<Hint>{address === null ? null : 'Then come back to this page.'}</Hint>
+			{silent === null ? null : <FieldMessage>{unansweredSays(silent)}</FieldMessage>}
 		</>
 	);
 }
@@ -758,7 +836,7 @@ function Disconnect({
 			</div>
 			{/* a press that landed is reported by the step it leaves: the company and this button are
 			    gone, and the way to connect one stands where they were. */}
-			{silent === null ? null : <FieldMessage>{UNANSWERED}</FieldMessage>}
+			{silent === null ? null : <FieldMessage>{unansweredSays(silent)}</FieldMessage>}
 			{asking ? (
 				<Modal
 					title={`Disconnect ${companyCalled(company)}?`}
@@ -787,11 +865,13 @@ function AccountsPanel({
 	report,
 	company,
 	onConfirming,
+	elsewhere,
 	...presses
 }: {
 	report: QuickbooksReport;
 	company: QuickbooksCompany;
 	onConfirming: OnConfirming;
+	elsewhere: string | undefined;
 } & Presses): ReactNode {
 	if (report.accounts?.state === 'read')
 		return (
@@ -799,6 +879,7 @@ function AccountsPanel({
 				company={company}
 				chart={report.accounts.accounts}
 				onConfirming={onConfirming}
+				elsewhere={elsewhere}
 				{...presses}
 			/>
 		);
@@ -848,11 +929,14 @@ function AccountsForm({
 	busy,
 	pending,
 	onAccounts,
-	onConfirming
+	onConfirming,
+	elsewhere
 }: {
 	company: QuickbooksCompany;
 	chart: readonly LedgerAccountLine[];
 	onConfirming: OnConfirming;
+	/** what the save says after its confirmation about the rest of the page. */
+	elsewhere: string | undefined;
 } & Pick<Presses, 'answer' | 'busy' | 'pending' | 'onAccounts'>): ReactNode {
 	const own = ownPress(pending, 'accounts');
 	const held = picksHeld(company);
@@ -921,9 +1005,14 @@ function AccountsForm({
 				);
 			})}
 			<div className="adm-actions">
-				<SaveButton type="submit" state={saved.state} disabled={busy || undefined} />
+				<SaveButton
+					type="submit"
+					state={saved.state}
+					disabled={busy || undefined}
+					elsewhere={elsewhere}
+				/>
 			</div>
-			{silent === null ? null : <FieldMessage>{UNANSWERED}</FieldMessage>}
+			{silent === null ? null : <FieldMessage>{unansweredSays(silent)}</FieldMessage>}
 		</form>
 	);
 }
@@ -961,22 +1050,20 @@ function Backlog({
 			<div className="adm-actions">
 				{button.shown ? (
 					/* one element from rest to report, so the keyboard stays on the press that
-					   reported. `aria-disabled` and a guarded press, for `ConnectPress`'s reason. */
+					   reported: the shared button holds itself closed with `aria-disabled` and turns
+					   the press away itself. */
 					<SaveButton
 						type="button"
 						state={button.state}
 						label="Try these again"
 						doneLabel={said?.doneLabel ?? undefined}
-						onClick={() => {
-							if (busy) return;
-							onRetry();
-						}}
-						aria-disabled={busy || undefined}
+						onClick={onRetry}
+						disabled={busy || undefined}
 					/>
 				) : null}
-				{said?.says == null ? null : <p className="adm-hint">{said.says}</p>}
+				<Hint>{said?.says ?? null}</Hint>
 			</div>
-			{silent === null ? null : <FieldMessage>{UNANSWERED}</FieldMessage>}
+			{silent === null ? null : <FieldMessage>{unansweredSays(silent)}</FieldMessage>}
 		</Stack>
 	);
 }
@@ -1011,9 +1098,23 @@ function StartDateForm({
 	/* the day the preview was asked for, and the answer standing when it was: only an answer that
 	   arrived after the press is that press's preview. */
 	const [asked, setAsked] = useState<{ day: string; over: QuickbooksAnswer | null } | null>(null);
-	const preview = asked === null || answer === asked.over ? null : previewed(answer);
-	const ask = asked === null || preview === null ? null : startDateAsk(asked.day, company, preview);
-	const touchesNothing = asked !== null && preview !== null && ask === null;
+	/* and of those, only a preview of the day asked (`startDateNext` in ./quickbooks-standing.ts). */
+	const next =
+		asked === null || answer === asked.over ? null : startDateNext(asked.day, company, answer);
+	const ask = next?.kind === 'ask' ? next.ask : null;
+	const touchesNothing = next?.kind === 'move';
+
+	/* the confirm going, by either of its presses or by Escape, puts the reader back on the save that
+	   put it up — which is not always what the confirm would restore: an Enter in the box made the
+	   press, and the box is what held the focus. keyed on the confirm leaving. */
+	const saveButton = useRef<HTMLButtonElement>(null);
+	const asking = ask !== null;
+	const wasAsking = useRef(asking);
+	useEffect(() => {
+		const closed = wasAsking.current && !asking;
+		wasAsking.current = asking;
+		if (closed) saveButton.current?.focus();
+	}, [asking]);
 
 	useEffect(() => {
 		if (!touchesNothing || asked === null) return;
@@ -1063,9 +1164,14 @@ function StartDateForm({
 				disabled={busy || undefined}
 			/>
 			<div className="adm-actions">
-				<SaveButton type="submit" state={saved.state} disabled={busy || undefined} />
+				<SaveButton
+					ref={saveButton}
+					type="submit"
+					state={saved.state}
+					disabled={busy || undefined}
+				/>
 			</div>
-			{silent === null ? null : <FieldMessage>{UNANSWERED}</FieldMessage>}
+			{silent === null ? null : <FieldMessage>{unansweredSays(silent)}</FieldMessage>}
 			{asked === null || ask === null ? null : (
 				<Modal
 					title={ask.title}

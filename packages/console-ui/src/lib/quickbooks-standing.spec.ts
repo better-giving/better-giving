@@ -11,10 +11,22 @@ import { QUICKBOOKS_RECOURSES } from '@better-giving/operator/console/quickbooks
 import { describe, expect, it } from 'vitest';
 import type { DeployedVar, NoReport, QuickbooksRead } from '../api/types';
 import { heldValues } from './held-values';
-import type { AccountPick, QuickbooksAnswer, StepName, StepsStanding } from './quickbooks-standing';
+import type {
+	AccountPick,
+	QuickbooksAnswer,
+	StepName,
+	StepStanding,
+	StepsStanding
+} from './quickbooks-standing';
 import {
 	CHOOSE,
+	REFUSED,
 	UNANSWERED,
+	openedSays,
+	opensNext,
+	startDateNext,
+	stepWord,
+	unansweredSays,
 	accountPicker,
 	chartStands,
 	companyCalled,
@@ -732,7 +744,7 @@ describe('which steps stand open, shut, locked or out of sight', () => {
 		]);
 	});
 
-	it('opens Connect in trouble where the credential lapsed, and hides Sync', () => {
+	it('opens Connect in trouble where the credential lapsed, and leaves Sync standing', () => {
 		const lapsed = read({
 			accounts: { state: 'unreadable', recourse: 'reconnect', detail: '401' }
 		});
@@ -740,17 +752,19 @@ describe('which steps stand open, shut, locked or out of sight', () => {
 			'setup: shut done',
 			'connect: open trouble',
 			'accounts: shut done',
-			'sync: hidden'
+			'sync: shown'
 		]);
 	});
 
-	it('opens Accounts in trouble where QuickBooks could not be reached, and hides Sync', () => {
+	it('opens Accounts in trouble where QuickBooks could not be reached, and leaves Sync standing', () => {
+		// the backlog and its retry are what an operator reaches for while gifts are failing, so an
+		// outage is the last reason to take them away.
 		const away = read({ accounts: { state: 'unreadable', recourse: 'wait', detail: 'TypeError' } });
 		expect(stand({ books: away })).toEqual([
 			'setup: shut done',
 			'connect: shut done',
 			'accounts: open trouble',
-			'sync: hidden'
+			'sync: shown'
 		]);
 	});
 
@@ -782,6 +796,94 @@ describe('which steps stand open, shut, locked or out of sight', () => {
 		expect(stand({ books: read({ connection: company({ companyName: null }) }) })[1]).toBe(
 			'connect: open done'
 		);
+	});
+});
+
+describe('what a step says about itself and what its save opens', () => {
+	const standing = (over: Partial<StepStanding> = {}): StepStanding => ({
+		done: false,
+		trouble: false,
+		locked: false,
+		open: false,
+		...over
+	});
+	const all = (
+		over: Partial<Record<StepName, Partial<StepStanding>>>,
+		sync = false
+	): StepsStanding => ({
+		setup: standing(over.setup),
+		connect: standing(over.connect),
+		accounts: standing(over.accounts),
+		sync
+	});
+
+	it('names its state in a word, trouble over done', () => {
+		expect([
+			stepWord(standing()),
+			stepWord(standing({ done: true })),
+			stepWord(standing({ trouble: true })),
+			stepWord(standing({ done: true, trouble: true }))
+		]).toEqual(['To do', 'Done', 'Needs attention', 'Needs attention']);
+	});
+
+	it('opens the next open step after the one saved, or Sync after the last, or nothing', () => {
+		expect(
+			opensNext(all({ setup: { done: true, open: true }, connect: { open: true } }), 'setup')
+		).toBe('connect');
+		expect(opensNext(all({ accounts: { done: true, open: true } }, true), 'accounts')).toBe('sync');
+		// a step open before the one saved is not what the save opened.
+		expect(
+			opensNext(all({ setup: { open: true }, accounts: { open: true } }), 'accounts')
+		).toBeNull();
+		expect(opensNext(all({}), 'setup')).toBeNull();
+	});
+
+	it('says what a save opened, and today’s sentence where it opened nothing', () => {
+		expect(openedSays('connect')).toBe('Connect is open.');
+		expect(openedSays('sync')).toBe('Sync is open.');
+		expect(openedSays(null)).toBeUndefined();
+	});
+});
+
+describe('which preview a press of the day acts on', () => {
+	const RIVERBANK = company({
+		companyName: 'Riverbank Trust Inc.',
+		startAt: '2026-09-01T00:00:00.000Z'
+	});
+	const side = (gifts: number) => ({
+		gifts,
+		corrections: 0,
+		earliest: gifts > 0 ? '2026-06-03T00:00:00.000Z' : null,
+		latest: gifts > 0 ? '2026-08-31T00:00:00.000Z' : null
+	});
+	const preview = (startAt: string, queues: number, drops: number): QuickbooksAnswer =>
+		reported({ press: 'start-date-preview', startAt, queues: side(queues), drops: side(drops) });
+
+	it('asks over a preview of the day asked, and moves straight away where it touches nothing', () => {
+		expect(
+			startDateNext('2026-06-01', RIVERBANK, preview('2026-06-01T00:00:00.000Z', 3, 0)).kind
+		).toBe('ask');
+		expect(
+			startDateNext('2026-06-01', RIVERBANK, preview('2026-06-01T00:00:00.000Z', 0, 0))
+		).toEqual({
+			kind: 'move'
+		});
+	});
+
+	it('never saves or asks over a preview for another day, in either direction', () => {
+		// the defect: an earlier preview left standing is read against a later day, whose drops it
+		// counts as none, so the move later went with no confirm and dropped unsent gifts.
+		const earlier = preview('2026-06-01T00:00:00.000Z', 38, 0);
+		const later = preview('2026-09-15T00:00:00.000Z', 0, 3);
+		expect(startDateNext('2026-09-15', RIVERBANK, earlier)).toEqual({ kind: 'wait' });
+		expect(startDateNext('2026-06-01', RIVERBANK, later)).toEqual({ kind: 'wait' });
+	});
+
+	it('waits on any answer that is not a preview', () => {
+		expect(startDateNext('2026-06-01', RIVERBANK, reported({ press: 'start-date' }))).toEqual({
+			kind: 'wait'
+		});
+		expect(startDateNext('2026-06-01', RIVERBANK, null)).toEqual({ kind: 'wait' });
 	});
 });
 
@@ -924,6 +1026,21 @@ describe('the rest of what the section says', () => {
 
 	it('says one plain sentence over a press the deployment answered nothing to', () => {
 		expect(UNANSWERED).toBe('This deployment didn’t answer.');
+		expect(unansweredSays(NOTHING_ANSWERED)).toBe(UNANSWERED);
+	});
+
+	it('says the deployment turned a press down where it refused it, never in its own words', () => {
+		const refusal: NoReport = {
+			kind: 'unreadable',
+			error: 'not_connected',
+			detail: 'no QuickBooks company is connected',
+			fix: 'connect one first',
+			status: 409
+		};
+		expect(REFUSED).toBe('This deployment turned that down.');
+		expect(unansweredSays(refusal)).toBe(REFUSED);
+		// a coded 5xx failed rather than refused, so it is still no answer.
+		expect(unansweredSays({ ...refusal, status: 500 })).toBe(UNANSWERED);
 	});
 });
 

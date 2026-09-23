@@ -443,11 +443,11 @@
 	   a save press that is not on that rank: packages/console-ui/src/lib/smtp-fold.tsx draws one by
 	   hand as a bare `.adm-btn` wearing `.adm-save`, and the band is what makes it read as the same
 	   control as ../components/controls/SaveButton.jsx's. that button reaches
-	   `.adm-btn--primary[aria-busy='true']:disabled` above on its own, which carries these same
+	   `.adm-btn--primary[aria-busy='true'][aria-disabled='true']` above on its own, which carries these same
 	   three values by carrying the same rank's rung.
 
 	   the cursor is this rule's alone and reaches both: it is under the pointer only and never for a
-	   keyboard, and a closed press would otherwise take `.adm-btn:disabled`'s.
+	   keyboard, and a closed press would otherwise take the closed rung's.
 
 	   the dots are neither rule's — the button carries `aria-busy` while it is writing, so
 	   `.adm-btn[aria-busy='true']` above draws them and closes the label underneath. */
@@ -470,9 +470,9 @@
 	   `.adm-btn:focus-visible` on specificity and stands later, so the hugging ring every unfilled
 	   rank takes is reached from here or not at all.
 
-	   no keyboard reaches this pair on a screen: a button reporting a save is closed
-	   (../components/controls/SaveButton.jsx), and a closed control takes no focus. what draws it
-	   is the pinned half, which is how the gallery stands a state nothing can tab to
+	   a keyboard reaches this pair on every save: the press that saved is closed by `aria-disabled`
+	   and keeps the focus through its confirmation (../components/controls/SaveButton.jsx). the
+	   pinned half is how the gallery stands it
 	   (packages/gallery/src/previews/controls-save-button.tsx). */
 	.adm-save.is-done:focus-visible,
 	.adm-save.is-done.is-focus {
@@ -4795,6 +4795,14 @@
 		max-inline-size: var(--admin-measure-column);
 		border-radius: var(--admin-radius);
 		box-shadow: var(--admin-elevation-flat);
+	}
+
+	/* the body a dialog is described by. it is one element so `aria-describedby` has one thing to
+	   point at, and it spaces its own blocks as the card spaces its rows, so a body of two blocks
+	   reads as it did before it was gathered. */
+	.adm-dialog__body {
+		display: grid;
+		gap: var(--admin-space-5);
 	}
 
 	/* centred on the cross axis, as `.adm-actions` in this sheet is and for the same reason —

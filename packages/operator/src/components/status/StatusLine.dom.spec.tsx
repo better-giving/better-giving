@@ -1,6 +1,6 @@
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { render } from '../render.testing';
+import { mount, render } from '../render.testing';
 import { StatusLedger, StatusLine, StatusStep } from './StatusLine.jsx';
 
 // what a reader who cannot see the run is told about it. the ledger says how many capabilities are
@@ -383,6 +383,31 @@ describe('a section whose step cannot be taken yet', () => {
 
 	it('stays shut when the caller asks for it open', () => {
 		expect(details(locked({ open: true })).open).toBe(false);
+	});
+
+	it('shuts a line opened by hand when it becomes locked', async () => {
+		// the element holds what a press opened and the prop never said, so a line locked while open
+		// would stay open over a panel nothing can be done with — and refuse the press that shuts it.
+		const line = (isLocked: boolean) => ({
+			sections: true,
+			children: (
+				<StatusLine
+					labelAs="h2"
+					label="Choose the accounts"
+					word="Not set"
+					tone="attention"
+					beneath={<p>Nothing is connected yet.</p>}
+					locked={isLocked}
+				/>
+			)
+		});
+		const { root, again } = mount(StatusLedger, line(false));
+		await press(root);
+		expect(details(root).open).toBe(true);
+
+		again(line(true));
+
+		expect(details(root).open).toBe(false);
 	});
 });
 

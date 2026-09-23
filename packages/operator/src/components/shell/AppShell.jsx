@@ -337,10 +337,12 @@ export function PanelRoute({ bar, foot, bare = false, children }) {
 					<div className="adm-headstrip">{bar}</div>
 				</div>
 			)}
+			{/* the page is the main region whichever way it stands, so a reader can jump past the
+			    strips to it — ./BareShell.jsx's `main` is the same landmark. */}
 			{bare ? (
-				<div className="adm-panelroute__bare">{children}</div>
+				<main className="adm-panelroute__bare">{children}</main>
 			) : (
-				<div className="adm-panel">{children}</div>
+				<main className="adm-panel">{children}</main>
 			)}
 			{foot === undefined ? null : <div className="adm-footstrip">{foot}</div>}
 		</div>

@@ -136,6 +136,21 @@ describe('a code slab mounted into a document', () => {
 		expect(names(root)).toEqual(['Copy']);
 	});
 
+	it('takes its name from the sentence above it where the page points at one', () => {
+		// the one-line form has no caption of its own — the sentence above the box names the value —
+		// so a page ties the two by the sentence's id, and the box is named by what a reader sees.
+		const root = render(CodeSlab, {
+			oneline: true,
+			content: ADDRESS,
+			copyable: true,
+			labelledBy: 'redirect-caption'
+		});
+
+		expect(root.querySelector('.adm-slab')?.getAttribute('aria-labelledby')).toBe(
+			'redirect-caption'
+		);
+	});
+
 	it('names the one-line control where the page names it', () => {
 		// two one-line slabs on one page would otherwise be two controls both called Copy.
 		const root = render(CodeSlab, {

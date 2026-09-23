@@ -1,4 +1,4 @@
-import { Children, Fragment, isValidElement } from 'react';
+import { Children, Fragment, isValidElement, useLayoutEffect, useRef } from 'react';
 
 import { Mark } from './Mark.jsx';
 
@@ -61,7 +61,8 @@ import { Mark } from './Mark.jsx';
  *   before it is done. it is drawn as `dim` is and shut, and the summary refuses to open by pointer
  *   and by keyboard alike and says so with `aria-disabled` — a fold that opened onto a form nothing
  *   can be done with yet would be a step offered out of order. `open` and `onToggle` are ignored
- *   while it holds. a line without `beneath` has nothing to open and takes no notice of it.
+ *   while it holds, and a line opened by hand is shut the moment it locks. a line without
+ *   `beneath` has nothing to open and takes no notice of it.
  * @property {MarkName | undefined} [mark] the mark the tone would otherwise choose.
  * @property {ReactNode} [beneath] a whole screen's worth of detail, which opens in place.
  * @property {boolean | undefined} [open]
@@ -275,6 +276,13 @@ export function StatusLine({
 		? [wordOnMark ? '' : `${id}-word`, note ? `${id}-note` : ''].filter(Boolean).join(' ')
 		: '';
 	const Label = labelAs;
+	/* react writes `open` only when the prop changes, and a line opened by a press never changed
+	   it — so a line that locks while open is shut here, or it stays open and refuses the press that
+	   would shut it. */
+	const fold = useRef(/** @type {HTMLDetailsElement | null} */ (null));
+	useLayoutEffect(() => {
+		if (locked && fold.current) fold.current.open = false;
+	}, [locked]);
 	/* how many steps the line was handed, which is what the two rules below turn on — and what lets
 	   them be stated here rather than at every screen that draws a run. */
 	const stepCount = stepsIn(steps);
@@ -352,6 +360,7 @@ export function StatusLine({
 		return (
 			<li>
 				<details
+					ref={fold}
 					className={`adm-status adm-status--${tone} adm-status--section${dim || locked ? ' adm-status--dim' : ''}`}
 					open={locked ? false : open}
 					onToggle={locked ? undefined : (event) => onToggle?.(event.currentTarget.open)}
