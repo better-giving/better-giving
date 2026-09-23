@@ -2331,7 +2331,8 @@ export type QuickbooksSyncStatus = (typeof QUICKBOOKS_SYNC_STATUSES)[number];
  * says it, and a second copy is what would disagree.
  *
  * a row is written in the same `batch()` as the posting it belongs to, so a posting that lands
- * without its outbox row is not a state this schema has.
+ * without its outbox row is not a state this schema has. moving the connection's start date writes
+ * and removes rows too, in its own `batch()` with the date (../accounting/outbox.ts).
  */
 export const quickbooksSync = sqliteTable(
 	'quickbooks_sync',

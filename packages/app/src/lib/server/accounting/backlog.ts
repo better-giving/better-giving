@@ -14,8 +14,12 @@ import { quickbooksSync } from '../db/schema';
 // offering.** a row that was given up on is one no later run reads (`failed` in ./deliver.ts), so
 // something has to put it back — and what is being repaired is never the row itself but the mapping
 // or the connection behind it, which the operator has just fixed on the screen this press sits on.
-// there is no press that deletes a row and none that marks one sent: a gift owed to the books stays
-// owed, and a row claiming a record that was never created is a gift nothing will ever find.
+// no press here deletes a row and none marks one sent: a gift owed to the books stays owed, and a
+// row claiming a record that was never created is a gift nothing will ever find. the one thing that
+// removes a row is moving the start date later (./outbox.ts), and only a row dated before the new
+// date with no attempt behind it that could have made a record in QuickBooks: one waiting for its
+// first send, or one Intuit refused on it. that is a gift the operator has just said the books do
+// not take.
 
 /** the queue as an operator is shown it. */
 export interface QuickbooksBacklog {

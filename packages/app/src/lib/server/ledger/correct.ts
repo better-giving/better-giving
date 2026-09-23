@@ -1,5 +1,5 @@
 import { FORM_CURRENCY } from '../../forms/amounts';
-import { outboxGate, outboxStatements } from '../accounting/outbox';
+import { outboxStatements } from '../accounting/outbox';
 import type { Db } from '../db/client';
 import type { PostableAccountId } from '../db/postable';
 import { sqliteResultCode } from '../db/rejection';
@@ -130,18 +130,12 @@ export async function postCorrection(db: Db, correction: Correction): Promise<Co
 		]
 	});
 
-	// outside the `try` too, so a connection read that faults is rethrown as itself rather than read
-	// for a result code it does not carry. it throws where it fails, which is the rule
-	// ../accounting/outbox.ts states: this correction is not in the books and no caller may be told
-	// it is.
-	const gate = await outboxGate(db);
-
 	try {
 		// one `batch()` and the whole entry in it: the group, its lines and what the books owe
 		// QuickBooks land together or not at all. `Db` omits `transaction` (CLAUDE.md), so there is no
 		// other shape this could take.
 		const statements = postingStatements(db, posting);
-		await db.batch([...statements, ...outboxStatements(db, gate, [posting])]);
+		await db.batch([...statements, ...outboxStatements(db, [posting])]);
 	} catch (e) {
 		// the only unique index any statement in this batch can violate is `entry_group_source_idx`:
 		// the group's own id is a fresh uuidv7 minted inside `post()`, each line's id likewise, and

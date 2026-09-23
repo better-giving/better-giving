@@ -128,7 +128,7 @@ Optional, and not a processor: QuickBooks takes no money and finishes no set-up 
 Back on the same page, three things finish it:
 
 - **The three accounts** a gift is posted into (income, the processor's fee, and the account the money lands in), picked from the connected company's own chart. All three at once: a gift needs all of them and two saved alone would leave the books half told where to go.
-- **The start date**, which is how much of this deployment's history goes over. Gifts before it are never sent. It is answered once, at connect, and a later reconnect keeps it.
+- **The start date**, which is how much of this deployment's history goes over. It is set at connect, and a reconnect keeps it. Moving it earlier sends the gifts it newly covers, including ones from before the company was connected. Moving it later skips gifts before it that have not been sent yet. A gift already in QuickBooks stays there, and one the deployment has already started sending is not taken back.
 - **Nothing else.** Gifts go over every minute from then on, and a page that says nothing about them is a page with nothing wrong.
 
 **When it stops.** A gift that could not be sent is retried on its own, and one email arrives per outage rather than per gift. Gifts given up on show as a failed count with a **Try these again** press beside it. A credential Intuit has stopped honouring shows **Connect again**: reconnecting keeps the accounts and the start date, and flushes whatever is waiting. An Intuit outage says so and offers no press, because the deployment keeps trying without you.

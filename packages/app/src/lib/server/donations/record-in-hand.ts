@@ -2,7 +2,7 @@ import type { BatchItem } from 'drizzle-orm/batch';
 import { uuidv7 } from 'uuidv7';
 import type { InHandMethod } from '../../donations/methods';
 import { FORM_CURRENCY } from '../../forms/amounts';
-import { outboxGate, outboxStatements } from '../accounting/outbox';
+import { outboxStatements } from '../accounting/outbox';
 import type { ParsedContact } from '../contacts/contact-input';
 import { donationRevenueAccount } from '../db/accounts';
 import type { Db } from '../db/client';
@@ -167,10 +167,6 @@ export async function recordGiftInHand(db: Db, gift: GiftInHand): Promise<GiftIn
 			occurredAt: gift.dated
 		};
 
-		// inside the `try`, so a connection read that faults is answered as `write_failed` — it is one
-		// read against the handle this write needs, so the write was not going to land either.
-		const gate = await outboxGate(db);
-
 		// foreign-key order: the donor, the gift, what names the gift, then the books, then what the
 		// books owe QuickBooks — `quickbooks_sync.entry_group_id` points at the group above it — then
 		// what the gift owes each listening Zap, keyed to the payment above.
@@ -179,7 +175,7 @@ export async function recordGiftInHand(db: Db, gift: GiftInHand): Promise<GiftIn
 			db.insert(lineItem).values(lineRow),
 			db.insert(payment).values(paymentRow),
 			...postingStatements(db, posting),
-			...outboxStatements(db, gate, [posting]),
+			...outboxStatements(db, [posting]),
 			...zapierStatements(db, { paymentId: gift.paymentId, contactId: donor.contactId })
 		];
 		await db.batch(donor.statement === null ? rows : [donor.statement, ...rows]);

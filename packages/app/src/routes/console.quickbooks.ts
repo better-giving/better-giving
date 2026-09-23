@@ -22,11 +22,11 @@ import {
 	disconnectQuickbooks,
 	readQuickbooksConnection,
 	saveQuickbooksAccounts,
-	saveQuickbooksStartAt,
 	type ChosenAccount,
 	type QuickbooksConnectionView
 } from '$lib/server/accounting/connection';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
+import { moveQuickbooksStartAt } from '$lib/server/accounting/outbox';
 import type {
 	AccountingFailureReason,
 	AccountRole,
@@ -188,7 +188,7 @@ async function act(
 		const startAt = new Date(String(body.startAt));
 		if (Number.isNaN(startAt.getTime()))
 			return badBody('`startAt` is not a date. Send an ISO-8601 instant.');
-		await saveQuickbooksStartAt(db, startAt);
+		await moveQuickbooksStartAt(db, startAt, new Date());
 		return consoleJson({ press } satisfies QuickbooksPressReport);
 	}
 

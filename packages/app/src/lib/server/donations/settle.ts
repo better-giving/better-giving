@@ -2,7 +2,7 @@ import { and, eq, ne } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import { uuidv7 } from 'uuidv7';
 import { projectTribute } from '../../donations/tributes';
-import { outboxGate, outboxStatements } from '../accounting/outbox';
+import { outboxStatements } from '../accounting/outbox';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import {
@@ -206,10 +206,7 @@ import { sendTributeNotice } from './tribute-notice';
  *
  * both ports are sealed by their factories and every write is a result, so the only way out is a
  * `SettleResult` — an exception here is a 500, and a processor reads a 500 as "deliver this again"
- * for three days. the one exception is the QuickBooks connection read `write` takes before it posts
- * (../accounting/outbox.ts): it throws where it fails, deliberately, because the same handle the
- * batch needs has just faulted and a gift owed to QuickBooks with no queue row is unrecoverable.
- * a redelivery is the right answer to it.
+ * for three days.
  */
 export async function settleDelivery(
 	deps: SettleDeps,
@@ -737,9 +734,8 @@ async function write(
 		const fee = feeEntry(gift, settlement);
 		writes.push(...postingStatements(db, charge));
 		if (fee !== null) writes.push(...postingStatements(db, fee));
-		// one read for the whole settlement, spent only where something is being posted — and after
-		// the groups, because `quickbooks_sync.entry_group_id` points at them.
-		writes.push(...outboxStatements(db, await outboxGate(db), [charge, fee]));
+		// after the groups, because `quickbooks_sync.entry_group_id` points at them.
+		writes.push(...outboxStatements(db, [charge, fee]));
 		writes.push(
 			...zapierStatements(db, { paymentId: row.id, contactId: target.donation.contactId })
 		);
@@ -1190,7 +1186,6 @@ async function recordRepeatDeposit(
 	};
 	const charge = chargeEntry(gift, settlement);
 	const fee = feeEntry(gift, settlement);
-	const gate = await outboxGate(deps.db);
 	const written = await commit(deps.db, [
 		deps.db.insert(donation).values({
 			id: donationId,
@@ -1231,7 +1226,7 @@ async function recordRepeatDeposit(
 		}),
 		...postingStatements(deps.db, charge),
 		...(fee === null ? [] : postingStatements(deps.db, fee)),
-		...outboxStatements(deps.db, gate, [charge, fee]),
+		...outboxStatements(deps.db, [charge, fee]),
 		...zapierStatements(deps.db, { paymentId, contactId: first.donation.contactId })
 	]);
 	if (written === 'already_posted') {

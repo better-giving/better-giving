@@ -58,7 +58,9 @@ import { readSendable } from './record';
 //
 // the one other writer is ./backlog.ts, and it writes one transition: `failed` back to `pending`,
 // when an operator presses retry on the console. so a status moves by a run or by a person and by
-// nothing else.
+// nothing else. moving the start date (./outbox.ts) adds `pending` rows and removes rows with no
+// attempt behind them that could have made a record in QuickBooks — a refused first send among them
+// — and changes the status of none.
 //
 //   pending — owed and not finished, whether or not it has failed before. `attempts` counts the
 //             tries and `last_error` holds the last one's words.

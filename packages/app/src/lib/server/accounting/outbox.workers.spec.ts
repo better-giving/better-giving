@@ -6,7 +6,7 @@ import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import type { EntrySourceType } from '../db/schema';
 import { post, postingStatements, type Posting } from '../ledger/posting';
-import { outboxGate, outboxStatements } from './outbox';
+import { moveQuickbooksStartAt, outboxStatements, previewQuickbooksStartAt } from './outbox';
 
 // the queue row a posting owes QuickBooks, against a real D1.
 //
@@ -16,7 +16,7 @@ import { outboxGate, outboxStatements } from './outbox';
 //
 // nothing here reaches a poster. the four that splice this in are covered beside themselves; what
 // is under test here is the rule itself — which source types are owed, and what the connection's
-// own start date does to a posting dated either side of it.
+// own start date does to a posting dated either side of it, and to the queue when that date moves.
 
 let db: Db;
 
@@ -79,18 +79,24 @@ async function queued() {
 }
 
 /**
- * one commit holding the postings and whatever the gate owes for them, the shape every poster
- * splices.
+ * the postings and whatever they owe, built the way every poster builds its batch — before it
+ * runs, so a test can let something land in between.
  */
-async function commit(postings: readonly (Posting | null)[]): Promise<void> {
-	const gate = await outboxGate(db);
+function settlement(
+	postings: readonly (Posting | null)[]
+): [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]] {
 	const statements: BatchItem<'sqlite'>[] = [];
 	for (const p of postings) {
 		if (p !== null) statements.push(...postingStatements(db, p));
 	}
-	const [first, ...rest] = [...statements, ...outboxStatements(db, gate, postings)];
+	const [first, ...rest] = [...statements, ...outboxStatements(db, postings)];
 	if (first === undefined) throw new Error('this fixture was handed nothing to write');
-	await db.batch([first, ...rest]);
+	return [first, ...rest];
+}
+
+/** one commit holding the postings and whatever they owe, the shape every poster splices. */
+async function commit(postings: readonly (Posting | null)[]): Promise<void> {
+	await db.batch(settlement(postings));
 }
 
 describe('the gate', () => {
@@ -153,8 +159,7 @@ describe('the date a connection starts from', () => {
 
 		await commit([posting({ occurredAt: new Date('2026-03-31T23:59:59.999Z') })]);
 
-		// what is already in the books from before a connect is the connect flow's backfill, and
-		// queueing it here would send it twice.
+		// a gift dated before the start date reaches the queue only by the date moving over it.
 		expect(await queued()).toEqual([]);
 	});
 
@@ -187,5 +192,201 @@ describe('a settlement the database refuses', () => {
 		expect(await queued()).toMatchObject([
 			{ entry_group_id: first.group.id, status: 'sent', attempts: 1, remote_id: '42' }
 		]);
+	});
+});
+
+describe('moving the date a connection starts from', () => {
+	const NOW = new Date('2026-06-01T00:00:00.000Z');
+
+	it('queues every owed gift from the new date on, those settled before the company was connected included', async () => {
+		const beforeConnect = posting({ occurredAt: new Date('2025-11-15T00:00:00.000Z') });
+		await commit([beforeConnect]);
+		await connect(new Date('2026-04-01T00:00:00.000Z'));
+		const beforeStart = posting({ occurredAt: new Date('2026-02-01T00:00:00.000Z') });
+		const tooEarly = posting({ occurredAt: new Date('2025-09-30T23:59:59.999Z') });
+		await commit([beforeStart, tooEarly]);
+
+		await moveQuickbooksStartAt(db, new Date('2025-10-01T00:00:00.000Z'), NOW);
+
+		expect((await queued()).map((row) => row.entry_group_id).sort()).toEqual(
+			[beforeConnect.group.id, beforeStart.group.id].sort()
+		);
+		expect(await queued()).toMatchObject([
+			{ status: 'pending', attempts: 0 },
+			{ status: 'pending', attempts: 0 }
+		]);
+	});
+
+	it('queues nothing new when the same move is made again, and leaves what it queued as it was', async () => {
+		await commit([posting({ occurredAt: new Date('2025-12-01T00:00:00.000Z') })]);
+		await connect();
+		const earlier = new Date('2025-10-01T00:00:00.000Z');
+		await moveQuickbooksStartAt(db, earlier, NOW);
+		await env.DB.prepare(`update quickbooks_sync set attempts = 2, last_error = 'throttled'`).run();
+
+		await moveQuickbooksStartAt(db, earlier, new Date('2026-06-02T00:00:00.000Z'));
+
+		expect(await queued()).toMatchObject([{ attempts: 2, last_error: 'throttled' }]);
+	});
+
+	it('never queues the processor’s cut', async () => {
+		const paymentId = uuidv7();
+		const occurredAt = new Date('2025-12-01T00:00:00.000Z');
+		const charge = posting({ sourceType: 'payment', sourceId: paymentId, occurredAt });
+		await commit([charge, posting({ sourceType: 'fee', sourceId: paymentId, occurredAt })]);
+		await connect();
+
+		await moveQuickbooksStartAt(db, new Date('2025-10-01T00:00:00.000Z'), NOW);
+
+		expect(await queued()).toMatchObject([{ entry_group_id: charge.group.id }]);
+	});
+
+	it('judges a gift settling afterwards by the moved date', async () => {
+		await connect(new Date('2026-04-01T00:00:00.000Z'));
+		await moveQuickbooksStartAt(db, new Date('2026-02-01T00:00:00.000Z'), NOW);
+		const entry = posting({ occurredAt: new Date('2026-03-01T00:00:00.000Z') });
+
+		await commit([entry]);
+
+		expect(await queued()).toMatchObject([{ entry_group_id: entry.group.id }]);
+	});
+
+	it('judges a settlement built before the move and committed after it by the moved date', async () => {
+		await connect(new Date('2026-04-01T00:00:00.000Z'));
+		const entry = posting({ occurredAt: new Date('2026-03-01T00:00:00.000Z') });
+		const built = settlement([entry]);
+
+		await moveQuickbooksStartAt(db, new Date('2026-02-01T00:00:00.000Z'), NOW);
+		await db.batch(built);
+
+		expect(await queued()).toMatchObject([{ entry_group_id: entry.group.id }]);
+	});
+
+	it('queues nothing for a settlement built before a later move and committed after it', async () => {
+		await connect(new Date('2026-02-01T00:00:00.000Z'));
+		const built = settlement([posting({ occurredAt: new Date('2026-03-01T00:00:00.000Z') })]);
+
+		await moveQuickbooksStartAt(db, new Date('2026-04-01T00:00:00.000Z'), NOW);
+		await db.batch(built);
+
+		expect(await queued()).toEqual([]);
+	});
+
+	it('writes nothing where no company is connected', async () => {
+		await commit([posting({ occurredAt: new Date('2025-12-01T00:00:00.000Z') })]);
+
+		await moveQuickbooksStartAt(db, new Date('2025-10-01T00:00:00.000Z'), NOW);
+
+		expect(await queued()).toEqual([]);
+		const connections = await env.DB.prepare('select id from quickbooks_connection').all();
+		expect(connections.results).toEqual([]);
+	});
+
+	describe('later', () => {
+		const LATER = new Date('2026-04-01T00:00:00.000Z');
+
+		/** one gift queued under the default connection, then its row set to how a run left it. */
+		async function queuedAs(occurredAt: Date, row: string | null = null): Promise<string> {
+			const entry = posting({ occurredAt });
+			await commit([entry]);
+			if (row !== null)
+				await env.DB.prepare(`update quickbooks_sync set ${row} where entry_group_id = ?`)
+					.bind(entry.group.id)
+					.run();
+			const { id } = entry.group;
+			if (id === undefined) throw new Error('post() minted no id');
+			return id;
+		}
+
+		it('drops the rows before the new date with no attempt that could have made a record, waiting and refused alike', async () => {
+			await connect();
+			await queuedAs(new Date('2026-02-01T00:00:00.000Z'));
+			await queuedAs(new Date('2026-03-31T23:59:59.999Z'), `status = 'failed', last_error = 'no'`);
+			const onTheDay = await queuedAs(LATER);
+			const after = await queuedAs(new Date('2026-05-01T00:00:00.000Z'));
+
+			await moveQuickbooksStartAt(db, LATER, NOW);
+
+			expect((await queued()).map((row) => row.entry_group_id).sort()).toEqual(
+				[onTheDay, after].sort()
+			);
+		});
+
+		it('keeps a sent row, a row a run holds, and a row that has been tried', async () => {
+			await connect();
+			const before = new Date('2026-02-01T00:00:00.000Z');
+			const sent = await queuedAs(before, `status = 'sent', remote_id = '42'`);
+			const held = await queuedAs(before, `leased_until = ${NOW.getTime() + 60_000}`);
+			// a try whose answer never came may have created the record, and only a row with an
+			// attempt behind it tells the next send to look for it first (./quickbooks.ts).
+			const tried = await queuedAs(before, `attempts = 1, last_error = 'unreachable'`);
+			await queuedAs(before, `leased_until = ${NOW.getTime()}`);
+
+			await moveQuickbooksStartAt(db, LATER, NOW);
+
+			expect((await queued()).map((row) => row.entry_group_id).sort()).toEqual(
+				[sent, held, tried].sort()
+			);
+		});
+	});
+});
+
+describe('what a move would do, asked before it is made', () => {
+	const NOW = new Date('2026-06-01T00:00:00.000Z');
+	const NONE = { gifts: 0, corrections: 0, earliest: null, latest: null };
+
+	it('answers with what an earlier date then queues, gifts and corrections apart', async () => {
+		const first = new Date('2025-10-02T00:00:00.000Z');
+		const last = new Date('2026-01-31T00:00:00.000Z');
+		await commit([
+			posting({ occurredAt: first, sourceType: 'adjustment' }),
+			posting({ occurredAt: new Date('2025-11-01T00:00:00.000Z') }),
+			posting({ occurredAt: last })
+		]);
+		await commit([posting({ occurredAt: new Date('2025-09-01T00:00:00.000Z') })]);
+		await connect(new Date('2026-02-01T00:00:00.000Z'));
+		await commit([posting({ occurredAt: new Date('2026-03-01T00:00:00.000Z') })]);
+		const proposed = new Date('2025-10-01T00:00:00.000Z');
+
+		const answer = await previewQuickbooksStartAt(db, proposed, NOW);
+		await moveQuickbooksStartAt(db, proposed, NOW);
+
+		expect(answer).toEqual({
+			queues: { gifts: 2, corrections: 1, earliest: first, latest: last },
+			drops: NONE
+		});
+		expect(await queued()).toHaveLength(4);
+	});
+
+	it('answers with what a later date then drops, gifts and corrections apart, and writes nothing', async () => {
+		await connect();
+		const first = new Date('2026-01-15T00:00:00.000Z');
+		const last = new Date('2026-02-15T00:00:00.000Z');
+		await commit([
+			posting({ occurredAt: first }),
+			posting({ occurredAt: new Date('2026-02-01T00:00:00.000Z'), sourceType: 'adjustment' }),
+			posting({ occurredAt: last, sourceType: 'adjustment' }),
+			posting({ occurredAt: new Date('2026-05-15T00:00:00.000Z') })
+		]);
+		const proposed = new Date('2026-04-01T00:00:00.000Z');
+
+		const answer = await previewQuickbooksStartAt(db, proposed, NOW);
+
+		expect(answer).toEqual({
+			queues: NONE,
+			drops: { gifts: 1, corrections: 2, earliest: first, latest: last }
+		});
+		expect(await queued()).toHaveLength(4);
+		await moveQuickbooksStartAt(db, proposed, NOW);
+		expect(await queued()).toHaveLength(1);
+	});
+
+	it('answers nothing where no company is connected', async () => {
+		await commit([posting({ occurredAt: new Date('2025-12-01T00:00:00.000Z') })]);
+
+		expect(await previewQuickbooksStartAt(db, new Date('2025-10-01T00:00:00.000Z'), NOW)).toEqual({
+			queues: NONE,
+			drops: NONE
+		});
 	});
 });
