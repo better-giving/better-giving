@@ -787,7 +787,6 @@ export default function AddDonation({ loaderData, actionData }: Route.ComponentP
 							</>
 						) : region.arm === 'picked' ? (
 							<>
-								<input type="hidden" name={fields.donor_search.name} value="" />
 								<CheckboxGroup
 									id={fields.contact_id.id}
 									name={fields.contact_id.name}
@@ -805,6 +804,7 @@ export default function AddDonation({ loaderData, actionData }: Route.ComponentP
 										}
 									]}
 								/>
+								<input type="hidden" name={fields.donor_search.name} value="" />
 								<div className="adm-actions">
 									<Button
 										variant="quiet"
@@ -817,15 +817,6 @@ export default function AddDonation({ loaderData, actionData }: Route.ComponentP
 							</>
 						) : (
 							<>
-								<input type="hidden" name={fields.donor_search.name} value="" />
-								<input type="hidden" name={fields.contact_id.name} value="" />
-								{/* the name boxes a kind does not ask for are submitted empty, because every
-								    box this form states must arrive. */}
-								{(Object.values(NAME_BOXES).flat() as NameBox[])
-									.filter((box) => !NAME_BOXES[region.kind].includes(box))
-									.map((box) => (
-										<input key={box} type="hidden" name={box} value="" />
-									))}
 								<SelectWithNote
 									label={CONTACT_FIELD_LABELS.kind}
 									options={CONTACT_KINDS.map((value) => ({ value, label: KIND_LABELS[value] }))}
@@ -894,6 +885,15 @@ export default function AddDonation({ loaderData, actionData }: Route.ComponentP
 										Find an existing donor instead
 									</Button>
 								</div>
+								<input type="hidden" name={fields.donor_search.name} value="" />
+								<input type="hidden" name={fields.contact_id.name} value="" />
+								{/* the name boxes a kind does not ask for are submitted empty, because every
+								    box this form states must arrive. */}
+								{(Object.values(NAME_BOXES).flat() as NameBox[])
+									.filter((box) => !NAME_BOXES[region.kind].includes(box))
+									.map((box) => (
+										<input key={box} type="hidden" name={box} value="" />
+									))}
 							</>
 						)}
 					</fieldset>
