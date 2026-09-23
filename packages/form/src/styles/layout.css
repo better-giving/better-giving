@@ -760,7 +760,11 @@ form {
 	text-align: start;
 }
 
-.entry {
+/*
+ * held under the block: the amount step's free entry is an `.entry` too (`entryTile` in ../views.ts),
+ * and this grid reaching it lays its input into one column of the tray.
+ */
+.summary > .entry {
 	display: grid;
 	grid-column: 1 / -1;
 	grid-template-columns: subgrid;
@@ -768,15 +772,15 @@ form {
 	row-gap: var(--_sp2);
 }
 
-.entry > [part~='label'] {
+.summary > .entry > [part~='label'] {
 	grid-column: 1;
 }
 
-.entry > .value {
+.summary > .entry > .value {
 	grid-column: 2;
 }
 
-.entry > .worth {
+.summary > .entry > .worth {
 	grid-column: 3;
 }
 
@@ -784,7 +788,7 @@ form {
  * the network is a name rather than a figure, so it takes both figure columns and ends on the same
  * edge they do, with the mark that opens its caution at the end of the name itself.
  */
-.entry > .value.name {
+.summary > .entry > .value.name {
 	display: flex;
 	grid-column: 2 / 4;
 	align-items: baseline;
@@ -797,12 +801,12 @@ form {
  * nothing on the screen, which is the whole reason it is behind a mark. the row is the containing
  * block and stands above its later siblings, which would otherwise paint through the caution.
  */
-.entry.network {
+.summary > .entry.network {
 	position: relative;
 	z-index: 1;
 }
 
-.entry > .attention {
+.summary > .entry > .attention {
 	position: absolute;
 	z-index: 2;
 	inset-block-start: 100%;

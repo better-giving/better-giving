@@ -446,6 +446,30 @@ describe('the sizes the card draws its type at', () => {
 		expect(cadence.getBoundingClientRect().height).toBe(shortcut);
 	});
 
+	// the input covers every pixel of the surface it is typed on (`[part~='amount-input']` in
+	// ../styles/parts.css), on a tray of tiles and on a bare one alike. measured on the input and not
+	// the tile: the tile spanning the row says nothing about the figure inside it, and a rule from
+	// another block reaching `.entry` holds the input to one column of the tray's grid, cutting
+	// `Amount` short while the tile still spans the row.
+	it('gives the figure the whole width of the free entry, with presets and without', async () => {
+		for (const config of [CONFIG, { ...CONFIG, suggestedAmountsMinor: [] }]) {
+			const { host, shadow } = await mount(config);
+			host.style.inlineSize = '375px';
+			const other = shadow.querySelector('.other input') as HTMLInputElement | null;
+			other?.click();
+			await settle();
+			const { box, figure } = amount(shadow);
+			const inner = box.clientWidth;
+
+			expect(inner, `${config.suggestedAmountsMinor.length} presets`).toBeGreaterThan(0);
+			expect(
+				figure.getBoundingClientRect().width,
+				`${config.suggestedAmountsMinor.length} presets`
+			).toBe(inner);
+			host.remove();
+		}
+	});
+
 	// the inset a donor reads around what they typed is the same on every side of a one-line box, or
 	// the floor's slack above and below it — never a block step wider than the inline one. every box
 	// a donor types or picks in is measured, the amount entry through the input that carries its
@@ -552,10 +576,8 @@ describe('the labels on the pair under the name', () => {
 
 	/**
 	 * the colour a donor reads the box's own top edge in, whatever is putting it there: the ring
-	 * where the box draws one, and the border where it does not. the two are not always one colour
-	 * — a refused box with the caret in it rings itself in the refusal's red over a border the
-	 * focus rule has already taken — and the ring is the outer of the two, so it is what the edge
-	 * reads as.
+	 * where the box draws one, and the border where it does not. the ring is the outer of the two,
+	 * so it is what the edge reads as; that the border under it is the same colour is its own case.
 	 */
 	function drawnEdge(box: HTMLElement): string {
 		const painted = getComputedStyle(box);
@@ -881,6 +903,43 @@ describe('the labels on the pair under the name', () => {
 		await landed(box);
 		expect(shadow.querySelector('#first-name-problem')?.hasAttribute('hidden')).toBe(false);
 		expect(band(), 'the box refused, with the caret back in it').toContain(drawnEdge(box));
+	});
+
+	// and the rise is that edge lifted, not a second shape drawn on top of it: one colour and one
+	// width with the box's own top run, and its two sides coming down onto that run. read on the box a
+	// failed press hands the caret back to, which is the state that draws the most on the edge — a
+	// border and a ring — and so the one where a ring over a border of another colour reads as two
+	// lines and a rise one pixel thin reads as a box standing on the edge.
+	it('rises from the refused box’s edge at that edge’s own colour and width', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		fill(shadow, '#email', 'donor@example.org');
+		onward(shadow);
+		await settle();
+		const { box, label, words } = field(shadow, '#first-name');
+		await caretOn(box);
+		await landed(box);
+		await landed(label);
+
+		const drawn = getComputedStyle(box);
+		const [ring = ''] = drawn.boxShadow.split(/,(?![^(]*\))/);
+		const spread = parseFloat((/(-?[\d.]+)px(?:\s+inset)?\s*$/.exec(ring.trim()) ?? ['', '0'])[1]);
+		const edge = parseFloat(drawn.borderTopWidth) + spread;
+		const sides = getComputedStyle(words)
+			.backgroundSize.split(',')
+			.slice(1, 3)
+			.map((size) => parseFloat(size.trim().split(' ')[0] ?? ''));
+		const rise = getComputedStyle(words).backgroundImage.split(/,\s*(?=linear-gradient)/)[0] ?? '';
+		// where the edge's colour stops, which is the last stop of the run.
+		const top = parseFloat((/([\d.]+)px\)\s*$/.exec(rise) ?? ['', 'NaN'])[1]);
+		const span = words.getBoundingClientRect();
+
+		expect(shadow.querySelector('#first-name-problem')?.hasAttribute('hidden')).toBe(false);
+		expect(drawnEdge(box), 'the ring over the border').toBe(drawn.borderTopColor);
+		expect(rise, 'the rise').toContain(drawn.borderTopColor);
+		expect(sides, 'the rise’s sides').toEqual([edge, edge]);
+		expect(top, 'the rise’s top run').toBe(edge);
+		seated((span.top + span.bottom) / 2, box.getBoundingClientRect().top);
 	});
 
 	// the box keeps one height through both states and reserves nothing for either, so a donor
