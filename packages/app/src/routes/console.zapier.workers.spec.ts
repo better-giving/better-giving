@@ -115,23 +115,12 @@ describe('GET /console/zapier', () => {
 		const response = await read();
 
 		expect(response.status).toBe(200);
+		expect(response.headers.get('cache-control')).toBe('no-store');
 		expect((await response.json()) as ZapierReport).toEqual({
 			key: null,
 			listening: { newGift: 0, newDonor: 0 },
 			deliveries: { waiting: 0, failed: 0, oldestWaitingAt: null }
 		});
-	});
-
-	it('reads a key made before keys were stored as one with nothing to show', async () => {
-		await env.DB.prepare(
-			`insert into zapier_key (id, key_hash, created_at, updated_at) values ('zapier', ?, 0, 0)`
-		)
-			.bind('0'.repeat(64))
-			.run();
-
-		const report = (await (await read()).json()) as ZapierReport;
-
-		expect(report.key).toEqual({ madeAt: new Date(0).toISOString(), key: null });
 	});
 
 	it('counts the Zaps listening to each trigger and the events still owed to them', async () => {
@@ -179,14 +168,16 @@ describe('the make press', () => {
 });
 
 describe('the replace press', () => {
-	it('refuses where no key is made, and names make', async () => {
+	it('refuses where no key is made, and names the create press', async () => {
 		const response = await press({ press: 'replace' });
 
 		expect(response.status).toBe(200);
 		const refused = (await response.json()) as ZapierPressReport;
 		expect(refused).toMatchObject({ ok: false, press: 'replace' });
 		if (refused.ok) throw new Error('replace landed with no key');
-		expect(refused.detail).toContain('make');
+		expect(refused.detail).toBe(
+			'This deployment has no Zapier key to replace. Press Create key to make the first one.'
+		);
 	});
 
 	it('answers a new key, the old one stops verifying, and every Zap on it is disconnected', async () => {
@@ -273,5 +264,24 @@ describe('a request this address does not take', () => {
 
 		expect(response.status).toBe(401);
 		expect(((await (await read()).json()) as ZapierReport).key).toBeNull();
+	});
+
+	it.each([
+		['no credential', {}],
+		[
+			'a wrong bearer',
+			{
+				authorization: `Bearer ${formatConsoleToken(EXPIRES_AT, 'y'.repeat(CONSOLE_TOKEN_MIN_RANDOM))}`
+			}
+		]
+	])('refuses a reading under %s, and its body carries no key', async (_, credential) => {
+		const key = await made();
+
+		const response = await routes(new Request(`${OWN}/console/zapier`, { headers: credential }), {
+			env: deployment
+		});
+
+		expect(response.status).toBe(401);
+		expect(await response.text()).not.toContain(key);
 	});
 });

@@ -11,9 +11,9 @@ import { waitedSays } from './quickbooks-standing';
 // and the reason is the same: ../../vite.config.ts pins `node` and there is no dom, so a rule left
 // inside the component is one no spec can reach.
 //
-// **the key is read back on every visit** (packages/operator/src/console/zapier.ts), except one made
-// before the deployment stored it, which the console cannot show and only a replace brings onto the
-// screen.
+// **the key is read back on every visit** (packages/operator/src/console/zapier.ts), and a press
+// that made one carries it too, so a key that landed is on the screen even where the reading after it
+// did not come back.
 //
 // **the section draws one press at a time, so every answer reports there.** a make refused because
 // a key now exists lands on a section drawing the replace press, and its sentence names that press
@@ -34,27 +34,24 @@ export type ZapierAnswer =
 export const zapierIntent = (press: ZapierPress): string => `zapier:${press}`;
 
 /** the key the last press made, or `null` where the last answer carries none. */
-const freshKey = (answer: ZapierAnswer | null): string | null =>
+export const freshKey = (answer: ZapierAnswer | null): string | null =>
 	answer?.kind === 'reported' && answer.report.ok ? answer.report.key : null;
 
-/**
- * what the key's item shows: no key to create, a key to read, or a key that stands but that the
- * console cannot show, made before the deployment stored it.
- */
-export type KeyStanding = { kind: 'none' } | { kind: 'known'; key: string } | { kind: 'unshown' };
+/** what the key's item shows: no key to create, or a key to read. */
+export type KeyStanding = { kind: 'none' } | { kind: 'known'; key: string };
 
 /**
  * the reading's key wins wherever it has one: the page reads again after every press, so the
  * reading is the later of the two, and a key replaced from another console since the answer came
- * back is the reading's and not the answer's. the answer's key stands in only where the reading has
- * none to show.
+ * back is the reading's and not the answer's. the answer's key stands in where the reading has none
+ * to show, and where there is no reading at all (`null`) because the one after the press did not
+ * come back.
  */
-export function keyStanding(report: ZapierReport, answer: ZapierAnswer | null): KeyStanding {
-	const read = report.key?.key ?? null;
+export function keyStanding(report: ZapierReport | null, answer: ZapierAnswer | null): KeyStanding {
+	const read = report?.key?.key ?? null;
 	if (read !== null) return { kind: 'known', key: read };
 	const made = freshKey(answer);
-	if (made !== null) return { kind: 'known', key: made };
-	return report.key === null ? { kind: 'none' } : { kind: 'unshown' };
+	return made === null ? { kind: 'none' } : { kind: 'known', key: made };
 }
 
 /** what stands under the press after an answer that did not land, or `null` where it landed. */
@@ -112,7 +109,7 @@ export function replaceCosts(listening: number): string[] {
 		listening === 1
 			? '1 Zap listening on the current key stops.'
 			: `${listening} Zaps listening on the current key stop.`,
-		'Each has to be connected again with the new key.'
+		'Reconnect each Zap with the new key, then turn it off and on again: Zapier only subscribes a Zap when it is turned on, so a reconnected Zap left on hears nothing.'
 	];
 }
 
@@ -121,11 +118,13 @@ const HOUR = 60 * 60_000;
 /**
  * what the deliveries have to say, one sentence each, or an empty list where they have nothing.
  *
- * working is the silent default: a gift waiting on a backoff is on its way, and a queue a few
- * minutes deep is the every-minute cron doing its job. what speaks is an event given up on, and a
- * queue whose oldest event has waited past the hour.
+ * working is the silent default: a delivery waiting on a backoff is on its way, and a queue a few
+ * minutes deep is the every-minute cron doing its job. what speaks is a delivery given up on, and a
+ * queue whose oldest delivery has waited past the hour. a failure is counted as a delivery and never
+ * as a gift: the count spans both triggers (packages/app/src/lib/server/zapier/report.ts), and a new
+ * donor's delivery failing is no gift going astray.
  *
- * two sentences because they are two measurements: the wait spans every event still owed, healthy
+ * two sentences because they are two measurements: the wait spans every delivery still owed, healthy
  * ones included, so one sentence over both would report a slow queue as a failure.
  *
  * **a deployment with no key says nothing, whatever the rows hold.** no Zap can listen without one,
@@ -137,7 +136,7 @@ export function deliveriesSay(report: ZapierReport, now: Date): string[] {
 	const said: string[] = [];
 	if (failed > 0)
 		said.push(
-			failed === 1 ? '1 gift couldn’t be delivered.' : `${failed} gifts couldn’t be delivered.`
+			failed === 1 ? '1 delivery to your Zaps failed.' : `${failed} deliveries to your Zaps failed.`
 		);
 	const at = oldestWaitingAt === null ? Number.NaN : Date.parse(oldestWaitingAt);
 	if (!Number.isNaN(at) && now.getTime() - at > HOUR)

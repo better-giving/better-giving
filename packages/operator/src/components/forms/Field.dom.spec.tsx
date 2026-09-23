@@ -1,5 +1,6 @@
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { closedRungOf } from '../closed-look.testing';
 import { render } from '../render.testing';
 import { Field } from './Field.jsx';
 
@@ -189,6 +190,64 @@ describe('a field mounted into a document', () => {
 			[...(cluster?.querySelectorAll('button') ?? [])].map((b) => b.getAttribute('aria-label'))
 		).toEqual(['Copy key', 'Show the value']);
 		expect(root.querySelector('input')?.getAttribute('type')).toBe('password');
+	});
+
+	it('closes both presses in the box the one way, and neither drops the focus standing on it', () => {
+		// a write in flight closes the box; the copy control keeps its focus by closing with
+		// `aria-disabled` and turning the press away itself, and a reveal closed natively beside it
+		// would drop a reader on `<body>` and draw a second closed look in the same cluster.
+		const root = render(Field, {
+			id: 'zapier-key',
+			label: 'Your authentication key',
+			masked: true,
+			copyable: true,
+			copyLabel: 'Copy key',
+			readOnly: true,
+			disabled: true,
+			value: 'bgz_key'
+		});
+		const [copy, eye] = [
+			...root.querySelectorAll<HTMLButtonElement>('.adm-maskwrap__presses button')
+		];
+		if (copy === undefined || eye === undefined) throw new Error('the box drew no two presses');
+
+		for (const control of [copy, eye]) {
+			expect(control.getAttribute('aria-disabled')).toBe('true');
+			expect(control.hasAttribute('disabled')).toBe(false);
+		}
+		expect(closedRungOf(eye)).not.toBeNull();
+		expect(closedRungOf(copy)).toBe(closedRungOf(eye));
+
+		eye.focus();
+		press(eye);
+		expect(root.querySelector('input')?.getAttribute('type')).toBe('password');
+		expect(document.activeElement).toBe(eye);
+	});
+
+	it('shows the value when the clipboard refuses it, so it can be taken by hand', async () => {
+		// a refused copy over dots is a dead end: nothing on the screen can be selected until the
+		// value is shown, and the operator came to take it.
+		const writeText = vi.fn(() => Promise.reject(new Error('permission refused')));
+		Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+		const root = render(Field, {
+			id: 'zapier-key',
+			label: 'Your authentication key',
+			masked: true,
+			copyable: true,
+			copyLabel: 'Copy key',
+			readOnly: true,
+			value: 'bgz_key'
+		});
+		const copy = root.querySelector<HTMLButtonElement>('.adm-maskwrap__presses button');
+		if (copy === null) throw new Error('the box drew no copy control');
+
+		await act(async () => {
+			copy.click();
+			for (let tick = 0; tick < 10; tick++) await Promise.resolve();
+		});
+
+		expect(root.querySelector('input')?.getAttribute('type')).toBe('text');
+		expect(reveal(root).getAttribute('aria-label')).toBe('Hide the value');
 	});
 
 	it('draws no press on a textarea, whatever the caller asked to mask', () => {

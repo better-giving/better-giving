@@ -24,9 +24,7 @@ import type { Route } from './+types/console.zapier';
 // on the same surface and behind the same check as the report: the check is the `middleware` on
 // ./console.ts and this file makes no decision about who may read or press.
 //
-// **the reading carries the key itself**, so the console shows it on every visit. `key: null` is a
-// key made before the key was stored ($lib/server/zapier/key.ts): it still admits Zapier, has
-// nothing to show, and is replaced to get one that does.
+// **the reading carries the key itself**, so the console shows it on every visit.
 //
 // **make and replace are two presses, each refused in the other's state**, so two consoles
 // pressing at once cannot replace a key by accident: the second make is refused rather than
@@ -90,7 +88,7 @@ type RefusalReason = ZapierKeyExists['reason'] | ZapierKeyNotReplaced['reason'];
 const REFUSALS: Record<RefusalReason, string> = {
 	key_exists:
 		'This deployment already has a Zapier key. Press Replace key to make a new one; every Zap on the old key is disconnected.',
-	no_key: 'This deployment has no Zapier key to replace. Press make to make the first one.',
+	no_key: 'This deployment has no Zapier key to replace. Press Create key to make the first one.',
 	conflict:
 		'Another console replaced the Zapier key at the same moment, and its key is the one in use. Read this section again.'
 };

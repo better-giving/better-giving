@@ -30,22 +30,22 @@ export type ReplacedZapierKey = MadeZapierKey & { readonly disconnected: number 
 export type ZapierKeyNotReplaced = { readonly ok: false; readonly reason: 'no_key' | 'conflict' };
 
 /**
- * the current key and when it was made, or `null` before one is. `key` is `null` on a row made
- * before the key was stored: that key still works, and has nothing to show until it is replaced.
+ * the current key and when it was made, or `null` before one is. a row with no stored key reads
+ * as none (`zapierKey.key` in ../db/schema.ts).
  */
 export async function readZapierKey(
 	db: Db
-): Promise<{ readonly madeAt: Date; readonly key: string | null } | null> {
+): Promise<{ readonly madeAt: Date; readonly key: string } | null> {
 	const [row] = await db
 		.select({ madeAt: zapierKey.createdAt, key: zapierKey.key })
 		.from(zapierKey)
 		.where(eq(zapierKey.id, KEY_ID));
-	return row ?? null;
+	return row?.key == null ? null : { madeAt: row.madeAt, key: row.key };
 }
 
 async function currentKey(db: Db) {
 	const [row] = await db
-		.select({ keyHash: zapierKey.keyHash, madeAt: zapierKey.createdAt })
+		.select({ keyHash: zapierKey.keyHash })
 		.from(zapierKey)
 		.where(eq(zapierKey.id, KEY_ID));
 	return row;

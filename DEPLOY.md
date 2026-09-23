@@ -143,9 +143,9 @@ Optional, and not a set-up job. It starts a Zap on two events: a settled gift (e
 
 **Then open the Better Giving Zapier app** from the link on that page. It is private for now and reached only through that link. Connect an account with the address and the key, and build Zaps on New Donor or New Gift. Each card on the console page counts the Zaps listening on it.
 
-**Replace key** makes a new one and disconnects every Zap on the old one; each has to be connected again with the new key. A key made before this deployment stored keys has nothing to show, so replace it once to get one the page can show.
+**Replace key** makes a new one and disconnects every Zap on the old one. Reconnect each Zap with the new key, then turn it off and on again: Zapier only subscribes a Zap when it is turned on, so a reconnected Zap left on hears nothing.
 
-**When it stops.** A gift Zapier turns away is retried with a growing wait, and given up after three days. The page says so in a strip at the top, red when gifts were given up and amber when your Zaps are more than an hour behind, both with a link to your Zaps on Zapier: a Zap that is off or erroring is the usual cause. A Zap that is turned off or deleted is dropped at once and never leaves anything behind.
+**When it stops.** A delivery Zapier turns away is retried with a growing wait, and given up after three days. The page says so in a strip at the top, red when deliveries were given up in the past week and amber when your Zaps are more than an hour behind, both with a link to your Zaps on Zapier: a Zap that is off or erroring is the usual cause. A Zap that is turned off or deleted is dropped at once and never leaves anything behind.
 
 ## Checking a deployment
 

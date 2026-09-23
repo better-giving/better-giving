@@ -369,9 +369,9 @@ export function createDepositBlock(
 	// ── the account ────────────────────────────────────────────────────────────────────────────
 
 	// the caution is the row's own, laid over the rows under it rather than taking a place among them
-	// (`.entry > .attention` in ./styles/layout.css), so opening it moves nothing on the screen. it
-	// carries `aria-expanded` and one name in both states: a name that said Show or Hide would say
-	// which way it is a second time, and disagree with it the moment the state changed.
+	// (`.summary > .entry > .attention` in ./styles/layout.css), so opening it moves nothing on the
+	// screen. it carries `aria-expanded` and one name in both states: a name that said Show or Hide
+	// would say which way it is a second time, and disagree with it the moment the state changed.
 	const cautionMark = make('button', 'caution', [glyph(doc, 'help', 'caution-glyph')]);
 	cautionMark.type = 'button';
 	cautionMark.setAttribute('part', part('action-quiet'));

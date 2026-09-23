@@ -57,6 +57,13 @@
       "when": 1790153433825,
       "tag": "0007_zapier_key_shown",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790160308469,
+      "tag": "0008_zapier_keyless_row_dropped",
+      "breakpoints": true
     }
   ]
 }

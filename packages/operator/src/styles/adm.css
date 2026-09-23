@@ -96,8 +96,14 @@
 		border-color: var(--admin-control-border-active);
 	}
 
+	/* closed, in either spelling. `aria-disabled` is a press turned away in its own handler so the
+	   reader standing on it keeps the focus (the busy rung below argues that), and it is the same
+	   closed press as the native one: without its member here it draws at rest, and a control
+	   beside a natively closed one would read as the one still open. every rank's closed rung
+	   carries the member for the same reason. */
 	.adm-btn:disabled,
-	.adm-btn.is-disabled {
+	.adm-btn.is-disabled,
+	.adm-btn[aria-disabled='true'] {
 		background: var(--admin-control-bg-disabled);
 		border-color: var(--admin-control-border-disabled);
 		color: var(--admin-control-ink-disabled);
@@ -113,9 +119,8 @@
 	   `aria-disabled` with the press turned away in the control's own handler is the other, and it
 	   is what a press has to use where the reader is standing on it: a disabled control cannot hold
 	   focus, so the native attribute drops the caret on `<body>` for the whole of the write and the
-	   dots underneath are then a change nobody is standing on to hear. that press matches no
-	   `:disabled` rung at all, so without this rung it draws the resting ground and answers a press
-	   with nothing.
+	   dots underneath are then a change nobody is standing on to hear. that press matches the
+	   closed rung's `[aria-disabled]` member, so without this rung it greys for the same reason.
 
 	   every value here is the rank's own active rung above, restated and never re-picked. this
 	   rank's states a ground and a border and no ink, because what a press moves is the ground; the
@@ -173,7 +178,8 @@
 	}
 
 	.adm-btn--primary:disabled,
-	.adm-btn--primary.is-disabled {
+	.adm-btn--primary.is-disabled,
+	.adm-btn--primary[aria-disabled='true'] {
 		background: var(--admin-primary-bg-disabled);
 		border-color: var(--admin-control-border-disabled);
 		color: var(--admin-primary-ink-disabled);
@@ -216,7 +222,8 @@
 	   rather than inherited because the hover rung above matches `.adm-btn:disabled` for
 	   specificity and would otherwise win a disabled button back on a pointer. */
 	.adm-btn--danger:disabled,
-	.adm-btn--danger.is-disabled {
+	.adm-btn--danger.is-disabled,
+	.adm-btn--danger[aria-disabled='true'] {
 		background: var(--admin-control-bg-disabled);
 		border-color: var(--admin-control-border-disabled);
 		color: var(--admin-control-ink-disabled);
@@ -276,7 +283,8 @@
 	}
 
 	.adm-btn--quiet:disabled,
-	.adm-btn--quiet.is-disabled {
+	.adm-btn--quiet.is-disabled,
+	.adm-btn--quiet[aria-disabled='true'] {
 		background: transparent;
 		border-color: transparent;
 		color: var(--admin-control-ink-disabled);
@@ -325,7 +333,8 @@
 	}
 
 	.adm-btn--soft:disabled,
-	.adm-btn--soft.is-disabled {
+	.adm-btn--soft.is-disabled,
+	.adm-btn--soft[aria-disabled='true'] {
 		background: var(--admin-control-soft-bg);
 		border-color: transparent;
 		color: var(--admin-control-ink-disabled);
@@ -3145,8 +3154,8 @@
 	}
 
 	/* two presses in one box — a copy control beside the reveal — stand as one cluster where the one
-	   press stands above, and the box reserves the room twice over. the cluster lays out the buttons
-	   alone: the copy control's live region is `.adm-vh`, out of the flow. */
+	   press stands above, and the box reserves the room the rule below sizes. the cluster lays out
+	   the buttons alone: the copy control's live region is `.adm-vh`, out of the flow. */
 	.adm-maskwrap__presses {
 		position: absolute;
 		inset-inline-end: var(--admin-space-2);
@@ -3157,8 +3166,15 @@
 		gap: var(--admin-space-2);
 	}
 
+	/* the room is the cluster's widest state, so no state stands over the value: a refused copy
+	   draws the words "Copy blocked" and shows the value in the same moment
+	   (../components/forms/Field.jsx), and a reserve sized for two marks would cover the value it
+	   had just shown. the words are 6.4em of `--admin-font-sans` at medium weight, about 5.2rem at
+	   `--admin-control-size-sm` and 6.3rem as a small quiet press; with the reveal, the gap and the
+	   inset the cluster reaches about 8.95rem, and the sum below is 9.25rem. it is measured from
+	   those words, so new words are a new measurement. */
 	.adm-maskwrap:has(> .adm-maskwrap__presses) > .adm-input {
-		padding-inline-end: calc(var(--admin-space-10) * 2);
+		padding-inline-end: calc(var(--admin-space-9) * 4 + var(--admin-space-7));
 	}
 
 	.adm-field__error {

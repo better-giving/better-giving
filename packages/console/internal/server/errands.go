@@ -191,9 +191,11 @@ func errandRoutes(routes *http.ServeMux, held, patient func() (cf.Get, cf.Post))
 	})
 
 	// where this deployment's Zapier key stands, the key included, and how many Zaps are listening
-	// on it. the body carries the key, so it is written to the page and never logged.
+	// on it. the body carries the key, so it is written to the page, never logged and never stored
+	// by a cache, and the press below answers the same way.
 	routes.HandleFunc("GET /api/deployment/zapier", func(w http.ResponseWriter, r *http.Request) {
 		get, _ := held()
+		w.Header().Set("Cache-Control", "no-store")
 		answer(w, http.StatusOK, deployment.ReadZapier(r.Context(), get))
 	})
 
@@ -208,6 +210,7 @@ func errandRoutes(routes *http.ServeMux, held, patient func() (cf.Get, cf.Post))
 			return
 		}
 		_, post := held()
+		w.Header().Set("Cache-Control", "no-store")
 		answer(w, http.StatusOK, deployment.PressZapier(r.Context(), post, posted.Press))
 	})
 

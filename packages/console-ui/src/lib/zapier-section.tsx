@@ -9,7 +9,7 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import type { ZapierPress, ZapierReport } from '@better-giving/operator/console/zapier';
 import type { ReactNode } from 'react';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { ZapierRead } from '../api/types';
 import { noAnswer } from './processor-screen';
 import type { ZapierAnswer, ZapierTrigger } from './zapier-standing';
@@ -17,6 +17,7 @@ import {
 	TRIGGER_NAME,
 	UNKNOWN,
 	deliveriesSay,
+	freshKey,
 	keyStanding,
 	listeningSays,
 	listeningTotal,
@@ -65,8 +66,24 @@ export function ZapierSection({
 	address,
 	onPress
 }: ZapierSectionProps): ReactNode {
-	if (zapier.kind === 'unread')
-		return <Section>{noAnswer(zapier.read, 'it can’t say whether there is a key')}</Section>;
+	if (zapier.kind === 'unread') {
+		// a press that landed carries its key, and the operator came for exactly that, so the reading
+		// failing after it still draws the key — with no press over it, since a replace confirms
+		// against listeners only a reading counts.
+		const standing = keyStanding(null, answer);
+		if (standing.kind === 'none')
+			return <Section>{noAnswer(zapier.read, 'it can’t say whether there is a key')}</Section>;
+		return (
+			<Section>
+				<div>
+					{noAnswer(zapier.read, 'it can’t say how many Zaps are listening')}
+					<div className="adm-named">
+						<KeyBox keyText={standing.key} landed={freshKey(answer)} pending={pending} />
+					</div>
+				</div>
+			</Section>
+		);
+	}
 	const report = zapier.report;
 	return (
 		<Section>
@@ -208,7 +225,7 @@ type KeyProps = {
 };
 
 /**
- * the key's item in whichever of its three standings ./zapier-standing.ts reads.
+ * the key's item in whichever of its two standings ./zapier-standing.ts reads.
  *
  * a press's trouble stands under it a named block's step away (`.adm-named`, in a parent with no
  * gap of its own): it reports the press, and drawn closer it reads as part of the box or the press
@@ -221,7 +238,7 @@ function KeyItem({ answer, ...props }: KeyProps & { answer: ZapierAnswer | null 
 			<div className="adm-stated">
 				<div>
 					<Stack tight>
-						<KeyBox keyText={standing.key} pending={props.pending} />
+						<KeyBox keyText={standing.key} landed={freshKey(answer)} pending={props.pending} />
 						<KeyPress press="replace" {...props} />
 					</Stack>
 					<Trouble answer={answer} />
@@ -231,16 +248,35 @@ function KeyItem({ answer, ...props }: KeyProps & { answer: ZapierAnswer | null 
 	return (
 		<Asked label="Your authentication key">
 			<div>
-				<KeyPress press={standing.kind === 'none' ? 'make' : 'replace'} {...props} />
+				<KeyPress press="make" {...props} />
 				<Trouble answer={answer} />
 			</div>
 		</Asked>
 	);
 }
 
-/** the key, drawn as every stored credential on the console is: a masked box. */
-function KeyBox({ keyText, pending }: { keyText: string; pending: ZapierPress | null }): ReactNode {
+/**
+ * the key, drawn as every stored credential on the console is: a masked box.
+ *
+ * a press that lands moves focus onto the box's copy control, the next thing a keyboard operator
+ * reaches for: a make unmounts the press that was focused, and a replace hands focus back from its
+ * confirm to a press that is no longer the point. keyed to the key that landed, so the re-read
+ * after it moves nothing while the box stays mounted.
+ */
+function KeyBox({
+	keyText,
+	landed,
+	pending
+}: {
+	keyText: string;
+	landed: string | null;
+	pending: ZapierPress | null;
+}): ReactNode {
 	const id = useId();
+	const copy = useRef<HTMLButtonElement>(null);
+	useEffect(() => {
+		if (landed !== null) copy.current?.focus();
+	}, [landed]);
 	return (
 		<Field
 			id={id}
@@ -249,6 +285,7 @@ function KeyBox({ keyText, pending }: { keyText: string; pending: ZapierPress | 
 			masked
 			copyable
 			copyLabel="Copy key"
+			copyRef={copy}
 			readOnly
 			value={keyText}
 			autoComplete="off"
@@ -313,7 +350,7 @@ function KeyPress({
 /**
  * the deliveries, where they are worth a word, as a strip over the whole section and nothing where
  * they are not. they are about the feed rather than about a press, so they stand apart from the
- * key's own trouble. a gift given up on is a failure and takes the blocker tone; a queue running
+ * key's own trouble. a delivery given up on is a failure and takes the blocker tone; a queue running
  * late is waiting on somebody and takes attention, the tones as `StatusWord`'s props name them
  * (packages/operator/src/components/status/StatusWord.jsx).
  */

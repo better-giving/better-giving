@@ -403,6 +403,11 @@ textarea[part~='field'] {
 .floating {
 	--_label-edge: var(--_edge-control);
 	--_label-edge-width: var(--_border);
+	/*
+	 * how much of that width lies inside the box, below its outer top: the rise's two sides run that
+	 * far past the band's middle, so each turns onto the whole of the edge rather than its outer line.
+	 */
+	--_label-edge-depth: var(--_border);
 }
 
 .floating:has(> [part~='field']:hover) {
@@ -417,10 +422,12 @@ textarea[part~='field'] {
 .floating:has(> [part~='field'][part~='invalid']) {
 	--_label-edge: var(--_bad);
 	--_label-edge-width: calc(var(--_border) + var(--_border));
+	--_label-edge-depth: calc(var(--_border) + var(--_border));
 }
 
 .floating:has(> [part~='field'][part~='invalid']:focus-visible) {
 	--_label-edge-width: calc(var(--_border) + var(--_focus-width));
+	--_label-edge-depth: var(--_border);
 }
 
 .floating > [part~='field'] {
@@ -490,10 +497,18 @@ textarea[part~='field'] {
 			transparent var(--_label-edge-width)
 		)
 		0 50% / 100% 1lh no-repeat,
-		linear-gradient(to bottom, var(--_label-edge) 0 50%, transparent 50%) 0 50% /
-		var(--_label-edge-width) 1lh no-repeat,
-		linear-gradient(to bottom, var(--_label-edge) 0 50%, transparent 50%) 100% 50% /
-		var(--_label-edge-width) 1lh no-repeat,
+		linear-gradient(
+			to bottom,
+			var(--_label-edge) 0 calc(50% + var(--_label-edge-depth)),
+			transparent calc(50% + var(--_label-edge-depth))
+		)
+		0 50% / var(--_label-edge-width) 1lh no-repeat,
+		linear-gradient(
+			to bottom,
+			var(--_label-edge) 0 calc(50% + var(--_label-edge-depth)),
+			transparent calc(50% + var(--_label-edge-depth))
+		)
+		100% 50% / var(--_label-edge-width) 1lh no-repeat,
 		linear-gradient(to bottom, var(--_n1) 50%, var(--_n3) 50%) 0 50% / 100% 1lh no-repeat;
 }
 

@@ -24,7 +24,7 @@ beforeEach(async () => {
 
 async function storedKeys() {
 	const { results } = await env.DB.prepare('select key, key_hash from zapier_key').all<{
-		key: string | null;
+		key: string;
 		key_hash: string;
 	}>();
 	return results;
@@ -32,13 +32,6 @@ async function storedKeys() {
 
 /** the digest worked out apart from ./key.ts, so a hash that drifts from its key is caught. */
 const sha256Hex = (key: string) => createHash('sha256').update(key).digest('hex');
-
-async function storedRows() {
-	const { results } = await env.DB.prepare('select * from zapier_key').all<
-		Record<string, unknown>
-	>();
-	return results;
-}
 
 describe('making the key', () => {
 	it('stores the key it hands over beside the hash a request is checked against', async () => {
@@ -74,6 +67,18 @@ describe('checking a presented key', () => {
 
 	it('turns away every key while none is made', async () => {
 		expect(await verifyZapierKey(db, bearer(`bgz_${'A'.repeat(43)}`))).toBeNull();
+	});
+
+	it('admits by the stored hash, never by the stored key', async () => {
+		const [shown, hashed] = [`bgz_${'A'.repeat(43)}`, `bgz_${'B'.repeat(43)}`];
+		await env.DB.prepare(
+			`insert into zapier_key (id, key, key_hash, created_at, updated_at) values ('zapier', ?, ?, 0, 0)`
+		)
+			.bind(shown, sha256Hex(hashed))
+			.run();
+
+		expect(await verifyZapierKey(db, bearer(shown))).toBeNull();
+		expect(await verifyZapierKey(db, bearer(hashed))).toBe(sha256Hex(hashed));
 	});
 
 	it('reads the scheme in any case', async () => {
@@ -124,18 +129,6 @@ describe('reading the key', () => {
 		if (!made.ok) throw new Error('a first make was refused');
 		expect(await readZapierKey(db)).toEqual({ madeAt: made.madeAt, key: made.key });
 	});
-
-	it('gives no key for a row made before the key was stored, which still admits its key', async () => {
-		const unstored = `bgz_${'B'.repeat(43)}`;
-		await env.DB.prepare(
-			`insert into zapier_key (id, key_hash, created_at, updated_at) values ('zapier', ?, 0, 0)`
-		)
-			.bind(sha256Hex(unstored))
-			.run();
-
-		expect(await readZapierKey(db)).toEqual({ madeAt: new Date(0), key: null });
-		expect(await verifyZapierKey(db, bearer(unstored))).toBe(sha256Hex(unstored));
-	});
 });
 
 describe('replacing the key', () => {
@@ -149,7 +142,6 @@ describe('replacing the key', () => {
 		expect(replaced.key).not.toBe(old.key);
 		expect(await verifyZapierKey(db, bearer(old.key))).toBeNull();
 		expect(await verifyZapierKey(db, bearer(replaced.key))).not.toBeNull();
-		expect(await storedRows()).toHaveLength(1);
 	});
 
 	it('stores the new key and its hash in place of the old pair', async () => {
@@ -231,7 +223,7 @@ describe('replacing the key', () => {
 
 	it('refuses while there is no key to replace', async () => {
 		expect(await replaceZapierKey(db)).toEqual({ ok: false, reason: 'no_key' });
-		expect(await storedRows()).toHaveLength(0);
+		expect(await storedKeys()).toEqual([]);
 	});
 });
 

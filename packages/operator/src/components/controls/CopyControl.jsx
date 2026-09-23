@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Mark } from '../status/Mark.jsx';
 
 /**
+ * @import { Ref } from 'react'
+ *
  * @typedef {object} CopyControlProps
  * @property {string} text the literal put on the clipboard, copied verbatim.
  * @property {string | undefined} [label] the accessible name at rest, for a call site where a bare
@@ -10,6 +12,11 @@ import { Mark } from '../status/Mark.jsx';
  * @property {boolean | undefined} [disabled] closed while a write is in flight on the page it
  *   stands in. held with `aria-disabled` and turned away in the press itself, never the native
  *   attribute: the control keeps its focus, so a reader standing on it is not dropped on `<body>`.
+ * @property {(() => void) | undefined} [onBlocked] told when the clipboard refuses, for a caller
+ *   holding the text out of sight: a refusal is only survivable where the text can be taken by
+ *   hand, and ../forms/Field.jsx shows a masked box's value on it.
+ * @property {Ref<HTMLButtonElement> | undefined} [ref] the button, for a caller moving focus onto it
+ *   once the text it copies has arrived.
  */
 
 /** how long the control holds its outcome before it is offerable again. */
@@ -30,7 +37,7 @@ const SETTLE_MS = 2000;
    the settle timer and the live region are here rather than at each caller, because two copies of
    either is how two surfaces come to report a press differently. */
 /** @param {CopyControlProps} props */
-export function CopyControl({ text, label = 'Copy', disabled = false }) {
+export function CopyControl({ text, label = 'Copy', disabled = false, onBlocked, ref }) {
 	// idle, and the two things that can come back from an attempt. `blocked` is the one worth
 	// drawing: `writeText` rejects on a refused permission and throws outright on an insecure
 	// origin, and a control that answers either by doing nothing visible is worse than no control at
@@ -55,8 +62,9 @@ export function CopyControl({ text, label = 'Copy', disabled = false }) {
 	);
 
 	// the name at every moment, and the drawn word at the one state where there is one. `blocked`
-	// says the clipboard refused rather than what to do about it, because what to do about it is
-	// already on the screen: the text it would have copied is a line away, selectable.
+	// says the clipboard refused rather than what to do about it, because what to do about it is on
+	// the screen by then: the text it would have copied is printed beside the control, or — held out
+	// of sight, as a masked box holds it — shown by the caller `onBlocked` tells.
 	const spoken = outcome === 'copied' ? 'Copied' : outcome === 'blocked' ? 'Copy blocked' : label;
 
 	async function copy() {
@@ -70,6 +78,7 @@ export function CopyControl({ text, label = 'Copy', disabled = false }) {
 			landed = 'blocked';
 		}
 		setOutcome(landed);
+		if (landed === 'blocked') onBlocked?.();
 
 		// the region is cleared and written a task apart, never written straight over. a second press
 		// inside the settle window puts back the word already in the region, and a region handed what
@@ -99,6 +108,7 @@ export function CopyControl({ text, label = 'Copy', disabled = false }) {
 			    word the button draws — a name that did not contain the visible one would leave a
 			    voice user with nothing to say (WCAG 2.5.3). */}
 			<button
+				ref={ref}
 				type="button"
 				onClick={copy}
 				aria-disabled={disabled || undefined}

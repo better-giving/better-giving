@@ -109,7 +109,7 @@ describe('the Zapier page read', () => {
 		expect(binary.reads).toBe(2);
 	});
 
-	it('hands the page the key the reading carries, which is drawn on every visit', async () => {
+	it('passes the report through to the page, key included', async () => {
 		const read = await visit();
 
 		expect(read.zapier).toEqual({

@@ -5,9 +5,7 @@
 // subscriptions, answers with these values, the operator console draws them, and the two packages
 // import nothing of each other's.
 //
-// **the key is in every reading**, as it is in the answer to the press that made it. a key made
-// before the deployment stored it reads `null`: it still works, and `replace` is how the console
-// gets one it can show.
+// **the key is in every reading**, as it is in the answer to the press that made it.
 //
 // **it is a block and never a member of the report**, the decision ./quickbooks.ts states: a
 // deployment nobody connects to Zapier is not half set up.
@@ -28,11 +26,8 @@ export type ZapierPress = (typeof ZAPIER_PRESSES)[number];
 
 /** everything the screen draws, in one read. */
 export interface ZapierReport {
-	/**
-	 * the key, or null before one is made. `madeAt` is an ISO-8601 instant; `key` is the plaintext,
-	 * or null for a key made before the deployment stored it.
-	 */
-	readonly key: { readonly madeAt: string; readonly key: string | null } | null;
+	/** the key, or null before one is made. `madeAt` is an ISO-8601 instant; `key` is the plaintext. */
+	readonly key: { readonly madeAt: string; readonly key: string } | null;
 	/** the open subscriptions per trigger — what `replace` would disconnect. */
 	readonly listening: { readonly newGift: number; readonly newDonor: number };
 	readonly deliveries: {

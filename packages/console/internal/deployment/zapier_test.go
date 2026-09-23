@@ -4,19 +4,21 @@ import (
 	"context"
 	"net/http"
 	"reflect"
+	"regexp"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/better-giving/console/internal/cf"
 )
 
-// a key as the deployment mints one, which only the answer to the press that made it carries.
+// a key as the deployment mints one, which every reading carries and so does the press that made it.
 const zapierKey = "bgz_q7Rk3vYh0cXw9LmN2pAe5sTu8jBf1gHd4iKo6lZyC0M"
 
 // a key made and two Zaps listening on it, with a delivery owed.
 func zapierKeyed() map[string]any {
 	return map[string]any{
-		"key":       map[string]any{"madeAt": "2026-09-01T09:00:00.000Z"},
+		"key":       map[string]any{"madeAt": "2026-09-01T09:00:00.000Z", "key": zapierKey},
 		"listening": map[string]any{"newGift": float64(2), "newDonor": float64(1)},
 		"deliveries": map[string]any{
 			"waiting": float64(3), "failed": float64(1),
@@ -71,6 +73,27 @@ func TestTheZapierFixturesAreTheShapeTheDeploymentAnswersWith(t *testing.T) {
 		}
 	}
 }
+
+// the sweep above is flat, and `key` is also the report's own member and the press's, so the key's
+// members are checked where they sit.
+func TestTheKeyedFixturesKeyIsTheShapeTheReportStatesForIt(t *testing.T) {
+	source := wire(t, "zapier.ts")
+	report := strings.Index(source, "export interface ZapierReport")
+	if report < 0 {
+		t.Fatal("that module states no ZapierReport")
+	}
+	block := keyBlock.FindStringSubmatch(source[report:])
+	if block == nil {
+		t.Fatal("ZapierReport states no key object")
+	}
+	stated := sortedNames(member.FindAllStringSubmatch(block[1], -1))
+	standing, _ := zapierKeyed()["key"].(map[string]any)
+	if carried := keysOf(standing); !slices.Equal(carried, stated) {
+		t.Fatalf("the keyed fixture's key carries %v, and that module states %v", carried, stated)
+	}
+}
+
+var keyBlock = regexp.MustCompile(`readonly\s+key\s*:\s*\{([^}]*)\}`)
 
 func TestAZapierReadWithNoSessionMakesNoRequestAtAll(t *testing.T) {
 	read := ReadZapier(context.Background(), nil)

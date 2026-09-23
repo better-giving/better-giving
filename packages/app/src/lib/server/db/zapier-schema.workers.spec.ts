@@ -106,6 +106,11 @@ describe('the key itself is stored in the shape it is minted in, or not at all',
 		['44 characters after the prefix', `${KEY.slice(0, -1)}==`],
 		['standard base64', `${KEY.slice(0, -1)}+`],
 		['a space', `${KEY.slice(0, -1)} `],
+		['`+` first after the prefix', `bgz_+${KEY.slice(5)}`],
+		['`/` mid-key', `${KEY.slice(0, 25)}/${KEY.slice(26)}`],
+		['`=` mid-key', `${KEY.slice(0, 25)}=${KEY.slice(26)}`],
+		['a space mid-key', `${KEY.slice(0, 25)} ${KEY.slice(26)}`],
+		['a non-ASCII letter mid-key', `${KEY.slice(0, 25)}é${KEY.slice(26)}`],
 		['empty', '']
 	])('refuses %s', async (_, key) => {
 		const message = await rejection(() => setKey(key));

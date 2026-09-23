@@ -1,7 +1,7 @@
 import type { ZapierReport } from '@better-giving/operator/console/zapier';
 import { describe, expect, it } from 'vitest';
 import type { ZapierAnswer } from './zapier-standing';
-import { keyStanding, listeningSays } from './zapier-standing';
+import { deliveriesSay, keyStanding, listeningSays } from './zapier-standing';
 
 describe('listeningSays', () => {
 	it.each([
@@ -38,10 +38,6 @@ describe('keyStanding', () => {
 		});
 	});
 
-	it('is unshown for a key made before the deployment stored it', () => {
-		expect(keyStanding(report({ madeAt: MADE, key: null }), null)).toEqual({ kind: 'unshown' });
-	});
-
 	it('takes the reading’s key over the answer’s, since the reading is read after the press', () => {
 		expect(keyStanding(report({ madeAt: MADE, key: 'bgz_later' }), made('bgz_answered'))).toEqual({
 			kind: 'known',
@@ -50,20 +46,38 @@ describe('keyStanding', () => {
 	});
 
 	it('falls back to the answer’s key where the reading has none to show', () => {
-		expect(keyStanding(report({ madeAt: MADE, key: null }), made('bgz_new'))).toEqual({
-			kind: 'known',
-			key: 'bgz_new'
-		});
 		expect(keyStanding(report(null), made('bgz_new'))).toEqual({ kind: 'known', key: 'bgz_new' });
 	});
 
-	it('reads the reading where the last press did not land', () => {
+	it('draws the answer’s key where the reading after the press did not come back', () => {
+		expect(keyStanding(null, made('bgz_new'))).toEqual({ kind: 'known', key: 'bgz_new' });
+	});
+
+	it('is none with no reading and no landed press', () => {
 		const refused: ZapierAnswer = {
 			kind: 'reported',
 			report: { ok: false, press: 'make', detail: 'A key already exists.' }
 		};
-		expect(keyStanding(report({ madeAt: MADE, key: null }), refused)).toEqual({
-			kind: 'unshown'
-		});
+		expect(keyStanding(null, null)).toEqual({ kind: 'none' });
+		expect(keyStanding(null, refused)).toEqual({ kind: 'none' });
+	});
+});
+
+describe('deliveriesSay', () => {
+	const NOW = new Date('2026-09-02T12:00:00.000Z');
+	const failing = (failed: number): ZapierReport => ({
+		...report({ madeAt: MADE, key: 'bgz_read' }),
+		deliveries: { waiting: 0, failed, oldestWaitingAt: null }
+	});
+
+	it.each([
+		[1, '1 delivery to your Zaps failed.'],
+		[4, '4 deliveries to your Zaps failed.']
+	])('counts %i failure as deliveries, never as gifts', (failed, said) => {
+		expect(deliveriesSay(failing(failed), NOW)).toEqual([said]);
+	});
+
+	it('says nothing with no key, whatever the rows hold', () => {
+		expect(deliveriesSay({ ...failing(2), key: null }, NOW)).toEqual([]);
 	});
 });

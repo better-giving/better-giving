@@ -2426,8 +2426,9 @@ export const zapierKey = sqliteTable(
 		// append new columns below this line — see rule 1 at the top of this file.
 
 		/**
-		 * the key the console shows, as `newKey()` in ../zapier/key.ts makes it. `null` on a row
-		 * minted before the column existed, which has no key to show until it is replaced.
+		 * the key the console shows, as `newKey()` in ../zapier/key.ts makes it. nullable in sql
+		 * only: key.ts never writes `null`, and migrations/0008_zapier_keyless_row_dropped.sql deleted
+		 * the one row that held it.
 		 */
 		key: text('key')
 	},
