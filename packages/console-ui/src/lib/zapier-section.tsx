@@ -3,8 +3,9 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { CodeSlab } from '@better-giving/operator/components/data/CodeSlab';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
-import { Section, Stack } from '@better-giving/operator/components/shell/Layout';
+import { Section } from '@better-giving/operator/components/shell/Layout';
 import type { MarkName } from '@better-giving/operator/components/status/Mark';
+import { Banner } from '@better-giving/operator/components/status/Banner';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import type { ZapierPress, ZapierReport } from '@better-giving/operator/console/zapier';
 import type { ReactNode } from 'react';
@@ -67,9 +68,11 @@ export function ZapierSection({
 	const made = freshKey(answer);
 	return (
 		<Section>
-			{/* no gap of its own: the step between the two groups is `.adm-named`'s alone. */}
+			{/* no gap of its own: the step between the blocks is `.adm-named`'s alone, and the first
+			    block takes it only when the deliveries' strip stands over it. */}
 			<div>
-				<Stack tight>
+				<Deliveries report={report} />
+				<div className="adm-named">
 					<p className="adm-prose">
 						The{' '}
 						<a href={ZAPIER_APP_INVITE} target="_blank" rel="noreferrer">
@@ -81,7 +84,7 @@ export function ZapierSection({
 						<Trigger trigger="newDonor" report={report} />
 						<Trigger trigger="newGift" report={report} />
 					</div>
-				</Stack>
+				</div>
 				<div className="adm-named">
 					<p className="adm-prose">and requires:</p>
 					{/* unnumbered: the app asks for both, in no order. the base reset takes the list's
@@ -97,12 +100,10 @@ export function ZapierSection({
 								<Asked label="Your authentication key">
 									<KeyPress report={report} pending={pending} onPress={onPress} />
 									<Trouble answer={answer} />
-									<Deliveries report={report} />
 								</Asked>
 							) : (
 								<div className="adm-stated">
 									<KeyInHand made={made} pending={pending} />
-									<Deliveries report={report} />
 								</div>
 							)}
 						</li>
@@ -115,7 +116,7 @@ export function ZapierSection({
 
 const TRIGGER_MARK: Record<ZapierTrigger, MarkName> = {
 	newDonor: 'user-plus',
-	newGift: 'hand-coins'
+	newGift: 'stamp'
 };
 
 /**
@@ -130,7 +131,7 @@ function Trigger({ trigger, report }: { trigger: ZapierTrigger; report: ZapierRe
 	return (
 		<div className="adm-record">
 			<div className="adm-record__head adm-record__head--marked">
-				<span className="adm-record__mark">
+				<span className="adm-record__mark adm-record__mark--bare">
 					<Mark name={TRIGGER_MARK[trigger]} />
 				</span>
 				<h2 className="adm-record__title">{TRIGGER_NAME[trigger]}</h2>
@@ -278,11 +279,16 @@ function KeyPress({
 }
 
 /**
- * the deliveries, under the key they go out on, where they are worth a word, and nothing where
- * they are not.
+ * the deliveries, where they are worth a word, as a strip over the whole section and nothing where
+ * they are not. they are about the feed rather than about a press, so they stand apart from the
+ * key's own trouble. a gift given up on is a failure and takes the blocker tone; a queue running
+ * late is waiting on somebody and takes attention, the tones as `StatusWord`'s props name them
+ * (packages/operator/src/components/status/StatusWord.jsx).
  */
 function Deliveries({ report }: { report: ZapierReport }): ReactNode {
 	const said = deliveriesSay(report, new Date());
 	if (said.length === 0) return null;
-	return <FieldMessage>{said.join(' ')}</FieldMessage>;
+	return (
+		<Banner tone={report.deliveries.failed > 0 ? 'blocker' : 'attention'}>{said.join(' ')}</Banner>
+	);
 }

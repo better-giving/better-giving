@@ -3957,6 +3957,25 @@
 		color: var(--admin-ink-2);
 	}
 
+	/* a mark drawn bare at a card's head: no tile, for a card whose mark sits beside a title rather
+	   than holding the row's leading edge on its own. with no tile to come down to, the direction
+	   turns round and the mark comes to the name's first line instead — the name's face and leading
+	   are stated on the mark's box so `1lh` measures the line the name is set in, and the name's own
+	   drop is cancelled below. it keeps the tile's `align-self: start`, out of the baseline group for
+	   the tile's reason. */
+	.adm-record__mark--bare {
+		inline-size: auto;
+		block-size: auto;
+		background: none;
+		font-size: var(--admin-subhead-size);
+		line-height: var(--admin-subhead-lh);
+		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
+	}
+
+	.adm-record__head--marked > .adm-record__mark--bare + .adm-record__title {
+		margin-block-start: 0;
+	}
+
 	/* the name's first line centred against the tile beside it, which is the same rule
 	   `.adm-status__mark` above keeps and taken from the other end: there the mark moves to the
 	   text's line, and here the text moves to the mark's box. the direction is what the card is
