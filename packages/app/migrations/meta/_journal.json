@@ -50,6 +50,13 @@
       "when": 1790076354438,
       "tag": "0006_zapier_key_subscription_and_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1790153433825,
+      "tag": "0007_zapier_key_shown",
+      "breakpoints": true
     }
   ]
 }

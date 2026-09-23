@@ -9,12 +9,13 @@
 		"0003_nowpayments_provider_and_crypto.sql",
 		"0004_quickbooks_connection_and_sync.sql",
 		"0005_quickbooks_sync_claim.sql",
-		"0006_zapier_key_subscription_and_delivery.sql"
+		"0006_zapier_key_subscription_and_delivery.sql",
+		"0007_zapier_key_shown.sql"
 	],
 	"crons": [
 		"*/30 * * * *",
 		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "74ae870b52422245aeb7779fc99a465000bbc849"
+	"commit": "af81367ef8e6cc792d6d9c522b3d339148139bdd"
 }

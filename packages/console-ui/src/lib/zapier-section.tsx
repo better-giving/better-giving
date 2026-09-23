@@ -3,7 +3,7 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { CodeSlab } from '@better-giving/operator/components/data/CodeSlab';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
-import { Section } from '@better-giving/operator/components/shell/Layout';
+import { Section, Stack } from '@better-giving/operator/components/shell/Layout';
 import type { MarkName } from '@better-giving/operator/components/status/Mark';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { Mark } from '@better-giving/operator/components/status/Mark';
@@ -17,7 +17,7 @@ import {
 	TRIGGER_NAME,
 	UNKNOWN,
 	deliveriesSay,
-	freshKey,
+	keyStanding,
 	listeningSays,
 	listeningTotal,
 	pressTrouble,
@@ -38,6 +38,9 @@ import {
 /** the invite to the private app, which is how an operator reaches it at all while it is unlisted. */
 const ZAPIER_APP_INVITE =
 	'https://zapier.com/developer/public-invite/246638/803637a3b082236c496f23f989243a87/';
+
+/** the operator's own Zaps at Zapier, where a delivery that went wrong is mended. */
+const ZAPIER_ZAPS = 'https://zapier.com/app/zaps';
 
 /* the page this section is drawn on names an answer by the type it is handed
    (./zapier-standing.ts), so the two spell one thing once. */
@@ -65,7 +68,6 @@ export function ZapierSection({
 	if (zapier.kind === 'unread')
 		return <Section>{noAnswer(zapier.read, 'it can’t say whether there is a key')}</Section>;
 	const report = zapier.report;
-	const made = freshKey(answer);
 	return (
 		<Section>
 			{/* no gap of its own: the step between the blocks is `.adm-named`'s alone, and the first
@@ -96,16 +98,7 @@ export function ZapierSection({
 							</Asked>
 						</li>
 						<li>
-							{made === null ? (
-								<Asked label="Your authentication key">
-									<KeyPress report={report} pending={pending} onPress={onPress} />
-									<Trouble answer={answer} />
-								</Asked>
-							) : (
-								<div className="adm-stated">
-									<KeyInHand made={made} pending={pending} />
-								</div>
-							)}
+							<KeyItem report={report} answer={answer} pending={pending} onPress={onPress} />
 						</li>
 					</ul>
 				</div>
@@ -177,8 +170,15 @@ function Trouble({ answer }: { answer: ZapierAnswer | null }): ReactNode {
 	if (trouble === null) return null;
 	// the deployment's refusal is a sentence written for a reader and naming the press to make, so
 	// it is drawn as one rather than quoted.
-	if (trouble.kind === 'refused') return <FieldMessage>{trouble.detail}</FieldMessage>;
-	return noAnswer(trouble.read, UNKNOWN[trouble.press]);
+	return (
+		<div className="adm-named">
+			{trouble.kind === 'refused' ? (
+				<FieldMessage>{trouble.detail}</FieldMessage>
+			) : (
+				noAnswer(trouble.read, UNKNOWN[trouble.press])
+			)}
+		</div>
+	);
 }
 
 /**
@@ -191,7 +191,9 @@ function Asked({ label, children }: { label: string; children: ReactNode }): Rea
 		/* biome-ignore lint/a11y/useSemanticElements: a fieldset groups fields under a legend and this
 		   holds none — a value and the control that copies it, or a press, named by the caption. */
 		<div className="adm-stated" role="group" aria-labelledby={id}>
-			<span className="adm-stated__label" id={id}>
+			{/* the field's label face, so this caption reads as the `<label>` the key's box carries
+			    once there is a key to show. */}
+			<span className="adm-field__label" id={id}>
 				{label}
 			</span>
 			{children}
@@ -199,44 +201,74 @@ function Asked({ label, children }: { label: string; children: ReactNode }): Rea
 	);
 }
 
+type KeyProps = {
+	report: ZapierReport;
+	pending: ZapierPress | null;
+	onPress: (press: ZapierPress) => void;
+};
+
 /**
- * the key the last press made, drawn as every stored credential on the console is: a masked box.
+ * the key's item in whichever of its three standings ./zapier-standing.ts reads.
  *
- * it wins over the reading, which is why the section asks for it first: after a replace, the
- * reading that has not landed yet still says a key stands.
+ * a press's trouble stands under it a named block's step away (`.adm-named`, in a parent with no
+ * gap of its own): it reports the press, and drawn closer it reads as part of the box or the press
+ * over it.
  */
-function KeyInHand({ made, pending }: { made: string; pending: ZapierPress | null }): ReactNode {
+function KeyItem({ answer, ...props }: KeyProps & { answer: ZapierAnswer | null }): ReactNode {
+	const standing = keyStanding(props.report, answer);
+	if (standing.kind === 'known')
+		return (
+			<div className="adm-stated">
+				<div>
+					<Stack tight>
+						<KeyBox keyText={standing.key} pending={props.pending} />
+						<KeyPress press="replace" {...props} />
+					</Stack>
+					<Trouble answer={answer} />
+				</div>
+			</div>
+		);
+	return (
+		<Asked label="Your authentication key">
+			<div>
+				<KeyPress press={standing.kind === 'none' ? 'make' : 'replace'} {...props} />
+				<Trouble answer={answer} />
+			</div>
+		</Asked>
+	);
+}
+
+/** the key, drawn as every stored credential on the console is: a masked box. */
+function KeyBox({ keyText, pending }: { keyText: string; pending: ZapierPress | null }): ReactNode {
 	const id = useId();
 	return (
 		<Field
 			id={id}
 			label="Your authentication key"
-			hint="It isn’t shown again."
 			code
 			masked
+			copyable
+			copyLabel="Copy key"
 			readOnly
-			value={made}
+			value={keyText}
 			autoComplete="off"
 			spellCheck={false}
-			// closed under the page's press as every box is (../closed-while-writing.spec.ts), though
-			// none is drawn beside a key in hand.
+			// closed under the page's press as every box is (../closed-while-writing.spec.ts): a replace
+			// in flight ends the key it shows.
 			disabled={pending !== null}
 		/>
 	);
 }
 
-/** the press over a key that is not in hand: make where there is none, replace where one stands. */
+/** the press over the key: make where there is none, replace where one stands. */
 function KeyPress({
+	press,
 	report,
 	pending,
 	onPress
-}: {
-	report: ZapierReport;
-	pending: ZapierPress | null;
-	onPress: (press: ZapierPress) => void;
-}): ReactNode {
+}: KeyProps & { press: ZapierPress }): ReactNode {
 	const [asking, setAsking] = useState(false);
-	if (report.key === null)
+	if (press === 'make')
 		return (
 			<div className="adm-actions">
 				<Press press="make" variant="primary" pending={pending} onPress={onPress}>
@@ -289,6 +321,12 @@ function Deliveries({ report }: { report: ZapierReport }): ReactNode {
 	const said = deliveriesSay(report, new Date());
 	if (said.length === 0) return null;
 	return (
-		<Banner tone={report.deliveries.failed > 0 ? 'blocker' : 'attention'}>{said.join(' ')}</Banner>
+		<Banner tone={report.deliveries.failed > 0 ? 'blocker' : 'attention'}>
+			{said.join(' ')} Check{' '}
+			<a href={ZAPIER_ZAPS} target="_blank" rel="noreferrer">
+				your Zaps on Zapier
+			</a>
+			.
+		</Banner>
 	);
 }

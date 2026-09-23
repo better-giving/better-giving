@@ -86,7 +86,11 @@ async function seed() {
 				                       recurring_id)
 				 values (?, ?, 2500, 'USD', 0, 0, ?)`
 			)
-			.bind(CHARGE_ID, CONTACT_ID, PLAN_ID)
+			.bind(CHARGE_ID, CONTACT_ID, PLAN_ID),
+		db().prepare(
+			`insert into zapier_key (id, key_hash, created_at, updated_at)
+			 values ('zapier', '${'a'.repeat(64)}', 0, 0)`
+		)
 	];
 	// a row of each nullable shape `payment` holds — a processor with its id, staff entry with and
 	// without a provider, a refund — so a rebuild's copy step has every combination to lose.
@@ -162,6 +166,7 @@ describe('the newest migration keeps every row the database already held', () =>
 			]);
 			expect(after.get('donation')?.find((r) => r.id === CHARGE_ID)?.recurring_id).toBe(PLAN_ID);
 			expect(after.get('recurring_plan')?.map((r) => r.id)).toEqual([PLAN_ID]);
+			expect(after.get('zapier_key')?.map((r) => r.id)).toEqual(['zapier']);
 		}
 	);
 

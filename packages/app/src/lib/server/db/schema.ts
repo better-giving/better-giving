@@ -2402,11 +2402,13 @@ export const quickbooksSync = sqliteTable(
  * the one key Zapier presents on every call it makes to this deployment.
  *
  * at most one row — `quickbooks_connection` is the precedent the check copies — and none until a
- * key is minted. replacing the key deletes this row and inserts the new one in one batch, so there
- * is never a second key to choose between and `created_at` is always the current key's.
+ * key is minted. replacing the key rewrites this row in place, so there is never a second key to
+ * choose between, and `created_at` moves with it so it is always the current key's.
  *
- * only the hash is stored. the key is shown once, when it is minted, and a request is admitted by
- * hashing what it presents and comparing — so a read of this table hands nobody a working key.
+ * the key itself is stored, so the console can show it on every visit like any other configuration
+ * value — the carve-out CLAUDE.md's boundaries ban names for a key the app mints for itself. a
+ * request is still admitted by hashing what it presents and comparing against `key_hash`, never
+ * against `key`.
  */
 export const zapierKey = sqliteTable(
 	'zapier_key',
@@ -2418,13 +2420,28 @@ export const zapierKey = sqliteTable(
 		/** the lowercase hex SHA-256 of the whole key string. */
 		keyHash: text('key_hash').notNull(),
 
-		/** what the console shows as the date the key was made — a replace re-inserts the row. */
+		/** what the console shows as the date the key was made — a replace sets it anew. */
 		createdAt: createdAt(),
-		updatedAt: updatedAt()
+		updatedAt: updatedAt(),
 		// append new columns below this line — see rule 1 at the top of this file.
+
+		/**
+		 * the key the console shows, as `newKey()` in ../zapier/key.ts makes it. `null` on a row
+		 * minted before the column existed, which has no key to show until it is replaced.
+		 */
+		key: text('key')
 	},
 	(t) => [
 		check('zapier_key_id_check', sql`${t.id} = 'zapier'`),
+		/**
+		 * `bgz_` and 43 base64url characters, 32 bytes unpadded. the length refuses the 64-digit hash
+		 * written where the key belongs; `glob` is case-sensitive, so the prefix cannot pass as
+		 * `BGZ_`. `-` is last in the class, where glob reads it as itself rather than a range.
+		 */
+		check(
+			'zapier_key_key_check',
+			sql`${t.key} is null or (length(${t.key}) = 47 and ${t.key} glob 'bgz_*' and substr(${t.key}, 5) not glob '*[^A-Za-z0-9_-]*')`
+		),
 		/**
 		 * `glob` and not `like`: glob is case-sensitive, so an uppercase digest — the same hash in
 		 * the case a lowercase comparison never matches — is refused rather than stored. the length

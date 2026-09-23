@@ -3144,6 +3144,23 @@
 		transform: translateY(-50%);
 	}
 
+	/* two presses in one box — a copy control beside the reveal — stand as one cluster where the one
+	   press stands above, and the box reserves the room twice over. the cluster lays out the buttons
+	   alone: the copy control's live region is `.adm-vh`, out of the flow. */
+	.adm-maskwrap__presses {
+		position: absolute;
+		inset-inline-end: var(--admin-space-2);
+		inset-block-start: 50%;
+		transform: translateY(-50%);
+		display: flex;
+		align-items: center;
+		gap: var(--admin-space-2);
+	}
+
+	.adm-maskwrap:has(> .adm-maskwrap__presses) > .adm-input {
+		padding-inline-end: calc(var(--admin-space-10) * 2);
+	}
+
 	.adm-field__error {
 		display: flex;
 		align-items: flex-start;

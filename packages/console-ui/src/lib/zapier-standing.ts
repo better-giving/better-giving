@@ -11,9 +11,9 @@ import { waitedSays } from './quickbooks-standing';
 // and the reason is the same: ../../vite.config.ts pins `node` and there is no dom, so a rule left
 // inside the component is one no spec can reach.
 //
-// **the key is on the screen for as long as the answer that carried it is.** the deployment keeps a
-// hash and never the key (packages/operator/src/console/zapier.ts), so no reading after the press
-// can draw it again.
+// **the key is read back on every visit** (packages/operator/src/console/zapier.ts), except one made
+// before the deployment stored it, which the console cannot show and only a replace brings onto the
+// screen.
 //
 // **the section draws one press at a time, so every answer reports there.** a make refused because
 // a key now exists lands on a section drawing the replace press, and its sentence names that press
@@ -34,8 +34,28 @@ export type ZapierAnswer =
 export const zapierIntent = (press: ZapierPress): string => `zapier:${press}`;
 
 /** the key the last press made, or `null` where the last answer carries none. */
-export const freshKey = (answer: ZapierAnswer | null): string | null =>
+const freshKey = (answer: ZapierAnswer | null): string | null =>
 	answer?.kind === 'reported' && answer.report.ok ? answer.report.key : null;
+
+/**
+ * what the key's item shows: no key to create, a key to read, or a key that stands but that the
+ * console cannot show, made before the deployment stored it.
+ */
+export type KeyStanding = { kind: 'none' } | { kind: 'known'; key: string } | { kind: 'unshown' };
+
+/**
+ * the reading's key wins wherever it has one: the page reads again after every press, so the
+ * reading is the later of the two, and a key replaced from another console since the answer came
+ * back is the reading's and not the answer's. the answer's key stands in only where the reading has
+ * none to show.
+ */
+export function keyStanding(report: ZapierReport, answer: ZapierAnswer | null): KeyStanding {
+	const read = report.key?.key ?? null;
+	if (read !== null) return { kind: 'known', key: read };
+	const made = freshKey(answer);
+	if (made !== null) return { kind: 'known', key: made };
+	return report.key === null ? { kind: 'none' } : { kind: 'unshown' };
+}
 
 /** what stands under the press after an answer that did not land, or `null` where it landed. */
 export type PressTrouble =

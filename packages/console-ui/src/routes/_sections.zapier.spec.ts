@@ -15,7 +15,7 @@ const binary = vi.hoisted(() => ({
 }));
 
 const report = (): ZapierReport => ({
-	key: binary.keyed ? { madeAt: '2026-09-01T00:00:00.000Z' } : null,
+	key: binary.keyed ? { madeAt: '2026-09-01T00:00:00.000Z', key: 'bgz_standing' } : null,
 	listening: { newGift: 1, newDonor: 0 },
 	deliveries: { waiting: 0, failed: 0, oldestWaitingAt: null }
 });
@@ -107,6 +107,17 @@ describe('the Zapier page read', () => {
 		await visit();
 
 		expect(binary.reads).toBe(2);
+	});
+
+	it('hands the page the key the reading carries, which is drawn on every visit', async () => {
+		const read = await visit();
+
+		expect(read.zapier).toEqual({
+			kind: 'read',
+			report: expect.objectContaining({
+				key: { madeAt: '2026-09-01T00:00:00.000Z', key: 'bgz_standing' }
+			})
+		});
 	});
 
 	it('answers the second visit from the first where no key stands', async () => {

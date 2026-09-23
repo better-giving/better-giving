@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button } from '../controls/Button.jsx';
+import { CopyControl } from '../controls/CopyControl.jsx';
 import { FieldMessage } from './FieldMessage.jsx';
 
 /**
@@ -36,6 +37,13 @@ import { FieldMessage } from './FieldMessage.jsx';
  *
  *   an input's alone: a textarea takes no type, so a masked one holds nothing back and draws no
  *   press at all.
+ * @property {boolean | undefined} [copyable] a copy control inside the box, beside the masked
+ *   box's press, taking the value the box was handed (`value`, else `defaultValue`). it is for a
+ *   read-only box holding a credential somebody pastes elsewhere: copied from the box, the value
+ *   need never be shown to be taken. it stands in the same place the masked press does and for the
+ *   same reason, and the two share one trailing cluster. an input's alone, as `masked` is.
+ * @property {string | undefined} [copyLabel] the copy control's accessible name, where a bare Copy
+ *   would not say what of.
  * @property {boolean | undefined} [code]
  * @property {string | undefined} [placeholder]
  * @property {HTMLInputTypeAttribute | undefined} [type]
@@ -74,6 +82,8 @@ export function Field({
 	needed,
 	beside,
 	masked,
+	copyable,
+	copyLabel,
 	code,
 	placeholder,
 	type = 'text',
@@ -112,15 +122,34 @@ export function Field({
 				onClick={() => setShown((was) => !was)}
 			/>
 		) : null;
-	/* the box with its own press inside it: `.adm-maskwrap` in packages/operator/src/styles/adm.css
-	   is what places the press and reserves the room for it. a box with no press draws no wrapper. */
+	/* the copy control, whole: its live region stands beside its button and is out of the flow
+	   (`.adm-vh`), so the cluster below lays out the button alone. */
+	const copy =
+		copyable && as !== 'textarea' ? (
+			<CopyControl
+				text={String(rest.value ?? rest.defaultValue ?? '')}
+				{...(copyLabel ? { label: copyLabel } : {})}
+				disabled={rest.disabled}
+			/>
+		) : null;
+	/* the box with its own presses inside it: `.adm-maskwrap` in packages/operator/src/styles/adm.css
+	   is what places them and reserves the room. one press stands in the wrapper on its own; two
+	   stand in `.adm-maskwrap__presses`, the copy first so the reveal keeps the trailing end it has
+	   on every other masked box. a box with no press draws no wrapper. */
 	const inBox = (/** @type {ReactNode} */ box) =>
-		reveal === null ? (
+		reveal === null && copy === null ? (
 			box
 		) : (
 			<div className="adm-maskwrap">
 				{box}
-				{reveal}
+				{copy === null ? (
+					reveal
+				) : (
+					<div className="adm-maskwrap__presses">
+						{copy}
+						{reveal}
+					</div>
+				)}
 			</div>
 		);
 	/* the box, alone on its row or sharing it. what shares it is wrapped rather than placed beside

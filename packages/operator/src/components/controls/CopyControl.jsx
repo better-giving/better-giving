@@ -7,6 +7,9 @@ import { Mark } from '../status/Mark.jsx';
  * @property {string | undefined} [label] the accessible name at rest, for a call site where a bare
  *   Copy would not say what of. never drawn: at rest the control is the mark, and this is the whole
  *   of what says which one it is to anyone not reading the line it sits on.
+ * @property {boolean | undefined} [disabled] closed while a write is in flight on the page it
+ *   stands in. held with `aria-disabled` and turned away in the press itself, never the native
+ *   attribute: the control keeps its focus, so a reader standing on it is not dropped on `<body>`.
  */
 
 /** how long the control holds its outcome before it is offerable again. */
@@ -27,7 +30,7 @@ const SETTLE_MS = 2000;
    the settle timer and the live region are here rather than at each caller, because two copies of
    either is how two surfaces come to report a press differently. */
 /** @param {CopyControlProps} props */
-export function CopyControl({ text, label = 'Copy' }) {
+export function CopyControl({ text, label = 'Copy', disabled = false }) {
 	// idle, and the two things that can come back from an attempt. `blocked` is the one worth
 	// drawing: `writeText` rejects on a refused permission and throws outright on an insecure
 	// origin, and a control that answers either by doing nothing visible is worse than no control at
@@ -57,6 +60,7 @@ export function CopyControl({ text, label = 'Copy' }) {
 	const spoken = outcome === 'copied' ? 'Copied' : outcome === 'blocked' ? 'Copy blocked' : label;
 
 	async function copy() {
+		if (disabled) return;
 		/** @type {'copied' | 'blocked'} */
 		let landed;
 		try {
@@ -97,6 +101,7 @@ export function CopyControl({ text, label = 'Copy' }) {
 			<button
 				type="button"
 				onClick={copy}
+				aria-disabled={disabled || undefined}
 				aria-label={spoken}
 				className="adm-btn adm-btn--quiet adm-btn--sm"
 			>

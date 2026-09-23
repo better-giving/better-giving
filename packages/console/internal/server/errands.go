@@ -190,8 +190,8 @@ func errandRoutes(routes *http.ServeMux, held, patient func() (cf.Get, cf.Post))
 		answer(w, http.StatusOK, deployment.PressQuickbooks(r.Context(), post, posted))
 	})
 
-	// where this deployment's Zapier key stands and how many Zaps are listening on it. No key is
-	// ever in it.
+	// where this deployment's Zapier key stands, the key included, and how many Zaps are listening
+	// on it. the body carries the key, so it is written to the page and never logged.
 	routes.HandleFunc("GET /api/deployment/zapier", func(w http.ResponseWriter, r *http.Request) {
 		get, _ := held()
 		answer(w, http.StatusOK, deployment.ReadZapier(r.Context(), get))
@@ -199,8 +199,8 @@ func errandRoutes(routes *http.ServeMux, held, patient func() (cf.Get, cf.Post))
 
 	// makes the first key or replaces the one there is, and hands the page the plaintext.
 	//
-	// **this answer carries the key and is the only one that ever does**, so neither this body nor
-	// the deployment's is logged or kept: it is written to the page and dropped
+	// **this answer carries the key, as the read above does**, so neither this body nor the
+	// deployment's is logged or kept: it is written to the page and dropped
 	// (internal/deployment/zapier.go).
 	routes.HandleFunc("POST /api/deployment/zapier", func(w http.ResponseWriter, r *http.Request) {
 		var posted zapierPress

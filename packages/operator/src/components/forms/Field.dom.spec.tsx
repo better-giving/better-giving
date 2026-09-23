@@ -171,6 +171,26 @@ describe('a field mounted into a document', () => {
 		expect(reveal(root).getAttribute('type')).toBe('button');
 	});
 
+	it('holds a copy control inside the box beside the reveal, named and copying the value', () => {
+		// one trailing cluster inside the box, copy first so the reveal keeps the end it has on every
+		// other masked box; the control copies the value the box was handed, hidden or not.
+		const root = render(Field, {
+			id: 'zapier-key',
+			label: 'Your authentication key',
+			masked: true,
+			copyable: true,
+			copyLabel: 'Copy key',
+			readOnly: true,
+			value: 'bgz_key'
+		});
+		const cluster = root.querySelector('.adm-maskwrap > .adm-maskwrap__presses');
+
+		expect(
+			[...(cluster?.querySelectorAll('button') ?? [])].map((b) => b.getAttribute('aria-label'))
+		).toEqual(['Copy key', 'Show the value']);
+		expect(root.querySelector('input')?.getAttribute('type')).toBe('password');
+	});
+
 	it('draws no press on a textarea, whatever the caller asked to mask', () => {
 		// a textarea takes no `type` and there is nothing to hide behind: a press drawn here would
 		// stand beside a box every word of which is already on the screen, offering a swap it has no

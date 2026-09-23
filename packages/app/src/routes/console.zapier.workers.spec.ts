@@ -122,6 +122,18 @@ describe('GET /console/zapier', () => {
 		});
 	});
 
+	it('reads a key made before keys were stored as one with nothing to show', async () => {
+		await env.DB.prepare(
+			`insert into zapier_key (id, key_hash, created_at, updated_at) values ('zapier', ?, 0, 0)`
+		)
+			.bind('0'.repeat(64))
+			.run();
+
+		const report = (await (await read()).json()) as ZapierReport;
+
+		expect(report.key).toEqual({ madeAt: new Date(0).toISOString(), key: null });
+	});
+
 	it('counts the Zaps listening to each trigger and the events still owed to them', async () => {
 		const key = await made();
 		await listen('new_gift', key);
@@ -141,7 +153,7 @@ describe('GET /console/zapier', () => {
 });
 
 describe('the make press', () => {
-	it('answers the key once, and the reading after it carries only when it was made', async () => {
+	it('answers the key, and the reading after it carries the same key', async () => {
 		const response = await press({ press: 'make' });
 
 		expect(response.status).toBe(200);
@@ -150,9 +162,8 @@ describe('the make press', () => {
 		expect(made).toMatchObject({ press: 'make', disconnected: 0 });
 		expect(made.key.length).toBeGreaterThan(0);
 
-		const reading = await (await read()).text();
-		expect(JSON.parse(reading)).toMatchObject({ key: { madeAt: made.madeAt } });
-		expect(reading).not.toContain(made.key);
+		const reading = (await (await read()).json()) as ZapierReport;
+		expect(reading.key).toEqual({ madeAt: made.madeAt, key: made.key });
 	});
 
 	it('refuses a second make, and names replace as the press that cuts a new key', async () => {
@@ -163,7 +174,7 @@ describe('the make press', () => {
 		const refused = (await response.json()) as ZapierPressReport;
 		expect(refused).toMatchObject({ ok: false, press: 'make' });
 		if (refused.ok) throw new Error('second make landed');
-		expect(refused.detail).toContain('replace');
+		expect(refused.detail).toContain('Replace key');
 	});
 });
 
@@ -193,12 +204,11 @@ describe('the replace press', () => {
 		expect(await verifyZapierKey(db, `Bearer ${old}`)).toBeNull();
 		expect(await verifyZapierKey(db, `Bearer ${replaced.key}`)).not.toBeNull();
 
-		const reading = await (await read()).text();
-		expect(JSON.parse(reading)).toMatchObject({
-			key: { madeAt: replaced.madeAt },
+		const reading = (await (await read()).json()) as ZapierReport;
+		expect(reading).toMatchObject({
+			key: { madeAt: replaced.madeAt, key: replaced.key },
 			listening: { newGift: 0, newDonor: 0 }
 		});
-		expect(reading).not.toContain(replaced.key);
 	});
 });
 

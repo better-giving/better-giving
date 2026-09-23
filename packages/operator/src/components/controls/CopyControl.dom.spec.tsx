@@ -74,6 +74,16 @@ describe('a copy control mounted into a document', () => {
 		expect(writeText).toHaveBeenCalledWith('pnpm run deploy');
 	});
 
+	it('copies nothing while closed, and keeps the focus a closed native button would drop', () => {
+		const root = render(CopyControl, { text: 'bgz_key', disabled: true });
+
+		button(root).click();
+
+		expect(writeText).not.toHaveBeenCalled();
+		expect(button(root).getAttribute('aria-disabled')).toBe('true');
+		expect(button(root).hasAttribute('disabled')).toBe(false);
+	});
+
 	it('is named for what it copies rather than for the act', () => {
 		const root = render(CopyControl, {
 			text: 'pnpm run deploy',

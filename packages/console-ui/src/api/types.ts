@@ -714,7 +714,8 @@ export type ZapierPressBody = { press: ZapierPress };
 
 /**
  * how a make or replace went. a refusal is `reported` with `ok: false`: the deployment answered,
- * and said why. the key is in this answer and in no read.
+ * and said why. the answer carries the new key, as every reading does after it (or null in a
+ * reading, for a key made before the deployment stored it).
  */
 export type ZapierPressed =
 	| { kind: 'reported'; report: ZapierPressReport }

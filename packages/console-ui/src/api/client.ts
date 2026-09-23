@@ -225,11 +225,12 @@ export const pressQuickbooks = (body: QuickbooksPressBody): Promise<QuickbooksPr
 
 /**
  * where this deployment's Zapier key stands, how many Zaps are listening on it, and how its
- * deliveries are going. the deployment keeps a hash of the key, so no reading carries the key.
+ * deliveries are going. every reading carries the key, or null for a key made before the
+ * deployment stored it.
  */
 export const readZapier = (): Promise<ZapierRead> => ask('/deployment/zapier', 'GET');
 
-/** makes the key, or replaces it; the answer is the one place the new key is ever read. */
+/** makes the key, or replaces it; the answer carries the new key. */
 export const pressZapier = (body: ZapierPressBody): Promise<ZapierPressed> =>
 	post('/deployment/zapier', body);
 
