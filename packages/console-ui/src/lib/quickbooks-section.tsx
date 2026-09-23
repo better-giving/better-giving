@@ -30,7 +30,7 @@ import type {
 } from '../api/types';
 import type { HeldValues } from './held-values';
 import { heldValues, withheldInGroup } from './held-values';
-import { keysTrouble, valuesGuard } from './processor-screen';
+import { keysTrouble } from './processor-screen';
 import type {
 	QuickbooksAnswer,
 	QuickbooksPicks,
@@ -262,8 +262,8 @@ export function QuickbooksSection({
 		[]
 	);
 
-	const guard = valuesGuard(values.vars, { workerName, accountName });
-	if (guard !== null || values.vars.kind !== 'read') return guard;
+	// never drawn: the sections layout stands a gate in this page's place (../lib/cloudflare-gate.ts).
+	if (values.vars.kind !== 'read') return null;
 	const holding = heldValues(values.vars.vars);
 	const configured = CREDENTIALS.every((name) => holding.held.has(name));
 	const steps = stepsStand({ configured, books, answer, confirming });

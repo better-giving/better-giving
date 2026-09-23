@@ -1,5 +1,6 @@
 import type { ZapierReport } from '@better-giving/operator/console/zapier';
 import type { ClientActionFunctionArgs, ClientLoaderFunctionArgs } from 'react-router';
+import { createMemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // the Zapier page's two halves: when its reading reaches the deployment, and which press an intent
@@ -45,12 +46,29 @@ vi.mock('../api/client', async (original) => ({
 
 vi.mock('../lib/console-reading', async (original) => ({
 	...(await original<Record<string, unknown>>()),
-	readConsole: async () => ({ reading: { face: { kind: binary.face } } })
+	readConsole: async () => ({
+		workerName: 'better-giving',
+		account: 'Riverbank Trust',
+		accountId: '8f3c2a1b',
+		remembered: true,
+		notKept: null,
+		version: '0.9.0',
+		reading: {
+			face:
+				binary.face === 'ready'
+					? { kind: 'ready', address: 'https://a.example' }
+					: binary.face === 'refused'
+						? { kind: 'blocked', why: { kind: 'refused', detail: '', count: 0, why: '' } }
+						: { kind: 'unreachable', address: 'https://a.example', read: { kind: 'no-session' } },
+			values: { vars: { kind: 'read', vars: [] } }
+		}
+	})
 }));
 
 const bar = await import('@better-giving/operator/progress-bar');
 const { forgetReadings } = await import('../lib/processor-cache');
 const { zapierIntent } = await import('../lib/zapier-standing');
+const { gatedBy } = await import('../lib/console-reading');
 const { clientAction, clientLoader } = await import('./_sections.zapier');
 
 const ORIGIN = 'http://localhost';
@@ -92,12 +110,27 @@ const press = (intent: string) => {
 
 describe('the Zapier page read', () => {
 	it('sends a deployment that is not ready to `/`, and asks it nothing', async () => {
-		binary.face = 'unconfigured';
+		binary.face = 'unconnected';
 		const thrown = await visit().catch((reason: unknown) => reason);
 
 		expect(thrown).toBeInstanceOf(Response);
 		expect((thrown as Response).status).toBe(307);
 		expect((thrown as Response).headers.get('Location')).toBe('/');
+		expect(binary.reads).toBe(0);
+	});
+
+	it('stands a page cloudflare turned away behind the gate in its place, and asks it nothing', async () => {
+		binary.face = 'refused';
+		// through a router, since what the layout's boundary is handed is the router's reading of the throw
+		const router = createMemoryRouter([{ path: '/zapier', loader: () => visit() }], {
+			initialEntries: ['/zapier']
+		});
+		await router.initialize();
+		await vi.waitFor(() => expect(router.state.initialized).toBe(true));
+		const caught = Object.values(router.state.errors ?? {})[0];
+		router.dispose();
+
+		expect(gatedBy(caught)?.gate.title).toBe('Cloudflare turned this sign-in down');
 		expect(binary.reads).toBe(0);
 	});
 

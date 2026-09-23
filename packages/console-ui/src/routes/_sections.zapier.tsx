@@ -2,9 +2,9 @@ import { Column } from '@better-giving/operator/components/shell/Layout';
 import type { ZapierPress } from '@better-giving/operator/console/zapier';
 import { ZAPIER_PRESSES } from '@better-giving/operator/console/zapier';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { redirect, useSubmit } from 'react-router';
+import { useSubmit } from 'react-router';
 import { pressZapier, readZapier } from '../api/client';
-import { readConsole } from '../lib/console-reading';
+import { notReady, readConsole } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { forgetReadings, readKeptPage } from '../lib/processor-cache';
 import { usePress } from '../lib/use-press';
@@ -44,8 +44,8 @@ export function clientLoader(args: Route.ClientLoaderArgs) {
 	return readKeptPage(
 		args,
 		async () => {
-			const { reading } = await readConsole(args.request);
-			if (reading.face.kind !== 'ready') throw redirect('/', 307);
+			const read = await readConsole(args.request);
+			if (read.reading.face.kind !== 'ready') notReady(read);
 			return { zapier: await readZapier() };
 		},
 		{ standing: ({ zapier }) => zapier.kind === 'read' && zapier.report.key === null }

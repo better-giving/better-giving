@@ -1,11 +1,13 @@
+import { Button } from '@better-giving/operator/components/controls/Button';
 import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
-import { Link } from 'react-router';
-import { Refusal, Said } from './said';
+import { Link, useRevalidator } from 'react-router';
 import type { NoReport } from '../api/types';
+import type { CloudflareGate } from './cloudflare-gate';
+import { Refusal, Said } from './said';
 import { readableRefusal, unreadAnswer } from './unread-answer';
 
 // the five ways a deployment does not answer, drawn the same on every screen that asks it something.
@@ -146,5 +148,44 @@ export function ConsoleStopped(): ReactNode {
 			This page can't reach the console any more. Run <InlineCode>better-giving start</InlineCode>{' '}
 			again. It opens a fresh page.
 		</Banner>
+	);
+}
+
+/**
+ * the panel a page stands behind when cloudflare would not say what this deployment holds: the
+ * heading, at most one sentence, and the read again where one can change anything
+ * (./cloudflare-gate.ts decides which and says why).
+ *
+ * the press re-reads the page it stands on, so an answer that lands draws that page and not `/`.
+ * it holds while the read is out, because a second press over a read in flight asks nothing new.
+ */
+export function CloudflareGateFace({ gate }: { gate: CloudflareGate }): ReactNode {
+	const revalidator = useRevalidator();
+	const reading = revalidator.state !== 'idle';
+	return (
+		<div className="adm-panel">
+			<h1>{gate.title}</h1>
+			{gate.sentence === null ? null : (
+				<p className="adm-prose">
+					{gate.sentence.map((part) =>
+						typeof part === 'string' ? part : <InlineCode key={part.code}>{part.code}</InlineCode>
+					)}
+				</p>
+			)}
+			{gate.retry ? (
+				<div className="adm-actions">
+					<Button
+						type="button"
+						variant="primary"
+						aria-busy={reading}
+						onClick={() => {
+							if (!reading) void revalidator.revalidate();
+						}}
+					>
+						Try again
+					</Button>
+				</div>
+			) : null}
+		</div>
 	);
 }

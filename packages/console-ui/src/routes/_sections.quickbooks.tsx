@@ -2,10 +2,10 @@ import { Column } from '@better-giving/operator/components/shell/Layout';
 import type { QuickbooksPress } from '@better-giving/operator/console/quickbooks';
 import { QUICKBOOKS_PRESSES } from '@better-giving/operator/console/quickbooks';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { redirect, useSubmit } from 'react-router';
+import { useSubmit } from 'react-router';
 import { freeWithheldVars, pressQuickbooks, readQuickbooks } from '../api/client';
 import type { QuickbooksPressBody } from '../api/types';
-import { readConsole } from '../lib/console-reading';
+import { notReady, readConsole } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { groupPress } from '../lib/group-press';
 import { forgetReadings, readKeptPage } from '../lib/processor-cache';
@@ -42,7 +42,7 @@ export function meta(): Route.MetaDescriptors {
  * between visits as every page that reads the deployment for itself is (../lib/processor-cache.ts).
  *
  * the face is read before the deployment is asked anything, for ../lib/processor-reading.ts's
- * reason: any other face is `/`'s, and the redirect is decided before this page renders.
+ * reason: any other face is the layout's gate or `/`, and which is decided before this page renders.
  *
  * **a reading carrying no connected company is served to no second visit.** connecting finishes in
  * a browser at the deployment and never on this console
@@ -53,8 +53,8 @@ export function clientLoader(args: Route.ClientLoaderArgs) {
 	return readKeptPage(
 		args,
 		async () => {
-			const { reading } = await readConsole(args.request);
-			if (reading.face.kind !== 'ready') throw redirect('/', 307);
+			const read = await readConsole(args.request);
+			if (read.reading.face.kind !== 'ready') notReady(read);
 			return { books: await readQuickbooks() };
 		},
 		{

@@ -30,7 +30,7 @@ import { REACHED_STRIPE, pressStopped } from './press-stopped';
 import { Said } from './said';
 import { refusalIn } from './secret-trouble';
 import { heldValues, withheldAmong } from './held-values';
-import { keysTrouble, noAnswer, valuesGuard } from './processor-screen';
+import { keysTrouble, noAnswer } from './processor-screen';
 import { recurringBlock } from './recurring-block';
 import { pollOutlived, runKind, standingRun } from './run-poll';
 import { configuredStanding, processorStanding, STANDING } from './processor-payments';
@@ -1823,8 +1823,8 @@ export function StripeSection({
 		);
 	};
 
-	const guard = valuesGuard(values.vars, { workerName, accountName });
-	if (guard !== null) return guard;
+	// never drawn: the sections layout stands a gate in this page's place (../lib/cloudflare-gate.ts).
+	if (values.vars.kind !== 'read') return null;
 
 	return (
 		<Section>

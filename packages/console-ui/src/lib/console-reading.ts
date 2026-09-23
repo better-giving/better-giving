@@ -1,4 +1,6 @@
+import { data, isRouteErrorResponse, redirect } from 'react-router';
 import { consoleVersion, homeReading, homeShape } from '../api/client';
+import { type CloudflareGate, cloudflareGate } from './cloudflare-gate';
 import { heldNames, readSections } from './home-sections';
 import { orgBoxes } from './org-fields';
 import { processorLinks } from './processor-links';
@@ -76,4 +78,46 @@ export function readConsole(request: Request): Promise<ConsoleReading> {
 /** `/`'s side, just before it redirects: the navigation it starts reads this rather than again. */
 export function handOver(reading: ConsoleReading): void {
 	handedOver = reading;
+}
+
+/** what a page behind a gate is drawn from: the gate, and the head and foot around it. */
+export type GatedPage = {
+	gate: CloudflareGate;
+	account: string;
+	accountId: string;
+	remembered: boolean;
+	notKept: string | null;
+	version: string;
+};
+
+/** the gate this reading stands behind, with what draws around it, or `null` where there is none. */
+export function gatedPage(read: ConsoleReading): GatedPage | null {
+	const gate = cloudflareGate(read.reading.face, read.reading.values.vars, {
+		workerName: read.workerName,
+		accountName: read.account
+	});
+	if (gate === null) return null;
+	const { account, accountId, remembered, notKept, version } = read;
+	return { gate, account, accountId, remembered, notKept, version };
+}
+
+/**
+ * where a section page goes when the deployment is not ready: called by the sections layout and by
+ * every page under it that reads the deployment for itself (../routes/_sections.tsx).
+ *
+ * **a gate is thrown to the layout's error boundary, which draws it in place of the whole shell.**
+ * the page keeps its address, so the read again the gate offers lands back on it. every other face
+ * that is not ready is `/`'s, which is where that face is drawn and where its way out is.
+ */
+export function notReady(read: ConsoleReading): never {
+	const gated = gatedPage(read);
+	if (gated !== null) throw data(gated, { status: 503 });
+	throw redirect('/', 307);
+}
+
+/** the gated page an error boundary was handed, or `null` where what it caught is anything else. */
+export function gatedBy(error: unknown): GatedPage | null {
+	if (!isRouteErrorResponse(error) || error.status !== 503) return null;
+	const page: unknown = error.data;
+	return typeof page === 'object' && page !== null && 'gate' in page ? (page as GatedPage) : null;
 }

@@ -49,7 +49,7 @@ import { heldValues, withheldAmong } from './held-values';
 import { useKeptPress } from './kept-press';
 import { REACHED_CHARIOT, pressStopped } from './press-stopped';
 import { configuredStanding } from './processor-payments';
-import { keysTrouble, noAnswer, valuesGuard } from './processor-screen';
+import { keysTrouble, noAnswer } from './processor-screen';
 import { useReseeded } from './reseed';
 import { pollOutlived, runKind, standingRun } from './run-poll';
 import { Said } from './said';
@@ -186,8 +186,8 @@ export function ChariotSection({
 	busy,
 	pending
 }: ChariotSectionProps): ReactNode {
-	const guard = valuesGuard(values.vars, { workerName, accountName });
-	if (guard !== null || values.vars.kind !== 'read') return guard;
+	// never drawn: the sections layout stands a gate in this page's place (../lib/cloudflare-gate.ts).
+	if (values.vars.kind !== 'read') return null;
 	const holding = heldValues(values.vars.vars);
 	return (
 		<Section>
