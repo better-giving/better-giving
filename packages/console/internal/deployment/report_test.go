@@ -140,6 +140,27 @@ func TestAFailureOutsideRefusalStillCarriesTheWayOut(t *testing.T) {
 	}
 }
 
+// the status travels with an unreadable answer, because a coded 4xx is the deployment refusing on
+// purpose and a coded 5xx is the deployment failing, and the code alone does not tell them apart.
+func TestAnUnreadableAnswerCarriesTheStatusItArrivedWith(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusBadRequest, http.StatusBadGateway} {
+		read := readNoReport(cf.Answer{
+			Kind:   cf.Answered,
+			Status: status,
+			Body:   map[string]any{"error": "chart_unreadable", "message": "Intuit answered 502."},
+		})
+		if read.Kind != NoReportUnreadable || read.Status != status {
+			t.Errorf("a %d read %+v", status, read)
+		}
+		sent, _ := json.Marshal(read)
+		var wire map[string]any
+		_ = json.Unmarshal(sent, &wire)
+		if wire["status"] != float64(status) {
+			t.Errorf("a %d went on the wire as %s", status, sent)
+		}
+	}
+}
+
 // the two acts on this surface answer with a report of the press rather than with the deployment's
 // own report, so an envelope arriving where one was expected is an answer to another question.
 func TestAnActsAnswerThatIsTheDeploymentsOwnReportIsUnreadable(t *testing.T) {

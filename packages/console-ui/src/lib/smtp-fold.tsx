@@ -437,8 +437,10 @@ export function SmtpFold({
 	 * a page whose next reading is sent to the connect press at `/` (../routes/_index.tsx). the two that
 	 * are neither say the one thing this console genuinely does not know — the deployment may have
 	 * sent the message anyway, so the way out is an inbox rather than a second press. a refusal the
-	 * deployment wrote on purpose is none of those: it was read, nothing was sent, and it is said in
-	 * the deployment's own words.
+	 * deployment wrote on purpose — a 4xx carrying a code — is none of those: the deployment refuses
+	 * before it sends (packages/app/src/routes/console.test-email.ts), so it was read, nothing was
+	 * sent, and it is said in the deployment's own words. a coded 5xx is not a refusal and takes the
+	 * console's own sentence, since whether a message left is exactly what it does not know.
 	 */
 	const unanswered = (read: NoReport) => {
 		const refusal = readableRefusal(read);

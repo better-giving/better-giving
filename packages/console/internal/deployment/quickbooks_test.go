@@ -85,13 +85,29 @@ func quickbooksChartUnreadable() map[string]any {
 	return report
 }
 
-// what each press answers with: two of them have something to say beyond having happened, and what
+// what each press answers with: three of them have something to say beyond having happened, and what
 // the rest change is read back off the report.
 func quickbooksPressReports() []map[string]any {
 	return []map[string]any{
 		{"press": "connect", "url": "https://appcenter.intuit.com/connect/oauth2?state=x"},
 		{"press": "accounts"},
 		{"press": "retry", "retried": float64(4)},
+		quickbooksPreviewed(),
+	}
+}
+
+// what the start-date preview answers: what a move of the start date would queue and drop, one side
+// touching records and the other none.
+func quickbooksPreviewed() map[string]any {
+	return map[string]any{
+		"press": "start-date-preview",
+		"queues": map[string]any{
+			"gifts": float64(3), "corrections": float64(1),
+			"earliest": "2026-01-02T00:00:00.000Z", "latest": "2026-02-14T00:00:00.000Z",
+		},
+		"drops": map[string]any{
+			"gifts": float64(0), "corrections": float64(0), "earliest": nil, "latest": nil,
+		},
 	}
 }
 
@@ -125,6 +141,7 @@ func TestTheQuickbooksFixturesAreTheShapeTheDeploymentAnswersWith(t *testing.T) 
 		{"ChosenAccountLine", connected["income"].(map[string]any)},
 		{"LedgerAccountLine", offered[0].(map[string]any)},
 		{"QuickbooksBacklogLine", quickbooksReported()["backlog"].(map[string]any)},
+		{"QuickbooksStartAtSide", quickbooksPreviewed()["queues"].(map[string]any)},
 	} {
 		declared := membersOf(t, source, one.declared)
 		if held := keysOf(one.fixture); !slices.Equal(declared, held) {
@@ -455,6 +472,10 @@ func TestAQuickbooksPressSendsOnlyWhatItCarries(t *testing.T) {
 		"the day the books start from": {
 			press: QuickbooksPress{Press: "start-date", StartAt: "2026-01-01"},
 			sent:  map[string]any{"press": "start-date", "startAt": "2026-01-01"},
+		},
+		"the day a move of the start date is counted against": {
+			press: QuickbooksPress{Press: "start-date-preview", StartAt: "2026-01-01"},
+			sent:  map[string]any{"press": "start-date-preview", "startAt": "2026-01-01"},
 		},
 	} {
 		post, press := posting(cf.Answer{

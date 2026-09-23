@@ -79,8 +79,17 @@ export type NoReport =
 	 * `error` is the code beside those sentences, and it is carried for a reason of its own: it is
 	 * the one member of a refusal written for a machine rather than read, so a console that dropped
 	 * it would hold the deployment's precise answer and hand on a vague one.
+	 *
+	 * `status` is the HTTP status the answer arrived with: a code is set on a 4xx the deployment
+	 * refused on purpose and on a 5xx it failed with alike, and the status is what tells them apart.
 	 */
-	| { kind: 'unreadable'; error: string | null; detail: string; fix: string | null };
+	| {
+			kind: 'unreadable';
+			error: string | null;
+			detail: string;
+			fix: string | null;
+			status: number;
+	  };
 
 /**
  * the one face on screen.

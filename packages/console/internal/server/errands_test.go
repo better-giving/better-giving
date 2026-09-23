@@ -357,7 +357,7 @@ func TestTheOtherErrandsReachTheirOwnAddress(t *testing.T) {
 func TestThePressesIntuitIsBehindAreTheOnesTheLongDoorIsFor(t *testing.T) {
 	for press, waits := range map[string]bool{
 		"accounts": true, "disconnect": true,
-		"connect": false, "retry": false, "start-date": false,
+		"connect": false, "retry": false, "start-date": false, "start-date-preview": false,
 	} {
 		if held := waitsOnIntuit(press); held != waits {
 			t.Errorf("the %s press waits on Intuit: %v", press, held)

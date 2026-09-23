@@ -72,6 +72,10 @@ type NoReport struct {
 	Fix     *string `json:"fix"`
 	// Detail is what an unreachable or unreadable answer said, in its own words where it wrote any.
 	Detail string `json:"detail"`
+	// Status is the HTTP status an unreadable answer arrived with, and absent on every other kind.
+	// It is what tells a coded refusal (a 4xx) from a coded failure (a 5xx): the code alone is set
+	// on both.
+	Status int `json:"status,omitzero"`
 }
 
 // ReportRead is what the deployment answered, or which way it did not.
@@ -213,6 +217,7 @@ func unreadable(answer cf.Answer, body map[string]any) ReportRead {
 		Error:  text(body["error"]),
 		Detail: detail,
 		Fix:    text(body["fix"]),
+		Status: answer.Status,
 	}}
 }
 

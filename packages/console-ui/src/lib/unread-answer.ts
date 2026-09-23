@@ -28,14 +28,16 @@ import type { NoReport } from '../api/types';
  *
  * `readReport` sorts every non-2xx outside the two it names into `unreadable`, and a refusal the
  * deployment wrote — a 400 with its code, its sentence and its way out — is one of them. that
- * answer was read perfectly well, so {@link unreadAnswer} saying it was not is the wrong sentence:
- * the code is what marks it, because it is the member only a deployment writing a refusal on
- * purpose sets. `message` is the deployment's sentence, or the status line where it wrote none.
+ * answer was read perfectly well, so {@link unreadAnswer} saying it was not is the wrong sentence.
+ * a 4xx carrying a code is what marks it: the code alone is set on a 5xx too, where the deployment
+ * failed rather than refused and the console's own sentence is the one that fits. `message` is the
+ * deployment's sentence, or the status line where it wrote none.
  */
 export function readableRefusal(
 	read: NoReport
 ): { readonly message: string; readonly fix: string | null } | null {
 	if (read.kind !== 'unreadable' || read.error === null) return null;
+	if (read.status < 400 || read.status > 499) return null;
 	return { message: read.detail, fix: read.fix };
 }
 
