@@ -61,8 +61,8 @@
 			"source": { "organizeImports": "off" }
 		}
 	},
-	// the five overrides below are the import-boundary gates this repo's CLAUDE.md describes in its
-	// section on the five packages and the graph between them — but they are not the
+	// the overrides below are the import-boundary gates this repo's CLAUDE.md describes in its
+	// section on the packages and the graph between them — but they are not the
 	// primary gate. the pnpm workspace graph is: an importing package declares the other as a
 	// `workspace:*` dependency in its own package.json, and the imported package's `exports`
 	// map is the closed list of what a bare specifier may name, so a bare specifier for
@@ -177,7 +177,7 @@
 		// all import from: app → operator ← console-ui, with gallery → operator beside them and no
 		// app-like package reaching another directly. packages/emails is the one leaf-side package
 		// that reaches operator — for its tokens only: app → emails ← emails-preview, with emails →
-		// operator beside it. the five overrides below hold that shape, each at the one place its
+		// operator beside it. the overrides below hold that shape, each at the one place its
 		// own escape is caught.
 		//
 		// none of these has a resolve-time twin the way packages/form's boundary does
@@ -209,6 +209,22 @@
 									{
 										"group": ["**/app/src/**", "**/app/scripts/**"],
 										"message": "packages/console-ui may not reach packages/app by relative path — packages/app has no exports map, so a bare specifier already fails and a relative path is the one escape left uncaught."
+									},
+									{
+										"group": ["**/packages/operator/src/**", "**/operator/src/**"],
+										"message": "reach @better-giving/operator only through the workspace:* dependency and the exports map in packages/operator/package.json — the graph governs a bare specifier through that dependency; a relative path into packages/operator/src answers to neither and bypasses the package boundary."
+									},
+									{
+										"group": ["**/packages/form/src/**", "**/form/src/**"],
+										"message": "packages/console-ui declares no dependency on packages/form — a bare specifier already fails, and a relative path into packages/form/src is the one escape the graph does not catch."
+									},
+									{
+										"group": ["**/packages/emails/src/**", "**/emails/src/**"],
+										"message": "packages/console-ui declares no dependency on packages/emails — a bare specifier already fails, and a relative path into packages/emails/src is the one escape the graph does not catch."
+									},
+									{
+										"group": ["**/packages/gallery/src/**", "**/gallery/src/**"],
+										"message": "packages/console-ui may not reach packages/gallery by relative path — the two sit on either side of packages/operator, both consumers of the same leaf, and never import each other directly."
 									},
 									{
 										"group": ["**/packages/zapier/src/**", "**/zapier/src/**"],
@@ -299,6 +315,18 @@
 											"**/zapier/src/**"
 										],
 										"message": "packages/gallery may not reach packages/app, packages/console-ui or packages/zapier by relative path — it is a consumer of packages/operator only, exactly like packages/console-ui, and reaches neither app-like package nor the zapier leaf, which has no consumer at all."
+									},
+									{
+										"group": ["**/packages/operator/src/**", "**/operator/src/**"],
+										"message": "reach @better-giving/operator only through the workspace:* dependency and the exports map in packages/operator/package.json — the graph governs a bare specifier through that dependency; a relative path into packages/operator/src answers to neither and bypasses the package boundary."
+									},
+									{
+										"group": ["**/packages/form/src/**", "**/form/src/**"],
+										"message": "packages/gallery declares no dependency on packages/form — a bare specifier already fails, and a relative path into packages/form/src is the one escape the graph does not catch."
+									},
+									{
+										"group": ["**/packages/emails/src/**", "**/emails/src/**"],
+										"message": "packages/gallery declares no dependency on packages/emails — a bare specifier already fails, and a relative path into packages/emails/src is the one escape the graph does not catch."
 									}
 								]
 							}
