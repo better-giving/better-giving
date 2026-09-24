@@ -303,8 +303,9 @@ describe('stripeAppearance', () => {
 		});
 	});
 
-	// our rows draw nothing under the pointer, so a rail is sent its resting ground there; the open rail keeps its fill under the pointer as well, or hovering the open method
-	// would drop it back to the ground of a closed one.
+	// our rows draw nothing under the pointer, so a rail is sent its resting ground there; the open
+	// rail keeps its fill under the pointer as well, or hovering the open method would drop it back
+	// to the ground of a closed one.
 	it('holds every rail at its resting ground under the pointer', () => {
 		const appearance = stripeAppearance(reader());
 

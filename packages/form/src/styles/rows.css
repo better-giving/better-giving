@@ -9,11 +9,11 @@
  * the row's name. the tokens arrive the way every inherited property does, through the slot.
  *
  * every length placing the band and every ground under it is the one ./appearance.ts sends the
- * provider for its own rows, named once there as `PAYMENT_ROW`, so the two kinds of row are one list: the band runs to the card's edges and pads back in by
- * `--_inset` (`[part~='payment']` in ./parts.css pulls the box out by that same length), the name
- * stands `--_sp3` below the band's top edge, and the open band is `--_n3`. a closed band paints
- * nothing, which is the card's own ground, a pointer over either draws nothing, and no line stands
- * between two bands — an absence
+ * provider for its own rows, named once there as `PAYMENT_ROW`, so the two kinds of row are one
+ * list: the band runs to the card's edges and pads back in by `--_inset` (`[part~='payment']` in
+ * ./parts.css pulls the box out by that same length), the name stands `--_sp3` below the band's top
+ * edge, and the open band is `--_n3`. a closed band paints nothing, which is the card's own ground,
+ * a pointer over either draws nothing, and no line stands between two bands — an absence
  * ../embed/rows.dom.spec.ts holds, because a sheet that draws none reads like a sheet nobody has
  * written a line into yet. the name's type and the mark's size are matched to what the provider
  * draws unasked, because ./appearance.ts sends its rows' names nothing — with the one departure

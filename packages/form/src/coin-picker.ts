@@ -202,10 +202,10 @@ export function createCoinPicker(doc: Document): CoinPicker {
 	// open list's surface. the sentence stands beside the listbox rather than in it — a listbox owns
 	// options and groups only, and `.coin-list[data-empty]` takes the listbox off screen while the
 	// sentence shows — so a press on it is kept from counting as one outside the list
-	// (`onPointerDownOutside` below). it is drawn only, and `status` says the same words: a popover
-	// that is not showing takes what is inside it out of the tree, and the keystroke that opens the
-	// list can be the one that finds nothing, so a status in the list would get its words in the same
-	// render it enters the tree, which is not read out.
+	// (`onPointerDownOutside` below). it is shown and never read out, and `status` says the same
+	// words: a popover that is not showing takes what is inside it out of the tree, and the keystroke
+	// that opens the list can be the one that finds nothing, so a status in the list would get its
+	// words in the same render it enters the tree, which is not read out.
 	const content = node(doc, 'div', 'coin-list');
 	content.setAttribute('part', part('select-list'));
 	const noMatch = node(doc, 'p', 'no-match');

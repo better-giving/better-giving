@@ -2277,10 +2277,9 @@ describe('a payment row drawn beside the provider’s frame', () => {
 
 	// the name starts where the provider's own rows start theirs, `PROVIDER_NAME_OFFSET_PX` in from the
 	// mark's start (../embed/rows.measured.ts) — measured against its frame, which no test can reach
-	// into. the offset is the
-	// glyph and the head's gap after it (`.head` and `.mark` in ./rows.css). every row is measured,
-	// the fund's included: one mark box for all three is what keeps the name at one x, and the name
-	// is the last thing in every head.
+	// into. the offset is the glyph and the head's gap after it (`.head` and `.mark` in ./rows.css).
+	// every row is measured, the fund's included: one mark box for all three is what keeps the name at
+	// one x, and the name is the last thing in every head.
 	it.each(['paypal', 'venmo', 'fund'] as const)(
 		'draws the %s mark at the padding edge and the name a gap after it',
 		(mark) => {
@@ -2403,8 +2402,7 @@ describe('the target under the fee decision', () => {
 	}
 
 	// the rule sets the decision apart from the gift above it, so it stands as far from one row's
-	// words as from the other's. measured on both ends of the clamp band, where a length stated
-	// against the card's own line and words set a step smaller than it part furthest.
+	// words as from the other's. measured at both ends of the clamp band and at the default root.
 	it.each([['15px'], ['16px'], ['18px']])(
 		'stands the rule midway between the gift and the words, at a %s root',
 		async (root) => {

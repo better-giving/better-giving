@@ -1393,9 +1393,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 /*
  * the target: `--_row-min` across the whole row, centred on it, and taking no room in the layout —
  * a zero margin box, so the words stand where the row's own gaps put them and the rule over them
- * stays midway whatever the words' size and however many lines they wrap to. layout could only
- * reserve the slack between the floor and the words by taking back a length it cannot read, which
- * is the words' own height.
+ * stays midway whatever the words' size and however many lines they wrap to.
  *
  * it is the label's own box, so a press on it is a press on the label and flips the switch. the
  * gift's row above is out of its reach. the sentence and its figure under the words are not: they
