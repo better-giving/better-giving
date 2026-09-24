@@ -217,11 +217,12 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	// donor finds, and they carry the frame above; a box around the rail as well is a second ring
 	// around boxes that already have one. it does take a top pad, because the open rail is filled
 	// (`--_n3` below) and so the band has a top edge of its own — with none, the method's name sits
-	// against that edge. the step is the one that lands level with the pad the provider leaves under
-	// the name, which it derives from the `spacingUnit` above and exposes as no length of its own;
-	// that bottom pad stays for the same reason it always did — it is the whole of what stands
-	// between a rail's name and its first field. the layout in ../embed/stripe.ts draws no radio, so
-	// a rail's name is a bare press and the open one is the one with its fields under it.
+	// against that edge. the bottom pad is the same step, stated rather than left to the provider,
+	// so a closed rail stands `--_sp3` over and under its name as `.head` in ./rows.css does and the
+	// two kinds of row keep one pitch down the list. what stands between an open rail's name and its
+	// first field is the provider's own, derived from the `spacingUnit` above. the layout in
+	// ../embed/stripe.ts draws no radio, so a rail's name is a bare press and the open one is the one
+	// with its fields under it.
 	//
 	// the side pad is the card body's own inset, and it is room rather than an inset: `[part~='payment']`
 	// in ./parts.css pulls the whole box out by that same length, so the rail's band runs to the card's
@@ -233,8 +234,8 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	// leaving a box with a top and a bottom and no sides.
 	//
 	// the inset is stated off the clamped root rather than in `em` (./tokens.css), so it crosses the
-	// frame boundary already absolute and takes no conversion; the top pad is a spacing step and is
-	// `em`, so it takes the same conversion every other one here does.
+	// frame boundary already absolute and takes no conversion; the top and bottom pads are a spacing
+	// step and `em`, so they take the same conversion every other one here does.
 	const railPad = value('--_inset');
 	const rail: Record<string, string> = {
 		border: 'none',
@@ -250,7 +251,9 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	// the card's own ground, stated: the provider's flat theme paints a closed rail its own white,
 	// which stands as a seam against the rows ./rows.css draws on `--_n1` beside it.
 	put(rail, 'backgroundColor', n1);
-	put(rail, 'paddingTop', toPx(value('--_sp3'), basePx));
+	const railStep = toPx(value('--_sp3'), basePx);
+	put(rail, 'paddingTop', railStep);
+	put(rail, 'paddingBottom', railStep);
 	put(rail, 'paddingLeft', railPad);
 	put(rail, 'paddingRight', railPad);
 

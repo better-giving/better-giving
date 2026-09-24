@@ -45,6 +45,7 @@ const RAIL = {
 	borderRadius: '0',
 	backgroundColor: 'oklch(0.995 0.001 264)',
 	paddingTop: '12px',
+	paddingBottom: '12px',
 	paddingLeft: '20px',
 	paddingRight: '20px'
 };
@@ -315,6 +316,7 @@ describe('stripeAppearance', () => {
 		const appearance = stripeAppearance(reader({ 'font-size': '15px' }));
 
 		expect(appearance.rules['.AccordionItem']?.paddingTop).toBe('11.25px');
+		expect(appearance.rules['.AccordionItem']?.paddingBottom).toBe('11.25px');
 	});
 
 	it('pads each rail by the inset the card body itself is padded by', () => {
