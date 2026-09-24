@@ -825,7 +825,7 @@ describe('the labels on the pair under the name', () => {
 		fill(shadow, '#first-name', 'Ada');
 		await landed(label);
 
-		// the band, whose side is the rise's, starts where the arc ends; the words stand inside it.
+		// the notch starts where the arc ends, and the words stand inside it.
 		const arc = corner(box);
 		expect(arc).toBeGreaterThan(0);
 		expect(ink(words).left - box.getBoundingClientRect().left).toBeGreaterThan(arc);
@@ -883,75 +883,10 @@ describe('the labels on the pair under the name', () => {
 		expect(reach).toBeGreaterThan(legend.getBoundingClientRect().bottom);
 	});
 
-	// and what the band knocks out, it re-states. the label stands over the box's own top edge and
-	// paints behind its words, so for the width of the name it takes whatever that edge is carrying
-	// — and the states it carries something in are the states this label floats in: a caret in an
-	// empty box floats it, and a donor tabbing back into a refused one loses the top run of the red
-	// edge behind the words naming it. so the band carries the edge the box is drawing rather than
-	// the pair it draws at rest, and the interruption reads as part of it.
-	it('carries whatever edge the box is drawing into the band behind the label', async () => {
-		const { shadow } = await mount();
-		await atDetails(shadow);
-		const { box, label, words } = field(shadow, '#first-name');
-		const band = () => getComputedStyle(words).backgroundImage;
-
-		// a value in the box, and nothing else: the resting hairline every box on the card carries.
-		fill(shadow, '#first-name', 'Ada');
-		await landed(label);
-		await landed(box);
-		expect(band(), 'the box at rest').toContain(drawnEdge(box));
-
-		await userEvent.hover(box);
-		await landed(box);
-		expect(band(), 'the box under a pointer').toContain(drawnEdge(box));
-
-		await userEvent.unhover(box);
-		await caretOn(box);
-		await landed(box);
-		expect(band(), 'the box with the caret in it').toContain(drawnEdge(box));
-
-		// and the one a donor actually walks into: the press is refused, and the caret comes back to
-		// a box whose edge is the refusal's own.
-		fill(shadow, '#first-name', '');
-		onward(shadow);
-		await settle();
-		await caretOn(box);
-		await landed(box);
-		expect(shadow.querySelector('#first-name-problem')?.hasAttribute('hidden')).toBe(false);
-		expect(band(), 'the box refused, with the caret back in it').toContain(drawnEdge(box));
-	});
-
-	// and the rise is that edge lifted, not a second shape drawn on top of it: one colour and one
-	// width with the box's own top run, and its two sides coming down onto that run. read on the box a
-	// failed press hands the caret back to, which is the state that draws the most on the edge — a
-	// border and a ring — and so the one where a ring over a border of another colour reads as two
-	// lines and a rise one pixel thin reads as a box standing on the edge.
-	it('rises from the refused box’s edge at that edge’s own colour and width', async () => {
-		const { shadow } = await mount();
-		await atDetails(shadow);
-		fill(shadow, '#email', 'donor@example.org');
-		onward(shadow);
-		await settle();
-		const { box, label, words } = field(shadow, '#first-name');
-		await caretOn(box);
-		await landed(box);
-		await landed(label);
-
-		const drawn = getComputedStyle(box);
-		const [run = ''] = getComputedStyle(words).backgroundImage.split(/,\s*(?=linear-gradient)/);
-		const span = words.getBoundingClientRect();
-
-		expect(shadow.querySelector('#first-name-problem')?.hasAttribute('hidden')).toBe(false);
-		expect(drawnEdge(box), 'the ring over the border').toBe(drawn.borderTopColor);
-		expect(run, 'the rise').toContain(drawn.borderTopColor);
-		seated((span.top + span.bottom) / 2, box.getBoundingClientRect().top);
-	});
-
 	/**
 	 * the band a box draws along its top edge, read off the box: `width` runs from the ring's outer
 	 * line to the border's inner one, and `depth` is the share of it inside the box — the border and
-	 * any inset band laid on it — which is how far below the box's own top a line brought down onto
-	 * that edge has to reach.
+	 * any inset band laid on it.
 	 */
 	function edgeBand(box: HTMLElement): { width: number; depth: number } {
 		const drawn = getComputedStyle(box);
@@ -970,40 +905,15 @@ describe('the labels on the pair under the name', () => {
 	}
 
 	/**
-	 * the rise as the label's knockout draws it: the top run's thickness, the two sides' widths, and
-	 * where each side's foot lands on the page — the band's middle, which is seated on the box's top,
-	 * plus however far the side's colour runs past that middle.
-	 */
-	function riseOf(words: HTMLElement): { top: number; sides: number[]; feet: number[] } {
-		const painted = getComputedStyle(words);
-		const [run = '', ...sideRuns] = painted.backgroundImage.split(/,\s*(?=linear-gradient)/);
-		const span = words.getBoundingClientRect();
-		const middle = (span.top + span.bottom) / 2;
-		return {
-			// where the edge's colour stops, which is the last stop of the run.
-			top: parseFloat(/([\d.]+)px\)\s*$/.exec(run)?.[1] ?? 'NaN'),
-			sides: painted.backgroundSize
-				.split(',')
-				.slice(1, 3)
-				.map((size) => parseFloat(size.trim().split(' ')[0] ?? '')),
-			feet: sideRuns.slice(0, 2).map((side) => {
-				const past = /(?:calc\(50% \+ (-?[\d.]+)px\)|50%)\)\s*$/.exec(side);
-				if (past === null) throw new Error(`a side with no foot at the band's middle: ${side}`);
-				return middle + parseFloat(past[1] ?? '0');
-			})
-		};
-	}
-
-	/**
-	 * the three states the label floats over an edge wider than the resting hairline — the caret in
-	 * the box, the box refused with the caret elsewhere, and the refused box the caret is back in —
-	 * each handed to `check` once it has landed.
+	 * every state the box's edge takes while the label floats over it — a value at rest, the pointer
+	 * on it, the caret in it, refused with the caret back in it, and refused with the caret elsewhere
+	 * — each handed to `check` once it has landed.
 	 *
 	 * the ring is widened to the strong border for the length of the walk. at the token file's own
-	 * values the border and the ring are one width, so every one of the three draws the same band and
-	 * a rule giving one state another state's width reads as right; widened, no two agree.
+	 * values the border and the ring are one width, so a band that clears one clears the other and a
+	 * notch too shallow for the ring reads as right; widened, it does not.
 	 */
-	async function throughEveryRise(
+	async function throughEveryEdge(
 		check: (state: string, box: HTMLElement, words: HTMLElement) => void
 	): Promise<void> {
 		const { shadow } = await mount();
@@ -1018,6 +928,14 @@ describe('the labels on the pair under the name', () => {
 		};
 
 		fill(shadow, '#first-name', 'Ada');
+		await landedAll();
+		check('a value at rest', box, words);
+
+		await userEvent.hover(box);
+		await landedAll();
+		check('under a pointer', box, words);
+		await userEvent.unhover(box);
+
 		await caretOn(box);
 		await landedAll();
 		check('the caret in the box', box, words);
@@ -1040,41 +958,45 @@ describe('the labels on the pair under the name', () => {
 		check('refused, with the caret elsewhere', box, words);
 	}
 
-	// the rise is the edge lifted, so it is as thick as the edge the box is drawing in each state the
-	// label floats over one, and a state drawn at another's width is a stair where the two meet.
-	it('lifts the edge at the width the box draws it, in every state it floats over', async () => {
-		await throughEveryRise((state, box, words) => {
-			const { width } = edgeBand(box);
-			const { top, sides } = riseOf(words);
-			expect(top, `${state}: the top run`).toBe(width);
-			expect(sides, `${state}: the sides`).toEqual([width, width]);
+	// the edge stops either side of the name and draws nothing over it: no run along the top of the
+	// band and no sides turned down onto the box, in the edge's colour or any other. the band is the
+	// knockout's two fills and nothing else.
+	it('draws nothing of the edge around the floated name, in every state the edge takes', async () => {
+		await throughEveryEdge((state, box, words) => {
+			const painted = getComputedStyle(words).backgroundImage;
+			expect(painted.match(/linear-gradient/g), `${state}: the layers`).toHaveLength(1);
+			expect(painted, `${state}: the edge's colour`).not.toContain(drawnEdge(box));
 		});
 	});
 
-	// and the rise's sides come down onto the edge rather than stopping at the box's outer line: each
-	// foot lands on the edge's inner line, where the run beside it ends, so the corner turns as one
-	// line of one width. a foot short of it leaves the edge's lower part running on past the side
-	// into the knockout — a step at both ends of the name.
-	it('brings the rise’s sides down to the edge’s inner line, in every state it floats over', async () => {
-		await throughEveryRise((state, box, words) => {
-			const inner = box.getBoundingClientRect().top + edgeBand(box).depth;
-			for (const foot of riseOf(words).feet) expect(foot, `${state}: a foot`).toBeCloseTo(inner, 0);
+	// and the band is what interrupts the edge: centred on the box's top, it reaches past the ring's
+	// outer line above and the border's inner line below, so no part of the edge runs through the
+	// name — a refused box's red breaks around it as the resting hairline does.
+	it('breaks the whole edge across the floated name, in every state the edge takes', async () => {
+		await throughEveryEdge((state, box, words) => {
+			const top = box.getBoundingClientRect().top;
+			const { width, depth } = edgeBand(box);
+			const [, band = ''] = getComputedStyle(words).backgroundSize.split(' ');
+			const span = words.getBoundingClientRect();
+			const middle = (span.top + span.bottom) / 2;
+			const half = parseFloat(band) / 2;
+
+			seated(middle, top);
+			expect(middle - half, `${state}: above the ring`).toBeLessThanOrEqual(top - (width - depth));
+			expect(middle + half, `${state}: below the border`).toBeGreaterThanOrEqual(top + depth);
 		});
 	});
 
-	// and the name stands inside the rise rather than on it: each side is drawn at the span's own end,
-	// so words starting at that end put the first letter on the line coming down beside it — the
-	// name reads as spilling out of the edge lifted over it. the same room at both ends, so the words
-	// are centred in the rise whatever width the edge is drawn at.
-	it('keeps the name clear of the rise’s sides, in every state it floats over', async () => {
-		await throughEveryRise((state, _box, words) => {
+	// and the name stands inside the gap rather than at its ends: the same room at both, so the edge
+	// stops a little short of the first letter and picks up a little past the last.
+	it('keeps the name clear of both ends of the gap, in every state the edge takes', async () => {
+		await throughEveryEdge((state, _box, words) => {
 			const span = words.getBoundingClientRect();
 			const drawn = ink(words);
-			const [start = NaN, end = NaN] = riseOf(words).sides;
-			const before = drawn.left - (span.left + start);
-			const after = span.right - end - drawn.right;
-			expect(before, `${state}: room before the name`).toBeGreaterThan(DEVICE_PIXEL);
-			expect(after, `${state}: room after the name`).toBeGreaterThan(DEVICE_PIXEL);
+			const before = drawn.left - span.left;
+			const after = span.right - drawn.right;
+			expect(before, `${state}: room before the name`).toBeGreaterThanOrEqual(DEVICE_PIXEL);
+			expect(after, `${state}: room after the name`).toBeGreaterThanOrEqual(DEVICE_PIXEL);
 			expect(before, `${state}: the two ends`).toBeCloseTo(after, 0);
 		});
 	});
