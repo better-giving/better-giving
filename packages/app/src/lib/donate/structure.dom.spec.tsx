@@ -30,7 +30,7 @@ const LAYOUT = {
 	summaryThenGroup: "[part~='summary'] + .group",
 	refusedField:
 		":is(.field-row, .disclosure-inner, .dedication) > [part~='field']:has(+ .message:not([hidden]))",
-	refusedTiles: '.group > .tiles:has(~ .message:not([hidden]))',
+	refusedTilesMessage: '.group > .tiles ~ .message',
 	refusedGroup: '.group:has(+ .message:not([hidden]))',
 	refusedDedicationTrigger: ".dedication:has(> .message:not([hidden])) > [data-part='trigger']"
 } as const;
@@ -40,7 +40,8 @@ const PARTS = {
 	floatingWords: ".floating > [part~='label'] > .label-words",
 	feeWords: '.fee-decision > .row-label',
 	feeSwitch: '.fee-decision > .switch',
-	feeNoted: '.fee-decision:has(+ .fee-note:not([hidden]))'
+	feeNoted: '.fee-decision:has(+ .fee-note:not([hidden]))',
+	feePassThrough: '.fee-decision:not([hidden]) ~ :is(.fee-note, .figure)'
 } as const;
 
 const FEE_RULES: FeeRules = {
@@ -176,17 +177,14 @@ function reached(root: HTMLElement, selector: string): HTMLElement[] {
 	);
 }
 
-it('reaches the tray and not the entry when an amount is refused', async () => {
+it('reaches the amount’s refusal after the tray, and nothing else, when an amount is refused', async () => {
 	const root = await card();
-	const tiles = one(root, 'fieldset.group > .tiles');
-	expect(matches(tiles, LAYOUT.refusedTiles)).toBe(false);
-
 	press(one(root, '.tiles > label.other'));
 	type(root, '#amount-entry', '1.00');
 	press(one(root, CONTINUE));
 
 	expect(one(root, '#amount-problem').hidden).toBe(false);
-	expect(reached(root, LAYOUT.refusedTiles)).toEqual([tiles]);
+	expect(reached(root, LAYOUT.refusedTilesMessage)).toEqual([one(root, '#amount-problem')]);
 });
 
 it('reaches the box of a refused note, in the disclosure’s body', async () => {
@@ -256,6 +254,10 @@ it('reaches the payment group under the summary, the fee decision’s parts, and
 	expect(reached(root, PARTS.feeSwitch)).toEqual([one(decision, 'span.switch')]);
 	expect(one(root, '#fee-note').hidden).toBe(false);
 	expect(reached(root, PARTS.feeNoted)).toEqual([decision]);
+	// happy-dom answers `~ :is(a, b)` with the first sibling alone, so each branch is asked on its own.
+	const [head = '', branches = ''] = PARTS.feePassThrough.split(/:is\((.*)\)$/);
+	const passed = branches.split(', ').flatMap((branch) => reached(root, head + branch));
+	expect(passed).toEqual([one(root, '#fee-note'), one(root, 'label.fee-decision ~ .figure')]);
 
 	expect(matches(group, LAYOUT.refusedGroup)).toBe(false);
 	press(one(root, 'button[part~="submit"]'));
