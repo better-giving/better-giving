@@ -3,6 +3,7 @@ import { PAYMENT_ROW, stripeAppearance, type TokenReader } from '../styles/appea
 import partStyles from '../styles/parts.css?inline';
 import tokenStyles from '../styles/tokens.css?inline';
 import { createRows } from './rows';
+import { PROVIDER_NAME_OFFSET_PX } from './rows.measured';
 
 // what makes the rows this module draws one list with the ones the provider paints inside its own
 // frame, held where a commit can see it.
@@ -151,10 +152,10 @@ describe('the payment rows drawn beside the provider’s frame', () => {
 		);
 	});
 
-	// and the name lands where the provider lands its rails', which is the measured figure at the
-	// head of this file: about 37px, against our own mark plus the head's gap. the mark is at the
-	// name's size and the gap at the head's own, the card's root — built out of different tokens at
-	// different sizes, and held to the pixel the measurement carries.
+	// and the name lands where the provider lands its rails', `PROVIDER_NAME_OFFSET_PX` in
+	// ./rows.measured.ts, against our own mark plus the head's gap. the mark is at the name's size and
+	// the gap at the head's own, the card's root — built out of different tokens at different sizes,
+	// and held to the pixel the measurement carries.
 	it('stands the name where a rail stands its own', () => {
 		const rowPx = em('--_t-sm') * ROOT_PX;
 		const rules = styleRules(rowSheet());
@@ -163,14 +164,12 @@ describe('the payment rows drawn beside the provider’s frame', () => {
 				.find((rule) => rule.selector === selector)
 				?.style.getPropertyValue(property);
 			const token = value?.match(/^var\((--_[\w-]+)\)$/)?.[1];
-			return token === undefined ? 0 : em(token);
+			if (token === undefined) throw new Error(`${selector} spends ${property} as ${value}`);
+			return em(token);
 		};
-		const ours =
-			(em('--_glyph-beside') + spent('.mark', 'margin-inline-end')) * rowPx +
-			spent('.head', 'gap') * ROOT_PX;
-		const rail = 37;
+		const ours = em('--_glyph-beside') * rowPx + spent('.head', 'gap') * ROOT_PX;
 
 		expect(stripeAppearance(read).variables.fontSizeBase).toBe(`${rowPx}px`);
-		expect(Math.abs(ours - rail)).toBeLessThanOrEqual(1);
+		expect(Math.abs(ours - PROVIDER_NAME_OFFSET_PX)).toBeLessThanOrEqual(1);
 	});
 });

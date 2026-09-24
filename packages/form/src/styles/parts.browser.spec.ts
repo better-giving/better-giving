@@ -9,6 +9,7 @@ import { NETWORK_TINTS } from '../coins';
 import { createDepositBlock, type DepositView } from '../deposit';
 import { defineDonateForm, DONATE_FORM_TAG } from '../element';
 import { createRows, type Row, type RowMark } from '../embed/rows';
+import { PROVIDER_NAME_OFFSET_PX } from '../embed/rows.measured';
 import type { CheckoutPorts } from '../ports';
 import type { FormConfig } from '../v1';
 import { createSkeleton } from '../views';
@@ -2274,8 +2275,9 @@ describe('a payment row drawn beside the provider’s frame', () => {
 		expect(getComputedStyle(panel).display).toBe('none');
 	});
 
-	// the name starts where the provider's own rows start theirs, about 37px in from the mark's start
-	// on a 16px root — measured against its frame, which no test can reach into. the offset is the
+	// the name starts where the provider's own rows start theirs, `PROVIDER_NAME_OFFSET_PX` in from the
+	// mark's start (../embed/rows.measured.ts) — measured against its frame, which no test can reach
+	// into. the offset is the
 	// glyph and the head's gap after it (`.head` and `.mark` in ./rows.css). every row is measured,
 	// the fund's included: one mark box for all three is what keeps the name at one x, and the name
 	// is the last thing in every head.
@@ -2297,7 +2299,7 @@ describe('a payment row drawn beside the provider’s frame', () => {
 				glyph.getBoundingClientRect().width + parseFloat(headStyle.columnGap),
 				1
 			);
-			expect(Math.abs(offset - 37)).toBeLessThanOrEqual(1);
+			expect(Math.abs(offset - PROVIDER_NAME_OFFSET_PX)).toBeLessThanOrEqual(1);
 		}
 	);
 

@@ -91,10 +91,11 @@
  * name's first line so a name that wraps keeps its mark there (`[part~='checkbox']` in ./parts.css
  * centres the box a donor ticks the same way).
  *
- * the head's gap after the glyph starts the name where the provider starts its rows' names: 36px
- * from the mark's start on a 16px root, `--_glyph-beside` at the name's size plus `--_sp5` at the
- * head's. the provider's own figure is measured rather than reachable, because it is drawn inside
- * the frame, and ../embed/rows.dom.spec.ts holds the two together.
+ * the head's gap after the glyph starts the name where the provider starts its rows' names: about
+ * 36px from the mark's start on a 16px root, `--_glyph-beside` at the name's size plus `--_sp5` at
+ * the head's. the provider's own figure is measured rather than reachable, because it is drawn
+ * inside the frame — `PROVIDER_NAME_OFFSET_PX` in ../embed/rows.measured.ts — and
+ * ../embed/rows.dom.spec.ts holds ours within a pixel of it.
  */
 .mark {
 	flex: none;

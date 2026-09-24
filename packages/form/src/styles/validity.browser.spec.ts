@@ -72,6 +72,9 @@ function settle(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/** how many times a transition may be replaced mid-wait before `painted` gives up on it. */
+const PAINT_PASSES = 10;
+
 /**
  * lets the edges finish moving before they are read.
  *
@@ -85,18 +88,23 @@ function settle(): Promise<void> {
  * that one never settles.
  */
 async function painted(...nodes: HTMLElement[]): Promise<void> {
-	for (;;) {
-		const moving = nodes.flatMap((node) => {
-			// forces the pending style change to resolve: a transition started by the line above the
-			// call is not an animation the engine will hand back until it has recomputed the style.
-			void getComputedStyle(node).borderTopColor;
-			return node.getAnimations();
-		});
+	for (let pass = 0; pass < PAINT_PASSES; pass++) {
+		const moving = nodes
+			.flatMap((node) => {
+				// forces the pending style change to resolve: a transition started by the line above the
+				// call is not an animation the engine will hand back until it has recomputed the style.
+				void getComputedStyle(node).borderTopColor;
+				return node.getAnimations();
+			})
+			// a fill-mode animation stays in the list once it is done, its `finished` already settled,
+			// so waiting on it again would spin without ever yielding to a timer.
+			.filter((animation) => animation.playState !== 'finished');
 		if (moving.length === 0) return;
 		// settled rather than finished: a transition a later style change replaces rejects with an
 		// abort, and its replacement is what the next pass waits on.
 		await Promise.allSettled(moving.map((transition) => transition.finished));
 	}
+	throw new Error(`still moving after ${PAINT_PASSES} passes: a transition keeps replacing itself`);
 }
 
 type Card = {
