@@ -208,6 +208,20 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 		return currencies;
 	}
 
+	/**
+	 * each dollar value `estimateInDollars` was answered, by `"<coin amount> <coin>"`, for the same
+	 * one-request life. a delivery's notification and the read it names value the same arrival, and
+	 * it is asked for once.
+	 */
+	const dollarValues = new Map<string, string>();
+
+	/**
+	 * the estimate refusal each notification met, by payment id, for the same life. the notification
+	 * is the settlement a read finding no payment falls back to (`SettlementEvent.delivered` in
+	 * ./provider.ts), so that read answers with this retryable refusal rather than `not_found`.
+	 */
+	const unvaluedNotifications = new Map<string, PaymentFailure>();
+
 	/** whether the account's own selection names any coin, off `merchant/coins` alone. */
 	async function selectsAnyCoin(): Promise<PaymentResult<boolean>> {
 		const answer = await accountSelection();
@@ -314,11 +328,13 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 		 * the same notification redelivered is the same event, and a new status, or the same status
 		 * reporting a different amount received, is a new one.
 		 *
-		 * `refunded` and any status NOWPayments has not documented are `ignored`. every other names a
-		 * settlement, carried with what the body itself states as `delivered`; the settlement acted on
-		 * is still `readSettlement`'s. a body stating no settlement this module can read — an arrival
-		 * valued under a cent, a shape it cannot read — carries none; an estimate that did not answer
-		 * refuses the delivery retryably instead, since the body may be the only settlement there is.
+		 * `refunded` and any status NOWPayments has not documented are `ignored`, and so is a body naming
+		 * no `payment_id` as digits or no `payment_status`, which is logged as well: a redelivery of it
+		 * would be the identical body. every other names a settlement, carried with what the body
+		 * itself states as `delivered`; the settlement acted on is still `readSettlement`'s. a body
+		 * stating no settlement this module can read — an arrival valued under a cent, a shape it cannot
+		 * read, an estimate that did not answer — carries none. the last is kept for the read: finding
+		 * no payment, it answers with that refusal, since the body may be the only settlement there is.
 		 */
 		async verifyEvent(delivery: WebhookDelivery): Promise<PaymentResult<PaymentEvent>> {
 			const secret = credentials.ipnSecret?.trim() ?? '';
@@ -352,14 +368,14 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 			const id = paymentIdField(payment, 'payment_id');
 			const word = stringField(payment, 'payment_status');
 			if (id === null || id === 'unreadable' || word === null) {
-				const missing = word === null ? '`payment_status`' : '`payment_id` as digits';
-				return {
-					ok: false,
-					reason: 'invalid_request',
-					detail:
-						`The delivery’s signature verified and its body names no ${missing}, so nothing was ` +
-						'acted on. The IPN secret is not the problem.'
-				};
+				// the signature is the one thing such a body is named by, and a redelivery carries the same.
+				const unnamed = { id: `unnamed:${signature.slice(0, 16)}`, type: word ?? 'unnamed' };
+				const missing = word === null ? 'payment_status' : 'payment_id as digits';
+				console.warn(
+					'a verified NOWPayments notification was acknowledged and not acted on:',
+					JSON.stringify({ event: unnamed.id, missing })
+				);
+				return { ok: true, value: { ...unnamed, kind: 'ignored', occurredAt: new Date() } };
 			}
 			// the collection's IPN example carries no time; a delivery without one is timed on arrival.
 			const occurredAt = timeOf(payment) ?? new Date();
@@ -367,8 +383,8 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 			const named = { id: `${id}:${word}:${received}`, type: word, occurredAt };
 			if (!SETTLEMENT_STATUSES.has(word)) return { ok: true, value: { ...named, kind: 'ignored' } };
 
-			// `readSettlement` may value the same arrival again at a later estimate; the first posting
-			// stands (`entry_group_source_idx` in ../db/schema.ts).
+			// a later delivery values the same arrival at a later estimate; the first posting stands
+			// (`entry_group_source_idx` in ../db/schema.ts).
 			let unvalued = null as PaymentFailure | null;
 			const stated = await settlementOf(
 				payment,
@@ -379,7 +395,7 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 				},
 				occurredAt
 			);
-			if (unvalued !== null) return unvalued;
+			if (unvalued !== null) unvaluedNotifications.set(id, unvalued);
 			return {
 				ok: true,
 				value: {
@@ -396,6 +412,9 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 			const answer = await call('GET', `/v1/payment/${encodeURIComponent(providerTxnId)}`);
 			if ('ok' in answer) return answer;
 			if (answer.status === 404) {
+				// the notification stood in for this read, and it could not be valued either.
+				const unvalued = unvaluedNotifications.get(providerTxnId);
+				if (unvalued !== undefined) return unvalued;
 				return {
 					ok: false,
 					reason: 'not_found',
@@ -473,12 +492,15 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 	 * what an amount of a coin is worth in dollars, at NOWPayments' current rate.
 	 *
 	 * a refusal here is retryable whatever NOWPayments answered: it values money that already moved,
-	 * and the IPN that asked is sent again.
+	 * and the IPN that asked is sent again. a refusal is not kept, so the next ask is a new call.
 	 */
 	async function estimateInDollars(
 		coinAmount: string,
 		coin: string
 	): Promise<PaymentResult<string>> {
+		const arrival = `${coinAmount} ${coin}`;
+		const known = dollarValues.get(arrival);
+		if (known !== undefined) return { ok: true, value: known };
 		const query = new URLSearchParams({
 			amount: coinAmount,
 			currency_from: coin,
@@ -487,7 +509,10 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 		const answer = await call('GET', `/v1/estimate?${query}`);
 		if ('ok' in answer) return answer;
 		const valued = answer.status === 200 ? decimalField(answer.body, 'estimated_amount') : null;
-		if (valued !== null) return { ok: true, value: valued };
+		if (valued !== null) {
+			dollarValues.set(arrival, valued);
+			return { ok: true, value: valued };
+		}
 		return {
 			ok: false,
 			reason: 'provider_error',

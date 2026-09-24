@@ -260,6 +260,19 @@ describe('POST /api/nowpayments/webhook', () => {
 		expect(await postingGroups()).toBe(1);
 	});
 
+	// the notification and the read value the same arrival, on the one adapter the request built.
+	it('asks for one estimate for a redelivery of a posted payment', async () => {
+		await recordedGift();
+		const { calls } = nowpaymentsHolds([PAID]);
+		await deliver(PAID);
+		calls.length = 0;
+
+		const again = await deliver(PAID);
+
+		expect(await again.json()).toMatchObject({ outcome: 'already_posted' });
+		expect(calls.filter((call) => call === 'GET /v1/estimate')).toHaveLength(1);
+	});
+
 	it('leaves a gift whose address expired with nothing sent not given, posting nothing', async () => {
 		await recordedGift();
 		const expired = { ...PAID, payment_status: 'expired', actually_paid: 0 };
@@ -400,17 +413,27 @@ describe('POST /api/nowpayments/webhook', () => {
 		expect(await postingGroups()).toBe(1);
 	});
 
-	it('refuses a signed notification naming no status with a 400 naming the field', async () => {
-		const { payment_status: _none, ...unnamed } = PAID;
-		nowpaymentsHolds([PAID]);
+	// its redelivery would be the identical body, so asking for one gains nothing.
+	it.each([
+		['status', 'payment_status'],
+		['payment', 'payment_id']
+	])(
+		'acknowledges a signed notification naming no %s with a 200, writing nothing',
+		async (_case, field) => {
+			await recordedGift();
+			const { [field]: _none, ...unnamed } = PAID;
+			const { calls } = nowpaymentsHolds([PAID]);
+			vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-		const response = await deliver(unnamed);
+			const response = await deliver(unnamed);
 
-		expect(response.status).toBe(400);
-		expect(await response.json()).toMatchObject({
-			message: expect.stringContaining('payment_status')
-		});
-	});
+			expect(response.status).toBe(200);
+			expect(await response.json()).toMatchObject({ outcome: 'ignored' });
+			expect(calls).toEqual([]);
+			expect(await paymentRow()).toMatchObject({ status: 'pending' });
+			expect(await postingGroups()).toBe(0);
+		}
+	);
 
 	/** a replaced key reads the payment as missing, and the verified IPN is all there is. */
 	it.each([
