@@ -2383,6 +2383,64 @@ describe('a payment row drawn beside the provider’s frame', () => {
 // around it — whose height is a line of text against a stated floor, and which of the two wins is a
 // layout only a real engine performs.
 describe('the target under the fee decision', () => {
+	/**
+	 * the fee row's rule and the words either side of it: the gift's row, whose one line is its box,
+	 * and the decision's own words, which stand inside a target taller than they are.
+	 */
+	function aroundTheRule(shadow: ShadowRoot): { above: number; below: number; words: HTMLElement } {
+		const row = shadow.querySelector('.row.fee') as HTMLElement;
+		const gift = row.previousElementSibling as HTMLElement;
+		const words = row.querySelector('.fee-decision > .row-label') as HTMLElement;
+		const rule = row.getBoundingClientRect().top;
+		const edge = rule + parseFloat(getComputedStyle(row).borderTopWidth);
+		return {
+			above: rule - gift.getBoundingClientRect().bottom,
+			below: words.getBoundingClientRect().top - edge,
+			words
+		};
+	}
+
+	// the rule sets the decision apart from the gift above it, so it stands as far from one row's
+	// words as from the other's. measured on both ends of the clamp band, where a length stated
+	// against the card's own line and words set a step smaller than it part furthest.
+	it.each([['15px'], ['16px'], ['18px']])(
+		'stands the rule midway between the gift and the words, at a %s root',
+		async (root) => {
+			document.documentElement.style.fontSize = root;
+			const { shadow } = await mount();
+			await atReview(shadow);
+			const { above, below } = aroundTheRule(shadow);
+
+			expect(above).toBeGreaterThan(0);
+			expect(
+				Math.abs(above - below),
+				`${above} over the rule, ${below} under it`
+			).toBeLessThanOrEqual(DEVICE_PIXEL);
+		}
+	);
+
+	// a host column narrow enough to wrap the decision's words, which then fill the target's height
+	// themselves and leave no room over them to take back: the rule stays where it stood, and so does
+	// the sentence under them.
+	it('keeps the rule and the sentence off the words once they wrap', async () => {
+		const { host, shadow } = await mount();
+		host.style.cssText = 'display: block; inline-size: 200px';
+		await atReview(shadow);
+		const { above, below, words } = aroundTheRule(shadow);
+		const range = document.createRange();
+		range.selectNodeContents(words);
+		const note = shadow.querySelector('.fee-note') as HTMLElement;
+
+		expect(range.getClientRects().length, 'wrapped').toBeGreaterThan(1);
+		expect(
+			Math.abs(above - below),
+			`${above} over the rule, ${below} under it`
+		).toBeLessThanOrEqual(DEVICE_PIXEL);
+		expect(note.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+			words.getBoundingClientRect().bottom
+		);
+	});
+
 	// 44px is the floor this component lays every target against (`--_row-min` in ./tokens.css),
 	// measured on the smallest root the card allows, which is where a floor stated in px and a line
 	// of text set in em are furthest apart.
@@ -2391,9 +2449,36 @@ describe('the target under the fee decision', () => {
 		const { shadow } = await mount();
 		await atReview(shadow);
 		const decision = shadow.querySelector('.fee-decision') as HTMLElement;
-
 		expect(decision.hidden).toBe(false);
-		expect(decision.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+
+		// the sentence under the words overlaps the target and keeps its own press.
+		const note = shadow.querySelector('.fee-note') as HTMLElement;
+		const drawn = note.getBoundingClientRect();
+		expect(shadow.elementFromPoint(drawn.left + 1, drawn.top + 1)).toBe(note);
+
+		// the target is what a press lands on, not the box the words are laid out in, so it is read
+		// by pressing: down the switch's column and the words', with the sentence and the figure under
+		// it taken off the page so that only the target's own reach is counted.
+		for (const beside of shadow.querySelectorAll<HTMLElement>('.fee-note, .row.fee .figure')) {
+			beside.style.visibility = 'hidden';
+		}
+		const words = decision.querySelector('.row-label') as HTMLElement;
+		const gift = (decision.closest('.row.fee') as HTMLElement)
+			.previousElementSibling as HTMLElement;
+		const middle = (rect: DOMRect) => [(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2];
+		for (const [x = 0, y = 0] of [
+			middle(words.getBoundingClientRect()),
+			middle((decision.querySelector('.switch') as HTMLElement).getBoundingClientRect())
+		]) {
+			const pressed = (at: number) => decision.contains(shadow.elementFromPoint(x, at));
+			let top = y;
+			while (pressed(top - 0.5)) top -= 0.5;
+			let bottom = y;
+			while (pressed(bottom + 0.5)) bottom += 0.5;
+			expect(bottom - top, `the target at x=${x}`).toBeGreaterThanOrEqual(44 - DEVICE_PIXEL);
+			// and short of the gift's row, which keeps every press of its own.
+			expect(top).toBeGreaterThan(gift.getBoundingClientRect().bottom);
+		}
 	});
 
 	// the thumb is placed with logical insets and moved with a physical `translate`, so which way it

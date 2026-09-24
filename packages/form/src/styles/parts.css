@@ -1374,49 +1374,51 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	display: grid;
 	grid-template-columns: 1fr auto;
 	align-items: baseline;
-	align-content: center;
 	gap: var(--_sp1) var(--_sp3);
-	min-block-size: var(--_row-min);
 	cursor: pointer;
 }
 
 /*
+ * placed by hand, because the target below shares their row and an auto-placed item would step
+ * past it onto a second one.
+ */
+.fee-decision > .row-label {
+	grid-area: 1 / 1;
+}
+
+.fee-decision > .switch {
+	grid-area: 1 / 2;
+}
+
+/*
+ * the target: `--_row-min` across the whole row, centred on it, and taking no room in the layout —
+ * a zero margin box, so the words stand where the row's own gaps put them and the rule over them
+ * stays midway whatever the words' size and however many lines they wrap to. layout could only
+ * reserve the slack between the floor and the words by taking back a length it cannot read, which
+ * is the words' own height.
+ *
+ * it is the label's own box, so a press on it is a press on the label and flips the switch. it is
+ * in flow, so the boxes after it take the press where they overlap it: the sentence and its figure
+ * under the words keep their own presses, and the gift's row above is out of its reach.
+ */
+.fee-decision::before {
+	content: '';
+	grid-area: 1 / 1 / 2 / -1;
+	align-self: center;
+	block-size: var(--_row-min);
+	margin-block: calc(var(--_row-min) / -2);
+}
+
+/*
  * the sentence is what the switch just did, so it belongs to the switch rather than standing as a
- * row of its own. what stands between the two is not the gap alone: the row above carries
- * `--_row-min` with one line centred in it, so about eleven pixels of target stand under its words
- * at the default root before the row's own `--_sp1` is counted at all. both are taken back here,
- * the way `.disclosure + .disclosure` in ./layout.css takes a gap and a step of slack together.
- *
- * `1lh` is the card's own line rather than the smaller one the label is set in, so the take-back is
- * a pixel and a half short of the whole slack at either end of the clamp — which is the side to be
- * short on: what is left over is a gap, where an overshoot is the sentence climbing into the words.
- * it is stated here rather than on the sentence for the same reason: an `em` or a `lh` there
- * resolves against the 12px floor below, which is not the size either length was spent at.
- *
- * the sentence comes to overlap the decision's box by the last few pixels of it — five at the
- * default root, where the figure beside the sentence holds the two of them on one baseline and so
- * stands them both that much lower than the row itself. the sentence is the later box and takes the
- * press where they meet, so a donor pressing the words presses the words and does not flip the
- * switch; what the decision keeps is 39px of its 44px floor in the label column and the whole of it
- * in the switch's own, because the sentence stands in the label column alone (above). both are past
- * the 24px `--_target-min` in ./tokens.css argues from.
+ * row of its own: the row's own `--_sp1` between the two is taken back.
  *
  * only while a sentence is drawn under it. the decision is covered with no fee to state on a form
  * that publishes no rule to price one (`consequence` in ../views.ts), and a row pulled up under
  * nothing would lift the figure beside it into the switch.
  */
 .fee-decision:has(+ .fee-note:not([hidden])) {
-	margin-block-end: calc(-1 * (var(--_row-min) - 1lh) / 2 - var(--_sp1));
-}
-
-/*
- * the same slack over the words, taken back so the fee row's rule stands midway: the gift's row sits
- * `--_sp2` above it (`[part~='summary']`'s gap) and the words `--_sp2` below it, where the centred
- * line would otherwise stand that step plus half the slack under it. the target keeps its whole
- * `--_row-min`, reaching up over the row's padding to the rule; nothing above it takes a press there.
- */
-.fee-decision {
-	margin-block-start: calc(-1 * (var(--_row-min) - 1lh) / 2);
+	margin-block-end: calc(-1 * var(--_sp1));
 }
 
 /*
