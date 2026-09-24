@@ -2,10 +2,25 @@
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "extraKnownMarketplaces": {
     "kru": {
-      "source": { "source": "github", "repo": "ap-justin/kru" }
+      "source": {
+        "source": "github",
+        "repo": "ap-justin/kru"
+      }
     }
   },
   "enabledPlugins": {
     "kru@kru": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ]
   }
 }
