@@ -2453,34 +2453,42 @@ describe('the target under the fee decision', () => {
 		const decision = shadow.querySelector('.fee-decision') as HTMLElement;
 		expect(decision.hidden).toBe(false);
 
-		// the sentence under the words overlaps the target and keeps its own press.
+		// the sentence under the words stands inside the target's reach and lets the press through.
 		const note = shadow.querySelector('.fee-note') as HTMLElement;
 		const drawn = note.getBoundingClientRect();
-		expect(shadow.elementFromPoint(drawn.left + 1, drawn.top + 1)).toBe(note);
+		expect(decision.contains(shadow.elementFromPoint(drawn.left + 1, drawn.top + 1))).toBe(true);
 
 		// the target is what a press lands on, not the box the words are laid out in, so it is read
-		// by pressing: down the switch's column and the words', with the sentence and the figure under
-		// it taken off the page so that only the target's own reach is counted.
-		for (const beside of shadow.querySelectorAll<HTMLElement>('.fee-note, .row.fee .figure')) {
-			beside.style.visibility = 'hidden';
-		}
+		// by pressing: down the switch's column and the words'. read with the sentence and the figure
+		// under it drawn, because those take their own presses and the floor is what is left clear of
+		// them, and again with both taken off the page, so the target's own reach is counted too.
 		const words = decision.querySelector('.row-label') as HTMLElement;
 		const gift = (decision.closest('.row.fee') as HTMLElement)
 			.previousElementSibling as HTMLElement;
 		const middle = (rect: DOMRect) => [(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2];
-		for (const [x = 0, y = 0] of [
-			middle(words.getBoundingClientRect()),
-			middle((decision.querySelector('.switch') as HTMLElement).getBoundingClientRect())
-		]) {
-			const pressed = (at: number) => decision.contains(shadow.elementFromPoint(x, at));
-			let top = y;
-			while (pressed(top - 0.5)) top -= 0.5;
-			let bottom = y;
-			while (pressed(bottom + 0.5)) bottom += 0.5;
-			expect(bottom - top, `the target at x=${x}`).toBeGreaterThanOrEqual(44 - DEVICE_PIXEL);
-			// and short of the gift's row, which keeps every press of its own.
-			expect(top).toBeGreaterThan(gift.getBoundingClientRect().bottom);
+		const reached = (state: string) => {
+			for (const [x = 0, y = 0] of [
+				middle(words.getBoundingClientRect()),
+				middle((decision.querySelector('.switch') as HTMLElement).getBoundingClientRect())
+			]) {
+				const pressed = (at: number) => decision.contains(shadow.elementFromPoint(x, at));
+				let top = y;
+				while (pressed(top - 0.5)) top -= 0.5;
+				let bottom = y;
+				while (pressed(bottom + 0.5)) bottom += 0.5;
+				expect(bottom - top, `${state}, the target at x=${x}`).toBeGreaterThanOrEqual(
+					44 - DEVICE_PIXEL
+				);
+				// and short of the gift's row, which keeps every press of its own.
+				expect(top, state).toBeGreaterThan(gift.getBoundingClientRect().bottom);
+			}
+		};
+
+		reached('the sentence drawn');
+		for (const beside of shadow.querySelectorAll<HTMLElement>('.fee-note, .row.fee .figure')) {
+			beside.style.visibility = 'hidden';
 		}
+		reached('the sentence taken off');
 	});
 
 	// the thumb is placed with logical insets and moved with a physical `translate`, so which way it

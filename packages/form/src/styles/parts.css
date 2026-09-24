@@ -1397,9 +1397,11 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * reserve the slack between the floor and the words by taking back a length it cannot read, which
  * is the words' own height.
  *
- * it is the label's own box, so a press on it is a press on the label and flips the switch. it is
- * in flow, so the boxes after it take the press where they overlap it: the sentence and its figure
- * under the words keep their own presses, and the gift's row above is out of its reach.
+ * it is the label's own box, so a press on it is a press on the label and flips the switch. the
+ * gift's row above is out of its reach. the sentence and its figure under the words are not: they
+ * stand closer under the words than half the floor, so they let a press through to the target
+ * rather than paint over its lower edge. both are text a donor reads, and a press on either lands
+ * on the switch they describe or on nothing at all.
  */
 .fee-decision::before {
 	content: '';
@@ -1407,6 +1409,10 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	align-self: center;
 	block-size: var(--_row-min);
 	margin-block: calc(var(--_row-min) / -2);
+}
+
+.fee-decision:not([hidden]) ~ :is(.fee-note, .figure) {
+	pointer-events: none;
 }
 
 /*
