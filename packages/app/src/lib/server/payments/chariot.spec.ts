@@ -288,10 +288,9 @@ describe('readSettlement — Get Grant', () => {
 	/**
 	 * the vocabulary the API sends is `Initiated`, `Completed`, `Canceled` (a sandbox read,
 	 * 2026-09-15); the lowercase spellings are the `2026-04-01` reference's, which the same words
-	 * read the same under. `Received` is the word Chariot's DAFpay guide gives the organisation
-	 * marking a grant received, and reads as `Completed` does. every other word —
-	 * `awaiting_daf_submission`, a status nobody has documented — is a grant still on its way, and
-	 * nothing may be acted on from that.
+	 * read the same under. every other word — `awaiting_daf_submission`, `received`, which is in
+	 * neither the reference's enum nor the sandbox's simulations, a status nobody has documented —
+	 * is a grant still on its way, and nothing may be acted on from that.
 	 */
 	it.each([
 		['Initiated', 'pending'],
@@ -299,8 +298,8 @@ describe('readSettlement — Get Grant', () => {
 		['Canceled', 'cancelled'],
 		['completed', 'succeeded'],
 		['canceled', 'cancelled'],
-		['Received', 'succeeded'],
-		['received', 'succeeded'],
+		['Received', 'pending'],
+		['received', 'pending'],
 		['initiated', 'pending'],
 		['awaiting_daf_submission', 'pending'],
 		['Paid', 'pending']
@@ -456,6 +455,28 @@ describe('verifyEvent — the signed delivery', () => {
 				kind: 'settlement',
 				type: 'grant.updated',
 				occurredAt: new Date('2024-01-19T18:48:56.37Z'),
+				providerTxnId: GRANT_ID
+			}
+		});
+	});
+
+	// the 2026-04-01 reference requires no field on an Event.
+	it('dates a grant update that carries no created_at by its arrival', async () => {
+		vi.useFakeTimers({ now: new Date('2026-09-24T10:00:00Z') });
+		const { created_at: _, ...undated } = JSON.parse(BODY);
+		const body = JSON.stringify(undated);
+
+		const result = await createChariotProvider(CREDENTIALS).verifyEvent(
+			delivery(`t=${T},v1=${sign(T, body)}`, body)
+		);
+
+		expect(result).toStrictEqual({
+			ok: true,
+			value: {
+				id: 'event_123abc',
+				kind: 'settlement',
+				type: 'grant.updated',
+				occurredAt: new Date('2026-09-24T10:00:00Z'),
 				providerTxnId: GRANT_ID
 			}
 		});
