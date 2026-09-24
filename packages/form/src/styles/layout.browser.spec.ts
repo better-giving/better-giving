@@ -377,10 +377,14 @@ describe('the review step at the narrowest card', () => {
 	 * the refusal is built on every card and shown on the ones that pass words for it, the way
 	 * `paymentMessage` in ../views.ts is: a step assembled without it is the step in one of its two
 	 * states, and it is the state the line naming the receipt was moved past.
+	 *
+	 * at the narrowest card unless a case names a wider one: the fee's sentence wraps here and holds
+	 * one line on a desktop card, and the row is placed differently in the two.
 	 */
 	function review(
 		email: string,
-		refusal = ''
+		refusal = '',
+		width = '375px'
 	): {
 		body: HTMLElement;
 		give: HTMLElement;
@@ -388,7 +392,7 @@ describe('the review step at the narrowest card', () => {
 		summary: HTMLElement;
 		gift: HTMLElement;
 		fee: HTMLElement;
-		feeWords: HTMLElement;
+		feeLine: HTMLElement;
 		feeNote: HTMLElement;
 		group: HTMLElement;
 		heading: HTMLElement;
@@ -396,14 +400,14 @@ describe('the review step at the narrowest card', () => {
 		message: HTMLElement;
 		submit: HTMLElement;
 	} {
-		const built = card('375px', '16px');
+		const built = card(width, '16px');
 
 		const summary = document.createElement('div');
 		summary.setAttribute('part', 'summary');
 		const gift = money('row', 'One-time gift', '$50.00');
 		summary.appendChild(gift);
 
-		// the fee, which takes two of the ledger's rows: the decision across the width, and under it
+		// the fee, which takes two of the ledger's rows: the decision beside its figure, and under it
 		// what that decision did to the money.
 		const fee = document.createElement('div');
 		fee.className = 'row fee';
@@ -411,7 +415,10 @@ describe('the review step at the narrowest card', () => {
 		decision.className = 'fee-decision';
 		const feeWords = document.createElement('span');
 		feeWords.className = 'row-label';
-		feeWords.textContent = 'Cover the processing fee';
+		feeWords.textContent = 'Cover the processing ';
+		const tail = document.createElement('span');
+		tail.className = 'fee-tail';
+		tail.textContent = 'fee';
 		const control = document.createElement('span');
 		control.className = 'switch';
 		const box = document.createElement('input');
@@ -421,8 +428,9 @@ describe('the review step at the narrowest card', () => {
 		thumb.className = 'switch-thumb';
 		control.appendChild(box);
 		control.appendChild(thumb);
+		tail.appendChild(control);
+		feeWords.appendChild(tail);
 		decision.appendChild(feeWords);
-		decision.appendChild(control);
 		const feeNote = document.createElement('p');
 		feeNote.className = 'fee-note';
 		feeNote.textContent = 'You add $2.15 so Acme Relief Fund receives the full $50.00.';
@@ -473,7 +481,7 @@ describe('the review step at the narrowest card', () => {
 			summary,
 			gift,
 			fee,
-			feeWords,
+			feeLine: decision,
 			feeNote,
 			group,
 			heading,
@@ -527,13 +535,17 @@ describe('the review step at the narrowest card', () => {
 	});
 
 	// the sentence pricing the decision is what the switch just did, so it belongs to the switch. it
-	// is measured off the words rather than off the label's box, because the box is a 44px target
-	// and the slack it leaves under the words is the whole of what stood the two a step apart.
-	it('stands the fee’s sentence with the switch that wrote it', () => {
-		const { feeWords, feeNote, gift, fee } = review('donor@example.org');
+	// is measured off the words' line, the label's own box, the way the rows either side of it are
+	// measured off theirs. on a narrow card and a desktop one, where the sentence wraps and where it
+	// holds one line.
+	it.each([['375px'], ['1280px']])(
+		'stands the fee’s sentence with the switch that wrote it, %s wide',
+		(width) => {
+			const { feeLine, feeNote, gift, fee } = review('donor@example.org', '', width);
 
-		expect(between(feeWords, feeNote)).toBeLessThan(between(gift, fee));
-	});
+			expect(between(feeLine, feeNote)).toBeLessThan(between(gift, fee));
+		}
+	);
 
 	// and the length it takes, which is the half of it an arithmetic in the sheet can get wrong
 	// without moving the reading: the sentence is meant to stand off the box at the gap a refusal
@@ -560,13 +572,13 @@ describe('the review step at the narrowest card', () => {
 	// (`.aside:has(+ [part~='submit'])` in ../styles/layout.css), so a sentence arriving between the
 	// two must not take the line back off the press.
 	it('leaves the three groups further apart than anything standing inside one, once a payment is refused', () => {
-		const { summary, gift, fee, feeWords, feeNote, group, heading, box, message, receipt, submit } =
+		const { summary, gift, fee, feeLine, feeNote, group, heading, box, message, receipt, submit } =
 			review('donor@example.org', 'Choose how you would like to pay.');
 
 		expect(message.hidden).toBe(false);
 		const inside = [
 			between(gift, fee),
-			between(feeWords, feeNote),
+			between(feeLine, feeNote),
 			between(heading, box),
 			between(group, message),
 			between(receipt, submit)
@@ -601,12 +613,12 @@ describe('the review step at the narrowest card', () => {
 	// a group is legible in the space around the group and nowhere else — so this is the case that
 	// fails if a rule above takes a gap the step spends between its groups rather than inside one.
 	it('leaves the three groups further apart than anything standing inside one', () => {
-		const { summary, gift, fee, feeWords, feeNote, group, heading, box, receipt, submit } =
+		const { summary, gift, fee, feeLine, feeNote, group, heading, box, receipt, submit } =
 			review('donor@example.org');
 
 		const inside = [
 			between(gift, fee),
-			between(feeWords, feeNote),
+			between(feeLine, feeNote),
 			between(heading, box),
 			between(receipt, submit)
 		];

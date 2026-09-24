@@ -1808,9 +1808,17 @@ export function createCard(
 	// accessible name: a sighted donor never reads a name, and the fee is the one line of the receipt
 	// where the figure alone does not say what was decided.
 	const feeNote = make(doc, 'p', { class: 'fee-note', id: 'fee-note', hidden: true });
-	const feeDecision = make(doc, 'label', { class: 'fee-decision', hidden: true }, [
-		make(doc, 'span', { class: 'row-label' }, [FEE_TOGGLE_LABEL]),
+	// the label's last word and the switch, held in one run that never breaks (`.fee-tail` in
+	// ./styles/parts.css). chromium breaks before an atomic inline that does not fit whatever the text
+	// before it or an ancestor's `white-space` says, so a switch set after the words alone lands on a
+	// line of its own once they wrap — only an element holding both keeps the two together.
+	const feeTailAt = FEE_TOGGLE_LABEL.lastIndexOf(' ') + 1;
+	const feeTail = make(doc, 'span', { class: 'fee-tail' }, [
+		FEE_TOGGLE_LABEL.slice(feeTailAt),
 		feeSwitch
+	]);
+	const feeDecision = make(doc, 'label', { class: 'fee-decision', hidden: true }, [
+		make(doc, 'span', { class: 'row-label' }, [FEE_TOGGLE_LABEL.slice(0, feeTailAt), feeTail])
 	]);
 	// the same row read as an account rather than operated as a decision, which is every screen past
 	// the review step. two nodes rather than one relabelled: only one of them is ever on screen, and
