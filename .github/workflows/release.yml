@@ -146,7 +146,52 @@ jobs:
           git config user.name "better-giving-release[bot]"
           git config user.email "better-giving-release[bot]@users.noreply.github.com"
           printf '%s\n\n%s\n' "$RELEASE_TAG" "$RELEASE_NOTES" > "$RUNNER_TEMP/tag-message.txt"
-          git tag -a "$RELEASE_TAG" -F "$RUNNER_TEMP/tag-message.txt"
+          # --cleanup=verbatim: git tag -F defaults to --cleanup=strip, which drops every line
+          # starting with `#` from the annotation. the release page renders .TagBody as markdown
+          # (.goreleaser.yaml's release.header), where a leading `#` is a heading a fundraiser
+          # might type without knowing it is special, so stripping it would silently shorten the
+          # page rather than fail the run.
+          git tag -a "$RELEASE_TAG" -F "$RUNNER_TEMP/tag-message.txt" --cleanup=verbatim
+
+      # a pushed `v*` tag is fetched by the checkout step above, but fetch-depth: 0 does not
+      # document that the fetched object is the annotation rather than the commit it points at —
+      # so this fetches the tag ref by name, explicitly, rather than trusting the checkout's own
+      # tag-following to have landed the right object before the shape check below reads it.
+      - name: fetch the pushed tag as the object it names
+        if: github.event_name == 'push'
+        run: git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+
+      # the one place either path's tag is checked before anything is built from it: a dispatch
+      # cuts the tag above in a shape nothing here can then get wrong, and a pushed tag was cut by
+      # someone at their own machine, following `.claude/skills/release/SKILL.md`'s hand path,
+      # where nothing enforces the shape but this. `.goreleaser.yaml`'s `release.header` reads
+      # `.TagBody`, which for a *lightweight* tag resolves to the body of the commit it points at
+      # rather than to nothing — so a tag made with plain `git tag` rather than `git tag -a` would
+      # open the release page on this repository's own commit trailers, `Co-Authored-By` and
+      # `Claude-Session` included, which is exactly what `.claude/skills/release/SKILL.md` step 4
+      # says to leave off the page. refusing here spends nothing: it runs before pnpm, go, or any
+      # build step below.
+      - name: the tag is annotated, in the shape the release page reads
+        run: |
+          kind=$(git cat-file -t "refs/tags/$RELEASE_TAG")
+          if [ "$kind" != "tag" ]; then
+            echo "refs/tags/$RELEASE_TAG is a $kind, not an annotated tag: cut it again with 'git tag -a', following .claude/skills/release/SKILL.md" >&2
+            exit 1
+          fi
+          subject=$(git for-each-ref --format='%(contents:subject)' "refs/tags/$RELEASE_TAG")
+          if [ "$subject" != "$RELEASE_TAG" ]; then
+            echo "the tag's first line is '$subject', not '$RELEASE_TAG': the tag's message must open with the tag name itself, a blank line, then the release paragraph" >&2
+            exit 1
+          fi
+          body=$(git for-each-ref --format='%(contents:body)' "refs/tags/$RELEASE_TAG")
+          if [ -z "$body" ]; then
+            echo "the tag's body is empty, so the release page would open on the commit list alone with no paragraph above it: the message needs a blank line after '$RELEASE_TAG' and a paragraph after that" >&2
+            exit 1
+          fi
+          if printf '%s\n' "$body" | grep -qE '^(Co-Authored-By|Claude-Session):'; then
+            echo "the tag's body carries a Co-Authored-By or Claude-Session trailer: that is for a reader of this repository's history, not the release page (.claude/skills/release/SKILL.md step 4) — cut the tag again without it" >&2
+            exit 1
+          fi
 
       # no `version` here on purpose: the action reads `packageManager` from the root package.json,
       # so the pin lives in the one file the repository already keeps it in.

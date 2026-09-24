@@ -86,14 +86,16 @@ release:
   # is the address the operator documents publish. flagging one — here, or by ticking the box in
   # github's own release form — takes the install line down for everyone, and the release that did
   # it is the one nobody can install. the alpha is said in the tag and in the version the binary
-  # prints, which is where a reader looks anyway. internal/update reads the numbers and cuts the
-  # suffix (internal/update/update.go, `numbered`), so a pre-release tag orders correctly there.
+  # prints, which is where a reader looks anyway. internal/update orders by full semantic-version
+  # precedence (internal/update/update.go, `behind`), so a pre-release tag still orders correctly
+  # there.
   #
-  # the page opens with the annotated tag's paragraph — everything under its first line, which is
-  # the tag itself — above the commit list `changelog:` writes. the dispatch in
-  # .github/workflows/release.yml cuts the tag in that shape from its `notes` input, and
-  # .claude/skills/release/SKILL.md cuts one by hand the same way. a tag with no paragraph opens on
-  # the commit list alone.
+  # the page opens with the annotated tag's paragraph — the text after the blank line that follows
+  # the tag name on the first line — above the commit list `changelog:` writes.
+  # .github/workflows/release.yml refuses to build from a tag that isn't in that shape, on both
+  # the dispatch and the pushed-tag path (its "the tag is annotated, in the shape the release page
+  # reads" step) — that check is the shape's one owner; .claude/skills/release/SKILL.md's hand
+  # path writes the same shape and checks it the same way before pushing.
   header: "{{ .TagBody }}"
   extra_files:
     # the worker bundle, packed by .github/workflows/release.yml before this runs. it is named for
