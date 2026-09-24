@@ -134,10 +134,11 @@ jobs:
           fi
 
       # the tag a hand cut one replaces: an annotated tag, first line the tag itself, then the
-      # dispatch input as the paragraph an operator reads on the release page, no trailer — the
-      # same shape `.claude/skills/release/SKILL.md` writes by hand. pushed with this job's own
-      # token, which is why the header above argues that push starts no second run.
-      - name: create and push the release tag
+      # dispatch input as its paragraph, no trailer — the same shape
+      # `.claude/skills/release/SKILL.md` writes by hand. it is made here, in the checkout, and
+      # pushed only in front of goreleaser below: a build that fails between the two leaves nothing
+      # on the remote, so the same name can be dispatched again.
+      - name: create the release tag
         if: github.event_name == 'workflow_dispatch'
         env:
           RELEASE_NOTES: ${{ inputs.notes }}
@@ -146,7 +147,6 @@ jobs:
           git config user.email "better-giving-release[bot]@users.noreply.github.com"
           printf '%s\n\n%s\n' "$RELEASE_TAG" "$RELEASE_NOTES" > "$RUNNER_TEMP/tag-message.txt"
           git tag -a "$RELEASE_TAG" -F "$RUNNER_TEMP/tag-message.txt"
-          git push origin "$RELEASE_TAG"
 
       # no `version` here on purpose: the action reads `packageManager` from the root package.json,
       # so the pin lives in the one file the repository already keeps it in.
@@ -213,6 +213,13 @@ jobs:
           # (packages/console/internal/bundle's `Digest`). the step after goreleaser holds the two
           # ends of that together.
           echo "BUNDLE_DIGEST=$(sha256sum "$packed" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+
+      # the last step before anything is published, and the first that spends the name. pushed with
+      # this job's own token, which is why the header above argues that push starts no second run;
+      # goreleaser then finds the tag on the remote and publishes its release against it.
+      - name: push the release tag
+        if: github.event_name == 'workflow_dispatch'
+        run: git push origin "$RELEASE_TAG"
 
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
