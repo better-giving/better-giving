@@ -632,20 +632,35 @@ form {
  * spends as its `gap`, so a column drawn at another step keeps its refusals at `--_sp1` (the
  * tribute's body, above). a column nested in another states its own and never reads its parent's.
  *
- * the four columns a refusal stands in under what it refuses: a row, a disclosure's body, the
- * honoree's dedication, and the amount group, where the tray is what is refused and the entry's
- * hidden label stands out of flow between the two. the dedication is a grid, so on its wide layout
- * the select sharing the name's line takes the same margin (the breakpoint at the end of this file),
- * or the taller of the two would hold the track open.
+ * the three columns a refusal stands in under a box it refuses: a row, a disclosure's body and the
+ * honoree's dedication. the dedication is a grid, so on its wide layout the select sharing the
+ * name's line takes the same margin (the breakpoint at the end of this file), or the taller of the
+ * two would hold the track open. the amount group is the fourth column and takes its gap back from
+ * the sentence's side instead (the rule after this one).
  *
  * a row whose label stands inside its box takes the smaller step as its gap instead
  * (`.field-row.floating` below): its label is out of flow, so the box and the sentence are the only
  * two things the gap falls between, and a margin on the box would shorten the track the label is
  * centred in. its take-back here is that step less itself, which is none.
  */
-:is(.field-row, .disclosure-inner, .dedication) > [part~='field']:has(+ .message:not([hidden])),
-.group > .tiles:has(~ .message:not([hidden])) {
+:is(.field-row, .disclosure-inner, .dedication) > [part~='field']:has(+ .message:not([hidden])) {
 	margin-block-end: calc(var(--_sp1) - var(--_column-gap));
+}
+
+/*
+ * the amount group's refusal, under the tray it refuses, with the entry's hidden label standing out
+ * of flow between the two. the take-back is on the sentence because the tray is an inline-size
+ * container, and chromium drops every box inside one whose margin is switched through `:has()` —
+ * the tiles lose their rects while their computed `display` still reads as drawn. a hidden sentence
+ * is `display: none`, so the margin needs no gate.
+ *
+ * the sentence is drawn at `--_t-xs`, and every step is an `em`, so the two steps resolved on it
+ * would be that rung's fraction of the column's. the difference is scaled back by `--_t-xs`'s own
+ * multiplier to land at the column's length; "stands as close under each thing the amount step
+ * refuses" in ./parts.browser.spec.ts measures it against `--_sp1`, and goes red if the rung moves.
+ */
+.group > .tiles ~ .message {
+	margin-block-start: calc((var(--_sp1) - var(--_column-gap)) / 0.75);
 }
 
 /*

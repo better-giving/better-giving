@@ -3514,6 +3514,33 @@ describe('a refusal under its box', () => {
 		}
 	);
 
+	// the tray keeps its boxes once it is refused: chromium drops every box inside an inline-size
+	// container whose margin is switched through `:has()`, while its computed `display` still reads
+	// as drawn. so the tray, every tile on it and the columns they flowed into are read after the
+	// refusal against before it.
+	it.each(['375px', '560px'])('keeps the tray and every tile on it drawn at %s', async (width) => {
+		const { host, shadow } = await mount();
+		host.style.inlineSize = width;
+		await settle();
+		const tray = shadow.querySelector('.tiles') as HTMLElement;
+		const columns = () => getComputedStyle(tray).gridTemplateColumns;
+		const before = columns();
+		const cols = tray.style.getPropertyValue('--_cols');
+
+		(shadow.querySelector('.other input') as HTMLInputElement).click();
+		onward(shadow);
+		await settle();
+		await new Promise(requestAnimationFrame);
+
+		expect((shadow.querySelector('#amount-problem') as HTMLElement).hidden).toBe(false);
+		for (const box of [tray, ...Array.from(tray.children)] as HTMLElement[]) {
+			expect(box.getClientRects().length, box.className).toBeGreaterThan(0);
+			expect(box.checkVisibility(), box.className).toBe(true);
+		}
+		expect(columns()).toBe(before);
+		expect(tray.style.getPropertyValue('--_cols')).toBe(cols);
+	});
+
 	// the seat is the column's own gap taken back, so a column drawn at another gap keeps it: the
 	// tribute's body spends a wider step than the note's, and a box refused directly inside it
 	// still stands `--_sp1` over its sentence. no box stands directly in it, so the row is built here.
