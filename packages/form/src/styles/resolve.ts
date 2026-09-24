@@ -64,29 +64,20 @@ export const LENGTH_TOKENS: readonly string[] = [
 export const NUMBER_TOKENS: readonly string[] = ['--_w-bold'];
 
 /**
- * the tokens whose resolved value is a bare number that is not a weight: a line height.
- *
- * exported for ./resolve.browser.spec.ts, which holds every member of it to the number
- * ./tokens.css states, as it does `NUMBER_TOKENS`.
- */
-export const RATIO_TOKENS: readonly string[] = ['--_lh-body'];
-
-/**
  * every token this module knows a carrier for, whatever kind it is.
  *
  * exported for ./resolve.spec.ts, which holds this to `APPEARANCE_INPUTS` in the node pool — the
- * one that gates a commit. nothing in production reads it: `carrier` below asks the four lists
+ * one that gates a commit. nothing in production reads it: `carrier` below asks the three lists
  * directly, because what it needs is the kind and not the membership.
  */
 export const CLASSIFIED_TOKENS: readonly string[] = [
 	...COLOR_TOKENS,
 	...LENGTH_TOKENS,
-	...NUMBER_TOKENS,
-	...RATIO_TOKENS
+	...NUMBER_TOKENS
 ];
 
 /**
- * the property each of the four kinds is resolved through.
+ * the property each of the three kinds is resolved through.
  *
  * which property carries a kind is what decides how an unresolved token comes back, so it is not
  * free choice. a step invalid at computed-value time behaves as `unset`: on an inherited property
@@ -100,17 +91,12 @@ export const CLASSIFIED_TOKENS: readonly string[] = [
  * inherits, which is the sentinel, and the reader drops it. so a number token that is not a weight
  * — a line height, a ratio — would split on this carrier rather than fail on it, `1.5` arriving
  * intact where `0.9` never arrives at all and leaves the surface it fed unstyled with nothing
- * saying why. that is what the ratio kind's carrier is for.
- *
- * `flex-grow` carries a ratio: any non-negative number, unclamped, computed as the number itself.
- * `line-height` cannot, because its value read back is resolved to px. it is not inherited, so a
- * token that did not resolve takes its initial `0`, which is the sentinel and needs no wrapper.
+ * saying why. one needs a carrier of its own, and a sentinel to go with it.
  */
 const CARRIERS = {
 	color: 'color',
 	length: 'text-indent',
-	number: 'font-weight',
-	ratio: 'flex-grow'
+	number: 'font-weight'
 } as const;
 
 /**
@@ -149,9 +135,6 @@ const UNRESOLVED_LENGTH = '-99999px';
  * weight that can stand for "this did not resolve".
  */
 const UNRESOLVED_WEIGHT = '1';
-
-/** the ratio carrier's initial value, and a line nothing is set at: text at `0` overlaps itself. */
-const UNRESOLVED_RATIO = '0';
 
 /**
  * one color as sRGB bytes, or `null` where nothing paintable was resolved.
@@ -214,7 +197,6 @@ export function resolveAppearance(host: HTMLElement): StripeAppearance {
 		if (COLOR_TOKENS.includes(property)) return CARRIERS.color;
 		if (LENGTH_TOKENS.includes(property)) return CARRIERS.length;
 		if (NUMBER_TOKENS.includes(property)) return CARRIERS.number;
-		if (RATIO_TOKENS.includes(property)) return CARRIERS.ratio;
 		return null;
 	};
 
@@ -226,7 +208,6 @@ export function resolveAppearance(host: HTMLElement): StripeAppearance {
 		const resolved = view.getComputedStyle(probe).getPropertyValue(through ?? property);
 		if (through === CARRIERS.length) return resolved === UNRESOLVED_LENGTH ? '' : resolved;
 		if (through === CARRIERS.number) return resolved === UNRESOLVED_WEIGHT ? '' : resolved;
-		if (through === CARRIERS.ratio) return resolved === UNRESOLVED_RATIO ? '' : resolved;
 		if (through !== CARRIERS.color) return resolved;
 		if (context === null) return '';
 		const painted = bytes(context, resolved);
