@@ -536,8 +536,8 @@ describe('the review step at the narrowest card', () => {
 
 	// and the length it takes, which is the half of it an arithmetic in the sheet can get wrong
 	// without moving the reading: the sentence is meant to stand off the box at the gap a refusal
-	// takes under the box it is about on every other row of the card (`.field-row` in
-	// ../styles/layout.css). a length spent in `em` resolves on the element spending it, and the
+	// takes under the box it is about on every other row of the card (`.field-row` and the rule under it
+	// in ../styles/layout.css). a length spent in `em` resolves on the element spending it, and the
 	// sentence is drawn a step smaller than the card — so the same expression means one thing on the
 	// box above it and a shorter one on the sentence itself.
 	it('leaves a refused payment\u2019s sentence at the gap a refusal takes under its box', () => {
@@ -547,7 +547,7 @@ describe('the review step at the narrowest card', () => {
 		);
 
 		expect(message.hidden).toBe(false);
-		expect(between(group, message)).toBeCloseTo(stepOf(give, '--_sp2'), 0);
+		expect(between(group, message)).toBeCloseTo(stepOf(give, '--_sp1'), 0);
 	});
 
 	// and the same claim with the step in the state a refused press puts it in, which is the question

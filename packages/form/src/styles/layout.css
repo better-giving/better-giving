@@ -229,14 +229,15 @@ form {
  * the reason the line above gives: the step's full rhythm on both sides of it stands it as far from
  * the box it names as from the line under it, and a sentence equidistant from two blocks reads as a
  * third. it takes the gap a refusal takes under the box it is about on every other row of the card
- * instead — the step's gap negated and the row's own put back (`.field-row` below) — so a step
- * drawn at a different rhythm keeps the sentence against the box it is about.
+ * instead — the step's gap negated and the smaller step put back (`.field-row` below, and the
+ * rule under it) — so a step drawn at a different rhythm keeps the sentence against the box it is
+ * about.
  *
  * the length is carried by the box rather than by the sentence, which is where this parts from the
  * line above and the reason is the `em` both of them are written in: a step resolves on the element
  * spending it, and the sentence is drawn at `--_t-xs` while the box is at the card's own base — so
  * the same expression on the sentence negates three quarters of the step's gap and puts back three
- * quarters of the row's, landing it at a length nothing on this card names.
+ * quarters of the smaller step, landing it at a length nothing on this card names.
  *
  * so the box takes it, and what the line above gets from being hidden this gets from the gate: the
  * sentence is hidden until there is something to say (`paymentMessage` in ../views.ts), and the box
@@ -250,7 +251,7 @@ form {
  * heading (`paymentGroup` in ../views.ts), and no other group on the card is followed by one.
  */
 .group:has(+ .message:not([hidden])) {
-	margin-block-end: calc(var(--_sp2) - var(--_sp5));
+	margin-block-end: calc(var(--_sp1) - var(--_sp5));
 }
 
 /*
@@ -608,6 +609,24 @@ form {
 }
 
 /*
+ * a refusal stands closer under its box than the row's gap: at that gap it stood as far below the
+ * box as the label stands above it, and with its own line's leading on top it read as a line of its
+ * own rather than as something said about the box. the row's gap negated and the smaller step put
+ * back, carried by the box for the reason `.group:has(+ .message:not([hidden]))` above gives — the
+ * sentence is drawn a step smaller, and the expression spent on it resolves to a length nothing on
+ * this card names. the box is drawn at the card's base or its floor (`[part~='field']` in
+ * ./parts.css), so above the floor the two steps are the row's exactly.
+ *
+ * a row whose label stands inside its box takes the smaller step as its gap instead
+ * (`.field-row.floating` below): its label is out of flow, so the box and the sentence are the only
+ * two things the gap falls between, and a margin on the box would shorten the track the label is
+ * centred in.
+ */
+.field-row:not(.floating) > [part~='field']:has(+ .message:not([hidden])) {
+	margin-block-end: calc(var(--_sp1) - var(--_sp2));
+}
+
+/*
  * a row whose label stands inside its box, and the three things that construction needs of the row.
  *
  * only the label moves. the box and the sentence under it are laid out here exactly as the row above
@@ -639,6 +658,7 @@ form {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
 	align-content: start;
+	gap: var(--_sp1);
 }
 
 /*

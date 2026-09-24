@@ -3377,3 +3377,42 @@ describe('the list a closed choice opens', () => {
 		expect(await widthOpen()).toBe(resting);
 	});
 });
+
+/*
+ * a refusal belongs to the box it is about, so it stands close under that box and well clear of the
+ * next thing on the step: at the row's own gap it stood as far under its box as the label stands
+ * over it, and with the line's own leading on top it read as detached from the box it names.
+ */
+describe('a refusal under its box', () => {
+	it('stands close under its box, nearer it than the next row', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		onward(shadow);
+		await settle();
+		const box = shadow.querySelector('#email') as HTMLElement;
+		const refusal = shadow.querySelector('#email-problem') as HTMLElement;
+		const next = (box.closest('.field-row') as HTMLElement).nextElementSibling as HTMLElement;
+		const under = refusal.getBoundingClientRect().top - box.getBoundingClientRect().bottom;
+		const beyond = next.getBoundingClientRect().top - refusal.getBoundingClientRect().bottom;
+
+		expect(refusal.hidden).toBe(false);
+		expect(under).toBeCloseTo(step(shadow, '--_sp1'), 0);
+		expect(under).toBeLessThan(beyond);
+	});
+
+	// the same seat where the label stands inside the box, whose row is laid out as a grid instead.
+	it('stands as close under a box whose label stands inside it', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		onward(shadow);
+		await settle();
+		const box = shadow.querySelector('#first-name') as HTMLElement;
+		const refusal = shadow.querySelector('#first-name-problem') as HTMLElement;
+
+		expect(refusal.hidden).toBe(false);
+		expect(refusal.getBoundingClientRect().top - box.getBoundingClientRect().bottom).toBeCloseTo(
+			step(shadow, '--_sp1'),
+			0
+		);
+	});
+});
