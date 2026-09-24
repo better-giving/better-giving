@@ -30,15 +30,44 @@ import type { StatedForm } from './use-console-form';
 // an element in them.
 
 /**
- * whether the press in flight is this block's own, which is the whole of what closes a block.
+ * whether the press in flight is this block's own, which is the only press that closes a block.
  *
- * it is what a box states `disabled` on (../closed-while-writing.spec.ts is the gate that every box
- * states one), and it is both of the flags the credentials form hands the seam
- * (./use-console-form.ts) — the save-state half underneath it reads a press through `busy` and
- * `pending` and nothing else (packages/operator/src/saved-form-state.react.ts), so handing it this
- * twice is what leaves its button drawing off its own boxes while the other block is writing.
+ * it names the press in both of its router phases and never which one; the credentials block reads
+ * the phase beside it ({@link mailPhase}), and the send reads this alone ({@link sendState}).
  */
 export const ownPress = (pending: string | null, intent: string): boolean => pending === intent;
+
+/**
+ * where the credentials block's own press stands, and whether its boxes are closed.
+ *
+ * **an answer that stored nothing reopens the boxes on the render it lands in**, while the page is
+ * still being read again over it. the posted intent is carried through that re-read as well as the
+ * request (./stripe-press.ts), so a reading off the intent alone holds the boxes disabled for the
+ * whole of it — and the refusal's focus move runs on that render, against a box that takes no
+ * focus. a landed write keeps them closed until the reading it left behind lands (./reseed.ts), so
+ * a box is never typed in over a value about to be put back.
+ *
+ * `closed` is what the boxes state `disabled` on and the `pending` the credentials form hands the
+ * seam (./use-console-form.ts); `inFlight` is what the confirm's own press is closed on, since any
+ * answer takes the card down (the effect on `report` in ./smtp-fold.tsx). no other press on the
+ * page enters either.
+ */
+export function mailPhase(press: {
+	/** which intent the page has in flight, in either phase, or `null`. */
+	readonly pending: string | null;
+	/** the credentials press's own intent. */
+	readonly intent: string;
+	/** the router has the answer and is reading the page again over it. */
+	readonly revalidating: boolean;
+	/** the answer standing says the write landed. */
+	readonly landed: boolean;
+	/** the reading after that write is on the screen (./reseed.ts). */
+	readonly spent: boolean;
+}): { readonly inFlight: boolean; readonly closed: boolean } {
+	const own = ownPress(press.pending, press.intent);
+	const inFlight = own && !press.revalidating;
+	return { inFlight, closed: inFlight || (own && press.landed) || (press.landed && !press.spent) };
+}
 
 /**
  * whether the deployment holds nothing for a message to leave through.

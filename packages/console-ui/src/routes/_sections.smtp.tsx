@@ -59,7 +59,7 @@ export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean {
 
 export default function SmtpPage({ actionData, matches }: Route.ComponentProps) {
 	const shell = matches[1].loaderData;
-	const { intent } = usePress();
+	const { intent, revalidating } = usePress();
 	return (
 		<Column>
 			<SmtpFold
@@ -73,6 +73,7 @@ export default function SmtpPage({ actionData, matches }: Route.ComponentProps) 
 				freed={actionData && 'freed' in actionData ? actionData.freed : null}
 				test={actionData && 'test' in actionData ? actionData.test : null}
 				pending={intent}
+				revalidating={revalidating}
 			/>
 		</Column>
 	);

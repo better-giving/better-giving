@@ -13,6 +13,7 @@ import {
 	mailAct,
 	mailForm,
 	mailGaps,
+	mailPhase,
 	mailUnconfigured,
 	ownPress,
 	sendState,
@@ -53,6 +54,15 @@ const resting = {
 	unconfigured: false
 };
 
+/** a credentials form at rest, which every case reading its boxes varies from. */
+const credentials = {
+	pending: null as string | null,
+	intent: STORE_INTENT,
+	revalidating: false,
+	landed: false,
+	spent: false
+};
+
 /** the four names a mail press carries a value for, read off the group rather than spelled again. */
 const PRESSED = pressedNames(mailGroup);
 
@@ -77,12 +87,17 @@ describe('the two blocks of the mail fold', () => {
 	});
 
 	it('leaves the credentials open while the test send is in flight', () => {
-		// the whole of the first defect: this is both of the flags the credentials form hands the seam
-		// (packages/operator/src/saved-form-state.react.ts reads a press through `busy` and
-		// `pending` and nothing else), so a `false` here is that hook's `pending` and `disabled`
-		// arms unable to fire — its press draws off its own boxes, which is `idle` over a form
-		// holding an edit. it is also what the five boxes state `disabled` on.
+		// the whole of the first defect: `closed` is what the five boxes state `disabled` on and the
+		// `pending` the credentials form hands the seam, so a `true` here greys five boxes and draws
+		// `Saving` under them for a message on its way to an inbox.
 		expect(ownPress(TEST_INTENT, STORE_INTENT)).toBe(false);
+		expect(mailPhase({ ...credentials, pending: TEST_INTENT })).toEqual({
+			inFlight: false,
+			closed: false
+		});
+		expect(mailPhase({ ...credentials, pending: TEST_INTENT, revalidating: true }).closed).toBe(
+			false
+		);
 	});
 
 	it('leaves the send open while the credentials are being stored', () => {
@@ -128,6 +143,45 @@ describe('the two blocks of the mail fold', () => {
 		// and a box emptied while the tick stood goes back to having nothing to send to, rather than
 		// to a press that would send nowhere.
 		expect(sendState({ ...resting, sent: true, expired: true, empty: true })).toBe('disabled');
+	});
+});
+
+describe('whether the credential boxes are closed', () => {
+	it('leaves them open at rest', () => {
+		expect(mailPhase(credentials)).toEqual({ inFlight: false, closed: false });
+	});
+
+	it('closes them and the confirm while the request carrying them is in flight', () => {
+		expect(mailPhase({ ...credentials, pending: STORE_INTENT })).toEqual({
+			inFlight: true,
+			closed: true
+		});
+	});
+
+	it('closes them over the answer before this press, which is what the page holds while it goes', () => {
+		// the answer on the page during the request is the last press's, landed or not, and the boxes
+		// hold what is being sent over it.
+		expect(
+			mailPhase({ ...credentials, pending: STORE_INTENT, landed: true, spent: true }).closed
+		).toBe(true);
+	});
+
+	it('reopens them on the render a refusal lands in, while the page is read again over it', () => {
+		// the intent is carried through the re-read as well as the request (./stripe-press.ts), so
+		// a reading off the intent alone keeps the boxes disabled on the render the focus move to the
+		// refused box runs in — and focus falls to the body.
+		expect(mailPhase({ ...credentials, pending: STORE_INTENT, revalidating: true })).toEqual({
+			inFlight: false,
+			closed: false
+		});
+	});
+
+	it('keeps them closed over a landed write until the reading behind it lands', () => {
+		expect(
+			mailPhase({ ...credentials, pending: STORE_INTENT, revalidating: true, landed: true }).closed
+		).toBe(true);
+		expect(mailPhase({ ...credentials, landed: true }).closed).toBe(true);
+		expect(mailPhase({ ...credentials, landed: true, spent: true }).closed).toBe(false);
 	});
 });
 

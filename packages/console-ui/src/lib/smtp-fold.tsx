@@ -25,6 +25,7 @@ import {
 	mailBoxAct,
 	mailForm,
 	mailHeld,
+	mailPhase,
 	mailSeed,
 	mailUnconfigured,
 	ownPress,
@@ -341,10 +342,12 @@ export type SmtpFoldProps = {
 	/**
 	 * which intent is in flight, or `null` where none is.
 	 *
-	 * the whole of what closes anything in this fold, and each of its two blocks reads it for its own
-	 * press alone — ./smtp-fold-state.ts argues why a press in one of them leaves the other open.
+	 * what closes anything in this fold, and each of its two blocks reads it for its own press alone
+	 * — ./smtp-fold-state.ts argues why a press in one of them leaves the other open.
 	 */
 	pending: string | null;
+	/** the router is re-reading the page, which is the half of a press where its answer has landed. */
+	revalidating: boolean;
 };
 
 export function SmtpFold({
@@ -355,7 +358,8 @@ export function SmtpFold({
 	secrets,
 	freed,
 	test,
-	pending
+	pending,
+	revalidating
 }: SmtpFoldProps): ReactNode {
 	/**
 	 * the test send's own press in flight, which is what holds the answer to the last one back: an
@@ -543,6 +547,7 @@ export function SmtpFold({
 					accountName={accountName}
 					report={secrets}
 					pending={pending}
+					revalidating={revalidating}
 					trouble={trouble}
 					wrote={wrote}
 				/>
@@ -596,6 +601,7 @@ function MailSettings({
 	accountName,
 	report,
 	pending,
+	revalidating,
 	trouble,
 	wrote
 }: {
@@ -607,6 +613,7 @@ function MailSettings({
 	report: GroupReport | null;
 	/** which intent the page has in flight, or `null`; this block is closed by its own and no other. */
 	pending: string | null;
+	revalidating: boolean;
 	trouble: (read: DeployedValues['vars']) => ReactNode;
 	/** what a failed write says, in the words the fold holding the account name has for it. */
 	wrote: (written: ValuesRefusal) => ReactNode;
@@ -624,9 +631,9 @@ function MailSettings({
 	   (`refusalIn` in ./secret-trouble.tsx). */
 	const failure = written === null ? null : refusalIn(written);
 	const intent = groupIntent(group);
-	/* this block's own request in flight: the send beside it writes somewhere else and takes nothing
-	   away from these boxes, so it holds none of them ({@link ownPress} in ./smtp-fold-state.ts).
-	   what the boxes and the button are closed for is longer than this and is {@link underway}. */
+	/* this block's own press, both phases of it: the send beside it writes somewhere else and takes
+	   nothing away from these boxes, so it holds none of them ({@link ownPress} in
+	   ./smtp-fold-state.ts). what the boxes and the button are closed for is {@link closed}. */
 	const storing = ownPress(pending, intent);
 	const names = filled(group.names);
 	/* the four a press carries a value for, which is every reading below. the port is drawn among
@@ -696,15 +703,14 @@ function MailSettings({
 	   what the boxes are drawn from, so it is what says which reading is on the screen. */
 	const spent = useReseeded({ landed, pending: storing, reading: seeds });
 	/**
-	 * this press from end to end, which is what the boxes are closed for and what the button reports.
-	 *
-	 * the request is the shorter half: it ends while the console is still finding out what it did,
-	 * and a form that went back to `Save` over boxes it is about to put back is a press an operator
-	 * makes twice. so the wait is the write and the reading that shows what the write left behind —
-	 * and a box left editable across the second half is one whose contents are taken away by that
-	 * reading landing, which is the thing ../closed-while-writing.spec.ts exists over.
+	 * what the boxes are closed for and what the button reports: the request and, where it stored
+	 * something, the reading that shows what the write left behind — a form that went back to `Save`
+	 * over boxes it is about to put back is a press an operator makes twice, and a box left editable
+	 * across that second half is one whose contents the reading takes away as it lands
+	 * (../closed-while-writing.spec.ts). a refusal reopens them on the render it lands in, so its
+	 * focus move has a box to land in ({@link mailPhase}).
 	 */
-	const underway = storing || (landed && !spent);
+	const { inFlight, closed } = mailPhase({ pending, intent, revalidating, landed, spent });
 
 	const credentials = useConsoleForm(stated, {
 		report,
@@ -717,8 +723,9 @@ function MailSettings({
 		defaultValue: Object.fromEntries(
 			pressed.map((name) => [VALUE_FIELD(name), mailSeed(seeds, name)])
 		),
-		busy: storing,
-		pending: underway
+		// no other press closes this block ({@link ownPress}), and its own is `pending`.
+		busy: false,
+		pending: closed
 	});
 	/** this form's own element, which the readings below are taken off. */
 	const form = credentials.mount.ref;
@@ -767,8 +774,8 @@ function MailSettings({
 						type: 'submit' as const,
 						name: 'intent',
 						value: intent,
-						disabled: storing || undefined,
-						'aria-busy': storing || undefined
+						disabled: inFlight || undefined,
+						'aria-busy': inFlight || undefined
 					}
 				};
 
@@ -887,11 +894,11 @@ function MailSettings({
 							// deployment holds nothing for. a box seeded from a value is full and shows
 							// none of it.
 							placeholder={MAIL_PLACEHOLDERS[name]}
-							// closed for the whole of this block's own press ({@link underway},
+							// closed while this block's own press writes ({@link closed},
 							// ../closed-while-writing.spec.ts), and the loss is worse here than elsewhere for
 							// the reason stated above the code face: a credential typed in behind a press is one
 							// the operator believes they stored.
-							disabled={underway}
+							disabled={closed}
 							/* the deployment's sentence about this box ended by the keystroke that changes it
 							   (./use-console-form.ts). */
 							onInput={bound.onInput}
