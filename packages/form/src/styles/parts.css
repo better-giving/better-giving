@@ -1417,31 +1417,31 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * the sentence is what the switch just did, so it belongs to the switch rather than standing as a
  * row of its own: the row's own `--_sp1` between the two is taken back.
  *
- * only while a sentence is drawn under it. the decision is covered with no fee to state on a form
- * that publishes no rule to price one (`consequence` in ../views.ts), and a row pulled up under
- * nothing would lift the figure beside it into the switch.
+ * only while a sentence is drawn under it and the column beside it is blank. a form that publishes
+ * no rule to price the fee draws no sentence (`consequence` in ../views.ts), and a row pulled up
+ * under nothing would lift the figure beside it into the switch. a figure beside the sentence
+ * stands off the switch by a gap the take-back would spend, so there the sentence keeps the row's
+ * step — still short of the gap the rows stand apart (./layout.browser.spec.ts, "stands the fee’s
+ * sentence with the switch that wrote it") — and the declined reading, whose column is blank
+ * (`feeFigure` in ../views.ts), keeps the take-back.
  */
-.fee-decision:has(+ .fee-note:not([hidden])) {
+.fee-decision:has(+ .fee-note:not([hidden])):not(:has(~ .figure:not(:empty))) {
 	margin-block-end: calc(-1 * var(--_sp1));
 }
 
 /*
- * and the figure is given it back. it shares the sentence's baseline at the larger size, so it is
- * the taller box on that line and the one the take-back lifts to the decision's lower edge — which
- * is the switch's, the track filling the label's line.
+ * the figure off the sentence's baseline and at the row's foot, a step further under the switch
+ * than the row's gap puts the sentence. the track is a drawn edge with no leading of its own, like
+ * the rule over the row, and the figure stands off it by the gap the rule stands off the words:
+ * the row's `--_sp1` and this one are that `--_sp2`. a figure sharing the sentence's baseline would
+ * take the sentence down by every pixel it moved, which is why it keeps its own.
  *
- * the two are held on one baseline, so the sentence drops by whatever the figure's box does: the
- * step alone would stand it as far under the words as the rows stand apart, and the sentence is the
- * switch's rather than a row of its own. the tight line is what keeps it short of that: the figure
- * is one line read as a unit, and the half-leading it gives up comes off the drop the two share.
- * what is left is the figure's box a step under the track and the sentence short of a row's gap
- * under the words (./layout.browser.spec.ts, "stands the fee’s sentence with the switch that wrote
- * it"). neither applies while the column is blank (the declined reading, `feeFigure` in
- * ../views.ts), where the sentence keeps the whole take-back.
+ * the foot rather than the top: a sentence that wraps holds the figure beside its last line, where
+ * the account is read to its end, and one that does not leaves the figure setting the row's height.
  */
 .fee-decision:not([hidden]) ~ .figure:not(:empty) {
+	align-self: end;
 	margin-block-start: var(--_sp1);
-	line-height: var(--_lh-tight);
 }
 
 /*
