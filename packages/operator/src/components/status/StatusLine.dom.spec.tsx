@@ -708,6 +708,32 @@ describe('a line whose label states its own state in words', () => {
 
 		expect(mark?.getAttribute('aria-label')).toBe('Working');
 	});
+
+	it('describes the label with the mark, so a reader sent to the label is told the state', () => {
+		// focus lands on the label and never on the mark, so the word moved onto the mark still has
+		// to reach whoever lands there.
+		const root = render(StatusLedger, {
+			sections: true,
+			children: (
+				<StatusLine
+					labelAs="h2"
+					id="step-connect"
+					label="Connect"
+					note="Connect to your app"
+					word="Done"
+					wordOnMark
+					tone="done"
+					beneath={<p>Habitat</p>}
+				/>
+			)
+		});
+		const tokens = root.querySelector('h2')?.getAttribute('aria-describedby')?.split(' ') ?? [];
+		const [word, note] = tokens.map((token) => root.querySelector(`#${token}`));
+
+		expect(tokens).toHaveLength(2);
+		expect(word?.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe('Done');
+		expect(note?.textContent).toBe('Connect to your app');
+	});
 });
 
 describe('what a line draws under its label about its own progress', () => {

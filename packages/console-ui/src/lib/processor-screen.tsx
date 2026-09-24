@@ -7,7 +7,8 @@ import { secretTrouble } from './secret-trouble';
 import { readableRefusal, unreadAnswer } from './unread-answer';
 
 // what both processor screens say in the same words (./stripe-section.tsx, ./paypal-section.tsx):
-// a deployment that answered no report, and a refused write of their keys. one module, so the two screens cannot come to word one state two ways.
+// a deployment that answered no report, and a refused write of their keys. one module, so the two
+// screens cannot come to word one state two ways.
 
 type Scope = { workerName: string; accountName: string };
 

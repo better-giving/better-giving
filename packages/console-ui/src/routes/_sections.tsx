@@ -5,7 +5,7 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
 import { Column, Stack } from '@better-giving/operator/components/shell/Layout';
 import { holdBar } from '@better-giving/operator/progress-bar';
 import type { CSSProperties } from 'react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { Link, Outlet, useLocation, useSearchParams } from 'react-router';
 import chariotLogo from '../assets/processors/chariot.png';
@@ -18,7 +18,7 @@ import github from '../assets/social/github.webp';
 import { CloseConfirm, useClosed } from '../lib/close-confirm';
 import { railGroups } from '../lib/console-pages';
 import { gatedBy, gatedPage, notReady, readConsole } from '../lib/console-reading';
-import { CloudflareGateFace, ConsoleStopped } from '../lib/deployment-states';
+import { CloudflareGateFace, ConsoleStopped, drawnAfterGate } from '../lib/deployment-states';
 import { CLOSE_PARAM, consoleRereads } from '../lib/dialog-params';
 import { ConsoleHead, HeadNotes, machineNoted } from '../lib/head-strip';
 import { PRODUCT_NAME, ProductFoot, SOURCE_URL, productLine } from '../lib/product-foot';
@@ -85,6 +85,12 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 	const { pathname } = useLocation();
 	const [params] = useSearchParams();
 	const closed = useClosed();
+	/* a read-again pressed on the gate this page stood behind took the press with the gate, so the
+	   reader goes to the page's heading. keyed on the page drawing. */
+	const title = useRef<HTMLHeadingElement>(null);
+	useEffect(() => {
+		if (drawnAfterGate(pathname)) title.current?.focus();
+	}, [pathname]);
 	if (closed) return null;
 
 	const { reading } = loaderData;
@@ -174,7 +180,12 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 				wayOut={closeControl}
 				foot={foot}
 			>
-				{here === undefined ? null : <h1 className="adm-vh">{here.label}</h1>}
+				{here === undefined ? null : (
+					// `-1` so a read-again that lands can send the reader here; never tabbed.
+					<h1 className="adm-vh" ref={title} tabIndex={-1}>
+						{here.label}
+					</h1>
+				)}
 				<Stack>
 					{/* the lines about this machine stand in the page's column, a step above the page. */}
 					{machineNoted(loaderData) ? (

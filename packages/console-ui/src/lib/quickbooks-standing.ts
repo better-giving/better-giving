@@ -31,8 +31,8 @@ import type { StatedForm } from './use-console-form';
 //
 // **no sentence here quotes the deployment.** its own detail names status codes and exception
 // names an operator does nothing with, so every trouble is one plain sentence at the step it
-// blocks: a press answered by nothing reads {@link UNANSWERED}, and one the deployment refused
-// reads {@link REFUSED} ({@link unansweredSays}).
+// blocks: a press answered by nothing reads {@link UNANSWERED}, one the deployment refused reads
+// {@link REFUSED}, and one it failed at reads {@link FAILED} ({@link unansweredSays}).
 //
 // **how long the oldest has waited is said in the coarsest unit that is still true.** an operator
 // reading it is deciding whether the books are behind, and a figure to the minute over four days
@@ -196,6 +196,56 @@ export const landedPress = (answer: QuickbooksAnswer | null, press: QuickbooksPr
 /** the address the connect press answered with, or `null` where the last answer is another press's. */
 export const connectAddress = (answer: QuickbooksAnswer | null): string | null =>
 	answer?.kind === 'reported' && answer.report.press === 'connect' ? answer.report.url : null;
+
+/**
+ * the address a connect press drawn now may offer: only one answered since it was pressed, which
+ * is an answer other than the one standing at the press (`over`), and never one standing before it
+ * was pressed at all (`asked` null).
+ *
+ * **an address is spent once Intuit has sent a browser back with it**, and the answer that carried
+ * it outlives the press: the same answer stands when the press is drawn again over a connection
+ * gone stale, so a link drawn off it is a trip Intuit turns away.
+ */
+export const pressedAddress = (
+	answer: QuickbooksAnswer | null,
+	asked: Asked | null
+): string | null => connectAddress(answeredSince(answer, asked));
+
+/**
+ * the Intuit link a connect press shows next, from the one it `held` last.
+ *
+ * **it outlives the answer that brought it.** the operator finishes the trip in another tab and
+ * the page is read again when they come back, and a re-read that is no press's answer carries none
+ * (`useRevalidator` in react-router) — so a link read off the answer alone would be gone before the
+ * trip it is for is over. it goes once the reading shows a company connected, which is that trip
+ * done, and once another press on the page is made, which is the operator doing something else; a
+ * new connect press's address (`fresh`, {@link pressedAddress}) replaces it.
+ */
+export function connectLink(
+	held: string | null,
+	facts: {
+		readonly fresh: string | null;
+		/** the reading shows a company connected that this press no longer has to connect. */
+		readonly connected: boolean;
+		/** a press on the page other than this one is in flight. */
+		readonly otherPress: boolean;
+	}
+): string | null {
+	if (facts.connected || facts.otherPress) return null;
+	return facts.fresh ?? held;
+}
+
+/** a press made from a control, and the answer standing when it was. */
+export type Asked = { readonly over: QuickbooksAnswer | null };
+
+/**
+ * the answer standing, where it arrived after the control's own press, or `null`. a control drawn
+ * over an answer it never pressed for (`asked` null) has had none.
+ */
+export const answeredSince = (
+	answer: QuickbooksAnswer | null,
+	asked: Asked | null
+): QuickbooksAnswer | null => (asked === null || answer === asked.over ? null : answer);
 
 /**
  * how many gifts the retry press queued again, or `null` for the same reason.
@@ -479,9 +529,17 @@ export const UNANSWERED = 'This deployment didn’t answer.';
 /** the sentence a press the deployment refused reads — a coded 4xx is an answer, and a no. */
 export const REFUSED = 'This deployment turned that down.';
 
-/** which of the two a press that did not land reads (`readableRefusal` in ./unread-answer.ts). */
-export const unansweredSays = (read: NoReport): string =>
-	readableRefusal(read) === null ? UNANSWERED : REFUSED;
+/** the sentence a press the deployment failed at reads — a coded answer outside 4xx. */
+export const FAILED = 'This deployment couldn’t do that.';
+
+/**
+ * which of the three a press that did not land reads (`readableRefusal` in ./unread-answer.ts).
+ * a code is the deployment answering, so only an answer carrying none reads as no answer.
+ */
+export function unansweredSays(read: NoReport): string {
+	if (readableRefusal(read) !== null) return REFUSED;
+	return read.kind === 'unreadable' && read.error !== null ? FAILED : UNANSWERED;
+}
 
 /** where an unreadable chart is said, and what is said there. */
 export type ChartStanding = {
@@ -531,6 +589,35 @@ export type StepStanding = {
 	readonly open: boolean;
 };
 
+/**
+ * the step whose button is drawing `Saving` or `Saved`, and whether that save is the one finishing
+ * the step — which is read once, as the save starts, since by its tick the step is done either way.
+ */
+export type Confirming = { readonly step: StepName; readonly finishing: boolean };
+
+/**
+ * the hold a step's button puts on it as it starts or stops drawing its save: taken with whether
+ * the step was `done` at that moment, kept as first taken while the save goes on, and let go by
+ * that step alone.
+ */
+export const holdOpen =
+	(step: StepName, active: boolean, done: boolean) =>
+	(held: Confirming | null): Confirming | null => {
+		if (!active) return held?.step === step ? null : held;
+		return held?.step === step ? held : { step, finishing: !done };
+	};
+
+/**
+ * whether a save that is answered before the page is read again is still saving: its request, and
+ * then the read that answer sets off, until that read is on the screen (`spent`, ./reseed.ts). the
+ * confirmation begins over the page the save left, so what it says about the page is true of it.
+ */
+export const savingUntilRead = (press: {
+	readonly own: boolean;
+	readonly landed: boolean;
+	readonly spent: boolean;
+}): boolean => press.own || (press.landed && !press.spent);
+
 export type StepsStanding = Readonly<Record<StepName, StepStanding>> & {
 	/** the sync group under the checklist, drawn once every step is done, trouble or not. */
 	readonly sync: boolean;
@@ -550,15 +637,17 @@ export type StepsStanding = Readonly<Record<StepName, StepStanding>> & {
  *
  * **the first unfinished step is open and a finished one is shut** — once its button has shown
  * the save that finished it: `confirming` is the step whose button is drawing `Saving` or `Saved`,
- * and it stays open under that. trouble opens its step, and so does a press on it that went
- * unanswered or a company Intuit has not named yet. a locked step opens for nothing.
+ * and it stays open under that. a step saved again after it was done is held by nothing: its
+ * `open` never moves, so the fold stays however the operator left it. trouble opens its step, and
+ * so does a press on it that went unanswered or a company Intuit has not named yet. a locked step
+ * opens for nothing.
  */
 export function stepsStand(facts: {
 	/** all three keys are held. */
 	readonly configured: boolean;
 	readonly books: QuickbooksRead;
 	readonly answer: QuickbooksAnswer | null;
-	readonly confirming: StepName | null;
+	readonly confirming: Confirming | null;
 }): StepsStanding {
 	const { configured, books, answer, confirming } = facts;
 	const connection = books.kind === 'read' ? books.report.connection : null;
@@ -593,7 +682,12 @@ export function stepsStand(facts: {
 		done: done[name],
 		trouble: trouble[name],
 		locked: locked[name],
-		open: !locked[name] && (name === current || trouble[name] || asked[name] || confirming === name)
+		open:
+			!locked[name] &&
+			(name === current ||
+				trouble[name] ||
+				asked[name] ||
+				(confirming?.step === name && confirming.finishing))
 	});
 	return {
 		setup: step('setup'),
@@ -634,6 +728,28 @@ export function opensNext(steps: StepsStanding, saved: StepName): StepName | 'sy
  */
 export const openedSays = (next: StepName | 'sync' | null): string | undefined =>
 	next === null ? undefined : `${STEP_LABEL[next]} is open.`;
+
+/**
+ * what `step`'s save says after its confirmation: what it opened where it is the save finishing
+ * the step, and the button's own sentence otherwise — a step saved again opens nothing that was
+ * not already there.
+ */
+export const savedSays = (
+	steps: StepsStanding,
+	confirming: Confirming | null,
+	step: StepName
+): string | undefined =>
+	confirming?.step === step && confirming.finishing
+		? openedSays(opensNext(steps, step))
+		: undefined;
+
+/**
+ * where a reader standing in a step is sent as its hold goes: what the save opened, else the
+ * step's own label, since the step shuts under them. a step saved again never shut, so the reader
+ * stays on its button.
+ */
+export const shutSendsTo = (steps: StepsStanding, shut: Confirming): StepName | 'sync' | null =>
+	shut.finishing ? (opensNext(steps, shut.step) ?? shut.step) : null;
 
 /** what the company is called on this screen: its name, or the id Intuit addresses it by. */
 export const companyCalled = (company: QuickbooksCompany): string =>

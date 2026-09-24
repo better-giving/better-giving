@@ -5,7 +5,7 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useRevalidator } from 'react-router';
+import { Link, useLocation, useRevalidator } from 'react-router';
 import type { NoReport } from '../api/types';
 import type { CloudflareGate } from './cloudflare-gate';
 import { Refusal, Said } from './said';
@@ -152,6 +152,20 @@ export function ConsoleStopped(): ReactNode {
 	);
 }
 
+/* the path a gate's read-again was pressed on, until the page it stands in for draws or the gate
+   draws again. held outside react because the gate and that page are never mounted together. */
+let retriedOn: string | null = null;
+
+/**
+ * whether the page drawn at `pathname` is what a read-again pressed on its gate brought back, so
+ * the reader standing on the press that went is sent to it. asking spends the answer.
+ */
+export function drawnAfterGate(pathname: string): boolean {
+	const drawn = retriedOn === pathname;
+	retriedOn = null;
+	return drawn;
+}
+
 /**
  * the panel a page stands behind when cloudflare would not say what this deployment holds: the
  * heading, at most one sentence, and the read again where one can change anything
@@ -164,12 +178,14 @@ export function ConsoleStopped(): ReactNode {
  */
 export function CloudflareGateFace({ gate }: { gate: CloudflareGate }): ReactNode {
 	const revalidator = useRevalidator();
+	const { pathname } = useLocation();
 	const reading = revalidator.state !== 'idle';
 	const pressed = useRef(false);
 	const [said, setSaid] = useState<string | null>(null);
 	useEffect(() => {
 		if (reading || !pressed.current) return;
 		pressed.current = false;
+		retriedOn = null;
 		setSaid(gate.title);
 	}, [reading, gate.title]);
 	return (
@@ -191,6 +207,7 @@ export function CloudflareGateFace({ gate }: { gate: CloudflareGate }): ReactNod
 						onClick={() => {
 							if (reading) return;
 							pressed.current = true;
+							retriedOn = pathname;
 							setSaid(null);
 							void revalidator.revalidate();
 						}}

@@ -1285,9 +1285,16 @@ function TestSendForm({
 							   (../closed-while-writing.spec.ts). `sending` is read off the navigation the
 							   submission started, so it turns true only once that submission is away — a
 							   press closed by a reading taken off the box at the moment it is pressed can
-							   drop the very submission that closed it. */
-							disabled={state === 'disabled' || sending || undefined}
+							   drop the very submission that closed it.
+
+							   closed by `aria-disabled` and a press turned away, never by `disabled`, for
+							   the shared button's reason: a natively closed press drops the focus of the
+							   reader standing on it, and the tick lands on a button nobody is on. */
+							aria-disabled={state === 'disabled' || sending || undefined}
 							aria-busy={sending || undefined}
+							onClick={(event) => {
+								if (state === 'disabled' || sending) event.preventDefault();
+							}}
 						>
 							{/* the resting label stands in this span in every state, and under a press it is
 							    what the dots stand over, which is how the three states measure the same.

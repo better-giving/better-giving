@@ -20,8 +20,16 @@ import type {
 } from './quickbooks-standing';
 import {
 	CHOOSE,
+	FAILED,
 	REFUSED,
 	UNANSWERED,
+	answeredSince,
+	connectLink,
+	holdOpen,
+	pressedAddress,
+	savedSays,
+	savingUntilRead,
+	shutSendsTo,
 	openedSays,
 	opensNext,
 	startDateNext,
@@ -400,6 +408,45 @@ describe('which control an answer belongs to', () => {
 		expect(connectAddress(null)).toBeNull();
 	});
 
+	it('draws the address only for a connect press made since the press was drawn', () => {
+		const stale = reported({ press: 'connect', url: CONSENT });
+		// drawn over an answer already standing, and never pressed: that address is spent.
+		expect(pressedAddress(stale, null)).toBeNull();
+		expect(pressedAddress(stale, { over: stale })).toBeNull();
+		const fresh = reported({ press: 'connect', url: `${CONSENT}2` });
+		expect(pressedAddress(fresh, { over: stale })).toBe(`${CONSENT}2`);
+		expect(pressedAddress(fresh, { over: null })).toBe(`${CONSENT}2`);
+		expect(pressedAddress(reported({ press: 'retry', retried: 1 }), { over: null })).toBeNull();
+	});
+
+	it('keeps the link through a re-read that shows no company, which carries no answer', () => {
+		const still = { fresh: null, connected: false, otherPress: false };
+		expect(connectLink(CONSENT, still)).toBe(CONSENT);
+		expect(connectLink(null, still)).toBeNull();
+	});
+
+	it('takes the link away once a re-read shows the company connected', () => {
+		expect(connectLink(CONSENT, { fresh: null, connected: true, otherPress: false })).toBeNull();
+		expect(connectLink(CONSENT, { fresh: CONSENT, connected: true, otherPress: false })).toBeNull();
+	});
+
+	it('replaces the link with the one a new connect press answered', () => {
+		expect(
+			connectLink(CONSENT, { fresh: `${CONSENT}2`, connected: false, otherPress: false })
+		).toBe(`${CONSENT}2`);
+	});
+
+	it('takes the link away when another press on the page is made', () => {
+		expect(connectLink(CONSENT, { fresh: CONSENT, connected: false, otherPress: true })).toBeNull();
+	});
+
+	it('counts an answer as a control’s own only where it arrived after that control’s press', () => {
+		const standing = reported({ press: 'accounts' });
+		expect(answeredSince(standing, null)).toBeNull();
+		expect(answeredSince(standing, { over: standing })).toBeNull();
+		expect(answeredSince(standing, { over: null })).toBe(standing);
+	});
+
 	it('hands the retry press what it queued, counting none as a count and not as silence', () => {
 		expect(retriedGifts(reported({ press: 'retry', retried: 4 }))).toBe(4);
 		expect(retriedGifts(reported({ press: 'retry', retried: 0 }))).toBe(0);
@@ -715,14 +762,29 @@ describe('which steps stand open, shut, locked or out of sight', () => {
 		]);
 	});
 
-	it('holds a finished step open while its button is still showing the save', () => {
-		expect(stand({ books: DISCONNECTED, confirming: 'setup' })[0]).toBe('setup: open done');
-		expect(stand({ confirming: 'accounts' })[2]).toBe('accounts: open done');
+	it('holds a finished step open while its button is still showing the save that finished it', () => {
+		expect(stand({ books: DISCONNECTED, confirming: { step: 'setup', finishing: true } })[0]).toBe(
+			'setup: open done'
+		);
+		expect(stand({ confirming: { step: 'accounts', finishing: true } })[2]).toBe(
+			'accounts: open done'
+		);
+	});
+
+	it('leaves a step saved again to whoever opened it: the prop never moves, so nothing shuts it', () => {
+		expect(stand({ confirming: { step: 'accounts', finishing: false } })[2]).toBe(
+			'accounts: shut done'
+		);
+		expect(stand({ confirming: { step: 'setup', finishing: false } })[0]).toBe('setup: shut done');
 	});
 
 	it('never opens a locked step, whatever else asks for it', () => {
 		expect(
-			stand({ configured: false, books: DISCONNECTED, confirming: 'accounts' }).slice(1, 3)
+			stand({
+				configured: false,
+				books: DISCONNECTED,
+				confirming: { step: 'accounts', finishing: true }
+			}).slice(1, 3)
 		).toEqual(['connect: locked todo', 'accounts: locked todo']);
 	});
 
@@ -842,6 +904,62 @@ describe('what a step says about itself and what its save opens', () => {
 		expect(openedSays('connect')).toBe('Connect is open.');
 		expect(openedSays('sync')).toBe('Sync is open.');
 		expect(openedSays(null)).toBeUndefined();
+	});
+
+	it('says what a save opened only for the save that finished its step', () => {
+		const opened = all({ setup: { done: true, open: true }, connect: { open: true } });
+		expect(savedSays(opened, { step: 'setup', finishing: true }, 'setup')).toBe('Connect is open.');
+		// Sync was already there, so a save of a done Accounts opened nothing.
+		const finished = all({ accounts: { done: true } }, true);
+		expect(savedSays(finished, { step: 'accounts', finishing: false }, 'accounts')).toBeUndefined();
+		expect(savedSays(opened, { step: 'accounts', finishing: true }, 'setup')).toBeUndefined();
+		expect(savedSays(opened, null, 'setup')).toBeUndefined();
+	});
+
+	it('sends the reader on only from a step its save finished, and to its own label where nothing opened', () => {
+		const opened = all({ setup: { done: true }, connect: { open: true } });
+		expect(shutSendsTo(opened, { step: 'setup', finishing: true })).toBe('connect');
+		expect(
+			shutSendsTo(all({ accounts: { done: true } }, true), { step: 'accounts', finishing: true })
+		).toBe('sync');
+		expect(shutSendsTo(all({ setup: { done: true } }), { step: 'setup', finishing: true })).toBe(
+			'setup'
+		);
+		// saved again, it never shut: the reader stays on its button.
+		expect(
+			shutSendsTo(all({ accounts: { done: true } }, true), { step: 'accounts', finishing: false })
+		).toBeNull();
+	});
+});
+
+describe('which step a save holds open', () => {
+	it('records whether the save is the one finishing its step when it starts', () => {
+		expect(holdOpen('setup', true, false)(null)).toEqual({ step: 'setup', finishing: true });
+		expect(holdOpen('accounts', true, true)(null)).toEqual({ step: 'accounts', finishing: false });
+	});
+
+	it('keeps what it recorded while the save goes on, though the step is done by then', () => {
+		const held = { step: 'setup', finishing: true } as const;
+		expect(holdOpen('setup', true, true)(held)).toBe(held);
+	});
+
+	it('lets go of its own step and of no other', () => {
+		const held = { step: 'setup', finishing: true } as const;
+		expect(holdOpen('setup', false, true)(held)).toBeNull();
+		expect(holdOpen('accounts', false, true)(held)).toBe(held);
+		expect(holdOpen('accounts', true, false)(held)).toEqual({ step: 'accounts', finishing: true });
+	});
+});
+
+describe('a save that is answered before the page is read again', () => {
+	it('stays saving through the read its answer sets off, and confirms once that read lands', () => {
+		expect(savingUntilRead({ own: true, landed: false, spent: false })).toBe(true);
+		expect(savingUntilRead({ own: false, landed: true, spent: false })).toBe(true);
+		expect(savingUntilRead({ own: false, landed: true, spent: true })).toBe(false);
+	});
+
+	it('holds nothing over a press that did not land', () => {
+		expect(savingUntilRead({ own: false, landed: false, spent: false })).toBe(false);
 	});
 });
 
@@ -1039,8 +1157,21 @@ describe('the rest of what the section says', () => {
 		};
 		expect(REFUSED).toBe('This deployment turned that down.');
 		expect(unansweredSays(refusal)).toBe(REFUSED);
-		// a coded 5xx failed rather than refused, so it is still no answer.
-		expect(unansweredSays({ ...refusal, status: 500 })).toBe(UNANSWERED);
+	});
+
+	it('says the deployment could not do it where it answered with a coded failure', () => {
+		const failure: NoReport = {
+			kind: 'unreadable',
+			error: 'accounts_unreadable',
+			detail: 'QuickBooks returned 500',
+			fix: 'try again later',
+			status: 502
+		};
+		expect(FAILED).toBe('This deployment couldn’t do that.');
+		expect(unansweredSays(failure)).toBe(FAILED);
+		expect(unansweredSays({ ...failure, error: 'no_signing_key', status: 500 })).toBe(FAILED);
+		// no code is no answer anyone wrote.
+		expect(unansweredSays({ ...failure, error: null, status: 500 })).toBe(UNANSWERED);
 	});
 });
 

@@ -31,7 +31,8 @@ const previews = import.meta.glob<{ default: () => ReactNode }>('./previews/*.ts
 function App() {
 	const entries = Object.entries(previews).sort(([a], [b]) => a.localeCompare(b));
 	return (
-		<main className="adm-main">
+		// no `main` here: the `AppShell` and `PanelRoute` previews each draw their own.
+		<div className="adm-main">
 			<h1>component gallery</h1>
 			{entries.map(([path, mod]) => {
 				const label = path.replace('./previews/', '').replace(/\.tsx$/, '');
@@ -43,7 +44,7 @@ function App() {
 					</section>
 				);
 			})}
-		</main>
+		</div>
 	);
 }
 

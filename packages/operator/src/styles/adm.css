@@ -762,9 +762,9 @@
 
 	/* the offset above centres a box one mark tall on the label's first line, so the box has to be
 	   the mark. left inline, as ./base.css sets every mark, the glyph stands on a line box of its
-	   own — the line plus the face's descender, 21.6px against a 19.6px line — and the offset
-	   lands on top of that, so a line with no sentence is 23.4px tall beside a 19.6px label. the
-	   caret below is placed by the same arithmetic and takes the same rule. */
+	   own — the line plus the face's descender, taller than the label's line — and the offset lands
+	   on top of that, so a line with no sentence stands taller than the label beside it. the caret
+	   below is placed by the same arithmetic and takes the same rule. */
 	:is(.adm-status__mark, .adm-status__caret) > .adm-mark {
 		display: block;
 	}

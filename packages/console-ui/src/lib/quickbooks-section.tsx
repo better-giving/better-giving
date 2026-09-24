@@ -19,7 +19,7 @@ import { useSaveState } from '@better-giving/operator/save-state.react';
 import type { SavedFormState } from '@better-giving/operator/saved-form-state.react';
 import { useSavedFormState } from '@better-giving/operator/saved-form-state.react';
 import type { ReactNode } from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Form, useRevalidator } from 'react-router';
 import type {
 	DeployedValues,
@@ -32,6 +32,8 @@ import type { HeldValues } from './held-values';
 import { heldValues, withheldInGroup } from './held-values';
 import { keysTrouble } from './processor-screen';
 import type {
+	Asked,
+	Confirming,
 	QuickbooksAnswer,
 	QuickbooksPicks,
 	QuickbooksStartAtPreview,
@@ -45,14 +47,16 @@ import {
 	QUICKBOOKS_FORM,
 	STEP_LABEL,
 	accountPicker,
+	answeredSince,
 	backlogSays,
 	backlogStands,
 	chartStands,
 	companyCalled,
-	connectAddress,
+	connectLink,
 	credentialsPhase,
 	credentialsStands,
 	disconnectLines,
+	holdOpen,
 	keysAsk,
 	landedPress,
 	ownPress,
@@ -60,12 +64,15 @@ import {
 	picksHeld,
 	picksMissing,
 	picksToSave,
-	openedSays,
 	opensNext,
+	pressedAddress,
 	quickbooksRefused,
 	retriedGifts,
 	retriedStands,
 	retryButton,
+	savedSays,
+	savingUntilRead,
+	shutSendsTo,
 	startDateNext,
 	startDay,
 	startToSave,
@@ -250,12 +257,6 @@ type Presses = Pick<
 /** a step's button saying `Saving` or `Saved`, reported up so the step stays open under it. */
 type OnConfirming = (active: boolean) => void;
 
-/** the step held open as its button starts or stops drawing its save. */
-const holdOpen =
-	(step: StepName, active: boolean) =>
-	(held: StepName | null): StepName | null =>
-		active ? step : held === step ? null : held;
-
 /** whether a button's rung is one a finished step stays open for. */
 const confirmingIn = (state: SavedFormState): boolean => state === 'pending' || state === 'done';
 
@@ -279,46 +280,55 @@ export function QuickbooksSection({
 	onRetry,
 	onDisconnect
 }: QuickbooksSectionProps): ReactNode {
-	/* which step's button is drawing its save, keyed by the step: a finished step shuts only once
-	   the tick that finished it has been seen (`stepsStand` in ./quickbooks-standing.ts). */
-	const [confirming, setConfirming] = useState<StepName | null>(null);
-	const holdSetup = useCallback<OnConfirming>(
-		(active) => setConfirming(holdOpen('setup', active)),
-		[]
-	);
-	const holdAccounts = useCallback<OnConfirming>(
-		(active) => setConfirming(holdOpen('accounts', active)),
-		[]
-	);
+	/* which step's button is drawing its save, and whether that save is finishing it: a step shuts
+	   only once the tick that finished it has been seen (`stepsStand` in ./quickbooks-standing.ts). */
+	const [confirming, setConfirming] = useState<Confirming | null>(null);
+	/* each step's `done` as of the last commit, which is what a hold reads as its save starts. a
+	   layout effect writes it, so it is current before any button's passive effect asks. */
+	const doneAt = useRef({ setup: false, accounts: false });
+	const holdSetup = useCallback<OnConfirming>((active) => {
+		const done = doneAt.current.setup;
+		setConfirming(holdOpen('setup', active, done));
+	}, []);
+	const holdAccounts = useCallback<OnConfirming>((active) => {
+		const done = doneAt.current.accounts;
+		setConfirming(holdOpen('accounts', active, done));
+	}, []);
 
 	const holding = values.vars.kind === 'read' ? heldValues(values.vars.vars) : null;
 	const configured = CREDENTIALS.every((name) => holding?.held.has(name) ?? false);
 	const steps = stepsStand({ configured, books, answer, confirming });
 	const report = books.kind === 'read' ? books.report : null;
 	const company = report?.connection.state === 'connected' ? report.connection : null;
+	useLayoutEffect(() => {
+		doneAt.current = { setup: steps.setup.done, accounts: steps.accounts.done };
+	});
 
 	/* a step shutting after its tick takes the save the reader is standing on out of sight, so the
 	   reader goes to what that save opened. keyed on the step leaving `confirming`, which is the
 	   shut itself. */
-	const heldOpen = useRef<StepName | null>(null);
+	const heldOpen = useRef<Confirming | null>(null);
 	useEffect(() => {
 		const shut = heldOpen.current;
 		heldOpen.current = confirming;
 		if (shut === null || confirming !== null) return;
-		const next = opensNext(steps, shut);
-		if (next !== null && dropped(document.getElementById(LABEL_ID(shut))?.closest('details')))
-			focusLabel(next);
+		const to = shutSendsTo(steps, shut);
+		if (to !== null && dropped(document.getElementById(LABEL_ID(shut.step))?.closest('details')))
+			focusLabel(to);
 	}, [confirming, steps]);
 
 	/* a disconnect that lands takes its own button away and puts the way to connect where it was,
-	   so the reader goes to the Connect step. keyed on the connection going. */
+	   so the reader goes to the Connect step; a connect that lands takes the Intuit link away, so
+	   the reader goes to what it opened. keyed on the connection going or coming. */
 	const connected = company !== null;
 	const wasConnected = useRef(connected);
 	useEffect(() => {
 		const went = wasConnected.current && !connected;
+		const came = !wasConnected.current && connected;
 		wasConnected.current = connected;
 		if (went && dropped(null)) focusLabel('connect');
-	}, [connected]);
+		if (came && dropped(null)) focusLabel(opensNext(steps, 'connect') ?? 'connect');
+	}, [connected, steps]);
 
 	// never drawn: the sections layout stands a gate in this page's place (../lib/cloudflare-gate.ts).
 	if (values.vars.kind !== 'read' || holding === null) return null;
@@ -360,7 +370,7 @@ export function QuickbooksSection({
 								revalidating={revalidating}
 								trouble={keysTrouble({ workerName, accountName })}
 								onConfirming={holdSetup}
-								elsewhere={openedSays(opensNext(steps, 'setup'))}
+								elsewhere={savedSays(steps, confirming, 'setup')}
 							/>
 						))}
 						{/* apart from the form above: this is copied out to Intuit, where the boxes are
@@ -394,7 +404,7 @@ export function QuickbooksSection({
 							report={report}
 							company={company}
 							onConfirming={holdAccounts}
-							elsewhere={openedSays(opensNext(steps, 'accounts'))}
+							elsewhere={savedSays(steps, confirming, 'accounts')}
 							{...presses}
 						/>
 					)}
@@ -544,7 +554,11 @@ function Credentials({
 	});
 
 	const saving = confirmingIn(credentials.state);
-	useEffect(() => onConfirming(saving), [saving, onConfirming]);
+	// let go on the way out as well, or a form unmounted mid-save holds its step open.
+	useEffect(() => {
+		onConfirming(saving);
+		return () => onConfirming(false);
+	}, [saving, onConfirming]);
 
 	/** the lines the confirm over the press itemises, while it is up. */
 	const [asking, setAsking] = useState<readonly string[] | null>(null);
@@ -703,6 +717,20 @@ function ConnectPanel({
 	Presses,
 	'answer' | 'busy' | 'pending' | 'onConnect' | 'onDisconnect'
 >): ReactNode {
+	/* the Intuit link, held here rather than read off the answer: it outlives the answer and the
+	   press it stands in for (`connectLink` in ./quickbooks-standing.ts), and this panel stands
+	   for as long as the step does. */
+	const [asked, setAsked] = useState<Asked | null>(null);
+	const [held, setHeld] = useState<string | null>(null);
+	const report = books.kind === 'read' ? books.report : null;
+	const link = connectLink(held, {
+		fresh: pressedAddress(answer, asked),
+		connected:
+			report?.connection.state === 'connected' && chartStands(report.accounts)?.step !== 'connect',
+		otherPress: pending !== null && !ownPress(pending, 'connect')
+	});
+	if (link !== held) setHeld(link);
+
 	/* the page read again, which is the one way back from a read that did not land. */
 	const revalidator = useRevalidator();
 	if (books.kind === 'unread')
@@ -721,7 +749,16 @@ function ConnectPanel({
 			</Stack>
 		);
 	const { connection, accounts } = books.report;
-	const pressing = { answer, busy, pending, onConnect };
+	const pressing = {
+		link,
+		answer,
+		busy,
+		pending,
+		onConnect: () => {
+			setAsked({ over: answer });
+			onConnect();
+		}
+	};
 	if (connection.state !== 'connected')
 		return (
 			<Stack tight>
@@ -756,24 +793,59 @@ function ConnectPanel({
  * Intuit sends the browser back to the deployment and never here, so a console that navigated to
  * it would leave the operator on a page of the deployment's with this one gone; the link opens
  * beside this page and they come back to it. it stands where the press stood, since the press
- * has done its whole job once it has answered.
+ * has done its whole job once it has answered. which link that is, and for how long, is the panel
+ * above's (`connectLink` in ./quickbooks-standing.ts).
+ *
+ * **coming back is what reads the page again.** nothing tells this page the trip finished in the
+ * other tab, so while the link stands, this tab showing again or its window taking focus re-reads
+ * it: a company connected there is drawn here, and a trip not finished keeps the link.
  */
 function ConnectPress({
 	label,
+	link: address,
 	answer,
 	busy,
 	pending,
 	onConnect
-}: { label: string } & Pick<Presses, 'answer' | 'busy' | 'pending' | 'onConnect'>): ReactNode {
+}: { label: string; link: string | null } & Pick<
+	Presses,
+	'answer' | 'busy' | 'pending' | 'onConnect'
+>): ReactNode {
 	const own = ownPress(pending, 'connect');
-	const address = connectAddress(answer);
 	const silent = unanswered(answer, 'connect');
+
 	/* the link stands where the press stood, so the press the reader was on is gone: they go to
-	   the link. keyed on the address arriving. */
+	   the link, and back to the press when the link goes. keyed on the link arriving or going. */
 	const onward = useRef<HTMLAnchorElement>(null);
+	const press = useRef<HTMLButtonElement>(null);
+	const hadAddress = useRef(address !== null);
 	useEffect(() => {
-		if (address !== null && dropped(null)) onward.current?.focus();
+		const had = hadAddress.current;
+		hadAddress.current = address !== null;
+		if (had === (address !== null) || !dropped(null)) return;
+		if (address !== null) onward.current?.focus();
+		else press.current?.focus();
 	}, [address]);
+
+	const revalidator = useRevalidator();
+	useEffect(() => {
+		if (address === null || revalidator.state !== 'idle') return;
+		/* the tab showing and its window taking focus both fire on one return; the first re-reads,
+		   and the effect re-subscribes once that read is under way. */
+		let sent = false;
+		const back = () => {
+			if (sent || document.visibilityState !== 'visible') return;
+			sent = true;
+			void revalidator.revalidate();
+		};
+		document.addEventListener('visibilitychange', back);
+		window.addEventListener('focus', back);
+		return () => {
+			document.removeEventListener('visibilitychange', back);
+			window.removeEventListener('focus', back);
+		};
+	}, [address, revalidator]);
+
 	return (
 		<>
 			<div className="adm-actions">
@@ -783,6 +855,7 @@ function ConnectPress({
 					   whole wait (packages/app/src/routes/_app.admin.books.tsx argues it at its own
 					   press). */
 					<Button
+						ref={press}
 						type="button"
 						variant="primary"
 						onClick={() => {
@@ -950,6 +1023,15 @@ function AccountsForm({
 	elsewhere: string | undefined;
 } & Pick<Presses, 'answer' | 'busy' | 'pending' | 'onAccounts'>): ReactNode {
 	const own = ownPress(pending, 'accounts');
+	/* the answer standing at this form's last press: one drawn over an answer it never pressed for
+	   holds nothing and confirms nothing. */
+	const [asked, setAsked] = useState<Asked | null>(null);
+	const mine = answeredSince(answer, asked);
+	const landed = landedPress(mine, 'accounts');
+	/* the reading this press was made against, and whether the one after it has landed: the save
+	   stays `Saving` until it has, so the confirmation is said over the page the save left
+	   (`savingUntilRead` in ./quickbooks-standing.ts). */
+	const spent = useReseeded({ landed, pending: own, reading: company });
 	const held = picksHeld(company);
 	const [picks, setPicks] = useState(held);
 	const [seed, setSeed] = useState(seedOf(held));
@@ -959,8 +1041,8 @@ function AccountsForm({
 		setPicks(held);
 	}
 	const saved = useSavedFormState({
-		report: answer,
-		landed: landedPress(answer, 'accounts'),
+		report: mine,
+		landed,
 		/* **a landed answer empties nothing here**, which is what `spent` is asked. the three are
 		   held in state above and the put-back is the seed comparison, so there is nothing for the
 		   form's own reset to restore: it takes each picker back to the pick it was first drawn with
@@ -971,10 +1053,14 @@ function AccountsForm({
 		spent: false,
 		changed: picksArmed(picks, company, chart),
 		busy,
-		pending: own
+		pending: savingUntilRead({ own, landed, spent })
 	});
 	const saving = confirmingIn(saved.state);
-	useEffect(() => onConfirming(saving), [saving, onConfirming]);
+	// let go on the way out as well: a chart that stops reading swaps this form out mid-save.
+	useEffect(() => {
+		onConfirming(saving);
+		return () => onConfirming(false);
+	}, [saving, onConfirming]);
 	const silent = unanswered(answer, 'accounts');
 	return (
 		<form
@@ -991,6 +1077,7 @@ function AccountsForm({
 					return;
 				}
 				if (!picksToSave(picks, company, chart)) return;
+				setAsked({ over: answer });
 				onAccounts(picks);
 			}}
 		>
@@ -1054,6 +1141,14 @@ function Backlog({
 		done: save.done,
 		doneLabel: said?.doneLabel ?? null
 	});
+	/* the press goes once its report has been seen and nothing is left to retry, taking the
+	   reader's place with it: they go to the group's heading. keyed on the press going. */
+	const shown = useRef(button.shown);
+	useEffect(() => {
+		const went = shown.current && !button.shown;
+		shown.current = button.shown;
+		if (went && dropped(null)) focusLabel('sync');
+	}, [button.shown]);
 	if (!button.shown && said?.says == null && silent === null) return null;
 	return (
 		<Stack tight>
@@ -1070,6 +1165,8 @@ function Backlog({
 						doneLabel={said?.doneLabel ?? undefined}
 						onClick={onRetry}
 						disabled={busy || undefined}
+						// the backlog line above goes with what it queued, so nothing else is claimed.
+						elsewhere=""
 					/>
 				) : null}
 				<Hint>{said?.says ?? null}</Hint>
@@ -1138,9 +1235,15 @@ function StartDateForm({
 		onStartDate(asked.day);
 	}, [touchesNothing, asked, onStartDate]);
 
+	/* the box goes back to the day stored on the reading that lands after the move, and not on the
+	   answer that arrives ahead of it, which would put it back to the day being moved off
+	   (./reseed.ts). */
+	const landed = landedPress(answer, 'start-date');
+	const spent = useReseeded({ landed, pending: ownPress(pending, 'start-date'), reading: company });
 	const saved = useSavedFormState({
 		report: answer,
-		landed: landedPress(answer, 'start-date'),
+		landed,
+		spent,
 		changed: (form) => startToSave(dayIn(form), company),
 		busy,
 		pending: own || touchesNothing
@@ -1158,6 +1261,7 @@ function StartDateForm({
 					}
 				};
 	return (
+		// broken off the backlog above where that stands, and first in the group where it does not.
 		<form
 			ref={saved.form}
 			className="adm-stack adm-break"
@@ -1170,7 +1274,6 @@ function StartDateForm({
 				onPreviewStartDate(day);
 			}}
 		>
-			{/* broken off the backlog above where that stands, and first in the group where it does not. */}
 			<Field
 				id={START_FIELD}
 				name={START_FIELD}
@@ -1185,6 +1288,8 @@ function StartDateForm({
 					type="submit"
 					state={saved.state}
 					disabled={busy || undefined}
+					// a move can change the backlog above, so nothing else is claimed.
+					elsewhere=""
 				/>
 			</div>
 			{silent === null ? null : <FieldMessage>{unansweredSays(silent)}</FieldMessage>}

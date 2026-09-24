@@ -16,7 +16,9 @@ import { BusyDots } from './Button.jsx';
  * @property {string | undefined} [elsewhere] the sentence said after the confirmation about the
  *   rest of the page. the default is true of a save that changes nothing but its own group; a save
  *   that shuts its step and opens the next says so here, or the reader is told something false in
- *   exactly the case they cannot see.
+ *   exactly the case they cannot see. `''` claims nothing either way, for a save whose effect on the
+ *   rest of the page its caller cannot say. it is taken as the confirmation begins and kept while
+ *   it stands.
  *
  * three of a caller's own arrive as the platform's attributes rather than as props of this
  * button's, and each is taken in rather than replaced: `className` is added to the class list this
@@ -47,9 +49,21 @@ export function SaveButton({
 	const busy = state === 'pending';
 	const closed = state === 'disabled' || state === 'done' || busy || Boolean(disabled);
 
-	// whether the region below is holding the confirmation. a flag rather than the words, because
-	// the words are `doneLabel` and a caller spells that however its group needs.
+	// whether the region below is holding the confirmation, which it takes a task after the state
+	// turns (the effect below).
 	const [saying, setSaying] = useState(false);
+
+	// what the region says, taken on the render the confirmation begins and kept while it stands: a
+	// region rewritten under a standing confirmation is announced again, and a caller whose page is
+	// still settling would have the first announcement contradicted by the second.
+	const [said, setSaid] = useState(
+		/** @type {{ state: SaveButtonState, words: { doneLabel: ReactNode, elsewhere: string } | null }} */ ({
+			state,
+			words: state === 'done' ? { doneLabel, elsewhere } : null
+		})
+	);
+	if (said.state !== state)
+		setSaid({ state, words: state === 'done' ? { doneLabel, elsewhere } : null });
 
 	// the region is emptied on the run the state changes and written a task later, never written
 	// straight over. a group saved twice reports the same words both times, and a region handed
@@ -161,9 +175,9 @@ export function SaveButton({
 			    `.adm-vh` from ../../styles/base.css: out of the flow, so it is not an item in the
 			    row of actions the button is standing in. */}
 			<span className="adm-vh" aria-live="polite">
-				{saying ? (
+				{saying && said.words !== null ? (
 					<>
-						{doneLabel}. {elsewhere}
+						{said.words.doneLabel}.{said.words.elsewhere === '' ? null : ` ${said.words.elsewhere}`}
 					</>
 				) : null}
 			</span>

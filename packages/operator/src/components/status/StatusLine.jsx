@@ -71,8 +71,9 @@ import { Mark } from './Mark.jsx';
  *   screen with a control over the whole ledger — expand all, collapse all — cannot say what it
  *   did unless each line tells it.
  * @property {string | undefined} [id] where a screen sends focus when the control it acted on has
- *   gone with the state that drew it. it lands on the label, which is described by the word and the
- *   sentence beside it rather than repeating either.
+ *   gone with the state that drew it. it lands on the label, which is described by the word — or
+ *   by the mark carrying it, under `wordOnMark` — and the sentence beside it rather than repeating
+ *   either.
  * @property {LabelLevel} labelAs the element the label is drawn as, stated by the screen and never
  *   defaulted here: a ledger of one-line statements outlines nothing and takes `span`, while a
  *   ledger whose entries open is a run of sections and takes the level under the heading it stands
@@ -270,11 +271,9 @@ export function StatusLine({
 	id,
 	labelAs
 }) {
-	/* the word is only in the description while it is on the screen: a line that moved it on to the
-	   mark draws no `-word` element, and an `aria-describedby` still naming one points at nothing. */
-	const describedBy = id
-		? [wordOnMark ? '' : `${id}-word`, note ? `${id}-note` : ''].filter(Boolean).join(' ')
-		: '';
+	/* `-word` is the word beside the label, or the mark's box where the word is the mark's name. */
+	const describedBy = id ? [`${id}-word`, note ? `${id}-note` : ''].filter(Boolean).join(' ') : '';
+	const wordId = id && wordOnMark ? `${id}-word` : undefined;
 	const Label = labelAs;
 	/* react writes `open` only when the prop changes, and a line opened by a press never changed
 	   it — so a line that locks while open is shut here, or it stays open and refuses the press that
@@ -374,7 +373,9 @@ export function StatusLine({
 						aria-disabled={locked || undefined}
 						onClickCapture={locked ? (event) => event.preventDefault() : undefined}
 					>
-						<div className="adm-status__mark">{glyph}</div>
+						<div className="adm-status__mark" id={wordId}>
+							{glyph}
+						</div>
 						{body}
 						<span className="adm-status__caret">
 							<Mark name="chevron-right" />
@@ -388,7 +389,9 @@ export function StatusLine({
 	return (
 		<li>
 			<div className={`adm-status adm-status--${tone}${dim ? ' adm-status--dim' : ''}`}>
-				<div className="adm-status__mark">{glyph}</div>
+				<div className="adm-status__mark" id={wordId}>
+					{glyph}
+				</div>
 				{body}
 				{stepCount > 1 ? (
 					/* the role is stated for the reason `StatusLedger` states its own: the reset takes

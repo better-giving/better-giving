@@ -260,6 +260,28 @@ describe('a save button reporting a write to a reader', () => {
 		expect(region(root).textContent).toBe('Saved. Connect is open.');
 	});
 
+	it('says what it was handed as the confirmation began, whatever arrives while it stands', async () => {
+		// a region rewritten under a standing confirmation is announced a second time, and the first
+		// announcement is then one the page went on to contradict.
+		const { root, again } = mount(SaveButton, { state: 'pending' });
+
+		again({ state: 'done', elsewhere: 'Sync is open.' });
+		await elapse(0);
+		again({ state: 'done', elsewhere: 'Accounts is open.' });
+		await elapse(0);
+
+		expect(region(root).textContent).toBe('Saved. Sync is open.');
+	});
+
+	it('says the confirmation alone where the caller claims nothing else', async () => {
+		const { root, again } = mount(SaveButton, { state: 'pending', elsewhere: '' });
+
+		again({ state: 'done', elsewhere: '' });
+		await elapse(0);
+
+		expect(region(root).textContent).toBe('Saved.');
+	});
+
 	it('empties the region when the confirmation clears, which says nothing', async () => {
 		const { root, again } = mount(SaveButton, { state: 'pending' });
 
