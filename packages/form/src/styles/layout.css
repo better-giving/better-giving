@@ -609,20 +609,29 @@ form {
 }
 
 /*
- * a refusal stands closer under its box than the row's gap: at that gap it stood as far below the
- * box as the label stands above it, and with its own line's leading on top it read as a line of its
- * own rather than as something said about the box. the row's gap negated and the smaller step put
- * back, carried by the box for the reason `.group:has(+ .message:not([hidden]))` above gives — the
- * sentence is drawn a step smaller, and the expression spent on it resolves to a length nothing on
- * this card names. the box is drawn at the card's base or its floor (`[part~='field']` in
- * ./parts.css), so above the floor the two steps are the row's exactly.
+ * a refusal stands closer under what it refuses than the gap of the column both stand in: at that
+ * gap it stood as far below the box as the label stands above it, and with its own line's leading on
+ * top it read as a line of its own rather than as something said about the box. every column here
+ * spends `--_sp2`, so it is that gap negated and the smaller step put back, carried by what is
+ * refused for the reason `.group:has(+ .message:not([hidden]))` above gives — the sentence is drawn
+ * a step smaller, and the expression spent on it resolves to a length nothing on this card names.
+ * the box is drawn at the card's base or its floor (`[part~='field']` in ./parts.css), so above the
+ * floor the two steps are the column's exactly.
+ *
+ * the four columns a refusal stands in under what it refuses: a row, the note's disclosure, the
+ * honoree's dedication, and the amount group, where the tray is what is refused and the entry's
+ * hidden label stands out of flow between the two. the dedication is a grid, so on its wide layout
+ * the select sharing the name's line takes the same margin (the breakpoint at the end of this file),
+ * or the taller of the two would hold the track open.
  *
  * a row whose label stands inside its box takes the smaller step as its gap instead
  * (`.field-row.floating` below): its label is out of flow, so the box and the sentence are the only
  * two things the gap falls between, and a margin on the box would shorten the track the label is
  * centred in.
  */
-.field-row:not(.floating) > [part~='field']:has(+ .message:not([hidden])) {
+:is(.field-row:not(.floating), .disclosure-inner, .dedication)
+	> [part~='field']:has(+ .message:not([hidden])),
+.group > .tiles:has(~ .message:not([hidden])) {
 	margin-block-end: calc(var(--_sp1) - var(--_sp2));
 }
 
@@ -920,6 +929,10 @@ form {
 	/* back onto the select's line, which is the sentence the two of them are. */
 	.dedication > input {
 		grid-column: 2;
+	}
+
+	.dedication:has(> .message:not([hidden])) > [data-part='trigger'] {
+		margin-block-end: calc(var(--_sp1) - var(--_sp2));
 	}
 }
 

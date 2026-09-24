@@ -3400,6 +3400,53 @@ describe('a refusal under its box', () => {
 		expect(under).toBeLessThan(beyond);
 	});
 
+	/**
+	 * the amount step with every refusal it can show on screen at once: a figure under the floor, the
+	 * note ticked and left empty, and the tribute ticked with its name empty and only the person to
+	 * tell's email given.
+	 */
+	async function amountRefused(width: string): Promise<ShadowRoot> {
+		const { host, shadow } = await mount();
+		host.style.inlineSize = width;
+		(shadow.querySelectorAll("[part~='frequency-option'] input")[0] as HTMLElement).click();
+		for (const tick of shadow.querySelectorAll(".step:not([hidden]) [part~='checkbox']"))
+			(tick as HTMLElement).click();
+		await settle();
+		fill(shadow, '#amount-entry', '0.01');
+		(shadow.querySelector('.field-row > button') as HTMLElement).click();
+		await settle();
+		fill(shadow, '#tribute-notify-email', 'someone@example.org');
+		onward(shadow);
+		await settle();
+		return shadow;
+	}
+
+	/** how far a refusal stands under what it refuses, against the step every refusal takes. */
+	function seatedUnder(shadow: ShadowRoot, refused: Element, id: string): void {
+		const refusal = shadow.querySelector(id) as HTMLElement;
+		expect(refusal.hidden, id).toBe(false);
+		expect(
+			refusal.getBoundingClientRect().top - refused.getBoundingClientRect().bottom,
+			id
+		).toBeCloseTo(step(shadow, '--_sp1'), 0);
+	}
+
+	// the same seat on every refusal the amount step draws: under the tray, under the note, under the
+	// honoree's name and under the person to tell. at both widths, because the honoree's name shares
+	// the select's line on a wide card and takes a line of its own on a narrow one.
+	it.each(['375px', '560px'])(
+		'stands as close under each thing the amount step refuses at %s',
+		async (width) => {
+			const shadow = await amountRefused(width);
+			const at = (selector: string) => shadow.querySelector(selector) as HTMLElement;
+
+			seatedUnder(shadow, at('.tiles'), '#amount-problem');
+			seatedUnder(shadow, at('#note'), '#note-problem');
+			seatedUnder(shadow, at('#tribute-honoree'), '#tribute-honoree-problem');
+			seatedUnder(shadow, at('#tribute-notify-name'), '#tribute-notify-name-problem');
+		}
+	);
+
 	// the same seat where the label stands inside the box, whose row is laid out as a grid instead.
 	it('stands as close under a box whose label stands inside it', async () => {
 		const { shadow } = await mount();
