@@ -173,10 +173,25 @@ async function act(
 	if (press === 'disconnect') {
 		// revoked first and deleted whatever that answered — $lib/server/accounting/provider.ts
 		// argues it at the arm, and a row kept over a failed revoke would be a connection nothing can
-		// use.
-		await createAccountingProvider(env, db).revokeTokens();
+		// use. what the revoke answered is still said, because a grant left live at Intuit is only
+		// ended from Intuit's side.
+		const revoked = await createAccountingProvider(env, db).revokeTokens();
 		await disconnectQuickbooks(db);
-		return consoleJson({ press } satisfies QuickbooksPressReport);
+		const report: QuickbooksPressReport = {
+			press,
+			revoke: revoked.ok
+				? { state: 'revoked' }
+				: {
+						state: 'not_revoked',
+						detail: revoked.detail,
+						// where QuickBooks Online lists a company's connected apps
+						// (https://developer.intuit.com/app/developer/qbo/docs/go-live/publish-app/technical-requirements).
+						fix:
+							'This deployment no longer holds the connection, but Intuit still lists the app ' +
+							'as connected. In QuickBooks Online, open Apps, then My Apps, and disconnect it there.'
+					}
+		};
+		return consoleJson(report);
 	}
 
 	// every press left needs a company: two of them write onto the connection row, one queues gifts

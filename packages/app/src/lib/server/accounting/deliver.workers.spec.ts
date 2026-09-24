@@ -907,6 +907,32 @@ describe('the notice for a run that could not send anything', () => {
 		expect((await row(entryGroupId)).notifiedAt).toBeNull();
 	});
 
+	it('says nothing about a renewed credential it could not store, and leaves the backlog as it was', async () => {
+		const entryGroupId = await queuedGift();
+		await tried(entryGroupId, 0, 6 * 60 * MINUTE);
+		const mail = mailer();
+		const unsaved = provider(() =>
+			failed('credential_unsaved', 'QuickBooks issued a new credential and it could not be stored.')
+		);
+
+		await sendDueEntries(deps(unsaved.port, mail.port), NOW);
+
+		// the stored token still renews for a day, so this is a write to try again, not an outage.
+		expect(mail.sent).toEqual([]);
+		expect(await row(entryGroupId)).toMatchObject({
+			status: 'pending',
+			attempts: 0,
+			lastError: null,
+			notifiedAt: null
+		});
+
+		const next = provider();
+		await sendDueEntries(deps(next.port, mail.port), new Date(NOW.getTime() + MINUTE));
+
+		expect(next.asked).toEqual([entryGroupId]);
+		expect(next.attempts).toEqual(['first']);
+	});
+
 	it('says nothing where no company is connected', async () => {
 		const entryGroupId = await queuedGift();
 		await tried(entryGroupId, 0, 6 * 60 * MINUTE);

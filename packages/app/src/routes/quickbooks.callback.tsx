@@ -50,6 +50,13 @@ import type { Route } from './+types/quickbooks.callback';
 // company keeps what was picked before ($lib/server/accounting/connection.ts), and nothing
 // overwrites it.
 //
+// **a trip back naming a different company fills nothing.** the connect clears the old company's
+// accounts, and those unpicked accounts are the one thing holding every queued gift — donor names
+// and addresses among them — out of books nobody has yet said are the right ones. filling them from
+// the new chart would release that backlog within a minute of a wrong pick in Intuit's company
+// list. so the move is stored, the page names both companies, and sending waits for an operator
+// to choose on the console.
+//
 // **it ends on a page rather than a redirect into either operator surface.** Intuit cannot be
 // pointed at a console running on somebody's laptop, and /admin is a different sign-in from the one
 // the operator is holding — so the honest end of this trip is a page saying what happened and that
@@ -66,7 +73,7 @@ export const links = operatorLinks;
  */
 export function meta({ loaderData }: Route.MetaArgs): Route.MetaDescriptors {
 	const said =
-		loaderData.outcome === 'connected' ? 'QuickBooks connected' : 'QuickBooks not connected';
+		loaderData.outcome === 'refused' ? 'QuickBooks not connected' : 'QuickBooks connected';
 	return [{ title: `${said} · ${APP_NAME}` }];
 }
 
@@ -145,16 +152,25 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		return refused('exchange', 502, tokens.reason, tokens.detail);
 	}
 
-	await connectQuickbooks(db, { realmId, tokens: tokens.value, startAt: new Date() });
+	const before = await connectQuickbooks(db, {
+		realmId,
+		tokens: tokens.value,
+		startAt: new Date()
+	});
 
 	const company = await provider.readCompany();
 	if (company.ok) await saveQuickbooksCompanyName(db, company.value.companyName);
-	await fillAccountsFromChart(db, provider, realmId);
+	const companyName = company.ok ? company.value.companyName : null;
 
-	return data(
-		{ outcome: 'connected' as const, companyName: company.ok ? company.value.companyName : null },
-		{ headers: spent }
-	);
+	if (before !== null && before.realmId !== realmId) {
+		return data(
+			{ outcome: 'switched' as const, previousCompanyName: before.companyName, companyName },
+			{ headers: spent }
+		);
+	}
+
+	await fillAccountsFromChart(db, provider, realmId);
+	return data({ outcome: 'connected' as const, companyName }, { headers: spent });
 }
 
 /**
@@ -173,6 +189,21 @@ export default function QuickbooksCallback({ loaderData }: Route.ComponentProps)
 						: `${loaderData.companyName} is connected`}
 				</h1>
 				<p className="adm-prose">You can close this tab.</p>
+			</PanelRoute>
+		);
+	}
+
+	if (loaderData.outcome === 'switched') {
+		return (
+			<PanelRoute>
+				<h1>QuickBooks is connected to a different company</h1>
+				<p className="adm-prose">
+					{`The connection moved from ${loaderData.previousCompanyName ?? 'the company connected before'} to ${loaderData.companyName ?? 'a company whose name QuickBooks has not said yet'}.`}
+				</p>
+				<p className="adm-prose">
+					Nothing is sent to QuickBooks until the accounts are chosen. Choose the accounts again on
+					the console.
+				</p>
 			</PanelRoute>
 		);
 	}

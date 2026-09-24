@@ -28,8 +28,9 @@ import { defaultAccounts } from './quickbooks-accounts';
 // ---------------------------------------------------------------------------
 // why the adapter takes {@link quickbooksStore} rather than a `Db`.
 //
-// the adapter refreshes a credential that rotates, and Intuit retires the token it rotated away
-// from — so a refresh that reads, calls and does not write loses the connection at the next call.
+// the adapter refreshes a credential that rotates, and Intuit stops renewing the token it rotated
+// away from 24 hours later — so a refresh that reads, calls and does not write loses the connection
+// once that day is out.
 // handing the adapter a `Db` would make persisting one thing it could do among many; handing it two
 // functions makes persisting the only writing it can do at all. ./provider.ts's `ConnectionStore`
 // states the contract and ./quickbooks.spec.ts exercises the adapter against a store in memory,
@@ -95,8 +96,15 @@ export type NewConnection = {
  *
  * `start_at` is untouched on both arms. it is the operator's own answer rather than the company's,
  * and it is as true of the books they have just connected as of the ones they left.
+ *
+ * answers with the company the row held before, or null where none was connected. it is read in
+ * the same `batch()` as the write, so it is the row this write replaced and not one a second
+ * callback wrote in between — and the caller tells a reconnect from a move by comparing realms.
  */
-export async function connectQuickbooks(db: Db, connection: NewConnection): Promise<void> {
+export async function connectQuickbooks(
+	db: Db,
+	connection: NewConnection
+): Promise<ReplacedCompany | null> {
 	const credential = {
 		realmId: connection.realmId,
 		accessToken: connection.tokens.accessToken,
@@ -104,25 +112,41 @@ export async function connectQuickbooks(db: Db, connection: NewConnection): Prom
 		refreshToken: connection.tokens.refreshToken,
 		refreshTokenExpiresAt: connection.tokens.refreshTokenExpiresAt
 	};
-	await db
-		.insert(quickbooksConnection)
-		.values({ id: CONNECTION_ID, ...credential, startAt: connection.startAt })
-		.onConflictDoUpdate({
-			target: quickbooksConnection.id,
-			set: {
-				...credential,
-				companyName: keptForTheSameCompany(quickbooksConnection.companyName),
-				// each id with the name beside it, because `..._name_needs_id_check` in ../db/schema.ts
-				// refuses a name whose id has gone.
-				incomeAccountId: keptForTheSameCompany(quickbooksConnection.incomeAccountId),
-				incomeAccountName: keptForTheSameCompany(quickbooksConnection.incomeAccountName),
-				feeAccountId: keptForTheSameCompany(quickbooksConnection.feeAccountId),
-				feeAccountName: keptForTheSameCompany(quickbooksConnection.feeAccountName),
-				depositAccountId: keptForTheSameCompany(quickbooksConnection.depositAccountId),
-				depositAccountName: keptForTheSameCompany(quickbooksConnection.depositAccountName)
-			}
-		});
+	const [before] = await db.batch([
+		db
+			.select({
+				realmId: quickbooksConnection.realmId,
+				companyName: quickbooksConnection.companyName
+			})
+			.from(quickbooksConnection)
+			.where(eq(quickbooksConnection.id, CONNECTION_ID)),
+		db
+			.insert(quickbooksConnection)
+			.values({ id: CONNECTION_ID, ...credential, startAt: connection.startAt })
+			.onConflictDoUpdate({
+				target: quickbooksConnection.id,
+				set: {
+					...credential,
+					companyName: keptForTheSameCompany(quickbooksConnection.companyName),
+					// each id with the name beside it, because `..._name_needs_id_check` in ../db/schema.ts
+					// refuses a name whose id has gone.
+					incomeAccountId: keptForTheSameCompany(quickbooksConnection.incomeAccountId),
+					incomeAccountName: keptForTheSameCompany(quickbooksConnection.incomeAccountName),
+					feeAccountId: keptForTheSameCompany(quickbooksConnection.feeAccountId),
+					feeAccountName: keptForTheSameCompany(quickbooksConnection.feeAccountName),
+					depositAccountId: keptForTheSameCompany(quickbooksConnection.depositAccountId),
+					depositAccountName: keptForTheSameCompany(quickbooksConnection.depositAccountName)
+				}
+			})
+	]);
+	return before[0] ?? null;
 }
+
+/** the company a connect replaced: its realm, and its name where one had been read back. */
+export type ReplacedCompany = {
+	readonly realmId: string;
+	readonly companyName: string | null;
+};
 
 /**
  * what `column` holds where the incoming realm is the one the row already carried, and null where

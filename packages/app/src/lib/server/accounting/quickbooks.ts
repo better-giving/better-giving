@@ -271,15 +271,17 @@ export function createQuickbooksProvider(
 	 * the pair Intuit just issued, stored — or the pair whoever renewed first stored.
 	 *
 	 * written before the token is spent, and by the only writer this adapter has: a pair obtained
-	 * and dropped is the connection lost the next time the old one is presented. the write is
+	 * and dropped is the connection lost once the old one stops renewing. the write is
 	 * against `presented`, so the caller that lost the race writes nothing and reads the winner's
 	 * credential instead of overwriting it with one Intuit retired.
 	 *
-	 * a write that could not be made at all is where the connection dies: Intuit has already
-	 * retired `presented` by then, so the credential this deployment holds is spent and no later
-	 * call revives it. it is a refusal rather than a throw because every caller of this port reads
-	 * `ok` — a console read promises a 200 whatever the books answer, and the delivery reads the
-	 * reason to tell an operator (./deliver.ts).
+	 * a write that could not be made at all leaves the connection standing: Intuit keeps
+	 * `presented` renewable for 24 hours after issuing a new pair
+	 * (https://developer.intuit.com/app/developer/qbo/docs/develop/sdks-and-samples-collections/nodejs/oauth-nodejs-client),
+	 * so the next run renews with the stored token and stores what that issues. it is a refusal
+	 * rather than a throw because every caller of this port reads `ok` — a console read promises a
+	 * 200 whatever the books answer, and the delivery reads the reason to decide what stops
+	 * (./deliver.ts).
 	 */
 	async function persist(
 		presented: string,
@@ -290,8 +292,8 @@ export function createQuickbooksProvider(
 			save = await store.saveTokens(presented, issued);
 		} catch (error) {
 			return failed(
-				'reconnect_needed',
-				`QuickBooks issued this deployment a new credential and it could not be stored (${faultName(error)}), so the one being held is spent. The QuickBooks company has to be connected again.`
+				'credential_unsaved',
+				`QuickBooks issued this deployment a new credential and it could not be stored (${faultName(error)}). The one already stored still renews, so the next call tries again.`
 			);
 		}
 		if (save === 'stored') return { ok: true, value: issued };
@@ -1028,10 +1030,18 @@ function classify(answer: Answer): AccountingFailure {
 	if (answer.status >= 500) {
 		return failed('provider_error', `QuickBooks answered ${answer.status}${words}.`);
 	}
-	if (answer.status === 401 || answer.status === 403) {
+	if (answer.status === 401) {
 		return failed(
 			'reconnect_needed',
-			`QuickBooks refused the credential (${answer.status}${words}). The company has to be connected again.`
+			`QuickBooks refused the credential (401${words}). The company has to be connected again.`
+		);
+	}
+	// the whole run stops on it like a dead credential, but the repair is at Intuit rather than a
+	// reconnect: the connected user's role, or the company's subscription.
+	if (answer.status === 403) {
+		return failed(
+			'reconnect_needed',
+			`QuickBooks refused this action (403${words}). The Intuit user who connected the company, or the company’s QuickBooks subscription, lacks permission for it. Connecting again as the same user will not fix it: give that user the permission in QuickBooks, or connect as a user who has it.`
 		);
 	}
 	if (answer.status === 404) {

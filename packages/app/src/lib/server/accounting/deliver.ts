@@ -74,15 +74,15 @@ import { readSendable } from './record';
 // ---------------------------------------------------------------------------
 // where a refusal lands, and it is not `retryable` alone.
 //
-// five of the port's reasons are one fault the whole backlog is behind — no company connected, the
-// three accounts not picked, a dead credential, a throttled provider, a provider that cannot be
-// reached. none of them is about the row being sent, so none of them marks a row: the claim and
-// its attempt are given back, nothing else is written, and the backlog is read again next time.
-// marking a hundred gifts over one revoked credential would leave an operator repairing rows
-// instead of the one thing that is wrong. the one exception is the attempt on a provider that
-// could not be reached, which stays, because that call may have created the record before the wait
-// ran out — and `attempts` is what the next send reads to know it has to look before it posts
-// (./quickbooks.ts).
+// six of the port's reasons are one fault the whole backlog is behind — no company connected, the
+// three accounts not picked, a dead credential, a renewed credential that could not be stored, a
+// throttled provider, a provider that cannot be reached. none of them is about the row being sent,
+// so none of them marks a row: the claim and its attempt are given back, nothing else is written,
+// and the backlog is read again next time. marking a hundred gifts over one revoked credential
+// would leave an operator repairing rows instead of the one thing that is wrong. the one exception
+// is the attempt on a provider that could not be reached, which stays, because that call may have
+// created the record before the wait ran out — and `attempts` is what the next send reads to know
+// it has to look before it posts (./quickbooks.ts).
 //
 // four are about this row and no later run answers them differently — an id nothing carries, an
 // account outside the three, a payload the provider refused, a record this app should never have
@@ -115,8 +115,10 @@ import { readSendable } from './record';
 // **the run blocked.** a run that stopped has failed no row, so row state says nothing at all
 // about a backlog piling up behind a dead credential — which is the outage most worth an email. it
 // is reported off the blocking reason instead, over every unfinished row and stamped the same way.
-// two of the five reasons say nothing here: a throttled provider clears itself within a run or
-// two, and a deployment nobody has connected is a deliberate act the console's connection screen
+// three of the six reasons say nothing here: a throttled provider clears itself within a run or
+// two, a credential that could not be stored is renewed again by the next run while the one held
+// still renews — and once it stops, that refusal is a dead credential, which says so at once —
+// and a deployment nobody has connected is a deliberate act the console's connection screen
 // already shows. a provider that could not be reached waits an hour, so a blip between two runs
 // costs no email.
 //
@@ -285,6 +287,7 @@ const LANDING_OF: Readonly<Record<AccountingFailureReason, FailureLanding>> = {
 	reconnect_needed: 'run',
 	rate_limited: 'run',
 	unreachable: 'run',
+	credential_unsaved: 'run',
 	not_found: 'row',
 	unmapped_account: 'row',
 	invalid_record: 'row',
@@ -320,6 +323,7 @@ const BLOCKED_NOTICE_OF: Readonly<Record<AccountingFailureReason, BlockedNotice>
 	accounts_not_chosen: 'at_once',
 	unreachable: 'after_a_while',
 	rate_limited: 'never',
+	credential_unsaved: 'never',
 	not_connected: 'never',
 	not_found: 'never',
 	unmapped_account: 'never',
@@ -461,7 +465,7 @@ async function land(
 	now: Date
 ): Promise<QueuedEntryResult> {
 	const landing = landingOf(failure.reason);
-	// the four run-level answers other than `unreachable` say nothing was made. `unreachable` keeps
+	// the run-level answers other than `unreachable` say nothing was made. `unreachable` keeps
 	// the attempt: a call whose answer never came may have created the record, and the count is
 	// what tells the next send to look before it posts.
 	const givenBack =

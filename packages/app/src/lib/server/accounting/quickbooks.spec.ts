@@ -328,34 +328,42 @@ describe('the access token', () => {
 		expect(calls[1]?.authorization).toBe('Bearer access-theirs');
 	});
 
-	it('reports a pair it could not store as a connection to be made again', async () => {
-		serving((method, url) =>
+	it('reports a pair it could not store as a fault the next run retries with the token it holds', async () => {
+		const calls = serving((method, url) =>
 			method === 'POST' && url.href === INTUIT_TOKEN_URL
 				? {
 						status: 200,
 						json: { access_token: 'access-two', expires_in: 3600, refresh_token: 'refresh-two' }
 					}
-				: undefined
+				: url.pathname === '/v3/company/4620816365/query'
+					? { status: 200, json: COMPANY_QUERY }
+					: undefined
 		);
 		const held = store({ accessTokenExpiresAt: new Date(NOW.getTime() - 1) });
-		const provider = createQuickbooksProvider(CREDENTIALS, {
+		const failing = createQuickbooksProvider(CREDENTIALS, {
 			read: held.read,
 			saveTokens: async () => {
 				throw new Error('D1_ERROR');
 			}
 		});
 
-		// Intuit retired the presented token the moment it issued this pair, so a pair that could
-		// not be written is a connection nothing revives — and the caller is told rather than made
-		// to catch: a console read promises a 200 whatever the books answer.
-		const result = await provider.readCompany();
-
-		expect(result).toMatchObject({
+		// Intuit keeps the presented token renewable for 24 hours after issuing a new one, so a pair
+		// that could not be written is a write to try again, not a connection to make again.
+		expect(await failing.readCompany()).toMatchObject({
 			ok: false,
-			reason: 'reconnect_needed',
-			retryable: false,
-			detail: expect.stringContaining('connected again')
+			reason: 'credential_unsaved',
+			retryable: true,
+			detail: expect.not.stringContaining('connected again')
 		});
+
+		expect(await createQuickbooksProvider(CREDENTIALS, held).readCompany()).toMatchObject({
+			ok: true
+		});
+		const renewals = calls.filter((call) => call.url.href === INTUIT_TOKEN_URL);
+		expect(renewals.map((call) => new URLSearchParams(call.body).get('refresh_token'))).toEqual([
+			'refresh-one',
+			'refresh-one'
+		]);
 	});
 
 	it('reports a company disconnected mid-renewal as one there is nothing to send to', async () => {
@@ -948,6 +956,25 @@ describe('what a refusal costs the queued entry', () => {
 		expect(result).toMatchObject({
 			detail: expect.stringContaining('Account element id 79 not found')
 		});
+	});
+
+	it('stops on a 403 with the permission it lacks, which connecting again as the same user does not give', async () => {
+		servingCompany((statement) =>
+			statement.startsWith('select * from Customer')
+				? { status: 200, json: { QueryResponse: { Customer: [{ Id: '12' }] } } }
+				: statement === ''
+					? { status: 403, json: {} }
+					: undefined
+		);
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		const result = await provider.sendGift(GIFT, 'first', REVISION);
+
+		expect(result).toMatchObject({ ok: false, reason: 'reconnect_needed', retryable: false });
+		const detail = result.ok ? '' : result.detail;
+		expect(detail).toContain('subscription');
+		expect(detail).toContain('permission');
+		expect(detail).toContain('as the same user will not fix it');
 	});
 
 	it('reports a call that never answered as worth making again', async () => {

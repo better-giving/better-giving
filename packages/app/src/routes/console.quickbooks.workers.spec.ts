@@ -596,13 +596,27 @@ describe('the retry press', () => {
 });
 
 describe('the disconnect press', () => {
-	it('leaves no credential behind even where Intuit refused the revoke', async () => {
+	it('leaves no credential behind even where Intuit refused the revoke, and says where to finish it', async () => {
 		await connect();
 		stub.revoked = failed('unreachable', 'Intuit did not answer.');
 
 		const answered = await press({ press: 'disconnect' });
 
 		expect(answered.status).toBe(200);
+		expect(await readQuickbooksConnection(db)).toBeNull();
+		const report = await answered.json<QuickbooksPressReport>();
+		const revoke = report.press === 'disconnect' ? report.revoke : null;
+		expect(revoke).toMatchObject({ state: 'not_revoked' });
+		expect(revoke?.state === 'not_revoked' && revoke.detail).toContain('Intuit did not answer.');
+		expect(revoke?.state === 'not_revoked' && revoke.fix).toContain('My Apps');
+	});
+
+	it('says the revoke landed where Intuit took it', async () => {
+		await connect();
+
+		const answered = await press({ press: 'disconnect' });
+
+		expect(await answered.json()).toEqual({ press: 'disconnect', revoke: { state: 'revoked' } });
 		expect(await readQuickbooksConnection(db)).toBeNull();
 	});
 });

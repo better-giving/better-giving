@@ -212,15 +212,27 @@ export interface QuickbooksStartAtSide {
 }
 
 /**
+ * whether Intuit took the revoke a disconnect made first.
+ *
+ * the connection is gone from the deployment on both arms. `not_revoked` is the grant still live
+ * at Intuit, so the app stays among the company's connected apps until someone removes it there:
+ * `detail` is the deployment's sentence about why the revoke did not land, and `fix` says where.
+ */
+export type QuickbooksRevoke =
+	| { readonly state: 'revoked' }
+	| { readonly state: 'not_revoked'; readonly detail: string; readonly fix: string };
+
+/**
  * what a press that landed answers with.
  *
- * only three of them have anything to say beyond having happened, and what the rest change is read
+ * only four of them have anything to say beyond having happened, and what the rest change is read
  * back off {@link QuickbooksReport} — so there is no arm carrying a field that is null for every
  * press but one.
  */
 export type QuickbooksPressReport =
 	| { readonly press: 'connect'; readonly url: string }
-	| { readonly press: 'accounts' | 'start-date' | 'disconnect' }
+	| { readonly press: 'accounts' | 'start-date' }
+	| { readonly press: 'disconnect'; readonly revoke: QuickbooksRevoke }
 	| { readonly press: 'retry'; readonly retried: number }
 	| {
 			readonly press: 'start-date-preview';

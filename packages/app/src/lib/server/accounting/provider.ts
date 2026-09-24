@@ -62,6 +62,9 @@
  *   unreachable         — no answer settled whether the call took effect: a connection that failed,
  *                         or a wait that ran out.
  *   provider_error      — the provider faulted, or answered with something this app cannot read.
+ *   credential_unsaved  — the provider issued a new credential and this deployment could not store
+ *                         it. the one still held keeps renewing for a while (Intuit's grace is 24
+ *                         hours, ./quickbooks.ts), so the next run renews again and stores that.
  *   internal_error      — this app handed the port something its contract says it never will. a
  *                         defect here rather than anything about the books.
  */
@@ -75,6 +78,7 @@ export const ACCOUNTING_FAILURE_REASONS = [
 	'rate_limited',
 	'unreachable',
 	'provider_error',
+	'credential_unsaved',
 	'internal_error'
 ] as const;
 export type AccountingFailureReason = (typeof ACCOUNTING_FAILURE_REASONS)[number];
@@ -83,7 +87,8 @@ export type AccountingFailureReason = (typeof ACCOUNTING_FAILURE_REASONS)[number
 export const RETRYABLE_FAILURE_REASONS = [
 	'rate_limited',
 	'unreachable',
-	'provider_error'
+	'provider_error',
+	'credential_unsaved'
 ] as const satisfies readonly AccountingFailureReason[];
 
 /**

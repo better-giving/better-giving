@@ -403,7 +403,9 @@ describe('which control an answer belongs to', () => {
 
 	it('hands the connect press its address and every other press none', () => {
 		expect(connectAddress(reported({ press: 'connect', url: CONSENT }))).toBe(CONSENT);
-		expect(connectAddress(reported({ press: 'disconnect' }))).toBeNull();
+		expect(
+			connectAddress(reported({ press: 'disconnect', revoke: { state: 'revoked' } }))
+		).toBeNull();
 		expect(connectAddress(silence('connect'))).toBeNull();
 		expect(connectAddress(null)).toBeNull();
 	});

@@ -2213,9 +2213,10 @@ export const quickbooksConnection = sqliteTable(
 
 		/**
 		 * the long-lived credential, and **it rotates**: Intuit returns a new refresh token on
-		 * some refreshes and retires the old one, so this column is rewritten by the running
-		 * worker rather than set once at connect. a refresh that persists the new token
-		 * anywhere but here loses the connection the next time the old one is presented.
+		 * some refreshes and the old one stops renewing 24 hours later, so this column is
+		 * rewritten by the running worker rather than set once at connect. a refresh that
+		 * persists the new token anywhere but here loses the connection once those 24 hours
+		 * are out.
 		 */
 		refreshToken: text('refresh_token').notNull(),
 		/** nullable: Intuit does not always state one. */
