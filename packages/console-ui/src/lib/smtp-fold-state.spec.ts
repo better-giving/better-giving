@@ -16,7 +16,9 @@ import {
 	mailPhase,
 	mailUnconfigured,
 	ownPress,
+	sendInFlight,
 	sendState,
+	standingCard,
 	testSendForm
 } from './smtp-fold-state';
 
@@ -48,6 +50,7 @@ const TEST_INTENT = TEST_EMAIL_INTENT;
 const resting = {
 	pending: null as string | null,
 	intent: TEST_INTENT,
+	revalidating: false,
 	sent: false,
 	expired: false,
 	empty: false,
@@ -55,7 +58,7 @@ const resting = {
 };
 
 /** a credentials form at rest, which every case reading its boxes varies from. */
-const credentials = {
+const mailAtRest = {
 	pending: null as string | null,
 	intent: STORE_INTENT,
 	revalidating: false,
@@ -87,15 +90,12 @@ describe('the two blocks of the mail fold', () => {
 	});
 
 	it('leaves the credentials open while the test send is in flight', () => {
-		// the whole of the first defect: `closed` is what the five boxes state `disabled` on and the
-		// `pending` the credentials form hands the seam, so a `true` here greys five boxes and draws
-		// `Saving` under them for a message on its way to an inbox.
+		// the whole of the first defect: `closed` is what the four credential boxes state `disabled`
+		// on and the `pending` the credentials form hands the seam, so a `true` here greys four boxes
+		// and draws `Saving` under them for a message on its way to an inbox.
 		expect(ownPress(TEST_INTENT, STORE_INTENT)).toBe(false);
-		expect(mailPhase({ ...credentials, pending: TEST_INTENT })).toEqual({
-			inFlight: false,
-			closed: false
-		});
-		expect(mailPhase({ ...credentials, pending: TEST_INTENT, revalidating: true }).closed).toBe(
+		expect(mailPhase({ ...mailAtRest, pending: TEST_INTENT })).toEqual({ closed: false });
+		expect(mailPhase({ ...mailAtRest, pending: TEST_INTENT, revalidating: true }).closed).toBe(
 			false
 		);
 	});
@@ -108,6 +108,23 @@ describe('the two blocks of the mail fold', () => {
 
 	it('draws the send as pending only for its own press', () => {
 		expect(sendState({ ...resting, pending: TEST_INTENT })).toBe('pending');
+	});
+
+	it('gives the send back on the render its answer lands in, while the page is read again', () => {
+		// the intent is carried through the re-read as well as the request (./stripe-press.ts), and a
+		// send stores nothing, so a reading off the intent alone would hold the To box closed, the
+		// press on its dots and the answer unsaid for the whole of a reading it has no stake in.
+		expect(sendInFlight({ pending: TEST_INTENT, intent: TEST_INTENT, revalidating: false })).toBe(
+			true
+		);
+		expect(sendInFlight({ pending: TEST_INTENT, intent: TEST_INTENT, revalidating: true })).toBe(
+			false
+		);
+		expect(sendState({ ...resting, pending: TEST_INTENT, revalidating: true })).toBe('idle');
+		// and the send that went is reported on that render rather than once the reading lands.
+		expect(sendState({ ...resting, pending: TEST_INTENT, revalidating: true, sent: true })).toBe(
+			'done'
+		);
 	});
 
 	it('refuses a send with no address in the box, whatever else is true', () => {
@@ -148,40 +165,88 @@ describe('the two blocks of the mail fold', () => {
 
 describe('whether the credential boxes are closed', () => {
 	it('leaves them open at rest', () => {
-		expect(mailPhase(credentials)).toEqual({ inFlight: false, closed: false });
+		expect(mailPhase(mailAtRest)).toEqual({ closed: false });
 	});
 
 	it('closes them and the confirm while the request carrying them is in flight', () => {
-		expect(mailPhase({ ...credentials, pending: STORE_INTENT })).toEqual({
-			inFlight: true,
-			closed: true
-		});
+		expect(mailPhase({ ...mailAtRest, pending: STORE_INTENT })).toEqual({ closed: true });
 	});
 
 	it('closes them over the answer before this press, which is what the page holds while it goes', () => {
 		// the answer on the page during the request is the last press's, landed or not, and the boxes
 		// hold what is being sent over it.
 		expect(
-			mailPhase({ ...credentials, pending: STORE_INTENT, landed: true, spent: true }).closed
+			mailPhase({ ...mailAtRest, pending: STORE_INTENT, landed: true, spent: true }).closed
 		).toBe(true);
 	});
 
 	it('reopens them on the render a refusal lands in, while the page is read again over it', () => {
 		// the intent is carried through the re-read as well as the request (./stripe-press.ts), so
 		// a reading off the intent alone keeps the boxes disabled on the render the focus move to the
-		// refused box runs in — and focus falls to the body.
-		expect(mailPhase({ ...credentials, pending: STORE_INTENT, revalidating: true })).toEqual({
-			inFlight: false,
+		// refused box runs in, and the move lands on nothing. whether it then lands in the box is the
+		// card's half as well ({@link standingCard}), and no case in this node-only pool can see
+		// where focus goes.
+		expect(mailPhase({ ...mailAtRest, pending: STORE_INTENT, revalidating: true })).toEqual({
 			closed: false
 		});
 	});
 
 	it('keeps them closed over a landed write until the reading behind it lands', () => {
 		expect(
-			mailPhase({ ...credentials, pending: STORE_INTENT, revalidating: true, landed: true }).closed
+			mailPhase({ ...mailAtRest, pending: STORE_INTENT, revalidating: true, landed: true }).closed
 		).toBe(true);
-		expect(mailPhase({ ...credentials, landed: true }).closed).toBe(true);
-		expect(mailPhase({ ...credentials, landed: true, spent: true }).closed).toBe(false);
+		expect(mailPhase({ ...mailAtRest, landed: true }).closed).toBe(true);
+		expect(mailPhase({ ...mailAtRest, landed: true, spent: true }).closed).toBe(false);
+	});
+
+	it('keeps them closed over its own landed answer while the reading behind it still reads as spent', () => {
+		// the render `useReseeded` has not yet recorded this press's reading on (./reseed.ts): `spent`
+		// is still measured against the last press's, so it reads true over a write nobody has read
+		// back. neither the request term nor the reseed term closes this, so the case fails the
+		// moment the press's own term goes.
+		expect(
+			mailPhase({
+				...mailAtRest,
+				pending: STORE_INTENT,
+				revalidating: true,
+				landed: true,
+				spent: true
+			}).closed
+		).toBe(true);
+	});
+});
+
+describe('whether the confirm card is still up', () => {
+	/** an answer the credentials press came back with, which the card is compared against by identity. */
+	const refused = { errors: { SMTP_HOST: 'That host does not answer on 465.' } };
+	const card = { over: null as unknown };
+
+	it('stands while the answer it was opened over is still the one on the page', () => {
+		expect(standingCard(card, null)).toBe(card);
+		const overRefusal = { over: refused };
+		expect(standingCard(overRefusal, refused)).toBe(overRefusal);
+	});
+
+	it('comes down on the render the answer to its press lands in', () => {
+		// the render the refusal's focus move runs in, which is why the card is decided here rather
+		// than in an effect after it (./smtp-fold.tsx): a card still up holds the box it names inert.
+		expect(standingCard(card, refused)).toBe(null);
+	});
+
+	it('comes down over a second answer that reads the same as the first', () => {
+		// two presses refused the same way are two answers, and the second is still this card's.
+		const again = { errors: { ...refused.errors } };
+		expect(standingCard({ over: refused }, again)).toBe(null);
+	});
+
+	it('comes down over an answer that is no report at all', () => {
+		// a test send's answer puts `null` back, which a card opened over a report is not.
+		expect(standingCard({ over: refused }, null)).toBe(null);
+	});
+
+	it('is nothing where no card was opened', () => {
+		expect(standingCard(null, null)).toBe(null);
+		expect(standingCard(null, refused)).toBe(null);
 	});
 });
 

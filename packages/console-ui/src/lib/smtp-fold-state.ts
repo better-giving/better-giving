@@ -15,15 +15,15 @@ import type { StatedForm } from './use-console-form';
 // places over two doors: the credentials go into cloudflare
 // (`packages/console/internal/deployment/write.go`) and the test send goes to the deployment over
 // its own mail transport (../api/client.ts's `sendTestEmail`). neither reads what the other left,
-// so neither has anything to wait for. one reading of "the page is writing" across both greys five
-// credential boxes while a message is on its way to somebody's inbox, which is a fold that stops
-// taking edits for a press that cannot touch them.
+// so neither has anything to wait for. one reading of "the page is writing" across both greys the
+// four credential boxes while a message is on its way to somebody's inbox, which is a fold that
+// stops taking edits for a press that cannot touch them.
 //
 // nothing is lost by decoupling them: `useSavedFormState`
 // (packages/operator/src/saved-form-state.react.ts) empties a form only when that form's own write
 // landed, so a press in the other block never takes away what the operator typed.
 //
-// what is also here is each form's own rules, as the schema its press runs first — the five
+// what is also here is each form's own rules, as the schema its press runs first — the four
 // credential boxes' ({@link mailForm}) and the destination's ({@link testSendForm}). they are
 // readings of the same boxes the readings above are about, and they are the same shape: pure
 // functions of what the boxes hold and what they were drawn with, with nothing about a network or
@@ -32,25 +32,26 @@ import type { StatedForm } from './use-console-form';
 /**
  * whether the press in flight is this block's own, which is the only press that closes a block.
  *
- * it names the press in both of its router phases and never which one; the credentials block reads
- * the phase beside it ({@link mailPhase}), and the send reads this alone ({@link sendState}).
+ * it names the press in both of its router phases and never which one; each block reads the phase
+ * beside it ({@link mailPhase}, {@link sendInFlight}).
  */
 export const ownPress = (pending: string | null, intent: string): boolean => pending === intent;
 
 /**
- * where the credentials block's own press stands, and whether its boxes are closed.
+ * whether the credentials block's boxes are closed: what they state `disabled` on, the `pending`
+ * the credentials form hands the seam (./use-console-form.ts), and what the confirm's own press is
+ * closed on. no other press on the page enters it.
  *
- * **an answer that stored nothing reopens the boxes on the render it lands in**, while the page is
- * still being read again over it. the posted intent is carried through that re-read as well as the
- * request (./stripe-press.ts), so a reading off the intent alone holds the boxes disabled for the
- * whole of it — and the refusal's focus move runs on that render, against a box that takes no
- * focus. a landed write keeps them closed until the reading it left behind lands (./reseed.ts), so
- * a box is never typed in over a value about to be put back.
+ * **closed for the request, and reopened by an answer that stored nothing on the render it lands
+ * in**, while the page is still being read again over it. the posted intent is carried through that
+ * re-read as well as the request (./stripe-press.ts), so a reading off the intent alone holds the
+ * boxes disabled for the whole of it — and the refusal's focus move runs on that render, against a
+ * box that takes no focus. the confirm card is the other half of that move: it is up over every
+ * press and holds the page inert behind it, and ./smtp-fold.tsx takes it down on the same render
+ * ({@link standingCard}).
  *
- * `closed` is what the boxes state `disabled` on and the `pending` the credentials form hands the
- * seam (./use-console-form.ts); `inFlight` is what the confirm's own press is closed on, since any
- * answer takes the card down (the effect on `report` in ./smtp-fold.tsx). no other press on the
- * page enters either.
+ * **a landed write keeps them closed until the reading it left behind lands** (./reseed.ts), so a
+ * box is never typed in over a value about to be put back.
  */
 export function mailPhase(press: {
 	/** which intent the page has in flight, in either phase, or `null`. */
@@ -63,11 +64,39 @@ export function mailPhase(press: {
 	readonly landed: boolean;
 	/** the reading after that write is on the screen (./reseed.ts). */
 	readonly spent: boolean;
-}): { readonly inFlight: boolean; readonly closed: boolean } {
+}): { readonly closed: boolean } {
 	const own = ownPress(press.pending, press.intent);
-	const inFlight = own && !press.revalidating;
-	return { inFlight, closed: inFlight || (own && press.landed) || (press.landed && !press.spent) };
+	return {
+		closed:
+			(own && !press.revalidating) ||
+			// `useReseeded` records the reading a press was made against in an effect (./reseed.ts), so
+			// on the first render a press commits it still holds the last press's, and `spent` reads true
+			// wherever a reading has landed since. where the router's two updates reach the screen as one
+			// render, that first render is the answer's own, and a write nobody has re-read yet reads as
+			// spent. this press's intent over a landed answer holds the boxes across it.
+			(own && press.landed) ||
+			(press.landed && !press.spent)
+	};
 }
+
+/**
+ * the confirm card the credentials block is holding, or `null` once the answer it was opened ahead
+ * of has landed.
+ *
+ * **it comes down on the render the answer lands in, never in an effect after it.** the card is a
+ * modal (`Modal` in `@better-giving/operator/behaviour/Dialog`) and every box behind it is inert
+ * while it is up: a refusal's focus move (./use-console-form.ts) run with the card still standing
+ * lands nowhere, and the card coming down a render later hands focus back to whatever opened it.
+ * gone in the answer's own commit, the card's cleanup — its close and the return to its opener —
+ * runs ahead of the focus move, because react runs every effect cleanup of a commit before any of
+ * its effects, and the focus move has the last word.
+ *
+ * the answer is compared by identity: two presses refused the same way are two answers.
+ */
+export const standingCard = <C extends { readonly over: unknown }>(
+	held: C | null,
+	report: unknown
+): C | null => (held !== null && held.over === report ? held : null);
 
 /**
  * whether the deployment holds nothing for a message to leave through.
@@ -440,12 +469,33 @@ export const testSendForm = (id: string): StatedForm<typeof testSchema> => ({
 	schema: testSchema
 });
 
+/**
+ * whether the test send's own request is in flight: the box, the press and the answer under it are
+ * held for this and for nothing else.
+ *
+ * **the request alone, and never the re-read its answer sets off.** the intent is carried through
+ * both (./stripe-press.ts), and a send stores nothing, so there is no reading for it to wait on.
+ * read off the intent alone, the To box stays closed, the press stays on its dots and the answer
+ * stays unsaid for as long as the page takes to be read again — the same stuck press
+ * {@link mailPhase} reopens.
+ */
+export const sendInFlight = (press: {
+	/** which intent the page has in flight, in either phase, or `null`. */
+	readonly pending: string | null;
+	/** what the send posts, which is the only press that closes it. */
+	readonly intent: string;
+	/** the router has the answer and is reading the page again over it. */
+	readonly revalidating: boolean;
+}): boolean => ownPress(press.pending, press.intent) && !press.revalidating;
+
 /** what the send press is drawn from. */
 export type SendFacts = {
-	/** which intent the page has in flight, or `null` where none is. */
+	/** which intent the page has in flight, in either phase, or `null` where none is. */
 	readonly pending: string | null;
 	/** what this press posts, which is the only one of them that closes it. */
 	readonly intent: string;
+	/** the router has the answer and is reading the page again over it. */
+	readonly revalidating: boolean;
 	/** the last press landed and the message went. */
 	readonly sent: boolean;
 	/** that confirmation's own seconds have run out, which puts the press back. */
@@ -476,12 +526,13 @@ export type SendFacts = {
 export function sendState({
 	pending,
 	intent,
+	revalidating,
 	sent,
 	expired,
 	empty,
 	unconfigured
 }: SendFacts): SavedFormState {
-	if (ownPress(pending, intent)) return 'pending';
+	if (sendInFlight({ pending, intent, revalidating })) return 'pending';
 	if (sent && !expired) return 'done';
 	return empty || unconfigured ? 'disabled' : 'idle';
 }

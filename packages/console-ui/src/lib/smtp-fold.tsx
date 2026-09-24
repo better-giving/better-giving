@@ -29,7 +29,9 @@ import {
 	mailSeed,
 	mailUnconfigured,
 	ownPress,
+	sendInFlight,
 	sendState,
+	standingCard,
 	testSendForm
 } from './smtp-fold-state';
 import { useReseeded } from './reseed';
@@ -340,10 +342,11 @@ export type SmtpFoldProps = {
 	/** how the last test send went, or `null`. */
 	test: TestSend | null;
 	/**
-	 * which intent is in flight, or `null` where none is.
+	 * which intent is in flight, in either router phase, or `null` where none is.
 	 *
-	 * what closes anything in this fold, and each of its two blocks reads it for its own press alone
-	 * — ./smtp-fold-state.ts argues why a press in one of them leaves the other open.
+	 * each of the two blocks reads it for its own press alone — ./smtp-fold-state.ts argues why a
+	 * press in one of them leaves the other open — and against {@link revalidating} for which phase
+	 * that press is in.
 	 */
 	pending: string | null;
 	/** the router is re-reading the page, which is the half of a press where its answer has landed. */
@@ -362,11 +365,11 @@ export function SmtpFold({
 	revalidating
 }: SmtpFoldProps): ReactNode {
 	/**
-	 * the test send's own press in flight, which is what holds the answer to the last one back: an
+	 * the test send's own request in flight, which is what holds the answer to the last one back: an
 	 * outcome drawn while the next send is going is the previous send's, reported over a press
 	 * already saying it is working.
 	 */
-	const sending = ownPress(pending, TEST_EMAIL_INTENT);
+	const sending = sendInFlight({ pending, intent: TEST_EMAIL_INTENT, revalidating });
 
 	/**
 	 * what this deployment holds under each deploy-time value, or `null` where that read did not land.
@@ -579,6 +582,7 @@ export function SmtpFold({
 					   boxes it would leave through directly above it. */
 					unconfigured={mailUnconfigured(MAIL_PRESSED, seeds)}
 					pending={pending}
+					revalidating={revalidating}
 				/>
 				{sending ? null : testOutcome()}
 			</Section>
@@ -707,10 +711,11 @@ function MailSettings({
 	 * something, the reading that shows what the write left behind — a form that went back to `Save`
 	 * over boxes it is about to put back is a press an operator makes twice, and a box left editable
 	 * across that second half is one whose contents the reading takes away as it lands
-	 * (../closed-while-writing.spec.ts). a refusal reopens them on the render it lands in, so its
-	 * focus move has a box to land in ({@link mailPhase}).
+	 * (../closed-while-writing.spec.ts). a refusal reopens them on the render it lands in, and the
+	 * card comes down on that same render ({@link confirming}), so its focus move has a box to land
+	 * in ({@link mailPhase}).
 	 */
-	const { inFlight, closed } = mailPhase({ pending, intent, revalidating, landed, spent });
+	const { closed } = mailPhase({ pending, intent, revalidating, landed, spent });
 
 	const credentials = useConsoleForm(stated, {
 		report,
@@ -744,14 +749,26 @@ function MailSettings({
 	const box = (name: string) => credentials.box(credentials.fields[VALUE_FIELD(name)] as BoundBox);
 
 	/**
-	 * what the confirm is holding, or `null` where it is not on the screen: the lines the press
-	 * touches and what the press does to this deployment. the act is taken with the lines rather
-	 * than while the card is up, because both are readings of the boxes at the moment of the press.
+	 * what the confirm was opened holding: the lines the press touches, what the press does to this
+	 * deployment, and the answer standing when it opened. the act is taken with the lines rather than
+	 * while the card is up, because both are readings of the boxes at the moment of the press.
 	 */
-	const [confirming, setConfirming] = useState<{
+	const [opened, setConfirming] = useState<{
 		readonly lines: readonly Edit[];
 		readonly act: MailAct;
+		readonly over: GroupReport | null;
 	} | null>(null);
+	/**
+	 * the card on the screen, or `null`: it is left the moment its own press is answered, whatever
+	 * the answer says — a landed write reports at the button underneath, and a refused one leaves the
+	 * operator in the box it named, and neither is readable behind a card. decided here rather than
+	 * in an effect after the answer, which is what lets that focus move land ({@link standingCard}).
+	 */
+	const confirming = standingCard(opened, report);
+	/* and let go as well as not drawn: a card kept past its answer stands again the moment the report
+	   goes back to what it was opened over, which a test send's answer does to a card opened over no
+	   report at all. */
+	if (opened !== confirming) setConfirming(null);
 
 	/**
 	 * the control that answers the card, settled as one thing: what it says, what it posts, and which
@@ -774,20 +791,10 @@ function MailSettings({
 						type: 'submit' as const,
 						name: 'intent',
 						value: intent,
-						disabled: inFlight || undefined,
-						'aria-busy': inFlight || undefined
+						disabled: closed || undefined,
+						'aria-busy': closed || undefined
 					}
 				};
-
-	/* the question is left the moment its own press is answered, whatever the answer says: a landed
-	   write reports at the button underneath, and a refused one leaves the operator in the box it
-	   named — neither is readable behind a card. keyed on the report itself and not on what it
-	   carries, for the save-state half's own reason: two presses into the same form answer the same
-	   way (packages/operator/src/saved-form-state.react.ts). */
-	useEffect(() => {
-		if (report === null) return;
-		setConfirming(null);
-	}, [report]);
 
 	/* a fold put away is a fold at rest: the boxes back to their seeds and whatever was typed into
 	   them gone. a box left holding a password behind something closed is one the next press on it
@@ -859,7 +866,11 @@ function MailSettings({
 					// and every press that gets this far asks first: what it does to this deployment is
 					// one of three things and none of them is on the screen behind the card
 					// ({@link MAIL_ASKS}).
-					setConfirming({ lines: asked(element), act: mailAct(holding, after(element)) });
+					setConfirming({
+						lines: asked(element),
+						act: mailAct(holding, after(element)),
+						over: report
+					});
 				}}
 			>
 				{names.map((name) => {
@@ -1129,7 +1140,8 @@ function TestSendForm({
 	notificationEmail,
 	test,
 	unconfigured,
-	pending
+	pending,
+	revalidating
 }: {
 	notificationEmail: string;
 	/**
@@ -1143,13 +1155,14 @@ function TestSendForm({
 	/** the deployment holds no mail settings, so there is nothing for a message to leave through. */
 	unconfigured: boolean;
 	pending: string | null;
+	revalidating: boolean;
 }): ReactNode {
 	/* the box is this screen's own value and not conform's, which takes a default once at mount:
 	   what is typed here is read at every keystroke by the press beside it — the emptiness below is
 	   what closes it — and a reading taken off a default would be a press armed over a box that is
 	   no longer empty. */
 	const [to, setTo] = useState(notificationEmail);
-	const sending = ownPress(pending, TEST_EMAIL_INTENT);
+	const sending = sendInFlight({ pending, intent: TEST_EMAIL_INTENT, revalidating });
 
 	const empty = to.trim() === '';
 
@@ -1206,6 +1219,7 @@ function TestSendForm({
 	const state = sendState({
 		pending,
 		intent: TEST_EMAIL_INTENT,
+		revalidating,
 		sent,
 		expired,
 		empty,
