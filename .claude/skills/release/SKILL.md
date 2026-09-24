@@ -10,7 +10,7 @@ Publish the pair an operator installs: the console binary for four platforms and
 
 **Two ways to cut the tag, one build behind both.** Starting the run from the Actions tab (step 5) is the default: a claude session on this repository can push a branch but github refuses its tag pushes (403), and the workflow's own gates check from `main`, the tag shape, that the tag is unspent, and that `ci.yml` is green on the exact commit — the same things this checklist has you check by hand before `git tag`. Pushing the tag yourself (the alternative under step 5) skips the dispatch and its gates, so this checklist's own steps 1–4 are what stand in for them.
 
-**The tag is where the version is written.** The workflow builds under `BETTER_GIVING_VERSION="${GITHUB_REF_NAME#v}"` and goreleaser stamps the same string into the binary, so a deployment and the console reading it agree on one spelling. The `version` fields in the `package.json` files are the workspace's own and stay as they are.
+**The tag is where the version is written.** The workflow resolves the tag it releases — the dispatch input, or `GITHUB_REF_NAME` on a pushed tag — into `$RELEASE_TAG` once, and builds under `BETTER_GIVING_VERSION="${RELEASE_TAG#v}"`; goreleaser stamps the same string into the binary, so a deployment and the console reading it agree on one spelling. The `version` fields in the `package.json` files are the workspace's own and stay as they are.
 
 **The run is paid by the minute and cross-builds four platforms**, which is why every check able to fail is in front of the tag push rather than behind it.
 
