@@ -8,9 +8,9 @@ import {
 	quickbooksStore,
 	readQuickbooksConnection,
 	saveQuickbooksAccounts,
-	saveQuickbooksCompanyName,
-	saveQuickbooksStartAt
+	saveQuickbooksCompanyName
 } from './connection';
+import { moveQuickbooksStartAt } from './outbox';
 
 // the singleton connection row, against a real D1.
 //
@@ -79,7 +79,7 @@ describe('connecting a company', () => {
 	it('keeps every answer already given when a dead credential is reconnected', async () => {
 		await connect();
 		await saveQuickbooksCompanyName(db, 'Riverside Shelter');
-		await saveQuickbooksStartAt(db, new Date('2025-07-01T00:00:00.000Z'));
+		await moveQuickbooksStartAt(db, new Date('2025-07-01T00:00:00.000Z'), new Date());
 		await saveQuickbooksAccounts(db, {
 			income: { id: '79', name: 'Donations' },
 			fee: { id: '80', name: 'Merchant fees' },
@@ -105,7 +105,7 @@ describe('connecting a company', () => {
 	it('forgets the previous company’s accounts where a different company is connected', async () => {
 		await connect();
 		await saveQuickbooksCompanyName(db, 'Riverside Shelter');
-		await saveQuickbooksStartAt(db, new Date('2025-07-01T00:00:00.000Z'));
+		await moveQuickbooksStartAt(db, new Date('2025-07-01T00:00:00.000Z'), new Date());
 		await saveQuickbooksAccounts(db, {
 			income: { id: '79', name: 'Donations' },
 			fee: { id: '80', name: 'Merchant fees' },
@@ -287,17 +287,6 @@ describe('the accounts filled in at connect', () => {
 		await fillQuickbooksAccounts(db, '4620816365', DEFAULTS);
 
 		expect(await readQuickbooksConnection(db)).toMatchObject(picked);
-	});
-});
-
-describe('the date gifts are sent from', () => {
-	it('moves the date a gift is sent from', async () => {
-		await connect();
-		const later = new Date('2026-04-01T00:00:00.000Z');
-
-		await saveQuickbooksStartAt(db, later);
-
-		expect((await readQuickbooksConnection(db))?.startAt).toEqual(later);
 	});
 });
 

@@ -98,15 +98,18 @@ function provider(
 ) {
 	const asked: string[] = [];
 	const attempts: SendAttempt[] = [];
+	const revisions: string[] = [];
 	const port: AccountingProvider = {
-		async sendGift(gift, attempt) {
+		async sendGift(gift, attempt, revision) {
 			asked.push(gift.key);
 			attempts.push(attempt);
+			revisions.push(revision);
 			return answer(gift.key);
 		},
-		async sendCorrection(correction, attempt) {
+		async sendCorrection(correction, attempt, revision) {
 			asked.push(correction.key);
 			attempts.push(attempt);
+			revisions.push(revision);
 			return answer(correction.key);
 		},
 		readCompany: notAsked,
@@ -115,7 +118,7 @@ function provider(
 		exchangeCode: notAsked,
 		revokeTokens: notAsked
 	};
-	return { port, asked, attempts };
+	return { port, asked, attempts, revisions };
 }
 
 const accepted = (key: string): AccountingResult<RemoteRecord> => ({
@@ -352,8 +355,8 @@ describe('the due backlog', () => {
 
 		await sendDueEntries(deps(qb.port), NOW);
 
-		// Intuit has no idempotency key, so a second post is a second record in the company's own
-		// books and nothing in this app or that one repairs it.
+		// a second post outside Intuit's request-id window is a second record in the company's own
+		// books, and nothing in this app or that one repairs it.
 		expect(qb.asked).toEqual([entryGroupId]);
 		expect(overlapping.asked).toEqual([]);
 		expect((await row(entryGroupId)).status).toBe('sent');
@@ -391,6 +394,53 @@ describe('the due backlog', () => {
 		expect(await row(entryGroupId)).toMatchObject({ status: 'sent', leasedUntil: null });
 	});
 
+	it('counts the attempt as it claims the row, before anything is sent', async () => {
+		const entryGroupId = await queuedGift();
+		let inFlight: number | null = null;
+		const qb = provider(async (key) => {
+			inFlight = (await row(entryGroupId)).attempts;
+			return accepted(key);
+		});
+
+		await sendDueEntries(deps(qb.port), NOW);
+
+		// a run that dies between the post and writing it down leaves this count behind, and it is
+		// what tells the next send to look before it posts.
+		expect(inFlight).toBe(1);
+		expect(qb.attempts).toEqual(['first']);
+	});
+
+	it('looks before it posts a row whose run died mid-send, once the lease is out', async () => {
+		const entryGroupId = await queuedGift();
+		const dying = provider(() => {
+			throw new Error('the isolate went away after the post landed');
+		});
+		await sendDueEntries(deps(dying.port), NOW);
+
+		const qb = provider();
+		await sendDueEntries(deps(qb.port), new Date(NOW.getTime() + 6 * MINUTE));
+
+		expect(qb.asked).toEqual([entryGroupId]);
+		expect(qb.attempts).toEqual(['again']);
+	});
+
+	it('hands a send after one that never answered the same revision, and a new one after a written refusal', async () => {
+		const entryGroupId = await queuedGift();
+		const unanswered = provider(() => failed('unreachable', 'QuickBooks could not be reached.'));
+		await sendDueEntries(deps(unanswered.port), NOW);
+		const refusing = provider(() => failed('provider_error', 'QuickBooks answered 502.'));
+		await sendDueEntries(deps(refusing.port), NOW);
+		const qb = provider();
+		await sendDueEntries(deps(qb.port), new Date(NOW.getTime() + 2 * MINUTE));
+
+		// the adapter repeats a request exactly where the last one may have landed, and asks afresh
+		// where it was answered (./quickbooks.ts's request id).
+		expect(refusing.revisions).toEqual(unanswered.revisions);
+		expect(qb.revisions).toEqual([String(NOW.getTime())]);
+		expect(qb.revisions).not.toEqual(unanswered.revisions);
+		expect(qb.asked).toEqual([entryGroupId]);
+	});
+
 	it('tells the provider whether this row has been handed over before', async () => {
 		const entryGroupId = await queuedGift();
 		const faulting = provider(() => failed('provider_error', 'QuickBooks answered 502.'));
@@ -424,27 +474,44 @@ describe('the due backlog', () => {
 		});
 	});
 
-	it('gives the claim back on the row a blocked run stopped at', async () => {
-		const entryGroupId = await queuedGift();
-		const qb = provider(() => failed('reconnect_needed', 'The refresh token was rejected.'));
+	it.each([
+		['reconnect_needed', 'The refresh token was rejected.'],
+		['rate_limited', 'Intuit is throttling this company.'],
+		['accounts_not_chosen', 'No account is chosen for a gift’s income.'],
+		['not_connected', 'No QuickBooks company is connected.']
+	] as const)(
+		'gives the claim and its attempt back on a run stopped by %s',
+		async (reason, detail) => {
+			const entryGroupId = await queuedGift();
+			const qb = provider(() => failed(reason, detail));
 
-		await sendDueEntries(deps(qb.port), NOW);
+			await sendDueEntries(deps(qb.port), NOW);
 
-		expect(await row(entryGroupId)).toMatchObject({ status: 'pending', leasedUntil: null });
-	});
+			// each is an answer that nothing was made, so the row reads as never sent: a move may still
+			// drop it, and its next send does not pay for a look first.
+			expect(await row(entryGroupId)).toMatchObject({
+				status: 'pending',
+				leasedUntil: null,
+				attempts: 0
+			});
+		}
+	);
 
-	it('reads the backlog through the index, filter and order alike', async () => {
+	it('narrows the backlog through the index, and reaches each entry group by its key', async () => {
 		const { sql: statement, params } = dueRows(db, NOW).toSQL();
 
 		const plan = await env.DB.prepare(`explain query plan ${statement}`)
 			.bind(...params)
 			.all<{ detail: string }>();
 
-		// the whole of what the index is for: on `status` alone sqlite answers the filter and then
-		// sorts, so a backlog parked behind an outage is re-sorted on every run.
+		// the order is sorted over the due rows (./deliver.ts's `dueRows`); what must never happen is
+		// a scan of every row the deployment ever sent, or of the ledger.
 		const detail = plan.results.map((step) => step.detail).join(' | ');
-		expect(detail).toContain('quickbooks_sync_status_due_idx');
-		expect(detail).not.toContain('TEMP B-TREE');
+		expect(detail).toContain('SEARCH quickbooks_sync USING INDEX quickbooks_sync_status_due_idx');
+		expect(detail).toContain(
+			'SEARCH entry_group USING INDEX sqlite_autoindex_entry_group_1 (id=?)'
+		);
+		expect(detail).not.toContain('SCAN');
 	});
 
 	it('leaves a provider fault waiting, and tries it again once the wait is over', async () => {
@@ -487,7 +554,9 @@ describe('the due backlog', () => {
 
 		await sendDueEntries(deps(qb.port), NOW);
 
-		expect(await row(unmapped)).toMatchObject({ status: 'failed', remoteId: null });
+		// refused while its record was being read, so nothing left for Intuit and the claim's attempt
+		// is given back.
+		expect(await row(unmapped)).toMatchObject({ status: 'failed', remoteId: null, attempts: 0 });
 		expect((await row(unmapped)).lastError).toContain('Sales Tax Payable');
 		expect((await row(sendable)).status).toBe('sent');
 		expect(qb.asked).toEqual([sendable]);
@@ -553,9 +622,9 @@ describe('the due backlog', () => {
 
 		await sendDueEntries(deps(qb.port), NOW);
 
-		// left as it stands rather than counted as an attempt: what throws is the database or a
-		// defect in the adapter, and neither is anything this row did.
-		expect(await row(throwing)).toMatchObject({ status: 'pending', attempts: 0 });
+		// left as the claim wrote it: what throws is the database or a defect in the adapter, and
+		// either can come after the post landed, so the claim's attempt stays on the row.
+		expect(await row(throwing)).toMatchObject({ status: 'pending', attempts: 1 });
 		expect((await row(behind)).status).toBe('sent');
 	});
 
@@ -684,6 +753,36 @@ describe('the failure notice', () => {
 		expect(qb.asked).toEqual([]);
 		expect(mail.sent).toEqual([]);
 		expect(await row(sent)).toEqual(before);
+	});
+
+	it('counts a gift whose run died holding it, once the lease is out', async () => {
+		const died = await queuedGift();
+		// how a claim leaves a row when its send throws: counted, lease run out, and — measured from
+		// the `updated_at` the claim held — inside its wait, so this run does not take it again.
+		await tried(died, 1, 30_000);
+		await lease(died, -1);
+		const mail = mailer();
+
+		await sendDueEntries(deps(provider().port, mail.port), NOW);
+
+		expect(mail.sent).toHaveLength(1);
+		expect(mail.sent[0]?.text).toContain('Waiting to be sent: 1');
+		expect((await row(died)).notifiedAt).not.toBeNull();
+	});
+
+	it('says nothing about a gift another run is sending right now', async () => {
+		const inFlight = await queuedGift();
+		const mail = mailer();
+		const qb = provider(async (key) => {
+			// a second run finishes while this send is still out, with the claim's attempt on the row.
+			await sendDueEntries(deps(provider().port, mail.port), NOW);
+			return accepted(key);
+		});
+
+		await sendDueEntries(deps(qb.port), NOW);
+
+		expect(mail.sent).toEqual([]);
+		expect((await row(inFlight)).status).toBe('sent');
 	});
 });
 

@@ -34,13 +34,15 @@ vi.mock('../api/client', () => ({
 	readRecurring: () => Promise.resolve({})
 }));
 
-vi.mock('./console-reading', () => ({
+vi.mock('./console-reading', async (original) => ({
+	...(await original<Record<string, unknown>>()),
 	readConsole: async () => ({
 		reading: {
 			face:
 				binary.face === 'ready'
 					? { kind: 'ready', address: 'https://a.example' }
-					: { kind: 'connect' }
+					: { kind: 'unreachable', address: 'https://a.example', read: { kind: 'no-session' } },
+			values: { vars: { kind: 'read', vars: [] } }
 		}
 	})
 }));

@@ -12,10 +12,21 @@ import { describe, expect, it } from 'vitest';
 //
 // **first, and before the body is read**: a press that answers early — a refused box, a body naming
 // nothing — has still been made, and the call after the branch that returned is the one it skipped.
+//
+// **except one press that writes nothing, named below by the branch that answers it.** it reads the
+// body to know itself, answers from that branch alone, and the forget is the next thing after it —
+// a second way out ahead of the forget is a write answered from memory again.
 
 const ROUTES = join(import.meta.dirname, 'routes');
 
 const ACTION = 'export async function clientAction({ request }: Route.ClientActionArgs) {\n';
+
+const FORGET = 'await forgetReadings();';
+
+/** each route whose action answers a press that writes nothing before it forgets. */
+const READ_FIRST: Record<string, string> = {
+	'_sections.quickbooks.tsx': "if (intent === quickbooksIntent('start-date-preview')) {"
+};
 
 const actions = readdirSync(ROUTES)
 	.filter((name) => name.endsWith('.tsx'))
@@ -27,10 +38,18 @@ describe('every clientAction in routes/', () => {
 		expect(actions.length).toBeGreaterThan(0);
 	});
 
-	it.each(actions)('forgets the kept processor pages first, in $name', ({ source }) => {
+	it.each(actions)('forgets the kept processor pages first, in $name', ({ name, source }) => {
 		const at = source.indexOf(ACTION);
 		expect(at).toBeGreaterThanOrEqual(0);
-		const first = source.slice(at + ACTION.length).split('\n')[0];
-		expect(first?.trim()).toBe('await forgetReadings();');
+		const body = source.slice(at + ACTION.length);
+		const read = READ_FIRST[name];
+		if (read === undefined) {
+			expect(body.split('\n')[0]?.trim()).toBe(FORGET);
+			return;
+		}
+		const before = body.slice(0, body.indexOf(FORGET));
+		expect(before).toContain(read);
+		expect(before.match(/\breturn\b/g)).toHaveLength(1);
+		expect(before.indexOf('return')).toBeGreaterThan(before.indexOf(read));
 	});
 });

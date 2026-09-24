@@ -34,6 +34,30 @@ describe('the dialog the server renders', () => {
 		expect(heading?.textContent).toBe('Rotate the signing secret?');
 	});
 
+	it('is described by its body, so opening it reads the costs with the question', () => {
+		const root = render(Dialog, {
+			title: 'Disconnect Riverbank Trust Inc.?',
+			children: (
+				<ul>
+					<li>Gifts stop syncing to Riverbank Trust Inc.</li>
+				</ul>
+			)
+		});
+		const dialog = root.querySelector('dialog');
+		const said = dialog?.getAttribute('aria-describedby');
+
+		expect(said).toBeTruthy();
+		expect(root.querySelector(`#${CSS.escape(said ?? '')}`)?.textContent).toBe(
+			'Gifts stop syncing to Riverbank Trust Inc.'
+		);
+	});
+
+	it('is described by nothing where it has no body', () => {
+		const root = render(Dialog, { title: 'Rotate the signing secret?' });
+
+		expect(root.querySelector('dialog')?.hasAttribute('aria-describedby')).toBe(false);
+	});
+
 	it('takes the heading id a caller states', () => {
 		const root = render(Dialog, { title: 'Confirm', titleId: 'stated-title' });
 

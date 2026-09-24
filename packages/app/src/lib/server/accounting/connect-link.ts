@@ -108,8 +108,8 @@ export async function mintConnectLink(input: {
  * whether an address is one this deployment minted and is still good for.
  *
  * one bit, deliberately. absent, altered and expired are the same answer to whoever is holding it —
- * press Connect again — and telling an altered signature apart from an expired one in the answer
- * would be this deployment reporting on a forgery attempt to the forger.
+ * go back to the console and start again — and telling an altered signature apart from an expired
+ * one in the answer would be this deployment reporting on a forgery attempt to the forger.
  */
 export async function readConnectLink(input: {
 	readonly secret: string;

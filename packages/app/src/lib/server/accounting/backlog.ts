@@ -14,8 +14,11 @@ import { quickbooksSync } from '../db/schema';
 // offering.** a row that was given up on is one no later run reads (`failed` in ./deliver.ts), so
 // something has to put it back — and what is being repaired is never the row itself but the mapping
 // or the connection behind it, which the operator has just fixed on the screen this press sits on.
-// there is no press that deletes a row and none that marks one sent: a gift owed to the books stays
-// owed, and a row claiming a record that was never created is a gift nothing will ever find.
+// no press here deletes a row and none marks one sent: a gift owed to the books stays owed, and a
+// row claiming a record that was never created is a gift nothing will ever find. the one thing that
+// removes a row is moving the start date later (./outbox.ts), and only a row dated before the new
+// date that no run has ever sent: one waiting for its first send. that is a gift the operator has
+// just said the books do not take.
 
 /** the queue as an operator is shown it. */
 export interface QuickbooksBacklog {
@@ -58,11 +61,12 @@ export async function readQuickbooksBacklog(db: Db): Promise<QuickbooksBacklog> 
  * already reported — and the next failure behind it, on rows an operator has just asked to be tried
  * again, would go out to nobody.
  *
- * `attempts` is left where it is: it is a diagnostic rather than a countdown (./deliver.ts), and
- * what it says is how many times this gift has been tried, which a retry does not undo. the backoff
+ * `attempts` is left where it is. above zero it says a send may have reached QuickBooks, so the
+ * next one looks before it posts and a start-date move never drops the row (./deliver.ts,
+ * ./outbox.ts) — zeroing it here would post a gift already in the books a second time. the backoff
  * it feeds is measured from `updated_at`, which this write moves — so the first attempt after a
- * retry waits out one rung rather than going at once, and a hundred rows released together do not
- * all call Intuit in the same second.
+ * retry waits out one rung rather than going at once, a hundred rows released together do not all
+ * call Intuit in the same second, and that send is posted under a fresh request id (./quickbooks.ts).
  */
 export async function retryFailedEntries(db: Db): Promise<number> {
 	const retried = await db

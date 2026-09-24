@@ -22,6 +22,7 @@ import { CopyControl } from '../controls/CopyControl.jsx';
  *   is in it — `snippet`. it is a caption and not a heading: a page that needs a heading over a slab
  *   writes one above.
  * @property {never} [copyLabel] the caption, with `record`, is what names this form's control.
+ * @property {never} [labelledBy] the caption is what names this form's box.
  *
  * @typedef {object} SlabOneLine the one-line form, asked for by name.
  * @property {true} oneline the value drawn as one band: the code runs the width of the box and
@@ -33,6 +34,8 @@ import { CopyControl } from '../controls/CopyControl.jsx';
  *   after the first would be hidden rather than shortened, and a snippet is the case that proves it.
  * @property {never} [label] no caption: there is no head in this form to put one in, and the
  *   sentence above the box is what names the value.
+ * @property {string | undefined} [labelledBy] the id of that sentence, which names the box for a
+ *   reader who reaches it by the keyboard rather than by reading down to it.
  * @property {string | undefined} [copyLabel] the copy control's accessible name, for a page drawing
  *   more than one one-line slab — two controls both called Copy say nothing about which value each
  *   takes. unset, the control is the bare Copy.
@@ -72,7 +75,15 @@ import { CopyControl } from '../controls/CopyControl.jsx';
 
    one rule draws the slab wherever an operator screen has one: `.adm-slab`. */
 /** @param {CodeSlabProps} props */
-export function CodeSlab({ content, label, copyable = false, record, oneline = false, copyLabel }) {
+export function CodeSlab({
+	content,
+	label,
+	copyable = false,
+	record,
+	oneline = false,
+	copyLabel,
+	labelledBy
+}) {
 	// stated from `useId` rather than written down, because a page draws one slab per record and two
 	// elements sharing an id would name the wrong box.
 	const labelId = `${useId()}-slabhead-label`;
@@ -98,7 +109,7 @@ export function CodeSlab({ content, label, copyable = false, record, oneline = f
 		<div
 			className={`adm-slab${oneline ? ' adm-slab--oneline' : ''}`}
 			role={label && !record ? 'region' : 'group'}
-			aria-labelledby={label ? labelId : undefined}
+			aria-labelledby={label ? labelId : labelledBy}
 		>
 			{/* the head is laid out with `space-between`, which lays a lone child at the leading edge
 			    — where every other slab on the page puts its caption. a head holding only the control

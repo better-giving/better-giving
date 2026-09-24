@@ -1,16 +1,18 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import type { QuickbooksPress } from '@better-giving/operator/console/quickbooks';
 import { QUICKBOOKS_PRESSES } from '@better-giving/operator/console/quickbooks';
+import { useMemo } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { redirect, useSubmit } from 'react-router';
+import { useFetcher, useSubmit } from 'react-router';
 import { freeWithheldVars, pressQuickbooks, readQuickbooks } from '../api/client';
 import type { QuickbooksPressBody } from '../api/types';
-import { readConsole } from '../lib/console-reading';
+import { notReady, readConsole } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { groupPress } from '../lib/group-press';
 import { forgetReadings, readKeptPage } from '../lib/processor-cache';
 import type { QuickbooksAnswer } from '../lib/quickbooks-section';
 import { QuickbooksSection } from '../lib/quickbooks-section';
+import type { QuickbooksStartAtPreview } from '../lib/quickbooks-standing';
 import { quickbooksIntent } from '../lib/quickbooks-standing';
 import { usePress } from '../lib/use-press';
 import { FREE_INTENT } from '../lib/withheld-values';
@@ -42,7 +44,7 @@ export function meta(): Route.MetaDescriptors {
  * between visits as every page that reads the deployment for itself is (../lib/processor-cache.ts).
  *
  * the face is read before the deployment is asked anything, for ../lib/processor-reading.ts's
- * reason: any other face is `/`'s, and the redirect is decided before this page renders.
+ * reason: any other face is the layout's gate or `/`, and which is decided before this page renders.
  *
  * **a reading carrying no connected company is served to no second visit.** connecting finishes in
  * a browser at the deployment and never on this console
@@ -53,8 +55,8 @@ export function clientLoader(args: Route.ClientLoaderArgs) {
 	return readKeptPage(
 		args,
 		async () => {
-			const { reading } = await readConsole(args.request);
-			if (reading.face.kind !== 'ready') throw redirect('/', 307);
+			const read = await readConsole(args.request);
+			if (read.reading.face.kind !== 'ready') notReady(read);
 			return { books: await readQuickbooks() };
 		},
 		{
@@ -65,16 +67,24 @@ export function clientLoader(args: Route.ClientLoaderArgs) {
 }
 
 /**
- * the five presses over the connection, the three boxes' own press, and the press that frees a
+ * the six presses over the connection, the three boxes' own press, and the press that frees a
  * value held in a form nothing can read back — each one call on the loopback address.
  *
  * the boxes post the shared group intent and are answered by the press every other group's are
  * (../lib/group-press.ts), so nothing about the three values is decided here.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
-	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');
+
+	// the preview writes nothing, so what was kept still stands; the page posts it on a fetcher that
+	// reads nothing again either.
+	if (intent === quickbooksIntent('start-date-preview')) {
+		const press = 'start-date-preview' as const;
+		return { quickbooks: { press, pressed: await pressQuickbooks(pressBody(press, posted)) } };
+	}
+
+	await forgetReadings();
 
 	const group = await groupPress(intent, posted);
 	if (group !== null) return group;
@@ -100,7 +110,8 @@ function pressBody(press: QuickbooksPress, posted: FormData): QuickbooksPressBod
 			fee: String(posted.get('fee') ?? ''),
 			deposit: String(posted.get('deposit') ?? '')
 		};
-	if (press === 'start-date') return { press, startAt: String(posted.get('startAt') ?? '') };
+	if (press === 'start-date' || press === 'start-date-preview')
+		return { press, startAt: String(posted.get('startAt') ?? '') };
 	return { press };
 }
 
@@ -111,15 +122,30 @@ export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean {
 export default function QuickbooksPage({ loaderData, actionData, matches }: Route.ComponentProps) {
 	const shell = matches[1].loaderData;
 	const submit = useSubmit();
+	const previewer = useFetcher<typeof clientAction>();
 	const { intent, busy, revalidating } = usePress();
 
-	const answered = actionData && 'quickbooks' in actionData ? actionData.quickbooks : null;
-	const answer: QuickbooksAnswer | null =
-		answered === null
-			? null
-			: answered.pressed.kind === 'reported'
-				? { kind: 'reported', report: answered.pressed.report }
-				: { kind: 'unanswered', press: answered.press, read: answered.pressed.read };
+	/* one object per answer rather than per render: the section tells a new answer from the one it
+	   has already met by identity, and resets the date box on each one it meets. */
+	const answer = useMemo((): QuickbooksAnswer | null => {
+		const answered = actionData && 'quickbooks' in actionData ? actionData.quickbooks : null;
+		if (answered === null) return null;
+		return answered.pressed.kind === 'reported'
+			? { kind: 'reported', report: answered.pressed.report }
+			: { kind: 'unanswered', press: answered.press, read: answered.pressed.read };
+	}, [actionData]);
+
+	/* the same for the preview, which the fetcher keeps apart from `answer`: a move's answer lands
+	   in `actionData` and never over the preview it was made from. */
+	const preview = useMemo((): QuickbooksStartAtPreview | null => {
+		const data = previewer.data;
+		const answered = data && 'quickbooks' in data ? data.quickbooks : null;
+		if (answered === null) return null;
+		if (answered.pressed.kind === 'unanswered')
+			return { kind: 'unanswered', press: 'start-date-preview', read: answered.pressed.read };
+		const { report } = answered.pressed;
+		return report.press === 'start-date-preview' ? { kind: 'reported', report } : null;
+	}, [previewer.data]);
 
 	/* every press posts on its own rather than through a `<Form>`: the section's forms are about the
 	   values in them and hand what was typed back as a callback, so what is posted here is the
@@ -140,12 +166,22 @@ export default function QuickbooksPage({ loaderData, actionData, matches }: Rout
 				accountName={shell.account}
 				secrets={actionData && 'secrets' in actionData ? actionData.secrets : null}
 				answer={answer}
+				preview={preview}
+				previewing={previewer.state !== 'idle'}
 				freed={actionData && 'freed' in actionData ? actionData.freed : null}
 				busy={busy}
 				pending={intent}
 				revalidating={revalidating}
 				onConnect={() => make('connect')}
 				onAccounts={(picks) => make('accounts', { ...picks })}
+				onPreviewStartDate={(day) =>
+					/* on a fetcher that reads nothing again: the count is read-only, and a re-read over
+					   it would close every control and could stand the gate over it. */
+					void previewer.submit(
+						{ intent: quickbooksIntent('start-date-preview'), startAt: day },
+						{ method: 'post', defaultShouldRevalidate: false }
+					)
+				}
 				onStartDate={(day) => make('start-date', { startAt: day })}
 				onRetry={() => make('retry')}
 				onDisconnect={() => make('disconnect')}

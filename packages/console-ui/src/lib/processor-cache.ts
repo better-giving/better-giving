@@ -26,9 +26,10 @@ import { readProcessorScreen } from './processor-reading';
 //   from here — a books page with no company connected, since a company is connected in a
 //   browser at the deployment and never here, and a Zapier page with a key, since a Zap is turned
 //   on at Zapier;
-// - anything after a press, on any page: every `clientAction` forgets every entry first
+// - anything after a press, on any page: every `clientAction` forgets every entry before it writes
 //   (`forgetReadings`), so nothing drawn after a write was read before it. a reading that was in
-//   flight when that happened is thrown away when it lands rather than kept.
+//   flight when that happened is thrown away when it lands rather than kept. a press that writes
+//   nothing — the books page's start-date preview — forgets nothing.
 //
 // an entry whose payments or recurring reading rejects is dropped, so the next visit asks again
 // rather than meeting the same error from memory.
@@ -126,10 +127,15 @@ export async function readKeptPage<T>(
 		{
 			...args,
 			serverLoader: async () => {
+				// finished on every way out: this pass supersedes the layout's for the same move, so a
+				// gate thrown out of `read` would otherwise replace the page under a bar part full.
 				const bar = holdBar(key);
-				taken = await read();
-				await bar.finish();
-				return taken;
+				try {
+					taken = await read();
+					return taken;
+				} finally {
+					await bar.finish();
+				}
 			}
 		},
 		{ type: 'normal', key, adapter: storeUnder(under) }
@@ -163,7 +169,7 @@ export function readProcessorPage<P extends PaymentProcessor>(
 	);
 }
 
-/** every `clientAction`'s first step: nothing read before a press is drawn after it. */
+/** every writing `clientAction`'s first step: nothing read before a press is drawn after it. */
 export async function forgetReadings(): Promise<void> {
 	forgotten += 1;
 	warming.clear();

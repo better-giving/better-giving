@@ -15,12 +15,15 @@ import { defaultAccounts } from './quickbooks-accounts';
 //
 // every read and write of `quickbooks_connection` is here, so the table object never leaves this
 // file — the same boundary ../donations/queries.ts draws around `donation` and ../ledger/queries.ts
-// around the two ledger tables. the one exception is deliberate and is not a second writer:
-// ../accounting/outbox.ts reads `start_at` off this table on the settlement path, because what it
-// needs is one column and taking a whole connection there would put a credential on the gift path.
+// around the two ledger tables. the one exception is deliberate, and it is one column:
+// ../accounting/outbox.ts reads `start_at` on the settlement path, because taking a whole
+// connection there would put a credential on the gift path, and it writes `start_at` too, because
+// moving the date re-queues gifts and the date has to land in the same `batch()` as the queue rows
+// it decides.
 //
 // **nothing here touches `quickbooks_sync`.** the outbox is written by the posting that owes it and
-// read by the delivery that sends it; a connection is not either of those.
+// by a move of the start date (./outbox.ts), and read by the delivery that sends it; a connection is
+// none of those.
 //
 // ---------------------------------------------------------------------------
 // why the adapter takes {@link quickbooksStore} rather than a `Db`.
@@ -35,7 +38,7 @@ import { defaultAccounts } from './quickbooks-accounts';
 /**
  * the only id `quickbooks_connection` accepts, enforced by `quickbooks_connection_id_check` in
  * ../db/schema.ts. the precedent is `ORG_PROFILE_ID` in ../org/queries.ts, and ../accounting/outbox.ts
- * pins the same literal for its own one-column read.
+ * pins the same literal for its own reads and writes of `start_at`.
  */
 const CONNECTION_ID = 'quickbooks';
 
@@ -70,8 +73,8 @@ export type NewConnection = {
 	readonly tokens: TokenPair;
 	/**
 	 * where a first connection starts sending from. the caller has nobody to ask at that moment, so
-	 * it is the instant the connection was made; {@link saveQuickbooksStartAt} is where the operator
-	 * answers it afterwards, and a reconnect keeps whatever that answer was.
+	 * it is the instant the connection was made; `moveQuickbooksStartAt` in ./outbox.ts is where the
+	 * operator answers it afterwards, and a reconnect keeps whatever that answer was.
 	 */
 	readonly startAt: Date;
 };
@@ -138,23 +141,6 @@ export async function saveQuickbooksCompanyName(db: Db, companyName: string): Pr
 	await db
 		.update(quickbooksConnection)
 		.set({ companyName })
-		.where(eq(quickbooksConnection.id, CONNECTION_ID));
-}
-
-/**
- * the earliest business date a gift is sent from, moved.
- *
- * the callback writes the moment the connection was made, which is the only answer available while
- * nobody has been asked, and this is where the operator answers it afterwards.
- *
- * **it moves no gift, in either direction.** the date is read once per settlement and decides
- * whether that gift is owed at all (./outbox.ts), so an earlier date queues nothing already settled
- * and a later one takes nothing back.
- */
-export async function saveQuickbooksStartAt(db: Db, startAt: Date): Promise<void> {
-	await db
-		.update(quickbooksConnection)
-		.set({ startAt })
 		.where(eq(quickbooksConnection.id, CONNECTION_ID));
 }
 

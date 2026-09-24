@@ -412,6 +412,21 @@ function rows(root: HTMLElement): string[] {
 	return [...(root.firstElementChild?.children ?? [])].map((node) => node.className);
 }
 
+describe('the landmark a panel route stands its page in', () => {
+	it('is the main region, panelled or bare, so a reader can jump past the strips to it', () => {
+		for (const bare of [false, true]) {
+			const root = render(PanelRoute, {
+				bare,
+				bar: <span>better-giving</span>,
+				children: <h1>Sign in</h1>
+			});
+			const main = root.querySelectorAll('main');
+
+			expect([bare, main.length, main[0]?.textContent]).toEqual([bare, 1, 'Sign in']);
+		}
+	});
+});
+
 describe('the strips a panel route can carry', () => {
 	it('draws none at all where the surface handed it none', () => {
 		// the route is what it has always been: a panel in the middle of the window and nothing over

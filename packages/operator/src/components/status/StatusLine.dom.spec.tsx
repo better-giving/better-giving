@@ -1,6 +1,6 @@
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { render } from '../render.testing';
+import { mount, render } from '../render.testing';
 import { StatusLedger, StatusLine, StatusStep } from './StatusLine.jsx';
 
 // what a reader who cannot see the run is told about it. the ledger says how many capabilities are
@@ -58,7 +58,28 @@ function summary(root: HTMLElement): Element {
 /** a press on that summary, and the work react schedules off it. */
 async function press(root: HTMLElement) {
 	await act(async () => {
-		summary(root).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		// cancelable as a browser's own click is, or a summary that refuses it could not.
+		summary(root).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+		await Promise.resolve();
+	});
+}
+
+/**
+ * a key pressed on that summary. a browser opens a summary from the keyboard by firing the same
+ * click a pointer would — Enter on the way down, Space on the way up — unless the key itself was
+ * cancelled. happy-dom has no such activation, so it is drawn here as the browser draws it.
+ */
+async function pressKey(root: HTMLElement, key: 'Enter' | ' ') {
+	await act(async () => {
+		const target = summary(root);
+		const down = target.dispatchEvent(
+			new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+		);
+		const up = target.dispatchEvent(
+			new KeyboardEvent('keyup', { key, bubbles: true, cancelable: true })
+		);
+		if (down && up)
+			target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 		await Promise.resolve();
 	});
 }
@@ -280,6 +301,113 @@ describe('a ledger mounted into a document', () => {
 
 		expect(statement.querySelector('.adm-status__label')?.tagName).toBe('SPAN');
 		expect(section.querySelector('.adm-status__label')?.tagName).toBe('H3');
+	});
+});
+
+describe('a section whose step cannot be taken yet', () => {
+	// a step behind one not yet finished is drawn where it will stand, and nothing under it can be
+	// acted on until the step before it is done.
+	function locked(props: { open?: boolean; onToggle?: (open: boolean) => void } = {}) {
+		return render(StatusLedger, {
+			sections: true,
+			children: (
+				<StatusLine
+					labelAs="h2"
+					label="Choose the accounts"
+					word="Waiting"
+					tone="note"
+					beneath={<p>Nothing is connected yet.</p>}
+					locked
+					{...props}
+				/>
+			)
+		});
+	}
+
+	function details(root: HTMLElement): HTMLDetailsElement {
+		return drawn(root) as HTMLDetailsElement;
+	}
+
+	it('reads as dim, so it looks like a step not reached', () => {
+		expect(drawn(locked()).className).toBe(
+			'adm-status adm-status--note adm-status--section adm-status--dim'
+		);
+	});
+
+	it('does not open under a pointer', async () => {
+		const toggled = vi.fn();
+		const root = locked({ onToggle: toggled });
+
+		await press(root);
+
+		expect(details(root).open).toBe(false);
+		expect(toggled).not.toHaveBeenCalled();
+	});
+
+	it('does not open from the keyboard, by Enter or by Space', async () => {
+		// each key on a mount of its own: the second of two presses on one would shut what the
+		// first opened, and the pair would pass against a summary that refuses nothing.
+		const entered = locked();
+		const spaced = locked();
+
+		await pressKey(entered, 'Enter');
+		await pressKey(spaced, ' ');
+
+		expect(details(entered).open).toBe(false);
+		expect(details(spaced).open).toBe(false);
+	});
+
+	it('still opens from the keyboard once it is not locked', async () => {
+		// the refusal above is only worth anything if the same keys open a line that is free to.
+		const root = render(StatusLedger, {
+			sections: true,
+			children: (
+				<StatusLine
+					labelAs="h2"
+					label="Choose the accounts"
+					word="Not set"
+					tone="attention"
+					beneath={<p>Nothing is connected yet.</p>}
+				/>
+			)
+		});
+
+		await pressKey(root, 'Enter');
+
+		expect(details(root).open).toBe(true);
+	});
+
+	it('tells a reader the summary is not available', () => {
+		expect(summary(locked()).getAttribute('aria-disabled')).toBe('true');
+	});
+
+	it('stays shut when the caller asks for it open', () => {
+		expect(details(locked({ open: true })).open).toBe(false);
+	});
+
+	it('shuts a line opened by hand when it becomes locked', async () => {
+		// the element holds what a press opened and the prop never said, so a line locked while open
+		// would stay open over a panel nothing can be done with — and refuse the press that shuts it.
+		const line = (isLocked: boolean) => ({
+			sections: true,
+			children: (
+				<StatusLine
+					labelAs="h2"
+					label="Choose the accounts"
+					word="Not set"
+					tone="attention"
+					beneath={<p>Nothing is connected yet.</p>}
+					locked={isLocked}
+				/>
+			)
+		});
+		const { root, again } = mount(StatusLedger, line(false));
+		await press(root);
+		expect(details(root).open).toBe(true);
+
+		again(line(true));
+
+		expect(details(root).open).toBe(false);
 	});
 });
 
@@ -579,6 +707,32 @@ describe('a line whose label states its own state in words', () => {
 		const mark = root.querySelector('.adm-status__mark .adm-mark');
 
 		expect(mark?.getAttribute('aria-label')).toBe('Working');
+	});
+
+	it('describes the label with the mark, so a reader sent to the label is told the state', () => {
+		// focus lands on the label and never on the mark, so the word moved onto the mark still has
+		// to reach whoever lands there.
+		const root = render(StatusLedger, {
+			sections: true,
+			children: (
+				<StatusLine
+					labelAs="h2"
+					id="step-connect"
+					label="Connect"
+					note="Connect to your app"
+					word="Done"
+					wordOnMark
+					tone="done"
+					beneath={<p>Habitat</p>}
+				/>
+			)
+		});
+		const tokens = root.querySelector('h2')?.getAttribute('aria-describedby')?.split(' ') ?? [];
+		const [word, note] = tokens.map((token) => root.querySelector(`#${token}`));
+
+		expect(tokens).toHaveLength(2);
+		expect(word?.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe('Done');
+		expect(note?.textContent).toBe('Connect to your app');
 	});
 });
 

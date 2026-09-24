@@ -46,7 +46,8 @@ describe('a refusal the deployment wrote on purpose', () => {
 				kind: 'unreadable',
 				error: 'account_wrong_type',
 				detail: '`deposit` names Accounts receivable, whose type is Accounts Receivable.',
-				fix: 'Send the `id` of an account of type Bank.'
+				fix: 'Send the `id` of an account of type Bank.',
+				status: 400
 			})
 		).toEqual({
 			message: '`deposit` names Accounts receivable, whose type is Accounts Receivable.',
@@ -60,10 +61,37 @@ describe('a refusal the deployment wrote on purpose', () => {
 				kind: 'unreadable',
 				error: null,
 				detail: 'This deployment answered 502',
-				fix: null
+				fix: null,
+				status: 502
 			})
 		).toBeNull();
 		expect(readableRefusal({ kind: 'unreachable', detail: 'EOF' })).toBeNull();
+	});
+
+	it('is still a refusal at any 4xx carrying a code', () => {
+		expect(
+			readableRefusal({
+				kind: 'unreadable',
+				error: 'start_at_moved',
+				detail: 'The start date moved while this was open.',
+				fix: 'Read it again.',
+				status: 409
+			})
+		).toEqual({ message: 'The start date moved while this was open.', fix: 'Read it again.' });
+	});
+
+	it('is nothing at a 5xx, even one carrying a code, which is the deployment failing', () => {
+		for (const status of [500, 502]) {
+			expect(
+				readableRefusal({
+					kind: 'unreadable',
+					error: 'chart_unreadable',
+					detail: 'Intuit answered 503.',
+					fix: 'Try again in a minute.',
+					status
+				})
+			).toBeNull();
+		}
 	});
 });
 

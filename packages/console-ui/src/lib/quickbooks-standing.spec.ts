@@ -9,12 +9,42 @@ import type {
 } from '@better-giving/operator/console/quickbooks';
 import { QUICKBOOKS_RECOURSES } from '@better-giving/operator/console/quickbooks';
 import { describe, expect, it } from 'vitest';
-import type { DeployedVar, NoReport } from '../api/types';
+import type { DeployedVar, NoReport, QuickbooksRead } from '../api/types';
 import { heldValues } from './held-values';
-import type { AccountPick, QuickbooksAnswer } from './quickbooks-standing';
+import type {
+	AccountPick,
+	QuickbooksAnswer,
+	StepName,
+	StepStanding,
+	StepsStanding
+} from './quickbooks-standing';
 import {
 	CHOOSE,
+	FAILED,
+	REFUSED,
+	UNANSWERED,
+	answeredSince,
+	connectLink,
+	holdOpen,
+	pressedAddress,
+	savedSays,
+	savingUntilRead,
+	shutSendsTo,
+	openedSays,
+	opensNext,
+	startDateNext,
+	stepWord,
+	unansweredSays,
 	accountPicker,
+	chartStands,
+	companyCalled,
+	disconnectLines,
+	keysAsk,
+	ownPress,
+	picksArmed,
+	picksMissing,
+	startDateAsk,
+	stepsStand,
 	backlogSays,
 	backlogStands,
 	connectAddress,
@@ -27,10 +57,10 @@ import {
 	quickbooksRefused,
 	retriedGifts,
 	retriedStands,
+	retryButton,
 	startDay,
 	startToSave,
 	unanswered,
-	unpickableStands,
 	waitedSays
 } from './quickbooks-standing';
 import { secretEdits } from './secret-edits';
@@ -114,7 +144,7 @@ describe('a picker over the company’s own chart', () => {
 		]);
 	});
 
-	it('keeps a pick the chart no longer offers, so nothing silently moves where gifts are posted', () => {
+	it('keeps a pick the chart no longer holds, under its stored name alone, so nothing silently moves', () => {
 		expect(accountPicker(CHART, 'income', { id: '9', name: 'Old donations' }, '9').retired).toEqual(
 			{
 				value: '9',
@@ -217,7 +247,9 @@ describe('a picker offers only the accounts that fit it', () => {
 		const picker = accountPicker(MIXED, 'deposit', stored, '40');
 
 		expect(picker.options.map((option) => option.value)).toEqual(['30']);
-		expect(picker.retired).toEqual({ value: '40', label: 'Accounts receivable' });
+		// labelled as the offered lines are, off the chart that still holds it: the type is the
+		// reason it was retired.
+		expect(picker.retired).toEqual({ value: '40', label: 'Accounts receivable — Income' });
 		// and gone once another is chosen, as a deactivated one is.
 		expect(accountPicker(MIXED, 'deposit', stored, '30').retired).toBeUndefined();
 	});
@@ -228,7 +260,7 @@ describe('a picker offers only the accounts that fit it', () => {
 
 		expect(accountPicker(MIXED, 'income', stored, '20').retired).toEqual({
 			value: '20',
-			label: 'Merchant fees'
+			label: 'Merchant fees — Income'
 		});
 	});
 });
@@ -339,28 +371,25 @@ describe('the backlog speaks only where a gift was given up on', () => {
 		// the wait spans every gift still owed and the count is the given-up-on ones alone, so one
 		// sentence over both would report a healthy gift's wait as a failure's.
 		expect(backlogSays({ failed: 3, waited: '4 days' })).toBe(
-			'3 gifts haven’t gone over. The books are 4 days behind.'
+			'3 gifts didn’t sync. QuickBooks is 4 days behind.'
 		);
 	});
 
 	it('says one gift as one gift', () => {
-		expect(backlogSays({ failed: 1, waited: null })).toBe('1 gift hasn’t gone over.');
+		expect(backlogSays({ failed: 1, waited: null })).toBe('1 gift didn’t sync.');
 	});
 });
 
 describe('what the retry press answers with', () => {
-	it('says what it queued, under a word off that sentence rather than off the press', () => {
-		expect(retriedStands(0)).toEqual({
-			word: 'Nothing queued',
-			tone: 'note',
-			says: 'Nothing was left to send.'
-		});
-		expect(retriedStands(1)).toEqual({
-			word: 'Queued',
-			tone: 'done',
-			says: '1 gift will be tried again.'
-		});
-		expect(retriedStands(12).says).toBe('12 gifts will be tried again.');
+	it('reports what it queued on its own button', () => {
+		expect(retriedStands(1)).toEqual({ doneLabel: '1 retrying', says: null });
+		expect(retriedStands(12)).toEqual({ doneLabel: '12 retrying', says: null });
+	});
+
+	it('draws no tick where nothing was left, and says so beside the button instead', () => {
+		// a sweep drained the queue between the read and the press, or this is the second press: a
+		// tick over nothing moving is a save that did not happen.
+		expect(retriedStands(0)).toEqual({ doneLabel: null, says: 'Nothing was left to send.' });
 	});
 });
 
@@ -377,6 +406,45 @@ describe('which control an answer belongs to', () => {
 		expect(connectAddress(reported({ press: 'disconnect' }))).toBeNull();
 		expect(connectAddress(silence('connect'))).toBeNull();
 		expect(connectAddress(null)).toBeNull();
+	});
+
+	it('draws the address only for a connect press made since the press was drawn', () => {
+		const stale = reported({ press: 'connect', url: CONSENT });
+		// drawn over an answer already standing, and never pressed: that address is spent.
+		expect(pressedAddress(stale, null)).toBeNull();
+		expect(pressedAddress(stale, { over: stale })).toBeNull();
+		const fresh = reported({ press: 'connect', url: `${CONSENT}2` });
+		expect(pressedAddress(fresh, { over: stale })).toBe(`${CONSENT}2`);
+		expect(pressedAddress(fresh, { over: null })).toBe(`${CONSENT}2`);
+		expect(pressedAddress(reported({ press: 'retry', retried: 1 }), { over: null })).toBeNull();
+	});
+
+	it('keeps the link through a re-read that shows no company, which carries no answer', () => {
+		const still = { fresh: null, connected: false, otherPress: false };
+		expect(connectLink(CONSENT, still)).toBe(CONSENT);
+		expect(connectLink(null, still)).toBeNull();
+	});
+
+	it('takes the link away once a re-read shows the company connected', () => {
+		expect(connectLink(CONSENT, { fresh: null, connected: true, otherPress: false })).toBeNull();
+		expect(connectLink(CONSENT, { fresh: CONSENT, connected: true, otherPress: false })).toBeNull();
+	});
+
+	it('replaces the link with the one a new connect press answered', () => {
+		expect(
+			connectLink(CONSENT, { fresh: `${CONSENT}2`, connected: false, otherPress: false })
+		).toBe(`${CONSENT}2`);
+	});
+
+	it('takes the link away when another press on the page is made', () => {
+		expect(connectLink(CONSENT, { fresh: CONSENT, connected: false, otherPress: true })).toBeNull();
+	});
+
+	it('counts an answer as a control’s own only where it arrived after that control’s press', () => {
+		const standing = reported({ press: 'accounts' });
+		expect(answeredSince(standing, null)).toBeNull();
+		expect(answeredSince(standing, { over: standing })).toBeNull();
+		expect(answeredSince(standing, { over: null })).toBe(standing);
 	});
 
 	it('hands the retry press what it queued, counting none as a count and not as silence', () => {
@@ -401,39 +469,47 @@ describe('the intent a press posts', () => {
 	});
 });
 
-describe('where the three pickers would be, on a chart that could not be read', () => {
-	it('offers the way back where the credential has lapsed, which is what a press mends', () => {
-		expect(unpickableStands('reconnect')).toEqual({ connect: true, says: null });
+describe('a chart that could not be read', () => {
+	const unreadable = (recourse: QuickbooksRecourse | null): QuickbooksReport['accounts'] => ({
+		state: 'unreadable',
+		recourse,
+		detail: 'QuickBooks refused the credential (401).'
 	});
 
-	it('offers no press where Intuit was unreachable, and says the read comes back on its own', () => {
-		expect(unpickableStands('wait')).toEqual({
-			connect: false,
-			says: 'It keeps trying on its own.'
+	it('says nothing where the chart was read, or where nothing is connected', () => {
+		expect(chartStands({ state: 'read', accounts: CHART })).toBeNull();
+		expect(chartStands(null)).toBeNull();
+	});
+
+	it('puts a lapsed credential at Connect, with the press that mends it', () => {
+		expect(chartStands(unreadable('reconnect'))).toEqual({
+			step: 'connect',
+			says: 'QuickBooks turned this connection down.'
 		});
 	});
 
-	it('offers no press and adds nothing where the deployment named no recourse', () => {
-		// what it said is the whole of what is said: a press here would ask for a round trip through
-		// Intuit over something like a rate limit.
-		expect(unpickableStands(null)).toEqual({ connect: false, says: null });
+	it('puts an unreachable QuickBooks at Accounts, and says the read comes back on its own', () => {
+		expect(chartStands(unreadable('wait'))).toEqual({
+			step: 'accounts',
+			says: 'QuickBooks can’t be reached right now. This deployment keeps trying.'
+		});
 	});
 
-	it('draws no recourse at all where the deployment names one this console does not hold', () => {
+	it('never quotes the deployment, whatever recourse it named or did not', () => {
 		// the name arrives off the wire unread (`ask` in ../api/client.ts), so a deployment a release
-		// ahead of this console names one the record has no entry for — and the type says otherwise.
+		// ahead of this console names one the closed set has no entry for.
 		const ahead = 'rotate-keys' as QuickbooksRecourse;
-		expect(unpickableStands(ahead)).toEqual({ connect: false, says: null });
+		for (const recourse of [null, ahead]) {
+			expect(chartStands(unreadable(recourse))).toEqual({
+				step: 'accounts',
+				says: 'This deployment couldn’t read your chart of accounts.'
+			});
+		}
 	});
 
-	it('answers every recourse the closed set holds with something an operator can read', () => {
-		// read off the constant rather than listed here, so a third recourse fails this case instead
-		// of falling through to the arm that draws nothing.
-		const mute = QUICKBOOKS_RECOURSES.filter((recourse) => {
-			const stands = unpickableStands(recourse);
-			return !stands.connect && stands.says === null;
-		});
-		expect(mute).toEqual([]);
+	it('answers every recourse the closed set holds at a step', () => {
+		const said = QUICKBOOKS_RECOURSES.map((recourse) => chartStands(unreadable(recourse))?.says);
+		expect(said.every((says) => typeof says === 'string' && !says.includes('401'))).toBe(true);
 	});
 });
 
@@ -646,5 +722,505 @@ describe('the deployment’s refusal carried onto these boxes', () => {
 
 	it('answers nothing where the last press was not refused', () => {
 		expect(quickbooksRefused(null, NAMES)).toBeNull();
+	});
+});
+
+describe('which steps stand open, shut, locked or out of sight', () => {
+	const read = (over: Partial<QuickbooksReport> = {}): QuickbooksRead => ({
+		kind: 'read',
+		report: report(over)
+	});
+	const DISCONNECTED = read({ connection: { state: 'disconnected' }, accounts: null });
+
+	/** each step as one word a case reads down: open, shut, locked, and what it stands at. */
+	const drawn = (steps: StepsStanding): string[] => [
+		...(['setup', 'connect', 'accounts'] as const).map((name: StepName) => {
+			const step = steps[name];
+			const at = step.trouble ? 'trouble' : step.done ? 'done' : 'todo';
+			return `${name}: ${step.locked ? 'locked' : step.open ? 'open' : 'shut'} ${at}`;
+		}),
+		`sync: ${steps.sync ? 'shown' : 'hidden'}`
+	];
+	const stand = (over: Partial<Parameters<typeof stepsStand>[0]> = {}) =>
+		drawn(stepsStand({ configured: true, books: read(), answer: null, confirming: null, ...over }));
+
+	it('opens Setup on a first visit and locks the two after it', () => {
+		expect(stand({ configured: false, books: DISCONNECTED })).toEqual([
+			'setup: open todo',
+			'connect: locked todo',
+			'accounts: locked todo',
+			'sync: hidden'
+		]);
+	});
+
+	it('moves on to Connect once the keys are held, and keeps Accounts locked behind it', () => {
+		expect(stand({ books: DISCONNECTED })).toEqual([
+			'setup: shut done',
+			'connect: open todo',
+			'accounts: locked todo',
+			'sync: hidden'
+		]);
+	});
+
+	it('holds a finished step open while its button is still showing the save that finished it', () => {
+		expect(stand({ books: DISCONNECTED, confirming: { step: 'setup', finishing: true } })[0]).toBe(
+			'setup: open done'
+		);
+		expect(stand({ confirming: { step: 'accounts', finishing: true } })[2]).toBe(
+			'accounts: open done'
+		);
+	});
+
+	it('leaves a step saved again to whoever opened it: the prop never moves, so nothing shuts it', () => {
+		expect(stand({ confirming: { step: 'accounts', finishing: false } })[2]).toBe(
+			'accounts: shut done'
+		);
+		expect(stand({ confirming: { step: 'setup', finishing: false } })[0]).toBe('setup: shut done');
+	});
+
+	it('never opens a locked step, whatever else asks for it', () => {
+		expect(
+			stand({
+				configured: false,
+				books: DISCONNECTED,
+				confirming: { step: 'accounts', finishing: true }
+			}).slice(1, 3)
+		).toEqual(['connect: locked todo', 'accounts: locked todo']);
+	});
+
+	it('opens Accounts where the connect left one of the three unpicked', () => {
+		expect(stand({ books: read({ connection: company({ fee: null }) }) })).toEqual([
+			'setup: shut done',
+			'connect: shut done',
+			'accounts: open todo',
+			'sync: hidden'
+		]);
+	});
+
+	it('shuts every step and shows Sync once all three are done', () => {
+		expect(stand()).toEqual([
+			'setup: shut done',
+			'connect: shut done',
+			'accounts: shut done',
+			'sync: shown'
+		]);
+	});
+
+	it('opens Connect in trouble where the credential lapsed, and leaves Sync standing', () => {
+		const lapsed = read({
+			accounts: { state: 'unreadable', recourse: 'reconnect', detail: '401' }
+		});
+		expect(stand({ books: lapsed })).toEqual([
+			'setup: shut done',
+			'connect: open trouble',
+			'accounts: shut done',
+			'sync: shown'
+		]);
+	});
+
+	it('opens Accounts in trouble where QuickBooks could not be reached, and leaves Sync standing', () => {
+		// the backlog and its retry are what an operator reaches for while gifts are failing, so an
+		// outage is the last reason to take them away.
+		const away = read({ accounts: { state: 'unreadable', recourse: 'wait', detail: 'TypeError' } });
+		expect(stand({ books: away })).toEqual([
+			'setup: shut done',
+			'connect: shut done',
+			'accounts: open trouble',
+			'sync: shown'
+		]);
+	});
+
+	it('opens Connect in trouble where the connection could not be read at all', () => {
+		expect(stand({ books: { kind: 'unread', read: NOTHING_ANSWERED } })).toEqual([
+			'setup: shut done',
+			'connect: open trouble',
+			'accounts: locked todo',
+			'sync: hidden'
+		]);
+	});
+
+	it('opens Connect in trouble where the connect press went unanswered', () => {
+		expect(stand({ books: DISCONNECTED, answer: silence('connect') })[1]).toBe(
+			'connect: open trouble'
+		);
+	});
+
+	it('opens a finished Accounts where its save went unanswered, and leaves Sync standing', () => {
+		expect(stand({ answer: silence('accounts') })).toEqual([
+			'setup: shut done',
+			'connect: shut done',
+			'accounts: open done',
+			'sync: shown'
+		]);
+	});
+
+	it('opens a finished Connect where Intuit has not named the company', () => {
+		expect(stand({ books: read({ connection: company({ companyName: null }) }) })[1]).toBe(
+			'connect: open done'
+		);
+	});
+});
+
+describe('what a step says about itself and what its save opens', () => {
+	const standing = (over: Partial<StepStanding> = {}): StepStanding => ({
+		done: false,
+		trouble: false,
+		locked: false,
+		open: false,
+		...over
+	});
+	const all = (
+		over: Partial<Record<StepName, Partial<StepStanding>>>,
+		sync = false
+	): StepsStanding => ({
+		setup: standing(over.setup),
+		connect: standing(over.connect),
+		accounts: standing(over.accounts),
+		sync
+	});
+
+	it('names its state in a word, trouble over done', () => {
+		expect([
+			stepWord(standing()),
+			stepWord(standing({ done: true })),
+			stepWord(standing({ trouble: true })),
+			stepWord(standing({ done: true, trouble: true }))
+		]).toEqual(['To do', 'Done', 'Needs attention', 'Needs attention']);
+	});
+
+	it('opens the next open step after the one saved, or Sync after the last, or nothing', () => {
+		expect(
+			opensNext(all({ setup: { done: true, open: true }, connect: { open: true } }), 'setup')
+		).toBe('connect');
+		expect(opensNext(all({ accounts: { done: true, open: true } }, true), 'accounts')).toBe('sync');
+		// a step open before the one saved is not what the save opened.
+		expect(
+			opensNext(all({ setup: { open: true }, accounts: { open: true } }), 'accounts')
+		).toBeNull();
+		expect(opensNext(all({}), 'setup')).toBeNull();
+	});
+
+	it('says what a save opened, and today’s sentence where it opened nothing', () => {
+		expect(openedSays('connect')).toBe('Connect is open.');
+		expect(openedSays('sync')).toBe('Sync is open.');
+		expect(openedSays(null)).toBeUndefined();
+	});
+
+	it('says what a save opened only for the save that finished its step', () => {
+		const opened = all({ setup: { done: true, open: true }, connect: { open: true } });
+		expect(savedSays(opened, { step: 'setup', finishing: true }, 'setup')).toBe('Connect is open.');
+		// Sync was already there, so a save of a done Accounts opened nothing.
+		const finished = all({ accounts: { done: true } }, true);
+		expect(savedSays(finished, { step: 'accounts', finishing: false }, 'accounts')).toBeUndefined();
+		expect(savedSays(opened, { step: 'accounts', finishing: true }, 'setup')).toBeUndefined();
+		expect(savedSays(opened, null, 'setup')).toBeUndefined();
+	});
+
+	it('sends the reader on only from a step its save finished, and to its own label where nothing opened', () => {
+		const opened = all({ setup: { done: true }, connect: { open: true } });
+		expect(shutSendsTo(opened, { step: 'setup', finishing: true })).toBe('connect');
+		expect(
+			shutSendsTo(all({ accounts: { done: true } }, true), { step: 'accounts', finishing: true })
+		).toBe('sync');
+		expect(shutSendsTo(all({ setup: { done: true } }), { step: 'setup', finishing: true })).toBe(
+			'setup'
+		);
+		// saved again, it never shut: the reader stays on its button.
+		expect(
+			shutSendsTo(all({ accounts: { done: true } }, true), { step: 'accounts', finishing: false })
+		).toBeNull();
+	});
+});
+
+describe('which step a save holds open', () => {
+	it('records whether the save is the one finishing its step when it starts', () => {
+		expect(holdOpen('setup', true, false)(null)).toEqual({ step: 'setup', finishing: true });
+		expect(holdOpen('accounts', true, true)(null)).toEqual({ step: 'accounts', finishing: false });
+	});
+
+	it('keeps what it recorded while the save goes on, though the step is done by then', () => {
+		const held = { step: 'setup', finishing: true } as const;
+		expect(holdOpen('setup', true, true)(held)).toBe(held);
+	});
+
+	it('lets go of its own step and of no other', () => {
+		const held = { step: 'setup', finishing: true } as const;
+		expect(holdOpen('setup', false, true)(held)).toBeNull();
+		expect(holdOpen('accounts', false, true)(held)).toBe(held);
+		expect(holdOpen('accounts', true, false)(held)).toEqual({ step: 'accounts', finishing: true });
+	});
+});
+
+describe('a save that is answered before the page is read again', () => {
+	it('stays saving through the read its answer sets off, and confirms once that read lands', () => {
+		expect(savingUntilRead({ own: true, landed: false, spent: false })).toBe(true);
+		expect(savingUntilRead({ own: false, landed: true, spent: false })).toBe(true);
+		expect(savingUntilRead({ own: false, landed: true, spent: true })).toBe(false);
+	});
+
+	it('holds nothing over a press that did not land', () => {
+		expect(savingUntilRead({ own: false, landed: false, spent: false })).toBe(false);
+	});
+});
+
+describe('which preview a press of the day acts on', () => {
+	const RIVERBANK = company({
+		companyName: 'Riverbank Trust Inc.',
+		startAt: '2026-09-01T00:00:00.000Z'
+	});
+	const side = (gifts: number) => ({
+		gifts,
+		corrections: 0,
+		earliest: gifts > 0 ? '2026-06-03T00:00:00.000Z' : null,
+		latest: gifts > 0 ? '2026-08-31T00:00:00.000Z' : null
+	});
+	const preview = (startAt: string, queues: number, drops: number): QuickbooksAnswer =>
+		reported({ press: 'start-date-preview', startAt, queues: side(queues), drops: side(drops) });
+
+	it('asks over a preview of the day asked, and moves straight away where it touches nothing', () => {
+		expect(
+			startDateNext('2026-06-01', RIVERBANK, preview('2026-06-01T00:00:00.000Z', 3, 0)).kind
+		).toBe('ask');
+		expect(
+			startDateNext('2026-06-01', RIVERBANK, preview('2026-06-01T00:00:00.000Z', 0, 0))
+		).toEqual({
+			kind: 'move'
+		});
+	});
+
+	it('never saves or asks over a preview for another day, in either direction', () => {
+		// the defect: an earlier preview left standing is read against a later day, whose drops it
+		// counts as none, so the move later went with no confirm and dropped unsent gifts.
+		const earlier = preview('2026-06-01T00:00:00.000Z', 38, 0);
+		const later = preview('2026-09-15T00:00:00.000Z', 0, 3);
+		expect(startDateNext('2026-09-15', RIVERBANK, earlier)).toEqual({ kind: 'wait' });
+		expect(startDateNext('2026-06-01', RIVERBANK, later)).toEqual({ kind: 'wait' });
+	});
+
+	it('waits on any answer that is not a preview', () => {
+		expect(startDateNext('2026-06-01', RIVERBANK, reported({ press: 'start-date' }))).toEqual({
+			kind: 'wait'
+		});
+		expect(startDateNext('2026-06-01', RIVERBANK, null)).toEqual({ kind: 'wait' });
+	});
+});
+
+describe('what the press over the day asks before it moves', () => {
+	const side = (
+		gifts: number,
+		corrections: number,
+		earliest: string | null,
+		latest: string | null
+	) => ({
+		gifts,
+		corrections,
+		earliest,
+		latest
+	});
+	const NONE = side(0, 0, null, null);
+	const RIVERBANK = company({
+		companyName: 'Riverbank Trust Inc.',
+		startAt: '2026-09-01T00:00:00.000Z'
+	});
+
+	it('asks before sending past gifts, with what goes, from when, to whom, and what it can cost', () => {
+		const ask = startDateAsk('2026-06-01', RIVERBANK, {
+			queues: side(38, 2, '2026-06-03T00:00:00.000Z', '2026-08-31T00:00:00.000Z'),
+			drops: NONE
+		});
+		expect(ask).toEqual({
+			title: 'Send past gifts?',
+			press: 'Send gifts',
+			rank: 'exit',
+			lines: [
+				'Gifts · 38',
+				'Corrections · 2',
+				'Dated · 3 June to 31 August 2026',
+				'Company · Riverbank Trust Inc.',
+				'Any of these already entered in QuickBooks by hand will appear there twice.'
+			]
+		});
+	});
+
+	it('asks before skipping unsent gifts, and never ends a sentence on two stops', () => {
+		const ask = startDateAsk('2026-09-15', RIVERBANK, {
+			queues: NONE,
+			drops: side(3, 0, '2026-09-02T00:00:00.000Z', '2026-09-12T00:00:00.000Z')
+		});
+		expect(ask).toEqual({
+			title: 'Skip unsent gifts?',
+			press: 'Skip gifts',
+			rank: 'danger',
+			lines: [
+				'Gifts · 3',
+				'Dated · 2 to 12 September 2026',
+				'These won’t be sent to Riverbank Trust Inc.'
+			]
+		});
+	});
+
+	it('leaves out a count that is zero', () => {
+		const ask = startDateAsk('2026-06-01', RIVERBANK, {
+			queues: side(0, 4, '2026-07-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z'),
+			drops: NONE
+		});
+		expect(ask?.lines.slice(0, 2)).toEqual(['Corrections · 4', 'Dated · 1 July 2026']);
+	});
+
+	it('reads the side the move touches, and asks nothing where that side is empty', () => {
+		const busy = side(5, 1, '2026-06-03T00:00:00.000Z', '2026-06-04T00:00:00.000Z');
+		// earlier queues and never drops; later drops and never queues.
+		expect(startDateAsk('2026-06-01', RIVERBANK, { queues: NONE, drops: busy })).toBeNull();
+		expect(startDateAsk('2026-09-15', RIVERBANK, { queues: busy, drops: NONE })).toBeNull();
+	});
+
+	it('says the dates across a year where the range crosses one', () => {
+		const ask = startDateAsk('2025-06-01', RIVERBANK, {
+			queues: side(2, 0, '2025-12-30T00:00:00.000Z', '2026-01-02T00:00:00.000Z'),
+			drops: NONE
+		});
+		expect(ask?.lines[1]).toBe('Dated · 30 December 2025 to 2 January 2026');
+	});
+
+	it('names an unnamed company by the id the screen already shows for it', () => {
+		const ask = startDateAsk('2026-09-15', company({ companyName: null, realmId: '9130' }), {
+			queues: NONE,
+			drops: side(1, 0, null, null)
+		});
+		expect(ask?.lines).toEqual(['Gifts · 1', 'These won’t be sent to 9130.']);
+	});
+});
+
+describe('what changing the keys on a connected company asks first', () => {
+	const SEEDS = {
+		QUICKBOOKS_CLIENT_ID: 'id-1',
+		QUICKBOOKS_CLIENT_SECRET: 'secret-1',
+		QUICKBOOKS_API_URL: ''
+	};
+	const edits = (typed: Record<string, string>) => {
+		const posted = new FormData();
+		for (const name of NAMES)
+			posted.set(VALUE_FIELD(name), typed[name] ?? SEEDS[name as keyof typeof SEEDS]);
+		return secretEdits(NAMES, posted, SEEDS);
+	};
+
+	it('itemises each box it changes against the value it was, then the cost', () => {
+		expect(
+			keysAsk(
+				edits({
+					QUICKBOOKS_CLIENT_SECRET: 'secret-2',
+					QUICKBOOKS_CLIENT_ID: '',
+					QUICKBOOKS_API_URL: 'https://sandbox'
+				}),
+				SEEDS,
+				company()
+			)
+		).toEqual([
+			'Client ID · Removed',
+			'Client secret · Replaced',
+			'API address · Set',
+			'Habitat stops syncing until you sign in again.'
+		]);
+	});
+
+	it('asks nothing where the press changes nothing, or is refused before it goes', () => {
+		expect(keysAsk(edits({}), SEEDS, company())).toBeNull();
+		expect(keysAsk(edits({ QUICKBOOKS_CLIENT_ID: '  ' }), SEEDS, company())).toBeNull();
+	});
+});
+
+describe('the rest of what the section says', () => {
+	it('names what disconnecting costs against the company', () => {
+		expect(disconnectLines(company({ companyName: 'Riverbank Trust Inc.' }))).toEqual([
+			'Gifts stop syncing to Riverbank Trust Inc.',
+			'This deployment forgets the company, its accounts and the day gifts sync from.'
+		]);
+	});
+
+	it('calls a company Intuit has not named by its id', () => {
+		expect(companyCalled(company({ companyName: null, realmId: '9130' }))).toBe('9130');
+		expect(companyCalled(company())).toBe('Habitat');
+	});
+
+	it('says one plain sentence over a press the deployment answered nothing to', () => {
+		expect(UNANSWERED).toBe('This deployment didn’t answer.');
+		expect(unansweredSays(NOTHING_ANSWERED)).toBe(UNANSWERED);
+	});
+
+	it('says the deployment turned a press down where it refused it, never in its own words', () => {
+		const refusal: NoReport = {
+			kind: 'unreadable',
+			error: 'not_connected',
+			detail: 'no QuickBooks company is connected',
+			fix: 'connect one first',
+			status: 409
+		};
+		expect(REFUSED).toBe('This deployment turned that down.');
+		expect(unansweredSays(refusal)).toBe(REFUSED);
+	});
+
+	it('says the deployment could not do it where it answered with a coded failure', () => {
+		const failure: NoReport = {
+			kind: 'unreadable',
+			error: 'accounts_unreadable',
+			detail: 'QuickBooks returned 500',
+			fix: 'try again later',
+			status: 502
+		};
+		expect(FAILED).toBe('This deployment couldn’t do that.');
+		expect(unansweredSays(failure)).toBe(FAILED);
+		expect(unansweredSays({ ...failure, error: 'no_signing_key', status: 500 })).toBe(FAILED);
+		// no code is no answer anyone wrote.
+		expect(unansweredSays({ ...failure, error: null, status: 500 })).toBe(UNANSWERED);
+	});
+});
+
+describe('the three pickers’ own press', () => {
+	it('is armed while one is unchosen, so pressing it can say which', () => {
+		const fresh = company({ fee: null });
+		expect(picksArmed({ income: '1', fee: '', deposit: '2' }, fresh, CHART)).toBe(true);
+		expect(picksMissing({ income: '1', fee: '', deposit: '' })).toEqual(['fee', 'deposit']);
+	});
+
+	it('is closed over what is already stored, and over a pick its picker does not offer', () => {
+		expect(picksArmed({ income: '1', fee: '2', deposit: '2' }, company(), CHART)).toBe(false);
+		expect(picksArmed({ income: '9', fee: '2', deposit: '2' }, company(), CHART)).toBe(false);
+		expect(picksMissing({ income: '1', fee: '2', deposit: '2' })).toEqual([]);
+	});
+});
+
+describe('which press on the page is this control’s own', () => {
+	it('is the intent in flight, read against each press the control makes', () => {
+		expect(ownPress('quickbooks:start-date-preview', 'start-date', 'start-date-preview')).toBe(
+			true
+		);
+		expect(ownPress('quickbooks:retry', 'start-date', 'start-date-preview')).toBe(false);
+		expect(ownPress(null, 'retry')).toBe(false);
+	});
+});
+
+describe('the retry press is one button from rest to its report', () => {
+	const at = (over: Partial<Parameters<typeof retryButton>[0]> = {}) =>
+		retryButton({ backlog: true, pending: false, done: false, doneLabel: null, ...over });
+
+	it('rests while there is something to retry, and is not drawn where there is nothing', () => {
+		expect(at()).toEqual({ shown: true, state: 'idle' });
+		expect(at({ backlog: false })).toEqual({ shown: false, state: 'idle' });
+	});
+
+	it('stays through its press and its report, after the backlog it cleared has gone', () => {
+		expect(at({ pending: true })).toEqual({ shown: true, state: 'pending' });
+		expect(at({ backlog: false, pending: true })).toEqual({ shown: true, state: 'pending' });
+		expect(at({ backlog: false, done: true, doneLabel: '2 retrying' })).toEqual({
+			shown: true,
+			state: 'done'
+		});
+	});
+
+	it('draws no tick over a press that moved nothing', () => {
+		expect(at({ backlog: false, done: true, doneLabel: null })).toEqual({
+			shown: false,
+			state: 'idle'
+		});
 	});
 });

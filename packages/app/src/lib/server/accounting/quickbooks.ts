@@ -385,10 +385,29 @@ export function createQuickbooksProvider(
 		params: Record<string, string> = {},
 		body?: Payload
 	): Promise<AccountingResult<unknown>> {
-		const answer = await answerFor(auth, path, params, body);
-		if ('ok' in answer) return answer;
-		if (answer.status >= 200 && answer.status < 300) return { ok: true, value: answer.body };
-		return classify(answer);
+		return answered(await answerFor(auth, path, params, body));
+	}
+
+	/**
+	 * one record created in the company, under the request id {@link requestIdFor} derives.
+	 *
+	 * Intuit answers a request id it has already seen with the response it gave the first time and
+	 * creates nothing
+	 * (https://help.developer.intuit.com/s/article/What-is-RequestId-and-its-usage), so a post
+	 * whose reply never arrived, sent again while Intuit still holds the id, lands once.
+	 */
+	async function create(
+		auth: { connection: ConnectionSnapshot; accessToken: string },
+		entity: 'customer' | 'deposit' | 'journalentry',
+		keyed: Keyed,
+		json: unknown
+	): Promise<Answer | AccountingFailure> {
+		return answerFor(
+			auth,
+			`/v3/company/${auth.connection.companyId}/${entity}`,
+			{ requestid: await requestIdFor(keyed, json) },
+			{ json }
+		);
 	}
 
 	/**
@@ -429,10 +448,10 @@ export function createQuickbooksProvider(
 	/**
 	 * the record this app already created for `key`, or null.
 	 *
-	 * the whole of the idempotency: QuickBooks takes no idempotency key, so every record carries the
-	 * entry group's id in its `PrivateNote` and a retry looks for it before creating anything. what
-	 * this answers is the post whose reply never arrived — the delivery retries, and without this
-	 * the company's books hold the gift twice with nothing saying which is which.
+	 * the fallback behind {@link create}'s request id: Intuit keeps a request id for a period it does
+	 * not publish, so a retry after it has lapsed is a fresh create. every record carries the entry
+	 * group's id in its `PrivateNote` and a retry looks for it before creating anything — what this
+	 * answers is the post whose reply never arrived, or whose run died before it wrote it down.
 	 *
 	 * it is a paginated scan of every record the company dated that day, and reads are what Intuit
 	 * meters this app on, so it is paid by the attempts that can find something and by no others.
@@ -448,8 +467,8 @@ export function createQuickbooksProvider(
 		key: string,
 		txnDate: string
 	): Promise<AccountingResult<string | null>> {
-		// a row is claimed before it is sent and the claim is held until it is written, so nothing
-		// else posted this key and a first attempt has nothing to find.
+		// the claim counts an attempt before anything is sent (./deliver.ts), so a first attempt is
+		// a row nothing has ever sent and there is nothing to find.
 		if (attempt === 'first') return { ok: true, value: null };
 		const rows = await askAll(auth, `select * from ${entity} where TxnDate = '${txnDate}'`, entity);
 		if (!rows.ok) return rows;
@@ -493,20 +512,14 @@ export function createQuickbooksProvider(
 	 */
 	async function customerNamed(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
+		keyed: Keyed,
 		displayName: string,
 		email: string | null
 	): Promise<AccountingResult<string | null>> {
-		const answer = await answerFor(
-			auth,
-			`/v3/company/${auth.connection.companyId}/customer`,
-			{},
-			{
-				json: {
-					DisplayName: displayName,
-					...(email === null ? {} : { PrimaryEmailAddr: { Address: email } })
-				}
-			}
-		);
+		const answer = await create(auth, 'customer', keyed, {
+			DisplayName: displayName,
+			...(email === null ? {} : { PrimaryEmailAddr: { Address: email } })
+		});
 		if ('ok' in answer) return answer;
 		if (answer.status < 200 || answer.status >= 300) {
 			return faultCode(answer.body) === DUPLICATE_NAME_FAULT
@@ -532,6 +545,7 @@ export function createQuickbooksProvider(
 	 */
 	async function customerFor(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
+		keyed: Keyed,
 		donor: Donor
 	): Promise<AccountingResult<string>> {
 		const displayName = quickbooksDisplayName(donor.displayName);
@@ -546,7 +560,7 @@ export function createQuickbooksProvider(
 		if (!byName.ok) return byName;
 		if (byName.value !== null) return { ok: true, value: byName.value };
 
-		const created = await customerNamed(auth, displayName, donor.email);
+		const created = await customerNamed(auth, keyed, displayName, donor.email);
 		if (!created.ok) return created;
 		if (created.value !== null) return { ok: true, value: created.value };
 
@@ -555,7 +569,7 @@ export function createQuickbooksProvider(
 		if (!byOwnName.ok) return byOwnName;
 		if (byOwnName.value !== null) return { ok: true, value: byOwnName.value };
 
-		const own = await customerNamed(auth, ownName, donor.email);
+		const own = await customerNamed(auth, keyed, ownName, donor.email);
 		if (!own.ok) return own;
 		return own.value === null
 			? failed(
@@ -661,8 +675,10 @@ export function createQuickbooksProvider(
 		 */
 		async sendGift(
 			gift: GiftRecord,
-			attempt: SendAttempt
+			attempt: SendAttempt,
+			revision: string
 		): Promise<AccountingResult<RemoteRecord>> {
+			const keyed: Keyed = { key: gift.key, revision };
 			const auth = await authorized();
 			if (!auth.ok) return auth;
 			const accounts = chosenAccounts(auth.value.connection);
@@ -676,7 +692,7 @@ export function createQuickbooksProvider(
 			if (!posted.ok) return posted;
 			if (posted.value !== null) return { ok: true, value: { remoteId: posted.value } };
 
-			const customerId = await customerFor(auth.value, gift.donor);
+			const customerId = await customerFor(auth.value, keyed, gift.donor);
 			if (!customerId.ok) return customerId;
 
 			const lines: unknown[] = [
@@ -702,19 +718,14 @@ export function createQuickbooksProvider(
 			}
 
 			return createdRecord(
-				await request(
-					auth.value,
-					`/v3/company/${auth.value.connection.companyId}/deposit`,
-					{},
-					{
-						json: {
-							TxnDate: txnDate,
-							CurrencyRef: { value: currency.value },
-							PrivateNote: privateNote(gift.key, gift.memo),
-							DepositToAccountRef: { value: accounts.value.deposit },
-							Line: lines
-						}
-					}
+				answered(
+					await create(auth.value, 'deposit', keyed, {
+						TxnDate: txnDate,
+						CurrencyRef: { value: currency.value },
+						PrivateNote: privateNote(gift.key, gift.memo),
+						DepositToAccountRef: { value: accounts.value.deposit },
+						Line: lines
+					})
 				),
 				'Deposit'
 			);
@@ -729,8 +740,10 @@ export function createQuickbooksProvider(
 		 */
 		async sendCorrection(
 			correction: CorrectionRecord,
-			attempt: SendAttempt
+			attempt: SendAttempt,
+			revision: string
 		): Promise<AccountingResult<RemoteRecord>> {
+			const keyed: Keyed = { key: correction.key, revision };
 			const auth = await authorized();
 			if (!auth.ok) return auth;
 			const accounts = chosenAccounts(auth.value.connection);
@@ -762,26 +775,21 @@ export function createQuickbooksProvider(
 			if (posted.value !== null) return { ok: true, value: { remoteId: posted.value } };
 
 			return createdRecord(
-				await request(
-					auth.value,
-					`/v3/company/${auth.value.connection.companyId}/journalentry`,
-					{},
-					{
-						json: {
-							TxnDate: txnDate,
-							CurrencyRef: { value: currency.value },
-							PrivateNote: privateNote(correction.key, correction.memo),
-							Line: correction.lines.map((line) => ({
-								DetailType: 'JournalEntryLineDetail',
-								Amount: Number(majorText(line.amountMinor, correction.currency)),
-								...(correction.memo === null ? {} : { Description: correction.memo }),
-								JournalEntryLineDetail: {
-									PostingType: line.posting === 'debit' ? 'Debit' : 'Credit',
-									AccountRef: { value: accounts.value[line.role] }
-								}
-							}))
-						}
-					}
+				answered(
+					await create(auth.value, 'journalentry', keyed, {
+						TxnDate: txnDate,
+						CurrencyRef: { value: currency.value },
+						PrivateNote: privateNote(correction.key, correction.memo),
+						Line: correction.lines.map((line) => ({
+							DetailType: 'JournalEntryLineDetail',
+							Amount: Number(majorText(line.amountMinor, correction.currency)),
+							...(correction.memo === null ? {} : { Description: correction.memo }),
+							JournalEntryLineDetail: {
+								PostingType: line.posting === 'debit' ? 'Debit' : 'Credit',
+								AccountRef: { value: accounts.value[line.role] }
+							}
+						}))
+					})
 				),
 				'JournalEntry'
 			);
@@ -890,11 +898,11 @@ function chosenAccounts(
 
 /** the id QuickBooks gave what it just created. */
 function createdRecord(
-	answered: AccountingResult<unknown>,
+	result: AccountingResult<unknown>,
 	entity: 'Deposit' | 'JournalEntry'
 ): AccountingResult<RemoteRecord> {
-	if (!answered.ok) return answered;
-	const remoteId = stringField(field(answered.value, entity), 'Id');
+	if (!result.ok) return result;
+	const remoteId = stringField(field(result.value, entity), 'Id');
 	return remoteId === null
 		? failed('provider_error', `QuickBooks created a ${entity} and named no id for it.`)
 		: { ok: true, value: { remoteId } };
@@ -910,6 +918,39 @@ function createdRecord(
  */
 function transactionDate(occurredAt: Date): string {
 	return occurredAt.toISOString().slice(0, 10);
+}
+
+/** an Accounting API answer, or the refusal it was, as one of the port's results. */
+function answered(answer: Answer | AccountingFailure): AccountingResult<unknown> {
+	if ('ok' in answer) return answer;
+	if (answer.status >= 200 && answer.status < 300) return { ok: true, value: answer.body };
+	return classify(answer);
+}
+
+/** the record a create is for, and the queue row's revision as the send's claim read it. */
+type Keyed = { readonly key: string; readonly revision: string };
+
+/**
+ * the request id a create is posted under: the entry group's key, then a digest of the queue row's
+ * revision and what is sent.
+ *
+ * the key alone would be one id per gift, and Intuit replays the first answer to an id whatever it
+ * was and for a period it does not publish — so a gift refused, and retried once somebody fixed the
+ * cause, would be refused again by the replay. the body moves the id when the fix was here (another
+ * account picked); the revision moves it when the fix was inside QuickBooks (books reopened, an
+ * account made active), because every refusal recorded on the row moves it. a call that never
+ * answered and a run that died write nothing, so their retry repeats the id and Intuit answers it
+ * with the record it made. 36 + 1 + 12 fits the 50 characters Intuit allows outside a batch.
+ */
+async function requestIdFor(keyed: Keyed, json: unknown): Promise<string> {
+	const digest = await crypto.subtle.digest(
+		'SHA-256',
+		new TextEncoder().encode(`${keyed.revision}\n${JSON.stringify(json)}`)
+	);
+	const hex = Array.from(new Uint8Array(digest).slice(0, 6), (byte) =>
+		byte.toString(16).padStart(2, '0')
+	).join('');
+	return `${keyed.key}-${hex}`;
 }
 
 /** what marks a record as this app's, and which entry group it is. */

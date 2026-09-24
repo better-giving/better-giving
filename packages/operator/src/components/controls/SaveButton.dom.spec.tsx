@@ -46,7 +46,7 @@ describe('a save button mounted into a document', () => {
 		// holding nothing to save.
 		const root = render(SaveButton, { state: 'disabled', disabled: undefined });
 
-		expect(pressed(root).disabled).toBe(true);
+		expect(pressed(root).getAttribute('aria-disabled')).toBe('true');
 	});
 
 	it('lets a caller close a press its state would leave open', () => {
@@ -54,7 +54,7 @@ describe('a save button mounted into a document', () => {
 		// writing, so the press is closed for the caller's reason and not the state's.
 		const root = render(SaveButton, { state: 'idle', disabled: true });
 
-		expect(pressed(root).disabled).toBe(true);
+		expect(pressed(root).getAttribute('aria-disabled')).toBe('true');
 	});
 
 	it('closes its own press while its own write is in flight', () => {
@@ -64,7 +64,58 @@ describe('a save button mounted into a document', () => {
 		// so closing it here drops no submission of its own.
 		const root = render(SaveButton, { state: 'pending' });
 
-		expect(pressed(root).disabled).toBe(true);
+		expect(pressed(root).getAttribute('aria-disabled')).toBe('true');
+	});
+
+	it('is never closed natively, so the reader standing on it keeps the focus', () => {
+		// a natively closed control cannot hold focus: the caret drops to the document the moment the
+		// press is made, and the tick that lands on the button is a change nobody is standing on.
+		for (const state of ['idle', 'pending', 'done', 'disabled'] as const) {
+			const button = pressed(render(SaveButton, { state, disabled: true }));
+
+			expect([state, button.disabled]).toEqual([state, false]);
+		}
+	});
+
+	it('keeps the focus from the press through its write to the tick', () => {
+		const { root, again } = mount(SaveButton, { state: 'idle' });
+		pressed(root).focus();
+
+		again({ state: 'pending' });
+		again({ state: 'done' });
+		again({ state: 'disabled' });
+
+		expect(document.activeElement).toBe(pressed(root));
+	});
+
+	it('turns a press away while closed, and posts nothing', () => {
+		// held by `aria-disabled` rather than `disabled`, so the element still takes a click — and
+		// Enter in a box of the form it submits fires one on it too. the handler is what refuses it.
+		const clicked = vi.fn();
+		const submitted = vi.fn((event: Event) => event.preventDefault());
+		const form = document.createElement('form');
+		form.addEventListener('submit', submitted);
+		document.body.append(form);
+		const { root, again } = mount(SaveButton, { state: 'pending', onClick: clicked });
+		form.append(root);
+		const button = pressed(root);
+
+		for (const state of ['pending', 'done', 'disabled'] as const) {
+			again({ state, onClick: clicked });
+			button.click();
+		}
+		form.remove();
+
+		expect([clicked.mock.calls.length, submitted.mock.calls.length]).toEqual([0, 0]);
+	});
+
+	it('hands an open press to the caller’s own handler', () => {
+		const clicked = vi.fn();
+		const root = render(SaveButton, { state: 'idle', type: 'button', onClick: clicked });
+
+		pressed(root).click();
+
+		expect(clicked).toHaveBeenCalledTimes(1);
 	});
 
 	it('keeps its resting label under its own write and stands the dots over it', () => {
@@ -193,6 +244,42 @@ describe('a save button reporting a write to a reader', () => {
 		// its own text, which is one insertion rather than a change and is announced by nobody
 		// either.
 		expect(region(root)).toBe(said);
+	});
+
+	it('says what else the save changed, where the caller knows it changed something', async () => {
+		// a save that shuts its own step and opens the next is not a save that changed nothing else,
+		// and saying so would be false in exactly the case a reader needs told.
+		const { root, again } = mount(SaveButton, {
+			state: 'pending',
+			elsewhere: 'Connect is open.'
+		});
+
+		again({ state: 'done', elsewhere: 'Connect is open.' });
+		await elapse(0);
+
+		expect(region(root).textContent).toBe('Saved. Connect is open.');
+	});
+
+	it('says what it was handed as the confirmation began, whatever arrives while it stands', async () => {
+		// a region rewritten under a standing confirmation is announced a second time, and the first
+		// announcement is then one the page went on to contradict.
+		const { root, again } = mount(SaveButton, { state: 'pending' });
+
+		again({ state: 'done', elsewhere: 'Sync is open.' });
+		await elapse(0);
+		again({ state: 'done', elsewhere: 'Accounts is open.' });
+		await elapse(0);
+
+		expect(region(root).textContent).toBe('Saved. Sync is open.');
+	});
+
+	it('says the confirmation alone where the caller claims nothing else', async () => {
+		const { root, again } = mount(SaveButton, { state: 'pending', elsewhere: '' });
+
+		again({ state: 'done', elsewhere: '' });
+		await elapse(0);
+
+		expect(region(root).textContent).toBe('Saved.');
 	});
 
 	it('empties the region when the confirmation clears, which says nothing', async () => {

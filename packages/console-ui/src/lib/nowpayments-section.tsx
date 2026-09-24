@@ -43,7 +43,7 @@ import {
 	railsToDraw
 } from './nowpayments-setup';
 import { STANDING, configuredStanding, processorStanding } from './processor-payments';
-import { keysTrouble, noAnswer, valuesGuard } from './processor-screen';
+import { keysTrouble, noAnswer } from './processor-screen';
 import { useReseeded } from './reseed';
 import { Said } from './said';
 import { NOWPAYMENTS_GROUP, SECRET_GROUPS, isMasked } from './secret-groups';
@@ -141,8 +141,8 @@ export function NowpaymentsSection({
 	busy,
 	pending
 }: NowpaymentsSectionProps): ReactNode {
-	const guard = valuesGuard(values.vars, { workerName, accountName });
-	if (guard !== null || values.vars.kind !== 'read') return guard;
+	// never drawn: the sections layout stands a gate in this page's place (../lib/cloudflare-gate.ts).
+	if (values.vars.kind !== 'read') return null;
 	return (
 		<Section>
 			{/* what the account could not answer, above the boxes that change it, for the Stripe screen's

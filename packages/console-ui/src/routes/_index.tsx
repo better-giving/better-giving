@@ -16,8 +16,8 @@ import { closeConsole, connect } from '../api/client';
 import type { Blocked, NoReport } from '../api/types';
 import { CHECK_INTENT, CLOSE_INTENT, CloseConfirm, useClosed } from '../lib/close-confirm';
 import { firstUnfinishedPage } from '../lib/console-pages';
-import { handOver, readConsole } from '../lib/console-reading';
-import { ConsoleStopped } from '../lib/deployment-states';
+import { gatedPage, handOver, readConsole } from '../lib/console-reading';
+import { CloudflareGateFace, ConsoleStopped } from '../lib/deployment-states';
 import { CLOSE_PARAM, consoleRereads } from '../lib/dialog-params';
 import { ConsoleHead } from '../lib/head-strip';
 import { forgetReadings } from '../lib/processor-cache';
@@ -110,6 +110,8 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 	}
 	await bar.finish();
 	return {
+		// a face of its own for a deployment not there yet, where the sections draw a gate
+		gate: face.kind === 'deploy' ? null : (gatedPage(read)?.gate ?? null),
 		version: read.version,
 		account: read.account,
 		accountId: read.accountId,
@@ -233,7 +235,11 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 	/* the gate stands in the middle of the space under the head rather than at the top of a column:
 	   one question and one way out is not a page anybody reads from the top. */
 	const face =
-		home.kind === 'deploy' ? (
+		loaderData.gate !== null ? (
+			<BareShell head={head} foot={foot} centred>
+				<CloudflareGateFace gate={loaderData.gate} />
+			</BareShell>
+		) : home.kind === 'deploy' ? (
 			<NotDeployedFace foot={foot} head={head} />
 		) : home.kind === 'unreachable' ? (
 			<BareShell head={head} foot={foot} centred>
@@ -250,11 +256,7 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 		) : (
 			<BareShell head={head} foot={foot}>
 				<Column>
-					<BlockedFace
-						why={home.why}
-						account={loaderData.account}
-						workerName={loaderData.workerName}
-					/>
+					<BlockedFace why={home.why} account={loaderData.account} />
 				</Column>
 			</BareShell>
 		);
@@ -271,59 +273,14 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 }
 
 /**
- * why nothing under the head can be drawn.
+ * why nothing under the head can be drawn, where it is not cloudflare withholding an answer: that is
+ * the gate, drawn the same here as over a section page (../lib/cloudflare-gate.ts).
  *
  * no section page and no press: every reading below a blocker is scoped to something the console
  * could not find out, and a row drawn over a read that never landed is a finding about cloudflare
  * reported as a finding about this deployment.
  */
-function BlockedFace({
-	why,
-	account,
-	workerName
-}: {
-	why: Blocked;
-	account: string;
-	workerName: string;
-}): ReactNode {
-	if (why.kind === 'no-credential') {
-		return (
-			<>
-				<PageHeader title="This machine isn't signed in to Cloudflare" />
-				<Banner tone="blocker" word="Nothing in this account was read">
-					The console is holding no Cloudflare sign-in for this machine. Close the console and run{' '}
-					<InlineCode>better-giving start</InlineCode> again to sign in.
-				</Banner>
-				{why.detail === '' ? null : (
-					<p className="adm-hint">
-						<InlineCode>{why.detail}</InlineCode>
-					</p>
-				)}
-			</>
-		);
-	}
-	if (why.kind === 'refused') {
-		return (
-			<>
-				<PageHeader title="Cloudflare turned this sign-in down" />
-				<Banner tone="blocker" word="Nothing in this account was read">
-					Cloudflare won't tell this sign-in what {account} is holding. Ask an administrator of that
-					account for administrator access, or run <InlineCode>better-giving login</InlineCode> in
-					the terminal you start the console from to record a different one.
-				</Banner>
-			</>
-		);
-	}
-	if (why.kind === 'unreachable') {
-		return (
-			<>
-				<PageHeader title="Can't reach Cloudflare" />
-				<Banner tone="blocker" word="Nothing in this account was read">
-					Check this machine's internet connection, then reload.
-				</Banner>
-			</>
-		);
-	}
+function BlockedFace({ why, account }: { why: Blocked; account: string }): ReactNode {
 	if (why.kind === 'two-databases') {
 		return (
 			<>
@@ -338,31 +295,6 @@ function BlockedFace({
 					</a>{' '}
 					&rarr; Storage &amp; Databases &rarr; D1, then reload.
 				</Banner>
-			</>
-		);
-	}
-	if (why.kind === 'no-values') {
-		/* the deployment is up and answering, and one of the two doors its deploy-time values come
-		   through is not (`packages/console/internal/deployment/values.go`). every section page reads
-		   them, so there is nothing to draw — and nothing here to repair by hand either: the way out
-		   is the read taken again, which is what a reload is.
-
-		   this face carries no press of its own, unlike the deployment-side one beside it: what
-		   failed is a Cloudflare read taken while the page was being built, so the control that
-		   would ask again is the page. */
-		return (
-			<>
-				<PageHeader title="Cloudflare won't say what this deployment is holding" />
-				<Banner tone="blocker" word="Nothing about this deployment was read">
-					{workerName} is deployed and answering this console, and Cloudflare won't say what it was
-					set up with. Nothing about mail, payments or your sites can be shown until it does.
-					Reload.
-				</Banner>
-				{why.detail === '' ? null : (
-					<p className="adm-hint">
-						<InlineCode>{why.detail}</InlineCode>
-					</p>
-				)}
 			</>
 		);
 	}

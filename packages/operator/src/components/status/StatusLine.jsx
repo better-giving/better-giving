@@ -1,4 +1,4 @@
-import { Children, Fragment, isValidElement } from 'react';
+import { Children, Fragment, isValidElement, useLayoutEffect, useRef } from 'react';
 
 import { Mark } from './Mark.jsx';
 
@@ -57,6 +57,12 @@ import { Mark } from './Mark.jsx';
  *   thing is real — and takes the whole row back to muted ink: the label and any link inside it and
  *   the sentence, as well as the mark and the word. a run of lines lit one at a time is what a
  *   chain making those things reports as it reaches each one.
+ * @property {boolean | undefined} [locked] a section whose step cannot be taken until the one
+ *   before it is done. it is drawn as `dim` is and shut, and the summary refuses to open by pointer
+ *   and by keyboard alike and says so with `aria-disabled` — a fold that opened onto a form nothing
+ *   can be done with yet would be a step offered out of order. `open` and `onToggle` are ignored
+ *   while it holds, and a line opened by hand is shut the moment it locks. a line without
+ *   `beneath` has nothing to open and takes no notice of it.
  * @property {MarkName | undefined} [mark] the mark the tone would otherwise choose.
  * @property {ReactNode} [beneath] a whole screen's worth of detail, which opens in place.
  * @property {boolean | undefined} [open]
@@ -65,8 +71,9 @@ import { Mark } from './Mark.jsx';
  *   screen with a control over the whole ledger — expand all, collapse all — cannot say what it
  *   did unless each line tells it.
  * @property {string | undefined} [id] where a screen sends focus when the control it acted on has
- *   gone with the state that drew it. it lands on the label, which is described by the word and the
- *   sentence beside it rather than repeating either.
+ *   gone with the state that drew it. it lands on the label, which is described by the word — or
+ *   by the mark carrying it, under `wordOnMark` — and the sentence beside it rather than repeating
+ *   either.
  * @property {LabelLevel} labelAs the element the label is drawn as, stated by the screen and never
  *   defaulted here: a ledger of one-line statements outlines nothing and takes `span`, while a
  *   ledger whose entries open is a run of sections and takes the level under the heading it stands
@@ -256,6 +263,7 @@ export function StatusLine({
 	children,
 	steps,
 	dim = false,
+	locked = false,
 	mark,
 	beneath,
 	open = false,
@@ -263,12 +271,17 @@ export function StatusLine({
 	id,
 	labelAs
 }) {
-	/* the word is only in the description while it is on the screen: a line that moved it on to the
-	   mark draws no `-word` element, and an `aria-describedby` still naming one points at nothing. */
-	const describedBy = id
-		? [wordOnMark ? '' : `${id}-word`, note ? `${id}-note` : ''].filter(Boolean).join(' ')
-		: '';
+	/* `-word` is the word beside the label, or the mark's box where the word is the mark's name. */
+	const describedBy = id ? [`${id}-word`, note ? `${id}-note` : ''].filter(Boolean).join(' ') : '';
+	const wordId = id && wordOnMark ? `${id}-word` : undefined;
 	const Label = labelAs;
+	/* react writes `open` only when the prop changes, and a line opened by a press never changed
+	   it — so a line that locks while open is shut here, or it stays open and refuses the press that
+	   would shut it. */
+	const fold = useRef(/** @type {HTMLDetailsElement | null} */ (null));
+	useLayoutEffect(() => {
+		if (locked && fold.current) fold.current.open = false;
+	}, [locked]);
 	/* how many steps the line was handed, which is what the two rules below turn on — and what lets
 	   them be stated here rather than at every screen that draws a run. */
 	const stepCount = stepsIn(steps);
@@ -346,12 +359,23 @@ export function StatusLine({
 		return (
 			<li>
 				<details
-					className={`adm-status adm-status--${tone} adm-status--section${dim ? ' adm-status--dim' : ''}`}
-					open={open}
-					onToggle={(event) => onToggle?.(event.currentTarget.open)}
+					ref={fold}
+					className={`adm-status adm-status--${tone} adm-status--section${dim || locked ? ' adm-status--dim' : ''}`}
+					open={locked ? false : open}
+					onToggle={locked ? undefined : (event) => onToggle?.(event.currentTarget.open)}
 				>
-					<summary>
-						<div className="adm-status__mark">{glyph}</div>
+					{/* a browser opens a summary from the keyboard by firing the click a pointer would,
+					    so cancelling that one click refuses both. it is cancelled on the way down:
+					    happy-dom toggles the element as the click bubbles through it, before react's
+					    bubbling listener at the root has heard it. the summary stays in the tab order —
+					    a step skipped by focus is a step a reader is never told is there. */}
+					<summary
+						aria-disabled={locked || undefined}
+						onClickCapture={locked ? (event) => event.preventDefault() : undefined}
+					>
+						<div className="adm-status__mark" id={wordId}>
+							{glyph}
+						</div>
 						{body}
 						<span className="adm-status__caret">
 							<Mark name="chevron-right" />
@@ -365,7 +389,9 @@ export function StatusLine({
 	return (
 		<li>
 			<div className={`adm-status adm-status--${tone}${dim ? ' adm-status--dim' : ''}`}>
-				<div className="adm-status__mark">{glyph}</div>
+				<div className="adm-status__mark" id={wordId}>
+					{glyph}
+				</div>
 				{body}
 				{stepCount > 1 ? (
 					/* the role is stated for the reason `StatusLedger` states its own: the reset takes

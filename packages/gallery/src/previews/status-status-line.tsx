@@ -1,5 +1,6 @@
 import { AnchoredPanel } from '@better-giving/operator/behaviour/AnchoredPanel';
 import { CodeSlab } from '@better-giving/operator/components/data/CodeSlab';
+import { Section } from '@better-giving/operator/components/shell/Layout';
 import {
 	StatusLedger,
 	StatusLine,
@@ -50,7 +51,9 @@ import {
  * the shut and the open specimen are there — a collapsible is worth nothing shut — and the open one
  * is the only place `.adm-status__panel` and the turned caret are drawn. `open` here is the
  * `details` element's initial state and nothing controls it afterwards, so pressing one of these is
- * how the reveal itself is seen.
+ * how the reveal itself is seen. every body is a `Section`, which is what a real fold hands the
+ * panel, so the panel's inset and the section's own are seen standing together. the last line is
+ * `locked`: drawn as a dim line, shut, and a press on it opens nothing.
  *
  * the fourth ledger is the state no screen in this repository draws. a line whose label states its
  * own state in words — `Registering your hostnames` while that is happening, `Your hostnames are
@@ -270,10 +273,12 @@ export default function StatusStatusLinePreview() {
 					tone="blocker"
 					note="No Stripe secret key is set, so nothing can be charged."
 					beneath={
-						<p>
-							Set the key with a command in the repository and deploy. It is never a row in the
-							database.
-						</p>
+						<Section>
+							<p>
+								Set the key with a command in the repository and deploy. It is never a row in the
+								database.
+							</p>
+						</Section>
 					}
 				/>
 				<StatusLine
@@ -284,13 +289,13 @@ export default function StatusStatusLinePreview() {
 					open
 					note="The sender address has not been verified with your mail provider."
 					beneath={
-						<>
+						<Section>
 							<p>
 								Receipts go out over SMTP. Verify the address with whoever carries your mail, then
 								send yourself a test.
 							</p>
 							<CodeSlab label="sender" copyable content="receipts@riverside-shelter.org" />
-						</>
+						</Section>
 					}
 				/>
 				<StatusLine
@@ -298,7 +303,23 @@ export default function StatusStatusLinePreview() {
 					label="Bot protection"
 					word="Off"
 					open
-					beneath={<p>A section whose line has no sentence over it.</p>}
+					beneath={
+						<Section>
+							<p>A section whose line has no sentence over it.</p>
+						</Section>
+					}
+				/>
+				<StatusLine
+					labelAs="h3"
+					label="Choose the accounts"
+					word="Waiting"
+					tone="attention"
+					locked
+					beneath={
+						<Section>
+							<p>Which QuickBooks accounts gifts are posted to.</p>
+						</Section>
+					}
 				/>
 			</StatusLedger>
 

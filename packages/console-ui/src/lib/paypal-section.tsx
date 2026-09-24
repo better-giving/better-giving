@@ -55,7 +55,7 @@ import {
 import { REACHED_PAYPAL, pressStopped } from './press-stopped';
 import type { ConfiguredPayments } from './processor-payments';
 import { STANDING, configuredStanding, hoistSharedNote } from './processor-payments';
-import { keysTrouble, noAnswer, valuesGuard } from './processor-screen';
+import { keysTrouble, noAnswer } from './processor-screen';
 import { recurringBlock } from './recurring-block';
 import { accountsSaid, recurringReading } from './recurring-rows';
 import { useReseeded } from './reseed';
@@ -229,8 +229,8 @@ export function PaypalSection({
 	busy,
 	pending
 }: PaypalSectionProps): ReactNode {
-	const guard = valuesGuard(values.vars, { workerName, accountName });
-	if (guard !== null || values.vars.kind !== 'read') return guard;
+	// never drawn: the sections layout stands a gate in this page's place (../lib/cloudflare-gate.ts).
+	if (values.vars.kind !== 'read') return null;
 	const held = heldValues(values.vars.vars);
 	const trouble = keysTrouble({ workerName, accountName });
 	/* the same wait over both boundaries: what an operator is waiting on is one account's readings,

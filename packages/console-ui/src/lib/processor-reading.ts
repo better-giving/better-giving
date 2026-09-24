@@ -1,6 +1,5 @@
-import { redirect } from 'react-router';
 import { readPayments, readRecurring } from '../api/client';
-import { readConsole } from './console-reading';
+import { notReady, readConsole } from './console-reading';
 
 // what every processor page is read off (the `_sections.payments.*` routes, through
 // ./processor-cache.ts): the console's reading, which the sections layout above them reads too and
@@ -9,20 +8,20 @@ import { readConsole } from './console-reading';
 // that is always null.
 //
 // **a processor page exists only on the ready face.** every section under it is drawn over a
-// deployment whose address was read and whose session answers, so any other face is `/`, which is
-// where that face is drawn and where its way out is. the reading is awaited, so a redirect is decided
-// before anything renders.
+// deployment whose address was read and whose session answers, so any other face is the gate the
+// layout draws or `/` (`notReady` in ./console-reading.ts). the reading is awaited, so which is
+// decided before anything renders.
 //
 // **the setup run is read after that decision and never before it.** a run that landed is consumed
-// by the reading that observed it (../api/client.ts), so a read on a face that redirects is a report
+// by the reading that observed it (../api/client.ts), so a read on a face that is not ready is a report
 // thrown away with nothing on screen to give it.
 //
 // no bar is held here: whether this reading stands behind one is ./processor-cache.ts's to say, since
 // a reading taken ahead of a press on the rail stands behind none.
 
 export async function readProcessorScreen<Run>(request: Request, readRun: () => Promise<Run>) {
-	const { reading } = await readConsole(request);
-	if (reading.face.kind !== 'ready') throw redirect('/', 307);
+	const read = await readConsole(request);
+	if (read.reading.face.kind !== 'ready') notReady(read);
 
 	// promises and not values, which is what lets the keys draw before the deployment is asked: both
 	// go through its console surface, and the boxes are drawn out of what cloudflare said.

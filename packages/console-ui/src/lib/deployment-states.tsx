@@ -1,11 +1,14 @@
+import { Button } from '@better-giving/operator/components/controls/Button';
 import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
-import { Link } from 'react-router';
-import { Refusal, Said } from './said';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useRevalidator } from 'react-router';
 import type { NoReport } from '../api/types';
+import type { CloudflareGate } from './cloudflare-gate';
+import { Refusal, Said } from './said';
 import { readableRefusal, unreadAnswer } from './unread-answer';
 
 // the five ways a deployment does not answer, drawn the same on every screen that asks it something.
@@ -146,5 +149,78 @@ export function ConsoleStopped(): ReactNode {
 			This page can't reach the console any more. Run <InlineCode>better-giving start</InlineCode>{' '}
 			again. It opens a fresh page.
 		</Banner>
+	);
+}
+
+/* the path a gate's read-again was pressed on, until the page it stands in for draws or the gate
+   draws again. held outside react because the gate and that page are never mounted together. */
+let retriedOn: string | null = null;
+
+/**
+ * whether the page drawn at `pathname` is what a read-again pressed on its gate brought back, so
+ * the reader standing on the press that went is sent to it. asking spends the answer.
+ */
+export function drawnAfterGate(pathname: string): boolean {
+	const drawn = retriedOn === pathname;
+	retriedOn = null;
+	return drawn;
+}
+
+/**
+ * the panel a page stands behind when cloudflare would not say what this deployment holds: the
+ * heading, at most one sentence, and the read again where one can change anything
+ * (./cloudflare-gate.ts decides which and says why).
+ *
+ * the press re-reads the page it stands on, so an answer that lands draws that page and not `/`.
+ * it holds while the read is out, because a second press over a read in flight asks nothing new.
+ * a read that lands back on a gate redraws the same words, so the region beside the press says the
+ * heading again: emptied on the press and filled when the read settles, it changes every time.
+ */
+export function CloudflareGateFace({ gate }: { gate: CloudflareGate }): ReactNode {
+	const revalidator = useRevalidator();
+	const { pathname } = useLocation();
+	const reading = revalidator.state !== 'idle';
+	const pressed = useRef(false);
+	const [said, setSaid] = useState<string | null>(null);
+	useEffect(() => {
+		if (reading || !pressed.current) return;
+		pressed.current = false;
+		retriedOn = null;
+		setSaid(gate.title);
+	}, [reading, gate.title]);
+	return (
+		<div className="adm-panel">
+			<h1>{gate.title}</h1>
+			{gate.sentence === null ? null : (
+				<p className="adm-prose">
+					{gate.sentence.map((part) =>
+						typeof part === 'string' ? part : <InlineCode key={part.code}>{part.code}</InlineCode>
+					)}
+				</p>
+			)}
+			{gate.retry ? (
+				<div className="adm-actions">
+					<Button
+						type="button"
+						variant="primary"
+						aria-busy={reading || undefined}
+						onClick={() => {
+							if (reading) return;
+							pressed.current = true;
+							retriedOn = pathname;
+							setSaid(null);
+							void revalidator.revalidate();
+						}}
+					>
+						Try again
+					</Button>
+				</div>
+			) : null}
+			{/* mounted whatever the gate, since a region arriving with its text is announced by nobody;
+			    `.adm-vh` keeps it out of the panel's flow. */}
+			<span className="adm-vh" aria-live="polite">
+				{said}
+			</span>
+		</div>
 	);
 }

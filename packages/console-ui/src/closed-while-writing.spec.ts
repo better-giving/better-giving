@@ -44,13 +44,15 @@ import { describe, expect, it } from 'vitest';
 // what is read off each of them is two things:
 //
 // - **it states a reading of its own press.** `SaveButton` states `state`, out of which it composes
-//   the label, the live region and the closed rung; a hand-drawn press states `disabled`. a press
-//   stating neither is one nothing on the screen can ever close.
+//   the label, the live region and the closed rung, and closes on `disabled` beside it; a
+//   hand-drawn press states `aria-disabled` and turns the press away itself, as the shared button
+//   does, since a natively closed press drops the focus standing on it. a press stating neither is
+//   one nothing on the screen can ever close.
 // - **a press that says it is busy is closed on the same reading it says it with.** `aria-busy`
-//   announces that a press is in flight, so a tag stating it out of one value and `disabled` out of
-//   another is a control telling an operator it is working while taking a second press. the two
-//   attributes are compared by the identifiers their expressions read rather than by their text,
-//   because the closing condition is ordinarily one of several terms in `disabled`.
+//   announces that a press is in flight, so a tag stating it out of one value and its closing
+//   attribute out of another is a control telling an operator it is working while taking a second
+//   press. the two attributes are compared by the identifiers their expressions read rather than
+//   by their text, because the closing condition is ordinarily one of several terms in it.
 //
 // **the same two presses carry a third rule, which is how each of them says the write landed.** an
 // outcome reports at the control that carried it, so both of these draw a confirmation in place —
@@ -291,7 +293,7 @@ type Pressed = {
 	readonly reads: boolean;
 	/** whether it announces itself busy, which is the half of the rule the hole was in. */
 	readonly announcesBusy: boolean;
-	/** what `aria-busy` reads that `disabled` does not, which is a press open while it says it is busy. */
+	/** what `aria-busy` reads that the closing attribute does not: a press open while busy. */
 	readonly openWhileBusy: string[];
 	/** whether it is drawn by hand, which is the one that answers for its own region. */
 	readonly handDrawn: boolean;
@@ -313,14 +315,13 @@ function drawnPresses(files: readonly string[]): Pressed[] {
 		.filter(isPress)
 		.map((tag) => {
 			const busy = attribute(tag.node, 'aria-busy');
-			const closed = new Set(reads(attribute(tag.node, 'disabled')));
 			const handDrawn = tag.name !== PRESS;
+			const closing = attribute(tag.node, handDrawn ? 'aria-disabled' : 'disabled');
+			const closed = new Set(reads(closing));
 			const own = element(tag);
 			return {
 				where: tag.where,
-				reads:
-					attribute(tag.node, 'disabled') !== undefined ||
-					attribute(tag.node, 'state') !== undefined,
+				reads: closing !== undefined || attribute(tag.node, 'state') !== undefined,
 				announcesBusy: busy !== undefined,
 				openWhileBusy: reads(busy).filter((name) => !closed.has(name)),
 				handDrawn,

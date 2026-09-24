@@ -13,12 +13,18 @@ import { BusyDots } from './Button.jsx';
  * @property {SaveButtonState | undefined} [state]
  * @property {ReactNode} [label]
  * @property {ReactNode} [doneLabel]
+ * @property {string | undefined} [elsewhere] the sentence said after the confirmation about the
+ *   rest of the page. the default is true of a save that changes nothing but its own group; a save
+ *   that shuts its step and opens the next says so here, or the reader is told something false in
+ *   exactly the case they cannot see. `''` claims nothing either way, for a save whose effect on the
+ *   rest of the page its caller cannot say. it is taken as the confirmation begins and kept while
+ *   it stands.
  *
- * two of a caller's own arrive as the platform's attributes rather than as props of this button's,
- * and each is taken in rather than replaced: `className` is added to the class list this button
- * composes, and `disabled` closes the press alongside whatever the state already says about it — a
- * fold closing every control on it while a run is going must not re-open the press on a group that
- * has nothing to save.
+ * three of a caller's own arrive as the platform's attributes rather than as props of this
+ * button's, and each is taken in rather than replaced: `className` is added to the class list this
+ * button composes, `disabled` closes the press alongside whatever the state already says about it —
+ * a fold closing every control on it while a run is going must not re-open the press on a group
+ * that has nothing to save — and `onClick` is called only for a press the button lets through.
  *
  * @typedef {SaveButtonOwnProps & ComponentProps<'button'>} SaveButtonProps
  */
@@ -34,15 +40,30 @@ export function SaveButton({
 	state = 'idle',
 	label = 'Save',
 	doneLabel = 'Saved',
+	elsewhere = 'Nothing else on this page changed.',
 	className,
 	disabled,
+	onClick,
 	...rest
 }) {
 	const busy = state === 'pending';
+	const closed = state === 'disabled' || state === 'done' || busy || Boolean(disabled);
 
-	// whether the region below is holding the confirmation. a flag rather than the words, because
-	// the words are `doneLabel` and a caller spells that however its group needs.
+	// whether the region below is holding the confirmation, which it takes a task after the state
+	// turns (the effect below).
 	const [saying, setSaying] = useState(false);
+
+	// what the region says, taken on the render the confirmation begins and kept while it stands: a
+	// region rewritten under a standing confirmation is announced again, and a caller whose page is
+	// still settling would have the first announcement contradicted by the second.
+	const [said, setSaid] = useState(
+		/** @type {{ state: SaveButtonState, words: { doneLabel: ReactNode, elsewhere: string } | null }} */ ({
+			state,
+			words: state === 'done' ? { doneLabel, elsewhere } : null
+		})
+	);
+	if (said.state !== state)
+		setSaid({ state, words: state === 'done' ? { doneLabel, elsewhere } : null });
 
 	// the region is emptied on the run the state changes and written a task later, never written
 	// straight over. a group saved twice reports the same words both times, and a region handed
@@ -90,6 +111,9 @@ export function SaveButton({
 					.filter(Boolean)
 					.join(' ')}
 				type="submit"
+				// before the three this button answers for itself, so a caller's own spelling of any of
+				// them cannot re-open a press the state has closed.
+				{...rest}
 				// the press is closed while its own write is in flight as well as for the two conditions
 				// beside it: a press left open under `aria-busy` is one operator intent and two writes,
 				// because the second press starts a second navigation while the first is still going. it
@@ -101,9 +125,21 @@ export function SaveButton({
 				// together and the rung that picks the tick over the closed word decides the label alone
 				// (packages/operator/src/save-state.ts). a press on it posts a form with no change in it
 				// and answers the operator with a second tick over the same values.
-				disabled={state === 'disabled' || state === 'done' || busy || disabled || undefined}
+				//
+				// closed by `aria-disabled` and a press turned away here, never by `disabled`: a natively
+				// closed control cannot hold focus, so the caret would drop to the document on the press
+				// and the tick would land on a button nobody is standing on. cancelling the click cancels
+				// the submission it would make, Enter in a box of the form included — implicit
+				// submission is a click on this button.
+				aria-disabled={closed || undefined}
 				aria-busy={busy || undefined}
-				{...rest}
+				onClick={(event) => {
+					if (closed) {
+						event.preventDefault();
+						return;
+					}
+					onClick?.(event);
+				}}
 			>
 				{/* the resting label stands in this span in every state, and under a press it is what
 				    the dots stand over: swapped for a word of its own, a button reporting a write
@@ -139,7 +175,11 @@ export function SaveButton({
 			    `.adm-vh` from ../../styles/base.css: out of the flow, so it is not an item in the
 			    row of actions the button is standing in. */}
 			<span className="adm-vh" aria-live="polite">
-				{saying ? <>{doneLabel}. Nothing else on this page changed.</> : null}
+				{saying && said.words !== null ? (
+					<>
+						{said.words.doneLabel}.{said.words.elsewhere === '' ? null : ` ${said.words.elsewhere}`}
+					</>
+				) : null}
 			</span>
 		</>
 	);

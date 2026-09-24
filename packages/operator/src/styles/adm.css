@@ -443,11 +443,11 @@
 	   a save press that is not on that rank: packages/console-ui/src/lib/smtp-fold.tsx draws one by
 	   hand as a bare `.adm-btn` wearing `.adm-save`, and the band is what makes it read as the same
 	   control as ../components/controls/SaveButton.jsx's. that button reaches
-	   `.adm-btn--primary[aria-busy='true']:disabled` above on its own, which carries these same
+	   `.adm-btn--primary[aria-busy='true'][aria-disabled='true']` above on its own, which carries these same
 	   three values by carrying the same rank's rung.
 
 	   the cursor is this rule's alone and reaches both: it is under the pointer only and never for a
-	   keyboard, and a closed press would otherwise take `.adm-btn:disabled`'s.
+	   keyboard, and a closed press would otherwise take the closed rung's.
 
 	   the dots are neither rule's — the button carries `aria-busy` while it is writing, so
 	   `.adm-btn[aria-busy='true']` above draws them and closes the label underneath. */
@@ -470,9 +470,9 @@
 	   `.adm-btn:focus-visible` on specificity and stands later, so the hugging ring every unfilled
 	   rank takes is reached from here or not at all.
 
-	   no keyboard reaches this pair on a screen: a button reporting a save is closed
-	   (../components/controls/SaveButton.jsx), and a closed control takes no focus. what draws it
-	   is the pinned half, which is how the gallery stands a state nothing can tab to
+	   a keyboard reaches this pair on every save: the press that saved is closed by `aria-disabled`
+	   and keeps the focus through its confirmation (../components/controls/SaveButton.jsx). the
+	   pinned half is how the gallery stands it
 	   (packages/gallery/src/previews/controls-save-button.tsx). */
 	.adm-save.is-done:focus-visible,
 	.adm-save.is-done.is-focus {
@@ -760,6 +760,15 @@
 		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
 	}
 
+	/* the offset above centres a box one mark tall on the label's first line, so the box has to be
+	   the mark. left inline, as ./base.css sets every mark, the glyph stands on a line box of its
+	   own — the line plus the face's descender, taller than the label's line — and the offset lands
+	   on top of that, so a line with no sentence stands taller than the label beside it. the caret
+	   below is placed by the same arithmetic and takes the same rule. */
+	:is(.adm-status__mark, .adm-status__caret) > .adm-mark {
+		display: block;
+	}
+
 	.adm-status__body {
 		grid-column: 2;
 		min-inline-size: 0;
@@ -782,6 +791,10 @@
 	.adm-status__label {
 		font-family: var(--admin-font-sans);
 		font-size: var(--admin-body-size);
+		/* the head's leading, which the mark and the caret are centred on. a label ranked `h2`
+		   would otherwise take the section leading ../styles/base.css gives that rank and sit high
+		   in its own row. */
+		line-height: inherit;
 		font-weight: var(--admin-label-weight);
 		color: var(--admin-ink);
 	}
@@ -1446,6 +1459,13 @@
 		display: none;
 	}
 
+	/* a section whose step cannot be taken yet refuses the press
+	   (packages/operator/src/components/status/StatusLine.jsx, `locked`), so nothing under the
+	   pointer offers one: no hand, and no caret moving on hover below. */
+	.adm-status--section > summary[aria-disabled='true'] {
+		cursor: default;
+	}
+
 	/* the caret stands at the trailing edge and not in the mark gutter: the gutter is the tone's,
 	   and two marks at one edge is a reader working out which of them the press is on. it aligns
 	   to the first line of the label the way the tone mark does, off that line's own box, so a
@@ -1471,8 +1491,8 @@
 	/* hover moves the caret and nothing else. the label is a heading and the status word carries
 	   the tone, and a summary that recoloured either under a pointer would report a state change
 	   on a press that only folds. */
-	.adm-status--section > summary:hover .adm-status__caret,
-	.adm-status--section > summary.is-hover .adm-status__caret {
+	.adm-status--section > summary:not([aria-disabled='true']):hover .adm-status__caret,
+	.adm-status--section > summary:not([aria-disabled='true']).is-hover .adm-status__caret {
 		color: var(--admin-ink);
 	}
 
@@ -1576,6 +1596,18 @@
 	   sibling for the rule above to key on — and the heading then sits the container's gap under the
 	   block before it, closer than two lines of that block's ledger sit to each other. */
 	* + form > .adm-named:first-child {
+		margin-block-start: var(--admin-space-8);
+	}
+
+	/* the break between two blocks where neither carries a heading — a press standing on its own
+	   under what it acts on, a form under the block before it. it is `.adm-named`'s boundary and
+	   none of that class's grid: `.adm-named` is a heading and what it names, so a block with one
+	   child wearing it for the step alone reads as a named block with the name missing, and its gap
+	   contests whatever gap the block's own class already sets. this is the step and nothing else,
+	   so it sits on the block's own element beside whatever class lays it out. keyed on a preceding
+	   sibling for the same reason the boundary above is: first in its parent, there is nothing to
+	   break from. */
+	* + .adm-break {
 		margin-block-start: var(--admin-space-8);
 	}
 
@@ -3209,10 +3241,11 @@
 	   is wider than the step a field spends between its own parts: a label reads as belonging to
 	   the box under it only while the step down to that box is visibly shorter than the step down
 	   to the next field's label, and one token for both leaves every label floating between two
-	   boxes. the narrower is under the legend and only where a sentence follows it — the two are
-	   one head and stand as close as a label does to its own box. what the head names stands off at
-	   the group's own step and needs no third: the legend is set a rank above a label below, so
-	   nothing is asked of the space to say which of the two is the name of the other. */
+	   boxes. the narrower is under the legend, whatever follows it: the legend is the group's
+	   heading and stands as close to what it names as a label does to its own box, and a legend
+	   stood off at the group's own step reads as one more item of the run rather than the name over
+	   it. a sentence under the legend takes the same close step, because the two are one head, and
+	   what follows that sentence stands off at the group's step again. */
 	/* the column's floor is zero: an implicit track sizes to its widest item's min-content, so one
 	   unbroken word inside — a search echoed back — would widen the group, and the page, past the
 	   viewport. that same floor is the fieldset's own min-content, so its user-agent
@@ -3226,7 +3259,7 @@
 		margin-block-start: var(--admin-space-5);
 	}
 
-	.adm-fieldset > .adm-fieldset__legend + .adm-hint {
+	.adm-fieldset > .adm-fieldset__legend + * {
 		margin-block-start: var(--admin-space-3);
 	}
 
@@ -4762,6 +4795,14 @@
 		max-inline-size: var(--admin-measure-column);
 		border-radius: var(--admin-radius);
 		box-shadow: var(--admin-elevation-flat);
+	}
+
+	/* the body a dialog is described by. it is one element so `aria-describedby` has one thing to
+	   point at, and it spaces its own blocks as the card spaces its rows, so a body of two blocks
+	   reads as it did before it was gathered. */
+	.adm-dialog__body {
+		display: grid;
+		gap: var(--admin-space-5);
 	}
 
 	/* centred on the cross axis, as `.adm-actions` in this sheet is and for the same reason —

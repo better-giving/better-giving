@@ -1,11 +1,13 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { AppShell, PanelRoute } from '@better-giving/operator/components/shell/AppShell';
+import { BareShell } from '@better-giving/operator/components/shell/BareShell';
 import { Brand } from '@better-giving/operator/components/status/Brand';
 import { Column, Stack } from '@better-giving/operator/components/shell/Layout';
 import { holdBar } from '@better-giving/operator/progress-bar';
 import type { CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { Link, Outlet, redirect, useLocation, useSearchParams } from 'react-router';
+import { Link, Outlet, useLocation, useSearchParams } from 'react-router';
 import chariotLogo from '../assets/processors/chariot.png';
 import nowpaymentsLogo from '../assets/processors/nowpayments.png';
 import paypalLogo from '../assets/processors/paypal.png';
@@ -15,10 +17,10 @@ import zapierLogo from '../assets/integrations/zapier.png';
 import github from '../assets/social/github.webp';
 import { CloseConfirm, useClosed } from '../lib/close-confirm';
 import { railGroups } from '../lib/console-pages';
-import { readConsole } from '../lib/console-reading';
-import { ConsoleStopped } from '../lib/deployment-states';
+import { gatedBy, gatedPage, notReady, readConsole } from '../lib/console-reading';
+import { CloudflareGateFace, ConsoleStopped, drawnAfterGate } from '../lib/deployment-states';
 import { CLOSE_PARAM, consoleRereads } from '../lib/dialog-params';
-import { HeadNotes, machineNoted } from '../lib/head-strip';
+import { ConsoleHead, HeadNotes, machineNoted } from '../lib/head-strip';
 import { PRODUCT_NAME, ProductFoot, SOURCE_URL, productLine } from '../lib/product-foot';
 import { RailLabelsProvider, RouterLink } from '../lib/router-link';
 import { TITLE } from './_index';
@@ -33,9 +35,10 @@ import type { Route } from './+types/_sections';
 // twice. `/` draws what stands before a deployment is ready, and sends a ready one here
 // (./_index.tsx).
 //
-// **nothing here is read unless the deployment is ready.** any other face is `/`'s, which is where
-// that face is drawn and where its way out is, so the loader sends every other face there before
-// anything under it renders.
+// **nothing here is read unless the deployment is ready.** where cloudflare would not say what the
+// deployment holds, the page stands behind a gate drawn in place of the whole shell, rail and all
+// (the error boundary below); any other face is `/`'s, which is where that face is drawn and where
+// its way out is, so the loader sends it there before anything under it renders.
 //
 // **the account is the rail's foot, with the press that ends this console beside it.** it is the one
 // thing true on every page, and the record naming the account is written at the terminal and left
@@ -65,7 +68,11 @@ import type { Route } from './+types/_sections';
 export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 	const bar = holdBar(new URL(request.url).pathname);
 	const read = await readConsole(request);
-	if (read.reading.face.kind !== 'ready') throw redirect('/', 307);
+	if (read.reading.face.kind !== 'ready') {
+		// a gate is drawn where this page was, so its bar is finished; a redirect's navigation takes it.
+		if (gatedPage(read) !== null) await bar.finish();
+		notReady(read);
+	}
 	await bar.finish();
 	return { ...read, address: read.reading.face.address };
 }
@@ -78,6 +85,12 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 	const { pathname } = useLocation();
 	const [params] = useSearchParams();
 	const closed = useClosed();
+	/* a read-again pressed on the gate this page stood behind took the press with the gate, so the
+	   reader goes to the page's heading. keyed on the page drawing. */
+	const title = useRef<HTMLHeadingElement>(null);
+	useEffect(() => {
+		if (drawnAfterGate(pathname)) title.current?.focus();
+	}, [pathname]);
 	if (closed) return null;
 
 	const { reading } = loaderData;
@@ -167,7 +180,12 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 				wayOut={closeControl}
 				foot={foot}
 			>
-				{here === undefined ? null : <h1 className="adm-vh">{here.label}</h1>}
+				{here === undefined ? null : (
+					// `-1` so a read-again that lands can send the reader here; never tabbed.
+					<h1 className="adm-vh" ref={title} tabIndex={-1}>
+						{here.label}
+					</h1>
+				)}
 				<Stack>
 					{/* the lines about this machine stand in the page's column, a step above the page. */}
 					{machineNoted(loaderData) ? (
@@ -189,15 +207,62 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 	);
 }
 
-// the one way a page learns the console has stopped: a request it cannot reach the local process
-// with at all. drawn as the panel a route outside the shell is, because there is no reading to draw
-// a shell from — the same words wherever it is met (../lib/deployment-states.tsx). the foot stands
-// with no release in it: a boundary has no loader, so nothing here read what this binary is.
-export function ErrorBoundary() {
+/**
+ * a page standing behind a gate, or the console stopped.
+ *
+ * **the gate is the page's whole screen**: the head keeps the account and the close press, which
+ * are true whatever cloudflare said, and the rail goes, since every destination on it is read over
+ * the answer that did not land (../lib/cloudflare-gate.ts).
+ *
+ * the console stopped is the one other thing a page meets here: a request it cannot reach the local
+ * process with at all. drawn as the panel a route outside the shell is, because there is no reading
+ * to draw a shell from — the same words wherever it is met (../lib/deployment-states.tsx). the foot
+ * stands with no release in it, because nothing here read what this binary is.
+ */
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	/* the confirm opens from state here rather than off `?close` as it does over a page: the layout
+	   threw, so it holds no reading, and the router re-runs a loader with nothing kept whatever
+	   `shouldRevalidate` says — a navigation to open the confirm would ask cloudflare again first. */
+	const [closing, setClosing] = useState(false);
+	const closed = useClosed();
+	const gated = gatedBy(error);
+	if (closed) return null;
+	if (gated === null) {
+		return (
+			<PanelRoute foot={<ProductFoot version="" />}>
+				<title>{TITLE}</title>
+				<ConsoleStopped />
+			</PanelRoute>
+		);
+	}
 	return (
-		<PanelRoute foot={<ProductFoot version="" />}>
-			<title>{TITLE}</title>
-			<ConsoleStopped />
-		</PanelRoute>
+		<>
+			<BareShell
+				head={
+					<ConsoleHead
+						account={gated.account}
+						accountId={gated.accountId}
+						control={
+							<Button
+								type="button"
+								onClick={() => setClosing(true)}
+								variant="soft"
+								size="sm"
+								mark="unplug"
+								aria-label="Close console"
+							/>
+						}
+						remembered={gated.remembered}
+						notKept={gated.notKept}
+					/>
+				}
+				foot={<ProductFoot version={gated.version} />}
+				centred
+			>
+				<title>{TITLE}</title>
+				<CloudflareGateFace gate={gated.gate} />
+			</BareShell>
+			{closing ? <CloseConfirm back={() => setClosing(false)} /> : null}
+		</>
 	);
 }

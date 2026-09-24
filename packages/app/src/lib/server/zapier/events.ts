@@ -44,7 +44,7 @@ export type SettledGift = { readonly paymentId: string; readonly contactId: stri
  * the `new_gift` and `new_donor` rows for one settled payment, for splicing into the caller's
  * single `batch()`:
  *
- *   await db.batch([...writes, ...outboxStatements(db, gate, [charge, fee]), ...zapierStatements(db, gift)]);
+ *   await db.batch([...writes, ...outboxStatements(db, [charge, fee]), ...zapierStatements(db, gift)]);
  *
  * **after the statement that inserts the payment**, where the caller inserts one: every row points
  * at it through `zapier_delivery.payment_id`, a foreign key D1 checks per statement.

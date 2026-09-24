@@ -1,64 +1,16 @@
 import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
-import { Section } from '@better-giving/operator/components/shell/Layout';
 import type { ReactNode } from 'react';
-import type { AddressRead, DeployedValues, NoReport, ValuesRefusal } from '../api/types';
+import type { AddressRead, NoReport, ValuesRefusal } from '../api/types';
 import { Refusal, Said } from './said';
 import { secretTrouble } from './secret-trouble';
 import { readableRefusal, unreadAnswer } from './unread-answer';
 
 // what both processor screens say in the same words (./stripe-section.tsx, ./paypal-section.tsx):
-// a values read that did not land, a deployment that answered no report, and a refused write of
-// their keys. one module, so the two screens cannot come to word one state two ways.
+// a deployment that answered no report, and a refused write of their keys. one module, so the two
+// screens cannot come to word one state two ways.
 
 type Scope = { workerName: string; accountName: string };
-
-/**
- * what a processor screen draws in place of itself where the values read did not land, or `null`
- * where it did.
- *
- * no box where the read did not land: a press is decided against that read and goes through the
- * same sign-in, so a read that was refused is a press that would be.
- */
-export function valuesGuard(
-	read: DeployedValues['vars'],
-	{ workerName, accountName }: Scope
-): ReactNode | null {
-	if (read.kind === 'read') return null;
-	if (read.kind === 'not-deployed') {
-		// this screen is drawn over a deployment that answered a moment ago, so the Worker went between
-		// that reading and this one. the way out is the page read again, which draws the state it is
-		// actually in rather than boxes over something that is not there.
-		return (
-			<Section>
-				<p className="adm-prose">
-					No Worker called {workerName} is in {accountName} any more, so there is nothing holding
-					these. Reload this page.
-				</p>
-			</Section>
-		);
-	}
-	return (
-		<Section>
-			<p className="adm-prose">
-				{read.kind === 'refused' ? (
-					`Cloudflare won't tell this sign-in what ${accountName} is holding.`
-				) : read.kind === 'no-credential' ? (
-					<>
-						This machine isn&rsquo;t signed in to Cloudflare any more, so nothing here could be
-						read. Close the console and run <InlineCode>better-giving start</InlineCode> again to
-						sign in.
-					</>
-				) : read.kind === 'unreachable' ? (
-					"Cloudflare didn't answer, so nothing was found out either way."
-				) : (
-					"Cloudflare answered in a way this console couldn't read."
-				)}
-			</p>
-			<Said answer={read} />
-		</Section>
-	);
-}
 
 /**
  * a read or a press the deployment answered no report to.

@@ -94,10 +94,16 @@ describe('the retry press', () => {
 		expect(await retryFailedEntries(db)).toBe(1);
 
 		const [row] = await db
-			.select({ status: quickbooksSync.status, notifiedAt: quickbooksSync.notifiedAt })
+			.select({
+				status: quickbooksSync.status,
+				notifiedAt: quickbooksSync.notifiedAt,
+				attempts: quickbooksSync.attempts
+			})
 			.from(quickbooksSync)
 			.where(eq(quickbooksSync.entryGroupId, given));
-		expect(row).toEqual({ status: 'pending', notifiedAt: null });
+		// the count stays: it is what makes the next send look before it posts, and what keeps a
+		// start-date move from dropping a gift that may already be in the books.
+		expect(row).toEqual({ status: 'pending', notifiedAt: null, attempts: 3 });
 	});
 
 	it('leaves a gift that was already sent alone', async () => {
