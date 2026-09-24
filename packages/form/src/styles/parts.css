@@ -444,6 +444,18 @@ textarea[part~='field'] {
 }
 
 /*
+ * forced colours drop a gradient to `none` and keep a transparent ground transparent, so the forced
+ * edge would run through the name. the mode has one ground either side of the line, so one solid
+ * fill of it is the whole notch. resting, the words stand over the box's own forced `Canvas`, so the
+ * fill draws nothing there.
+ */
+@media (forced-colors: active) {
+	.floating > [part~='label'] > .label-words {
+		background-color: Canvas;
+	}
+}
+
+/*
  * resting, and every length in it is logical: the inline seat is the label's own padding, so a
  * right-to-left document needs no companion rule to undo a physical axis — which is where this
  * parts from the switch's thumb (`.fee-decision [part~='checkbox']:checked + .switch-thumb` below).

@@ -1,7 +1,9 @@
+// the provider's augmentation is what types `cdp()`'s `send`.
+/// <reference types="@vitest/browser-playwright" />
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // the provider's own handle on the test page, aliased: this file's `page` writes css into the host
 // document and is the one a reader here is looking for.
-import { page as browser, userEvent } from 'vitest/browser';
+import { page as browser, cdp, userEvent } from 'vitest/browser';
 import { createCoinPicker } from '../coin-picker';
 import { NETWORK_TINTS } from '../coins';
 import { createDepositBlock, type DepositView } from '../deposit';
@@ -999,6 +1001,35 @@ describe('the labels on the pair under the name', () => {
 			expect(after, `${state}: room after the name`).toBeGreaterThanOrEqual(DEVICE_PIXEL);
 			expect(before, `${state}: the two ends`).toBeCloseTo(after, 0);
 		});
+	});
+
+	// forced colours drop every `background-image` that is not a url, so the two-fill band is gone and
+	// the forced edge would run through the name. the mode has one ground on both sides of the line,
+	// so a single solid one is the whole notch there. read in every state the edge takes, because the
+	// focused box's edge is an outline in this mode rather than the ring.
+	it('keeps the notch where the system forces its own colours, in every state the edge takes', async () => {
+		const session = cdp();
+		await session.send('Emulation.setEmulatedMedia', {
+			features: [{ name: 'forced-colors', value: 'active' }]
+		});
+		try {
+			expect(matchMedia('(forced-colors: active)').matches, 'the mode is on').toBe(true);
+			await throughEveryEdge((state, box, words) => {
+				const drawn = getComputedStyle(box);
+				const top = box.getBoundingClientRect().top;
+				const outside = parseFloat(drawn.outlineWidth) + parseFloat(drawn.outlineOffset);
+				const inside = parseFloat(drawn.borderTopWidth);
+				const ground = getComputedStyle(words).backgroundColor;
+				const span = words.getBoundingClientRect();
+
+				expect(ground, `${state}: a ground at all`).not.toBe('rgba(0, 0, 0, 0)');
+				expect(ground, `${state}: a solid one`).not.toMatch(/rgba\(/);
+				expect(span.top, `${state}: above the outline`).toBeLessThanOrEqual(top - outside);
+				expect(span.bottom, `${state}: below the border`).toBeGreaterThanOrEqual(top + inside);
+			});
+		} finally {
+			await session.send('Emulation.setEmulatedMedia', { features: [] });
+		}
 	});
 
 	// the box keeps one height through both states and reserves nothing for either, so a donor
