@@ -1477,6 +1477,18 @@ describe('the coin list inside the crypto option', () => {
 		expect(shown(root.querySelector('#coin-problem'))).toBe(false);
 	});
 
+	// the status stands outside the list so it is in the tree while the list is closed, and takes no
+	// room on the card there.
+	it('keeps the no-match status off the page while it stands beside the closed list', async () => {
+		const root = drawn(false);
+		const status = root.querySelector('[role="status"]') as HTMLElement;
+		const row = root.querySelector('.field-row') as HTMLElement;
+		const box = root.querySelector('.picker') as HTMLElement;
+
+		expect(status.getBoundingClientRect().width).toBeLessThanOrEqual(1);
+		expect(row.getBoundingClientRect().bottom).toBe(box.getBoundingClientRect().bottom);
+	});
+
 	// the seat every refusal on the card takes (`a refusal under its box` below), though the closed
 	// list stands between the box and the sentence here.
 	it('says a refusal close under its box, at the step every refusal takes', async () => {
@@ -1497,6 +1509,7 @@ describe('the coin list inside the crypto option', () => {
 		const [btc, sol] = [...root.querySelectorAll('[role="option"]')];
 
 		expect(shown(root.querySelector('.coin-list'))).toBe(true);
+		expect(shown(root.querySelector('.no-match'))).toBe(false);
 		expect(shown(btc?.querySelector('.tick') ?? null)).toBe(true);
 		expect(shown(sol?.querySelector('.tick') ?? null)).toBe(false);
 		expect(shown(btc?.querySelector('.message') ?? null)).toBe(false);

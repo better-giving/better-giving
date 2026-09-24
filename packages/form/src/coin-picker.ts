@@ -199,23 +199,28 @@ export function createCoinPicker(doc: Document): CoinPicker {
 	]);
 
 	// the rows, and the sentence standing where they would when a search finds none: either is the
-	// open list's surface. the sentence is a status that stays in the tree with its words emptied,
-	// because a live region shown at the moment it speaks is not read out. it stands beside the
-	// listbox rather than in it — a listbox owns options and groups only, and `.coin-list[data-empty]`
-	// takes the listbox off screen at the moment the sentence speaks — so a press on it is kept from
-	// counting as one outside the list (`onPointerDownOutside` below).
+	// open list's surface. the sentence stands beside the listbox rather than in it — a listbox owns
+	// options and groups only, and `.coin-list[data-empty]` takes the listbox off screen while the
+	// sentence shows — so a press on it is kept from counting as one outside the list
+	// (`onPointerDownOutside` below). it is drawn only, and `status` says the same words: a popover
+	// that is not showing takes what is inside it out of the tree, and the keystroke that opens the
+	// list can be the one that finds nothing, so a status in the list would get its words in the same
+	// render it enters the tree, which is not read out.
 	const content = node(doc, 'div', 'coin-list');
 	content.setAttribute('part', part('select-list'));
 	const noMatch = node(doc, 'p', 'no-match');
 	noMatch.setAttribute('part', part('select-list'));
-	noMatch.setAttribute('role', 'status');
+	noMatch.setAttribute('aria-hidden', 'true');
+	noMatch.hidden = true;
 	const list = node(doc, 'div', '', [content, noMatch]);
 	list.setAttribute('popover', 'manual');
+	const status = node(doc, 'p', 'vh');
+	status.setAttribute('role', 'status');
 	const message = node(doc, 'p', 'message');
 	message.id = 'coin-problem';
 	message.hidden = true;
 
-	root.appendChild(node(doc, 'div', 'field-row', [label, box, list, message]));
+	root.appendChild(node(doc, 'div', 'field-row', [label, box, list, message, status]));
 
 	let current: CoinChoice | null = null;
 	let invalid = false;
@@ -347,7 +352,9 @@ export function createCoinPicker(doc: Document): CoinPicker {
 		}
 		// written only on a change: a live region rewritten with the same words may say them again.
 		const said = api.open && collection.size === 0 ? NO_MATCH : '';
-		if (noMatch.textContent !== said) noMatch.textContent = said;
+		if (status.textContent !== said) status.textContent = said;
+		noMatch.textContent = said;
+		noMatch.hidden = said === '';
 
 		const picked = choice.options.find((option) => option.value === choice.value);
 		input.placeholder = api.open ? SEARCH : picked === undefined ? CHOOSE : '';
