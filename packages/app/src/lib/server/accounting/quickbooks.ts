@@ -399,13 +399,13 @@ export function createQuickbooksProvider(
 	async function create(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
 		entity: 'customer' | 'deposit' | 'journalentry',
-		key: string,
+		keyed: Keyed,
 		json: unknown
 	): Promise<Answer | AccountingFailure> {
 		return answerFor(
 			auth,
 			`/v3/company/${auth.connection.companyId}/${entity}`,
-			{ requestid: await requestIdFor(key, json) },
+			{ requestid: await requestIdFor(keyed, json) },
 			{ json }
 		);
 	}
@@ -512,11 +512,11 @@ export function createQuickbooksProvider(
 	 */
 	async function customerNamed(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
-		key: string,
+		keyed: Keyed,
 		displayName: string,
 		email: string | null
 	): Promise<AccountingResult<string | null>> {
-		const answer = await create(auth, 'customer', key, {
+		const answer = await create(auth, 'customer', keyed, {
 			DisplayName: displayName,
 			...(email === null ? {} : { PrimaryEmailAddr: { Address: email } })
 		});
@@ -545,7 +545,7 @@ export function createQuickbooksProvider(
 	 */
 	async function customerFor(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
-		key: string,
+		keyed: Keyed,
 		donor: Donor
 	): Promise<AccountingResult<string>> {
 		const displayName = quickbooksDisplayName(donor.displayName);
@@ -560,7 +560,7 @@ export function createQuickbooksProvider(
 		if (!byName.ok) return byName;
 		if (byName.value !== null) return { ok: true, value: byName.value };
 
-		const created = await customerNamed(auth, key, displayName, donor.email);
+		const created = await customerNamed(auth, keyed, displayName, donor.email);
 		if (!created.ok) return created;
 		if (created.value !== null) return { ok: true, value: created.value };
 
@@ -569,7 +569,7 @@ export function createQuickbooksProvider(
 		if (!byOwnName.ok) return byOwnName;
 		if (byOwnName.value !== null) return { ok: true, value: byOwnName.value };
 
-		const own = await customerNamed(auth, key, ownName, donor.email);
+		const own = await customerNamed(auth, keyed, ownName, donor.email);
 		if (!own.ok) return own;
 		return own.value === null
 			? failed(
@@ -675,8 +675,10 @@ export function createQuickbooksProvider(
 		 */
 		async sendGift(
 			gift: GiftRecord,
-			attempt: SendAttempt
+			attempt: SendAttempt,
+			revision: string
 		): Promise<AccountingResult<RemoteRecord>> {
+			const keyed: Keyed = { key: gift.key, revision };
 			const auth = await authorized();
 			if (!auth.ok) return auth;
 			const accounts = chosenAccounts(auth.value.connection);
@@ -690,7 +692,7 @@ export function createQuickbooksProvider(
 			if (!posted.ok) return posted;
 			if (posted.value !== null) return { ok: true, value: { remoteId: posted.value } };
 
-			const customerId = await customerFor(auth.value, gift.key, gift.donor);
+			const customerId = await customerFor(auth.value, keyed, gift.donor);
 			if (!customerId.ok) return customerId;
 
 			const lines: unknown[] = [
@@ -717,7 +719,7 @@ export function createQuickbooksProvider(
 
 			return createdRecord(
 				answered(
-					await create(auth.value, 'deposit', gift.key, {
+					await create(auth.value, 'deposit', keyed, {
 						TxnDate: txnDate,
 						CurrencyRef: { value: currency.value },
 						PrivateNote: privateNote(gift.key, gift.memo),
@@ -738,8 +740,10 @@ export function createQuickbooksProvider(
 		 */
 		async sendCorrection(
 			correction: CorrectionRecord,
-			attempt: SendAttempt
+			attempt: SendAttempt,
+			revision: string
 		): Promise<AccountingResult<RemoteRecord>> {
+			const keyed: Keyed = { key: correction.key, revision };
 			const auth = await authorized();
 			if (!auth.ok) return auth;
 			const accounts = chosenAccounts(auth.value.connection);
@@ -772,7 +776,7 @@ export function createQuickbooksProvider(
 
 			return createdRecord(
 				answered(
-					await create(auth.value, 'journalentry', correction.key, {
+					await create(auth.value, 'journalentry', keyed, {
 						TxnDate: txnDate,
 						CurrencyRef: { value: currency.value },
 						PrivateNote: privateNote(correction.key, correction.memo),
@@ -923,24 +927,30 @@ function answered(answer: Answer | AccountingFailure): AccountingResult<unknown>
 	return classify(answer);
 }
 
+/** the record a create is for, and the queue row's revision as the send's claim read it. */
+type Keyed = { readonly key: string; readonly revision: string };
+
 /**
- * the request id a create is posted under: the entry group's key, then a digest of what is sent.
+ * the request id a create is posted under: the entry group's key, then a digest of the queue row's
+ * revision and what is sent.
  *
  * the key alone would be one id per gift, and Intuit replays the first answer to an id whatever it
- * was and for a period it does not publish — so a gift refused over an account, and retried once
- * somebody picked another, would be refused again by the replay. the digest moves with the
- * request, so an unchanged request repeats its id and a changed one is asked afresh. 36 + 1 + 12
- * fits the 50 characters Intuit allows outside a batch.
+ * was and for a period it does not publish — so a gift refused, and retried once somebody fixed the
+ * cause, would be refused again by the replay. the body moves the id when the fix was here (another
+ * account picked); the revision moves it when the fix was inside QuickBooks (books reopened, an
+ * account made active), because every refusal recorded on the row moves it. a call that never
+ * answered and a run that died write nothing, so their retry repeats the id and Intuit answers it
+ * with the record it made. 36 + 1 + 12 fits the 50 characters Intuit allows outside a batch.
  */
-async function requestIdFor(key: string, json: unknown): Promise<string> {
+async function requestIdFor(keyed: Keyed, json: unknown): Promise<string> {
 	const digest = await crypto.subtle.digest(
 		'SHA-256',
-		new TextEncoder().encode(JSON.stringify(json))
+		new TextEncoder().encode(`${keyed.revision}\n${JSON.stringify(json)}`)
 	);
 	const hex = Array.from(new Uint8Array(digest).slice(0, 6), (byte) =>
 		byte.toString(16).padStart(2, '0')
 	).join('');
-	return `${key}-${hex}`;
+	return `${keyed.key}-${hex}`;
 }
 
 /** what marks a record as this app's, and which entry group it is. */

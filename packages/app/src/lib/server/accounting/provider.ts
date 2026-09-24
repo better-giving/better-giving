@@ -342,13 +342,25 @@ export interface AccountingProvider {
 	 */
 	listAccounts(): Promise<AccountingResult<readonly LedgerAccount[]>>;
 
-	/** one gift into the company's books, keyed on {@link GiftRecord.key} so a retry lands once. */
-	sendGift(gift: GiftRecord, attempt: SendAttempt): Promise<AccountingResult<RemoteRecord>>;
+	/**
+	 * one gift into the company's books, keyed on {@link GiftRecord.key} so a retry lands once.
+	 *
+	 * `revision` is the queue row's `updated_at` as the send's claim read it: it holds across a call
+	 * that never answered and a run that died, and moves once a refusal is recorded on the row, so
+	 * an adapter can repeat a request exactly where the last one may have landed and ask afresh
+	 * where it was answered.
+	 */
+	sendGift(
+		gift: GiftRecord,
+		attempt: SendAttempt,
+		revision: string
+	): Promise<AccountingResult<RemoteRecord>>;
 
 	/** one correcting entry into the company's books, keyed the same way. */
 	sendCorrection(
 		correction: CorrectionRecord,
-		attempt: SendAttempt
+		attempt: SendAttempt,
+		revision: string
 	): Promise<AccountingResult<RemoteRecord>>;
 
 	/**

@@ -61,11 +61,12 @@ export async function readQuickbooksBacklog(db: Db): Promise<QuickbooksBacklog> 
  * already reported — and the next failure behind it, on rows an operator has just asked to be tried
  * again, would go out to nobody.
  *
- * `attempts` is left where it is: it is a diagnostic rather than a countdown (./deliver.ts), and
- * what it says is how many times this gift has been tried, which a retry does not undo. the backoff
+ * `attempts` is left where it is. above zero it says a send may have reached QuickBooks, so the
+ * next one looks before it posts and a start-date move never drops the row (./deliver.ts,
+ * ./outbox.ts) — zeroing it here would post a gift already in the books a second time. the backoff
  * it feeds is measured from `updated_at`, which this write moves — so the first attempt after a
- * retry waits out one rung rather than going at once, and a hundred rows released together do not
- * all call Intuit in the same second.
+ * retry waits out one rung rather than going at once, a hundred rows released together do not all
+ * call Intuit in the same second, and that send is posted under a fresh request id (./quickbooks.ts).
  */
 export async function retryFailedEntries(db: Db): Promise<number> {
 	const retried = await db

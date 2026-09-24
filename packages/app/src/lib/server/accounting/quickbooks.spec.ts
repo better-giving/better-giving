@@ -449,6 +449,9 @@ const GIFT = {
 	feeMinor: 320
 };
 
+/** the queue row's `updated_at` as a claim read it, which is what the delivery hands every send. */
+const REVISION = '1790000000000';
+
 /** a company's currency posture, as Intuit's Preferences carry it. */
 function keeping(homeCurrency: string, over: { multicurrency: boolean }) {
 	return {
@@ -512,7 +515,7 @@ describe('sending a gift', () => {
 		);
 		const provider = createQuickbooksProvider(CREDENTIALS, store());
 
-		const result = await provider.sendGift(GIFT, 'first');
+		const result = await provider.sendGift(GIFT, 'first', REVISION);
 
 		expect(result).toEqual({ ok: true, value: { remoteId: '987' } });
 		const post = calls.find((call) => call.url.pathname.endsWith('/deposit'));
@@ -550,7 +553,7 @@ describe('sending a gift', () => {
 		);
 		const provider = createQuickbooksProvider(CREDENTIALS, store());
 
-		await provider.sendGift({ ...GIFT, feeMinor: 0 }, 'first');
+		await provider.sendGift({ ...GIFT, feeMinor: 0 }, 'first', REVISION);
 
 		const post = calls.find((call) => call.url.pathname.endsWith('/deposit'));
 		expect(JSON.parse(post?.body ?? '{}').Line).toHaveLength(1);
@@ -560,7 +563,11 @@ describe('sending a gift', () => {
 		const calls = servingCompany();
 		const provider = createQuickbooksProvider(CREDENTIALS, store());
 
-		await provider.sendGift({ ...GIFT, currency: 'GBP', incomeMinor: 4_500, feeMinor: 0 }, 'first');
+		await provider.sendGift(
+			{ ...GIFT, currency: 'GBP', incomeMinor: 4_500, feeMinor: 0 },
+			'first',
+			REVISION
+		);
 
 		const post = calls.find((call) => call.url.pathname.endsWith('/deposit'));
 		expect(JSON.parse(post?.body ?? '{}')).toMatchObject({
@@ -577,7 +584,7 @@ describe('sending a gift', () => {
 		);
 		const provider = createQuickbooksProvider(CREDENTIALS, store());
 
-		const result = await provider.sendGift({ ...GIFT, currency: 'GBP' }, 'first');
+		const result = await provider.sendGift({ ...GIFT, currency: 'GBP' }, 'first', REVISION);
 
 		// a company with multicurrency off holds one currency, and a GBP figure posted into USD
 		// books is a wrong amount nothing downstream reads as wrong.
@@ -591,8 +598,12 @@ describe('sending a gift', () => {
 		const calls = servingCompany();
 		const provider = createQuickbooksProvider(CREDENTIALS, store());
 
-		await provider.sendGift(GIFT, 'first');
-		await provider.sendGift({ ...GIFT, key: '019fb0b4-ec6c-7fbb-aa36-000000000002' }, 'first');
+		await provider.sendGift(GIFT, 'first', REVISION);
+		await provider.sendGift(
+			{ ...GIFT, key: '019fb0b4-ec6c-7fbb-aa36-000000000002' },
+			'first',
+			REVISION
+		);
 
 		// a read is what Intuit meters this app on, and a delivery run sends a batch through one
 		// provider.
@@ -608,7 +619,7 @@ describe('sending a gift', () => {
 			store({ incomeAccountId: null, feeAccountId: null })
 		);
 
-		const result = await provider.sendGift(GIFT, 'first');
+		const result = await provider.sendGift(GIFT, 'first', REVISION);
 
 		expect(result).toMatchObject({ ok: false, reason: 'accounts_not_chosen', retryable: false });
 		expect(result).toMatchObject({ detail: expect.stringContaining('income') });
@@ -625,7 +636,7 @@ describe('matching the donor', () => {
 		);
 		const provider = createQuickbooksProvider(CREDENTIALS, store());
 
-		await provider.sendGift(GIFT, 'first');
+		await provider.sendGift(GIFT, 'first', REVISION);
 
 		expect(calls.map(asked).filter((query) => query.startsWith('select * from Customer'))).toEqual([
 			"select * from Customer where PrimaryEmailAddr = 'ada@example.org' and Active = true"
@@ -642,7 +653,8 @@ describe('matching the donor', () => {
 
 		await provider.sendGift(
 			{ ...GIFT, donor: { displayName: "Bridget O'Hara", email: null } },
-			'first'
+			'first',
+			REVISION
 		);
 
 		// the apostrophe is escaped with a backslash, which is what Intuit's query language takes;
@@ -656,7 +668,7 @@ describe('matching the donor', () => {
 		const calls = servingCompany();
 		const provider = createQuickbooksProvider(CREDENTIALS, store());
 
-		await provider.sendGift(GIFT, 'first');
+		await provider.sendGift(GIFT, 'first', REVISION);
 
 		const created = calls.find((call) => call.url.pathname.endsWith('/customer'));
 		expect(JSON.parse(created?.body ?? '{}')).toEqual({
@@ -699,7 +711,8 @@ describe('matching the donor', () => {
 
 		const result = await provider.sendGift(
 			{ ...GIFT, donor: { displayName: 'Ada Lovelace', email: null } },
-			'first'
+			'first',
+			REVISION
 		);
 
 		// a display name is unique across every customer, vendor and employee a company holds, so a
@@ -729,7 +742,8 @@ describe('matching the donor', () => {
 
 		const result = await provider.sendGift(
 			{ ...GIFT, donor: { displayName: 'Ada Lovelace', email: null } },
-			'first'
+			'first',
+			REVISION
 		);
 
 		expect(result).toMatchObject({ ok: true });
@@ -740,7 +754,7 @@ describe('matching the donor', () => {
 		const calls = servingCompany();
 		const provider = createQuickbooksProvider(CREDENTIALS, store());
 
-		await provider.sendGift(GIFT, 'first');
+		await provider.sendGift(GIFT, 'first', REVISION);
 
 		expect(calls.length).toBeGreaterThan(0);
 		for (const call of calls) {
@@ -758,7 +772,8 @@ describe('matching the donor', () => {
 		// the same name the create would write or every repeat gift mints another customer.
 		await provider.sendGift(
 			{ ...GIFT, donor: { displayName: 'Acme: Widgets\tLtd', email: null } },
-			'first'
+			'first',
+			REVISION
 		);
 
 		expect(calls.map(asked).filter((query) => query.startsWith('select * from Customer'))).toEqual([
@@ -781,7 +796,7 @@ describe('a post that already landed', () => {
 		const calls = servingCompany();
 		const provider = createQuickbooksProvider(CREDENTIALS, store());
 
-		await provider.sendGift(GIFT, 'first');
+		await provider.sendGift(GIFT, 'first', REVISION);
 
 		// the queue counts an attempt as it claims a row, so a first attempt is a row nothing has
 		// ever sent and the scan below — every deposit the company took that day, page by page,
@@ -810,7 +825,7 @@ describe('a post that already landed', () => {
 		);
 		const provider = createQuickbooksProvider(CREDENTIALS, store());
 
-		const result = await provider.sendGift(GIFT, 'again');
+		const result = await provider.sendGift(GIFT, 'again', REVISION);
 
 		expect(result).toEqual({ ok: true, value: { remoteId: '987' } });
 		expect(calls.some(isCreate)).toBe(false);
@@ -818,9 +833,9 @@ describe('a post that already landed', () => {
 
 	it('is posted under the same request id on every send, so Intuit answers a repeat with the first record', async () => {
 		const first = servingCompany();
-		await createQuickbooksProvider(CREDENTIALS, store()).sendGift(GIFT, 'first');
+		await createQuickbooksProvider(CREDENTIALS, store()).sendGift(GIFT, 'first', REVISION);
 		const again = servingCompany();
-		await createQuickbooksProvider(CREDENTIALS, store()).sendGift(GIFT, 'again');
+		await createQuickbooksProvider(CREDENTIALS, store()).sendGift(GIFT, 'again', REVISION);
 
 		expect(requestId(first)).toMatch(new RegExp(`^${GIFT.key}-`));
 		expect(requestId(first)?.length).toBeLessThanOrEqual(50);
@@ -829,20 +844,33 @@ describe('a post that already landed', () => {
 
 	it('is posted under a new request id once what it sends has changed, so a refusal is not replayed', async () => {
 		const refused = servingCompany();
-		await createQuickbooksProvider(CREDENTIALS, store()).sendGift(GIFT, 'first');
+		await createQuickbooksProvider(CREDENTIALS, store()).sendGift(GIFT, 'first', REVISION);
 		const repicked = servingCompany();
 		await createQuickbooksProvider(CREDENTIALS, store({ depositAccountId: '36' })).sendGift(
 			GIFT,
-			'again'
+			'again',
+			REVISION
 		);
 
 		expect(requestId(repicked)).toMatch(new RegExp(`^${GIFT.key}-`));
 		expect(requestId(repicked)).not.toBe(requestId(refused));
 	});
 
+	it('is posted under a new request id once the queue row has been answered since', async () => {
+		const refused = servingCompany();
+		await createQuickbooksProvider(CREDENTIALS, store()).sendGift(GIFT, 'first', REVISION);
+		const retried = servingCompany();
+		// the refusal was written to the row, which moved it; what the operator fixed was inside
+		// QuickBooks, so the body is the same byte for byte.
+		await createQuickbooksProvider(CREDENTIALS, store()).sendGift(GIFT, 'again', '1790000060000');
+
+		expect(requestId(retried)).toMatch(new RegExp(`^${GIFT.key}-`));
+		expect(requestId(retried)).not.toBe(requestId(refused));
+	});
+
 	it('gives the donor it creates and the record it posts a request id each', async () => {
 		const calls = servingCompany();
-		await createQuickbooksProvider(CREDENTIALS, store()).sendGift(GIFT, 'first');
+		await createQuickbooksProvider(CREDENTIALS, store()).sendGift(GIFT, 'first', REVISION);
 
 		const ids = calls.filter(isCreate).map((call) => call.url.searchParams.get('requestid'));
 		expect(calls.filter(isCreate).map((call) => call.url.pathname.split('/').at(-1))).toEqual([
@@ -885,7 +913,11 @@ describe('what a refusal costs the queued entry', () => {
 		);
 		const provider = createQuickbooksProvider(CREDENTIALS, store());
 
-		expect(await provider.sendGift(GIFT, 'first')).toMatchObject({ ok: false, reason, retryable });
+		expect(await provider.sendGift(GIFT, 'first', REVISION)).toMatchObject({
+			ok: false,
+			reason,
+			retryable
+		});
 	});
 
 	it('reports a fault Intuit named, so the console can show why', async () => {
@@ -911,7 +943,7 @@ describe('what a refusal costs the queued entry', () => {
 		);
 		const provider = createQuickbooksProvider(CREDENTIALS, store());
 
-		const result = await provider.sendGift(GIFT, 'first');
+		const result = await provider.sendGift(GIFT, 'first', REVISION);
 
 		expect(result).toMatchObject({
 			detail: expect.stringContaining('Account element id 79 not found')
@@ -924,7 +956,7 @@ describe('what a refusal costs the queued entry', () => {
 		});
 		const provider = createQuickbooksProvider(CREDENTIALS, store());
 
-		expect(await provider.sendGift(GIFT, 'first')).toMatchObject({
+		expect(await provider.sendGift(GIFT, 'first', REVISION)).toMatchObject({
 			ok: false,
 			reason: 'unreachable',
 			retryable: true
@@ -948,7 +980,7 @@ describe('sending a correction', () => {
 		const calls = servingCompany();
 		const provider = createQuickbooksProvider(CREDENTIALS, store());
 
-		const result = await provider.sendCorrection(CORRECTION, 'first');
+		const result = await provider.sendCorrection(CORRECTION, 'first', REVISION);
 
 		expect(result).toEqual({ ok: true, value: { remoteId: '1200' } });
 		const post = calls.find((call) => call.url.pathname.endsWith('/journalentry'));
@@ -990,7 +1022,7 @@ describe('sending a correction', () => {
 		);
 		const provider = createQuickbooksProvider(CREDENTIALS, store());
 
-		expect(await provider.sendCorrection(CORRECTION, 'again')).toEqual({
+		expect(await provider.sendCorrection(CORRECTION, 'again', REVISION)).toEqual({
 			ok: true,
 			value: { remoteId: '1200' }
 		});
@@ -1009,7 +1041,8 @@ describe('sending a correction', () => {
 					{ role: 'income', posting: 'credit', amountMinor: 2_500 }
 				]
 			},
-			'first'
+			'first',
+			REVISION
 		);
 
 		// both of this app's accounts map to the one QuickBooks account, so the entry would move

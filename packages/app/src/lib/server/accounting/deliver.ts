@@ -239,21 +239,23 @@ function unclaimed(now: Date) {
 }
 
 /**
- * the rows an operator is told about: given up on, or waiting after a failure.
+ * the rows an operator is told about at `now`: given up on, or waiting after a failure.
  *
  * a `pending` row with no attempt behind it is a gift queued a moment ago and is nobody's problem,
- * which is what keeps an ordinary minute’s gifts out of an outage’s count. a row still carrying a
- * claim is not waiting either: the claim counted its attempt before any answer came, so it is a
- * send in flight, or one whose run died and is not yet known to have failed.
+ * which is what keeps an ordinary minute’s gifts out of an outage’s count. a row under a live claim
+ * is not waiting either: the claim counted its attempt before any answer came, so it is a send in
+ * flight. once that lease is out, the run holding it died, and the row is counted.
  */
-const FAILING = or(
-	eq(quickbooksSync.status, 'failed'),
-	and(
-		eq(quickbooksSync.status, 'pending'),
-		gt(quickbooksSync.attempts, 0),
-		isNull(quickbooksSync.leasedUntil)
-	)
-);
+function failing(now: Date) {
+	return or(
+		eq(quickbooksSync.status, 'failed'),
+		and(
+			eq(quickbooksSync.status, 'pending'),
+			gt(quickbooksSync.attempts, 0),
+			or(isNull(quickbooksSync.leasedUntil), lte(quickbooksSync.leasedUntil, now))
+		)
+	);
+}
 
 /**
  * the backlog: every row still owed to QuickBooks, whatever it has been through.
@@ -375,25 +377,28 @@ export async function sendQueuedEntry(
 			// before it posts, and a start-date move not to drop the row (./outbox.ts).
 			attempts: sql`${quickbooksSync.attempts} + 1`,
 			// held where it is, the way `stamp` below holds it: `updated_at` is what the backoff is
-			// measured from, and it moves when the answer is written.
+			// measured from, and it moves when a row-level answer is written.
 			updatedAt: sql`${quickbooksSync.updatedAt}`
 		})
 		.where(and(eq(quickbooksSync.entryGroupId, entryGroupId), unclaimed(now)))
-		.returning({ attempts: quickbooksSync.attempts });
+		.returning({ attempts: quickbooksSync.attempts, updatedAt: quickbooksSync.updatedAt });
 
 	if (claimed === undefined) return unclaimable(deps.db, entryGroupId);
 
 	const sendable = await readSendable(deps.db, entryGroupId);
-	if (!sendable.ok) return land(deps.db, entryGroupId, sendable, now);
+	if (!sendable.ok) return land(deps.db, entryGroupId, sendable, 'unsent', now);
 
 	// what the adapter spends on looking for a record it may already have posted (./quickbooks.ts):
 	// one attempt is this claim's own, so a row claimed at one is a row nothing has ever sent.
 	const attempt: SendAttempt = claimed.attempts > 1 ? 'again' : 'first';
+	// held by the claim, so it is the `updated_at` the last row-level answer or retry wrote: the same
+	// after a call that never answered, a stopped run or a run that died.
+	const revision = String(claimed.updatedAt.getTime());
 	const sent =
 		sendable.value.kind === 'gift'
-			? await deps.provider.sendGift(sendable.value.gift, attempt)
-			: await deps.provider.sendCorrection(sendable.value.correction, attempt);
-	if (!sent.ok) return land(deps.db, entryGroupId, sent, now);
+			? await deps.provider.sendGift(sendable.value.gift, attempt, revision)
+			: await deps.provider.sendCorrection(sendable.value.correction, attempt, revision);
+	if (!sent.ok) return land(deps.db, entryGroupId, sent, 'sent', now);
 
 	await deps.db
 		.update(quickbooksSync)
@@ -441,26 +446,35 @@ async function unclaimable(db: Db, entryGroupId: string): Promise<QueuedEntryRes
 	};
 }
 
-/** the refusal written where it belongs, or left alone where it is not about this row. */
+/**
+ * the refusal written where it belongs, or left alone where it is not about this row.
+ *
+ * `unsent` is a refusal from before anything was handed to the provider. a run or row landing
+ * gives the claim's attempt back for it, since nothing left for Intuit; a waiting row keeps it,
+ * because its wait is read off the count.
+ */
 async function land(
 	db: Db,
 	entryGroupId: string,
 	failure: AccountingFailure,
+	handed: 'sent' | 'unsent',
 	now: Date
 ): Promise<QueuedEntryResult> {
 	const landing = landingOf(failure.reason);
+	// the four run-level answers other than `unreachable` say nothing was made. `unreachable` keeps
+	// the attempt: a call whose answer never came may have created the record, and the count is
+	// what tells the next send to look before it posts.
+	const givenBack =
+		handed === 'unsent' || (landing === 'run' && failure.reason !== 'unreachable')
+			? { attempts: sql`${quickbooksSync.attempts} - 1` }
+			: {};
 	if (landing === 'run') {
 		// the row is left exactly as it stands, minus the claim: nothing about it is why the run
 		// stopped, and the next run has to be free to read it again.
 		await db
 			.update(quickbooksSync)
 			.set({
-				// the other four are answers that nothing was made, so the claim's attempt is given
-				// back. `unreachable` keeps it: a call whose answer never came may have created the
-				// record, and the count is what tells the next send to look before it posts.
-				...(failure.reason === 'unreachable'
-					? {}
-					: { attempts: sql`${quickbooksSync.attempts} - 1` }),
+				...givenBack,
 				leasedUntil: null,
 				updatedAt: sql`${quickbooksSync.updatedAt}`
 			})
@@ -469,11 +483,15 @@ async function land(
 	}
 
 	if (landing === 'row') {
-		// the claim's attempt stays on it: a row given up on waits for a person rather than for a
-		// clock.
 		await db
 			.update(quickbooksSync)
-			.set({ status: 'failed', lastError: failure.detail, leasedUntil: null, updatedAt: now })
+			.set({
+				...givenBack,
+				status: 'failed',
+				lastError: failure.detail,
+				leasedUntil: null,
+				updatedAt: now
+			})
 			.where(eq(quickbooksSync.entryGroupId, entryGroupId));
 		return { disposition: 'given_up', failure };
 	}
@@ -570,7 +588,7 @@ async function notifyFailing(deps: AccountingDeliveryDeps, now: Date): Promise<v
 			reported: reportedSince(now)
 		})
 		.from(quickbooksSync)
-		.where(FAILING);
+		.where(failing(now));
 
 	if (tally === undefined || tally.waiting + tally.givenUp === 0) return;
 	if (tally.reported > 0) return;
@@ -578,7 +596,7 @@ async function notifyFailing(deps: AccountingDeliveryDeps, now: Date): Promise<v
 	const [latest] = await deps.db
 		.select({ lastError: quickbooksSync.lastError })
 		.from(quickbooksSync)
-		.where(and(FAILING, isNotNull(quickbooksSync.lastError)))
+		.where(and(failing(now), isNotNull(quickbooksSync.lastError)))
 		.orderBy(desc(quickbooksSync.updatedAt))
 		.limit(1);
 
@@ -599,7 +617,7 @@ async function notifyFailing(deps: AccountingDeliveryDeps, now: Date): Promise<v
 			'up on reaches the books only when it is retried there.'
 	});
 
-	await stamp(deps.db, FAILING, now);
+	await stamp(deps.db, failing(now), now);
 }
 
 /**
