@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 // **first, and before the body is read**: a press that answers early — a refused box, a body naming
 // nothing — has still been made, and the call after the branch that returned is the one it skipped.
 //
-// **save one press that writes nothing, named below by the branch that answers it.** it reads the
+// **except one press that writes nothing, named below by the branch that answers it.** it reads the
 // body to know itself, answers from that branch alone, and the forget is the next thing after it —
 // a second way out ahead of the forget is a write answered from memory again.
 

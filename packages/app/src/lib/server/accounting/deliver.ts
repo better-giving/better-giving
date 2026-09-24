@@ -242,7 +242,7 @@ function unclaimed(now: Date) {
  * the rows an operator is told about at `now`: given up on, or waiting after a failure.
  *
  * a `pending` row with no attempt behind it is a gift queued a moment ago and is nobody's problem,
- * which is what keeps an ordinary minute’s gifts out of an outage’s count. a row under a live claim
+ * which is what keeps an ordinary minute's gifts out of an outage's count. a row under a live claim
  * is not waiting either: the claim counted its attempt before any answer came, so it is a send in
  * flight. once that lease is out, the run holding it died, and the row is counted.
  */
@@ -553,8 +553,8 @@ export async function sendDueEntries(deps: AccountingDeliveryDeps, now: Date): P
 const QUEUED_AS_SETTLED = sql`${quickbooksSync.createdAt} = ${entryGroup.createdAt}`;
 
 /**
- * what one run reads: entry groups nobody is holding whose wait is over, gifts queued as they
- * settled first and oldest queued first, then history a move queued in date order.
+ * what one run reads: entry groups nobody is holding whose wait is over. gifts queued as they
+ * settled come first, oldest queued first, then the history a move queued, in date order.
  *
  * gifts first because a move earlier can queue the whole of a deployment's history at ten a run,
  * and a gift that settles after it would otherwise wait for all of it. the sort is over every due

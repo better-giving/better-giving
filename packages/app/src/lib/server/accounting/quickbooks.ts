@@ -394,7 +394,7 @@ export function createQuickbooksProvider(
 	 * Intuit answers a request id it has already seen with the response it gave the first time and
 	 * creates nothing
 	 * (https://help.developer.intuit.com/s/article/What-is-RequestId-and-its-usage), so a post
-	 * whose reply never arrived, sent again, lands once.
+	 * whose reply never arrived, sent again while Intuit still holds the id, lands once.
 	 */
 	async function create(
 		auth: { connection: ConnectionSnapshot; accessToken: string },

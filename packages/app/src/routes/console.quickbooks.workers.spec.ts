@@ -408,8 +408,9 @@ describe('the date gifts are sent from', () => {
 		);
 	});
 
-	// each of these is a date `new Date` reads without complaint — the first three land in 2001 and
-	// the others roll into March — and a move to 2001 queues the deployment's whole history.
+	// most of these `new Date` reads without complaint: `April 1` and `1` land in 2001 and `0` in
+	// 2000, February 31 rolls into March, 24:00 into the next day, and an instant with no offset is
+	// read in the runtime's own zone. a move to 2001 queues the deployment's whole history.
 	it.each([
 		['the first of April'],
 		['April 1'],
