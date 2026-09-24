@@ -10,7 +10,7 @@ Three homes, and putting one in the wrong place is how it gets stated twice and 
 - **A rule about one file lives in that file's header comment.** That is where someone changing the thing is already looking, and it is why the headers in this repo are long on purpose. `## The map` says which file owns what.
 - **This file states the rule and names the pointer; the argument for it lives at the pointer.** What earns a line is what you could break without ever opening the file that owns it — a ban, a one-way door, a seam, a permanent contract. A reason restated here is one that drifts from the header it was copied out of.
 
-<!-- kru v0.107.0 · derived 2026-09-24 · /kru:setup to re-derive -->
+<!-- kru v0.111.0 · derived 2026-09-24 · /kru:setup to re-derive -->
 
 ## The seats
 

@@ -9,6 +9,14 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
 
+# the environment's setup script (.claude/cloud-setup.md) installs pnpm at packageManager's version
+# into /usr/local/bin, which the image puts behind its own /opt/node22/bin. the image's pnpm self-switches
+# with lifecycle scripts off, so the pinned one goes first here and in every later shell.
+export PATH="/usr/local/bin:$PATH"
+if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+  echo 'export PATH="/usr/local/bin:$PATH"' >> "$CLAUDE_ENV_FILE"
+fi
+
 cd "$CLAUDE_PROJECT_DIR"
 
 pnpm install --frozen-lockfile
