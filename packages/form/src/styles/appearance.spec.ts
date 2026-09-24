@@ -27,6 +27,7 @@ const RESOLVED: Record<string, string> = {
 	'--_border': '1px',
 	'--_focus-width': '1px',
 	'--_inset': '20px',
+	'--_lh-body': '1.5',
 	'--_sp1': '0.25em',
 	'--_sp3': '0.75em',
 	'--_t-sm': '0.875em',
@@ -46,11 +47,12 @@ const RAIL = {
 	backgroundColor: 'oklch(0.995 0.001 264)',
 	paddingTop: '12px',
 	paddingBottom: '12px',
+	lineHeight: '1.5',
 	paddingLeft: '20px',
 	paddingRight: '20px'
 };
 
-/** and off one that did not: the ground and the pads are read from tokens, so only the bare rail is left. */
+/** and off one that did not: the ground, the pads and the line are read from tokens, so only the bare rail is left. */
 const RAIL_WITHOUT_ROOM = {
 	border: 'none',
 	boxShadow: 'none',
@@ -309,10 +311,10 @@ describe('stripeAppearance', () => {
 	});
 
 	it('keeps a rail name off the top edge of its band, in a unit the frame survives', () => {
-		// the open rail is filled, so it has a top edge of its own for the name to sit against. the
-		// step is `em` and the rail is painted where the form's root does not exist, so what a
-		// smaller root has to change is the pad as well: a length sent as `0.75em` there resolves
-		// against whatever font size the provider applied.
+		// the open rail is filled, so it has a top edge of its own for the name to sit against, and
+		// the pad under the name is the same step. the step is `em` and the rail is painted where
+		// the form's root does not exist, so what a smaller root has to change is both pads as well:
+		// a length sent as `0.75em` there resolves against whatever font size the provider applied.
 		const appearance = stripeAppearance(reader({ 'font-size': '15px' }));
 
 		expect(appearance.rules['.AccordionItem']?.paddingTop).toBe('11.25px');
