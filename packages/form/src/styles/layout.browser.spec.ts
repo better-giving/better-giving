@@ -1176,15 +1176,16 @@ describe('the tribute’s first line', () => {
 		expect(marked.top).toBe(empty.top);
 	});
 
-	// the sentence spans the pair rather than stacking into the name's own third of the card, where
-	// it would run several lines deep under a box one line tall and read as the block breaking.
-	it('spans the refusal across both columns rather than into the name’s', () => {
-		const { select, name, message } = dedication(PAIRED);
+	// the sentence refuses the name, so on the paired line it stands in the name's column, under the
+	// box it is about, rather than starting under the kind beside it.
+	it('starts the refusal under the name it refuses, in the name’s own column', () => {
+		const { name, message } = dedication(PAIRED);
 		const words = message.getBoundingClientRect();
+		const box = name.getBoundingClientRect();
 
-		expect(words.left).toBe(select.getBoundingClientRect().left);
-		expect(words.right).toBe(name.getBoundingClientRect().right);
-		expect(words.top).toBeGreaterThanOrEqual(name.getBoundingClientRect().bottom);
+		expect(words.left).toBe(box.left);
+		expect(words.right).toBe(box.right);
+		expect(words.top).toBeGreaterThanOrEqual(box.bottom);
 	});
 });
 

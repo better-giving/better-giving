@@ -516,12 +516,9 @@ form {
 }
 
 /*
- * the sentence under the name spans the pair rather than sitting in the name's own column. that
- * column is a little over a third of a 375px card, and the sentence stacked into it runs six lines
- * deep under a box one line tall — which reads as the block breaking rather than as a refusal.
- *
- * `.message` and not the box it belongs to: the box shares the line where the card is wide enough
- * for it and the words never do.
+ * the sentence under the name takes the name's column: the whole row here, where the name has a line
+ * of its own, and the name's own column once the two share a line (the breakpoint at the end of this
+ * file), so it starts under the box it refuses rather than under the kind beside it.
  */
 .dedication .message {
 	grid-column: 1 / -1;
@@ -957,7 +954,8 @@ form {
 	}
 
 	/* back onto the select's line, which is the sentence the two of them are. */
-	.dedication > input {
+	.dedication > input,
+	.dedication .message {
 		grid-column: 2;
 	}
 
