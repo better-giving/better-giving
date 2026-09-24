@@ -825,10 +825,11 @@ describe('the labels on the pair under the name', () => {
 		fill(shadow, '#first-name', 'Ada');
 		await landed(label);
 
+		// the band, whose side is the rise's, starts where the arc ends; the words stand inside it.
 		const arc = corner(box);
 		expect(arc).toBeGreaterThan(0);
-		expect(ink(words).left - box.getBoundingClientRect().left).toBeGreaterThanOrEqual(arc);
-		seated(ink(words).left, box.getBoundingClientRect().left + arc);
+		expect(ink(words).left - box.getBoundingClientRect().left).toBeGreaterThan(arc);
+		seated(words.getBoundingClientRect().left, box.getBoundingClientRect().left + arc);
 	});
 
 	// standing on the edge, the label has to be painted behind or the edge reads through its words.
@@ -1058,6 +1059,23 @@ describe('the labels on the pair under the name', () => {
 		await throughEveryRise((state, box, words) => {
 			const inner = box.getBoundingClientRect().top + edgeBand(box).depth;
 			for (const foot of riseOf(words).feet) expect(foot, `${state}: a foot`).toBeCloseTo(inner, 0);
+		});
+	});
+
+	// and the name stands inside the rise rather than on it: each side is drawn at the span's own end,
+	// so words starting at that end put the first letter on the line coming down beside it — the
+	// name reads as spilling out of the edge lifted over it. the same room at both ends, so the words
+	// are centred in the rise whatever width the edge is drawn at.
+	it('keeps the name clear of the rise’s sides, in every state it floats over', async () => {
+		await throughEveryRise((state, _box, words) => {
+			const span = words.getBoundingClientRect();
+			const drawn = ink(words);
+			const [start = NaN, end = NaN] = riseOf(words).sides;
+			const before = drawn.left - (span.left + start);
+			const after = span.right - end - drawn.right;
+			expect(before, `${state}: room before the name`).toBeGreaterThan(DEVICE_PIXEL);
+			expect(after, `${state}: room after the name`).toBeGreaterThan(DEVICE_PIXEL);
+			expect(before, `${state}: the two ends`).toBeCloseTo(after, 0);
 		});
 	});
 

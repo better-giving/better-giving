@@ -356,11 +356,12 @@ textarea[part~='field'] {
  * the floated step that half stays inside the gap the group leaves over the box — at the resting
  * step it does not, which is the clearance the band is drawn at the words' own line to keep.
  *
- * floated, the words start at the corner the box is drawn with and no closer to it: words flush with
- * the box's inline start leave the arc of that corner standing outside the band as a stub beside the
- * first letter, so the inset is the box's own radius and the edge runs unbroken from the corner into
- * the band and out the other side. the other end takes the same inset, which is where a name too
- * long for its box is cut — the arc at that corner is what the band would otherwise run over.
+ * floated, the band starts at the corner the box is drawn with and no closer to it: a band flush with
+ * the box's inline start leaves the arc of that corner standing outside it as a stub beside the rise,
+ * so the inset is the box's own radius and the edge runs unbroken from the corner into the rise and
+ * out the other side. the other end takes the same inset, which is where a name too long for its box
+ * is cut — the arc at that corner is what the band would otherwise run over. the words stand inside
+ * the band, clear of the rise's sides (`.label-words` below).
  *
  * and what the band knocks out it re-states around the words, rather than leaving a hole where the
  * edge was: the edge's own colour runs along the band's top and turns back down onto the box at
@@ -483,8 +484,13 @@ textarea[part~='field'] {
 	 * raw-length-ok: the floor, for that reason.
 	 */
 	font-size: max(12px, var(--_t-xs));
-	/* what carries the knockout past the last letter. */
-	padding-inline-end: var(--_sp1);
+	/*
+	 * the room between the name and the rise's two sides, which are drawn at this span's own ends: the
+	 * same at both, so the name stands centred inside the edge lifted over it rather than on the line
+	 * coming down beside its first letter. wider than any side this card draws, so no state's rise
+	 * reaches the words.
+	 */
+	padding-inline: var(--_sp2);
 	/*
 	 * the edge's own run first, because a layer earlier in the list is painted over the ones after
 	 * it: the top of the band, then the two turns down onto the box at either end, then the
@@ -537,13 +543,14 @@ textarea[part~='field'] {
 /* standing in the value's place, and drawn there as a placeholder is: the value's reading size, at a
  * placeholder's weight. the ink is the placeholder's as well and is on the label above; these two
  * cannot follow it, because a host's one rule on the part is what sets the ink in both positions.
- * the knockout goes with the movement — resting the words stand on the box's own fill and there is
- * no edge behind them to knock out. */
+ * the knockout and the room kept inside it go with the movement — resting the words stand on the
+ * box's own fill and there is no edge behind them to knock out. */
 .floating:not(:focus-within):has(> [part~='field']:placeholder-shown)
 	> [part~='label']
 	> .label-words {
 	font-size: var(--_t-md);
 	font-weight: var(--_w-normal);
+	padding-inline: 0;
 	background-image: none;
 }
 

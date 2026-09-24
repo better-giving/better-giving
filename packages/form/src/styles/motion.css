@@ -189,7 +189,7 @@
  *
  * the rise is also the whole of what is transitioned, and the label changes four other things with
  * it: the step it is drawn at, the weight it is drawn at, the ink it is drawn in, and the inline
- * seat it is drawn from — the box's own text inset resting and the box's corner floated. none of
+ * seat it is drawn from — the box's own text inset resting and inside the rise floated. none of
  * the four is here. three of them are settled by this file's header: `font-size` and `padding` are
  * two of the properties named there as ones nothing transitions, because both reflow the box they
  * are on, and a weight reflows the words inside it. the ink reflows nothing and is out for the
