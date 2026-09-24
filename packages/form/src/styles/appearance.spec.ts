@@ -35,17 +35,21 @@ const RESOLVED: Record<string, string> = {
 	'font-size': '16px'
 };
 
-/** the rail's container off a cascade that resolved: nothing of its own, and the room around it. */
+/**
+ * the rail's container off a cascade that resolved: no edge of its own, the card's ground under it,
+ * and the room around it.
+ */
 const RAIL = {
 	border: 'none',
 	boxShadow: 'none',
 	borderRadius: '0',
+	backgroundColor: 'oklch(0.995 0.001 264)',
 	paddingTop: '12px',
 	paddingLeft: '20px',
 	paddingRight: '20px'
 };
 
-/** and off one that did not: both pads are read from tokens, so only the bare pair is left. */
+/** and off one that did not: the ground and the pads are read from tokens, so only the bare rail is left. */
 const RAIL_WITHOUT_ROOM = {
 	border: 'none',
 	boxShadow: 'none',

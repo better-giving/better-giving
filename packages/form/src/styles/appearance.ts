@@ -247,6 +247,9 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 		// control on the card does.
 		borderRadius: '0'
 	};
+	// the card's own ground, stated: the provider's flat theme paints a closed rail its own white,
+	// which stands as a seam against the rows ./rows.css draws on `--_n1` beside it.
+	put(rail, 'backgroundColor', n1);
 	put(rail, 'paddingTop', toPx(value('--_sp3'), basePx));
 	put(rail, 'paddingLeft', railPad);
 	put(rail, 'paddingRight', railPad);
