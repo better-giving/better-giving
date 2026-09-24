@@ -24,22 +24,26 @@ sandbox-quickbooks.api.intuit.com
 ```bash
 #!/bin/bash
 set -uo pipefail
+log=/tmp/setup.log; exec > >(tee -a "$log") 2>&1
+try() { for i in 1 2 3; do "$@" && return 0; sleep $((i*3)); done; echo "SETUP FAIL: $*"; return 1; }
 
 # kru store
-git clone -q https://github.com/ap-justin/kru-store ~/.kru || true
-[ -f ~/.kru/setup.sh ] && bash ~/.kru/setup.sh || true
+try git clone -q https://github.com/ap-justin/kru-store ~/.kru
+[ -f ~/.kru/setup.sh ] && bash ~/.kru/setup.sh
 
 # plugins
-claude plugin marketplace add ap-justin/kru || true
-claude plugin install kru@kru --scope user || true
-claude plugin install typescript-lsp@claude-plugins-official --scope user || true
-npm install -g typescript-language-server typescript@6 || true
+try claude plugin marketplace add ap-justin/kru
+try claude plugin install kru@kru --scope user
+try claude plugin marketplace add anthropics/claude-plugins-official
+try claude plugin install typescript-lsp@claude-plugins-official --scope user
+try npm install -g typescript-language-server typescript@6
 
 # better-giving-oss: pnpm at package.json's packageManager
-curl -fsSL https://get.pnpm.io/install.sh | env SHELL=/bin/bash PNPM_VERSION=10.19.0 sh - || true
-ln -sf "$HOME/.local/share/pnpm/pnpm" /usr/local/bin/pnpm || true
+# the session-start hook links the pinned binary onto PATH
+try sh -c 'curl -fsSL https://get.pnpm.io/install.sh | env SHELL=/bin/bash PNPM_VERSION=10.19.0 sh -'
 # chromium for packages/form's browser specs, at the playwright version packages/form pins
-npx -y playwright@1.62.1 install --with-deps chromium || true
+try npx -y playwright@1.62.1 install --with-deps chromium
 
-node --version; pnpm --version; go version
+node --version; "$HOME/.local/share/pnpm/.tools/pnpm-exe/10.19.0/pnpm" --version; go version; claude plugin list
+exit 0
 ```
