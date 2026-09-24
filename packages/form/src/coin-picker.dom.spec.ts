@@ -144,7 +144,45 @@ describe('the coin list', () => {
 
 		await typed('doge');
 		expect(listed()).toEqual([]);
-		expect((root.querySelector('.no-match') as HTMLElement).hidden).toBe(false);
+	});
+
+	it('says so in a status when a search finds no coin, and clears it when one does', async () => {
+		// the status stands whether or not it has words, because a live region added or shown at the
+		// moment it speaks is not read out.
+		const { root, typed } = mounted();
+		(root.querySelector('.picker') as HTMLElement).click();
+		await settle();
+		const status = root.querySelector('[role="status"]') as HTMLElement;
+		expect(status.hidden).toBe(false);
+		expect(status.textContent).toBe('');
+
+		await typed('doge');
+		expect(root.querySelector('[role="status"]')).toBe(status);
+		expect(status.hidden).toBe(false);
+		expect(status.textContent).toBe('No coin matches');
+
+		await typed('tron');
+		expect(root.querySelector('[role="status"]')).toBe(status);
+		expect(status.textContent).toBe('');
+	});
+
+	it('keeps the list open and the search typed when the no-match sentence is pressed', async () => {
+		const { root, input, typed } = mounted();
+		(root.querySelector('.picker') as HTMLElement).click();
+		await settle();
+		await typed('doge');
+		const status = root.querySelector('[role="status"]') as HTMLElement;
+
+		status.dispatchEvent(
+			new PointerEvent('pointerdown', { button: 0, bubbles: true, composed: true })
+		);
+		status.dispatchEvent(new MouseEvent('click', { button: 0, bubbles: true, composed: true }));
+		await settle();
+
+		expect(input.getAttribute('aria-expanded')).toBe('true');
+		expect(input.value).toBe('doge');
+		expect(status.getAttribute('tabindex')).toBeNull();
+		expect(status.getAttribute('role')).toBe('status');
 	});
 
 	it('picks with the arrow keys and Enter, keeping the caret in the box', async () => {

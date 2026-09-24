@@ -84,6 +84,9 @@ export type CoinPicker = {
 const CHOOSE = 'Choose a coin';
 const SEARCH = 'Search by symbol or name';
 
+/** what the list says when a search finds no coin. */
+const NO_MATCH = 'No coin matches';
+
 /** the sentence a refused coin carries in the list, under its own unchanged label. */
 const REFUSED = 'no longer accepted';
 
@@ -196,12 +199,16 @@ export function createCoinPicker(doc: Document): CoinPicker {
 	]);
 
 	// the rows, and the sentence standing where they would when a search finds none: either is the
-	// open list's surface.
+	// open list's surface. the sentence is a status that stays in the tree with its words emptied,
+	// because a live region shown at the moment it speaks is not read out. it stands beside the
+	// listbox rather than in it — a listbox owns options and groups only, and `.coin-list[data-empty]`
+	// takes the listbox off screen at the moment the sentence speaks — so a press on it is kept from
+	// counting as one outside the list (`onPointerDownOutside` below).
 	const content = node(doc, 'div', 'coin-list');
 	content.setAttribute('part', part('select-list'));
-	const noMatch = node(doc, 'p', 'no-match', ['No coin matches']);
+	const noMatch = node(doc, 'p', 'no-match');
 	noMatch.setAttribute('part', part('select-list'));
-	noMatch.hidden = true;
+	noMatch.setAttribute('role', 'status');
 	const list = node(doc, 'div', '', [content, noMatch]);
 	list.setAttribute('popover', 'manual');
 	const message = node(doc, 'p', 'message');
@@ -277,9 +284,11 @@ export function createCoinPicker(doc: Document): CoinPicker {
 				if (next !== undefined && next !== current?.value) current?.onChange(next);
 			},
 			// the box is the list's own control, and a press on its mark or its chevron is a press on
-			// the input rather than one outside the list.
+			// the input rather than one outside the list. the no-match sentence is the list's own
+			// surface, and a press on it keeps the list and the search.
 			onPointerDownOutside: (event: zag.PointerDownOutsideEvent) => {
-				if (event.detail.originalEvent.composedPath().includes(box)) event.preventDefault();
+				const path = event.detail.originalEvent.composedPath();
+				if (path.includes(box) || path.includes(noMatch)) event.preventDefault();
 			}
 		}));
 
@@ -334,7 +343,7 @@ export function createCoinPicker(doc: Document): CoinPicker {
 			if (there !== row) content.insertBefore(row, there);
 			at += 1;
 		}
-		noMatch.hidden = !api.open || collection.size > 0;
+		noMatch.textContent = api.open && collection.size === 0 ? NO_MATCH : '';
 
 		const picked = choice.options.find((option) => option.value === choice.value);
 		input.placeholder = api.open ? SEARCH : picked === undefined ? CHOOSE : '';
@@ -360,6 +369,9 @@ export function createCoinPicker(doc: Document): CoinPicker {
 		machine.subscribe(render);
 		machine.start();
 	};
+
+	// the caret stays in the box, as zag keeps it there on a press on the listbox.
+	noMatch.addEventListener('pointerdown', (event) => event.preventDefault());
 
 	box.addEventListener('click', (event) => {
 		if (event.target === input) return;

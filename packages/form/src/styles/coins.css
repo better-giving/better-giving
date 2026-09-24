@@ -325,6 +325,18 @@ button {
 	font-size: var(--_t-sm);
 }
 
+/*
+ * the sentence's status stands in the open list with no words while a search finds coins
+ * (../coin-picker.ts), and draws nothing there: no surface, no step. collapsed rather than hidden,
+ * because a live region out of the tree is not read out when its words arrive.
+ */
+.no-match:empty {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	box-shadow: none;
+}
+
 /* last, so an element's own `display` above never outranks the attribute that takes it off screen. */
 [hidden] {
 	display: none;
