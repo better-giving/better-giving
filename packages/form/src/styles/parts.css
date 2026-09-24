@@ -1426,6 +1426,25 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
+ * and the figure is given it back. it shares the sentence's baseline at the larger size, so it is
+ * the taller box on that line and the one the take-back lifts to the decision's lower edge — which
+ * is the switch's, the track filling the label's line.
+ *
+ * the two are held on one baseline, so the sentence drops by whatever the figure's box does: the
+ * step alone would stand it as far under the words as the rows stand apart, and the sentence is the
+ * switch's rather than a row of its own. the tight line is what keeps it short of that: the figure
+ * is one line read as a unit, and the half-leading it gives up comes off the drop the two share.
+ * what is left is the figure's box a step under the track and the sentence short of a row's gap
+ * under the words (./layout.browser.spec.ts, "stands the fee’s sentence with the switch that wrote
+ * it"). neither applies while the column is blank (the declined reading, `feeFigure` in
+ * ../views.ts), where the sentence keeps the whole take-back.
+ */
+.fee-decision:not([hidden]) ~ .figure:not(:empty) {
+	margin-block-start: var(--_sp1);
+	line-height: var(--_lh-tight);
+}
+
+/*
  * the switch, and the one control on this card drawn as a shape instead of painted by the platform.
  * confined to this selector: the two disclosures and the contact consent carry the same part name
  * and stay the platform's own box, because a tick is what a donor expects of a thing they are

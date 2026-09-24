@@ -2588,6 +2588,26 @@ describe('the sentence under the fee decision and its figure', () => {
 		expect(number.left).toBeGreaterThanOrEqual(note.getBoundingClientRect().right);
 	});
 
+	// the switch and the figure are the two entries of one column, and a ledger row stands its
+	// entries `--_sp1` apart (`.row` in ./parts.css). the figure is the taller of the two boxes on its
+	// line, so it is the one the take-back under the decision lifts, and lifted by the whole step it
+	// meets the drawn track edge to edge. read at both ends of the clamp band and at the default root.
+	it.each([['15px'], ['16px'], ['18px']])(
+		'stands the figure the row’s own gap under the switch, at a %s root',
+		async (root) => {
+			document.documentElement.style.fontSize = root;
+			const { shadow } = await mount();
+			await atReview(shadow);
+			const { figure } = fee(shadow);
+			const track = shadow.querySelector('.fee-decision [part~="checkbox"]') as HTMLElement;
+			const under = figure.getBoundingClientRect().top - track.getBoundingClientRect().bottom;
+
+			expect(under, `${under} between the switch and the figure`).toBeGreaterThanOrEqual(
+				step(shadow, '--_sp1') - DEVICE_PIXEL
+			);
+		}
+	);
+
 	// the narrow card, where the sentence is longer than the column holding it. the figure stays on
 	// the line the sentence starts on rather than following it down or being pushed off the row.
 	it('keeps the figure on the first line while the sentence wraps under it', async () => {

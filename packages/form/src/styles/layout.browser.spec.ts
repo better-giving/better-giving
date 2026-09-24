@@ -148,7 +148,7 @@ function card(width: string, rootFontSize: string, cardFontSize = '16px'): Card 
 		` font-size: ${cardFontSize}; --_root-size: ${cardFontSize}; --_sp1: 0.25em;` +
 		' --_sp2: 0.5em; --_sp3: 0.75em; --_sp4: 1em; --_sp5: 1.25em; --_border: 1px;' +
 		' --_t-xs: 0.75em; --_t-sm: 0.875em; --_t-md: 1em;' +
-		' --_lh-body: 1.5; line-height: var(--_lh-body);' +
+		' --_lh-tight: 1.25; --_lh-body: 1.5; line-height: var(--_lh-body);' +
 		' --_inset: calc(var(--_root-size) * 1.25); --_inset-wide: calc(var(--_root-size) * 1.75);' +
 		' --_row-min: 44px; --_glyph-beside: 1.15em;';
 
