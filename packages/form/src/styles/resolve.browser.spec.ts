@@ -92,6 +92,8 @@ describe('what the provider is handed', () => {
 		expect(Object.keys(appearance.rules).sort()).toEqual([
 			'.AccordionItem',
 			'.AccordionItem--selected',
+			'.AccordionItem--selected:hover',
+			'.AccordionItem:hover',
 			'.Input',
 			'.Input:focus',
 			'.Label'

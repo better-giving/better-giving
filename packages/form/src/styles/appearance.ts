@@ -75,6 +75,19 @@ export const APPEARANCE_INPUTS = [
 	'font-size'
 ] as const;
 
+/**
+ * the pads and grounds a payment row is drawn in, named once for both kinds of row: the provider's,
+ * which this module sends as `.AccordionItem` and its states, and ours, which ./rows.css draws and
+ * ../embed/rows.dom.spec.ts holds to these same names. a closed row of ours paints no ground of its
+ * own and stands on the card's, `[part~='card']` in ./parts.css, so `ground` is that one too.
+ */
+export const PAYMENT_ROW = {
+	padBlock: '--_sp3',
+	padInline: '--_inset',
+	ground: '--_n1',
+	openGround: '--_n3'
+} as const;
+
 const EM = /^(-?(?:\d+\.?\d*|\.\d+))em$/;
 const PX = /^(-?(?:\d+\.?\d*|\.\d+))px$/;
 
@@ -238,7 +251,7 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	// the inset is stated off the clamped root rather than in `em` (./tokens.css), so it crosses the
 	// frame boundary already absolute and takes no conversion; the top and bottom pads are a spacing
 	// step and `em`, so they take the same conversion every other one here does.
-	const railPad = value('--_inset');
+	const railPad = value(PAYMENT_ROW.padInline);
 	const rail: Record<string, string> = {
 		border: 'none',
 		boxShadow: 'none',
@@ -252,8 +265,9 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	};
 	// the card's own ground, stated: the provider's flat theme paints a closed rail its own white,
 	// which stands as a seam against the rows ./rows.css draws on `--_n1` beside it.
-	put(rail, 'backgroundColor', n1);
-	const railStep = toPx(value('--_sp3'), basePx);
+	const ground = value(PAYMENT_ROW.ground);
+	put(rail, 'backgroundColor', ground);
+	const railStep = toPx(value(PAYMENT_ROW.padBlock), basePx);
 	put(rail, 'paddingTop', railStep);
 	put(rail, 'paddingBottom', railStep);
 	put(rail, 'paddingLeft', railPad);
@@ -268,8 +282,18 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	// frame. `--_n3` is the ramp's faint fill — the first step above the card's own ground that is
 	// visible as a wash — and other things on this card already rest on it; it is the ladder's step
 	// for this, not a meaning taken from one of them.
+	const openGround = value(PAYMENT_ROW.openGround);
 	const railSelected: Record<string, string> = {};
-	put(railSelected, 'backgroundColor', value('--_n3'));
+	put(railSelected, 'backgroundColor', openGround);
+
+	// a pointer over one of our rows draws nothing (./rows.css has no `:hover`), so each rail is sent
+	// the ground it rests on under the pointer too, leaving the theme no hover ground of its own to
+	// draw. the open one is stated as well: the plain `:hover` rule would otherwise reach it and drop
+	// its fill to the closed rails' ground while the pointer is over it.
+	const railHover: Record<string, string> = {};
+	put(railHover, 'backgroundColor', ground);
+	const railSelectedHover: Record<string, string> = {};
+	put(railSelectedHover, 'backgroundColor', openGround);
 
 	// the same ring the rest of the form draws on a focused control, so moving from an email field
 	// into the card field does not change what focus looks like — which means a rung of the ladder
@@ -295,6 +319,8 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 		['.Input', frame],
 		['.AccordionItem', rail],
 		['.AccordionItem--selected', railSelected],
+		['.AccordionItem:hover', railHover],
+		['.AccordionItem--selected:hover', railSelectedHover],
 		['.Input:focus', inputFocus],
 		['.Label', label]
 	] as const) {

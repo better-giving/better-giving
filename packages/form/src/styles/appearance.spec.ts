@@ -117,6 +117,10 @@ describe('stripeAppearance', () => {
 			// the open rail carries the ramp's faint fill, so which method is expanded is legible
 			// from the band rather than only from what is under it.
 			'.AccordionItem--selected': { backgroundColor: 'oklch(0.965 0.001 264)' },
+			// and a pointer over a rail moves neither, because a pointer over one of our rows moves
+			// nothing (./rows.css draws no `:hover`).
+			'.AccordionItem:hover': { backgroundColor: 'oklch(0.995 0.001 264)' },
+			'.AccordionItem--selected:hover': { backgroundColor: 'oklch(0.965 0.001 264)' },
 			// the ring is the accent's, not the primary's: a ring is a line rather than a fill, and
 			// the same swap is made on every focused control the form draws itself.
 			'.Input:focus': { boxShadow: '0 0 0 1px oklch(0.27 0.002 264)' },
@@ -296,6 +300,19 @@ describe('stripeAppearance', () => {
 
 		expect(appearance.rules['.AccordionItem--selected']).toEqual({
 			backgroundColor: 'oklch(0.965 0.001 264)'
+		});
+	});
+
+	// our rows draw nothing under the pointer, so a rail is sent its resting ground there; the open rail keeps its fill under the pointer as well, or hovering the open method
+	// would drop it back to the ground of a closed one.
+	it('holds every rail at its resting ground under the pointer', () => {
+		const appearance = stripeAppearance(reader());
+
+		expect(appearance.rules['.AccordionItem:hover']).toEqual({
+			backgroundColor: RESOLVED['--_n1']
+		});
+		expect(appearance.rules['.AccordionItem--selected:hover']).toEqual({
+			backgroundColor: RESOLVED['--_n3']
 		});
 	});
 

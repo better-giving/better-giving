@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { stripeAppearance, type TokenReader } from '../styles/appearance';
+import { PAYMENT_ROW, stripeAppearance, type TokenReader } from '../styles/appearance';
+import partStyles from '../styles/parts.css?inline';
 import tokenStyles from '../styles/tokens.css?inline';
 import { createRows } from './rows';
 
@@ -107,15 +108,47 @@ describe('the payment rows drawn beside the provider’s frame', () => {
 		expect(drawn).toEqual([]);
 	});
 
-	// the seam every control on the card stands on, paid by both kinds of row out of the same token:
-	// ours in the sheet above, the provider's in the appearance object it is sent.
+	// the pads and grounds both kinds of row are drawn in, read by ours off the sheet and by the
+	// provider's off the appearance object, and each held to `PAYMENT_ROW` in ../styles/appearance.ts.
 	it('pays the rail’s own padding on both sides of the frame', () => {
 		const head = styleRules(rowSheet()).find(({ selector }) => selector === '.head');
 		const rail = stripeAppearance(read).rules['.AccordionItem'];
 
-		expect(head?.style.getPropertyValue('padding')).toBe('var(--_sp3) var(--_inset)');
-		expect(rail?.paddingLeft).toBe(RESOLVED['--_inset']);
-		expect(rail?.paddingRight).toBe(RESOLVED['--_inset']);
+		expect(head?.style.getPropertyValue('padding')).toBe(
+			`var(${PAYMENT_ROW.padBlock}) var(${PAYMENT_ROW.padInline})`
+		);
+		expect(rail?.paddingTop).toBe(`${em(PAYMENT_ROW.padBlock) * ROOT_PX}px`);
+		expect(rail?.paddingBottom).toBe(`${em(PAYMENT_ROW.padBlock) * ROOT_PX}px`);
+		expect(rail?.paddingLeft).toBe(RESOLVED[PAYMENT_ROW.padInline]);
+		expect(rail?.paddingRight).toBe(RESOLVED[PAYMENT_ROW.padInline]);
+	});
+
+	// a closed row of ours paints nothing, so it stands on the card's own ground; the provider's rail
+	// is sent that ground outright, because its flat theme paints one of its own. the open fill and
+	// the ground under a pointer are the same pair.
+	it('stands on the rail’s own ground, open, closed and under a pointer', () => {
+		const rules = styleRules(rowSheet());
+		const background = (selector: string, property = 'background') =>
+			rules.find((rule) => rule.selector === selector)?.style.getPropertyValue(property);
+		const card = /\[part~='card'\]\s*\{[^}]*?\bbackground:\s*var\((--_[\w-]+)\)/.exec(
+			partStyles
+		)?.[1];
+		const provider = stripeAppearance(read).rules;
+
+		// the `none` the sheet writes, read back as happy-dom spells it and as a browser does.
+		expect(background('.head', 'background-color')).toMatch(/^(none|transparent)$/);
+		expect(rules.filter(({ selector }) => selector.includes(':hover'))).toEqual([]);
+		expect(card).toBe(PAYMENT_ROW.ground);
+		expect(provider['.AccordionItem']?.backgroundColor).toBe(RESOLVED[PAYMENT_ROW.ground]);
+		expect(provider['.AccordionItem:hover']?.backgroundColor).toBe(RESOLVED[PAYMENT_ROW.ground]);
+
+		expect(background('.band.open')).toBe(`var(${PAYMENT_ROW.openGround})`);
+		expect(provider['.AccordionItem--selected']?.backgroundColor).toBe(
+			RESOLVED[PAYMENT_ROW.openGround]
+		);
+		expect(provider['.AccordionItem--selected:hover']?.backgroundColor).toBe(
+			RESOLVED[PAYMENT_ROW.openGround]
+		);
 	});
 
 	// and the name lands where the provider lands its rails', which is the measured figure at the
