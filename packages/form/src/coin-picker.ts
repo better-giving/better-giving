@@ -285,10 +285,12 @@ export function createCoinPicker(doc: Document): CoinPicker {
 			},
 			// the box is the list's own control, and a press on its mark or its chevron is a press on
 			// the input rather than one outside the list. the no-match sentence is the list's own
-			// surface, and a press on it keeps the list and the search.
+			// surface, and a press on it keeps the list and the search. read off `detail.target`: zag
+			// calls this a frame after a mouse press, when the event's own path is already empty.
 			onPointerDownOutside: (event: zag.PointerDownOutsideEvent) => {
-				const path = event.detail.originalEvent.composedPath();
-				if (path.includes(box) || path.includes(noMatch)) event.preventDefault();
+				const { target } = event.detail;
+				if (!(target instanceof Node)) return;
+				if (box.contains(target) || noMatch.contains(target)) event.preventDefault();
 			}
 		}));
 

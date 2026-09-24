@@ -173,16 +173,46 @@ describe('the coin list', () => {
 		await typed('doge');
 		const status = root.querySelector('[role="status"]') as HTMLElement;
 
-		status.dispatchEvent(
-			new PointerEvent('pointerdown', { button: 0, bubbles: true, composed: true })
-		);
-		status.dispatchEvent(new MouseEvent('click', { button: 0, bubbles: true, composed: true }));
+		// off the origin: happy-dom lays every box out at 0×0 there, and zag reads a press on a box's
+		// edge as one on its scrollbar rather than outside it.
+		const at = { button: 0, clientX: 100, clientY: 100, bubbles: true, composed: true };
+		const press = new PointerEvent('pointerdown', { ...at, pointerType: 'mouse' });
+		status.dispatchEvent(press);
+		// zag answers a mouse press outside the list a frame after it, and by then a browser hands
+		// back an empty path for the event (https://dom.spec.whatwg.org/#dom-event-composedpath).
+		// happy-dom keeps the path, so it is emptied here the way a browser empties it.
+		press.composedPath = () => [];
+		status.dispatchEvent(new MouseEvent('click', at));
 		await settle();
 
 		expect(input.getAttribute('aria-expanded')).toBe('true');
 		expect(input.value).toBe('doge');
 		expect(status.getAttribute('tabindex')).toBeNull();
 		expect(status.getAttribute('role')).toBe('status');
+	});
+
+	it('keeps the list open and the search typed when the box’s chevron is pressed', async () => {
+		const { root, input, typed } = mounted();
+		(root.querySelector('.picker') as HTMLElement).click();
+		await settle();
+		await typed('tron');
+		const chevron = root.querySelector('.picker > .glyph:last-child') as Element;
+
+		const press = new PointerEvent('pointerdown', {
+			button: 0,
+			clientX: 100,
+			clientY: 100,
+			pointerType: 'mouse',
+			bubbles: true,
+			composed: true
+		});
+		chevron.dispatchEvent(press);
+		// emptied after dispatch, as a browser does (the no-match press above says why).
+		press.composedPath = () => [];
+		await settle();
+
+		expect(input.getAttribute('aria-expanded')).toBe('true');
+		expect(input.value).toBe('tron');
 	});
 
 	it('picks with the arrow keys and Enter, keeping the caret in the box', async () => {
