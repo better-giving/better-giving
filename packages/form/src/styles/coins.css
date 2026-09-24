@@ -42,6 +42,15 @@ button {
 }
 
 /*
+ * a refusal stands `--_sp1` under the box, the seat every refusal on the card takes (./layout.css,
+ * which this root does not adopt). `~` rather than `+`: the list stands between the two, drawn in the
+ * top layer or not at all, so it holds no track of its own.
+ */
+.field-row > .picker:has(~ .message:not([hidden])) {
+	margin-block-end: calc(var(--_sp1) - var(--_sp2));
+}
+
+/*
  * the box: a mark at its start, the words, and the chevron at its end. the search field and the chosen
  * coin share the middle cell, so the box keeps one height whichever of the two it is showing.
  */

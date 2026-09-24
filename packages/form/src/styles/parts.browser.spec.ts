@@ -1477,6 +1477,20 @@ describe('the coin list inside the crypto option', () => {
 		expect(shown(root.querySelector('#coin-problem'))).toBe(false);
 	});
 
+	// the seat every refusal on the card takes (`a refusal under its box` below), though the closed
+	// list stands between the box and the sentence here.
+	it('says a refusal close under its box, at the step every refusal takes', async () => {
+		const root = drawn(false, 'Choose a coin to give');
+		const box = root.querySelector('.picker') as HTMLElement;
+		const refusal = root.querySelector('#coin-problem') as HTMLElement;
+
+		expect(shown(refusal)).toBe(true);
+		expect(refusal.getBoundingClientRect().top - box.getBoundingClientRect().bottom).toBeCloseTo(
+			step(root, '--_sp1'),
+			0
+		);
+	});
+
 	it('opens the list on a press, ticks only the picked coin and says the refusal under a refused one', async () => {
 		const root = drawn(true);
 		await opened(root);
