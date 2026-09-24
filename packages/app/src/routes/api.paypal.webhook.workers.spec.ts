@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import type { MiddlewareFunction } from 'react-router';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { mountRoutes } from '../route-request.testing';
 import * as webhook from './api.paypal.webhook';
 
@@ -12,13 +12,13 @@ import * as webhook from './api.paypal.webhook';
 // workerd for options node accepts ($lib/server/payments/paypal.workers.spec.ts argues both) — so a
 // node pool would prove nothing about the runtime this deploys to.
 //
-// **nothing here reaches the network, and every case is built on a refusal that stops it short of
-// one.** `verifyEvent` in $lib/server/payments/paypal.ts asks PayPal to vouch for a delivery over
-// HTTP, and there is no sandbox in this project to dial. three things are refused before that call
-// — no listener id, a missing signing header, a body that is not a JSON object — and the last case
-// in this file is stopped earlier still, by a body a `middleware` above the route had already
-// consumed. anything else pairing all five signing headers with a parseable body would leave the
-// isolate.
+// **nothing here reaches the network.** `verifyEvent` in $lib/server/payments/paypal.ts asks PayPal
+// to vouch for a delivery over HTTP, and there is no sandbox in this project to dial. three things
+// are refused before that call — no listener id, a missing signing header, a body that is not a
+// JSON object — and the last case in this file is stopped earlier still, by a body a `middleware`
+// above the route had already consumed. the one case that gets past verification stubs `fetch` to
+// vouch for it; anything else pairing all five signing headers with a parseable body would leave
+// the isolate.
 //
 // the route is driven through react router rather than by calling its `action`, for the reason
 // ../route-request.testing.ts argues at length. on this route that is not a convention but the
@@ -164,7 +164,7 @@ describe('POST /api/paypal/webhook', () => {
 		expect(response.status).toBe(503);
 	});
 
-	it('never answers 2xx for a delivery it did not act on', async () => {
+	it('never answers 2xx for a delivery it could not verify', async () => {
 		const unvouched = await deliver();
 		const unsigned = await deliver('{"id":"WH-1"}', {});
 		const unconfigured = await deliver('{"id":"WH-1"}', SIGNED, env);
@@ -174,6 +174,34 @@ describe('POST /api/paypal/webhook', () => {
 		for (const { response } of [unvouched, unsigned, unconfigured]) {
 			expect(response.ok).toBe(false);
 		}
+	});
+
+	/**
+	 * `PAYMENT.CAPTURE.COMPLETED` is published under Payments v1 as well as v2, and a v1-shaped
+	 * resource names no order. no redelivery of it ever reads differently, so asking for one buys
+	 * PayPal's whole retry schedule — up to 25 attempts over three days — of the same answer.
+	 */
+	it('answers a verified delivery it can never read without asking for it again', async () => {
+		vi.stubGlobal('fetch', async (input: Request | string | URL, init?: RequestInit) => {
+			const request = input instanceof Request ? input : new Request(String(input), init);
+			return new URL(request.url).pathname === '/v1/oauth2/token'
+				? Response.json({ access_token: 'A21AA-token', token_type: 'Bearer', expires_in: 32400 })
+				: Response.json({ verification_status: 'SUCCESS' });
+		});
+		const v1Capture = JSON.stringify({
+			id: 'WH-2',
+			event_type: 'PAYMENT.CAPTURE.COMPLETED',
+			create_time: '2026-08-16T22:21:19Z',
+			resource_type: 'capture',
+			resource: { id: '3C679366HH908993F', parent_payment: 'PAY-1B56960729604235TKQQIYVY' }
+		});
+
+		const { response } = await deliver(v1Capture);
+
+		expect(response.status).toBe(200);
+		expect((await response.json()) as Record<string, unknown>).toMatchObject({
+			outcome: 'unactionable'
+		});
 	});
 
 	it('writes nothing on any refusal', async () => {

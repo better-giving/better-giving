@@ -416,7 +416,8 @@ describe('verifyEvent', () => {
 	});
 
 	/**
-	 * a delivery under a name this app subscribes to whose resource it cannot read is refused loudly.
+	 * a delivery under a name this app subscribes to whose resource it cannot read is refused, and
+	 * terminally: no redelivery of the same shape reads any differently.
 	 *
 	 * `PAYMENT.CAPTURE.COMPLETED` is published under Payments v2 and under Payments v1, and the two
 	 * carry different resources under one name — so this is the shape a listener subscribed to the
@@ -435,7 +436,7 @@ describe('verifyEvent', () => {
 			})
 		);
 
-		expect(result.ok === false && result.reason).toBe('provider_error');
+		expect(result.ok === false && result.reason).toBe('unsupported');
 		expect(result.ok === false && result.detail).toContain('resource_version');
 	});
 
@@ -509,7 +510,7 @@ describe('verifyEvent', () => {
 	});
 
 	/**
-	 * a subscribed delivery about a repeating gift whose resource names nothing is refused loudly.
+	 * a subscribed delivery about a repeating gift whose resource names nothing is refused, terminally.
 	 *
 	 * the same shape an unreadable capture takes above, and for the same reason: `BILLING.SUBSCRIPTION.*`
 	 * is published under the live Subscriptions set and under the deprecated Billing Agreements set,
@@ -523,7 +524,7 @@ describe('verifyEvent', () => {
 			delivery({ ...APPROVED_EVENT, event_type: 'PAYMENT.SALE.COMPLETED', resource: {} })
 		);
 
-		expect(result.ok === false && result.reason).toBe('provider_error');
+		expect(result.ok === false && result.reason).toBe('unsupported');
 		expect(result.ok === false && result.detail).toContain('resource_version');
 	});
 
@@ -861,6 +862,48 @@ describe('readSettlement', () => {
 			feeMinor: null,
 			method: null
 		});
+	});
+
+	/**
+	 * a capture whose money went back is not a paid gift, on the first read or any later one.
+	 *
+	 * PayPal reports the capture's state after the fact, so a delivery late enough — or a read made
+	 * days after the refund — meets `REFUNDED` where it would have met `COMPLETED`. read as
+	 * `succeeded` that is revenue posted for money the organisation no longer holds. `failed` posts
+	 * nothing, and the capture id is on the settlement so whoever is told can find it on PayPal.
+	 */
+	it.each(['REFUNDED', 'REVERSED'])(
+		'reads a %s capture as failed, naming the capture',
+		async (state) => {
+			recording([
+				{ status: 200, json: captured() },
+				{ status: 200, json: { ...CAPTURE, status: state } }
+			]);
+
+			const result = await createPaypalProvider(CREDENTIALS).readSettlement('5O190127TN364715T');
+
+			expect(result.ok && result.value).toMatchObject({
+				providerTxnId: '5O190127TN364715T',
+				status: 'failed',
+				reference: '3C679366HH908993F'
+			});
+		}
+	);
+
+	/**
+	 * a capture PayPal is still holding — an eCheck clearing, a review — is money in flight, and the
+	 * next read settles it. read as `failed` it would tell the donor nothing was collected while it
+	 * still may be.
+	 */
+	it('reads a PENDING capture as pending', async () => {
+		recording([
+			{ status: 200, json: captured() },
+			{ status: 200, json: { ...CAPTURE, status: 'PENDING' } }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readSettlement('5O190127TN364715T');
+
+		expect(result.ok && result.value.status).toBe('pending');
 	});
 
 	/**

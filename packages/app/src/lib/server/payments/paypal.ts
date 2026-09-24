@@ -366,6 +366,12 @@ function resourceIdOf(resource: unknown): string | null {
  * for one this adapter does not read arrives as. reported as `ignored` it would be a settlement
  * dropped in silence under a 200, which is the failure that loses a gift.
  *
+ * `unsupported` and not a retryable reason: every redelivery of this delivery carries the same
+ * resource and reads the same way, so a 5xx would buy PayPal's whole retry schedule of one answer.
+ * what changes it is a release that reads the shape, which is that reason's own definition
+ * (`PAYMENT_FAILURE_REASONS` in ./provider.ts). not `invalid_request` either, which
+ * `settleDelivery` in ../donations/settle.ts answers with a 400 — and PayPal redelivers any non-2xx.
+ *
  * `resource_type` and `resource_version` are reported rather than gated on. PayPal publishes
  * neither for any subscription event, so a gate on a value nobody has seen would refuse every live
  * delivery — naming them here is how they are learned off a real one.
@@ -378,7 +384,7 @@ function unreadableResource(
 ): PaymentFailure {
 	return {
 		ok: false,
-		reason: 'provider_error',
+		reason: 'unsupported',
 		detail:
 			`A verified \`${redactPublicId(type)}\` delivery named ${named}, so there is nothing to ` +
 			`reconcile it against. Its \`resource_type\` is ` +
@@ -1789,19 +1795,28 @@ function noticeOf(
 const ALREADY_CAPTURED = 'ORDER_ALREADY_CAPTURED';
 
 /**
- * seven capture and order states onto this schema's four (`PAYMENT_STATUSES` in ../db/schema.ts).
+ * capture states onto this schema's four (`PAYMENT_STATUSES` in ../db/schema.ts).
  *
- * a refunded capture is `succeeded` and not a state of its own, because the capture did succeed: a
- * refund is a `payment` row of its own with its own id, which is the same split ./stripe.ts keeps.
+ * a capture whose whole amount went back — `REFUNDED`, or `REVERSED` on a chargeback — is `failed`,
+ * because the status is read after the fact: a first read of a capture already refunded that said
+ * `succeeded` would post revenue the organisation no longer holds, and nothing records the refund
+ * that would offset it. `failed` posts nothing, and `reference` on the settlement names the capture
+ * for whoever reconciles it. `REVERSED` is not in the published `capture_status` enum
+ * (payments_payment_v2.json in https://github.com/paypal/paypal-rest-api-specifications) and is
+ * held here as the word the `PAYMENT.CAPTURE.REVERSED` event is named for.
  *
- * everything this table does not hold is `pending`, including an order the payer has not approved
- * and a state added upstream — the direction that is safe to be wrong in, since the next read
- * corrects it and no posting is made on money reported as still in flight.
+ * `PARTIALLY_REFUNDED` stays `succeeded`: part of the money is still the organisation's, and the
+ * part that went back is a refund, which is a `payment` row of its own (`PAYMENT_STATUSES`).
+ *
+ * everything this table does not hold is `pending`, including PayPal's own `PENDING` and a state
+ * added upstream — the direction that is safe to be wrong in, since the next read corrects it and no
+ * posting is made on money reported as still in flight.
  */
 const CAPTURE_STATUSES: Readonly<Record<string, PaymentStatus>> = Object.freeze({
 	COMPLETED: 'succeeded',
 	PARTIALLY_REFUNDED: 'succeeded',
-	REFUNDED: 'succeeded',
+	REFUNDED: 'failed',
+	REVERSED: 'failed',
 	DECLINED: 'failed',
 	FAILED: 'failed'
 });
@@ -1906,6 +1921,8 @@ function settlementOf(order: Order, captured: CapturedPayment | null): Settlemen
 		// it; the purchase unit's before a capture exists. PayPal copies `custom_id` from one onto the
 		// other, so these are the same value read from whichever object exists.
 		metadata: decodeMetadata(captured?.customId ?? order.purchaseUnits?.[0]?.customId),
+		// the capture id is the transaction id PayPal's own activity list shows; an order id is not.
+		...(captured?.id ? { reference: captured.id } : {}),
 		occurredAt: at(captured?.createTime ?? order.createTime),
 		arrival: null
 	};
