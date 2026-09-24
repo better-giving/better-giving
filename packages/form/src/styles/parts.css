@@ -1335,9 +1335,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 /*
  * the fee, which is the one line of the receipt a donor operates rather than reads. it takes two of
- * the ledger's rows: the decision across the width, and under it what that decision does to the
- * money, stated in the label column with its figure beside it in the column every other figure is
- * in.
+ * the ledger's rows: the decision in the label column with its figure beside it in the column every
+ * other figure is in, and under the decision what it does to the money.
  *
  * set off by a rule of its own while it is a decision, and only then. past the review step the
  * control is gone, the row is an entry in the account like the gift above it, and a second rule
@@ -1348,102 +1347,67 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	border-block-start: var(--_border) solid var(--_n6);
 }
 
-.fee-decision {
-	grid-column: 1 / -1;
-}
-
 /*
- * the label column, which is what leaves the figure beside the sentence rather than under it: a
- * sentence spanning the width takes the whole line with it, and the figure — pinned to column 2
- * below — lands on a line of its own under both. stated rather than left to the source order it
- * happens to agree with, because the column this sits in is the placement being decided.
+ * the label column, under the decision's words: the figure column holds figures and nothing else,
+ * on this row as on every other.
  */
 .fee-note {
 	grid-column: 1;
 }
 
 /*
- * the decision: the words in the label column and the switch in the figure column, so the line reads
- * against the gift above it and the total below it rather than as a control bolted to the side.
+ * the decision: the words, and the switch straight after them on their line, in the label column —
+ * so the line reads as the gift's above it and the total's below it do, words then figure.
+ *
+ * one line of the card's own text, the line the figure beside it is set in. the words are drawn a
+ * step smaller inside it, so the two share a baseline without the row moving it: the declined
+ * reading draws no figure, and a line set by the words alone would jump under the press that
+ * blanked it.
  *
  * the whole label is the target, which is how a control this small reaches the floor every other one
  * on the card is laid against — the shape `.check-row` has on the details step, and the reason the
  * switch is inside the label rather than pointed at by one.
+ *
+ * the label's last word and the switch are one run that never breaks (`feeTail` in ../views.ts),
+ * so a label that wraps keeps the switch at the end of its last line rather than on one of its own.
  */
 .fee-decision {
-	display: grid;
-	grid-template-columns: 1fr auto;
-	align-items: baseline;
-	gap: var(--_sp1) var(--_sp3);
+	grid-column: 1;
+	position: relative;
 	cursor: pointer;
 }
 
-/*
- * placed by hand, because the target below shares their row and an auto-placed item would step
- * past it onto a second one.
- */
 .fee-decision > .row-label {
-	grid-area: 1 / 1;
+	display: inline;
 }
 
-.fee-decision > .switch {
-	grid-area: 1 / 2;
+.fee-decision .fee-tail {
+	white-space: nowrap;
 }
 
 /*
- * the target: `--_row-min` across the whole row, centred on it, and taking no room in the layout —
- * a zero margin box, so the words stand where the row's own gaps put them and the rule over them
- * stays midway whatever the words' size and however many lines they wrap to.
+ * the target: `--_row-min` across the label's width, centred on its lines, and out of the flow —
+ * so the words stand where the row's own gaps put them and the rule over them stays midway whatever
+ * the words' size and however many lines they wrap to.
  *
- * it is the label's own box, so a press on it is a press on the label and flips the switch. the
- * gift's row above is out of its reach. the sentence and its figure under the words are not: they
- * stand closer under the words than half the floor, so they let a press through to the target
- * rather than paint over its lower edge. both are text a donor reads, and a press on either lands
- * on the switch they describe or on nothing at all.
+ * it is the label's own box, so a press on it is a press on the label and flips the switch. it is
+ * painted over the words and under the switch, which is positioned after it, so the track keeps its
+ * own hover. the gift's row above is out of its reach. the sentence under the words is not: it
+ * stands closer under them than half the floor, so it lets a press through to the target rather
+ * than paint over its lower edge — it is text a donor reads, and a press on it lands on the switch
+ * it describes or on nothing at all.
  */
 .fee-decision::before {
 	content: '';
-	grid-area: 1 / 1 / 2 / -1;
-	align-self: center;
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: 50%;
 	block-size: var(--_row-min);
-	margin-block: calc(var(--_row-min) / -2);
+	margin-block-start: calc(var(--_row-min) / -2);
 }
 
-.fee-decision:not([hidden]) ~ :is(.fee-note, .figure) {
+.fee-decision:not([hidden]) ~ .fee-note {
 	pointer-events: none;
-}
-
-/*
- * the sentence is what the switch just did, so it belongs to the switch rather than standing as a
- * row of its own: the row's own `--_sp1` between the two is taken back.
- *
- * only while a sentence is drawn under it and the column beside it is blank. a form that publishes
- * no rule to price the fee draws no sentence (`consequence` in ../views.ts), and a row pulled up
- * under nothing would lift the figure beside it into the switch. a figure beside the sentence
- * stands off the switch by a gap the take-back would spend, so there the row keeps its step, and
- * the declined reading, whose column is blank (`feeFigure` in ../views.ts), keeps the take-back.
- */
-.fee-decision:has(+ .fee-note:not([hidden])):not(:has(~ .figure:not(:empty))) {
-	margin-block-end: calc(-1 * var(--_sp1));
-}
-
-/*
- * the sentence and its figure on one baseline, the last line's: a sentence that wraps holds the
- * figure beside the line its account ends on, and one that does not reads with it as one line.
- *
- * the figure stands off the switch by the gap the rule over the row stands off the words: the track
- * is a drawn edge with no leading of its own, and the row's `--_sp1` and this one are that `--_sp2`.
- * on one line the figure is the taller box, so the shared baseline takes the sentence down with it,
- * further under the words than the rows stand apart (./layout.browser.spec.ts, "stands the fee’s
- * sentence with the switch that wrote it"). a wrapped sentence's last line already stands the
- * figure clear of the switch, and the sentence stays where the row puts it.
- */
-.fee-decision:not([hidden]) ~ :is(.fee-note, .figure:not(:empty)) {
-	align-self: last baseline;
-}
-
-.fee-decision:not([hidden]) ~ .figure:not(:empty) {
-	margin-block-start: var(--_sp1);
 }
 
 /*
@@ -1456,23 +1420,24 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * to be — the state, the keyboard, the accessible name off the label around it, the change event —
  * is the platform's, and only the paint is here.
  *
- * the wrapper positions the thumb and does nothing else. the thumb is a sibling element rather than
- * a pseudo-element on the box: firefox generates neither `::before` nor `::after` on an `<input>`,
+ * the wrapper positions the thumb, and being positioned is also what paints it over the label's
+ * target (`.fee-decision::before` above). the thumb is a sibling element rather than a
+ * pseudo-element on the box: firefox generates neither `::before` nor `::after` on an `<input>`,
  * and ./parts.browser.spec.ts runs on chromium alone, so a pseudo-element thumb would be a blank
  * track on a whole engine with nothing here able to see it.
  */
 .fee-decision .switch {
 	position: relative;
-	display: flex;
-	align-self: start;
+	display: inline-flex;
+	/* the gap `.check-row` stands its box off its words by, at the size of the words. */
+	margin-inline-start: var(--_sp3);
 	/*
-	 * centred on the first line of the label beside it rather than on the block, for the reason
-	 * `[part~='checkbox']` above is: the label is the one in this receipt that can wrap. the size is
-	 * set on a box that holds no text, and it is what makes `1lh` resolve against that label's own
-	 * line — the label is drawn at `--_t-sm` and this wrapper is not otherwise.
+	 * centred on the line it ends, which is the card's own line (`.fee-decision` above) rather than
+	 * one at the words' smaller size: a box aligned to the line's top stands half the difference down
+	 * it.
 	 */
-	font-size: var(--_t-sm);
-	margin-block-start: calc((1lh - var(--_switch-block)) / 2);
+	vertical-align: top;
+	margin-block-start: calc((var(--_lh-body) * var(--_root-size) - var(--_switch-block)) / 2);
 }
 
 /*
@@ -1557,8 +1522,9 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	translate: calc(var(--_switch-travel) * -1) 0;
 }
 
+/* on the decision's line, beside the words, however far down the sentence under them runs. */
 .row.fee .figure {
-	grid-column: 2;
+	grid-area: 1 / 2;
 }
 
 /*

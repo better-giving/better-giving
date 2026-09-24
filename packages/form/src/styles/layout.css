@@ -249,8 +249,6 @@ form {
  * so the box takes it, and what the line above gets from being hidden this gets from the gate: the
  * sentence is hidden until there is something to say (`paymentMessage` in ../views.ts), and the box
  * keeps the step's own rhythm under the receipt block on every card nobody refused.
- * `.fee-decision:has(+ .fee-note:not([hidden]))` in ./parts.css closes a gap on that same gate for
- * that same reason.
  *
  * the pair rather than either by name, because `.message` is the role every refusal on this card
  * takes: the others are children of the row or the group they belong to, and this is the one

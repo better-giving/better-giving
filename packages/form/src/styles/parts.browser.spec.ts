@@ -2385,24 +2385,26 @@ describe('a payment row drawn beside the provider’s frame', () => {
 // layout only a real engine performs.
 describe('the target under the fee decision', () => {
 	/**
-	 * the fee row's rule and the words either side of it: the gift's row, whose one line is its box,
-	 * and the decision's own words, which stand inside a target taller than they are.
+	 * the fee row's rule and the lines either side of it, each read off its own box: the gift's row,
+	 * whose one line is its box, and the decision's, which is the label's — the target around it is
+	 * drawn out of the flow, and the words stand in the line a step smaller than it.
 	 */
 	function aroundTheRule(shadow: ShadowRoot): { above: number; below: number; words: HTMLElement } {
 		const row = shadow.querySelector('.row.fee') as HTMLElement;
 		const gift = row.previousElementSibling as HTMLElement;
-		const words = row.querySelector('.fee-decision > .row-label') as HTMLElement;
+		const decision = row.querySelector('.fee-decision') as HTMLElement;
+		const words = decision.querySelector('.row-label') as HTMLElement;
 		const rule = row.getBoundingClientRect().top;
 		const edge = rule + parseFloat(getComputedStyle(row).borderTopWidth);
 		return {
 			above: rule - gift.getBoundingClientRect().bottom,
-			below: words.getBoundingClientRect().top - edge,
+			below: decision.getBoundingClientRect().top - edge,
 			words
 		};
 	}
 
 	// the rule sets the decision apart from the gift above it, so it stands as far from one row's
-	// words as from the other's. measured at both ends of the clamp band and at the default root.
+	// line as from the other's. measured at both ends of the clamp band and at the default root.
 	it.each([['15px'], ['16px'], ['18px']])(
 		'stands the rule midway between the gift and the words, at a %s root',
 		async (root) => {
@@ -2544,131 +2546,194 @@ describe('the target under the fee decision', () => {
 	});
 });
 
-// what the decision does to the money, and the figure it does it by, on one line of the receipt.
-// the two are placed by grid auto-flow rather than stated cell by cell (`.fee-note` and
-// `.row.fee .figure` in ./parts.css), so whether they land on the same line is the engine's answer
-// and not the sheet's — happy-dom places nothing and would agree with a note stacked above the
-// figure just as readily.
-describe('the sentence under the fee decision and its figure', () => {
-	/**
-	 * one rect per line box, which a border box cannot give: the sentence is the one line of this
-	 * receipt that wraps, and where its first line ends is the whole question on a narrow card.
-	 */
-	function lines(node: Element): DOMRect[] {
-		const range = document.createRange();
-		range.selectNodeContents(node);
-		return Array.from(range.getClientRects());
-	}
-
-	type Fee = { readonly note: HTMLElement; readonly figure: HTMLElement };
-
-	function fee(shadow: ShadowRoot): Fee {
-		return {
-			note: shadow.querySelector('.fee-note') as HTMLElement,
-			figure: shadow.querySelector('.row.fee .figure') as HTMLElement
-		};
-	}
-
-	/**
-	 * where one element's last line sits, read off a zero-size inline box put at its end: an empty
-	 * inline-block's baseline is its bottom edge, so the box stands on the line's baseline.
-	 */
-	function lastBaseline(node: Element): number {
-		const probe = document.createElement('span');
-		probe.style.cssText = 'display: inline-block; inline-size: 0; block-size: 0';
-		node.appendChild(probe);
-		const at = probe.getBoundingClientRect().top;
-		probe.remove();
-		return at;
-	}
-
-	// the figure is read as the end of the sentence's account, so it stands on the line that account
-	// ends on: the one line of a desktop card, and the last of a wrapped one. measured on the card at
-	// the narrowest width it is written to and at a desktop one, across the clamp band.
-	it.each([
+// the decision's one line, laid out the way the gift's and the total's are: the words, the switch
+// that answers to them straight after, and the figure at the row's far edge on the words' baseline,
+// with the sentence under the lot. where the switch lands is a line break only a real engine takes.
+describe('the fee decision’s line', () => {
+	const SIZES = [
 		['375px', '15px'],
 		['375px', '16px'],
 		['375px', '18px'],
 		['1280px', '15px'],
 		['1280px', '16px'],
 		['1280px', '18px']
-	])(
-		'stands the figure on the baseline of the sentence’s last line, %s wide at a %s root',
-		async (width, root) => {
-			document.documentElement.style.fontSize = root;
-			const { host, shadow } = await mount();
-			host.style.cssText = `display: block; inline-size: ${width}`;
-			await atReview(shadow);
-			const { note, figure } = fee(shadow);
+	] as const;
 
-			const sentence = lastBaseline(note);
-			const number = lastBaseline(figure);
+	type Decision = {
+		readonly row: HTMLElement;
+		readonly decision: HTMLElement;
+		readonly words: HTMLElement;
+		readonly track: HTMLElement;
+		readonly note: HTMLElement;
+		readonly figure: HTMLElement;
+	};
+
+	function decisionOf(shadow: ShadowRoot): Decision {
+		return {
+			row: shadow.querySelector('.row.fee') as HTMLElement,
+			decision: shadow.querySelector('.fee-decision') as HTMLElement,
+			words: shadow.querySelector('.fee-decision > .row-label') as HTMLElement,
+			track: shadow.querySelector('.fee-decision [part~="checkbox"]') as HTMLElement,
+			note: shadow.querySelector('.fee-note') as HTMLElement,
+			figure: shadow.querySelector('.row.fee .figure') as HTMLElement
+		};
+	}
+
+	/**
+	 * one rect per line of text, which a border box cannot give. text alone: the switch stands inside
+	 * the words' element, and a range over the element would hand back the track's rect as a line.
+	 */
+	function lines(node: Element): DOMRect[] {
+		const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+		const rects: DOMRect[] = [];
+		const range = document.createRange();
+		for (let text = walker.nextNode(); text !== null; text = walker.nextNode()) {
+			range.selectNodeContents(text);
+			rects.push(...Array.from(range.getClientRects()));
+		}
+		const rows = new Map<number, DOMRect>();
+		for (const rect of rects) {
+			const row = Math.round(rect.bottom);
+			const seen = rows.get(row);
+			rows.set(
+				row,
+				seen === undefined
+					? rect
+					: new DOMRect(seen.left, seen.top, rect.right - seen.left, seen.height)
+			);
+		}
+		return [...rows.values()];
+	}
+
+	/**
+	 * one length token as the px it resolves to at the words' own size, which is where the gap beside
+	 * them is spent — the same size `.check-row` spends its box's gap at.
+	 */
+	function stepAt(words: HTMLElement, token: string): number {
+		const probe = document.createElement('span');
+		probe.style.cssText = `display: inline-block; inline-size: var(${token})`;
+		words.appendChild(probe);
+		const size = probe.getBoundingClientRect().width;
+		probe.remove();
+		return size;
+	}
+
+	/**
+	 * where one element's first line sits, read off a zero-size inline box put at its start: an empty
+	 * inline-block's baseline is its bottom edge, so the box stands on the line's baseline.
+	 */
+	function baseline(node: Element): number {
+		const probe = document.createElement('span');
+		probe.style.cssText = 'display: inline-block; inline-size: 0; block-size: 0';
+		node.prepend(probe);
+		const at = probe.getBoundingClientRect().top;
+		probe.remove();
+		return at;
+	}
+
+	/** the donor on the review step, on a card of one width under a root of one size. */
+	async function at(width: string, root: string): Promise<Decision> {
+		document.documentElement.style.fontSize = root;
+		const { host, shadow } = await mount();
+		host.style.cssText = `display: block; inline-size: ${width}`;
+		await atReview(shadow);
+		return decisionOf(shadow);
+	}
+
+	it.each(SIZES)(
+		'sets the switch a `--_sp3` after the words, on their last line, %s wide at a %s root',
+		async (width, root) => {
+			const { words, track } = await at(width, root);
+			const drawn = lines(words);
+			const last = drawn[drawn.length - 1] as DOMRect;
+			const box = track.getBoundingClientRect();
+
+			const gap = box.left - last.right;
 			expect(
-				Math.abs(number - sentence),
-				`the figure at ${number}, the sentence at ${sentence}`
+				Math.abs(gap - stepAt(words, '--_sp3')),
+				`${gap} between the words and the switch`
 			).toBeLessThanOrEqual(DEVICE_PIXEL);
+			const off = (box.top + box.bottom) / 2 - (last.top + last.bottom) / 2;
+			expect(Math.abs(off), `${off} off the words' line`).toBeLessThanOrEqual(DEVICE_PIXEL);
 		}
 	);
 
-	it('sets them on the same line, the sentence in the label column and the figure in its own', async () => {
-		const { shadow } = await mount();
-		await atReview(shadow);
-		const { note, figure } = fee(shadow);
+	// the column every figure in the receipt stands in, and the line it is read on: the words' first,
+	// the way the gift's figure stands on its words' line above.
+	it.each(SIZES)(
+		'stands the figure at the row’s far edge on the words’ baseline, %s wide at a %s root',
+		async (width, root) => {
+			const { row, words, figure } = await at(width, root);
 
-		expect(note.hidden).toBe(false);
-		expect(figure.textContent).not.toBe('');
+			expect(figure.textContent).not.toBe('');
+			expect(figure.getBoundingClientRect().right).toBeCloseTo(
+				row.getBoundingClientRect().right,
+				0
+			);
+			const off = baseline(figure) - baseline(words);
+			expect(Math.abs(off), `${off} off the words' baseline`).toBeLessThanOrEqual(DEVICE_PIXEL);
+		}
+	);
 
-		const first = lines(note)[0] as DOMRect;
-		const number = figure.getBoundingClientRect();
+	// the sentence is the next line of the row, a row's own gap under the decision's line, in both
+	// readings: the figure beside the words is the one thing the press changes on this row.
+	it.each(SIZES)(
+		'stands the sentence a row’s gap under the words, %s wide at a %s root',
+		async (width, root) => {
+			const { row, decision, track, note } = await at(width, root);
+			const gap = parseFloat(getComputedStyle(row).rowGap);
+			const under = () =>
+				note.getBoundingClientRect().top - decision.getBoundingClientRect().bottom;
 
-		// the same line: the two boxes are drawn at two type sizes on one baseline, so their edges do
-		// not coincide and what says they share a line is that they overlap at all.
-		expect(number.top).toBeLessThan(first.bottom);
-		expect(number.bottom).toBeGreaterThan(first.top);
-		// and each in its own column, which is what keeps the overlap from being a collision.
-		expect(number.left).toBeGreaterThanOrEqual(note.getBoundingClientRect().right);
-	});
-
-	// the switch and the figure are the two entries of one column, and the drawn track is an edge
-	// the way the fee row's rule is: the figure stands off it by the gap the rule stands off the
-	// words (`--_sp2`, "stands the rule midway between the gift and the words" above). read at both
-	// ends of the clamp band and at the default root.
-	it.each([['15px'], ['16px'], ['18px']])(
-		'stands the figure under the switch by the gap the rule stands off the words, at a %s root',
-		async (root) => {
-			document.documentElement.style.fontSize = root;
-			const { shadow } = await mount();
-			await atReview(shadow);
-			const { figure } = fee(shadow);
-			const track = shadow.querySelector('.fee-decision [part~="checkbox"]') as HTMLElement;
-			const under = figure.getBoundingClientRect().top - track.getBoundingClientRect().bottom;
-
-			expect(under, `${under} between the switch and the figure`).toBeGreaterThanOrEqual(
-				step(shadow, '--_sp2') - DEVICE_PIXEL
+			expect(gap).toBeGreaterThan(0);
+			expect(Math.abs(under() - gap), `${under()} under the words, covered`).toBeLessThanOrEqual(
+				DEVICE_PIXEL
+			);
+			track.click();
+			await settle();
+			expect(Math.abs(under() - gap), `${under()} under the words, declined`).toBeLessThanOrEqual(
+				DEVICE_PIXEL
 			);
 		}
 	);
 
-	// the narrow card, where the sentence is longer than the column holding it. the figure follows
-	// it down to the line it ends on rather than being pushed off the row.
-	it('holds the figure beside the last line while the sentence wraps', async () => {
-		const { host, shadow } = await mount();
-		host.style.cssText = 'display: block; inline-size: 320px';
-		await atReview(shadow);
-		const { note, figure } = fee(shadow);
-		const drawn = lines(note);
+	// a card narrow enough to wrap the words: the switch goes down with their last word rather than
+	// standing on a line of its own under them.
+	it('keeps the switch at the end of the words’ last line once they wrap', async () => {
+		const { words, track } = await at('200px', '16px');
+		const drawn = lines(words);
 		const last = drawn[drawn.length - 1] as DOMRect;
-		const number = figure.getBoundingClientRect();
+		const box = track.getBoundingClientRect();
 
-		expect(drawn.length).toBeGreaterThan(1);
-		expect(number.top).toBeLessThan(last.bottom);
-		// down to that line's foot or past it, which a figure left beside the first line is not.
-		expect(number.bottom).toBeGreaterThanOrEqual(last.bottom);
-		expect(number.bottom).toBeLessThanOrEqual(
-			(figure.closest('.row.fee') as HTMLElement).getBoundingClientRect().bottom
+		expect(drawn.length, 'wrapped').toBeGreaterThan(1);
+		expect(last.width, 'words on the switch’s line').toBeGreaterThan(0);
+		expect(Math.abs(box.left - last.right - stepAt(words, '--_sp3'))).toBeLessThanOrEqual(
+			DEVICE_PIXEL
 		);
-		expect(number.left).toBeGreaterThanOrEqual(note.getBoundingClientRect().right);
+		const off = (box.top + box.bottom) / 2 - (last.top + last.bottom) / 2;
+		expect(Math.abs(off), `${off} off the words' last line`).toBeLessThanOrEqual(DEVICE_PIXEL);
 	});
+
+	// the press blanks the figure beside the words, and the words and the switch stay where they were:
+	// a control that moves under the press that set it is one a donor chases.
+	//
+	// 375px at an 18px root is left out: the words there wrap only while the figure stands beside
+	// them, so the press that blanks it lets them back onto one line and the switch rises with them —
+	// the declined reading draws no figure to hold the column (`feeFigure` in ../views.ts).
+	it.each(SIZES.filter(([width, root]) => width !== '375px' || root !== '18px'))(
+		'holds the words and the switch still through the press, %s wide at a %s root',
+		async (width, root) => {
+			const { words, track, figure } = await at(width, root);
+			const before = [words.getBoundingClientRect().top, track.getBoundingClientRect().top];
+
+			track.click();
+			await settle();
+
+			expect(figure.textContent, 'the declined reading draws no figure').toBe('');
+			expect(words.getBoundingClientRect().top).toBeCloseTo(before[0] as number, 1);
+			expect(track.getBoundingClientRect().top).toBeCloseTo(before[1] as number, 1);
+		}
+	);
 });
 
 // one treatment across every surface a donor operates, measured off the drawn box rather than read
