@@ -3512,6 +3512,26 @@ describe('a refusal under its box', () => {
 		}
 	);
 
+	// the seat is the column's own gap taken back, so a column drawn at another gap keeps it: the
+	// tribute's body spends a wider step than the note's, and a box refused directly inside it
+	// still stands `--_sp1` over its sentence. no box stands directly in it, so the row is built here.
+	it('stands as close under a box in a column drawn at another gap', async () => {
+		const { shadow } = await mount();
+		shadow.querySelector<HTMLElement>(".tribute [part~='checkbox']")?.click();
+		await settle();
+		const column = shadow.querySelector('.tribute .disclosure-inner') as HTMLElement;
+		const box = document.createElement('input');
+		box.setAttribute('part', 'field');
+		const refusal = document.createElement('p');
+		refusal.className = 'message';
+		refusal.id = 'fixture-problem';
+		refusal.textContent = 'Enter a value';
+		column.append(box, refusal);
+
+		expect(parseFloat(getComputedStyle(column).rowGap)).not.toBeCloseTo(step(shadow, '--_sp2'), 0);
+		seatedUnder(shadow, box, '#fixture-problem');
+	});
+
 	// the same seat where the label stands inside the box, whose row is laid out as a grid instead.
 	it('stands as close under a box whose label stands inside it', async () => {
 		const { shadow } = await mount();

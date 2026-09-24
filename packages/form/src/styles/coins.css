@@ -38,7 +38,8 @@ button {
 .field-row {
 	display: flex;
 	flex-direction: column;
-	gap: var(--_sp2);
+	--_column-gap: var(--_sp2);
+	gap: var(--_column-gap);
 }
 
 /*
@@ -47,7 +48,7 @@ button {
  * top layer or not at all, so it holds no track of its own.
  */
 .field-row > .picker:has(~ .message:not([hidden])) {
-	margin-block-end: calc(var(--_sp1) - var(--_sp2));
+	margin-block-end: calc(var(--_sp1) - var(--_column-gap));
 }
 
 /*

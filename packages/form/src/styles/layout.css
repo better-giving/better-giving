@@ -188,11 +188,18 @@ form {
 	padding: var(--_inset);
 }
 
-/* the steps stack, one visible at a time. */
+/*
+ * the steps stack, one visible at a time.
+ *
+ * the step's gap goes by its own name rather than `--_column-gap`: the one refusal standing in the
+ * step's column is under a `.group`, which is a column itself and states `--_column-gap` on itself,
+ * so that name read on the group is the group's and never the step's.
+ */
 .step {
 	display: flex;
 	flex-direction: column;
-	gap: var(--_sp5);
+	--_step-gap: var(--_sp5);
+	gap: var(--_step-gap);
 }
 
 /*
@@ -251,7 +258,7 @@ form {
  * heading (`paymentGroup` in ../views.ts), and no other group on the card is followed by one.
  */
 .group:has(+ .message:not([hidden])) {
-	margin-block-end: calc(var(--_sp1) - var(--_sp5));
+	margin-block-end: calc(var(--_sp1) - var(--_step-gap));
 }
 
 /*
@@ -371,7 +378,8 @@ form {
 .group {
 	display: flex;
 	flex-direction: column;
-	gap: var(--_sp2);
+	--_column-gap: var(--_sp2);
+	gap: var(--_column-gap);
 }
 
 /*
@@ -482,7 +490,8 @@ form {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
 	align-items: start;
-	gap: var(--_sp2);
+	--_column-gap: var(--_sp2);
+	gap: var(--_column-gap);
 }
 
 /*
@@ -527,7 +536,7 @@ form {
  * the construction, and this is the one length that follows from what is inside them.
  */
 .tribute .disclosure-inner {
-	gap: var(--_sp3);
+	--_column-gap: var(--_sp3);
 }
 
 /*
@@ -605,20 +614,25 @@ form {
 .field-row {
 	display: flex;
 	flex-direction: column;
-	gap: var(--_sp2);
+	--_column-gap: var(--_sp2);
+	gap: var(--_column-gap);
 }
 
 /*
  * a refusal stands closer under what it refuses than the gap of the column both stand in: at that
  * gap it stood as far below the box as the label stands above it, and with its own line's leading on
- * top it read as a line of its own rather than as something said about the box. every column here
- * spends `--_sp2`, so it is that gap negated and the smaller step put back, carried by what is
- * refused for the reason `.group:has(+ .message:not([hidden]))` above gives — the sentence is drawn
- * a step smaller, and the expression spent on it resolves to a length nothing on this card names.
- * the box is drawn at the card's base or its floor (`[part~='field']` in ./parts.css), so above the
- * floor the two steps are the column's exactly.
+ * top it read as a line of its own rather than as something said about the box. so it is the column's
+ * gap negated and the smaller step put back, carried by what is refused for the reason
+ * `.group:has(+ .message:not([hidden]))` above gives — the sentence is drawn a step smaller, and the
+ * expression spent on it resolves to a length nothing on this card names. the box is drawn at the
+ * card's base or its floor (`[part~='field']` in ./parts.css), so above the floor the two steps are
+ * the column's exactly.
  *
- * the four columns a refusal stands in under what it refuses: a row, the note's disclosure, the
+ * the gap taken back is `--_column-gap`, which every column a refusal stands in states on itself and
+ * spends as its `gap`, so a column drawn at another step keeps its refusals at `--_sp1` (the
+ * tribute's body, above). a column nested in another states its own and never reads its parent's.
+ *
+ * the four columns a refusal stands in under what it refuses: a row, a disclosure's body, the
  * honoree's dedication, and the amount group, where the tray is what is refused and the entry's
  * hidden label stands out of flow between the two. the dedication is a grid, so on its wide layout
  * the select sharing the name's line takes the same margin (the breakpoint at the end of this file),
@@ -627,12 +641,11 @@ form {
  * a row whose label stands inside its box takes the smaller step as its gap instead
  * (`.field-row.floating` below): its label is out of flow, so the box and the sentence are the only
  * two things the gap falls between, and a margin on the box would shorten the track the label is
- * centred in.
+ * centred in. its take-back here is that step less itself, which is none.
  */
-:is(.field-row:not(.floating), .disclosure-inner, .dedication)
-	> [part~='field']:has(+ .message:not([hidden])),
+:is(.field-row, .disclosure-inner, .dedication) > [part~='field']:has(+ .message:not([hidden])),
 .group > .tiles:has(~ .message:not([hidden])) {
-	margin-block-end: calc(var(--_sp1) - var(--_sp2));
+	margin-block-end: calc(var(--_sp1) - var(--_column-gap));
 }
 
 /*
@@ -667,7 +680,7 @@ form {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
 	align-content: start;
-	gap: var(--_sp1);
+	--_column-gap: var(--_sp1);
 }
 
 /*
@@ -932,7 +945,7 @@ form {
 	}
 
 	.dedication:has(> .message:not([hidden])) > [data-part='trigger'] {
-		margin-block-end: calc(var(--_sp1) - var(--_sp2));
+		margin-block-end: calc(var(--_sp1) - var(--_column-gap));
 	}
 }
 

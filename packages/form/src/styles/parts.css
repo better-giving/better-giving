@@ -1740,7 +1740,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 .disclosure-inner {
 	display: flex;
 	flex-direction: column;
-	gap: var(--_sp2);
+	--_column-gap: var(--_sp2);
+	gap: var(--_column-gap);
 	min-block-size: 0;
 	overflow: clip;
 	/*
