@@ -217,9 +217,11 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	// donor finds, and they carry the frame above; a box around the rail as well is a second ring
 	// around boxes that already have one. it does take a top pad, because the open rail is filled
 	// (`--_n3` below) and so the band has a top edge of its own — with none, the method's name sits
-	// against that edge. the bottom pad is the same step, stated rather than left to the provider,
-	// so a closed rail stands `--_sp3` over and under its name as `.head` in ./rows.css does and the
-	// two kinds of row keep one pitch down the list. what stands between an open rail's name and its
+	// against that edge. the bottom pad is the same step, stated rather than left to the provider, so
+	// a closed rail stands `--_sp3` over and under its name as `.head` in ./rows.css does. the
+	// provider sets that name on a shorter line than `.name`, so its closed rail stands a few pixels
+	// under our row; a line height sent on this rule reaches the card fields inside it and grows
+	// them, so none is sent. what stands between an open rail's name and its
 	// first field is the provider's own, derived from the `spacingUnit` above. the layout in
 	// ../embed/stripe.ts draws no radio, so a rail's name is a bare press and the open one is the one
 	// with its fields under it.
