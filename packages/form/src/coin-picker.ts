@@ -343,7 +343,9 @@ export function createCoinPicker(doc: Document): CoinPicker {
 			if (there !== row) content.insertBefore(row, there);
 			at += 1;
 		}
-		noMatch.textContent = api.open && collection.size === 0 ? NO_MATCH : '';
+		// written only on a change: a live region rewritten with the same words may say them again.
+		const said = api.open && collection.size === 0 ? NO_MATCH : '';
+		if (noMatch.textContent !== said) noMatch.textContent = said;
 
 		const picked = choice.options.find((option) => option.value === choice.value);
 		input.placeholder = api.open ? SEARCH : picked === undefined ? CHOOSE : '';
