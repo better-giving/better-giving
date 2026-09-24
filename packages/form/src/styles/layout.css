@@ -374,6 +374,17 @@ form {
 }
 
 /*
+ * the payment list under the receipt: a break wider than the step's own gap, because the rows below
+ * it stand a padded row apart (`.head` in ./rows.css, `.AccordionItem` in ./appearance.ts) — which
+ * is the target floor, not slack — and at the step's gap alone the total and the list read as one
+ * run while the list reads as loose. on the pair, so the receipt moved off the step
+ * (`receiptSlot` in ../views.ts) leaves the box at the step's rhythm.
+ */
+[part~='summary'] + .group {
+	margin-block-start: var(--_sp4);
+}
+
+/*
  * a fieldset's first legend is its rendered legend, laid on the fieldset's border outside any flow
  * the fieldset lays out — outside the gap above, so a legend left alone stands on the tray's own
  * edge with nothing between the two. a float is the one thing that stops it being the rendered
