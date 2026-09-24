@@ -377,10 +377,14 @@ describe('the review step at the narrowest card', () => {
 	 * the refusal is built on every card and shown on the ones that pass words for it, the way
 	 * `paymentMessage` in ../views.ts is: a step assembled without it is the step in one of its two
 	 * states, and it is the state the line naming the receipt was moved past.
+	 *
+	 * at the narrowest card unless a case names a wider one: the fee's sentence wraps here and holds
+	 * one line on a desktop card, and the row is placed differently in the two.
 	 */
 	function review(
 		email: string,
-		refusal = ''
+		refusal = '',
+		width = '375px'
 	): {
 		body: HTMLElement;
 		give: HTMLElement;
@@ -396,7 +400,7 @@ describe('the review step at the narrowest card', () => {
 		message: HTMLElement;
 		submit: HTMLElement;
 	} {
-		const built = card('375px', '16px');
+		const built = card(width, '16px');
 
 		const summary = document.createElement('div');
 		summary.setAttribute('part', 'summary');
@@ -526,14 +530,30 @@ describe('the review step at the narrowest card', () => {
 		expect(between(receipt, submit)).toBeLessThan(between(group, receipt));
 	});
 
-	// the sentence pricing the decision is what the switch just did, so it belongs to the switch. it
-	// is measured off the words rather than off the label's box, because the box is a 44px target
-	// and the slack it leaves under the words is the whole of what stood the two a step apart.
-	it('stands the fee’s sentence with the switch that wrote it', () => {
-		const { feeWords, feeNote, gift, fee } = review('donor@example.org');
+	// the sentence pricing the decision is what the switch just did, so it belongs to the switch's
+	// row and not to the total under it. on a desktop card it shares its one line with the figure,
+	// which stands a rule's gap under the switch (`.fee-decision ~ .figure` in ./parts.css), and that
+	// takes it further under the words than the rows stand apart — so what holds at every width is
+	// that it stays inside the fee row, over the rule under it, and nearer the words it explains than
+	// the total's words are to it. measured off the words rather than off the label's box, because the
+	// box is a 44px target.
+	it.each([['375px'], ['1280px']])(
+		'stands the fee’s sentence with the switch that wrote it, %s wide',
+		(width) => {
+			const { summary, feeWords, feeNote, fee } = review('donor@example.org', '', width);
+			const total = summary.querySelector('.row.total') as HTMLElement;
+			const totalWords = total.querySelector('.row-label') as HTMLElement;
 
-		expect(between(feeWords, feeNote)).toBeLessThan(between(gift, fee));
-	});
+			expect(feeNote.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+				fee.getBoundingClientRect().top
+			);
+			expect(feeNote.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+				fee.getBoundingClientRect().bottom
+			);
+			expect(between(feeNote, total), 'over the rule under the row').toBeGreaterThan(0);
+			expect(between(feeWords, feeNote)).toBeLessThan(between(feeNote, totalWords));
+		}
+	);
 
 	// and the length it takes, which is the half of it an arithmetic in the sheet can get wrong
 	// without moving the reading: the sentence is meant to stand off the box at the gap a refusal

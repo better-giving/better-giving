@@ -1420,27 +1420,29 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * only while a sentence is drawn under it and the column beside it is blank. a form that publishes
  * no rule to price the fee draws no sentence (`consequence` in ../views.ts), and a row pulled up
  * under nothing would lift the figure beside it into the switch. a figure beside the sentence
- * stands off the switch by a gap the take-back would spend, so there the sentence keeps the row's
- * step — still short of the gap the rows stand apart (./layout.browser.spec.ts, "stands the fee’s
- * sentence with the switch that wrote it") — and the declined reading, whose column is blank
- * (`feeFigure` in ../views.ts), keeps the take-back.
+ * stands off the switch by a gap the take-back would spend, so there the row keeps its step, and
+ * the declined reading, whose column is blank (`feeFigure` in ../views.ts), keeps the take-back.
  */
 .fee-decision:has(+ .fee-note:not([hidden])):not(:has(~ .figure:not(:empty))) {
 	margin-block-end: calc(-1 * var(--_sp1));
 }
 
 /*
- * the figure off the sentence's baseline and at the row's foot, a step further under the switch
- * than the row's gap puts the sentence. the track is a drawn edge with no leading of its own, like
- * the rule over the row, and the figure stands off it by the gap the rule stands off the words:
- * the row's `--_sp1` and this one are that `--_sp2`. a figure sharing the sentence's baseline would
- * take the sentence down by every pixel it moved, which is why it keeps its own.
+ * the sentence and its figure on one baseline, the last line's: a sentence that wraps holds the
+ * figure beside the line its account ends on, and one that does not reads with it as one line.
  *
- * the foot rather than the top: a sentence that wraps holds the figure beside its last line, where
- * the account is read to its end, and one that does not leaves the figure setting the row's height.
+ * the figure stands off the switch by the gap the rule over the row stands off the words: the track
+ * is a drawn edge with no leading of its own, and the row's `--_sp1` and this one are that `--_sp2`.
+ * on one line the figure is the taller box, so the shared baseline takes the sentence down with it,
+ * further under the words than the rows stand apart (./layout.browser.spec.ts, "stands the fee’s
+ * sentence with the switch that wrote it"). a wrapped sentence's last line already stands the
+ * figure clear of the switch, and the sentence stays where the row puts it.
  */
+.fee-decision:not([hidden]) ~ :is(.fee-note, .figure:not(:empty)) {
+	align-self: last baseline;
+}
+
 .fee-decision:not([hidden]) ~ .figure:not(:empty) {
-	align-self: end;
 	margin-block-start: var(--_sp1);
 }
 

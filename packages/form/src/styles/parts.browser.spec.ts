@@ -2569,6 +2569,47 @@ describe('the sentence under the fee decision and its figure', () => {
 		};
 	}
 
+	/**
+	 * where one element's last line sits, read off a zero-size inline box put at its end: an empty
+	 * inline-block's baseline is its bottom edge, so the box stands on the line's baseline.
+	 */
+	function lastBaseline(node: Element): number {
+		const probe = document.createElement('span');
+		probe.style.cssText = 'display: inline-block; inline-size: 0; block-size: 0';
+		node.appendChild(probe);
+		const at = probe.getBoundingClientRect().top;
+		probe.remove();
+		return at;
+	}
+
+	// the figure is read as the end of the sentence's account, so it stands on the line that account
+	// ends on: the one line of a desktop card, and the last of a wrapped one. measured on the card at
+	// the narrowest width it is written to and at a desktop one, across the clamp band.
+	it.each([
+		['375px', '15px'],
+		['375px', '16px'],
+		['375px', '18px'],
+		['1280px', '15px'],
+		['1280px', '16px'],
+		['1280px', '18px']
+	])(
+		'stands the figure on the baseline of the sentence’s last line, %s wide at a %s root',
+		async (width, root) => {
+			document.documentElement.style.fontSize = root;
+			const { host, shadow } = await mount();
+			host.style.cssText = `display: block; inline-size: ${width}`;
+			await atReview(shadow);
+			const { note, figure } = fee(shadow);
+
+			const sentence = lastBaseline(note);
+			const number = lastBaseline(figure);
+			expect(
+				Math.abs(number - sentence),
+				`the figure at ${number}, the sentence at ${sentence}`
+			).toBeLessThanOrEqual(DEVICE_PIXEL);
+		}
+	);
+
 	it('sets them on the same line, the sentence in the label column and the figure in its own', async () => {
 		const { shadow } = await mount();
 		await atReview(shadow);
@@ -2580,8 +2621,8 @@ describe('the sentence under the fee decision and its figure', () => {
 		const first = lines(note)[0] as DOMRect;
 		const number = figure.getBoundingClientRect();
 
-		// the same line: the two boxes are drawn at two type sizes and the figure stands at the row's
-		// foot, so their edges do not coincide and what says they share a line is that they overlap.
+		// the same line: the two boxes are drawn at two type sizes on one baseline, so their edges do
+		// not coincide and what says they share a line is that they overlap at all.
 		expect(number.top).toBeLessThan(first.bottom);
 		expect(number.bottom).toBeGreaterThan(first.top);
 		// and each in its own column, which is what keeps the overlap from being a collision.
@@ -2609,7 +2650,7 @@ describe('the sentence under the fee decision and its figure', () => {
 	);
 
 	// the narrow card, where the sentence is longer than the column holding it. the figure follows
-	// it down to the line it ends on, the row's foot, rather than being pushed off the row.
+	// it down to the line it ends on rather than being pushed off the row.
 	it('holds the figure beside the last line while the sentence wraps', async () => {
 		const { host, shadow } = await mount();
 		host.style.cssText = 'display: block; inline-size: 320px';
@@ -2621,9 +2662,11 @@ describe('the sentence under the fee decision and its figure', () => {
 
 		expect(drawn.length).toBeGreaterThan(1);
 		expect(number.top).toBeLessThan(last.bottom);
-		// the foot is the sentence's own box, which a line rect stops short of by the half-leading.
-		const foot = note.getBoundingClientRect().bottom;
-		expect(Math.abs(number.bottom - foot), 'at the foot').toBeLessThanOrEqual(DEVICE_PIXEL);
+		// down to that line's foot or past it, which a figure left beside the first line is not.
+		expect(number.bottom).toBeGreaterThanOrEqual(last.bottom);
+		expect(number.bottom).toBeLessThanOrEqual(
+			(figure.closest('.row.fee') as HTMLElement).getBoundingClientRect().bottom
+		);
 		expect(number.left).toBeGreaterThanOrEqual(note.getBoundingClientRect().right);
 	});
 });
