@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { APPEARANCE_INPUTS, type StripeAppearance } from './appearance';
-import { LENGTH_TOKENS, NUMBER_TOKENS, resolveAppearance } from './resolve';
+import { LENGTH_TOKENS, NUMBER_TOKENS, RATIO_TOKENS, resolveAppearance } from './resolve';
 import tokens from './tokens.css?inline';
 
 // the browser pool, and the only pool that can see any of this. `oklch(from …)` is resolved at
@@ -64,6 +64,14 @@ const NUMBER_LANDS_AT: Record<
 	{ readonly is: string; readonly at: (appearance: StripeAppearance) => string | undefined }
 > = {
 	'--_w-bold': { is: '600', at: (a) => a.rules['.Label']?.fontWeight }
+};
+
+/** and for the ratio kind, carrying the line ./tokens.css states for each token. */
+const RATIO_LANDS_AT: Record<
+	string,
+	{ readonly is: string; readonly at: (appearance: StripeAppearance) => string | undefined }
+> = {
+	'--_lh-body': { is: '1.5', at: (a) => a.rules['.AccordionItem']?.lineHeight }
 };
 
 /** what a host page wrote on the element. */
@@ -200,6 +208,17 @@ describe('what the provider is handed', () => {
 
 		expect(Object.keys(NUMBER_LANDS_AT).sort()).toEqual([...NUMBER_TOKENS].sort());
 		for (const [token, lands] of Object.entries(NUMBER_LANDS_AT)) {
+			expect(lands.at(appearance), token).toBe(lands.is);
+		}
+	});
+
+	// and for the ratio kind, whose carrier is chosen so that a line under 1 arrives rather than
+	// splitting off the way it would through the weight's.
+	it('round-trips every ratio in the partition through its carrier', () => {
+		const appearance = resolveAppearance(card);
+
+		expect(Object.keys(RATIO_LANDS_AT).sort()).toEqual([...RATIO_TOKENS].sort());
+		for (const [token, lands] of Object.entries(RATIO_LANDS_AT)) {
 			expect(lands.at(appearance), token).toBe(lands.is);
 		}
 	});
