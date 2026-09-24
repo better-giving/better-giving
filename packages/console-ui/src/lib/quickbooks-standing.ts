@@ -176,6 +176,19 @@ export type QuickbooksAnswer =
 	| { kind: 'reported'; report: QuickbooksPressReport }
 	| { kind: 'unanswered'; press: QuickbooksPress; read: NoReport };
 
+/**
+ * how the start-date preview was answered: the preview's own arm of {@link QuickbooksAnswer}.
+ *
+ * it is posted apart from every other press, on a fetcher, so its answer arrives beside `answer`
+ * rather than in its place and a move's answer never overwrites it.
+ */
+export type QuickbooksStartAtPreview =
+	| {
+			kind: 'reported';
+			report: Extract<QuickbooksPressReport, { press: 'start-date-preview' }>;
+	  }
+	| { kind: 'unanswered'; press: 'start-date-preview'; read: NoReport };
+
 /** whether the last answer is this press's, landed. */
 export const landedPress = (answer: QuickbooksAnswer | null, press: QuickbooksPress): boolean =>
 	answer?.kind === 'reported' && answer.report.press === press;

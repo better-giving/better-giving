@@ -3,7 +3,7 @@ import type { QuickbooksPress } from '@better-giving/operator/console/quickbooks
 import { QUICKBOOKS_PRESSES } from '@better-giving/operator/console/quickbooks';
 import { useMemo } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { useSubmit } from 'react-router';
+import { useFetcher, useSubmit } from 'react-router';
 import { freeWithheldVars, pressQuickbooks, readQuickbooks } from '../api/client';
 import type { QuickbooksPressBody } from '../api/types';
 import { notReady, readConsole } from '../lib/console-reading';
@@ -12,6 +12,7 @@ import { groupPress } from '../lib/group-press';
 import { forgetReadings, readKeptPage } from '../lib/processor-cache';
 import type { QuickbooksAnswer } from '../lib/quickbooks-section';
 import { QuickbooksSection } from '../lib/quickbooks-section';
+import type { QuickbooksStartAtPreview } from '../lib/quickbooks-standing';
 import { quickbooksIntent } from '../lib/quickbooks-standing';
 import { usePress } from '../lib/use-press';
 import { FREE_INTENT } from '../lib/withheld-values';
@@ -73,9 +74,17 @@ export function clientLoader(args: Route.ClientLoaderArgs) {
  * (../lib/group-press.ts), so nothing about the three values is decided here.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
-	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');
+
+	// the preview writes nothing, so what was kept still stands; the page posts it on a fetcher that
+	// reads nothing again either.
+	if (intent === quickbooksIntent('start-date-preview')) {
+		const press = 'start-date-preview' as const;
+		return { quickbooks: { press, pressed: await pressQuickbooks(pressBody(press, posted)) } };
+	}
+
+	await forgetReadings();
 
 	const group = await groupPress(intent, posted);
 	if (group !== null) return group;
@@ -113,6 +122,7 @@ export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean {
 export default function QuickbooksPage({ loaderData, actionData, matches }: Route.ComponentProps) {
 	const shell = matches[1].loaderData;
 	const submit = useSubmit();
+	const previewer = useFetcher<typeof clientAction>();
 	const { intent, busy, revalidating } = usePress();
 
 	/* one object per answer rather than per render: the section tells a new answer from the one it
@@ -124,6 +134,18 @@ export default function QuickbooksPage({ loaderData, actionData, matches }: Rout
 			? { kind: 'reported', report: answered.pressed.report }
 			: { kind: 'unanswered', press: answered.press, read: answered.pressed.read };
 	}, [actionData]);
+
+	/* the same for the preview, which the fetcher keeps apart from `answer`: a move's answer lands
+	   in `actionData` and never over the preview it was made from. */
+	const preview = useMemo((): QuickbooksStartAtPreview | null => {
+		const data = previewer.data;
+		const answered = data && 'quickbooks' in data ? data.quickbooks : null;
+		if (answered === null) return null;
+		if (answered.pressed.kind === 'unanswered')
+			return { kind: 'unanswered', press: 'start-date-preview', read: answered.pressed.read };
+		const { report } = answered.pressed;
+		return report.press === 'start-date-preview' ? { kind: 'reported', report } : null;
+	}, [previewer.data]);
 
 	/* every press posts on its own rather than through a `<Form>`: the section's forms are about the
 	   values in them and hand what was typed back as a callback, so what is posted here is the
@@ -144,13 +166,22 @@ export default function QuickbooksPage({ loaderData, actionData, matches }: Rout
 				accountName={shell.account}
 				secrets={actionData && 'secrets' in actionData ? actionData.secrets : null}
 				answer={answer}
+				preview={preview}
+				previewing={previewer.state !== 'idle'}
 				freed={actionData && 'freed' in actionData ? actionData.freed : null}
 				busy={busy}
 				pending={intent}
 				revalidating={revalidating}
 				onConnect={() => make('connect')}
 				onAccounts={(picks) => make('accounts', { ...picks })}
-				onPreviewStartDate={(day) => make('start-date-preview', { startAt: day })}
+				onPreviewStartDate={(day) =>
+					/* on a fetcher that reads nothing again: the count is read-only, and a re-read over
+					   it would close every control and could stand the gate over it. */
+					void previewer.submit(
+						{ intent: quickbooksIntent('start-date-preview'), startAt: day },
+						{ method: 'post', defaultShouldRevalidate: false }
+					)
+				}
 				onStartDate={(day) => make('start-date', { startAt: day })}
 				onRetry={() => make('retry')}
 				onDisconnect={() => make('disconnect')}

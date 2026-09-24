@@ -34,6 +34,7 @@ import { keysTrouble } from './processor-screen';
 import type {
 	QuickbooksAnswer,
 	QuickbooksPicks,
+	QuickbooksStartAtPreview,
 	StepName,
 	StepStanding
 } from './quickbooks-standing';
@@ -213,9 +214,13 @@ export type QuickbooksSectionProps = {
 	onConnect: () => void;
 	/** the three accounts a gift is posted into, by id, and all three together. */
 	onAccounts: (picks: QuickbooksPicks) => void;
+	/** how the last start-date preview was answered, or `null` where none has been. */
+	preview: QuickbooksStartAtPreview | null;
+	/** a start-date preview is in flight. */
+	previewing: boolean;
 	/**
 	 * what moving the day to `day` would send and skip, written nowhere. its answer arrives on
-	 * `answer` as the `start-date-preview` report, and decides whether the move asks first.
+	 * `preview`, and decides whether the move asks first.
 	 */
 	onPreviewStartDate: (day: string) => void;
 	/** the earliest day a gift goes over, as `YYYY-MM-DD`. */
@@ -230,6 +235,8 @@ export type QuickbooksSectionProps = {
 type Presses = Pick<
 	QuickbooksSectionProps,
 	| 'answer'
+	| 'preview'
+	| 'previewing'
 	| 'busy'
 	| 'pending'
 	| 'onConnect'
@@ -259,6 +266,8 @@ export function QuickbooksSection({
 	accountName,
 	secrets,
 	answer,
+	preview,
+	previewing,
 	freed,
 	busy,
 	pending,
@@ -315,6 +324,8 @@ export function QuickbooksSection({
 	if (values.vars.kind !== 'read' || holding === null) return null;
 	const presses: Presses = {
 		answer,
+		preview,
+		previewing,
 		busy,
 		pending,
 		onConnect,
@@ -1086,21 +1097,26 @@ function dayIn(form: HTMLFormElement): string {
 function StartDateForm({
 	company,
 	answer,
+	preview,
+	previewing,
 	busy,
 	pending,
 	onPreviewStartDate,
 	onStartDate
 }: { company: QuickbooksCompany } & Pick<
 	Presses,
-	'answer' | 'busy' | 'pending' | 'onPreviewStartDate' | 'onStartDate'
+	'answer' | 'preview' | 'previewing' | 'busy' | 'pending' | 'onPreviewStartDate' | 'onStartDate'
 >): ReactNode {
-	const own = ownPress(pending, 'start-date-preview', 'start-date');
-	/* the day the preview was asked for, and the answer standing when it was: only an answer that
-	   arrived after the press is that press's preview. */
-	const [asked, setAsked] = useState<{ day: string; over: QuickbooksAnswer | null } | null>(null);
+	const own = previewing || ownPress(pending, 'start-date');
+	/* the day the preview was asked for, and the preview standing when it was: only a preview that
+	   arrived after the press is that press's. */
+	const [asked, setAsked] = useState<{
+		day: string;
+		over: QuickbooksStartAtPreview | null;
+	} | null>(null);
 	/* and of those, only a preview of the day asked (`startDateNext` in ./quickbooks-standing.ts). */
 	const next =
-		asked === null || answer === asked.over ? null : startDateNext(asked.day, company, answer);
+		asked === null || preview === asked.over ? null : startDateNext(asked.day, company, preview);
 	const ask = next?.kind === 'ask' ? next.ask : null;
 	const touchesNothing = next?.kind === 'move';
 
@@ -1129,7 +1145,7 @@ function StartDateForm({
 		busy,
 		pending: own || touchesNothing
 	});
-	const silent = unanswered(answer, 'start-date-preview') ?? unanswered(answer, 'start-date');
+	const silent = unanswered(preview, 'start-date-preview') ?? unanswered(answer, 'start-date');
 	/* the confirm's own press, which makes the move it was put up to ask about. */
 	const move =
 		asked === null
@@ -1150,7 +1166,7 @@ function StartDateForm({
 				event.preventDefault();
 				const day = dayIn(event.currentTarget);
 				if (!startToSave(day, company)) return;
-				setAsked({ day, over: answer });
+				setAsked({ day, over: preview });
 				onPreviewStartDate(day);
 			}}
 		>
