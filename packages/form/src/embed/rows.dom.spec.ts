@@ -9,23 +9,22 @@ import { PROVIDER_NAME_OFFSET_PX } from './rows.measured';
 // frame, held where a commit can see it.
 //
 // the two halves are drawn by code that cannot see each other: ../styles/rows.css draws ours in a
-// shadow root on this page, and ../styles/appearance.ts sends the provider a set of lengths its own
-// stylesheet spends inside an iframe on its origin. so the tie between them is arithmetic over the
-// values we send, and this is where that arithmetic is written down. the browser pool measures the
-// drawn row (`a payment row drawn beside the provider's frame` in ../styles/parts.browser.spec.ts);
-// nothing anywhere can measure the provider's, which is why the figure it is held to is derived.
+// shadow root on this page, and ../styles/appearance.ts sends the provider a set of lengths and
+// grounds its own stylesheet spends inside an iframe on its origin. so the tie between them is read
+// here off what each side states: our sheet as the row adopts it, and the appearance object over a
+// resolved cascade. the browser pool measures the drawn row (`a payment row drawn beside the
+// provider's frame` in ../styles/parts.browser.spec.ts).
 //
-// the provider's side of the derivation, and the whole of what this file takes on faith:
+// what this file takes on faith about the provider's side:
 //
 //  - the frame's root is the `fontSizeBase` we send, which is `--_t-sm` (`html { font-size:
 //    var(--fontSizeBase) }` in the Payment Element's own stylesheet, the one https://js.stripe.com/v3/
 //    names for that element).
-//  - a rail's name starts about 37px from the rail's padding edge at the default root, read off a
-//    rendered frame to a pixel either way: the frame is cross-origin, so no script of ours can
-//    query it, and this is the one length here that is measured rather than derived.
-//  - that column is the provider's own and no appearance variable reaches it
-//    (https://docs.stripe.com/elements/appearance-api lists what an integrator may set: the label's
-//    colour, size and weight, and the item's box — never the icon).
+//  - a rail's name starts `PROVIDER_NAME_OFFSET_PX` from the rail's padding edge at the default root
+//    (./rows.measured.ts). it is measured rather than derived: the frame is cross-origin, so no
+//    script of ours can query it, and the icon column that sets it is the provider's own, which no
+//    appearance variable reaches (https://docs.stripe.com/elements/appearance-api lists what an
+//    integrator may set: the label's colour, size and weight, and the item's box — never the icon).
 //
 // the rail's padding edge is ours, because `.AccordionItem` in ../styles/appearance.ts pays it
 // `--_inset` and `[part~='payment']` in ../styles/parts.css pulls the box out by the same length.

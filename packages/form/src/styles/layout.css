@@ -228,7 +228,7 @@ form {
  * the one control that spends the money and on no other (../../custom-elements.json).
  */
 .aside:has(+ [part~='submit']) {
-	margin-block-end: calc(var(--_sp2) - var(--_sp5));
+	margin-block-end: calc(var(--_sp2) - var(--_step-gap));
 }
 
 /*
@@ -649,10 +649,12 @@ form {
 }
 
 /*
- * a row whose label stands inside its box, and the three things that construction needs of the row.
+ * a row whose label stands inside its box, and what that construction needs of the row.
  *
- * only the label moves. the box and the sentence under it are laid out here exactly as the row above
- * lays them out — same order, same gap — and `.floating` in ./parts.css places the label alone.
+ * only the label moves. the box and the sentence under it stand in the order the row above lays them
+ * out, and the sentence stands the same `--_sp1` under the box: here by the row's own gap, which is
+ * `--_column-gap` stated at that step, where the row above reaches it by a margin on the box (the
+ * refusal rule above). `.floating` in ./parts.css places the label alone.
  *
  * the column is a grid rather than a flex column, and that is what the label is positioned against:
  * an out-of-flow child of a grid container that names a row resolves against that row's area
