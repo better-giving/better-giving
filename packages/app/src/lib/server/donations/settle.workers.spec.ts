@@ -1122,6 +1122,26 @@ describe('settleDelivery() — a grant through Chariot', () => {
 		expect(groups?.n).toBe(0);
 		expect(mail.sent).toHaveLength(0);
 	});
+
+	it('keeps a grant posted when Chariot later reports it cancelled, and tells an operator once', async () => {
+		const gift = await pendingGrant();
+		await settleDelivery(deps({ provider: grant() }), DELIVERY);
+		const mail = mailer();
+
+		const result = await settleDelivery(
+			deps({ email: mail.port, provider: grant({ status: 'cancelled', feeMinor: null }) }),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'ignored' });
+		const [row] = await db.select().from(payment).where(eq(payment.id, gift.paymentId));
+		expect(row?.status).toBe('succeeded');
+		expect(await groupLines('payment', gift.paymentId)).not.toBeNull();
+		expect(await groupLines('fee', gift.paymentId)).not.toBeNull();
+		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+		expect(mail.sent[0]?.text).toContain(gift.paymentId);
+		expect(mail.sent[0]?.text).toContain('cancelled');
+	});
 });
 
 /**
@@ -1621,6 +1641,25 @@ describe('settleDelivery() — a gift settled on PayPal', () => {
 		expect(await groupLines('payment', gift.paymentId)).not.toBeNull();
 	});
 
+	/** a capture state PayPal's adapter does not settle on — `REVERSED` on a chargeback — reads `pending`. */
+	it('keeps a posted capture settled when a later read finds it no longer completed, and tells an operator', async () => {
+		const gift = await paypalGift();
+		await settleDelivery(deps({ provider: captured() }), DELIVERY);
+		const mail = mailer();
+
+		const result = await settleDelivery(
+			deps({ email: mail.port, provider: captured({ status: 'pending', feeMinor: null }) }),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'ignored' });
+		const [row] = await db.select().from(payment).where(eq(payment.id, gift.paymentId));
+		expect(row?.status).toBe('succeeded');
+		expect(await groupLines('payment', gift.paymentId)).not.toBeNull();
+		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+		expect(mail.sent[0]?.text).toContain(gift.paymentId);
+	});
+
 	it('finds no gift for an order this deployment did not open on PayPal', async () => {
 		// the same order id against a row Stripe wrote: `payment_provider_txn_idx` is on the pair,
 		// so the processor is half the key and not decoration on it.
@@ -1797,6 +1836,23 @@ describe('settleDelivery() — a crypto gift valued at what arrived', () => {
 		);
 
 		expect(result).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect(mail.sent).toHaveLength(0);
+	});
+
+	/** a read can report a state from before the coins landed, which is no news about the gift. */
+	it('tells nobody when a payment already posted is read back as still confirming', async () => {
+		const gift = await pendingCrypto();
+		await settleDelivery(deps({ provider: nowpayments() }), DELIVERY);
+		const mail = mailer();
+
+		const result = await settleDelivery(
+			deps({ provider: nowpayments(arrived({ status: 'pending' })), email: mail.port }),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'ignored' });
+		const [row] = await db.select().from(payment).where(eq(payment.id, gift.paymentId));
+		expect(row?.status).toBe('succeeded');
 		expect(mail.sent).toHaveLength(0);
 	});
 

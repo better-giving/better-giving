@@ -149,9 +149,19 @@ import { sendTributeNotice } from './tribute-notice';
 //
 // where the payment cannot be read back — a key replaced since it was made, a repeat deposit the key
 // never created — the settlement the verified delivery stated stands in (`fallbackFor`), and only
-// for a state it ended in: a delivery can be older than the one that settled the payment, so a
-// state read off one never walks a settled payment back. nor does a later read of a crypto payment,
-// which can report a state from before the money landed (`write`).
+// for a state it ended in: a delivery can be older than the one that settled the payment.
+//
+// ---------------------------------------------------------------------------
+// a payment that settled is never walked back, on any rail (`write`).
+//
+// its entries, the row it owes QuickBooks and the rows it owes every listening Zap stay whatever a
+// later report says, so a status moved off `succeeded` would leave the gift reading `cancelled` or
+// `pending` while the books count it. a fresh read reporting such a payment unsettled — a grant the
+// fund cancelled, a capture reversed — changes nothing and tells an operator, because the books
+// hold money the processor may have taken back and only a correction posted in /admin/books
+// (../ledger/correct.ts) takes it out. two reports are stale rather than news and say nothing: a
+// crypto read, which can report a state from before the coins landed, and a delivery's own state
+// standing in for a read, which can be older than the one that settled the payment.
 //
 // ---------------------------------------------------------------------------
 // "three days" below is Stripe's and PayPal's redelivery window. NOWPayments sends a non-2xx again
@@ -304,8 +314,8 @@ export async function settleTransaction(
 		if (fallback === null) return unreadable(deps, transaction, read);
 		settlement = fallback;
 	}
-	// a verified state standing in for a read never walks a settled payment back: it may be older
-	// than the one that settled it, and nothing here can say which came first.
+	// a verified state standing in for a read may be older than the one that settled the payment,
+	// and nothing here can say which came first.
 	const settledOnly = !read.ok;
 
 	// money sent again to an address whose payment already settled is a gift of its own. the read
@@ -351,7 +361,7 @@ export async function settleTransaction(
 			: null;
 	const credits = recognition?.ok ? recognition.credits : null;
 
-	const written = await write(deps.db, target, settlement, credits, settledOnly);
+	const written = await write(deps.db, target, settlement, credits);
 	if (written === 'already_posted') {
 		// a dollar figure moves with every read — NOWPayments values what arrived at its estimate when
 		// asked — so only a different coin or amount of it is news.
@@ -370,6 +380,10 @@ export async function settleTransaction(
 		};
 	}
 	if (written === 'unchanged') {
+		// the two stale reports the header names say nothing; any other is news.
+		if (!settledOnly && target.payment.method !== 'crypto') {
+			await reportedUnsettled(deps, target, settlement);
+		}
 		return {
 			ok: true,
 			outcome: 'ignored',
@@ -693,17 +707,15 @@ async function write(
 	db: Db,
 	target: Target,
 	settlement: Settlement,
-	credits: GiftRevenue | null,
-	settledOnly: boolean
+	credits: GiftRevenue | null
 ): Promise<'written' | 'unchanged' | 'already_posted' | 'failed'> {
 	const row = target.payment;
-	// a crypto payment posted at what arrived, or one settled off a delivery's own state, is never
-	// walked back: a later read or an older delivery can report a state from before the money
-	// landed. the guard is in the statement, so no read taken beforehand decides it.
+	// a `succeeded` payment is never walked back, on any rail (the header says why). the guard is in
+	// the statement, so no read taken beforehand decides it.
 	const correcting =
-		(settledOnly || row.method === 'crypto') && settlement.status !== 'succeeded'
-			? and(eq(payment.id, row.id), ne(payment.status, 'succeeded'))
-			: eq(payment.id, row.id);
+		settlement.status === 'succeeded'
+			? eq(payment.id, row.id)
+			: and(eq(payment.id, row.id), ne(payment.status, 'succeeded'));
 	const writes: [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]] = [
 		db
 			.update(payment)
@@ -1137,6 +1149,35 @@ async function revalued(deps: SettleDeps, target: Target, settlement: Settlement
 			}
 		],
 		action: `Compare the payment in the ${processor} dashboard with the gift in /admin, and correct it by hand if the posted value is wrong.`
+	});
+}
+
+/** a settled payment a fresh read reports unsettled, told to an operator and changing nothing. */
+async function reportedUnsettled(
+	deps: SettleDeps,
+	target: Target,
+	settlement: Settlement
+): Promise<void> {
+	const processor = processorLabel(deps);
+	await alert(deps, {
+		headline: `A ${processor} payment recorded as settled is now reported as ${settlement.status}`,
+		body:
+			`A payment this deployment recorded as settled is now reported by ${processor} as ` +
+			`${settlement.status}. Nothing was changed: the payment still reads as settled, and what ` +
+			'was posted for it stands until a person posts a correction.',
+		facts: [
+			{ label: 'Payment', value: target.payment.id },
+			{ label: 'Donation', value: target.donation.id },
+			{ label: 'Transaction', value: settlement.providerTxnId },
+			{ label: 'Now reported as', value: settlement.status },
+			{
+				label: 'Recorded amount',
+				value: `${target.payment.amountMinor} ${target.payment.currency} (minor units)`
+			}
+		],
+		action:
+			`Check the payment in the ${processor} dashboard. If the money did go back, post a ` +
+			'correction for it in /admin/books.'
 	});
 }
 

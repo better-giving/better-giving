@@ -753,10 +753,13 @@ async function writeAgainstPlan(
 	);
 	const wrote = await attempt(deps.db, [
 		...writes.statements,
+		// `refreshOf` decides from `plan` as it was read, and an operator's stop can commit before
+		// this batch does, so it applies only over the status it read: a stop matches nothing and
+		// stands, and the gift is recorded all the same, because the money moved.
 		deps.db
 			.update(recurringPlan)
 			.set(refreshOf(plan, notice, event))
-			.where(eq(recurringPlan.id, plan.id))
+			.where(and(eq(recurringPlan.id, plan.id), eq(recurringPlan.status, plan.status)))
 	]);
 
 	if (wrote === 'duplicate') {

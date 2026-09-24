@@ -20,6 +20,7 @@ import {
 	type Settlement
 } from '../payments/provider';
 import type { SettleDeps, SettleOutcome } from './delivery';
+import { stopRecurringPlan } from '../recurring/queries';
 import { recordAuthorizedGift, type AuthorizedGiftInput } from './record';
 import { settleDelivery } from './settle';
 
@@ -1670,6 +1671,45 @@ describe('settleDelivery() — a commitment that starts collecting again', () =>
 			endedAt: new Date('2026-11-01T09:00:00.000Z')
 		});
 	});
+
+	/**
+	 * an operator's stop committing while the collection reads its money back — after the plan was
+	 * read and before the collection writes.
+	 */
+	it.each([
+		['lapsed', true],
+		['collecting', false]
+	])(
+		'leaves a %s commitment stopped when an operator stops it mid-collection, and records the gift',
+		async (_standing, lapsed) => {
+			await settleDelivery(deps(), DELIVERY);
+			if (lapsed) await lapse();
+			const [before] = await db.select().from(recurringPlan);
+			if (before === undefined) throw new Error('the first collection opened no commitment');
+			let stoppedAs: { endedAt: Date | null } | undefined;
+			const racing = provider({
+				verify: { ok: true, value: secondCollection.event },
+				gift: { ok: true, value: secondCollection.notice },
+				settled: { ok: true, value: secondCollection.settlement }
+			});
+			racing.readSettlement = async () => {
+				await stopRecurringPlan(db, before.id, new Date('2026-09-02T08:00:00.000Z'));
+				[stoppedAs] = await db.select().from(recurringPlan);
+				return { ok: true, value: secondCollection.settlement };
+			};
+
+			const result = await settleDelivery(deps({ provider: racing }), DELIVERY);
+
+			expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+			const [plan] = await db.select().from(recurringPlan);
+			expect(plan).toMatchObject({
+				status: 'cancelled',
+				endedAt: stoppedAs?.endedAt,
+				nextChargeAt: null
+			});
+			expect(await groupLines('payment', await paymentFor('pi_collect_2'))).not.toBeNull();
+		}
+	);
 });
 
 describe('settleDelivery() — a collection that carries no transaction', () => {
