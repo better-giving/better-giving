@@ -35,17 +35,22 @@ const RESOLVED: Record<string, string> = {
 	'font-size': '16px'
 };
 
-/** the rail's container off a cascade that resolved: nothing of its own, and the room around it. */
+/**
+ * the rail's container off a cascade that resolved: no edge of its own, the card's ground under it,
+ * and the room around it.
+ */
 const RAIL = {
 	border: 'none',
 	boxShadow: 'none',
 	borderRadius: '0',
+	backgroundColor: 'oklch(0.995 0.001 264)',
 	paddingTop: '12px',
+	paddingBottom: '12px',
 	paddingLeft: '20px',
 	paddingRight: '20px'
 };
 
-/** and off one that did not: both pads are read from tokens, so only the bare pair is left. */
+/** and off one that did not: the ground and the pads are read from tokens, so only the bare rail is left. */
 const RAIL_WITHOUT_ROOM = {
 	border: 'none',
 	boxShadow: 'none',
@@ -112,6 +117,10 @@ describe('stripeAppearance', () => {
 			// the open rail carries the ramp's faint fill, so which method is expanded is legible
 			// from the band rather than only from what is under it.
 			'.AccordionItem--selected': { backgroundColor: 'oklch(0.965 0.001 264)' },
+			// and a pointer over a rail moves neither, because a pointer over one of our rows moves
+			// nothing (./rows.css draws no `:hover`).
+			'.AccordionItem:hover': { backgroundColor: 'oklch(0.995 0.001 264)' },
+			'.AccordionItem--selected:hover': { backgroundColor: 'oklch(0.965 0.001 264)' },
 			// the ring is the accent's, not the primary's: a ring is a line rather than a fill, and
 			// the same swap is made on every focused control the form draws itself.
 			'.Input:focus': { boxShadow: '0 0 0 1px oklch(0.27 0.002 264)' },
@@ -294,6 +303,20 @@ describe('stripeAppearance', () => {
 		});
 	});
 
+	// our rows draw nothing under the pointer, so a rail is sent its resting ground there; the open
+	// rail keeps its fill under the pointer as well, or hovering the open method would drop it back
+	// to the ground of a closed one.
+	it('holds every rail at its resting ground under the pointer', () => {
+		const appearance = stripeAppearance(reader());
+
+		expect(appearance.rules['.AccordionItem:hover']).toEqual({
+			backgroundColor: RESOLVED['--_n1']
+		});
+		expect(appearance.rules['.AccordionItem--selected:hover']).toEqual({
+			backgroundColor: RESOLVED['--_n3']
+		});
+	});
+
 	it('leaves the open rail unpainted when the faint step did not resolve', () => {
 		// a rule with nothing in it is a claim that the open rail was drawn. without the step the
 		// open rail is told from the closed ones only by the fields standing under it.
@@ -311,6 +334,7 @@ describe('stripeAppearance', () => {
 		const appearance = stripeAppearance(reader({ 'font-size': '15px' }));
 
 		expect(appearance.rules['.AccordionItem']?.paddingTop).toBe('11.25px');
+		expect(appearance.rules['.AccordionItem']?.paddingBottom).toBe('11.25px');
 	});
 
 	it('pads each rail by the inset the card body itself is padded by', () => {

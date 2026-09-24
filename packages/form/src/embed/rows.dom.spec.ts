@@ -1,28 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { stripeAppearance, type TokenReader } from '../styles/appearance';
+import { PAYMENT_ROW, stripeAppearance, type TokenReader } from '../styles/appearance';
+import partStyles from '../styles/parts.css?inline';
 import tokenStyles from '../styles/tokens.css?inline';
 import { createRows } from './rows';
+import { PROVIDER_NAME_OFFSET_PX } from './rows.measured';
 
 // what makes the rows this module draws one list with the ones the provider paints inside its own
 // frame, held where a commit can see it.
 //
 // the two halves are drawn by code that cannot see each other: ../styles/rows.css draws ours in a
-// shadow root on this page, and ../styles/appearance.ts sends the provider a set of lengths its own
-// stylesheet spends inside an iframe on its origin. so the tie between them is arithmetic over the
-// values we send, and this is where that arithmetic is written down. the browser pool measures the
-// drawn row (`a payment row drawn beside the provider's frame` in ../styles/parts.browser.spec.ts);
-// nothing anywhere can measure the provider's, which is why the figure it is held to is derived.
+// shadow root on this page, and ../styles/appearance.ts sends the provider a set of lengths and
+// grounds its own stylesheet spends inside an iframe on its origin. so the tie between them is read
+// here off what each side states: our sheet as the row adopts it, and the appearance object over a
+// resolved cascade. the browser pool measures the drawn row (`a payment row drawn beside the
+// provider's frame` in ../styles/parts.browser.spec.ts).
 //
-// the provider's side of the derivation, and the whole of what this file takes on faith:
+// what this file takes on faith about the provider's side:
 //
 //  - the frame's root is the `fontSizeBase` we send, which is `--_t-sm` (`html { font-size:
 //    var(--fontSizeBase) }` in the Payment Element's own stylesheet, the one https://js.stripe.com/v3/
 //    names for that element).
-//  - a rail's icon stands in a column 2.25em wide with a 0.75em margin after it, so the rail's name
-//    starts 3em from the rail's padding edge — at the frame's root, not at the label's size.
-//  - that column is the provider's own and no appearance variable reaches it
-//    (https://docs.stripe.com/elements/appearance-api lists what an integrator may set: the label's
-//    colour, size and weight, and the item's box — never the icon).
+//  - a rail's name starts `PROVIDER_NAME_OFFSET_PX` from the rail's padding edge at the default root
+//    (./rows.measured.ts). it is measured rather than derived: the frame is cross-origin, so no
+//    script of ours can query it, and the icon column that sets it is the provider's own, which no
+//    appearance variable reaches (https://docs.stripe.com/elements/appearance-api lists what an
+//    integrator may set: the label's colour, size and weight, and the item's box — never the icon).
 //
 // the rail's padding edge is ours, because `.AccordionItem` in ../styles/appearance.ts pays it
 // `--_inset` and `[part~='payment']` in ../styles/parts.css pulls the box out by the same length.
@@ -106,30 +108,67 @@ describe('the payment rows drawn beside the provider’s frame', () => {
 		expect(drawn).toEqual([]);
 	});
 
-	// the seam every control on the card stands on, paid by both kinds of row out of the same token:
-	// ours in the sheet above, the provider's in the appearance object it is sent.
+	// the pads and grounds both kinds of row are drawn in, read by ours off the sheet and by the
+	// provider's off the appearance object, and each held to `PAYMENT_ROW` in ../styles/appearance.ts.
 	it('pays the rail’s own padding on both sides of the frame', () => {
 		const head = styleRules(rowSheet()).find(({ selector }) => selector === '.head');
 		const rail = stripeAppearance(read).rules['.AccordionItem'];
 
-		expect(head?.style.getPropertyValue('padding')).toBe('var(--_sp3) var(--_inset)');
-		expect(rail?.paddingLeft).toBe(RESOLVED['--_inset']);
-		expect(rail?.paddingRight).toBe(RESOLVED['--_inset']);
+		expect(head?.style.getPropertyValue('padding')).toBe(
+			`var(${PAYMENT_ROW.padBlock}) var(${PAYMENT_ROW.padInline})`
+		);
+		expect(rail?.paddingTop).toBe(`${em(PAYMENT_ROW.padBlock) * ROOT_PX}px`);
+		expect(rail?.paddingBottom).toBe(`${em(PAYMENT_ROW.padBlock) * ROOT_PX}px`);
+		expect(rail?.paddingLeft).toBe(RESOLVED[PAYMENT_ROW.padInline]);
+		expect(rail?.paddingRight).toBe(RESOLVED[PAYMENT_ROW.padInline]);
 	});
 
-	// and the name lands where the provider lands its rails', which is the derivation at the head of
-	// this file: 3em at the frame's root, against our own mark's column plus the head's gap. the two
-	// are built out of different tokens at different sizes and land a tenth of a pixel apart at the
-	// default root, which is what the quarter below allows for — an agreement a retuned step would
-	// end, and the whole reason it is derived here rather than restated as `42px`.
+	// a closed row of ours paints nothing, so it stands on the card's own ground; the provider's rail
+	// is sent that ground outright, because its flat theme paints one of its own. the open fill and
+	// the ground under a pointer are the same pair.
+	it('stands on the rail’s own ground, open, closed and under a pointer', () => {
+		const rules = styleRules(rowSheet());
+		const background = (selector: string, property = 'background') =>
+			rules.find((rule) => rule.selector === selector)?.style.getPropertyValue(property);
+		const card = /\[part~='card'\]\s*\{[^}]*?\bbackground:\s*var\((--_[\w-]+)\)/.exec(
+			partStyles
+		)?.[1];
+		const provider = stripeAppearance(read).rules;
+
+		// the `none` the sheet writes, read back as happy-dom spells it and as a browser does.
+		expect(background('.head', 'background-color')).toMatch(/^(none|transparent)$/);
+		expect(rules.filter(({ selector }) => selector.includes(':hover'))).toEqual([]);
+		expect(card).toBe(PAYMENT_ROW.ground);
+		expect(provider['.AccordionItem']?.backgroundColor).toBe(RESOLVED[PAYMENT_ROW.ground]);
+		expect(provider['.AccordionItem:hover']?.backgroundColor).toBe(RESOLVED[PAYMENT_ROW.ground]);
+
+		expect(background('.band.open')).toBe(`var(${PAYMENT_ROW.openGround})`);
+		expect(provider['.AccordionItem--selected']?.backgroundColor).toBe(
+			RESOLVED[PAYMENT_ROW.openGround]
+		);
+		expect(provider['.AccordionItem--selected:hover']?.backgroundColor).toBe(
+			RESOLVED[PAYMENT_ROW.openGround]
+		);
+	});
+
+	// and the name lands where the provider lands its rails', `PROVIDER_NAME_OFFSET_PX` in
+	// ./rows.measured.ts, against our own mark plus the head's gap. the mark is at the name's size and
+	// the gap at the head's own, the card's root — built out of different tokens at different sizes,
+	// and held to the pixel the measurement carries.
 	it('stands the name where a rail stands its own', () => {
 		const rowPx = em('--_t-sm') * ROOT_PX;
-		// the mark's box and the column it stands in are at the name's size; the head's gap is at the
-		// head's own, which is the card's root.
-		const ours = (em('--_glyph-beside') + em('--_sp4')) * rowPx + em('--_sp3') * ROOT_PX;
-		const rail = 3 * rowPx;
+		const rules = styleRules(rowSheet());
+		const spent = (selector: string, property: string) => {
+			const value = rules
+				.find((rule) => rule.selector === selector)
+				?.style.getPropertyValue(property);
+			const token = value?.match(/^var\((--_[\w-]+)\)$/)?.[1];
+			if (token === undefined) throw new Error(`${selector} spends ${property} as ${value}`);
+			return em(token);
+		};
+		const ours = em('--_glyph-beside') * rowPx + spent('.head', 'gap') * ROOT_PX;
 
 		expect(stripeAppearance(read).variables.fontSizeBase).toBe(`${rowPx}px`);
-		expect(Math.abs(ours - rail)).toBeLessThanOrEqual(0.25);
+		expect(Math.abs(ours - PROVIDER_NAME_OFFSET_PX)).toBeLessThanOrEqual(1);
 	});
 });

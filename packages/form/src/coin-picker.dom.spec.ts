@@ -144,7 +144,131 @@ describe('the coin list', () => {
 
 		await typed('doge');
 		expect(listed()).toEqual([]);
-		expect((root.querySelector('.no-match') as HTMLElement).hidden).toBe(false);
+	});
+
+	// a popover that is not showing takes everything inside it out of the tree, and a live region is
+	// read out only when words arrive in one already there.
+	it('keeps its status in the tree while the list is closed', () => {
+		const { root, input } = mounted();
+		const status = root.querySelector('[role="status"]') as HTMLElement;
+
+		expect(input.getAttribute('aria-expanded')).toBe('false');
+		expect(status.isConnected).toBe(true);
+		expect(status.closest('[popover]')).toBeNull();
+		expect(status.closest('[hidden], [aria-hidden="true"]')).toBeNull();
+	});
+
+	it('says no coin matches when the keystroke that opens the list already finds none', async () => {
+		const { root, input, typed } = mounted();
+		const status = root.querySelector('[role="status"]') as HTMLElement;
+		input.focus();
+		await typed('q');
+
+		expect(input.getAttribute('aria-expanded')).toBe('true');
+		expect(status.textContent).toBe('No coin matches');
+		expect(status.closest('[popover]')).toBeNull();
+	});
+
+	it('says so in a status when a search finds no coin, and clears it when one does', async () => {
+		// the list draws the same words under the search, for a donor who is not hearing them.
+		const { root, typed } = mounted();
+		(root.querySelector('.picker') as HTMLElement).click();
+		await settle();
+		const status = root.querySelector('[role="status"]') as HTMLElement;
+		const drawn = root.querySelector('.no-match') as HTMLElement;
+		expect(status.textContent).toBe('');
+		expect(drawn.hidden).toBe(true);
+
+		await typed('doge');
+		expect(root.querySelector('[role="status"]')).toBe(status);
+		expect(status.textContent).toBe('No coin matches');
+		expect(drawn.hidden).toBe(false);
+		expect(drawn.textContent).toBe('No coin matches');
+
+		await typed('tron');
+		expect(root.querySelector('[role="status"]')).toBe(status);
+		expect(status.textContent).toBe('');
+		expect(drawn.hidden).toBe(true);
+	});
+
+	// happy-dom moves no focus on a press, so the caret staying in the box is held here by the press
+	// being cancelled, which is what keeps it there in a browser; the focus check guards the machine
+	// taking it elsewhere.
+	it('keeps the list open and the search typed when the no-match sentence is pressed', async () => {
+		const { root, input, typed } = mounted();
+		(root.querySelector('.picker') as HTMLElement).click();
+		await settle();
+		await typed('doge');
+		const drawn = root.querySelector('.no-match') as HTMLElement;
+
+		// off the origin: happy-dom lays every box out at 0×0 there, and zag reads a press on a box's
+		// edge as one on its scrollbar rather than outside it.
+		const at = { button: 0, clientX: 100, clientY: 100, bubbles: true, composed: true };
+		const press = new PointerEvent('pointerdown', {
+			...at,
+			pointerType: 'mouse',
+			cancelable: true
+		});
+		drawn.dispatchEvent(press);
+		// zag answers a mouse press outside the list a frame after it, and by then a browser hands
+		// back an empty path for the event (https://dom.spec.whatwg.org/#dom-event-composedpath).
+		// happy-dom keeps the path, so it is emptied here the way a browser empties it.
+		press.composedPath = () => [];
+		drawn.dispatchEvent(new MouseEvent('click', at));
+		await settle();
+
+		expect(input.getAttribute('aria-expanded')).toBe('true');
+		expect(input.value).toBe('doge');
+		expect(press.defaultPrevented).toBe(true);
+		expect(root.activeElement).toBe(input);
+	});
+
+	// zag answers a touch press on the `click` that follows it rather than on the press itself.
+	it('keeps the list open and the search typed when the no-match sentence is touched', async () => {
+		const { root, input, typed } = mounted();
+		(root.querySelector('.picker') as HTMLElement).click();
+		await settle();
+		await typed('doge');
+		const drawn = root.querySelector('.no-match') as HTMLElement;
+
+		const at = { button: 0, clientX: 100, clientY: 100, bubbles: true, composed: true };
+		const press = new PointerEvent('pointerdown', {
+			...at,
+			pointerType: 'touch',
+			cancelable: true
+		});
+		drawn.dispatchEvent(press);
+		drawn.dispatchEvent(new MouseEvent('click', at));
+		await settle();
+
+		expect(input.getAttribute('aria-expanded')).toBe('true');
+		expect(input.value).toBe('doge');
+		expect(press.defaultPrevented).toBe(true);
+		expect(root.activeElement).toBe(input);
+	});
+
+	it('keeps the list open and the search typed when the box’s chevron is pressed', async () => {
+		const { root, input, typed } = mounted();
+		(root.querySelector('.picker') as HTMLElement).click();
+		await settle();
+		await typed('tron');
+		const chevron = root.querySelector('.picker > .glyph:last-child') as Element;
+
+		const press = new PointerEvent('pointerdown', {
+			button: 0,
+			clientX: 100,
+			clientY: 100,
+			pointerType: 'mouse',
+			bubbles: true,
+			composed: true
+		});
+		chevron.dispatchEvent(press);
+		// emptied after dispatch, as a browser does (the no-match press above says why).
+		press.composedPath = () => [];
+		await settle();
+
+		expect(input.getAttribute('aria-expanded')).toBe('true');
+		expect(input.value).toBe('tron');
 	});
 
 	it('picks with the arrow keys and Enter, keeping the caret in the box', async () => {

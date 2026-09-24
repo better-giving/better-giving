@@ -8,11 +8,12 @@
  * outside the card's encapsulation) and a host page's own `button { … }` rule would otherwise reach
  * the row's name. the tokens arrive the way every inherited property does, through the slot.
  *
- * every length placing the band is the one ./appearance.ts sends the provider for its own rows, so
- * the two kinds of row are one list: the band runs to the card's edges and pads back in by
- * `--_inset` (`[part~='payment']` in ./parts.css pulls the box out by that same length), the name
- * stands `--_sp3` below the band's top edge, and the open band is `--_n3`. a closed band paints
- * nothing, which is the card's own ground, and no line stands between two bands — an absence
+ * every length placing the band and every ground under it is the one ./appearance.ts sends the
+ * provider for its own rows, named once there as `PAYMENT_ROW`, so the two kinds of row are one
+ * list: the band runs to the card's edges and pads back in by `--_inset` (`[part~='payment']` in
+ * ./parts.css pulls the box out by that same length), the name stands `--_sp3` below the band's top
+ * edge, and the open band is `--_n3`. a closed band paints nothing, which is the card's own ground,
+ * a pointer over either draws nothing, and no line stands between two bands — an absence
  * ../embed/rows.dom.spec.ts holds, because a sheet that draws none reads like a sheet nobody has
  * written a line into yet. the name's type and the mark's size are matched to what the provider
  * draws unasked, because ./appearance.ts sends its rows' names nothing — with the one departure
@@ -46,7 +47,7 @@
 .head {
 	display: flex;
 	align-items: start;
-	gap: var(--_sp3);
+	gap: var(--_sp5);
 	box-sizing: border-box;
 	inline-size: 100%;
 	margin: 0;
@@ -90,18 +91,17 @@
  * name's first line so a name that wraps keeps its mark there (`[part~='checkbox']` in ./parts.css
  * centres the box a donor ticks the same way).
  *
- * the glyph stands at the start of a column `--_sp4` wider than itself, which with the head's gap
- * starts the name where the provider starts its rows' names: 42px from the mark's start on a 16px
- * root, `--_glyph-beside` and `--_sp4` at the name's size plus `--_sp3` at the head's. what the
- * provider's own column is, and why those three tokens come to the same length, is derived and held
- * in ../embed/rows.dom.spec.ts — nothing here can measure it, because it is drawn inside the frame.
+ * the head's gap after the glyph starts the name where the provider starts its rows' names: about
+ * 36px from the mark's start on a 16px root, `--_glyph-beside` at the name's size plus `--_sp5` at
+ * the head's. the provider's own figure is measured rather than reachable, because it is drawn
+ * inside the frame — `PROVIDER_NAME_OFFSET_PX` in ../embed/rows.measured.ts — and
+ * ../embed/rows.dom.spec.ts holds ours within a pixel of it.
  */
 .mark {
 	flex: none;
 	block-size: var(--_glyph-beside);
 	inline-size: var(--_glyph-beside);
 	margin-block-start: calc((1lh - var(--_glyph-beside)) / 2);
-	margin-inline-end: var(--_sp4);
 }
 
 .panel {

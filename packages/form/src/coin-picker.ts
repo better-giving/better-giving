@@ -84,6 +84,9 @@ export type CoinPicker = {
 const CHOOSE = 'Choose a coin';
 const SEARCH = 'Search by symbol or name';
 
+/** what the list says when a search finds no coin. */
+const NO_MATCH = 'No coin matches';
+
 /** the sentence a refused coin carries in the list, under its own unchanged label. */
 const REFUSED = 'no longer accepted';
 
@@ -196,19 +199,28 @@ export function createCoinPicker(doc: Document): CoinPicker {
 	]);
 
 	// the rows, and the sentence standing where they would when a search finds none: either is the
-	// open list's surface.
+	// open list's surface. the sentence stands beside the listbox rather than in it — a listbox owns
+	// options and groups only, and `.coin-list[data-empty]` takes the listbox off screen while the
+	// sentence shows — so a press on it is kept from counting as one outside the list
+	// (`onPointerDownOutside` below). it is shown and never read out, and `status` says the same
+	// words: a popover that is not showing takes what is inside it out of the tree, and the keystroke
+	// that opens the list can be the one that finds nothing, so a status in the list would get its
+	// words in the same render it enters the tree, which is not read out.
 	const content = node(doc, 'div', 'coin-list');
 	content.setAttribute('part', part('select-list'));
-	const noMatch = node(doc, 'p', 'no-match', ['No coin matches']);
+	const noMatch = node(doc, 'p', 'no-match');
 	noMatch.setAttribute('part', part('select-list'));
+	noMatch.setAttribute('aria-hidden', 'true');
 	noMatch.hidden = true;
 	const list = node(doc, 'div', '', [content, noMatch]);
 	list.setAttribute('popover', 'manual');
+	const status = node(doc, 'p', 'vh');
+	status.setAttribute('role', 'status');
 	const message = node(doc, 'p', 'message');
 	message.id = 'coin-problem';
 	message.hidden = true;
 
-	root.appendChild(node(doc, 'div', 'field-row', [label, box, list, message]));
+	root.appendChild(node(doc, 'div', 'field-row', [label, box, list, message, status]));
 
 	let current: CoinChoice | null = null;
 	let invalid = false;
@@ -277,9 +289,13 @@ export function createCoinPicker(doc: Document): CoinPicker {
 				if (next !== undefined && next !== current?.value) current?.onChange(next);
 			},
 			// the box is the list's own control, and a press on its mark or its chevron is a press on
-			// the input rather than one outside the list.
+			// the input rather than one outside the list. the no-match sentence is the list's own
+			// surface, and a press on it keeps the list and the search. read off `detail.target`: zag
+			// calls this a frame after a mouse press, when the event's own path is already empty.
 			onPointerDownOutside: (event: zag.PointerDownOutsideEvent) => {
-				if (event.detail.originalEvent.composedPath().includes(box)) event.preventDefault();
+				const { target } = event.detail;
+				if (!(target instanceof Node)) return;
+				if (box.contains(target) || noMatch.contains(target)) event.preventDefault();
 			}
 		}));
 
@@ -334,7 +350,11 @@ export function createCoinPicker(doc: Document): CoinPicker {
 			if (there !== row) content.insertBefore(row, there);
 			at += 1;
 		}
-		noMatch.hidden = !api.open || collection.size > 0;
+		// written only on a change: a live region rewritten with the same words may say them again.
+		const said = api.open && collection.size === 0 ? NO_MATCH : '';
+		if (status.textContent !== said) status.textContent = said;
+		noMatch.textContent = said;
+		noMatch.hidden = said === '';
 
 		const picked = choice.options.find((option) => option.value === choice.value);
 		input.placeholder = api.open ? SEARCH : picked === undefined ? CHOOSE : '';
@@ -360,6 +380,9 @@ export function createCoinPicker(doc: Document): CoinPicker {
 		machine.subscribe(render);
 		machine.start();
 	};
+
+	// the caret stays in the box, as zag keeps it there on a press on the listbox.
+	noMatch.addEventListener('pointerdown', (event) => event.preventDefault());
 
 	box.addEventListener('click', (event) => {
 		if (event.target === input) return;

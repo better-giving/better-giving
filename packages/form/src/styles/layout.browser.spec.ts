@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { createRows } from '../embed/rows';
 import { createSelect } from '../select';
 import layoutStyles from './layout.css?inline';
 import partStyles from './parts.css?inline';
@@ -149,7 +150,7 @@ function card(width: string, rootFontSize: string, cardFontSize = '16px'): Card 
 		' --_t-xs: 0.75em; --_t-sm: 0.875em; --_t-md: 1em;' +
 		' --_lh-body: 1.5; line-height: var(--_lh-body);' +
 		' --_inset: calc(var(--_root-size) * 1.25); --_inset-wide: calc(var(--_root-size) * 1.75);' +
-		' --_row-min: 44px;';
+		' --_row-min: 44px; --_glyph-beside: 1.15em;';
 
 	const body = document.createElement('div');
 	body.className = 'card-body';
@@ -536,8 +537,8 @@ describe('the review step at the narrowest card', () => {
 
 	// and the length it takes, which is the half of it an arithmetic in the sheet can get wrong
 	// without moving the reading: the sentence is meant to stand off the box at the gap a refusal
-	// takes under the box it is about on every other row of the card (`.field-row` in
-	// ../styles/layout.css). a length spent in `em` resolves on the element spending it, and the
+	// takes under the box it is about on every other row of the card (`.field-row` and the rule under it
+	// in ../styles/layout.css). a length spent in `em` resolves on the element spending it, and the
 	// sentence is drawn a step smaller than the card — so the same expression means one thing on the
 	// box above it and a shorter one on the sentence itself.
 	it('leaves a refused payment\u2019s sentence at the gap a refusal takes under its box', () => {
@@ -547,7 +548,7 @@ describe('the review step at the narrowest card', () => {
 		);
 
 		expect(message.hidden).toBe(false);
-		expect(between(group, message)).toBeCloseTo(stepOf(give, '--_sp2'), 0);
+		expect(between(group, message)).toBeCloseTo(stepOf(give, '--_sp1'), 0);
 	});
 
 	// and the same claim with the step in the state a refused press puts it in, which is the question
@@ -573,6 +574,26 @@ describe('the review step at the narrowest card', () => {
 		const apart = [between(summary, group), between(message, receipt)];
 
 		expect(Math.max(...inside)).toBeLessThan(Math.min(...apart));
+	});
+
+	// the payment rows stand flush, each padded top and bottom (`.head` in ./rows.css), so one row's
+	// name and the next stand those two pads apart. the break over the list has to read wider than
+	// that, or the receipt and the list read as one run (`[part~='summary'] + .group` in
+	// ./layout.css).
+	it('stands the payment list further under the receipt than one payment row under the next', () => {
+		const { summary, group, box } = review('donor@example.org');
+		const drawer = createRows(box);
+		const names = ['PayPal', 'Venmo'].map((name) => {
+			const content = document.createElement('div');
+			drawer.draw(name, name === 'PayPal' ? 'paypal' : 'venmo', content);
+			const row = box.lastElementChild?.shadowRoot?.querySelector('.name');
+			if (!(row instanceof HTMLElement)) throw new Error(`the ${name} row drew no name`);
+			return row;
+		});
+		const [first, second] = names as [HTMLElement, HTMLElement];
+
+		expect(between(first, second)).toBeGreaterThan(0);
+		expect(between(summary, group)).toBeGreaterThan(between(first, second));
 	});
 
 	// and the whole of it in one claim: a donor squinting at the step has to see three blocks, which
@@ -1155,15 +1176,16 @@ describe('the tribute’s first line', () => {
 		expect(marked.top).toBe(empty.top);
 	});
 
-	// the sentence spans the pair rather than stacking into the name's own third of the card, where
-	// it would run several lines deep under a box one line tall and read as the block breaking.
-	it('spans the refusal across both columns rather than into the name’s', () => {
-		const { select, name, message } = dedication(PAIRED);
+	// the sentence refuses the name, so on the paired line it stands in the name's column, under the
+	// box it is about, rather than starting under the kind beside it.
+	it('starts the refusal under the name it refuses, in the name’s own column', () => {
+		const { name, message } = dedication(PAIRED);
 		const words = message.getBoundingClientRect();
+		const box = name.getBoundingClientRect();
 
-		expect(words.left).toBe(select.getBoundingClientRect().left);
-		expect(words.right).toBe(name.getBoundingClientRect().right);
-		expect(words.top).toBeGreaterThanOrEqual(name.getBoundingClientRect().bottom);
+		expect(words.left).toBe(box.left);
+		expect(words.right).toBe(box.right);
+		expect(words.top).toBeGreaterThanOrEqual(box.bottom);
 	});
 });
 

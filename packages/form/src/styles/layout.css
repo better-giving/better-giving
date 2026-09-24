@@ -188,11 +188,18 @@ form {
 	padding: var(--_inset);
 }
 
-/* the steps stack, one visible at a time. */
+/*
+ * the steps stack, one visible at a time.
+ *
+ * the step's gap goes by its own name rather than `--_column-gap`: the one refusal standing in the
+ * step's column is under a `.group`, which is a column itself and states `--_column-gap` on itself,
+ * so that name read on the group is the group's and never the step's.
+ */
 .step {
 	display: flex;
 	flex-direction: column;
-	gap: var(--_sp5);
+	--_step-gap: var(--_sp5);
+	gap: var(--_step-gap);
 }
 
 /*
@@ -221,7 +228,7 @@ form {
  * the one control that spends the money and on no other (../../custom-elements.json).
  */
 .aside:has(+ [part~='submit']) {
-	margin-block-end: calc(var(--_sp2) - var(--_sp5));
+	margin-block-end: calc(var(--_sp2) - var(--_step-gap));
 }
 
 /*
@@ -229,14 +236,15 @@ form {
  * the reason the line above gives: the step's full rhythm on both sides of it stands it as far from
  * the box it names as from the line under it, and a sentence equidistant from two blocks reads as a
  * third. it takes the gap a refusal takes under the box it is about on every other row of the card
- * instead — the step's gap negated and the row's own put back (`.field-row` below) — so a step
- * drawn at a different rhythm keeps the sentence against the box it is about.
+ * instead — the step's gap negated and the smaller step put back (`.field-row` below, and the
+ * rule under it) — so a step drawn at a different rhythm keeps the sentence against the box it is
+ * about.
  *
  * the length is carried by the box rather than by the sentence, which is where this parts from the
  * line above and the reason is the `em` both of them are written in: a step resolves on the element
  * spending it, and the sentence is drawn at `--_t-xs` while the box is at the card's own base — so
  * the same expression on the sentence negates three quarters of the step's gap and puts back three
- * quarters of the row's, landing it at a length nothing on this card names.
+ * quarters of the smaller step, landing it at a length nothing on this card names.
  *
  * so the box takes it, and what the line above gets from being hidden this gets from the gate: the
  * sentence is hidden until there is something to say (`paymentMessage` in ../views.ts), and the box
@@ -250,7 +258,7 @@ form {
  * heading (`paymentGroup` in ../views.ts), and no other group on the card is followed by one.
  */
 .group:has(+ .message:not([hidden])) {
-	margin-block-end: calc(var(--_sp2) - var(--_sp5));
+	margin-block-end: calc(var(--_sp1) - var(--_step-gap));
 }
 
 /*
@@ -370,7 +378,19 @@ form {
 .group {
 	display: flex;
 	flex-direction: column;
-	gap: var(--_sp2);
+	--_column-gap: var(--_sp2);
+	gap: var(--_column-gap);
+}
+
+/*
+ * the payment list under the receipt: a break wider than the step's own gap, because the rows below
+ * it stand a padded row apart (`.head` in ./rows.css, `.AccordionItem` in ./appearance.ts) — which
+ * is the target floor, not slack — and at the step's gap alone the total and the list read as one
+ * run while the list reads as loose. on the pair, so the receipt moved off the step
+ * (`receiptSlot` in ../views.ts) leaves the box at the step's rhythm.
+ */
+[part~='summary'] + .group {
+	margin-block-start: var(--_sp4);
 }
 
 /*
@@ -470,7 +490,8 @@ form {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
 	align-items: start;
-	gap: var(--_sp2);
+	--_column-gap: var(--_sp2);
+	gap: var(--_column-gap);
 }
 
 /*
@@ -495,12 +516,9 @@ form {
 }
 
 /*
- * the sentence under the name spans the pair rather than sitting in the name's own column. that
- * column is a little over a third of a 375px card, and the sentence stacked into it runs six lines
- * deep under a box one line tall — which reads as the block breaking rather than as a refusal.
- *
- * `.message` and not the box it belongs to: the box shares the line where the card is wide enough
- * for it and the words never do.
+ * the sentence under the name takes the name's column: the whole row here, where the name has a line
+ * of its own, and the name's own column once the two share a line (the breakpoint at the end of this
+ * file), so it starts under the box it refuses rather than under the kind beside it.
  */
 .dedication .message {
 	grid-column: 1 / -1;
@@ -515,7 +533,7 @@ form {
  * the construction, and this is the one length that follows from what is inside them.
  */
 .tribute .disclosure-inner {
-	gap: var(--_sp3);
+	--_column-gap: var(--_sp3);
 }
 
 /*
@@ -593,14 +611,62 @@ form {
 .field-row {
 	display: flex;
 	flex-direction: column;
-	gap: var(--_sp2);
+	--_column-gap: var(--_sp2);
+	gap: var(--_column-gap);
 }
 
 /*
- * a row whose label stands inside its box, and the three things that construction needs of the row.
+ * a refusal stands closer under what it refuses than the gap of the column both stand in: at that
+ * gap it stood as far below the box as the label stands above it, and with its own line's leading on
+ * top it read as a line of its own rather than as something said about the box. so it is the column's
+ * gap negated and the smaller step put back, carried by what is refused for the reason
+ * `.group:has(+ .message:not([hidden]))` above gives — the sentence is drawn a step smaller, and the
+ * expression spent on it resolves to a length nothing on this card names. the box is drawn at the
+ * card's base or its floor (`[part~='field']` in ./parts.css), so above the floor the two steps are
+ * the column's exactly.
  *
- * only the label moves. the box and the sentence under it are laid out here exactly as the row above
- * lays them out — same order, same gap — and `.floating` in ./parts.css places the label alone.
+ * the gap taken back is `--_column-gap`, which every column a refusal stands in states on itself and
+ * spends as its `gap`, so a column drawn at another step keeps its refusals at `--_sp1` (the
+ * tribute's body, above). a column nested in another states its own and never reads its parent's.
+ *
+ * the three columns a refusal stands in under a box it refuses: a row, a disclosure's body and the
+ * honoree's dedication. the dedication is a grid, so on its wide layout the select sharing the
+ * name's line takes the same margin (the breakpoint at the end of this file), or the taller of the
+ * two would hold the track open. the amount group is the fourth column and takes its gap back from
+ * the sentence's side instead (the rule after this one).
+ *
+ * a row whose label stands inside its box takes the smaller step as its gap instead
+ * (`.field-row.floating` below): its label is out of flow, so the box and the sentence are the only
+ * two things the gap falls between, and a margin on the box would shorten the track the label is
+ * centred in. its take-back here is that step less itself, which is none.
+ */
+:is(.field-row, .disclosure-inner, .dedication) > [part~='field']:has(+ .message:not([hidden])) {
+	margin-block-end: calc(var(--_sp1) - var(--_column-gap));
+}
+
+/*
+ * the amount group's refusal, under the tray it refuses, with the entry's hidden label standing out
+ * of flow between the two. the take-back is on the sentence because the tray is an inline-size
+ * container, and chromium drops every box inside one whose margin is switched through `:has()` —
+ * the tiles lose their rects while their computed `display` still reads as drawn. a hidden sentence
+ * is `display: none`, so the margin needs no gate.
+ *
+ * the sentence is drawn at `--_t-xs`, and every step is an `em`, so the two steps resolved on it
+ * would be that rung's fraction of the column's. the difference is scaled back by `--_t-xs`'s own
+ * multiplier to land at the column's length; "stands as close under each thing the amount step
+ * refuses" in ./parts.browser.spec.ts measures it against `--_sp1`, and goes red if the rung moves.
+ */
+.group > .tiles ~ .message {
+	margin-block-start: calc((var(--_sp1) - var(--_column-gap)) / 0.75);
+}
+
+/*
+ * a row whose label stands inside its box, and what that construction needs of the row.
+ *
+ * only the label moves. the box and the sentence under it stand in the order the row above lays them
+ * out, and the sentence stands the same `--_sp1` under the box: here by the row's own gap, which is
+ * `--_column-gap` stated at that step, where the row above reaches it by a margin on the box (the
+ * refusal rule above). `.floating` in ./parts.css places the label alone.
  *
  * the column is a grid rather than a flex column, and that is what the label is positioned against:
  * an out-of-flow child of a grid container that names a row resolves against that row's area
@@ -628,6 +694,7 @@ form {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
 	align-content: start;
+	--_column-gap: var(--_sp1);
 }
 
 /*
@@ -887,8 +954,13 @@ form {
 	}
 
 	/* back onto the select's line, which is the sentence the two of them are. */
-	.dedication > input {
+	.dedication > input,
+	.dedication .message {
 		grid-column: 2;
+	}
+
+	.dedication:has(> .message:not([hidden])) > [data-part='trigger'] {
+		margin-block-end: calc(var(--_sp1) - var(--_column-gap));
 	}
 }
 

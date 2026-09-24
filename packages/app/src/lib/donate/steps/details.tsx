@@ -162,8 +162,9 @@ export function DetailsStep({
  * which is the whole of what a placeholder is not.
  *
  * the sentence does not follow it. on either construction it is the row's own child under the box,
- * at the row's own gap — `.field-row.floating` in the form package's layout.css moves the label
- * and nothing else — tied to the field by `aria-describedby` while it is shown so that it is read
+ * standing `--_sp1` under it: by the floating row's own gap in a floating row, and by a margin on the
+ * box in a plain one (`.field-row.floating` in the form package's layout.css, which moves the label
+ * and nothing else) — tied to the field by `aria-describedby` while it is shown so that it is read
  * out with the field rather than found by looking for it, and carrying no part name, for the reason
  * the form package's parts.ts gives for every error surface: a host who could restyle it could
  * restyle it into nothing.

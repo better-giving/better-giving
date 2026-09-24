@@ -1,12 +1,15 @@
+// the provider's augmentation is what types `cdp()`'s `send`.
+/// <reference types="@vitest/browser-playwright" />
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // the provider's own handle on the test page, aliased: this file's `page` writes css into the host
 // document and is the one a reader here is looking for.
-import { page as browser, userEvent } from 'vitest/browser';
+import { page as browser, cdp, userEvent } from 'vitest/browser';
 import { createCoinPicker } from '../coin-picker';
 import { NETWORK_TINTS } from '../coins';
 import { createDepositBlock, type DepositView } from '../deposit';
 import { defineDonateForm, DONATE_FORM_TAG } from '../element';
 import { createRows, type Row, type RowMark } from '../embed/rows';
+import { PROVIDER_NAME_OFFSET_PX } from '../embed/rows.measured';
 import type { CheckoutPorts } from '../ports';
 import type { FormConfig } from '../v1';
 import { createSkeleton } from '../views';
@@ -825,10 +828,11 @@ describe('the labels on the pair under the name', () => {
 		fill(shadow, '#first-name', 'Ada');
 		await landed(label);
 
+		// the notch starts where the arc ends, and the words stand inside it.
 		const arc = corner(box);
 		expect(arc).toBeGreaterThan(0);
-		expect(ink(words).left - box.getBoundingClientRect().left).toBeGreaterThanOrEqual(arc);
-		seated(ink(words).left, box.getBoundingClientRect().left + arc);
+		expect(ink(words).left - box.getBoundingClientRect().left).toBeGreaterThan(arc);
+		seated(words.getBoundingClientRect().left, box.getBoundingClientRect().left + arc);
 	});
 
 	// standing on the edge, the label has to be painted behind or the edge reads through its words.
@@ -882,75 +886,10 @@ describe('the labels on the pair under the name', () => {
 		expect(reach).toBeGreaterThan(legend.getBoundingClientRect().bottom);
 	});
 
-	// and what the band knocks out, it re-states. the label stands over the box's own top edge and
-	// paints behind its words, so for the width of the name it takes whatever that edge is carrying
-	// — and the states it carries something in are the states this label floats in: a caret in an
-	// empty box floats it, and a donor tabbing back into a refused one loses the top run of the red
-	// edge behind the words naming it. so the band carries the edge the box is drawing rather than
-	// the pair it draws at rest, and the interruption reads as part of it.
-	it('carries whatever edge the box is drawing into the band behind the label', async () => {
-		const { shadow } = await mount();
-		await atDetails(shadow);
-		const { box, label, words } = field(shadow, '#first-name');
-		const band = () => getComputedStyle(words).backgroundImage;
-
-		// a value in the box, and nothing else: the resting hairline every box on the card carries.
-		fill(shadow, '#first-name', 'Ada');
-		await landed(label);
-		await landed(box);
-		expect(band(), 'the box at rest').toContain(drawnEdge(box));
-
-		await userEvent.hover(box);
-		await landed(box);
-		expect(band(), 'the box under a pointer').toContain(drawnEdge(box));
-
-		await userEvent.unhover(box);
-		await caretOn(box);
-		await landed(box);
-		expect(band(), 'the box with the caret in it').toContain(drawnEdge(box));
-
-		// and the one a donor actually walks into: the press is refused, and the caret comes back to
-		// a box whose edge is the refusal's own.
-		fill(shadow, '#first-name', '');
-		onward(shadow);
-		await settle();
-		await caretOn(box);
-		await landed(box);
-		expect(shadow.querySelector('#first-name-problem')?.hasAttribute('hidden')).toBe(false);
-		expect(band(), 'the box refused, with the caret back in it').toContain(drawnEdge(box));
-	});
-
-	// and the rise is that edge lifted, not a second shape drawn on top of it: one colour and one
-	// width with the box's own top run, and its two sides coming down onto that run. read on the box a
-	// failed press hands the caret back to, which is the state that draws the most on the edge — a
-	// border and a ring — and so the one where a ring over a border of another colour reads as two
-	// lines and a rise one pixel thin reads as a box standing on the edge.
-	it('rises from the refused box’s edge at that edge’s own colour and width', async () => {
-		const { shadow } = await mount();
-		await atDetails(shadow);
-		fill(shadow, '#email', 'donor@example.org');
-		onward(shadow);
-		await settle();
-		const { box, label, words } = field(shadow, '#first-name');
-		await caretOn(box);
-		await landed(box);
-		await landed(label);
-
-		const drawn = getComputedStyle(box);
-		const [run = ''] = getComputedStyle(words).backgroundImage.split(/,\s*(?=linear-gradient)/);
-		const span = words.getBoundingClientRect();
-
-		expect(shadow.querySelector('#first-name-problem')?.hasAttribute('hidden')).toBe(false);
-		expect(drawnEdge(box), 'the ring over the border').toBe(drawn.borderTopColor);
-		expect(run, 'the rise').toContain(drawn.borderTopColor);
-		seated((span.top + span.bottom) / 2, box.getBoundingClientRect().top);
-	});
-
 	/**
 	 * the band a box draws along its top edge, read off the box: `width` runs from the ring's outer
 	 * line to the border's inner one, and `depth` is the share of it inside the box — the border and
-	 * any inset band laid on it — which is how far below the box's own top a line brought down onto
-	 * that edge has to reach.
+	 * any inset band laid on it.
 	 */
 	function edgeBand(box: HTMLElement): { width: number; depth: number } {
 		const drawn = getComputedStyle(box);
@@ -969,40 +908,15 @@ describe('the labels on the pair under the name', () => {
 	}
 
 	/**
-	 * the rise as the label's knockout draws it: the top run's thickness, the two sides' widths, and
-	 * where each side's foot lands on the page — the band's middle, which is seated on the box's top,
-	 * plus however far the side's colour runs past that middle.
-	 */
-	function riseOf(words: HTMLElement): { top: number; sides: number[]; feet: number[] } {
-		const painted = getComputedStyle(words);
-		const [run = '', ...sideRuns] = painted.backgroundImage.split(/,\s*(?=linear-gradient)/);
-		const span = words.getBoundingClientRect();
-		const middle = (span.top + span.bottom) / 2;
-		return {
-			// where the edge's colour stops, which is the last stop of the run.
-			top: parseFloat(/([\d.]+)px\)\s*$/.exec(run)?.[1] ?? 'NaN'),
-			sides: painted.backgroundSize
-				.split(',')
-				.slice(1, 3)
-				.map((size) => parseFloat(size.trim().split(' ')[0] ?? '')),
-			feet: sideRuns.slice(0, 2).map((side) => {
-				const past = /(?:calc\(50% \+ (-?[\d.]+)px\)|50%)\)\s*$/.exec(side);
-				if (past === null) throw new Error(`a side with no foot at the band's middle: ${side}`);
-				return middle + parseFloat(past[1] ?? '0');
-			})
-		};
-	}
-
-	/**
-	 * the three states the label floats over an edge wider than the resting hairline — the caret in
-	 * the box, the box refused with the caret elsewhere, and the refused box the caret is back in —
-	 * each handed to `check` once it has landed.
+	 * every state the box's edge takes while the label floats over it — a value at rest, the pointer
+	 * on it, the caret in it, refused with the caret back in it, and refused with the caret elsewhere
+	 * — each handed to `check` once it has landed.
 	 *
 	 * the ring is widened to the strong border for the length of the walk. at the token file's own
-	 * values the border and the ring are one width, so every one of the three draws the same band and
-	 * a rule giving one state another state's width reads as right; widened, no two agree.
+	 * values the border and the ring are one width, so a band that clears one clears the other and a
+	 * notch too shallow for the ring reads as right; widened, it does not.
 	 */
-	async function throughEveryRise(
+	async function throughEveryEdge(
 		check: (state: string, box: HTMLElement, words: HTMLElement) => void
 	): Promise<void> {
 		const { shadow } = await mount();
@@ -1017,6 +931,14 @@ describe('the labels on the pair under the name', () => {
 		};
 
 		fill(shadow, '#first-name', 'Ada');
+		await landedAll();
+		check('a value at rest', box, words);
+
+		await userEvent.hover(box);
+		await landedAll();
+		check('under a pointer', box, words);
+		await userEvent.unhover(box);
+
 		await caretOn(box);
 		await landedAll();
 		check('the caret in the box', box, words);
@@ -1039,26 +961,76 @@ describe('the labels on the pair under the name', () => {
 		check('refused, with the caret elsewhere', box, words);
 	}
 
-	// the rise is the edge lifted, so it is as thick as the edge the box is drawing in each state the
-	// label floats over one, and a state drawn at another's width is a stair where the two meet.
-	it('lifts the edge at the width the box draws it, in every state it floats over', async () => {
-		await throughEveryRise((state, box, words) => {
-			const { width } = edgeBand(box);
-			const { top, sides } = riseOf(words);
-			expect(top, `${state}: the top run`).toBe(width);
-			expect(sides, `${state}: the sides`).toEqual([width, width]);
+	// the edge stops either side of the name and draws nothing over it: no run along the top of the
+	// band and no sides turned down onto the box, in the edge's colour or any other. the band is the
+	// knockout's two fills and nothing else.
+	it('draws nothing of the edge around the floated name, in every state the edge takes', async () => {
+		await throughEveryEdge((state, box, words) => {
+			const painted = getComputedStyle(words).backgroundImage;
+			expect(painted.match(/linear-gradient/g), `${state}: the layers`).toHaveLength(1);
+			expect(painted, `${state}: the edge's colour`).not.toContain(drawnEdge(box));
 		});
 	});
 
-	// and the rise's sides come down onto the edge rather than stopping at the box's outer line: each
-	// foot lands on the edge's inner line, where the run beside it ends, so the corner turns as one
-	// line of one width. a foot short of it leaves the edge's lower part running on past the side
-	// into the knockout — a step at both ends of the name.
-	it('brings the rise’s sides down to the edge’s inner line, in every state it floats over', async () => {
-		await throughEveryRise((state, box, words) => {
-			const inner = box.getBoundingClientRect().top + edgeBand(box).depth;
-			for (const foot of riseOf(words).feet) expect(foot, `${state}: a foot`).toBeCloseTo(inner, 0);
+	// and the band is what interrupts the edge: centred on the box's top, it reaches past the ring's
+	// outer line above and the border's inner line below, so no part of the edge runs through the
+	// name — a refused box's red breaks around it as the resting hairline does.
+	it('breaks the whole edge across the floated name, in every state the edge takes', async () => {
+		await throughEveryEdge((state, box, words) => {
+			const top = box.getBoundingClientRect().top;
+			const { width, depth } = edgeBand(box);
+			const [, band = ''] = getComputedStyle(words).backgroundSize.split(' ');
+			const span = words.getBoundingClientRect();
+			const middle = (span.top + span.bottom) / 2;
+			const half = parseFloat(band) / 2;
+
+			seated(middle, top);
+			expect(middle - half, `${state}: above the ring`).toBeLessThanOrEqual(top - (width - depth));
+			expect(middle + half, `${state}: below the border`).toBeGreaterThanOrEqual(top + depth);
 		});
+	});
+
+	// and the name stands inside the gap rather than at its ends: the same room at both, so the edge
+	// stops a little short of the first letter and picks up a little past the last.
+	it('keeps the name clear of both ends of the gap, in every state the edge takes', async () => {
+		await throughEveryEdge((state, _box, words) => {
+			const span = words.getBoundingClientRect();
+			const drawn = ink(words);
+			const before = drawn.left - span.left;
+			const after = span.right - drawn.right;
+			expect(before, `${state}: room before the name`).toBeGreaterThanOrEqual(DEVICE_PIXEL);
+			expect(after, `${state}: room after the name`).toBeGreaterThanOrEqual(DEVICE_PIXEL);
+			expect(before, `${state}: the two ends`).toBeCloseTo(after, 0);
+		});
+	});
+
+	// forced colours drop every `background-image` that is not a url, so the two-fill band is gone and
+	// the forced edge would run through the name. the mode has one ground on both sides of the line,
+	// so a single solid one is the whole notch there. read in every state the edge takes, because the
+	// focused box's edge is an outline in this mode rather than the ring.
+	it('keeps the notch where the system forces its own colours, in every state the edge takes', async () => {
+		const session = cdp();
+		await session.send('Emulation.setEmulatedMedia', {
+			features: [{ name: 'forced-colors', value: 'active' }]
+		});
+		try {
+			expect(matchMedia('(forced-colors: active)').matches, 'the mode is on').toBe(true);
+			await throughEveryEdge((state, box, words) => {
+				const drawn = getComputedStyle(box);
+				const top = box.getBoundingClientRect().top;
+				const outside = parseFloat(drawn.outlineWidth) + parseFloat(drawn.outlineOffset);
+				const inside = parseFloat(drawn.borderTopWidth);
+				const ground = getComputedStyle(words).backgroundColor;
+				const span = words.getBoundingClientRect();
+
+				expect(ground, `${state}: a ground at all`).not.toBe('rgba(0, 0, 0, 0)');
+				expect(ground, `${state}: a solid one`).not.toMatch(/rgba\(/);
+				expect(span.top, `${state}: above the outline`).toBeLessThanOrEqual(top - outside);
+				expect(span.bottom, `${state}: below the border`).toBeGreaterThanOrEqual(top + inside);
+			});
+		} finally {
+			await session.send('Emulation.setEmulatedMedia', { features: [] });
+		}
 	});
 
 	// the box keeps one height through both states and reserves nothing for either, so a donor
@@ -1537,12 +1509,39 @@ describe('the coin list inside the crypto option', () => {
 		expect(shown(root.querySelector('#coin-problem'))).toBe(false);
 	});
 
+	// the status stands outside the list so it is in the tree while the list is closed, and takes no
+	// room on the card there.
+	it('keeps the no-match status off the page while it stands beside the closed list', async () => {
+		const root = drawn(false);
+		const status = root.querySelector('[role="status"]') as HTMLElement;
+		const row = root.querySelector('.field-row') as HTMLElement;
+		const box = root.querySelector('.picker') as HTMLElement;
+
+		expect(status.getBoundingClientRect().width).toBeLessThanOrEqual(1);
+		expect(row.getBoundingClientRect().bottom).toBe(box.getBoundingClientRect().bottom);
+	});
+
+	// the seat every refusal on the card takes (`a refusal under its box` below), though the closed
+	// list stands between the box and the sentence here.
+	it('says a refusal close under its box, at the step every refusal takes', async () => {
+		const root = drawn(false, 'Choose a coin to give');
+		const box = root.querySelector('.picker') as HTMLElement;
+		const refusal = root.querySelector('#coin-problem') as HTMLElement;
+
+		expect(shown(refusal)).toBe(true);
+		expect(refusal.getBoundingClientRect().top - box.getBoundingClientRect().bottom).toBeCloseTo(
+			step(root, '--_sp1'),
+			0
+		);
+	});
+
 	it('opens the list on a press, ticks only the picked coin and says the refusal under a refused one', async () => {
 		const root = drawn(true);
 		await opened(root);
 		const [btc, sol] = [...root.querySelectorAll('[role="option"]')];
 
 		expect(shown(root.querySelector('.coin-list'))).toBe(true);
+		expect(shown(root.querySelector('.no-match'))).toBe(false);
 		expect(shown(btc?.querySelector('.tick') ?? null)).toBe(true);
 		expect(shown(sol?.querySelector('.tick') ?? null)).toBe(false);
 		expect(shown(btc?.querySelector('.message') ?? null)).toBe(false);
@@ -2276,13 +2275,13 @@ describe('a payment row drawn beside the provider’s frame', () => {
 		expect(getComputedStyle(panel).display).toBe('none');
 	});
 
-	// the name starts where the provider's own rows start theirs, 42px in from the mark's start on a
-	// 16px root — measured against its frame, which no test can reach into. the mark sits in a column
-	// wider than its glyph (`.mark` in ./rows.css), so the offset is that column plus the head's gap.
-	// every row is measured, the fund's included: one mark box for all three is what keeps the column
-	// the same, and the name is the last thing in every head.
+	// the name starts where the provider's own rows start theirs, `PROVIDER_NAME_OFFSET_PX` in from the
+	// mark's start (../embed/rows.measured.ts) — measured against its frame, which no test can reach
+	// into. the offset is the glyph and the head's gap after it (`.head` and `.mark` in ./rows.css).
+	// every row is measured, the fund's included: one mark box for all three is what keeps the name at
+	// one x, and the name is the last thing in every head.
 	it.each(['paypal', 'venmo', 'fund'] as const)(
-		'draws the %s mark at the padding edge and the name a column and a gap after it',
+		'draws the %s mark at the padding edge and the name a gap after it',
 		(mark) => {
 			const { head } = measured(mark);
 			const glyph = head.querySelector('.mark') as SVGElement;
@@ -2290,16 +2289,16 @@ describe('a payment row drawn beside the provider’s frame', () => {
 			const headStyle = getComputedStyle(head);
 			const paddingEdge =
 				head.getBoundingClientRect().left + parseFloat(headStyle.paddingInlineStart);
-			const column =
-				glyph.getBoundingClientRect().width + parseFloat(getComputedStyle(glyph).marginInlineEnd);
 			const offset = name.getBoundingClientRect().left - paddingEdge;
 
 			expect(head.firstElementChild).toBe(glyph);
 			expect(head.lastElementChild).toBe(name);
 			expect(glyph.getBoundingClientRect().left).toBeCloseTo(paddingEdge, 1);
-			expect(column).toBeGreaterThan(glyph.getBoundingClientRect().width);
-			expect(offset).toBeCloseTo(column + parseFloat(headStyle.columnGap), 1);
-			expect(Math.abs(offset - 42)).toBeLessThanOrEqual(1);
+			expect(offset).toBeCloseTo(
+				glyph.getBoundingClientRect().width + parseFloat(headStyle.columnGap),
+				1
+			);
+			expect(Math.abs(offset - PROVIDER_NAME_OFFSET_PX)).toBeLessThanOrEqual(1);
 		}
 	);
 
@@ -2385,6 +2384,63 @@ describe('a payment row drawn beside the provider’s frame', () => {
 // around it — whose height is a line of text against a stated floor, and which of the two wins is a
 // layout only a real engine performs.
 describe('the target under the fee decision', () => {
+	/**
+	 * the fee row's rule and the words either side of it: the gift's row, whose one line is its box,
+	 * and the decision's own words, which stand inside a target taller than they are.
+	 */
+	function aroundTheRule(shadow: ShadowRoot): { above: number; below: number; words: HTMLElement } {
+		const row = shadow.querySelector('.row.fee') as HTMLElement;
+		const gift = row.previousElementSibling as HTMLElement;
+		const words = row.querySelector('.fee-decision > .row-label') as HTMLElement;
+		const rule = row.getBoundingClientRect().top;
+		const edge = rule + parseFloat(getComputedStyle(row).borderTopWidth);
+		return {
+			above: rule - gift.getBoundingClientRect().bottom,
+			below: words.getBoundingClientRect().top - edge,
+			words
+		};
+	}
+
+	// the rule sets the decision apart from the gift above it, so it stands as far from one row's
+	// words as from the other's. measured at both ends of the clamp band and at the default root.
+	it.each([['15px'], ['16px'], ['18px']])(
+		'stands the rule midway between the gift and the words, at a %s root',
+		async (root) => {
+			document.documentElement.style.fontSize = root;
+			const { shadow } = await mount();
+			await atReview(shadow);
+			const { above, below } = aroundTheRule(shadow);
+
+			expect(above).toBeGreaterThan(0);
+			expect(
+				Math.abs(above - below),
+				`${above} over the rule, ${below} under it`
+			).toBeLessThanOrEqual(DEVICE_PIXEL);
+		}
+	);
+
+	// a host column narrow enough to wrap the decision's words, which then fill the target's height
+	// themselves and leave no room over them to take back: the rule stays where it stood, and so does
+	// the sentence under them.
+	it('keeps the rule and the sentence off the words once they wrap', async () => {
+		const { host, shadow } = await mount();
+		host.style.cssText = 'display: block; inline-size: 200px';
+		await atReview(shadow);
+		const { above, below, words } = aroundTheRule(shadow);
+		const range = document.createRange();
+		range.selectNodeContents(words);
+		const note = shadow.querySelector('.fee-note') as HTMLElement;
+
+		expect(range.getClientRects().length, 'wrapped').toBeGreaterThan(1);
+		expect(
+			Math.abs(above - below),
+			`${above} over the rule, ${below} under it`
+		).toBeLessThanOrEqual(DEVICE_PIXEL);
+		expect(note.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+			words.getBoundingClientRect().bottom
+		);
+	});
+
 	// 44px is the floor this component lays every target against (`--_row-min` in ./tokens.css),
 	// measured on the smallest root the card allows, which is where a floor stated in px and a line
 	// of text set in em are furthest apart.
@@ -2393,9 +2449,44 @@ describe('the target under the fee decision', () => {
 		const { shadow } = await mount();
 		await atReview(shadow);
 		const decision = shadow.querySelector('.fee-decision') as HTMLElement;
-
 		expect(decision.hidden).toBe(false);
-		expect(decision.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+
+		// the sentence under the words stands inside the target's reach and lets the press through.
+		const note = shadow.querySelector('.fee-note') as HTMLElement;
+		const drawn = note.getBoundingClientRect();
+		expect(decision.contains(shadow.elementFromPoint(drawn.left + 1, drawn.top + 1))).toBe(true);
+
+		// the target is what a press lands on, not the box the words are laid out in, so it is read
+		// by pressing: down the switch's column and the words'. read with the sentence and the figure
+		// under it drawn, because those take their own presses and the floor is what is left clear of
+		// them, and again with both taken off the page, so the target's own reach is counted too.
+		const words = decision.querySelector('.row-label') as HTMLElement;
+		const gift = (decision.closest('.row.fee') as HTMLElement)
+			.previousElementSibling as HTMLElement;
+		const middle = (rect: DOMRect) => [(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2];
+		const reached = (state: string) => {
+			for (const [x = 0, y = 0] of [
+				middle(words.getBoundingClientRect()),
+				middle((decision.querySelector('.switch') as HTMLElement).getBoundingClientRect())
+			]) {
+				const pressed = (at: number) => decision.contains(shadow.elementFromPoint(x, at));
+				let top = y;
+				while (pressed(top - 0.5)) top -= 0.5;
+				let bottom = y;
+				while (pressed(bottom + 0.5)) bottom += 0.5;
+				expect(bottom - top, `${state}, the target at x=${x}`).toBeGreaterThanOrEqual(
+					44 - DEVICE_PIXEL
+				);
+				// and short of the gift's row, which keeps every press of its own.
+				expect(top, state).toBeGreaterThan(gift.getBoundingClientRect().bottom);
+			}
+		};
+
+		reached('the sentence drawn');
+		for (const beside of shadow.querySelectorAll<HTMLElement>('.fee-note, .row.fee .figure')) {
+			beside.style.visibility = 'hidden';
+		}
+		reached('the sentence taken off');
 	});
 
 	// the thumb is placed with logical insets and moved with a physical `translate`, so which way it
@@ -3357,5 +3448,138 @@ describe('the list a closed choice opens', () => {
 		);
 
 		expect(await widthOpen()).toBe(resting);
+	});
+});
+
+/*
+ * a refusal belongs to the box it is about, so it stands close under that box and well clear of the
+ * next thing on the step: at the row's own gap it stood as far under its box as the label stands
+ * over it, and with the line's own leading on top it read as detached from the box it names.
+ */
+describe('a refusal under its box', () => {
+	it('stands close under its box, nearer it than the next row', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		onward(shadow);
+		await settle();
+		const box = shadow.querySelector('#email') as HTMLElement;
+		const refusal = shadow.querySelector('#email-problem') as HTMLElement;
+		const next = (box.closest('.field-row') as HTMLElement).nextElementSibling as HTMLElement;
+		const under = refusal.getBoundingClientRect().top - box.getBoundingClientRect().bottom;
+		const beyond = next.getBoundingClientRect().top - refusal.getBoundingClientRect().bottom;
+
+		expect(refusal.hidden).toBe(false);
+		expect(under).toBeCloseTo(step(shadow, '--_sp1'), 0);
+		expect(under).toBeLessThan(beyond);
+	});
+
+	/**
+	 * the amount step with every refusal it can show on screen at once: a figure under the floor, the
+	 * note ticked and left empty, and the tribute ticked with its name empty and only the person to
+	 * tell's email given.
+	 */
+	async function amountRefused(width: string): Promise<ShadowRoot> {
+		const { host, shadow } = await mount();
+		host.style.inlineSize = width;
+		(shadow.querySelectorAll("[part~='frequency-option'] input")[0] as HTMLElement).click();
+		for (const tick of shadow.querySelectorAll(".step:not([hidden]) [part~='checkbox']"))
+			(tick as HTMLElement).click();
+		await settle();
+		fill(shadow, '#amount-entry', '0.01');
+		(shadow.querySelector('.field-row > button') as HTMLElement).click();
+		await settle();
+		fill(shadow, '#tribute-notify-email', 'someone@example.org');
+		onward(shadow);
+		await settle();
+		return shadow;
+	}
+
+	/** how far a refusal stands under what it refuses, against the step every refusal takes. */
+	function seatedUnder(shadow: ShadowRoot, refused: Element, id: string): void {
+		const refusal = shadow.querySelector(id) as HTMLElement;
+		expect(refusal.hidden, id).toBe(false);
+		expect(
+			refusal.getBoundingClientRect().top - refused.getBoundingClientRect().bottom,
+			id
+		).toBeCloseTo(step(shadow, '--_sp1'), 0);
+	}
+
+	// the same seat on every refusal the amount step draws: under the tray, under the note, under the
+	// honoree's name and under the person to tell. at both widths, because the honoree's name shares
+	// the select's line on a wide card and takes a line of its own on a narrow one.
+	it.each(['375px', '560px'])(
+		'stands as close under each thing the amount step refuses at %s',
+		async (width) => {
+			const shadow = await amountRefused(width);
+			const at = (selector: string) => shadow.querySelector(selector) as HTMLElement;
+
+			seatedUnder(shadow, at('.tiles'), '#amount-problem');
+			seatedUnder(shadow, at('#note'), '#note-problem');
+			seatedUnder(shadow, at('#tribute-honoree'), '#tribute-honoree-problem');
+			seatedUnder(shadow, at('#tribute-notify-name'), '#tribute-notify-name-problem');
+		}
+	);
+
+	// the tray keeps its boxes once it is refused: chromium drops every box inside an inline-size
+	// container whose margin is switched through `:has()`, while its computed `display` still reads
+	// as drawn. so the tray, every tile on it and the columns they flowed into are read after the
+	// refusal against before it.
+	it.each(['375px', '560px'])('keeps the tray and every tile on it drawn at %s', async (width) => {
+		const { host, shadow } = await mount();
+		host.style.inlineSize = width;
+		await settle();
+		const tray = shadow.querySelector('.tiles') as HTMLElement;
+		const columns = () => getComputedStyle(tray).gridTemplateColumns;
+		const before = columns();
+		const cols = tray.style.getPropertyValue('--_cols');
+
+		(shadow.querySelector('.other input') as HTMLInputElement).click();
+		onward(shadow);
+		await settle();
+		await new Promise(requestAnimationFrame);
+
+		expect((shadow.querySelector('#amount-problem') as HTMLElement).hidden).toBe(false);
+		for (const box of [tray, ...Array.from(tray.children)] as HTMLElement[]) {
+			expect(box.getClientRects().length, box.className).toBeGreaterThan(0);
+			expect(box.checkVisibility(), box.className).toBe(true);
+		}
+		expect(columns()).toBe(before);
+		expect(tray.style.getPropertyValue('--_cols')).toBe(cols);
+	});
+
+	// the seat is the column's own gap taken back, so a column drawn at another gap keeps it: the
+	// tribute's body spends a wider step than the note's, and a box refused directly inside it
+	// still stands `--_sp1` over its sentence. no box stands directly in it, so the row is built here.
+	it('stands as close under a box in a column drawn at another gap', async () => {
+		const { shadow } = await mount();
+		shadow.querySelector<HTMLElement>(".tribute [part~='checkbox']")?.click();
+		await settle();
+		const column = shadow.querySelector('.tribute .disclosure-inner') as HTMLElement;
+		const box = document.createElement('input');
+		box.setAttribute('part', 'field');
+		const refusal = document.createElement('p');
+		refusal.className = 'message';
+		refusal.id = 'fixture-problem';
+		refusal.textContent = 'Enter a value';
+		column.append(box, refusal);
+
+		expect(parseFloat(getComputedStyle(column).rowGap)).not.toBeCloseTo(step(shadow, '--_sp2'), 0);
+		seatedUnder(shadow, box, '#fixture-problem');
+	});
+
+	// the same seat where the label stands inside the box, whose row is laid out as a grid instead.
+	it('stands as close under a box whose label stands inside it', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		onward(shadow);
+		await settle();
+		const box = shadow.querySelector('#first-name') as HTMLElement;
+		const refusal = shadow.querySelector('#first-name-problem') as HTMLElement;
+
+		expect(refusal.hidden).toBe(false);
+		expect(refusal.getBoundingClientRect().top - box.getBoundingClientRect().bottom).toBeCloseTo(
+			step(shadow, '--_sp1'),
+			0
+		);
 	});
 });
