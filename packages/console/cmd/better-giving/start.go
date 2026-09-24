@@ -14,6 +14,7 @@ import (
 	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/effects"
 	"github.com/better-giving/console/internal/first"
+	"github.com/better-giving/console/internal/hangup"
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/server"
 	"github.com/better-giving/console/internal/state"
@@ -912,6 +913,9 @@ func unnamed(held deployment.Named, cannot string) error {
 // catches a panic raised on its own goroutine, so the run carries one — and nothing but the kind
 // travels back out of it: the press it died inside was holding a password and a cloudflare
 // credential, and a value raised from within one may be spelling either.
+//
+// **a terminal closed over the chain ends this process once the chain has ended**, and never
+// between the migration and the upload (../../internal/hangup).
 func chainAt(
 	ctx context.Context,
 	door deployment.Door,
@@ -919,6 +923,7 @@ func chainAt(
 	records state.Store,
 	asked first.Asked,
 ) (first.Outcome, bool) {
+	defer hangup.Hold()()
 	drawn := terminal.Draw(terminal.ChainRows, os.Stdout)
 	ended := make(chan first.Outcome, 1)
 	go func() {
@@ -1391,10 +1396,12 @@ func levelAt(ctx context.Context, settled func(), made effects.Carrying) (effect
 	return drawnOver(ctx, terminal.ScheduleRows, made, effects.Reschedule)
 }
 
-// one press run on its own goroutine under a ledger of `rows`, for every reason ./carryAt gives.
+// one press run on its own goroutine under a ledger of `rows`, for every reason ./carryAt gives, and
+// held past a closed terminal for ./chainAt's.
 func drawnOver(ctx context.Context, rows []terminal.Row, made effects.Carrying,
 	press func(context.Context, effects.Carrying) effects.Carried,
 ) (effects.Carried, bool) {
+	defer hangup.Hold()()
 	drawn := terminal.Draw(rows, os.Stdout)
 	made.At = drawn.Reporting
 	ended := make(chan effects.Carried, 1)

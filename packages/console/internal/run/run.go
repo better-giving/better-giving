@@ -27,6 +27,8 @@ package run
 import (
 	"context"
 	"sync"
+
+	"github.com/better-giving/console/internal/hangup"
 )
 
 // Reading is a run as it stands: whether it is still going, how far it got, and how it ended.
@@ -80,7 +82,11 @@ func (holder *Holder[Progress, Outcome]) Start(
 	started := holder.read()
 	holder.mutex.Unlock()
 
+	// a closed terminal ends this process only once the chain has, and the outcome is recorded
+	// in front of that ending (../hangup).
+	release := hangup.Hold()
 	go func() {
+		defer release()
 		outcome := holder.chase(ctx, chain, failed)
 		holder.mutex.Lock()
 		defer holder.mutex.Unlock()

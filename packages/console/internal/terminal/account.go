@@ -191,7 +191,8 @@ func AskAccount(
 // what the picker's run is worth, out of the model it ended on and the error it ended with.
 //
 // an interrupt that reached the program rather than the screen is the same ctrl-c, and quits the
-// same way.
+// same way. so is a screen that ended neither answered, left nor quit: that is bubbletea's quit
+// message for a SIGTERM, which ends Run with no error (./quit.go).
 func ended(drawn tea.Model, err error, accounts []signin.Account) (signin.Account, Answered, error) {
 	switch {
 	case errors.Is(err, tea.ErrInterrupted):
@@ -207,6 +208,8 @@ func ended(drawn tea.Model, err error, accounts []signin.Account) (signin.Accoun
 	// has always had: a press not made, which the caller ends the run on quietly.
 	case !ours || answered.left:
 		return signin.Account{}, PickerClosed, nil
+	case answered.answer == "":
+		return signin.Account{}, PickerClosed, ErrQuit
 	}
 	return picked(answered.answer, accounts)
 }

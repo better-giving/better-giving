@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/better-giving/console/internal/account"
@@ -14,6 +16,7 @@ import (
 	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/effects"
 	"github.com/better-giving/console/internal/first"
+	"github.com/better-giving/console/internal/hangup/hanguptest"
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/terminal"
 	"github.com/better-giving/console/internal/widget"
@@ -2208,5 +2211,26 @@ func TestAQuitAtAFinishOpensNoConsole(t *testing.T) {
 	}
 	if onto.connects || onto.served != nil {
 		t.Errorf("past a quit: connected %v, served %v", onto.connects, onto.served)
+	}
+}
+
+// a terminal closed over a press: the press finishes, and the hang-up ends the process after it.
+
+func TestAHangUpDuringAPressUnderALedgerDoesNotEndThePress(t *testing.T) {
+	said, died := hanguptest.Child(t, func() {
+		drawnOver(context.Background(), terminal.UpdateRows, effects.Carrying{},
+			func(context.Context, effects.Carrying) effects.Carried {
+				hanguptest.HangUp()
+				fmt.Println("the press went on")
+				return effects.Carried{Kind: effects.Deployed}
+			})
+		fmt.Println("the process went on")
+	})
+	if !strings.Contains(said, "the press went on") {
+		t.Errorf("printed %q, want the press to outlive a hang-up", said)
+	}
+	if strings.Contains(said, "the process went on") || died != syscall.SIGHUP {
+		t.Errorf("printed %q and ended on %v, want the hang-up to end the process after the press",
+			said, died)
 	}
 }

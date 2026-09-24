@@ -2,8 +2,13 @@ package run
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
+
+	"github.com/better-giving/console/internal/hangup/hanguptest"
 )
 
 // the holder every long press in this binary is watched through, from the two doors that reach it:
@@ -302,5 +307,25 @@ func TestNothingIsWatchedOffAHolderNobodyHasPressed(t *testing.T) {
 	case <-changed:
 		t.Error("a holder nobody has pressed woke a watcher")
 	default:
+	}
+}
+
+func TestAHangUpDuringARunDoesNotEndIt(t *testing.T) {
+	said, died := hanguptest.Child(t, func() {
+		holder := &Holder[where, ended]{}
+		holder.Start(context.Background(), where{}, func(context.Context) ended {
+			hanguptest.HangUp()
+			fmt.Println("the run went on")
+			return ended{Kind: "done"}
+		}, gone)
+		time.Sleep(2 * time.Second)
+		fmt.Println("the process went on")
+	})
+	if !strings.Contains(said, "the run went on") {
+		t.Errorf("printed %q, want the run to outlive a hang-up", said)
+	}
+	if strings.Contains(said, "the process went on") || died != syscall.SIGHUP {
+		t.Errorf("printed %q and ended on %v, want the hang-up to end the process after the run",
+			said, died)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/x/ansi"
 
@@ -47,6 +48,41 @@ func TestACtrlCAtEveryFormIsTheQuit(t *testing.T) {
 		if !errors.Is(err, ErrQuit) {
 			t.Errorf("a ctrl-c at %s = %v, want %v", what, err, ErrQuit)
 		}
+	}
+}
+
+// a program that hands its model every message as the quit bubbletea turns a SIGTERM into
+// (tea.go's handleSignals): Run ends with no error, and nothing was answered.
+var quitArriving = tea.WithFilter(func(tea.Model, tea.Msg) tea.Msg { return tea.QuitMsg{} })
+
+func TestAQuitMessageAtEveryFormIsTheQuitAndNeverTheDefault(t *testing.T) {
+	for what, field := range everyForm() {
+		in, to := strings.NewReader("\r"), &bytes.Buffer{}
+		asking := formFor(field, in, to).WithProgramOptions(
+			tea.WithInput(in), tea.WithOutput(to), quitArriving)
+		if err := ran(asking); !errors.Is(err, ErrQuit) {
+			t.Errorf("a quit message at %s = %v, want %v", what, err, ErrQuit)
+		}
+	}
+}
+
+func TestACompletedFormStillHandsBackItsAnswer(t *testing.T) {
+	var typed string
+	if err := ran(formFor(
+		passwordBox(&typed), strings.NewReader("twelve chars\r"), &bytes.Buffer{},
+	)); err != nil || typed != "twelve chars" {
+		t.Errorf("a password typed and returned = %q, %v, want %q and no error", typed, err,
+			"twelve chars")
+	}
+}
+
+func TestAQuitMessageAtThePickerIsTheQuitAndNeverAnAnswer(t *testing.T) {
+	program := tea.NewProgram(choosing(holding(acme), Picker{}),
+		tea.WithInput(strings.NewReader("\r")), tea.WithOutput(&bytes.Buffer{}), quitArriving)
+	drawn, stopped := program.Run()
+	if _, answered, err := ended(drawn, stopped, []signin.Account{acme}); !errors.Is(
+		err, ErrQuit) {
+		t.Errorf("a quit message at the picker = %q, %v, want %v", answered, err, ErrQuit)
 	}
 }
 
