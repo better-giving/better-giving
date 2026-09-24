@@ -318,7 +318,8 @@ describe('GET /quickbooks/callback', () => {
 		expect(answered.status).toBe(403);
 		expect(answered.data).toMatchObject({ outcome: 'refused', refusal: 'state' });
 		const page = markup(answered.data);
-		expect(page).toContain('This link has expired');
+		// the same page a refreshed success tab draws, since the cookie is spent by then.
+		expect(page).toContain('This link has already been used or has expired');
 		expect(page).toContain('Go back to the console for a new one.');
 		expect(stub.exchanges).toBe(0);
 		expect(await readQuickbooksConnection(db)).toBeNull();
@@ -358,8 +359,11 @@ describe('GET /quickbooks/callback', () => {
 
 		const answered = await back();
 
-		expect(logged.mock.calls[0]?.join(' ') ?? '').toContain('reconnect_needed');
+		const line = logged.mock.calls[0]?.join(' ') ?? '';
 		logged.mockRestore();
+		expect(line).toContain('reconnect_needed');
+		expect(line).toContain('Intuit refused the authorization code.');
+		expect(line).not.toContain('intuit-code');
 		expect(answered.status).toBe(502);
 		expect(answered.data).toEqual({ outcome: 'refused', refusal: 'exchange' });
 		const page = markup(answered.data);
@@ -377,6 +381,48 @@ describe('GET /quickbooks/callback', () => {
 		const page = markup(answered.data);
 		expect(page).toContain('You cancelled at Intuit.');
 		expect(page).toContain('Go back to the console to try again.');
+		expect(stub.exchanges).toBe(0);
+	});
+
+	it('logs nothing for a cancel, which is the operator’s own choice', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await back({ error: 'access_denied', state: STATE });
+
+		const calls = logged.mock.calls.length;
+		logged.mockRestore();
+		expect(calls).toBe(0);
+	});
+
+	it.each([['temporarily_unavailable'], ['server_error']])(
+		'says Intuit is having trouble where it came back with %s, and logs it',
+		async (error) => {
+			const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+			const answered = await back({ error, state: STATE });
+
+			const line = logged.mock.calls[0]?.join(' ') ?? '';
+			logged.mockRestore();
+			expect(line).toContain(error);
+			expect(answered.status).toBe(503);
+			expect(answered.data).toEqual({ outcome: 'refused', refusal: 'unavailable' });
+			const page = markup(answered.data);
+			expect(page).toContain('Intuit is having trouble.');
+			expect(page).toContain('Go back to the console and try again in a few minutes.');
+			expect(stub.exchanges).toBe(0);
+		}
+	);
+
+	it('says Intuit turned the connection down for any other error, and logs which', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const answered = await back({ error: 'invalid_scope', state: STATE });
+
+		const line = logged.mock.calls[0]?.join(' ') ?? '';
+		logged.mockRestore();
+		expect(line).toContain('invalid_scope');
+		expect(answered.status).toBe(400);
+		expect(markup(answered.data)).toContain('Intuit turned the connection down.');
 		expect(stub.exchanges).toBe(0);
 	});
 });

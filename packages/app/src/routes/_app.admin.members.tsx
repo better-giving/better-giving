@@ -431,6 +431,7 @@ function InviteSection({
 						<SaveButton
 							label="Send invitation"
 							doneLabel="Invitation sent"
+							elsewhere="It is on the list below, marked Invited."
 							state={buttonState(inviteSave)}
 						/>
 					}

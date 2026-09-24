@@ -1,7 +1,7 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub } from 'react-router';
-import { expect, it, onTestFinished } from 'vitest';
+import { expect, it, onTestFinished, vi } from 'vitest';
 import YourPassword from './_app.admin.members_.password';
 
 // what the Change password press says about itself once a password has been changed.
@@ -16,7 +16,7 @@ import YourPassword from './_app.admin.members_.password';
 // request is the same reading ./_app.admin.members.dom.spec.tsx already holds.
 //
 // it is not the browser spec CLAUDE.md bans over a dashboard screen: nothing here reads a computed
-// style or a class. what is asserted is the words on the press.
+// style or a class. what is asserted is the words on the press and whether it can be pressed.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -67,6 +67,12 @@ it('reports the change at the press that made it, with nothing left to press', (
 	const button = root.querySelector('form button[type="submit"], form button:not([type])');
 	if (button === null) throw new Error('the screen drew no press');
 
+	const submitted = vi.fn((event: Event) => event.preventDefault());
+	(button as HTMLButtonElement).form?.addEventListener('submit', submitted);
+
+	act(() => (button as HTMLButtonElement).click());
+
 	expect(button.textContent).toBe('Password changed');
-	expect((button as HTMLButtonElement).disabled).toBe(true);
+	expect(button.getAttribute('aria-disabled')).toBe('true');
+	expect(submitted).not.toHaveBeenCalled();
 });

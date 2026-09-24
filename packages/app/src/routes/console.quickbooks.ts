@@ -191,9 +191,13 @@ async function act(
 	}
 
 	if (press === 'start-date' || press === 'start-date-preview') {
-		const startAt = new Date(String(body.startAt));
-		if (Number.isNaN(startAt.getTime()))
-			return badBody('`startAt` is not a date. Send an ISO-8601 instant.');
+		const startAt = strictInstant(body.startAt);
+		if (startAt === null)
+			return badBody(
+				`\`startAt\` is ${JSON.stringify(body.startAt) ?? 'missing'}, which is not a date. Send ` +
+					'a calendar date as YYYY-MM-DD, or an ISO-8601 instant with its offset, such as ' +
+					'2026-04-01T00:00:00.000Z.'
+			);
 		if (press === 'start-date') {
 			await moveQuickbooksStartAt(db, startAt, new Date());
 			return consoleJson({ press } satisfies QuickbooksPressReport);
@@ -376,6 +380,49 @@ async function readBody(request: Request): Promise<Record<string, unknown> | nul
 	}
 	if (typeof body !== 'object' || body === null || Array.isArray(body)) return null;
 	return body as Record<string, unknown>;
+}
+
+const CALENDAR_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const INSTANT =
+	/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(?:Z|([+-])(\d{2}):(\d{2}))$/;
+
+/**
+ * `startAt` as an instant, or null where it is not exactly a calendar date (its first moment in
+ * UTC) or a full ISO-8601 instant with its offset.
+ *
+ * `new Date` is never the reader: it takes "April 1" and `1` as 2001 and rolls 2026-02-31 into
+ * March, and a start date moved to 2001 queues every gift the deployment has ever taken. so each
+ * field is read on its own and has to come back out of `Date.UTC` unchanged.
+ */
+function strictInstant(sent: unknown): Date | null {
+	if (typeof sent !== 'string') return null;
+	const fields = CALENDAR_DATE.exec(sent) ?? INSTANT.exec(sent);
+	if (fields === null) return null;
+	const [, year, month, day, hour = '0', minute = '0', second = '0', fraction = '', sign, oh, om] =
+		fields;
+	const [offsetHours, offsetMinutes] = [Number(oh ?? 0), Number(om ?? 0)];
+	if (offsetHours > 23 || offsetMinutes > 59) return null;
+	const wall = new Date(
+		Date.UTC(
+			Number(year),
+			Number(month) - 1,
+			Number(day),
+			Number(hour),
+			Number(minute),
+			Number(second),
+			Number(fraction.padEnd(3, '0').slice(0, 3))
+		)
+	);
+	const survived =
+		wall.getUTCFullYear() === Number(year) &&
+		wall.getUTCMonth() === Number(month) - 1 &&
+		wall.getUTCDate() === Number(day) &&
+		wall.getUTCHours() === Number(hour) &&
+		wall.getUTCMinutes() === Number(minute) &&
+		wall.getUTCSeconds() === Number(second);
+	if (!survived) return null;
+	const offset = (sign === '-' ? -1 : 1) * (offsetHours * 60 + offsetMinutes) * 60_000;
+	return new Date(wall.getTime() - offset);
 }
 
 const badBody = (message: string): Response =>

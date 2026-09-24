@@ -388,12 +388,48 @@ describe('the date gifts are sent from', () => {
 		);
 	});
 
-	it('refuses a date it cannot read', async () => {
+	it('moves to a calendar date as its first instant in UTC', async () => {
 		await connect();
 
-		const answered = await press({ press: 'start-date', startAt: 'the first of April' });
+		await press({ press: 'start-date', startAt: '2026-04-01' });
+
+		expect((await readQuickbooksConnection(db))?.startAt).toEqual(
+			new Date('2026-04-01T00:00:00.000Z')
+		);
+	});
+
+	it('reads an instant with an offset as the moment it names', async () => {
+		await connect();
+
+		await press({ press: 'start-date', startAt: '2026-04-01T09:30:00+02:00' });
+
+		expect((await readQuickbooksConnection(db))?.startAt).toEqual(
+			new Date('2026-04-01T07:30:00.000Z')
+		);
+	});
+
+	// each of these is a date `new Date` reads without complaint — the first three land in 2001 and
+	// the others roll into March — and a move to 2001 queues the deployment's whole history.
+	it.each([
+		['the first of April'],
+		['April 1'],
+		[1],
+		['0'],
+		['2026-02-31'],
+		['2026-02-31T00:00:00.000Z'],
+		['2026-04-01T24:00:00Z'],
+		['2026-04-01T00:00:00'],
+		[null]
+	])('refuses %j, names it, and moves nothing', async (startAt) => {
+		await connect();
+
+		const answered = await press({ press: 'start-date', startAt });
 
 		expect(answered.status).toBe(400);
+		const refusal = await answered.json<{ error: string; message: string }>();
+		expect(refusal.error).toBe('bad_body');
+		expect(refusal.message).toContain(JSON.stringify(startAt));
+		expect(refusal.message).toContain('YYYY-MM-DD');
 		expect((await readQuickbooksConnection(db))?.startAt).toEqual(CONNECTED_FROM);
 	});
 });
@@ -507,13 +543,19 @@ describe('the preview of a date move', () => {
 		expect(rows).toEqual([{ status: 'pending' }]);
 	});
 
-	it('refuses a date it cannot read', async () => {
-		await connect();
+	it.each([['the first of April'], ['April 1'], [1], ['0'], ['2026-02-31']])(
+		'refuses %j, and names it',
+		async (startAt) => {
+			await connect();
 
-		const answered = await press({ press: 'start-date-preview', startAt: 'the first of April' });
+			const answered = await press({ press: 'start-date-preview', startAt });
 
-		expect(answered.status).toBe(400);
-	});
+			expect(answered.status).toBe(400);
+			const refusal = await answered.json<{ error: string; message: string }>();
+			expect(refusal.error).toBe('bad_body');
+			expect(refusal.message).toContain(JSON.stringify(startAt));
+		}
+	);
 
 	it('refuses the press where no company is connected', async () => {
 		const answered = await press({

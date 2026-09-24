@@ -1,7 +1,7 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub } from 'react-router';
-import { expect, it, onTestFinished } from 'vitest';
+import { expect, it, onTestFinished, vi } from 'vitest';
 import Members from './_app.admin.members';
 
 // what the Send invitation press says about itself once an invitation has gone.
@@ -82,9 +82,26 @@ it('draws no heading of its own: the frame names the page in a hidden one', () =
 
 it('reports the invitation at the press that sent it, with nothing left to press', () => {
 	const button = press(screen({ sentTo: 'sam@riverbanktrust.org' }));
+	const submitted = vi.fn((event: Event) => event.preventDefault());
+	button.form?.addEventListener('submit', submitted);
+
+	act(() => button.click());
 
 	expect(button.textContent).toBe('Invitation sent');
-	expect(button.disabled).toBe(true);
+	expect(button.getAttribute('aria-disabled')).toBe('true');
+	expect(submitted).not.toHaveBeenCalled();
+});
+
+it('tells a reader the invitation is on the list, since the page did change', async () => {
+	const root = screen({ sentTo: 'sam@riverbanktrust.org' });
+
+	// the region is written a task after the state lands, so a reader hears it as a change.
+	await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+
+	const said = root.querySelector('[aria-live="polite"]')?.textContent ?? '';
+	expect(said).toContain('Invitation sent.');
+	expect(said).not.toContain('Nothing else on this page changed.');
+	expect(said).toContain('list below');
 });
 
 it('names no address on the press: the row it made is on the list below', () => {
