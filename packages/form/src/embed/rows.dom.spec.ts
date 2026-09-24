@@ -18,8 +18,9 @@ import { createRows } from './rows';
 //  - the frame's root is the `fontSizeBase` we send, which is `--_t-sm` (`html { font-size:
 //    var(--fontSizeBase) }` in the Payment Element's own stylesheet, the one https://js.stripe.com/v3/
 //    names for that element).
-//  - a rail's icon stands in a column 2.25em wide with a 0.75em margin after it, so the rail's name
-//    starts 3em from the rail's padding edge — at the frame's root, not at the label's size.
+//  - a rail's name starts about 37px from the rail's padding edge at the default root, read off a
+//    rendered frame to a pixel either way: the frame is cross-origin, so no script of ours can
+//    query it, and this is the one length here that is measured rather than derived.
 //  - that column is the provider's own and no appearance variable reaches it
 //    (https://docs.stripe.com/elements/appearance-api lists what an integrator may set: the label's
 //    colour, size and weight, and the item's box — never the icon).
@@ -117,19 +118,26 @@ describe('the payment rows drawn beside the provider’s frame', () => {
 		expect(rail?.paddingRight).toBe(RESOLVED['--_inset']);
 	});
 
-	// and the name lands where the provider lands its rails', which is the derivation at the head of
-	// this file: 3em at the frame's root, against our own mark's column plus the head's gap. the two
-	// are built out of different tokens at different sizes and land a tenth of a pixel apart at the
-	// default root, which is what the quarter below allows for — an agreement a retuned step would
-	// end, and the whole reason it is derived here rather than restated as `42px`.
+	// and the name lands where the provider lands its rails', which is the measured figure at the
+	// head of this file: about 37px, against our own mark plus the head's gap. the mark is at the
+	// name's size and the gap at the head's own, the card's root — built out of different tokens at
+	// different sizes, and held to the pixel the measurement carries.
 	it('stands the name where a rail stands its own', () => {
 		const rowPx = em('--_t-sm') * ROOT_PX;
-		// the mark's box and the column it stands in are at the name's size; the head's gap is at the
-		// head's own, which is the card's root.
-		const ours = (em('--_glyph-beside') + em('--_sp4')) * rowPx + em('--_sp3') * ROOT_PX;
-		const rail = 3 * rowPx;
+		const rules = styleRules(rowSheet());
+		const spent = (selector: string, property: string) => {
+			const value = rules
+				.find((rule) => rule.selector === selector)
+				?.style.getPropertyValue(property);
+			const token = value?.match(/^var\((--_[\w-]+)\)$/)?.[1];
+			return token === undefined ? 0 : em(token);
+		};
+		const ours =
+			(em('--_glyph-beside') + spent('.mark', 'margin-inline-end')) * rowPx +
+			spent('.head', 'gap') * ROOT_PX;
+		const rail = 37;
 
 		expect(stripeAppearance(read).variables.fontSizeBase).toBe(`${rowPx}px`);
-		expect(Math.abs(ours - rail)).toBeLessThanOrEqual(0.25);
+		expect(Math.abs(ours - rail)).toBeLessThanOrEqual(1);
 	});
 });

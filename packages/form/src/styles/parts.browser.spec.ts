@@ -2276,13 +2276,13 @@ describe('a payment row drawn beside the provider’s frame', () => {
 		expect(getComputedStyle(panel).display).toBe('none');
 	});
 
-	// the name starts where the provider's own rows start theirs, 42px in from the mark's start on a
-	// 16px root — measured against its frame, which no test can reach into. the mark sits in a column
-	// wider than its glyph (`.mark` in ./rows.css), so the offset is that column plus the head's gap.
-	// every row is measured, the fund's included: one mark box for all three is what keeps the column
-	// the same, and the name is the last thing in every head.
+	// the name starts where the provider's own rows start theirs, about 37px in from the mark's start
+	// on a 16px root — measured against its frame, which no test can reach into. the offset is the
+	// glyph and the head's gap after it (`.head` and `.mark` in ./rows.css). every row is measured,
+	// the fund's included: one mark box for all three is what keeps the name at one x, and the name
+	// is the last thing in every head.
 	it.each(['paypal', 'venmo', 'fund'] as const)(
-		'draws the %s mark at the padding edge and the name a column and a gap after it',
+		'draws the %s mark at the padding edge and the name a gap after it',
 		(mark) => {
 			const { head } = measured(mark);
 			const glyph = head.querySelector('.mark') as SVGElement;
@@ -2290,16 +2290,16 @@ describe('a payment row drawn beside the provider’s frame', () => {
 			const headStyle = getComputedStyle(head);
 			const paddingEdge =
 				head.getBoundingClientRect().left + parseFloat(headStyle.paddingInlineStart);
-			const column =
-				glyph.getBoundingClientRect().width + parseFloat(getComputedStyle(glyph).marginInlineEnd);
 			const offset = name.getBoundingClientRect().left - paddingEdge;
 
 			expect(head.firstElementChild).toBe(glyph);
 			expect(head.lastElementChild).toBe(name);
 			expect(glyph.getBoundingClientRect().left).toBeCloseTo(paddingEdge, 1);
-			expect(column).toBeGreaterThan(glyph.getBoundingClientRect().width);
-			expect(offset).toBeCloseTo(column + parseFloat(headStyle.columnGap), 1);
-			expect(Math.abs(offset - 42)).toBeLessThanOrEqual(1);
+			expect(offset).toBeCloseTo(
+				glyph.getBoundingClientRect().width + parseFloat(headStyle.columnGap),
+				1
+			);
+			expect(Math.abs(offset - 37)).toBeLessThanOrEqual(1);
 		}
 	);
 
