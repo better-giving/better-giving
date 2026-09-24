@@ -6,6 +6,7 @@ import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import type { EntrySourceType } from '../db/schema';
 import { post, postingStatements, type Posting } from '../ledger/posting';
+import { dueRows } from './deliver';
 import { moveQuickbooksStartAt, outboxStatements, previewQuickbooksStartAt } from './outbox';
 
 // the queue row a posting owes QuickBooks, against a real D1.
@@ -272,6 +273,28 @@ describe('moving the date a connection starts from', () => {
 		expect(await queued()).toEqual([]);
 	});
 
+	it('sends a gift settling after a move ahead of the history it queued, and the history in date order', async () => {
+		await connect(new Date('2026-04-01T00:00:00.000Z'));
+		// out of date order on purpose, so an order by id or by commit cannot pass for date order.
+		const history = [5, 1, 9, 3, 11, 7, 2, 10, 4, 8, 6].map((day) =>
+			posting({ occurredAt: new Date(Date.UTC(2026, 1, day)) })
+		);
+		for (const entry of history) await commit([entry]);
+		await moveQuickbooksStartAt(db, new Date('2025-10-01T00:00:00.000Z'), NOW);
+		const settledAfter = posting({ occurredAt: new Date('2026-05-15T00:00:00.000Z') });
+		await commit([settledAfter]);
+
+		const run = await dueRows(db, new Date(Date.now() + 60_000));
+
+		const byDate = [...history].sort(
+			(a, b) => a.group.occurredAt.getTime() - b.group.occurredAt.getTime()
+		);
+		expect(run.map((row) => row.entryGroupId)).toEqual([
+			settledAfter.group.id,
+			...byDate.slice(0, 9).map((entry) => entry.group.id)
+		]);
+	});
+
 	it('writes nothing where no company is connected', async () => {
 		await commit([posting({ occurredAt: new Date('2025-12-01T00:00:00.000Z') })]);
 
@@ -298,10 +321,10 @@ describe('moving the date a connection starts from', () => {
 			return id;
 		}
 
-		it('drops the rows before the new date with no attempt that could have made a record, waiting and refused alike', async () => {
+		it('drops the rows before the new date that no run has sent', async () => {
 			await connect();
 			await queuedAs(new Date('2026-02-01T00:00:00.000Z'));
-			await queuedAs(new Date('2026-03-31T23:59:59.999Z'), `status = 'failed', last_error = 'no'`);
+			await queuedAs(new Date('2026-03-31T23:59:59.999Z'));
 			const onTheDay = await queuedAs(LATER);
 			const after = await queuedAs(new Date('2026-05-01T00:00:00.000Z'));
 
@@ -327,6 +350,21 @@ describe('moving the date a connection starts from', () => {
 			expect((await queued()).map((row) => row.entry_group_id).sort()).toEqual(
 				[sent, held, tried].sort()
 			);
+		});
+
+		it('keeps a row whose run died mid-send, and a move back leaves it counted', async () => {
+			await connect();
+			// how ./deliver.ts's claim leaves a row when its run dies after the post: counted, and
+			// the lease run out.
+			const died = await queuedAs(
+				new Date('2026-02-01T00:00:00.000Z'),
+				`attempts = 1, leased_until = ${NOW.getTime() - 1}`
+			);
+
+			await moveQuickbooksStartAt(db, LATER, NOW);
+			await moveQuickbooksStartAt(db, new Date('2025-10-01T00:00:00.000Z'), NOW);
+
+			expect(await queued()).toMatchObject([{ entry_group_id: died, attempts: 1 }]);
 		});
 	});
 });

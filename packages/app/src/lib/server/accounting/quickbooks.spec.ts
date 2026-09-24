@@ -769,6 +769,13 @@ describe('matching the donor', () => {
 	});
 });
 
+/** the request id the deposit among `calls` was posted under. */
+function requestId(calls: Recorded[]): string | null | undefined {
+	return calls
+		.find((call) => call.url.pathname.endsWith('/deposit'))
+		?.url.searchParams.get('requestid');
+}
+
 describe('a post that already landed', () => {
 	it('is not looked for on a row nothing has tried yet', async () => {
 		const calls = servingCompany();
@@ -776,9 +783,9 @@ describe('a post that already landed', () => {
 
 		await provider.sendGift(GIFT, 'first');
 
-		// the queue claims a row before it sends it, so nothing else posted this key and the scan
-		// below — every deposit the company took that day, page by page, metered — would find
-		// nothing. it is what a retry pays and a first attempt does not.
+		// the queue counts an attempt as it claims a row, so a first attempt is a row nothing has
+		// ever sent and the scan below — every deposit the company took that day, page by page,
+		// metered — would find nothing. it is what a retry pays and a first attempt does not.
 		expect(
 			calls.map(asked).some((statement) => statement.startsWith('select * from Deposit'))
 		).toBe(false);
@@ -807,6 +814,43 @@ describe('a post that already landed', () => {
 
 		expect(result).toEqual({ ok: true, value: { remoteId: '987' } });
 		expect(calls.some(isCreate)).toBe(false);
+	});
+
+	it('is posted under the same request id on every send, so Intuit answers a repeat with the first record', async () => {
+		const first = servingCompany();
+		await createQuickbooksProvider(CREDENTIALS, store()).sendGift(GIFT, 'first');
+		const again = servingCompany();
+		await createQuickbooksProvider(CREDENTIALS, store()).sendGift(GIFT, 'again');
+
+		expect(requestId(first)).toMatch(new RegExp(`^${GIFT.key}-`));
+		expect(requestId(first)?.length).toBeLessThanOrEqual(50);
+		expect(requestId(again)).toBe(requestId(first));
+	});
+
+	it('is posted under a new request id once what it sends has changed, so a refusal is not replayed', async () => {
+		const refused = servingCompany();
+		await createQuickbooksProvider(CREDENTIALS, store()).sendGift(GIFT, 'first');
+		const repicked = servingCompany();
+		await createQuickbooksProvider(CREDENTIALS, store({ depositAccountId: '36' })).sendGift(
+			GIFT,
+			'again'
+		);
+
+		expect(requestId(repicked)).toMatch(new RegExp(`^${GIFT.key}-`));
+		expect(requestId(repicked)).not.toBe(requestId(refused));
+	});
+
+	it('gives the donor it creates and the record it posts a request id each', async () => {
+		const calls = servingCompany();
+		await createQuickbooksProvider(CREDENTIALS, store()).sendGift(GIFT, 'first');
+
+		const ids = calls.filter(isCreate).map((call) => call.url.searchParams.get('requestid'));
+		expect(calls.filter(isCreate).map((call) => call.url.pathname.split('/').at(-1))).toEqual([
+			'customer',
+			'deposit'
+		]);
+		expect(ids.every((id) => id?.startsWith(`${GIFT.key}-`))).toBe(true);
+		expect(new Set(ids).size).toBe(2);
 	});
 });
 
@@ -909,6 +953,7 @@ describe('sending a correction', () => {
 		expect(result).toEqual({ ok: true, value: { remoteId: '1200' } });
 		const post = calls.find((call) => call.url.pathname.endsWith('/journalentry'));
 		expect(post?.url.pathname).toBe('/v3/company/4620816365/journalentry');
+		expect(post?.url.searchParams.get('requestid')).toMatch(new RegExp(`^${CORRECTION.key}-`));
 		expect(JSON.parse(post?.body ?? '{}')).toEqual({
 			TxnDate: '2026-04-30',
 			CurrencyRef: { value: 'USD' },

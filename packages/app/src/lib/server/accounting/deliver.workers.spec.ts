@@ -352,8 +352,8 @@ describe('the due backlog', () => {
 
 		await sendDueEntries(deps(qb.port), NOW);
 
-		// Intuit has no idempotency key, so a second post is a second record in the company's own
-		// books and nothing in this app or that one repairs it.
+		// a second post outside Intuit's request-id window is a second record in the company's own
+		// books, and nothing in this app or that one repairs it.
 		expect(qb.asked).toEqual([entryGroupId]);
 		expect(overlapping.asked).toEqual([]);
 		expect((await row(entryGroupId)).status).toBe('sent');
@@ -389,6 +389,36 @@ describe('the due backlog', () => {
 		await sendDueEntries(deps(provider().port), NOW);
 
 		expect(await row(entryGroupId)).toMatchObject({ status: 'sent', leasedUntil: null });
+	});
+
+	it('counts the attempt as it claims the row, before anything is sent', async () => {
+		const entryGroupId = await queuedGift();
+		let inFlight: number | null = null;
+		const qb = provider(async (key) => {
+			inFlight = (await row(entryGroupId)).attempts;
+			return accepted(key);
+		});
+
+		await sendDueEntries(deps(qb.port), NOW);
+
+		// a run that dies between the post and writing it down leaves this count behind, and it is
+		// what tells the next send to look before it posts.
+		expect(inFlight).toBe(1);
+		expect(qb.attempts).toEqual(['first']);
+	});
+
+	it('looks before it posts a row whose run died mid-send, once the lease is out', async () => {
+		const entryGroupId = await queuedGift();
+		const dying = provider(() => {
+			throw new Error('the isolate went away after the post landed');
+		});
+		await sendDueEntries(deps(dying.port), NOW);
+
+		const qb = provider();
+		await sendDueEntries(deps(qb.port), new Date(NOW.getTime() + 6 * MINUTE));
+
+		expect(qb.asked).toEqual([entryGroupId]);
+		expect(qb.attempts).toEqual(['again']);
 	});
 
 	it('tells the provider whether this row has been handed over before', async () => {
@@ -433,18 +463,21 @@ describe('the due backlog', () => {
 		expect(await row(entryGroupId)).toMatchObject({ status: 'pending', leasedUntil: null });
 	});
 
-	it('reads the backlog through the index, filter and order alike', async () => {
+	it('narrows the backlog through the index, and reaches each entry group by its key', async () => {
 		const { sql: statement, params } = dueRows(db, NOW).toSQL();
 
 		const plan = await env.DB.prepare(`explain query plan ${statement}`)
 			.bind(...params)
 			.all<{ detail: string }>();
 
-		// the whole of what the index is for: on `status` alone sqlite answers the filter and then
-		// sorts, so a backlog parked behind an outage is re-sorted on every run.
+		// the order is sorted over the due rows (./deliver.ts's `dueRows`); what must never happen is
+		// a scan of every row the deployment ever sent, or of the ledger.
 		const detail = plan.results.map((step) => step.detail).join(' | ');
-		expect(detail).toContain('quickbooks_sync_status_due_idx');
-		expect(detail).not.toContain('TEMP B-TREE');
+		expect(detail).toContain('SEARCH quickbooks_sync USING INDEX quickbooks_sync_status_due_idx');
+		expect(detail).toContain(
+			'SEARCH entry_group USING INDEX sqlite_autoindex_entry_group_1 (id=?)'
+		);
+		expect(detail).not.toContain('SCAN');
 	});
 
 	it('leaves a provider fault waiting, and tries it again once the wait is over', async () => {
@@ -553,9 +586,9 @@ describe('the due backlog', () => {
 
 		await sendDueEntries(deps(qb.port), NOW);
 
-		// left as it stands rather than counted as an attempt: what throws is the database or a
-		// defect in the adapter, and neither is anything this row did.
-		expect(await row(throwing)).toMatchObject({ status: 'pending', attempts: 0 });
+		// left as the claim wrote it: what throws is the database or a defect in the adapter, and
+		// either can come after the post landed, so the claim's attempt stays on the row.
+		expect(await row(throwing)).toMatchObject({ status: 'pending', attempts: 1 });
 		expect((await row(behind)).status).toBe('sent');
 	});
 
@@ -684,6 +717,21 @@ describe('the failure notice', () => {
 		expect(qb.asked).toEqual([]);
 		expect(mail.sent).toEqual([]);
 		expect(await row(sent)).toEqual(before);
+	});
+
+	it('says nothing about a gift another run is sending right now', async () => {
+		const inFlight = await queuedGift();
+		const mail = mailer();
+		const qb = provider(async (key) => {
+			// a second run finishes while this send is still out, with the claim's attempt on the row.
+			await sendDueEntries(deps(provider().port, mail.port), NOW);
+			return accepted(key);
+		});
+
+		await sendDueEntries(deps(qb.port), NOW);
+
+		expect(mail.sent).toEqual([]);
+		expect((await row(inFlight)).status).toBe('sent');
 	});
 });
 

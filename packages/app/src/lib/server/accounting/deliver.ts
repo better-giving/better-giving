@@ -13,7 +13,7 @@ import {
 	type SQL
 } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { quickbooksSync } from '../db/schema';
+import { entryGroup, quickbooksSync } from '../db/schema';
 import { alert } from '../donations/delivery';
 import type { EmailProvider } from '../email/provider';
 import type {
@@ -45,22 +45,23 @@ import { readSendable } from './record';
 // update's own `where` — due, and held by nobody — and only what that update *returns* is sent.
 // the second run's update matches nothing and it sends nothing. there is no read of the row in
 // front of that write, because the ledger's rule is that no invariant is enforced by an atomic
-// read-then-write (../ledger/posting.ts), and this one could not be: Intuit has no idempotency
-// key, so a gift posted twice is two records in the company's books and a correcting entry in
-// *this* app's ledger cannot settle it.
+// read-then-write (../ledger/posting.ts), and this one could not be: Intuit's request id is kept
+// for a period it does not publish (./quickbooks.ts), so a gift posted twice can be two records in
+// the company's books, and a correcting entry in *this* app's ledger cannot settle it.
 //
-// the claim is given back the moment the row is written — sent, given up on, or waiting — so
-// nothing waits out a lease it no longer needs. a run that died mid-send writes nothing at all,
-// and its rows come back on their own once the lease passes.
+// the claim counts an attempt as it takes the row, so every row that ever left for Intuit reads
+// `attempts > 0` whatever happened after. it is given back the moment the row is written — sent,
+// given up on, or waiting — so nothing waits out a lease it no longer needs. a run that died
+// mid-send writes nothing more, and its rows come back once the lease passes, counted, so the next
+// send looks before it posts.
 //
 // ---------------------------------------------------------------------------
 // the three statuses, and every one a *run* writes is written here.
 //
 // the one other writer is ./backlog.ts, and it writes one transition: `failed` back to `pending`,
 // when an operator presses retry on the console. so a status moves by a run or by a person and by
-// nothing else. moving the start date (./outbox.ts) adds `pending` rows and removes rows with no
-// attempt behind them that could have made a record in QuickBooks — a refused first send among them
-// — and changes the status of none.
+// nothing else. moving the start date (./outbox.ts) adds `pending` rows and removes rows no run
+// has ever sent, and changes the status of none.
 //
 //   pending — owed and not finished, whether or not it has failed before. `attempts` counts the
 //             tries and `last_error` holds the last one's words.
@@ -75,19 +76,20 @@ import { readSendable } from './record';
 //
 // five of the port's reasons are one fault the whole backlog is behind — no company connected, the
 // three accounts not picked, a dead credential, a throttled provider, a provider that cannot be
-// reached. none of them is about the row being sent, so none of them marks a row: the claim is
-// given back, nothing else is written, and the backlog is read again next time. marking a hundred
-// gifts over one revoked credential would leave an operator repairing rows instead of the one thing
-// that is wrong. the one exception is `attempts` on a provider that could not be reached, because
-// that call may have created the record before the wait ran out — and `attempts` is what the next
-// send reads to know it has to look before it posts (./quickbooks.ts).
+// reached. none of them is about the row being sent, so none of them marks a row: the claim and
+// its attempt are given back, nothing else is written, and the backlog is read again next time.
+// marking a hundred gifts over one revoked credential would leave an operator repairing rows
+// instead of the one thing that is wrong. the one exception is the attempt on a provider that
+// could not be reached, which stays, because that call may have created the record before the wait
+// ran out — and `attempts` is what the next send reads to know it has to look before it posts
+// (./quickbooks.ts).
 //
 // four are about this row and no later run answers them differently — an id nothing carries, an
 // account outside the three, a payload the provider refused, a record this app should never have
 // queued. the row becomes `failed` and the run carries on to the row behind it.
 //
-// `provider_error` is the one that waits: the row stays `pending`, `attempts` goes up, and the
-// backoff below decides when it is read again.
+// `provider_error` is the one that waits: the row stays `pending`, keeps the claim's attempt,
+// and the backoff below decides when it is read again.
 //
 // ---------------------------------------------------------------------------
 // no attempt cap, and that is deliberate.
@@ -130,7 +132,7 @@ export type AccountingDeliveryDeps = {
 };
 
 /**
- * entry groups sent per run, oldest queued first.
+ * entry groups sent per run, in the order {@link dueRows} takes them.
  *
  * a send costs a handful of D1 statements — the entry and its lines, the cut posted beside it, the
  * donor it names — three to five calls to the provider, and one write. ten of those finish well
@@ -240,11 +242,17 @@ function unclaimed(now: Date) {
  * the rows an operator is told about: given up on, or waiting after a failure.
  *
  * a `pending` row with no attempt behind it is a gift queued a moment ago and is nobody's problem,
- * which is what keeps an ordinary minute's gifts out of an outage's count.
+ * which is what keeps an ordinary minute’s gifts out of an outage’s count. a row still carrying a
+ * claim is not waiting either: the claim counted its attempt before any answer came, so it is a
+ * send in flight, or one whose run died and is not yet known to have failed.
  */
 const FAILING = or(
 	eq(quickbooksSync.status, 'failed'),
-	and(eq(quickbooksSync.status, 'pending'), gt(quickbooksSync.attempts, 0))
+	and(
+		eq(quickbooksSync.status, 'pending'),
+		gt(quickbooksSync.attempts, 0),
+		isNull(quickbooksSync.leasedUntil)
+	)
 );
 
 /**
@@ -362,8 +370,12 @@ export async function sendQueuedEntry(
 		.update(quickbooksSync)
 		.set({
 			leasedUntil: new Date(now.getTime() + LEASE_MS),
+			// counted as the row is taken, not once the answer is in: a run can die between the post
+			// landing and writing it down, and the count it left is what tells the next send to look
+			// before it posts, and a start-date move not to drop the row (./outbox.ts).
+			attempts: sql`${quickbooksSync.attempts} + 1`,
 			// held where it is, the way `stamp` below holds it: `updated_at` is what the backoff is
-			// measured from, and being claimed is not an attempt.
+			// measured from, and it moves when the answer is written.
 			updatedAt: sql`${quickbooksSync.updatedAt}`
 		})
 		.where(and(eq(quickbooksSync.entryGroupId, entryGroupId), unclaimed(now)))
@@ -374,9 +386,9 @@ export async function sendQueuedEntry(
 	const sendable = await readSendable(deps.db, entryGroupId);
 	if (!sendable.ok) return land(deps.db, entryGroupId, sendable, now);
 
-	// what the adapter spends on looking for a record it may already have posted: the claim above
-	// is what makes a row nobody has tried a row nothing else can have sent (./quickbooks.ts).
-	const attempt: SendAttempt = claimed.attempts > 0 ? 'again' : 'first';
+	// what the adapter spends on looking for a record it may already have posted (./quickbooks.ts):
+	// one attempt is this claim's own, so a row claimed at one is a row nothing has ever sent.
+	const attempt: SendAttempt = claimed.attempts > 1 ? 'again' : 'first';
 	const sent =
 		sendable.value.kind === 'gift'
 			? await deps.provider.sendGift(sendable.value.gift, attempt)
@@ -443,12 +455,12 @@ async function land(
 		await db
 			.update(quickbooksSync)
 			.set({
-				// `unreachable` is the one of the five that counts, because it is the one that can
-				// have reached the provider: a call whose answer never came may have created the
-				// record, and `attempts` is what tells the next one to look before it posts.
+				// the other four are answers that nothing was made, so the claim's attempt is given
+				// back. `unreachable` keeps it: a call whose answer never came may have created the
+				// record, and the count is what tells the next send to look before it posts.
 				...(failure.reason === 'unreachable'
-					? { attempts: sql`${quickbooksSync.attempts} + 1` }
-					: {}),
+					? {}
+					: { attempts: sql`${quickbooksSync.attempts} - 1` }),
 				leasedUntil: null,
 				updatedAt: sql`${quickbooksSync.updatedAt}`
 			})
@@ -457,8 +469,8 @@ async function land(
 	}
 
 	if (landing === 'row') {
-		// `attempts` is left where it is: it exists to say how long the next run waits, and a row
-		// given up on waits for a person rather than for a clock.
+		// the claim's attempt stays on it: a row given up on waits for a person rather than for a
+		// clock.
 		await db
 			.update(quickbooksSync)
 			.set({ status: 'failed', lastError: failure.detail, leasedUntil: null, updatedAt: now })
@@ -469,9 +481,6 @@ async function land(
 	await db
 		.update(quickbooksSync)
 		.set({
-			// counted in the statement rather than from the row this call read, so two runs over one
-			// row cost two attempts.
-			attempts: sql`${quickbooksSync.attempts} + 1`,
 			lastError: failure.detail,
 			// given back rather than left to expire: the backoff is what decides when this row is
 			// read again, and a lease outliving it would be a second, longer wait nobody asked for.
@@ -503,8 +512,9 @@ export async function sendDueEntries(deps: AccountingDeliveryDeps, now: Date): P
 				break;
 			}
 		} catch (error) {
-			// the row is left as it stands, unattempted: what throws here is the database or a defect
-			// in the adapter, and neither is something this row did. the next run reads it again.
+			// the row is left as the claim wrote it, lease and attempt: what throws here is the
+			// database or a defect in the adapter, either can come after the post landed, and the row
+			// is read again once the lease is out.
 			report(`sending the journal entry ${entryGroupId} to QuickBooks faulted:`, error);
 		}
 	}
@@ -517,20 +527,37 @@ export async function sendDueEntries(deps: AccountingDeliveryDeps, now: Date): P
 }
 
 /**
- * what one run reads: the oldest entry groups nobody is holding whose wait is over.
+ * whether a row was queued by its own settlement rather than by a start-date move.
  *
- * exported for its query rather than its rows — `quickbooks_sync_status_due_idx` has to answer
- * both the filter and the order, and ./deliver.workers.spec.ts reads sqlite's plan for this
- * statement to say so. a second copy of the query written there would be a second query.
+ * a settlement's row copies its entry group's `created_at` and a move's is stamped later
+ * (./outbox.ts's `pendingRow`), so equality is the whole test.
+ */
+const QUEUED_AS_SETTLED = sql`${quickbooksSync.createdAt} = ${entryGroup.createdAt}`;
+
+/**
+ * what one run reads: entry groups nobody is holding whose wait is over, gifts queued as they
+ * settled first and oldest queued first, then history a move queued in date order.
  *
- * the lease and the backoff are both conditions over the rows the index narrowed to.
+ * gifts first because a move earlier can queue the whole of a deployment's history at ten a run,
+ * and a gift that settles after it would otherwise wait for all of it. the sort is over every due
+ * row rather than read off `quickbooks_sync_status_due_idx`, which answers the filter only — the
+ * tier comes from the entry group, and the table has no column of its own that carries it.
+ *
+ * exported for its query rather than its rows, so ./deliver.workers.spec.ts can read sqlite's plan
+ * for this statement and ./outbox.workers.spec.ts the order a move leaves. a second copy of the
+ * query written there would be a second query.
  */
 export function dueRows(db: Db, now: Date) {
 	return db
 		.select({ entryGroupId: quickbooksSync.entryGroupId })
 		.from(quickbooksSync)
+		.innerJoin(entryGroup, eq(entryGroup.id, quickbooksSync.entryGroupId))
 		.where(and(unclaimed(now), waitIsOver(now)))
-		.orderBy(asc(quickbooksSync.createdAt), asc(quickbooksSync.entryGroupId))
+		.orderBy(
+			sql`case when ${QUEUED_AS_SETTLED} then 0 else 1 end`,
+			sql`case when ${QUEUED_AS_SETTLED} then ${quickbooksSync.createdAt} else ${entryGroup.occurredAt} end`,
+			asc(quickbooksSync.entryGroupId)
+		)
 		.limit(SENDS_PER_RUN);
 }
 

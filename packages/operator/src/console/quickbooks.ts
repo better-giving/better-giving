@@ -228,6 +228,6 @@ export type QuickbooksPressReport =
 			readonly startAt: string;
 			/** records owed from the new date on that nothing has queued yet. */
 			readonly queues: QuickbooksStartAtSide;
-			/** queued records before the new date that no send has touched. */
+			/** queued records before the new date that were never sent to QuickBooks. */
 			readonly drops: QuickbooksStartAtSide;
 	  };

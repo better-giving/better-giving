@@ -48,16 +48,15 @@ import type { Posting } from '../ledger/posting';
 // by the date as it stands when its batch commits, and moving the date judges every gift again by
 // the same rule (`moveQuickbooksStartAt` below): earlier queues each owed group from the new date
 // on that holds no row — gifts settled before the company was connected included — and later drops
-// each row before it that is not sent, not held by a run, and has no attempt behind it that could
-// have made a record in QuickBooks. a row Intuit refused on its first send is one of those: the
-// refusal created nothing. no lower bound on how far back: the queue is paced by the delivery's own
-// cron and backoff (./deliver.ts), not by this.
+// each row before it that no run has ever sent: `attempts = 0`, because a run counts the attempt as
+// it claims the row, before anything leaves (./deliver.ts). no lower bound on how far back: the
+// queue is paced by the delivery's own cron and backoff (./deliver.ts), not by this.
 //
 // **what a move keeps is what a second send could duplicate.** a `sent` row is finished. a row
-// under a live lease is being sent right now. a row with an attempt behind it may already be a
-// record in the company's books — only `attempts` tells the next send to look before it posts
-// (./quickbooks.ts's `alreadyPosted`), so dropping it and re-queueing it at zero on a later move
-// would post that gift twice.
+// with an attempt behind it — one a run holds now, or one whose run died after the post landed —
+// may already be a record in the company's books, and only `attempts` tells the next send to look
+// before it posts (./quickbooks.ts's `alreadyPosted`), so dropping it and re-queueing it at zero on
+// a later move would post that gift twice.
 //
 // **a kept row is still sent.** delivery does not read `start_at` (./deliver.ts), so a tried or held
 // row dated before the new date goes over like any other — the move only stops it being dropped.
@@ -124,7 +123,13 @@ export function outboxStatements(
 		statements.push(
 			db.insert(quickbooksSync).select((qb) =>
 				qb
-					.select(pendingRow(sql`${id}`, now))
+					.select(
+						pendingRow(
+							sql`${id}`,
+							sql`(select ${entryGroup.createdAt} from ${entryGroup} where ${entryGroup.id} = ${id})`,
+							now
+						)
+					)
 					.from(quickbooksConnection)
 					.where(
 						and(
@@ -143,8 +148,12 @@ export function outboxStatements(
  *
  * every column in table order: an insert-select names them all, and drizzle refuses a select whose
  * keys differ. the timestamps are `$defaultFn`s, so nothing in sqlite fills them.
+ *
+ * `createdAt` is what tells the delivery a gift queued as it settled from history a move queued
+ * (./deliver.ts's `dueRows`): a settlement's row copies its entry group's own `created_at`, written
+ * earlier in the same batch, and a move's row is stamped with the move's time, which is after it.
  */
-function pendingRow(entryGroupId: SQL | typeof entryGroup.id, now: Date) {
+function pendingRow(entryGroupId: SQL | typeof entryGroup.id, createdAt: SQL | Date, now: Date) {
 	return {
 		entryGroupId: sql<string>`${entryGroupId}`.as('entry_group_id'),
 		status: sql<string>`'pending'`.as('status'),
@@ -152,7 +161,9 @@ function pendingRow(entryGroupId: SQL | typeof entryGroup.id, now: Date) {
 		remoteId: sql<null>`null`.as('remote_id'),
 		lastError: sql<null>`null`.as('last_error'),
 		notifiedAt: sql<null>`null`.as('notified_at'),
-		createdAt: sql<number>`${now.getTime()}`.as('created_at'),
+		createdAt: sql<number>`${createdAt instanceof Date ? createdAt.getTime() : createdAt}`.as(
+			'created_at'
+		),
 		updatedAt: sql<number>`${now.getTime()}`.as('updated_at'),
 		leasedUntil: sql<null>`null`.as('leased_until')
 	};
@@ -178,10 +189,7 @@ function unqueuedFrom(boundary: SQL): SQL {
 		and not exists (select 1 from ${quickbooksSync} where ${quickbooksSync.entryGroupId} = ${entryGroup.id})`;
 }
 
-/**
- * queue rows dated before `boundary` that are not sent, not held at `now`, and have no attempt behind
- * them that could have made a record in QuickBooks — a first send Intuit refused included.
- */
+/** queue rows dated before `boundary` that no run has ever sent, and none holds at `now`. */
 function droppableBefore(boundary: SQL, now: Date): SQL {
 	return sql`${quickbooksSync.status} <> 'sent'
 		and ${quickbooksSync.remoteId} is null
@@ -205,14 +213,12 @@ export async function moveQuickbooksStartAt(db: Db, startAt: Date, now: Date): P
 			.update(quickbooksConnection)
 			.set({ startAt })
 			.where(eq(quickbooksConnection.id, CONNECTION_ID)),
-		db
-			.insert(quickbooksSync)
-			.select((qb) =>
-				qb
-					.select(pendingRow(entryGroup.id, now))
-					.from(entryGroup)
-					.where(unqueuedFrom(STORED_START_AT))
-			),
+		db.insert(quickbooksSync).select((qb) =>
+			qb
+				.select(pendingRow(entryGroup.id, now, now))
+				.from(entryGroup)
+				.where(unqueuedFrom(STORED_START_AT))
+		),
 		db.delete(quickbooksSync).where(droppableBefore(STORED_START_AT, now))
 	]);
 }

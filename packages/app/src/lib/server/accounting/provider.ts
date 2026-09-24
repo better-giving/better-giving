@@ -223,11 +223,11 @@ export type Sendable =
 /**
  * whether the record being sent has been handed to the provider before.
  *
- *   first — nothing has tried this record. the queue claims a row before it sends it and gives the
- *           claim back only once the row is written (../accounting/deliver.ts), so no other run
- *           sent it and the provider cannot already be holding it.
- *   again — an earlier attempt may have reached the provider, whether or not its answer did. an
- *           adapter with no idempotency key of its own looks before it creates.
+ *   first — nothing has tried this record. the queue counts an attempt as it claims a row, before
+ *           anything is sent (./deliver.ts), so a row claimed with none behind it is one no run has
+ *           ever sent and the provider cannot already be holding it.
+ *   again — an earlier attempt may have reached the provider, whether or not its answer did — its
+ *           run may have died before writing anything down. the adapter looks before it creates.
  *
  * it is the caller's to state rather than the record's, because the record is read out of the books
  * (./record.ts) and this is a fact about the queue row carrying it.

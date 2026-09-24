@@ -2377,8 +2377,8 @@ export const quickbooksSync = sqliteTable(
 		 * a claim rather than a fourth status, so the check above is untouched and the column is a
 		 * plain `ADD COLUMN`. a run takes a row with an update's own `where` and sends only what
 		 * that update returns, which is what keeps two overlapping runs from both posting one gift:
-		 * Intuit offers no idempotency key, so a second post is a second record in the company's
-		 * own books and no later run repairs it.
+		 * Intuit keeps a request id for a period it does not publish, so a second post can be a
+		 * second record in the company's own books and no later run repairs it.
 		 *
 		 * it expires rather than being held, because a run that died mid-send writes nothing to
 		 * give the row back.
@@ -2390,11 +2390,10 @@ export const quickbooksSync = sqliteTable(
 		check('quickbooks_sync_attempts_check', sql`${t.attempts} >= 0`),
 		check('quickbooks_sync_remote_id_not_blank_check', optionalNotBlank(t.remoteId)),
 		check('quickbooks_sync_last_error_not_blank_check', optionalNotBlank(t.lastError)),
-		// the sweep reads the rows that are not finished, and they are the minority of a table
-		// that grows with every gift the deployment ever took — then takes the oldest of them, so
-		// the order is in the index too. on `status` alone a backlog parked behind an outage is
-		// re-sorted on every run, and `entry_group_id` is here because it is the sweep's tiebreak
-		// and sqlite sorts without it.
+		// `status` leads because the sweep reads the rows that are not finished, the minority of a
+		// table that grows with every gift the deployment ever took. the sweep's order is sorted
+		// over what that narrows to (../accounting/deliver.ts's `dueRows`), because it is read off
+		// the entry group, so the two columns after `status` order nothing the sweep reads.
 		index('quickbooks_sync_status_due_idx').on(t.status, t.createdAt, t.entryGroupId)
 	]
 );
