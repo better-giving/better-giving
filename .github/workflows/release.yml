@@ -1,8 +1,14 @@
 # the second remote workflow this repository has, and it gates nothing — ci.yml is the one that
 # does, on every push to main and every pull request.
 #
-# it runs on a tag and never on a push or a pull request: nothing here is asked before code lands.
-# what it produces is
+# it runs on a pushed `v*` tag, or on a manual `workflow_dispatch` that cuts the tag itself — never
+# on a push to a branch or a pull request: nothing here is asked before code lands. the dispatch
+# path exists because a claude session on this repository can push a branch but github refuses its
+# tag pushes (403), so the annotated tag has to be cut by the run itself, from `main`, once this
+# job's own gates have checked what a person cutting one by hand would have checked first. a tag
+# the job pushes with its own `GITHUB_TOKEN` starts no second run of this workflow — github does not
+# fire tag-push events for pushes made with the built-in token — so the run that cut the tag carries
+# on into the build below rather than waiting for one that would never arrive. what it produces is
 # the pair an operator installs — the console binary for four platforms, and the worker bundle that
 # binary uploads — held to each other by the baked config both halves carry.
 #
@@ -11,8 +17,9 @@
 # reason wrangler runs here and on no operator's machine. a deployment is still `pnpm run deploy`
 # from a checkout, or a press in the console.
 #
-# **the order is the one internal/pack depends on** — the bake check in front of everything able to
-# ship, then the three builds, then wrangler, then the pack. a baked config that has drifted from
+# **the order is the one internal/pack depends on** — on a dispatch, the gates that stand in for a
+# person cutting the tag by hand, then the bake check in front of everything able to ship, then the
+# three builds, then wrangler, then the pack. a baked config that has drifted from
 # packages/app/wrangler.jsonc fails here rather than at an operator's first press, which is a
 # refusal they can do nothing about.
 name: release
@@ -21,10 +28,29 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'the tag to cut, e.g. v0.0.26-alpha.1'
+        required: true
+        type: string
+      notes:
+        description: 'the paragraph for the release page'
+        required: true
+        type: string
+
+# so a second dispatch or tag push cannot cut or build a release while one is already running —
+# goreleaser's `--clean` and the bake/build/pack steps all assume they own the tree and the
+# workspace's `bundle/` and `dist/` directories alone.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
-  # the release and its assets, and nothing else.
+  # the release and its assets, and the dispatch path's own read of ci.yml's run for the commit it
+  # is about to tag — nothing else.
   contents: write
+  actions: read
 
 # third-party actions are pinned to a full commit sha rather than a major tag. a tag is mutable:
 # whoever controls the upstream repository can retarget v7 at new code, and it runs here with the
@@ -45,8 +71,82 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # the whole history and every tag: goreleaser writes the changelog from the commits since
-          # the previous tag, and a shallow clone has neither.
+          # the previous tag, and a shallow clone has neither. the dispatch gates below need the
+          # same history to look up the previous tag and to check the pushed remote state.
           fetch-depth: 0
+
+      # every later step reads $RELEASE_TAG rather than $GITHUB_REF_NAME directly, because a
+      # dispatch run has no ref to read one from — the tag does not exist yet when this step runs.
+      - name: resolve the tag this run releases
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "RELEASE_TAG=$DISPATCH_TAG" >> "$GITHUB_ENV"
+          else
+            echo "RELEASE_TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          fi
+
+      # the four checks below stand in for what a person running `.claude/skills/release/SKILL.md`
+      # by hand would have checked before typing `git tag`. each names the value it rejected and
+      # the fix, because a 4xx-shaped failure here is read by whoever re-runs the dispatch, not
+      # puzzled over in a log.
+
+      - name: a dispatched release only runs from main
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "this run started from ${{ github.ref }}, not refs/heads/main: re-run workflow_dispatch with main selected as the branch" >&2
+            exit 1
+          fi
+
+      - name: the tag matches vMAJOR.MINOR.PATCH[-alpha.N]
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[0-9]+)?$ ]]; then
+            echo "tag '$RELEASE_TAG' doesn't match vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-alpha.N: re-run workflow_dispatch with a tag in that shape" >&2
+            exit 1
+          fi
+
+      - name: the tag is unspent
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "tag '$RELEASE_TAG' already exists on origin: re-run workflow_dispatch with a tag neither the remote nor a release holds" >&2
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "a published release already holds '$RELEASE_TAG': re-run workflow_dispatch with a tag neither the remote nor a release holds" >&2
+            exit 1
+          fi
+
+      - name: ci.yml passed for this exact commit
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&status=completed" --jq '.workflow_runs[0].conclusion // "none"')
+          if [ "$conclusion" != "success" ]; then
+            echo "ci.yml's run for commit $GITHUB_SHA concluded '$conclusion', not success: get ci.yml green on this exact commit (push again if it hasn't run), then re-run workflow_dispatch" >&2
+            exit 1
+          fi
+
+      # the tag a hand cut one replaces: an annotated tag, first line the tag itself, then the
+      # dispatch input as the paragraph an operator reads on the release page, no trailer — the
+      # same shape `.claude/skills/release/SKILL.md` writes by hand. pushed with this job's own
+      # token, which is why the header above argues that push starts no second run.
+      - name: create and push the release tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          RELEASE_NOTES: ${{ inputs.notes }}
+        run: |
+          git config user.name "better-giving-release[bot]"
+          git config user.email "better-giving-release[bot]@users.noreply.github.com"
+          printf '%s\n\n%s\n' "$RELEASE_TAG" "$RELEASE_NOTES" > "$RUNNER_TEMP/tag-message.txt"
+          git tag -a "$RELEASE_TAG" -F "$RUNNER_TEMP/tag-message.txt"
+          git push origin "$RELEASE_TAG"
 
       # no `version` here on purpose: the action reads `packageManager` from the root package.json,
       # so the pin lives in the one file the repository already keeps it in.
@@ -91,7 +191,7 @@ jobs:
       # CLOUDFLARE_ENV is deliberately unset: it selects the environment at build time, and the
       # release deploys the top-level configuration and no rehearsal.
       - name: build the app
-        run: BETTER_GIVING_VERSION="${GITHUB_REF_NAME#v}" pnpm --filter @better-giving/app build
+        run: BETTER_GIVING_VERSION="${RELEASE_TAG#v}" pnpm --filter @better-giving/app build
 
       - name: emit the worker without deploying it
         run: pnpm wrangler deploy --dry-run --outdir "$RUNNER_TEMP/worker"
@@ -102,7 +202,7 @@ jobs:
           # packages/console/bundle/ is gitignored, so it is absent on a clean runner, and
           # cmd/pack writes with os.Create, which does not make a parent directory.
           mkdir -p bundle
-          packed="$GITHUB_WORKSPACE/packages/console/bundle/worker-${GITHUB_REF_NAME#v}.tar.gz"
+          packed="$GITHUB_WORKSPACE/packages/console/bundle/worker-${RELEASE_TAG#v}.tar.gz"
           go run ./cmd/pack \
             --worker "$RUNNER_TEMP/worker" \
             --out "$packed"
@@ -140,7 +240,7 @@ jobs:
       # all, so the same read covers a misspelled one.
       - name: every binary carries the digest of the bundle that was packed
         run: |
-          digest=$(sha256sum "packages/console/bundle/worker-${GITHUB_REF_NAME#v}.tar.gz" | cut -d' ' -f1)
+          digest=$(sha256sum "packages/console/bundle/worker-${RELEASE_TAG#v}.tar.gz" | cut -d' ' -f1)
           for binary in packages/console/dist/*/better-giving; do
             grep -qaF "$digest" "$binary" || {
               echo "$binary carries no $digest, so it would refuse every bundle it downloads" >&2
