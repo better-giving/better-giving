@@ -1466,6 +1466,16 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
+ * the same slack over the words, taken back so the fee row's rule stands midway: the gift's row sits
+ * `--_sp2` above it (`[part~='summary']`'s gap) and the words `--_sp2` below it, where the centred
+ * line would otherwise stand that step plus half the slack under it. the target keeps its whole
+ * `--_row-min`, reaching up over the row's padding to the rule; nothing above it takes a press there.
+ */
+.fee-decision {
+	margin-block-start: calc(-1 * (var(--_row-min) - 1lh) / 2);
+}
+
+/*
  * the switch, and the one control on this card drawn as a shape instead of painted by the platform.
  * confined to this selector: the two disclosures and the contact consent carry the same part name
  * and stay the platform's own box, because a tick is what a donor expects of a thing they are
