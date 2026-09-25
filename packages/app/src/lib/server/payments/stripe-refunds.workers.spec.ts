@@ -6,8 +6,8 @@ import { listContacts } from '../contacts/queries';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import type { PostableAccountId } from '../db/postable';
-import { entryGroup, payment, recurringPlan } from '../db/schema';
-import type { EmailProvider } from '../email/provider';
+import { dispute, entryGroup, payment, recurringPlan } from '../db/schema';
+import type { EmailMessage, EmailProvider } from '../email/provider';
 import type { SettleResult } from '../donations/delivery';
 import { listDonations } from '../donations/queries';
 import { recordAuthorizedGift, recordDonation } from '../donations/record';
@@ -16,8 +16,9 @@ import { soleProcessor } from './processors.testing';
 import { createStripeProvider } from './stripe';
 import { recording, sign, type Recorded } from './stripe.testing';
 
-// a Stripe refund reaching the books: the signed delivery, the adapter's fresh read of the refund
-// through the real SDK, and the writer (../donations/reverse.ts) against a real D1.
+// a Stripe refund or dispute reaching the books: the signed delivery, the adapter's fresh read of
+// the refund or the dispute through the real SDK, and the writer (../donations/reverse.ts) against a
+// real D1.
 //
 // what the writer does with each read is ../donations/reverse.workers.spec.ts's. what is here is
 // the join between the two halves, which neither spec can see alone: that the refund Stripe reports
@@ -72,7 +73,17 @@ beforeEach(async () => {
 	).run();
 });
 
-const quietMail: EmailProvider = { send: async () => ({ ok: true }) };
+/** every mail sent since the case began, or since the case cleared it once its gift was in place. */
+let sent: EmailMessage[] = [];
+beforeEach(() => {
+	sent = [];
+});
+const recordingMail: EmailProvider = {
+	send: async (message) => {
+		sent.push(message);
+		return { ok: true };
+	}
+};
 
 /** one Stripe answer, as the recording client hands it to the SDK. */
 type Answer = { readonly status: number; readonly json: unknown };
@@ -97,7 +108,7 @@ async function deliver(
 	const { httpClient, calls } = recording(answers);
 	const provider = createStripeProvider(CREDENTIALS, { httpClient });
 	const result = await settleDelivery(
-		{ db, provider, processors: soleProcessor(provider), email: quietMail },
+		{ db, provider, processors: soleProcessor(provider), email: recordingMail },
 		{ body, headers: { 'stripe-signature': await sign(body, CREDENTIALS.webhookSecret) } }
 	);
 	return { result, calls };
@@ -439,7 +450,7 @@ async function authorizedMonthlyGift(): Promise<string> {
 }
 
 /** the monthly gift's first collection, settled by Stripe's own `invoice.paid` on `pi_7`. */
-async function collect(donationId: string): Promise<void> {
+async function collect(donationId: string, rail = 'card'): Promise<void> {
 	const commitment = commitmentOf(donationId);
 	const { result } = await deliver(
 		'evt_collect',
@@ -500,7 +511,11 @@ async function collect(donationId: string): Promise<void> {
 					...settledIntent('', 2_500),
 					id: 'pi_7',
 					metadata: {},
-					latest_charge: { ...settledIntent('', 2_500).latest_charge, id: 'ch_7' }
+					latest_charge: {
+						...settledIntent('', 2_500).latest_charge,
+						id: 'ch_7',
+						payment_method_details: { type: rail }
+					}
 				}
 			}
 		]
@@ -593,5 +608,397 @@ describe('a Stripe refund of a monthly charge not recorded yet', () => {
 
 		expect(later.result).toMatchObject({ ok: true, outcome: 'posted' });
 		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+	});
+});
+
+/** when the dispute withdrew the money. */
+const DISPUTED = 1_787_500_000;
+/** Stripe's deadline to answer it by. */
+const RESPOND_BY = 1_788_500_000;
+/** when a won dispute's money came back. */
+const REINSTATED = 1_789_000_000;
+
+/** the balance transaction a dispute withdrew `amount` on, with Stripe's dispute fee. */
+function withdrawnOn(amount = 10_000, fee = 1_500) {
+	return {
+		id: 'txn_d1',
+		object: 'balance_transaction',
+		amount: -amount,
+		currency: 'usd',
+		fee,
+		net: -amount - fee,
+		exchange_rate: null,
+		created: DISPUTED,
+		reporting_category: 'dispute',
+		type: 'adjustment'
+	};
+}
+
+/** the balance transaction a won dispute put `amount` back on, giving back `feeReturned`. */
+function reinstatedOn(amount = 10_000, feeReturned = 0) {
+	return {
+		id: 'txn_d2',
+		object: 'balance_transaction',
+		amount,
+		currency: 'usd',
+		fee: -feeReturned,
+		net: amount + feeReturned,
+		exchange_rate: null,
+		created: REINSTATED,
+		reporting_category: 'dispute_reversal',
+		type: 'adjustment'
+	};
+}
+
+/**
+ * a dispute of `pi_1`'s card charge as the reversal read retrieves it, the charge and the intent
+ * expanded: opened, its money withdrawn, unless `overrides` walks it on.
+ */
+function disputeOf(donationId: string, overrides: Record<string, unknown> = {}) {
+	return {
+		id: 'du_1',
+		object: 'dispute',
+		amount: 10_000,
+		currency: 'usd',
+		created: DISPUTED,
+		livemode: true,
+		reason: 'fraudulent',
+		status: 'needs_response',
+		is_charge_refundable: false,
+		metadata: {},
+		balance_transactions: [withdrawnOn()],
+		evidence_details: {
+			due_by: RESPOND_BY,
+			has_evidence: false,
+			past_due: false,
+			submission_count: 0
+		},
+		payment_method_details: { type: 'card', card: { brand: 'visa' } },
+		charge: {
+			id: 'ch_1',
+			object: 'charge',
+			amount: 10_000,
+			payment_method_details: { type: 'card' }
+		},
+		payment_intent: { id: 'pi_1', object: 'payment_intent', metadata: { donation_id: donationId } },
+		...overrides
+	};
+}
+
+/**
+ * a dispute delivery of `du_1`. the delivery's own copy claims the dispute won, and nothing acts on
+ * it: the fresh read decides.
+ */
+function disputeDelivery(eventId: string, type: string, answers: readonly Answer[]) {
+	return deliver(eventId, type, { id: 'du_1', object: 'dispute', status: 'won' }, answers);
+}
+
+/** the disputes on record, as `[outcome, respond by]`. */
+async function disputeRows() {
+	const rows = await db.select().from(dispute);
+	return rows.map((row) => [row.outcome, row.respondBy] as const);
+}
+
+/** what the books hold as processor fees, net, across every group. */
+async function processorFees() {
+	const row = await env.DB.prepare(
+		'select coalesce(sum(amount_minor), 0) as net from ledger_entry where account_id = ?'
+	)
+		.bind(postableId('processorFees'))
+		.first<{ net: number }>();
+	return row?.net;
+}
+
+/** what staff were sent, leaving out the donor's receipts. */
+function toStaff() {
+	return sent.filter((message) => message.to === 'ops@hope.example');
+}
+
+describe('a Stripe dispute opened on a settled card gift', () => {
+	it('reverses the money, books the dispute fee, leaves the dispute open, and tells staff', async () => {
+		const donationId = await settledGift();
+		sent = [];
+
+		const { result } = await disputeDelivery('evt_d1', 'charge.dispute.funds_withdrawn', [
+			{ status: 200, json: disputeOf(donationId) }
+		]);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await refundRows()).toEqual([['du_1', 10_000, 'succeeded']]);
+		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+		expect(await processorFees()).toBe(320 + 1_500);
+		expect(await disputeRows()).toEqual([[null, new Date(RESPOND_BY * 1000)]]);
+		const alerts = toStaff();
+		expect(alerts).toHaveLength(1);
+		expect(alerts[0]?.text).toContain('10000 USD');
+		expect(alerts[0]?.text).toContain(new Date(RESPOND_BY * 1000).toISOString());
+		expect(alerts[0]?.text).toContain('https://dashboard.stripe.com/disputes/du_1');
+	});
+});
+
+/**
+ * Stripe's answers to the reversal read of a dispute of `pi_7` — the dispute, then the invoice
+ * payment that says which commitment raised the charge — and to the stop of `sub_1` that follows.
+ */
+function collectionDispute(
+	donationId: string,
+	overrides: Record<string, unknown> = {},
+	rail = 'card'
+): Answer[] {
+	return [
+		{
+			status: 200,
+			json: disputeOf(donationId, {
+				amount: 2_500,
+				balance_transactions: [withdrawnOn(2_500)],
+				charge: {
+					id: 'ch_7',
+					object: 'charge',
+					amount: 2_500,
+					payment_method_details: { type: rail }
+				},
+				payment_intent: { id: 'pi_7', object: 'payment_intent', metadata: {} },
+				...overrides
+			})
+		},
+		collectionRefund(donationId)[1] as Answer,
+		{
+			status: 200,
+			json: {
+				id: 'sub_1',
+				object: 'subscription',
+				customer: 'cus_1',
+				status: 'canceled',
+				created: SETTLED,
+				canceled_at: DISPUTED,
+				ended_at: DISPUTED,
+				metadata: commitmentOf(donationId)
+			}
+		}
+	];
+}
+
+describe('a Stripe dispute opened on one monthly charge', () => {
+	it('stops the monthly gift and says so to staff', async () => {
+		const donationId = await authorizedMonthlyGift();
+		await collect(donationId);
+		sent = [];
+
+		const { result, calls } = await disputeDelivery(
+			'evt_d1',
+			'charge.dispute.created',
+			collectionDispute(donationId)
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+		const plans = await db.select({ status: recurringPlan.status }).from(recurringPlan);
+		expect(plans).toEqual([{ status: 'cancelled' }]);
+		expect(calls.map((call) => [call.method, call.path.split('?')[0]])).toContainEqual([
+			'DELETE',
+			'/v1/subscriptions/sub_1'
+		]);
+		expect(toStaff()).toHaveLength(1);
+		expect(toStaff()[0]?.text).toContain('Stopped: no further charges');
+	});
+});
+
+describe('a Stripe dispute won', () => {
+	it('restores the gift and books back the fee Stripe gave back', async () => {
+		const donationId = await settledGift();
+		await disputeDelivery('evt_d1', 'charge.dispute.funds_withdrawn', [
+			{ status: 200, json: disputeOf(donationId) }
+		]);
+
+		const { result } = await disputeDelivery('evt_d2', 'charge.dispute.funds_reinstated', [
+			{
+				status: 200,
+				json: disputeOf(donationId, {
+					status: 'won',
+					balance_transactions: [withdrawnOn(), reinstatedOn(10_000, 1_500)]
+				})
+			}
+		]);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await refundRows()).toEqual([['du_1', 10_000, 'cancelled']]);
+		expect(await asAdminReads(donationId)).toEqual({ status: 'completed', given: 10_000 });
+		expect(await processorFees()).toBe(320);
+		expect((await disputeRows()).map(([outcome]) => outcome)).toEqual(['won']);
+	});
+
+	it('keeps the fee booked where Stripe gave none back', async () => {
+		const donationId = await settledGift();
+		await disputeDelivery('evt_d1', 'charge.dispute.funds_withdrawn', [
+			{ status: 200, json: disputeOf(donationId) }
+		]);
+
+		await disputeDelivery('evt_d2', 'charge.dispute.closed', [
+			{
+				status: 200,
+				json: disputeOf(donationId, {
+					status: 'won',
+					balance_transactions: [withdrawnOn(), reinstatedOn()]
+				})
+			}
+		]);
+
+		expect(await asAdminReads(donationId)).toEqual({ status: 'completed', given: 10_000 });
+		expect(await processorFees()).toBe(320 + 1_500);
+	});
+});
+
+describe('a Stripe dispute lost', () => {
+	it('leaves the gift reversed and closes the dispute', async () => {
+		const donationId = await settledGift();
+		await disputeDelivery('evt_d1', 'charge.dispute.funds_withdrawn', [
+			{ status: 200, json: disputeOf(donationId) }
+		]);
+
+		const { result } = await disputeDelivery('evt_d2', 'charge.dispute.closed', [
+			{ status: 200, json: disputeOf(donationId, { status: 'lost' }) }
+		]);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'updated' });
+		expect(await refundRows()).toEqual([['du_1', 10_000, 'succeeded']]);
+		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+		expect(await processorFees()).toBe(320 + 1_500);
+		expect((await disputeRows()).map(([outcome]) => outcome)).toEqual(['lost']);
+	});
+});
+
+describe('a Stripe inquiry that has withdrawn nothing', () => {
+	it('moves nothing and answers 200', async () => {
+		const donationId = await settledGift();
+		sent = [];
+
+		const { result } = await disputeDelivery('evt_d1', 'charge.dispute.created', [
+			{
+				status: 200,
+				json: disputeOf(donationId, {
+					status: 'warning_needs_response',
+					balance_transactions: [],
+					is_charge_refundable: true
+				})
+			}
+		]);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'ignored' });
+		expect(await refundRows()).toEqual([]);
+		expect(await disputeRows()).toEqual([]);
+		expect(await asAdminReads(donationId)).toEqual({ status: 'completed', given: 10_000 });
+		expect(toStaff()).toEqual([]);
+	});
+});
+
+describe('each Stripe dispute event delivered twice', () => {
+	it('posts once', async () => {
+		const donationId = await settledGift();
+		const opened = { status: 200, json: disputeOf(donationId) };
+		const won = {
+			status: 200,
+			json: disputeOf(donationId, {
+				status: 'won',
+				balance_transactions: [withdrawnOn(), reinstatedOn(10_000, 1_500)]
+			})
+		};
+		sent = [];
+
+		const outcomes = [];
+		for (const [eventId, type, answer] of [
+			['evt_d1', 'charge.dispute.created', opened],
+			['evt_d1', 'charge.dispute.created', opened],
+			['evt_d2', 'charge.dispute.funds_withdrawn', opened],
+			['evt_d2', 'charge.dispute.funds_withdrawn', opened],
+			['evt_d3', 'charge.dispute.closed', won],
+			['evt_d3', 'charge.dispute.closed', won],
+			['evt_d4', 'charge.dispute.funds_reinstated', won],
+			['evt_d4', 'charge.dispute.funds_reinstated', won]
+		] as const) {
+			const { result } = await disputeDelivery(eventId, type, [answer]);
+			outcomes.push(result.ok && result.outcome);
+		}
+
+		expect(outcomes).toEqual([
+			'posted',
+			'already_posted',
+			'already_posted',
+			'already_posted',
+			'posted',
+			'already_posted',
+			'already_posted',
+			'already_posted'
+		]);
+		expect(await refundRows()).toEqual([['du_1', 10_000, 'cancelled']]);
+		expect(await refundGroups()).toBe(1);
+		expect(await processorFees()).toBe(320);
+		expect(toStaff()).toHaveLength(1);
+	});
+
+	it('closes a lost dispute once', async () => {
+		const donationId = await settledGift();
+		await disputeDelivery('evt_d1', 'charge.dispute.created', [
+			{ status: 200, json: disputeOf(donationId) }
+		]);
+		const lost = { status: 200, json: disputeOf(donationId, { status: 'lost' }) };
+
+		const first = await disputeDelivery('evt_d2', 'charge.dispute.closed', [lost]);
+		const again = await disputeDelivery('evt_d2', 'charge.dispute.closed', [lost]);
+
+		expect(first.result).toMatchObject({ ok: true, outcome: 'updated' });
+		expect(again.result).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect(await refundRows()).toEqual([['du_1', 10_000, 'succeeded']]);
+		expect(await refundGroups()).toBe(1);
+	});
+});
+
+describe('a Stripe dispute that arrives before its gift is recorded', () => {
+	it('is answered non-2xx, and posted by a delivery after the gift settles', async () => {
+		const donationId = await quotedGift();
+		const answer = { status: 200, json: disputeOf(donationId) };
+
+		const early = await disputeDelivery('evt_d1', 'charge.dispute.created', [answer]);
+
+		expect(early.result).toMatchObject({ ok: false, reason: 'incomplete' });
+		expect(await refundRows()).toEqual([]);
+
+		await settle(donationId);
+		const later = await disputeDelivery('evt_d1', 'charge.dispute.created', [answer]);
+
+		expect(later.result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+	});
+});
+
+describe('a Stripe bank debit returned after it settled', () => {
+	it('reads as a dispute lost: the gift is refunded, the fee booked, the monthly gift stopped, staff told once', async () => {
+		const donationId = await authorizedMonthlyGift();
+		await collect(donationId, 'us_bank_account');
+		sent = [];
+
+		const { result } = await disputeDelivery(
+			'evt_d1',
+			'charge.dispute.funds_withdrawn',
+			collectionDispute(
+				donationId,
+				{
+					reason: 'insufficient_funds',
+					payment_method_details: { type: 'us_bank_account' },
+					balance_transactions: [withdrawnOn(2_500, 400)]
+				},
+				'us_bank_account'
+			)
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await refundRows()).toEqual([['du_1', 2_500, 'succeeded']]);
+		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+		expect(await processorFees()).toBe(320 + 400);
+		expect((await disputeRows()).map(([outcome]) => outcome)).toEqual(['lost']);
+		const plans = await db.select({ status: recurringPlan.status }).from(recurringPlan);
+		expect(plans).toEqual([{ status: 'cancelled' }]);
+		const alerts = toStaff();
+		expect(alerts).toHaveLength(1);
+		expect(alerts[0]?.subject).toMatch(/dispute was lost/);
 	});
 });

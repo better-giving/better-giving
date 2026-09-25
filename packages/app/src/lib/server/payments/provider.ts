@@ -859,9 +859,9 @@ export type RecurringEvent = VerifiedDelivery & {
 /**
  * a delivery about money leaving a settled transaction, or coming back to it.
  *
- * the id is the refund's, handed back to `readReversal` with the delivery it came on and read by
- * nothing else, for the reason `RecurringEvent` gives: whether it names a refund or something the
- * processor spells otherwise is decided by `type`, which is the adapter's vocabulary.
+ * the id is the refund's or the dispute's, handed back to `readReversal` with the delivery it came
+ * on and read by nothing else, for the reason `RecurringEvent` gives: which of the two it names is
+ * decided by `type`, which is the adapter's vocabulary.
  */
 export type ReversalEvent = VerifiedDelivery & {
 	readonly kind: 'reversal';
@@ -885,15 +885,15 @@ export type PaymentEvent = SettlementEvent | RecurringEvent | ReversalEvent | Ig
 /**
  * what a reversal did to a settled transaction.
  *
- *   refund         — money the processor sent back to the donor, in whole or in part. an ACH
- *                    debit returned after it settled is one too.
+ *   refund         — money the processor sent back to the donor, in whole or in part.
  *   refund_failed  — a refund that had gone out and did not stand: the money is the
  *                    organisation's again.
  *   dispute_opened — the donor's bank disputed the charge and the processor took the money back
  *                    while it is decided.
  *   dispute_won    — the dispute closed for the organisation: the money came back.
  *   dispute_lost   — the dispute closed for the donor: the money stays gone. a processor that
- *                    reports no opening sends this alone.
+ *                    reports no opening sends this alone, and a bank debit returned after it
+ *                    settled is one: the bank's return has no appeal.
  */
 export const REVERSAL_KINDS = [
 	'refund',

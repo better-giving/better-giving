@@ -179,6 +179,26 @@ export const RECURRING_EVENT_TYPES = [
 export const REFUND_EVENT_TYPES = ['refund.created', 'refund.updated', 'refund.failed'] as const;
 
 /**
+ * the deliveries that are one dispute's own states, which the reversal read reads.
+ *
+ * every member's object is one dispute, so each names exactly one reversal, and the read re-fetches
+ * it and decides by the dispute's status and its balance transactions, never by which of these
+ * arrived. the two funds events are the ones that report money moving — "funds are removed from
+ * your account due to a dispute" and "funds are reinstated to your account after a dispute is
+ * closed" (https://docs.stripe.com/api/events/types) — and `created` and `closed` beside them are
+ * the dispute's opening and its outcome, read the same way.
+ *
+ * `charge.dispute.updated` is left off: it "occurs when the dispute is updated (usually with
+ * evidence)", which moves no money and closes nothing.
+ */
+export const DISPUTE_EVENT_TYPES = [
+	'charge.dispute.created',
+	'charge.dispute.funds_withdrawn',
+	'charge.dispute.funds_reinstated',
+	'charge.dispute.closed'
+] as const;
+
+/**
  * everything a deployment's endpoint subscribes to, which is exactly what the deployment acts on.
  *
  * one list rather than a switch, so that what the account is configured with and what the code
@@ -195,5 +215,6 @@ export const REFUND_EVENT_TYPES = ['refund.created', 'refund.updated', 'refund.f
 export const SUBSCRIBED_EVENT_TYPES = [
 	...SETTLEMENT_EVENT_TYPES,
 	...RECURRING_EVENT_TYPES,
-	...REFUND_EVENT_TYPES
+	...REFUND_EVENT_TYPES,
+	...DISPUTE_EVENT_TYPES
 ] as const;

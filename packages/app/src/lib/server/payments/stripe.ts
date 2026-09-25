@@ -9,6 +9,7 @@ import {
 } from '@better-giving/operator/stripe/secret-fingerprint';
 import {
 	API_VERSION,
+	DISPUTE_EVENT_TYPES,
 	RECURRING_COLLECTION_EVENT_TYPES,
 	RECURRING_EVENT_TYPES,
 	REFUND_EVENT_TYPES,
@@ -57,6 +58,20 @@ import type {
 // it is written for workerd, which is what the constructor options are about — see
 // `createStripeProvider`, and ./stripe.workers.spec.ts, which is where that claim is actually
 // exercised rather than asserted in prose.
+//
+// a dispute is read off its own balance transactions, so what is booked is what Stripe moved rather
+// than what its policy says it moves. the policy, for the reader checking a figure: the fee taken
+// when a dispute opens is "generally not" returned, and the countered fee charged for answering one
+// is returned on a win (https://docs.stripe.com/disputes/responding,
+// https://docs.stripe.com/disputes/how-disputes-work). where Stripe books the countered fee is
+// unverified — those pages do not say whether it lands on the dispute's own two transactions — so a
+// fee given back on a win is bounded by the fee the withdrawal carried (`readDispute`), the one fee
+// the opening booked, and a dispute walked through on a test-mode account is what settles it. a
+// returned bank debit is a dispute too —
+// "generally final with no network appeal process", with "a failure fee" where the bank refused a
+// debit that had succeeded (https://docs.stripe.com/payments/ach-direct-debit) — and reads lost.
+// which deliveries carry the money is `DISPUTE_EVENT_TYPES`
+// (`@better-giving/operator/stripe/webhook-endpoint`), and `readDispute` below is the read.
 
 /** what the adapter needs to talk to an account. */
 export type StripeCredentials = {
@@ -1573,6 +1588,113 @@ export function createStripeProvider(
 		return commitment?.[DONATION_METADATA_KEY]?.trim() ? commitment : own;
 	}
 
+	/**
+	 * the dispute a delivery names, re-read at the pinned version whichever of `DISPUTE_EVENT_TYPES`
+	 * carried it: its status and its balance transactions decide, never the event's type.
+	 *
+	 * the money is the balance transactions — "zero, one, or two … that show funds withdrawn and
+	 * reinstated" (the installed SDK's `Dispute.balance_transactions`) — one out a withdrawal and one
+	 * in a reinstatement. none out is an inquiry, which holds no money back, or a dispute Stripe has
+	 * not debited yet, and both read as nothing moved.
+	 *
+	 *   won, its money back      — `dispute_won`, dated by the reinstatement, with the fee it returned.
+	 *                              `prevented` reads the same way.
+	 *   won, its money not back  — nothing moved. the reinstatement's own delivery reads it won; read
+	 *                              won now, the fee that reinstatement returns would never be read.
+	 *   lost, or a bank debit's  — `dispute_lost`. a returned bank debit has no appeal (the header).
+	 *   anything else withdrawn  — `dispute_opened`, a status this version does not know included:
+	 *                              money withdrawn stands withdrawn until a close says otherwise.
+	 *
+	 * a reinstatement alone is never a win: Stripe reinstates funds on a lost dispute of a partly
+	 * refunded payment too (`charge.dispute.funds_reinstated` in the installed SDK's event types).
+	 *
+	 * the figure is the dispute's `amount`, in the currency the donor was charged in. each fee is its
+	 * balance transaction's, stated in the account's settlement currency and converted as a
+	 * settlement's is (`feeOf` above), so a fee on a gift charged in another currency is this app's
+	 * conversion rather than a figure Stripe states. a fee given back is converted at the
+	 * withdrawal's rate, not the reinstatement's, so the conversion leaves nothing in processor fees.
+	 */
+	async function readDispute(disputeId: string): Promise<PaymentResult<ReversalRead>> {
+		try {
+			const disputed = await stripe.disputes.retrieve(disputeId, {
+				expand: ['charge', 'payment_intent']
+			});
+			const nothingMoved = {
+				ok: true,
+				value: { kind: 'nothing_moved', providerReversalId: disputed.id }
+			} as const;
+			const intent = expansionOf<Stripe.PaymentIntent>(disputed.payment_intent);
+			if (intent.kind === 'unexpanded')
+				return unexpandedOn('dispute', 'payment_intent', disputed.id);
+			const charge = expansionOf<Stripe.Charge>(disputed.charge);
+			// never null on a dispute at this version, so anything but the object is the missing `expand`.
+			if (charge.kind !== 'object') return unexpandedOn('dispute', 'charge', disputed.id);
+
+			const withdrawal = disputed.balance_transactions.find((moved) => moved.amount < 0);
+			const reinstatement = disputed.balance_transactions.find((moved) => moved.amount > 0);
+			// `prevented` never became a chargeback (https://docs.stripe.com/api/disputes/object), and is
+			// read by its money as a win is.
+			const decidedForUs = disputed.status === 'won' || disputed.status === 'prevented';
+			if (withdrawal === undefined) return nothingMoved;
+			if (decidedForUs && reinstatement === undefined) return nothingMoved;
+
+			// a charge made with no intent is another integration's, read against the charge and naming
+			// nothing, as a refund of one is (`readReversal` below).
+			const facts =
+				intent.kind === 'object'
+					? {
+							reversedTxnId: intent.value.id,
+							providerReversalId: disputed.id,
+							reversedMetadata: await metadataOfCharge(intent.value)
+						}
+					: {
+							reversedTxnId: charge.value.id,
+							providerReversalId: disputed.id,
+							reversedMetadata: {}
+						};
+			const currency = disputed.currency.toUpperCase();
+
+			if (decidedForUs && reinstatement !== undefined) {
+				// a fee given back is a negative fee on the reinstatement, in the settlement currency like
+				// the withdrawal's. bounded by the withdrawal's fee, the one fee the opening booked, and
+				// converted at the withdrawal's rate, so a fee out and back nets to nothing in the books.
+				const givenBack = Math.min(-reinstatement.fee, withdrawal.fee);
+				const returned = givenBack > 0 ? feeOf({ ...withdrawal, fee: givenBack }, currency) : null;
+				return {
+					ok: true,
+					value: {
+						kind: 'dispute_won',
+						...facts,
+						occurredAt: atMillis(reinstatement.created),
+						feeReturnedMinor: returned !== null && returned > 0 ? returned : null
+					}
+				};
+			}
+
+			const withdrawn = {
+				...facts,
+				amountMinor: disputed.amount,
+				currency,
+				occurredAt: atMillis(withdrawal.created),
+				feeMinor: feeOf(withdrawal, currency),
+				reason: disputed.reason,
+				dashboardUrl: `https://dashboard.stripe.com/${disputed.livemode ? '' : 'test/'}disputes/${disputed.id}`
+			};
+			const bankDebit = SETTLED_METHODS[charge.value.payment_method_details?.type ?? ''] === 'ach';
+			if (disputed.status === 'lost' || bankDebit) {
+				return { ok: true, value: { kind: 'dispute_lost', ...withdrawn } };
+			}
+			// 0 where the bank allows no response (the installed SDK's `Dispute.EvidenceDetails`).
+			const dueBy = disputed.evidence_details.due_by;
+			return {
+				ok: true,
+				value: { kind: 'dispute_opened', ...withdrawn, respondBy: dueBy ? atMillis(dueBy) : null }
+			};
+		} catch (error) {
+			return classify(error);
+		}
+	}
+
 	return {
 		processor: 'stripe',
 
@@ -1870,7 +1992,9 @@ export function createStripeProvider(
 			const occurredAt = atMillis(event.created);
 			const settles = (SETTLEMENT_EVENT_TYPES as readonly string[]).includes(type);
 			const repeats = (RECURRING_EVENT_TYPES as readonly string[]).includes(type);
-			const reverses = (REFUND_EVENT_TYPES as readonly string[]).includes(type);
+			const reverses = (
+				[...REFUND_EVENT_TYPES, ...DISPUTE_EVENT_TYPES] as readonly string[]
+			).includes(type);
 
 			if (!settles && !repeats && !reverses) {
 				return { ok: true, value: { id: event.id, kind: 'ignored', type, occurredAt } };
@@ -1902,8 +2026,9 @@ export function createStripeProvider(
 
 			// the id is all that is read off any kind of delivery, and the kind is decided by the
 			// type rather than by what the id looks like. what that id names — a transaction, a
-			// commitment, one collection, one refund — is the read arm's business, which is where a
-			// shape this version does not recognise is a failure rather than a silent misreading.
+			// commitment, one collection, one refund, one dispute — is the read arm's business, which
+			// is where a shape this version does not recognise is a failure rather than a silent
+			// misreading.
 			if (settles) {
 				return {
 					ok: true,
@@ -1989,8 +2114,11 @@ export function createStripeProvider(
 		},
 
 		/**
-		 * the refund a delivery names, re-read at the pinned version whichever of
-		 * `REFUND_EVENT_TYPES` carried it: the refund's status decides, never the event's type.
+		 * the refund or dispute a delivery names. a member of `DISPUTE_EVENT_TYPES` names a dispute,
+		 * which `readDispute` above reads; every other reversal delivery names a refund.
+		 *
+		 * the refund is re-read at the pinned version whichever of `REFUND_EVENT_TYPES` carried it: the
+		 * refund's status decides, never the event's type.
 		 *
 		 * the reversed transaction is the payment intent, the id `readSettlement` reports a gift
 		 * settled on, and the refund's own `re_…` is the reversal's id. the figure is the refund's
@@ -1998,6 +2126,9 @@ export function createStripeProvider(
 		 * fee: a refund returns none of it.
 		 */
 		async readReversal(event: ReversalEvent): Promise<PaymentResult<ReversalRead>> {
+			if ((DISPUTE_EVENT_TYPES as readonly string[]).includes(event.type)) {
+				return readDispute(event.providerNoticeId);
+			}
 			try {
 				const refunded = await stripe.refunds.retrieve(event.providerNoticeId, {
 					expand: ['payment_intent', 'failure_balance_transaction']
@@ -2008,7 +2139,8 @@ export function createStripeProvider(
 					return { ok: true, value: { kind: 'nothing_moved', providerReversalId: refunded.id } };
 				}
 				const intent = expansionOf<Stripe.PaymentIntent>(refunded.payment_intent);
-				if (intent.kind === 'unexpanded') return unexpandedOnRefund('payment_intent', refunded.id);
+				if (intent.kind === 'unexpanded')
+					return unexpandedOn('refund', 'payment_intent', refunded.id);
 				// a charge made with no intent is another integration's: this app charges through intents
 				// alone. read against the charge and naming nothing, it is answered and left. a refund of
 				// neither reverses nothing a gift could have settled on.
@@ -2034,7 +2166,7 @@ export function createStripeProvider(
 						refunded.failure_balance_transaction
 					);
 					if (returned.kind === 'unexpanded') {
-						return unexpandedOnRefund('failure_balance_transaction', refunded.id);
+						return unexpandedOn('refund', 'failure_balance_transaction', refunded.id);
 					}
 					return {
 						ok: true,
@@ -2297,17 +2429,17 @@ export function createStripeProvider(
 }
 
 /**
- * a refund's expandable field that came back as an id: the retrieve went out without its `expand`,
- * a bug here, and loud rather than read as the field being absent.
+ * a refund's or a dispute's expandable field that came back as an id: the retrieve went out without
+ * its `expand`, a bug here, and loud rather than read as the field being absent.
  */
-function unexpandedOnRefund(field: string, refundId: string): PaymentFailure {
+function unexpandedOn(object: 'refund' | 'dispute', field: string, id: string): PaymentFailure {
 	return {
 		ok: false,
 		reason: 'provider_error',
 		detail:
-			`Stripe returned \`${field}\` on refund ${redactPublicId(refundId)} as an id rather than an ` +
-			'object, so the refund could not be read and nothing was recorded. The retrieve went out ' +
-			'without its `expand`, which is a bug in this app rather than anything about the refund.'
+			`Stripe returned \`${field}\` on ${object} ${redactPublicId(id)} as an id rather than an ` +
+			`object, so the ${object} could not be read and nothing was recorded. The retrieve went out ` +
+			`without its \`expand\`, which is a bug in this app rather than anything about the ${object}.`
 	};
 }
 
