@@ -1051,6 +1051,23 @@ describe('recordReversal() — a dispute opened on a settled gift', () => {
 
 		expect((await asAdminReads(gift.donationId)).given).toBe(6_000);
 	});
+
+	it('reads the gift as disputed while the dispute is open, never as refunded', async () => {
+		const gift = await settledGift();
+
+		await recordReversal(deps(), opened(), 'evt_d1');
+
+		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'disputed', given: 0 });
+	});
+
+	it('reads a gift refunded in part and then disputed as disputed', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), refund({ amountMinor: 3_000 }), 'evt_r1');
+
+		await recordReversal(deps(), opened({ amountMinor: 4_000 }), 'evt_d1');
+
+		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'disputed', given: 3_000 });
+	});
 });
 
 const PLAN_ID = '019fb900-0000-7000-8000-000000000001';
@@ -1264,6 +1281,15 @@ describe('recordReversal() — a dispute won', () => {
 		expect((await asAdminReads(gift.donationId)).given).toBe(10_000);
 	});
 
+	it('reads the gift as it read before the dispute', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), opened(), 'evt_d1');
+
+		await recordReversal(deps(), won(), 'evt_d2');
+
+		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'completed', given: 10_000 });
+	});
+
 	it('answers the win delivered again as already posted, and puts nothing back twice', async () => {
 		await settledGift();
 		await recordReversal(deps(), opened(), 'evt_d1');
@@ -1354,6 +1380,15 @@ describe('recordReversal() — a dispute lost after it opened', () => {
 		expect((await asAdminReads(gift.donationId)).given).toBe(0);
 	});
 
+	it('reads the gift as refunded', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), opened(), 'evt_d1');
+
+		await recordReversal(deps(), lost(), 'evt_d2');
+
+		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'refunded', given: 0 });
+	});
+
 	it('answers the loss delivered again as already posted', async () => {
 		await settledGift();
 		await recordReversal(deps(), opened(), 'evt_d1');
@@ -1437,7 +1472,7 @@ describe('recordReversal() — a dispute lost after it opened, settling up at th
 
 		expect((await refundRows()).map((r) => r.amountMinor)).toEqual([6_000, 4_000]);
 		expect(await netByAccount()).toEqual({ [fund]: 0, [postableId('undepositedFunds')]: 0 });
-		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'refunded', given: 0 });
+		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'disputed', given: 0 });
 	});
 
 	it('changes nothing when a close that lowered the withdrawal is delivered again', async () => {

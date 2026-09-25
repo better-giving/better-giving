@@ -725,7 +725,7 @@ describe('a Stripe dispute opened on a settled card gift', () => {
 
 		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
 		expect(await refundRows()).toEqual([['du_1', 10_000, 'succeeded']]);
-		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+		expect(await asAdminReads(donationId)).toEqual({ status: 'disputed', given: 0 });
 		expect(await processorFees()).toBe(320 + 1_500);
 		expect(await disputeRows()).toEqual([[null, new Date(RESPOND_BY * 1000)]]);
 		const alerts = toStaff();
@@ -791,7 +791,7 @@ describe('a Stripe dispute opened on one monthly charge', () => {
 		);
 
 		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
-		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+		expect(await asAdminReads(donationId)).toEqual({ status: 'disputed', given: 0 });
 		const plans = await db.select({ status: recurringPlan.status }).from(recurringPlan);
 		expect(plans).toEqual([{ status: 'cancelled' }]);
 		expect(calls.map((call) => [call.method, call.path.split('?')[0]])).toContainEqual([
@@ -966,7 +966,7 @@ describe('a Stripe dispute that arrives before its gift is recorded', () => {
 		const later = await disputeDelivery('evt_d1', 'charge.dispute.created', [answer]);
 
 		expect(later.result).toMatchObject({ ok: true, outcome: 'posted' });
-		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+		expect(await asAdminReads(donationId)).toEqual({ status: 'disputed', given: 0 });
 	});
 });
 

@@ -722,7 +722,7 @@ describe('a PayPal dispute holding a settled gift’s money', () => {
 
 			expect(result).toMatchObject({ ok: true, outcome: 'posted' });
 			expect(await refundRows()).toEqual([[DISPUTE_ID, 10_000, 'succeeded']]);
-			expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+			expect(await asAdminReads(donationId)).toEqual({ status: 'disputed', given: 0 });
 			expect(await disputeRows()).toEqual([[null, RESPOND_BY]]);
 			const alerts = toStaff();
 			expect(alerts).toHaveLength(1);
@@ -755,7 +755,7 @@ describe('a PayPal dispute on one monthly charge', () => {
 
 		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
 		expect(await refundRows()).toEqual([[DISPUTE_ID, 2_500, 'succeeded']]);
-		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+		expect(await asAdminReads(donationId)).toEqual({ status: 'disputed', given: 0 });
 		expect(calls).toContain(`POST /v1/billing/subscriptions/${SUBSCRIPTION_ID}/cancel`);
 		const plans = await db.select({ status: recurringPlan.status }).from(recurringPlan);
 		expect(plans).toEqual([{ status: 'cancelled' }]);
@@ -875,7 +875,7 @@ describe('a PayPal dispute that arrives before its gift is recorded', () => {
 		);
 
 		expect(later.result).toMatchObject({ ok: true, outcome: 'posted' });
-		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+		expect(await asAdminReads(donationId)).toEqual({ status: 'disputed', given: 0 });
 	});
 });
 
@@ -935,7 +935,7 @@ describe('a PayPal chargeback reported as a dispute and as a reversal', () => {
 		expect(opened.result).toMatchObject({ ok: true, outcome: 'posted' });
 		expect(reversed.result).toMatchObject({ ok: true, outcome: 'already_posted' });
 		expect(await refundRows()).toEqual([[DISPUTE_ID, 10_000, 'succeeded']]);
-		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+		expect(await asAdminReads(donationId)).toEqual({ status: 'disputed', given: 0 });
 	});
 
 	it('withdraws the money once when the reversal arrives first', async () => {

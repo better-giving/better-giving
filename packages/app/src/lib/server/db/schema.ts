@@ -1053,18 +1053,20 @@ export const form = sqliteTable(
  * asymmetry seals it: sqlite does `ADD COLUMN` natively, while dropping a column carrying
  * a check is the 12-step rebuild — so not having it is the cheap direction to reverse.
  *
- * the projection, and what produces each state. this list is a contract with `payment`,
- * not a wish: every member below is derivable from rows that exist. `failed` and `cancelled`
- * are the two that depend on `payment.status` and are why it exists — with `payment` holding
- * settlement facts only, a failed charge writes no row, so `failed` is indistinguishable from
- * `pending` and `cancelled` has no substrate at all.
+ * the projection, and what produces each state. this list is a contract with `payment` and
+ * `dispute`, not a wish: every member below is derivable from rows that exist. `failed` and
+ * `cancelled` are the two that depend on `payment.status` and are why it exists — with `payment`
+ * holding settlement facts only, a failed charge writes no row, so `failed` is indistinguishable
+ * from `pending` and `cancelled` has no substrate at all.
  *
  *   pending            no `payment` row yet, or the latest inbound attempt is `pending`.
  *   completed          an inbound `succeeded` payment, and refunds do not reach the total.
  *   failed             the latest inbound attempt is `failed` and none has succeeded.
  *   cancelled          the latest inbound attempt is `cancelled` and none has succeeded.
  *   refunded           `succeeded` refunds sum to the inbound total.
- *   partially_refunded `succeeded` refunds sum to less than it, and more than zero.
+ *   disputed           a `dispute` row with no outcome is keyed on one of the gift's refunds,
+ *                      whatever the refunds sum to.
+ *   partially_refunded `succeeded` refunds sum to less than the inbound total, and more than zero.
  *
  * two rules govern that list, and they are what make it exhaustive rather than a set of
  * cases. a gift with any `succeeded` inbound attempt is collected, and no later attempt

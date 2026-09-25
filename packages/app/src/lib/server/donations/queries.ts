@@ -1,9 +1,9 @@
 import type { TributeKind } from '@better-giving/form/v1';
-import { and, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { readContactNames, readContactSummaries } from '../contacts/queries';
 import type { Db } from '../db/client';
-import { donation, payment, program, type Donation, type Payment } from '../db/schema';
+import { dispute, donation, payment, program, type Donation, type Payment } from '../db/schema';
 import type { DonationStatus } from '../../donations/statuses';
 import { projectTribute } from '../../donations/tributes';
 
@@ -26,9 +26,10 @@ import { projectTribute } from '../../donations/tributes';
 // **those reads say in SQL what `projectStatus` below says in TypeScript, and the three have to
 // keep agreeing** — a succeeded inbound attempt collects, a succeeded refund takes back, every
 // other attempt counts for nothing. the summary spends only the first of those, because a count of
-// donors is not money and a refund takes nothing off one. a change to the rule here is a change to
-// the `case when` there, and a screen calling a gift `pending` while the donor file counts it is
-// the failure that costs.
+// donors is not money and a refund takes nothing off one. `disputed` is the one state they need
+// not mirror: it names no money, and what a dispute withdrew is already a succeeded refund row
+// that the sums take off. a change to the rule here is a change to the `case when` there, and a
+// screen calling a gift `pending` while the donor file counts it is the failure that costs.
 //
 // no writes. a gift is written by ./record.ts, which composes four tables in one `batch()` and is
 // named for that; this file is the other half the name left room for. `contact` is not read here
@@ -49,7 +50,13 @@ import { projectTribute } from '../../donations/tributes';
 export type SettlementAttempt = Pick<
 	Payment,
 	'id' | 'direction' | 'status' | 'amountMinor' | 'method' | 'provider' | 'occurredAt'
->;
+> & {
+	/**
+	 * whether a `dispute` row with no outcome is keyed on this row — which makes it the money a
+	 * donor's bank withdrew while the processor has not ruled. false on every other row.
+	 */
+	readonly disputeOpen: boolean;
+};
 
 /** minor units, added as the integers they are stored as. */
 function sum(attempts: readonly SettlementAttempt[]): number {
@@ -102,11 +109,17 @@ function latestOf<T extends SettlementAttempt>(attempts: readonly T[]): T | unde
  *
  * a refund that is `pending`, `failed` or `cancelled` counts toward nothing. it is money the org
  * still holds, and reading it as gone reports a refund on the strength of an intention.
+ *
+ * an open dispute on a collected gift outranks both refund states. its withdrawal is a succeeded
+ * refund row like any other, so without the check a bank taking a gift back reads as the
+ * organisation giving it back. once the dispute closes the rows answer alone: a win leaves its row
+ * `cancelled`, which counts for nothing, and a loss leaves it `succeeded`.
  */
 export function projectStatus(attempts: readonly SettlementAttempt[]): DonationStatus {
 	const inbound = attempts.filter((a) => a.direction === 'inbound');
 	const collected = sum(inbound.filter((a) => a.status === 'succeeded'));
 	if (collected > 0) {
+		if (attempts.some((a) => a.disputeOpen)) return 'disputed';
 		const refunded = sum(
 			attempts.filter((a) => a.direction === 'refund' && a.status === 'succeeded')
 		);
@@ -271,7 +284,7 @@ type AttemptRow = SettlementAttempt &
 	Pick<Payment, 'donationId' | 'providerTxnId' | 'coin' | 'coinAmount'>;
 
 /**
- * the columns of `payment` the two projections read.
+ * the columns of `payment` the projections read, and whether an open dispute is keyed on the row.
  *
  * `method` and `provider` are selected deliberately and not by widening a `select()`: they are what
  * `projectRail` answers with, and a rail nothing selects is the reason no screen could say how a
@@ -280,6 +293,9 @@ type AttemptRow = SettlementAttempt &
  * ../payments/provider.ts) — and stops at the loader that asks it. `coin` and `coin_amount` are what
  * `projectCoinReceived` answers with. the rest of the row stays out on the argument
  * `DONATION_COLUMNS` above makes.
+ *
+ * `disputeOpen` is read off a left join to `dispute` on its primary key, which is the payment row's
+ * id: at most one row per attempt, so the join adds no row and binds no parameter.
  *
  * these rows never cross to a browser: they are read here and collapsed into `DonationListRow`
  * below, which is where the narrowing a browser payload gets is stated.
@@ -295,8 +311,10 @@ const ATTEMPT_COLUMNS = {
 	providerTxnId: payment.providerTxnId,
 	occurredAt: payment.occurredAt,
 	coin: payment.coin,
-	coinAmount: payment.coinAmount
-} satisfies Record<keyof AttemptRow, SQLiteColumn>;
+	coinAmount: payment.coinAmount,
+	disputeOpen:
+		sql<boolean>`${dispute.paymentId} is not null and ${dispute.outcome} is null`.mapWith(Boolean)
+} satisfies Record<keyof AttemptRow, SQLiteColumn | SQL<boolean>>;
 
 /** one gift as a screen shows it: the row, the donor it came from, and the state it is in. */
 export type DonationListRow = Omit<
@@ -404,7 +422,11 @@ export async function listDonations(db: Db): Promise<DonationPage> {
 
 	const ids = page.map((row) => row.id);
 	const [attempts, names] = await Promise.all([
-		db.select(ATTEMPT_COLUMNS).from(payment).where(inArray(payment.donationId, ids)),
+		db
+			.select(ATTEMPT_COLUMNS)
+			.from(payment)
+			.leftJoin(dispute, eq(dispute.paymentId, payment.id))
+			.where(inArray(payment.donationId, ids)),
 		readContactNames(
 			db,
 			page.map((row) => row.contactId)

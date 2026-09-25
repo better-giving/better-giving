@@ -26,6 +26,7 @@ function attempt(over: Partial<SettlementAttempt> = {}): SettlementAttempt {
 		method: 'card',
 		provider: 'stripe',
 		occurredAt: new Date(0),
+		disputeOpen: false,
 		...over
 	};
 }
@@ -120,6 +121,25 @@ describe('the gift status projection', () => {
 			expect(projected).toBe('completed');
 		}
 	);
+
+	it('reads a gift whose money an open dispute withdrew as disputed, not refunded', () => {
+		// the withdrawal is a succeeded refund-direction row reaching the whole gift, so without the
+		// dispute a donor's bank taking the money back would read as the organisation giving it.
+		const status = projectStatus([
+			attempt({ amountMinor: 10_000 }),
+			attempt({ direction: 'refund', amountMinor: 10_000, disputeOpen: true })
+		]);
+		expect(status).toBe('disputed');
+	});
+
+	it('reads a gift refunded in part and then disputed as disputed', () => {
+		const status = projectStatus([
+			attempt({ amountMinor: 10_000 }),
+			attempt({ direction: 'refund', amountMinor: 3_000 }),
+			attempt({ direction: 'refund', amountMinor: 7_000, disputeOpen: true })
+		]);
+		expect(status).toBe('disputed');
+	});
 
 	it('reads an attempt still on its way as pending', () => {
 		// an ACH debit or an intent awaiting the donor. money that has not arrived is not money
