@@ -238,12 +238,7 @@ async function expectLocked(
 	for (const tag of scripts) expect(tag).toContain(` nonce="${nonce}"`);
 }
 
-/**
- * a document answer's policy and framing headers, held to the dashboard's strict set.
- *
- * `style-src` is not read: vitest sets `import.meta.env.DEV` in this pool, so what arrives here is
- * the dev server's variant. ./document-policy.spec.ts holds a build's and the dev server's apart.
- */
+/** a document answer's policy and framing headers, held to the dashboard's strict set. */
 async function expectStrictDocument(response: Response): Promise<void> {
 	expect(response.status).toBe(200);
 	expect(response.headers.get('content-type')).toMatch(/^text\/html/);
@@ -253,6 +248,7 @@ async function expectStrictDocument(response: Response): Promise<void> {
 	expect(policy.get('default-src')).toEqual(["'self'"]);
 	expect(policy.get('script-src')).toEqual(["'self'", `'nonce-${nonce}'`]);
 	expect(policy.get('img-src')).toEqual(["'self'", 'data:']);
+	expect(policy.get('style-src')).toEqual(["'self'", "'unsafe-inline'"]);
 	expect(response.headers.get('referrer-policy')).toBe('same-origin');
 	await expectLocked(response, policy, nonce);
 }

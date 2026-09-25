@@ -23,10 +23,11 @@ import type { EntryContext } from 'react-router';
 // every document gets the dashboard's policy unless a route it matched says otherwise through its
 // `handle`, so a screen added later is strict until someone widens it on purpose.
 //
-// under the dev server an operator document also allows inline style: vite's dev client injects
-// every stylesheet it serves as a `<style>` element, which `default-src 'self'` refuses, and a build
-// links them instead. `import.meta.env.DEV` is what tells the two apart, and it is false in every
-// build `deploy` uploads.
+// every document allows inline style, the dashboard's as well as the donor page's. operator
+// components set layout through style attributes the server renders — the column widths in
+// packages/operator/src/components/data/DataTable.jsx, the bar heights in data/Series.jsx, the style
+// a caller hands status/Mark.jsx — and `default-src 'self'` alone refuses every one of them. a style cannot run
+// script, so allowing it opens nothing the nonce closes.
 //
 // the donor page sends its referrer as `strict-origin-when-cross-origin`, so the processors it
 // loads see this deployment's origin exactly as they see an integrator's on a page that sets no
@@ -51,14 +52,14 @@ const LOCKED = [
 ];
 
 /** every operator document: the dashboard, sign-in, and the error page under no surface. */
-function operatorPolicy(nonce: string, dev: boolean): string[] {
+function operatorPolicy(nonce: string): string[] {
 	return [
 		"default-src 'self'",
 		`script-src 'self' 'nonce-${nonce}'`,
 		// the brand marks packages/operator/src/styles/base.css draws are under vite's 4 KiB
 		// `build.assetsInlineLimit`, so the built sheet carries them as `data:` urls.
 		"img-src 'self' data:",
-		...(dev ? ["style-src 'self' 'unsafe-inline'"] : []),
+		"style-src 'self' 'unsafe-inline'",
 		...LOCKED
 	];
 }
@@ -138,23 +139,6 @@ function donorPolicy(nonce: string): string[] {
 	];
 }
 
-/** which of the two policies a document is drawn under. */
-export type DocumentSurface = 'operator' | 'donor';
-
-/** every header a document on `surface` carries, keyed to the nonce its scripts carry. */
-export function documentHeaders(
-	surface: DocumentSurface,
-	nonce: string,
-	{ dev }: { readonly dev: boolean }
-): Record<string, string> {
-	const donor = surface === 'donor';
-	return {
-		'Content-Security-Policy': (donor ? donorPolicy(nonce) : operatorPolicy(nonce, dev)).join('; '),
-		'X-Frame-Options': 'DENY',
-		'Referrer-Policy': donor ? 'strict-origin-when-cross-origin' : 'same-origin'
-	};
-}
-
 function isDonorPolicyHandle(handle: unknown): handle is DonorPolicyHandle {
 	return (
 		typeof handle === 'object' &&
@@ -163,16 +147,15 @@ function isDonorPolicyHandle(handle: unknown): handle is DonorPolicyHandle {
 	);
 }
 
-/** sets a document's headers, on the surface the routes it matched choose. */
+/** sets a document's headers, under the policy the routes it matched choose. */
 export function setDocumentHeaders(headers: Headers, context: EntryContext, nonce: string): void {
-	const surface = context.staticHandlerContext.matches.some((match) =>
+	const donor = context.staticHandlerContext.matches.some((match) =>
 		isDonorPolicyHandle(match.route.handle)
-	)
-		? 'donor'
-		: 'operator';
-	for (const [name, value] of Object.entries(
-		documentHeaders(surface, nonce, { dev: import.meta.env.DEV })
-	)) {
-		headers.set(name, value);
-	}
+	);
+	headers.set(
+		'Content-Security-Policy',
+		(donor ? donorPolicy(nonce) : operatorPolicy(nonce)).join('; ')
+	);
+	headers.set('X-Frame-Options', 'DENY');
+	headers.set('Referrer-Policy', donor ? 'strict-origin-when-cross-origin' : 'same-origin');
 }
