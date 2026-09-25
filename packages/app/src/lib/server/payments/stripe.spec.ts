@@ -694,9 +694,9 @@ describe('verifyEvent', () => {
 	 * code knows. an unrecognised type is a named outcome rather than a silent fall-through,
 	 * which is what lets the handler say so instead of merely returning 200.
 	 *
-	 * `charge.refunded` is the honest example rather than an invented type: a real delivery this
-	 * account can send, left off because its object is the charge and carries every refund of it at
-	 * once (`REFUND_EVENT_TYPES` in @better-giving/operator/stripe/webhook-endpoint).
+	 * `charge.refunded` is a real delivery this account can send, left off because its object is the
+	 * charge and carries every refund of it at once (`REFUND_EVENT_TYPES` in
+	 * @better-giving/operator/stripe/webhook-endpoint).
 	 */
 	it('reports an event this app handles nothing for as ignored', async () => {
 		const body = eventBody('charge.refunded', { id: 'ch_1', object: 'charge' });

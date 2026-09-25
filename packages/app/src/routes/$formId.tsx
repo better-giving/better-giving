@@ -30,8 +30,8 @@ import type { Route } from './+types/$formId';
 // the deployment accepts its own origin off the request instead ($lib/server/api/cors.ts, and
 // `acceptableHostnames` in $lib/server/donations/quote.ts), so unticking a site never takes this
 // page down. and it is not a rehearsal surface: a gift made here is a real gift on whatever keys the
-// deployment holds, because nothing in this project reads test-versus-live — rehearsing is a second
-// deployment (DEPLOY.md).
+// deployment holds, because nothing in this project reads test-versus-live but a stripe dispute
+// alert's dashboard link — rehearsing is a second deployment (DEPLOY.md).
 //
 // the address is a single segment and every static top-level route this app serves outranks it by
 // react router's own precedence, so none of them is named here and none is excluded. `/embed.js` is
