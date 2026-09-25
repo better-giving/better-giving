@@ -214,9 +214,10 @@ export interface QuickbooksStartAtSide {
 /**
  * whether Intuit took the revoke a disconnect made first.
  *
- * the connection is gone from the deployment on both arms. `not_revoked` is the grant still live
- * at Intuit, so the app stays among the company's connected apps until someone removes it there:
- * `detail` is the deployment's sentence about why the revoke did not land, and `fix` says where.
+ * the connection is gone from the deployment on both arms. `not_revoked` is a revoke Intuit did not
+ * confirm, so the grant may still be live and the app among the company's connected apps until
+ * someone removes it there: `detail` is the deployment's sentence about why the revoke did not
+ * land, and `fix` says where.
  */
 export type QuickbooksRevoke =
 	| { readonly state: 'revoked' }

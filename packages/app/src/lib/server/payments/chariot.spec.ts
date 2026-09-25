@@ -289,7 +289,7 @@ describe('readSettlement — Get Grant', () => {
 	 * the vocabulary the API sends is `Initiated`, `Completed`, `Canceled` (a sandbox read,
 	 * 2026-09-15); the lowercase spellings are the `2026-04-01` reference's, which the same words
 	 * read the same under. every other word — `awaiting_daf_submission`, `received`, which is in
-	 * neither the reference's enum nor the sandbox's simulations, a status nobody has documented —
+	 * neither the reference nor the sandbox's simulations, a status nobody has documented —
 	 * is a grant still on its way, and nothing may be acted on from that.
 	 */
 	it.each([

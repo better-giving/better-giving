@@ -22,7 +22,7 @@ export type ZapierKeyExists = { readonly ok: false; readonly reason: 'key_exists
 
 /**
  * what a replace answers with: the new key, how many Zaps the old one took down with it, and how
- * many of those Zapier was told to pause ({@link PauseOutcome}).
+ * many of those Zapier paused and how many it did not ({@link PauseOutcome}).
  */
 export type ReplacedZapierKey = MadeZapierKey & { readonly disconnected: number } & PauseOutcome;
 

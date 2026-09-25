@@ -187,7 +187,7 @@ async function act(
 						// where QuickBooks Online lists a company's connected apps
 						// (https://developer.intuit.com/app/developer/qbo/docs/go-live/publish-app/technical-requirements).
 						fix:
-							'This deployment no longer holds the connection, but Intuit still lists the app ' +
+							'This deployment no longer holds the connection, but Intuit may still list the app ' +
 							'as connected. In QuickBooks Online, open Apps, then My Apps, and disconnect it there.'
 					}
 		};

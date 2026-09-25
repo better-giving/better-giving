@@ -1041,7 +1041,7 @@ function classify(answer: Answer): AccountingFailure {
 	if (answer.status === 403) {
 		return failed(
 			'reconnect_needed',
-			`QuickBooks refused this action (403${words}). The Intuit user who connected the company, or the company’s QuickBooks subscription, lacks permission for it. Connecting again as the same user will not fix it: give that user the permission in QuickBooks, or connect as a user who has it.`
+			`QuickBooks refused this action (403${words}). The Intuit user who connected the company, or the company’s QuickBooks subscription, lacks permission for it. Connecting again as the same user will not fix it: give that user the permission in QuickBooks, connect as a user who has it, or move the company to a QuickBooks subscription that includes it.`
 		);
 	}
 	if (answer.status === 404) {

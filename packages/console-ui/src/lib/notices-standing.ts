@@ -11,7 +11,7 @@ import type {
 //
 // **the row says what the gift costs and never what the machine is called.** an operator reads
 // that card gifts are charged and never marked paid; the endpoint, its events and its signing secret
-// are this press's to establish and the Save's to replace (CLAUDE.md → Product surface).
+// are the Save's to establish, and the row names none of them (CLAUDE.md → Product surface).
 //
 // **the repair is offered on one standing and no other.** it switches the endpoint that is already
 // there back on and subscribes it to everything, and it leaves the signing secret alone

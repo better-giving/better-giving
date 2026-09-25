@@ -174,9 +174,9 @@ import { sendTributeNotice } from './tribute-notice';
 // `pending` while the books count it. a fresh read reporting such a payment unsettled — a grant the
 // fund cancelled, or a PayPal capture refunded or reversed, which reaches this only when a later
 // delivery about the order triggers a read, since neither is an event this app subscribes to —
-// changes nothing and tells an operator, because the books hold money the processor may have
-// taken back and only a correction posted in /admin/books
-// (../ledger/correct.ts) takes it out. two reports are stale rather than news and say nothing: a
+// changes nothing and tells an operator, because whatever the books hold for it may be money the
+// processor has taken back, and only a correction posted in /admin/books (../ledger/correct.ts)
+// takes it out. two reports are stale rather than news and say nothing: a
 // crypto read, which can report a state from before the coins landed, and a delivery's own state
 // standing in for a read, which can be older than the one that settled the payment.
 //
@@ -374,7 +374,7 @@ export async function settleTransaction(
 
 	// the gift this transaction is for, as the intent itself names it. absent means this app did
 	// not mint the intent, which every collection under a repeating gift is — see the metadata
-	// paragraph in the header, which is where the reason this refuses rather than looks lives. a
+	// paragraph in the header, which is where the reason this refuses whatever row it found lives. a
 	// processor taking no repeating gift has no collection to confuse with a gift, and names its gift
 	// by nothing but the transaction id on the row.
 	const named = settlement.metadata[DONATION_METADATA_KEY]?.trim() || null;
@@ -506,8 +506,8 @@ async function unreadableDelivery(deps: SettleDeps, detail: string): Promise<voi
 	await alert(deps, {
 		headline: `A ${processor} delivery verified and could not be read`,
 		body:
-			`${processor} signed a delivery this release cannot read, so nothing was read from it and ` +
-			'nothing was written. It was answered as received, and a redelivery would read the same, ' +
+			`${processor} signed a delivery this release cannot read, so nothing was written. ` +
+			'It was answered as received, and a redelivery would read the same, ' +
 			'so a payment it was about may be missing from the books.',
 		facts: [{ label: 'Reason', value: detail }],
 		action: `Find the delivery in the ${processor} dashboard's webhook log and reconcile any payment it names by hand.`

@@ -209,9 +209,9 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 	}
 
 	/**
-	 * each dollar value `estimateInDollars` was answered, by `"<coin amount> <coin>"`, for the same
-	 * one-request life. a delivery's notification and the read it names value the same arrival, and
-	 * it is asked for once.
+	 * each dollar value `estimateInDollars` was answered with, by `"<coin amount> <coin>"`, for the
+	 * same one-request life. a delivery's notification and the read it names value the same arrival,
+	 * and it is asked for once.
 	 */
 	const dollarValues = new Map<string, string>();
 
