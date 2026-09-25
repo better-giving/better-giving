@@ -8,7 +8,6 @@ import {
 	PAYPAL_FORM,
 	PAYPAL_LIVE,
 	PAYPAL_NOT_ADDRESS,
-	PAYPAL_SANDBOX,
 	boxesStanding,
 	isPaypalAddress,
 	lineAt,
@@ -25,6 +24,9 @@ const ended = (stage: PaypalStage, outcome: PaypalSetup): PaypalRunRead => ({
 	outcome
 });
 
+/** an address other than live, which the screen knows nothing about. */
+const ELSEWHERE = 'https://paypal.example.org';
+
 const body = (clientId: string, secret: string, address = PAYPAL_LIVE): FormData => {
 	const posted = new FormData();
 	posted.set(PAYPAL_FIELD('PAYPAL_CLIENT_ID'), clientId);
@@ -34,9 +36,9 @@ const body = (clientId: string, secret: string, address = PAYPAL_LIVE): FormData
 };
 
 describe('the address box', () => {
-	it('takes live and sandbox, with or without one trailing slash', () => {
+	it('takes an https origin, with or without one trailing slash', () => {
 		expect(isPaypalAddress(PAYPAL_LIVE)).toBe(true);
-		expect(isPaypalAddress(`${PAYPAL_SANDBOX}/`)).toBe(true);
+		expect(isPaypalAddress(`${ELSEWHERE}/`)).toBe(true);
 	});
 
 	it('refuses anything past the origin, and anything not https', () => {
@@ -55,9 +57,9 @@ describe('the address box', () => {
 
 describe('the pair a press posts', () => {
 	it('trims every box rather than sending the binary a value it turns down', () => {
-		expect(paypalPairPosted(body('  id ', '\tsecret\n', ` ${PAYPAL_SANDBOX} `))).toEqual({
+		expect(paypalPairPosted(body('  id ', '\tsecret\n', ` ${ELSEWHERE} `))).toEqual({
 			ok: true,
-			pair: { clientId: 'id', secret: 'secret', address: PAYPAL_SANDBOX }
+			pair: { clientId: 'id', secret: 'secret', address: ELSEWHERE }
 		});
 	});
 
@@ -102,10 +104,10 @@ describe('the pair a press posts', () => {
 			sent.push(JSON.parse(String(init?.body)));
 			return Promise.resolve(new Response(JSON.stringify({ run: null }), { status: 200 }));
 		});
-		const read = paypalPairPosted(body('id', 'secret', PAYPAL_SANDBOX));
+		const read = paypalPairPosted(body('id', 'secret', ELSEWHERE));
 		if (!read.ok) throw new Error('the boxes were refused');
 		await startPaypalSetup(read.pair);
-		expect(sent).toEqual([{ clientId: 'id', secret: 'secret', address: PAYPAL_SANDBOX }]);
+		expect(sent).toEqual([{ clientId: 'id', secret: 'secret', address: ELSEWHERE }]);
 	});
 });
 
@@ -185,7 +187,7 @@ describe('what the boxes are seeded from', () => {
 	const sent = {
 		PAYPAL_CLIENT_ID: 'new',
 		PAYPAL_CLIENT_SECRET: 'new-secret',
-		PAYPAL_API_URL: PAYPAL_SANDBOX
+		PAYPAL_API_URL: ELSEWHERE
 	};
 
 	it('is what was sent, from the moment the run says it stored it until the re-read lands', () => {

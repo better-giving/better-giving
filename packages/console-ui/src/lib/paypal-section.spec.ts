@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { DeployedValues, DeployedVar } from '../api/types';
 import type { PaypalSectionProps } from './paypal-section';
 import { PaypalSection } from './paypal-section';
-import { PAYPAL_FIELD, PAYPAL_LIVE, PAYPAL_SANDBOX } from './paypal-setup';
+import { PAYPAL_FIELD, PAYPAL_LIVE } from './paypal-setup';
 
 // the PayPal screen's boxes as markup. what this package can hold of a drawing is its markup:
 // ../../vite.config.ts pins `node` and there is no dom, so a box is read by the value it is drawn
@@ -52,6 +52,9 @@ const input = (page: string, name: string): string => {
 
 const ADDRESS = PAYPAL_FIELD('PAYPAL_API_URL');
 
+/** an address other than live, which the screen knows nothing about. */
+const ELSEWHERE = 'https://paypal.example.org';
+
 describe('the API address box', () => {
 	it('holds the live address where the deployment stores none', async () => {
 		const page = await screen(holding(PAIR));
@@ -60,9 +63,9 @@ describe('the API address box', () => {
 
 	it('holds the stored address where there is one', async () => {
 		const page = await screen(
-			holding([...PAIR, { name: 'PAYPAL_API_URL', kind: 'value', value: PAYPAL_SANDBOX }])
+			holding([...PAIR, { name: 'PAYPAL_API_URL', kind: 'value', value: ELSEWHERE }])
 		);
-		expect(input(page, ADDRESS)).toContain(`value="${PAYPAL_SANDBOX}"`);
+		expect(input(page, ADDRESS)).toContain(`value="${ELSEWHERE}"`);
 	});
 
 	it('stands in the keys form, named, with the line saying when to change it', async () => {
@@ -74,6 +77,5 @@ describe('the API address box', () => {
 		expect(input(form, ADDRESS)).toContain(`value="${PAYPAL_LIVE}"`);
 		expect(form).toContain('API address');
 		expect(form).toContain('Leave this as it is unless you’re rehearsing on PayPal’s sandbox');
-		expect(form).toContain(PAYPAL_SANDBOX);
 	});
 });

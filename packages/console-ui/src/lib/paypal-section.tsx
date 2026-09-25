@@ -46,7 +46,6 @@ import {
 	PAYPAL_FIELD,
 	PAYPAL_FORM,
 	PAYPAL_LIVE,
-	PAYPAL_SANDBOX,
 	PAYPAL_SETUP_INTENT,
 	boxesStanding,
 	lineAt,
@@ -148,7 +147,7 @@ const HINT: Partial<Record<PaypalBoxName, ReactNode>> = {
 	PAYPAL_API_URL: (
 		<>
 			Leave this as it is unless you’re rehearsing on PayPal’s sandbox, whose address is{' '}
-			<InlineCode>{PAYPAL_SANDBOX}</InlineCode>.
+			<InlineCode>https://api-m.sandbox.paypal.com</InlineCode>.
 		</>
 	)
 };

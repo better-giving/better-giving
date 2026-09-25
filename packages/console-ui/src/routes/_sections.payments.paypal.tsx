@@ -56,15 +56,16 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	 * rather than from what the body claimed (`charityEdit` in ../lib/paypal-charity.ts), which is
 	 * what keeps a third spelling off a door that refuses one with a 400.
 	 *
-	 * it is a press of its own rather than a name in PayPal's group: the three credentials are one
-	 * errand off one PayPal app, and this is an answer about the organisation given months after
+	 * it is a press of its own rather than a name in PayPal's group: the credentials and their address
+	 * are one errand off one PayPal app, and this is an answer about the organisation given months after
 	 * them (../lib/secret-groups.ts).
 	 */
 	if (intent === CHARITY_INTENT) return { charity: await setVars(charityEdit(posted)) };
 
 	/**
-	 * sets PayPal up from the pair: the binary checks it, settles the listener at this deployment's
-	 * address and writes the pair and that listener's id in one write (`packages/console/internal/paypal`).
+	 * sets PayPal up from the pair and the address it is sent to: the binary checks the pair there,
+	 * settles the listener at this deployment's address and writes the pair, that address and that
+	 * listener's id in one write (`packages/console/internal/paypal`).
 	 *
 	 * started rather than awaited, for the Stripe press's reason (./_sections.payments.stripe.tsx),
 	 * and the pair is read by the boxes' own rule first so the binary is sent nothing it would turn down

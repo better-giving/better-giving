@@ -24,9 +24,6 @@ export const PAYPAL_SETUP_INTENT = 'paypal:set-up';
  */
 export const PAYPAL_LIVE = 'https://api-m.paypal.com';
 
-/** where PayPal's sandbox answers, named under the address box for an operator rehearsing. */
-export const PAYPAL_SANDBOX = 'https://api-m.sandbox.paypal.com';
-
 /** the three names the boxes carry, in the order the screen draws them. */
 export const PAYPAL_BOX_NAMES = [
 	'PAYPAL_CLIENT_ID',

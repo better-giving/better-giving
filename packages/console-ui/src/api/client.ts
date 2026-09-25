@@ -135,7 +135,7 @@ export const homeReading = (): Promise<HomeReading> => ask('/home/reading', 'GET
  *
  * **every way it did not happen comes back as a value rather than thrown**, because each is a state
  * the fold draws at the control that was pressed. the binary refuses a name that is not a
- * deploy-time value, PayPal's three credentials, which only {@link startPaypalSetup} writes, and
+ * deploy-time value, PayPal's four values, which only {@link startPaypalSetup} writes, and
  * Chariot's four values, which only {@link startChariotSetup} writes, and NOWPayments' three, which only
  * {@link saveNowpayments} writes, before
  * cloudflare is asked — and that refusal is thrown: no control on this page can make one.
@@ -335,15 +335,18 @@ export const stripeRun = async (): Promise<StripeRunRead | null> =>
 	(await ask<{ run: StripeRunRead | null }>('/stripe/run', 'GET')).run;
 
 /**
- * sets PayPal up from the pair, and answers as soon as the chain is under way.
+ * sets PayPal up from the pair and the address it is sent to, and answers as soon as the chain is
+ * under way.
  *
  * {@link startStripeSetup}'s arrangement: how far it has got is {@link paypalRun}, a press already
- * going is a value, and the pair leaves this page in this one body and reaches nothing else. the
- * listener, its address and the id stored beside the pair are all the binary's to settle.
+ * going is a value, and the pair leaves this page in this one body and reaches nothing else. an
+ * empty address is live. the listener, its address and the id stored beside the pair are all the
+ * binary's to settle.
  */
 export async function startPaypalSetup(pair: {
 	clientId: string;
 	secret: string;
+	address: string;
 }): Promise<PaypalStarted> {
 	const answer = await fetch('/api/paypal/setup', {
 		method: 'POST',
