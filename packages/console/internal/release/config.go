@@ -294,6 +294,13 @@ var (
 		"invoice.payment_failed",
 		"customer.subscription.updated",
 		"customer.subscription.deleted",
+		"refund.created",
+		"refund.updated",
+		"refund.failed",
+		"charge.dispute.created",
+		"charge.dispute.funds_withdrawn",
+		"charge.dispute.funds_reinstated",
+		"charge.dispute.closed",
 	}
 )
 
@@ -315,6 +322,13 @@ var (
 		"BILLING.SUBSCRIPTION.CANCELLED",
 		"BILLING.SUBSCRIPTION.EXPIRED",
 		"BILLING.SUBSCRIPTION.SUSPENDED",
+		"PAYMENT.CAPTURE.REFUNDED",
+		"PAYMENT.SALE.REFUNDED",
+		"PAYMENT.CAPTURE.REVERSED",
+		"PAYMENT.SALE.REVERSED",
+		"CUSTOMER.DISPUTE.CREATED",
+		"CUSTOMER.DISPUTE.UPDATED",
+		"CUSTOMER.DISPUTE.RESOLVED",
 	}
 )
 
