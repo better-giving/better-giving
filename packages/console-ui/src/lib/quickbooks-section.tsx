@@ -4,19 +4,15 @@ import { SaveButton } from '@better-giving/operator/components/controls/SaveButt
 import { CodeSlab } from '@better-giving/operator/components/data/CodeSlab';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
-import { SelectWithNote } from '@better-giving/operator/components/forms/SelectWithNote';
-import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
 import { Stack } from '@better-giving/operator/components/shell/Layout';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import type {
-	LedgerAccountLine,
 	QuickbooksCompany,
 	QuickbooksReport
 } from '@better-giving/operator/console/quickbooks';
 import { QUICKBOOKS_PRODUCTION_URL } from '@better-giving/operator/console/quickbooks';
 import { useSaveState } from '@better-giving/operator/save-state.react';
-import type { SavedFormState } from '@better-giving/operator/saved-form-state.react';
 import { useSavedFormState } from '@better-giving/operator/saved-form-state.react';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -31,9 +27,11 @@ import type {
 import type { HeldValues } from './held-values';
 import { heldValues, withheldInGroup } from './held-values';
 import { keysTrouble } from './processor-screen';
+import { AccountsPanel } from './quickbooks-accounts';
 import type {
 	Asked,
 	Confirming,
+	OnConfirming,
 	QuickbooksAnswer,
 	QuickbooksPicks,
 	QuickbooksStartAtPreview,
@@ -42,16 +40,14 @@ import type {
 } from './quickbooks-standing';
 import {
 	KEY_LABEL,
-	PICK_BLANK,
-	PICKS,
+	NOT_REVOKED,
 	QUICKBOOKS_FORM,
 	STEP_LABEL,
-	accountPicker,
-	answeredSince,
 	backlogSays,
 	backlogStands,
 	chartStands,
 	companyCalled,
+	confirmingIn,
 	connectLink,
 	credentialsPhase,
 	credentialsStands,
@@ -60,18 +56,14 @@ import {
 	keysAsk,
 	landedPress,
 	ownPress,
-	picksArmed,
-	picksHeld,
-	picksMissing,
-	picksToSave,
 	opensNext,
 	pressedAddress,
 	quickbooksRefused,
 	retriedGifts,
 	retriedStands,
 	retryButton,
+	revokeStands,
 	savedSays,
-	savingUntilRead,
 	shutSendsTo,
 	startDateNext,
 	startDay,
@@ -82,6 +74,7 @@ import {
 	unansweredSays
 } from './quickbooks-standing';
 import { useReseeded } from './reseed';
+import { Said } from './said';
 import { secretEdits } from './secret-edits';
 import type { GroupReport } from './secret-group-form';
 import { refusalIn } from './secret-trouble';
@@ -111,9 +104,10 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 //
 // **it is a checklist and one group under it.** Setup, Connect and Accounts are steps, one fold
 // each in a ledger of sections; Sync is not a step and is drawn only once all three are done.
-// which step is open, shut or locked is `stepsStand` in ./quickbooks-standing.ts, and every other
-// decision about a value is beside it there — this package's pool is node-only, so a rule left in
-// this file is one no spec can reach (../../vite.config.ts).
+// the Accounts step's pickers are ./quickbooks-accounts.tsx, drawn inside that step and nowhere
+// else. which step is open, shut or locked is `stepsStand` in ./quickbooks-standing.ts, and every
+// other decision about a value is beside it there — this package's pool is node-only, so a rule
+// left in this file is one no spec can reach (../../vite.config.ts).
 //
 // **it is not a processor and draws no reading of one.** no money moves on these three values and
 // no set-up job waits on them (packages/operator/src/console/quickbooks.ts), so there is no rail,
@@ -180,21 +174,7 @@ function dropped(within: Element | null | undefined): boolean {
 const focusLabel = (name: StepName | 'sync'): void =>
 	document.getElementById(LABEL_ID(name))?.focus();
 
-/** what each picker is called. every one says what it is for without a heading over it. */
-const PICK_LABEL: Record<(typeof PICKS)[number], string> = {
-	income: 'Gifts go to',
-	fee: 'Processing fees go to',
-	stripeBalance: 'Stripe gifts are held in',
-	paypalBalance: 'PayPal gifts are held in',
-	chariotBalance: 'Chariot gifts are held in',
-	nowpaymentsBalance: 'Crypto gifts are held in',
-	undepositedFunds: 'Cash and cheques are held in'
-};
-
-/** what a picker submits under, and the id every description on it is named from. */
-const PICK_FIELD = (pick: (typeof PICKS)[number]): string => `quickbooks-${pick}`;
-
-/** the same for the one box a day is typed in. */
+/** what the one box a day is typed in submits under. */
 const START_FIELD = 'quickbooks-start';
 
 /* the page this section is drawn on names an answer by the type it is handed
@@ -223,7 +203,7 @@ export type QuickbooksSectionProps = {
 	revalidating: boolean;
 	/** the press that answers the address the operator's browser opens to connect a company. */
 	onConnect: () => void;
-	/** the three accounts a gift is posted into, by id, and all three together. */
+	/** every role's account by id, `''` for a holding left at none, saved together. */
 	onAccounts: (picks: QuickbooksPicks) => void;
 	/** how the last start-date preview was answered, or `null` where none has been. */
 	preview: QuickbooksStartAtPreview | null;
@@ -251,18 +231,11 @@ type Presses = Pick<
 	| 'busy'
 	| 'pending'
 	| 'onConnect'
-	| 'onAccounts'
 	| 'onPreviewStartDate'
 	| 'onStartDate'
 	| 'onRetry'
 	| 'onDisconnect'
 >;
-
-/** a step's button saying `Saving` or `Saved`, reported up so the step stays open under it. */
-type OnConfirming = (active: boolean) => void;
-
-/** whether a button's rung is one a finished step stays open for. */
-const confirmingIn = (state: SavedFormState): boolean => state === 'pending' || state === 'done';
 
 export function QuickbooksSection({
 	values,
@@ -343,7 +316,6 @@ export function QuickbooksSection({
 		busy,
 		pending,
 		onConnect,
-		onAccounts,
 		onPreviewStartDate,
 		onStartDate,
 		onRetry,
@@ -407,9 +379,13 @@ export function QuickbooksSection({
 						<AccountsPanel
 							report={report}
 							company={company}
+							held={holding.held}
+							answer={answer}
+							busy={busy}
+							pending={pending}
+							onAccounts={onAccounts}
 							onConfirming={holdAccounts}
 							elsewhere={savedSays(steps, confirming, 'accounts')}
-							{...presses}
 						/>
 					)}
 				</Step>
@@ -763,12 +739,22 @@ function ConnectPanel({
 			onConnect();
 		}
 	};
-	if (connection.state !== 'connected')
+	if (connection.state !== 'connected') {
+		/* the disconnect's report is the step it leaves, save where Intuit may still list the app:
+		   that trace is somewhere this screen cannot show, so it is said above the way back in. */
+		const unrevoked = revokeStands(answer);
 		return (
 			<Stack tight>
+				{unrevoked === null ? null : (
+					<>
+						<FieldMessage>{NOT_REVOKED}</FieldMessage>
+						<Said answer={unrevoked} />
+					</>
+				)}
 				<ConnectPress label="Choose a company" {...pressing} />
 			</Stack>
 		);
+	}
 	const chart = chartStands(accounts);
 	return (
 		<Stack>
@@ -945,177 +931,6 @@ function Disconnect({
 				</Modal>
 			) : null}
 		</>
-	);
-}
-
-/** where a gift is posted, as pickers over the chart, or as stored where the chart was not read. */
-function AccountsPanel({
-	report,
-	company,
-	onConfirming,
-	elsewhere,
-	...presses
-}: {
-	report: QuickbooksReport;
-	company: QuickbooksCompany;
-	onConfirming: OnConfirming;
-	elsewhere: string | undefined;
-} & Presses): ReactNode {
-	if (report.accounts?.state === 'read')
-		return (
-			<AccountsForm
-				company={company}
-				chart={report.accounts.accounts}
-				onConfirming={onConfirming}
-				elsewhere={elsewhere}
-				{...presses}
-			/>
-		);
-	/* they do not disappear and do not fall back to a box an operator types an id into: what a gift
-	   is posted to is settled against the company's own books or not at all. what is wrong is said
-	   at the step it blocks (`chartStands` in ./quickbooks-standing.ts) — a lapsed credential at
-	   Connect, anything else here. */
-	const chart = chartStands(report.accounts);
-	return (
-		<Stack>
-			{PICKS.map((pick) => (
-				<StatedValue
-					key={pick}
-					label={PICK_LABEL[pick]}
-					value={company[pick]?.name ?? 'Not picked'}
-				/>
-			))}
-			{chart?.step === 'accounts' ? <FieldMessage>{chart.says}</FieldMessage> : null}
-		</Stack>
-	);
-}
-
-/** the picks as the deployment holds them, as one value a render can be compared against. */
-const seedOf = (picks: QuickbooksPicks): string => PICKS.map((pick) => picks[pick]).join('|');
-
-/**
- * the pickers over the company's own chart, saved together.
- *
- * **the pickers hold their choice here rather than in the document**, because what each one offers
- * is a function of what it is showing (`accountPicker` in ./quickbooks-standing.ts) and whether the
- * press is armed is a comparison of all three against what is stored — both are read off this
- * state rather than off the elements. a reading that lands behind them moves them through the seed
- * comparison below, and a put-back on the element (`useSavedFormState` in
- * packages/operator/src/saved-form-state.react.ts) is asked for by nobody ({@link spent} at the
- * press). the seed is compared as a value rather than as the reading's identity, so a read that
- * changed nothing leaves what an operator has chosen alone —
- * packages/operator/src/components/forms/CoinPicker.jsx and DateField.jsx keep theirs the same way.
- *
- * **an unchosen picker is marked by the press and not before it**, and from then on as it changes
- * (`picksArmed` in ./quickbooks-standing.ts): the connect fills what it can, so the one left empty
- * is found by pressing save.
- */
-function AccountsForm({
-	company,
-	chart,
-	answer,
-	busy,
-	pending,
-	onAccounts,
-	onConfirming,
-	elsewhere
-}: {
-	company: QuickbooksCompany;
-	chart: readonly LedgerAccountLine[];
-	onConfirming: OnConfirming;
-	/** what the save says after its confirmation about the rest of the page. */
-	elsewhere: string | undefined;
-} & Pick<Presses, 'answer' | 'busy' | 'pending' | 'onAccounts'>): ReactNode {
-	const own = ownPress(pending, 'accounts');
-	/* the answer standing at this form's last press: one drawn over an answer it never pressed for
-	   holds nothing and confirms nothing. */
-	const [asked, setAsked] = useState<Asked | null>(null);
-	const mine = answeredSince(answer, asked);
-	const landed = landedPress(mine, 'accounts');
-	/* the reading this press was made against, and whether the one after it has landed: the save
-	   stays `Saving` until it has, so the confirmation is said over the page the save left
-	   (`savingUntilRead` in ./quickbooks-standing.ts). */
-	const spent = useReseeded({ landed, pending: own, reading: company });
-	const held = picksHeld(company);
-	const [picks, setPicks] = useState(held);
-	const [seed, setSeed] = useState(seedOf(held));
-	const [tried, setTried] = useState(false);
-	if (seed !== seedOf(held)) {
-		setSeed(seedOf(held));
-		setPicks(held);
-	}
-	const saved = useSavedFormState({
-		report: mine,
-		landed,
-		/* **a landed answer empties nothing here**, which is what `spent` is asked. the three are
-		   held in state above and the put-back is the seed comparison, so there is nothing for the
-		   form's own reset to restore: it takes each picker back to the pick it was first drawn with
-		   and hands that to the state above as a choice — the picks as they stood before the
-		   operator changed them, over the ones this press just stored. the answer commits as the
-		   re-read begins (./reseed.ts), so nothing moves them again until that read lands, and three
-		   pickers would spend the whole of it showing picks that are no longer stored. */
-		spent: false,
-		changed: picksArmed(picks, company, chart),
-		busy,
-		pending: savingUntilRead({ own, landed, spent })
-	});
-	const saving = confirmingIn(saved.state);
-	// let go on the way out as well: a chart that stops reading swaps this form out mid-save.
-	useEffect(() => {
-		onConfirming(saving);
-		return () => onConfirming(false);
-	}, [saving, onConfirming]);
-	const silent = unanswered(answer, 'accounts');
-	return (
-		<form
-			ref={saved.form}
-			className="adm-stack"
-			onSubmit={(event) => {
-				// the press is a callback and never a navigation: whatever mounts this section is what
-				// turns it into a request.
-				event.preventDefault();
-				const [first] = picksMissing(picks);
-				if (first !== undefined) {
-					setTried(true);
-					document.getElementById(PICK_FIELD(first))?.focus();
-					return;
-				}
-				if (!picksToSave(picks, company, chart)) return;
-				setAsked({ over: answer });
-				onAccounts(picks);
-			}}
-		>
-			{PICKS.map((pick) => {
-				/* the list is built for what this picker is showing rather than for what the company
-				   stores: the two are different readings, and a list missing the selection is drawn
-				   and posted as the first account in it (./quickbooks-standing.ts). it holds only the
-				   accounts that fit this picker, and a stored one that does not is its retired line. */
-				const box = accountPicker(chart, pick, company[pick], picks[pick]);
-				return (
-					<SelectWithNote
-						key={pick}
-						id={PICK_FIELD(pick)}
-						name={PICK_FIELD(pick)}
-						label={PICK_LABEL[pick]}
-						options={box.options}
-						retired={box.retired}
-						value={picks[pick]}
-						onValueChange={(value) => setPicks({ ...picks, [pick]: value })}
-						error={tried && picks[pick] === '' ? PICK_BLANK : undefined}
-						disabled={busy || undefined}
-					/>
-				);
-			})}
-			<div className="adm-actions">
-				<SaveButton
-					type="submit"
-					state={saved.state}
-					disabled={busy || undefined}
-					elsewhere={elsewhere}
-				/>
-			</div>
-			{silent === null ? null : <FieldMessage>{unansweredSays(silent)}</FieldMessage>}
-		</form>
 	);
 }
 

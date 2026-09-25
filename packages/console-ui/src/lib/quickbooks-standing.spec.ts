@@ -21,6 +21,16 @@ import type {
 import {
 	CHOOSE,
 	FAILED,
+	HOLDING_HINT,
+	HOLDING_PICKS,
+	NONE,
+	PICK_GROUP_LEGEND,
+	PICK_LABEL,
+	awaitingSays,
+	holdingsDrawn,
+	misfitPick,
+	misfitSays,
+	revokeStands,
 	REFUSED,
 	UNANSWERED,
 	answeredSince,
@@ -63,6 +73,7 @@ import {
 	unanswered,
 	waitedSays
 } from './quickbooks-standing';
+import { CHARGE_PAIRS } from './processor-links';
 import { secretEdits } from './secret-edits';
 import { QUICKBOOKS_GROUP, SECRET_GROUPS, VALUE_FIELD } from './secret-groups';
 
@@ -259,7 +270,8 @@ describe('a picker offers only the accounts that fit it', () => {
 		const stored = { id: '40', name: 'Accounts receivable' };
 		const picker = accountPicker(MIXED, 'stripeBalance', stored, '40');
 
-		expect(picker.options.map((option) => option.value)).toEqual(['30']);
+		// none first, as every holding offers it, stored account or not.
+		expect(picker.options.map((option) => option.value)).toEqual(['', '30']);
 		// labelled as the offered lines are, off the chart that still holds it: the type is the
 		// reason it was retired.
 		expect(picker.retired).toEqual({ value: '40', label: 'Accounts receivable — Income' });
@@ -327,11 +339,180 @@ describe('the picks are one press', () => {
 		).toBe(false);
 	});
 
+	it('is a press over the stored picks on a connection awaiting its accounts', () => {
+		// the save is what releases a moved connection, so saving it as it stands is the press.
+		const moved = company({ awaitingAccounts: true });
+		expect(
+			picksToSave({ ...UNHELD, income: '1', fee: '2', stripeBalance: '2' }, moved, CHART)
+		).toBe(true);
+	});
+
 	it('is a press on a connection holding none of the three', () => {
 		const fresh = company({ income: null, fee: null, stripeBalance: null });
 		expect(
 			picksToSave({ ...UNHELD, income: '1', fee: '2', stripeBalance: '2' }, fresh, CHART)
 		).toBe(true);
+	});
+});
+
+describe('a holding offers none', () => {
+	it('offers none first on a holding the connection stores', () => {
+		const picker = accountPicker(CHART, 'stripeBalance', { id: '2', name: 'Bank' }, '2');
+		expect(picker.options[0]).toEqual({ value: '', label: NONE });
+	});
+
+	it('offers none, and not the prompt, on a holding storing nothing', () => {
+		expect(accountPicker(CHART, 'stripeBalance', null, '').options[0]).toEqual({
+			value: '',
+			label: NONE
+		});
+	});
+
+	it('leaves income without an empty line once it stores one', () => {
+		expect(
+			accountPicker(CHART, 'income', { id: '1', name: 'Donations' }, '1').options.map(
+				(option) => option.value
+			)
+		).toEqual(['1', '2']);
+	});
+
+	it('is a press set back to none from a stored holding', () => {
+		expect(
+			picksToSave({ ...UNHELD, income: '1', fee: '2', stripeBalance: '' }, company(), CHART)
+		).toBe(true);
+	});
+});
+
+describe('which holdings the section draws', () => {
+	const nothingStored = company({ stripeBalance: null });
+
+	it('draws the gifts recorded by hand alone where the deployment takes no processor', () => {
+		expect(holdingsDrawn(nothingStored, new Set())).toEqual(['undepositedFunds']);
+	});
+
+	it('draws a processor’s holding once its charge pair is held, and not on half of it', () => {
+		expect(holdingsDrawn(nothingStored, new Set(CHARGE_PAIRS.paypal))).toEqual([
+			'paypalBalance',
+			'undepositedFunds'
+		]);
+		expect(holdingsDrawn(nothingStored, new Set(CHARGE_PAIRS.paypal.slice(0, 1)))).toEqual([
+			'undepositedFunds'
+		]);
+	});
+
+	it('draws every holding in the wire’s order where every processor is set up', () => {
+		expect(holdingsDrawn(nothingStored, new Set(Object.values(CHARGE_PAIRS).flat()))).toEqual(
+			HOLDING_PICKS
+		);
+	});
+
+	it('draws a holding the connection stores whatever the processor', () => {
+		expect(holdingsDrawn(company(), new Set())).toEqual(['stripeBalance', 'undepositedFunds']);
+	});
+});
+
+describe('what each picker is called', () => {
+	it('names the two groups and every picker in fundraiser words', () => {
+		expect(PICK_GROUP_LEGEND).toEqual({
+			gift: 'What a gift is recorded as',
+			holding: 'Where money waits before it reaches your bank'
+		});
+		expect(PICK_LABEL).toEqual({
+			income: 'Income',
+			fee: 'Processing fees',
+			stripeBalance: 'Stripe balance',
+			paypalBalance: 'PayPal balance',
+			chariotBalance: 'Chariot balance',
+			nowpaymentsBalance: 'NOWPayments balance',
+			undepositedFunds: 'Gifts recorded by hand'
+		});
+	});
+
+	it('says over every holding that its money leaves as a transfer off the bank feed', () => {
+		for (const pick of HOLDING_PICKS)
+			expect(HOLDING_HINT[pick]).toMatch(
+				/from your bank feed as a transfer out of this account\.$/
+			);
+		expect(HOLDING_HINT.nowpaymentsBalance).toBe(
+			'Record each NOWPayments payout from your bank feed as a transfer out of this account.'
+		);
+	});
+});
+
+describe('a connection awaiting its accounts', () => {
+	it('says the connection moved, to which company, and that nothing is sent until a save', () => {
+		expect(awaitingSays(company({ awaitingAccounts: true }))).toBe(
+			'This connection moved to Habitat, and nothing is sent to QuickBooks until its accounts are saved.'
+		);
+	});
+
+	it('says nothing over a connection that stayed', () => {
+		expect(awaitingSays(company())).toBeNull();
+	});
+});
+
+describe('the picker a refusal of the accounts press names', () => {
+	const DRAWN: AccountPick[] = ['income', 'fee', 'stripeBalance', 'undepositedFunds'];
+	const refused = (over: Partial<Extract<NoReport, { kind: 'unreadable' }>>): QuickbooksAnswer => ({
+		kind: 'unanswered',
+		press: 'accounts',
+		read: {
+			kind: 'unreadable',
+			error: 'account_wrong_type',
+			detail:
+				'`stripeBalance` names Checking, a Bank account. Stripe balance is where a gift waits.',
+			fix: 'Send the `id` of an Other Current Asset account for `stripeBalance`.',
+			status: 400,
+			...over
+		}
+	});
+
+	it('is the holding a Bank account was chosen for', () => {
+		expect(misfitPick(refused({}), DRAWN)).toBe('stripeBalance');
+	});
+
+	it('is nothing where the named picker is not drawn, so the press says it', () => {
+		expect(misfitPick(refused({}), ['income', 'fee', 'undepositedFunds'])).toBeNull();
+	});
+
+	it('is nothing for another refusal, a failure outside 4xx, or another press', () => {
+		expect(misfitPick(refused({ error: 'bad_body' }), DRAWN)).toBeNull();
+		expect(misfitPick(refused({ status: 502 }), DRAWN)).toBeNull();
+		expect(misfitPick(silence('accounts'), DRAWN)).toBeNull();
+		expect(misfitPick(reported({ press: 'accounts' }), DRAWN)).toBeNull();
+	});
+
+	it('is nothing where the sentence names no role it leads with', () => {
+		expect(misfitPick(refused({ detail: 'Checking is a Bank account.' }), DRAWN)).toBeNull();
+		expect(misfitPick(refused({ detail: '`deposit` names Checking.' }), DRAWN)).toBeNull();
+	});
+
+	it('says at a holding what a holding takes, and at income or fees to pick again', () => {
+		expect(misfitSays('stripeBalance')).toBe(
+			'pick an Other Current Asset account, never a bank account'
+		);
+		expect(misfitSays('income')).toBe('pick another account from this list');
+	});
+});
+
+describe('what a disconnect answers about the revoke', () => {
+	it('carries the detail and the fix where Intuit did not confirm it', () => {
+		expect(
+			revokeStands(
+				reported({
+					press: 'disconnect',
+					revoke: { state: 'not_revoked', detail: 'Intuit answered 500.', fix: 'Open My Apps.' }
+				})
+			)
+		).toEqual({ detail: 'Intuit answered 500.', fix: 'Open My Apps.' });
+	});
+
+	it('says nothing where the revoke landed, or the answer is another press’s', () => {
+		expect(
+			revokeStands(reported({ press: 'disconnect', revoke: { state: 'revoked' } }))
+		).toBeNull();
+		expect(revokeStands(reported({ press: 'retry', retried: 0 }))).toBeNull();
+		expect(revokeStands(silence('disconnect'))).toBeNull();
 	});
 });
 
@@ -793,6 +974,16 @@ describe('which steps stand open, shut, locked or out of sight', () => {
 			'setup: shut done',
 			'connect: open todo',
 			'accounts: locked todo',
+			'sync: hidden'
+		]);
+	});
+
+	it('reopens Accounts and hides sync over a connection that moved, whatever it stores', () => {
+		// nothing is sent until the moved connection's accounts are saved, so the step is not done.
+		expect(stand({ books: read({ connection: company({ awaitingAccounts: true }) }) })).toEqual([
+			'setup: shut done',
+			'connect: shut done',
+			'accounts: open todo',
 			'sync: hidden'
 		]);
 	});
