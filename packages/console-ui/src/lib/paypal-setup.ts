@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { PaypalRunRead, PaypalSetup, PaypalStage } from '../api/types';
+import { NOT_AN_ADDRESS, isApiAddress } from './api-address';
 import type { StatedForm } from './use-console-form';
 
 // what one press of ./paypal-section.tsx carries, the rules its three boxes are read against, and
@@ -17,12 +18,13 @@ import type { StatedForm } from './use-console-form';
 export const PAYPAL_SETUP_INTENT = 'paypal:set-up';
 
 /**
- * where live PayPal answers, and what the address box holds where the deployment stores none.
+ * what the address box holds where the deployment stores none.
  *
- * the deployment reads an unset `PAYPAL_API_URL` as this address, so a deployment on live reads back
- * empty and the box is drawn with it rather than blank.
+ * `PAYPAL_DEFAULT_API_URL` in packages/app/src/lib/server/payments/paypal.ts and `API` in
+ * packages/console/internal/paypal/paypal.go: an unset `PAYPAL_API_URL` is read as this address, so
+ * a deployment holding none reads back empty and the box is drawn with it rather than blank.
  */
-export const PAYPAL_LIVE = 'https://api-m.paypal.com';
+export const PAYPAL_DEFAULT_API_URL = 'https://api-m.paypal.com';
 
 /** the three names the boxes carry, in the order the screen draws them. */
 export const PAYPAL_BOX_NAMES = [
@@ -42,20 +44,6 @@ export const PAYPAL_FIELD = <N extends PaypalBoxName>(name: N): `paypal:${N}` =>
 /** what a box left empty says under it. */
 export const PAIR_BLANK = 'required';
 
-/** what an address box holding something other than an address says under it. */
-export const PAYPAL_NOT_ADDRESS = 'an https:// address with nothing after the domain';
-
-/**
- * whether a typed address is one the binary calls, already trimmed: one trailing slash dropped, and
- * what is left an https origin and nothing more — the reading ./chariot-setup.ts's
- * `isChariotAddress` makes of Chariot's box, held apart because each follows its own binary door.
- */
-export function isPaypalAddress(typed: string): boolean {
-	const bare = typed.endsWith('/') ? typed.slice(0, -1) : typed;
-	// no path, query, fragment or user in front of the host: any of them is past the origin.
-	return /^https:\/\/[^/?#@\s]+$/.test(bare) && URL.canParse(bare);
-}
-
 /**
  * one half of the pair.
  *
@@ -65,7 +53,7 @@ export function isPaypalAddress(typed: string): boolean {
  */
 const half = z.string(PAIR_BLANK).trim().min(1, PAIR_BLANK);
 
-/* an emptied address is live, which is what the binary reads it as. */
+/* an emptied address is the default one, which is what the binary reads it as. */
 const paypalBoxes = z.object({
 	[PAYPAL_FIELD('PAYPAL_CLIENT_ID')]: half,
 	[PAYPAL_FIELD('PAYPAL_CLIENT_SECRET')]: half,
@@ -73,10 +61,7 @@ const paypalBoxes = z.object({
 		.string()
 		.trim()
 		.optional()
-		.refine(
-			(typed) => typed === undefined || typed === '' || isPaypalAddress(typed),
-			PAYPAL_NOT_ADDRESS
-		)
+		.refine((typed) => typed === undefined || typed === '' || isApiAddress(typed), NOT_AN_ADDRESS)
 });
 
 /**
@@ -95,7 +80,7 @@ export const PAYPAL_FORM: StatedForm<typeof paypalBoxes> = { id: 'paypal', schem
  *
  * the route's reading of the body, so a press that reaches the action without the form's own pass
  * sends the binary nothing it would turn down. the three travel as one body, and an emptied address
- * goes as an empty string, which the binary reads as live.
+ * goes as an empty string, which the binary reads as the default address.
  */
 export function paypalPairPosted(posted: FormData):
 	| {
@@ -117,7 +102,7 @@ export function paypalPairPosted(posted: FormData):
 	const errors: Record<string, string> = {};
 	if (clientId === '') errors.PAYPAL_CLIENT_ID = PAIR_BLANK;
 	if (secret === '') errors.PAYPAL_CLIENT_SECRET = PAIR_BLANK;
-	if (address !== '' && !isPaypalAddress(address)) errors.PAYPAL_API_URL = PAYPAL_NOT_ADDRESS;
+	if (address !== '' && !isApiAddress(address)) errors.PAYPAL_API_URL = NOT_AN_ADDRESS;
 	if (Object.keys(errors).length > 0) return { ok: false, errors };
 	return { ok: true, pair: { clientId, secret, address } };
 }

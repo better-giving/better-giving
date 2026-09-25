@@ -7,19 +7,18 @@ import type {
 	ChariotSetup,
 	ChariotStage
 } from '../api/types';
+import { NOT_AN_ADDRESS } from './api-address';
 import {
 	CHARIOT_BLANK,
 	CHARIOT_FIELD,
 	CHARIOT_FORM,
 	CHARIOT_LIVE,
-	CHARIOT_NOT_ADDRESS,
 	LINES,
 	boxesStanding,
 	chariotPosted,
 	chariotStop,
 	connectWaiting,
 	failureSays,
-	isChariotAddress,
 	keyTurnedDown,
 	lineAt,
 	reportStands
@@ -50,26 +49,6 @@ const body = (apiKey: string, address: string): FormData => {
 	return posted;
 };
 
-describe('the address box', () => {
-	it('takes live and sandbox, with or without one trailing slash', () => {
-		expect(isChariotAddress(CHARIOT_LIVE)).toBe(true);
-		expect(isChariotAddress('https://sandboxapi.givechariot.com/')).toBe(true);
-	});
-
-	it('refuses anything past the origin, and anything not https', () => {
-		for (const typed of [
-			'http://api.givechariot.com',
-			'https://api.givechariot.com/v1',
-			'https://api.givechariot.com//',
-			'https://api.givechariot.com?x=1',
-			'https://user@api.givechariot.com',
-			'api.givechariot.com'
-		]) {
-			expect(isChariotAddress(typed), typed).toBe(false);
-		}
-	});
-});
-
 describe('the boxes a press posts', () => {
 	it('trims every box rather than sending the binary a value it turns down', () => {
 		expect(chariotPosted(body(' key ', ' https://sandboxapi.givechariot.com '))).toEqual({
@@ -87,7 +66,7 @@ describe('the boxes a press posts', () => {
 			ok: false,
 			errors: {
 				[CHARIOT_FIELD('apiKey')]: CHARIOT_BLANK,
-				[CHARIOT_FIELD('address')]: CHARIOT_NOT_ADDRESS
+				[CHARIOT_FIELD('address')]: NOT_AN_ADDRESS
 			}
 		});
 	});
@@ -98,7 +77,7 @@ describe('the boxes a press posts', () => {
 		const refused = schema.safeParse({ [CHARIOT_FIELD('address')]: 'https://example.org/path' });
 		expect(refused.error?.issues.map((issue) => [issue.path[0], issue.message])).toEqual([
 			[CHARIOT_FIELD('apiKey'), CHARIOT_BLANK],
-			[CHARIOT_FIELD('address'), CHARIOT_NOT_ADDRESS]
+			[CHARIOT_FIELD('address'), NOT_AN_ADDRESS]
 		]);
 	});
 });

@@ -993,7 +993,8 @@ export type PaypalFailure = {
  * which part of the PayPal chain is running (`packages/console/internal/paypal/setup.go`).
  *
  * `registering` is the address derived, the app's listeners read and the one here settled;
- * `storing` is the pair and that listener's id written onto the deployment in one write;
+ * `storing` is the pair, the address it was checked at and that listener's id written onto the
+ * deployment in one write;
  * `repeating` is the deployment asked to set up repeating gifts on that account.
  */
 export type PaypalStage = 'authorizing' | 'registering' | 'storing' | 'repeating';
@@ -1016,9 +1017,9 @@ export type PaypalFacts = {
  * how the PayPal chain ended.
  *
  * the wire is flat — every field on every answer, empty where a kind says nothing about it — and
- * this is it read per kind. **every stop in front of `storing` wrote nothing**: the pair and the
- * listener id are one write once the listener is settled, so a deployment is never left holding a
- * pair with no listener behind it.
+ * this is it read per kind. **every stop in front of `storing` wrote nothing**: the pair, its
+ * address and the listener id are one write once the listener is settled, so a deployment is never
+ * left holding a pair with no listener behind it.
  */
 export type PaypalSetup =
 	| { kind: 'done' }

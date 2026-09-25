@@ -100,8 +100,8 @@ export default function PaypalPage({ loaderData, actionData, matches }: Route.Co
 	const shell = matches[1].loaderData;
 	const press = usePress();
 	/* a setup run counts as this page writing, although no request is open for it: it writes the
-	   pair and the listener's id onto the deployment (`packages/console/internal/paypal`), and a
-	   second press made under it would be reading what this one is still changing. */
+	   pair, its address and the listener's id onto the deployment (`packages/console/internal/paypal`),
+	   and a second press made under it would be reading what this one is still changing. */
 	const busy = press.busy || loaderData.run?.kind === 'running';
 
 	/* the set-up press: its run off the loader, and the three answers that started none. */

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { DeployedValues, DeployedVar } from '../api/types';
 import type { PaypalSectionProps } from './paypal-section';
 import { PaypalSection } from './paypal-section';
-import { PAYPAL_FIELD, PAYPAL_LIVE } from './paypal-setup';
+import { PAYPAL_FIELD, PAYPAL_DEFAULT_API_URL } from './paypal-setup';
 
 // the PayPal screen's boxes as markup. what this package can hold of a drawing is its markup:
 // ../../vite.config.ts pins `node` and there is no dom, so a box is read by the value it is drawn
@@ -56,9 +56,9 @@ const ADDRESS = PAYPAL_FIELD('PAYPAL_API_URL');
 const ELSEWHERE = 'https://paypal.example.org';
 
 describe('the API address box', () => {
-	it('holds the live address where the deployment stores none', async () => {
+	it('holds the default address where the deployment stores none', async () => {
 		const page = await screen(holding(PAIR));
-		expect(input(page, ADDRESS)).toContain(`value="${PAYPAL_LIVE}"`);
+		expect(input(page, ADDRESS)).toContain(`value="${PAYPAL_DEFAULT_API_URL}"`);
 	});
 
 	it('holds the stored address where there is one', async () => {
@@ -74,7 +74,7 @@ describe('the API address box', () => {
 		for (const name of ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'PAYPAL_API_URL'] as const) {
 			input(form, PAYPAL_FIELD(name));
 		}
-		expect(input(form, ADDRESS)).toContain(`value="${PAYPAL_LIVE}"`);
+		expect(input(form, ADDRESS)).toContain(`value="${PAYPAL_DEFAULT_API_URL}"`);
 		expect(form).toContain('API address');
 		expect(form).toContain('Leave this as it is unless you’re rehearsing on PayPal’s sandbox');
 	});

@@ -1,15 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { startPaypalSetup } from '../api/client';
 import type { PaypalRunRead, PaypalSetup, PaypalStage } from '../api/types';
+import { NOT_AN_ADDRESS } from './api-address';
 import {
 	LINES,
 	PAIR_BLANK,
 	PAYPAL_FIELD,
 	PAYPAL_FORM,
-	PAYPAL_LIVE,
-	PAYPAL_NOT_ADDRESS,
+	PAYPAL_DEFAULT_API_URL,
 	boxesStanding,
-	isPaypalAddress,
 	lineAt,
 	pairArmed,
 	pairTurnedDown,
@@ -27,33 +26,13 @@ const ended = (stage: PaypalStage, outcome: PaypalSetup): PaypalRunRead => ({
 /** an address other than live, which the screen knows nothing about. */
 const ELSEWHERE = 'https://paypal.example.org';
 
-const body = (clientId: string, secret: string, address = PAYPAL_LIVE): FormData => {
+const body = (clientId: string, secret: string, address = PAYPAL_DEFAULT_API_URL): FormData => {
 	const posted = new FormData();
 	posted.set(PAYPAL_FIELD('PAYPAL_CLIENT_ID'), clientId);
 	posted.set(PAYPAL_FIELD('PAYPAL_CLIENT_SECRET'), secret);
 	posted.set(PAYPAL_FIELD('PAYPAL_API_URL'), address);
 	return posted;
 };
-
-describe('the address box', () => {
-	it('takes an https origin, with or without one trailing slash', () => {
-		expect(isPaypalAddress(PAYPAL_LIVE)).toBe(true);
-		expect(isPaypalAddress(`${ELSEWHERE}/`)).toBe(true);
-	});
-
-	it('refuses anything past the origin, and anything not https', () => {
-		for (const typed of [
-			'http://api-m.paypal.com',
-			'https://api-m.paypal.com/v1',
-			'https://api-m.paypal.com//',
-			'https://api-m.paypal.com?x=1',
-			'https://user@api-m.paypal.com',
-			'api-m.paypal.com'
-		]) {
-			expect(isPaypalAddress(typed), typed).toBe(false);
-		}
-	});
-});
 
 describe('the pair a press posts', () => {
 	it('trims every box rather than sending the binary a value it turns down', () => {
@@ -63,7 +42,7 @@ describe('the pair a press posts', () => {
 		});
 	});
 
-	it('takes an emptied address, which the binary reads as live', () => {
+	it('takes an emptied address, which the binary reads as the default one', () => {
 		expect(paypalPairPosted(body('id', 'secret', ''))).toEqual({
 			ok: true,
 			pair: { clientId: 'id', secret: 'secret', address: '' }
@@ -76,7 +55,7 @@ describe('the pair a press posts', () => {
 			errors: {
 				PAYPAL_CLIENT_ID: PAIR_BLANK,
 				PAYPAL_CLIENT_SECRET: PAIR_BLANK,
-				PAYPAL_API_URL: PAYPAL_NOT_ADDRESS
+				PAYPAL_API_URL: NOT_AN_ADDRESS
 			}
 		});
 	});
@@ -93,7 +72,7 @@ describe('the pair a press posts', () => {
 			[PAYPAL_FIELD('PAYPAL_API_URL')]: 'https://example.org/path'
 		});
 		expect(refused.error?.issues.map((issue) => [issue.path[0], issue.message])).toEqual([
-			[PAYPAL_FIELD('PAYPAL_API_URL'), PAYPAL_NOT_ADDRESS]
+			[PAYPAL_FIELD('PAYPAL_API_URL'), NOT_AN_ADDRESS]
 		]);
 	});
 
@@ -182,7 +161,7 @@ describe('what the boxes are seeded from', () => {
 	const reported = {
 		PAYPAL_CLIENT_ID: 'old',
 		PAYPAL_CLIENT_SECRET: 'old-secret',
-		PAYPAL_API_URL: PAYPAL_LIVE
+		PAYPAL_API_URL: PAYPAL_DEFAULT_API_URL
 	};
 	const sent = {
 		PAYPAL_CLIENT_ID: 'new',

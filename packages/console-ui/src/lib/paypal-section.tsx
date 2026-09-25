@@ -45,7 +45,7 @@ import {
 	PAYPAL_BOX_NAMES,
 	PAYPAL_FIELD,
 	PAYPAL_FORM,
-	PAYPAL_LIVE,
+	PAYPAL_DEFAULT_API_URL,
 	PAYPAL_SETUP_INTENT,
 	boxesStanding,
 	lineAt,
@@ -118,8 +118,11 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 // mounts it and the presses it makes are answered there. what it reaches for itself is the run while
 // it goes, which is the one reading that changes while it is on screen.
 
-/** where PayPal's own credentials are made, linked from the sentence under the keys heading. */
-const DASHBOARD = 'https://developer.paypal.com/dashboard/applications/live';
+/**
+ * where PayPal's own credentials are made, linked from the sentence under the keys heading. the page
+ * and not either of its tabs: which tab holds the keys is the address box's to say.
+ */
+const DASHBOARD = 'https://developer.paypal.com/dashboard/applications';
 
 /**
  * the group this section's press writes: the three boxes, and the listener id the run stores beside
@@ -594,7 +597,7 @@ function PaypalKeysForm({
 
 	const reportedId = values.seeds.PAYPAL_CLIENT_ID ?? '';
 	const reportedSecret = values.seeds.PAYPAL_CLIENT_SECRET ?? '';
-	const reportedAddress = values.seeds.PAYPAL_API_URL || PAYPAL_LIVE;
+	const reportedAddress = values.seeds.PAYPAL_API_URL || PAYPAL_DEFAULT_API_URL;
 	const reported: PaypalBoxes = useMemo(
 		() => ({
 			PAYPAL_CLIENT_ID: reportedId,
@@ -910,7 +913,7 @@ function PaypalKeysForm({
 		return {
 			PAYPAL_CLIENT_ID: value('PAYPAL_CLIENT_ID'),
 			PAYPAL_CLIENT_SECRET: value('PAYPAL_CLIENT_SECRET'),
-			PAYPAL_API_URL: value('PAYPAL_API_URL').trim() || PAYPAL_LIVE
+			PAYPAL_API_URL: value('PAYPAL_API_URL').trim() || PAYPAL_DEFAULT_API_URL
 		};
 	};
 
@@ -920,14 +923,15 @@ function PaypalKeysForm({
 				<hgroup>
 					<h3>Your keys</h3>
 					{/* the one fact a box cannot carry — that both keys are on one app in PayPal's developer
-					    dashboard, and which dashboard. ./stripe-section.tsx says the same kind of thing about the
-					    other processor, under its keys heading. */}
+					    dashboard, and that the app is the one answering at the address in the box.
+					    ./stripe-section.tsx says the same kind of thing about the other processor, under its
+					    keys heading. */}
 					<p className="adm-prose">
-						Both are on one app in your PayPal developer dashboard:{' '}
+						Both are on one app in your PayPal developer dashboard, under{' '}
 						<a href={DASHBOARD} target="_blank" rel="noreferrer">
-							Apps &amp; Credentials &rarr; Live
+							Apps &amp; Credentials
 						</a>
-						.
+						, on the Live or Sandbox tab — whichever matches the API address below.
 					</p>
 				</hgroup>
 
