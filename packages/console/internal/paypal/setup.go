@@ -6,18 +6,19 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/release"
 )
 
-// setting PayPal up from the screen: the client id and secret handed in, and one chain that leaves
-// the app's listener and the deployment in the state that pair implies.
+// setting PayPal up from the screen: the client id, the secret and the address handed in, and one
+// chain that leaves the app's listener and the deployment in the state that pair implies.
 //
 // **one press, because once the pair is in hand nothing is left to ask.** the listener at this
 // deployment's address is found or registered, its subscription is brought to exactly what the
-// deployment reads, the pair and the listener's id are written as vars in one write, and the
-// deployment is asked to put what a repeating gift is collected against on the account. the operator
-// never opens PayPal's dashboard for the listener and never types its id.
+// deployment reads, the pair, the address and the listener's id are written as vars in one write,
+// and the deployment is asked to put what a repeating gift is collected against on the account. the
+// operator never opens PayPal's dashboard for the listener and never types its id.
 //
 // **a listener already here is kept, which is where this differs from ../stripe.** Stripe hands a
 // signing secret over once, so an endpoint that is kept is one that console can never store a secret
@@ -50,8 +51,7 @@ import (
 type Stage string
 
 const (
-	// Authorizing is reading which address PayPal is called at off the deployment, and minting a
-	// token there with the pair that was pasted.
+	// Authorizing is minting a token with the pair that was pasted, at the address that was.
 	Authorizing Stage = "authorizing"
 	// Registering is deriving the address, reading the app's listeners, and settling the one here.
 	Registering Stage = "registering"
@@ -84,8 +84,7 @@ type OutcomeKind string
 const (
 	// Done is every step landing.
 	Done OutcomeKind = "done"
-	// Unauthorized is the pair minting no token, or there being no address to mint one at, so nothing
-	// was read, registered or stored.
+	// Unauthorized is the pair minting no token, so nothing was read, registered or stored.
 	Unauthorized OutcomeKind = "unauthorized"
 	// Nowhere is there being nowhere to register against, and Address says why.
 	Nowhere OutcomeKind = "nowhere"
@@ -146,18 +145,20 @@ type Outcome struct {
 type Asked struct {
 	ClientID string
 	Secret   string
+	// Address is what Address made of the typed one, API where it was blank.
+	Address string
 }
 
 // Effects is every effect the chain has, handed in, so every stage and failure above is reachable in
 // ./setup_test.go with no PayPal app, no cloudflare account and no network.
 type Effects struct {
-	// Saved is the deployment's configuration values, which PAYPAL_API_URL is read off.
-	Saved func(ctx context.Context) deployment.VarsRead
-	// Bind is ./paypal.go's BindAt, bound to the pair and handed the address.
-	Bind    func(base string) Binding
-	Address func(ctx context.Context) deployment.Address
-	// Publish writes vars, which is a read of the worker's bindings and one patch back.
-	Publish func(ctx context.Context, values map[string]string) deployment.Written
+	// Authorize and Bearer are ./paypal.go's BindAt, bound to the pair at the address.
+	Authorize func(ctx context.Context) cf.Answer
+	Bearer    func(accessToken string) Call
+	Address   func(ctx context.Context) deployment.Address
+	// Publish writes vars, which is a read of the worker's bindings and one patch back; a name mapped
+	// to nil is taken off.
+	Publish func(ctx context.Context, values map[string]*string) deployment.Written
 	// Repeating is the step the deployment makes rather than this console, and the one that can be
 	// answered by a deployment whose edge has not caught up with the write in front of it. It takes
 	// the account it is about, which the call site below names.
@@ -176,10 +177,9 @@ const listenersPath = "/v1/notifications/webhooks"
 
 // Chain is the whole press, from the effects and what was asked.
 //
-// the order is not interchangeable: a pair is bound to the address it is called at, a pair that
-// mints no token can list nothing, a listener cannot be matched without the address, the write
-// carries the id the listener step settled on, and the deployment builds its PayPal client out of
-// the pair that write put there.
+// the order is not interchangeable: a pair that mints no token can list nothing, a listener cannot be
+// matched without the address, the write carries the id the listener step settled on, and the
+// deployment builds its PayPal client out of the pair and the address that write put there.
 //
 // a stop at that last step leaves a deployment that works: it takes one-time gifts on PayPal, and
 // the repeating-gifts press on the same fold finishes it without the pair being pasted again.
@@ -196,16 +196,13 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 		}
 	}
 
-	base, unaddressed := addressOf(effects.Saved(ctx))
-	if unaddressed != nil {
-		return Outcome{Kind: Unauthorized, Failure: unaddressed}
-	}
-	binding := effects.Bind(base)
-
-	minted := Read(binding.Authorize(ctx))
+	minted := Read(effects.Authorize(ctx))
 	if minted.Kind == Refused {
 		refused := minted.Turned()
-		refused.Detail += sentTo(base)
+		// a pair is refused at every address but the one it was made at, so where it went is half of
+		// what the operator has to check.
+		refused.Detail += ". PayPal refused the pair at " + asked.Address +
+			"; a pair made at another PayPal address is set up with that address in the address box."
 		return Outcome{Kind: Unauthorized, Failure: refused}
 	}
 	if minted.Kind != Value {
@@ -217,7 +214,7 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 			Kind: Unreadable, Detail: "PayPal minted no token for this pair.",
 		}}
 	}
-	call := binding.Bearer(token)
+	call := effects.Bearer(token)
 
 	at(Registering)
 	address := effects.Address(ctx)
@@ -265,13 +262,21 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 	found()
 
 	at(Storing)
-	// the pair and the id in one write: a deployment holding the pair and another listener's id
-	// verifies nothing, and one holding the id and no pair captures nothing.
-	written := effects.Publish(ctx, map[string]string{
-		"PAYPAL_CLIENT_ID":     asked.ClientID,
-		"PAYPAL_CLIENT_SECRET": asked.Secret,
-		"PAYPAL_WEBHOOK_ID":    registration.ID,
-	})
+	// the pair, its address and the id in one write: a deployment holding the pair and another
+	// listener's id verifies nothing, one holding the id and no pair captures nothing, and one holding
+	// the pair at another address calls where the pair is refused.
+	values := map[string]*string{
+		"PAYPAL_CLIENT_ID":     &asked.ClientID,
+		"PAYPAL_CLIENT_SECRET": &asked.Secret,
+		"PAYPAL_WEBHOOK_ID":    &registration.ID,
+		// live is what a deployment holding no address calls, so live is stored as no address: an
+		// address left from an earlier press would otherwise send a live pair somewhere else.
+		APIURLVar: nil,
+	}
+	if asked.Address != API {
+		values[APIURLVar] = &asked.Address
+	}
+	written := effects.Publish(ctx, values)
 	if written.Kind != deployment.WriteSet && written.Kind != deployment.WriteUnchanged {
 		return Outcome{Kind: Unstored, ListenerID: registration.ID, Written: &written}
 	}
@@ -287,53 +292,6 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 		return Outcome{Kind: Unrepeating, Setup: &held, AwaitingKey: held.AwaitsKey()}
 	}
 	return Outcome{Kind: Done}
-}
-
-// the address PAYPAL_API_URL names on the deployment, API where it names none — or the failure that
-// says why there is none to call.
-//
-// a read that did not land is not an unset var: calling live on it would send a sandbox pair to the
-// address it is refused at, and name the wrong fix.
-func addressOf(saved deployment.VarsRead) (string, *Failure) {
-	if saved.Kind != deployment.ValuesRead {
-		detail := "The console could not read " + APIURLVar +
-			" off this deployment, so it does not know which PayPal address to call."
-		if saved.Detail != "" {
-			detail += " " + saved.Detail
-		}
-		return "", &Failure{Kind: Unreadable, Detail: detail}
-	}
-	for _, row := range saved.Vars {
-		if row.Name != APIURLVar {
-			continue
-		}
-		switch row.Kind {
-		case deployment.VarWithheld:
-			return "", &Failure{Kind: Unreadable, Detail: "This deployment holds " + APIURLVar +
-				" as a secret, so the console cannot read which PayPal address to call. " +
-				"Free the values held as secrets, then press Save again."}
-		case deployment.VarValue:
-			base, isAddress := Address(row.Value)
-			if !isAddress {
-				return "", &Failure{Kind: Unreadable, Detail: APIURLVar + " holds " + row.Value +
-					", which is not an https address with no path. Set it to " + Sandbox +
-					" for a sandbox pair, or take it off for a live one."}
-			}
-			return base, nil
-		}
-	}
-	return API, nil
-}
-
-// where a refused pair was sent and the var that moves it, which is what tells a sandbox pair
-// refused at live from a pair that is wrong.
-func sentTo(base string) string {
-	if base == API {
-		return ". The pair was sent to " + API + ", PayPal's live address, because " + APIURLVar +
-			" is unset; a sandbox pair is called at " + Sandbox + " with " + APIURLVar + " set to it."
-	}
-	return ". The pair was sent to " + base + ", which " + APIURLVar + " names; a live pair is called " +
-		"at " + API + " with " + APIURLVar + " taken off."
 }
 
 // the listener at this address, subscribed to exactly the list — or the outcome that stopped it.

@@ -11,6 +11,7 @@ import (
 	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/nowpayments"
 	"github.com/better-giving/console/internal/oauth"
+	"github.com/better-giving/console/internal/paypal"
 	"github.com/better-giving/console/internal/release"
 )
 
@@ -61,10 +62,13 @@ const (
 
 // the names PayPal's set-up press writes (./paypal.go), and that press alone.
 //
-// the id names the listener that press settled at this deployment's address against the pair, so a
-// write or a removal of any of the three here leaves the pair and the listener disagreeing, and
-// deliveries stop verifying with nothing on the screen having said so.
-var paypalSetUpOnly = []string{"PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_WEBHOOK_ID"}
+// the id names the listener that press settled at this deployment's address against the pair, and
+// the address is where that pair minted a token, so a write or a removal of any of the four here
+// leaves them disagreeing — deliveries that stop verifying, or a pair sent where it is refused, with
+// nothing on the screen having said so.
+var paypalSetUpOnly = []string{
+	"PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", paypal.APIURLVar, "PAYPAL_WEBHOOK_ID",
+}
 
 // the names Chariot's set-up press writes (./chariot.go), and that press alone: the Connect id is
 // fetched with the key at the address, and the secret is minted for the subscription the press made,

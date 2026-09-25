@@ -63,3 +63,24 @@ func TestAListWithNoMemberIsAnAppHoldingNoListeners(t *testing.T) {
 		t.Errorf("rows = %v, read = %v, want an empty list read", rows, read)
 	}
 }
+
+func TestAnAddressIsBlankForLiveOrAnHttpsOriginAndNothingElse(t *testing.T) {
+	for _, one := range []struct {
+		typed, want string
+		accepted    bool
+	}{
+		{"", API, true},
+		{"  ", API, true},
+		{"https://paypal.example/", "https://paypal.example", true},
+		{"http://paypal.example", "", false},
+		{"https://paypal.example/v1", "", false},
+		{"https://paypal.example?x=1", "", false},
+		{"https://user@paypal.example", "", false},
+		{"paypal.example", "", false},
+	} {
+		got, accepted := Address(one.typed)
+		if got != one.want || accepted != one.accepted {
+			t.Errorf("Address(%q) = %q, %v, want %q, %v", one.typed, got, accepted, one.want, one.accepted)
+		}
+	}
+}

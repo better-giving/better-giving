@@ -58,13 +58,13 @@ func paypalApp(t *testing.T) (*httptest.Server, func() []string) {
 // cloudflare call and its body, and the last every errand the deployment was sent.
 func settingPaypal(t *testing.T, chosen string) (http.Handler, func() []string, *[]string, *httptest.Server, func() []errand) {
 	t.Helper()
-	handler, asked, cloudflare, surface, errands, _ := settingPaypalHolding(t, chosen, []any{})
+	handler, asked, cloudflare, surface, errands, _ := settingPaypalBound(t, chosen)
 	return handler, asked, cloudflare, surface, errands
 }
 
-// that same console on a worker bound to `bindings`. the last return is every address the pair was
-// bound to, which is never the fake's: every call goes to the fake PayPal whatever was asked for.
-func settingPaypalHolding(t *testing.T, chosen string, bindings []any) (
+// that same console, and every address the pair was bound to — which is never the fake's: every call
+// goes to the fake PayPal whatever was asked for.
+func settingPaypalBound(t *testing.T, chosen string) (
 	http.Handler, func() []string, *[]string, *httptest.Server, func() []errand, *[]string,
 ) {
 	t.Helper()
@@ -80,7 +80,7 @@ func settingPaypalHolding(t *testing.T, chosen string, bindings []any) (
 	})
 	connected(t, records, surface.URL)
 	api, cloudflare := writes(t, map[string]any{
-		"GET " + settingsOf(release.Baked.Name): resulting(map[string]any{"bindings": bindings}),
+		"GET " + settingsOf(release.Baked.Name): resulting(map[string]any{"bindings": []any{}}),
 		"GET /accounts/an-account/workers/scripts/" + release.Baked.Name + "/subdomain": resulting(
 			map[string]any{"enabled": true}),
 		"GET /accounts/an-account/workers/subdomain": resulting(map[string]any{"subdomain": "hound"}),
@@ -155,28 +155,35 @@ func TestThePaypalPressRegistersTheListenerAndWritesThePairAndItsIdAsVars(t *tes
 	}
 }
 
-func TestThePaypalPressCallsTheAddressTheDeploymentSaved(t *testing.T) {
-	for name, one := range map[string]struct {
-		bindings []any
-		want     string
-	}{
-		"unset": {bindings: []any{}, want: paypal.API},
-		"saved": {
-			bindings: []any{map[string]any{
-				"name": paypal.APIURLVar, "type": "plain_text", "text": paypal.Sandbox,
-			}},
-			want: paypal.Sandbox,
-		},
+func TestThePaypalPressBindsThePairToTheAddressItCarries(t *testing.T) {
+	for _, one := range []struct{ body, want string }{
+		{paypalPressed, paypal.API},
+		{`{"clientId":"Aa-a","secret":"EL-b","address":"https://paypal.example/"}`, "https://paypal.example"},
 	} {
-		t.Run(name, func(t *testing.T) {
-			handler, _, _, _, _, bases := settingPaypalHolding(t, "an-account", one.bindings)
-			press(t, handler, "/api/paypal/setup", paypalPressed)
-			polledPaypal(t, handler)
+		handler, _, _, _, _, bases := settingPaypalBound(t, "an-account")
+		if status, answer := press(t, handler, "/api/paypal/setup", one.body); status != http.StatusOK {
+			t.Fatalf("%s: the press answered %d %v", one.body, status, answer)
+		}
+		polledPaypal(t, handler)
 
-			if len(*bases) != 1 || (*bases)[0] != one.want {
-				t.Errorf("the pair was bound to %v, want %s", *bases, one.want)
-			}
-		})
+		if len(*bases) != 1 || (*bases)[0] != one.want {
+			t.Errorf("%s: the pair was bound to %v, want %s", one.body, *bases, one.want)
+		}
+	}
+}
+
+func TestAPaypalAddressThatIsNotAnHttpsOriginIsRefusedBeforeAnythingLeavesThisMachine(t *testing.T) {
+	for _, address := range []string{"http://paypal.example", "https://paypal.example/v1", "paypal"} {
+		handler, asked, cloudflare, _, _, bases := settingPaypalBound(t, "an-account")
+		status, answer := press(t, handler, "/api/paypal/setup",
+			`{"clientId":"Aa-a","secret":"EL-b","address":"`+address+`"}`)
+
+		if status != http.StatusBadRequest || !strings.Contains(said(answer), "address") {
+			t.Errorf("%s: the press answered %d %v", address, status, answer)
+		}
+		if len(asked()) != 0 || len(*cloudflare) != 0 || len(*bases) != 0 {
+			t.Errorf("%s: PayPal was asked %v and cloudflare %v", address, asked(), *cloudflare)
+		}
 	}
 }
 
