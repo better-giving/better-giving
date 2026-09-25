@@ -931,7 +931,7 @@ function PaypalKeysForm({
 						<a href={DASHBOARD} target="_blank" rel="noreferrer">
 							Apps &amp; Credentials
 						</a>
-						, on the Live or Sandbox tab — whichever matches the API address below.
+						, on the Live or Sandbox tab, whichever matches the API address below.
 					</p>
 				</hgroup>
 
