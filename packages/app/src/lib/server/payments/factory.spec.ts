@@ -308,6 +308,104 @@ describe('createPaymentProviders', () => {
  * usable processor at all, which is the only arm `publishedConfig` in ../forms/published-config.ts
  * reads it on.
  */
+describe('PayPal', () => {
+	/** a token and a created order the adapter is answered with, recording where each was sent. */
+	function orderAddress(): string[] {
+		const urls: string[] = [];
+		vi.stubGlobal('fetch', async (input: Request | string | URL) => {
+			const url = input instanceof Request ? input.url : String(input);
+			urls.push(url);
+			if (url.endsWith('/v1/oauth2/token')) {
+				return Response.json({
+					access_token: 'A21AA-token',
+					token_type: 'Bearer',
+					expires_in: 32400
+				});
+			}
+			return Response.json({ id: '5O190127TN364715T', status: 'CREATED' }, { status: 201 });
+		});
+		return urls;
+	}
+
+	const ORDER = {
+		amountMinor: 1000,
+		currency: 'USD',
+		method: 'paypal',
+		idempotencyKey: 'attempt-1',
+		deploymentOrigin: 'https://donate.example.org'
+	} as const;
+
+	it('calls PayPal’s own address where none is set', async () => {
+		const urls = orderAddress();
+
+		await createPaymentProviders(PAYPAL_CONFIGURED).for('paypal').createIntent(ORDER);
+
+		expect(urls).toEqual([
+			'https://api-m.paypal.com/v1/oauth2/token',
+			'https://api-m.paypal.com/v2/checkout/orders'
+		]);
+	});
+
+	it('mints its token and places its order at the address the deployment holds', async () => {
+		const urls = orderAddress();
+
+		await createPaymentProviders({
+			...PAYPAL_CONFIGURED,
+			PAYPAL_API_URL: 'https://paypal-api.example.test'
+		})
+			.for('paypal')
+			.createIntent(ORDER);
+
+		expect(urls).toEqual([
+			'https://paypal-api.example.test/v1/oauth2/token',
+			'https://paypal-api.example.test/v2/checkout/orders'
+		]);
+	});
+
+	it('takes an address typed with a trailing slash as its origin', async () => {
+		const urls = orderAddress();
+
+		await createPaymentProviders({
+			...PAYPAL_CONFIGURED,
+			PAYPAL_API_URL: 'https://paypal-api.example.test/'
+		})
+			.for('paypal')
+			.createIntent(ORDER);
+
+		expect(urls).toEqual([
+			'https://paypal-api.example.test/v1/oauth2/token',
+			'https://paypal-api.example.test/v2/checkout/orders'
+		]);
+	});
+
+	it.each([
+		['a path after the host', 'https://paypal-api.example.test/v1'],
+		['plain http', 'http://paypal-api.example.test'],
+		['no address at all', 'paypal-api.example.test']
+	])('reads an address with %s as PayPal not configured, naming it', async (_, address) => {
+		const urls = orderAddress();
+		const processors = createPaymentProviders({ ...PAYPAL_CONFIGURED, PAYPAL_API_URL: address });
+
+		const result = await processors.for('paypal').createIntent(ORDER);
+
+		expect(result.ok === false && result.reason).toBe('not_configured');
+		expect(result.ok === false ? result.detail : '').toContain('PAYPAL_API_URL');
+		expect(processors.configured).toEqual([]);
+		expect(urls).toEqual([]);
+	});
+
+	it('serves no form on an address it cannot call, and names the address as what is short', () => {
+		const served = servedProcessors({
+			...PAYPAL_CONFIGURED,
+			PAYPAL_API_URL: 'https://paypal-api.example.test/v1'
+		});
+
+		expect(served.serves).toBe(false);
+		expect(served.providers).toEqual([]);
+		expect(served.shortfall).toContain('`PAYPAL_API_URL`');
+	});
+});
+
 describe('Chariot', () => {
 	/** a Create Grant the adapter answers, recording the address it was sent to. */
 	function grantAddress(): string[] {

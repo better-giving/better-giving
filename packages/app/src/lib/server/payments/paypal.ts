@@ -20,6 +20,7 @@ import type {
 	Subscription
 } from '@paypal/paypal-server-sdk';
 import { PAYPAL_RAILS, type PaypalRail } from '@better-giving/form/embed/rails';
+import { PAYPAL_SDK_PATH } from '@better-giving/form/v1';
 import {
 	RECURRING_COLLECTION_EVENT_TYPES,
 	RECURRING_EVENT_TYPES,
@@ -29,7 +30,7 @@ import {
 import type { PaymentStatus } from '../db/schema';
 import { majorText, readAmount } from '../../forms/amounts';
 import { redact, redactPublicId } from '../../redact';
-import { DONATION_METADATA_KEY, INTERVAL_METADATA_KEY } from './provider';
+import { DONATION_METADATA_KEY, INTERVAL_METADATA_KEY, refusing } from './provider';
 import type {
 	AccountChargeability,
 	Intent,
@@ -85,8 +86,10 @@ import type {
 // authenticated call because no controller and no spec ship for Payments v1. `readSale` argues why
 // a deprecated endpoint is the right one and what would replace it.
 //
-// **live only, and nothing here reads a stage.** `Environment.Production` is the one host, because
-// nothing in this project reads test-versus-live and rehearsing is a second deployment (DEPLOY.md).
+// **one address, and nothing here reads a stage.** every call — the token, the SDK's controllers and
+// this module's own reach past them — goes to the origin of `PAYPAL_API_URL`, or of
+// {@link PAYPAL_DEFAULT_API_URL} where it is unset. a key is good at one address only, and which one
+// a deployment talks to is typed rather than derived; rehearsing is a second deployment (DEPLOY.md).
 
 /** what the adapter needs to talk to an account. */
 export type PaypalCredentials = {
@@ -94,6 +97,8 @@ export type PaypalCredentials = {
 	readonly clientId: string;
 	/** `PAYPAL_CLIENT_SECRET`. server-only, never bundled, never logged, never echoed. */
 	readonly clientSecret: string;
+	/** `PAYPAL_API_URL`, or {@link PAYPAL_DEFAULT_API_URL} where it is unset (./factory.ts). */
+	readonly apiUrl: string;
 	/**
 	 * `PAYPAL_WEBHOOK_ID` — the id of the listener this deployment's deliveries are sent to, or
 	 * `null` where the deployment holds none.
@@ -326,14 +331,60 @@ const RECURRING_PRODUCT_TYPE = 'SERVICE';
  */
 const CANCEL_REASON = 'Stopped from this organisation’s better-giving dashboard.';
 
+/** the address a deployment with no `PAYPAL_API_URL` calls. */
+export const PAYPAL_DEFAULT_API_URL = 'https://api-m.paypal.com';
+
 /**
- * the one host this adapter talks to.
+ * the origin every call is sent to, or `null` for an address that is not an https origin.
  *
- * spelled here for the calls that reach past the SDK, and it is the same host the SDK resolves
- * `Environment.Production` to. there is no sandbox constant beside it because nothing in this
- * project reads test-versus-live: rehearsing is a second deployment (DEPLOY.md).
+ * a trailing slash is the one addition taken, because it names the same origin. a path, a query or
+ * a fragment is refused rather than dropped: each is a value that says something this adapter would
+ * silently not do. `http:` is refused because the token request carries the client secret.
  */
-const API_BASE = 'https://api-m.paypal.com';
+export function paypalApiOrigin(apiUrl: string): string | null {
+	let url: URL;
+	try {
+		url = new URL(apiUrl);
+	} catch {
+		return null;
+	}
+	const bare =
+		url.protocol === 'https:' &&
+		url.username === '' &&
+		url.password === '' &&
+		url.pathname === '/' &&
+		url.search === '' &&
+		url.hash === '' &&
+		!apiUrl.endsWith('?') &&
+		!apiUrl.endsWith('#');
+	return bare ? url.origin : null;
+}
+
+/**
+ * the script the donor's page starts PayPal's SDK from, for an API address {@link paypalApiOrigin}
+ * takes, or `null` where the host carries no `api-m.` label to derive one from.
+ *
+ * PayPal serves its API and its pages from sibling hosts, `api-m.` and `www.` under one domain, so
+ * the one rule is the label and any address an operator sets maps the same way.
+ * `Provider.sdkUrl` in packages/form/src/v1.ts is the field it fills.
+ */
+export function paypalSdkUrl(apiUrl: string): string | null {
+	const origin = paypalApiOrigin(apiUrl);
+	if (origin === null) return null;
+	const url = new URL(origin);
+	if (!url.hostname.startsWith('api-m.')) return null;
+	url.hostname = `www.${url.hostname.slice('api-m.'.length)}`;
+	url.pathname = PAYPAL_SDK_PATH;
+	return url.href;
+}
+
+/** what is wrong with an address {@link paypalApiOrigin} refuses, as a clause a sentence carries. */
+export function unusablePaypalAddress(apiUrl: string): string {
+	return (
+		`\`PAYPAL_API_URL\` is \`${apiUrl}\`, which is not an https origin with nothing after the ` +
+		`host, such as \`${PAYPAL_DEFAULT_API_URL}\``
+	);
+}
 
 /**
  * the five headers a delivery is signed with, and the field each one is sent for verification as.
@@ -602,8 +653,16 @@ const NO_WALLET_DOMAINS =
  * own retry cannot know whether the caller wants one, and every retry that matters here is the
  * caller's to make under the same `IntentRequest.idempotencyKey` — a retry underneath this port is
  * one nothing above it can see or bound.
+ *
+ * `env.fetch` is where the address is decided. the SDK takes an `Environment` naming one of its own
+ * two hosts and no address at all, so it is handed the one constant and every request it builds is
+ * re-addressed onto `origin` on its way out — the token request included, which is what makes a key
+ * minted at one address usable against it.
  */
-function paypalClient(credentials: PaypalCredentials): {
+function paypalClient(
+	credentials: PaypalCredentials,
+	origin: string
+): {
 	readonly client: Client;
 	readonly accessToken: () => Promise<string>;
 } {
@@ -623,7 +682,11 @@ function paypalClient(credentials: PaypalCredentials): {
 		},
 		timeout: TIMEOUT_MS,
 		httpClientOptions: { retryConfig: { maxNumberOfRetries: 0 } },
-		unstable_httpClientOptions: { adapter: 'fetch', fetchOptions: { cache: 'no-store' } }
+		unstable_httpClientOptions: {
+			adapter: 'fetch',
+			fetchOptions: { cache: 'no-store' },
+			env: { fetch: addressedTo(origin) }
+		}
 	});
 
 	return {
@@ -635,6 +698,15 @@ function paypalClient(credentials: PaypalCredentials): {
 	};
 }
 
+/** `fetch`, sending the request it is handed to the same path and query at `origin`. */
+function addressedTo(origin: string): typeof fetch {
+	return (input, init) => {
+		const request = new Request(input, init);
+		const { pathname, search } = new URL(request.url);
+		return fetch(new Request(`${origin}${pathname}${search}`, request));
+	};
+}
+
 /**
  * the controller {@link findOrCreateBillingPlan} makes its calls through, over one account.
  *
@@ -643,11 +715,21 @@ function paypalClient(credentials: PaypalCredentials): {
  * options on that client are the ones ./paypal.workers.spec.ts proves are needed.
  */
 export function paypalSubscriptions(credentials: PaypalCredentials): SubscriptionsController {
-	return new SubscriptionsController(paypalClient(credentials).client);
+	const origin = paypalApiOrigin(credentials.apiUrl);
+	if (origin === null) throw new Error(`${unusablePaypalAddress(credentials.apiUrl)}.`);
+	return new SubscriptionsController(paypalClient(credentials, origin).client);
 }
 
 export function createPaypalProvider(credentials: PaypalCredentials): PaymentProvider {
-	const { client, accessToken } = paypalClient(credentials);
+	const origin = paypalApiOrigin(credentials.apiUrl);
+	if (origin === null) {
+		return refusing(
+			'paypal',
+			'not_configured',
+			`${unusablePaypalAddress(credentials.apiUrl)}, so no call to PayPal can be made.`
+		);
+	}
+	const { client, accessToken } = paypalClient(credentials, origin);
 	const orders = new OrdersController(client);
 	const payments = new PaymentsController(client);
 	// built off this provider's own client rather than through {@link paypalSubscriptions}, which
@@ -672,7 +754,7 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 		path: string,
 		sending?: { readonly body?: unknown; readonly requestId?: string }
 	): Promise<{ status: number; body: unknown }> {
-		const answer = await fetch(`${API_BASE}${path}`, {
+		const answer = await fetch(`${origin}${path}`, {
 			method,
 			headers: {
 				authorization: `Bearer ${await accessToken()}`,
@@ -2066,8 +2148,9 @@ function classifyStatus(status: number, body: unknown, context: string): Payment
 			reason: 'not_configured',
 			detail:
 				'PayPal rejected this deployment’s credentials: `PAYPAL_CLIENT_ID` and ' +
-				`\`PAYPAL_CLIENT_SECRET\` are not a pair this account accepts, or the app they belong to ` +
-				`does not carry the permission this call needs. ${said}`
+				'`PAYPAL_CLIENT_SECRET` are not a pair the account at `PAYPAL_API_URL` accepts — keys ' +
+				'from an app at another of PayPal’s addresses are the usual cause — or the app they ' +
+				`belong to does not carry the permission this call needs. ${said}`
 		};
 	}
 

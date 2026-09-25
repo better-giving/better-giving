@@ -37,6 +37,15 @@ export interface ConfigEnv {
 	/** the matching client secret, which is what buys an OAuth token server-side. */
 	readonly PAYPAL_CLIENT_SECRET?: string;
 	/**
+	 * the address PayPal's REST API answers on, an https origin with no path. unset is
+	 * `https://api-m.paypal.com`, and a value of any other shape reads as PayPal not configured
+	 * (`paypalApiOrigin` in ../payments/paypal.ts).
+	 *
+	 * a key is good at one address only, and nothing in this app reads a stage, so it is typed the
+	 * way `CHARIOT_API_URL` is.
+	 */
+	readonly PAYPAL_API_URL?: string;
+	/**
 	 * the id PayPal minted when the org's webhook endpoint was registered.
 	 *
 	 * not a signing secret and nothing here compares it: a delivery is authenticated by posting it
@@ -193,6 +202,7 @@ export const CONFIG_VAR_NAMES = [
 	'STRIPE_WEBHOOK_SECRET',
 	'PAYPAL_CLIENT_ID',
 	'PAYPAL_CLIENT_SECRET',
+	'PAYPAL_API_URL',
 	'PAYPAL_WEBHOOK_ID',
 	'PAYPAL_CHARITY_RATE_APPROVED',
 	'CHARIOT_API_KEY',

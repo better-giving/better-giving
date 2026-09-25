@@ -12,7 +12,12 @@ import {
 } from './provider';
 import { CHARIOT_LIVE_API_URL, createChariotProvider } from './chariot';
 import { createNowpaymentsProvider } from './nowpayments';
-import { createPaypalProvider } from './paypal';
+import {
+	createPaypalProvider,
+	PAYPAL_DEFAULT_API_URL,
+	paypalApiOrigin,
+	unusablePaypalAddress
+} from './paypal';
 import { createStripeProvider } from './stripe';
 import type { StripeUnreadableReason } from '@better-giving/operator/console/stripe-read';
 
@@ -54,6 +59,14 @@ type Processor = {
 	 * is a compile error here rather than a state the rest of this module carries a branch for.
 	 */
 	readonly build: (env: ConfigEnv) => PaymentProvider | null;
+	/**
+	 * why a value this processor holds cannot be called with, as a clause naming it and the shape it
+	 * has to take, or `null` where every one can.
+	 *
+	 * a value set in a shape no call can be made with is the same answer as one unset — the processor
+	 * is not configured, and never on `configured` — told apart only by the clause.
+	 */
+	readonly unusable?: (env: ConfigEnv) => string | null;
 };
 
 /**
@@ -125,13 +138,19 @@ const PROCESSORS: Readonly<Record<ProcessorName, Processor>> = Object.freeze({
 			// one — the same distinction Stripe's entry above draws, and the adapter's own type is
 			// what carries it. an empty string would verify nothing and come back as a delivery PayPal
 			// did not vouch for, sending an operator to compare an id they do not have against a
-			// listener that is fine.
+			// listener that is fine. `PAYPAL_API_URL` is off the list for `CHARIOT_API_URL`'s reason
+			// below: unset is an answer.
 			return createPaypalProvider({
 				clientId,
 				clientSecret,
+				apiUrl: env.PAYPAL_API_URL ?? PAYPAL_DEFAULT_API_URL,
 				webhookId: env.PAYPAL_WEBHOOK_ID ?? null
 			});
-		}
+		},
+		unusable: (env) =>
+			env.PAYPAL_API_URL === undefined || paypalApiOrigin(env.PAYPAL_API_URL) !== null
+				? null
+				: unusablePaypalAddress(env.PAYPAL_API_URL)
 	},
 	chariot: {
 		requires: ['CHARIOT_API_KEY'],
@@ -395,9 +414,10 @@ export function processorSetupFix(names: readonly ProcessorName[]): string {
 function shortfall(env: ConfigEnv): string {
 	const lines = PROCESSOR_NAMES.map((name) => {
 		const unset = setupVars(name).filter((variable) => !env[variable]);
-		return unset.length === 0
-			? null
-			: `\`${unset.join('` and `')}\` ${unset.length === 1 ? 'is' : 'are'} not set`;
+		if (unset.length > 0) {
+			return `\`${unset.join('` and `')}\` ${unset.length === 1 ? 'is' : 'are'} not set`;
+		}
+		return PROCESSORS[name].unusable?.(env) ?? null;
 	}).filter((line) => line !== null);
 
 	return lines.join(', and ');
@@ -517,9 +537,10 @@ function read(source: unknown): ConfigEnv | null {
 	}
 }
 
-/** whether every variable this processor cannot be called without is set. */
+/** whether every variable this processor cannot be called without is set, in a shape it can use. */
 function configuredFor(env: ConfigEnv, name: ProcessorName): boolean {
-	return PROCESSORS[name].requires.every((variable) => env[variable]);
+	const { requires, unusable } = PROCESSORS[name];
+	return requires.every((variable) => env[variable]) && (unusable?.(env) ?? null) === null;
 }
 
 function provider(env: ConfigEnv | null, name: ProcessorName): PaymentProvider {
@@ -544,7 +565,16 @@ function unbuildable(name: ProcessorName): PaymentProvider {
 }
 
 function build(env: ConfigEnv, name: ProcessorName): PaymentProvider {
-	const { requires, build: adapter } = PROCESSORS[name];
+	const { requires, build: adapter, unusable } = PROCESSORS[name];
+	const refused = unusable?.(env) ?? null;
+	if (refused !== null) {
+		return refusing(
+			name,
+			'not_configured',
+			`This deployment cannot take a payment through ${PROCESSOR_LABELS[name]}: ${refused}. ` +
+				'Open the console (`better-giving start`) and correct it under Donation processor.'
+		);
+	}
 	const built = adapter(env);
 	if (built !== null) return built;
 

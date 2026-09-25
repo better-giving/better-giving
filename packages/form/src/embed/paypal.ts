@@ -7,16 +7,13 @@
 // Checkout would collect a pan in this document and put this project on card-data compliance, so
 // the hosted window is the whole of what is drawn here.
 //
-// **the entry is `@paypal/paypal-js/sdk-v6` and the package pins a loader rather than a
-// behaviour.** the installed package is a hundred-odd lines that plant a script tag plus the type
-// surface; the code that actually runs a checkout is whatever `https://www.paypal.com/web-sdk/v6/
-// core` serves that day, and it moves with no release here. so a version bump in
-// ../../package.json changes which loader is bundled and changes nothing a donor sees, and a
-// behaviour this file relies on is a fact about what is served rather than a contract. the two
-// places that costs something are named where they are read: `readNamespace` below, which does
-// not let the loader decide which object it got, and `MOUNT_DEADLINE_MS`, which is the only thing
-// standing between a served bundle that changed shape and a donor in front of a box that says
-// nothing.
+// **the core is PayPal's served script, planted here, and nothing pins its behaviour.** the code that
+// actually runs a checkout is whatever PayPal's v6 core serves that day, and it moves with no
+// release here, so a behaviour this file relies on is a fact about what is served rather than a
+// contract. the two places that costs something are named where they are read: `readNamespace`
+// below, which decides which object this page already holds, and `MOUNT_DEADLINE_MS`, which is the
+// only thing standing between a served bundle that changed shape and a donor in front of a box
+// that says nothing.
 //
 // **Venmo's return from its own app is untested on a device.** on a phone the Venmo rail
 // app-switches out of the browser; the served `paypal-payments` bundle carries a `hasReturned`
@@ -27,18 +24,20 @@
 // callback is `indeterminate` — a re-read rather than a second charge — and that is the safe
 // direction rather than a working one.
 //
-// no sandbox, no stage, no test-versus-live: `environment` is the literal `'production'` on every
-// page, for the reason CLAUDE.md gives under *Product surface* — nothing in this project reads a
-// stage, and rehearsing is a second deployment.
+// **the script's address is the whole of which PayPal this page talks to.** the core is loaded from
+// `Provider.sdkUrl` on this adapter's own entry in the served config, or from `PAYPAL_CORE_URL`
+// where the entry names none, and it is given no environment of its own: a core answers for the
+// host that served it. the deployment states the address because a client id starts an SDK only
+// against the address its keys were issued at, and nothing here reads a stage (CLAUDE.md, *Product
+// surface*).
 //
 // `../../package.json` exports this module as `./embed/paypal`. the composer in ./surface.ts is
 // what presents this and ./stripe.ts to a flow as one surface, so nothing above either adapter
 // learns that a deployment holds two processors.
 
-import { loadCoreSdkScript } from '@paypal/paypal-js/sdk-v6';
 import type { Failure } from '../checkout.machine';
 import type { CheckoutPorts, ConfirmOutcome } from '../ports';
-import type { FormConfig, PaymentMethod } from '../v1';
+import { PAYPAL_SDK_PATH, type FormConfig, type PaymentMethod } from '../v1';
 import { INJECTING_NONCE } from './nonce';
 import { UNCONFIRMABLE, UNSTATED_DECLINE } from './outcome';
 import { isPaypalRail, type PaypalRail } from './rails';
@@ -63,8 +62,8 @@ const PROVIDER_NAME = 'paypal';
  *
  * three things are measured against one window here rather than two: the core script arriving,
  * `createInstance` answering, and the eligibility read answering. none of the three names itself
- * when it stalls — the loader's promise stays pending for the life of the page, and a donor is
- * left in front of a box that says nothing.
+ * when it stalls — a core script that fires neither `load` nor `error` leaves the wait on it pending
+ * for the life of the page, and a donor is left in front of a box that says nothing.
  */
 export const MOUNT_DEADLINE_MS = 30_000;
 
@@ -182,31 +181,27 @@ function isSetupFault(code: string): boolean {
  * project off the shared global entirely: on a page with no PayPal we add this key and nothing
  * else, and on a page running PayPal's older SDK we do not touch `window.paypal` at all.
  *
- * it is passed to the loader as `dataNamespace` **and** set on the tag this module plants, because
- * the loader sets attributes only on tags it created: a planted tag without it writes the namespace
- * to `window.paypal` while the loader reads back this key, finds nothing, and rejects with a
- * sentence that points nowhere near the cause.
+ * the core learns it from `data-namespace` on its own tag, which `ensurePaypalScript` sets.
  */
 export const PAYPAL_NAMESPACE = 'bgDonatePayPalV6';
 
 /** the tag the served core registers globally, and the only evidence a core we cannot reach is on the page. */
 const PAYPAL_BUTTON_TAG = 'paypal-button';
 
-/** where PayPal serves the core this adapter runs on, at the unversioned path the loader builds. */
-export const PAYPAL_CORE_URL = 'https://www.paypal.com/web-sdk/v6/core';
+/** the core this adapter runs on where the served config names no script of its own. */
+export const PAYPAL_CORE_URL = `https://www.paypal.com${PAYPAL_SDK_PATH}`;
 
 /**
- * the substring the loader's own adoption selector matches a core script by.
+ * the attribute PayPal's own loader marks a core tag with, `pending` until it has run.
  *
- * the pathname of the url above and nothing more, because that is literally what the loader tests:
- * `script[src*="<pathname>"][data-loading-state="pending"]`. spelled here so the tag this module
- * plants is one that selector finds — a src the loader would not match is a tag it plants a second
- * copy beside, and a second core throws on `customElements.define`.
+ * this module marks its tag the same way, and matches a waiting core by it and by the path — the
+ * selector PayPal's loader (`@paypal/paypal-js/sdk-v6`) adopts a tag by, so a host whose own loader
+ * runs after this one waits on this tag rather than planting a second core beside it.
  */
-const PAYPAL_CORE_PATH = '/web-sdk/v6/core';
-
-/** the attribute the loader marks its own tags with, and the half of its selector this must carry. */
 const LOADING_STATE = 'data-loading-state';
+
+/** a core tag on this page that has not run yet, whoever planted it. */
+const WAITING_CORE = `script[src*="${PAYPAL_SDK_PATH}"][${LOADING_STATE}="pending"]`;
 
 /**
  * as much of the served core's namespace as this module uses.
@@ -275,29 +270,22 @@ export type PaypalWindowLike = {
 /**
  * which PayPal core this page already holds, if any, before anything is planted.
  *
- * the package's own loader cannot answer this and resolves with the wrong object on exactly the
- * page the question is about: its two namespace reads are both a bare `window[namespace]`, so with
- * a version-five `window.paypal` present it injects the core, watches it write `window.paypal.v6`,
- * re-reads `window.paypal`, finds the **five** object truthy and resolves with it — and the next
- * line calls a `createInstance` that is not there. its early-exit optional-chains the reference and
- * not `.version`, so an unrelated `window.paypal` carrying no string version makes it throw
- * *synchronously*, out of a call whose shape says to await it.
- *
- * so the reading is made here, in the order the core's own `setupWindowNamespace` writes: our own
- * key, then the nesting an older SDK forces, then a bare version-six root.
+ * a bare `window.paypal` cannot answer this: on a page running PayPal's version-five SDK it is the
+ * five object, whose `createInstance` is not there, and the core nests itself under it at
+ * `window.paypal.v6`. so the reading is made in the order the core's own `setupWindowNamespace`
+ * writes: our own key, then the nesting an older SDK forces, then a bare version-six root.
  *
  * `unreachable` is the fourth answer and it is not a failure of this reading: the button tag is
  * registered globally and unguarded by the core, and `customElements.define` throws on a name
  * already taken — so a core on the page under a namespace nothing here can name is a core beside
  * which a second one cannot be planted. the throw would land in the middle of the second core's
  * top-level evaluation, which skips the statement that writes the namespace while the script tag's
- * own `load` still fires: the loader then rejects with "the global variable is not available",
- * about a page whose only fault is that it already had PayPal on it.
+ * own `load` still fires — a core that never starts, on a page whose only fault is that it already
+ * had PayPal on it.
  *
- * adopting a host's own root at the third reading adopts whatever origin they loaded it from, and
- * the loader's own check is version-only and origin-blind in exactly the same way. a host running
- * PayPal's sandbox on a live page is a host misconfiguring itself, and the alternative — planting a
- * second core — is the throw above.
+ * adopting a host's own root at the third reading adopts whatever address they loaded it from,
+ * which need not be the `sdkUrl` the served config names. a page cannot hold two cores, so the
+ * alternative — planting a second — is the throw above.
  */
 export function readNamespace(view: PaypalWindowLike): NamespaceReading {
 	const ours = asNamespace(view[PAYPAL_NAMESPACE]);
@@ -340,80 +328,79 @@ function asNamespace(value: unknown): PaypalNamespaceLike | null {
 }
 
 /**
- * PayPal's core script on the page ahead of the loader, so that it carries the host page's nonce.
+ * PayPal's core script on the page, from `sdkUrl` and carrying the host page's nonce where it has one.
  *
- * the loader sets no nonce on the tag it builds and takes no option for one, so a host serving
- * `script-src 'nonce-…'` without `'strict-dynamic'` refuses it — and every donor on that site is
- * stopped at the one step of a donation that cannot be skipped. the seam is the loader's own
- * adoption selector: it takes over any script already in the document whose src carries the core
- * path and which is marked pending, and sets nothing on a tag it did not create.
- *
- * so all four of these matter and missing any one breaks it. the state marker is what makes the tag
- * adoptable at all; `data-namespace` is the one a reader forgets, and without it the core writes to
- * `window.paypal` while the loader reads back `window[PAYPAL_NAMESPACE]`.
- *
- * this is a better seam than the other processor's and the difference is worth knowing: the core
+ * the nonce is why a tag of this module's own is planted at all: a host serving
+ * `script-src 'nonce-…'` without `'strict-dynamic'` refuses an injected tag that lacks it, and every
+ * donor on that site is stopped at the one step of a donation that cannot be skipped. the core
  * propagates the nonce it finds on its own tag onward — to the component chunks it injects, to the
- * fraud collector, and to the `<style>` fallback — so one nonce on one planted tag covers the whole
- * subtree and there is no second tag to chase.
+ * fraud collector, and to the `<style>` fallback — so one nonce on one tag covers the whole subtree.
  *
- * only where there is a nonce to carry. with none the loader owns its own url on every page that
- * does not serve such a policy, which is nearly all of them.
+ * `data-namespace` is the attribute a reader forgets: without it the core writes to `window.paypal`
+ * and nothing reads back `window[PAYPAL_NAMESPACE]`. the state marker is what lets a host's own
+ * loader, running later, wait on this tag rather than plant a second.
  *
- * a core already waiting is left alone: a second core script on one page throws inside
- * `customElements.define` during its own top-level evaluation, which is the failure `readNamespace`
- * describes from the other end.
+ * a core already waiting is left alone and nothing is planted: a second core script on one page
+ * throws inside `customElements.define` during its own top-level evaluation, which is the failure
+ * `readNamespace` describes from the other end.
  */
-export function ensurePaypalScript(doc: Document, nonce: string): HTMLScriptElement | null {
-	if (nonce === '') return null;
-	if (
-		doc.querySelector(`script[src*="${PAYPAL_CORE_PATH}"][${LOADING_STATE}="pending"]`) !== null
-	) {
-		return null;
-	}
+export function ensurePaypalScript(
+	doc: Document,
+	sdkUrl: string,
+	nonce: string
+): HTMLScriptElement | null {
+	if (doc.querySelector(WAITING_CORE) !== null) return null;
 	const script = doc.createElement('script');
-	script.setAttribute('src', PAYPAL_CORE_URL);
+	script.setAttribute('src', sdkUrl);
 	script.setAttribute(LOADING_STATE, 'pending');
 	script.setAttribute('data-namespace', PAYPAL_NAMESPACE);
 	// assigned rather than set as an attribute — see `scriptNonce` in ./loader.ts.
-	script.nonce = nonce;
+	if (nonce !== '') script.nonce = nonce;
 	(doc.head ?? doc.documentElement).appendChild(script);
 	return script;
 }
 
 /**
- * that script, run — which is what keeps the nonce on it across every attempt on this page.
+ * that script, run — or the core already waiting on this page, run by whoever planted it.
  *
- * the loader caches nothing between calls, so a second surface re-enters it and finds whatever the
- * first one left in the document. two tags it must not find, and this is where each is dealt with.
+ * a surface re-entering this finds whatever the one before it left in the document, and two tags of
+ * this module's own it must not find, so this is where each is dealt with.
  *
  * a tag that settled without defining the namespace is taken off the page. left there marked
- * pending it is exactly what the loader's adoption selector matches next time, and the promise a
- * second surface joins is waiting for a `load` that has already fired — a donor in front of a box
- * that says nothing, for the life of the page.
+ * pending it is exactly what the next attempt would wait on, for a `load` that has already fired — a
+ * donor in front of a box that says nothing, for the life of the page.
  *
- * a tag that *did* define it is marked answered, which the loader would otherwise never do to a tag
- * it did not create. the cost of leaving it pending is not ours but the host's: their own later
- * `loadCoreSdkScript` would adopt our finished tag and hang on it, and the page whose integration
- * dies is the one that was working before this form arrived.
+ * a tag that *did* define it is marked answered. the cost of leaving it pending is not ours but the
+ * host's: their own later `loadCoreSdkScript` would adopt our finished tag and hang on it, and the
+ * page whose integration dies is the one that was working before this form arrived.
  *
- * after this the loader has nothing left to inject: it resolves off `window[PAYPAL_NAMESPACE]`
- * before it looks at the document at all.
+ * a waiting tag this module did not plant is waited on and left as its owner marked it.
  */
-export async function loadPaypalScript(doc: Document, nonce: string): Promise<void> {
+export async function loadPaypalScript(
+	doc: Document,
+	sdkUrl: string,
+	nonce: string
+): Promise<void> {
 	const view = doc.defaultView;
 	if (view === null) return;
-	const script = ensurePaypalScript(doc, nonce);
+	const waiting = doc.querySelector(WAITING_CORE);
+	if (waiting !== null) {
+		await ran(waiting);
+		return;
+	}
+	const script = ensurePaypalScript(doc, sdkUrl, nonce);
 	if (script === null) return;
-	await new Promise<void>((resolve) => {
-		const settled = (): void => {
-			const carried = view as unknown as PaypalWindowLike;
-			if (asNamespace(carried[PAYPAL_NAMESPACE]) === null) script.remove();
-			else script.setAttribute(LOADING_STATE, 'resolved');
-			resolve();
-		};
-		script.addEventListener('load', settled);
-		script.addEventListener('error', settled);
+	await ran(script);
+	const carried = view as unknown as PaypalWindowLike;
+	if (asNamespace(carried[PAYPAL_NAMESPACE]) === null) script.remove();
+	else script.setAttribute(LOADING_STATE, 'resolved');
+}
+
+/** a script tag's first `load` or `error`, whichever it fires. */
+function ran(script: Element): Promise<void> {
+	return new Promise<void>((resolve) => {
+		script.addEventListener('load', () => resolve(), { once: true });
+		script.addEventListener('error', () => resolve(), { once: true });
 	});
 }
 
@@ -529,7 +516,8 @@ const FUNDING: Readonly<Record<PaypalRail, string>> = Object.freeze({
  * above it.
  */
 export type PaypalSeam = {
-	readonly load?: () => Promise<PaypalNamespaceLike | null>;
+	/** the namespace, from the core at `sdkUrl` where this page holds none yet. */
+	readonly load?: (sdkUrl: string) => Promise<PaypalNamespaceLike | null>;
 	/** the timer the mount deadline is armed on, returning the cancel for it. */
 	readonly delay?: (run: () => void, ms: number) => () => void;
 };
@@ -584,11 +572,12 @@ const instances = new WeakMap<
 
 /** the namespace, loaded at most once per page for the reason `namespaces` above gives. */
 function sharedNamespace(
-	load: NonNullable<PaypalSeam['load']>
+	load: NonNullable<PaypalSeam['load']>,
+	sdkUrl: string
 ): Promise<PaypalNamespaceLike | null> {
 	const held = namespaces.get(load);
 	if (held !== undefined) return held;
-	const loading = load().then(
+	const loading = load(sdkUrl).then(
 		(namespace) => {
 			if (namespace === null) namespaces.delete(load);
 			return namespace;
@@ -659,8 +648,9 @@ export function createPaymentSurface(
 	 * front-end code, which is what `Provider.publishableKey` in ../v1.ts already says of every
 	 * entry on that list.
 	 */
-	const clientId =
-		config.providers.find((entry) => entry.name === PROVIDER_NAME)?.publishableKey ?? null;
+	const entry = config.providers.find((provider) => provider.name === PROVIDER_NAME);
+	const clientId = entry?.publishableKey ?? null;
+	const sdkUrl = entry?.sdkUrl ?? PAYPAL_CORE_URL;
 	const load = seam?.load ?? defaultLoad;
 	const delay = seam?.delay ?? defaultDelay(mount);
 	const doc = mount.ownerDocument;
@@ -770,7 +760,7 @@ export function createPaymentSurface(
 
 		let namespace: PaypalNamespaceLike | null;
 		try {
-			namespace = await sharedNamespace(load);
+			namespace = await sharedNamespace(load, sdkUrl);
 		} catch (thrown) {
 			unavailable(noButtonFix(named(thrown)));
 			return null;
@@ -867,9 +857,9 @@ export function createPaymentSurface(
 	/**
 	 * the surface, against one window covering all three of the waits it is made of.
 	 *
-	 * raced rather than awaited, so this promise settles whatever the loader does. a core script that
-	 * fires neither `load` nor `error` leaves the package's own loader pending for the life of the
-	 * page, and a `ready` that inherited that would take every reader of it down with it — the other
+	 * raced rather than awaited, so this promise settles whatever the load does. a core script that
+	 * fires neither `load` nor `error` leaves the load pending for the life of the page, and a `ready`
+	 * that inherited that would take every reader of it down with it — the other
 	 * processor's re-read included, through ./surface.ts. the losing half keeps running: a surface
 	 * that turns up late still draws its buttons and still answers a confirmation, and the donor has
 	 * already been told once that it would not.
@@ -1037,18 +1027,12 @@ function defaultDelay(mount: HTMLElement): (run: () => void, ms: number) => () =
 }
 
 /**
- * the served core, reached without letting the package's loader decide what it got.
+ * the served core, from `sdkUrl` where this page holds none yet.
  *
- * the reading is made first and the loader is only called where there is nothing to read — see
- * `readNamespace`, which is where every one of those answers is argued. the call sits inside `try`
- * rather than behind a `.catch()` because it is not `async`: its argument validation and its own
- * namespace read both run in the function body, before any promise exists.
- *
- * `'production'` unconditionally. the argument is required and is the obvious place a stage flag
- * would otherwise arrive; nothing in this project reads a test-versus-live distinction, and
- * rehearsing is a second deployment.
+ * the reading is made first and a script is only loaded where there is nothing to read — see
+ * `readNamespace`, which is where every one of those answers is argued.
  */
-async function defaultLoad(): Promise<PaypalNamespaceLike | null> {
+async function defaultLoad(sdkUrl: string): Promise<PaypalNamespaceLike | null> {
 	if (typeof window === 'undefined') return null;
 	const view = window as unknown as PaypalWindowLike;
 
@@ -1062,15 +1046,12 @@ async function defaultLoad(): Promise<PaypalNamespaceLike | null> {
 		return null;
 	}
 
-	// the ambient document rather than the one the card is mounted in, because that is the document
-	// the loader reads when it decides whether to adopt a tag or plant one.
-	await loadPaypalScript(document, INJECTING_NONCE);
-	try {
-		await loadCoreSdkScript({ environment: 'production', dataNamespace: PAYPAL_NAMESPACE });
-	} catch (thrown) {
-		report(UNBUTTONED, thrown);
-	}
+	// the ambient document rather than the one the card is mounted in, because that is the document a
+	// host's own loader reads when it decides whether to wait on a tag or plant one.
+	await loadPaypalScript(document, sdkUrl, INJECTING_NONCE);
 
 	const after = readNamespace(view);
-	return after.kind === 'found' ? after.namespace : null;
+	if (after.kind === 'found') return after.namespace;
+	report(UNBUTTONED, `PayPal’s core at ${sdkUrl} did not start on this page`);
+	return null;
 }

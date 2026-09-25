@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createPaypalProvider } from './paypal';
+import { createPaypalProvider, PAYPAL_DEFAULT_API_URL } from './paypal';
 
 // the adapter's transport, exercised inside workerd rather than described.
 //
@@ -21,12 +21,13 @@ import { createPaypalProvider } from './paypal';
 //
 // the cases build the provider exactly as ./factory.ts does, with no seam of any kind: what is under
 // test is the client production constructs. `fetch` is stubbed, because what is being asserted is
-// that a request leaves this runtime at all rather than what PayPal answers — and there is no
-// sandbox in this project for a spec to dial.
+// that a request leaves this runtime at all rather than what PayPal answers — and no spec in this
+// project dials PayPal.
 
 const CREDENTIALS = {
 	clientId: 'Aa-notarealclientid',
 	clientSecret: 'EL-notarealsecret',
+	apiUrl: PAYPAL_DEFAULT_API_URL,
 	webhookId: '7YN47048TX2895013'
 };
 

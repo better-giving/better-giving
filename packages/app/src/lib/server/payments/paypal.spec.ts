@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { commitmentMetadata, type PaymentProvider } from './provider';
-import { createPaypalProvider, findOrCreateBillingPlan, paypalSubscriptions } from './paypal';
+import {
+	createPaypalProvider,
+	findOrCreateBillingPlan,
+	PAYPAL_DEFAULT_API_URL,
+	paypalSdkUrl,
+	paypalSubscriptions
+} from './paypal';
 
 // the adapter, exercised through a recording `fetch` rather than a stubbed SDK.
 //
@@ -95,6 +101,7 @@ const sent = (call: Recorded | undefined): Record<string, unknown> =>
 const CREDENTIALS = {
 	clientId: 'Aa-notarealclientid',
 	clientSecret: 'EL-notarealsecret',
+	apiUrl: PAYPAL_DEFAULT_API_URL,
 	webhookId: '7YN47048TX2895013'
 };
 
@@ -1076,6 +1083,27 @@ describe('how PayPal’s refusals are read', () => {
 
 		expect(result.ok === false && result.reason).toBe('not_configured');
 		expect(result.ok === false && result.detail).toContain('PAYPAL_CLIENT_SECRET');
+		expect(result.ok === false && result.detail).toContain('PAYPAL_API_URL');
+	});
+
+	/**
+	 * a key from an app at another address is refused at the token, before any call it was for.
+	 *
+	 * the answer is PayPal's OAuth one rather than its REST one, and the sentence an operator reads
+	 * has to name the address as well as the pair, because the pair is usually fine.
+	 */
+	it('reads a key refused at the token as not_configured, naming the address', async () => {
+		vi.stubGlobal('fetch', async () =>
+			Response.json(
+				{ error: 'invalid_client', error_description: 'Client Authentication failed' },
+				{ status: 401 }
+			)
+		);
+
+		const result = await createPaypalProvider(CREDENTIALS).createIntent(REQUEST);
+
+		expect(result.ok === false && result.reason).toBe('not_configured');
+		expect(result.ok === false && result.detail).toContain('PAYPAL_API_URL');
 	});
 
 	/** shedding load is the one 4xx worth making the same call again for. */
@@ -2275,5 +2303,22 @@ describe('a settlement whose money cannot be read', () => {
 		const result = await createPaypalProvider(CREDENTIALS).readSettlement('5O190127TN364715T');
 
 		expect(result.ok === false && result.reason).toBe('provider_error');
+	});
+});
+
+describe('where the donor’s page loads PayPal’s script from', () => {
+	/**
+	 * the address a deployment's keys are good at is the address the donor's page has to start the
+	 * SDK against, so the script is derived from it rather than typed a second time.
+	 */
+	it.each([
+		['https://api-m.paypal.com', 'https://www.paypal.com/web-sdk/v6/core'],
+		['https://api-m.paypal.example.test', 'https://www.paypal.example.test/web-sdk/v6/core']
+	])('reads %s as the script at %s', (address, script) => {
+		expect(paypalSdkUrl(address)).toBe(script);
+	});
+
+	it('derives nothing from a host with no api-m label to replace', () => {
+		expect(paypalSdkUrl('https://paypal-api.example.test')).toBeNull();
 	});
 });

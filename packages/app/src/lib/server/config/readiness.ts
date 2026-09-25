@@ -88,7 +88,8 @@ const allSet = (config: ConfigEnv, names: readonly (keyof ConfigEnv)[]): boolean
  * can be. the console's payments fold is where the difference between the two is drawn and acted
  * on. `PAYPAL_CHARITY_RATE_APPROVED` is off them for a reason of its own: it picks which published
  * fee table a donor covering fees is quoted from (../payments/fees.ts), and unset is an answer
- * rather than a gap. `CHARIOT_API_URL` is off for the same reason: unset is Chariot's live address.
+ * rather than a gap. `CHARIOT_API_URL` and `PAYPAL_API_URL` are off for the same reason: unset is
+ * each processor's own default address.
  * `NOWPAYMENTS_IPN_SECRET` is off by the webhook rule, though the IPN is the only way a crypto
  * payment is ever heard to settle: the payment is still created without it. NOWPayments' second member is its outcome currency rather than a
  * browser half, which it has none of: a coin's minimum is quoted against it, so no payment can be
