@@ -13,12 +13,13 @@
 		"0007_zapier_key_shown.sql",
 		"0008_zapier_keyless_row_dropped.sql",
 		"0009_quickbooks_holding_accounts.sql",
-		"0010_gift_refunded_trigger_and_dispute.sql"
+		"0010_gift_refunded_trigger_and_dispute.sql",
+		"0011_quickbooks_sync_realm.sql"
 	],
 	"crons": [
 		"*/30 * * * *",
 		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "9f213101c8155daf4b8bf597fd79344b40ab1982"
+	"commit": "e59d55330bab71b836f716d147e0a41721d44a68"
 }

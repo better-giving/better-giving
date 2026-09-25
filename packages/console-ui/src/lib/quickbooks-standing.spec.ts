@@ -1197,6 +1197,7 @@ describe('which preview a press of the day acts on', () => {
 	const side = (gifts: number) => ({
 		gifts,
 		corrections: 0,
+		reversals: 0,
 		earliest: gifts > 0 ? '2026-06-03T00:00:00.000Z' : null,
 		latest: gifts > 0 ? '2026-08-31T00:00:00.000Z' : null
 	});
@@ -1236,10 +1237,12 @@ describe('what the press over the day asks before it moves', () => {
 		gifts: number,
 		corrections: number,
 		earliest: string | null,
-		latest: string | null
+		latest: string | null,
+		reversals = 0
 	) => ({
 		gifts,
 		corrections,
+		reversals,
 		earliest,
 		latest
 	});
@@ -1285,6 +1288,42 @@ describe('what the press over the day asks before it moves', () => {
 		});
 	});
 
+	it('asks before sending refunds and disputes, where they are all an earlier date sends', () => {
+		const ask = startDateAsk('2026-06-01', RIVERBANK, {
+			queues: side(0, 0, null, null, 2),
+			drops: NONE
+		});
+		expect(ask?.lines).toEqual([
+			'Refunds and disputes · 2',
+			'Company · Riverbank Trust Inc.',
+			'Any of these already entered in QuickBooks by hand will appear there twice.'
+		]);
+	});
+
+	it('asks before skipping refunds and disputes, where they are all a later date skips', () => {
+		const ask = startDateAsk('2026-09-15', RIVERBANK, {
+			queues: NONE,
+			drops: side(0, 0, null, null, 1)
+		});
+		expect(ask?.lines).toEqual([
+			'Refunds and disputes · 1',
+			'These won’t be sent to Riverbank Trust Inc.'
+		]);
+	});
+
+	it('counts refunds and disputes after gifts and corrections, before the dates', () => {
+		const ask = startDateAsk('2026-06-01', RIVERBANK, {
+			queues: side(3, 1, '2026-06-03T00:00:00.000Z', '2026-06-04T00:00:00.000Z', 2),
+			drops: NONE
+		});
+		expect(ask?.lines.slice(0, 4)).toEqual([
+			'Gifts · 3',
+			'Corrections · 1',
+			'Refunds and disputes · 2',
+			'Dated · 3 to 4 June 2026'
+		]);
+	});
+
 	it('leaves out a count that is zero', () => {
 		const ask = startDateAsk('2026-06-01', RIVERBANK, {
 			queues: side(0, 4, '2026-07-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z'),
@@ -1295,7 +1334,7 @@ describe('what the press over the day asks before it moves', () => {
 
 	it('reads the side the move touches, and asks nothing where that side is empty', () => {
 		const busy = side(5, 1, '2026-06-03T00:00:00.000Z', '2026-06-04T00:00:00.000Z');
-		// earlier queues and never drops; later drops and never queues.
+		// the day decides what an earlier move queues and what a later one drops.
 		expect(startDateAsk('2026-06-01', RIVERBANK, { queues: NONE, drops: busy })).toBeNull();
 		expect(startDateAsk('2026-09-15', RIVERBANK, { queues: busy, drops: NONE })).toBeNull();
 	});

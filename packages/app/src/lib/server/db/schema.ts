@@ -2516,13 +2516,28 @@ export const quickbooksSync = sqliteTable(
 		 * it expires rather than being held, because a run that died mid-send writes nothing to
 		 * give the row back.
 		 */
-		leasedUntil: at('leased_until')
+		leasedUntil: at('leased_until'),
+
+		/**
+		 * the QuickBooks company (`quickbooks_connection.realm_id`) this row's record went to, or
+		 * may have: null until a delivery run first takes the row.
+		 *
+		 * the connection can be moved to another company, and a later record about this gift — a
+		 * refund of it — belongs in the books the gift itself reached, not in whichever company is
+		 * connected by then. `remote_id` is an id inside one company and names nothing in another.
+		 *
+		 * null on a row that has left for Intuit (`remote_id` set, or `attempts > 0`) is a company
+		 * nobody recorded — a row the backfill in migrations/0011_quickbooks_sync_realm.sql could not
+		 * place. a row that migration did place names the company connected when it ran.
+		 */
+		realmId: text('realm_id')
 	},
 	(t) => [
 		check('quickbooks_sync_status_check', enumCheck(t.status, QUICKBOOKS_SYNC_STATUSES)),
 		check('quickbooks_sync_attempts_check', sql`${t.attempts} >= 0`),
 		check('quickbooks_sync_remote_id_not_blank_check', optionalNotBlank(t.remoteId)),
 		check('quickbooks_sync_last_error_not_blank_check', optionalNotBlank(t.lastError)),
+		check('quickbooks_sync_realm_id_not_blank_check', optionalNotBlank(t.realmId)),
 		// `status` leads because the sweep reads the rows that are not finished, the minority of a
 		// table that grows with every gift the deployment ever took. the sweep's order is sorted
 		// over what that narrows to (../accounting/deliver.ts's `dueRows`), because it is read off

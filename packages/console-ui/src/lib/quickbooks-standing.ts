@@ -1044,11 +1044,15 @@ function datedSays(earliest: string, latest: string): string {
 	return `${start} to ${whole}`;
 }
 
-/** a side's counts, a line each, leaving out a count that is zero, then the dates they span. */
+/**
+ * a side's counts, a line each, leaving out a count that is zero, then the dates the gifts and
+ * corrections span — a side of refunds and disputes alone names no dates.
+ */
 function counted(side: QuickbooksStartAtSide): string[] {
 	return [
 		side.gifts > 0 ? `Gifts · ${side.gifts}` : null,
 		side.corrections > 0 ? `Corrections · ${side.corrections}` : null,
+		side.reversals > 0 ? `Refunds and disputes · ${side.reversals}` : null,
 		side.earliest !== null && side.latest !== null
 			? `Dated · ${datedSays(side.earliest, side.latest)}`
 			: null
@@ -1059,9 +1063,12 @@ function counted(side: QuickbooksStartAtSide): string[] {
  * the confirm moving the start date to `day` puts up, off the deployment's count of what the move
  * touches — or `null`, where the press goes without one.
  *
- * **a move earlier only ever queues and a move later only ever drops**, so the side read is the
- * direction's and the other is ignored. a side counting nothing is a move with nothing to agree to
- * and asks nothing.
+ * **the day decides a move earlier's queues and a move later's drops**, so the side read is the
+ * direction's and the other is ignored. a refund or dispute moves with the gift it reverses rather
+ * than by its own date, and one of a gift the books keep that holds no row of its own — it landed
+ * while no company was connected — is queued by any move, whichever way it goes; a move later's
+ * queues are those alone. a side counting nothing is a move with nothing to agree to and asks
+ * nothing.
  */
 export function startDateAsk(
 	day: string,
@@ -1070,7 +1077,7 @@ export function startDateAsk(
 ): StartDateAsk | null {
 	const earlier = day < startDay(company.startAt);
 	const side = earlier ? preview.queues : preview.drops;
-	if (side.gifts + side.corrections === 0) return null;
+	if (side.gifts + side.corrections + side.reversals === 0) return null;
 	const name = companyCalled(company);
 	return earlier
 		? {

@@ -25,7 +25,7 @@ import type {
 	SendAttempt,
 	Sendable
 } from './provider';
-import { awaitingWhatItAnswers } from './outbox';
+import { awaitingWhatItAnswers, CONNECTED_REALM } from './outbox';
 import { readSendable } from './record';
 
 // the outbox, delivered: what reads `quickbooks_sync` and sends what it names.
@@ -419,7 +419,8 @@ export async function sendQueuedEntry(
 			remoteId: sent.value.remoteId,
 			lastError: null,
 			leasedUntil: null,
-			updatedAt: now
+			updatedAt: now,
+			realmId: CONNECTED_REALM
 		})
 		.where(eq(quickbooksSync.entryGroupId, entryGroupId));
 	return { disposition: 'sent', remoteId: sent.value.remoteId };
@@ -501,17 +502,19 @@ async function land(
 	// the run-level answers other than `unreachable` say nothing was made. `unreachable` keeps
 	// the attempt: a call whose answer never came may have created the record, and the count is
 	// what tells the next send to look before it posts.
-	const givenBack =
-		handed === 'unsent' || (landing === 'run' && failure.reason !== 'unreachable')
-			? { attempts: sql`${quickbooksSync.attempts} - 1` }
-			: {};
+	const givesBack = handed === 'unsent' || (landing === 'run' && failure.reason !== 'unreachable');
+	// an attempt that stays counted may have reached the company connected now, so the row names
+	// it: a later record about the same gift goes only to the books this one may be in (./outbox.ts).
+	const claimLeaves = givesBack
+		? { attempts: sql`${quickbooksSync.attempts} - 1` }
+		: { realmId: CONNECTED_REALM };
 	if (landing === 'run') {
 		// the row is left exactly as it stands, minus the claim: nothing about it is why the run
 		// stopped, and the next run has to be free to read it again.
 		await db
 			.update(quickbooksSync)
 			.set({
-				...givenBack,
+				...claimLeaves,
 				leasedUntil: null,
 				updatedAt: sql`${quickbooksSync.updatedAt}`
 			})
@@ -523,7 +526,7 @@ async function land(
 		await db
 			.update(quickbooksSync)
 			.set({
-				...givenBack,
+				...claimLeaves,
 				status: 'failed',
 				lastError: failure.detail,
 				leasedUntil: null,
@@ -536,6 +539,7 @@ async function land(
 	await db
 		.update(quickbooksSync)
 		.set({
+			...(handed === 'sent' ? { realmId: CONNECTED_REALM } : {}),
 			lastError: failure.detail,
 			// given back rather than left to expire: the backoff is what decides when this row is
 			// read again, and a lease outliving it would be a second, longer wait nobody asked for.

@@ -1,0 +1,22 @@
+-- a delivery row records which QuickBooks company its record went to, so a later record about the
+-- same gift is sent to those books rather than to whichever company is connected by then.
+-- `quickbooks_sync` gains `realm_id`, null until a run takes the row and never blank.
+-- `src/lib/server/db/schema.ts` argues the column beside it.
+--
+-- no table is rebuilt: a native `ADD COLUMN` with the check on the column, which sqlite tests
+-- against every row already there. drizzle drafted the create-copy-drop-rename rebuild for the
+-- new check, and its copy step selected `realm_id` from the old table, which D1's
+-- double-quoted-literal fallback reads as the text `realm_id` in every row. the check is
+-- unqualified, so it survives a later rename of the table.
+--
+-- the backfill. a row that has left for Intuit — sent, holding a `remote_id`, or claimed by a run
+-- at least once, `attempts > 0` (src/lib/server/accounting/deliver.ts) — takes the realm of the
+-- one connection row. that is the whole record the database holds: a move an operator has since
+-- answered by saving accounts left no trace, so a row sent before such a move takes the company
+-- it was moved to. a move not yet answered (`moved_at` set) is known: that connection has no
+-- accounts picked, so nothing has been sent to it, and its rows stay null rather than name a
+-- company they never reached. a row never taken stays null, and with no connection row the
+-- subquery is null and nothing changes. `updated_at` is untouched: the backoff reads it, and this
+-- is no delivery.
+ALTER TABLE `quickbooks_sync` ADD `realm_id` text CONSTRAINT "quickbooks_sync_realm_id_not_blank_check" CHECK("realm_id" is null or trim("realm_id", char(32, 9, 10, 11, 12, 13, 160)) <> '');--> statement-breakpoint
+UPDATE `quickbooks_sync` SET `realm_id` = (SELECT `realm_id` FROM `quickbooks_connection` WHERE `moved_at` IS NULL) WHERE `remote_id` IS NOT NULL OR `attempts` > 0;

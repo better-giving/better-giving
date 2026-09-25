@@ -557,7 +557,7 @@ async function owed(
 	]);
 }
 
-const TOUCHES_NOTHING = { gifts: 0, corrections: 0, earliest: null, latest: null };
+const TOUCHES_NOTHING = { gifts: 0, corrections: 0, reversals: 0, earliest: null, latest: null };
 
 describe('the preview of a date move', () => {
 	it('counts what an earlier date would queue', async () => {
@@ -576,6 +576,7 @@ describe('the preview of a date move', () => {
 			queues: {
 				gifts: 1,
 				corrections: 1,
+				reversals: 0,
 				earliest: '2025-11-15T00:00:00.000Z',
 				latest: '2025-12-10T00:00:00.000Z'
 			},
@@ -601,6 +602,7 @@ describe('the preview of a date move', () => {
 			drops: {
 				gifts: 2,
 				corrections: 0,
+				reversals: 0,
 				earliest: '2026-02-01T00:00:00.000Z',
 				latest: '2026-02-20T00:00:00.000Z'
 			}

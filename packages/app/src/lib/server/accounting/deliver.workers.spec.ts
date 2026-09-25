@@ -52,6 +52,7 @@ beforeAll(() => {
 beforeEach(async () => {
 	for (const table of [
 		'quickbooks_sync',
+		'quickbooks_connection',
 		'ledger_entry',
 		'entry_group',
 		'payment',
@@ -541,6 +542,37 @@ describe('the due backlog', () => {
 
 		expect(qb.asked).toEqual([entryGroupId]);
 		expect((await row(entryGroupId)).status).toBe('sent');
+	});
+
+	it('names the connected company on an attempt that may have reached it, and none on one given back', async () => {
+		await env.DB.prepare(
+			`insert into quickbooks_connection (id, realm_id, access_token, access_token_expires_at,
+			                                    refresh_token, start_at, created_at, updated_at)
+			 values ('quickbooks', '4620816365', 'access', 0, 'refresh', 0, 0, 0)`
+		).run();
+		const faulted = await queuedGift();
+		const refused = await queuedGift();
+		await sendDueEntries(
+			deps(
+				provider((key) =>
+					key === faulted
+						? failed('provider_error', 'QuickBooks answered 502.')
+						: failed('invalid_record', 'QuickBooks refused the entry.')
+				).port
+			),
+			NOW
+		);
+		const blocked = await queuedGift();
+
+		await sendDueEntries(
+			deps(provider(() => failed('reconnect_needed', 'The refresh token was rejected.')).port),
+			NOW
+		);
+
+		// a 502 may have followed a post that landed; a dead credential posted nothing anywhere.
+		expect(await row(faulted)).toMatchObject({ attempts: 1, realmId: '4620816365' });
+		expect(await row(refused)).toMatchObject({ status: 'failed', realmId: '4620816365' });
+		expect(await row(blocked)).toMatchObject({ attempts: 0, realmId: null });
 	});
 
 	it('does not read a row whose wait is not over', async () => {

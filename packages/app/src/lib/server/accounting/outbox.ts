@@ -51,9 +51,11 @@ import type { Posting } from '../ledger/posting';
 // reversal's group is keyed on its refund-direction row (../donations/reverse.ts): the withdrawal
 // `('refund', row)` answers the gift `('payment', parent)`, and what puts a withdrawal back
 // `('payment', row)` or settles a lost dispute up `('adjustment', row)` answers the withdrawal. it
-// is owed exactly where that group holds a queue row, in any status — so a refund of a gift
-// QuickBooks was sent is sent after it whatever day it lands, and one of a gift QuickBooks never
-// got is never sent. a hand correction names no gift, so its own date is the whole of its rule.
+// is owed exactly where that group holds a queue row, in any status, that did not go to another
+// company — so a refund of a gift QuickBooks was sent is sent after it whatever day it lands, and
+// one of a gift QuickBooks never got, or that went to a company no longer connected
+// (`quickbooks_sync.realm_id`, written by ./deliver.ts), is never sent. a hand correction names no
+// gift, so its own date is the whole of its rule.
 //
 // **the date decides the queue whenever it moves, not only as a gift settles.** a gift is judged
 // by the date as it stands when its batch commits, and moving the date judges every gift again by
@@ -193,15 +195,28 @@ function answeredGroupId(sourceType: SQLWrapper, sourceId: SQLWrapper): SQL {
 			where ${withdrawal.sourceType} = ${OWED_KINDS.reversals} and ${withdrawal.sourceId} = ${sourceId}) end`;
 }
 
-/** whether the group a reversal's group answers holds a queue row, in any status. */
+/** the realm of the company connected now, or null where none is. */
+export const CONNECTED_REALM = sql`(select ${quickbooksConnection.realmId} from ${quickbooksConnection} where ${quickbooksConnection.id} = ${CONNECTION_ID})`;
+
+/**
+ * whether the queue row in scope is this company's: it names the company connected now, or none.
+ * a row names one once an attempt at it may have reached Intuit (./deliver.ts), and a row that
+ * reached another company is a record in books this connection does not hold — nothing that
+ * reverses it belongs here.
+ */
+const IN_THIS_COMPANY = sql`(${quickbooksSync.realmId} is null or ${quickbooksSync.realmId} = ${CONNECTED_REALM})`;
+
+/** whether the group a reversal's group answers holds this company's queue row, in any status. */
 function answeredIsQueued(sourceType: SQLWrapper, sourceId: SQLWrapper): SQL {
-	return sql`exists (select 1 from ${quickbooksSync} where ${quickbooksSync.entryGroupId} = ${answeredGroupId(sourceType, sourceId)})`;
+	return sql`exists (select 1 from ${quickbooksSync}
+		where ${quickbooksSync.entryGroupId} = ${answeredGroupId(sourceType, sourceId)} and ${IN_THIS_COMPANY})`;
 }
 
 /**
  * whether the queue row for `entryGroupId` is a reversal whose answered group's row is not yet
- * `sent`. a reversal that reached QuickBooks ahead of the gift it reverses takes money off a
- * customer the company's books have not credited yet.
+ * `sent` to the company connected now. a reversal that reached QuickBooks ahead of the gift it
+ * reverses takes money off a customer the company's books have not credited yet, and one whose
+ * gift went to another company has nothing in these books to reverse and is never taken.
  */
 export function awaitingWhatItAnswers(entryGroupId: typeof quickbooksSync.entryGroupId): SQL {
 	return sql`exists (select 1 from ${entryGroup} ${waiting}
@@ -209,7 +224,7 @@ export function awaitingWhatItAnswers(entryGroupId: typeof quickbooksSync.entryG
 			and ${keyedOnARefund(waiting.sourceId)}
 			and not exists (select 1 from ${quickbooksSync}
 				where ${quickbooksSync.entryGroupId} = ${answeredGroupId(waiting.sourceType, waiting.sourceId)}
-					and ${quickbooksSync.status} = 'sent'))`;
+					and ${quickbooksSync.status} = 'sent' and ${IN_THIS_COMPANY}))`;
 }
 
 /**
@@ -234,7 +249,9 @@ function pendingRow(entryGroupId: SQL | typeof entryGroup.id, createdAt: SQL | D
 			'created_at'
 		),
 		updatedAt: sql<number>`${now.getTime()}`.as('updated_at'),
-		leasedUntil: sql<null>`null`.as('leased_until')
+		leasedUntil: sql<null>`null`.as('leased_until'),
+		// written by the delivery once an attempt may have reached a company (./deliver.ts).
+		realmId: sql<null>`null`.as('realm_id')
 	};
 }
 
@@ -271,7 +288,7 @@ function keptWhateverTheDate(groupId: SQLWrapper, now: Date): SQL {
 /**
  * whether the entry group in scope is owed a queue row once the start date is `boundary`: a gift or
  * a correction from the date on, and a reversal's group where the gift it reverses holds a row —
- * from the date on, or on a row every move keeps.
+ * from the date on, or on a row every move keeps — and that row did not go to another company.
  *
  * judged through the gift rather than the group it answers, because a reversal is sent only once
  * that group's row is `sent` (./deliver.ts): a withdrawal that is tried, sent or held stands behind
@@ -280,7 +297,9 @@ function keptWhateverTheDate(groupId: SQLWrapper, now: Date): SQL {
 function owedFrom(boundary: SQL, now: Date): SQL {
 	const giftHoldsOne = sql`exists (select 1 from ${entryGroup} ${answered}
 		where ${answered.id} = ${giftBehind(entryGroup.sourceId)}
-			and (${answered.occurredAt} >= ${boundary} or ${keptWhateverTheDate(answered.id, now)}))`;
+			and (${answered.occurredAt} >= ${boundary} or ${keptWhateverTheDate(answered.id, now)})
+			and not exists (select 1 from ${quickbooksSync}
+				where ${quickbooksSync.entryGroupId} = ${answered.id} and not ${IN_THIS_COMPANY}))`;
 	return sql`${boundary} is not null and case
 		when ${keyedOnARefund(entryGroup.sourceId)} then ${giftHoldsOne}
 		else ${entryGroup.occurredAt} >= ${boundary} end`;
@@ -325,13 +344,16 @@ export async function moveQuickbooksStartAt(db: Db, startAt: Date, now: Date): P
 	]);
 }
 
-/** the owed records one side of a move touches, by kind, and the business dates they span. */
+/**
+ * the owed records one side of a move touches, by kind, and the business dates they span. the dates
+ * are the gifts' and corrections' own, null where the side holds neither: a reversal moves with its
+ * gift, whatever its own date.
+ */
 export type StartAtMoveSide = {
 	readonly gifts: number;
 	readonly corrections: number;
 	/** refunds and disputes, what put one back, and a lost dispute's settle-up. */
 	readonly reversals: number;
-	/** null where the side touches nothing. */
 	readonly earliest: Date | null;
 	readonly latest: Date | null;
 };
@@ -361,8 +383,14 @@ const SIDE_FIELDS = {
 	reversals: sql<number>`count(case when ${keyedOnARefund(entryGroup.sourceId)} then 1 end)`.as(
 		'reversals'
 	),
-	earliest: sql`min(${entryGroup.occurredAt})`.mapWith(entryGroup.occurredAt).as('earliest'),
-	latest: sql`max(${entryGroup.occurredAt})`.mapWith(entryGroup.occurredAt).as('latest')
+	earliest:
+		sql`min(case when not ${keyedOnARefund(entryGroup.sourceId)} then ${entryGroup.occurredAt} end)`
+			.mapWith(entryGroup.occurredAt)
+			.as('earliest'),
+	latest:
+		sql`max(case when not ${keyedOnARefund(entryGroup.sourceId)} then ${entryGroup.occurredAt} end)`
+			.mapWith(entryGroup.occurredAt)
+			.as('latest')
 };
 
 const TOUCHES_NOTHING: StartAtMoveSide = {

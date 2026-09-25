@@ -282,6 +282,7 @@ function startAtSide(side: StartAtMoveSide): QuickbooksStartAtSide {
 	return {
 		gifts: side.gifts,
 		corrections: side.corrections,
+		reversals: side.reversals,
 		earliest: side.earliest?.toISOString() ?? null,
 		latest: side.latest?.toISOString() ?? null
 	};

@@ -227,12 +227,18 @@ export const QUICKBOOKS_PRESSES = [
 export type QuickbooksPress = (typeof QUICKBOOKS_PRESSES)[number];
 
 /**
- * the owed records one side of a start-date move touches: gifts and corrections counted apart, and
- * the business dates they span as ISO-8601 instants, both null where the side touches nothing.
+ * the owed records one side of a start-date move touches: gifts, corrections and reversals counted
+ * apart, and the business dates the gifts and corrections span as ISO-8601 instants, both null
+ * where the side touches neither.
  */
 export interface QuickbooksStartAtSide {
 	readonly gifts: number;
 	readonly corrections: number;
+	/**
+	 * refunds and disputes, what put one back, and a lost dispute's settle-up. each moves with the
+	 * gift it reverses rather than by its own date, so its date is in neither bound.
+	 */
+	readonly reversals: number;
 	readonly earliest: string | null;
 	readonly latest: string | null;
 }

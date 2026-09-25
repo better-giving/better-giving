@@ -1,6 +1,8 @@
 import { applyD1Migrations, env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { POSTING_ACCOUNTS } from './accounts';
+import { post, postingStatements } from '../ledger/posting';
+import { donationRevenueAccount, POSTING_ACCOUNTS, postableId } from './accounts';
+import { createDb } from './client';
 
 // the newest migration, applied over a database that already holds gifts.
 //
@@ -23,6 +25,8 @@ const CHARGE_ID = '019fb300-0000-7000-8000-000000000004';
 const ZAPIER_KEY = `bgz_${'AZaz09-_'.repeat(5)}abc`;
 const OPEN_ZAP = '019fb300-0000-7000-8000-000000000005';
 const ENDED_ZAP = '019fb300-0000-7000-8000-000000000006';
+
+const REALM = '4620816365';
 
 const db = () => env.UNMIGRATED_DB;
 
@@ -104,15 +108,17 @@ async function seed() {
 				        (?, 'new_donor', 'https://hooks.zapier.com/hooks/standard/1/ended/', 5, 'unsubscribed', 0, 5)`
 			)
 			.bind(OPEN_ZAP, ENDED_ZAP),
-		db().prepare(
-			`insert into quickbooks_connection
+		db()
+			.prepare(
+				`insert into quickbooks_connection
 			   (id, realm_id, company_name, access_token, access_token_expires_at, refresh_token,
 			    refresh_token_expires_at, income_account_id, income_account_name, fee_account_id,
 			    fee_account_name, stripe_balance_account_id, stripe_balance_account_name, start_at,
 			    created_at, updated_at)
-			 values ('quickbooks', '4620816365', 'Riverside Shelter', 'acc', 3600000, 'ref', 7,
+			 values ('quickbooks', ?, 'Riverside Shelter', 'acc', 3600000, 'ref', 7,
 			         '79', 'Donations', '80', 'Merchant fees', '36', 'Stripe balance', 6, 0, 0)`
-		)
+			)
+			.bind(REALM)
 	];
 	// a row of each nullable shape `payment` holds — a processor with its id, staff entry with and
 	// without a provider, a refund — so a rebuild's copy step has every combination to lose.
@@ -151,6 +157,43 @@ async function seed() {
 		)
 		.bind(OPEN_ZAP, OPEN_ZAP, ENDED_ZAP)
 		.run();
+	// a QuickBooks delivery row in each state a run can leave one: sent, taken by a run and not
+	// sent (a send whose answer never came keeps its attempt), and never taken.
+	for (const shape of ['sent', 'tried', 'untaken'] as const) {
+		SYNC[shape] = await postEntryGroup(`don_qb_${shape}`);
+	}
+	await db()
+		.prepare(
+			`insert into quickbooks_sync
+			   (entry_group_id, status, attempts, remote_id, created_at, updated_at)
+			 values (?, 'sent', 1, '1043', 0, 1),
+			        (?, 'pending', 2, null, 0, 1),
+			        (?, 'pending', 0, null, 0, 0)`
+		)
+		.bind(SYNC.sent, SYNC.tried, SYNC.untaken)
+		.run();
+}
+
+const SYNC = { sent: '', tried: '', untaken: '' };
+
+/**
+ * a journal entry for a delivery row to hang off, posted through `post()`: ../ledger/sole-writer.spec.ts
+ * refuses a direct write to the ledger tables anywhere outside the ledger module.
+ */
+async function postEntryGroup(sourceId: string): Promise<string> {
+	const unmigrated = createDb(db());
+	const posting = post({
+		sourceType: 'donation',
+		sourceId,
+		currency: 'USD',
+		occurredAt: new Date(0),
+		lines: [
+			{ accountId: postableId('bankCash'), amountMinor: 10_000 },
+			{ accountId: donationRevenueAccount(true), amountMinor: -10_000 }
+		]
+	});
+	await unmigrated.batch(postingStatements(unmigrated, posting));
+	return posting.group.id!;
 }
 
 let migrated: Promise<{ before: Map<string, Row[]>; after: Map<string, Row[]> }> | undefined;
@@ -220,7 +263,12 @@ describe('the newest migration keeps every row the database already held', () =>
 				'evt-sent',
 				'evt-ended'
 			]);
-			expect(after.get('quickbooks_connection')?.map((r) => r.realm_id)).toEqual(['4620816365']);
+			expect(after.get('quickbooks_connection')?.map((r) => r.realm_id)).toEqual([REALM]);
+			expect(after.get('quickbooks_sync')?.map((r) => r.entry_group_id)).toEqual([
+				SYNC.sent,
+				SYNC.tried,
+				SYNC.untaken
+			]);
 		}
 	);
 
@@ -289,6 +337,35 @@ describe('0010 takes a gift_refunded Zap and a dispute on a database already tak
 	});
 });
 
+// what 0011 is for: a delivery row already sent or taken names the company connected when the
+// column arrived, and one never taken names none.
+describe('0011 records the company a row already sent went to', () => {
+	const squashed = env.TEST_MIGRATIONS.length < 2;
+	let realmOf: (entryGroupId: string) => unknown;
+
+	beforeAll(async () => {
+		if (squashed) return;
+		const { after } = await migrateOverSeed();
+		const rows = after.get('quickbooks_sync') ?? [];
+		realmOf = (id) => rows.find((r) => r.entry_group_id === id)?.realm_id;
+	});
+
+	it.skipIf(squashed)('names the connected company on a row it sent', () => {
+		expect(realmOf(SYNC.sent)).toBe(REALM);
+	});
+
+	it.skipIf(squashed)(
+		'names it on a row a run took and has not sent, which may have reached it',
+		() => {
+			expect(realmOf(SYNC.tried)).toBe(REALM);
+		}
+	);
+
+	it.skipIf(squashed)('names none on a row no run has taken', () => {
+		expect(realmOf(SYNC.untaken)).toBeNull();
+	});
+});
+
 // a key minted before 0007 stored it has nothing for the console to show, so 0008 drops its row and
 // ends every Zap on it the way a replace ends them. the seed above holds a stored key, so this
 // clears it and runs 0008 again, one batch, the way wrangler applies a file.
@@ -343,5 +420,35 @@ describe('0008 drops a key that was never stored, and ends every Zap on it', () 
 			status: 'sent',
 			updated_at: 1
 		});
+	});
+});
+
+// a connection moved to another company whose accounts nobody has picked has been sent nothing, so
+// the rows already sent went to the company it left. this marks the seeded connection moved and
+// runs 0011's backfill again, alone — its `ADD COLUMN` has already run and cannot run twice.
+describe('0011 names no company on a sent row while the connection is moved', () => {
+	const squashed = env.TEST_MIGRATIONS.length < 2;
+	let realms: unknown[];
+
+	beforeAll(async () => {
+		if (squashed) return;
+		await migrateOverSeed();
+		const backfill = env.TEST_MIGRATIONS.find(
+			(m) => m.name === '0011_quickbooks_sync_realm.sql'
+		)!.queries.filter((q) => q.startsWith('UPDATE'));
+		expect(backfill).toHaveLength(1);
+		await db().batch([
+			db().prepare(`update quickbooks_connection set moved_at = 6`),
+			db().prepare(`update quickbooks_sync set realm_id = null`),
+			...backfill.map((q) => db().prepare(q))
+		]);
+		const { results } = await db()
+			.prepare(`select realm_id from quickbooks_sync order by rowid`)
+			.all<Row>();
+		realms = results.map((r) => r.realm_id);
+	});
+
+	it.skipIf(squashed)('leaves every row naming none', () => {
+		expect(realms).toEqual([null, null, null]);
 	});
 });

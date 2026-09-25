@@ -21,11 +21,13 @@ import { defaultAccounts } from './quickbooks-accounts';
 //
 // every read and write of `quickbooks_connection` is here, so the table object never leaves this
 // file — the same boundary ../donations/queries.ts draws around `donation` and ../ledger/queries.ts
-// around the two ledger tables. the one exception is deliberate, and it is one column:
+// around the two ledger tables. the one exception is deliberate, and it is two columns:
 // ../accounting/outbox.ts reads `start_at` on the settlement path, because taking a whole
 // connection there would put a credential on the gift path, and it writes `start_at` too, because
 // moving the date re-queues gifts and the date has to land in the same `batch()` as the queue rows
-// it decides.
+// it decides. it reads `realm_id` inside the same statements (`CONNECTED_REALM`), and
+// ./deliver.ts writes that realm onto a queue row, for the same reason: which company a row's
+// record reached is judged by the statement that acts on it.
 //
 // **nothing here touches `quickbooks_sync`.** the outbox is written by the posting that owes it and
 // by a move of the start date (./outbox.ts), and read by the delivery that sends it; a connection is
