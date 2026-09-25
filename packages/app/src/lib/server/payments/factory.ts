@@ -16,6 +16,7 @@ import {
 	createPaypalProvider,
 	PAYPAL_DEFAULT_API_URL,
 	paypalApiOrigin,
+	paypalSdkUrl,
 	unusablePaypalAddress
 } from './paypal';
 import { createStripeProvider } from './stripe';
@@ -67,6 +68,12 @@ type Processor = {
 	 * is not configured, and never on `configured` — told apart only by the clause.
 	 */
 	readonly unusable?: (env: ConfigEnv) => string | null;
+	/**
+	 * the script the donor's page starts this processor's SDK from, for `Provider.sdkUrl` in
+	 * packages/form/src/v1.ts, or `null` where the entry names none and the page loads its adapter's
+	 * own default.
+	 */
+	readonly sdkUrl?: (env: ConfigEnv) => string | null;
 };
 
 /**
@@ -150,7 +157,11 @@ const PROCESSORS: Readonly<Record<ProcessorName, Processor>> = Object.freeze({
 		unusable: (env) =>
 			env.PAYPAL_API_URL === undefined || paypalApiOrigin(env.PAYPAL_API_URL) !== null
 				? null
-				: unusablePaypalAddress(env.PAYPAL_API_URL)
+				: unusablePaypalAddress(env.PAYPAL_API_URL),
+		// null for a host with no `api-m.` label: the entry then names no script and the donor's page
+		// loads `PAYPAL_CORE_URL` (packages/form/src/embed/paypal.ts), which refuses keys issued at
+		// any other address.
+		sdkUrl: (env) => paypalSdkUrl(env.PAYPAL_API_URL ?? PAYPAL_DEFAULT_API_URL)
 	},
 	chariot: {
 		requires: ['CHARIOT_API_KEY'],
@@ -319,7 +330,8 @@ export function servedProcessors(source: unknown): ServedProcessors {
 		const publishableKey = env[browserVar];
 		if (publishableKey === undefined) return [];
 		if (!configuredFor(env, name)) return [];
-		return [{ name, publishableKey }];
+		const sdkUrl = PROCESSORS[name].sdkUrl?.(env) ?? null;
+		return [sdkUrl === null ? { name, publishableKey } : { name, publishableKey, sdkUrl }];
 	});
 
 	const configured = PROCESSOR_NAMES.filter((name) => configuredFor(env, name));

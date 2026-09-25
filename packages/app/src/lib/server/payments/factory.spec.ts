@@ -404,6 +404,44 @@ describe('PayPal', () => {
 		expect(served.providers).toEqual([]);
 		expect(served.shortfall).toContain('`PAYPAL_API_URL`');
 	});
+
+	// the donor's page has to start the SDK against the address the keys belong to, so the served
+	// entry names the core script derived from it.
+	it('serves the script at the address the deployment holds', () => {
+		const served = servedProcessors({
+			...PAYPAL_CONFIGURED,
+			PAYPAL_API_URL: 'https://api-m.paypal.example.test'
+		});
+
+		expect(served.providers).toEqual([
+			{
+				name: 'paypal',
+				publishableKey: 'notarealclientid',
+				sdkUrl: 'https://www.paypal.example.test/web-sdk/v6/core'
+			}
+		]);
+	});
+
+	it('serves PayPal’s own script where no address is set', () => {
+		expect(servedProcessors(PAYPAL_CONFIGURED).providers).toEqual([
+			{
+				name: 'paypal',
+				publishableKey: 'notarealclientid',
+				sdkUrl: 'https://www.paypal.com/web-sdk/v6/core'
+			}
+		]);
+	});
+
+	// no script can be derived from a host without the `api-m.` label, so the entry names none and
+	// the donor's page starts its own default one.
+	it('names no script for an address it cannot derive one from', () => {
+		const served = servedProcessors({
+			...PAYPAL_CONFIGURED,
+			PAYPAL_API_URL: 'https://paypal-api.example.test'
+		});
+
+		expect(served.providers).toEqual([{ name: 'paypal', publishableKey: 'notarealclientid' }]);
+	});
 });
 
 describe('Chariot', () => {

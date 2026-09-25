@@ -826,7 +826,11 @@ describe('publishedConfig — the config it serves', () => {
 		});
 
 		expect(result.ok && result.config.providers).toEqual([
-			{ name: 'paypal', publishableKey: 'notarealclientid' }
+			{
+				name: 'paypal',
+				publishableKey: 'notarealclientid',
+				sdkUrl: 'https://www.paypal.com/web-sdk/v6/core'
+			}
 		]);
 	});
 
