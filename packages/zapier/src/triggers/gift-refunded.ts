@@ -6,6 +6,6 @@ export default hookTrigger({
 	noun: 'Refund',
 	label: 'Gift Refunded',
 	description:
-		'Triggers when money from a gift goes back to the donor: a refund, or a dispute the organisation lost.',
+		'Triggers when money from a gift goes back to the donor: a refund (source "refund") or a dispute the organisation lost (source "dispute"). More sources may be added, so branch on the ones you know and let others pass; a source’s meaning never narrows.',
 	sample
 });

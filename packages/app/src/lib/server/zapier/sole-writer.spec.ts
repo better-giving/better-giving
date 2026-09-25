@@ -75,7 +75,7 @@ describe('zapier/ is the only writer of zapier_delivery', () => {
 		}
 		expect(
 			offenders,
-			`these modules write zapier_delivery directly: ${offenders.join(', ')}. only src/lib/server/zapier/events.ts (a settled gift's rows, in its posting's batch), deliver.ts (a send's outcome) and subscriptions.ts (an ended subscription's rows dropped) may. a money event owes its Zaps through zapierStatements() or giftRefundedStatements(), and nowhere else.`
+			`these modules write zapier_delivery directly: ${offenders.join(', ')}. only src/lib/server/zapier/events.ts (a settled gift's or refund's rows, in its posting's batch), deliver.ts (a send's outcome) and subscriptions.ts (an ended subscription's rows dropped) may. a money event owes its Zaps through zapierStatements() or giftRefundedStatements(), and nowhere else.`
 		).toEqual([]);
 	});
 

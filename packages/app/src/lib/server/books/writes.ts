@@ -9,8 +9,8 @@ import { giftRefundedStatements, zapierStatements } from '../zapier/events';
 // the one place a posting becomes everything its batch owes: the entry group and its lines, the
 // QuickBooks queue row (../accounting/outbox.ts), and the rows each listening Zap is owed
 // (../zapier/events.ts). a writer that puts money into the books takes its statements from here and
-// from nowhere else — ./sole-composer.spec.ts fails on an import of those three builders outside
-// this directory.
+// from nowhere else — ./sole-composer.spec.ts fails on an import of those modules' builders
+// outside this directory.
 //
 // what it hides from a writer: the foreign-key order, the null fee, which postings owe QuickBooks
 // and under which gate, and which Zap triggers a money event fires.

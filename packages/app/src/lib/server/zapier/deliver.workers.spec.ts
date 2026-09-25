@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import { contact, donation, payment, type ZapierTrigger } from '../db/schema';
+import { contact, dispute, donation, payment, type ZapierTrigger } from '../db/schema';
 import { sendDueZapierEvents } from './deliver';
 import { giftRefundedStatements, zapierStatements } from './events';
 import { subscribe, type SubscribeRequest, type Subscribed } from './subscriptions';
@@ -85,8 +85,11 @@ async function settle(): Promise<{ paymentId: string; contactId: string }> {
 	return { paymentId, contactId };
 }
 
-/** $20 of `gift` refunded, its row and its fan-out committed together as ../donations/reverse.ts does. */
-async function refund(gift: { paymentId: string }): Promise<string> {
+/**
+ * $20 of `gift` refunded — or withdrawn by a dispute the organisation lost, where `lost` — its rows
+ * and its fan-out committed together as ../donations/reverse.ts does.
+ */
+async function refund(gift: { paymentId: string }, lost = false): Promise<string> {
 	const refundId = uuidv7();
 	const [parent] = await db
 		.select({ donationId: payment.donationId })
@@ -105,6 +108,15 @@ async function refund(gift: { paymentId: string }): Promise<string> {
 			occurredAt: new Date('2026-09-12T08:30:00.000Z'),
 			parentPaymentId: gift.paymentId
 		}),
+		...(lost
+			? [
+					db.insert(dispute).values({
+						paymentId: refundId,
+						outcome: 'lost',
+						closedAt: new Date('2026-09-30T10:00:00.000Z')
+					})
+				]
+			: []),
 		giftRefundedStatements(db, refundId)
 	]);
 	return refundId;
@@ -179,6 +191,7 @@ describe('sendDueZapierEvents()', () => {
 					amount: '20.00',
 					amount_minor: 2_000,
 					currency: 'USD',
+					source: 'refund',
 					gift: expect.objectContaining({
 						id: gift.paymentId,
 						amount: '50.00',
@@ -188,6 +201,31 @@ describe('sendDueZapierEvents()', () => {
 				}
 			}
 		]);
+	});
+
+	it('posts a dispute the organisation lost as a dispute, not a refund', async () => {
+		const gift = await settle();
+		await listen('gift_refunded');
+		const withdrawalId = await refund(gift, true);
+		const zapier = hooksAnswering();
+
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000));
+
+		expect(zapier.posts.map((p) => [p.body.id, p.body.source])).toEqual([
+			[withdrawalId, 'dispute']
+		]);
+	});
+
+	it('still posts a refund queued before it stopped standing, as it happened', async () => {
+		const gift = await settle();
+		await listen('gift_refunded');
+		const refundId = await refund(gift);
+		await db.update(payment).set({ status: 'cancelled' }).where(eq(payment.id, refundId));
+		const zapier = hooksAnswering();
+
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000));
+
+		expect(zapier.posts.map((p) => [p.body.id, p.body.amount])).toEqual([[refundId, '20.00']]);
 	});
 
 	it('still posts a gift to its new_gift hook when the gift was refunded while its row waited', async () => {

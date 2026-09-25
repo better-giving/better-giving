@@ -7,6 +7,7 @@ import type { Db } from '../db/client';
 import { refundStands } from './events';
 import {
 	contact,
+	dispute,
 	donation,
 	form,
 	payment,
@@ -16,13 +17,14 @@ import {
 	type ZapierTrigger
 } from '../db/schema';
 
-// what a Zap is handed about a gift — the public contract every field a user maps into a Zap is
-// read from, and the one render both the live send and the sample list go through.
+// what a Zap is handed about a gift or a refund of one — the public contract every field a user
+// maps into a Zap is read from, and the one render both the live send and the sample list go
+// through.
 //
 // **the keys are permanent.** each is a field some organisation's Zap has mapped, so a rename
 // breaks that Zap silently on its next run: add a key, never rename or drop one. every key is
-// present on every event, null where the gift has nothing to say, because a Zap maps the fields
-// the sample showed it and a key missing from a live event is a blank in whatever it writes.
+// present on every event, null where the gift or refund has nothing to say, because a Zap maps the
+// fields the sample showed it and a key missing from a live event is a blank in whatever it writes.
 //
 // the tribute's notify name and address are not here: they name a third person who gave nothing
 // and asked for nothing, and the gift reaches a Zap without them.
@@ -73,18 +75,35 @@ export function donorEventOf(gift: GiftEvent): DonorEvent {
 }
 
 /**
+ * what sent a gift's money back: `refund`, one the organisation made, or `dispute`, one the donor's
+ * bank decided against the organisation. **the set may gain values**: a Zap branches on the values
+ * it knows and lets any other pass, and a value's meaning never narrows, so a value is never split
+ * into two later. the trigger's own description in packages/zapier says the same to a Zap's author.
+ */
+export type RefundSource = 'refund' | 'dispute';
+
+/**
  * one refund, or one dispute lost, as a `gift_refunded` Zap receives it: what left, and the gift it
  * left. `id` is the refund's own payment id, stable across retries and distinct from the gift's, so
  * a second refund of one gift is a second event.
  */
 export type RefundEvent = {
 	readonly id: string;
-	/** when the money left the organisation, ISO 8601 in UTC. */
+	/**
+	 * when the money left the organisation, ISO 8601 in UTC. for a refund, when it was made. for a
+	 * dispute, when it opened and withdrew the money, which may be weeks before it was lost and this
+	 * event sent; where no opening was recorded, when it closed.
+	 */
 	readonly occurred_at: string;
-	/** what this refund took, in `amount`'s notation on `GiftEvent`. */
+	/**
+	 * what left, in `amount`'s notation on `GiftEvent`. for a refund, what it gave back. for a
+	 * dispute, what the processor took as the close left it, which is less than the opening withdrew
+	 * where the close took less.
+	 */
 	readonly amount: string;
 	readonly amount_minor: number;
 	readonly currency: string;
+	readonly source: RefundSource;
 	/** the gift the money came out of, as a `new_gift` Zap receives it. */
 	readonly gift: GiftEvent;
 };
@@ -137,16 +156,20 @@ export async function readRefundEvents(
 	return refundEventsOf(db, refunds);
 }
 
+/** a refund row with a `dispute` row on it is a dispute's withdrawal; any other is a refund. */
 function selectRefunds(db: Db) {
+	const disputed = alias(dispute, 'disputed');
 	return db
 		.select({
 			id: payment.id,
 			giftId: payment.parentPaymentId,
 			occurredAt: payment.occurredAt,
 			amountMinor: payment.amountMinor,
-			currency: payment.currency
+			currency: payment.currency,
+			source: sql<RefundSource>`case when ${disputed.paymentId} is null then 'refund' else 'dispute' end`
 		})
-		.from(payment);
+		.from(payment)
+		.leftJoin(disputed, eq(disputed.paymentId, payment.id));
 }
 
 type RefundRow = Awaited<ReturnType<ReturnType<typeof selectRefunds>['all']>>[number];
@@ -169,6 +192,7 @@ async function refundEventsOf(
 			amount: majorText(refund.amountMinor, refund.currency),
 			amount_minor: refund.amountMinor,
 			currency: refund.currency,
+			source: refund.source,
 			gift
 		});
 	}
@@ -213,6 +237,7 @@ export const SAMPLE_REFUND: RefundEvent = {
 	amount: '20.00',
 	amount_minor: 2_000,
 	currency: 'USD',
+	source: 'refund',
 	gift: SAMPLE_GIFT
 };
 

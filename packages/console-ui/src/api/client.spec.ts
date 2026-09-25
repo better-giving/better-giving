@@ -3,6 +3,7 @@ import {
 	chariotRun,
 	consoleVersion,
 	levelWallets,
+	readZapier,
 	repairWebhook,
 	saveNowpayments,
 	startChariotSetup,
@@ -203,5 +204,36 @@ describe('the press that repairs where payment notices reach the deployment', ()
 		expect(path).toBe('/api/deployment/webhook-repair');
 		expect(init?.method).toBe('POST');
 		expect(init?.body).toBeUndefined();
+	});
+});
+
+describe('the reading of where the Zapier key stands', () => {
+	const reading = (listening: Record<string, number>) => ({
+		kind: 'read',
+		report: {
+			key: null,
+			listening,
+			deliveries: { waiting: 0, failed: 0, oldestWaitingAt: null }
+		}
+	});
+
+	it('counts no Zap on a trigger a deployment older than this console does not report', async () => {
+		answering(200, reading({ newGift: 2, newDonor: 1 }));
+
+		const read = await readZapier();
+
+		expect(read.kind === 'read' && read.report.listening).toEqual({
+			newGift: 2,
+			newDonor: 1,
+			giftRefunded: 0
+		});
+	});
+
+	it('keeps every count a deployment does report', async () => {
+		answering(200, reading({ newGift: 2, newDonor: 1, giftRefunded: 3 }));
+
+		const read = await readZapier();
+
+		expect(read.kind === 'read' && read.report.listening.giftRefunded).toBe(3);
 	});
 });

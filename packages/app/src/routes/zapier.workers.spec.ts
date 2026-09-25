@@ -243,18 +243,6 @@ describe('a subscribe this deployment refuses', () => {
 		expect(await openSubscriptions()).toBe(0);
 	});
 
-	it('answers gift_refunded with the live refund event, never a gift', async () => {
-		const giftId = await settledGift();
-		const refundId = await refundOf(giftId);
-		const live = (await readRefundEvents(db, [refundId])).get(refundId);
-		if (live === undefined) throw new Error('the refund rendered no event');
-
-		const response = await samplesOf('gift_refunded');
-
-		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ data: [live] });
-	});
-
 	it('refuses a trigger it does not have, listing the ones it does', async () => {
 		const response = await subscribeWith({ trigger: 'new_refund', hook_url: HOOK });
 
@@ -298,6 +286,18 @@ describe('the samples the Zap editor shows', () => {
 		const { data } = (await response.json()) as { data: unknown[] };
 		expect(data).toHaveLength(1);
 		expect(fieldsOf(data[0])).toEqual(fieldsOf(eventOf(live)));
+	});
+
+	it('answers gift_refunded with the live refund event, never a gift', async () => {
+		const giftId = await settledGift();
+		const refundId = await refundOf(giftId);
+		const live = (await readRefundEvents(db, [refundId])).get(refundId);
+		if (live === undefined) throw new Error('the refund rendered no event');
+
+		const response = await samplesOf('gift_refunded');
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ data: [live] });
 	});
 
 	it('refuses a trigger it does not have, listing the ones it does', async () => {

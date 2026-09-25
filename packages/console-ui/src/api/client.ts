@@ -30,6 +30,7 @@ import type {
 	ZapierPressed,
 	ZapierRead
 } from './types';
+import type { ZapierReport } from '@better-giving/operator/console/zapier';
 
 // the console's own process, reached from the page it serves.
 //
@@ -229,7 +230,19 @@ export const pressQuickbooks = (body: QuickbooksPressBody): Promise<QuickbooksPr
  * deliveries are going. every reading carries the key, or null for a key made before the
  * deployment stored it.
  */
-export const readZapier = (): Promise<ZapierRead> => ask('/deployment/zapier', 'GET');
+export async function readZapier(): Promise<ZapierRead> {
+	const read = await ask<ZapierRead>('/deployment/zapier', 'GET');
+	if (read.kind !== 'read') return read;
+	// a deployment older than this console reports no count for a trigger it does not have yet, and
+	// the binary passes `listening` through as it came.
+	const { listening } = read.report;
+	return {
+		...read,
+		report: { ...read.report, listening: { ...NO_ZAPS_LISTENING, ...listening } }
+	};
+}
+
+const NO_ZAPS_LISTENING: ZapierReport['listening'] = { newGift: 0, newDonor: 0, giftRefunded: 0 };
 
 /** makes the key, or replaces it; the answer carries the new key. */
 export const pressZapier = (body: ZapierPressBody): Promise<ZapierPressed> =>
