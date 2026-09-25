@@ -26,6 +26,15 @@ import type {
 // in Chariot's dashboard, which reaches this deployment as a `grant.updated` delivery. Chariot holds
 // none of the money and reports no payout.
 //
+// **Chariot reports no reversal of a grant, so no delivery is read as one.** a fund's money is no
+// longer the donor's: "the concept of refunds after the money leaves the DAF, does not apply", and a
+// donor cancels before the fund pays, if at all (https://docs.givechariot.com/v2026-04-01/guides/dafpay/integrating-dafpay/transactions,
+// "Cancellations & Refunds"; its source is `fern/versions/v2026-04-01/pages/integrating-dafpay/transactions.mdx`
+// in the openapi repository below). the reference has no refund or dispute object and no event
+// category for one, so `verifyEvent` yields no `reversal` and `readReversal` answers `unsupported`.
+// a grant marked received and later read as cancelled is `settleDelivery`'s
+// (../donations/settle.ts): it changes nothing and tells an operator.
+//
 // **it answers the one-off grant, the delivery and the account read, and refuses everything else**
 // as `unsupported`: a gift that repeats (one-time only — `takesRepeatingGifts` in ./provider.ts
 // keeps Chariot out of every repeating-gift read, cadences included), the listener arms (the
@@ -397,10 +406,10 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 		createRecurringGift: async () => unsupported(NO_REPEATING_GRANTS),
 		cancelRecurringGift: async () => unsupported(NO_REPEATING_GRANTS),
 		readRecurringGift: async () => unsupported(NO_REPEATING_GRANTS),
-		// no Chariot event is read into a reversal yet (`verifyEvent` above), so nothing reaches this.
+		// `verifyEvent` yields no reversal (the header), so nothing reaches this.
 		readReversal: async () =>
 			unsupported(
-				'This release reads no reversal of a Chariot grant. Nothing was asked of Chariot.'
+				'Chariot reports no refund or dispute on a grant, so there is no reversal to read. Nothing was asked of Chariot.'
 			),
 		listWebhookEndpoints: async () => unsupported(NO_LISTENER_ARMS),
 		registerWebhookEndpoint: async () => unsupported(NO_LISTENER_ARMS),

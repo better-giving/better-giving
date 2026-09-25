@@ -570,6 +570,45 @@ describe('verifyEvent — the signed delivery', () => {
 
 		expect(result.ok && result.value.kind).toBe('ignored');
 	});
+
+	// every `EventCategory` in `specs/2026-04-01.yaml` (https://github.com/chariot-giving/chariot-openapi),
+	// with the object each is about. none of them is a refund or a dispute, so none may read as a reversal.
+	it.each([
+		['grant.created', 'grant', 'ignored'],
+		['grant.updated', 'grant', 'settlement'],
+		['unintegrated_grant.created', 'unintegrated_grant', 'ignored'],
+		['unintegrated_grant.updated', 'unintegrated_grant', 'ignored'],
+		['donor_account.created', 'donor_account', 'ignored'],
+		['donor_account.updated', 'donor_account', 'ignored'],
+		['authorization_token.created', 'authorization_token', 'ignored'],
+		['authorization_token.updated', 'authorization_token', 'ignored'],
+		['grant_request.created', 'grant_request', 'ignored'],
+		['grant_request.updated', 'grant_request', 'ignored'],
+		['disbursement.created', 'disbursement', 'ignored'],
+		['disbursement.updated', 'disbursement', 'ignored'],
+		['inbound_transfer.created', 'inbound_transfer', 'ignored'],
+		['inbound_transfer.updated', 'inbound_transfer', 'ignored'],
+		['donation.created', 'donation', 'ignored'],
+		['donation.updated', 'donation', 'ignored'],
+		['deposit.created', 'deposit', 'ignored'],
+		['deposit.updated', 'deposit', 'ignored'],
+		['verification_request.created', 'verification_request', 'ignored'],
+		['verification_request.updated', 'verification_request', 'ignored']
+	])('reads a documented %s delivery as no reversal', async (category, objectType, kind) => {
+		const body = JSON.stringify({
+			id: 'event_789',
+			created_at: '2024-01-19T18:48:56Z',
+			category,
+			associated_object_type: objectType,
+			associated_object_id: 'object_1'
+		});
+
+		const result = await createChariotProvider(CREDENTIALS).verifyEvent(
+			delivery(`t=${T},v1=${sign(T, body)}`, body)
+		);
+
+		expect(result.ok && result.value.kind).toBe(kind);
+	});
 });
 
 describe('what the account is approved for', () => {
@@ -610,7 +649,7 @@ describe('what the account is approved for', () => {
 	});
 });
 
-/** a delivery about money leaving a settled grant, which no Chariot delivery is read into yet. */
+/** a delivery about money leaving a settled grant, which no Chariot delivery is read into. */
 const REVERSAL_NOTICE = {
 	id: 'evt_1',
 	kind: 'reversal',
