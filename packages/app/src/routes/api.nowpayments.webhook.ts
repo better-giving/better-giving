@@ -39,6 +39,7 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 		{
 			db: context.get(database),
 			provider: processors.for('nowpayments'),
+			processors,
 			email: createEmailProvider(env),
 			payableCoins: () => cachedCoins(processors, new URL(request.url).origin)
 		},
@@ -79,8 +80,9 @@ function methodNotAllowed(method: string): Response {
  *   nothing in the body may be believed.
  * - 503: `NOWPAYMENTS_IPN_SECRET` not set, or a verified IPN whose valuation or payment read did not
  *   answer, or a write the database refused. a payment the key cannot read — a key replaced since it
- *   was made — settles from the verified IPN instead of waiting. repeating it is safe:
- *   `entry_group_source_idx` and `payment_provider_txn_idx` in $lib/server/db/schema.ts make the
- *   identical write a no-op.
+ *   was made — settles from the verified IPN instead of waiting. repeating it is safe: two indexes in
+ *   $lib/server/db/schema.ts make the identical write a no-op — `entry_group_source_idx` refuses a
+ *   posting already made, and `payment_provider_txn_idx` the payment row a repeat deposit or a
+ *   reversal writes.
  */
 const FAILURE_STATUS = { unverified: 400, incomplete: 503 } as const;

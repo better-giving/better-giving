@@ -19,6 +19,7 @@ import type {
 import { recordDonation } from './record';
 import type { SettleDeps, SettleOutcome } from './delivery';
 import { failureIsNewsToTheDonor, settleDelivery, settleTransaction } from './settle';
+import { soleProcessor } from '../payments/processors.testing';
 
 // the settlement half, against a real D1: what a verified delivery does to the payment row and to
 // the books.
@@ -290,7 +291,8 @@ function brittleMailer(faultsOn: (message: EmailMessage) => boolean) {
 const DELIVERY = { body: '{"id":"evt_1"}', headers: { 'stripe-signature': 't=1,v1=abc' } };
 
 function deps(over: Partial<SettleDeps> = {}): SettleDeps {
-	return { db, provider: provider(), email: mailer().port, ...over };
+	const port = over.provider ?? provider();
+	return { db, provider: port, processors: soleProcessor(port), email: mailer().port, ...over };
 }
 
 /** the company connected, taking everything posted on or after `startAt`. */

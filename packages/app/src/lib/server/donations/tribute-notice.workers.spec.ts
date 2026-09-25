@@ -7,6 +7,7 @@ import type { EmailMessage, EmailProvider } from '../email/provider';
 import type { PaymentProvider } from '../payments/provider';
 import type { SettleDeps } from './delivery';
 import { sendTributeNotice } from './tribute-notice';
+import { soleProcessor } from '../payments/processors.testing';
 
 // the one sender of the tribute notice, against a real D1: who it writes to, what it stamps, and
 // what a second call for a gift already notified does.
@@ -83,7 +84,12 @@ const provider = new Proxy({} as PaymentProvider, {
 	}
 });
 
-const deps = (email: EmailProvider): SettleDeps => ({ db, provider, email });
+const deps = (email: EmailProvider): SettleDeps => ({
+	db,
+	provider,
+	processors: soleProcessor(provider),
+	email
+});
 
 const target = (over: Partial<Parameters<typeof sendTributeNotice>[1]> = {}) => ({
 	donationId: DONATION_ID,

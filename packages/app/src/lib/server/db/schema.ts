@@ -576,6 +576,11 @@ export const account = sqliteTable(
  * than caused by a record, so its `source_id` is minted for it. the grain of all five is on
  * `entry_group_source_idx` below, which is the constraint it is part of.
  *
+ * a dispute adds no member. what it withdraws is `'refund'` on its refund-direction row, and a won
+ * dispute's money back is `'payment'` on that same row — the grain a refund that did not stand
+ * already has — so widening this list, which rebuilds `entry_group` under every table pointing at
+ * it, is never paid for a dispute.
+ *
  * declared here rather than in a leaf, which is the default this file's `enums` rule states: no
  * module this file imports needs it. /admin/books lists journal entries and draws a word for each
  * source from ../../ledger/sources.ts, which takes only this type.
@@ -659,8 +664,9 @@ export const entryGroup = sqliteTable(
 		 *   'payment'    -> `payment.id`. one settlement event, one posting. a gift settling in
 		 *                   instalments is several `payment` rows and therefore several entries.
 		 *                   on a `direction = 'refund'` row it is that refund's reinstatement: the
-		 *                   money back where the refund did not stand.
+		 *                   money back where the refund did not stand, or the dispute was won.
 		 *   'refund'     -> `payment.id` — the refund's own row, never the donation it reverses.
+		 *                   a dispute's withdrawal is one too, its fee inside the same group.
 		 *   'fee'        -> `payment.id` of the settlement the fee was deducted from.
 		 *   'adjustment' -> a uuidv7 minted for the correction, one per correction, borrowed
 		 *                   from nothing — not the payment, donation or entry being corrected.
@@ -1491,8 +1497,9 @@ const NON_PROCESSOR_PROVIDERS = ['manual'] as const satisfies readonly PaymentPr
  * money moved, which is a different fact from one the rail refused.
  *
  * on a `direction = 'refund'` row, `cancelled` is a refund that did not stand: it went out and
- * the money came back. that row is the one `succeeded` payment ever walked back, and only
- * `lib/server/donations/reverse.ts` walks it; an inbound row that settled stays settled.
+ * the money came back — a refund that failed, or a dispute the organisation won. that row is
+ * the one `succeeded` payment ever walked back, and only `lib/server/donations/reverse.ts`
+ * walks it; an inbound row that settled stays settled.
  *
  * deliberately not `refunded`. a refund is a separate `payment` row with
  * `direction = 'refund'`, which is what keeps this table append-shaped and keeps a

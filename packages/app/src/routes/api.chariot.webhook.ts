@@ -37,10 +37,12 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 	if (request.method !== 'POST') return methodNotAllowed(request.method);
 
 	const { env } = context.get(platform);
+	const processors = createPaymentProviders(env);
 	const result = await settleDelivery(
 		{
 			db: context.get(database),
-			provider: createPaymentProviders(env).for('chariot'),
+			provider: processors.for('chariot'),
+			processors,
 			email: createEmailProvider(env)
 		},
 		// `Headers` iterates lowercase, which is the keying the adapter reads its header by.
@@ -78,7 +80,8 @@ function methodNotAllowed(method: string): Response {
  *   deployment holding the wrong secret as failing deliveries on Chariot's side.
  * - 503, verified or not yet checkable and something this deployment depends on did not answer —
  *   no secret or key set, Get Grant unreachable, a write the database refused. repeating it is safe:
- *   the grant is re-read, and `entry_group_source_idx` in $lib/server/db/schema.ts makes the identical
- *   posting a no-op.
+ *   the grant is re-read, and two indexes in $lib/server/db/schema.ts make the identical write a
+ *   no-op — `entry_group_source_idx` refuses a posting already made, and `payment_provider_txn_idx`
+ *   the payment row a reversal writes.
  */
 const FAILURE_STATUS = { unverified: 400, incomplete: 503 } as const;

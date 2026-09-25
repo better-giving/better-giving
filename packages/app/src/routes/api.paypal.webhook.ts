@@ -56,10 +56,12 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 	if (request.method !== 'POST') return methodNotAllowed(request.method);
 
 	const { env } = context.get(platform);
+	const processors = createPaymentProviders(env);
 	const result = await settleDelivery(
 		{
 			db: context.get(database),
-			provider: createPaymentProviders(env).for('paypal'),
+			provider: processors.for('paypal'),
+			processors,
 			email: createEmailProvider(env)
 		},
 		// the headers whole, because which of them verifies a delivery is the adapter's fact
@@ -123,8 +125,10 @@ function methodNotAllowed(method: string): Response {
  *   at all. the delivery is worth having again, and repeating it is safe twice over: the capture
  *   carries a request id derived from the order (`readSettlement` in
  *   $lib/server/payments/paypal.ts) so a second attempt resolves to the capture that already
- *   exists, and the constraint that refuses a duplicate posting (`entry_group_source_idx` in
- *   $lib/server/db/schema.ts) is what makes the identical batch a no-op the second time.
+ *   exists, and two indexes in $lib/server/db/schema.ts make the identical batch a no-op the second
+ *   time — `entry_group_source_idx` refuses a posting already made, and `payment_provider_txn_idx`
+ *   refuses the payment row a collection or a reversal writes, whose posting is keyed to an id
+ *   minted fresh on each delivery and so is one the first index cannot see.
  *
  * no `Retry-After`. the processor's schedule is its own; a header from here would either be ignored
  * or would be this app guessing at somebody else's queue.

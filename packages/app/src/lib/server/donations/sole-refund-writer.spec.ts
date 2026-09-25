@@ -2,8 +2,9 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// the guard on "reverse.ts is the only module that may write a refund-direction payment row", and
-// the only one that walks one back (`PAYMENT_STATUSES` in ../db/schema.ts).
+// the guard on "reverse.ts is the only module that may write a refund-direction payment row", the
+// only one that walks one back (`PAYMENT_STATUSES` in ../db/schema.ts), and the only one that writes
+// a `dispute` row.
 //
 // written the way ./sole-inserter.spec.ts is, and for the same kind of rule: a refund row is what
 // moves a gift to refunded and takes it off the donor's total, and ./reverse.ts writes it in the
@@ -69,6 +70,21 @@ const WRITERS: { label: string; re: RegExp }[] = [
 	}
 ];
 
+/**
+ *   - drizzle — `insert(dispute)`, `update(dispute)` or `delete(dispute)`.
+ *   - raw SQL — `insert into dispute`, `update dispute` or `delete from dispute`.
+ */
+const DISPUTE_WRITERS: { label: string; re: RegExp }[] = [
+	{
+		label: 'drizzle dispute write',
+		re: /\b(?:insert|update|delete)\(\s*(?:schema\.)?dispute\s*\)/
+	},
+	{
+		label: 'raw SQL dispute write',
+		re: /\b(?:insert\s+(?:or\s+\w+\s+)?into|update|delete\s+from)\s+[`"']?dispute[`"']?[\s(]/i
+	}
+];
+
 describe('reverse.ts is the only writer of a refund-direction payment row', () => {
 	const files = sourceFiles(SRC);
 
@@ -119,6 +135,35 @@ describe('reverse.ts is the only writer of a refund-direction payment row', () =
 		expect(
 			raw?.test(
 				"select sum(case when direction = 'refund' then amount_minor end) from payment; insert into payment values (?)"
+			)
+		).toBe(false);
+	});
+
+	it('finds no dispute row written outside src/lib/server/donations/reverse.ts', () => {
+		const offenders: string[] = [];
+		for (const file of files) {
+			const source = readFileSync(file, 'utf8');
+			for (const { label, re } of DISPUTE_WRITERS) {
+				if (re.test(source)) offenders.push(`${relative(SRC, file)} (${label})`);
+			}
+		}
+		expect(
+			offenders,
+			`these modules write a dispute row: ${offenders.join(', ')}. only src/lib/server/donations/reverse.ts may — a dispute's row lands in one batch() with the money it withdrew, and closing it is what decides whether that money comes back.`
+		).toEqual([]);
+	});
+
+	it('matches the writer’s own dispute writes, so the drizzle pattern is known to work', () => {
+		expect(DISPUTE_WRITERS[0]?.re.test(readFileSync(WRITER, 'utf8'))).toBe(true);
+	});
+
+	it('matches a raw dispute write and passes a read, so the SQL pattern is known to work', () => {
+		const raw = DISPUTE_WRITERS[1]?.re;
+		expect(raw?.test("update dispute set outcome = 'won' where payment_id = ?")).toBe(true);
+		expect(raw?.test('insert into dispute (payment_id) values (?)')).toBe(true);
+		expect(
+			raw?.test(
+				'select 1 from dispute d join payment w on w.id = d.payment_id where d.outcome is null'
 			)
 		).toBe(false);
 	});

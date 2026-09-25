@@ -23,6 +23,7 @@ import { stopRecurringPlan } from '../recurring/queries';
 import type { SettleDeps, SettleOutcome } from './delivery';
 import { recordAuthorizedGift, type AuthorizedGiftInput } from './record';
 import { settleDelivery } from './settle';
+import { soleProcessor } from '../payments/processors.testing';
 
 // the books for a gift that repeats, against a real D1: what a collection under a commitment
 // writes, and what a second delivery about the same money does not.
@@ -232,7 +233,8 @@ function mailer(ok = true) {
 const DELIVERY = { body: '{"id":"evt_collect_1"}', headers: { 'stripe-signature': 't=1,v1=abc' } };
 
 function deps(over: Partial<SettleDeps> = {}): SettleDeps {
-	return { db, provider: provider({}), email: mailer().port, ...over };
+	const port = over.provider ?? provider({});
+	return { db, provider: port, processors: soleProcessor(port), email: mailer().port, ...over };
 }
 
 /** the company connected, taking everything posted on or after `startAt`. */

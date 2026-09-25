@@ -6,8 +6,8 @@ import type { Route } from './+types/api.stripe.webhook';
 
 // where a settled Stripe payment becomes a gift in the books: the processor's own callback, and one
 // of the routes in this app whose caller is a machine belonging to somebody else — the others are
-// ./api.paypal.webhook.ts and ./api.chariot.webhook.ts, which take this file's shape for PayPal and
-// Chariot.
+// ./api.paypal.webhook.ts, ./api.nowpayments.webhook.ts and ./api.chariot.webhook.ts, which take
+// this file's shape for PayPal, NOWPayments and Chariot.
 //
 // a resource route: no component export, so react router answers with what the handlers return
 // instead of rendering anything (react-router/docs/how-to/resource-routes.md). the delivery is a
@@ -50,10 +50,12 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 	if (request.method !== 'POST') return methodNotAllowed(request.method);
 
 	const { env } = context.get(platform);
+	const processors = createPaymentProviders(env);
 	const result = await settleDelivery(
 		{
 			db: context.get(database),
-			provider: createPaymentProviders(env).for('stripe'),
+			provider: processors.for('stripe'),
+			processors,
 			email: createEmailProvider(env)
 		},
 		// the headers whole, because which of them verifies a delivery is the adapter's fact
@@ -115,8 +117,10 @@ function methodNotAllowed(method: string): Response {
  * - 503, everything verified and something this deployment depends on did not answer — the
  *   processor shedding load, a read that never came back, a write the database refused, or a fee
  *   the processor has not finished computing. the delivery is worth having again, and repeating it
- *   is safe: the constraint that refuses a duplicate posting (`entry_group_source_idx` in
- *   $lib/server/db/schema.ts) is what makes the identical batch a no-op the second time.
+ *   is safe: two indexes in $lib/server/db/schema.ts make the identical batch a no-op the second
+ *   time — `entry_group_source_idx` refuses a posting already made, and `payment_provider_txn_idx`
+ *   refuses the payment row a collection or a reversal writes, whose posting is keyed to an id
+ *   minted fresh on each delivery and so is one the first index cannot see.
  *
  * no `Retry-After`. the processor's schedule is its own and it backs off across three days; a
  * header from here would either be ignored or would be this app guessing at somebody else's queue.

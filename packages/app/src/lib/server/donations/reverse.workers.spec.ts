@@ -6,26 +6,29 @@ import { listContacts } from '../contacts/queries';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import type { PostableAccountId } from '../db/postable';
-import { entryGroup, ledgerEntry, payment, zapierDelivery } from '../db/schema';
+import { dispute, entryGroup, ledgerEntry, payment, zapierDelivery } from '../db/schema';
 import type { EmailMessage, EmailProvider } from '../email/provider';
 import {
 	refusing,
 	type PaymentResult,
+	type RecurringGiftEnd,
 	type Reversal,
 	type ReversalRead,
 	type Settlement
 } from '../payments/provider';
+import { soleProcessor } from '../payments/processors.testing';
 import type { SettleDeps } from './delivery';
 import { listDonations } from './queries';
 import { recordDonation } from './record';
 import { recordReversal } from './reverse';
 import { settleDelivery, settleTransaction } from './settle';
 
-// the refund half, against a real D1: what a refund the port has read does to the gift it names.
+// the refund half, against a real D1: what a refund or a dispute the port has read does to the gift
+// it names.
 //
 // every case starts from a gift the settlement path itself put in the books, so what is reversed is
-// the posting production writes rather than one drawn here. the refund arrives through
-// `recordReversal`, the seam below the processor's read — which processor reports a refund, and how,
+// the posting production writes rather than one drawn here. the reversal arrives through
+// `recordReversal`, the seam below the processor's read — which processor reports one, and how,
 // is each adapter's own spec.
 
 const FORM_ID = 'frm_reversepath00001';
@@ -42,6 +45,7 @@ beforeAll(() => {
 
 beforeEach(async () => {
 	for (const table of [
+		'dispute',
 		'zapier_delivery',
 		'zapier_subscription',
 		'quickbooks_sync',
@@ -93,10 +97,14 @@ function charged(settlement: Settlement): SettleDeps['provider'] {
 	};
 }
 
+/** the deps a delivery arrives with; the processors a stop is made through hold `provider` alone. */
 function deps(over: Partial<SettleDeps> = {}): SettleDeps {
+	const provider =
+		over.provider ?? refusing('stripe', 'unsupported', 'not part of the refund path');
 	return {
 		db,
-		provider: refusing('stripe', 'unsupported', 'not part of the refund path'),
+		provider,
+		processors: soleProcessor(provider),
 		email: mailer().port,
 		...over
 	};
@@ -332,6 +340,23 @@ describe('recordReversal() — a refund delivered twice', () => {
 			.from(entryGroup)
 			.where(eq(entryGroup.sourceType, 'refund'));
 		expect(groups?.n).toBe(1);
+	});
+});
+
+describe('recordReversal() — a refund of the whole charge, with no figure, delivered twice', () => {
+	it('answers the second as already posted and tells nobody', async () => {
+		await settledGift();
+		await recordReversal(deps(), refund({ amountMinor: null }), 'evt_r1');
+		const mail = mailer();
+
+		const again = await recordReversal(
+			deps({ email: mail.port }),
+			refund({ amountMinor: null }),
+			'evt_r2'
+		);
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect(mail.sent).toEqual([]);
 	});
 });
 
@@ -696,7 +721,7 @@ describe('settleDelivery() — a delivery about a refund', () => {
 		});
 	});
 
-	it('answers a refund that has moved no money yet with a 200, and writes nothing', async () => {
+	it('answers a refund, or a dispute that is an inquiry, that has moved no money yet with a 200, and writes nothing', async () => {
 		await settledGift();
 
 		const result = await settleDelivery(
@@ -803,5 +828,619 @@ describe('recordReversal() — refunds that add up to the whole gift', () => {
 
 		expect((await refundRows()).map((r) => r.amountMinor)).toEqual([2_500, 7_500]);
 		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'refunded', given: 0 });
+	});
+});
+
+const DISPUTED_AT = new Date('2026-08-22T08:00:00.000Z');
+const RESPOND_BY = new Date('2026-09-05T23:59:59.000Z');
+
+/** a dispute of the whole `pi_1` charge the processor has read back as opened, unless told otherwise. */
+function opened(over: Partial<Extract<Reversal, { kind: 'dispute_opened' }>> = {}): Reversal {
+	return {
+		kind: 'dispute_opened',
+		reversedTxnId: 'pi_1',
+		providerReversalId: 'dp_1',
+		amountMinor: 10_000,
+		currency: 'USD',
+		occurredAt: DISPUTED_AT,
+		reversedMetadata: { donation_id: 'named-by-the-charge' },
+		feeMinor: 1_500,
+		respondBy: RESPOND_BY,
+		reason: 'fraudulent',
+		dashboardUrl: 'https://dashboard.stripe.com/disputes/dp_1',
+		...over
+	};
+}
+
+/** every dispute row, with the fields a case reads. */
+async function disputeRows() {
+	return db
+		.select({
+			paymentId: dispute.paymentId,
+			outcome: dispute.outcome,
+			respondBy: dispute.respondBy,
+			reason: dispute.reason,
+			closedAt: dispute.closedAt
+		})
+		.from(dispute);
+}
+
+describe('recordReversal() — a dispute opened on a settled gift', () => {
+	it('withdraws the disputed money as a row of its own with an open dispute on it', async () => {
+		const gift = await settledGift();
+
+		const result = await recordReversal(deps(), opened({ amountMinor: 4_000 }), 'evt_d1');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		const rows = await refundRows();
+		expect(rows).toEqual([
+			expect.objectContaining({
+				donationId: gift.donationId,
+				direction: 'refund',
+				status: 'succeeded',
+				providerTxnId: 'dp_1',
+				amountMinor: 4_000,
+				currency: 'USD',
+				occurredAt: DISPUTED_AT,
+				parentPaymentId: gift.paymentId
+			})
+		]);
+		expect(await disputeRows()).toEqual([
+			{
+				paymentId: rows[0]?.id,
+				outcome: null,
+				respondBy: RESPOND_BY,
+				reason: 'fraudulent',
+				closedAt: null
+			}
+		]);
+	});
+
+	it('reverses the gift pro rata and books the dispute fee as a processor fee out of 1020', async () => {
+		const other = postableId('donationsNonDeductible');
+		await settledGift({
+			lines: [
+				{ revenueAccountId: fund, amountMinor: 6_000 },
+				{ revenueAccountId: other, amountMinor: 4_000 }
+			]
+		});
+
+		await recordReversal(deps(), opened({ amountMinor: 2_500, feeMinor: 1_500 }), 'evt_d1');
+
+		const [row] = await refundRows();
+		expect(await linesOf('refund', row?.id ?? '')).toEqual(
+			[
+				[postableId('undepositedFunds'), -2_500],
+				[fund, 1_500],
+				[other, 1_000],
+				[postableId('processorFees'), 1_500],
+				[postableId('undepositedFunds'), -1_500]
+			].sort()
+		);
+	});
+
+	it('takes the disputed money off the donor’s given', async () => {
+		const gift = await settledGift();
+
+		await recordReversal(deps(), opened({ amountMinor: 4_000 }), 'evt_d1');
+
+		expect((await asAdminReads(gift.donationId)).given).toBe(6_000);
+	});
+});
+
+const PLAN_ID = '019fb900-0000-7000-8000-000000000001';
+
+/** a settled gift collected under monthly plan `sub_1`, still collecting. */
+async function monthlyGift() {
+	const gift = await settledGift();
+	await env.DB.prepare(
+		`insert into recurring_plan (id, contact_id, form_id, amount_minor, currency, interval,
+		                             status, provider, provider_subscription_id,
+		                             provider_customer_id, started_at, next_charge_at,
+		                             created_at, updated_at)
+		 values (?, ?, ?, 10000, 'USD', 'monthly', 'active', 'stripe', 'sub_1', 'cus_1', ?, ?, 0, 0)`
+	)
+		.bind(PLAN_ID, gift.contactId, FORM_ID, SETTLED_AT.getTime(), Date.UTC(2026, 8, 3))
+		.run();
+	await env.DB.prepare('update donation set recurring_id = ? where id = ?')
+		.bind(PLAN_ID, gift.donationId)
+		.run();
+	return gift;
+}
+
+/** the plan's status as the row holds it. */
+async function planStatus() {
+	return (
+		await env.DB.prepare('select status from recurring_plan where id = ?')
+			.bind(PLAN_ID)
+			.first<{ status: string }>()
+	)?.status;
+}
+
+/** a processor answering each cancel with the next of `answers`, recording what it was asked to stop. */
+function cancelling(...answers: PaymentResult<RecurringGiftEnd>[]) {
+	const stops: string[] = [];
+	const provider: SettleDeps['provider'] = {
+		...refusing('stripe', 'unsupported', 'not part of the dispute path'),
+		cancelRecurringGift: async (id) => {
+			stops.push(id);
+			return (
+				answers.shift() ?? { ok: false, reason: 'internal_error', detail: 'asked once too often' }
+			);
+		}
+	};
+	return { provider, stops };
+}
+
+const CANCELLED: PaymentResult<RecurringGiftEnd> = {
+	ok: true,
+	value: { providerGiftId: 'sub_1', endedAt: DISPUTED_AT }
+};
+
+describe('recordReversal() — a dispute opened on a monthly gift', () => {
+	it('stops the monthly plan the gift was collected under', async () => {
+		await monthlyGift();
+		const processor = cancelling(CANCELLED);
+
+		const result = await recordReversal(deps({ provider: processor.provider }), opened(), 'evt_d1');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(processor.stops).toEqual(['sub_1']);
+		expect(await planStatus()).toBe('cancelled');
+	});
+
+	it('holds the delivery open when the stop is refused for now, and stops the plan on the redelivery', async () => {
+		await monthlyGift();
+		const processor = cancelling(
+			{ ok: false, reason: 'rate_limited', detail: 'slow down' },
+			CANCELLED
+		);
+
+		const first = await recordReversal(deps({ provider: processor.provider }), opened(), 'evt_d1');
+
+		expect(first).toMatchObject({ ok: false, reason: 'incomplete' });
+		expect(await refundRows()).toHaveLength(1);
+		expect(await planStatus()).toBe('active');
+
+		const again = await recordReversal(deps({ provider: processor.provider }), opened(), 'evt_d1');
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect(processor.stops).toEqual(['sub_1', 'sub_1']);
+		expect(await planStatus()).toBe('cancelled');
+		expect(await refundRows()).toHaveLength(1);
+	});
+
+	it('tells staff on its own when the stop is refused for good, and still answers 200', async () => {
+		await monthlyGift();
+		const processor = cancelling({
+			ok: false,
+			reason: 'invalid_request',
+			detail: 'No such subscription owner: acct_9'
+		});
+		const mail = mailer();
+
+		const result = await recordReversal(
+			deps({ provider: processor.provider, email: mail.port }),
+			opened(),
+			'evt_d1'
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await planStatus()).toBe('active');
+		const stopAlerts = mail.sent.filter((m) => /could not be stopped/i.test(m.subject));
+		expect(stopAlerts).toHaveLength(1);
+		expect(stopAlerts[0]?.text).toContain('acct_9');
+	});
+});
+
+describe('recordReversal() — what staff are told when a dispute opens', () => {
+	it('tells them once: the amount, when to respond by, where to respond, and how the stop ended', async () => {
+		await monthlyGift();
+		const processor = cancelling(CANCELLED);
+		const mail = mailer();
+
+		await recordReversal(
+			deps({ provider: processor.provider, email: mail.port }),
+			opened({ amountMinor: 4_000 }),
+			'evt_d1'
+		);
+
+		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+		const text = mail.sent[0]?.text ?? '';
+		expect(text).toContain('4000 USD');
+		expect(text).toContain('2026-09-05');
+		expect(text).toContain('https://dashboard.stripe.com/disputes/dp_1');
+		expect(text).toContain('Stopped: no further charges');
+	});
+
+	it('answers the dispute delivered again as already posted, and tells nobody twice', async () => {
+		await monthlyGift();
+		const processor = cancelling(CANCELLED);
+		const mail = mailer();
+		const delivered = deps({ provider: processor.provider, email: mail.port });
+		await recordReversal(delivered, opened(), 'evt_d1');
+
+		const again = await recordReversal(delivered, opened(), 'evt_d2');
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect(mail.sent).toHaveLength(1);
+		expect(await refundRows()).toHaveLength(1);
+		expect(await disputeRows()).toHaveLength(1);
+		const [row] = await refundRows();
+		expect(await linesOf('refund', row?.id ?? '')).not.toBeNull();
+	});
+});
+
+/** the processor reporting dispute `dp_1` won. */
+function won(over: Partial<Extract<Reversal, { kind: 'dispute_won' }>> = {}): Reversal {
+	return {
+		kind: 'dispute_won',
+		reversedTxnId: 'pi_1',
+		providerReversalId: 'dp_1',
+		occurredAt: new Date('2026-09-20T10:00:00.000Z'),
+		reversedMetadata: { donation_id: 'named-by-the-charge' },
+		feeReturnedMinor: null,
+		...over
+	};
+}
+
+describe('recordReversal() — a dispute won', () => {
+	it('closes the dispute won, flips the withdrawal to cancelled, and mirrors back its lines but the fee', async () => {
+		const other = postableId('donationsNonDeductible');
+		await settledGift({
+			lines: [
+				{ revenueAccountId: fund, amountMinor: 6_000 },
+				{ revenueAccountId: other, amountMinor: 4_000 }
+			]
+		});
+		await recordReversal(deps(), opened({ amountMinor: 2_500, feeMinor: 1_500 }), 'evt_d1');
+
+		const result = await recordReversal(deps(), won(), 'evt_d2');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		const [row] = await refundRows();
+		expect(row?.status).toBe('cancelled');
+		expect(await disputeRows()).toEqual([
+			expect.objectContaining({ outcome: 'won', closedAt: new Date('2026-09-20T10:00:00.000Z') })
+		]);
+		expect(await linesOf('payment', row?.id ?? '')).toEqual(
+			[
+				[postableId('undepositedFunds'), 2_500],
+				[fund, -1_500],
+				[other, -1_000]
+			].sort()
+		);
+	});
+
+	it('puts the dispute fee back as well where the processor returned it', async () => {
+		await settledGift();
+		await recordReversal(deps(), opened({ amountMinor: 10_000, feeMinor: 1_500 }), 'evt_d1');
+
+		await recordReversal(deps(), won({ feeReturnedMinor: 1_500 }), 'evt_d2');
+
+		const [row] = await refundRows();
+		expect(await linesOf('payment', row?.id ?? '')).toEqual(
+			[
+				[postableId('undepositedFunds'), 10_000],
+				[fund, -10_000],
+				[postableId('processorFees'), -1_500],
+				[postableId('undepositedFunds'), 1_500]
+			].sort()
+		);
+	});
+
+	it('gives the donor back their given', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), opened({ amountMinor: 4_000 }), 'evt_d1');
+		expect((await asAdminReads(gift.donationId)).given).toBe(6_000);
+
+		await recordReversal(deps(), won(), 'evt_d2');
+
+		expect((await asAdminReads(gift.donationId)).given).toBe(10_000);
+	});
+
+	it('answers the win delivered again as already posted, and puts nothing back twice', async () => {
+		await settledGift();
+		await recordReversal(deps(), opened(), 'evt_d1');
+		await recordReversal(deps(), won(), 'evt_d2');
+
+		const again = await recordReversal(deps(), won(), 'evt_d3');
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		const [groups] = await db
+			.select({ n: sql<number>`count(*)` })
+			.from(entryGroup)
+			.where(eq(entryGroup.sourceType, 'payment'));
+		// the gift's own charge, and one mirror.
+		expect(groups?.n).toBe(2);
+	});
+
+	it('holds a win open where the dispute’s withdrawal is not recorded yet, and writes nothing', async () => {
+		await settledGift();
+
+		const result = await recordReversal(deps(), won(), 'evt_d2');
+
+		expect(result).toMatchObject({ ok: false, reason: 'incomplete' });
+		expect(await refundRows()).toEqual([]);
+	});
+});
+
+/** the processor reporting dispute `dp_1` lost, of the whole `pi_1` charge unless told otherwise. */
+function lost(over: Partial<Extract<Reversal, { kind: 'dispute_lost' }>> = {}): Reversal {
+	return {
+		kind: 'dispute_lost',
+		reversedTxnId: 'pi_1',
+		providerReversalId: 'dp_1',
+		amountMinor: 10_000,
+		currency: 'USD',
+		occurredAt: new Date('2026-09-18T10:00:00.000Z'),
+		reversedMetadata: { donation_id: 'named-by-the-charge' },
+		feeMinor: 1_500,
+		reason: 'fraudulent',
+		dashboardUrl: 'https://dashboard.stripe.com/disputes/dp_1',
+		...over
+	};
+}
+
+/** how many entry groups the books hold. */
+async function groupCount() {
+	const [row] = await db.select({ n: sql<number>`count(*)` }).from(entryGroup);
+	return row?.n;
+}
+
+describe('recordReversal() — a dispute lost after it opened', () => {
+	it('closes the dispute lost and moves no money, leaving the gift reversed', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), opened(), 'evt_d1');
+		const groups = await groupCount();
+
+		const result = await recordReversal(deps(), lost(), 'evt_d2');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'updated' });
+		expect(await disputeRows()).toEqual([
+			expect.objectContaining({ outcome: 'lost', closedAt: new Date('2026-09-18T10:00:00.000Z') })
+		]);
+		expect((await refundRows()).map((r) => r.status)).toEqual(['succeeded']);
+		expect(await groupCount()).toBe(groups);
+		expect((await asAdminReads(gift.donationId)).given).toBe(0);
+	});
+
+	it('answers the loss delivered again as already posted', async () => {
+		await settledGift();
+		await recordReversal(deps(), opened(), 'evt_d1');
+		await recordReversal(deps(), lost(), 'evt_d2');
+
+		const again = await recordReversal(deps(), lost(), 'evt_d3');
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+	});
+});
+
+describe('recordReversal() — a dispute lost with no opening recorded', () => {
+	it('writes the opening’s batch with the dispute already lost, and tells staff once', async () => {
+		const gift = await settledGift();
+		const mail = mailer();
+
+		const result = await recordReversal(
+			deps({ email: mail.port }),
+			lost({ amountMinor: 4_000 }),
+			'evt_d2'
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		const [row] = await refundRows();
+		expect(row).toMatchObject({ providerTxnId: 'dp_1', amountMinor: 4_000, status: 'succeeded' });
+		expect(await disputeRows()).toEqual([
+			expect.objectContaining({
+				paymentId: row?.id,
+				outcome: 'lost',
+				closedAt: new Date('2026-09-18T10:00:00.000Z')
+			})
+		]);
+		expect(await linesOf('refund', row?.id ?? '')).toContainEqual([
+			postableId('processorFees'),
+			1_500
+		]);
+		expect((await asAdminReads(gift.donationId)).given).toBe(6_000);
+		expect(mail.sent.map((m) => m.subject)).toEqual([expect.stringMatching(/dispute was lost/)]);
+	});
+
+	it('holds a loss that races the opening open, and closes the dispute on the next delivery', async () => {
+		await settledGift();
+		let raced = false;
+		// the opening's delivery commits between this delivery's reads and its batch.
+		const racing = new Proxy(db, {
+			get(target, property, receiver) {
+				if (property !== 'batch' || raced) return Reflect.get(target, property, receiver);
+				return async (writes: Parameters<Db['batch']>[0]) => {
+					raced = true;
+					await recordReversal(deps(), opened(), 'evt_d1');
+					return target.batch(writes);
+				};
+			}
+		});
+
+		const first = await recordReversal(deps({ db: racing }), lost(), 'evt_d2');
+
+		expect(first).toMatchObject({ ok: false, reason: 'incomplete' });
+		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: null })]);
+
+		const next = await recordReversal(deps(), lost(), 'evt_d2');
+
+		expect(next).toMatchObject({ ok: true, outcome: 'updated' });
+		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: 'lost' })]);
+		expect(await refundRows()).toHaveLength(1);
+	});
+});
+
+describe('recordReversal() — a dispute won after it was lost', () => {
+	it('answers it with a 200, changes nothing, and tells staff', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), opened(), 'evt_d1');
+		await recordReversal(deps(), lost(), 'evt_d2');
+		const groups = await groupCount();
+		const mail = mailer();
+
+		const result = await recordReversal(deps({ email: mail.port }), won(), 'evt_d3');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
+		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: 'lost' })]);
+		expect(await groupCount()).toBe(groups);
+		expect((await asAdminReads(gift.donationId)).given).toBe(0);
+		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+		expect(mail.sent[0]?.text).toContain('dp_1');
+	});
+});
+
+describe('recordReversal() — a dispute whose after-steps fault', () => {
+	it('answers as it would have when the alert’s transport faults', async () => {
+		await monthlyGift();
+		const faulting: EmailProvider = {
+			async send() {
+				throw new Error('the socket went away');
+			}
+		};
+
+		const result = await recordReversal(
+			deps({ provider: cancelling(CANCELLED).provider, email: faulting }),
+			opened(),
+			'evt_d1'
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await planStatus()).toBe('cancelled');
+	});
+
+	it('answers as it would have when the processor throws on the stop, and tells staff it did not stop', async () => {
+		await monthlyGift();
+		const provider: SettleDeps['provider'] = {
+			...refusing('stripe', 'unsupported', 'not part of the dispute path'),
+			cancelRecurringGift: async () => {
+				throw new Error('the connection reset');
+			}
+		};
+		const mail = mailer();
+
+		const result = await recordReversal(deps({ provider, email: mail.port }), opened(), 'evt_d1');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await planStatus()).toBe('active');
+		expect(mail.sent.filter((m) => /could not be stopped/i.test(m.subject))).toHaveLength(1);
+	});
+});
+
+describe('SettleDeps — the processors a disputed gift’s plan is stopped through', () => {
+	// refused by `tsc --noEmit` first, which gates CI: the `@ts-expect-error` is the assertion, and
+	// one that stopped being needed would itself fail the type check.
+	it('does not type-check without them, so a webhook route cannot forget them', () => {
+		// @ts-expect-error `processors` is required
+		const forgotten: SettleDeps = {
+			db,
+			provider: refusing('stripe', 'unsupported', 'x'),
+			email: mailer().port
+		};
+
+		expect(Object.keys(forgotten)).not.toContain('processors');
+	});
+});
+
+describe('recordReversal() — a dispute lost after it was won', () => {
+	it('answers it with a 200, changes nothing, and tells staff', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), opened(), 'evt_d1');
+		await recordReversal(deps(), won(), 'evt_d2');
+		const groups = await groupCount();
+		const mail = mailer();
+
+		const result = await recordReversal(deps({ email: mail.port }), lost(), 'evt_d3');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
+		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: 'won' })]);
+		expect(await groupCount()).toBe(groups);
+		expect((await asAdminReads(gift.donationId)).given).toBe(10_000);
+		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+		expect(mail.sent[0]?.text).toContain('dp_1');
+	});
+});
+
+describe('recordReversal() — a dispute whose details are not usable', () => {
+	it('records a respond-by that is no date as none, and still tells staff once', async () => {
+		await settledGift();
+		const mail = mailer();
+
+		const result = await recordReversal(
+			deps({ email: mail.port }),
+			opened({ respondBy: new Date('nonsense') }),
+			'evt_d1'
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await disputeRows()).toEqual([expect.objectContaining({ respondBy: null })]);
+		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+	});
+
+	it('records a blank reason as none', async () => {
+		await settledGift();
+
+		const result = await recordReversal(deps(), opened({ reason: '  ' }), 'evt_d1');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await disputeRows()).toEqual([expect.objectContaining({ reason: null })]);
+	});
+});
+
+describe('recordReversal() — a dispute of a settled gift the books do not hold', () => {
+	it('writes its row and the dispute alone, tells staff once with what the books hold, and answers a later win', async () => {
+		await settledGift({ settledMinor: 9_000 });
+		const mail = mailer();
+
+		const result = await recordReversal(
+			deps({ email: mail.port }),
+			opened({ amountMinor: 9_000 }),
+			'evt_d1'
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
+		const [row] = await refundRows();
+		expect(row).toMatchObject({ providerTxnId: 'dp_1', amountMinor: 9_000 });
+		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: null })]);
+		expect(await linesOf('refund', row?.id ?? '')).toBeNull();
+		expect(mail.sent).toHaveLength(1);
+		expect(mail.sent[0]?.text).toContain('never posted');
+
+		const win = await recordReversal(deps(), won(), 'evt_d2');
+
+		expect(win).toMatchObject({ ok: true, outcome: 'updated' });
+		expect((await refundRows())[0]?.status).toBe('cancelled');
+		expect(await linesOf('payment', row?.id ?? '')).toBeNull();
+	});
+});
+
+describe('recordReversal() — a dispute after a partial refund', () => {
+	it('is apportioned against what the refund already took, so the two take every fund back exactly', async () => {
+		const [second, third] = [postableId('donationsNonDeductible'), postableId('bankCash')];
+		await settledGift({
+			lines: [
+				{ revenueAccountId: fund, amountMinor: 3_334 },
+				{ revenueAccountId: second, amountMinor: 3_333 },
+				{ revenueAccountId: third, amountMinor: 3_333 }
+			]
+		});
+		await recordReversal(deps(), refund({ amountMinor: 5_000 }), 'evt_r1');
+
+		const result = await recordReversal(
+			deps(),
+			opened({ amountMinor: null, feeMinor: null }),
+			'evt_d1'
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect((await refundRows()).map((r) => r.amountMinor)).toEqual([5_000, 5_000]);
+		const { results } = await env.DB.prepare(
+			`select l.account_id, sum(l.amount_minor) as net from ledger_entry l
+			 join entry_group g on g.id = l.entry_group_id
+			 where g.source_type in ('payment', 'refund') group by l.account_id`
+		).all<{ account_id: string; net: number }>();
+		expect(results.map((r) => r.net)).toEqual([0, 0, 0, 0]);
 	});
 });

@@ -885,15 +885,24 @@ export type PaymentEvent = SettlementEvent | RecurringEvent | ReversalEvent | Ig
 /**
  * what a reversal did to a settled transaction.
  *
- *   refund        — money the processor sent back to the donor, in whole or in part. an ACH
- *                   debit returned after it settled is one too.
- *   refund_failed — a refund that had gone out and did not stand: the money is the organisation's
- *                   again.
+ *   refund         — money the processor sent back to the donor, in whole or in part. an ACH
+ *                    debit returned after it settled is one too.
+ *   refund_failed  — a refund that had gone out and did not stand: the money is the
+ *                    organisation's again.
+ *   dispute_opened — the donor's bank disputed the charge and the processor took the money back
+ *                    while it is decided.
+ *   dispute_won    — the dispute closed for the organisation: the money came back.
+ *   dispute_lost   — the dispute closed for the donor: the money stays gone. a processor that
+ *                    reports no opening sends this alone.
  */
 export const REVERSAL_KINDS = [
 	'refund',
-	'refund_failed'
+	'refund_failed',
+	'dispute_opened',
+	'dispute_won',
+	'dispute_lost'
 ] as const satisfies readonly Reversal['kind'][];
+export type ReversalKind = (typeof REVERSAL_KINDS)[number];
 
 /** what every reversal names, whichever way the money went. */
 type ReversalFacts = {
@@ -903,10 +912,11 @@ type ReversalFacts = {
 	 */
 	readonly reversedTxnId: string;
 	/**
-	 * the refund's own id, which becomes the refund row's `provider_txn_id` and is the idempotency
-	 * key. it never equals `reversedTxnId`: the two share `payment_provider_txn_idx`, so a refund
-	 * carrying the charge's id would be refused as the charge redelivered. an adapter whose processor
-	 * mints no id for a refund derives a stable one and states the derivation in its header.
+	 * the refund's or the dispute's own id, which becomes the refund row's `provider_txn_id` and is
+	 * the idempotency key. it never equals `reversedTxnId`: the two share
+	 * `payment_provider_txn_idx`, so a refund carrying the charge's id would be refused as the charge
+	 * redelivered. an adapter whose processor mints no id for a refund derives a stable one and
+	 * states the derivation in its header.
 	 */
 	readonly providerReversalId: string;
 	/** business time: when the money moved. */
@@ -921,23 +931,52 @@ type ReversalFacts = {
 	readonly reversedMetadata: Readonly<Record<string, string>>;
 };
 
+/** the money a reversal takes out of the gift. */
+type WithdrawnMoney = {
+	/**
+	 * minor units, positive. null means the rest of what the reversed transaction settled —
+	 * whatever earlier refunds and disputes have not already taken — for a processor that reports a
+	 * full reversal with no figure in the settlement's currency.
+	 */
+	readonly amountMinor: number | null;
+	/** ISO-4217, uppercase. */
+	readonly currency: string;
+};
+
+/** what a dispute that withdraws money names beside the money. */
+type DisputeFacts = {
+	/** minor units: what the processor charged for the dispute itself, booked as a processor fee. null where it charged none. */
+	readonly feeMinor: number | null;
+	/** the processor's reason code, verbatim. */
+	readonly reason: string | null;
+	/** where staff answer the dispute in the processor's dashboard. told to staff and never stored. */
+	readonly dashboardUrl: string | null;
+};
+
 export type Reversal =
+	| (ReversalFacts & WithdrawnMoney & { readonly kind: 'refund' })
+	| (ReversalFacts & { readonly kind: 'refund_failed' })
+	| (ReversalFacts &
+			WithdrawnMoney &
+			DisputeFacts & {
+				readonly kind: 'dispute_opened';
+				/** the processor's deadline for the organisation's response. null where it names none. */
+				readonly respondBy: Date | null;
+			})
 	| (ReversalFacts & {
-			readonly kind: 'refund';
+			readonly kind: 'dispute_won';
 			/**
-			 * minor units, positive. null means the rest of what the reversed transaction settled —
-			 * whatever earlier refunds have not already taken — for a processor that reports a full
-			 * refund with no figure in the settlement's currency.
+			 * minor units: the dispute fee the processor gave back with the money. null where it gave
+			 * none back, and then the fee stays booked.
 			 */
-			readonly amountMinor: number | null;
-			/** ISO-4217, uppercase. */
-			readonly currency: string;
+			readonly feeReturnedMinor: number | null;
 	  })
-	| (ReversalFacts & { readonly kind: 'refund_failed' });
+	| (ReversalFacts & WithdrawnMoney & DisputeFacts & { readonly kind: 'dispute_lost' });
 
 /**
  * what `readReversal` finds: money that moved, or a reversal that has moved none yet — a refund
- * still pending. the processor's next event reports the money when it moves.
+ * still pending, or a dispute that is an inquiry and has withdrawn nothing. the processor's next
+ * event reports the money when it moves.
  */
 export type ReversalRead =
 	| Reversal

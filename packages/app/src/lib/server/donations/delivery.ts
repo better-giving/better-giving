@@ -4,6 +4,7 @@ import type { Writes } from '../books/writes';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import type { EmailProvider } from '../email/provider';
+import type { Processors } from '../payments/factory';
 import { PROCESSOR_LABELS, type PayableCoin, type PaymentProvider } from '../payments/provider';
 import { readOrgProfile } from '../org/queries';
 
@@ -21,18 +22,21 @@ import { readOrgProfile } from '../org/queries';
  * what one delivery did, all of which are answered 200.
  *
  *   ignored        — a delivery this app subscribes to nothing for, one about a repeating gift
- *                    this deployment holds no record of, a refund that has moved no money yet, or
- *                    the failure of a refund never recorded here. answered and logged.
- *   posted         — money moved: the gift is in the books, or a refund of it is, or a refund
- *                    that did not stand is put back.
+ *                    this deployment holds no record of, a refund or a dispute that has moved no
+ *                    money yet, or the failure of a refund never recorded here. answered and
+ *                    logged.
+ *   posted         — money moved: the gift is in the books, or a refund or a dispute of it is, or
+ *                    a refund that did not stand or a dispute won is put back.
  *   updated        — a row was corrected and nothing was posted. it is the transaction that is not
  *                    settled (still processing, failed, cancelled), which is why failure and
  *                    cancellation are in scope at all: without this arm a `pending` row sits
  *                    pending forever. it is also a commitment the rail reports as collecting again
  *                    after this deployment had recorded it as given up on. and it is a refund that
- *                    did not stand, of a gift the books never held.
- *   already_posted — the books already hold this payment, or this refund. a redelivery, refused
- *                    by the database.
+ *                    did not stand, of a gift the books never held, or a dispute closed as lost,
+ *                    which moves no money.
+ *   already_posted — the books already hold this payment, refund or dispute outcome: a
+ *                    redelivery, found by a read before anything is written or refused by the
+ *                    index that makes the write idempotent.
  *   unmatched      — a verified settlement for a transaction this deployment has no payment row
  *                    for, a collection whose commitment cannot be opened here, or a refund of a
  *                    charge that names no gift of this deployment's. nothing was
@@ -45,7 +49,8 @@ import { readOrgProfile } from '../org/queries';
  *                    the ledger can hold — a settlement carrying figures `post()` refuses, which
  *                    either half can be handed (`unpostable` in ./entries.ts), or a settled gift
  *                    whose own lines do not account for the amount that moved (./settle.ts), or a
- *                    refund whose figures the refund row or the ledger will not hold (./reverse.ts). an
+ *                    refund whose figures the refund row or the ledger will not hold, or a dispute
+ *                    reported won after it was recorded lost (./reverse.ts). an
  *                    operator was told, except where the verification itself faulted
  *                    (`internal_error`), which ./settle.ts leaves in the logs and says why.
  *   unnamed        — a settled transaction whose intent names no gift in this deployment, or a
@@ -99,13 +104,20 @@ export type SettleFailure = (typeof SETTLE_FAILURES)[number];
 /**
  * everything the webhook's modules need that they may not build for themselves, all per request.
  *
- * ./settle.ts and ./collect.ts produce the answers above and read the first three. what they end at —
+ * ./settle.ts, ./collect.ts and ./reverse.ts produce the answers above and read `db`, `provider` and
+ * `email`, and ./reverse.ts `processors` as well. what they end at —
  * ./receipt.ts and `alert` below — reads the database and sends mail and asks the processor nothing,
  * so it takes `MailDeps`, which a bag of these satisfies as it is.
  */
 export type SettleDeps = {
 	readonly db: Db;
 	readonly provider: PaymentProvider;
+	/**
+	 * every processor this deployment holds, which a disputed gift's monthly plan is stopped through
+	 * (./reverse.ts): the plan lives on whichever processor collected it. required, so a webhook
+	 * route that forgets it is a type error rather than a plan that silently never stops.
+	 */
+	readonly processors: Processors;
 	/** the mail transport. its failures are reported and never raised — see ./settle.ts's header. */
 	readonly email: EmailProvider;
 	/**

@@ -5,9 +5,9 @@ import type { Settlement } from '../payments/provider';
 
 // the entry groups a gift that reached the organisation makes: the two a charge that succeeded makes,
 // stated once for both halves of the webhook, and the one a gift received in hand makes
-// (`receivedInHandEntry`, for ./record-in-hand.ts). and the two a refund of such a gift makes, for
-// ./reverse.ts: the money leaving (`reversalEntry`) and, where the refund did not stand, the money
-// coming back (`reinstatementEntry`).
+// (`receivedInHandEntry`, for ./record-in-hand.ts). and the two a refund or a dispute of such a gift
+// makes, for ./reverse.ts: the money leaving (`reversalEntry`) and, where the refund did not stand or
+// the dispute was won, the money coming back (`reinstatementEntry`).
 //
 // ./settle.ts posts a one-off gift against the payment row a quote minted, and ./collect.ts posts
 // a collection under a standing commitment. the accounting is the same accounting — a gift
@@ -34,8 +34,9 @@ import type { Settlement } from '../payments/provider';
  * date that is not a date; and a fee that is not whole, which `feeEntry` passes through because its
  * own guard is about sign rather than shape.
  *
- * a refund is asked the same question about its own figures (./reverse.ts), with no fee, which is
- * why it takes the fields a refund also carries rather than a whole settlement.
+ * a refund or a dispute is asked the same question about its own figures (./reverse.ts), with the
+ * dispute's fee where it has one, which is why it takes the fields a reversal also carries rather
+ * than a whole settlement.
  *
  * every writer asks before it builds an entry — ./settle.ts, ./collect.ts and ./reverse.ts —
  * because all three have the same contract: they never throw. a `PostingError` out of `chargeEntry` is an exception on the money path, which is a 500,
@@ -240,16 +241,20 @@ export type ReversedGift = {
 	readonly alreadyRefundedMinor: number;
 };
 
-/** money that moved on a refund: how much, in what, and when. */
+/** money that moved on a refund or a dispute: which, how much, in what, and when. */
 export type RefundedMoney = {
+	readonly kind: 'refund' | 'dispute_opened' | 'dispute_lost';
 	/** minor units, positive, in the gift's own currency. */
 	readonly amountMinor: number;
 	readonly currency: string;
 	readonly occurredAt: Date;
+	/** minor units: what the processor charged for the reversal itself — a dispute fee. null where it charged none. */
+	readonly feeMinor: number | null;
 };
 
 /**
- * the refund: the gift's own lines reversed, scaled to what was refunded.
+ * the refund: the gift's own lines reversed, scaled to what was refunded, plus any fee the
+ * processor charged for the reversal.
  *
  * apportioned as the gift's share of everything refunded so far, this refund included, less its
  * share of what earlier refunds took. so however the cents of each refund fall, refunds adding up to
@@ -257,18 +262,34 @@ export type RefundedMoney = {
  *
  * the gift's posted lines are mirrored rather than named here, so a refund comes out of whichever
  * asset account the gift went into — `1020` for a charge, and whatever else a gift was ever posted
- * to — and off every fund it credited. the processor's fee is not in those lines and is not given
- * back: it stays expensed in the gift's own `'fee'` group.
+ * to — and off every fund it credited. the processor's fee on the gift is not in those lines and is
+ * not given back: it stays expensed in the gift's own `'fee'` group.
+ *
+ * a dispute's fee is two lines of this same group, expensed and credited to `1020` as `feeEntry`
+ * books the gift's own, so the event keeps one group and one key. `reinstatementEntry` reads those
+ * two lines back out.
  */
 export function reversalEntry(gift: ReversedGift, refund: RefundedMoney) {
+	const fee = refund.feeMinor;
 	return post({
 		sourceType: 'refund',
 		sourceId: gift.refundPaymentId,
 		currency: refund.currency,
 		occurredAt: refund.occurredAt,
-		memo: `refund on donation ${gift.donationId}`,
-		lines: refundShares(gift, refund.amountMinor)
+		memo: `${refund.kind === 'refund' ? 'refund' : 'dispute'} on donation ${gift.donationId}`,
+		lines: [
+			...refundShares(gift, refund.amountMinor),
+			...(fee === null || fee <= 0 ? [] : feeLines(fee))
+		]
 	});
+}
+
+/** a fee the processor took for a reversal: expensed, and out of what it owes (`feeEntry` above). */
+function feeLines(feeMinor: number): PostingLine[] {
+	return [
+		{ accountId: postableId('processorFees'), amountMinor: feeMinor },
+		{ accountId: postableId('undepositedFunds'), amountMinor: -feeMinor }
+	];
 }
 
 /**
@@ -286,7 +307,7 @@ function refundShares(gift: ReversedGift, amountMinor: number): PostingLine[] {
 		.filter((line) => line.amountMinor !== 0);
 }
 
-/** a refund in the books that did not stand. */
+/** a refund or a dispute's withdrawal in the books that did not stand. */
 export type FailedRefund = {
 	/** the refund's own `payment.id` — `entry_group.source_id` of both its groups. */
 	readonly refundPaymentId: string;
@@ -296,23 +317,53 @@ export type FailedRefund = {
 };
 
 /**
- * the money a failed refund put back: the exact mirror of what the refund took.
+ * the money a withdrawal that did not stand put back: the exact mirror of what it took, less any
+ * fee the processor charged for it, plus that fee where the processor gave it back.
  *
  * `('payment', refund row)`, because it is money in on that row, and it is the grain
  * `entry_group_source_idx` in ../db/schema.ts gives a refund-direction row's reinstatement.
  */
-export function reinstatementEntry(refund: FailedRefund, when: Omit<RefundedMoney, 'amountMinor'>) {
+export function reinstatementEntry(
+	refund: FailedRefund,
+	when: Pick<RefundedMoney, 'currency' | 'occurredAt'> & {
+		readonly kind: 'refund_failed' | 'dispute_won';
+		/** minor units: the reversal's fee the processor gave back. null where it gave none back. */
+		readonly feeReturnedMinor: number | null;
+	}
+) {
+	const returned = when.feeReturnedMinor;
 	return post({
 		sourceType: 'payment',
 		sourceId: refund.refundPaymentId,
 		currency: when.currency,
 		occurredAt: when.occurredAt,
-		memo: `refund on donation ${refund.donationId} did not stand`,
-		lines: refund.withdrawn.map((line) => ({
-			accountId: line.accountId,
-			amountMinor: -line.amountMinor
-		}))
+		memo:
+			when.kind === 'dispute_won'
+				? `dispute on donation ${refund.donationId} won`
+				: `refund on donation ${refund.donationId} did not stand`,
+		lines: [
+			...withoutReversalFee(refund.withdrawn),
+			...(returned === null || returned <= 0 ? [] : feeLines(returned))
+		].map((line) => ({ accountId: line.accountId, amountMinor: -line.amountMinor }))
 	});
+}
+
+/**
+ * a withdrawal's lines without the fee charged for it (`reversalEntry` above): each processor-fee
+ * line and one `1020` credit of the same figure. the gift's own lines carry no processor fee, so
+ * whatever is left is the gift's money.
+ */
+function withoutReversalFee(lines: readonly PostingLine[]): PostingLine[] {
+	const processorFees = postableId('processorFees');
+	const rest = lines.filter((line) => line.accountId !== processorFees);
+	for (const fee of lines.filter((line) => line.accountId === processorFees)) {
+		const credit = rest.findIndex(
+			(line) =>
+				line.accountId === postableId('undepositedFunds') && line.amountMinor === -fee.amountMinor
+		);
+		if (credit !== -1) rest.splice(credit, 1);
+	}
+	return rest;
 }
 
 /**

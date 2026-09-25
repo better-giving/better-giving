@@ -26,7 +26,7 @@ const REFUND = { currency: 'USD', occurredAt: new Date('2026-09-01T00:00:00.000Z
 function refundOf(original: readonly PostingLine[], amountMinor: number, alreadyRefundedMinor = 0) {
 	return reversalEntry(
 		{ refundPaymentId: 'r-1', donationId: 'd-1', original, alreadyRefundedMinor },
-		{ ...REFUND, amountMinor }
+		{ ...REFUND, kind: 'refund', amountMinor, feeMinor: null }
 	);
 }
 
@@ -123,7 +123,7 @@ describe('reinstatementEntry()', () => {
 
 		const entry = reinstatementEntry(
 			{ refundPaymentId: 'r-1', donationId: 'd-1', withdrawn: withdrawal.lines },
-			REFUND
+			{ ...REFUND, kind: 'refund_failed', feeReturnedMinor: null }
 		);
 
 		expect(entry.group).toMatchObject({ sourceType: 'payment', sourceId: 'r-1' });
@@ -131,6 +131,35 @@ describe('reinstatementEntry()', () => {
 			[UNDEPOSITED, 2_500],
 			[FUND_A, -1_500],
 			[FUND_B, -1_000]
+		]);
+	});
+});
+
+describe('the memo an entry is listed under in /admin/books', () => {
+	const gift = { refundPaymentId: 'r-1', donationId: 'd-1', original: charged(10_000) };
+
+	it('calls a refund a refund and a dispute a dispute', () => {
+		const money = { ...REFUND, amountMinor: 2_500, feeMinor: null };
+		const memo = (kind: 'refund' | 'dispute_opened') =>
+			reversalEntry({ ...gift, alreadyRefundedMinor: 0 }, { ...money, kind }).group.memo;
+
+		expect([memo('refund'), memo('dispute_opened')]).toEqual([
+			'refund on donation d-1',
+			'dispute on donation d-1'
+		]);
+	});
+
+	it('calls money back a refund that did not stand, or a dispute won', () => {
+		const withdrawn = refundOf(charged(10_000), 2_500).lines;
+		const memo = (kind: 'refund_failed' | 'dispute_won') =>
+			reinstatementEntry(
+				{ refundPaymentId: 'r-1', donationId: 'd-1', withdrawn },
+				{ ...REFUND, feeReturnedMinor: null, kind }
+			).group.memo;
+
+		expect([memo('refund_failed'), memo('dispute_won')]).toEqual([
+			'refund on donation d-1 did not stand',
+			'dispute on donation d-1 won'
 		]);
 	});
 });

@@ -3,6 +3,7 @@ import { outboxStatements } from '../accounting/outbox';
 import type { Db } from '../db/client';
 import type { EntrySourceType } from '../db/schema';
 import { type Posting, postingStatements } from '../ledger/posting';
+import type { ReversalKind } from '../payments/provider';
 import { zapierStatements } from '../zapier/events';
 
 // the one place a posting becomes everything its batch owes: the entry group and its lines, the
@@ -68,20 +69,23 @@ export function correctionWrites(db: Db, correction: Posting): Writes {
  * money leaving a gift already in the books, or coming back to it, by the port's own kind of
  * reversal (`Reversal` in ../payments/provider.ts).
  *
- *   refund        — `('refund', refund row)`: the gift's lines reversed (`reversalEntry`).
- *   refund_failed — `('payment', refund row)`: a refund that did not stand, mirrored back
- *                   (`reinstatementEntry`).
- *
- * a union with a posting on every arm, so the composer always has a statement to hand back.
+ *   refund, dispute_opened,
+ *   dispute_lost             — `('refund', refund row)`: the gift's lines reversed
+ *                              (`reversalEntry`). a lost dispute posts only where no opening was
+ *                              recorded before it.
+ *   refund_failed,
+ *   dispute_won              — `('payment', refund row)`: a withdrawal that did not stand, mirrored
+ *                              back (`reinstatementEntry`).
  */
-export type ReversalEntry =
-	| { readonly kind: 'refund'; readonly entry: Posting }
-	| { readonly kind: 'refund_failed'; readonly entry: Posting };
+export type ReversalEntry = { readonly kind: ReversalKind; readonly entry: Posting };
 
 const REVERSAL_SOURCE_TYPES = {
 	refund: 'refund',
-	refund_failed: 'payment'
-} as const satisfies Record<ReversalEntry['kind'], EntrySourceType>;
+	refund_failed: 'payment',
+	dispute_opened: 'refund',
+	dispute_won: 'payment',
+	dispute_lost: 'refund'
+} as const satisfies Record<ReversalKind, EntrySourceType>;
 
 /**
  * a reversal's group, owing QuickBooks nothing and no Zap. `outboxStatements` has no gate for "only
