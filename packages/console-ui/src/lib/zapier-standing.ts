@@ -113,6 +113,36 @@ export function replaceCosts(listening: number): string[] {
 	];
 }
 
+/**
+ * what a landed replace did to the Zaps on the old key, one sentence each, or an empty list where
+ * it touched none — which is every make, and every other answer.
+ *
+ * two sentences because they ask two different things of a Zap's owner: a paused Zap reads as off
+ * in Zapier and only wants reconnecting and switching back on, while one whose hook did not answer
+ * still reads as on and hears nothing until it is switched off and on by hand — nothing asks
+ * Zapier again (packages/operator/src/console/zapier.ts).
+ */
+export function replacedSays(answer: ZapierAnswer | null): string[] {
+	if (answer?.kind !== 'reported' || !answer.report.ok) return [];
+	const { paused, notPaused } = answer.report;
+	const said: string[] = [];
+	if (paused > 0)
+		said.push(
+			paused === 1
+				? 'Zapier has switched off 1 Zap that used the old key. Its owner needs to reconnect it with the new key and switch it back on.'
+				: `Zapier has switched off ${paused} Zaps that used the old key. Their owners need to reconnect them with the new key and switch them back on.`
+		);
+	if (notPaused > 0) {
+		const more = paused > 0 ? ' more' : '';
+		said.push(
+			notPaused === 1
+				? `1${more} Zap may still look switched on in Zapier, but it hears nothing. Its owner needs to reconnect it with the new key, then switch it off and on by hand.`
+				: `${notPaused}${more} Zaps may still look switched on in Zapier, but they hear nothing. Their owners need to reconnect them with the new key, then switch them off and on by hand.`
+		);
+	}
+	return said;
+}
+
 const HOUR = 60 * 60_000;
 
 /**
