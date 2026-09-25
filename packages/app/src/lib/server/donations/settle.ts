@@ -1225,8 +1225,7 @@ async function reportedUnsettled(
 	const processor = processorLabel(deps);
 	await alert(deps, {
 		headline: `A ${processor} payment recorded as settled is now reported as ${settlement.status}`,
-		body:
-			'Nothing was changed: the payment is still recorded as settled until a person corrects it.',
+		body: 'Nothing was changed: the payment is still recorded as settled until a person corrects it.',
 		facts: [
 			{ label: 'Payment', value: target.payment.id },
 			{ label: 'Donation', value: target.donation.id },
