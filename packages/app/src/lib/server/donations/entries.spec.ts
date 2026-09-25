@@ -25,8 +25,8 @@ const REFUND = { currency: 'USD', occurredAt: new Date('2026-09-01T00:00:00.000Z
 
 function refundOf(original: readonly PostingLine[], amountMinor: number, alreadyRefundedMinor = 0) {
 	return reversalEntry(
-		{ refundPaymentId: 'r-1', donationId: 'd-1', original, alreadyRefundedMinor },
-		{ ...REFUND, kind: 'refund', amountMinor, feeMinor: null }
+		{ refundPaymentId: 'r-1', donationId: 'd-1', original, alreadyRefundedMinor, fee: [] },
+		{ ...REFUND, kind: 'refund', amountMinor, feeMinor: null, feeReturnedMinor: null }
 	);
 }
 
@@ -136,10 +136,10 @@ describe('reinstatementEntry()', () => {
 });
 
 describe('the memo an entry is listed under in /admin/books', () => {
-	const gift = { refundPaymentId: 'r-1', donationId: 'd-1', original: charged(10_000) };
+	const gift = { refundPaymentId: 'r-1', donationId: 'd-1', original: charged(10_000), fee: [] };
 
 	it('calls a refund a refund and a dispute a dispute', () => {
-		const money = { ...REFUND, amountMinor: 2_500, feeMinor: null };
+		const money = { ...REFUND, amountMinor: 2_500, feeMinor: null, feeReturnedMinor: null };
 		const memo = (kind: 'refund' | 'dispute_opened') =>
 			reversalEntry({ ...gift, alreadyRefundedMinor: 0 }, { ...money, kind }).group.memo;
 

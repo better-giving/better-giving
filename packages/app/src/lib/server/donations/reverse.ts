@@ -1,8 +1,18 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, lt, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { reversalWrites, type Writes } from '../books/writes';
 import type { Db } from '../db/client';
-import { type DisputeOutcome, dispute, donation, payment, type Payment } from '../db/schema';
+import { postableId } from '../db/accounts';
+import {
+	type DisputeOutcome,
+	dispute,
+	donation,
+	entryGroup,
+	ledgerEntry,
+	payment,
+	type Payment
+} from '../db/schema';
+import type { PostingLine } from '../ledger/posting';
 import { findEntryGroup } from '../ledger/queries';
 import { stopRecurringGift, type StopOutcome } from '../recurring/stop';
 import {
@@ -41,8 +51,11 @@ import { reinstatementEntry, reversalEntry, unpostable } from './entries';
 // ./entries.ts), so the money leaves whichever account the gift went into and every fund it
 // credited. each refund is apportioned against what earlier refunds and disputes that still stand
 // already took (`standingRefunds` below), so withdrawals adding up to the gift take every fund back
-// exactly, and one naming no figure is what is left. the processor's fee on the gift stays booked: a
-// refund does not return it.
+// exactly, and one naming no figure is what is left. the processor's fee on the gift stays booked,
+// but for the part a processor gives back with a refund: that is the gift's own `'fee'` lines
+// reversed, in the refund's group, and no more of the fee than the gift still holds after what
+// earlier refunds that still stand gave back (`feeGivenBack` below). a figure over that is capped,
+// and the cap is logged rather than told to staff.
 //
 // ---------------------------------------------------------------------------
 // a refund is found through the gift, and the gift may not be here yet.
@@ -90,11 +103,12 @@ import { reinstatementEntry, reversalEntry, unpostable } from './entries';
 // ---------------------------------------------------------------------------
 // nothing here throws, for the reason ./settle.ts's header gives: a throw is a 500, read by the
 // processor as "deliver this again" for three days. what the refund row or the ledger would refuse
-// — a blank id, figures `unpostable` in ./entries.ts names, a currency other than the gift's — is
-// refused at the door, told to an operator and answered 200 — and a dispute's respond-by that is
-// no date, or a blank reason, is read as none (`withUsableDetails`) — so the one rejection left for
-// `commit` is the UNIQUE a racing delivery meets. every alert is sent through `tellStaff`, which reports a
-// transport fault rather than raising it, and a stop that faults is told as a stop that failed.
+// — a blank id, figures `unpostable` in ./entries.ts names, a fee given back that is not whole, a
+// currency other than the gift's — is refused at the door, told to an operator and answered 200 —
+// and a dispute's respond-by that is no date, or a blank reason, is read as none
+// (`withUsableDetails`) — so the one rejection left for `commit` is the UNIQUE a racing delivery
+// meets. every alert is sent through `tellStaff`, which reports a transport fault rather than
+// raising it, and a stop that faults is told as a stop that failed.
 
 /** one reversal delivery: read it, find its gift, write it, then tell people. never throws. */
 export async function reverseDelivery(
@@ -206,6 +220,11 @@ async function withdraw(
 			? `earlier refunds already took the whole gift, so the dispute has nothing of it left to withdraw, and its fee${feeMinor === null ? '' : ` of ${feeMinor} ${reversal.currency} (minor units)`} was not booked.`
 			: null) ??
 		unpostable({ ...reversal, amountMinor, feeMinor }) ??
+		(reversal.kind === 'refund' &&
+		reversal.feeReturnedMinor !== null &&
+		!Number.isSafeInteger(reversal.feeReturnedMinor)
+			? `the fee given back with the refund is ${reversal.feeReturnedMinor}, which is not a whole number of minor units.`
+			: null) ??
 		(reversal.currency === reversed.currency
 			? null
 			: `the ${reversal.kind === 'refund' ? 'refund' : 'dispute'} is in ${reversal.currency} and the gift was paid in ${reversed.currency}, and one entry holds one currency.`);
@@ -213,6 +232,11 @@ async function withdraw(
 
 	const refundId = uuidv7();
 	const charge = await findEntryGroup(deps.db, 'payment', reversed.id);
+	const giftFee = charge === null ? null : await findEntryGroup(deps.db, 'fee', reversed.id);
+	const feeBack =
+		reversal.kind === 'refund' && charge !== null
+			? await feeGivenBack(deps.db, reversal, reversed.id, giftFee?.lines ?? [])
+			: null;
 	const posting =
 		charge === null
 			? `payment ${reversed.id} settled and was never posted, so the books hold none of this gift unless somebody posted it by hand.`
@@ -223,14 +247,16 @@ async function withdraw(
 							refundPaymentId: refundId,
 							donationId: reversed.donationId,
 							original: charge.lines,
-							alreadyRefundedMinor
+							alreadyRefundedMinor,
+							fee: giftFee?.lines ?? []
 						},
 						{
 							kind: reversal.kind,
 							amountMinor,
 							currency: reversal.currency,
 							occurredAt: reversal.occurredAt,
-							feeMinor
+							feeMinor,
+							feeReturnedMinor: feeBack?.bookedMinor ?? null
 						}
 					)
 				});
@@ -309,6 +335,12 @@ async function withdraw(
 	}
 	if (typeof posting === 'string') {
 		return refundNotPosted(deps, reversal, reversed, refundId, amountMinor, posting);
+	}
+	if (feeBack !== null && feeBack.bookedMinor < feeBack.reportedMinor) {
+		console.warn(
+			'a refund gave back more of its gift’s fee than the books still held, and only what they held was booked:',
+			JSON.stringify({ refund: refundId, ...feeBack, currency: reversal.currency })
+		);
 	}
 	return { ok: true, outcome: 'posted', detail: `refund ${refundId} posted.` };
 }
@@ -911,6 +943,46 @@ async function standingRefunds(db: Db, paymentId: string): Promise<number> {
 			)
 		);
 	return row?.total ?? 0;
+}
+
+/** minor units: the part of a gift's fee a refund gave back, and what of it the books take. */
+type FeeBack = { readonly reportedMinor: number; readonly bookedMinor: number };
+
+/**
+ * what a refund gave back of its gift's fee, taken no further than the fee the gift's own `'fee'`
+ * group booked less what earlier refunds that still stand gave back of it. null where it gave none
+ * back. like `standingRefunds`, a read rather than a gate: two refunds racing may both give back
+ * the same part, and the figure over is a correction in /admin/books.
+ */
+async function feeGivenBack(
+	db: Db,
+	reversal: RefundRead,
+	paymentId: string,
+	giftFee: readonly PostingLine[]
+): Promise<FeeBack | null> {
+	const reportedMinor = reversal.feeReturnedMinor;
+	if (reportedMinor === null || reportedMinor <= 0) return null;
+	const processorFees = postableId('processorFees');
+	const bookedMinor = giftFee
+		.filter((line) => line.accountId === processorFees)
+		.reduce((sum, line) => sum + line.amountMinor, 0);
+	const [back] = await db
+		.select({ minor: sql<number>`coalesce(-sum(${ledgerEntry.amountMinor}), 0)` })
+		.from(ledgerEntry)
+		.innerJoin(entryGroup, eq(entryGroup.id, ledgerEntry.entryGroupId))
+		.innerJoin(payment, eq(payment.id, entryGroup.sourceId))
+		.where(
+			and(
+				eq(entryGroup.sourceType, 'refund'),
+				eq(payment.parentPaymentId, paymentId),
+				eq(payment.direction, 'refund'),
+				eq(payment.status, 'succeeded'),
+				eq(ledgerEntry.accountId, processorFees),
+				lt(ledgerEntry.amountMinor, 0)
+			)
+		);
+	const stillBookedMinor = Math.max(0, bookedMinor - (back?.minor ?? 0));
+	return { reportedMinor, bookedMinor: Math.min(reportedMinor, stillBookedMinor) };
 }
 
 /** the payment row a transaction id names on this processor, through `payment_provider_txn_idx`. */

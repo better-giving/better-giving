@@ -239,6 +239,8 @@ export type ReversedGift = {
 	readonly original: readonly PostingLine[];
 	/** minor units: what the gift's earlier refunds that still stand have already taken off it. */
 	readonly alreadyRefundedMinor: number;
+	/** the lines of the gift's own `'fee'` group, in posting order — none where no fee was booked. */
+	readonly fee: readonly PostingLine[];
 };
 
 /** money that moved on a refund or a dispute: which, how much, in what, and when. */
@@ -250,11 +252,16 @@ export type RefundedMoney = {
 	readonly occurredAt: Date;
 	/** minor units: what the processor charged for the reversal itself — a dispute fee. null where it charged none. */
 	readonly feeMinor: number | null;
+	/**
+	 * minor units: the part of the gift's own fee the processor gave back with a refund, no more
+	 * than what of it is still booked. null where it gave none back, and for a dispute.
+	 */
+	readonly feeReturnedMinor: number | null;
 };
 
 /**
  * the refund: the gift's own lines reversed, scaled to what was refunded, plus any fee the
- * processor charged for the reversal.
+ * processor charged for the reversal, less any of the gift's fee it gave back.
  *
  * apportioned as the gift's share of everything refunded so far, this refund included, less its
  * share of what earlier refunds took. so however the cents of each refund fall, refunds adding up to
@@ -262,8 +269,11 @@ export type RefundedMoney = {
  *
  * the gift's posted lines are mirrored rather than named here, so a refund comes out of whichever
  * asset account the gift went into — `1020` for a charge, and whatever else a gift was ever posted
- * to — and off every fund it credited. the processor's fee on the gift is not in those lines and is
- * not given back: it stays expensed in the gift's own `'fee'` group.
+ * to — and off every fund it credited. the processor's fee on the gift is not in those lines: it
+ * stays expensed in the gift's own `'fee'` group, but for what the processor gave back with a
+ * refund, which is that group's lines reversed and scaled to the figure given back — out of
+ * processor fees and into whichever account the fee was taken from. ./reverse.ts caps the figure at
+ * what of the fee is still booked.
  *
  * a dispute's fee is two lines of this same group, expensed and credited to `1020` as `feeEntry`
  * books the gift's own, so the event keeps one group and one key. `reinstatementEntry` reads those
@@ -279,9 +289,22 @@ export function reversalEntry(gift: ReversedGift, refund: RefundedMoney) {
 		memo: `${refund.kind === 'refund' ? 'refund' : 'dispute'} on donation ${gift.donationId}`,
 		lines: [
 			...refundShares(gift, refund.amountMinor),
-			...(fee === null || fee <= 0 ? [] : feeLines(fee))
+			...(fee === null || fee <= 0 ? [] : feeLines(fee)),
+			...feeReturnLines(gift.fee, refund.feeReturnedMinor)
 		]
 	});
+}
+
+/**
+ * the gift's own fee lines reversed, scaled to what the processor gave back: out of processor fees
+ * and back into whichever account the fee was taken from.
+ */
+function feeReturnLines(fee: readonly PostingLine[], returnedMinor: number | null): PostingLine[] {
+	if (returnedMinor === null || returnedMinor <= 0) return [];
+	const shares = shareOf(fee, returnedMinor);
+	return fee
+		.map((line, i) => ({ accountId: line.accountId, amountMinor: -(shares[i] ?? 0) }))
+		.filter((line) => line.amountMinor !== 0);
 }
 
 /** a fee the processor took for a reversal: expensed, and out of what it owes (`feeEntry` above). */
@@ -350,13 +373,15 @@ export function reinstatementEntry(
 
 /**
  * a withdrawal's lines without the fee charged for it (`reversalEntry` above): each processor-fee
- * line and one `1020` credit of the same figure. the gift's own lines carry no processor fee, so
- * whatever is left is the gift's money.
+ * debit and one `1020` credit of the same figure. the gift's own lines carry no processor fee, and
+ * a refund's fee given back is a processor-fee credit, so whatever is left is the gift's money and
+ * its fee given back.
  */
 function withoutReversalFee(lines: readonly PostingLine[]): PostingLine[] {
 	const processorFees = postableId('processorFees');
-	const rest = lines.filter((line) => line.accountId !== processorFees);
-	for (const fee of lines.filter((line) => line.accountId === processorFees)) {
+	const charged = (line: PostingLine) => line.accountId === processorFees && line.amountMinor > 0;
+	const rest = lines.filter((line) => !charged(line));
+	for (const fee of lines.filter(charged)) {
 		const credit = rest.findIndex(
 			(line) =>
 				line.accountId === postableId('undepositedFunds') && line.amountMinor === -fee.amountMinor

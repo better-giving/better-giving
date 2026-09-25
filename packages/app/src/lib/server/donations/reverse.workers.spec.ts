@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { and, eq, sql } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseContact } from '../contacts/contact-input';
 import { listContacts } from '../contacts/queries';
 import { postableId } from '../db/accounts';
@@ -324,6 +324,130 @@ describe('recordReversal() — a partial refund', () => {
 		expect(refunded).toContainEqual([postableId('undepositedFunds'), -4_000]);
 		expect(await linesOf('fee', gift.paymentId)).toEqual(fee);
 		expect(fee).toContainEqual([postableId('processorFees'), 320]);
+	});
+});
+
+/** minor units: what every group in the books nets to on one account. */
+async function netOn(accountId: PostableAccountId) {
+	const [row] = await db
+		.select({ net: sql<number>`coalesce(sum(${ledgerEntry.amountMinor}), 0)` })
+		.from(ledgerEntry)
+		.where(eq(ledgerEntry.accountId, accountId));
+	return row?.net ?? 0;
+}
+
+describe('recordReversal() — a refund that gives back part of the gift’s fee', () => {
+	it('books what came back inside the refund’s group, so fees and 1020 net to what the processor kept and moved', async () => {
+		await settledGift({ feeMinor: 320 });
+
+		await recordReversal(deps(), refund({ feeReturnedMinor: 260 }), 'evt_r1');
+
+		const [row] = await refundRows();
+		expect(await linesOf('refund', row?.id ?? '')).toEqual(
+			[
+				[postableId('undepositedFunds'), -10_000],
+				[fund, 10_000],
+				[postableId('undepositedFunds'), 260],
+				[postableId('processorFees'), -260]
+			].sort()
+		);
+		expect(await netOn(postableId('processorFees'))).toBe(60);
+		// the charge put 9,680 in and the refund took 9,740 out of the processor's balance.
+		expect(await netOn(postableId('undepositedFunds'))).toBe(9_680 - 9_740);
+	});
+
+	it('gives back no more of the fee over two refunds than the gift booked, logging the cap and telling nobody', async () => {
+		await settledGift({ feeMinor: 320 });
+		const mail = mailer();
+		const logged = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		await recordReversal(deps(), refund({ amountMinor: 5_000, feeReturnedMinor: 200 }), 'evt_r1');
+		await recordReversal(
+			deps({ email: mail.port }),
+			refund({ providerReversalId: 're_2', amountMinor: 5_000, feeReturnedMinor: 200 }),
+			'evt_r2'
+		);
+
+		const [, second] = await refundRows();
+		expect(await linesOf('refund', second?.id ?? '')).toContainEqual([
+			postableId('processorFees'),
+			-120
+		]);
+		expect(await netOn(postableId('processorFees'))).toBe(0);
+		expect(logged).toHaveBeenCalledTimes(1);
+		expect(mail.sent).toEqual([]);
+		logged.mockRestore();
+	});
+
+	it('books none of a fee given back on a gift whose fee was never booked, and logs it', async () => {
+		const gift = await settledGift({ feeMinor: null });
+		const logged = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		await recordReversal(deps(), refund({ feeReturnedMinor: 260 }), 'evt_r1');
+
+		const [row] = await refundRows();
+		const charge = (await linesOf('payment', gift.paymentId)) ?? [];
+		expect(await linesOf('refund', row?.id ?? '')).toEqual(
+			charge.map(([account, amount]) => [account, -amount] as const).sort()
+		);
+		expect(logged).toHaveBeenCalledTimes(1);
+		logged.mockRestore();
+	});
+
+	it('takes the fee given back again when the refund does not stand', async () => {
+		await settledGift({ feeMinor: 320 });
+		await recordReversal(deps(), refund({ feeReturnedMinor: 260 }), 'evt_r1');
+
+		await recordReversal(
+			deps(),
+			{
+				kind: 'refund_failed',
+				reversedTxnId: 'pi_1',
+				providerReversalId: 're_1',
+				occurredAt: new Date('2026-08-25T10:00:00.000Z'),
+				reversedMetadata: { donation_id: 'named-by-the-charge' }
+			},
+			'evt_r2'
+		);
+
+		const [row] = await refundRows();
+		expect(await linesOf('payment', row?.id ?? '')).toEqual(
+			[
+				[postableId('undepositedFunds'), 10_000],
+				[fund, -10_000],
+				[postableId('undepositedFunds'), -260],
+				[postableId('processorFees'), 260]
+			].sort()
+		);
+		expect(await netOn(postableId('processorFees'))).toBe(320);
+	});
+
+	it('books nothing of the fee where the processor reports none given back', async () => {
+		const gift = await settledGift({ feeMinor: 320 });
+
+		await recordReversal(deps(), refund({ feeReturnedMinor: 0 }), 'evt_r1');
+
+		const [row] = await refundRows();
+		const charge = (await linesOf('payment', gift.paymentId)) ?? [];
+		expect(await linesOf('refund', row?.id ?? '')).toEqual(
+			charge.map(([account, amount]) => [account, -amount] as const).sort()
+		);
+		expect(await netOn(postableId('processorFees'))).toBe(320);
+	});
+
+	it('refuses a fee given back that is not whole, writing nothing and telling an operator', async () => {
+		await settledGift({ feeMinor: 320 });
+		const mail = mailer();
+
+		const result = await recordReversal(
+			deps({ email: mail.port }),
+			refund({ feeReturnedMinor: 12.5 }),
+			'evt_r1'
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
+		expect(await refundRows()).toEqual([]);
+		expect(mail.sent).toHaveLength(1);
 	});
 });
 
