@@ -50,8 +50,10 @@ export const RECURRING_STATUS_TONES: Record<RecurringPlanStatus, Tone> = {
 // accent on `Refunded` would say the one thing an operator must not read off a colour here: that
 // the money is in.
 //
-// `disputed` is `attention`: the gift is waiting on the processor's ruling, and on the
-// organisation's evidence before the processor's deadline.
+// `disputed` is `attention`: the gift waits on the organisation's evidence before the processor's
+// deadline, then on the processor's ruling. not `blocker`, since nothing has been refused yet — a
+// loss reads `Refunded` on its own rung and a win reads as the gift did before. never `done`, since
+// the processor has already taken the money back out. ./status-tones.spec.ts holds the last.
 export const DONATION_STATUS_TONES: Record<DonationStatus, Tone> = {
 	pending: 'attention',
 	completed: 'done',

@@ -1,3 +1,7 @@
+import {
+	DISPUTE_EVENT_TYPES,
+	REFUND_EVENT_TYPES
+} from '@better-giving/operator/stripe/webhook-endpoint';
 import type {
 	WebhookRepaired,
 	WebhookSecretReading,
@@ -10,8 +14,14 @@ import type {
 // pins `node` and there is no dom, so a rule left inside the component is one no spec can reach.
 //
 // **the row says what the gift costs and never what the machine is called.** an operator reads
-// that card gifts are charged and never marked paid; the endpoint, its events and its signing secret
-// are the Save's to establish, and the row names none of them (CLAUDE.md → Product surface).
+// that card gifts are charged and never marked paid, or that refunds and disputes are missed; the
+// endpoint, its events and its signing secret are the Save's to establish, and the row names none of
+// them (CLAUDE.md → Product surface).
+//
+// **an endpoint short only of refund and dispute events costs what those events carry and no
+// more.** a gift is still marked paid; it is its reversal that never arrives, so the gift goes on
+// reading as paid. saying the first cost over the second sends an operator to look for gifts that
+// are not missing.
 //
 // **the repair is offered on one standing and no other.** it switches the endpoint that is already
 // there back on and subscribes it to everything, and it leaves the signing secret alone
@@ -39,7 +49,28 @@ export type NoticesStanding =
 	| { kind: 'working' }
 	| { kind: 'unregistered' }
 	| { kind: 'unverified' }
-	| { kind: 'incomplete'; delivering: boolean; short: boolean };
+	| { kind: 'incomplete'; delivering: boolean; missing: Untold };
+
+/**
+ * what an incomplete endpoint is short of, the worse cost first.
+ *
+ *   payments  — any event that marks a gift paid or refused, or one this console has no list for.
+ *   reversals — refund and dispute events, and nothing else.
+ *   nothing   — no event: the endpoint is subscribed to them all and switched off.
+ */
+export type Untold = 'payments' | 'reversals' | 'nothing';
+
+const REVERSAL_EVENT_TYPES: ReadonlySet<string> = new Set([
+	...REFUND_EVENT_TYPES,
+	...DISPUTE_EVENT_TYPES
+]);
+
+function untold(missingEventTypes: readonly string[]): Untold {
+	if (missingEventTypes.length === 0) return 'nothing';
+	return missingEventTypes.every((type) => REVERSAL_EVENT_TYPES.has(type))
+		? 'reversals'
+		: 'payments';
+}
 
 /**
  * the standing, or `null` where the row has nothing of its own to say.
@@ -59,7 +90,7 @@ export function noticesStanding(
 		return {
 			kind: 'incomplete',
 			delivering: subscription.delivering,
-			short: subscription.missingEventTypes.length > 0
+			missing: untold(subscription.missingEventTypes)
 		};
 	}
 	return { kind: 'working' };
@@ -74,9 +105,12 @@ export function noticesNote(standing: NoticesStanding): string {
 	if (standing.kind === 'unverified') {
 		return 'Stripe tells this deployment when a gift is paid, but this deployment can’t confirm those messages came from Stripe, so it turns every one away and card gifts are never marked paid. Press Save with your two keys to set it up again.';
 	}
+	if (standing.delivering && standing.missing === 'reversals') {
+		return 'Stripe isn’t telling this deployment when a gift is refunded or disputed, so refunds and disputes are missed and those gifts go on reading as paid.';
+	}
 	const stops = standing.delivering
 		? 'Stripe isn’t telling this deployment about every kind of payment'
-		: standing.short
+		: standing.missing !== 'nothing'
 			? 'Stripe has stopped telling this deployment when a gift is paid, and isn’t set to tell it about every kind of payment'
 			: 'Stripe has stopped telling this deployment when a gift is paid';
 	return `${stops}, so card gifts can be charged and never marked paid.`;
