@@ -371,7 +371,7 @@ describe('a delivery row is in one of four states', () => {
 });
 
 describe('a delivery row names the event it carries', () => {
-	// the id a Zap filters a redelivery on, so a blank one gives it nothing to tell two events apart by.
+	// the id the payload carries as `id`, so a blank one gives a Zap nothing to tell two events apart by.
 	it.each([
 		['empty', ''],
 		['a lone space', ' '],

@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
+import { eachAtMost } from './each-at-most';
 import { donorEventOf, type GiftEvent, readGiftEvents } from './payload';
 import { endSubscriptionStatements } from './subscriptions';
 
@@ -17,8 +18,9 @@ import { endSubscriptionStatements } from './subscriptions';
 // mid-post writes nothing, and its rows come back once the lease runs out.
 //
 // **delivery is at least once.** a post whose answer never came may have reached Zapier, and it is
-// posted again. the payload's `id` is stable across every retry, which is what a Zap filters a
-// repeat on.
+// posted again, and the Zap runs again on it: Zapier dedupes a polling trigger's items on `id`,
+// never a REST hook's posts (https://docs.zapier.com/integrations/build/deduplication). the
+// payload's `id` is the same on every retry.
 //
 // where each answer lands:
 //   2xx      — `sent`.
@@ -277,29 +279,4 @@ async function refusal(response: Response): Promise<string> {
 	const line = `${response.status} ${response.statusText}`.trim();
 	const body = (await response.text()).slice(0, ERROR_BODY_CHARS).trim();
 	return body === '' ? line : `${line} — ${body}`;
-}
-
-/**
- * `work` over every item, never more than `limit` at once. a lane that throws stops that lane only;
- * the rest finish before the first fault is rethrown, so a database error on one row does not end
- * the invocation under posts still in flight.
- */
-async function eachAtMost<T>(
-	limit: number,
-	items: readonly T[],
-	work: (item: T) => Promise<void>
-): Promise<void> {
-	let next = 0;
-	const lane = async () => {
-		while (next < items.length) {
-			const item = items[next];
-			next += 1;
-			if (item !== undefined) await work(item);
-		}
-	};
-	const lanes = await Promise.allSettled(
-		Array.from({ length: Math.min(limit, items.length) }, lane)
-	);
-	const fault = lanes.find((l) => l.status === 'rejected');
-	if (fault !== undefined) throw fault.reason;
 }

@@ -23,7 +23,15 @@ const MADE = '2026-09-01T00:00:00.000Z';
 
 const made = (key: string): ZapierAnswer => ({
 	kind: 'reported',
-	report: { ok: true, press: 'replace', key, madeAt: MADE, disconnected: 0 }
+	report: {
+		ok: true,
+		press: 'replace',
+		key,
+		madeAt: MADE,
+		disconnected: 0,
+		paused: 0,
+		notPaused: 0
+	}
 });
 
 describe('keyStanding', () => {

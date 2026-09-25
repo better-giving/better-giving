@@ -2553,8 +2553,9 @@ export const zapierDelivery = sqliteTable(
 			.references(() => zapierSubscription.id),
 
 		/**
-		 * the stable id sent as the payload's `id`, which a Zap filters a redelivery on: the
-		 * payment id for `new_gift`, the contact id for `new_donor`.
+		 * the id sent as the payload's `id`, the same on every retry: the payment id for
+		 * `new_gift`, the contact id for `new_donor`. nothing drops a redelivery on it — Zapier
+		 * dedupes polling triggers only, so a repeated post runs the Zap again (../zapier/deliver.ts).
 		 */
 		eventId: text('event_id').notNull(),
 
