@@ -9,9 +9,9 @@
 // authorization header on one call and the token it mints in a bearer header on the rest; no url
 // carries either, which is what makes a failure's own sentence safe to draw.
 //
-// **live only.** the host is PayPal's live API, the one packages/app/src/lib/server/payments/paypal.ts
-// talks to: nothing in this project reads test-versus-live, and rehearsing is a second deployment
-// (DEPLOY.md).
+// **the address is the deployment's, and nothing checks the pair against it.** live and sandbox are
+// separate apps with separate pairs, and rehearsing is a second deployment holding a sandbox pair
+// (DEPLOY.md) — so which one is called is the deployment's `PAYPAL_API_URL` var, unset meaning live.
 //
 // every failure is a value, the way ../cf's are: nothing here returns an error.
 package paypal
@@ -27,8 +27,31 @@ import (
 	"github.com/better-giving/console/internal/cf"
 )
 
-// API is where PayPal answers.
+// API is where live PayPal answers, and the address a deployment holding no PAYPAL_API_URL calls.
 const API = "https://api-m.paypal.com"
+
+// Sandbox is where PayPal's sandbox answers (https://developer.paypal.com/api/rest/requests/).
+const Sandbox = "https://api-m.sandbox.paypal.com"
+
+// APIURLVar is the var naming the address, which the operator saves and the set-up run reads.
+const APIURLVar = "PAYPAL_API_URL"
+
+// Address is a saved PAYPAL_API_URL as the address this console calls — and whether it is one.
+//
+// blank is live. anything else is an https origin and nothing more: the pair travels in a header on
+// every call, so an address that is not https would send it in the clear, and a path would be
+// joined in front of every call's own.
+func Address(saved string) (string, bool) {
+	if strings.TrimSpace(saved) == "" {
+		return API, true
+	}
+	parsed, err := url.Parse(strings.TrimSuffix(saved, "/"))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
+		parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
+		return "", false
+	}
+	return parsed.Scheme + "://" + parsed.Host, true
+}
 
 // Request is one call to PayPal past the token, as a value before it is made.
 type Request struct {
@@ -48,14 +71,10 @@ type Binding struct {
 	Bearer    func(accessToken string) Call
 }
 
-// Bind binds one client id and secret, against the live API.
+// BindAt binds one client id and secret against an address Address accepted, or a test host.
 //
 // The chain is handed functions and never the pair, which is ../cf's arrangement for every
 // credential this binary holds.
-func Bind(clientID, secret string) Binding { return BindAt(API, clientID, secret) }
-
-// BindAt is that same binding against a host named, so a case can answer for PayPal with no app
-// and no network.
 func BindAt(base, clientID, secret string) Binding {
 	basic := base64.StdEncoding.EncodeToString([]byte(clientID + ":" + secret))
 	mint := cf.FormSend(base, map[string]string{"Authorization": "Basic " + basic})

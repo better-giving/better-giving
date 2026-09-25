@@ -58,6 +58,17 @@ func paypalApp(t *testing.T) (*httptest.Server, func() []string) {
 // cloudflare call and its body, and the last every errand the deployment was sent.
 func settingPaypal(t *testing.T, chosen string) (http.Handler, func() []string, *[]string, *httptest.Server, func() []errand) {
 	t.Helper()
+	handler, asked, cloudflare, surface, errands, _ := settingPaypalHolding(t, chosen, []any{})
+	return handler, asked, cloudflare, surface, errands
+}
+
+// that same console on a worker bound to `bindings`. the last return is every address the pair was
+// bound to, which is never the fake's: every call goes to the fake PayPal whatever was asked for.
+func settingPaypalHolding(t *testing.T, chosen string, bindings []any) (
+	http.Handler, func() []string, *[]string, *httptest.Server, func() []errand, *[]string,
+) {
+	t.Helper()
+	bases := []string{}
 	records, flow, accounts := machine(t, chosen)
 	surface, errands := deployed(t, map[string]any{
 		"POST /console/recurring": map[string]any{
@@ -69,7 +80,7 @@ func settingPaypal(t *testing.T, chosen string) (http.Handler, func() []string, 
 	})
 	connected(t, records, surface.URL)
 	api, cloudflare := writes(t, map[string]any{
-		"GET " + settingsOf(release.Baked.Name): resulting(map[string]any{"bindings": []any{}}),
+		"GET " + settingsOf(release.Baked.Name): resulting(map[string]any{"bindings": bindings}),
 		"GET /accounts/an-account/workers/scripts/" + release.Baked.Name + "/subdomain": resulting(
 			map[string]any{"enabled": true}),
 		"GET /accounts/an-account/workers/subdomain": resulting(map[string]any{"subdomain": "hound"}),
@@ -84,10 +95,11 @@ func settingPaypal(t *testing.T, chosen string) (http.Handler, func() []string, 
 		Reads:    func(cf.Credential) cf.Get { return cf.JSONGet(api.URL, nil) },
 		Patches:  func(cf.Credential) cf.Send { return cf.JSONSend(api.URL, nil) },
 		Settings: func(cf.Credential) cf.MultipartUpload { return cf.MultipartSend(api.URL, nil) },
-		Paypal: func(clientID, secret string) paypal.Binding {
+		Paypal: func(base, clientID, secret string) paypal.Binding {
+			bases = append(bases, base)
 			return paypal.BindAt(app.URL, clientID, secret)
 		},
-	}), asked, cloudflare, surface, errands
+	}), asked, cloudflare, surface, errands, &bases
 }
 
 const paypalPressed = `{"clientId":"Aa-client-typed","secret":"EL-secret-typed"}`
@@ -140,6 +152,31 @@ func TestThePaypalPressRegistersTheListenerAndWritesThePairAndItsIdAsVars(t *tes
 	}
 	if strings.Contains(held, "/secrets-bulk") {
 		t.Errorf("a configuration value was stored as a credential; the run made %v", *cloudflare)
+	}
+}
+
+func TestThePaypalPressCallsTheAddressTheDeploymentSaved(t *testing.T) {
+	for name, one := range map[string]struct {
+		bindings []any
+		want     string
+	}{
+		"unset": {bindings: []any{}, want: paypal.API},
+		"saved": {
+			bindings: []any{map[string]any{
+				"name": paypal.APIURLVar, "type": "plain_text", "text": paypal.Sandbox,
+			}},
+			want: paypal.Sandbox,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			handler, _, _, _, _, bases := settingPaypalHolding(t, "an-account", one.bindings)
+			press(t, handler, "/api/paypal/setup", paypalPressed)
+			polledPaypal(t, handler)
+
+			if len(*bases) != 1 || (*bases)[0] != one.want {
+				t.Errorf("the pair was bound to %v, want %s", *bases, one.want)
+			}
+		})
 	}
 }
 

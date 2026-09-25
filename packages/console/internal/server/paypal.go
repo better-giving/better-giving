@@ -43,7 +43,7 @@ func paypalRoutes(
 	settings func(cf.Credential) cf.MultipartUpload,
 	store *account.Store,
 	doors func() (cf.Get, cf.Post),
-	bind func(clientID, secret string) paypal.Binding,
+	bind func(base, clientID, secret string) paypal.Binding,
 	presses *Presses,
 ) {
 	runs := &paypal.Runs{}
@@ -78,14 +78,17 @@ func paypalRoutes(
 			return
 		}
 
-		binding := bind(posted.ClientID, posted.Secret)
 		// the run outlives this request by design, so it is given a context of its own; each call
 		// carries a deadline of its own (internal/cf), which is what bounds the run.
 		started, going := runs.Start(context.Background(),
 			paypal.Asked{ClientID: posted.ClientID, Secret: posted.Secret},
 			paypal.Effects{
-				Authorize: binding.Authorize,
-				Bearer:    binding.Bearer,
+				Saved: func(ctx context.Context) deployment.VarsRead {
+					return deployment.DeployedVars(ctx, door.Get, door.AccountID, door.WorkerName)
+				},
+				Bind: func(base string) paypal.Binding {
+					return bind(base, posted.ClientID, posted.Secret)
+				},
 				Address: func(ctx context.Context) deployment.Address {
 					return deployment.PublicAddress(ctx, door.Get, door.AccountID, door.WorkerName)
 				},

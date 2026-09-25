@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/release"
 )
@@ -51,7 +50,8 @@ import (
 type Stage string
 
 const (
-	// Authorizing is minting a token with the pair that was pasted.
+	// Authorizing is reading which address PayPal is called at off the deployment, and minting a
+	// token there with the pair that was pasted.
 	Authorizing Stage = "authorizing"
 	// Registering is deriving the address, reading the app's listeners, and settling the one here.
 	Registering Stage = "registering"
@@ -84,7 +84,8 @@ type OutcomeKind string
 const (
 	// Done is every step landing.
 	Done OutcomeKind = "done"
-	// Unauthorized is the pair minting no token, so nothing was read, registered or stored.
+	// Unauthorized is the pair minting no token, or there being no address to mint one at, so nothing
+	// was read, registered or stored.
 	Unauthorized OutcomeKind = "unauthorized"
 	// Nowhere is there being nowhere to register against, and Address says why.
 	Nowhere OutcomeKind = "nowhere"
@@ -150,10 +151,11 @@ type Asked struct {
 // Effects is every effect the chain has, handed in, so every stage and failure above is reachable in
 // ./setup_test.go with no PayPal app, no cloudflare account and no network.
 type Effects struct {
-	// Authorize and Bearer are ./paypal.go's Binding.
-	Authorize func(ctx context.Context) cf.Answer
-	Bearer    func(accessToken string) Call
-	Address   func(ctx context.Context) deployment.Address
+	// Saved is the deployment's configuration values, which PAYPAL_API_URL is read off.
+	Saved func(ctx context.Context) deployment.VarsRead
+	// Bind is ./paypal.go's BindAt, bound to the pair and handed the address.
+	Bind    func(base string) Binding
+	Address func(ctx context.Context) deployment.Address
 	// Publish writes vars, which is a read of the worker's bindings and one patch back.
 	Publish func(ctx context.Context, values map[string]string) deployment.Written
 	// Repeating is the step the deployment makes rather than this console, and the one that can be
@@ -174,9 +176,10 @@ const listenersPath = "/v1/notifications/webhooks"
 
 // Chain is the whole press, from the effects and what was asked.
 //
-// the order is not interchangeable: a pair that mints no token can list nothing, a listener cannot be
-// matched without the address, the write carries the id the listener step settled on, and the
-// deployment builds its PayPal client out of the pair that write put there.
+// the order is not interchangeable: a pair is bound to the address it is called at, a pair that
+// mints no token can list nothing, a listener cannot be matched without the address, the write
+// carries the id the listener step settled on, and the deployment builds its PayPal client out of
+// the pair that write put there.
 //
 // a stop at that last step leaves a deployment that works: it takes one-time gifts on PayPal, and
 // the repeating-gifts press on the same fold finishes it without the pair being pasted again.
@@ -193,7 +196,18 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 		}
 	}
 
-	minted := Read(effects.Authorize(ctx))
+	base, unaddressed := addressOf(effects.Saved(ctx))
+	if unaddressed != nil {
+		return Outcome{Kind: Unauthorized, Failure: unaddressed}
+	}
+	binding := effects.Bind(base)
+
+	minted := Read(binding.Authorize(ctx))
+	if minted.Kind == Refused {
+		refused := minted.Turned()
+		refused.Detail += sentTo(base)
+		return Outcome{Kind: Unauthorized, Failure: refused}
+	}
 	if minted.Kind != Value {
 		return Outcome{Kind: Unauthorized, Failure: minted.Turned()}
 	}
@@ -203,7 +217,7 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 			Kind: Unreadable, Detail: "PayPal minted no token for this pair.",
 		}}
 	}
-	call := effects.Bearer(token)
+	call := binding.Bearer(token)
 
 	at(Registering)
 	address := effects.Address(ctx)
@@ -273,6 +287,53 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 		return Outcome{Kind: Unrepeating, Setup: &held, AwaitingKey: held.AwaitsKey()}
 	}
 	return Outcome{Kind: Done}
+}
+
+// the address PAYPAL_API_URL names on the deployment, API where it names none — or the failure that
+// says why there is none to call.
+//
+// a read that did not land is not an unset var: calling live on it would send a sandbox pair to the
+// address it is refused at, and name the wrong fix.
+func addressOf(saved deployment.VarsRead) (string, *Failure) {
+	if saved.Kind != deployment.ValuesRead {
+		detail := "The console could not read " + APIURLVar +
+			" off this deployment, so it does not know which PayPal address to call."
+		if saved.Detail != "" {
+			detail += " " + saved.Detail
+		}
+		return "", &Failure{Kind: Unreadable, Detail: detail}
+	}
+	for _, row := range saved.Vars {
+		if row.Name != APIURLVar {
+			continue
+		}
+		switch row.Kind {
+		case deployment.VarWithheld:
+			return "", &Failure{Kind: Unreadable, Detail: "This deployment holds " + APIURLVar +
+				" as a secret, so the console cannot read which PayPal address to call. " +
+				"Free the values held as secrets, then press Save again."}
+		case deployment.VarValue:
+			base, isAddress := Address(row.Value)
+			if !isAddress {
+				return "", &Failure{Kind: Unreadable, Detail: APIURLVar + " holds " + row.Value +
+					", which is not an https address with no path. Set it to " + Sandbox +
+					" for a sandbox pair, or take it off for a live one."}
+			}
+			return base, nil
+		}
+	}
+	return API, nil
+}
+
+// where a refused pair was sent and the var that moves it, which is what tells a sandbox pair
+// refused at live from a pair that is wrong.
+func sentTo(base string) string {
+	if base == API {
+		return ". The pair was sent to " + API + ", PayPal's live address, because " + APIURLVar +
+			" is unset; a sandbox pair is called at " + Sandbox + " with " + APIURLVar + " set to it."
+	}
+	return ". The pair was sent to " + base + ", which " + APIURLVar + " names; a live pair is called " +
+		"at " + API + " with " + APIURLVar + " taken off."
 }
 
 // the listener at this address, subscribed to exactly the list — or the outcome that stopped it.

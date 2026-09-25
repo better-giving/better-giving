@@ -84,7 +84,11 @@ func listed(listeners ...map[string]any) cf.Answer {
 
 // the whole press's effects, every one of them landing, which each case then spoils one of.
 type effects struct {
-	app       *app
+	app *app
+	// saved is the deployment's configuration values, which the address PayPal is called at is read
+	// off, and bases every address the pair was bound to.
+	saved     deployment.VarsRead
+	bases     []string
 	address   deployment.Address
 	store     deployment.Written
 	published []map[string]string
@@ -104,6 +108,7 @@ func working() *effects {
 				"POST /v1/notifications/webhooks": answered(201, listener("WH-NEW", listenerURL)),
 			},
 		},
+		saved:   savedAs(deployment.DeployedVar{Name: APIURLVar, Kind: deployment.VarAbsent}),
 		address: deployment.Address{Kind: deployment.Deployed, WorkersDev: address},
 		store:   deployment.Written{Kind: deployment.WriteSet},
 		repeating: deployment.RecurringSetup{
@@ -121,9 +126,12 @@ func working() *effects {
 
 func (one *effects) bound() Effects {
 	return Effects{
-		Authorize: one.app.authorize,
-		Bearer:    one.app.bound,
-		Address:   func(context.Context) deployment.Address { return one.address },
+		Saved: func(context.Context) deployment.VarsRead { return one.saved },
+		Bind: func(base string) Binding {
+			one.bases = append(one.bases, base)
+			return Binding{Authorize: one.app.authorize, Bearer: one.app.bound}
+		},
+		Address: func(context.Context) deployment.Address { return one.address },
 		Publish: func(_ context.Context, values map[string]string) deployment.Written {
 			one.published = append(one.published, values)
 			return one.store
@@ -137,8 +145,41 @@ func (one *effects) bound() Effects {
 	}
 }
 
+// the deployment's values, read, holding `row` beside every other name absent.
+func savedAs(row deployment.DeployedVar) deployment.VarsRead {
+	return deployment.VarsRead{Kind: deployment.ValuesRead, Vars: []deployment.DeployedVar{
+		{Name: "PAYPAL_CLIENT_ID", Kind: deployment.VarAbsent}, row,
+	}}
+}
+
 func pressed() Asked {
 	return Asked{ClientID: "Aa-client", Secret: "EL-secret"}
+}
+
+func TestADeploymentHoldingNoPaypalAddressIsSetUpAgainstLivePaypal(t *testing.T) {
+	held := working()
+	if outcome := Chain(context.Background(), pressed(), held.bound()); outcome.Kind != Done {
+		t.Fatalf("outcome = %+v, want done", outcome)
+	}
+	if want := []string{API}; !slices.Equal(held.bases, want) {
+		t.Errorf("the pair was bound to %v, want %v", held.bases, want)
+	}
+}
+
+func TestADeploymentHoldingAPaypalAddressIsSetUpAgainstThatAddress(t *testing.T) {
+	held := working()
+	held.saved = savedAs(deployment.DeployedVar{
+		Name: APIURLVar, Kind: deployment.VarValue, Value: "https://api-m.sandbox.paypal.com/",
+	})
+	if outcome := Chain(context.Background(), pressed(), held.bound()); outcome.Kind != Done {
+		t.Fatalf("outcome = %+v, want done", outcome)
+	}
+	if want := []string{"https://api-m.sandbox.paypal.com"}; !slices.Equal(held.bases, want) {
+		t.Errorf("the pair was bound to %v, want %v", held.bases, want)
+	}
+	if calls := held.app.keys(); len(calls) == 0 || calls[0] != "POST /v1/oauth2/token" {
+		t.Errorf("calls = %v, want the token minted first", calls)
+	}
 }
 
 func TestAnAppWithNoListenerHereGetsOneAndTheDeploymentStoresAllThreeValues(t *testing.T) {
@@ -289,13 +330,80 @@ func TestAPairPayPalMintsNoTokenForReadsNothingAndStoresNothing(t *testing.T) {
 	if outcome.Kind != Unauthorized || outcome.Failure == nil || outcome.Failure.Kind != Refused {
 		t.Fatalf("outcome = %+v, want unauthorized and refused", outcome)
 	}
-	if want := "PayPal said: Client Authentication failed"; outcome.Failure.Detail != want {
-		t.Errorf("detail = %q, want %q", outcome.Failure.Detail, want)
+	if want := "PayPal said: Client Authentication failed"; !strings.HasPrefix(outcome.Failure.Detail, want) {
+		t.Errorf("detail = %q, want it to start %q", outcome.Failure.Detail, want)
 	}
 	if want := []string{"POST /v1/oauth2/token"}; !slices.Equal(held.app.keys(), want) {
 		t.Errorf("calls = %v, want %v", held.app.keys(), want)
 	}
 	assertNothingStored(t, held)
+}
+
+// a sandbox pair refused at live is the ordinary way a rehearsal fails, so the refusal says where
+// it was sent and which var moves it.
+func TestAPairRefusedSaysWhichAddressItWasSentToAndTheVarThatNamesIt(t *testing.T) {
+	for name, one := range map[string]struct {
+		saved deployment.DeployedVar
+		names []string
+	}{
+		"unset": {
+			saved: deployment.DeployedVar{Name: APIURLVar, Kind: deployment.VarAbsent},
+			names: []string{APIURLVar, API, Sandbox},
+		},
+		"set": {
+			saved: deployment.DeployedVar{Name: APIURLVar, Kind: deployment.VarValue, Value: Sandbox},
+			names: []string{APIURLVar, Sandbox},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			held := working()
+			held.saved = savedAs(one.saved)
+			held.app.token = answered(401, map[string]any{"error": "invalid_client"})
+
+			outcome := Chain(context.Background(), pressed(), held.bound())
+
+			if outcome.Kind != Unauthorized || outcome.Failure == nil || outcome.Failure.Kind != Refused {
+				t.Fatalf("outcome = %+v, want unauthorized and refused", outcome)
+			}
+			for _, named := range one.names {
+				if !strings.Contains(outcome.Failure.Detail, named) {
+					t.Errorf("detail = %q, want it to name %s", outcome.Failure.Detail, named)
+				}
+			}
+		})
+	}
+}
+
+// with no address to call, the pair is bound to nothing and PayPal is asked nothing.
+func TestNoAddressToCallAsksPaypalNothingAndNamesTheVar(t *testing.T) {
+	for name, saved := range map[string]deployment.VarsRead{
+		"unread":   {Kind: deployment.ValuesUnreachable, Detail: "dial tcp: no route"},
+		"withheld": savedAs(deployment.DeployedVar{Name: APIURLVar, Kind: deployment.VarWithheld}),
+		"plain http": savedAs(deployment.DeployedVar{
+			Name: APIURLVar, Kind: deployment.VarValue, Value: "http://api-m.sandbox.paypal.com",
+		}),
+		"a path": savedAs(deployment.DeployedVar{
+			Name: APIURLVar, Kind: deployment.VarValue, Value: Sandbox + "/v1",
+		}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			held := working()
+			held.saved = saved
+
+			outcome := Chain(context.Background(), pressed(), held.bound())
+
+			if outcome.Kind != Unauthorized || outcome.Failure == nil || outcome.Failure.Kind != Unreadable {
+				t.Fatalf("outcome = %+v, want unauthorized and unreadable", outcome)
+			}
+			if !strings.Contains(outcome.Failure.Detail, APIURLVar) {
+				t.Errorf("detail = %q, want it to name %s", outcome.Failure.Detail, APIURLVar)
+			}
+			if len(held.bases) != 0 || len(held.app.calls) != 0 {
+				t.Errorf("bound to %v and asked %v, want neither", held.bases, held.app.keys())
+			}
+			assertNothingStored(t, held)
+		})
+	}
 }
 
 func TestADeploymentWithNoAddressRegistersNothing(t *testing.T) {
