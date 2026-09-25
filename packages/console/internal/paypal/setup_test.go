@@ -150,8 +150,8 @@ func pressed() Asked {
 	return Asked{ClientID: "Aa-client", Secret: "EL-secret", Address: DefaultAPIURL}
 }
 
-// an address that is not live is stored beside the pair, and live is stored as no address: one
-// left from an earlier press would otherwise send a live pair somewhere else.
+// an address other than the default is stored beside the pair, and the default is stored as no
+// address: one left from an earlier press would otherwise send the pair somewhere else.
 func TestTheAddressThePairWasSetUpAtIsStoredBesideIt(t *testing.T) {
 	for _, one := range []struct{ asked, stored string }{
 		{DefaultAPIURL, "<removed>"},

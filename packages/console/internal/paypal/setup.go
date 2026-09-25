@@ -51,7 +51,7 @@ import (
 type Stage string
 
 const (
-	// Authorizing is minting a token with the pair that was pasted, at the address that was.
+	// Authorizing is minting a token with the pair that was pasted, at the address sent with it.
 	Authorizing Stage = "authorizing"
 	// Registering is deriving the address, reading the app's listeners, and settling the one here.
 	Registering Stage = "registering"
@@ -202,7 +202,7 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 		// a pair is refused at every address but the one it was made at, so where it went is half of
 		// what the operator has to check.
 		refused.Detail += ". PayPal refused the pair at " + asked.Address +
-			"; a pair made at another PayPal address is set up with that address in the address box."
+			". A pair from an app at another PayPal address needs that address in the API address box."
 		return Outcome{Kind: Unauthorized, Failure: refused}
 	}
 	if minted.Kind != Value {

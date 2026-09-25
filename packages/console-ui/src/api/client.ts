@@ -340,8 +340,8 @@ export const stripeRun = async (): Promise<StripeRunRead | null> =>
  *
  * {@link startStripeSetup}'s arrangement: how far it has got is {@link paypalRun}, a press already
  * going is a value, and the pair leaves this page in this one body and reaches nothing else. an
- * empty address is live. the listener, its address and the id stored beside the pair are all the
- * binary's to settle.
+ * empty address is PayPal's default one. the listener, its address and the id stored beside the
+ * pair are all the binary's to settle.
  */
 export async function startPaypalSetup(pair: {
 	clientId: string;

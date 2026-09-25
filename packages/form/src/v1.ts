@@ -296,8 +296,8 @@ export type Provider = {
 	 * the script this processor's SDK is loaded from, absent where the adapter's own default is the
 	 * one to load.
 	 *
-	 * the deployment states it because a publishable key starts an SDK only against the address its
-	 * keys were issued at, and the deployment is what knows that address. an absolute `https:` url
+	 * the deployment states it because a publishable key starts an SDK only against the address it
+	 * was issued at, and the deployment is what knows that address. an absolute `https:` url
 	 * whose path is {@link PAYPAL_SDK_PATH} — ./config.ts refuses the entry for anything else — so
 	 * the one script a served config can point a stranger's page at is PayPal's core, from whichever
 	 * host serves it.

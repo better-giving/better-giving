@@ -144,9 +144,9 @@ describe('which PayPal namespace this page already holds', () => {
 	});
 });
 
-// the core is planted by this module on every page, so the tag carries the host's nonce where it
-// serves one and the address the served config names. the tag is on the page as soon as the call
-// is made, which is what these read before any load event is fired.
+// the core is planted by this module wherever none is waiting yet, so the tag carries the host's
+// nonce where it serves one and the address the served config names. the tag is on the page as
+// soon as the call is made, which is what these read before any load event is fired.
 describe('the core script this module plants', () => {
 	const ELSEWHERE = 'https://www.paypal.example.test/web-sdk/v6/core';
 	const planted = (): HTMLScriptElement | null => document.querySelector('script');

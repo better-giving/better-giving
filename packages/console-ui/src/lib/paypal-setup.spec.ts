@@ -23,7 +23,7 @@ const ended = (stage: PaypalStage, outcome: PaypalSetup): PaypalRunRead => ({
 	outcome
 });
 
-/** an address other than live, which the screen knows nothing about. */
+/** an address other than the default, which the screen knows nothing about. */
 const ELSEWHERE = 'https://paypal.example.org';
 
 const body = (clientId: string, secret: string, address = PAYPAL_DEFAULT_API_URL): FormData => {

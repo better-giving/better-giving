@@ -52,7 +52,7 @@ const input = (page: string, name: string): string => {
 
 const ADDRESS = PAYPAL_FIELD('PAYPAL_API_URL');
 
-/** an address other than live, which the screen knows nothing about. */
+/** an address other than the default, which the screen knows nothing about. */
 const ELSEWHERE = 'https://paypal.example.org';
 
 describe('the API address box', () => {

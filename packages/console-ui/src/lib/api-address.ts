@@ -1,8 +1,8 @@
 // the one reading of a processor's API address box, shared by every set-up that draws one.
 //
-// it follows `Address` in packages/console/internal/chariot/chariot.go and
-// packages/console/internal/paypal/paypal.go, which read a typed address the same way, so a box
-// refused here is one the binary would refuse and a box passed here is one it calls.
+// it follows `Base` in packages/console/internal/cf/client.go, which the binary reads every typed
+// address with, so a box refused here is one the binary would refuse and a box passed here is one
+// it calls.
 
 /** what an address box holding something other than an address says under it. */
 export const NOT_AN_ADDRESS = 'an https:// address with nothing after the domain';

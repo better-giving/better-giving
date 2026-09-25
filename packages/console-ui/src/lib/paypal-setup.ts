@@ -20,7 +20,7 @@ export const PAYPAL_SETUP_INTENT = 'paypal:set-up';
 /**
  * what the address box holds where the deployment stores none.
  *
- * `PAYPAL_DEFAULT_API_URL` in packages/app/src/lib/server/payments/paypal.ts and `API` in
+ * `PAYPAL_DEFAULT_API_URL` in packages/app/src/lib/server/payments/paypal.ts and `DefaultAPIURL` in
  * packages/console/internal/paypal/paypal.go: an unset `PAYPAL_API_URL` is read as this address, so
  * a deployment holding none reads back empty and the box is drawn with it rather than blank.
  */

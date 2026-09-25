@@ -300,14 +300,6 @@ describe('createPaymentProviders', () => {
 	);
 });
 
-/**
- * the sentence a deployment that can serve no form is handed, beside the one naming what is unset.
- *
- * the message says which values are short and this says where they come from, so it is the half
- * that can send an operator to the wrong dashboard — and every deployment it is read on holds no
- * usable processor at all, which is the only arm `publishedConfig` in ../forms/published-config.ts
- * reads it on.
- */
 describe('PayPal', () => {
 	/** a token and a created order the adapter is answered with, recording where each was sent. */
 	function orderAddress(): string[] {
@@ -534,6 +526,14 @@ describe('Chariot', () => {
 	});
 });
 
+/**
+ * the sentence a deployment that can serve no form is handed, beside the one naming what is unset.
+ *
+ * the message says which values are short and this says where they come from, so it is the half
+ * that can send an operator to the wrong dashboard — and every deployment it is read on holds no
+ * usable processor at all, which is the only arm `publishedConfig` in ../forms/published-config.ts
+ * reads it on.
+ */
 describe('servedProcessors — the fix', () => {
 	// the operator who filled one of PayPal's two boxes is setting PayPal up, whatever else is
 	// unset. a sentence naming Stripe's dashboard sends them somewhere they have no account.

@@ -62,8 +62,8 @@ func settingPaypal(t *testing.T, chosen string) (http.Handler, func() []string, 
 	return handler, asked, cloudflare, surface, errands
 }
 
-// that same console, and every address the pair was bound to — which is never the fake's: every call
-// goes to the fake PayPal whatever was asked for.
+// that same console, and every address the pair was asked to be bound to: the fake PayPal answers
+// every call whatever that address was.
 func settingPaypalBound(t *testing.T, chosen string) (
 	http.Handler, func() []string, *[]string, *httptest.Server, func() []errand, *[]string,
 ) {

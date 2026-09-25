@@ -71,8 +71,8 @@ export const SECRET_GROUPS: readonly SecretGroup[] = [
 	   one above: the two processors are alternatives, so a deployment set up on one holds
 	   none of the other's and a single press over both would ask an operator to commit values they
 	   will never have. the four are one press because an operator holds all four off one PayPal app —
-	   the pair that authenticates every call, which of PayPal's two hosts that pair is good against,
-	   and the id of the listener it hears settlements on.
+	   the pair that authenticates every call, the address that pair is good at, and the id of the
+	   listener it hears settlements on.
 
 	   `PAYPAL_CHARITY_RATE_APPROVED` is deliberately not among them. it is an answer about the
 	   organisation rather than a credential, it is set months after the keys are, and it is drawn as

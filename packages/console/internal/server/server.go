@@ -60,9 +60,9 @@ type Options struct {
 	// carries, so a case can run the whole setup chain without a processor account. Nil is the
 	// processor's own API.
 	Processor func(secretKey string) stripe.Call
-	// Paypal is how a call to PayPal is bound to the address the deployment names and the client id
-	// and secret one press carries, so a case can run the whole setup chain without a PayPal app. Nil
-	// is PayPal itself, at that address.
+	// Paypal is how a call to PayPal is bound to the address, client id and secret one press carries,
+	// so a case can run the whole setup chain without a PayPal app. Nil is PayPal itself, at the
+	// address the press named.
 	Paypal func(base, clientID, secret string) paypal.Binding
 	// Chariot is how a call to Chariot is bound to the address and api key one press carries, so a
 	// case can run the whole setup chain without a Chariot account. Nil is Chariot itself, at the

@@ -4,15 +4,15 @@
 // has a sentence for is one of the kinds below.
 //
 // **the client id and secret are local values for the length of one press.** they arrive in this
-// process from the browser's own press, are closed over by Bind, and are never written down, logged,
-// put in a sentence a screen draws, or passed to a child process. the pair travels in a basic
-// authorization header on one call and the token it mints in a bearer header on the rest; no url
-// carries either, which is what makes a failure's own sentence safe to draw.
+// process from the browser's own press, are closed over by BindAt, and are never written down,
+// logged, put in a sentence a screen draws, or passed to a child process. the pair travels in a
+// basic authorization header on one call and the token it mints in a bearer header on the rest; no
+// url carries either, which is what makes a failure's own sentence safe to draw.
 //
-// **the address is the operator's, and nothing checks the pair against it.** a pair answers at the
-// one PayPal address it was made at, and rehearsing is a second deployment (DEPLOY.md) — so the
-// address is a value like the pair, typed beside it and stored as `PAYPAL_API_URL`, blank meaning
-// DefaultAPIURL.
+// **the address is the operator's, typed beside the pair.** a pair answers at the one PayPal
+// address it was made at, and rehearsing is a second deployment (DEPLOY.md) — so the address is a
+// value like the pair, stored as `PAYPAL_API_URL`, blank meaning DefaultAPIURL, and the token the
+// chain mints first is the one check that the two belong together.
 //
 // every failure is a value, the way ../cf's are: nothing here returns an error.
 package paypal

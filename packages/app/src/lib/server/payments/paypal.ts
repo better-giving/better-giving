@@ -2148,9 +2148,9 @@ function classifyStatus(status: number, body: unknown, context: string): Payment
 			reason: 'not_configured',
 			detail:
 				'PayPal rejected this deployment’s credentials: `PAYPAL_CLIENT_ID` and ' +
-				'`PAYPAL_CLIENT_SECRET` are not a pair the account at `PAYPAL_API_URL` accepts — keys ' +
-				'from an app at another of PayPal’s addresses are the usual cause — or the app they ' +
-				`belong to does not carry the permission this call needs. ${said}`
+				'`PAYPAL_CLIENT_SECRET` are not a pair the account at `PAYPAL_API_URL` accepts, or the ' +
+				'app they belong to does not carry the permission this call needs. The usual cause is ' +
+				`keys from an app at another of PayPal’s addresses. ${said}`
 		};
 	}
 
