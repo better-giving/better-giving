@@ -514,8 +514,10 @@ func TestTheZapierKeyReachesThePageAndNothingElse(t *testing.T) {
 	records, flow, accounts := machine(t, "an-account")
 	surface, asked := deployed(t, map[string]any{
 		"GET /console/zapier": map[string]any{
-			"key":       map[string]any{"madeAt": "2026-09-22T10:00:00.000Z", "key": key},
-			"listening": map[string]any{"newGift": float64(1), "newDonor": float64(0)},
+			"key": map[string]any{"madeAt": "2026-09-22T10:00:00.000Z", "key": key},
+			"listening": map[string]any{
+				"newGift": float64(1), "newDonor": float64(0), "giftRefunded": float64(0),
+			},
 			"deliveries": map[string]any{
 				"waiting": float64(0), "failed": float64(0), "oldestWaitingAt": nil,
 			},
@@ -574,8 +576,10 @@ func TestAZapierAnswerIsNeverStored(t *testing.T) {
 	const key = "bgz_q7Rk3vYh0cXw9LmN2pAe5sTu8jBf1gHd4iKo6lZyC0M"
 	handler, _ := errands(t, map[string]any{
 		"GET /console/zapier": map[string]any{
-			"key":       map[string]any{"madeAt": "2026-09-22T10:00:00.000Z", "key": key},
-			"listening": map[string]any{"newGift": float64(0), "newDonor": float64(0)},
+			"key": map[string]any{"madeAt": "2026-09-22T10:00:00.000Z", "key": key},
+			"listening": map[string]any{
+				"newGift": float64(0), "newDonor": float64(0), "giftRefunded": float64(0),
+			},
 			"deliveries": map[string]any{
 				"waiting": float64(0), "failed": float64(0), "oldestWaitingAt": nil,
 			},

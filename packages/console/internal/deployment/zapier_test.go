@@ -18,8 +18,10 @@ const zapierKey = "bgz_q7Rk3vYh0cXw9LmN2pAe5sTu8jBf1gHd4iKo6lZyC0M"
 // a key made and two Zaps listening on it, with a delivery owed.
 func zapierKeyed() map[string]any {
 	return map[string]any{
-		"key":       map[string]any{"madeAt": "2026-09-01T09:00:00.000Z", "key": zapierKey},
-		"listening": map[string]any{"newGift": float64(2), "newDonor": float64(1)},
+		"key": map[string]any{"madeAt": "2026-09-01T09:00:00.000Z", "key": zapierKey},
+		"listening": map[string]any{
+			"newGift": float64(2), "newDonor": float64(1), "giftRefunded": float64(1),
+		},
 		"deliveries": map[string]any{
 			"waiting": float64(3), "failed": float64(1),
 			"oldestWaitingAt": "2026-09-20T12:00:00.000Z",
@@ -30,8 +32,10 @@ func zapierKeyed() map[string]any {
 // what every fork that has never made a key answers, which is the ordinary state of this wire.
 func zapierUnkeyed() map[string]any {
 	return map[string]any{
-		"key":       nil,
-		"listening": map[string]any{"newGift": float64(0), "newDonor": float64(0)},
+		"key": nil,
+		"listening": map[string]any{
+			"newGift": float64(0), "newDonor": float64(0), "giftRefunded": float64(0),
+		},
 		"deliveries": map[string]any{
 			"waiting": float64(0), "failed": float64(0), "oldestWaitingAt": nil,
 		},
