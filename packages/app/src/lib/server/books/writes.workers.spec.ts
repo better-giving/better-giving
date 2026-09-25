@@ -1,9 +1,10 @@
 import { env } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
-import { contact, donation, payment, type ZapierTrigger } from '../db/schema';
+import { contact, dispute, donation, payment, type ZapierTrigger } from '../db/schema';
 import { post, type Posting } from '../ledger/posting';
 import { correctionWrites, reversalWrites, settledGiftWrites } from './writes';
 
@@ -22,6 +23,7 @@ beforeAll(() => {
 beforeEach(async () => {
 	// children before parents: each table below points at one after it.
 	for (const table of [
+		'dispute',
 		'zapier_delivery',
 		'zapier_subscription',
 		'quickbooks_sync',
@@ -322,10 +324,12 @@ describe('reversalWrites()', () => {
 		return gift.paymentId;
 	}
 
-	it('writes a refund’s group and the queue row it owes behind its gift, and owes every Zap nothing yet', async () => {
+	it('writes a refund’s group and the queue row it owes behind its gift', async () => {
 		const giftId = await refundedGift();
 
-		await db.batch(reversalWrites(db, { kind: 'refund', entry: withdrawal }));
+		await db.batch(
+			reversalWrites(db, { kind: 'refund', entry: withdrawal, finalRefundPaymentId: refundId })
+		);
 
 		expect(await books()).toEqual([
 			{ source_type: 'payment', source_id: giftId, lines: 2, debits: 5_000 },
@@ -335,14 +339,41 @@ describe('reversalWrites()', () => {
 			{ source_type: 'payment', source_id: giftId, status: 'pending' },
 			{ source_type: 'refund', source_id: refundId, status: 'pending' }
 		]);
-		expect(await owedToZaps()).toEqual([]);
+	});
+
+	it('owes each open gift_refunded Zap one row about a refund, keyed on the refund row, and no other trigger’s Zap any', async () => {
+		await refundedGift();
+		await env.DB.prepare(
+			`insert into zapier_subscription (id, trigger, hook_url, ended_at, ended_reason, created_at, updated_at)
+			 values (?, 'gift_refunded', 'https://hooks.zapier.com/hooks/standard/1/second/', null, null, 0, 0),
+			        (?, 'gift_refunded', 'https://hooks.zapier.com/hooks/standard/1/ended/', 0, 'unsubscribed', 0, 0)`
+		)
+			.bind(uuidv7(), uuidv7())
+			.run();
+		await env.DB.prepare('delete from zapier_delivery').run();
+
+		await db.batch(
+			reversalWrites(db, { kind: 'refund', entry: withdrawal, finalRefundPaymentId: refundId })
+		);
+
+		const refunded = { trigger: 'gift_refunded', event_id: refundId, payment_id: refundId };
+		expect(await owedToZaps()).toEqual([refunded, refunded]);
 	});
 
 	it('writes a failed refund’s reinstatement and the queue row it owes behind its refund, and owes every Zap nothing', async () => {
 		const giftId = await refundedGift();
-		await db.batch(reversalWrites(db, { kind: 'refund', entry: withdrawal }));
+		await db.batch(
+			reversalWrites(db, { kind: 'refund', entry: withdrawal, finalRefundPaymentId: refundId })
+		);
+		await env.DB.prepare('delete from zapier_delivery').run();
 
-		await db.batch(reversalWrites(db, { kind: 'refund_failed', entry: reinstatement }));
+		await db.batch(
+			reversalWrites(db, {
+				kind: 'refund_failed',
+				entry: reinstatement,
+				finalRefundPaymentId: null
+			})
+		);
 
 		const rows = await queued();
 		expect(rows).toHaveLength(3);
@@ -356,9 +387,62 @@ describe('reversalWrites()', () => {
 		expect(await owedToZaps()).toEqual([]);
 	});
 
-	it('writes a lost dispute’s settle-up and the queue row it owes behind its withdrawal, and owes every Zap nothing', async () => {
+	it('owes every Zap nothing on a dispute opened', async () => {
+		await refundedGift();
+
+		await db.batch(
+			reversalWrites(db, { kind: 'dispute_opened', entry: withdrawal, finalRefundPaymentId: null })
+		);
+
+		expect(await books()).toContainEqual({
+			source_type: 'refund',
+			source_id: refundId,
+			lines: 2,
+			debits: 2_000
+		});
+		expect(await owedToZaps()).toEqual([]);
+	});
+
+	it('owes every Zap nothing on a dispute won', async () => {
+		await refundedGift();
+		await db.batch(
+			reversalWrites(db, { kind: 'dispute_opened', entry: withdrawal, finalRefundPaymentId: null })
+		);
+
+		await db.batch(
+			reversalWrites(db, { kind: 'dispute_won', entry: reinstatement, finalRefundPaymentId: null })
+		);
+
+		expect(await books()).toContainEqual({
+			source_type: 'payment',
+			source_id: refundId,
+			lines: 2,
+			debits: 2_000
+		});
+		expect(await owedToZaps()).toEqual([]);
+	});
+
+	it('owes each gift_refunded Zap a row about a dispute lost with no opening, keyed on its withdrawal', async () => {
+		await refundedGift();
+
+		await db.batch(
+			reversalWrites(db, {
+				kind: 'dispute_lost',
+				entry: withdrawal,
+				finalRefundPaymentId: refundId
+			})
+		);
+
+		expect(await owedToZaps()).toEqual([
+			{ trigger: 'gift_refunded', event_id: refundId, payment_id: refundId }
+		]);
+	});
+
+	it('writes a lost dispute’s settle-up and the queue row it owes behind its withdrawal, and owes each gift_refunded Zap a row', async () => {
 		const giftId = await refundedGift();
-		await db.batch(reversalWrites(db, { kind: 'dispute_opened', entry: withdrawal }));
+		await db.batch(
+			reversalWrites(db, { kind: 'dispute_opened', entry: withdrawal, finalRefundPaymentId: null })
+		);
 		const settleUp = post({
 			sourceType: 'adjustment',
 			sourceId: refundId,
@@ -370,25 +454,85 @@ describe('reversalWrites()', () => {
 			]
 		});
 
-		await db.batch(reversalWrites(db, { kind: 'settle_up', entry: settleUp }));
+		await db.batch(
+			reversalWrites(db, { kind: 'settle_up', entry: settleUp, finalRefundPaymentId: refundId })
+		);
 
 		expect(await queued()).toEqual([
 			{ source_type: 'adjustment', source_id: refundId, status: 'pending' },
 			{ source_type: 'payment', source_id: giftId, status: 'pending' },
 			{ source_type: 'refund', source_id: refundId, status: 'pending' }
 		]);
+		expect(await owedToZaps()).toEqual([
+			{ trigger: 'gift_refunded', event_id: refundId, payment_id: refundId }
+		]);
+	});
+
+	it('owes each gift_refunded Zap a row on a lost close with nothing to settle, and posts nothing', async () => {
+		await refundedGift();
+		await db.batch(
+			reversalWrites(db, { kind: 'dispute_opened', entry: withdrawal, finalRefundPaymentId: null })
+		);
+		const before = await books();
+
+		await db.batch(
+			reversalWrites(db, { kind: 'settle_up', entry: null, finalRefundPaymentId: refundId })
+		);
+
+		expect(await books()).toEqual(before);
+		expect(await owedToZaps()).toEqual([
+			{ trigger: 'gift_refunded', event_id: refundId, payment_id: refundId }
+		]);
+	});
+
+	it('owes no Zap a lost close whose dispute a win closed first', async () => {
+		await refundedGift();
+		await db.batch([
+			...reversalWrites(db, {
+				kind: 'dispute_opened',
+				entry: withdrawal,
+				finalRefundPaymentId: null
+			}),
+			db.insert(dispute).values({ paymentId: refundId, outcome: 'won', closedAt: AT })
+		]);
+
+		await db.batch(
+			reversalWrites(db, { kind: 'settle_up', entry: null, finalRefundPaymentId: refundId })
+		);
+
+		expect(await owedToZaps()).toEqual([]);
+	});
+
+	it('owes no Zap a refund row that no longer stands', async () => {
+		await refundedGift();
+		await db.update(payment).set({ status: 'cancelled' }).where(eq(payment.id, refundId));
+
+		await db.batch(
+			reversalWrites(db, { kind: 'refund', entry: withdrawal, finalRefundPaymentId: refundId })
+		);
+
 		expect(await owedToZaps()).toEqual([]);
 	});
 
 	it('refuses a withdrawal handed over as a settle-up', () => {
-		expect(() => reversalWrites(db, { kind: 'settle_up', entry: withdrawal })).toThrow(
-			/'adjustment'.*'refund'/
-		);
+		expect(() =>
+			reversalWrites(db, { kind: 'settle_up', entry: withdrawal, finalRefundPaymentId: refundId })
+		).toThrow(/'adjustment'.*'refund'/);
 	});
 
 	it('refuses a gift’s charge handed over as a refund', () => {
-		expect(() => reversalWrites(db, { kind: 'refund', entry: chargeOf(uuidv7()) })).toThrow(
-			/'refund'.*'payment'/
-		);
+		expect(() =>
+			reversalWrites(db, {
+				kind: 'refund',
+				entry: chargeOf(uuidv7()),
+				finalRefundPaymentId: refundId
+			})
+		).toThrow(/'refund'.*'payment'/);
+	});
+
+	it('refuses a refund whose group is keyed on another row than the one its Zaps hear of', () => {
+		expect(() =>
+			reversalWrites(db, { kind: 'refund', entry: withdrawal, finalRefundPaymentId: uuidv7() })
+		).toThrow(new RegExp(`handed one on ${refundId}`));
 	});
 });

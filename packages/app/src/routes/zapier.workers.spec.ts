@@ -1,10 +1,16 @@
 import { env } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { contact, donation, orgProfile, payment } from '$lib/server/db/schema';
 import { makeZapierKey, replaceZapierKey } from '$lib/server/zapier/key';
-import { donorEventOf, readGiftEvents, type GiftEvent } from '$lib/server/zapier/payload';
+import {
+	donorEventOf,
+	readGiftEvents,
+	readRefundEvents,
+	type GiftEvent
+} from '$lib/server/zapier/payload';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as surface from './zapier';
 import * as hooks from './zapier.hooks';
@@ -237,6 +243,18 @@ describe('a subscribe this deployment refuses', () => {
 		expect(await openSubscriptions()).toBe(0);
 	});
 
+	it('answers gift_refunded with the live refund event, never a gift', async () => {
+		const giftId = await settledGift();
+		const refundId = await refundOf(giftId);
+		const live = (await readRefundEvents(db, [refundId])).get(refundId);
+		if (live === undefined) throw new Error('the refund rendered no event');
+
+		const response = await samplesOf('gift_refunded');
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ data: [live] });
+	});
+
 	it('refuses a trigger it does not have, listing the ones it does', async () => {
 		const response = await subscribeWith({ trigger: 'new_refund', hook_url: HOOK });
 
@@ -326,6 +344,28 @@ async function settledGift(): Promise<string> {
 		})
 	]);
 	return paymentId;
+}
+
+/** $20 of gift `giftId` refunded, and the refund row's id. */
+async function refundOf(giftId: string): Promise<string> {
+	const [gift] = await db
+		.select({ donationId: payment.donationId })
+		.from(payment)
+		.where(eq(payment.id, giftId));
+	const id = uuidv7();
+	await db.insert(payment).values({
+		id,
+		donationId: gift?.donationId ?? '',
+		amountMinor: 2_000,
+		currency: 'USD',
+		direction: 'refund',
+		method: 'check',
+		status: 'succeeded',
+		provider: 'manual',
+		occurredAt: new Date('2026-09-12T12:00:00.000Z'),
+		parentPaymentId: giftId
+	});
+	return id;
 }
 
 describe('a caller over the limit', () => {

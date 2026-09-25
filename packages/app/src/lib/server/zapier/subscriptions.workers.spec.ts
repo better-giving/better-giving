@@ -184,8 +184,9 @@ describe('countListening()', () => {
 		await subscribeUnderKey({ trigger: 'new_gift', hookUrl: `${HOOK}b/` });
 		const ended = await subscribeUnderKey({ trigger: 'new_donor', hookUrl: `${HOOK}c/` });
 		await unsubscribe(db, ended.id);
+		await subscribeUnderKey({ trigger: 'gift_refunded', hookUrl: `${HOOK}d/` });
 
-		expect(await countListening(db)).toEqual({ newGift: 2, newDonor: 0 });
+		expect(await countListening(db)).toEqual({ newGift: 2, newDonor: 0, giftRefunded: 1 });
 	});
 });
 

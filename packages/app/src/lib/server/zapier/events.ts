@@ -1,8 +1,9 @@
-import { and, eq, isNull, ne, notExists, type SQL, sql } from 'drizzle-orm';
+import { and, eq, exists, isNull, ne, notExists, or, type SQL, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import { alias } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
 import {
+	dispute,
 	donation,
 	payment,
 	zapierDelivery,
@@ -10,7 +11,8 @@ import {
 	type ZapierTrigger
 } from '../db/schema';
 
-// the whole rule about which Zaps a settled gift is owed to, and the statements that say so.
+// the whole rule about which Zaps a settled gift, and a refund of one, are owed to, and the
+// statements that say so.
 //
 // nothing here posts anything to Zapier. what it produces is rows in `zapier_delivery` — the outbox
 // the delivery run reads — and the one property that matters is that they land in the same
@@ -36,6 +38,10 @@ import {
 // - a settlement that marks a payment `succeeded` but posts nothing (`recognition` failing in
 //   ../donations/settle.ts) writes no row here, and that donor's next posted gift reads as not
 //   their first, so "new donor" never fires for them.
+//
+// **"gift refunded" is keyed on the refund row**, so each refund of a gift, and each dispute lost
+// on it, is its own event, and a redelivery of one meets its own key. it is owed only while that
+// row stands (`refundStands`), read in the statement as the batch left it.
 
 /** the gift a settlement just made `succeeded`, and the donor it is filed under. */
 export type SettledGift = { readonly paymentId: string; readonly contactId: string };
@@ -75,6 +81,40 @@ export function zapierStatements(
 		fanOut(db, 'new_gift', gift.paymentId, gift.paymentId, now),
 		fanOut(db, 'new_donor', gift.contactId, gift.paymentId, now, notExists(earlierGift))
 	];
+}
+
+/**
+ * the `gift_refunded` rows for `refundPaymentId`, the refund-direction row whose money is now
+ * final, for splicing into a caller's single `batch()`. the row is the event: `event_id` and
+ * `payment_id` both name it. outside the specs its one caller is `reversalWrites` in
+ * ../books/writes.ts.
+ *
+ * **after the statement that inserts or closes that row**, for the foreign key as above, and gated
+ * on {@link refundStands} as that statement left it: a lost close racing a win that committed first
+ * matches no open dispute, and its batch still commits, so the gate is what keeps a won dispute
+ * from reaching a Zap as a refund.
+ */
+export function giftRefundedStatements(db: Db, refundPaymentId: string): BatchItem<'sqlite'> {
+	const stands = db
+		.select({ one: sql`1` })
+		.from(payment)
+		.where(and(eq(payment.id, refundPaymentId), refundStands(db, payment)));
+	return fanOut(db, 'gift_refunded', refundPaymentId, refundPaymentId, new Date(), exists(stands));
+}
+
+/**
+ * `row` is a refund whose money is gone for good: a refund-direction row still `succeeded`, and no
+ * dispute on it that is open or was won. what a `gift_refunded` Zap hears of, and what its samples
+ * list (./payload.ts).
+ */
+export function refundStands(db: Db, row: typeof payment) {
+	const unsettled = db
+		.select({ one: sql`1` })
+		.from(dispute)
+		.where(
+			and(eq(dispute.paymentId, row.id), or(isNull(dispute.outcome), ne(dispute.outcome, 'lost')))
+		);
+	return and(eq(row.direction, 'refund'), eq(row.status, 'succeeded'), notExists(unsettled));
 }
 
 /**

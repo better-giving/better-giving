@@ -1,7 +1,31 @@
 import type { ZapierReport } from '@better-giving/operator/console/zapier';
 import { describe, expect, it } from 'vitest';
 import type { ZapierAnswer } from './zapier-standing';
-import { deliveriesSay, keyStanding, listeningSays, replacedSays } from './zapier-standing';
+import {
+	deliveriesSay,
+	keyStanding,
+	listeningSays,
+	listeningTotal,
+	replacedSays,
+	TRIGGER_MARK,
+	TRIGGER_NAME
+} from './zapier-standing';
+
+describe('the triggers', () => {
+	it.each([
+		['newDonor', 'New donors', 'user-plus'],
+		['newGift', 'Settled gifts', 'stamp'],
+		['giftRefunded', 'Refunds', 'arrow-left']
+	] as const)('%s is titled %s and marked %s', (trigger, name, mark) => {
+		expect(TRIGGER_NAME[trigger]).toBe(name);
+		expect(TRIGGER_MARK[trigger]).toBe(mark);
+	});
+
+	it('marks no two alike, so a card is told apart by its mark as well as its name', () => {
+		const marks = Object.values(TRIGGER_MARK);
+		expect(new Set(marks).size).toBe(marks.length);
+	});
+});
 
 describe('listeningSays', () => {
 	it.each([
@@ -15,8 +39,16 @@ describe('listeningSays', () => {
 
 const report = (key: ZapierReport['key']): ZapierReport => ({
 	key,
-	listening: { newGift: 0, newDonor: 0 },
+	listening: { newGift: 0, newDonor: 0, giftRefunded: 0 },
 	deliveries: { waiting: 0, failed: 0, oldestWaitingAt: null }
+});
+
+describe('listeningTotal', () => {
+	it('counts the Zaps on every trigger, which is what a replace ends', () => {
+		expect(
+			listeningTotal({ ...report(null), listening: { newGift: 2, newDonor: 1, giftRefunded: 4 } })
+		).toBe(7);
+	});
 });
 
 const MADE = '2026-09-01T00:00:00.000Z';

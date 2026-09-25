@@ -2,6 +2,7 @@ import nock from 'nock';
 import zapier from 'zapier-platform-core';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import App from '../index.js';
+import giftRefunded from './gift-refunded.js';
 import newDonor from './new-donor.js';
 import newGift from './new-gift.js';
 
@@ -22,7 +23,15 @@ function deployment() {
 	return nock(ADDRESS, { reqheaders: { authorization: `Bearer ${KEY}` } });
 }
 
-describe.each([newGift, newDonor])('$key', ({ key, operation }) => {
+it('offers every trigger the deployment serves', () => {
+	expect(Object.keys(App.triggers ?? {}).sort()).toEqual([
+		'gift_refunded',
+		'new_donor',
+		'new_gift'
+	]);
+});
+
+describe.each([newGift, newDonor, giftRefunded])('$key', ({ key, operation }) => {
 	it('subscribes the Zap by posting its hook url under this trigger', async () => {
 		deployment()
 			.post('/zapier/hooks', { trigger: key, hook_url: HOOK_URL })

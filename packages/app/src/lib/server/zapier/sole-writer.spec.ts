@@ -5,10 +5,10 @@ import { describe, expect, it } from 'vitest';
 // the guard on "only this directory's three modules write `zapier_delivery`".
 //
 // written the way ../donations/sole-inserter.spec.ts is, and for the same kind of rule: a row a
-// settled gift owes a Zap is minted by ./events.ts inside the posting's own batch(), moved along by
-// ./deliver.ts, and dropped by ./subscriptions.ts when its subscription ends. a fourth writer — a
-// correction in ../books/correct.ts announcing an edit, a screen resending by hand — is an event
-// no trigger describes, or a row sent twice whose status nobody else moved.
+// settled gift or its refund owes a Zap is minted by ./events.ts inside the posting's own batch(),
+// moved along by ./deliver.ts, and dropped by ./subscriptions.ts when its subscription ends. a
+// fourth writer — a correction in ../books/correct.ts announcing an edit, a screen resending by
+// hand — is an event no trigger describes, or a row sent twice whose status nobody else moved.
 //
 // a source scan rather than a runtime hook, so it catches the writer nobody wrote a test for, and
 // it reads text, so a computed table name fools it; the failure it defends against is a shortcut,
@@ -75,7 +75,7 @@ describe('zapier/ is the only writer of zapier_delivery', () => {
 		}
 		expect(
 			offenders,
-			`these modules write zapier_delivery directly: ${offenders.join(', ')}. only src/lib/server/zapier/events.ts (a settled gift's rows, in its posting's batch), deliver.ts (a send's outcome) and subscriptions.ts (an ended subscription's rows dropped) may. a gift owes its Zaps through zapierStatements() and nowhere else.`
+			`these modules write zapier_delivery directly: ${offenders.join(', ')}. only src/lib/server/zapier/events.ts (a settled gift's rows, in its posting's batch), deliver.ts (a send's outcome) and subscriptions.ts (an ended subscription's rows dropped) may. a money event owes its Zaps through zapierStatements() or giftRefundedStatements(), and nowhere else.`
 		).toEqual([]);
 	});
 

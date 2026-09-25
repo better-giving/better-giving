@@ -4,7 +4,6 @@ import { CodeSlab } from '@better-giving/operator/components/data/CodeSlab';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { Section, Stack } from '@better-giving/operator/components/shell/Layout';
-import type { MarkName } from '@better-giving/operator/components/status/Mark';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import type { ZapierPress, ZapierReport } from '@better-giving/operator/console/zapier';
@@ -14,6 +13,7 @@ import type { ZapierRead } from '../api/types';
 import { noAnswer } from './processor-screen';
 import type { ZapierAnswer, ZapierTrigger } from './zapier-standing';
 import {
+	TRIGGER_MARK,
 	TRIGGER_NAME,
 	UNKNOWN,
 	deliveriesSay,
@@ -26,7 +26,7 @@ import {
 	replacedSays
 } from './zapier-standing';
 
-// what the Better Giving Zapier app notifies an operator about — its two triggers and the Zaps
+// what the Better Giving Zapier app notifies an operator about — its triggers and the Zaps
 // listening on each — and what it requires: this deployment's address and the one key Zapier
 // presents to it, with the two presses over the key.
 //
@@ -101,10 +101,13 @@ export function ZapierSection({
 						</a>{' '}
 						notifies you about
 					</p>
-					<div className="adm-cardpair adm-cardpair--even">
+					{/* one column at every width: three cards abreast in the console's column leave
+					    each name no room, and stacked they read as one list. */}
+					<Stack>
 						<Trigger trigger="newDonor" report={report} />
 						<Trigger trigger="newGift" report={report} />
-					</div>
+						<Trigger trigger="giftRefunded" report={report} />
+					</Stack>
 				</div>
 				<div className="adm-named">
 					<p className="adm-prose">and requires:</p>
@@ -125,11 +128,6 @@ export function ZapierSection({
 		</Section>
 	);
 }
-
-const TRIGGER_MARK: Record<ZapierTrigger, MarkName> = {
-	newDonor: 'user-plus',
-	newGift: 'stamp'
-};
 
 /**
  * one trigger the app hands a Zap, as a card of one row: its mark, its name, and its listeners at

@@ -1,10 +1,11 @@
 import { env } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { contact, donation, payment, type ZapierTrigger } from '../db/schema';
 import { sendDueZapierEvents } from './deliver';
-import { zapierStatements } from './events';
+import { giftRefundedStatements, zapierStatements } from './events';
 import { subscribe, type SubscribeRequest, type Subscribed } from './subscriptions';
 
 // the delivery run against a real D1, with the hooks answered by a `fetch` written here.
@@ -84,6 +85,31 @@ async function settle(): Promise<{ paymentId: string; contactId: string }> {
 	return { paymentId, contactId };
 }
 
+/** $20 of `gift` refunded, its row and its fan-out committed together as ../donations/reverse.ts does. */
+async function refund(gift: { paymentId: string }): Promise<string> {
+	const refundId = uuidv7();
+	const [parent] = await db
+		.select({ donationId: payment.donationId })
+		.from(payment)
+		.where(eq(payment.id, gift.paymentId));
+	await db.batch([
+		db.insert(payment).values({
+			id: refundId,
+			donationId: parent?.donationId ?? '',
+			amountMinor: 2_000,
+			currency: 'USD',
+			direction: 'refund',
+			method: 'check',
+			status: 'succeeded',
+			provider: 'manual',
+			occurredAt: new Date('2026-09-12T08:30:00.000Z'),
+			parentPaymentId: gift.paymentId
+		}),
+		giftRefundedStatements(db, refundId)
+	]);
+	return refundId;
+}
+
 type Post = { readonly url: string; readonly body: Record<string, unknown> };
 
 /**
@@ -133,6 +159,47 @@ describe('sendDueZapierEvents()', () => {
 		]);
 		expect(await deliveryRows()).toEqual([
 			expect.objectContaining({ status: 'sent', attempts: 1, leased_until: null })
+		]);
+	});
+
+	it('posts a refund to its gift_refunded hook: the amount refunded, and the gift it came out of', async () => {
+		const gift = await settle();
+		const hook = await listen('gift_refunded');
+		const refundId = await refund(gift);
+		const zapier = hooksAnswering();
+
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000));
+
+		expect(zapier.posts).toEqual([
+			{
+				url: hook.hookUrl,
+				body: {
+					id: refundId,
+					occurred_at: '2026-09-12T08:30:00.000Z',
+					amount: '20.00',
+					amount_minor: 2_000,
+					currency: 'USD',
+					gift: expect.objectContaining({
+						id: gift.paymentId,
+						amount: '50.00',
+						donor_id: gift.contactId,
+						donor_name: 'Ada Okafor'
+					})
+				}
+			}
+		]);
+	});
+
+	it('still posts a gift to its new_gift hook when the gift was refunded while its row waited', async () => {
+		const hook = await listen('new_gift');
+		const gift = await settle();
+		await refund(gift);
+		const zapier = hooksAnswering();
+
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000));
+
+		expect(zapier.posts.map((p) => [p.url, p.body.id, p.body.amount])).toEqual([
+			[hook.hookUrl, gift.paymentId, '50.00']
 		]);
 	});
 

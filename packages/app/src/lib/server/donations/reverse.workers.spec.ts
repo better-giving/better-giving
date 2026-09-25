@@ -686,6 +686,10 @@ describe('recordReversal() — a refund that did not stand', () => {
 		).run();
 		await env.DB.prepare('delete from zapier_delivery').run();
 		await recordReversal(deps(), refund(), 'evt_r1');
+		const zaps = async () =>
+			(await db.select({ n: sql<number>`count(*)` }).from(zapierDelivery))[0]?.n;
+		// the read is live: the refund itself owed its gift_refunded Zap one row.
+		expect(await zaps()).toBe(1);
 		const mail = mailer();
 
 		await recordReversal(deps({ email: mail.port }), failed(), 'evt_r2');
@@ -693,8 +697,7 @@ describe('recordReversal() — a refund that did not stand', () => {
 
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 		expect(mail.sent[0]?.text).toContain('re_1');
-		const [zaps] = await db.select({ n: sql<number>`count(*)` }).from(zapierDelivery);
-		expect(zaps?.n).toBe(0);
+		expect(await zaps()).toBe(1);
 	});
 
 	it('answers a failure with no time it happened rather than throwing, and changes nothing', async () => {
@@ -779,7 +782,7 @@ describe('recordReversal() — a refund of one monthly charge', () => {
 });
 
 describe('recordReversal() — what a refund owes QuickBooks and the Zaps', () => {
-	it('queues one QuickBooks row for the refund of a queued gift, and nothing for any Zap', async () => {
+	it('queues one QuickBooks row for the refund of a queued gift, and one row for each gift_refunded Zap', async () => {
 		await env.DB.prepare(
 			`insert into quickbooks_connection (id, realm_id, access_token, access_token_expires_at,
 			                                    refresh_token, start_at, created_at, updated_at)
@@ -813,7 +816,8 @@ describe('recordReversal() — what a refund owes QuickBooks and the Zaps', () =
 		).first();
 		expect(after.quickbooks).toHaveLength(2);
 		expect(after.quickbooks).toEqual(expect.arrayContaining([...before.quickbooks, refundGroup]));
-		expect(after.zaps).toEqual(before.zaps);
+		const [refunded] = await refundRows();
+		expect(after.zaps).toEqual([...before.zaps, { payment_id: refunded?.id }]);
 	});
 });
 
@@ -1403,6 +1407,118 @@ describe('recordReversal() — a dispute lost after it opened', () => {
 		const again = await recordReversal(deps(), lost(), 'evt_d3');
 
 		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+	});
+});
+
+/** a Zap listening on each trigger. */
+async function zapsListening() {
+	await env.DB.prepare(
+		`insert into zapier_subscription (id, trigger, hook_url, created_at, updated_at)
+		 values ('019fb6ff-0000-7000-8000-000000000011', 'gift_refunded',
+		         'https://hooks.zapier.com/hooks/standard/1/refund/', 0, 0),
+		        ('019fb6ff-0000-7000-8000-000000000012', 'new_gift',
+		         'https://hooks.zapier.com/hooks/standard/1/gift/', 0, 0),
+		        ('019fb6ff-0000-7000-8000-000000000013', 'new_donor',
+		         'https://hooks.zapier.com/hooks/standard/1/donor/', 0, 0)`
+	).run();
+}
+
+/** the `gift_refunded` rows owed, by the payment each renders. */
+async function owedGiftRefunded() {
+	const { results } = await env.DB.prepare(
+		`select d.event_id, d.payment_id from zapier_delivery d
+		 join zapier_subscription s on s.id = d.subscription_id
+		 where s.trigger = 'gift_refunded' order by d.created_at`
+	).all<{ event_id: string; payment_id: string }>();
+	return results;
+}
+
+/** the statuses of the `gift_refunded` rows. */
+async function giftRefundedStatuses() {
+	const { results } = await env.DB.prepare(
+		`select d.status from zapier_delivery d
+		 join zapier_subscription s on s.id = d.subscription_id where s.trigger = 'gift_refunded'`
+	).all<{ status: string }>();
+	return results;
+}
+
+describe('recordReversal() — what a dispute owes a gift_refunded Zap', () => {
+	it('owes nothing when it opens, and one row keyed on its withdrawal when it is lost', async () => {
+		await zapsListening();
+		await settledGift();
+		await recordReversal(deps(), opened(), 'evt_d1');
+		const atOpening = await owedGiftRefunded();
+
+		await recordReversal(deps(), lost(), 'evt_d2');
+
+		expect(atOpening).toEqual([]);
+		const [withdrawn] = await refundRows();
+		expect(await owedGiftRefunded()).toEqual([
+			{ event_id: withdrawn?.id, payment_id: withdrawn?.id }
+		]);
+	});
+
+	it('owes one row keyed on its withdrawal when it is lost with no opening recorded', async () => {
+		await zapsListening();
+		await settledGift();
+
+		await recordReversal(deps(), lost(), 'evt_d1');
+
+		const [withdrawn] = await refundRows();
+		expect(await owedGiftRefunded()).toEqual([
+			{ event_id: withdrawn?.id, payment_id: withdrawn?.id }
+		]);
+	});
+
+	it('owes nothing when it is won', async () => {
+		await zapsListening();
+		await settledGift();
+		await recordReversal(deps(), opened(), 'evt_d1');
+
+		const result = await recordReversal(deps(), won(), 'evt_d2');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await owedGiftRefunded()).toEqual([]);
+	});
+
+	it('owes nothing more when the loss is delivered again', async () => {
+		await zapsListening();
+		await settledGift();
+		await recordReversal(deps(), opened(), 'evt_d1');
+		await recordReversal(deps(), lost(), 'evt_d2');
+		await env.DB.prepare(`update zapier_delivery set status = 'sent'`).run();
+
+		await recordReversal(deps(), lost(), 'evt_d3');
+
+		expect(await giftRefundedStatuses()).toEqual([{ status: 'sent' }]);
+	});
+
+	it('owes nothing when it is lost on a gift the books never held', async () => {
+		await zapsListening();
+		await settledGift({ settledMinor: 9_000 });
+		await recordReversal(deps(), opened({ amountMinor: 9_000 }), 'evt_d1');
+
+		await recordReversal(deps(), lost({ amountMinor: 9_000 }), 'evt_d2');
+
+		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: 'lost' })]);
+		expect(await owedGiftRefunded()).toEqual([]);
+	});
+});
+
+describe('recordReversal() — what a refund owes a gift_refunded Zap', () => {
+	it('owes nothing more when the refund is delivered again', async () => {
+		await zapsListening();
+		await settledGift();
+		await recordReversal(deps(), refund({ amountMinor: 2_500 }), 'evt_r1');
+		await env.DB.prepare(`update zapier_delivery set status = 'sent'`).run();
+
+		await recordReversal(deps(), refund({ amountMinor: 2_500 }), 'evt_r2');
+
+		const [refunded] = await refundRows();
+		expect(await owedGiftRefunded()).toEqual([
+			{ event_id: refunded?.id, payment_id: refunded?.id }
+		]);
+		expect(await giftRefundedStatuses()).toEqual([{ status: 'sent' }]);
 	});
 });
 
@@ -2029,19 +2145,22 @@ describe('recordReversal() — what the donor is told of a refund', () => {
 				return { ok: true as const };
 			}
 		}
-	])('answers as posted, and tells staff, when the notice’s transport $failure', async ({ send }) => {
-		await settledGift();
-		const sent: EmailMessage[] = [];
-		const email: EmailProvider = {
-			async send(message) {
-				sent.push(message);
-				return send(message);
-			}
-		};
+	])(
+		'answers as posted, and tells staff, when the notice’s transport $failure',
+		async ({ send }) => {
+			await settledGift();
+			const sent: EmailMessage[] = [];
+			const email: EmailProvider = {
+				async send(message) {
+					sent.push(message);
+					return send(message);
+				}
+			};
 
-		const result = await recordReversal(deps({ email }), refund(), 'evt_r1');
+			const result = await recordReversal(deps({ email }), refund(), 'evt_r1');
 
-		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
-		expect(sent.map((m) => m.to)).toEqual(['ada@example.org', 'ops@hope.example']);
-	});
+			expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+			expect(sent.map((m) => m.to)).toEqual(['ada@example.org', 'ops@hope.example']);
+		}
+	);
 });

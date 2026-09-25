@@ -4,7 +4,7 @@ import type { Db } from '../db/client';
 import type { EntrySourceType } from '../db/schema';
 import { type Posting, postingStatements } from '../ledger/posting';
 import type { ReversalKind } from '../payments/provider';
-import { zapierStatements } from '../zapier/events';
+import { giftRefundedStatements, zapierStatements } from '../zapier/events';
 
 // the one place a posting becomes everything its batch owes: the entry group and its lines, the
 // QuickBooks queue row (../accounting/outbox.ts), and the rows each listening Zap is owed
@@ -27,9 +27,11 @@ import { zapierStatements } from '../zapier/events';
 //     `quickbooks_sync.entry_group_id` points at a group, and D1 checks a foreign key per statement.
 //   - **it never commits.** each caller keeps its own `batch()` and its own reading of a rejection,
 //     because they read `SQLITE_*` codes differently.
-//   - **it throws only on a posting in the wrong slot** — a source type the slot does not take, or a
-//     fee on another payment than its charge. that is a defect at the call site: the builders in
-//     ../donations/entries.ts and ./correct.ts fix both, so no caller reaches it.
+//   - **it throws only on a posting in the wrong slot** — a source type the slot does not take, a
+//     fee on another payment than its charge, or a reversal on another row than the refund row its
+//     Zaps hear of. that is a defect at the call site: the builders in ../donations/entries.ts and
+//     ./correct.ts fix the first two, ../donations/reverse.ts keys both on one id, and no caller
+//     reaches it.
 
 /** a batch's statements with at least one in it, which is what `db.batch()` accepts. */
 export type Writes = [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]];
@@ -78,12 +80,30 @@ export function correctionWrites(db: Db, correction: Posting): Writes {
  *   dispute_won              — `('payment', refund row)`: a withdrawal that did not stand, mirrored
  *                              back (`reinstatementEntry`).
  *   settle_up                — `('adjustment', refund row)`: what a lost close charged or gave back
- *                              that the opening did not withdraw (`settleUpEntry`).
+ *                              that the opening did not withdraw (`settleUpEntry`), or null where
+ *                              the close carried nothing to settle.
+ *
+ * `finalRefundPaymentId` is the refund row whose money is now final — a refund, and a dispute
+ * lost, whether it posts its withdrawal or closes one already posted — and a Zap on
+ * `gift_refunded` hears of it. a dispute opened or won, and a refund that did not stand, name none.
  */
-export type ReversalEntry = {
-	readonly kind: ReversalKind | 'settle_up';
-	readonly entry: Posting;
-};
+export type ReversalEntry =
+	| {
+			readonly kind: 'refund' | 'dispute_lost';
+			readonly entry: Posting;
+			readonly finalRefundPaymentId: string;
+	  }
+	| {
+			readonly kind: 'dispute_opened' | 'dispute_won' | 'refund_failed';
+			readonly entry: Posting;
+			readonly finalRefundPaymentId: null;
+	  }
+	| {
+			readonly kind: 'settle_up';
+			readonly entry: Posting;
+			readonly finalRefundPaymentId: string;
+	  }
+	| { readonly kind: 'settle_up'; readonly entry: null; readonly finalRefundPaymentId: string };
 
 const REVERSAL_SOURCE_TYPES = {
 	refund: 'refund',
@@ -92,22 +112,28 @@ const REVERSAL_SOURCE_TYPES = {
 	dispute_won: 'payment',
 	dispute_lost: 'refund',
 	settle_up: 'adjustment'
-} as const satisfies Record<ReversalEntry['kind'], EntrySourceType>;
+} as const satisfies Record<ReversalKind | 'settle_up', EntrySourceType>;
 
 /**
- * a reversal's group and the queue row it owes, owing no Zap. whether QuickBooks is owed it is the
- * group it answers holding a queue row (../accounting/outbox.ts), read off the refund row the
- * caller's batch writes or already holds, so it goes after that row. no Zap trigger fires on a
- * reversal.
+ * a reversal's group, the queue row it owes, and its `gift_refunded` rows. whether QuickBooks is
+ * owed it is the group it answers holding a queue row (../accounting/outbox.ts), read off the
+ * refund row the caller's batch writes or already holds, so it goes after that row.
  */
 export function reversalWrites(db: Db, reversal: ReversalEntry): Writes {
+	if (reversal.entry === null) return [giftRefundedStatements(db, reversal.finalRefundPaymentId)];
+	const { kind, entry, finalRefundPaymentId } = reversal;
 	inSlot(
-		reversal.entry,
-		reversal.kind,
-		REVERSAL_SOURCE_TYPES[reversal.kind],
-		'$lib/server/donations/entries.ts'
+		entry,
+		kind,
+		REVERSAL_SOURCE_TYPES[kind],
+		'$lib/server/donations/entries.ts',
+		finalRefundPaymentId ?? entry.group.sourceId
 	);
-	return [...postingStatements(db, reversal.entry), ...outboxStatements(db, [reversal.entry])];
+	return [
+		...postingStatements(db, entry),
+		...outboxStatements(db, [entry]),
+		...(finalRefundPaymentId === null ? [] : [giftRefundedStatements(db, finalRefundPaymentId)])
+	];
 }
 
 function inSlot(
@@ -125,7 +151,7 @@ function inSlot(
 	}
 	if (group.sourceId !== sourceId) {
 		throw new Error(
-			`the ${slot} slot takes a posting on its charge's source id, ${sourceId}, and was handed one on ${group.sourceId}. build both from the one gift in ${builtIn}.`
+			`the ${slot} slot takes a posting on source id ${sourceId}, the payment it belongs to, and was handed one on ${group.sourceId}. build both from the one payment in ${builtIn}.`
 		);
 	}
 }

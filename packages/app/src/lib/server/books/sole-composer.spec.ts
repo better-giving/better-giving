@@ -3,9 +3,9 @@ import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 // the guard on "a writer takes its books from ./writes.ts": no module outside this directory
-// imports the three statement builders a settled gift's batch is made of.
+// imports the statement builders a money event's batch is made of.
 //
-// another batch assembled by hand is the least-effort next writer — the three builders are right
+// another batch assembled by hand is the least-effort next writer — the builders are right
 // there, exported — and it gets the queue row, the Zap rows or their foreign-key order wrong in a
 // way no single call site's suite would notice. ./writes.ts's header says what it hides.
 //
@@ -42,18 +42,22 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 	return out;
 }
 
-/** an import or re-export naming one of the builders, across however many lines the braces take. */
-const IMPORTS_A_BUILDER =
-	/\b(?:import|export)\s+(?:type\s+)?\{[^}]*\b(postingStatements|outboxStatements|zapierStatements)\b[^}]*\}\s*from\b/g;
+/** an import or re-export's braces, across however many lines they take. */
+const IMPORT_BRACES = /\b(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s*from\b/g;
 
+const BUILDER = /\b(postingStatements|outboxStatements|zapierStatements|giftRefundedStatements)\b/g;
+
+/** every builder an import or re-export names, several to one pair of braces included. */
 function buildersImportedBy(source: string): string[] {
-	return [...source.matchAll(IMPORTS_A_BUILDER)].map((match) => match[1] ?? '');
+	return [...source.matchAll(IMPORT_BRACES)].flatMap(([, names = '']) =>
+		[...names.matchAll(BUILDER)].map((match) => match[1] ?? '')
+	);
 }
 
 /** a static or dynamic import of a `.testing` module, with or without its extension. */
 const IMPORTS_A_TEST_HELPER = /\b(?:from|import)\s*\(?\s*['"][^'"]*\.testing(?:\.[jt]sx?)?['"]/;
 
-describe('books/ is the only importer of the settled-gift statement builders', () => {
+describe('books/ is the only importer of the statement builders', () => {
 	const production = sourceFiles(SRC);
 	const files = production.filter(
 		(path) => !path.startsWith(`${BOOKS_DIR}/`) && !DEFINERS.includes(path)
@@ -67,7 +71,7 @@ describe('books/ is the only importer of the settled-gift statement builders', (
 		expect(names.some((n) => /\.(?:spec|test)\./.test(n))).toBe(false);
 	});
 
-	it('finds no import of postingStatements, outboxStatements or zapierStatements outside books/', () => {
+	it('finds no import of postingStatements, outboxStatements, zapierStatements or giftRefundedStatements outside books/', () => {
 		const offenders = files.flatMap((file) =>
 			buildersImportedBy(readFileSync(file, 'utf8')).map(
 				(builder) => `${relative(SRC, file)} (${builder})`
@@ -75,15 +79,16 @@ describe('books/ is the only importer of the settled-gift statement builders', (
 		);
 		expect(
 			offenders,
-			`these modules build a settled gift's batch by hand: ${offenders.join(', ')}. take the statements from settledGiftWrites(), correctionWrites() or reversalWrites() in src/lib/server/books/writes.ts and splice them after your payment row, in your own batch().`
+			`these modules build a money event's batch by hand: ${offenders.join(', ')}. take the statements from settledGiftWrites(), correctionWrites() or reversalWrites() in src/lib/server/books/writes.ts and splice them after your payment row, in your own batch().`
 		).toEqual([]);
 	});
 
 	it('matches the composer itself, so the pattern is known to work', () => {
 		// a typo'd pattern matching nothing would report a clean tree forever. ./writes.ts imports
-		// all three, so it is the one file that must match each.
+		// every builder, so it is the one file that must match each.
 		const writes = readFileSync(join(BOOKS_DIR, 'writes.ts'), 'utf8');
 		expect(buildersImportedBy(writes).sort()).toEqual([
+			'giftRefundedStatements',
 			'outboxStatements',
 			'postingStatements',
 			'zapierStatements'

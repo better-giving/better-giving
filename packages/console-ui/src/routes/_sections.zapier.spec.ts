@@ -17,7 +17,7 @@ const binary = vi.hoisted(() => ({
 
 const report = (): ZapierReport => ({
 	key: binary.keyed ? { madeAt: '2026-09-01T00:00:00.000Z', key: 'bgz_standing' } : null,
-	listening: { newGift: 1, newDonor: 0 },
+	listening: { newGift: 1, newDonor: 0, giftRefunded: 0 },
 	deliveries: { waiting: 0, failed: 0, oldestWaitingAt: null }
 });
 

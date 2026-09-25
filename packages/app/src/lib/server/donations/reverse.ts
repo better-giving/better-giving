@@ -1,6 +1,6 @@
 import { and, eq, exists, isNull, lt, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
-import { reversalWrites, type Writes } from '../books/writes';
+import { type ReversalEntry, reversalWrites, type Writes } from '../books/writes';
 import type { Db } from '../db/client';
 import { postableId } from '../db/accounts';
 import {
@@ -12,7 +12,7 @@ import {
 	payment,
 	type Payment
 } from '../db/schema';
-import type { PostingLine } from '../ledger/posting';
+import type { Posting, PostingLine } from '../ledger/posting';
 import { findEntryGroup } from '../ledger/queries';
 import { stopRecurringGift, type StopOutcome } from '../recurring/stop';
 import {
@@ -112,8 +112,11 @@ import { sendRefundNotice } from './refund-notice';
 //
 // ---------------------------------------------------------------------------
 // a reversal, its settle-up included, owes QuickBooks a row only where the group it answers holds
-// one (../accounting/outbox.ts), and no Zap hears of it. a refund of one collection under a
-// repeating gift leaves the commitment collecting: stopping it is its own act.
+// one (../accounting/outbox.ts). a Zap on `gift_refunded` hears of a refund and of a dispute lost,
+// keyed on the refund row, in the batch that makes its money final (`ReversalEntry` in
+// ../books/writes.ts); never of a dispute opened or won, a refund that did not stand, or a gift the
+// books never held. a refund of one collection under a repeating gift leaves the commitment
+// collecting: stopping it is its own act.
 //
 // ---------------------------------------------------------------------------
 // nothing here throws, for the reason ./settle.ts's header gives: a throw is a 500, read by the
@@ -255,26 +258,30 @@ async function withdraw(
 	const posting =
 		charge === null
 			? `payment ${reversed.id} settled and was never posted, so the books hold none of this gift unless somebody posted it by hand.`
-			: reversalWrites(deps.db, {
-					kind: reversal.kind,
-					entry: reversalEntry(
-						{
-							refundPaymentId: refundId,
-							donationId: reversed.donationId,
-							original: charge.lines,
-							alreadyRefundedMinor,
-							fee: giftFee?.lines ?? []
-						},
-						{
-							kind: reversal.kind,
-							amountMinor,
-							currency: reversal.currency,
-							occurredAt: reversal.occurredAt,
-							feeMinor,
-							feeReturnedMinor: feeBack?.bookedMinor ?? null
-						}
+			: reversalWrites(
+					deps.db,
+					withdrawalEntry(
+						reversal.kind,
+						refundId,
+						reversalEntry(
+							{
+								refundPaymentId: refundId,
+								donationId: reversed.donationId,
+								original: charge.lines,
+								alreadyRefundedMinor,
+								fee: giftFee?.lines ?? []
+							},
+							{
+								kind: reversal.kind,
+								amountMinor,
+								currency: reversal.currency,
+								occurredAt: reversal.occurredAt,
+								feeMinor,
+								feeReturnedMinor: feeBack?.bookedMinor ?? null
+							}
+						)
 					)
-				});
+				);
 
 	const committed = await commit(deps.db, [
 		deps.db.insert(payment).values({
@@ -369,6 +376,17 @@ async function withdraw(
 		);
 	}
 	return { ok: true, outcome: 'posted', detail: `refund ${refundId} posted.` };
+}
+
+/** a withdrawal as the composer takes it: a refund and a dispute lost are final, a dispute opened is not. */
+function withdrawalEntry(
+	kind: WithdrawalRead['kind'],
+	refundId: string,
+	entry: Posting
+): ReversalEntry {
+	return kind === 'dispute_opened'
+		? { kind, entry, finalRefundPaymentId: null }
+		: { kind, entry, finalRefundPaymentId: refundId };
 }
 
 /**
@@ -484,8 +502,15 @@ async function closeLost(
 						)
 					)
 			: null;
+	// an opening the books never held is a gift no Zap heard of, and its close is heard of by none.
 	const settled =
-		settleUp === null ? [] : reversalWrites(deps.db, { kind: 'settle_up', entry: settleUp });
+		withdrawal === null
+			? []
+			: reversalWrites(deps.db, {
+					kind: 'settle_up',
+					entry: settleUp,
+					finalRefundPaymentId: recorded.id
+				});
 	// the lowering goes ahead of the close, whose update is what makes `stillOpen` false.
 	const batch: Writes = lowered === null ? [close, ...settled] : [lowered, close, ...settled];
 	const closeAt = batch.indexOf(close);
@@ -849,7 +874,8 @@ async function reinstate(
 							occurredAt: reversal.occurredAt,
 							feeReturnedMinor
 						}
-					)
+					),
+					finalRefundPaymentId: null
 				}))
 	];
 	const flipAt = batch.indexOf(flip);

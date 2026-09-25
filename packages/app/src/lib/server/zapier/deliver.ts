@@ -2,7 +2,14 @@ import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
 import { eachAtMost } from './each-at-most';
-import { donorEventOf, type GiftEvent, readGiftEvents } from './payload';
+import {
+	donorEventOf,
+	type GiftEvent,
+	readGiftEvents,
+	readRefundEvents,
+	type RefundEvent,
+	type ZapierEvent
+} from './payload';
 import { endSubscriptionStatements } from './subscriptions';
 
 // the Zapier outbox, delivered: what reads `zapier_delivery` and posts each row to its Zap's hook.
@@ -86,17 +93,24 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 	if (claimed.length === 0) return;
 
 	const hooks = await readHooks(deps.db, [...new Set(claimed.map((c) => c.subscriptionId))]);
-	const gifts = await readGiftEvents(
-		deps.db,
-		claimed.map((c) => c.paymentId)
-	);
+	const isRefund = (row: Claimed) => hooks.get(row.subscriptionId)?.trigger === 'gift_refunded';
+	const events: Events = {
+		gifts: await readGiftEvents(
+			deps.db,
+			claimed.filter((c) => !isRefund(c)).map((c) => c.paymentId)
+		),
+		refunds: await readRefundEvents(
+			deps.db,
+			claimed.filter(isRefund).map((c) => c.paymentId)
+		)
+	};
 	const gone = new Set<string>();
 
 	await eachAtMost(POSTS_AT_ONCE, claimed, async (row) => {
 		if (gone.has(row.subscriptionId)) return;
 		const hook = hooks.get(row.subscriptionId);
-		const gift = gifts.get(row.paymentId);
-		if (hook === undefined || gift === undefined) {
+		const event = hook === undefined ? undefined : eventFor(hook.trigger, row.paymentId, events);
+		if (hook === undefined || event === undefined) {
 			const missing =
 				hook === undefined ? `subscription ${row.subscriptionId}` : `payment ${row.paymentId}`;
 			await land(deps.db, row, lease, now, {
@@ -109,7 +123,7 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 		// the wall clock, not `now`: what matters is whether a post started now can finish before
 		// the next run may take the row. one that cannot is left for that run.
 		if (lease.getTime() - Date.now() < POST_TIMEOUT_MS) return;
-		const answer = await post(deps.fetch, hook.url, eventFor(hook.trigger, gift));
+		const answer = await post(deps.fetch, hook.url, event);
 		if (answer === 'gone') {
 			gone.add(row.subscriptionId);
 			await deps.db.batch(
@@ -214,8 +228,28 @@ async function readHooks(db: Db, ids: readonly string[]): Promise<Map<string, Ho
 	return new Map(rows.map((r) => [r.id, { url: r.url, trigger: r.trigger }]));
 }
 
-function eventFor(trigger: ZapierTrigger, gift: GiftEvent) {
-	return trigger === 'new_donor' ? donorEventOf(gift) : gift;
+/** the events one run renders, each keyed by the payment its row names. */
+type Events = {
+	readonly gifts: ReadonlyMap<string, GiftEvent>;
+	readonly refunds: ReadonlyMap<string, RefundEvent>;
+};
+
+/** what a `trigger` Zap is posted about the payment its row names, or undefined where it could not be read. */
+function eventFor(
+	trigger: ZapierTrigger,
+	paymentId: string,
+	events: Events
+): ZapierEvent[ZapierTrigger] | undefined {
+	switch (trigger) {
+		case 'new_gift':
+			return events.gifts.get(paymentId);
+		case 'new_donor': {
+			const gift = events.gifts.get(paymentId);
+			return gift === undefined ? undefined : donorEventOf(gift);
+		}
+		case 'gift_refunded':
+			return events.refunds.get(paymentId);
+	}
 }
 
 /**

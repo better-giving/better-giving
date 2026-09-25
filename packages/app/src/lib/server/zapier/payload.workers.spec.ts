@@ -5,6 +5,8 @@ import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import {
 	contact,
+	dispute,
+	type DisputeOutcome,
 	donation,
 	form,
 	payment,
@@ -13,7 +15,14 @@ import {
 	type NewDonation,
 	type NewPayment
 } from '../db/schema';
-import { donorEventOf, readGiftEvents, readSamples, SAMPLE_DONOR, SAMPLE_GIFT } from './payload';
+import {
+	donorEventOf,
+	readGiftEvents,
+	readSamples,
+	SAMPLE_DONOR,
+	SAMPLE_GIFT,
+	SAMPLE_REFUND
+} from './payload';
 
 // what a Zap is handed about a gift, rendered from the rows a real D1 holds.
 //
@@ -28,6 +37,7 @@ beforeAll(() => {
 
 beforeEach(async () => {
 	for (const table of [
+		'dispute',
 		'payment',
 		'line_item',
 		'donation',
@@ -275,6 +285,35 @@ function onDay(day: number, status: NewPayment['status'] = 'succeeded') {
 	return { donation: { receivedAt: at }, payment: { occurredAt: at, status } };
 }
 
+/**
+ * $20 of `gift` refunded on `day`: a refund row in `status`, and a dispute on it where `dispute`
+ * says how it stands — `open` for one not yet closed.
+ */
+async function seedRefund(
+	gift: { donationId: string; paymentId: string },
+	day: number,
+	over: { status?: NewPayment['status']; dispute?: DisputeOutcome | 'open' } = {}
+): Promise<string> {
+	const id = uuidv7();
+	await db.insert(payment).values({
+		id,
+		donationId: gift.donationId,
+		amountMinor: 2_000,
+		currency: 'USD',
+		direction: 'refund',
+		method: 'check',
+		status: over.status ?? 'succeeded',
+		provider: 'manual',
+		occurredAt: new Date(Date.UTC(2026, 8, day, 12)),
+		parentPaymentId: gift.paymentId
+	});
+	if (over.dispute !== undefined) {
+		const closed = over.dispute === 'open' ? {} : { outcome: over.dispute, closedAt: new Date() };
+		await db.insert(dispute).values({ paymentId: id, ...closed });
+	}
+	return id;
+}
+
 describe('readSamples()', () => {
 	it('hands a new-gift Zap the three latest settled gifts, newest first', async () => {
 		const contactId = await seedDonor();
@@ -314,9 +353,34 @@ describe('readSamples()', () => {
 		]);
 	});
 
+	it('hands a gift-refunded Zap the three latest refunds that stand, newest first, each with its gift', async () => {
+		const gift = await seedGift(await seedDonor(), onDay(1));
+		await seedRefund(gift, 2);
+		const third = await seedRefund(gift, 3);
+		const fourth = await seedRefund(gift, 4);
+		await seedRefund(gift, 5, { status: 'cancelled' });
+		await seedRefund(gift, 6, { dispute: 'open' });
+		await seedRefund(gift, 7, { dispute: 'won' });
+		const lost = await seedRefund(gift, 8, { dispute: 'lost' });
+
+		const samples = await readSamples(db, 'gift_refunded');
+
+		expect(samples.map((event) => [event.id, event.amount, event.gift.id])).toEqual([
+			[lost, '20.00', gift.paymentId],
+			[fourth, '20.00', gift.paymentId],
+			[third, '20.00', gift.paymentId]
+		]);
+	});
+
 	it('hands a deployment with no gift yet the fixed sample, for either trigger', async () => {
 		expect(await readSamples(db, 'new_gift')).toStrictEqual([SAMPLE_GIFT]);
 		expect(await readSamples(db, 'new_donor')).toStrictEqual([SAMPLE_DONOR]);
+	});
+
+	it('hands a deployment with no refund yet the fixed refund sample, never a gift', async () => {
+		await seedGift(await seedDonor(), onDay(1));
+
+		expect(await readSamples(db, 'gift_refunded')).toStrictEqual([SAMPLE_REFUND]);
 	});
 });
 
@@ -341,5 +405,15 @@ describe('a live event and its sample carry the same fields', () => {
 		expect(live?.id).toBe(sparse.paymentId);
 		expect(wireKeys(live)).toEqual(wireKeys(SAMPLE_GIFT));
 		expect(wireKeys(liveDonor)).toEqual(wireKeys(SAMPLE_DONOR));
+	});
+
+	it('for a refund', async () => {
+		const gift = await seedGift(await seedDonor({ primaryEmail: null }), onDay(1));
+		const refundId = await seedRefund(gift, 2);
+
+		const [live] = await readSamples(db, 'gift_refunded');
+
+		expect(live?.id).toBe(refundId);
+		expect(wireKeys(live)).toEqual(wireKeys(SAMPLE_REFUND));
 	});
 });
