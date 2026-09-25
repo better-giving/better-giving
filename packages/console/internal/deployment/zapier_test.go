@@ -39,11 +39,13 @@ func zapierUnkeyed() map[string]any {
 }
 
 // a press that landed, and one the key's own state turned down: both are 200s the deployment wrote.
+// of the three Zaps the replace took down, Zapier paused two and one hook did not take it.
 func zapierPressReports() []map[string]any {
 	return []map[string]any{
 		{
 			"ok": true, "press": "replace", "key": zapierKey,
 			"madeAt": "2026-09-22T10:00:00.000Z", "disconnected": float64(3),
+			"paused": float64(2), "notPaused": float64(1),
 		},
 		{
 			"ok": false, "press": "make",

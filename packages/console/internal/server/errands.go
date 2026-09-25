@@ -82,7 +82,7 @@ func surfaceDoors(records state.Store, surface func(origin, token string) cf.Sen
 // which presses the deployment answers only once Intuit has, and so which go through the longer
 // door ./surfaceDoors is bound twice for.
 //
-// the accounts press fetches the company's whole chart to settle the three ids against before it
+// the accounts press fetches the company's whole chart to settle the ids against before it
 // stores anything, and the disconnect revokes the credential at Intuit before it deletes the row.
 // every other press is answered out of the deployment's own rows.
 //
@@ -168,7 +168,7 @@ func errandRoutes(routes *http.ServeMux, held, patient func() (cf.Get, cf.Post))
 
 	// one press over that connection, forwarded as it was typed.
 	//
-	// The body is decoded into the press itself and nothing here reads which of the three accounts
+	// The body is decoded into the press itself and nothing here reads which account
 	// belongs on which press: the deployment settles that against the connected company's own chart
 	// and refuses an id those books do not hold, and a rule written here would be a second opinion on
 	// a chart this binary cannot see.

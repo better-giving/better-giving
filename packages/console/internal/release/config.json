@@ -11,12 +11,13 @@
 		"0005_quickbooks_sync_claim.sql",
 		"0006_zapier_key_subscription_and_delivery.sql",
 		"0007_zapier_key_shown.sql",
-		"0008_zapier_keyless_row_dropped.sql"
+		"0008_zapier_keyless_row_dropped.sql",
+		"0009_quickbooks_holding_accounts.sql"
 	],
 	"crons": [
 		"*/30 * * * *",
 		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "5294bcbee267ad902b47c5c6102469a1d854dac4"
+	"commit": "f61dba61bd9dcc0c4a23df50372997f2f0575401"
 }
