@@ -56,7 +56,8 @@ const LANDINGS: Readonly<Record<AccountingFailureReason, FailureLanding>> = {
 	unmapped_account: 'row',
 	invalid_record: 'row',
 	internal_error: 'row',
-	provider_error: 'attempt'
+	provider_error: 'attempt',
+	holding_not_chosen: 'attempt'
 };
 
 describe('where a refusal lands', () => {
@@ -93,7 +94,8 @@ const NOTICES: Readonly<Record<AccountingFailureReason, BlockedNotice>> = {
 	unmapped_account: 'never',
 	invalid_record: 'never',
 	internal_error: 'never',
-	provider_error: 'never'
+	provider_error: 'never',
+	holding_not_chosen: 'never'
 };
 
 describe('what a run that could not send anything tells an operator', () => {

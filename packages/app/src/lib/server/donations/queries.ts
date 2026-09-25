@@ -496,14 +496,20 @@ export type RecordedGift = Pick<
 	readonly method: Payment['method'] | null;
 };
 
-/** the donor behind one settlement attempt, as an outside ledger names a payer. */
+/**
+ * the donor behind one settlement attempt, as an outside ledger names a payer, and the rail holding
+ * the money.
+ */
 export type PaymentDonor = {
 	readonly displayName: string;
 	readonly email: string | null;
+	/** the rail that settled it — `payment.provider`, null on a row recorded before the rail was known. */
+	readonly provider: Payment['provider'];
 };
 
 /**
- * who gave the gift one payment settled, or `null` where no payment carries the id.
+ * who gave the gift one payment settled and which rail settled it, or `null` where no payment
+ * carries the id.
  *
  * `payment.donation_id` and `donation.contact_id` are both NOT NULL, so the join cannot lose a
  * donor a payment has; `null` is a payment row that is not there at all. the contact itself is read
@@ -512,7 +518,7 @@ export type PaymentDonor = {
  */
 export async function findPaymentDonor(db: Db, paymentId: string): Promise<PaymentDonor | null> {
 	const [row] = await db
-		.select({ contactId: donation.contactId })
+		.select({ contactId: donation.contactId, provider: payment.provider })
 		.from(payment)
 		.innerJoin(donation, eq(donation.id, payment.donationId))
 		.where(eq(payment.id, paymentId));
@@ -521,7 +527,7 @@ export async function findPaymentDonor(db: Db, paymentId: string): Promise<Payme
 	const summary = (await readContactSummaries(db, [row.contactId])).get(row.contactId);
 	return summary === undefined
 		? null
-		: { displayName: summary.displayName, email: summary.primaryEmail };
+		: { displayName: summary.displayName, email: summary.primaryEmail, provider: row.provider };
 }
 
 /**

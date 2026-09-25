@@ -184,7 +184,11 @@ const focusLabel = (name: StepName | 'sync'): void =>
 const PICK_LABEL: Record<(typeof PICKS)[number], string> = {
 	income: 'Gifts go to',
 	fee: 'Processing fees go to',
-	deposit: 'Net amount goes to'
+	stripeBalance: 'Stripe gifts are held in',
+	paypalBalance: 'PayPal gifts are held in',
+	chariotBalance: 'Chariot gifts are held in',
+	nowpaymentsBalance: 'Crypto gifts are held in',
+	undepositedFunds: 'Cash and cheques are held in'
 };
 
 /** what a picker submits under, and the id every description on it is named from. */
@@ -986,11 +990,11 @@ function AccountsPanel({
 	);
 }
 
-/** the three as the deployment holds them, as one value a render can be compared against. */
-const seedOf = (picks: QuickbooksPicks): string => `${picks.income}|${picks.fee}|${picks.deposit}`;
+/** the picks as the deployment holds them, as one value a render can be compared against. */
+const seedOf = (picks: QuickbooksPicks): string => PICKS.map((pick) => picks[pick]).join('|');
 
 /**
- * the three pickers over the company's own chart, saved together.
+ * the pickers over the company's own chart, saved together.
  *
  * **the pickers hold their choice here rather than in the document**, because what each one offers
  * is a function of what it is showing (`accountPicker` in ./quickbooks-standing.ts) and whether the

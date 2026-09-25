@@ -1,3 +1,5 @@
+import type { ProcessorName } from '../payments/provider';
+
 // the accounting port: the one interface this app sends its books to an outside ledger through,
 // and the one thing an adapter has to implement.
 //
@@ -24,15 +26,15 @@
 // ./connection.ts reads `realm_id` into `companyId` in one select and the vendor stops there.
 //
 // ---------------------------------------------------------------------------
-// three roles and never nine accounts.
+// a handful of roles and never nine accounts.
 //
 // this app's own chart is the nine seeded rows in ../db/accounts.ts, and a connected company's is
-// whatever its bookkeeper built. nothing maps one onto the other, so the operator picks three
-// accounts in their own books — where income lands, where the processor's cut lands, which account
-// the money arrived in — and every line this port carries names one of those three roles rather
-// than an account on either side. ./record.ts is where a posting's local account becomes a role,
-// and a posting that names an account with no role is refused there rather than sent somewhere
-// plausible.
+// whatever its bookkeeper built. nothing maps one onto the other, so the operator picks one account
+// in their own books per role — where income lands, where the processor's cut lands, and where the
+// money sits until it reaches the bank, one of those per party that holds it — and every line this
+// port carries names one of those roles rather than an account on either side. ./record.ts is where
+// a posting's local account becomes a role, and a posting that names an account with no role is
+// refused there rather than sent somewhere plausible.
 //
 // ---------------------------------------------------------------------------
 // minor units cross this port, decimals do not.
@@ -45,11 +47,13 @@
  *
  *   not_connected       — no company is connected. the ordinary state of a deployment nobody has
  *                         connected, and nothing about it is a fault.
- *   accounts_not_chosen — a company is connected and the three accounts have not been picked. the
- *                         connection is made on one screen and the accounts on another, so a send
- *                         in between is expected. the three are picked together or not at all
- *                         (`saveQuickbooksAccounts` in ./connection.ts), so this is one state
- *                         rather than a partial set to name.
+ *   accounts_not_chosen — a company is connected and its income or fee account has not been
+ *                         picked. the connection is made on one screen and the accounts on another,
+ *                         so a send in between is expected, and every record is behind it.
+ *   holding_not_chosen  — income and fees are picked and the holding this record's money sits in
+ *                         is not. it is that party's records waiting and nobody else's: a
+ *                         processor an organisation never took a gift through needs no account.
+ *                         `detail` names the holding.
  *   reconnect_needed    — the credential is dead. a refresh the provider rejected, or a call still
  *                         refused after one. retrying spends attempts on a connection that cannot
  *                         come back without somebody re-authorising it.
@@ -79,16 +83,23 @@ export const ACCOUNTING_FAILURE_REASONS = [
 	'unreachable',
 	'provider_error',
 	'credential_unsaved',
-	'internal_error'
+	'internal_error',
+	'holding_not_chosen'
 ] as const;
 export type AccountingFailureReason = (typeof ACCOUNTING_FAILURE_REASONS)[number];
 
-/** the reasons whose answer is to make the same call again, later. */
+/**
+ * the reasons whose answer is to make the same call again, later.
+ *
+ * `holding_not_chosen` is here because the record itself is sound: the same call lands the moment
+ * somebody picks the holding, and nothing about the call has to change for it to.
+ */
 export const RETRYABLE_FAILURE_REASONS = [
 	'rate_limited',
 	'unreachable',
 	'provider_error',
-	'credential_unsaved'
+	'credential_unsaved',
+	'holding_not_chosen'
 ] as const satisfies readonly AccountingFailureReason[];
 
 /**
@@ -150,12 +161,54 @@ export function failed(reason: AccountingFailureReason, detail: string): Account
 export type AccountingResult<T> = { readonly ok: true; readonly value: T } | AccountingFailure;
 
 /**
- * which of the operator's three accounts a line belongs in.
+ * where a gift's money sits until a payout moves it to the bank, one role per party holding it.
  *
- * `deposit` is the asset side — what the gift arrived in — and is the one role that is never an
- * income or an expense account in the company's books.
+ *   stripeBalance, paypalBalance, chariotBalance, nowpaymentsBalance
+ *                    — what that processor holds for the organisation until it pays out.
+ *   undepositedFunds — a gift received in hand, cash or a cheque, until somebody banks it.
+ *
+ * **none of them is the bank.** this app hears no payout, so nothing it sends can say money reached
+ * a bank account: the bookkeeper records each payout off the bank feed as a transfer out of the
+ * holding account it came from, and what a holding account still holds is what that party owes.
  */
-export type AccountRole = 'income' | 'fee' | 'deposit';
+export const HOLDING_ROLES = [
+	'stripeBalance',
+	'paypalBalance',
+	'chariotBalance',
+	'nowpaymentsBalance',
+	'undepositedFunds'
+] as const;
+export type HoldingRole = (typeof HOLDING_ROLES)[number];
+
+/** the holding each processor's gifts wait in until it pays out. */
+export const HOLDING_OF: Readonly<Record<ProcessorName, HoldingRole>> = {
+	stripe: 'stripeBalance',
+	paypal: 'paypalBalance',
+	chariot: 'chariotBalance',
+	nowpayments: 'nowpaymentsBalance'
+};
+
+/** which of the operator's accounts a line belongs in: income, the processor's cut, or a holding. */
+export const ACCOUNT_ROLES = ['income', 'fee', ...HOLDING_ROLES] as const;
+export type AccountRole = (typeof ACCOUNT_ROLES)[number];
+
+/**
+ * what an operator-facing sentence calls each role, and the name an account made for a processor's
+ * holding is given in the company's chart.
+ */
+export const ROLE_LABELS: Readonly<Record<AccountRole, string>> = {
+	income: 'income',
+	fee: 'processing fees',
+	stripeBalance: 'Stripe balance',
+	paypalBalance: 'PayPal balance',
+	chariotBalance: 'Chariot balance',
+	nowpaymentsBalance: 'NOWPayments balance',
+	undepositedFunds: 'Undeposited Funds'
+};
+
+export function isHoldingRole(role: AccountRole): role is HoldingRole {
+	return (HOLDING_ROLES as readonly AccountRole[]).includes(role);
+}
 
 /** who gave, as the record carries them. */
 export type Donor = {
@@ -193,6 +246,8 @@ export type GiftRecord = {
 	readonly incomeMinor: number;
 	/** minor units, zero where the processor took nothing — a cheque received in hand. */
 	readonly feeMinor: number;
+	/** who holds the money until it is paid out or banked: the other side of the income and the fee. */
+	readonly holding: HoldingRole;
 };
 
 /** one side of a correcting entry, in the role it lands in. */
@@ -252,7 +307,7 @@ export type CompanyIdentity = {
 };
 
 /**
- * one account in the company's own chart, as the screen that picks the three offers it.
+ * one account in the company's own chart, as the screen that picks the roles' accounts offers it.
  *
  * `type`, `subType` and `classification` are the provider's own words and are carried rather than
  * translated: the picker groups by them and the operator recognises them from their own books, and
@@ -286,18 +341,15 @@ export type TokenPair = {
 /**
  * what an adapter needs to make a call, read fresh each time.
  *
- * the three account ids are nullable because a company is connected on one screen and its accounts
- * picked on another, and they are null or set as a set: `saveQuickbooksAccounts` in ./connection.ts
- * is the only writer and takes all three, and a reconnect against another company clears all three.
- * three nullable fields rather than one nullable triple is the schema's shape read straight
- * (../db/schema.ts), so an adapter refuses the whole absence rather than naming a missing one.
+ * each role's account id is nullable on its own: a company is connected on one screen and its
+ * accounts picked on another, and a holding the operator has not chosen holds only the records that
+ * need it — a Stripe gift waits on the Stripe balance and a cheque does not. so an adapter refuses a
+ * record by the roles its own lines name, and never the whole connection over one gap.
  */
 export type ConnectionSnapshot = TokenPair & {
 	/** {@link CompanyIdentity.companyId}, as the stored connection holds it. */
 	readonly companyId: string;
-	readonly incomeAccountId: string | null;
-	readonly feeAccountId: string | null;
-	readonly depositAccountId: string | null;
+	readonly accounts: Readonly<Record<AccountRole, string | null>>;
 };
 
 /**
@@ -305,8 +357,10 @@ export type ConnectionSnapshot = TokenPair & {
  *
  *   stored     — the stored credential is now this pair.
  *   superseded — the stored refresh token is no longer the one presented, so another caller
- *                renewed first and this pair is against a credential the provider has retired.
- *                the caller reads the connection again and continues on what the winner stored.
+ *                renewed first and stored its own pair. this one is not dead — Intuit keeps a
+ *                token it rotated away from renewing for 24 hours (./quickbooks.ts) — but the
+ *                row holds one credential and the first to land is it, so the caller reads the
+ *                connection again and continues on what the winner stored.
  */
 export type TokenSave = 'stored' | 'superseded';
 
@@ -338,14 +392,23 @@ export interface AccountingProvider {
 	readCompany(): Promise<AccountingResult<CompanyIdentity>>;
 
 	/**
-	 * the company's own chart of accounts, active accounts only, for the screen that picks the
-	 * three.
+	 * the company's own chart of accounts, active accounts only, for the screen that picks each
+	 * role's account.
 	 *
 	 * every account the company holds rather than a filtered set: which account a gift's income
 	 * belongs in is a bookkeeping decision this codebase does not get to make, and a list narrowed
 	 * by type here would be one an operator cannot find their own account in.
 	 */
 	listAccounts(): Promise<AccountingResult<readonly LedgerAccount[]>>;
+
+	/**
+	 * one account made in the company's chart to hold a processor's money until it pays out, for a
+	 * connection whose chart names none.
+	 *
+	 * the only thing this port writes into a company besides a gift, a correction and the donor on
+	 * one, and it is asked for by the connect-time fill alone (./connection.ts).
+	 */
+	createHoldingAccount(name: string): Promise<AccountingResult<LedgerAccount>>;
 
 	/**
 	 * one gift into the company's books, keyed on {@link GiftRecord.key} so a retry lands once.

@@ -7,7 +7,10 @@ import type {
 	QuickbooksReport,
 	QuickbooksStartAtSide
 } from '@better-giving/operator/console/quickbooks';
-import { QUICKBOOKS_RECOURSES } from '@better-giving/operator/console/quickbooks';
+import {
+	QUICKBOOKS_ACCOUNT_ROLES,
+	QUICKBOOKS_RECOURSES
+} from '@better-giving/operator/console/quickbooks';
 import { z } from 'zod';
 import type { NoReport, QuickbooksRead, VarsWritten } from '../api/types';
 import { readableRefusal } from './unread-answer';
@@ -25,9 +28,9 @@ import type { StatedForm } from './use-console-form';
 // what put an outcome at the control that caused it — and a mismatch there reports a save at the
 // button that disconnected.
 //
-// **the three picks are one act.** a connection holding one of the three is a state the deployment
-// refuses to write (packages/operator/src/console/quickbooks.ts), so what arms the save is all
-// three chosen and at least one of them different — never a box at a time.
+// **the picks are one act.** the deployment stores them together and refuses a save without income
+// and fees (packages/operator/src/console/quickbooks.ts), so what arms the save is those two chosen
+// and at least one pick different — never a box at a time. a holding may stay unchosen.
 //
 // **no sentence here quotes the deployment.** its own detail names status codes and exception
 // names an operator does nothing with, so every trouble is one plain sentence at the step it
@@ -263,12 +266,15 @@ export const unanswered = (
 ): NoReport | null =>
 	answer?.kind === 'unanswered' && answer.press === press ? answer.read : null;
 
-/** the three accounts a gift is posted into, in the order the section draws them. */
-export const PICKS = ['income', 'fee', 'deposit'] as const;
+/** the accounts a gift is posted into, in the order the section draws them: the wire's roles. */
+export const PICKS = QUICKBOOKS_ACCOUNT_ROLES;
 
 export type AccountPick = (typeof PICKS)[number];
 
-/** the three as the boxes hold them: an account id each, and `''` where one is unchosen. */
+/** the two every gift needs; each holding after them may stay unchosen. */
+const REQUIRED_PICKS: readonly AccountPick[] = ['income', 'fee'];
+
+/** the picks as the boxes hold them: an account id each, and `''` where one is unchosen. */
 export type QuickbooksPicks = Readonly<Record<AccountPick, string>>;
 
 /** what one press posts as its intent, which is what an outcome is reported against. */
@@ -295,7 +301,7 @@ export const CHOOSE = 'Choose an account';
 /**
  * one picker over the company's own chart, for a picker showing `showing`.
  *
- * **it offers only the accounts that fit it.** the deployment says which of the three each account
+ * **it offers only the accounts that fit it.** the deployment says which of the roles each account
  * may be picked for (`roles` on `LedgerAccountLine` in packages/operator/src/console/quickbooks.ts)
  * and refuses a save naming one outside its role, so an account offered where it does not fit is a
  * pick the press is certain to be refused over. a stored pick that does not fit is kept the way a
@@ -319,7 +325,7 @@ export const CHOOSE = 'Choose an account';
  *
  * **the empty line is what "nothing chosen" is, so it stands while the company stores nothing.** a
  * list that lost it on the first pick leaves a mis-pick on a fresh connection with no way back to
- * it, and the three are stored together (`picksToSave` below) — so there is nothing to go back to
+ * it, and the picks are stored together (`picksToSave` below) — so there is nothing to go back to
  * once the connection holds one.
  */
 export function accountPicker(
@@ -353,20 +359,20 @@ function retiredLabel(
 	return pick !== null && pick.id === showing ? pick.name : showing;
 }
 
-/** the three this connection posts to, as the boxes are drawn with them. */
-export const picksHeld = (company: QuickbooksCompany): QuickbooksPicks => ({
-	income: company.income?.id ?? '',
-	fee: company.fee?.id ?? '',
-	deposit: company.deposit?.id ?? ''
-});
+/** the accounts this connection posts to, as the boxes are drawn with them. */
+export const picksHeld = (company: QuickbooksCompany): QuickbooksPicks =>
+	Object.fromEntries(PICKS.map((pick) => [pick, company[pick]?.id ?? ''])) as Record<
+		AccountPick,
+		string
+	>;
 
 /**
- * whether the three in the boxes are a press: all of them chosen, every one an account its picker
- * offers, and not what is already stored.
+ * whether the picks in the boxes are a press: income and fees chosen, every pick showing an account
+ * its picker offers or a holding left unchosen, and not what is already stored.
  *
- * it is all three halves rather than the last alone because the three are stored together — two
- * chosen and one empty is a press the deployment refuses, and so is one still showing a retired
- * pick ({@link accountPicker}): an account that does not fit its place, or that the chart no longer
+ * it is all three halves rather than the last alone because the picks are stored together — income
+ * or fees empty is a press the deployment refuses, and so is one still showing a retired pick
+ * ({@link accountPicker}): an account that does not fit its place, or that the chart no longer
  * holds. arming either would spend a round trip to be told so.
  */
 export function picksToSave(
@@ -375,6 +381,7 @@ export function picksToSave(
 	chart: readonly LedgerAccountLine[]
 ): boolean {
 	const offered = (pick: AccountPick): boolean =>
+		(held[pick] === '' && !REQUIRED_PICKS.includes(pick)) ||
 		chart.some((account) => account.id === held[pick] && account.roles.includes(pick));
 	if (!PICKS.every(offered)) return false;
 	const stored = picksHeld(company);
@@ -384,15 +391,15 @@ export function picksToSave(
 /** what a picker left unchosen at the press says. */
 export const PICK_BLANK = 'required';
 
-/** the pickers showing nothing, in the order they are drawn. */
+/** the pickers that must show something and show nothing, in the order they are drawn. */
 export const picksMissing = (held: QuickbooksPicks): AccountPick[] =>
-	PICKS.filter((pick) => held[pick] === '');
+	REQUIRED_PICKS.filter((pick) => held[pick] === '');
 
 /**
  * whether the pickers' save can be pressed: a press ({@link picksToSave}), or one left unchosen —
  * pressing then marks it (`PICK_BLANK`) rather than leaving an operator in front of a closed
- * button with no word on why. a connect fills what it can off the chart and can leave one of the
- * three empty, so a save closed over that is a step with no way on.
+ * button with no word on why. a connect fills what it can off the chart and can leave income or
+ * fees empty, so a save closed over that is a step with no way on.
  */
 export const picksArmed = (
 	held: QuickbooksPicks,
@@ -657,7 +664,7 @@ export function stepsStand(facts: {
 	const done: Record<StepName, boolean> = {
 		setup: configured,
 		connect: company !== null,
-		accounts: company !== null && PICKS.every((pick) => company[pick] !== null)
+		accounts: company !== null && REQUIRED_PICKS.every((pick) => company[pick] !== null)
 	};
 	const trouble: Record<StepName, boolean> = {
 		setup: false,

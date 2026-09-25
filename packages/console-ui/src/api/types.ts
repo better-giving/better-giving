@@ -1,5 +1,6 @@
 import type { WebhookRepairReport } from '@better-giving/operator/console/payments';
 import type {
+	QuickbooksAccountRole,
 	QuickbooksPressReport,
 	QuickbooksReport
 } from '@better-giving/operator/console/quickbooks';
@@ -704,13 +705,16 @@ export type QuickbooksRead =
 /**
  * what one press carries: the press, and whatever that press acts on.
  *
- * the three picks and the day are sent, where every other press on this console names nothing — the
+ * the picks and the day are sent, where every other press on this console names nothing — the
  * deployment settles what they mean against the connected company's own chart, and refuses an id
- * those books do not hold.
+ * those books do not hold. every holding is named, as an id or null for none.
  */
+/** the picks an accounts press may leave unchosen. */
+export type HoldingPick = Exclude<QuickbooksAccountRole, 'income' | 'fee'>;
+
 export type QuickbooksPressBody =
 	| { press: 'connect' | 'retry' | 'disconnect' }
-	| { press: 'accounts'; income: string; fee: string; deposit: string }
+	| ({ press: 'accounts'; income: string; fee: string } & Record<HoldingPick, string | null>)
 	| { press: 'start-date' | 'start-date-preview'; startAt: string };
 
 /**

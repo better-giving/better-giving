@@ -75,7 +75,7 @@ import { readSendable } from './record';
 // where a refusal lands, and it is not `retryable` alone.
 //
 // six of the port's reasons are one fault the whole backlog is behind — no company connected, the
-// three accounts not picked, a dead credential, a renewed credential that could not be stored, a
+// income and fee accounts not picked, a dead credential, a renewed credential that could not be stored, a
 // throttled provider, a provider that cannot be reached. none of them is about the row being sent,
 // so none of them marks a row: the claim and its attempt are given back, nothing else is written,
 // and the backlog is read again next time. marking a hundred gifts over one revoked credential
@@ -85,11 +85,14 @@ import { readSendable } from './record';
 // it has to look before it posts (./quickbooks.ts).
 //
 // four are about this row and no later run answers them differently — an id nothing carries, an
-// account outside the three, a payload the provider refused, a record this app should never have
+// account no role stands for, a payload the provider refused, a record this app should never have
 // queued. the row becomes `failed` and the run carries on to the row behind it.
 //
-// `provider_error` is the one that waits: the row stays `pending`, keeps the claim's attempt,
-// and the backoff below decides when it is read again.
+// two wait: the row stays `pending`, keeps the claim's attempt, and the backoff below decides when
+// it is read again. `provider_error` is Intuit faulting on this one call. `holding_not_chosen` is
+// the account this gift's processor holds its money in not yet picked — one party's gifts rather
+// than the backlog, so the run goes on to the row behind it, which may be another processor's, and
+// the held row is sent within the backoff's hour of somebody picking the account.
 //
 // ---------------------------------------------------------------------------
 // no attempt cap, and that is deliberate.
@@ -292,7 +295,8 @@ const LANDING_OF: Readonly<Record<AccountingFailureReason, FailureLanding>> = {
 	unmapped_account: 'row',
 	invalid_record: 'row',
 	internal_error: 'row',
-	provider_error: 'attempt'
+	provider_error: 'attempt',
+	holding_not_chosen: 'attempt'
 };
 
 export function landingOf(reason: AccountingFailureReason): FailureLanding {
@@ -329,7 +333,8 @@ const BLOCKED_NOTICE_OF: Readonly<Record<AccountingFailureReason, BlockedNotice>
 	unmapped_account: 'never',
 	invalid_record: 'never',
 	internal_error: 'never',
-	provider_error: 'never'
+	provider_error: 'never',
+	holding_not_chosen: 'never'
 };
 
 export function blockedNoticeOf(reason: AccountingFailureReason): BlockedNotice {

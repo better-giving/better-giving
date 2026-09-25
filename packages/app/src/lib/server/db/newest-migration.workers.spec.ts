@@ -55,6 +55,14 @@ async function snapshot(): Promise<Map<string, Row[]>> {
 const project = (row: Row, columns: readonly string[]): Row =>
 	Object.fromEntries(columns.map((c) => [c, row[c]]));
 
+/**
+ * the columns the newest migration drops, by table: the comparison below passes over them and a
+ * block of the migration's own asserts they are gone.
+ */
+const DROPPED: Readonly<Record<string, readonly string[]>> = {
+	quickbooks_connection: ['deposit_account_id', 'deposit_account_name']
+};
+
 async function seed() {
 	const statements = [
 		db()
@@ -103,7 +111,16 @@ async function seed() {
 				 values (?, 'new_gift', 'https://hooks.zapier.com/hooks/standard/1/open/', null, null, 0, 0),
 				        (?, 'new_donor', 'https://hooks.zapier.com/hooks/standard/1/ended/', 5, 'unsubscribed', 0, 5)`
 			)
-			.bind(OPEN_ZAP, ENDED_ZAP)
+			.bind(OPEN_ZAP, ENDED_ZAP),
+		db().prepare(
+			`insert into quickbooks_connection
+			   (id, realm_id, company_name, access_token, access_token_expires_at, refresh_token,
+			    refresh_token_expires_at, income_account_id, income_account_name, fee_account_id,
+			    fee_account_name, deposit_account_id, deposit_account_name, start_at, created_at,
+			    updated_at)
+			 values ('quickbooks', '4620816365', 'Riverside Shelter', 'acc', 3600000, 'ref', 7,
+			         '79', 'Donations', '80', 'Merchant fees', '35', 'Checking', 6, 0, 0)`
+		)
 	];
 	// a row of each nullable shape `payment` holds — a processor with its id, staff entry with and
 	// without a provider, a refund — so a rebuild's copy step has every combination to lose.
@@ -178,11 +195,14 @@ describe('the newest migration keeps every row the database already held', () =>
 		async () => {
 			expect([...before.keys()].length).toBeGreaterThan(5);
 			for (const [table, rows] of before) {
-				const columns = rows.length > 0 ? Object.keys(rows[0]!) : [];
+				const dropped = DROPPED[table] ?? [];
+				const columns = (rows.length > 0 ? Object.keys(rows[0]!) : []).filter(
+					(c) => !dropped.includes(c)
+				);
 				expect(
 					(after.get(table) ?? []).map((r) => project(r, columns)),
 					`${table} lost or changed rows across the newest migration`
-				).toEqual(rows);
+				).toEqual(rows.map((r) => project(r, columns)));
 			}
 		}
 	);
@@ -203,6 +223,25 @@ describe('the newest migration keeps every row the database already held', () =>
 			expect(after.get('zapier_key')?.map((r) => r.id)).toEqual(['zapier']);
 			expect(after.get('zapier_subscription')?.map((r) => r.id)).toEqual([OPEN_ZAP, ENDED_ZAP]);
 			expect(after.get('zapier_delivery')?.map((r) => r.event_id)).toEqual(['evt-probe']);
+			expect(after.get('quickbooks_connection')?.map((r) => r.realm_id)).toEqual(['4620816365']);
+		}
+	);
+
+	it.skipIf(squashed)(
+		'keeps the QuickBooks connection and its income and fee picks, and carries no bank into a holding',
+		() => {
+			const [connection] = after.get('quickbooks_connection') ?? [];
+			expect(connection).toMatchObject({
+				refresh_token: 'ref',
+				refresh_token_expires_at: 7,
+				income_account_id: '79',
+				fee_account_name: 'Merchant fees',
+				start_at: 6,
+				stripe_balance_account_id: null,
+				undeposited_funds_account_id: null,
+				moved_at: null
+			});
+			expect(Object.keys(connection ?? {})).not.toContain('deposit_account_id');
 		}
 	);
 

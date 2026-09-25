@@ -2223,21 +2223,19 @@ export const quickbooksConnection = sqliteTable(
 		refreshTokenExpiresAt: at('refresh_token_expires_at'),
 
 		/**
-		 * the three accounts in the operator's own chart of accounts that a gift is posted
-		 * into — where the income lands, where the processor's fee lands, and which account
-		 * the money arrived in.
+		 * the accounts in the operator's own chart of accounts that a gift is posted into —
+		 * where the income lands and where the processor's fee lands, here, and where the money
+		 * sits until it is paid out or banked, in the holding columns below.
 		 *
-		 * all six nullable, and a connected row holding none of them is an ordinary state: the
+		 * every one nullable, and a connected row holding none of them is an ordinary state: the
 		 * accounts are picked on a console screen after the connection is made, and the adapter
-		 * reads a row without them as not yet ready to send. the name sits beside the id so a
+		 * holds a record whose accounts are not picked yet. the name sits beside the id so a
 		 * screen can label a choice without asking Intuit for a word it already had.
 		 */
 		incomeAccountId: text('income_account_id'),
 		incomeAccountName: text('income_account_name'),
 		feeAccountId: text('fee_account_id'),
 		feeAccountName: text('fee_account_name'),
-		depositAccountId: text('deposit_account_id'),
-		depositAccountName: text('deposit_account_name'),
 
 		/**
 		 * the earliest business date a gift may be sent from — the operator's answer to "how
@@ -2251,8 +2249,39 @@ export const quickbooksConnection = sqliteTable(
 		startAt: at('start_at').notNull(),
 
 		createdAt: createdAt(),
-		updatedAt: updatedAt()
+		updatedAt: updatedAt(),
 		// append new columns below this line — see rule 1 at the top of this file.
+
+		/**
+		 * where each processor's gifts sit until it pays out, and a gift received in hand until it
+		 * is banked — one pair per holding in `HOLDING_ROLES` (../accounting/provider.ts), and none
+		 * of them the bank, which nothing this app sends reaches.
+		 *
+		 * each pair is picked on its own and may stay null: a processor this organisation never
+		 * takes a gift through needs no account, and its null holds only that processor's gifts.
+		 */
+		stripeBalanceAccountId: text('stripe_balance_account_id'),
+		stripeBalanceAccountName: text('stripe_balance_account_name'),
+		paypalBalanceAccountId: text('paypal_balance_account_id'),
+		paypalBalanceAccountName: text('paypal_balance_account_name'),
+		chariotBalanceAccountId: text('chariot_balance_account_id'),
+		chariotBalanceAccountName: text('chariot_balance_account_name'),
+		nowpaymentsBalanceAccountId: text('nowpayments_balance_account_id'),
+		nowpaymentsBalanceAccountName: text('nowpayments_balance_account_name'),
+		undepositedFundsAccountId: text('undeposited_funds_account_id'),
+		undepositedFundsAccountName: text('undeposited_funds_account_name'),
+
+		/**
+		 * when the connection was moved to a different company, while no operator has picked that
+		 * company's accounts since; null otherwise.
+		 *
+		 * the one thing keeping the connect-time fill off a moved connection: every account column
+		 * is null after a move, which reads the same as a first connect, and a fill there releases
+		 * every queued gift into books nobody has said are the right ones. set by the connect that
+		 * moves it, kept by a reconnect to the same company, cleared only by an operator's save
+		 * (../accounting/connection.ts).
+		 */
+		movedAt: at('moved_at')
 	},
 	(t) => [
 		// the singleton constraint. `org_profile_id_check` is the precedent.
@@ -2280,19 +2309,12 @@ export const quickbooksConnection = sqliteTable(
 			'quickbooks_connection_fee_account_name_not_blank_check',
 			optionalNotBlank(t.feeAccountName)
 		),
-		check(
-			'quickbooks_connection_deposit_account_id_not_blank_check',
-			optionalNotBlank(t.depositAccountId)
-		),
-		check(
-			'quickbooks_connection_deposit_account_name_not_blank_check',
-			optionalNotBlank(t.depositAccountName)
-		),
 		/**
 		 * a name with no id beside it labels a choice that was never made. the id is what a
 		 * request is built from and the name is only what a screen prints, so the pair is
-		 * written together or not at all — three checks rather than one, so a rejection names
-		 * which account it was. adding one later is the table rebuild rule 2 above describes.
+		 * written together or not at all — one check per pair rather than one for all, so a
+		 * rejection names which account it was. adding one later is the table rebuild rule 2
+		 * above describes.
 		 */
 		check(
 			'quickbooks_connection_income_account_name_needs_id_check',
@@ -2302,12 +2324,37 @@ export const quickbooksConnection = sqliteTable(
 			'quickbooks_connection_fee_account_name_needs_id_check',
 			sql`${t.feeAccountName} is null or ${t.feeAccountId} is not null`
 		),
-		check(
-			'quickbooks_connection_deposit_account_name_needs_id_check',
-			sql`${t.depositAccountName} is null or ${t.depositAccountId} is not null`
+		...chosenAccountChecks('stripe_balance', t.stripeBalanceAccountId, t.stripeBalanceAccountName),
+		...chosenAccountChecks('paypal_balance', t.paypalBalanceAccountId, t.paypalBalanceAccountName),
+		...chosenAccountChecks(
+			'chariot_balance',
+			t.chariotBalanceAccountId,
+			t.chariotBalanceAccountName
+		),
+		...chosenAccountChecks(
+			'nowpayments_balance',
+			t.nowpaymentsBalanceAccountId,
+			t.nowpaymentsBalanceAccountName
+		),
+		...chosenAccountChecks(
+			'undeposited_funds',
+			t.undepositedFundsAccountId,
+			t.undepositedFundsAccountName
 		)
 	]
 );
+
+/** the three checks the income and fee pairs above spell out, for one holding's pair. */
+function chosenAccountChecks(role: string, id: SQLiteColumn, name: SQLiteColumn) {
+	return [
+		check(`quickbooks_connection_${role}_account_id_not_blank_check`, optionalNotBlank(id)),
+		check(`quickbooks_connection_${role}_account_name_not_blank_check`, optionalNotBlank(name)),
+		check(
+			`quickbooks_connection_${role}_account_name_needs_id_check`,
+			sql`${name} is null or ${id} is not null`
+		)
+	];
+}
 
 /**
  * where one journal entry stands in its journey to QuickBooks.

@@ -1,5 +1,6 @@
 import { POSTING_ACCOUNTS, type PostingAccountKey } from '../db/accounts';
 import type { Db } from '../db/client';
+import type { PaymentProviderName } from '../db/schema';
 import { findPaymentDonor } from '../donations/queries';
 import {
 	findEntryGroup,
@@ -7,11 +8,15 @@ import {
 	type EntryGroupListRow,
 	type EntryLine
 } from '../ledger/queries';
+import { isProcessor } from '../payments/provider';
 import {
 	failed,
+	HOLDING_OF,
+	isHoldingRole,
 	type AccountingResult,
 	type AccountRole,
 	type CorrectionLine,
+	type HoldingRole,
 	type Sendable
 } from './provider';
 
@@ -36,24 +41,31 @@ import {
 // group at all, and it is why a `fee` id arriving here is a defect rather than something to map.
 
 /**
- * which of the operator's three accounts each of this app's nine stands for.
+ * which of the operator's roles each of this app's nine accounts stands for.
  *
  * total over `PostingAccountKey`, so an account added to ../db/accounts.ts is a compile error here
- * rather than a posting that silently has nowhere to go. `null` is deliberate on four of them:
+ * rather than a posting that silently has nowhere to go.
+ *
+ * `processor` is 1020 Undeposited Funds, which this app holds for every processor at once: which
+ * processor's holding it is in the company's books is the rail that settled the gift, read off the
+ * payment ({@link HOLDING_OF}), and a correction naming it has no payment to read. 1010 Bank / Cash
+ * is where a gift received in hand is debited (../donations/entries.ts), so it is the company's own
+ * Undeposited Funds — money nobody has banked yet — and never its bank account.
+ *
+ * `null` is deliberate on four of them:
  *
  *   accountsReceivable — a pledge, which this app does not yet post and a company records as an
  *                        invoice rather than as money arrived.
- *   salesTaxPayable    — owed to a jurisdiction, and never one of the three a donation screen asks
- *                        an operator to pick.
+ *   salesTaxPayable    — owed to a jurisdiction, and never an account the QuickBooks screen asks an
+ *                        operator to pick.
  *   the two net-asset classes — closing entries, which a bookkeeper makes in their own books.
  *
- * an entry naming one of those is refused by name rather than posted to whichever of the three
- * looked closest: the operator picked three accounts for gifts, and nothing they picked says where
- * a tax liability belongs.
+ * an entry naming one of those is refused by name rather than posted to whichever role looked
+ * closest: nothing the operator picked says where a tax liability belongs.
  */
-const ROLE_OF: Readonly<Record<PostingAccountKey, AccountRole | null>> = {
-	bankCash: 'deposit',
-	undepositedFunds: 'deposit',
+const ROLE_OF: Readonly<Record<PostingAccountKey, AccountRole | 'processor' | null>> = {
+	bankCash: 'undepositedFunds',
+	undepositedFunds: 'processor',
 	accountsReceivable: null,
 	salesTaxPayable: null,
 	netAssetsWithoutRestrictions: null,
@@ -64,7 +76,10 @@ const ROLE_OF: Readonly<Record<PostingAccountKey, AccountRole | null>> = {
 };
 
 /** the same table by account id, which is what a ledger line carries. */
-const BY_ACCOUNT_ID = new Map<string, { key: PostingAccountKey; role: AccountRole | null }>(
+const BY_ACCOUNT_ID = new Map<
+	string,
+	{ key: PostingAccountKey; role: AccountRole | 'processor' | null }
+>(
 	(Object.keys(POSTING_ACCOUNTS) as PostingAccountKey[]).map((key) => [
 		POSTING_ACCOUNTS[key].id,
 		{ key, role: ROLE_OF[key] }
@@ -75,7 +90,7 @@ const BY_ACCOUNT_ID = new Map<string, { key: PostingAccountKey; role: AccountRol
  * what a queued entry group is to be sent as, or why it cannot be.
  *
  * the refusals are terminal, every one of them: an id nothing carries, a `fee` group the outbox
- * never queues, a source type nothing sends, and an account outside the three the operator picked.
+ * never queues, a source type nothing sends, and an account no role stands for.
  * none of those is answered by asking again, and `LANDING_OF` in ./deliver.ts is where each of them
  * is read as a row to give up on rather than a call to make later.
  */
@@ -135,6 +150,9 @@ async function giftOf(db: Db, group: EntryGroupListRow): Promise<AccountingResul
 		);
 	}
 
+	const holding = holdingOf(group, donor.provider);
+	if (!holding.ok) return holding;
+
 	return {
 		ok: true,
 		value: {
@@ -146,10 +164,40 @@ async function giftOf(db: Db, group: EntryGroupListRow): Promise<AccountingResul
 				donor: { displayName: donor.displayName, email: donor.email },
 				memo: group.memo,
 				incomeMinor: income.value,
-				feeMinor: fee.value
+				feeMinor: fee.value,
+				holding: holding.value
 			}
 		}
 	};
+}
+
+/**
+ * who holds a gift's money: the role of the line that is neither income nor a fee.
+ *
+ * the rail is what settles 1020's role, and a gift debited there by a payment naming no processor
+ * is one nothing in this app posts — refused rather than sent into whichever processor came first.
+ */
+function holdingOf(
+	group: EntryGroupListRow,
+	provider: PaymentProviderName | null
+): AccountingResult<HoldingRole> {
+	for (const line of group.lines) {
+		const role = BY_ACCOUNT_ID.get(line.accountId)?.role;
+		if (role === 'processor') {
+			return provider !== null && isProcessor(provider)
+				? { ok: true, value: HOLDING_OF[provider] }
+				: failed(
+						'unmapped_account',
+						`The journal entry ${group.id} holds a gift in Undeposited Funds against a payment no processor settled, so there is no processor account in QuickBooks to put it in. Nothing was sent.`
+					);
+		}
+		if (role !== undefined && role !== null && isHoldingRole(role))
+			return { ok: true, value: role };
+	}
+	return failed(
+		'internal_error',
+		`The journal entry ${group.id} credits income and debits no account the money is held in, which nothing in this app posts.`
+	);
 }
 
 /** a correcting entry, one line per line, each in the role its account maps to. */
@@ -158,6 +206,12 @@ function correctionOf(group: EntryGroupListRow): AccountingResult<Sendable> {
 	for (const line of group.lines) {
 		const role = roleOf(line);
 		if (!role.ok) return role;
+		if (role.value === 'processor') {
+			return failed(
+				'unmapped_account',
+				`The journal entry moves money through ${POSTING_ACCOUNTS.undepositedFunds.name}, which this app holds for every processor at once, and a correction names no payment to tell which processor's QuickBooks account it belongs in. Post this correction in QuickBooks instead.`
+			);
+		}
 		lines.push({
 			role: role.value,
 			// `+` is a debit and `−` a credit project-wide (../ledger/posting.ts). the direction is
@@ -203,7 +257,7 @@ function correctionOf(group: EntryGroupListRow): AccountingResult<Sendable> {
  */
 function totalIn(
 	lines: readonly EntryLine[],
-	role: AccountRole,
+	role: 'income' | 'fee',
 	read: (amountMinor: number) => number
 ): AccountingResult<number> {
 	let total = 0;
@@ -217,7 +271,7 @@ function totalIn(
 }
 
 /** the role a line's account stands for, or a refusal naming the account that has none. */
-function roleOf(line: EntryLine): AccountingResult<AccountRole> {
+function roleOf(line: EntryLine): AccountingResult<AccountRole | 'processor'> {
 	const known = BY_ACCOUNT_ID.get(line.accountId);
 	if (known === undefined) {
 		return failed(
@@ -228,7 +282,7 @@ function roleOf(line: EntryLine): AccountingResult<AccountRole> {
 	if (known.role === null) {
 		return failed(
 			'unmapped_account',
-			`The journal entry moves money through ${POSTING_ACCOUNTS[known.key].name}, and only income, processor fees and the account gifts are deposited into are sent to QuickBooks. Post this correction in QuickBooks instead.`
+			`The journal entry moves money through ${POSTING_ACCOUNTS[known.key].name}, and only income, processor fees and the accounts gifts are held in are sent to QuickBooks. Post this correction in QuickBooks instead.`
 		);
 	}
 	return { ok: true, value: known.role };

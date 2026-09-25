@@ -114,6 +114,7 @@ function provider(
 		},
 		readCompany: notAsked,
 		listAccounts: notAsked,
+		createHoldingAccount: notAsked,
 		authorizeUrl: notAsked,
 		exchangeCode: notAsked,
 		revokeTokens: notAsked
@@ -174,6 +175,7 @@ async function queuedGift(): Promise<string> {
 	const contactId = uuidv7();
 	const donationId = uuidv7();
 	const paymentId = uuidv7();
+	const settled = settlement();
 	await db.batch([
 		db.insert(contact).values({
 			id: contactId,
@@ -196,11 +198,12 @@ async function queuedGift(): Promise<string> {
 			direction: 'inbound',
 			method: 'card',
 			status: 'succeeded',
+			provider: 'stripe',
+			providerTxnId: settled.providerTxnId,
 			occurredAt: OCCURRED_AT
 		})
 	]);
 
-	const settled = settlement();
 	const charged = {
 		paymentId,
 		donationId,
@@ -214,7 +217,7 @@ async function queuedGift(): Promise<string> {
 	return idOf(charge);
 }
 
-/** which of this app's accounts a fixture correction debits: one of the three, or outside them. */
+/** which of this app's accounts a fixture correction debits: one a role stands for, or none. */
 type CorrectedAccount = 'donationsDeductible' | 'salesTaxPayable';
 
 /** a correcting entry, `account` on the debited side. */
@@ -227,7 +230,7 @@ function correction(account: CorrectedAccount): Posting {
 		memo: 'gift posted to the wrong fund',
 		lines: [
 			{ accountId: postableId(account), amountMinor: 2_500 },
-			{ accountId: postableId('undepositedFunds'), amountMinor: -2_500 }
+			{ accountId: postableId('bankCash'), amountMinor: -2_500 }
 		]
 	});
 }
@@ -581,7 +584,29 @@ describe('the due backlog', () => {
 		}
 	});
 
-	it('stops the run where the three accounts have not been picked, touching no row', async () => {
+	it('holds a gift whose holding nobody has picked, and sends the one behind it', async () => {
+		const held = await queuedGift();
+		await tried(held, 0, 10 * MINUTE);
+		const behind = await queuedGift();
+		const qb = provider((key) =>
+			key === held
+				? failed('holding_not_chosen', 'No QuickBooks account is chosen for Stripe balance.')
+				: accepted(key)
+		);
+
+		await sendDueEntries(deps(qb.port), NOW);
+
+		// one processor's holding left unpicked is that processor's gifts waiting, not the backlog's.
+		expect(qb.asked).toEqual([held, behind]);
+		expect(await row(held)).toMatchObject({
+			status: 'pending',
+			attempts: 1,
+			lastError: 'No QuickBooks account is chosen for Stripe balance.'
+		});
+		expect(await row(behind)).toMatchObject({ status: 'sent' });
+	});
+
+	it('stops the run where the income and fee accounts have not been picked, touching no row', async () => {
 		const first = await queuedGift();
 		await tried(first, 0, 10 * MINUTE);
 		const second = await queuedGift();

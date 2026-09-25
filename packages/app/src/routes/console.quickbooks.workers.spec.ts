@@ -28,8 +28,8 @@ import * as surface from './console';
 
 // the console's QuickBooks address, against a real D1.
 //
-// a workers spec because every answer is assembled out of rows — the connection, the three picks,
-// the queue — and standing in for D1 would prove the stand-in (CLAUDE.md). the request is mounted
+// a workers spec because every answer is assembled out of rows — the connection, the picks, the
+// queue — and standing in for D1 would prove the stand-in (CLAUDE.md). the request is mounted
 // through the surface's own layout rather than handed to a handler, which is what puts the
 // credential check in front of it: ../route-request.testing.ts states why.
 //
@@ -61,8 +61,34 @@ const DEPLOYMENT = {
 const CHART: readonly LedgerAccount[] = [
 	{ id: '79', name: 'Contributions', type: 'Income', subType: null, classification: 'Revenue' },
 	{ id: '80', name: 'Merchant fees', type: 'Expense', subType: null, classification: 'Expense' },
-	{ id: '35', name: 'Checking', type: 'Bank', subType: null, classification: 'Asset' }
+	{ id: '35', name: 'Checking', type: 'Bank', subType: null, classification: 'Asset' },
+	{
+		id: '140',
+		name: 'Stripe balance',
+		type: 'Other Current Asset',
+		subType: 'OtherCurrentAssets',
+		classification: 'Asset'
+	},
+	{
+		id: '4',
+		name: 'Undeposited Funds',
+		type: 'Other Current Asset',
+		subType: 'UndepositedFunds',
+		classification: 'Asset'
+	}
 ];
+
+/** an accounts press naming every role: income and fee, Stripe's holding and undeposited funds. */
+const PICKS = {
+	press: 'accounts',
+	income: '79',
+	fee: '80',
+	stripeBalance: '140',
+	paypalBalance: null,
+	chariotBalance: null,
+	nowpaymentsBalance: null,
+	undepositedFunds: '4'
+};
 
 const stub = vi.hoisted(() => ({
 	accounts: null as AccountingResult<readonly LedgerAccount[]> | null,
@@ -71,7 +97,7 @@ const stub = vi.hoisted(() => ({
 
 vi.mock('$lib/server/accounting/factory', () => ({
 	createAccountingProvider: (): AccountingProvider => {
-		// every arm, so the stub is the port rather than a cast over part of it — and the five this
+		// every arm, so the stub is the port rather than a cast over part of it — and the six this
 		// route never calls refuse loudly, which is what turns a route that reached for one into a
 		// failing case instead of an undefined.
 		const unasked = async () => failed('internal_error', 'this route does not call this arm');
@@ -82,7 +108,8 @@ vi.mock('$lib/server/accounting/factory', () => ({
 			sendGift: unasked,
 			sendCorrection: unasked,
 			authorizeUrl: unasked,
-			exchangeCode: unasked
+			exchangeCode: unasked,
+			createHoldingAccount: unasked
 		};
 	}
 }));
@@ -208,7 +235,7 @@ describe('GET /console/quickbooks', () => {
 		expect(report.callbackAddress).toBe(`${PINNED}/quickbooks/callback`);
 	});
 
-	it('draws the connected company beside the chart the three are picked out of', async () => {
+	it('draws the connected company beside the chart its accounts are picked out of', async () => {
 		await connect();
 		await givenUp();
 
@@ -220,15 +247,32 @@ describe('GET /console/quickbooks', () => {
 			companyName: null,
 			income: null,
 			fee: null,
-			deposit: null,
+			stripeBalance: null,
+			paypalBalance: null,
+			chariotBalance: null,
+			nowpaymentsBalance: null,
+			undepositedFunds: null,
+			awaitingAccounts: false,
 			startAt: CONNECTED_FROM.toISOString()
 		});
+		// the bank account fits no role: nothing this deployment sends is posted to the bank.
 		expect(report.accounts).toEqual({
 			state: 'read',
 			accounts: [
 				{ ...CHART[0], roles: ['income'] },
 				{ ...CHART[1], roles: ['fee'] },
-				{ ...CHART[2], roles: ['deposit'] }
+				{ ...CHART[2], roles: [] },
+				{
+					...CHART[3],
+					roles: [
+						'stripeBalance',
+						'paypalBalance',
+						'chariotBalance',
+						'nowpaymentsBalance',
+						'undepositedFunds'
+					]
+				},
+				{ ...CHART[4], roles: ['undepositedFunds'] }
 			]
 		});
 		expect(report.backlog).toEqual({
@@ -301,31 +345,74 @@ describe('the connect press', () => {
 	});
 });
 
-describe('the three accounts', () => {
+describe('the accounts', () => {
 	it('stores each pick with the name it carries in the company’s own books', async () => {
 		await connect();
 
-		const answered = await press({ press: 'accounts', income: '79', fee: '80', deposit: '35' });
+		const answered = await press(PICKS);
 
 		expect(answered.status).toBe(200);
-		expect(await readQuickbooksConnection(db)).toMatchObject({
+		expect((await readQuickbooksConnection(db))?.accounts).toEqual({
 			income: { id: '79', name: 'Contributions' },
 			fee: { id: '80', name: 'Merchant fees' },
-			deposit: { id: '35', name: 'Checking' }
+			stripeBalance: { id: '140', name: 'Stripe balance' },
+			paypalBalance: null,
+			chariotBalance: null,
+			nowpaymentsBalance: null,
+			undepositedFunds: { id: '4', name: 'Undeposited Funds' }
 		});
 	});
 
 	it('refuses a pick the company’s books do not hold', async () => {
 		await connect();
 
-		const answered = await press({ press: 'accounts', income: '79', fee: '80', deposit: '999' });
+		const answered = await press({ ...PICKS, stripeBalance: '999' });
 
 		expect(answered.status).toBe(400);
-		expect(await readQuickbooksConnection(db)).toMatchObject({ income: null });
+		expect((await readQuickbooksConnection(db))?.accounts.income).toBeNull();
 	});
 
-	// Intuit refuses every gift posted into a deposit account of this type (fault 6430), so the
-	// pick is refused here rather than stored and failed on at every send.
+	// a console a release behind still sends `deposit`; clearing every holding over it would hold
+	// every gift with nothing saying why.
+	it('refuses a body that leaves a role out, naming the roles it needs', async () => {
+		await connect();
+
+		const answered = await press({ press: 'accounts', income: '79', fee: '80', deposit: '35' });
+
+		expect(answered.status).toBe(400);
+		const refusal = await answered.json<{ error: string; message: string }>();
+		expect(refusal.message).toContain('`stripeBalance`');
+		expect(refusal.message).toContain('`undepositedFunds`');
+		expect((await readQuickbooksConnection(db))?.accounts.income).toBeNull();
+	});
+
+	it('refuses a bank account as a holding, since no payout reaches QuickBooks from here', async () => {
+		await connect();
+
+		const answered = await press({ ...PICKS, stripeBalance: '35' });
+
+		expect(answered.status).toBe(400);
+		const refusal = await answered.json<{ error: string; message: string; fix: string }>();
+		expect(refusal.error).toBe('account_wrong_type');
+		expect(refusal.message).toContain('Checking');
+		expect(refusal.message).toContain('Bank');
+		expect(refusal.fix).toContain('Other Current Asset');
+		expect(`${refusal.message} ${refusal.fix}`).not.toContain('usual choice');
+		expect((await readQuickbooksConnection(db))?.accounts.stripeBalance).toBeNull();
+	});
+
+	it('refuses undeposited funds as a processor’s holding', async () => {
+		await connect();
+
+		const answered = await press({ ...PICKS, stripeBalance: '4' });
+
+		expect(answered.status).toBe(400);
+		const refusal = await answered.json<{ error: string; message: string }>();
+		expect(refusal.error).toBe('account_wrong_type');
+		expect(refusal.message).toContain('received in hand');
+		expect((await readQuickbooksConnection(db))?.accounts.stripeBalance).toBeNull();
+	});
+
 	it('refuses an account the company holds but the role does not take', async () => {
 		await connect();
 		const receivable: LedgerAccount = {
@@ -337,40 +424,38 @@ describe('the three accounts', () => {
 		};
 		stub.accounts = { ok: true, value: [...CHART, receivable] };
 
-		const answered = await press({ press: 'accounts', income: '79', fee: '80', deposit: '84' });
+		const answered = await press({ ...PICKS, undepositedFunds: '84' });
 
 		expect(answered.status).toBe(400);
 		const refusal = await answered.json<{ error: string; message: string }>();
 		expect(refusal.error).toBe('account_wrong_type');
 		expect(refusal.message).toContain('Accounts Receivable (A/R)');
-		expect(await readQuickbooksConnection(db)).toMatchObject({ deposit: null });
+		expect((await readQuickbooksConnection(db))?.accounts.undepositedFunds).toBeNull();
 	});
 
-	// its type is one deposit takes, so a refusal naming the types would read as a contradiction.
-	it('refuses undeposited funds as the deposit account, and names a bank account instead', async () => {
+	it('ends the hold a move to another company put on sending', async () => {
 		await connect();
-		const undeposited: LedgerAccount = {
-			id: '4',
-			name: 'Undeposited Funds',
-			type: 'Other Current Asset',
-			subType: 'UndepositedFunds',
-			classification: 'Asset'
-		};
-		stub.accounts = { ok: true, value: [...CHART, undeposited] };
+		await connectQuickbooks(db, {
+			realmId: '9130357744',
+			tokens: {
+				accessToken: 'access-two',
+				accessTokenExpiresAt: new Date('2026-03-01T11:00:00.000Z'),
+				refreshToken: 'refresh-two',
+				refreshTokenExpiresAt: null
+			},
+			startAt: new Date('2026-02-01T00:00:00.000Z')
+		});
+		const held = await (await read()).json<QuickbooksReport>();
 
-		const answered = await press({ press: 'accounts', income: '79', fee: '80', deposit: '4' });
+		await press(PICKS);
 
-		expect(answered.status).toBe(400);
-		const refusal = await answered.json<{ error: string; message: string; fix: string }>();
-		expect(refusal.error).toBe('account_wrong_type');
-		expect(refusal.message).toContain('Undeposited Funds cannot hold deposits');
-		expect(refusal.fix).toContain('Bank');
-		expect(refusal.message).not.toContain('Other Current Asset');
-		expect(await readQuickbooksConnection(db)).toMatchObject({ deposit: null });
+		const saved = await (await read()).json<QuickbooksReport>();
+		expect(held.connection).toMatchObject({ awaitingAccounts: true });
+		expect(saved.connection).toMatchObject({ awaitingAccounts: false });
 	});
 
 	it('refuses the press where no company is connected', async () => {
-		const answered = await press({ press: 'accounts', income: '79', fee: '80', deposit: '35' });
+		const answered = await press(PICKS);
 
 		expect(answered.status).toBe(409);
 	});

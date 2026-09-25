@@ -24,7 +24,8 @@ import {
 	readQuickbooksConnection,
 	saveQuickbooksAccounts,
 	type ChosenAccount,
-	type QuickbooksConnectionView
+	type QuickbooksConnectionView,
+	type SavedAccounts
 } from '$lib/server/accounting/connection';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
 import {
@@ -32,10 +33,14 @@ import {
 	previewQuickbooksStartAt,
 	type StartAtMoveSide
 } from '$lib/server/accounting/outbox';
-import type {
-	AccountingFailureReason,
-	AccountRole,
-	LedgerAccount
+import {
+	HOLDING_ROLES,
+	isHoldingRole,
+	ROLE_LABELS,
+	type AccountingFailureReason,
+	type AccountRole,
+	type HoldingRole,
+	type LedgerAccount
 } from '$lib/server/accounting/provider';
 import {
 	fitsRole,
@@ -56,8 +61,8 @@ import type { Route } from './+types/console.quickbooks';
 //
 // **it is here rather than in the console because only this deployment holds the connection.** the
 // tokens are rows in its own D1 and every call to Intuit is made with them, so the chart of
-// accounts an operator picks three entries out of can be read here and nowhere else. the console
-// never holds a token and never sees one.
+// accounts an operator picks each role's account out of can be read here and nowhere else. the
+// console never holds a token and never sees one.
 //
 // **connecting starts here and finishes in a browser, and that split is not a convenience.** the
 // press below answers a signed address; the operator's browser opens it; Intuit sends that browser
@@ -71,9 +76,9 @@ import type { Route } from './+types/console.quickbooks';
 // read takes: a chart this deployment could not fetch says nothing about the connection, and the
 // sentence it carries is the port's own, which names what to fix.
 //
-// **the three accounts are picked by id and the names are read off the company's own chart.** a
-// name the caller sent would be a label on this deployment's row that nothing in the books ever
-// agreed to, and an id the chart does not hold, or one whose type Intuit refuses in that role
+// **the accounts are picked by id and the names are read off the company's own chart.** a name the
+// caller sent would be a label on this deployment's row that nothing in the books ever agreed to,
+// and an id the chart does not hold, or one whose type does not fit that role
 // ($lib/server/accounting/quickbooks-accounts.ts), is refused rather than stored — the same decision
 // ./console.webhook-repair.ts makes about the endpoint it acts on, for the same reason: what a press
 // acts on is settled here rather than sent.
@@ -228,14 +233,14 @@ async function act(
 	}
 
 	// what is left is the `accounts` press, and the chart is read before anything is stored: the
-	// names beside the three ids are the company's own words rather than the caller's.
+	// names beside the ids are the company's own words rather than the caller's.
 	const chart = await createAccountingProvider(env, db).listAccounts();
 	if (!chart.ok)
 		return consoleJson(
 			{
 				error: 'accounts_unreadable',
 				message: chart.detail,
-				fix: 'Read the chart of accounts again once that is fixed, then pick the three.'
+				fix: 'Read the chart of accounts again once that is fixed, then pick the accounts.'
 			},
 			502
 		);
@@ -247,9 +252,10 @@ async function act(
 			{
 				error: 'bad_body',
 				message:
-					'`income`, `fee` and `deposit` each have to name an account in the connected ' +
-					'company’s own chart of accounts.',
-				fix: 'Read this address again for the chart, and send the `id` of one of its accounts for each of the three.'
+					'`income` and `fee` each have to name an account in the connected company’s own ' +
+					`chart of accounts, and ${HOLDING_ROLES.map((role) => `\`${role}\``).join(', ')} ` +
+					'each have to name one or be null.',
+				fix: 'Read this address again for the chart, and send the `id` of one of its accounts for every role, or null for a holding nobody takes gifts into.'
 			},
 			400
 		);
@@ -265,9 +271,8 @@ function connectionLine(connection: QuickbooksConnectionView | null): Quickbooks
 		state: 'connected',
 		realmId: connection.realmId,
 		companyName: connection.companyName,
-		income: connection.income,
-		fee: connection.fee,
-		deposit: connection.deposit,
+		...connection.accounts,
+		awaitingAccounts: connection.movedAt !== null,
 		startAt: connection.startAt.toISOString()
 	};
 }
@@ -310,37 +315,59 @@ function recourseFor(reason: AccountingFailureReason): QuickbooksRecourse | null
 }
 
 /**
- * the three picks as the connection stores them — or `absent` where any of the three names an
- * account the company's books do not hold, or `misfit` where one names an account whose type
- * Intuit refuses in that role ($lib/server/accounting/quickbooks-accounts.ts).
+ * the picks as the connection stores them — or `absent` where a role is left out of the body or
+ * names an account the company's books do not hold, or `misfit` where one names an account whose
+ * type does not fit that role ($lib/server/accounting/quickbooks-accounts.ts).
  *
- * all three together, because the schema takes them that way and a send needs all three
- * ($lib/server/accounting/connection.ts): a press that saved two of them would leave an operator
- * half-done with nothing saying so.
+ * every role is named, because the save is the operator's whole answer
+ * ($lib/server/accounting/connection.ts): income and fees an id each, and each holding an id or
+ * null. a holding missing from the body is refused rather than read as null, so a console that
+ * knows fewer roles than this deployment cannot clear the rest by leaving them out.
  */
 function pickedAccounts(
 	body: Record<string, unknown>,
 	chart: readonly LedgerAccount[]
 ):
-	| { state: 'picked'; accounts: Record<AccountRole, ChosenAccount> }
+	| { state: 'picked'; accounts: SavedAccounts }
 	| { state: 'absent' }
 	| { state: 'misfit'; role: AccountRole; account: LedgerAccount } {
 	const income = inChart(body.income, chart);
 	const fee = inChart(body.fee, chart);
-	const deposit = inChart(body.deposit, chart);
-	if (income === undefined || fee === undefined || deposit === undefined)
-		return { state: 'absent' };
+	if (income === undefined || fee === undefined) return { state: 'absent' };
 
-	const accounts = { income, fee, deposit };
+	const holdings: Partial<Record<HoldingRole, LedgerAccount | null>> = {};
+	for (const role of HOLDING_ROLES) {
+		if (!(role in body)) return { state: 'absent' };
+		const sent = body[role];
+		if (sent === null) {
+			holdings[role] = null;
+			continue;
+		}
+		const account = inChart(sent, chart);
+		if (account === undefined) return { state: 'absent' };
+		holdings[role] = account;
+	}
+
+	const accounts: Record<AccountRole, LedgerAccount | null> = {
+		income,
+		fee,
+		...(holdings as Record<HoldingRole, LedgerAccount | null>)
+	};
 	for (const role of QUICKBOOKS_ACCOUNT_ROLES) {
-		if (!fitsRole(accounts[role], role)) return { state: 'misfit', role, account: accounts[role] };
+		const account = accounts[role];
+		if (account !== null && !fitsRole(account, role)) return { state: 'misfit', role, account };
 	}
 	return {
 		state: 'picked',
 		accounts: {
 			income: chosen(income),
 			fee: chosen(fee),
-			deposit: chosen(deposit)
+			...(Object.fromEntries(
+				HOLDING_ROLES.map((role) => {
+					const account = accounts[role];
+					return [role, account === null ? null : chosen(account)];
+				})
+			) as Record<HoldingRole, ChosenAccount | null>)
 		}
 	};
 }
@@ -354,31 +381,47 @@ function inChart(id: unknown, chart: readonly LedgerAccount[]): LedgerAccount | 
 const chosen = (account: LedgerAccount): ChosenAccount => ({ id: account.id, name: account.name });
 
 /**
- * a pick the company holds in a place Intuit will not post to.
+ * a pick the company holds in a place this deployment will not post to.
  *
  * 400 like the pick the books do not hold: the body named it, and a different id is the fix.
  */
 function misfit(role: AccountRole, account: LedgerAccount): Response {
-	// its type is one deposit takes, so the refusal names why this one account is left out.
-	if (role === 'deposit' && account.subType === UNDEPOSITED_FUNDS)
+	const takes = [...ROLE_TYPES[role]].join(' or ');
+	const label = ROLE_LABELS[role];
+
+	if (isHoldingRole(role) && account.type === 'Bank')
 		return consoleJson(
 			{
 				error: 'account_wrong_type',
 				message:
-					`\`deposit\` names ${account.name}. Undeposited Funds cannot hold deposits: a ` +
-					'deposit moves money out of it and into the account `deposit` names.',
-				fix: 'Send the `id` of the company’s Bank account for `deposit`, which is the usual choice.'
+					`\`${role}\` names ${account.name}, a Bank account. ${label} is where a gift waits ` +
+					'until it is paid out or banked, and this deployment sends QuickBooks no payout, so ' +
+					'a gift posted to the bank is a deposit the bank feed never shows. Record each payout ' +
+					'from the bank feed as a transfer out of this account instead.',
+				fix: `Send the \`id\` of an ${takes} account for \`${role}\`, such as one named ${label}.`
 			},
 			400
 		);
 
-	const takes = [...ROLE_TYPES[role]].join(' or ');
+	if (isHoldingRole(role) && account.subType === UNDEPOSITED_FUNDS)
+		return consoleJson(
+			{
+				error: 'account_wrong_type',
+				message:
+					`\`${role}\` names ${account.name}, which holds the gifts received in hand until they ` +
+					`are banked. ${label} needs an account of its own, so what it holds says what the ` +
+					'processor still owes.',
+				fix: `Send the \`id\` of another ${takes} account for \`${role}\`, such as one named ${label}.`
+			},
+			400
+		);
+
 	return consoleJson(
 		{
 			error: 'account_wrong_type',
 			message:
-				`\`${role}\` names ${account.name}, whose type is ${account.type}, and QuickBooks ` +
-				`refuses ${role} posts into that type. \`${role}\` takes an account of type ${takes}.`,
+				`\`${role}\` names ${account.name}, whose type is ${account.type}, and what is posted ` +
+				`to ${label} there lands on the wrong statement. \`${role}\` takes an account of type ${takes}.`,
 			fix: `Send the \`id\` of an account of type ${takes} from the company’s chart for \`${role}\`.`
 		},
 		400
