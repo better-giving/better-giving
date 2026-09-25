@@ -2,7 +2,7 @@ import Stripe from 'stripe';
 import type { PaymentStatus } from '../db/schema';
 import { redact, redactPublicId } from '../../redact';
 import { isStripeRail, STRIPE_RAILS, type StripeRail } from '@better-giving/form/embed/rails';
-import { RAIL_CAPABILITY_STATES, WALLETS } from './provider';
+import { DONATION_METADATA_KEY, RAIL_CAPABILITY_STATES, WALLETS } from './provider';
 import {
 	FINGERPRINT_METADATA_KEY,
 	secretFingerprint
@@ -11,6 +11,7 @@ import {
 	API_VERSION,
 	RECURRING_COLLECTION_EVENT_TYPES,
 	RECURRING_EVENT_TYPES,
+	REFUND_EVENT_TYPES,
 	SETTLEMENT_EVENT_TYPES,
 	SUBSCRIBED_EVENT_TYPES
 } from '@better-giving/operator/stripe/webhook-endpoint';
@@ -37,6 +38,7 @@ import type {
 	RecurringGiftStanding,
 	RecurringGiftState,
 	RecurringInterval,
+	ReversalEvent,
 	RegisteredWebhookEndpoint,
 	SettledRail,
 	Settlement,
@@ -1545,6 +1547,32 @@ export function createStripeProvider(
 		}
 	}
 
+	/**
+	 * what the charge a refund reverses says about whose it is: the intent's own metadata, or — for a
+	 * collection, whose intent Stripe minted and copied nothing onto — the commitment's, as the
+	 * invoice that raised it holds it (`ReversalFacts.reversedMetadata` in ./provider.ts).
+	 *
+	 * the invoice's copy is the commitment's metadata as it was when the invoice was finalized, and
+	 * `commitmentMetadata` in ./provider.ts is written once, when the commitment is created. it is
+	 * taken only where it carries this app's pointer: a subscription another integration keeps on
+	 * the same account is not a commitment of this deployment's, whatever keys it shares.
+	 */
+	async function metadataOfCharge(
+		intent: Stripe.PaymentIntent
+	): Promise<Readonly<Record<string, string>>> {
+		const own = intent.metadata ?? {};
+		if (own[DONATION_METADATA_KEY]?.trim()) return own;
+		const raised = await stripe.invoicePayments.list({
+			payment: { type: 'payment_intent', payment_intent: intent.id },
+			limit: 1,
+			expand: ['data.invoice']
+		});
+		const invoice = expansionOf<Stripe.Invoice | Stripe.DeletedInvoice>(raised.data[0]?.invoice);
+		if (invoice.kind !== 'object' || !('parent' in invoice.value)) return own;
+		const commitment = invoice.value.parent?.subscription_details?.metadata;
+		return commitment?.[DONATION_METADATA_KEY]?.trim() ? commitment : own;
+	}
+
 	return {
 		processor: 'stripe',
 
@@ -1842,8 +1870,9 @@ export function createStripeProvider(
 			const occurredAt = atMillis(event.created);
 			const settles = (SETTLEMENT_EVENT_TYPES as readonly string[]).includes(type);
 			const repeats = (RECURRING_EVENT_TYPES as readonly string[]).includes(type);
+			const reverses = (REFUND_EVENT_TYPES as readonly string[]).includes(type);
 
-			if (!settles && !repeats) {
+			if (!settles && !repeats && !reverses) {
 				return { ok: true, value: { id: event.id, kind: 'ignored', type, occurredAt } };
 			}
 
@@ -1871,15 +1900,21 @@ export function createStripeProvider(
 				};
 			}
 
-			// the id is all that is read off either kind of delivery, and the kind is decided by the
+			// the id is all that is read off any kind of delivery, and the kind is decided by the
 			// type rather than by what the id looks like. what that id names — a transaction, a
-			// commitment, one collection — is the read arm's business, which is where a shape this
-			// version does not recognise is a failure rather than a silent misreading.
+			// commitment, one collection, one refund — is the read arm's business, which is where a
+			// shape this version does not recognise is a failure rather than a silent misreading.
+			if (settles) {
+				return {
+					ok: true,
+					value: { id: event.id, kind: 'settlement', type, providerTxnId: id, occurredAt }
+				};
+			}
 			return {
 				ok: true,
-				value: settles
-					? { id: event.id, kind: 'settlement', type, providerTxnId: id, occurredAt }
-					: { id: event.id, kind: 'recurring', type, providerNoticeId: id, occurredAt }
+				value: repeats
+					? { id: event.id, kind: 'recurring', type, providerNoticeId: id, occurredAt }
+					: { id: event.id, kind: 'reversal', type, providerNoticeId: id, occurredAt }
 			};
 		},
 
@@ -1953,13 +1988,78 @@ export function createStripeProvider(
 				: readCommitment(event.providerNoticeId);
 		},
 
-		// no Stripe event is read into a reversal yet (`verifyEvent` above), so nothing reaches this.
-		async readReversal(): Promise<PaymentResult<ReversalRead>> {
-			return {
-				ok: false,
-				reason: 'unsupported',
-				detail: 'This release reads no Stripe refund. Nothing was asked of Stripe.'
-			};
+		/**
+		 * the refund a delivery names, re-read at the pinned version whichever of
+		 * `REFUND_EVENT_TYPES` carried it: the refund's status decides, never the event's type.
+		 *
+		 * the reversed transaction is the payment intent, the id `readSettlement` reports a gift
+		 * settled on, and the refund's own `re_…` is the reversal's id. the figure is the refund's
+		 * `amount`, in the currency the donor was charged in, and nothing is read about the processor's
+		 * fee: a refund returns none of it.
+		 */
+		async readReversal(event: ReversalEvent): Promise<PaymentResult<ReversalRead>> {
+			try {
+				const refunded = await stripe.refunds.retrieve(event.providerNoticeId, {
+					expand: ['payment_intent', 'failure_balance_transaction']
+				});
+				// every other status is a refund still on its way, or one that never went out, and
+				// unknown ones read the same: nothing is posted on them and the next delivery reads again.
+				if (refunded.status !== 'succeeded' && refunded.status !== 'failed') {
+					return { ok: true, value: { kind: 'nothing_moved', providerReversalId: refunded.id } };
+				}
+				const intent = expansionOf<Stripe.PaymentIntent>(refunded.payment_intent);
+				if (intent.kind === 'unexpanded') return unexpandedOnRefund('payment_intent', refunded.id);
+				// a charge made with no intent is another integration's: this app charges through intents
+				// alone. read against the charge and naming nothing, it is answered and left. a refund of
+				// neither reverses nothing a gift could have settled on.
+				const charge =
+					typeof refunded.charge === 'string' ? refunded.charge : (refunded.charge?.id ?? null);
+				const facts =
+					intent.kind === 'object'
+						? {
+								reversedTxnId: intent.value.id,
+								providerReversalId: refunded.id,
+								reversedMetadata: await metadataOfCharge(intent.value)
+							}
+						: charge === null
+							? null
+							: { reversedTxnId: charge, providerReversalId: refunded.id, reversedMetadata: {} };
+				if (facts === null) {
+					return { ok: true, value: { kind: 'nothing_moved', providerReversalId: refunded.id } };
+				}
+				if (refunded.status === 'failed') {
+					// the money came back when the failure was booked. the failure transaction is optional on
+					// this version's refund, and where it is absent the refund's own time stands.
+					const returned = expansionOf<Stripe.BalanceTransaction>(
+						refunded.failure_balance_transaction
+					);
+					if (returned.kind === 'unexpanded') {
+						return unexpandedOnRefund('failure_balance_transaction', refunded.id);
+					}
+					return {
+						ok: true,
+						value: {
+							kind: 'refund_failed',
+							...facts,
+							occurredAt: atMillis(
+								returned.kind === 'object' ? returned.value.created : refunded.created
+							)
+						}
+					};
+				}
+				return {
+					ok: true,
+					value: {
+						kind: 'refund',
+						...facts,
+						amountMinor: refunded.amount,
+						currency: refunded.currency.toUpperCase(),
+						occurredAt: atMillis(refunded.created)
+					}
+				};
+			} catch (error) {
+				return classify(error);
+			}
 		},
 
 		async readAccountChargeability(): Promise<PaymentResult<AccountChargeability>> {
@@ -2193,6 +2293,21 @@ export function createStripeProvider(
 					'Stripe takes no payment in a coin, so there is no coin list to read. Nothing was asked of Stripe.'
 			};
 		}
+	};
+}
+
+/**
+ * a refund's expandable field that came back as an id: the retrieve went out without its `expand`,
+ * a bug here, and loud rather than read as the field being absent.
+ */
+function unexpandedOnRefund(field: string, refundId: string): PaymentFailure {
+	return {
+		ok: false,
+		reason: 'provider_error',
+		detail:
+			`Stripe returned \`${field}\` on refund ${redactPublicId(refundId)} as an id rather than an ` +
+			'object, so the refund could not be read and nothing was recorded. The retrieve went out ' +
+			'without its `expand`, which is a bug in this app rather than anything about the refund.'
 	};
 }
 

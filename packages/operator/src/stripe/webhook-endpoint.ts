@@ -88,8 +88,9 @@ export const API_VERSION = '2026-07-29.dahlia';
  * here.
  *
  * refunds are absent for the same reason and not a different one. a refund is a `payment` row of its
- * own with its own id (`packages/app/src/lib/server/db/schema.ts`), so it is another kind and
- * another read, not a sixth member of this list.
+ * own with its own id (`packages/app/src/lib/server/db/schema.ts`), so it is the `reversal` kind and
+ * `readReversal`'s read (`packages/app/src/lib/server/payments/provider.ts`), over
+ * {@link REFUND_EVENT_TYPES} below.
  */
 export const SETTLEMENT_EVENT_TYPES = [
 	'payment_intent.succeeded',
@@ -163,6 +164,21 @@ export const RECURRING_EVENT_TYPES = [
 ] as const;
 
 /**
+ * the deliveries that are one refund's own states, which the reversal read reads.
+ *
+ * every member's object is one refund, so each delivery names exactly one reversal and the read
+ * re-fetches it, deciding by the refund's status and never by which of these arrived — a pending
+ * refund reads as nothing moved, and the `refund.updated` that reports it succeeded is the one that
+ * posts it. `charge.refunded` is left off: its object is the charge, which carries every refund of
+ * it at once, so one delivery would name several reversals.
+ *
+ * `refund.failed` beside `refund.updated`, because a failure is the one state change the processor
+ * names an event for on its own (https://docs.stripe.com/api/events/types); where both fire for one
+ * failure, the second reads the same refund and changes nothing.
+ */
+export const REFUND_EVENT_TYPES = ['refund.created', 'refund.updated', 'refund.failed'] as const;
+
+/**
  * everything a deployment's endpoint subscribes to, which is exactly what the deployment acts on.
  *
  * one list rather than a switch, so that what the account is configured with and what the code
@@ -171,12 +187,13 @@ export const RECURRING_EVENT_TYPES = [
  *
  * it is what the console sends as `enabled_events` when it registers the endpoint, and what the
  * deployment reports as `requiredEventTypes` when it reads the account back — so the day a member
- * is added here every already-registered endpoint reads as incomplete until an operator registers
- * it again. no screen draws that reading — the deployment computes it (../console/payments.ts) and
- * packages/console-ui/src/lib/stripe-section.tsx takes only the account's ways of paying off the
- * report — so what an operator has is the fold's own press, which registers afresh.
+ * is added here every already-registered endpoint reads as incomplete, and the console's payment
+ * notices row offers the repair (packages/console-ui/src/lib/notices-standing.ts), which
+ * resubscribes the endpoint to this list and leaves its signing secret alone
+ * (packages/app/src/routes/console.webhook-repair.ts).
  */
 export const SUBSCRIBED_EVENT_TYPES = [
 	...SETTLEMENT_EVENT_TYPES,
-	...RECURRING_EVENT_TYPES
+	...RECURRING_EVENT_TYPES,
+	...REFUND_EVENT_TYPES
 ] as const;
