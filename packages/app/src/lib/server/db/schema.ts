@@ -572,9 +572,10 @@ export const account = sqliteTable(
  * which is what lets the ledger exist before `payment`/`donation`/`refund` do — no FK forces those
  * tables to arrive early, and the pair is what the idempotency constraint is built on.
  *
- * `adjustment` is the one member that links to nothing: a correction is posted by a human rather
- * than caused by a record, so its `source_id` is minted for it. the grain of all five is on
- * `entry_group_source_idx` below, which is the constraint it is part of.
+ * `adjustment` is a correction, and links to nothing where a human posted it: that is not caused by
+ * a record, so its `source_id` is minted for it. the one caused by a record is a lost dispute's
+ * settle-up, keyed on its refund-direction row. the grain of all five is on `entry_group_source_idx`
+ * below, which is the constraint it is part of.
  *
  * a dispute adds no member. what it withdraws is `'refund'` on its refund-direction row, and a won
  * dispute's money back is `'payment'` on that same row — the grain a refund that did not stand
@@ -674,6 +675,9 @@ export const entryGroup = sqliteTable(
 		 *                   natural key to be idempotent against, and two identical corrections
 		 *                   posted deliberately must both land. any borrowed id makes the
 		 *                   second one collide with the first and be refused as a redelivery.
+		 *                   the one borrowed id is a dispute's settle-up at a lost close: the
+		 *                   refund-direction row's `payment.id`, one per dispute, so a redelivered
+		 *                   close collides.
 		 *
 		 * refunds are why this is written down. keying a refund on `donation.id` looks
 		 * natural — the refund is "about" that gift — and it makes the second refund on one
@@ -1540,6 +1544,12 @@ export const payment = sqliteTable(
 		donationId: text('donation_id')
 			.notNull()
 			.references(() => donation.id),
+		/**
+		 * on a `direction = 'refund'` row, what the refund or dispute took. one thing changes it
+		 * after the row is written: a dispute lost after it opened, whose close lowers it to what the
+		 * processor finally took (`closeLost` in ../donations/reverse.ts). nothing else does, and
+		 * nothing raises it.
+		 */
 		amountMinor: integer('amount_minor').notNull(),
 		currency: text('currency').notNull(),
 		direction: text('direction').$type<PaymentDirection>().notNull(),

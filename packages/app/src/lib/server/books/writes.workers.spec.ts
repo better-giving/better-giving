@@ -319,6 +319,34 @@ describe('reversalWrites()', () => {
 		expect(await owedToZaps()).toEqual([]);
 	});
 
+	it('writes a lost dispute’s settle-up as a correction on the withdrawal, and owes QuickBooks and every Zap nothing yet', async () => {
+		await everyoneListening();
+		const settleUp = post({
+			sourceType: 'adjustment',
+			sourceId: refundId,
+			currency: 'USD',
+			occurredAt: AT,
+			lines: [
+				{ accountId: postableId('processorFees'), amountMinor: 700 },
+				{ accountId: postableId('undepositedFunds'), amountMinor: -700 }
+			]
+		});
+
+		await db.batch(reversalWrites(db, { kind: 'settle_up', entry: settleUp }));
+
+		expect(await books()).toEqual([
+			{ source_type: 'adjustment', source_id: refundId, lines: 2, debits: 700 }
+		]);
+		expect(await queued()).toEqual([]);
+		expect(await owedToZaps()).toEqual([]);
+	});
+
+	it('refuses a withdrawal handed over as a settle-up', () => {
+		expect(() => reversalWrites(db, { kind: 'settle_up', entry: withdrawal })).toThrow(
+			/'adjustment'.*'refund'/
+		);
+	});
+
 	it('refuses a gift’s charge handed over as a refund', () => {
 		expect(() => reversalWrites(db, { kind: 'refund', entry: chargeOf(uuidv7()) })).toThrow(
 			/'refund'.*'payment'/

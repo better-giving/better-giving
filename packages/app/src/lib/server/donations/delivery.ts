@@ -26,14 +26,15 @@ import { readOrgProfile } from '../org/queries';
  *                    money yet, or the failure of a refund never recorded here. answered and
  *                    logged.
  *   posted         — money moved: the gift is in the books, or a refund or a dispute of it is, or
- *                    a refund that did not stand or a dispute won is put back.
+ *                    a refund that did not stand or a dispute won is put back, or a dispute lost
+ *                    after it opened is settled up at its close.
  *   updated        — a row was corrected and nothing was posted. it is the transaction that is not
  *                    settled (still processing, failed, cancelled), which is why failure and
  *                    cancellation are in scope at all: without this arm a `pending` row sits
  *                    pending forever. it is also a commitment the rail reports as collecting again
  *                    after this deployment had recorded it as given up on. and it is a refund that
- *                    did not stand, of a gift the books never held, or a dispute closed as lost,
- *                    which moves no money.
+ *                    did not stand, of a gift the books never held, or a dispute closed as lost
+ *                    with nothing to settle up.
  *   already_posted — the books already hold this payment, refund or dispute outcome: a
  *                    redelivery, found by a read before anything is written or refused by the
  *                    index that makes the write idempotent.

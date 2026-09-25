@@ -67,7 +67,8 @@ export function correctionWrites(db: Db, correction: Posting): Writes {
 
 /**
  * money leaving a gift already in the books, or coming back to it, by the port's own kind of
- * reversal (`Reversal` in ../payments/provider.ts).
+ * reversal (`Reversal` in ../payments/provider.ts), and the settle-up of a dispute lost after it
+ * opened.
  *
  *   refund, dispute_opened,
  *   dispute_lost             — `('refund', refund row)`: the gift's lines reversed
@@ -76,22 +77,30 @@ export function correctionWrites(db: Db, correction: Posting): Writes {
  *   refund_failed,
  *   dispute_won              — `('payment', refund row)`: a withdrawal that did not stand, mirrored
  *                              back (`reinstatementEntry`).
+ *   settle_up                — `('adjustment', refund row)`: what a lost close charged or gave back
+ *                              that the opening did not withdraw (`settleUpEntry`).
  */
-export type ReversalEntry = { readonly kind: ReversalKind; readonly entry: Posting };
+export type ReversalEntry = {
+	readonly kind: ReversalKind | 'settle_up';
+	readonly entry: Posting;
+};
 
 const REVERSAL_SOURCE_TYPES = {
 	refund: 'refund',
 	refund_failed: 'payment',
 	dispute_opened: 'refund',
 	dispute_won: 'payment',
-	dispute_lost: 'refund'
-} as const satisfies Record<ReversalKind, EntrySourceType>;
+	dispute_lost: 'refund',
+	settle_up: 'adjustment'
+} as const satisfies Record<ReversalEntry['kind'], EntrySourceType>;
 
 /**
  * a reversal's group, owing QuickBooks nothing and no Zap. `outboxStatements` has no gate for "only
  * where the gift was sent", and a reinstatement it queued under `'payment'` would go over as a new
- * gift — which is why a start-date move passes over one too (`unqueuedFrom` in
- * ../accounting/outbox.ts). no Zap trigger fires on a reversal.
+ * gift, and a settle-up under `'adjustment'` as a correction to a withdrawal QuickBooks never
+ * heard of — which is why a start-date move passes over both too (`unqueuedFrom` in
+ * ../accounting/outbox.ts, by their source id being a refund row). no Zap trigger fires on a
+ * reversal.
  */
 export function reversalWrites(db: Db, reversal: ReversalEntry): Writes {
 	inSlot(

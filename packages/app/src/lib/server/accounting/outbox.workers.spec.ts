@@ -287,6 +287,24 @@ describe('moving the date a connection starts from', () => {
 		expect(await queued()).toMatchObject([{ entry_group_id: gift.group.id }]);
 	});
 
+	it('never queues a lost dispute’s settle-up as though it were a hand correction', async () => {
+		const gift = posting({ occurredAt: new Date('2025-12-01T00:00:00.000Z') });
+		const settleUp = posting({
+			sourceType: 'adjustment',
+			sourceId: await refundRow(),
+			occurredAt: new Date('2025-12-15T00:00:00.000Z')
+		});
+		await db.batch([...postingStatements(db, gift), ...postingStatements(db, settleUp)]);
+		await connect();
+		const earlier = new Date('2025-10-01T00:00:00.000Z');
+
+		const preview = await previewQuickbooksStartAt(db, earlier, NOW);
+		await moveQuickbooksStartAt(db, earlier, NOW);
+
+		expect(preview.queues.corrections).toBe(0);
+		expect(await queued()).toMatchObject([{ entry_group_id: gift.group.id }]);
+	});
+
 	it('judges a gift settling afterwards by the moved date', async () => {
 		await connect(new Date('2026-04-01T00:00:00.000Z'));
 		await moveQuickbooksStartAt(db, new Date('2026-02-01T00:00:00.000Z'), NOW);

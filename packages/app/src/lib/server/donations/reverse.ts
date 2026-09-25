@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt, sql } from 'drizzle-orm';
+import { and, eq, exists, isNull, lt, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { reversalWrites, type Writes } from '../books/writes';
 import type { Db } from '../db/client';
@@ -25,7 +25,7 @@ import {
 	type ReversalEvent
 } from '../payments/provider';
 import { alert, commit, processorLabel, type SettleDeps, type SettleResult } from './delivery';
-import { reinstatementEntry, reversalEntry, unpostable } from './entries';
+import { reinstatementEntry, reversalEntry, settleUpEntry, unpostable } from './entries';
 
 // what a refund or a dispute does to a gift already in the books: a payment row of its own, and an
 // entry group taking the money back out, in one `batch()`. the only module that writes a
@@ -80,8 +80,15 @@ import { reinstatementEntry, reversalEntry, unpostable } from './entries';
 // the same group. what it withdraws is capped at what earlier refunds left of the gift: a processor
 // may report the whole charge disputed after part of it was refunded, and the books never take a
 // gift below nothing. the fee is booked in full, and the alert names the figure reported. a refund
-// is never capped. lost, it closes the row and moves nothing more; lost with no opening recorded,
-// it writes the opening's batch with the row already closed. won, it closes the row and puts back
+// is never capped. lost, it closes the row and settles up in the same batch: a fee charged at the
+// close that the opening did not book, and what the processor took less than the opening withdrew,
+// post as one `('adjustment', refund row)` group (`settleUpEntry` in ./entries.ts), and none where
+// the close carries neither. where the processor took less, the refund row's amount is lowered to
+// what it took in the same batch, guarded on the dispute still being open, so the gift and the
+// donor's given follow the close; a close naming more never raises it. the row's group stays as the
+// opening wrote it, and the settle-up is its correction. nothing else changes a refund row's
+// amount (./sole-refund-writer.spec.ts). lost with no opening recorded, it
+// writes the opening's batch with the row already closed. won, it closes the row and puts back
 // exactly what the opening took, as a refund that did not stand is put back, with the fee where the
 // processor returned it; won with no opening recorded, it writes nothing, because every later
 // delivery reads won too, and staff are told. a dispute reported closed one way after it was
@@ -96,9 +103,9 @@ import { reinstatementEntry, reversalEntry, unpostable } from './entries';
 // told nothing.
 //
 // ---------------------------------------------------------------------------
-// a reversal owes QuickBooks nothing and no Zap hears of it (`reversalWrites` in ../books/writes.ts
-// says why), and a refund of one collection under a repeating gift leaves the commitment
-// collecting: stopping it is its own act.
+// a reversal, its settle-up included, owes QuickBooks nothing and no Zap hears of it
+// (`reversalWrites` in ../books/writes.ts says why), and a refund of one collection under a
+// repeating gift leaves the commitment collecting: stopping it is its own act.
 //
 // ---------------------------------------------------------------------------
 // nothing here throws, for the reason ./settle.ts's header gives: a throw is a 500, read by the
@@ -347,8 +354,8 @@ async function withdraw(
 
 /**
  * a withdrawal whose row is already here: a redelivery, or a dispute lost after it opened, which
- * closes the dispute and moves no money. a dispute's stop is run again, because it is the one step
- * after the batch a delivery may be held open for.
+ * closes the dispute and moves no money but its settle-up. a dispute's stop is run again, because it
+ * is the one step after the batch a delivery may be held open for.
  */
 async function withdrawnBefore(
 	deps: SettleDeps,
@@ -363,6 +370,9 @@ async function withdrawnBefore(
 	if (reversal.kind === 'refund') return already;
 	const closed =
 		reversal.kind === 'dispute_lost' ? await closeLost(deps, reversal, recorded) : null;
+	if (typeof closed === 'object' && closed !== null) {
+		return refundRefused(deps, reversal, closed.refused);
+	}
 	if (closed === 'failed') {
 		return {
 			ok: false,
@@ -382,32 +392,97 @@ async function withdrawnBefore(
 					outcome: 'updated',
 					detail: `dispute ${reversal.providerReversalId} was lost; what it withdrew stays withdrawn.`
 				}
-			: already)
+			: closed === 'settled'
+				? {
+						ok: true,
+						outcome: 'posted',
+						detail: `dispute ${reversal.providerReversalId} was lost, and what its close charged or gave back beyond the opening is settled up.`
+					}
+				: already)
 	);
 }
 
 /**
- * an open dispute closed as lost, under `where outcome is null`, so a second report changes nothing.
- * where it was already closed, how.
+ * an open dispute closed as lost, under `where outcome is null`, with its settle-up
+ * (`settleUpEntry` in ./entries.ts) and, where the processor took less than the opening withdrew,
+ * the withdrawal row's amount lowered to what it took, in the same batch: `'settled'` where a
+ * settle-up posted, `'closed'` where the close carried nothing to settle. where it was already
+ * closed, how. a close whose figures the books cannot take is refused before anything is written,
+ * with why.
+ *
+ * a redelivery reads the dispute closed and writes nothing; one racing the first is refused whole by
+ * the settle-up's `('adjustment', withdrawal row)` on `entry_group_source_idx`, or matches no open
+ * row where there is nothing to settle.
  */
 async function closeLost(
 	deps: SettleDeps,
 	reversal: Extract<Reversal, { kind: 'dispute_lost' }>,
 	recorded: Payment
-): Promise<'closed' | 'failed' | DisputeOutcome | null> {
-	const committed = await commit(deps.db, [
-		deps.db
-			.update(dispute)
-			.set({ outcome: 'lost', closedAt: reversal.occurredAt })
-			.where(and(eq(dispute.paymentId, recorded.id), isNull(dispute.outcome)))
-			.returning({ paymentId: dispute.paymentId })
-	]);
-	if (committed === 'failed' || committed === 'already_posted') return 'failed';
-	if (Array.isArray(committed[0]) && committed[0].length > 0) return 'closed';
-	const [row] = await deps.db
+): Promise<'closed' | 'settled' | 'failed' | DisputeOutcome | null | { readonly refused: string }> {
+	const before = await outcomeOf(deps.db, recorded.id);
+	if (before !== null) return before;
+	const refused =
+		unpostable({ ...reversal, amountMinor: reversal.amountMinor ?? recorded.amountMinor }) ??
+		(reversal.currency === recorded.currency
+			? null
+			: `the dispute closed in ${reversal.currency} and opened in ${recorded.currency}, and one entry holds one currency.`);
+	if (refused !== null) return { refused };
+	const withdrawal = await findEntryGroup(deps.db, 'refund', recorded.id);
+	const settleUp =
+		withdrawal === null
+			? null
+			: settleUpEntry(
+					{
+						refundPaymentId: recorded.id,
+						donationId: recorded.donationId,
+						amountMinor: recorded.amountMinor,
+						withdrawn: withdrawal.lines
+					},
+					{
+						amountMinor: reversal.amountMinor,
+						currency: reversal.currency,
+						occurredAt: reversal.occurredAt,
+						feeMinor: reversal.feeMinor
+					}
+				);
+	const stillOpen = and(eq(dispute.paymentId, recorded.id), isNull(dispute.outcome));
+	const took = reversal.amountMinor;
+	const close = deps.db
+		.update(dispute)
+		.set({ outcome: 'lost', closedAt: reversal.occurredAt })
+		.where(stillOpen)
+		.returning({ paymentId: dispute.paymentId });
+	const lowered =
+		took !== null && took < recorded.amountMinor
+			? deps.db
+					.update(payment)
+					.set({ amountMinor: took })
+					.where(
+						and(
+							eq(payment.id, recorded.id),
+							eq(payment.direction, 'refund'),
+							exists(deps.db.select({ open: sql`1` }).from(dispute).where(stillOpen))
+						)
+					)
+			: null;
+	const settled =
+		settleUp === null ? [] : reversalWrites(deps.db, { kind: 'settle_up', entry: settleUp });
+	// the lowering goes ahead of the close, whose update is what makes `stillOpen` false.
+	const batch: Writes = lowered === null ? [close, ...settled] : [lowered, close, ...settled];
+	const closeAt = batch.indexOf(close);
+	const committed = await commit(deps.db, batch);
+	if (committed === 'failed') return 'failed';
+	const closed = committed === 'already_posted' ? undefined : committed[closeAt];
+	if (Array.isArray(closed) && closed.length > 0) return settleUp === null ? 'closed' : 'settled';
+	return outcomeOf(deps.db, recorded.id);
+}
+
+/** how a withdrawal's dispute was closed, or null where it is open or there is none. */
+async function outcomeOf(db: Db, refundId: string): Promise<DisputeOutcome | null> {
+	const [row] = await db
 		.select({ outcome: dispute.outcome })
 		.from(dispute)
-		.where(eq(dispute.paymentId, recorded.id));
+		.where(eq(dispute.paymentId, refundId));
 	return row?.outcome ?? null;
 }
 

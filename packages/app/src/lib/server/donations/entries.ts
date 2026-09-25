@@ -5,9 +5,10 @@ import type { Settlement } from '../payments/provider';
 
 // the entry groups a gift that reached the organisation makes: the two a charge that succeeded makes,
 // stated once for both halves of the webhook, and the one a gift received in hand makes
-// (`receivedInHandEntry`, for ./record-in-hand.ts). and the two a refund or a dispute of such a gift
-// makes, for ./reverse.ts: the money leaving (`reversalEntry`) and, where the refund did not stand or
-// the dispute was won, the money coming back (`reinstatementEntry`).
+// (`receivedInHandEntry`, for ./record-in-hand.ts). and the three a refund or a dispute of such a
+// gift makes, for ./reverse.ts: the money leaving (`reversalEntry`); where the refund did not stand
+// or the dispute was won, the money coming back (`reinstatementEntry`); and where a dispute is lost
+// after it opened, the close's settle-up (`settleUpEntry`).
 //
 // ./settle.ts posts a one-off gift against the payment row a quote minted, and ./collect.ts posts
 // a collection under a standing commitment. the accounting is the same accounting — a gift
@@ -301,8 +302,13 @@ export function reversalEntry(gift: ReversedGift, refund: RefundedMoney) {
  */
 function feeReturnLines(fee: readonly PostingLine[], returnedMinor: number | null): PostingLine[] {
 	if (returnedMinor === null || returnedMinor <= 0) return [];
-	const shares = shareOf(fee, returnedMinor);
-	return fee
+	return putBack(fee, returnedMinor);
+}
+
+/** `lines` mirrored, scaled to `amountMinor`; a line whose figure comes to nothing is left out. */
+function putBack(lines: readonly PostingLine[], amountMinor: number): PostingLine[] {
+	const shares = shareOf(lines, amountMinor);
+	return lines
 		.map((line, i) => ({ accountId: line.accountId, amountMinor: -(shares[i] ?? 0) }))
 		.filter((line) => line.amountMinor !== 0);
 }
@@ -389,6 +395,61 @@ function withoutReversalFee(lines: readonly PostingLine[]): PostingLine[] {
 		if (credit !== -1) rest.splice(credit, 1);
 	}
 	return rest;
+}
+
+/** a dispute's withdrawal in the books, as the dispute closes lost. */
+export type LostWithdrawal = {
+	/** the withdrawal's own `payment.id` — `entry_group.source_id` of its group and its settle-up. */
+	readonly refundPaymentId: string;
+	readonly donationId: string;
+	/** minor units: what the withdrawal's row says the opening took. */
+	readonly amountMinor: number;
+	/** the lines of the withdrawal's own `'refund'` group, in posting order. */
+	readonly withdrawn: readonly PostingLine[];
+};
+
+/** what the processor reported at a lost dispute's close. */
+export type LostClose = Pick<RefundedMoney, 'currency' | 'occurredAt'> & {
+	/** minor units: what the processor finally took. null where it names no figure but the opening's. */
+	readonly amountMinor: number | null;
+	/** minor units: every fee the processor charged for the dispute, the opening's included. */
+	readonly feeMinor: number | null;
+};
+
+/**
+ * the settle-up of a dispute lost after it opened, or null where the close carries nothing the
+ * opening did not. two parts, either or both:
+ *
+ *   - the fee charged at the close less the fee the opening already booked, expensed out of `1020`
+ *     as `feeLines` books it.
+ *   - where the processor took less than the opening withdrew, the difference put back: that share
+ *     of the withdrawal's own lines but its fee, mirrored, scaled by `shareOf`'s rule.
+ *
+ * the withdrawal's group stays as the opening wrote it, and this group is the correction.
+ *
+ * `('adjustment', withdrawal row)`: the one key on that row neither its withdrawal nor a
+ * reinstatement holds, so a redelivered close collides on `entry_group_source_idx`.
+ */
+export function settleUpEntry(withdrawal: LostWithdrawal, close: LostClose) {
+	const processorFees = postableId('processorFees');
+	const bookedFeeMinor = withdrawal.withdrawn
+		.filter((line) => line.accountId === processorFees && line.amountMinor > 0)
+		.reduce((sum, line) => sum + line.amountMinor, 0);
+	const feeOwedMinor = (close.feeMinor ?? 0) - bookedFeeMinor;
+	const putBackMinor = withdrawal.amountMinor - (close.amountMinor ?? withdrawal.amountMinor);
+	const lines = [
+		...(putBackMinor > 0 ? putBack(withoutReversalFee(withdrawal.withdrawn), putBackMinor) : []),
+		...(feeOwedMinor > 0 ? feeLines(feeOwedMinor) : [])
+	];
+	if (lines.length === 0) return null;
+	return post({
+		sourceType: 'adjustment',
+		sourceId: withdrawal.refundPaymentId,
+		currency: close.currency,
+		occurredAt: close.occurredAt,
+		memo: `dispute on donation ${withdrawal.donationId} lost: settled up at the close`,
+		lines
+	});
 }
 
 /**

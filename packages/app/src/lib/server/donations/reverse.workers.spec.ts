@@ -203,7 +203,7 @@ async function refundRows() {
 }
 
 /** one entry group's lines as `[account, amount]`, sorted, or null where there is no such group. */
-async function linesOf(sourceType: 'payment' | 'refund' | 'fee', sourceId: string) {
+async function linesOf(sourceType: 'payment' | 'refund' | 'fee' | 'adjustment', sourceId: string) {
 	const [group] = await db
 		.select()
 		.from(entryGroup)
@@ -1365,6 +1365,221 @@ describe('recordReversal() — a dispute lost after it opened', () => {
 	});
 });
 
+describe('recordReversal() — a dispute lost after it opened, settling up at the close', () => {
+	it('books a fee charged at the close that the opening did not book, out of 1020', async () => {
+		await settledGift();
+		await recordReversal(deps(), opened({ feeMinor: null }), 'evt_d1');
+
+		const result = await recordReversal(deps(), lost({ feeMinor: 2_000 }), 'evt_d2');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: 'lost' })]);
+		const [row] = await refundRows();
+		expect(await linesOf('adjustment', row?.id ?? '')).toEqual(
+			[
+				[postableId('processorFees'), 2_000],
+				[postableId('undepositedFunds'), -2_000]
+			].sort()
+		);
+	});
+
+	it('puts back pro rata to the gift’s funds what the close took less than the opening withdrew', async () => {
+		const other = postableId('donationsNonDeductible');
+		await settledGift({
+			lines: [
+				{ revenueAccountId: fund, amountMinor: 6_000 },
+				{ revenueAccountId: other, amountMinor: 4_000 }
+			]
+		});
+		await recordReversal(deps(), opened({ amountMinor: 10_000 }), 'evt_d1');
+
+		const result = await recordReversal(deps(), lost({ amountMinor: 6_000 }), 'evt_d2');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		const [row] = await refundRows();
+		expect(await linesOf('adjustment', row?.id ?? '')).toEqual(
+			[
+				[postableId('undepositedFunds'), 4_000],
+				[fund, -2_400],
+				[other, -1_600]
+			].sort()
+		);
+	});
+
+	it('lowers the withdrawal to what the close took, so the gift reads partly refunded and the donor gave the rest', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), opened({ amountMinor: 10_000 }), 'evt_d1');
+		const [opening] = await refundRows();
+
+		await recordReversal(deps(), lost({ amountMinor: 6_000 }), 'evt_d2');
+
+		expect((await refundRows()).map((r) => r.amountMinor)).toEqual([6_000]);
+		expect(await linesOf('refund', opening?.id ?? '')).toContainEqual([
+			postableId('undepositedFunds'),
+			-10_000
+		]);
+		expect(await asAdminReads(gift.donationId)).toEqual({
+			status: 'partially_refunded',
+			given: 4_000
+		});
+	});
+
+	it('leaves a later dispute of the whole charge only what the close left, taking every fund to nothing', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), opened({ amountMinor: 10_000, feeMinor: null }), 'evt_d1');
+		await recordReversal(deps(), lost({ amountMinor: 6_000, feeMinor: null }), 'evt_d2');
+
+		await recordReversal(
+			deps(),
+			opened({ providerReversalId: 'dp_2', amountMinor: 10_000, feeMinor: null }),
+			'evt_d3'
+		);
+
+		expect((await refundRows()).map((r) => r.amountMinor)).toEqual([6_000, 4_000]);
+		expect(await netByAccount()).toEqual({ [fund]: 0, [postableId('undepositedFunds')]: 0 });
+		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'refunded', given: 0 });
+	});
+
+	it('changes nothing when a close that lowered the withdrawal is delivered again', async () => {
+		await settledGift();
+		await recordReversal(deps(), opened({ amountMinor: 10_000 }), 'evt_d1');
+		await recordReversal(deps(), lost({ amountMinor: 6_000 }), 'evt_d2');
+		const groups = await groupCount();
+
+		const again = await recordReversal(deps(), lost({ amountMinor: 5_000 }), 'evt_d3');
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect((await refundRows()).map((r) => r.amountMinor)).toEqual([6_000]);
+		expect(await groupCount()).toBe(groups);
+	});
+
+	it('leaves the withdrawal’s amount alone when a win closes the dispute between the loss’s reads and its batch', async () => {
+		await settledGift();
+		await recordReversal(deps(), opened({ amountMinor: 10_000 }), 'evt_d1');
+		let raced = false;
+		const racing = new Proxy(db, {
+			get(target, property, receiver) {
+				if (property !== 'batch' || raced) return Reflect.get(target, property, receiver);
+				return async (writes: Parameters<Db['batch']>[0]) => {
+					raced = true;
+					await recordReversal(deps(), won(), 'evt_d2');
+					return target.batch(writes);
+				};
+			}
+		});
+
+		await recordReversal(deps({ db: racing }), lost({ amountMinor: 6_000 }), 'evt_d3');
+
+		expect(await refundRows()).toEqual([
+			expect.objectContaining({ amountMinor: 10_000, status: 'cancelled' })
+		]);
+		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: 'won' })]);
+	});
+
+	it('never raises a withdrawal capped at what a refund left when the close names more', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), refund({ amountMinor: 3_000 }), 'evt_r1');
+		await recordReversal(deps(), opened({ amountMinor: 10_000 }), 'evt_d1');
+
+		await recordReversal(deps(), lost({ amountMinor: 10_000 }), 'evt_d2');
+
+		expect((await refundRows()).map((r) => r.amountMinor)).toEqual([3_000, 7_000]);
+		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'refunded', given: 0 });
+	});
+
+	it('settles the fee and the difference in one group when the close carries both', async () => {
+		await settledGift();
+		await recordReversal(deps(), opened({ feeMinor: null }), 'evt_d1');
+
+		await recordReversal(deps(), lost({ amountMinor: 6_000, feeMinor: 2_000 }), 'evt_d2');
+
+		const [row] = await refundRows();
+		expect(await linesOf('adjustment', row?.id ?? '')).toEqual(
+			[
+				[postableId('undepositedFunds'), 4_000],
+				[fund, -4_000],
+				[postableId('processorFees'), 2_000],
+				[postableId('undepositedFunds'), -2_000]
+			].sort()
+		);
+	});
+
+	it('posts once when the close is delivered again', async () => {
+		await settledGift();
+		await recordReversal(deps(), opened({ feeMinor: null }), 'evt_d1');
+		await recordReversal(deps(), lost({ feeMinor: 2_000 }), 'evt_d2');
+		const groups = await groupCount();
+
+		const again = await recordReversal(deps(), lost({ feeMinor: 2_000 }), 'evt_d3');
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect(await groupCount()).toBe(groups);
+	});
+
+	it('posts once when two deliveries of the close race, the second refused by its key', async () => {
+		await settledGift();
+		await recordReversal(deps(), opened({ feeMinor: null }), 'evt_d1');
+		let raced = false;
+		// the other delivery commits between this delivery's reads and its batch.
+		const racing = new Proxy(db, {
+			get(target, property, receiver) {
+				if (property !== 'batch' || raced) return Reflect.get(target, property, receiver);
+				return async (writes: Parameters<Db['batch']>[0]) => {
+					raced = true;
+					await recordReversal(deps(), lost({ feeMinor: 2_000 }), 'evt_d2');
+					return target.batch(writes);
+				};
+			}
+		});
+
+		const second = await recordReversal(deps({ db: racing }), lost({ feeMinor: 2_000 }), 'evt_d3');
+
+		expect(second).toMatchObject({ ok: true, outcome: 'already_posted' });
+		const settleUps = await db
+			.select({ sourceId: entryGroup.sourceId })
+			.from(entryGroup)
+			.where(eq(entryGroup.sourceType, 'adjustment'));
+		const [row] = await refundRows();
+		expect(settleUps).toEqual([{ sourceId: row?.id }]);
+		expect(await linesOf('adjustment', row?.id ?? '')).toEqual(
+			[
+				[postableId('processorFees'), 2_000],
+				[postableId('undepositedFunds'), -2_000]
+			].sort()
+		);
+	});
+
+	it('refuses a close in another currency than the gift, writing nothing and telling an operator', async () => {
+		await settledGift();
+		await recordReversal(deps(), opened({ feeMinor: null }), 'evt_d1');
+		const groups = await groupCount();
+		const mail = mailer();
+
+		const result = await recordReversal(
+			deps({ email: mail.port }),
+			lost({ currency: 'EUR', feeMinor: 2_000 }),
+			'evt_d2'
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
+		expect(await groupCount()).toBe(groups);
+		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: null })]);
+		expect(mail.sent).toHaveLength(1);
+		expect(mail.sent[0]?.text).toMatch(/EUR/);
+	});
+
+	it('posts no settle-up where the close carries the opening’s own figures', async () => {
+		await settledGift();
+		await recordReversal(deps(), opened({ amountMinor: 10_000, feeMinor: 1_500 }), 'evt_d1');
+
+		await recordReversal(deps(), lost({ amountMinor: 10_000, feeMinor: 1_500 }), 'evt_d2');
+
+		const [row] = await refundRows();
+		expect(await linesOf('adjustment', row?.id ?? '')).toBeNull();
+		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: 'lost' })]);
+	});
+});
+
 describe('recordReversal() — a dispute lost with no opening recorded', () => {
 	it('writes the opening’s batch with the dispute already lost, and tells staff once', async () => {
 		const gift = await settledGift();
@@ -1594,12 +1809,12 @@ describe('recordReversal() — a dispute after a partial refund', () => {
 	});
 });
 
-/** every account's net over the gift's own groups and every reversal of it. */
+/** every account's net over the gift's own groups, every reversal of it, and every settle-up. */
 async function netByAccount() {
 	const { results } = await env.DB.prepare(
 		`select l.account_id, sum(l.amount_minor) as net from ledger_entry l
 		 join entry_group g on g.id = l.entry_group_id
-		 where g.source_type in ('payment', 'refund') group by l.account_id`
+		 where g.source_type in ('payment', 'refund', 'adjustment') group by l.account_id`
 	).all<{ account_id: string; net: number }>();
 	return Object.fromEntries(results.map((r) => [r.account_id, r.net]));
 }

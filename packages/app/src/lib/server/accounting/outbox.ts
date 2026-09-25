@@ -68,8 +68,10 @@ import type { Posting } from '../ledger/posting';
 // processor's cut becomes a line on the record its sibling `payment` group is sent as (./record.ts
 // assembles the pair), and a row for it would send the same money twice. `donation` is a source type
 // nothing in this tree posts. a refund's groups (../donations/reverse.ts) are owed nothing either:
-// `reversalWrites` in ../books/writes.ts calls nothing here, and a start-date move passes over the
-// `'payment'` group a refund that did not stand is put back under (`unqueuedFrom` below).
+// `reversalWrites` in ../books/writes.ts calls nothing here, and a start-date move passes over every
+// group keyed on a refund-direction row (`unqueuedFrom` below) — the `'payment'` group a refund that
+// did not stand is put back under, and the `'adjustment'` settle-up of a dispute lost after it
+// opened.
 
 /** the source type each kind of record owed to QuickBooks is posted under. */
 const OWED_KINDS = {
