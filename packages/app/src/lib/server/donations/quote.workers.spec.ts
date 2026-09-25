@@ -124,6 +124,9 @@ function provider(
 		async readRecurringGift() {
 			throw new Error('readRecurringGift is not part of the quote path');
 		},
+		async readReversal() {
+			throw new Error('readReversal is not part of the quote path');
+		},
 		async readAccountChargeability() {
 			// on the quote path for the reason `readRecurringGiftProvision` below is: which rails a
 			// donor may pick is read off the account rather than off the row

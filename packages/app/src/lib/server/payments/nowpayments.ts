@@ -462,6 +462,9 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 		createRecurringGift: async () => unsupported(NO_REPEATING_GIFTS),
 		cancelRecurringGift: async () => unsupported(NO_REPEATING_GIFTS),
 		readRecurringGift: async () => unsupported(NO_REPEATING_GIFTS),
+		// no notification is read into a reversal yet (`verifyEvent` above), so nothing reaches this.
+		readReversal: async () =>
+			unsupported('This release reads no NOWPayments refund. Nothing was asked of NOWPayments.'),
 		listWebhookEndpoints: async () => unsupported(NO_LISTENER_ARMS),
 		registerWebhookEndpoint: async () => unsupported(NO_LISTENER_ARMS),
 		resubscribeWebhookEndpoint: async () => unsupported(NO_LISTENER_ARMS),

@@ -44,6 +44,7 @@ import type {
 	RecurringGift,
 	RecurringGiftEnd,
 	RecurringGiftNotice,
+	ReversalRead,
 	RecurringGiftProvision,
 	RecurringGiftRequest,
 	RecurringGiftStanding,
@@ -1261,6 +1262,11 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 			} catch (error) {
 				return classify(error);
 			}
+		},
+
+		// no PayPal event is read into a reversal yet (`verifyEvent` above), so nothing reaches this.
+		async readReversal(): Promise<PaymentResult<ReversalRead>> {
+			return unsupported('This release reads no PayPal refund. Nothing was asked of PayPal.');
 		},
 
 		/**

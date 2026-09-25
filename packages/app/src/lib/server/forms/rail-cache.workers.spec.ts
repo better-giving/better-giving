@@ -54,6 +54,7 @@ function countingPort(
 			verifyEvent: unused('verifyEvent'),
 			readSettlement: unused('readSettlement'),
 			readRecurringGift: unused('readRecurringGift'),
+			readReversal: unused('readReversal'),
 			listWebhookEndpoints: unused('listWebhookEndpoints'),
 			registerWebhookEndpoint: unused('registerWebhookEndpoint'),
 			resubscribeWebhookEndpoint: unused('resubscribeWebhookEndpoint'),

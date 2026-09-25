@@ -32,7 +32,34 @@ beforeEach(async () => {
 	await env.DB.prepare('delete from ledger_entry').run();
 	await env.DB.prepare('delete from entry_group').run();
 	await env.DB.prepare('delete from quickbooks_connection').run();
+	await env.DB.prepare('delete from payment').run();
+	await env.DB.prepare('delete from donation').run();
+	await env.DB.prepare('delete from contact').run();
 });
+
+/**
+ * a refund-direction payment row, the source a refund that did not stand is posted against as
+ * `('payment', row)`, and its id.
+ */
+async function refundRow(): Promise<string> {
+	const [contactId, donationId, refundId] = [uuidv7(), uuidv7(), uuidv7()];
+	await env.DB.batch([
+		env.DB.prepare(
+			`insert into contact (id, kind, display_name, created_at, updated_at)
+			 values (?, 'individual', 'Ada Okafor', 0, 0)`
+		).bind(contactId),
+		env.DB.prepare(
+			`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
+			 values (?, ?, 10000, 'USD', 0, 0)`
+		).bind(donationId, contactId),
+		env.DB.prepare(
+			`insert into payment (id, donation_id, amount_minor, currency, direction, method, status,
+			                      provider, provider_txn_id, occurred_at, created_at)
+			 values (?, ?, 10000, 'USD', 'refund', 'card', 'cancelled', 'stripe', 're_1', 0, 0)`
+		).bind(refundId, donationId)
+	]);
+	return refundId;
+}
 
 const CONNECTED_FROM = new Date('2026-01-01T00:00:00.000Z');
 
@@ -240,6 +267,24 @@ describe('moving the date a connection starts from', () => {
 		await moveQuickbooksStartAt(db, new Date('2025-10-01T00:00:00.000Z'), NOW);
 
 		expect(await queued()).toMatchObject([{ entry_group_id: charge.group.id }]);
+	});
+
+	it('never queues a refund that did not stand as though it were a gift', async () => {
+		const gift = posting({ occurredAt: new Date('2025-12-01T00:00:00.000Z') });
+		const reinstatement = posting({
+			sourceType: 'payment',
+			sourceId: await refundRow(),
+			occurredAt: new Date('2025-12-15T00:00:00.000Z')
+		});
+		await db.batch([...postingStatements(db, gift), ...postingStatements(db, reinstatement)]);
+		await connect();
+		const earlier = new Date('2025-10-01T00:00:00.000Z');
+
+		const preview = await previewQuickbooksStartAt(db, earlier, NOW);
+		await moveQuickbooksStartAt(db, earlier, NOW);
+
+		expect(preview.queues.gifts).toBe(1);
+		expect(await queued()).toMatchObject([{ entry_group_id: gift.group.id }]);
 	});
 
 	it('judges a gift settling afterwards by the moved date', async () => {

@@ -46,6 +46,15 @@ const NOTICE = {
 	occurredAt: new Date(1_770_000_000_000)
 } as const;
 
+/** a verified delivery about money leaving a settled gift, for the arm that reads one. */
+const REVERSAL_NOTICE = {
+	id: 'evt_2',
+	kind: 'reversal',
+	type: 'refund.created',
+	providerNoticeId: 're_1',
+	occurredAt: new Date(1_770_000_000_000)
+} as const;
+
 describe('processorOf', () => {
 	// the donor's page opens Chariot's window for a DAF gift, so the grant is Chariot's to create and
 	// settle — a rail read as anyone else's is a quote minted on a processor with no grant to make.
@@ -91,6 +100,7 @@ describe('refusing', () => {
 			provider.verifyEvent({ body: '{}', headers: { 'stripe-signature': 't=1,v1=x' } }),
 			provider.readSettlement('pi_1'),
 			provider.readRecurringGift(NOTICE),
+			provider.readReversal(REVERSAL_NOTICE),
 			// the account reads answer identically too, and on this provider that is the whole of
 			// what /admin's setup screen sees on a fresh fork: no key is set, so the button has to
 			// come back with a sentence naming what to set rather than a page that failed to load.
@@ -179,6 +189,7 @@ function throwing(): PaymentProvider {
 		verifyEvent: fault,
 		readSettlement: fault,
 		readRecurringGift: fault,
+		readReversal: fault,
 		readAccountChargeability: fault,
 		readRailSwitchboard: fault,
 		listWebhookEndpoints: fault,
@@ -207,6 +218,7 @@ describe('sealed', () => {
 		['verifyEvent', (p: PaymentProvider) => p.verifyEvent({ body: '{}', headers: {} })],
 		['readSettlement', (p: PaymentProvider) => p.readSettlement('pi_1')],
 		['readRecurringGift', (p: PaymentProvider) => p.readRecurringGift(NOTICE)],
+		['readReversal', (p: PaymentProvider) => p.readReversal(REVERSAL_NOTICE)],
 		['readAccountChargeability', (p: PaymentProvider) => p.readAccountChargeability()],
 		['readRailSwitchboard', (p: PaymentProvider) => p.readRailSwitchboard()],
 		['listWebhookEndpoints', (p: PaymentProvider) => p.listWebhookEndpoints()],

@@ -198,6 +198,7 @@ function provider(
 		async readRecurringGift() {
 			return script.gift ?? { ok: true, value: notice() };
 		},
+		readReversal: refuse('readReversal'),
 		readAccountChargeability: refuse('readAccountChargeability'),
 		prepareRecurringGifts: refuse('prepareRecurringGifts'),
 		readRecurringGiftProvision: refuse('readRecurringGiftProvision'),
@@ -1885,6 +1886,23 @@ describe('settleDelivery() — a collection whose fee is unknown', () => {
 			'A collection under a repeating gift was posted with no processor fee',
 			'A gift of USD 25.00 was received'
 		]);
+	});
+
+	it('sends the operator to the Books correction that posts the fee', async () => {
+		const mail = mailer();
+
+		await settleDelivery(
+			deps({
+				email: mail.port,
+				provider: provider({ settled: { ok: true, value: settlement({ feeMinor: null }) } })
+			}),
+			DELIVERY
+		);
+
+		const alerted = mail.sent.find((m) => m.subject.includes('no processor fee'));
+		expect(alerted?.text).toContain('/admin/books');
+		expect(alerted?.text).toContain('out of 1020 — Undeposited Funds into 5200 — Processor Fees');
+		expect(alerted?.text).not.toContain('outside it');
 	});
 
 	/**

@@ -64,6 +64,41 @@ export function correctionWrites(db: Db, correction: Posting): Writes {
 	return [...postingStatements(db, correction), ...outboxStatements(db, [correction])];
 }
 
+/**
+ * money leaving a gift already in the books, or coming back to it, by the port's own kind of
+ * reversal (`Reversal` in ../payments/provider.ts).
+ *
+ *   refund        — `('refund', refund row)`: the gift's lines reversed (`reversalEntry`).
+ *   refund_failed — `('payment', refund row)`: a refund that did not stand, mirrored back
+ *                   (`reinstatementEntry`).
+ *
+ * a union with a posting on every arm, so the composer always has a statement to hand back.
+ */
+export type ReversalEntry =
+	| { readonly kind: 'refund'; readonly entry: Posting }
+	| { readonly kind: 'refund_failed'; readonly entry: Posting };
+
+const REVERSAL_SOURCE_TYPES = {
+	refund: 'refund',
+	refund_failed: 'payment'
+} as const satisfies Record<ReversalEntry['kind'], EntrySourceType>;
+
+/**
+ * a reversal's group, owing QuickBooks nothing and no Zap. `outboxStatements` has no gate for "only
+ * where the gift was sent", and a reinstatement it queued under `'payment'` would go over as a new
+ * gift — which is why a start-date move passes over one too (`unqueuedFrom` in
+ * ../accounting/outbox.ts). no Zap trigger fires on a reversal.
+ */
+export function reversalWrites(db: Db, reversal: ReversalEntry): Writes {
+	inSlot(
+		reversal.entry,
+		reversal.kind,
+		REVERSAL_SOURCE_TYPES[reversal.kind],
+		'$lib/server/donations/entries.ts'
+	);
+	return postingStatements(db, reversal.entry);
+}
+
 function inSlot(
 	posting: Posting,
 	slot: string,

@@ -1,33 +1,41 @@
 import { adminAlert } from '@better-giving/emails';
 import { renderEmail } from '@better-giving/emails/render';
+import type { Writes } from '../books/writes';
 import type { Db } from '../db/client';
+import { sqliteResultCode } from '../db/rejection';
 import type { EmailProvider } from '../email/provider';
 import { PROCESSOR_LABELS, type PayableCoin, type PaymentProvider } from '../payments/provider';
 import { readOrgProfile } from '../org/queries';
 
-// what one verified delivery may answer with, and the one way this app tells an operator about a
-// delivery it could not finish.
+// what one verified delivery may answer with, the one way this app tells an operator about a
+// delivery it could not finish, and the one reading of a delivery's batch the database refused
+// (`commit`).
 //
-// it is a module of its own because the answer is shared by the two halves that produce it:
-// ./settle.ts settles one transaction against the payment row a quote minted, and ./collect.ts
-// keeps the books for a gift that repeats. both are reached from the same route and both have to
-// answer in the same vocabulary — stated here once, they cannot drift, and neither half has to
-// import the other to say "posted".
+// it is a module of its own because the answer is shared by the three writers that produce it:
+// ./settle.ts settles one transaction against the payment row a quote minted, ./collect.ts keeps
+// the books for a gift that repeats, and ./reverse.ts records a refund against a gift already in
+// the books. all are reached from the same route and all have to answer in the same vocabulary —
+// stated here once, they cannot drift, and no writer has to import another to say "posted".
 
 /**
  * what one delivery did, all of which are answered 200.
  *
- *   ignored        — a delivery this app subscribes to nothing for, or one about a repeating gift
- *                    this deployment holds no record of. answered and logged.
- *   posted         — money moved: the gift is in the books.
+ *   ignored        — a delivery this app subscribes to nothing for, one about a repeating gift
+ *                    this deployment holds no record of, a refund that has moved no money yet, or
+ *                    the failure of a refund never recorded here. answered and logged.
+ *   posted         — money moved: the gift is in the books, or a refund of it is, or a refund
+ *                    that did not stand is put back.
  *   updated        — a row was corrected and nothing was posted. it is the transaction that is not
  *                    settled (still processing, failed, cancelled), which is why failure and
  *                    cancellation are in scope at all: without this arm a `pending` row sits
  *                    pending forever. it is also a commitment the rail reports as collecting again
- *                    after this deployment had recorded it as given up on.
- *   already_posted — the books already hold this payment. a redelivery, refused by the database.
+ *                    after this deployment had recorded it as given up on. and it is a refund that
+ *                    did not stand, of a gift the books never held.
+ *   already_posted — the books already hold this payment, or this refund. a redelivery, refused
+ *                    by the database.
  *   unmatched      — a verified settlement for a transaction this deployment has no payment row
- *                    for, or a collection whose commitment cannot be opened here. nothing was
+ *                    for, a collection whose commitment cannot be opened here, or a refund of a
+ *                    charge that names no gift of this deployment's. nothing was
  *                    written, and an operator was told wherever the transaction names a gift of
  *                    this deployment's — a Chariot grant names none, so one that is not this
  *                    deployment's is answered quietly.
@@ -36,7 +44,8 @@ import { readOrgProfile } from '../org/queries';
  *                    could not be read, or money moved and what is known about it is not something
  *                    the ledger can hold — a settlement carrying figures `post()` refuses, which
  *                    either half can be handed (`unpostable` in ./entries.ts), or a settled gift
- *                    whose own lines do not account for the amount that moved (./settle.ts). an
+ *                    whose own lines do not account for the amount that moved (./settle.ts), or a
+ *                    refund whose figures the refund row or the ledger will not hold (./reverse.ts). an
  *                    operator was told, except where the verification itself faulted
  *                    (`internal_error`), which ./settle.ts leaves in the logs and says why.
  *   unnamed        — a settled transaction whose intent names no gift in this deployment, or a
@@ -145,4 +154,26 @@ export async function alert(deps: MailDeps, input: adminAlert.AdminAlertData): P
 	if (to === null) return;
 
 	await deps.email.send({ to, ...(await renderEmail(adminAlert.template(input))) });
+}
+
+/**
+ * one delivery's batch and what each statement returned, or a redelivery told apart from a write
+ * the database refused. a UNIQUE rejection is the redelivery: the row or the posting the batch
+ * writes is already there, refused by the index that makes it idempotent.
+ */
+export async function commit(
+	db: Db,
+	writes: Writes
+): Promise<readonly unknown[] | 'already_posted' | 'failed'> {
+	try {
+		return await db.batch(writes);
+	} catch (error) {
+		if (sqliteResultCode(error) === 'SQLITE_CONSTRAINT_UNIQUE') return 'already_posted';
+		try {
+			console.error('writing a delivery failed:', error);
+		} catch {
+			// nothing to report it to, and nothing this function may throw.
+		}
+		return 'failed';
+	}
 }

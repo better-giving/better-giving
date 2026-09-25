@@ -73,8 +73,8 @@ import {
 // no invariant in this system is enforced by an atomic read-then-write, and a lost race is
 // settled by a correcting entry rather than by a rollback. nothing needs one today by
 // design — derived balances remove read-modify-write, and idempotency is `entry_group`'s
-// unique index rather than a check-then-insert, per the paragraph above. refunds are what
-// will test it: `refund <= received` is cross-row, so no `CHECK` expresses it and two
+// unique index rather than a check-then-insert, per the paragraph above. refunds are where
+// it is met: `refund <= received` is cross-row, so no `CHECK` expresses it and two
 // concurrent refunds can both post. the answer there is a compensating entry a human posts,
 // which is what double-entry books are for. this is the ceiling the design was drawn
 // against rather than a platform defect, and working around it would cost every call site.

@@ -31,6 +31,7 @@ import type {
 	RecurringGift,
 	RecurringGiftEnd,
 	RecurringGiftNotice,
+	ReversalRead,
 	RecurringGiftProvision,
 	RecurringGiftRequest,
 	RecurringGiftStanding,
@@ -1950,6 +1951,15 @@ export function createStripeProvider(
 			return (RECURRING_COLLECTION_EVENT_TYPES as readonly string[]).includes(event.type)
 				? readCollection(event.providerNoticeId)
 				: readCommitment(event.providerNoticeId);
+		},
+
+		// no Stripe event is read into a reversal yet (`verifyEvent` above), so nothing reaches this.
+		async readReversal(): Promise<PaymentResult<ReversalRead>> {
+			return {
+				ok: false,
+				reason: 'unsupported',
+				detail: 'This release reads no Stripe refund. Nothing was asked of Stripe.'
+			};
 		},
 
 		async readAccountChargeability(): Promise<PaymentResult<AccountChargeability>> {

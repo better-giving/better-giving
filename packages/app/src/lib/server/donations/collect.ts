@@ -37,7 +37,7 @@ import {
 	type Settlement
 } from '../payments/provider';
 import { alert, processorLabel, type SettleDeps, type SettleResult } from './delivery';
-import { chargeEntry, feeEntry, unpostable } from './entries';
+import { chargeEntry, feeEntry, missingFeeCorrection, unpostable } from './entries';
 import { sendReceipt, type ReceiptOutcome } from './receipt';
 import { sendSettledNotice, type Repeating } from './settled-notice';
 import { sendTributeNotice } from './tribute-notice';
@@ -850,16 +850,7 @@ async function answerTo(
 						{ label: 'Repeating gift', value: about.notice.providerGiftId },
 						{ label: 'Transaction', value: about.settlement.providerTxnId }
 					],
-					// the same repair ./settle.ts names, and for the same reason: nothing in the
-					// dashboard posts a correcting entry, so the figure is all this alert can hand
-					// over.
-					action:
-						`Find this payment in the ${processor} dashboard and keep the fee it states, in ` +
-						'the currency the gift was charged in. Keep only a figure ' +
-						`${processor} states for this payment: a fee reported in another currency is not ` +
-						'one to convert, because the converted figure is one nobody published. This ' +
-						'deployment records nothing for it, so carry that figure into the books your ' +
-						'organisation keeps outside it.'
+					action: missingFeeCorrection(processor)
 				});
 			}
 

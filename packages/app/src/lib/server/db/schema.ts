@@ -658,6 +658,8 @@ export const entryGroup = sqliteTable(
 		 *                   donation" is the rule this enforces.
 		 *   'payment'    -> `payment.id`. one settlement event, one posting. a gift settling in
 		 *                   instalments is several `payment` rows and therefore several entries.
+		 *                   on a `direction = 'refund'` row it is that refund's reinstatement: the
+		 *                   money back where the refund did not stand.
 		 *   'refund'     -> `payment.id` — the refund's own row, never the donation it reverses.
 		 *   'fee'        -> `payment.id` of the settlement the fee was deducted from.
 		 *   'adjustment' -> a uuidv7 minted for the correction, one per correction, borrowed
@@ -1488,6 +1490,10 @@ const NON_PROCESSOR_PROVIDERS = ['manual'] as const satisfies readonly PaymentPr
  * staff have recorded but not banked); `cancelled` is an attempt abandoned before any
  * money moved, which is a different fact from one the rail refused.
  *
+ * on a `direction = 'refund'` row, `cancelled` is a refund that did not stand: it went out and
+ * the money came back. that row is the one `succeeded` payment ever walked back, and only
+ * `lib/server/donations/reverse.ts` walks it; an inbound row that settled stays settled.
+ *
  * deliberately not `refunded`. a refund is a separate `payment` row with
  * `direction = 'refund'`, which is what keeps this table append-shaped and keeps a
  * reconciler reading one row per real event. a `refunded` member here would make the same
@@ -1611,10 +1617,11 @@ export const payment = sqliteTable(
 		 */
 		validUntil: at('valid_until'),
 		/**
-		 * on a repeat deposit — a second sending to an address whose first already settled — the
-		 * payment row of that first sending. this deployment's own `payment.id`, never
-		 * NOWPayments' parent id: theirs is the parent row's `provider_txn_id`, which is how the
-		 * parent is found before this is written. null on every first payment.
+		 * the payment this row follows from: on a repeat deposit — a second sending to an address
+		 * whose first already settled — the payment row of that first sending; on a
+		 * `direction = 'refund'` row, the inbound payment it reverses. this deployment's own
+		 * `payment.id`, never a processor's id: theirs is the parent row's `provider_txn_id`, which is
+		 * how the parent is found before this is written. null on every first inbound payment.
 		 */
 		parentPaymentId: text('parent_payment_id').references((): AnySQLiteColumn => payment.id)
 	},

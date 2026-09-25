@@ -75,7 +75,7 @@ describe('books/ is the only importer of the settled-gift statement builders', (
 		);
 		expect(
 			offenders,
-			`these modules build a settled gift's batch by hand: ${offenders.join(', ')}. take the statements from settledGiftWrites() or correctionWrites() in src/lib/server/books/writes.ts and splice them after your payment row, in your own batch().`
+			`these modules build a settled gift's batch by hand: ${offenders.join(', ')}. take the statements from settledGiftWrites(), correctionWrites() or reversalWrites() in src/lib/server/books/writes.ts and splice them after your payment row, in your own batch().`
 		).toEqual([]);
 	});
 

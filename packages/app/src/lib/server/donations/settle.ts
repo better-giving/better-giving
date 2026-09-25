@@ -4,7 +4,6 @@ import { uuidv7 } from 'uuidv7';
 import { projectTribute } from '../../donations/tributes';
 import { settledGiftWrites, type Writes } from '../books/writes';
 import type { Db } from '../db/client';
-import { sqliteResultCode } from '../db/rejection';
 import {
 	contact,
 	donation,
@@ -18,6 +17,7 @@ import {
 } from '../db/schema';
 import type { CryptoReceived } from '../email/receipt';
 import { renderUncollectedNotice } from '../email/uncollected';
+import { findEntryGroup } from '../ledger/queries';
 import { readOrgProfile } from '../org/queries';
 import {
 	DONATION_METADATA_KEY,
@@ -31,8 +31,16 @@ import {
 	type WebhookDelivery
 } from '../payments/provider';
 import { collectRecurringGift } from './collect';
-import { alert, processorLabel, type SettleDeps, type SettleResult } from './delivery';
-import { chargeEntry, feeEntry, unpostable, type GiftRevenue, type RevenueShare } from './entries';
+import { alert, commit, processorLabel, type SettleDeps, type SettleResult } from './delivery';
+import {
+	chargeEntry,
+	feeEntry,
+	missingFeeCorrection,
+	unpostable,
+	type GiftRevenue,
+	type RevenueShare
+} from './entries';
+import { reverseDelivery } from './reverse';
 import { sendGrantReceived, sendReceipt } from './receipt';
 import { sendSettledNotice } from './settled-notice';
 import { sendTributeNotice } from './tribute-notice';
@@ -165,7 +173,7 @@ import { sendTributeNotice } from './tribute-notice';
 // delivery that ended the attempt, reopens an attempt that is over.
 //
 // ---------------------------------------------------------------------------
-// a payment that settled is never walked back, on any rail (`write`).
+// a payment that settled is never walked back here, on any rail (`write`).
 //
 // its entries, the row it owes QuickBooks and the rows it owes every listening Zap stay whatever a
 // later report says, so a status moved off `succeeded` would leave the gift reading `cancelled` or
@@ -176,7 +184,8 @@ import { sendTributeNotice } from './tribute-notice';
 // processor has taken back, and only a correction posted in /admin/books (../books/correct.ts)
 // takes it out. two reports are stale rather than news and say nothing: a
 // crypto read, which can report a state from before the coins landed, and a delivery's own state
-// standing in for a read, which can be older than the one that settled the payment.
+// standing in for a read, which can be older than the one that settled the payment. money a refund
+// takes back is a row of its own (./reverse.ts), never a status on this one.
 //
 // ---------------------------------------------------------------------------
 // "three days" below is Stripe's and PayPal's redelivery window. NOWPayments sends a non-2xx again
@@ -270,6 +279,10 @@ export async function settleDelivery(
 	// neither, so it is an insert of both plus a posting rather than an update. ./collect.ts owns
 	// it, and the two halves answer in the vocabulary ./delivery.ts states.
 	if (event.kind === 'recurring') return collectRecurringGift(deps, event);
+
+	// a refund names a transaction this module settled, and writes a row of its own against it
+	// rather than correcting that one: ./reverse.ts owns it.
+	if (event.kind === 'reversal') return reverseDelivery(deps, event);
 
 	if (event.kind === 'ignored') {
 		return {
@@ -423,6 +436,21 @@ export async function settleTransaction(
 		};
 	}
 	if (written === 'unchanged') {
+		// settled on an earlier delivery, and this read's figures post nothing: either the books hold
+		// the gift already, or they could not take it then and an operator was told then.
+		if (settlement.status === 'succeeded') {
+			return (await findEntryGroup(deps.db, 'payment', target.payment.id)) === null
+				? {
+						ok: true,
+						outcome: 'unactionable',
+						detail: `payment ${target.payment.id} settled on an earlier delivery and the books could not take it; an operator was told then.`
+					}
+				: {
+						ok: true,
+						outcome: 'already_posted',
+						detail: `payment ${target.payment.id} is already in the books; this delivery changed nothing.`
+					};
+		}
 		// the two stale reports the header names say nothing, and nor does one whose row settled
 		// after it was looked up; any other is news.
 		if (
@@ -759,9 +787,10 @@ async function recognitionOf(
  *
  * `credits` is null where nothing is posted at all: a transaction that did not succeed, a settled
  * one carrying figures the ledger will not take, and a settled one whose lines cannot account for
- * it. the correction still runs, alone — what the processor reports about the rail and the time is
- * a fact whatever the books do with it, and a row left saying `pending` is a second thing for an
- * operator to fix by hand. it runs on exactly what was reported, though, which is why two of the
+ * it. the correction still runs, alone, on a row not already settled — what the processor reports
+ * about the rail and the time is a fact whatever the books do with it, and a row left saying
+ * `pending` is a second thing for an operator to fix by hand. a row already settled with nothing
+ * to post is left as the delivery that settled it wrote it, and the answer is `unchanged`. it runs on exactly what was reported, though, which is why two of the
  * three columns below are conditional: a column the processor said nothing usable about is left
  * standing rather than written with a guess or with a value the table will not hold.
  */
@@ -772,10 +801,12 @@ async function write(
 	credits: GiftRevenue | null
 ): Promise<'written' | 'unchanged' | 'already_posted' | 'failed'> {
 	const row = target.payment;
-	// a `succeeded` payment is never walked back, on any rail (the header says why). the guard is in
-	// the statement, so no read taken beforehand decides it.
+	// a `succeeded` payment is never walked back, on any rail (the header says why), and one settled
+	// with nothing to post is corrected once: the delivery whose correction moved it is the one that
+	// tells an operator the books could not take it. the guard is in the statement, so no read taken
+	// beforehand decides it.
 	const correcting =
-		settlement.status === 'succeeded'
+		settlement.status === 'succeeded' && credits !== null
 			? eq(payment.id, row.id)
 			: and(eq(payment.id, row.id), ne(payment.status, 'succeeded'));
 	const writes: Writes = [
@@ -818,27 +849,6 @@ async function write(
 	// the correction's own rows: none is a guarded row that was already settled.
 	const [corrected] = committed;
 	return Array.isArray(corrected) && corrected.length === 0 ? 'unchanged' : 'written';
-}
-
-/**
- * one settlement's batch and what each statement returned, or a redelivery told apart from a write
- * the database refused.
- */
-async function commit(
-	db: Db,
-	writes: Writes
-): Promise<readonly unknown[] | 'already_posted' | 'failed'> {
-	try {
-		return await db.batch(writes);
-	} catch (error) {
-		if (sqliteResultCode(error) === 'SQLITE_CONSTRAINT_UNIQUE') return 'already_posted';
-		try {
-			console.error('settling a payment failed:', error);
-		} catch {
-			// nothing to report it to, and nothing this function may throw.
-		}
-		return 'failed';
-	}
 }
 
 /**
@@ -1456,16 +1466,7 @@ async function tellPeople(deps: SettleDeps, target: Target, settlement: Settleme
 				{ label: 'Donation', value: target.donation.id },
 				{ label: 'Transaction', value: settlement.providerTxnId }
 			],
-			// what an operator can actually do, and no more. the figure has to come from the
-			// processor because this app could not read it, and nothing in the dashboard posts a
-			// correcting entry — `post` in ../ledger/posting.ts is reached from the settlement path
-			// alone — so handing over the figure is the whole of what this alert can do with it.
-			action:
-				`Find this payment in the ${processor} dashboard and keep the fee it states, in the ` +
-				`currency the gift was charged in. Keep only a figure ${processor} states for this ` +
-				'payment: a fee reported in another currency is not one to convert, because the ' +
-				'converted figure is one nobody published. This deployment records nothing for it, ' +
-				'so carry that figure into the books your organisation keeps outside it.'
+			action: missingFeeCorrection(processor)
 		});
 	}
 

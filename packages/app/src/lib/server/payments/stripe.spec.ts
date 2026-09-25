@@ -715,6 +715,21 @@ describe('verifyEvent', () => {
 	 * account can send, and `SETTLEMENT_EVENT_TYPES` in ./stripe.ts says in as many words why it is
 	 * not handled here.
 	 */
+	it('reads no refund yet, asking Stripe nothing', async () => {
+		const { httpClient, calls } = recording([]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal({
+			id: 'evt_1',
+			kind: 'reversal',
+			type: 'refund.created',
+			providerNoticeId: 're_1',
+			occurredAt: new Date(1_770_000_000_000)
+		});
+
+		expect(result.ok === false && result.reason).toBe('unsupported');
+		expect(calls).toHaveLength(0);
+	});
+
 	it('reports an event this app handles nothing for as ignored', async () => {
 		const body = eventBody('charge.refunded', { id: 'ch_1', object: 'charge' });
 		const { httpClient } = recording([]);

@@ -579,6 +579,23 @@ const captured = (overrides: Record<string, unknown> = {}) => ({
 	...overrides
 });
 
+describe('readReversal', () => {
+	it('reads no refund yet, asking PayPal nothing', async () => {
+		const { calls } = recording([]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal({
+			id: 'WH-1',
+			kind: 'reversal',
+			type: 'PAYMENT.CAPTURE.REFUNDED',
+			providerNoticeId: '1JU08902781691411',
+			occurredAt: new Date(0)
+		});
+
+		expect(result.ok === false && result.reason).toBe('unsupported');
+		expect(calls).toHaveLength(0);
+	});
+});
+
 describe('readSettlement', () => {
 	/**
 	 * an order the payer has approved is captured, and the capture is what the fee is read off.

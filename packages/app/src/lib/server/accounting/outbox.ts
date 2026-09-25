@@ -2,6 +2,7 @@ import { and, eq, lte, sql, type SQL } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import type { Db } from '../db/client';
 import {
+	payment,
 	entryGroup,
 	quickbooksConnection,
 	quickbooksSync,
@@ -65,8 +66,10 @@ import type { Posting } from '../ledger/posting';
 // right answer without a line of its own. `payment` is a gift that reached the organisation and
 // `adjustment` is a correction a human posted; `fee` is deliberately not one of them, because a
 // processor's cut becomes a line on the record its sibling `payment` group is sent as (./record.ts
-// assembles the pair), and a row for it would send the same money twice. `donation` and `refund` are source types nothing in
-// this tree posts today.
+// assembles the pair), and a row for it would send the same money twice. `donation` is a source type
+// nothing in this tree posts. a refund's groups (../donations/reverse.ts) are owed nothing either:
+// `reversalWrites` in ../books/writes.ts calls nothing here, and a start-date move passes over the
+// `'payment'` group a refund that did not stand is put back under (`unqueuedFrom` below).
 
 /** the source type each kind of record owed to QuickBooks is posted under. */
 const OWED_KINDS = {
@@ -182,11 +185,17 @@ function proposedStartAt(startAt: Date): SQL {
 	return sql`(select ${startAt.getTime()} from ${quickbooksConnection} where ${quickbooksConnection.id} = ${CONNECTION_ID})`;
 }
 
-/** entry groups owed from `boundary` on that hold no queue row yet. */
+/**
+ * entry groups owed from `boundary` on that hold no queue row yet.
+ *
+ * a `'payment'` group on a refund-direction row is a refund that did not stand put back
+ * (../donations/reverse.ts), not a gift, and `giftOf` in ./record.ts would send it as one.
+ */
 function unqueuedFrom(boundary: SQL): SQL {
 	return sql`${entryGroup.sourceType} in (${OWED_TYPES_SQL})
 		and ${entryGroup.occurredAt} >= ${boundary}
-		and not exists (select 1 from ${quickbooksSync} where ${quickbooksSync.entryGroupId} = ${entryGroup.id})`;
+		and not exists (select 1 from ${quickbooksSync} where ${quickbooksSync.entryGroupId} = ${entryGroup.id})
+		and not exists (select 1 from ${payment} where ${payment.id} = ${entryGroup.sourceId} and ${payment.direction} = 'refund')`;
 }
 
 /** queue rows dated before `boundary` that no run has ever sent, and none holds at `now`. */

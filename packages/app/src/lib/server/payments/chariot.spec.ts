@@ -610,12 +610,22 @@ describe('what the account is approved for', () => {
 	});
 });
 
+/** a delivery about money leaving a settled grant, which no Chariot delivery is read into yet. */
+const REVERSAL_NOTICE = {
+	id: 'evt_1',
+	kind: 'reversal',
+	type: 'grant.updated',
+	providerNoticeId: 'grant_1',
+	occurredAt: new Date(0)
+} as const;
+
 describe('the arms a one-time grant has nothing behind', () => {
 	it.each([
 		['readRecurringGiftProvision', (p: PaymentProvider) => p.readRecurringGiftProvision()],
 		['prepareRecurringGifts', (p: PaymentProvider) => p.prepareRecurringGifts()],
 		['listWebhookEndpoints', (p: PaymentProvider) => p.listWebhookEndpoints()],
-		['listWalletDomains', (p: PaymentProvider) => p.listWalletDomains()]
+		['listWalletDomains', (p: PaymentProvider) => p.listWalletDomains()],
+		['readReversal', (p: PaymentProvider) => p.readReversal(REVERSAL_NOTICE)]
 	])('refuses %s as unsupported, asking Chariot nothing', async (_name, arm) => {
 		const calls = recording([]);
 

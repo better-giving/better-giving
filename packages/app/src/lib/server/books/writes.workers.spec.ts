@@ -5,7 +5,7 @@ import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import { contact, donation, payment, type ZapierTrigger } from '../db/schema';
 import { post, type Posting } from '../ledger/posting';
-import { correctionWrites, settledGiftWrites } from './writes';
+import { correctionWrites, reversalWrites, settledGiftWrites } from './writes';
 
 // what the composer hands a writer, spliced after that writer's own payment row and committed in
 // one `batch()` against a real D1.
@@ -260,5 +260,68 @@ describe('correctionWrites()', () => {
 
 	it('refuses a gift’s charge handed over as a correction', () => {
 		expect(() => correctionWrites(db, chargeOf(uuidv7()))).toThrow(/'adjustment'.*'payment'/);
+	});
+});
+
+describe('reversalWrites()', () => {
+	/** a refund's own row id, which both of a refund's groups are keyed on. */
+	const refundId = uuidv7();
+	const withdrawal = post({
+		sourceType: 'refund',
+		sourceId: refundId,
+		currency: 'USD',
+		occurredAt: AT,
+		lines: [
+			{ accountId: postableId('undepositedFunds'), amountMinor: -2_000 },
+			{ accountId: postableId('donationsDeductible'), amountMinor: 2_000 }
+		]
+	});
+	const reinstatement = post({
+		sourceType: 'payment',
+		sourceId: refundId,
+		currency: 'USD',
+		occurredAt: AT,
+		lines: [
+			{ accountId: postableId('undepositedFunds'), amountMinor: 2_000 },
+			{ accountId: postableId('donationsDeductible'), amountMinor: -2_000 }
+		]
+	});
+
+	/** a company connected and a Zap on every trigger, so an owed row would have somewhere to go. */
+	async function everyoneListening(): Promise<void> {
+		await connect();
+		await subscribe('new_gift');
+		await subscribe('new_donor');
+		await subscribe('gift_refunded');
+	}
+
+	it('writes a refund’s group, and owes QuickBooks and every Zap nothing yet', async () => {
+		await everyoneListening();
+
+		await db.batch(reversalWrites(db, { kind: 'refund', entry: withdrawal }));
+
+		expect(await books()).toEqual([
+			{ source_type: 'refund', source_id: refundId, lines: 2, debits: 2_000 }
+		]);
+		expect(await queued()).toEqual([]);
+		expect(await owedToZaps()).toEqual([]);
+	});
+
+	it('writes a failed refund’s reinstatement, and owes QuickBooks nothing for it as a gift', async () => {
+		await everyoneListening();
+
+		await db.batch(reversalWrites(db, { kind: 'refund_failed', entry: reinstatement }));
+
+		expect(await books()).toEqual([
+			{ source_type: 'payment', source_id: refundId, lines: 2, debits: 2_000 }
+		]);
+		expect(await queued()).toEqual([]);
+		expect(await owedToZaps()).toEqual([]);
+	});
+
+	it('refuses a gift’s charge handed over as a refund', () => {
+		expect(() => reversalWrites(db, { kind: 'refund', entry: chargeOf(uuidv7()) })).toThrow(
+			/'refund'.*'payment'/
+		);
 	});
 });

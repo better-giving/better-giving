@@ -1,11 +1,13 @@
-import { postableId } from '../db/accounts';
+import { POSTING_ACCOUNTS, postableId } from '../db/accounts';
 import type { PostableAccountId } from '../db/postable';
 import { post, type PostingLine } from '../ledger/posting';
 import type { Settlement } from '../payments/provider';
 
 // the entry groups a gift that reached the organisation makes: the two a charge that succeeded makes,
 // stated once for both halves of the webhook, and the one a gift received in hand makes
-// (`receivedInHandEntry`, for ./record-in-hand.ts).
+// (`receivedInHandEntry`, for ./record-in-hand.ts). and the two a refund of such a gift makes, for
+// ./reverse.ts: the money leaving (`reversalEntry`) and, where the refund did not stand, the money
+// coming back (`reinstatementEntry`).
 //
 // ./settle.ts posts a one-off gift against the payment row a quote minted, and ./collect.ts posts
 // a collection under a standing commitment. the accounting is the same accounting — a gift
@@ -32,8 +34,11 @@ import type { Settlement } from '../payments/provider';
  * date that is not a date; and a fee that is not whole, which `feeEntry` passes through because its
  * own guard is about sign rather than shape.
  *
- * both halves ask before they build an entry, because both have the same contract: they never
- * throw. a `PostingError` out of `chargeEntry` is an exception on the money path, which is a 500,
+ * a refund is asked the same question about its own figures (./reverse.ts), with no fee, which is
+ * why it takes the fields a refund also carries rather than a whole settlement.
+ *
+ * every writer asks before it builds an entry — ./settle.ts, ./collect.ts and ./reverse.ts —
+ * because all three have the same contract: they never throw. a `PostingError` out of `chargeEntry` is an exception on the money path, which is a 500,
  * which the processor reads as "deliver this again" for three days — against figures that will be
  * refused identically every time. a settlement the books cannot take is not a gift to record and it
  * is not an exception either; it is a delivery answered with a sentence somebody can act on.
@@ -45,9 +50,11 @@ import type { Settlement } from '../payments/provider';
  * across several funds, has a door of its own for that disagreement (`recognitionOf` there). so this
  * is every defect a settlement carries on its own, and only those.
  */
-export function unpostable(settlement: Settlement): string | null {
+export function unpostable(
+	settlement: Pick<Settlement, 'amountMinor' | 'currency' | 'occurredAt' | 'feeMinor'>
+): string | null {
 	if (!Number.isSafeInteger(settlement.amountMinor) || settlement.amountMinor <= 0) {
-		return `the amount collected is ${settlement.amountMinor}, which is not a positive whole number of minor units.`;
+		return `the amount is ${settlement.amountMinor}, which is not a positive whole number of minor units.`;
 	}
 	if (!/^[A-Z]{3}$/.test(settlement.currency)) {
 		return `the currency is ${JSON.stringify(settlement.currency)}, which is not a 3-letter uppercase ISO-4217 code.`;
@@ -124,10 +131,12 @@ export type ChargedGift = {
  * two agree today and a partial capture is what would part them.
  *
  * the shares therefore have to sum to the settled amount, and nothing here reconciles them. two
- * rules hold that together. no share is ever allocated proportionally — a settled amount spread
- * across lines by ratio is a split nobody chose, and it needs a rounding rule to place a residual
- * that no fund has a claim to — so a caller whose figures disagree decides at its own door what
- * that means rather than handing over numbers to be adjusted here. and `post()` refuses an entry
+ * rules hold that together. no share of a gift is ever allocated proportionally — a settled amount
+ * spread across lines by ratio is a split nobody chose, and it needs a rounding rule to place a
+ * residual that no fund has a claim to — so a caller whose figures disagree decides at its own door
+ * what that means rather than handing over numbers to be adjusted here. the one exception is a
+ * partial refund (`reversalEntry` below): it comes off every line of the gift in proportion, rounded
+ * by `shareOf`'s rule, and any other split is a correction in /admin/books. and `post()` refuses an entry
  * group that does not sum to zero (`unbalanced`, ../ledger/posting.ts), which is the backstop that
  * makes a caller skipping that door a loud failure rather than books that do not say where the
  * money went.
@@ -181,6 +190,147 @@ export function feeEntry(gift: ChargedGift, settlement: Settlement) {
 			{ accountId: postableId('undepositedFunds'), amountMinor: -fee }
 		]
 	});
+}
+
+/**
+ * `lines` scaled to `amountMinor`, each keeping its sign, one figure per line in the same order.
+ *
+ * debits and credits are apportioned separately, each side summing to exactly `amountMinor`, so
+ * the result balances whatever the rounding does. a side is split by largest remainder: every line
+ * takes the whole minor units of its share, and the units left over go one each to the lines whose
+ * shares lost the most, the earlier line winning a tie. deterministic, so the same lines and amount
+ * always make the same figures.
+ *
+ * integer arithmetic throughout, because a line times an amount can pass the range a float holds
+ * whole.
+ */
+function shareOf(lines: readonly PostingLine[], amountMinor: number): number[] {
+	const shares = lines.map(() => 0);
+	for (const sign of [1, -1]) {
+		const side = lines.flatMap((line, index) =>
+			Math.sign(line.amountMinor) === sign ? [{ index, whole: Math.abs(line.amountMinor) }] : []
+		);
+		const total = BigInt(side.reduce((sum, l) => sum + l.whole, 0));
+		const parts = side.map(({ index, whole }) => {
+			const scaled = BigInt(whole) * BigInt(amountMinor);
+			return { index, floor: scaled / total, remainder: scaled % total };
+		});
+		let left = BigInt(amountMinor) - parts.reduce((sum, p) => sum + p.floor, 0n);
+		const byClaim = [...parts].sort((a, b) =>
+			a.remainder === b.remainder ? a.index - b.index : a.remainder > b.remainder ? -1 : 1
+		);
+		for (const part of byClaim) {
+			const extra = left > 0n ? 1n : 0n;
+			left -= extra;
+			shares[part.index] = sign * Number(part.floor + extra);
+		}
+	}
+	return shares;
+}
+
+/** a gift in the books and the refund row that takes money back off it. */
+export type ReversedGift = {
+	/** the refund's own `payment.id` — `entry_group.source_id`. */
+	readonly refundPaymentId: string;
+	/** the gift the money was for, named in the memo as a charge names it. */
+	readonly donationId: string;
+	/** the lines of the gift's own `'payment'` group, in posting order. */
+	readonly original: readonly PostingLine[];
+	/** minor units: what the gift's earlier refunds that still stand have already taken off it. */
+	readonly alreadyRefundedMinor: number;
+};
+
+/** money that moved on a refund: how much, in what, and when. */
+export type RefundedMoney = {
+	/** minor units, positive, in the gift's own currency. */
+	readonly amountMinor: number;
+	readonly currency: string;
+	readonly occurredAt: Date;
+};
+
+/**
+ * the refund: the gift's own lines reversed, scaled to what was refunded.
+ *
+ * apportioned as the gift's share of everything refunded so far, this refund included, less its
+ * share of what earlier refunds took. so however the cents of each refund fall, refunds adding up to
+ * the whole gift take every line of it back exactly.
+ *
+ * the gift's posted lines are mirrored rather than named here, so a refund comes out of whichever
+ * asset account the gift went into — `1020` for a charge, and whatever else a gift was ever posted
+ * to — and off every fund it credited. the processor's fee is not in those lines and is not given
+ * back: it stays expensed in the gift's own `'fee'` group.
+ */
+export function reversalEntry(gift: ReversedGift, refund: RefundedMoney) {
+	return post({
+		sourceType: 'refund',
+		sourceId: gift.refundPaymentId,
+		currency: refund.currency,
+		occurredAt: refund.occurredAt,
+		memo: `refund on donation ${gift.donationId}`,
+		lines: refundShares(gift, refund.amountMinor)
+	});
+}
+
+/**
+ * this refund's figure for each of the gift's lines, reversed. a line whose figure comes to nothing
+ * is left out, because `post()` refuses a line of zero.
+ */
+function refundShares(gift: ReversedGift, amountMinor: number): PostingLine[] {
+	const before = shareOf(gift.original, gift.alreadyRefundedMinor);
+	const after = shareOf(gift.original, gift.alreadyRefundedMinor + amountMinor);
+	return gift.original
+		.map((line, i) => ({
+			accountId: line.accountId,
+			amountMinor: (before[i] ?? 0) - (after[i] ?? 0)
+		}))
+		.filter((line) => line.amountMinor !== 0);
+}
+
+/** a refund in the books that did not stand. */
+export type FailedRefund = {
+	/** the refund's own `payment.id` — `entry_group.source_id` of both its groups. */
+	readonly refundPaymentId: string;
+	readonly donationId: string;
+	/** the lines of the refund's own `'refund'` group, in posting order. */
+	readonly withdrawn: readonly PostingLine[];
+};
+
+/**
+ * the money a failed refund put back: the exact mirror of what the refund took.
+ *
+ * `('payment', refund row)`, because it is money in on that row, and it is the grain
+ * `entry_group_source_idx` in ../db/schema.ts gives a refund-direction row's reinstatement.
+ */
+export function reinstatementEntry(refund: FailedRefund, when: Omit<RefundedMoney, 'amountMinor'>) {
+	return post({
+		sourceType: 'payment',
+		sourceId: refund.refundPaymentId,
+		currency: when.currency,
+		occurredAt: when.occurredAt,
+		memo: `refund on donation ${refund.donationId} did not stand`,
+		lines: refund.withdrawn.map((line) => ({
+			accountId: line.accountId,
+			amountMinor: -line.amountMinor
+		}))
+	});
+}
+
+/**
+ * what an operator does about a settled charge posted with no fee (`feeEntry` above answers null),
+ * for the alert both halves of the webhook send about one. the figure has to come from the
+ * processor, because this app could not read it, and a correction in /admin/books
+ * (../books/correct.ts) posts it as `feeEntry` would have: out of `1020` into processor fees.
+ */
+export function missingFeeCorrection(processor: string): string {
+	const label = (account: { readonly code: string; readonly name: string }) =>
+		`${account.code} — ${account.name}`;
+	return (
+		`Find this payment in the ${processor} dashboard and the fee it states, in the currency the ` +
+		`gift was charged in. Keep only a figure ${processor} states for this payment: a fee reported ` +
+		'in another currency is not one to convert, because the converted figure is one nobody ' +
+		'published. Post it in /admin/books as a correction dated the day the payment settled, out of ' +
+		`${label(POSTING_ACCOUNTS.undepositedFunds)} into ${label(POSTING_ACCOUNTS.processorFees)}.`
+	);
 }
 
 /** a gift an operator entered by hand, as its one entry group needs it. */

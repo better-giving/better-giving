@@ -209,6 +209,9 @@ function provider(
 		async readRecurringGift() {
 			throw new Error('readRecurringGift is not part of the settlement path');
 		},
+		async readReversal() {
+			throw new Error('readReversal is not part of the settlement path');
+		},
 		async readAccountChargeability() {
 			throw new Error('readAccountChargeability is not part of the settlement path');
 		},
@@ -668,6 +671,38 @@ describe('settleDelivery() — a settlement the books cannot take', () => {
 		// to fix by hand.
 		const [row] = await db.select().from(payment).where(eq(payment.id, gift.paymentId));
 		expect(row?.status).toBe('succeeded');
+	});
+
+	it('tells the operator on the delivery that settled it, and on no later one', async () => {
+		await pendingGift();
+		const mail = mailer();
+		const unposted = deps({
+			email: mail.port,
+			provider: provider(undefined, { ok: true, value: settlement({ currency: 'usd' }) })
+		});
+
+		await settleDelivery(unposted, DELIVERY);
+		const again = await settleDelivery(unposted, DELIVERY);
+
+		expect(again).toMatchObject({ ok: true, outcome: 'unactionable' });
+		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+	});
+
+	it('answers a later read of a gift already posted as already posted, whatever it reports', async () => {
+		await pendingGift();
+		await settleDelivery(deps(), DELIVERY);
+		const mail = mailer();
+
+		const again = await settleDelivery(
+			deps({
+				email: mail.port,
+				provider: provider(undefined, { ok: true, value: settlement({ currency: 'usd' }) })
+			}),
+			DELIVERY
+		);
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect(mail.sent).toEqual([]);
 	});
 
 	it('names the offending figure in what it sends the operator', async () => {
@@ -1443,6 +1478,24 @@ describe('settleDelivery() — a settled charge whose fee is unknown', () => {
 		// no number is invented for it: undeposited funds is overstated until somebody posts it.
 		expect(await groupLines('fee', gift.paymentId)).toBeNull();
 		expect(mail.sent.map((m) => m.to)).toContain('ops@hope.example');
+	});
+
+	it('sends the operator to the Books correction that posts the fee', async () => {
+		await pendingGift();
+		const mail = mailer();
+
+		await settleDelivery(
+			deps({
+				email: mail.port,
+				provider: provider(undefined, { ok: true, value: settlement({ feeMinor: null }) })
+			}),
+			DELIVERY
+		);
+
+		const alerted = mail.sent.find((m) => m.subject.includes('no processor fee'));
+		expect(alerted?.text).toContain('/admin/books');
+		expect(alerted?.text).toContain('out of 1020 — Undeposited Funds into 5200 — Processor Fees');
+		expect(alerted?.text).not.toContain('outside it');
 	});
 });
 

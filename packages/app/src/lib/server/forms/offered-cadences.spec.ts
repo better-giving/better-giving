@@ -42,6 +42,7 @@ function port(
 		verifyEvent: unused('verifyEvent'),
 		readSettlement: unused('readSettlement'),
 		readRecurringGift: unused('readRecurringGift'),
+		readReversal: unused('readReversal'),
 		readAccountChargeability: unused('readAccountChargeability'),
 		readRailSwitchboard: unused('readRailSwitchboard'),
 		listWebhookEndpoints: unused('listWebhookEndpoints'),

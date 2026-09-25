@@ -2004,7 +2004,18 @@ describe('the arms a crypto payment has nothing behind', () => {
 				provider().replaceWebhookEndpoint('1', 'https://donate.example.org/api/nowpayments/webhook')
 		],
 		['listWalletDomains', () => provider().listWalletDomains()],
-		['registerWalletDomain', () => provider().registerWalletDomain('donate.example.org')]
+		['registerWalletDomain', () => provider().registerWalletDomain('donate.example.org')],
+		[
+			'readReversal',
+			() =>
+				provider().readReversal({
+					id: 'ipn-1',
+					kind: 'reversal',
+					type: 'refunded',
+					providerNoticeId: '5745459419',
+					occurredAt: new Date(0)
+				})
+		]
 	])('answers %s as unsupported, asking NOWPayments nothing', async (_name, ask) => {
 		const calls = serving(() => undefined);
 

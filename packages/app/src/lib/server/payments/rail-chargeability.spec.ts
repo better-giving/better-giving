@@ -106,6 +106,7 @@ function port(
 		verifyEvent: unused('verifyEvent'),
 		readSettlement: unused('readSettlement'),
 		readRecurringGift: unused('readRecurringGift'),
+		readReversal: unused('readReversal'),
 		async readAccountChargeability() {
 			calls.push('readAccountChargeability');
 			return answer;

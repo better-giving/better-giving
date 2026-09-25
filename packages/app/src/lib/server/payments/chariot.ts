@@ -397,6 +397,11 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 		createRecurringGift: async () => unsupported(NO_REPEATING_GRANTS),
 		cancelRecurringGift: async () => unsupported(NO_REPEATING_GRANTS),
 		readRecurringGift: async () => unsupported(NO_REPEATING_GRANTS),
+		// no Chariot event is read into a reversal yet (`verifyEvent` above), so nothing reaches this.
+		readReversal: async () =>
+			unsupported(
+				'This release reads no reversal of a Chariot grant. Nothing was asked of Chariot.'
+			),
 		listWebhookEndpoints: async () => unsupported(NO_LISTENER_ARMS),
 		registerWebhookEndpoint: async () => unsupported(NO_LISTENER_ARMS),
 		resubscribeWebhookEndpoint: async () => unsupported(NO_LISTENER_ARMS),
