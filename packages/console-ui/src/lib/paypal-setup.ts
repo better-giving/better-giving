@@ -2,13 +2,13 @@ import { z } from 'zod';
 import type { PaypalRunRead, PaypalSetup, PaypalStage } from '../api/types';
 import type { StatedForm } from './use-console-form';
 
-// what one press of ./paypal-section.tsx carries, the rule its two boxes are read against, and the
-// lines its run is drawn as.
+// what one press of ./paypal-section.tsx carries, the rules its three boxes are read against, and
+// the lines its run is drawn as.
 //
-// **one press, two boxes, and nothing about the webhook to type.** the binary registers or keeps the
-// listener at this deployment's address and writes the pair and that listener's id in one write
-// (`packages/console/internal/paypal/setup.go`), so the id has no box and nobody opens PayPal's
-// dashboard for it.
+// **one press, three boxes, and nothing about the webhook to type.** the pair, and the address it is
+// sent to. the binary registers or keeps the listener at this deployment's address and writes the
+// pair, the address and that listener's id in one write (`packages/console/internal/paypal/setup.go`),
+// so the id has no box and nobody opens PayPal's dashboard for it.
 //
 // a module beside the section rather than expressions inside it, for ./stripe-press.ts's reason:
 // ../../vite.config.ts pins one node pool and no dom, so this is the part a suite here can hold.
@@ -16,19 +16,48 @@ import type { StatedForm } from './use-console-form';
 /** what the press posts, which is the submitting button's own value. */
 export const PAYPAL_SETUP_INTENT = 'paypal:set-up';
 
-/** the two names the boxes carry, in the order the screen draws them. */
-export const PAYPAL_PAIR_NAMES = ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET'] as const;
+/**
+ * where live PayPal answers, and what the address box holds where the deployment stores none.
+ *
+ * the deployment reads an unset `PAYPAL_API_URL` as this address, so a deployment on live reads back
+ * empty and the box is drawn with it rather than blank.
+ */
+export const PAYPAL_LIVE = 'https://api-m.paypal.com';
 
-export type PaypalPairName = (typeof PAYPAL_PAIR_NAMES)[number];
+/** where PayPal's sandbox answers, named under the address box for an operator rehearsing. */
+export const PAYPAL_SANDBOX = 'https://api-m.sandbox.paypal.com';
 
-/** what the two boxes hold. */
-export type PaypalPairBoxes = Readonly<Record<PaypalPairName, string>>;
+/** the three names the boxes carry, in the order the screen draws them. */
+export const PAYPAL_BOX_NAMES = [
+	'PAYPAL_CLIENT_ID',
+	'PAYPAL_CLIENT_SECRET',
+	'PAYPAL_API_URL'
+] as const;
 
-/** the field one half of the pair is posted under. */
-export const PAIR_FIELD = <N extends PaypalPairName>(name: N): `pair:${N}` => `pair:${name}`;
+export type PaypalBoxName = (typeof PAYPAL_BOX_NAMES)[number];
+
+/** what the three boxes hold. */
+export type PaypalBoxes = Readonly<Record<PaypalBoxName, string>>;
+
+/** the field one box is posted under. */
+export const PAYPAL_FIELD = <N extends PaypalBoxName>(name: N): `paypal:${N}` => `paypal:${name}`;
 
 /** what a box left empty says under it. */
 export const PAIR_BLANK = 'required';
+
+/** what an address box holding something other than an address says under it. */
+export const PAYPAL_NOT_ADDRESS = 'an https:// address with nothing after the domain';
+
+/**
+ * whether a typed address is one the binary calls, already trimmed: one trailing slash dropped, and
+ * what is left an https origin and nothing more — the reading ./chariot-setup.ts's
+ * `isChariotAddress` makes of Chariot's box, held apart because each follows its own binary door.
+ */
+export function isPaypalAddress(typed: string): boolean {
+	const bare = typed.endsWith('/') ? typed.slice(0, -1) : typed;
+	// no path, query, fragment or user in front of the host: any of them is past the origin.
+	return /^https:\/\/[^/?#@\s]+$/.test(bare) && URL.canParse(bare);
+}
 
 /**
  * one half of the pair.
@@ -39,43 +68,61 @@ export const PAIR_BLANK = 'required';
  */
 const half = z.string(PAIR_BLANK).trim().min(1, PAIR_BLANK);
 
-const pairBoxes = z.object({
-	[PAIR_FIELD('PAYPAL_CLIENT_ID')]: half,
-	[PAIR_FIELD('PAYPAL_CLIENT_SECRET')]: half
+/* an emptied address is live, which is what the binary reads it as. */
+const paypalBoxes = z.object({
+	[PAYPAL_FIELD('PAYPAL_CLIENT_ID')]: half,
+	[PAYPAL_FIELD('PAYPAL_CLIENT_SECRET')]: half,
+	[PAYPAL_FIELD('PAYPAL_API_URL')]: z
+		.string()
+		.trim()
+		.optional()
+		.refine(
+			(typed) => typed === undefined || typed === '' || isPaypalAddress(typed),
+			PAYPAL_NOT_ADDRESS
+		)
 });
 
 /**
- * the section's form: its id and the one rule its press runs first.
+ * the section's form: its id and the rules its press runs first.
  *
  * **both halves, every press.** a stored secret is a var the account hands back and the box is
  * seeded with it (./held-values.ts), so pressing again over the seeds is the repair — the listener
  * found and kept, its subscription brought level — and an emptied box is refused rather than read
  * as taking PayPal off.
  */
-export const PAYPAL_FORM: StatedForm<typeof pairBoxes> = { id: 'paypal', schema: pairBoxes };
+export const PAYPAL_FORM: StatedForm<typeof paypalBoxes> = { id: 'paypal', schema: paypalBoxes };
 
 /**
- * the pair a press posted, read by the same rule the boxes were, or the boxes it refuses.
+ * the pair a press posted and the address it goes to, read by the same rules the boxes were, or the
+ * boxes it refuses by the value's own name.
  *
  * the route's reading of the body, so a press that reaches the action without the form's own pass
- * sends the binary nothing it would turn down.
+ * sends the binary nothing it would turn down. the three travel as one body, and an emptied address
+ * goes as an empty string, which the binary reads as live.
  */
-export function paypalPairPosted(
-	posted: FormData
-):
-	| { readonly ok: true; readonly pair: { readonly clientId: string; readonly secret: string } }
+export function paypalPairPosted(posted: FormData):
+	| {
+			readonly ok: true;
+			readonly pair: {
+				readonly clientId: string;
+				readonly secret: string;
+				readonly address: string;
+			};
+	  }
 	| { readonly ok: false; readonly errors: Record<string, string> } {
-	const read = (name: PaypalPairName) => {
-		const value = posted.get(PAIR_FIELD(name));
+	const read = (name: PaypalBoxName) => {
+		const value = posted.get(PAYPAL_FIELD(name));
 		return typeof value === 'string' ? value.trim() : '';
 	};
 	const clientId = read('PAYPAL_CLIENT_ID');
 	const secret = read('PAYPAL_CLIENT_SECRET');
+	const address = read('PAYPAL_API_URL');
 	const errors: Record<string, string> = {};
 	if (clientId === '') errors.PAYPAL_CLIENT_ID = PAIR_BLANK;
 	if (secret === '') errors.PAYPAL_CLIENT_SECRET = PAIR_BLANK;
+	if (address !== '' && !isPaypalAddress(address)) errors.PAYPAL_API_URL = PAYPAL_NOT_ADDRESS;
 	if (Object.keys(errors).length > 0) return { ok: false, errors };
-	return { ok: true, pair: { clientId, secret } };
+	return { ok: true, pair: { clientId, secret, address } };
 }
 
 /**
@@ -142,22 +189,22 @@ export function reportStands(live: PaypalRunRead | null, cardUp: boolean): boole
 const STORED: readonly PaypalSetup['kind'][] = ['done', 'unrepeating'];
 
 /**
- * the pair the boxes are seeded from, and whether a write has put them back to it.
+ * what the boxes are seeded from, and whether a write has put them back to it.
  *
  * `storing` is one write and the only one, so the stops past it — `done`, and `unrepeating` after
- * it — are the pair on the deployment. what the press sent seeds the boxes from that answer until
- * the reading after it lands, which reports the same two values — `keysStanding` in
+ * it — are the boxes on the deployment. what the press sent seeds the boxes from that answer until
+ * the reading after it lands, which reports the same values — `keysStanding` in
  * ./stripe-press.ts is the same seeding and argues it.
  *
- * a run the press started that has not stored the pair keeps the boxes holding what was sent,
+ * a run the press started that has not stored them keeps the boxes holding what was sent,
  * `boxesStanding` in ./chariot-setup.ts's rule and reason.
  */
-export function pairStanding(press: {
-	readonly reported: PaypalPairBoxes;
-	readonly sent: PaypalPairBoxes | null;
+export function boxesStanding(press: {
+	readonly reported: PaypalBoxes;
+	readonly sent: PaypalBoxes | null;
 	readonly run: PaypalRunRead | null;
 	readonly reread: boolean;
-}): { readonly seeded: PaypalPairBoxes; readonly spent: boolean } {
+}): { readonly seeded: PaypalBoxes; readonly spent: boolean } {
 	const { sent, run } = press;
 	if (sent === null || run === null) return { seeded: press.reported, spent: press.reread };
 	if (run.kind === 'running' || !STORED.includes(run.outcome.kind)) {

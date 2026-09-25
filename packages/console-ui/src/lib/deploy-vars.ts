@@ -17,8 +17,8 @@ import type { DeployVarName } from '../api/types';
 // somewhere to type it: the payments fold's PayPal section draws it, as a two-position switch with
 // a press of its own (./paypal-charity.ts). it is in no group because it is no credential — it is
 // the organisation's answer about which of two published fee tables a donor covering fees is quoted
-// from, set months after the keys are — and PayPal's three credentials are one group beside it
-// (`PAYPAL_GROUP` in ./secret-groups.ts).
+// from, set months after the keys are — and PayPal's credentials and their address are one group
+// beside it (`PAYPAL_GROUP` in ./secret-groups.ts).
 //
 // it is a list rather than a remark in a header because ./secret-groups.spec.ts reads it: the
 // covering there is two-directional, so a name added to the enumeration lands in a group or here,

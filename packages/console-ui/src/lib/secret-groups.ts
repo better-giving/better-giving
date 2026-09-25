@@ -67,12 +67,12 @@ export const SECRET_GROUPS: readonly SecretGroup[] = [
 		label: 'Taking card payments',
 		names: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']
 	},
-	/* the second processor's own credentials, and a group of its own rather than three names added
-	   to the one above: the two processors are alternatives, so a deployment set up on one holds
+	/* the second processor's own credentials, and a group of its own rather than names added to the
+	   one above: the two processors are alternatives, so a deployment set up on one holds
 	   none of the other's and a single press over both would ask an operator to commit values they
-	   will never have. the three are one press because an operator holds all three off one PayPal
-	   app — the pair that authenticates every call, and the id of the listener it hears settlements
-	   on.
+	   will never have. the four are one press because an operator holds all four off one PayPal app —
+	   the pair that authenticates every call, which of PayPal's two hosts that pair is good against,
+	   and the id of the listener it hears settlements on.
 
 	   `PAYPAL_CHARITY_RATE_APPROVED` is deliberately not among them. it is an answer about the
 	   organisation rather than a credential, it is set months after the keys are, and it is drawn as
@@ -81,7 +81,7 @@ export const SECRET_GROUPS: readonly SecretGroup[] = [
 	{
 		id: 'paypal',
 		label: 'Taking PayPal and Venmo',
-		names: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'PAYPAL_WEBHOOK_ID']
+		names: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'PAYPAL_API_URL', 'PAYPAL_WEBHOOK_ID']
 	},
 	/* the third processor's, a group of its own for the second's reason. the four are one press
 	   because none of them is useful without the key: the address is where the key is sent, and the
@@ -135,8 +135,9 @@ export const PAYMENTS_GROUP = 'payments';
 /**
  * the group the same fold's PayPal section draws, named here for {@link SIGN_IN_GROUP}'s reason.
  *
- * the three credentials alone. what the same section draws beside them and this group does not hold
- * is the charity-rate switch, which carries a press of its own (./paypal-charity.ts).
+ * the credentials and the address they are sent to. what the same section draws beside them and
+ * this group does not hold is the charity-rate switch, which carries a press of its own
+ * (./paypal-charity.ts).
  */
 export const PAYPAL_GROUP = 'paypal';
 

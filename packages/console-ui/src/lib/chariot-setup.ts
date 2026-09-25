@@ -284,7 +284,7 @@ const STORED: readonly ChariotSetup['kind'][] = ['done', 'unretired'];
 /**
  * what the boxes are seeded from, and whether a write has put them back to it.
  *
- * `pairStanding` in ./paypal-setup.ts, over two boxes: what the press sent seeds them from the
+ * `boxesStanding` in ./paypal-setup.ts, over two boxes: what the press sent seeds them from the
  * answer that says it stored them until the reading after it lands.
  *
  * **a run the press started that has not stored them keeps them holding what was sent**, going or
