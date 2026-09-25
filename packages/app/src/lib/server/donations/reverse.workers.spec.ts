@@ -779,7 +779,7 @@ describe('recordReversal() — a refund of one monthly charge', () => {
 });
 
 describe('recordReversal() — what a refund owes QuickBooks and the Zaps', () => {
-	it('queues nothing for QuickBooks and nothing for any Zap', async () => {
+	it('queues one QuickBooks row for the refund of a queued gift, and nothing for any Zap', async () => {
 		await env.DB.prepare(
 			`insert into quickbooks_connection (id, realm_id, access_token, access_token_expires_at,
 			                                    refresh_token, start_at, created_at, updated_at)
@@ -807,7 +807,13 @@ describe('recordReversal() — what a refund owes QuickBooks and the Zaps', () =
 
 		await recordReversal(deps(), refund(), 'evt_r1');
 
-		expect(await owed()).toEqual(before);
+		const after = await owed();
+		const refundGroup = await env.DB.prepare(
+			`select id as entry_group_id from entry_group where source_type = 'refund'`
+		).first();
+		expect(after.quickbooks).toHaveLength(2);
+		expect(after.quickbooks).toEqual(expect.arrayContaining([...before.quickbooks, refundGroup]));
+		expect(after.zaps).toEqual(before.zaps);
 	});
 });
 

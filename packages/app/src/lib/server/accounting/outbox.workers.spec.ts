@@ -434,7 +434,7 @@ describe('moving the date a connection starts from', () => {
 
 describe('what a move would do, asked before it is made', () => {
 	const NOW = new Date('2026-06-01T00:00:00.000Z');
-	const NONE = { gifts: 0, corrections: 0, earliest: null, latest: null };
+	const NONE = { gifts: 0, corrections: 0, reversals: 0, earliest: null, latest: null };
 
 	it('answers with what an earlier date then queues, gifts and corrections apart', async () => {
 		const first = new Date('2025-10-02T00:00:00.000Z');
@@ -453,7 +453,7 @@ describe('what a move would do, asked before it is made', () => {
 		await moveQuickbooksStartAt(db, proposed, NOW);
 
 		expect(answer).toEqual({
-			queues: { gifts: 2, corrections: 1, earliest: first, latest: last },
+			queues: { gifts: 2, corrections: 1, reversals: 0, earliest: first, latest: last },
 			drops: NONE
 		});
 		expect(await queued()).toHaveLength(4);
@@ -475,7 +475,7 @@ describe('what a move would do, asked before it is made', () => {
 
 		expect(answer).toEqual({
 			queues: NONE,
-			drops: { gifts: 1, corrections: 2, earliest: first, latest: last }
+			drops: { gifts: 1, corrections: 2, reversals: 0, earliest: first, latest: last }
 		});
 		expect(await queued()).toHaveLength(4);
 		await moveQuickbooksStartAt(db, proposed, NOW);

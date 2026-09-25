@@ -128,6 +128,7 @@ vi.mock('$lib/server/accounting/factory', () => ({
 			},
 			sendGift: unasked,
 			sendCorrection: unasked,
+			sendReversal: unasked,
 			authorizeUrl: unasked,
 			revokeTokens: unasked
 		};

@@ -20,8 +20,12 @@ import type {
 	AccountingFailure,
 	AccountingFailureReason,
 	AccountingProvider,
-	SendAttempt
+	AccountingResult,
+	RemoteRecord,
+	SendAttempt,
+	Sendable
 } from './provider';
+import { awaitingWhatItAnswers } from './outbox';
 import { readSendable } from './record';
 
 // the outbox, delivered: what reads `quickbooks_sync` and sends what it names.
@@ -230,16 +234,18 @@ function waitIsOver(now: Date): SQL {
 }
 
 /**
- * the rows a run may take: owed, and held by nobody.
+ * the rows a run may take: owed, held by nobody, and not a reversal whose gift has yet to go over.
  *
  * a lease that has run out is no lease — the run that wrote it is gone and the gift is owed either
  * way. `pending` and no other status: a row given up on waits for a person, and a sent one is
- * finished.
+ * finished. a reversal waits on the row it answers being `sent` (`awaitingWhatItAnswers` in
+ * ./outbox.ts), and is taken by the first run after it is.
  */
 function unclaimed(now: Date) {
 	return and(
 		eq(quickbooksSync.status, 'pending'),
-		or(isNull(quickbooksSync.leasedUntil), lte(quickbooksSync.leasedUntil, now))
+		or(isNull(quickbooksSync.leasedUntil), lte(quickbooksSync.leasedUntil, now)),
+		sql`not ${awaitingWhatItAnswers(quickbooksSync.entryGroupId)}`
 	);
 }
 
@@ -403,10 +409,7 @@ export async function sendQueuedEntry(
 	// held by the claim, so it is the `updated_at` the last row-level answer or retry wrote: the same
 	// after a call that never answered, a stopped run or a run that died.
 	const revision = String(claimed.updatedAt.getTime());
-	const sent =
-		sendable.value.kind === 'gift'
-			? await deps.provider.sendGift(sendable.value.gift, attempt, revision)
-			: await deps.provider.sendCorrection(sendable.value.correction, attempt, revision);
+	const sent = await sendOver(deps.provider, sendable.value, attempt, revision);
 	if (!sent.ok) return land(deps.db, entryGroupId, sent, 'sent', now);
 
 	await deps.db
@@ -422,10 +425,29 @@ export async function sendQueuedEntry(
 	return { disposition: 'sent', remoteId: sent.value.remoteId };
 }
 
+function sendOver(
+	provider: AccountingProvider,
+	sendable: Sendable,
+	attempt: SendAttempt,
+	revision: string
+): Promise<AccountingResult<RemoteRecord>> {
+	switch (sendable.kind) {
+		case 'gift':
+			return provider.sendGift(sendable.gift, attempt, revision);
+		case 'correction':
+			return provider.sendCorrection(sendable.correction, attempt, revision);
+		case 'reversal':
+			return provider.sendReversal(sendable.reversal, attempt, revision);
+	}
+}
+
 /** why nothing was claimed, in the words a person reads. nothing was sent on any of these paths. */
 async function unclaimable(db: Db, entryGroupId: string): Promise<QueuedEntryResult> {
 	const [queued] = await db
-		.select({ status: quickbooksSync.status })
+		.select({
+			status: quickbooksSync.status,
+			awaiting: sql<number>`${awaitingWhatItAnswers(quickbooksSync.entryGroupId)}`
+		})
 		.from(quickbooksSync)
 		.where(eq(quickbooksSync.entryGroupId, entryGroupId));
 
@@ -447,6 +469,12 @@ async function unclaimable(db: Db, entryGroupId: string): Promise<QueuedEntryRes
 		return {
 			disposition: 'nothing_owed',
 			detail: `The journal entry ${entryGroupId} was given up on, and reaches QuickBooks only if somebody retries it.`
+		};
+	}
+	if (queued.awaiting === 1) {
+		return {
+			disposition: 'nothing_owed',
+			detail: `The journal entry ${entryGroupId} reverses one QuickBooks does not hold yet, and is sent once that one is.`
 		};
 	}
 	return {

@@ -67,6 +67,7 @@ async function giftFrom() {
 	const paymentId = uuidv7();
 	return {
 		contactId,
+		donationId,
 		paymentId,
 		rows: [
 			db
@@ -287,40 +288,77 @@ describe('reversalWrites()', () => {
 		]
 	});
 
-	/** a company connected and a Zap on every trigger, so an owed row would have somewhere to go. */
-	async function everyoneListening(): Promise<void> {
+	/**
+	 * a $50 gift in the books and queued for QuickBooks, the refund row every group below is keyed on,
+	 * and a Zap on every trigger, so an owed row would have somewhere to go.
+	 */
+	async function refundedGift(): Promise<string> {
 		await connect();
+		const gift = await giftFrom();
+		await db.batch([
+			...gift.rows,
+			...settledGiftWrites(db, {
+				charge: chargeOf(gift.paymentId),
+				fee: null,
+				contactId: gift.contactId
+			})
+		]);
+		await db.insert(payment).values({
+			id: refundId,
+			donationId: gift.donationId,
+			amountMinor: 2_000,
+			currency: 'USD',
+			direction: 'refund',
+			method: 'card',
+			status: 'succeeded',
+			provider: 'stripe',
+			providerTxnId: `re_${refundId}`,
+			occurredAt: AT,
+			parentPaymentId: gift.paymentId
+		});
 		await subscribe('new_gift');
 		await subscribe('new_donor');
 		await subscribe('gift_refunded');
+		return gift.paymentId;
 	}
 
-	it('writes a refund’s group, and owes QuickBooks and every Zap nothing yet', async () => {
-		await everyoneListening();
+	it('writes a refund’s group and the queue row it owes behind its gift, and owes every Zap nothing yet', async () => {
+		const giftId = await refundedGift();
 
 		await db.batch(reversalWrites(db, { kind: 'refund', entry: withdrawal }));
 
 		expect(await books()).toEqual([
+			{ source_type: 'payment', source_id: giftId, lines: 2, debits: 5_000 },
 			{ source_type: 'refund', source_id: refundId, lines: 2, debits: 2_000 }
 		]);
-		expect(await queued()).toEqual([]);
+		expect(await queued()).toEqual([
+			{ source_type: 'payment', source_id: giftId, status: 'pending' },
+			{ source_type: 'refund', source_id: refundId, status: 'pending' }
+		]);
 		expect(await owedToZaps()).toEqual([]);
 	});
 
-	it('writes a failed refund’s reinstatement, and owes QuickBooks nothing for it as a gift', async () => {
-		await everyoneListening();
+	it('writes a failed refund’s reinstatement and the queue row it owes behind its refund, and owes every Zap nothing', async () => {
+		const giftId = await refundedGift();
+		await db.batch(reversalWrites(db, { kind: 'refund', entry: withdrawal }));
 
 		await db.batch(reversalWrites(db, { kind: 'refund_failed', entry: reinstatement }));
 
-		expect(await books()).toEqual([
-			{ source_type: 'payment', source_id: refundId, lines: 2, debits: 2_000 }
-		]);
-		expect(await queued()).toEqual([]);
+		const rows = await queued();
+		expect(rows).toHaveLength(3);
+		expect(rows).toEqual(
+			expect.arrayContaining([
+				{ source_type: 'payment', source_id: giftId, status: 'pending' },
+				{ source_type: 'payment', source_id: refundId, status: 'pending' },
+				{ source_type: 'refund', source_id: refundId, status: 'pending' }
+			])
+		);
 		expect(await owedToZaps()).toEqual([]);
 	});
 
-	it('writes a lost dispute’s settle-up as a correction on the withdrawal, and owes QuickBooks and every Zap nothing yet', async () => {
-		await everyoneListening();
+	it('writes a lost dispute’s settle-up and the queue row it owes behind its withdrawal, and owes every Zap nothing', async () => {
+		const giftId = await refundedGift();
+		await db.batch(reversalWrites(db, { kind: 'dispute_opened', entry: withdrawal }));
 		const settleUp = post({
 			sourceType: 'adjustment',
 			sourceId: refundId,
@@ -334,10 +372,11 @@ describe('reversalWrites()', () => {
 
 		await db.batch(reversalWrites(db, { kind: 'settle_up', entry: settleUp }));
 
-		expect(await books()).toEqual([
-			{ source_type: 'adjustment', source_id: refundId, lines: 2, debits: 700 }
+		expect(await queued()).toEqual([
+			{ source_type: 'adjustment', source_id: refundId, status: 'pending' },
+			{ source_type: 'payment', source_id: giftId, status: 'pending' },
+			{ source_type: 'refund', source_id: refundId, status: 'pending' }
 		]);
-		expect(await queued()).toEqual([]);
 		expect(await owedToZaps()).toEqual([]);
 	});
 

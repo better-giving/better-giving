@@ -95,11 +95,9 @@ const REVERSAL_SOURCE_TYPES = {
 } as const satisfies Record<ReversalEntry['kind'], EntrySourceType>;
 
 /**
- * a reversal's group, owing QuickBooks nothing and no Zap. `outboxStatements` has no gate for "only
- * where the gift was sent", and a reinstatement it queued under `'payment'` would go over as a new
- * gift, and a settle-up under `'adjustment'` as a correction to a withdrawal QuickBooks never
- * heard of — which is why a start-date move passes over both too (`unqueuedFrom` in
- * ../accounting/outbox.ts, by their source id being a refund row). no Zap trigger fires on a
+ * a reversal's group and the queue row it owes, owing no Zap. whether QuickBooks is owed it is the
+ * group it answers holding a queue row (../accounting/outbox.ts), read off the refund row the
+ * caller's batch writes or already holds, so it goes after that row. no Zap trigger fires on a
  * reversal.
  */
 export function reversalWrites(db: Db, reversal: ReversalEntry): Writes {
@@ -109,7 +107,7 @@ export function reversalWrites(db: Db, reversal: ReversalEntry): Writes {
 		REVERSAL_SOURCE_TYPES[reversal.kind],
 		'$lib/server/donations/entries.ts'
 	);
-	return postingStatements(db, reversal.entry);
+	return [...postingStatements(db, reversal.entry), ...outboxStatements(db, [reversal.entry])];
 }
 
 function inSlot(

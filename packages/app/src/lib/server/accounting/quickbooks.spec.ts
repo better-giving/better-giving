@@ -1161,7 +1161,13 @@ describe('sending a correction', () => {
 
 		// both of this app's accounts map to the one QuickBooks account, so the entry would move
 		// nothing — and an entry that moves nothing is worse than none: it reads as a correction made.
-		expect(result).toMatchObject({ ok: false, reason: 'invalid_record', retryable: false });
+		expect(result).toMatchObject({
+			ok: false,
+			reason: 'invalid_record',
+			retryable: false,
+			detail:
+				'This correction moves money between two accounts that are both sent to the same QuickBooks account, so it would post an entry that changes nothing. Correct it in QuickBooks instead.'
+		});
 	});
 });
 

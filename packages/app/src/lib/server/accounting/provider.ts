@@ -275,10 +275,20 @@ export type CorrectionRecord = {
 	readonly lines: readonly [CorrectionLine, CorrectionLine, ...CorrectionLine[]];
 };
 
+/**
+ * money leaving a gift already sent, or coming back to it, as it goes over: a refund's or a
+ * dispute's withdrawal, a withdrawal put back when it did not stand, and a lost dispute's settle-up.
+ *
+ * a correcting entry's lines, with the gift's donor as their contact stands now, which the adapter
+ * finds a customer for the way it finds a gift's.
+ */
+export type ReversalRecord = CorrectionRecord & { readonly donor: Donor };
+
 /** what one queued entry group turns out to be. */
 export type Sendable =
 	| { readonly kind: 'gift'; readonly gift: GiftRecord }
-	| { readonly kind: 'correction'; readonly correction: CorrectionRecord };
+	| { readonly kind: 'correction'; readonly correction: CorrectionRecord }
+	| { readonly kind: 'reversal'; readonly reversal: ReversalRecord };
 
 /**
  * whether the record being sent has been handed to the provider before.
@@ -405,8 +415,8 @@ export interface AccountingProvider {
 	 * one account made in the company's chart to hold a processor's money until it pays out, for a
 	 * connection whose chart names none.
 	 *
-	 * the only thing this port writes into a company besides a gift, a correction and the donor on
-	 * one, and it is asked for by the connect-time fill alone (./connection.ts).
+	 * the only thing this port writes into a company besides a gift, a correction, a reversal and
+	 * the donor on one, and it is asked for by the connect-time fill alone (./connection.ts).
 	 */
 	createHoldingAccount(name: string): Promise<AccountingResult<LedgerAccount>>;
 
@@ -427,6 +437,16 @@ export interface AccountingProvider {
 	/** one correcting entry into the company's books, keyed the same way. */
 	sendCorrection(
 		correction: CorrectionRecord,
+		attempt: SendAttempt,
+		revision: string
+	): Promise<AccountingResult<RemoteRecord>>;
+
+	/**
+	 * one reversal of a gift already sent into the company's books, keyed the same way. never sent
+	 * ahead of the record it answers (./deliver.ts).
+	 */
+	sendReversal(
+		reversal: ReversalRecord,
 		attempt: SendAttempt,
 		revision: string
 	): Promise<AccountingResult<RemoteRecord>>;

@@ -107,6 +107,7 @@ vi.mock('$lib/server/accounting/factory', () => ({
 			readCompany: unasked,
 			sendGift: unasked,
 			sendCorrection: unasked,
+			sendReversal: unasked,
 			authorizeUrl: unasked,
 			exchangeCode: unasked,
 			createHoldingAccount: unasked

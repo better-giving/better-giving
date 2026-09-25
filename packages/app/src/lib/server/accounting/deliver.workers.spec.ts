@@ -112,6 +112,12 @@ function provider(
 			revisions.push(revision);
 			return answer(correction.key);
 		},
+		async sendReversal(reversal, attempt, revision) {
+			asked.push(reversal.key);
+			attempts.push(attempt);
+			revisions.push(revision);
+			return answer(reversal.key);
+		},
 		readCompany: notAsked,
 		listAccounts: notAsked,
 		createHoldingAccount: notAsked,

@@ -103,8 +103,8 @@ import { reinstatementEntry, reversalEntry, settleUpEntry, unpostable } from './
 // told nothing.
 //
 // ---------------------------------------------------------------------------
-// a reversal, its settle-up included, owes QuickBooks nothing and no Zap hears of it
-// (`reversalWrites` in ../books/writes.ts says why), and a refund of one collection under a
+// a reversal, its settle-up included, owes QuickBooks a row only where the group it answers holds
+// one (../accounting/outbox.ts), and no Zap hears of it. a refund of one collection under a
 // repeating gift leaves the commitment collecting: stopping it is its own act.
 //
 // ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ import {
 	type GiftRecord,
 	type LedgerAccount,
 	type RemoteRecord,
+	type ReversalRecord,
 	type SendAttempt,
 	type TokenPair,
 	type TokenSave
@@ -36,9 +37,9 @@ import {
 // ---------------------------------------------------------------------------
 // which record a gift becomes: a JournalEntry, and never a Deposit or a sales receipt.
 //
-// a gift and a correction are both a **JournalEntry**. the gift's money is not in the bank when it
-// is sent — it sits with the processor until a payout this app never hears about — so its asset
-// side is the holding account the operator picked for that processor (`HOLDING_ROLES` in
+// a gift, a correction and a reversal are each a **JournalEntry**. the gift's money is not in the
+// bank when it is sent — it sits with the processor until a payout this app never hears about — so
+// its asset side is the holding account the operator picked for that processor (`HOLDING_ROLES` in
 // ./provider.ts), an Other Current Asset. a Deposit cannot carry that: its `DepositToAccountRef` is
 // the bank account the money was paid into, and a gift deposited there is a deposit the bank feed
 // never shows. a sales receipt's lines name an Item rather than an account, and an item carries its
@@ -47,6 +48,10 @@ import {
 // customer, which is the whole of what a gift needs: the gift at face value credited to income, the
 // processor's cut debited to fees, and the difference debited to the holding. that is the movement
 // ../donations/entries.ts posts here, the fee's sibling folded in.
+//
+// a refund or a dispute is a journal entry of its own, dated the day the money left, taking the
+// gift's lines back out against its donor — never a void of the gift's entry, which would
+// take the gift out of the period it was given in. what puts one back is the same entry mirrored.
 //
 // ---------------------------------------------------------------------------
 // what is not built, because nothing sends it.
@@ -644,6 +649,71 @@ export function createQuickbooksProvider(
 		);
 	}
 
+	/**
+	 * a journal entry of named sides, against `donor` where one is given. `movesNothing` is what an
+	 * operator is told where every side lands in one QuickBooks account.
+	 */
+	async function sendJournal(
+		record: CorrectionRecord,
+		donor: Donor | null,
+		movesNothing: string,
+		attempt: SendAttempt,
+		revision: string
+	): Promise<AccountingResult<RemoteRecord>> {
+		const keyed: Keyed = { key: record.key, revision };
+		const auth = await authorized();
+		if (!auth.ok) return auth;
+		const accounts = chosenAccounts(
+			auth.value.connection,
+			record.lines.map((line) => line.role)
+		);
+		if (!accounts.ok) return accounts;
+
+		const named = record.lines.map((line) => accounts.value[line.role]);
+		if (new Set(named).size === 1) {
+			// two of this app's accounts can map to one of the company's — the deductible and the
+			// non-deductible funds are both `income`, and an operator may pick one account for two
+			// roles. an entry naming the same account on both sides balances and moves nothing, and
+			// it reads as a correction made.
+			return failed('invalid_record', movesNothing);
+		}
+
+		const currency = await acceptedCurrency(auth.value, record.currency);
+		if (!currency.ok) return currency;
+
+		const txnDate = transactionDate(record.occurredAt);
+		const posted = await alreadyPosted(auth.value, attempt, ['JournalEntry'], record.key, txnDate);
+		if (!posted.ok) return posted;
+		if (posted.value !== null) return { ok: true, value: { remoteId: posted.value } };
+
+		let customer: LineEntity | undefined;
+		if (donor !== null) {
+			const customerId = await customerFor(auth.value, keyed, donor);
+			if (!customerId.ok) return customerId;
+			customer = { Type: 'Customer', EntityRef: { value: customerId.value } };
+		}
+
+		return createdRecord(
+			answered(
+				await create(auth.value, 'journalentry', keyed, {
+					TxnDate: txnDate,
+					CurrencyRef: { value: currency.value },
+					PrivateNote: privateNote(record.key, record.memo),
+					Line: record.lines.map((line) =>
+						journalLine(
+							line.posting,
+							line.amountMinor,
+							record.currency,
+							accounts.value[line.role],
+							record.memo,
+							line.role === 'fee' ? undefined : customer
+						)
+					)
+				})
+			)
+		);
+	}
+
 	return {
 		async authorizeUrl(input: {
 			readonly redirectUri: string;
@@ -754,58 +824,32 @@ export function createQuickbooksProvider(
 			attempt: SendAttempt,
 			revision: string
 		): Promise<AccountingResult<RemoteRecord>> {
-			const keyed: Keyed = { key: correction.key, revision };
-			const auth = await authorized();
-			if (!auth.ok) return auth;
-			const accounts = chosenAccounts(
-				auth.value.connection,
-				correction.lines.map((line) => line.role)
-			);
-			if (!accounts.ok) return accounts;
-
-			const named = correction.lines.map((line) => accounts.value[line.role]);
-			if (new Set(named).size === 1) {
-				// two of this app's accounts can map to one of the company's — the deductible and the
-				// non-deductible funds are both `income`, and an operator may pick one account for two
-				// roles. an entry naming the same account on both sides balances and moves nothing, and
-				// it reads as a correction made.
-				return failed(
-					'invalid_record',
-					`This correction moves money between two accounts that are both sent to the same QuickBooks account, so it would post an entry that changes nothing. Correct it in QuickBooks instead.`
-				);
-			}
-
-			const currency = await acceptedCurrency(auth.value, correction.currency);
-			if (!currency.ok) return currency;
-
-			const txnDate = transactionDate(correction.occurredAt);
-			const posted = await alreadyPosted(
-				auth.value,
+			return sendJournal(
+				correction,
+				null,
+				'This correction moves money between two accounts that are both sent to the same QuickBooks account, so it would post an entry that changes nothing. Correct it in QuickBooks instead.',
 				attempt,
-				['JournalEntry'],
-				correction.key,
-				txnDate
+				revision
 			);
-			if (!posted.ok) return posted;
-			if (posted.value !== null) return { ok: true, value: { remoteId: posted.value } };
+		},
 
-			return createdRecord(
-				answered(
-					await create(auth.value, 'journalentry', keyed, {
-						TxnDate: txnDate,
-						CurrencyRef: { value: currency.value },
-						PrivateNote: privateNote(correction.key, correction.memo),
-						Line: correction.lines.map((line) =>
-							journalLine(
-								line.posting,
-								line.amountMinor,
-								correction.currency,
-								accounts.value[line.role],
-								correction.memo
-							)
-						)
-					})
-				)
+		/**
+		 * a reversal as one journal entry, the same shape as a correction, with the donor named on
+		 * its income and holding lines as a gift's are. the customer is looked up from the donor as
+		 * they stand now, the way a gift's is, so it is the gift's customer unless their email or
+		 * name has changed since.
+		 */
+		async sendReversal(
+			reversal: ReversalRecord,
+			attempt: SendAttempt,
+			revision: string
+		): Promise<AccountingResult<RemoteRecord>> {
+			return sendJournal(
+				reversal,
+				reversal.donor,
+				'This refund or dispute moves money between accounts that are all sent to the same QuickBooks account, so it would post an entry that changes nothing. Record it in QuickBooks instead.',
+				attempt,
+				revision
 			);
 		},
 

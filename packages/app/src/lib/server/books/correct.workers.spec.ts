@@ -179,6 +179,15 @@ describe('postCorrection() — what a correction owes QuickBooks', () => {
 		expect(await queuedForQuickbooks()).toEqual([]);
 	});
 
+	it('queues nothing dated before the start date, by its own date alone', async () => {
+		await connect(new Date('2026-04-01T00:00:00.000Z'));
+
+		expect(await postCorrection(db, correction())).toEqual({ ok: true });
+
+		// a correction names no gift, so its own date is the whole of what decides it.
+		expect(await queuedForQuickbooks()).toEqual([]);
+	});
+
 	it('queues nothing a second time for a correction presented again', async () => {
 		await connect();
 		const input = correction();

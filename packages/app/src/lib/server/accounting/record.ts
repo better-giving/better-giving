@@ -1,6 +1,7 @@
+import { eq, sql } from 'drizzle-orm';
 import { POSTING_ACCOUNTS, type PostingAccountKey } from '../db/accounts';
 import type { Db } from '../db/client';
-import type { PaymentProviderName } from '../db/schema';
+import { entryGroup, type PaymentProviderName } from '../db/schema';
 import { findPaymentDonor } from '../donations/queries';
 import {
 	findEntryGroup,
@@ -9,6 +10,7 @@ import {
 	type EntryLine
 } from '../ledger/queries';
 import { isProcessor } from '../payments/provider';
+import { keyedOnARefund } from './outbox';
 import {
 	failed,
 	HOLDING_OF,
@@ -16,6 +18,7 @@ import {
 	type AccountingResult,
 	type AccountRole,
 	type CorrectionLine,
+	type CorrectionRecord,
 	type HoldingRole,
 	type Sendable
 } from './provider';
@@ -23,8 +26,8 @@ import {
 // what one queued entry group turns out to be, read out of the books.
 //
 // the delivery holds an id off `quickbooks_sync` and nothing else (../db/schema.ts), and what an
-// adapter needs is a gift or a correction. this is the whole of the distance between those two,
-// and it is a module of its own for the reason ./provider.ts is: it reads this app's books and
+// adapter needs is a gift, a correction or a reversal. this is the whole of the distance between
+// those, and it is a module of its own for the reason ./provider.ts is: it reads this app's books and
 // knows nothing about QuickBooks, while ./quickbooks.ts speaks to QuickBooks and knows nothing
 // about `entry_group`.
 //
@@ -39,6 +42,15 @@ import {
 // is read here, off the `fee` sibling, rather than sent as a record of its own. that is the same
 // fact ../accounting/outbox.ts states from the other side, where it queues no row for a `fee`
 // group at all, and it is why a `fee` id arriving here is a defect rather than something to map.
+//
+// ---------------------------------------------------------------------------
+// a group keyed on a refund-direction row is a reversal, whatever its source type.
+//
+// ../donations/reverse.ts posts a withdrawal under `('refund', row)`, puts one that did not stand
+// back under `('payment', row)`, and settles up a lost dispute under `('adjustment', row)`. read by
+// source type alone, the second would go over as a new gift and the third as a hand correction, so
+// the row is read first and all three go over as what they are: the lines they hold, each in its
+// role, against the gift's donor.
 
 /**
  * which of the operator's roles each of this app's nine accounts stands for.
@@ -106,6 +118,9 @@ export async function readSendable(
 		);
 	}
 
+	if (group.sourceType !== 'fee' && (await isReversal(db, group.id))) {
+		return reversalOf(db, group);
+	}
 	if (group.sourceType === 'payment') return giftOf(db, group);
 	if (group.sourceType === 'adjustment') return correctionOf(group);
 
@@ -114,8 +129,51 @@ export async function readSendable(
 	// something upstream queued an entry group by a rule of its own.
 	return failed(
 		'internal_error',
-		`A ${group.sourceType} journal entry was handed to the QuickBooks delivery, which sends gifts and corrections only. Nothing was sent.`
+		`A ${group.sourceType} journal entry was handed to the QuickBooks delivery, which sends gifts, corrections and reversals only. Nothing was sent.`
 	);
+}
+
+async function isReversal(db: Db, entryGroupId: string): Promise<boolean> {
+	const [row] = await db
+		.select({ reversal: sql<number>`${keyedOnARefund(entryGroup.sourceId)}` })
+		.from(entryGroup)
+		.where(eq(entryGroup.id, entryGroupId));
+	return row?.reversal === 1;
+}
+
+/** a reversal as one record: its lines, 1020's in the holding of the processor that refunded. */
+async function reversalOf(db: Db, group: EntryGroupListRow): Promise<AccountingResult<Sendable>> {
+	const donor = await findPaymentDonor(db, group.sourceId);
+	if (donor === null) {
+		return failed(
+			'internal_error',
+			`The books hold a reversal against refund ${group.sourceId} and no gift behind it names a donor, so there is nobody to take it off. Nothing was sent.`
+		);
+	}
+	const lines = sidesOf(
+		group,
+		donor.provider !== null && isProcessor(donor.provider)
+			? { ok: true, value: HOLDING_OF[donor.provider] }
+			: failed(
+					'unmapped_account',
+					`The journal entry ${group.id} moves money through Undeposited Funds against a refund no processor made, so there is no processor account in QuickBooks to take it from. Nothing was sent.`
+				)
+	);
+	if (!lines.ok) return lines;
+	return {
+		ok: true,
+		value: {
+			kind: 'reversal',
+			reversal: {
+				key: group.id,
+				occurredAt: group.occurredAt,
+				currency: group.currency,
+				memo: group.memo,
+				donor: { displayName: donor.displayName, email: donor.email },
+				lines: lines.value
+			}
+		}
+	};
 }
 
 /**
@@ -202,18 +260,44 @@ function holdingOf(
 
 /** a correcting entry, one line per line, each in the role its account maps to. */
 function correctionOf(group: EntryGroupListRow): AccountingResult<Sendable> {
+	const lines = sidesOf(
+		group,
+		failed(
+			'unmapped_account',
+			`The journal entry moves money through ${POSTING_ACCOUNTS.undepositedFunds.name}, which this app holds for every processor at once, and a correction names no payment to tell which processor's QuickBooks account it belongs in. Post this correction in QuickBooks instead.`
+		)
+	);
+	if (!lines.ok) return lines;
+	return {
+		ok: true,
+		value: {
+			kind: 'correction',
+			correction: {
+				key: group.id,
+				occurredAt: group.occurredAt,
+				currency: group.currency,
+				memo: group.memo,
+				lines: lines.value
+			}
+		}
+	};
+}
+
+/** each line in the role its account maps to, 1020's in `processor` or refused as it says. */
+function sidesOf(
+	group: EntryGroupListRow,
+	processor: AccountingResult<HoldingRole>
+): AccountingResult<CorrectionRecord['lines']> {
 	const lines: CorrectionLine[] = [];
 	for (const line of group.lines) {
 		const role = roleOf(line);
 		if (!role.ok) return role;
-		if (role.value === 'processor') {
-			return failed(
-				'unmapped_account',
-				`The journal entry moves money through ${POSTING_ACCOUNTS.undepositedFunds.name}, which this app holds for every processor at once, and a correction names no payment to tell which processor's QuickBooks account it belongs in. Post this correction in QuickBooks instead.`
-			);
-		}
+		let landed: AccountRole;
+		if (role.value !== 'processor') landed = role.value;
+		else if (processor.ok) landed = processor.value;
+		else return processor;
 		lines.push({
-			role: role.value,
+			role: landed,
 			// `+` is a debit and `−` a credit project-wide (../ledger/posting.ts). the direction is
 			// named here rather than carried as a sign, so nothing downstream has to know that.
 			posting: line.amountMinor >= 0 ? 'debit' : 'credit',
@@ -230,20 +314,7 @@ function correctionOf(group: EntryGroupListRow): AccountingResult<Sendable> {
 			`The journal entry ${group.id} has fewer than two lines, which nothing in this app can post.`
 		);
 	}
-
-	return {
-		ok: true,
-		value: {
-			kind: 'correction',
-			correction: {
-				key: group.id,
-				occurredAt: group.occurredAt,
-				currency: group.currency,
-				memo: group.memo,
-				lines: [first, second, ...rest]
-			}
-		}
-	};
+	return { ok: true, value: [first, second, ...rest] };
 }
 
 /**

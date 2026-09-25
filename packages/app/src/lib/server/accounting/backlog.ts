@@ -16,9 +16,10 @@ import { quickbooksSync } from '../db/schema';
 // or the connection behind it, which the operator has just fixed on the screen this press sits on.
 // no press here deletes a row and none marks one sent: a gift owed to the books stays owed, and a
 // row claiming a record that was never created is a gift nothing will ever find. the one thing that
-// removes a row is moving the start date later (./outbox.ts), and only a row dated before the new
-// date that no run has ever sent: one waiting for its first send. that is a gift the operator has
-// just said the books do not take.
+// removes a row is moving the start date later (./outbox.ts), and only a row no run has ever sent:
+// one waiting for its first send. that is a gift dated before the new date, which the operator has
+// just said the books do not take, or a refund or dispute of such a gift, whatever its own date —
+// a reversal's row goes with its gift's.
 
 /** the queue as an operator is shown it. */
 export interface QuickbooksBacklog {
