@@ -370,6 +370,10 @@ func TestTheAnswersTheDeploymentSendsAreTheOnesItStates(t *testing.T) {
 			"WEBHOOK_SECRET_STANDINGS", WebhookSecretStandings,
 		},
 		{
+			"packages/operator/src/console/payments.ts",
+			"WEBHOOK_REPAIR_OUTCOMES", WebhookRepairOutcomes,
+		},
+		{
 			"packages/operator/src/console/stripe-read.ts",
 			"STRIPE_UNREADABLE_REASONS", StripeUnreadableReasons,
 		},

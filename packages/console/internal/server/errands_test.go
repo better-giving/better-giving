@@ -170,6 +170,7 @@ func TestEveryErrandWithNoSessionMakesNoRequestAtAll(t *testing.T) {
 		"/api/deployment/sites":      `{"sites":[]}`,
 
 		"/api/deployment/wallet-domains": `{}`,
+		"/api/deployment/webhook-repair": `{}`,
 	} {
 		status, answer := press(t, handler, path, body)
 		read, _ := answer["read"].(map[string]any)
@@ -344,6 +345,44 @@ func TestTheOtherErrandsReachTheirOwnAddress(t *testing.T) {
 		if call.bearer != "Bearer "+errandToken {
 			t.Errorf("%s %s was asked without the session", call.method, call.path)
 		}
+	}
+}
+
+// the press reaches the deployment's repair naming Stripe and nothing else, and answers its report.
+func TestTheWebhookRepairAnswersTheDeploymentsReport(t *testing.T) {
+	handler, asked := errands(t, map[string]any{
+		"POST /console/webhook-repair": map[string]any{"outcome": "repaired", "detail": nil},
+	}, "here")
+
+	status, answer := press(t, handler, "/api/deployment/webhook-repair", `{}`)
+	report, _ := answer["report"].(map[string]any)
+	if status != http.StatusOK || answer["kind"] != "reported" || report["outcome"] != "repaired" {
+		t.Fatalf("%d %v", status, answer)
+	}
+	calls := asked()
+	if len(calls) != 1 || calls[0].method != http.MethodPost ||
+		calls[0].path != deployment.WebhookRepairPath || calls[0].bearer != "Bearer "+errandToken {
+		t.Fatalf("the deployment was asked %v", calls)
+	}
+	if len(calls[0].body) != 1 || calls[0].body["processor"] != "stripe" {
+		t.Fatalf("the repair posted %v", calls[0].body)
+	}
+}
+
+// a refusal is drawn at the button that was pressed, so it answers 200 carrying the deployment's own
+// words, like every errand here.
+func TestARefusedWebhookRepairCarriesTheDeploymentsWords(t *testing.T) {
+	handler, _ := errands(t, map[string]any{
+		"POST /console/webhook-repair": refusal{http.StatusUnauthorized, map[string]any{
+			"error": "session_mismatch", "message": "Another console.", "fix": "Connect again.",
+		}},
+	}, "here")
+
+	status, answer := press(t, handler, "/api/deployment/webhook-repair", `{}`)
+	read, _ := answer["read"].(map[string]any)
+	if status != http.StatusOK || answer["kind"] != "unanswered" || read["kind"] != "refused" ||
+		read["message"] != "Another console." || read["fix"] != "Connect again." {
+		t.Fatalf("%d %v", status, answer)
 	}
 }
 

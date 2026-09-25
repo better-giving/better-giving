@@ -15,8 +15,9 @@ import (
 // the errands this console proxies to the deployment: the organisation's legal identity and where
 // it reaches the operator, the test send, the payments reading, the repeating-gifts standing and
 // the press that provisions it, where the books stand and every press over that connection, where
-// the Zapier key stands and the press that makes or replaces it, the site list, and the press that
-// registers the hostnames a donor is drawn wallet buttons on.
+// the Zapier key stands and the press that makes or replaces it, the site list, the press that
+// registers the hostnames a donor is drawn wallet buttons on, and the press that repairs the
+// deployment's own Stripe endpoint.
 //
 // **the deployment is the authority for every one of them.** what a value may be, what a send did,
 // what the processor account holds and whether a site may be dropped are decided inside the worker,
@@ -222,6 +223,17 @@ func errandRoutes(routes *http.ServeMux, held, patient func() (cf.Get, cf.Post))
 	routes.HandleFunc("POST /api/deployment/wallet-domains", func(w http.ResponseWriter, r *http.Request) {
 		_, post := held()
 		answer(w, http.StatusOK, deployment.LevelWallets(r.Context(), post))
+	})
+
+	// asks the deployment to repair its own Stripe endpoint: subscribed to everything the app acts on
+	// and switched back on, with the signing secret it holds left alone.
+	//
+	// The page's body is not read, and no endpoint may ever be named in one: which endpoint is this
+	// deployment's is settled by the address the press reached, inside the worker
+	// (internal/deployment/webhookrepair.go).
+	routes.HandleFunc("POST /api/deployment/webhook-repair", func(w http.ResponseWriter, r *http.Request) {
+		_, post := held()
+		answer(w, http.StatusOK, deployment.RepairWebhook(r.Context(), post))
 	})
 
 	// stores the site list, whole.

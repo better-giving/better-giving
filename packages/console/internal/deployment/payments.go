@@ -26,9 +26,10 @@ import (
 // redeploy because the secret is deploy-time. neither is shortened here and neither is written
 // again.
 //
-// **nothing in this console repairs an endpoint, and this file least of all.** it reads and nothing
-// else. an endpoint this release registers and that is short of an event or switched off is put
-// right by the press that registers it afresh against the two keys.
+// **this file repairs nothing.** it reads and nothing else. an endpoint this release registers and
+// that is short of an event or switched off is put right in place by ./webhookrepair.go's press, with
+// the signing secret it holds left alone; one deleted since, or serialised in another API version,
+// is put right by the press that registers it afresh against the two keys.
 //
 // **a reading this console cannot draw is the whole report unread.** part of it drawn as a whole
 // one is a screen that is confidently wrong about the rest.
