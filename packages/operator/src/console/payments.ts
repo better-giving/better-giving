@@ -482,7 +482,8 @@ export type ProcessorPayments =
 			readonly state: 'unconfigured';
 			/**
 			 * the variables this deployment would have to hold before any of it could be asked, in the
-			 * deployment's own order.
+			 * deployment's own order — the empty ones, then any held in a shape no call can be made with
+			 * (a `PAYPAL_API_URL` that is not an https origin), which is set and has to be set again.
 			 *
 			 * which variables a processor cannot be called without is the deployment's fact and lives in
 			 * one place there (`PROCESSORS` in

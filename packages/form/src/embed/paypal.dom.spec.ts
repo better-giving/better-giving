@@ -3,7 +3,6 @@ import type { Failure } from '../checkout.machine';
 import type { FormConfig, PaymentMethod } from '../v1';
 import {
 	createPaymentSurface,
-	ensurePaypalScript,
 	loadPaypalScript,
 	outcomeOfTermination,
 	PAYPAL_CORE_URL,
@@ -146,34 +145,28 @@ describe('which PayPal namespace this page already holds', () => {
 });
 
 // the core is planted by this module on every page, so the tag carries the host's nonce where it
-// serves one and the address the served config names, and a core already waiting is never doubled.
+// serves one and the address the served config names. the tag is on the page as soon as the call
+// is made, which is what these read before any load event is fired.
 describe('the core script this module plants', () => {
-	const fresh = (): Document => document.implementation.createHTMLDocument('t');
 	const ELSEWHERE = 'https://www.paypal.example.test/web-sdk/v6/core';
+	const planted = (): HTMLScriptElement | null => document.querySelector('script');
+
+	afterEach(() => {
+		for (const script of document.querySelectorAll('script')) script.remove();
+	});
 
 	it('carries the address it is given, the nonce, and the namespace it defines', () => {
-		const doc = fresh();
-		const script = ensurePaypalScript(doc, ELSEWHERE, 'n0nce');
-		expect(script?.getAttribute('src')).toBe(ELSEWHERE);
-		expect(script?.getAttribute('data-loading-state')).toBe('pending');
-		expect(script?.getAttribute('data-namespace')).toBe(PAYPAL_NAMESPACE);
-		expect(script?.nonce).toBe('n0nce');
+		void loadPaypalScript(document, ELSEWHERE, 'n0nce');
+		expect(planted()?.getAttribute('src')).toBe(ELSEWHERE);
+		expect(planted()?.getAttribute('data-loading-state')).toBe('pending');
+		expect(planted()?.getAttribute('data-namespace')).toBe(PAYPAL_NAMESPACE);
+		expect(planted()?.nonce).toBe('n0nce');
 	});
 
 	it('plants the script without a nonce where the page carries none', () => {
-		const doc = fresh();
-		const script = ensurePaypalScript(doc, PAYPAL_CORE_URL, '');
-		expect(script?.getAttribute('src')).toBe(PAYPAL_CORE_URL);
-		expect(script?.hasAttribute('nonce')).toBe(false);
-	});
-
-	// a second core script on one page throws inside `customElements.define` during its own
-	// top-level evaluation, so the tag already waiting is the one to wait on.
-	it('plants nothing beside a core already waiting on this page', () => {
-		const doc = fresh();
-		ensurePaypalScript(doc, PAYPAL_CORE_URL, 'n0nce');
-		expect(ensurePaypalScript(doc, ELSEWHERE, 'n0nce')).toBeNull();
-		expect(doc.querySelectorAll('script')).toHaveLength(1);
+		void loadPaypalScript(document, PAYPAL_CORE_URL, '');
+		expect(planted()?.getAttribute('src')).toBe(PAYPAL_CORE_URL);
+		expect(planted()?.hasAttribute('nonce')).toBe(false);
 	});
 });
 
@@ -206,7 +199,8 @@ describe('that core script, run', () => {
 	});
 
 	// a host's own core, planted by PayPal's loader and not yet run, is the one core this page may
-	// hold: it is waited on, and left as its owner marked it.
+	// hold: a second throws inside `customElements.define` during its own top-level evaluation, so
+	// this one is waited on, and left as its owner marked it.
 	it('waits on a core the host planted rather than planting its own', async () => {
 		const theirs = document.createElement('script');
 		theirs.setAttribute('src', PAYPAL_CORE_URL);

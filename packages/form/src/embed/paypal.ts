@@ -181,7 +181,7 @@ function isSetupFault(code: string): boolean {
  * project off the shared global entirely: on a page with no PayPal we add this key and nothing
  * else, and on a page running PayPal's older SDK we do not touch `window.paypal` at all.
  *
- * the core learns it from `data-namespace` on its own tag, which `ensurePaypalScript` sets.
+ * the core learns it from `data-namespace` on its own tag, which `plantCore` sets.
  */
 export const PAYPAL_NAMESPACE = 'bgDonatePayPalV6';
 
@@ -340,16 +340,9 @@ function asNamespace(value: unknown): PaypalNamespaceLike | null {
  * and nothing reads back `window[PAYPAL_NAMESPACE]`. the state marker is what lets a host's own
  * loader, running later, wait on this tag rather than plant a second.
  *
- * a core already waiting is left alone and nothing is planted: a second core script on one page
- * throws inside `customElements.define` during its own top-level evaluation, which is the failure
- * `readNamespace` describes from the other end.
+ * planted only where no core is already waiting, which `loadPaypalScript` checks.
  */
-export function ensurePaypalScript(
-	doc: Document,
-	sdkUrl: string,
-	nonce: string
-): HTMLScriptElement | null {
-	if (doc.querySelector(WAITING_CORE) !== null) return null;
+function plantCore(doc: Document, sdkUrl: string, nonce: string): HTMLScriptElement {
 	const script = doc.createElement('script');
 	script.setAttribute('src', sdkUrl);
 	script.setAttribute(LOADING_STATE, 'pending');
@@ -374,7 +367,10 @@ export function ensurePaypalScript(
  * host's: their own later `loadCoreSdkScript` would adopt our finished tag and hang on it, and the
  * page whose integration dies is the one that was working before this form arrived.
  *
- * a waiting tag this module did not plant is waited on and left as its owner marked it.
+ * a waiting tag this module did not plant is waited on and left as its owner marked it, and nothing
+ * is planted beside it: a second core script on one page throws inside `customElements.define`
+ * during its own top-level evaluation, which is the failure `readNamespace` describes from the other
+ * end.
  */
 export async function loadPaypalScript(
 	doc: Document,
@@ -388,8 +384,7 @@ export async function loadPaypalScript(
 		await ran(waiting);
 		return;
 	}
-	const script = ensurePaypalScript(doc, sdkUrl, nonce);
-	if (script === null) return;
+	const script = plantCore(doc, sdkUrl, nonce);
 	await ran(script);
 	const carried = view as unknown as PaypalWindowLike;
 	if (asNamespace(carried[PAYPAL_NAMESPACE]) === null) script.remove();

@@ -61,13 +61,16 @@ type Processor = {
 	 */
 	readonly build: (env: ConfigEnv) => PaymentProvider | null;
 	/**
-	 * why a value this processor holds cannot be called with, as a clause naming it and the shape it
-	 * has to take, or `null` where every one can.
+	 * the value this processor holds and cannot be called with, and a clause naming it and the shape
+	 * it has to take, or `null` where every one can.
 	 *
 	 * a value set in a shape no call can be made with is the same answer as one unset — the processor
-	 * is not configured, and never on `configured` — told apart only by the clause.
+	 * is not configured, never on `configured`, and the value is on `unset` — told apart only by the
+	 * clause.
 	 */
-	readonly unusable?: (env: ConfigEnv) => string | null;
+	readonly unusable?: (
+		env: ConfigEnv
+	) => { readonly variable: keyof ConfigEnv; readonly clause: string } | null;
 	/**
 	 * the script the donor's page starts this processor's SDK from, for `Provider.sdkUrl` in
 	 * packages/form/src/v1.ts, or `null` where the entry names none and the page loads its adapter's
@@ -157,7 +160,7 @@ const PROCESSORS: Readonly<Record<ProcessorName, Processor>> = Object.freeze({
 		unusable: (env) =>
 			env.PAYPAL_API_URL === undefined || paypalApiOrigin(env.PAYPAL_API_URL) !== null
 				? null
-				: unusablePaypalAddress(env.PAYPAL_API_URL),
+				: { variable: 'PAYPAL_API_URL', clause: unusablePaypalAddress(env.PAYPAL_API_URL) },
 		// null for a host with no `api-m.` label: the entry then names no script and the donor's page
 		// loads `PAYPAL_CORE_URL` (packages/form/src/embed/paypal.ts), which refuses keys issued at
 		// any other address.
@@ -429,7 +432,7 @@ function shortfall(env: ConfigEnv): string {
 		if (unset.length > 0) {
 			return `\`${unset.join('` and `')}\` ${unset.length === 1 ? 'is' : 'are'} not set`;
 		}
-		return PROCESSORS[name].unusable?.(env) ?? null;
+		return PROCESSORS[name].unusable?.(env)?.clause ?? null;
 	}).filter((line) => line !== null);
 
 	return lines.join(', and ');
@@ -486,6 +489,11 @@ export type Processors = {
 	 * console side it would be a second copy that stops matching the day a processor needs another
 	 * one.
 	 *
+	 * a value held in a shape no call can be made with is on it too, after the empty ones: it is a box
+	 * the operator has to fill again, and a console reading an unconfigured processor with nothing
+	 * named has nothing to send them to. why it was refused is `shortfall`'s and the refusal's
+	 * sentence; the console's payments report carries names alone.
+	 *
 	 * names only, and there is nothing else it could be: a value never leaves this module.
 	 */
 	unset(name: ProcessorName): readonly (keyof ConfigEnv)[];
@@ -528,7 +536,11 @@ export function createPaymentProviders(source: unknown): Processors {
 		// a configuration that could not be read is every variable unset rather than none: the answer a
 		// caller acts on is "this cannot be called", and an empty list there would read as a processor
 		// that is ready.
-		unset: (name) => PROCESSORS[name].requires.filter((variable) => env === null || !env[variable])
+		unset: (name) => {
+			const empty = PROCESSORS[name].requires.filter((variable) => env === null || !env[variable]);
+			const refused = env === null ? null : (PROCESSORS[name].unusable?.(env) ?? null);
+			return refused === null ? empty : [...empty, refused.variable];
+		}
 	};
 }
 
@@ -583,7 +595,7 @@ function build(env: ConfigEnv, name: ProcessorName): PaymentProvider {
 		return refusing(
 			name,
 			'not_configured',
-			`This deployment cannot take a payment through ${PROCESSOR_LABELS[name]}: ${refused}. ` +
+			`This deployment cannot take a payment through ${PROCESSOR_LABELS[name]}: ${refused.clause}. ` +
 				'Open the console (`better-giving start`) and correct it under Donation processor.'
 		);
 	}
