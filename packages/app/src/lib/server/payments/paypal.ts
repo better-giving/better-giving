@@ -8,6 +8,7 @@ import {
 	OrdersController,
 	PaymentsController,
 	PlanRequestStatus,
+	RefundStatus,
 	SubscriptionPlanStatus,
 	SubscriptionsController,
 	TenureType
@@ -17,6 +18,7 @@ import type {
 	CapturedPayment,
 	OAuthToken,
 	Order,
+	Refund,
 	Subscription
 } from '@paypal/paypal-server-sdk';
 import { PAYPAL_RAILS, type PaypalRail } from '@better-giving/form/embed/rails';
@@ -24,6 +26,7 @@ import { PAYPAL_SDK_PATH } from '@better-giving/form/v1';
 import {
 	RECURRING_COLLECTION_EVENT_TYPES,
 	RECURRING_EVENT_TYPES,
+	REFUND_EVENT_TYPES,
 	SETTLEMENT_EVENT_TYPES,
 	SUBSCRIBED_EVENT_TYPES
 } from '@better-giving/operator/paypal/webhook-listener';
@@ -44,6 +47,7 @@ import type {
 	RecurringGift,
 	RecurringGiftEnd,
 	RecurringGiftNotice,
+	ReversalEvent,
 	ReversalRead,
 	RecurringGiftProvision,
 	RecurringGiftRequest,
@@ -68,9 +72,9 @@ import type {
 // its own SDK for the same stated reason: so the contract has exactly one place to be stated.
 // everything else takes `PaymentProvider` from ./provider.ts.
 //
-// **it answers the one-off gift, the repeating one and the listener read, and refuses the listener
-// repairs and the wallet arms** — `unsupported`, exactly as ./factory.ts answers for a processor with
-// no adapter at all, and argued at each of them. the listener is registered by the console's binary
+// **it answers the one-off gift, the repeating one, a refund of either and the listener read, and
+// refuses the listener repairs and the wallet arms** — `unsupported`, exactly as ./factory.ts
+// answers for a processor with no adapter at all, and argued at each of them. the listener is registered by the console's binary
 // (`packages/console/internal/paypal`), so the repairs have no caller here
 // (./webhook-registration.ts).
 //
@@ -86,6 +90,13 @@ import type {
 // v1 through the SDK's controller; one collection is a v1 sale, read through this module's own
 // authenticated call because no controller and no spec ship for Payments v1. `readSale` argues why
 // a deprecated endpoint is the right one and what would replace it.
+//
+// **a refund is read in the generation of what it refunds.** a one-off gift's is a Payments v2 refund
+// of its capture (https://developer.paypal.com/docs/api/payments/v2/#refunds_get, and `refund` in
+// payments_payment_v2.json in https://github.com/paypal/paypal-rest-api-specifications); a
+// collection's is a Payments v1 refund of its sale. the events that name them are
+// `PAYMENT.CAPTURE.REFUNDED` and `PAYMENT.SALE.REFUNDED`
+// (https://developer.paypal.com/api/rest/webhooks/event-names), and `readReversal` argues the rest.
 //
 // **one address, and nothing here reads a stage.** every call — the token, the SDK's controllers and
 // this module's own reach past them — goes to the origin of `PAYPAL_API_URL`, or of
@@ -938,6 +949,135 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 	}
 
 	/**
+	 * a Payments v2 refund of a one-off gift's capture, read against the order it settled on.
+	 *
+	 * the refund names its capture only through its `up` link, and the capture names its order in
+	 * `supplementary_data.related_ids` — the id `readSettlement` reports and the gift's `payment` row
+	 * holds, so it is the reversed transaction. the metadata is the capture's `custom_id`, which
+	 * PayPal copies from the purchase unit; a refund's own `custom_id` is whatever the refund was
+	 * made with, and one made in PayPal's dashboard carries none.
+	 *
+	 * the figure is the refund's `amount`, in the currency the donor was charged in, and the fee
+	 * PayPal gave back is {@link returnedFeeOf}.
+	 */
+	async function readCaptureRefund(refundId: string): Promise<PaymentResult<ReversalRead>> {
+		try {
+			const refund = (await payments.getRefund({ refundId })).result;
+			if (refund.status !== RefundStatus.Completed) {
+				return { ok: true, value: { kind: 'nothing_moved', providerReversalId: refundId } };
+			}
+			const currency = (refund.amount?.currencyCode ?? '').toUpperCase();
+			const amountMinor = minorOf(refund.amount?.value, currency);
+			if (amountMinor === null) return unreadableRefund(refundId);
+			const captureId = upLinkId(refund.links);
+			if (captureId === null) {
+				return unsupported(
+					`PayPal's refund ${redactPublicId(refundId)} links to no capture, so which gift it ` +
+						'reverses cannot be read and nothing was written. Every refund of a capture carries ' +
+						'an `up` link to it (https://developer.paypal.com/docs/api/payments/v2/#refunds_get).'
+				);
+			}
+			const captured = (await payments.getCapturedPayment({ captureId })).result;
+			return {
+				ok: true,
+				value: {
+					kind: 'refund',
+					// every capture this app takes is an order's; one with no order is another
+					// integration's, read against its own id so the writer finds no gift behind it.
+					reversedTxnId: captured.supplementaryData?.relatedIds?.orderId ?? captureId,
+					providerReversalId: refundId,
+					amountMinor,
+					currency,
+					occurredAt: at(refund.createTime),
+					reversedMetadata: decodeMetadata(captured.customId),
+					feeReturnedMinor: returnedFeeOf(refund, currency)
+				}
+			};
+		} catch (error) {
+			return classify(error);
+		}
+	}
+
+	/**
+	 * a Payments v1 refund of one collection, read against the sale it settled on.
+	 *
+	 * the sale id is what the collection's `payment` row holds. a sale carries no `custom_id`, so the
+	 * metadata is the commitment's, reached through the sale's `billing_agreement_id` exactly as
+	 * `readRecurringGift` reaches it; a sale under no subscription, or under an agreement PayPal
+	 * answers 404 for, is none of this app's collections and reads with none, which the writer
+	 * answers 200 and leaves.
+	 *
+	 * `GET /v1/payments/refund/{id}` is the same deprecated API generation as {@link readSale}, and
+	 * retires with it: `PAYMENT.SALE.REFUNDED` carries a v1 refund, and this is that resource's read.
+	 * no spec ships for it; the fields read are `Refund` in PayPal's own PHP SDK
+	 * (https://github.com/paypal/PayPal-PHP-SDK/blob/master/lib/PayPal/Api/Refund.php), which
+	 * carries no fee figure — so no returned fee is read, and the collection's fee stays booked.
+	 */
+	async function readSaleRefund(refundId: string): Promise<PaymentResult<ReversalRead>> {
+		let answer: { status: number; body: unknown };
+		try {
+			answer = await call('GET', `/v1/payments/refund/${encodeURIComponent(refundId)}`);
+		} catch (error) {
+			return unreachable(error);
+		}
+		if (answer.status < 200 || answer.status >= 300) {
+			return classifyStatus(answer.status, answer.body, 'PayPal could not be asked about a refund');
+		}
+		const refund = json(answer.body);
+		if (refund === undefined) {
+			return {
+				ok: false,
+				reason: 'provider_error',
+				detail: `PayPal answered the read of refund ${redactPublicId(refundId)} with no object this app could read.`
+			};
+		}
+		if (refund.state !== 'completed') {
+			return { ok: true, value: { kind: 'nothing_moved', providerReversalId: refundId } };
+		}
+		const amount = json(refund.amount);
+		const currency = String(amount?.currency ?? '').toUpperCase();
+		const amountMinor = minorOf(
+			typeof amount?.total === 'string' ? amount.total : undefined,
+			currency
+		);
+		if (amountMinor === null) return unreadableRefund(refundId);
+		const saleId = typeof refund.sale_id === 'string' ? refund.sale_id : '';
+		if (saleId === '') {
+			return unsupported(
+				`PayPal's refund ${redactPublicId(refundId)} names no sale, so which charge it reverses ` +
+					'cannot be read and nothing was written.'
+			);
+		}
+
+		const sale = await readSale(saleId);
+		if (!sale.ok) return sale;
+		const giftId = sale.value.billing_agreement_id;
+		let reversedMetadata: Readonly<Record<string, string>> = {};
+		if (typeof giftId === 'string' && giftId !== '') {
+			try {
+				const { result } = await subscriptions.getSubscription({ id: giftId });
+				reversedMetadata = decodeMetadata(result.customId);
+			} catch (error) {
+				if (!(error instanceof ApiError && error.statusCode === 404)) return classify(error);
+			}
+		}
+
+		return {
+			ok: true,
+			value: {
+				kind: 'refund',
+				reversedTxnId: saleId,
+				providerReversalId: refundId,
+				amountMinor,
+				currency,
+				occurredAt: at(typeof refund.create_time === 'string' ? refund.create_time : undefined),
+				reversedMetadata,
+				feeReturnedMinor: null
+			}
+		};
+	}
+
+	/**
 	 * takes the money on an approved order, or reports the order as it already stands.
 	 *
 	 * the request id is derived from the order id rather than generated, because a generated one is
@@ -1180,6 +1320,20 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 				return { ok: true, value: { id, kind: 'recurring', type, providerNoticeId, occurredAt } };
 			}
 
+			if ((REFUND_EVENT_TYPES as readonly string[]).includes(type)) {
+				const providerNoticeId = resourceIdOf(event.resource);
+				if (providerNoticeId === null) {
+					return unreadableResource(
+						type,
+						event,
+						'no refund',
+						'the Payments v2 refund and the Payments v1 refund shapes'
+					);
+				}
+
+				return { ok: true, value: { id, kind: 'reversal', type, providerNoticeId, occurredAt } };
+			}
+
 			return { ok: true, value: { id, kind: 'ignored', type, occurredAt } };
 		},
 
@@ -1264,9 +1418,20 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 			}
 		},
 
-		// no PayPal event is read into a reversal yet (`verifyEvent` above), so nothing reaches this.
-		async readReversal(): Promise<PaymentResult<ReversalRead>> {
-			return unsupported('This release reads no PayPal refund. Nothing was asked of PayPal.');
+		/**
+		 * the refund a delivery names, fresh, read by its own status and never by the event that
+		 * carried it: only a completed refund moved money, and every other status — pending while an
+		 * eCheck clears, failed, cancelled — reads as nothing moved until a later delivery reads it
+		 * completed. the refund's own id is the reversal's; it is never the order's or the sale's.
+		 *
+		 * `PAYMENT.SALE.REFUNDED` names a v1 refund of one collection and `PAYMENT.CAPTURE.REFUNDED`
+		 * a v2 refund of a one-off gift's capture (`REFUND_EVENT_TYPES` in
+		 * `@better-giving/operator/paypal/webhook-listener`), and each is read in its own vocabulary.
+		 */
+		async readReversal(event: ReversalEvent): Promise<PaymentResult<ReversalRead>> {
+			return event.type === 'PAYMENT.SALE.REFUNDED'
+				? readSaleRefund(event.providerNoticeId)
+				: readCaptureRefund(event.providerNoticeId);
 		},
 
 		/**
@@ -1885,16 +2050,14 @@ const ALREADY_CAPTURED = 'ORDER_ALREADY_CAPTURED';
 /**
  * capture states onto this schema's four (`PAYMENT_STATUSES` in ../db/schema.ts).
  *
- * a capture whose whole amount went back — `REFUNDED`, or `REVERSED` on a chargeback — is `failed`,
- * because the status is read after the fact: a first read of a capture already refunded that said
- * `succeeded` would post revenue the organisation no longer holds, and nothing records the refund
- * that would offset it. `failed` posts nothing, and `reference` on the settlement names the capture
- * for whoever reconciles it. `REVERSED` is not in the published `capture_status` enum
- * (payments_payment_v2.json in https://github.com/paypal/paypal-rest-api-specifications) and is
- * held here as the word the `PAYMENT.CAPTURE.REVERSED` event is named for.
- *
- * `PARTIALLY_REFUNDED` stays `succeeded`: part of the money is still the organisation's, and the
- * part that went back is a refund, which is a `payment` row of its own (`PAYMENT_STATUSES`).
+ * a capture whose money later went back — `REFUNDED`, `PARTIALLY_REFUNDED`, or `REVERSED` on a
+ * chargeback — is `succeeded`, the split {@link SALE_STATUSES} keeps: the charge did succeed, and
+ * what went back is a `payment` row of its own with its own id, written from the refund's own
+ * delivery (`readReversal`). the status is read after the fact, so a late read meets these where it
+ * would have met `COMPLETED`, and read as anything else it would say the gift never settled.
+ * `REVERSED` is not in the published `capture_status` enum (payments_payment_v2.json in
+ * https://github.com/paypal/paypal-rest-api-specifications) and is held here as the word the
+ * `PAYMENT.CAPTURE.REVERSED` event is named for.
  *
  * everything this table does not hold is `pending`, including PayPal's own `PENDING` and a state
  * added upstream — the direction that is safe to be wrong in, since the next read corrects it and no
@@ -1903,8 +2066,8 @@ const ALREADY_CAPTURED = 'ORDER_ALREADY_CAPTURED';
 const CAPTURE_STATUSES: Readonly<Record<string, PaymentStatus>> = Object.freeze({
 	COMPLETED: 'succeeded',
 	PARTIALLY_REFUNDED: 'succeeded',
-	REFUNDED: 'failed',
-	REVERSED: 'failed',
+	REFUNDED: 'succeeded',
+	REVERSED: 'succeeded',
 	DECLINED: 'failed',
 	FAILED: 'failed'
 });
@@ -1968,6 +2131,45 @@ function saleSettlementOf(sale: Record<string, unknown>, saleId: string): Settle
 		occurredAt: at(typeof sale.create_time === 'string' ? sale.create_time : undefined),
 		arrival: null
 	};
+}
+
+/**
+ * a completed refund whose figure this app cannot read, refused rather than posted.
+ *
+ * never a null amount, which the port reads as the rest of the gift (`Reversal` in ./provider.ts).
+ * `unsupported` because a completed refund's figure never changes, so every redelivery reads the
+ * same — the rule {@link unreadableResource} states — and the writer tells staff and answers 200
+ * rather than holding the delivery open until PayPal drops it.
+ */
+function unreadableRefund(refundId: string): PaymentFailure {
+	return unsupported(
+		`PayPal reported refund ${redactPublicId(refundId)} with an amount or a currency this app ` +
+			'cannot read, so nothing was posted. The amount is a decimal string at the currency’s own ' +
+			'scale and the currency is a 3-letter ISO-4217 code; find the refund in PayPal and correct ' +
+			'the gift in /admin/books by hand.'
+	);
+}
+
+/**
+ * the part of its fee PayPal gave back with a v2 refund, in the refund's own currency, or nothing.
+ *
+ * `seller_payable_breakdown.paypal_fee` is the fee refunded to the merchant, in the currency of the
+ * transaction (`refund` in payments_payment_v2.json in
+ * https://github.com/paypal/paypal-rest-api-specifications). zero is none, and a figure in another
+ * currency is no figure rather than a converted one, the rule {@link feeOf} states for a capture's.
+ */
+function returnedFeeOf(refund: Refund, currency: string): number | null {
+	const fee = refund.sellerPayableBreakdown?.paypalFee;
+	if (!fee || fee.currencyCode.toUpperCase() !== currency) return null;
+	const returned = minorOf(fee.value, currency);
+	return returned === 0 ? null : returned;
+}
+
+/** the last path segment of a refund's `up` link, which is the id of the object it reverses. */
+function upLinkId(links: readonly { rel: string; href: string }[] | undefined): string | null {
+	const href = links?.find((link) => link.rel === 'up')?.href;
+	if (href === undefined) return null;
+	return new URL(href).pathname.split('/').pop() || null;
 }
 
 /** an order with no capture behind it: money that has not moved, or an order nobody will pay. */

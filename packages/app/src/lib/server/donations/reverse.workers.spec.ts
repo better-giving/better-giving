@@ -188,6 +188,7 @@ function refund(over: Partial<Extract<Reversal, { kind: 'refund' }>> = {}): Reve
 		currency: 'USD',
 		occurredAt: REFUNDED_AT,
 		reversedMetadata: { donation_id: 'named-by-the-charge' },
+		feeReturnedMinor: null,
 		...over
 	};
 }

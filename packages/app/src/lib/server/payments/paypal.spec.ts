@@ -246,6 +246,83 @@ const APPROVED_EVENT = {
 	resource: { id: '5O190127TN364715T' }
 };
 
+/**
+ * a Payments v2 refund of {@link CAPTURE}, in the shape `GET /v2/payments/refunds/{id}` answers and
+ * `PAYMENT.CAPTURE.REFUNDED` carries (`refund` in payments_payment_v2.json,
+ * https://github.com/paypal/paypal-rest-api-specifications). `up` is the capture it reverses.
+ */
+const CAPTURE_REFUND = {
+	id: '1JU08902781691411',
+	status: 'COMPLETED',
+	amount: { currency_code: 'USD', value: '97.00' },
+	seller_payable_breakdown: {
+		gross_amount: { currency_code: 'USD', value: '97.00' },
+		paypal_fee: { currency_code: 'USD', value: '2.60' },
+		net_amount: { currency_code: 'USD', value: '94.40' },
+		total_refunded_amount: { currency_code: 'USD', value: '97.00' }
+	},
+	create_time: '2026-08-20T09:12:40Z',
+	update_time: '2026-08-20T09:12:40Z',
+	links: [
+		{
+			rel: 'self',
+			method: 'GET',
+			href: 'https://api-m.paypal.com/v2/payments/refunds/1JU08902781691411'
+		},
+		{
+			rel: 'up',
+			method: 'GET',
+			href: 'https://api-m.paypal.com/v2/payments/captures/3C679366HH908993F'
+		}
+	]
+};
+
+const CAPTURE_REFUND_EVENT = {
+	id: 'WH-3UE850097C805102A-18305212AB1299210',
+	event_version: '1.0',
+	event_type: 'PAYMENT.CAPTURE.REFUNDED',
+	resource_type: 'refund',
+	resource_version: '2.0',
+	create_time: '2026-08-20T09:12:44Z',
+	resource: CAPTURE_REFUND
+};
+
+/**
+ * a Payments v1 refund of one collection, in the shape `GET /v1/payments/refund/{id}` answers and
+ * `PAYMENT.SALE.REFUNDED` carries. no spec ships for Payments v1; the fields are `Refund` in
+ * PayPal's own PHP SDK (https://github.com/paypal/PayPal-PHP-SDK, lib/PayPal/Api/Refund.php).
+ */
+const SALE_REFUND = {
+	id: '0P209507D6694645N',
+	state: 'completed',
+	amount: { total: '97.13', currency: 'USD' },
+	sale_id: '1KE4800513426762K',
+	parent_payment: 'PAY-5YK922393D847794YKER7MUI',
+	create_time: '2026-09-20T09:12:40Z',
+	update_time: '2026-09-20T09:12:40Z',
+	links: [
+		{
+			rel: 'self',
+			method: 'GET',
+			href: 'https://api-m.paypal.com/v1/payments/refund/0P209507D6694645N'
+		},
+		{
+			rel: 'sale',
+			method: 'GET',
+			href: 'https://api-m.paypal.com/v1/payments/sale/1KE4800513426762K'
+		}
+	]
+};
+
+const SALE_REFUND_EVENT = {
+	id: 'WH-7PW05393VB0425420-9TX43236LN297221L',
+	event_version: '1.0',
+	event_type: 'PAYMENT.SALE.REFUNDED',
+	resource_type: 'refund',
+	create_time: '2026-09-20T09:12:44Z',
+	resource: SALE_REFUND
+};
+
 describe('verifyEvent', () => {
 	/**
 	 * a deployment with no listener id verifies nothing, and says so before reading anything.
@@ -489,13 +566,51 @@ describe('verifyEvent', () => {
 	});
 
 	/**
-	 * the events about a plan, a product, a subscription being made or revised, and a refunded sale
+	 * a refund delivery is a reversal naming the refund, never the capture or the sale it reverses.
+	 *
+	 * the refund's id is what the reversal read fetches and what the refund row is keyed on; the
+	 * object it reverses is read off the refund itself, fresh.
+	 */
+	it.each([
+		['PAYMENT.CAPTURE.REFUNDED', CAPTURE_REFUND_EVENT],
+		['PAYMENT.SALE.REFUNDED', SALE_REFUND_EVENT]
+	])('reports %s as a reversal naming the refund', async (type, event) => {
+		recording([{ status: 200, json: { verification_status: 'SUCCESS' } }]);
+
+		const result = await createPaypalProvider(CREDENTIALS).verifyEvent(delivery(event));
+
+		expect(result.ok && result.value).toEqual({
+			id: event.id,
+			kind: 'reversal',
+			type,
+			providerNoticeId: event.resource.id,
+			occurredAt: new Date(event.create_time)
+		});
+	});
+
+	/**
+	 * a subscribed refund delivery whose resource names nothing is refused, terminally, for the reason
+	 * a settlement's is: reported as `ignored` it would be a refund dropped in silence under a 200.
+	 */
+	it('refuses a refund delivery whose resource names nothing', async () => {
+		recording([{ status: 200, json: { verification_status: 'SUCCESS' } }]);
+
+		const result = await createPaypalProvider(CREDENTIALS).verifyEvent(
+			delivery({ ...CAPTURE_REFUND_EVENT, resource: {} })
+		);
+
+		expect(result.ok === false && result.reason).toBe('unsupported');
+		expect(result.ok === false && result.detail).toContain('resource_version');
+	});
+
+	/**
+	 * the events about a plan, a product, a subscription being made or revised, and a reversed sale
 	 * are answered and acted on for nothing.
 	 *
-	 * the first four this app created itself and nothing here revises either object; a refund is a
-	 * `payment` row of its own with its own id, which is another kind and another read
-	 * (`SUBSCRIBED_EVENT_TYPES` in packages/operator/src/paypal/webhook-listener.ts names what is
-	 * acted on).
+	 * the first four this app created itself and nothing here revises either object; a reversed sale
+	 * is PayPal taking a collection back rather than the merchant refunding it, which is a dispute's
+	 * kind and read and one this release does not make (`SUBSCRIBED_EVENT_TYPES` in
+	 * packages/operator/src/paypal/webhook-listener.ts names what is acted on).
 	 * `ignored` is a success — the route answers 2xx and PayPal stops — where a refusal would buy days
 	 * of redelivery for a no-op.
 	 */
@@ -504,7 +619,6 @@ describe('verifyEvent', () => {
 		'BILLING.SUBSCRIPTION.UPDATED',
 		'CATALOG.PRODUCT.UPDATED',
 		'BILLING.PLAN.UPDATED',
-		'PAYMENT.SALE.REFUNDED',
 		'PAYMENT.SALE.REVERSED'
 	])('reports %s as ignored', async (type) => {
 		recording([{ status: 200, json: { verification_status: 'SUCCESS' } }]);
@@ -556,6 +670,7 @@ const CAPTURE = {
 	status: 'COMPLETED',
 	custom_id: JSON.stringify({ donation_id: '019412e0-8a1f-7000-9000-a1b2c3d4e5f6' }),
 	create_time: '2026-08-16T22:21:19Z',
+	supplementary_data: { related_ids: { order_id: '5O190127TN364715T' } },
 	seller_receivable_breakdown: {
 		gross_amount: { currency_code: 'USD', value: '97.00' },
 		paypal_fee: { currency_code: 'USD', value: '3.11' },
@@ -579,20 +694,134 @@ const captured = (overrides: Record<string, unknown> = {}) => ({
 	...overrides
 });
 
-describe('readReversal', () => {
-	it('reads no refund yet, asking PayPal nothing', async () => {
-		const { calls } = recording([]);
+/** one refund delivery, as `verifyEvent` hands it to the reversal read. */
+const reversal = (type: string, providerNoticeId: string) => ({
+	id: 'WH-3UE850097C805102A-18305212AB1299210',
+	kind: 'reversal' as const,
+	type,
+	providerNoticeId,
+	occurredAt: new Date('2026-08-20T09:12:44Z')
+});
 
-		const result = await createPaypalProvider(CREDENTIALS).readReversal({
-			id: 'WH-1',
-			kind: 'reversal',
-			type: 'PAYMENT.CAPTURE.REFUNDED',
-			providerNoticeId: '1JU08902781691411',
-			occurredAt: new Date(0)
+describe('readReversal on a one-off gift’s capture', () => {
+	/**
+	 * a completed refund reads back as the order the gift settled on, never the capture.
+	 *
+	 * the order id is what `readSettlement` reports and what the gift's `payment` row holds, so it is
+	 * the only id the writer can find the gift by; the refund's own id keys the refund row. the
+	 * metadata is the capture's, because a refund carries a `custom_id` of its own rather than a
+	 * copy. the fee PayPal gave back is `seller_payable_breakdown.paypal_fee`, the part of its fee
+	 * the refund returned to the merchant (`refund` in payments_payment_v2.json).
+	 */
+	it('reads a completed refund against the order, with the capture’s metadata', async () => {
+		const { calls } = recording([
+			{ status: 200, json: CAPTURE_REFUND },
+			{ status: 200, json: CAPTURE }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('PAYMENT.CAPTURE.REFUNDED', CAPTURE_REFUND.id)
+		);
+
+		expect(path(apiCall(calls, 0))).toBe('/v2/payments/refunds/1JU08902781691411');
+		expect(path(apiCall(calls, 1))).toBe('/v2/payments/captures/3C679366HH908993F');
+		expect(result.ok && result.value).toEqual({
+			kind: 'refund',
+			reversedTxnId: '5O190127TN364715T',
+			providerReversalId: '1JU08902781691411',
+			amountMinor: 9700,
+			currency: 'USD',
+			occurredAt: new Date('2026-08-20T09:12:40Z'),
+			reversedMetadata: { donation_id: '019412e0-8a1f-7000-9000-a1b2c3d4e5f6' },
+			feeReturnedMinor: 260
 		});
+	});
+
+	/**
+	 * a fee PayPal did not give back is no figure: absent, zero, or stated in a currency other than
+	 * the refund's, which is never converted (the rule `feeOf` states for a capture's fee).
+	 */
+	it.each([
+		['absent', { gross_amount: { currency_code: 'USD', value: '97.00' } }],
+		['zero', { paypal_fee: { currency_code: 'USD', value: '0.00' } }],
+		['in another currency', { paypal_fee: { currency_code: 'EUR', value: '2.40' } }]
+	])('reads a returned fee that is %s as none', async (_case, breakdown) => {
+		recording([
+			{ status: 200, json: { ...CAPTURE_REFUND, seller_payable_breakdown: breakdown } },
+			{ status: 200, json: CAPTURE }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('PAYMENT.CAPTURE.REFUNDED', CAPTURE_REFUND.id)
+		);
+
+		expect(result.ok && result.value.kind === 'refund' && result.value.feeReturnedMinor).toBeNull();
+		expect(result.ok && result.value.kind === 'refund' && result.value.amountMinor).toBe(9700);
+	});
+
+	/**
+	 * a refund PayPal has not completed has moved no money, whatever event named it: an
+	 * eCheck-funded refund is `PENDING` while it clears, and a `FAILED` or `CANCELLED` one never went
+	 * out. the next delivery reads it again, and nothing about the capture is needed to say so.
+	 */
+	it.each(['PENDING', 'FAILED', 'CANCELLED'])(
+		'reads a %s refund as having moved nothing',
+		async (status) => {
+			const { calls } = recording([{ status: 200, json: { ...CAPTURE_REFUND, status } }]);
+
+			const result = await createPaypalProvider(CREDENTIALS).readReversal(
+				reversal('PAYMENT.CAPTURE.REFUNDED', CAPTURE_REFUND.id)
+			);
+
+			expect(result.ok && result.value).toEqual({
+				kind: 'nothing_moved',
+				providerReversalId: '1JU08902781691411'
+			});
+			expect(apiCall(calls, 1)).toBeUndefined();
+		}
+	);
+
+	/**
+	 * a refund whose figure cannot be read is refused rather than read as the whole of the gift.
+	 *
+	 * `amountMinor: null` on the port means "the rest of what the charge settled", so a figure this
+	 * app failed to parse passed on as null would refund the whole gift for a part-refund. a
+	 * completed refund's figure never changes, so every redelivery reads the same: `unsupported`,
+	 * which the writer tells staff about and answers 200, where a retryable reason would be retried
+	 * for three days and then dropped with nobody told.
+	 */
+	it('refuses a completed refund whose amount is not a figure at the currency’s scale', async () => {
+		recording([
+			{
+				status: 200,
+				json: { ...CAPTURE_REFUND, amount: { currency_code: 'USD', value: '25.001' } }
+			},
+			{ status: 200, json: CAPTURE }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('PAYMENT.CAPTURE.REFUNDED', CAPTURE_REFUND.id)
+		);
 
 		expect(result.ok === false && result.reason).toBe('unsupported');
-		expect(calls).toHaveLength(0);
+	});
+
+	/**
+	 * a refund that names no capture reverses nothing this app can find, and every redelivery reads
+	 * the same, so it is refused terminally — the writer tells staff and answers 200 — rather than
+	 * held open for PayPal's whole retry window.
+	 */
+	it('refuses a completed refund that links to no capture, asking nothing more', async () => {
+		const { calls } = recording([
+			{ status: 200, json: { ...CAPTURE_REFUND, links: [CAPTURE_REFUND.links[0]] } }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('PAYMENT.CAPTURE.REFUNDED', CAPTURE_REFUND.id)
+		);
+
+		expect(result.ok === false && result.reason).toBe('unsupported');
+		expect(apiCall(calls, 1)).toBeUndefined();
 	});
 });
 
@@ -889,15 +1118,18 @@ describe('readSettlement', () => {
 	});
 
 	/**
-	 * a capture whose money went back is not a paid gift, on the first read or any later one.
+	 * a capture whose money later went back still settled, on the first read or any later one.
 	 *
-	 * PayPal reports the capture's state after the fact, so a delivery late enough — or a read made
-	 * days after the refund — meets `REFUNDED` where it would have met `COMPLETED`. read as
-	 * `succeeded` that is revenue posted for money the organisation no longer holds. `failed` posts
-	 * nothing, and the capture id is on the settlement so whoever is told can find it on PayPal.
+	 * PayPal reports the capture's state after the fact, so a read made after a refund — a late
+	 * delivery about the order, or the first read of a gift refunded before its settlement was
+	 * recorded — meets `REFUNDED`, `PARTIALLY_REFUNDED` or `REVERSED` where it would have met
+	 * `COMPLETED`. the money that went back is a refund row of its own, posted from the refund's own
+	 * delivery (../donations/reverse.ts); read here as `failed`, a gift whose first read met a
+	 * refunded capture was never counted, and its refund, finding no settled gift to reverse, was
+	 * retried and then dropped.
 	 */
-	it.each(['REFUNDED', 'REVERSED'])(
-		'reads a %s capture as failed, naming the capture',
+	it.each(['REFUNDED', 'PARTIALLY_REFUNDED', 'REVERSED'])(
+		'reads a %s capture as the settlement it was',
 		async (state) => {
 			recording([
 				{ status: 200, json: captured() },
@@ -908,7 +1140,9 @@ describe('readSettlement', () => {
 
 			expect(result.ok && result.value).toMatchObject({
 				providerTxnId: '5O190127TN364715T',
-				status: 'failed',
+				status: 'succeeded',
+				amountMinor: 9700,
+				feeMinor: 311,
 				reference: '3C679366HH908993F'
 			});
 		}
@@ -2167,6 +2401,161 @@ describe('readSettlement on a repeating gift’s charge', () => {
 	});
 });
 
+describe('readReversal on a repeating gift’s charge', () => {
+	/**
+	 * a refunded collection reads back as the sale it settled on, carrying the commitment's metadata.
+	 *
+	 * the sale id is what `readSettlement` reports for a collection and what its `payment` row holds.
+	 * a sale carries no `custom_id`, so what says whose gift it was is the commitment's — the same
+	 * path `readRecurringGift` takes, through the sale's `billing_agreement_id` — and it is what tells
+	 * a refund of a charge not recorded yet from one this deployment never took.
+	 */
+	it('reads a completed refund against the sale, with the commitment’s metadata', async () => {
+		const { calls } = recording([
+			{ status: 200, json: SALE_REFUND },
+			{ status: 200, json: SALE },
+			{ status: 200, json: commitment() }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('PAYMENT.SALE.REFUNDED', SALE_REFUND.id)
+		);
+
+		expect(path(apiCall(calls, 0))).toBe('/v1/payments/refund/0P209507D6694645N');
+		expect(path(apiCall(calls, 1))).toBe('/v1/payments/sale/1KE4800513426762K');
+		expect(path(apiCall(calls, 2))).toBe('/v1/billing/subscriptions/I-BW452GLLEP1G');
+		expect(result.ok && result.value).toEqual({
+			kind: 'refund',
+			reversedTxnId: '1KE4800513426762K',
+			providerReversalId: '0P209507D6694645N',
+			amountMinor: 9713,
+			currency: 'USD',
+			occurredAt: new Date('2026-09-20T09:12:40Z'),
+			reversedMetadata: GIFT_METADATA,
+			// a v1 refund's read carries no fee figure (`Refund` in PayPal's PHP SDK).
+			feeReturnedMinor: null
+		});
+	});
+
+	/** only a `completed` refund moved money, and nothing past the refund is read to say otherwise. */
+	it.each(['pending', 'failed', 'cancelled'])(
+		'reads a %s refund as having moved nothing',
+		async (state) => {
+			const { calls } = recording([{ status: 200, json: { ...SALE_REFUND, state } }]);
+
+			const result = await createPaypalProvider(CREDENTIALS).readReversal(
+				reversal('PAYMENT.SALE.REFUNDED', SALE_REFUND.id)
+			);
+
+			expect(result.ok && result.value).toEqual({
+				kind: 'nothing_moved',
+				providerReversalId: '0P209507D6694645N'
+			});
+			expect(apiCall(calls, 1)).toBeUndefined();
+		}
+	);
+
+	/** the same refusal a capture's refund takes: never a null figure, which reads as the whole. */
+	it('refuses a completed refund whose amount is not a figure at the currency’s scale', async () => {
+		recording([
+			{ status: 200, json: { ...SALE_REFUND, amount: { total: '97.131', currency: 'USD' } } }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('PAYMENT.SALE.REFUNDED', SALE_REFUND.id)
+		);
+
+		expect(result.ok === false && result.reason).toBe('unsupported');
+	});
+
+	/**
+	 * a sale whose agreement PayPal does not hold as a subscription — another integration's legacy
+	 * billing agreement on the same account — reads with no metadata, the same as a sale under none.
+	 * the writer then finds the sale by its own id where it is one of this app's, and leaves it where
+	 * it is not; a refusal would tell staff a gift was at stake over a refund that is not this app's.
+	 */
+	it('reads a refunded sale whose subscription PayPal does not hold with no metadata', async () => {
+		recording([
+			{ status: 200, json: SALE_REFUND },
+			{ status: 200, json: { ...SALE, billing_agreement_id: 'B-4MR73593JD2261049' } },
+			{
+				status: 404,
+				json: { name: 'RESOURCE_NOT_FOUND', details: [{ issue: 'INVALID_RESOURCE_ID' }] }
+			}
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('PAYMENT.SALE.REFUNDED', SALE_REFUND.id)
+		);
+
+		expect(result.ok && result.value).toMatchObject({
+			kind: 'refund',
+			reversedTxnId: '1KE4800513426762K',
+			reversedMetadata: {}
+		});
+	});
+
+	/** a subscription read PayPal refused for any other reason is its own refusal, never no metadata. */
+	it('refuses a refunded sale whose subscription could not be read', async () => {
+		recording([
+			{ status: 200, json: SALE_REFUND },
+			{ status: 200, json: SALE },
+			{ status: 503, json: { name: 'SERVICE_UNAVAILABLE' } }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('PAYMENT.SALE.REFUNDED', SALE_REFUND.id)
+		);
+
+		expect(result.ok === false && result.reason).toBe('provider_error');
+	});
+
+	/** an answer with no refund in it is no reading at all, never a refund that moved nothing. */
+	it('refuses a refund read that answered with no object', async () => {
+		recording([{ status: 200, json: null }]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('PAYMENT.SALE.REFUNDED', SALE_REFUND.id)
+		);
+
+		expect(result.ok === false && result.reason).toBe('provider_error');
+	});
+
+	/** a refund naming no sale reverses nothing this app can find, and reads the same every time. */
+	it('refuses a completed refund that names no sale, asking nothing more', async () => {
+		const { sale_id: _none, ...unnamed } = SALE_REFUND;
+		const { calls } = recording([{ status: 200, json: unnamed }]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('PAYMENT.SALE.REFUNDED', SALE_REFUND.id)
+		);
+
+		expect(result.ok === false && result.reason).toBe('unsupported');
+		expect(apiCall(calls, 1)).toBeUndefined();
+	});
+
+	/**
+	 * a sale under no subscription is none of this app's collections — every one it collects is
+	 * under a commitment — so it reads with no metadata, and the writer answers it 200 and leaves it.
+	 */
+	it('reads a refunded sale under no subscription with no metadata', async () => {
+		const { billing_agreement_id: _none, ...unsubscribed } = SALE;
+		const { calls } = recording([
+			{ status: 200, json: SALE_REFUND },
+			{ status: 200, json: unsubscribed }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('PAYMENT.SALE.REFUNDED', SALE_REFUND.id)
+		);
+
+		expect(result.ok && result.value.kind === 'refund' && result.value.reversedMetadata).toEqual(
+			{}
+		);
+		expect(apiCall(calls, 2)).toBeUndefined();
+	});
+});
+
 describe('what a donor typed', () => {
 	/**
 	 * no name, email address or message a donor gave this deployment reaches PayPal on either call.
@@ -2242,7 +2631,9 @@ describe('the listeners the app holds', () => {
 				'BILLING.SUBSCRIPTION.ACTIVATED',
 				'BILLING.SUBSCRIPTION.CANCELLED',
 				'BILLING.SUBSCRIPTION.EXPIRED',
-				'BILLING.SUBSCRIPTION.SUSPENDED'
+				'BILLING.SUBSCRIPTION.SUSPENDED',
+				'PAYMENT.CAPTURE.REFUNDED',
+				'PAYMENT.SALE.REFUNDED'
 			]
 		});
 	});

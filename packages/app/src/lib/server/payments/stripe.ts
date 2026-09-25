@@ -2186,7 +2186,8 @@ export function createStripeProvider(
 						...facts,
 						amountMinor: refunded.amount,
 						currency: refunded.currency.toUpperCase(),
-						occurredAt: atMillis(refunded.created)
+						occurredAt: atMillis(refunded.created),
+						feeReturnedMinor: null
 					}
 				};
 			} catch (error) {

@@ -178,11 +178,9 @@ import { sendTributeNotice } from './tribute-notice';
 // its entries, the row it owes QuickBooks and the rows it owes every listening Zap stay whatever a
 // later report says, so a status moved off `succeeded` would leave the gift reading `cancelled` or
 // `pending` while the books count it. a fresh read reporting such a payment unsettled — a grant the
-// fund cancelled, or a PayPal capture refunded or reversed, which reaches this only when a later
-// delivery about the order triggers a read, since neither is an event this app subscribes to —
-// changes nothing and tells an operator, because whatever the books hold for it may be money the
-// processor has taken back, and only a correction posted in /admin/books (../books/correct.ts)
-// takes it out. two reports are stale rather than news and say nothing: a
+// fund cancelled — changes nothing and tells an operator, because whatever the books hold for it
+// may be money the processor has taken back, and only a correction posted in /admin/books
+// (../books/correct.ts) takes it out. two reports are stale rather than news and say nothing: a
 // crypto read, which can report a state from before the coins landed, and a delivery's own state
 // standing in for a read, which can be older than the one that settled the payment. money a refund
 // takes back is a row of its own (./reverse.ts), never a status on this one.

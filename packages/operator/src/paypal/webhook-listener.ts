@@ -8,7 +8,8 @@
 // (`packages/app/src/routes/api.paypal.webhook.ts`).
 //
 // `packages/console/internal/release/config.go` holds the binary's copy, and its config_test.go
-// gates that copy against this file. what is served at the address is
+// gates that copy against `PAYPAL_WEBHOOK_PATH` and the settlement and recurring lists below, each
+// read by name. what is served at the address is
 // `packages/app/src/routes/api.paypal.webhook.ts`, whose path comes from its own name, and
 // `packages/app/src/routes.spec.ts` pins that path.
 //
@@ -94,6 +95,21 @@ export const RECURRING_EVENT_TYPES = [
 ] as const;
 
 /**
+ * the deliveries that say a merchant refunded money this deployment settled, each naming the refund.
+ *
+ * one per settled object: `PAYMENT.CAPTURE.REFUNDED` carries a Payments v2 refund of a one-off
+ * gift's capture, and `PAYMENT.SALE.REFUNDED` a Payments v1 refund of one collection under a
+ * repeating gift (https://developer.paypal.com/api/rest/webhooks/event-names). each names exactly one
+ * refund, so one delivery is one refund row.
+ *
+ * `PAYMENT.REFUND.PENDING` and `PAYMENT.REFUND.FAILED` are not here: PayPal documents both for an
+ * eCheck-funded refund still clearing or one the bank did not issue, neither of which moved money,
+ * and a refund that completes is `PAYMENT.CAPTURE.REFUNDED`. `*.REVERSED` is PayPal taking the money
+ * back rather than the merchant sending it, which is a dispute's read and not a refund's.
+ */
+export const REFUND_EVENT_TYPES = ['PAYMENT.CAPTURE.REFUNDED', 'PAYMENT.SALE.REFUNDED'] as const;
+
+/**
  * everything the listener subscribes to, which is exactly what the deployment acts on.
  *
  * everything outside it verifies, reports `ignored`, and is answered — a listener subscribed to more
@@ -104,5 +120,6 @@ export const RECURRING_EVENT_TYPES = [
  */
 export const SUBSCRIBED_EVENT_TYPES = [
 	...SETTLEMENT_EVENT_TYPES,
-	...RECURRING_EVENT_TYPES
+	...RECURRING_EVENT_TYPES,
+	...REFUND_EVENT_TYPES
 ] as const;

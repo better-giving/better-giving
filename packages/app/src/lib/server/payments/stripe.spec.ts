@@ -884,7 +884,9 @@ describe('readReversal', () => {
 				amountMinor: 10_329,
 				currency: 'USD',
 				occurredAt: new Date(1_770_100_000_000),
-				reversedMetadata: { donation_id: '01932f7c' }
+				reversedMetadata: { donation_id: '01932f7c' },
+				// Stripe keeps its fee on a refund.
+				feeReturnedMinor: null
 			}
 		});
 	});

@@ -1748,9 +1748,9 @@ describe('settleDelivery() — a gift settled on PayPal', () => {
 	});
 
 	/**
-	 * a capture refunded whole or reversed on a chargeback reads `failed`. neither is an event this
-	 * app subscribes to (`SETTLEMENT_EVENT_TYPES` in packages/operator/src/paypal/webhook-listener.ts),
-	 * so the read that finds one is made for a later delivery about the same order.
+	 * a later read reporting a posted payment `failed` leaves it settled. PayPal's own read never
+	 * reports a capture that settled this way — one refunded or reversed still reads `succeeded`
+	 * (`CAPTURE_STATUSES` in ../payments/paypal.ts) — so this holds the rule for any read that does.
 	 */
 	it('keeps a posted capture settled when a later read finds it no longer completed, and tells an operator', async () => {
 		const gift = await paypalGift();

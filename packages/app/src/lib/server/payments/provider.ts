@@ -954,7 +954,15 @@ type DisputeFacts = {
 };
 
 export type Reversal =
-	| (ReversalFacts & WithdrawnMoney & { readonly kind: 'refund' })
+	| (ReversalFacts &
+			WithdrawnMoney & {
+				readonly kind: 'refund';
+				/**
+				 * minor units, in the refund's currency: the part of its fee the processor gave back with
+				 * the refund. null where it gave none back, and then the fee stays booked.
+				 */
+				readonly feeReturnedMinor: number | null;
+			})
 	| (ReversalFacts & { readonly kind: 'refund_failed' })
 	| (ReversalFacts &
 			WithdrawnMoney &
