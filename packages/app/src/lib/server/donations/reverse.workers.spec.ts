@@ -356,7 +356,7 @@ describe('recordReversal() — a refund that gives back part of the gift’s fee
 		expect(await netOn(postableId('undepositedFunds'))).toBe(9_680 - 9_740);
 	});
 
-	it('gives back no more of the fee over two refunds than the gift booked, logging the cap and telling nobody', async () => {
+	it('gives back no more of the fee over two refunds than the gift booked, logging the cap and telling no staff', async () => {
 		await settledGift({ feeMinor: 320 });
 		const mail = mailer();
 		const logged = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -375,7 +375,7 @@ describe('recordReversal() — a refund that gives back part of the gift’s fee
 		]);
 		expect(await netOn(postableId('processorFees'))).toBe(0);
 		expect(logged).toHaveBeenCalledTimes(1);
-		expect(mail.sent).toEqual([]);
+		expect(mail.sent.filter((m) => m.to === 'ops@hope.example')).toEqual([]);
 		logged.mockRestore();
 	});
 
@@ -566,7 +566,7 @@ describe('recordReversal() — a refund of a settled gift the books do not hold'
 			expect.objectContaining({ status: 'succeeded', parentPaymentId: gift.paymentId })
 		]);
 		expect(await db.select().from(entryGroup)).toEqual([]);
-		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org', 'ops@hope.example']);
 	});
 
 	it('answers the refund delivered again as already posted, and tells nobody twice', async () => {
@@ -1918,5 +1918,130 @@ describe('recordReversal() — a dispute of the whole charge after a partial ref
 		expect(await groupCount()).toBe(groups);
 		expect(mail.sent).toHaveLength(1);
 		expect(mail.sent[0]?.text).toMatch(/took the whole gift.*1500 USD/s);
+	});
+});
+
+/** what reached the donor of the fixture gift, as opposed to the staff address alerts go to. */
+function toDonor(sent: readonly EmailMessage[]) {
+	return sent.filter((m) => m.to === 'ada@example.org');
+}
+
+describe('recordReversal() — what the donor is told of a refund', () => {
+	it('tells the donor of a full refund once, with nothing left deductible', async () => {
+		await settledGift();
+		const mail = mailer();
+
+		const result = await recordReversal(deps({ email: mail.port }), refund(), 'evt_r1');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		const notices = toDonor(mail.sent);
+		expect(notices).toHaveLength(1);
+		expect(notices[0]?.subject).toBe('Your gift to Hope Foundation has been refunded');
+		expect(notices[0]?.text).toContain('We have refunded your gift of USD 100.00');
+		expect(notices[0]?.text).toContain('the deductible amount of this gift is now USD 0.00');
+	});
+
+	it('names each partial refund’s own amount and the remainder after it', async () => {
+		await settledGift();
+		const first = mailer();
+		const second = mailer();
+
+		await recordReversal(deps({ email: first.port }), refund({ amountMinor: 2_500 }), 'evt_r1');
+		await recordReversal(
+			deps({ email: second.port }),
+			refund({ providerReversalId: 're_2', amountMinor: 5_000 }),
+			'evt_r2'
+		);
+
+		const [one] = toDonor(first.sent);
+		expect(one?.subject).toBe('Part of your gift to Hope Foundation has been refunded');
+		expect(one?.text).toContain('We have refunded USD 25.00 of your gift of USD 100.00');
+		expect(one?.text).toContain('the deductible amount of this gift is now USD 75.00');
+		const [two] = toDonor(second.sent);
+		expect(two?.text).toContain('We have refunded USD 50.00 of your gift of USD 100.00');
+		expect(two?.text).toContain('the deductible amount of this gift is now USD 25.00');
+	});
+
+	it('tells the donor nothing more when the refund is delivered again', async () => {
+		await settledGift();
+		await recordReversal(deps(), refund({ amountMinor: 2_500 }), 'evt_r1');
+		const mail = mailer();
+
+		await recordReversal(deps({ email: mail.port }), refund({ amountMinor: 2_500 }), 'evt_r2');
+
+		expect(toDonor(mail.sent)).toEqual([]);
+	});
+
+	it('tells the donor nothing of a refund that did not stand', async () => {
+		await settledGift();
+		await recordReversal(deps(), refund(), 'evt_r1');
+		const mail = mailer();
+
+		await recordReversal(
+			deps({ email: mail.port }),
+			{
+				kind: 'refund_failed',
+				reversedTxnId: 'pi_1',
+				providerReversalId: 're_1',
+				occurredAt: new Date('2026-08-25T10:00:00.000Z'),
+				reversedMetadata: { donation_id: 'named-by-the-charge' }
+			},
+			'evt_r2'
+		);
+
+		expect(toDonor(mail.sent)).toEqual([]);
+	});
+
+	it.each([
+		{ state: 'opened', before: [], reversal: () => opened() },
+		{ state: 'won after it opened', before: [() => opened()], reversal: () => won() },
+		{ state: 'lost after it opened', before: [() => opened()], reversal: () => lost() },
+		{ state: 'lost with no opening recorded', before: [], reversal: () => lost() }
+	])('tells the donor nothing of a dispute $state', async ({ before, reversal }) => {
+		await settledGift();
+		for (const [i, earlier] of before.entries()) {
+			await recordReversal(deps(), earlier(), `evt_d0${i}`);
+		}
+		const mail = mailer();
+
+		await recordReversal(deps({ email: mail.port }), reversal(), 'evt_d1');
+
+		expect(toDonor(mail.sent)).toEqual([]);
+	});
+
+	it.each([
+		{
+			failure: 'refuses',
+			send: async (message: EmailMessage) =>
+				message.to === 'ada@example.org'
+					? {
+							ok: false as const,
+							reason: 'connect_failed' as const,
+							detail: 'no route to host',
+							indeterminate: false
+						}
+					: { ok: true as const }
+		},
+		{
+			failure: 'faults',
+			send: async (message: EmailMessage) => {
+				if (message.to === 'ada@example.org') throw new Error('the socket went away');
+				return { ok: true as const };
+			}
+		}
+	])('answers as posted, and tells staff, when the notice’s transport $failure', async ({ send }) => {
+		await settledGift();
+		const sent: EmailMessage[] = [];
+		const email: EmailProvider = {
+			async send(message) {
+				sent.push(message);
+				return send(message);
+			}
+		};
+
+		const result = await recordReversal(deps({ email }), refund(), 'evt_r1');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(sent.map((m) => m.to)).toEqual(['ada@example.org', 'ops@hope.example']);
 	});
 });

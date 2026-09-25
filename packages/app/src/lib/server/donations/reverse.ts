@@ -26,6 +26,7 @@ import {
 } from '../payments/provider';
 import { alert, commit, processorLabel, type SettleDeps, type SettleResult } from './delivery';
 import { reinstatementEntry, reversalEntry, settleUpEntry, unpostable } from './entries';
+import { sendRefundNotice } from './refund-notice';
 
 // what a refund or a dispute does to a gift already in the books: a payment row of its own, and an
 // entry group taking the money back out, in one `batch()`. the only module that writes a
@@ -101,6 +102,13 @@ import { reinstatementEntry, reversalEntry, settleUpEntry, unpostable } from './
 // runs the stop again and does not tell of the dispute again; a stop that fails for good is told on
 // its own, on each delivery that meets it, because the plan may still be collecting. the donor is
 // told nothing.
+//
+// after the batch that wrote a refund, and only on the delivery that wrote it, the donor is sent one
+// short notice (./refund-notice.ts): what this refund took, and what of the gift is now deductible —
+// the gift less every refund and dispute of it that stands, and nothing once they add up to it. it
+// goes whether or not the gift was ever posted, because the money went back either way. a
+// redelivery is answered `already_posted` before it, and a dispute or a refund that did not stand
+// never reaches it. a notice that fails is told to staff and never changes the answer.
 //
 // ---------------------------------------------------------------------------
 // a reversal, its settle-up included, owes QuickBooks a row only where the group it answers holds
@@ -340,6 +348,17 @@ async function withdraw(
 					})
 		);
 	}
+	await sendRefundNotice(deps, {
+		giftPaymentId: reversed.id,
+		donationId: reversed.donationId,
+		refundId,
+		giftMinor: reversed.amountMinor,
+		givenAt: reversed.occurredAt,
+		refundedMinor: amountMinor,
+		// a refund is never capped at what is left, so the remainder can read below nothing.
+		deductibleMinor: Math.max(0, leftMinor - amountMinor),
+		currency: reversal.currency
+	});
 	if (typeof posting === 'string') {
 		return refundNotPosted(deps, reversal, reversed, refundId, amountMinor, posting);
 	}
