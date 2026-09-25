@@ -97,6 +97,7 @@ describe('every table is STRICT', () => {
 		expect(names).toContain('entry_group');
 		expect(names).toContain('ledger_entry');
 		expect(names).toContain('program');
+		expect(names).toContain('dispute');
 	});
 
 	it('declares STRICT on every table', async () => {

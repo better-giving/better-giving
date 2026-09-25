@@ -127,8 +127,15 @@ export const SAMPLE_GIFT: GiftEvent = {
 /** the new-donor sample, the donor whose first gift is `SAMPLE_GIFT`. */
 export const SAMPLE_DONOR: DonorEvent = donorEventOf(SAMPLE_GIFT);
 
-/** what each trigger's Zap receives. */
-export type ZapierEvent = { readonly new_gift: GiftEvent; readonly new_donor: DonorEvent };
+/**
+ * what each trigger's Zap receives. nothing fires `gift_refunded`, and its samples are the ones
+ * `new_gift` reads.
+ */
+export type ZapierEvent = {
+	readonly new_gift: GiftEvent;
+	readonly new_donor: DonorEvent;
+	readonly gift_refunded: GiftEvent;
+};
 
 /** how many events the Zap editor is shown to map fields from. */
 const SAMPLE_COUNT = 3;

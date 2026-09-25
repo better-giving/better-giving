@@ -128,12 +128,18 @@ import type { PostableAccountId } from './postable';
 //    atomically, but it is the migration step of `deploy` that fails and `wrangler deploy`
 //    runs behind it, so a fork that hits it cannot deploy at all. replace the emitted pair with
 //        PRAGMA defer_foreign_keys=true;  ...rebuild...  PRAGMA defer_foreign_keys=false;
-//    which D1 honours, and which defers enforcement to commit instead of disabling it.
+//    which D1 honours: the `DROP` no longer fails on the rows pointing at the table.
+//    it lets the rebuild through and checks nothing: `defer_foreign_keys=false` clears
+//    the violations deferred so far, so the commit finds none, and a rebuild that left
+//    child rows pointing at nothing — a copy step skipped, a row not copied — commits
+//    with them orphaned. the one guard is `newest-migration.workers.spec.ts`'s "leaves
+//    no foreign key pointing at nothing", which reads `pragma_foreign_key_check` after
+//    applying the newest migration over seeded rows.
 //    two caveats on the replacement. it resets at every commit, so it covers one
 //    transaction and must be re-set if a rebuild is ever split across files. and
 //    `ON DELETE CASCADE` is never deferrable — a cascade is an action, not a violation,
-//    so it fires during the rebuild's implicit delete, empties the child table, and then
-//    passes the commit-time check because the orphans it would have caught are gone.
+//    so it fires during the rebuild's implicit delete and empties the child table, leaving
+//    no orphan for any check to find.
 //    that is why exactly one FK in this schema carries a cascade —
 //    `auth_session.user_id -> auth_user.id`, argued at its own declaration in
 //    ./auth-schema.ts — and no other may: a session is worthless without its user and no
@@ -1489,9 +1495,10 @@ const NON_PROCESSOR_PROVIDERS = ['manual'] as const satisfies readonly PaymentPr
  * able to hold the two in agreement.
  *
  * `disputed`/`chargeback` are absent for the opposite reason: they are real and they are
- * not settlement outcomes, they are later events about a settled payment. they arrive as
- * their own rows or their own table when disputes land, and adding a member to this list
- * afterwards is a table rebuild — so the list is short on purpose rather than by omission.
+ * not settlement outcomes, they are later events about a settled payment. the money a dispute
+ * withdraws is a `direction = 'refund'` row of its own, and its state is `dispute`'s. adding a
+ * member to this list is a table rebuild — so the list is short on purpose rather than by
+ * omission.
  */
 export const PAYMENT_STATUSES = ['pending', 'succeeded', 'failed', 'cancelled'] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
@@ -1747,6 +1754,58 @@ export const payment = sqliteTable(
 		 * direction to be wrong in.
 		 */
 		uniqueIndex('payment_provider_txn_idx').on(t.provider, t.providerTxnId)
+	]
+);
+
+/** how a dispute closed. an open dispute has no outcome at all. */
+export const DISPUTE_OUTCOMES = ['won', 'lost'] as const;
+export type DisputeOutcome = (typeof DISPUTE_OUTCOMES)[number];
+
+/**
+ * one row per dispute a processor opened against a gift: its state, never its money.
+ *
+ * the money the dispute withdrew is a `payment` row of its own, `direction = 'refund'` with the
+ * dispute's id as its `provider_txn_id`, and this row is keyed on that one. so the dispute has no
+ * id of its own and no processor-id column: `payment_provider_txn_idx` is already the one key a
+ * redelivered dispute collides on, and a second copy here would have to stay in agreement with it.
+ *
+ * nothing references this table, so widening `DISPUTE_OUTCOMES` rebuilds a leaf and never the
+ * rule-2 rebuild of a referenced table. that a gift is disputed is stored nowhere else: it is a row
+ * here with no outcome.
+ */
+export const dispute = sqliteTable(
+	'dispute',
+	{
+		/** the refund-direction row holding the money this dispute withdrew. */
+		paymentId: text('payment_id')
+			.primaryKey()
+			.references(() => payment.id),
+		/**
+		 * null while the dispute is open. set once, together with `closed_at`, under
+		 * `where outcome is null` — so a second report of the close changes no row.
+		 */
+		outcome: text('outcome').$type<DisputeOutcome>(),
+		/** the processor's deadline for the organisation's response. null where it named none. */
+		respondBy: at('respond_by'),
+		/** the processor's reason code, verbatim. */
+		reason: text('reason'),
+		closedAt: at('closed_at'),
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check(
+			'dispute_outcome_check',
+			sql`${t.outcome} is null or ${enumCheck(t.outcome, DISPUTE_OUTCOMES)}`
+		),
+		// a close with no outcome reads as ended for nothing, and an outcome with no close as a
+		// dispute decided at no time.
+		check(
+			'dispute_closed_with_outcome_check',
+			sql`(${t.outcome} is null) = (${t.closedAt} is null)`
+		),
+		check('dispute_reason_not_blank_check', optionalNotBlank(t.reason))
 	]
 );
 
@@ -2507,7 +2566,7 @@ export const zapierKey = sqliteTable(
  * the events a Zap can subscribe to. declared here rather than in a leaf, on this file's `enums`
  * rule: no module this file imports needs it.
  */
-export const ZAPIER_TRIGGERS = ['new_gift', 'new_donor'] as const;
+export const ZAPIER_TRIGGERS = ['new_gift', 'new_donor', 'gift_refunded'] as const;
 export type ZapierTrigger = (typeof ZAPIER_TRIGGERS)[number];
 
 /**

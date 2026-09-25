@@ -55,14 +55,6 @@ async function snapshot(): Promise<Map<string, Row[]>> {
 const project = (row: Row, columns: readonly string[]): Row =>
 	Object.fromEntries(columns.map((c) => [c, row[c]]));
 
-/**
- * the columns the newest migration drops, by table: the comparison below passes over them and a
- * block of the migration's own asserts they are gone.
- */
-const DROPPED: Readonly<Record<string, readonly string[]>> = {
-	quickbooks_connection: ['deposit_account_id', 'deposit_account_name']
-};
-
 async function seed() {
 	const statements = [
 		db()
@@ -116,10 +108,10 @@ async function seed() {
 			`insert into quickbooks_connection
 			   (id, realm_id, company_name, access_token, access_token_expires_at, refresh_token,
 			    refresh_token_expires_at, income_account_id, income_account_name, fee_account_id,
-			    fee_account_name, deposit_account_id, deposit_account_name, start_at, created_at,
-			    updated_at)
+			    fee_account_name, stripe_balance_account_id, stripe_balance_account_name, start_at,
+			    created_at, updated_at)
 			 values ('quickbooks', '4620816365', 'Riverside Shelter', 'acc', 3600000, 'ref', 7,
-			         '79', 'Donations', '80', 'Merchant fees', '35', 'Checking', 6, 0, 0)`
+			         '79', 'Donations', '80', 'Merchant fees', '36', 'Stripe balance', 6, 0, 0)`
 		)
 	];
 	// a row of each nullable shape `payment` holds — a processor with its id, staff entry with and
@@ -145,15 +137,19 @@ async function seed() {
 		);
 	}
 	await db().batch(statements);
-	// after the payments, which it points at
+	// after the payments, which they point at. a pending and a sent row on the open Zap and a sent
+	// row on the ended one, so a rebuild of `zapier_subscription` has children under both kinds of
+	// parent to lose.
 	await db()
 		.prepare(
 			`insert into zapier_delivery
 			   (subscription_id, event_id, payment_id, status, attempts, next_attempt_at, leased_until,
 			    created_at, updated_at)
-			 values (?, 'evt-probe', 'p-card', 'pending', 1, 3, 4, 0, 0)`
+			 values (?, 'evt-probe', 'p-card', 'pending', 1, 3, 4, 0, 0),
+			        (?, 'evt-sent', 'p-card', 'sent', 1, 3, null, 0, 1),
+			        (?, 'evt-ended', 'p-cash', 'sent', 2, 3, null, 0, 2)`
 		)
-		.bind(OPEN_ZAP)
+		.bind(OPEN_ZAP, OPEN_ZAP, ENDED_ZAP)
 		.run();
 }
 
@@ -195,10 +191,7 @@ describe('the newest migration keeps every row the database already held', () =>
 		async () => {
 			expect([...before.keys()].length).toBeGreaterThan(5);
 			for (const [table, rows] of before) {
-				const dropped = DROPPED[table] ?? [];
-				const columns = (rows.length > 0 ? Object.keys(rows[0]!) : []).filter(
-					(c) => !dropped.includes(c)
-				);
+				const columns = rows.length > 0 ? Object.keys(rows[0]!) : [];
 				expect(
 					(after.get(table) ?? []).map((r) => project(r, columns)),
 					`${table} lost or changed rows across the newest migration`
@@ -222,26 +215,12 @@ describe('the newest migration keeps every row the database already held', () =>
 			expect(after.get('recurring_plan')?.map((r) => r.id)).toEqual([PLAN_ID]);
 			expect(after.get('zapier_key')?.map((r) => r.id)).toEqual(['zapier']);
 			expect(after.get('zapier_subscription')?.map((r) => r.id)).toEqual([OPEN_ZAP, ENDED_ZAP]);
-			expect(after.get('zapier_delivery')?.map((r) => r.event_id)).toEqual(['evt-probe']);
+			expect(after.get('zapier_delivery')?.map((r) => r.event_id)).toEqual([
+				'evt-probe',
+				'evt-sent',
+				'evt-ended'
+			]);
 			expect(after.get('quickbooks_connection')?.map((r) => r.realm_id)).toEqual(['4620816365']);
-		}
-	);
-
-	it.skipIf(squashed)(
-		'keeps the QuickBooks connection and its income and fee picks, and carries no bank into a holding',
-		() => {
-			const [connection] = after.get('quickbooks_connection') ?? [];
-			expect(connection).toMatchObject({
-				refresh_token: 'ref',
-				refresh_token_expires_at: 7,
-				income_account_id: '79',
-				fee_account_name: 'Merchant fees',
-				start_at: 6,
-				stripe_balance_account_id: null,
-				undeposited_funds_account_id: null,
-				moved_at: null
-			});
-			expect(Object.keys(connection ?? {})).not.toContain('deposit_account_id');
 		}
 	);
 
@@ -251,12 +230,62 @@ describe('the newest migration keeps every row the database already held', () =>
 			ended_at: null,
 			ended_reason: null
 		});
-		expect(after.get('zapier_delivery')?.[0]).toMatchObject({ status: 'pending', leased_until: 4 });
+		expect(after.get('zapier_delivery')?.map((r) => [r.status, r.leased_until])).toEqual([
+			['pending', 4],
+			['sent', null],
+			['sent', null]
+		]);
 	});
 
 	it.skipIf(squashed)('leaves no foreign key pointing at nothing', async () => {
 		const { results } = await db().prepare('select * from pragma_foreign_key_check').all();
 		expect(results).toEqual([]);
+	});
+});
+
+// what 0010 is for, on the database it migrated rather than the empty one every other spec reads:
+// the rebuilt subscription table takes the new trigger and its seeded rows' deliveries still
+// resolve to it, and a dispute can be written against the refund row the seed holds.
+describe('0010 takes a gift_refunded Zap and a dispute on a database already taking gifts', () => {
+	const squashed = env.TEST_MIGRATIONS.length < 2;
+
+	beforeAll(async () => {
+		if (squashed) return;
+		await migrateOverSeed();
+	});
+
+	it.skipIf(squashed)(
+		'subscribes a Zap to gift_refunded, and a delivery row resolves to it',
+		async () => {
+			await db().batch([
+				db().prepare(
+					`insert into zapier_subscription (id, "trigger", hook_url, created_at, updated_at)
+				 values ('zap-refunded', 'gift_refunded', 'https://hooks.zapier.com/hooks/standard/1/refunded/', 0, 0)`
+				),
+				db().prepare(
+					`insert into zapier_delivery
+				   (subscription_id, event_id, payment_id, next_attempt_at, created_at, updated_at)
+				 values ('zap-refunded', 'p-refund', 'p-refund', 0, 0, 0)`
+				)
+			]);
+			const { results } = await db()
+				.prepare(
+					`select subscription_id, event_id from zapier_delivery where event_id = 'p-refund'`
+				)
+				.all();
+			expect(results).toEqual([{ subscription_id: 'zap-refunded', event_id: 'p-refund' }]);
+		}
+	);
+
+	it.skipIf(squashed)('records a dispute against the seeded refund row', async () => {
+		await db()
+			.prepare(
+				`insert into dispute (payment_id, reason, created_at, updated_at)
+				 values ('p-refund', 'fraudulent', 0, 0)`
+			)
+			.run();
+		const row = await db().prepare(`select outcome, closed_at from dispute`).first();
+		expect(row).toEqual({ outcome: null, closed_at: null });
 	});
 });
 
@@ -304,8 +333,15 @@ describe('0008 drops a key that was never stored, and ends every Zap on it', () 
 	});
 
 	it.skipIf(squashed)('drops what the ended subscription was still owed', () => {
-		expect(deliveries).toHaveLength(1);
-		expect(deliveries[0]).toMatchObject({ status: 'dropped', leased_until: null });
-		expect(deliveries[0]!.updated_at).toBeGreaterThan(Date.now() - 60_000);
+		const owed = deliveries.find((r) => r.event_id === 'evt-probe')!;
+		expect(owed).toMatchObject({ status: 'dropped', leased_until: null });
+		expect(owed.updated_at).toBeGreaterThan(Date.now() - 60_000);
+	});
+
+	it.skipIf(squashed)('leaves a delivery already sent as it was sent', () => {
+		expect(deliveries.find((r) => r.event_id === 'evt-sent')).toMatchObject({
+			status: 'sent',
+			updated_at: 1
+		});
 	});
 });
