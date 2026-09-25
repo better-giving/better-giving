@@ -2,7 +2,7 @@ import { and, eq, ne } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import { uuidv7 } from 'uuidv7';
 import { projectTribute } from '../../donations/tributes';
-import { outboxStatements } from '../accounting/outbox';
+import { settledGiftWrites, type Writes } from '../books/writes';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import {
@@ -18,7 +18,6 @@ import {
 } from '../db/schema';
 import type { CryptoReceived } from '../email/receipt';
 import { renderUncollectedNotice } from '../email/uncollected';
-import { postingStatements } from '../ledger/posting';
 import { readOrgProfile } from '../org/queries';
 import {
 	DONATION_METADATA_KEY,
@@ -31,7 +30,6 @@ import {
 	type Settlement,
 	type WebhookDelivery
 } from '../payments/provider';
-import { zapierStatements } from '../zapier/events';
 import { collectRecurringGift } from './collect';
 import { alert, processorLabel, type SettleDeps, type SettleResult } from './delivery';
 import { chargeEntry, feeEntry, unpostable, type GiftRevenue, type RevenueShare } from './entries';
@@ -175,7 +173,7 @@ import { sendTributeNotice } from './tribute-notice';
 // fund cancelled, or a PayPal capture refunded or reversed, which reaches this only when a later
 // delivery about the order triggers a read, since neither is an event this app subscribes to —
 // changes nothing and tells an operator, because whatever the books hold for it may be money the
-// processor has taken back, and only a correction posted in /admin/books (../ledger/correct.ts)
+// processor has taken back, and only a correction posted in /admin/books (../books/correct.ts)
 // takes it out. two reports are stale rather than news and say nothing: a
 // crypto read, which can report a state from before the coins landed, and a delivery's own state
 // standing in for a read, which can be older than the one that settled the payment.
@@ -780,7 +778,7 @@ async function write(
 		settlement.status === 'succeeded'
 			? eq(payment.id, row.id)
 			: and(eq(payment.id, row.id), ne(payment.status, 'succeeded'));
-	const writes: [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]] = [
+	const writes: Writes = [
 		db
 			.update(payment)
 			.set({
@@ -806,14 +804,12 @@ async function write(
 	if (credits !== null) {
 		if (settlement.arrival !== null) writes.push(...restatement(db, target, settlement));
 		const gift = { paymentId: row.id, donationId: row.donationId, revenue: credits };
-		const charge = chargeEntry(gift, settlement);
-		const fee = feeEntry(gift, settlement);
-		writes.push(...postingStatements(db, charge));
-		if (fee !== null) writes.push(...postingStatements(db, fee));
-		// after the groups, because `quickbooks_sync.entry_group_id` points at them.
-		writes.push(...outboxStatements(db, [charge, fee]));
 		writes.push(
-			...zapierStatements(db, { paymentId: row.id, contactId: target.donation.contactId })
+			...settledGiftWrites(db, {
+				charge: chargeEntry(gift, settlement),
+				fee: feeEntry(gift, settlement),
+				contactId: target.donation.contactId
+			})
 		);
 	}
 
@@ -830,7 +826,7 @@ async function write(
  */
 async function commit(
 	db: Db,
-	writes: [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]]
+	writes: Writes
 ): Promise<readonly unknown[] | 'already_posted' | 'failed'> {
 	try {
 		return await db.batch(writes);
@@ -1286,8 +1282,6 @@ async function recordRepeatDeposit(
 		donationId,
 		revenue: [{ accountId: fund.accountId, amountMinor: settlement.amountMinor }] as const
 	};
-	const charge = chargeEntry(gift, settlement);
-	const fee = feeEntry(gift, settlement);
 	const written = await commit(deps.db, [
 		deps.db.insert(donation).values({
 			id: donationId,
@@ -1326,10 +1320,11 @@ async function recordRepeatDeposit(
 			coinAmount: settlement.arrival?.coinAmount ?? null,
 			parentPaymentId: first.payment.id
 		}),
-		...postingStatements(deps.db, charge),
-		...(fee === null ? [] : postingStatements(deps.db, fee)),
-		...outboxStatements(deps.db, [charge, fee]),
-		...zapierStatements(deps.db, { paymentId, contactId: first.donation.contactId })
+		...settledGiftWrites(deps.db, {
+			charge: chargeEntry(gift, settlement),
+			fee: feeEntry(gift, settlement),
+			contactId: first.donation.contactId
+		})
 	]);
 	if (written === 'already_posted') {
 		return {

@@ -746,7 +746,7 @@ export function createQuickbooksProvider(
 		 * a correcting entry as one journal entry, each side in the account its role maps to.
 		 *
 		 * a journal entry is the one shape that takes both sides explicitly, which is what a
-		 * correction is: ../ledger/correct.ts builds it as one figure moved between two accounts, and
+		 * correction is: ../books/correct.ts builds it as one figure moved between two accounts, and
 		 * the debit and the credit are named here rather than signed.
 		 */
 		async sendCorrection(

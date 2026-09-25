@@ -13,7 +13,7 @@ import { redact } from '../redact';
 // data rather than as an import.
 //
 // every refusal lands on a box, the pair rule included: `postCorrection` in
-// `$lib/server/ledger/correct.ts` throws on a figure that is not positive and on one account on
+// `$lib/server/books/correct.ts` throws on a figure that is not positive and on one account on
 // both sides, so both are refused here first, where there is a box to say it under.
 //
 // the dependency runs server -> shared and never back: the action imports this, and nothing here

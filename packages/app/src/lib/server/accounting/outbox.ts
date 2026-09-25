@@ -84,9 +84,9 @@ const OWED_SOURCE_TYPES: readonly EntrySourceType[] = Object.values(OWED_KINDS);
 const CONNECTION_ID = 'quickbooks';
 
 /**
- * the queue rows `postings` owe, for splicing into the caller's single `batch()`:
- *
- *   await db.batch([...postingStatements(db, charge), ...outboxStatements(db, [charge, fee])]);
+ * the queue rows `postings` owe, for splicing into a caller's single `batch()`. outside the specs
+ * its one caller is ../books/writes.ts, and a writer takes them from there — `settledGiftWrites`
+ * or `correctionWrites`, which splice them after the entry groups they are about.
  *
  * one statement per owed posting, each writing nothing where the gate says no — an unconnected
  * deployment, or a gift dated before the start date as it stands when the batch runs. a fee entry

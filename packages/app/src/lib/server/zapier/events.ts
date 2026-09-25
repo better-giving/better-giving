@@ -41,10 +41,9 @@ import {
 export type SettledGift = { readonly paymentId: string; readonly contactId: string };
 
 /**
- * the `new_gift` and `new_donor` rows for one settled payment, for splicing into the caller's
- * single `batch()`:
- *
- *   await db.batch([...writes, ...outboxStatements(db, [charge, fee]), ...zapierStatements(db, gift)]);
+ * the `new_gift` and `new_donor` rows for one settled payment, for splicing into a caller's single
+ * `batch()`. outside the specs its one caller is `settledGiftWrites` in ../books/writes.ts, and a
+ * writer takes them from there.
  *
  * **after the statement that inserts the payment**, where the caller inserts one: every row points
  * at it through `zapier_delivery.payment_id`, a foreign key D1 checks per statement.

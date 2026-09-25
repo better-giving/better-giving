@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 // written the way ../donations/sole-inserter.spec.ts is, and for the same kind of rule: a row a
 // settled gift owes a Zap is minted by ./events.ts inside the posting's own batch(), moved along by
 // ./deliver.ts, and dropped by ./subscriptions.ts when its subscription ends. a fourth writer — a
-// correction in ../ledger/correct.ts announcing an edit, a screen resending by hand — is an event
+// correction in ../books/correct.ts announcing an edit, a screen resending by hand — is an event
 // no trigger describes, or a row sent twice whose status nobody else moved.
 //
 // a source scan rather than a runtime hook, so it catches the writer nobody wrote a test for, and
@@ -60,7 +60,7 @@ describe('zapier/ is the only writer of zapier_delivery', () => {
 	it('finds source files to scan at all', () => {
 		// an empty list would pass the assertion below vacuously, and a wrong `SRC` is how.
 		const names = files.map((f) => relative(SRC, f));
-		expect(names).toContain('lib/server/ledger/correct.ts');
+		expect(names).toContain('lib/server/books/correct.ts');
 		expect(names).toContain('lib/server/donations/settle.ts');
 		expect(names.some((n) => /\.(?:spec|test)\./.test(n))).toBe(false);
 	});

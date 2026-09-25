@@ -270,7 +270,7 @@ export type CorrectionRecord = {
 	readonly key: string;
 	readonly occurredAt: Date;
 	readonly currency: string;
-	/** why the correction was posted — required at ../ledger/correct.ts, so never blank here. */
+	/** why the correction was posted — required at ../books/correct.ts, so never blank here. */
 	readonly memo: string | null;
 	readonly lines: readonly [CorrectionLine, CorrectionLine, ...CorrectionLine[]];
 };

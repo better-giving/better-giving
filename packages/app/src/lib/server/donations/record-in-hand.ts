@@ -1,8 +1,7 @@
-import type { BatchItem } from 'drizzle-orm/batch';
 import { uuidv7 } from 'uuidv7';
 import type { InHandMethod } from '../../donations/methods';
 import { FORM_CURRENCY } from '../../forms/amounts';
-import { outboxStatements } from '../accounting/outbox';
+import { settledGiftWrites, type Writes } from '../books/writes';
 import type { ParsedContact } from '../contacts/contact-input';
 import { donationRevenueAccount } from '../db/accounts';
 import type { Db } from '../db/client';
@@ -15,8 +14,6 @@ import {
 	type NewLineItem,
 	type NewPayment
 } from '../db/schema';
-import { postingStatements } from '../ledger/posting';
-import { zapierStatements } from '../zapier/events';
 import { resolveDonor } from './donor';
 import { receivedInHandEntry } from './entries';
 
@@ -40,7 +37,7 @@ import { receivedInHandEntry } from './entries';
 // books: this splices the statements it hands up, as ./settle.ts does.
 //
 // the currency is not an input. v0 is USD-only by decision (`FORM_CURRENCY` in
-// `$lib/forms/amounts.ts`), and ../ledger/correct.ts keeps its books in the same one.
+// `$lib/forms/amounts.ts`), and ../books/correct.ts keeps its books in the same one.
 
 /**
  * who the gift is filed under: a donor the operator picked, or one they are creating.
@@ -97,8 +94,6 @@ export type GiftInHand = {
 export type GiftInHandResult =
 	| { readonly ok: true; readonly contactId: string; readonly donorWasCreated: boolean }
 	| { readonly ok: false; readonly reason: 'already_recorded' | 'write_failed' };
-
-type Writes = [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]];
 
 /**
  * record one gift received in hand, or report that its ids are already recorded.
@@ -174,9 +169,7 @@ export async function recordGiftInHand(db: Db, gift: GiftInHand): Promise<GiftIn
 			db.insert(donation).values(donationRow),
 			db.insert(lineItem).values(lineRow),
 			db.insert(payment).values(paymentRow),
-			...postingStatements(db, posting),
-			...outboxStatements(db, [posting]),
-			...zapierStatements(db, { paymentId: gift.paymentId, contactId: donor.contactId })
+			...settledGiftWrites(db, { charge: posting, fee: null, contactId: donor.contactId })
 		];
 		await db.batch(donor.statement === null ? rows : [donor.statement, ...rows]);
 

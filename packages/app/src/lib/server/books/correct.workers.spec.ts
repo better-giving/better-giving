@@ -4,8 +4,8 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import { type Correction, postCorrection } from './correct';
-import { PostingError } from './posting';
-import { findEntryGroup, readRaisedByMonth } from './queries';
+import { PostingError } from '../ledger/posting';
+import { findEntryGroup, readRaisedByMonth } from '../ledger/queries';
 
 // the one write a human performs against the ledger, against a real D1.
 //
@@ -71,7 +71,7 @@ async function lines() {
 describe('postCorrection()', () => {
 	it('lands one adjustment of two lines, the one figure with its sign flipped', async () => {
 		// the sign convention lives here and at no call site — `+` is a debit and `−` a credit,
-		// project-wide (./posting.ts). the same figure is used on both sides, which is what makes
+		// project-wide (../ledger/posting.ts). the same figure is used on both sides, which is what makes
 		// the entry balanced by construction rather than by arithmetic somebody could get wrong.
 		const input = correction();
 		expect(await postCorrection(db, input)).toEqual({ ok: true });
