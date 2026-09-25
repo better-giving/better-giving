@@ -64,11 +64,15 @@ import { reinstatementEntry, reversalEntry, unpostable } from './entries';
 // a dispute is a refund the donor's bank made, with a `dispute` row keyed on its refund row.
 //
 // opened, it withdraws the money as a refund does, and the processor's dispute fee is expensed in
-// the same group. lost, it closes the row and moves nothing more; lost with no opening recorded,
-// it writes the opening's batch with the row already closed. won, it closes the row and puts the
-// money back as a refund that did not stand is put back, with the fee where the processor returned
-// it. a dispute reported closed one way after it was recorded closed the other changes nothing
-// and is told to staff.
+// the same group. what it withdraws is capped at what earlier refunds left of the gift: a processor
+// may report the whole charge disputed after part of it was refunded, and the books never take a
+// gift below nothing. the fee is booked in full, and the alert names the figure reported. a refund
+// is never capped. lost, it closes the row and moves nothing more; lost with no opening recorded,
+// it writes the opening's batch with the row already closed. won, it closes the row and puts back
+// exactly what the opening took, as a refund that did not stand is put back, with the fee where the
+// processor returned it; won with no opening recorded, it writes nothing, because every later
+// delivery reads won too, and staff are told. a dispute reported closed one way after it was
+// recorded closed the other changes nothing and is told to staff.
 //
 // after the batch that withdrew the money, and never inside it, the gift's monthly plan is stopped
 // (../recurring/stop.ts), because it calls the processor: the card is disputing the charges. then
@@ -146,7 +150,7 @@ export async function recordReversal(
 			return withdraw(deps, withUsableDetails(reversal), reversed);
 		case 'refund_failed':
 		case 'dispute_won':
-			return reinstate(deps, reversal);
+			return reinstate(deps, reversal, reversed);
 	}
 }
 
@@ -180,7 +184,8 @@ function withUsableDetails(reversal: DisputeWithdrawalRead): DisputeWithdrawalRe
  * existing is what answers every later delivery of the same refund as `already_posted`. `posting`
  * is the group's statements, or the sentence saying why there are none.
  *
- * a refund naming no figure is whatever of the charge earlier refunds have not already taken.
+ * a refund naming no figure is whatever of the charge earlier refunds have not already taken, and a
+ * dispute takes no more than that, whatever figure it names.
  */
 async function withdraw(
 	deps: SettleDeps,
@@ -191,9 +196,15 @@ async function withdraw(
 	if (recorded !== null) return withdrawnBefore(deps, reversal, recorded);
 
 	const alreadyRefundedMinor = await standingRefunds(deps.db, reversed.id);
-	const amountMinor = reversal.amountMinor ?? reversed.amountMinor - alreadyRefundedMinor;
+	const leftMinor = reversed.amountMinor - alreadyRefundedMinor;
+	const reportedMinor = reversal.amountMinor ?? leftMinor;
+	const amountMinor =
+		reversal.kind === 'refund' ? reportedMinor : Math.min(reportedMinor, leftMinor);
 	const feeMinor = reversal.kind === 'refund' ? null : reversal.feeMinor;
 	const refused =
+		(reversal.kind !== 'refund' && leftMinor <= 0
+			? `earlier refunds already took the whole gift, so the dispute has nothing of it left to withdraw, and its fee${feeMinor === null ? '' : ` of ${feeMinor} ${reversal.currency} (minor units)`} was not booked.`
+			: null) ??
 		unpostable({ ...reversal, amountMinor, feeMinor }) ??
 		(reversal.currency === reversed.currency
 			? null
@@ -277,7 +288,7 @@ async function withdraw(
 		await disputeWithdrew(
 			deps,
 			reversal,
-			{ refundId, donationId: reversed.donationId, amountMinor },
+			{ refundId, donationId: reversed.donationId, amountMinor, reportedMinor },
 			stop,
 			problem
 		);
@@ -379,12 +390,15 @@ async function disputeWithdrew(
 		readonly refundId: string;
 		readonly donationId: string;
 		readonly amountMinor: number;
+		/** what the processor reported the dispute took: more than `amountMinor` where it was capped. */
+		readonly reportedMinor: number;
 	},
 	stop: PlanStop,
 	problem: string | null
 ): Promise<void> {
 	const processor = processorLabel(deps);
 	const lost = reversal.kind === 'dispute_lost';
+	const inMinor = (figure: number) => `${figure} ${reversal.currency} (minor units)`;
 	await tellStaff(deps, {
 		headline: lost
 			? `A ${processor} dispute was lost and took back a gift`
@@ -396,7 +410,17 @@ async function disputeWithdrew(
 				'decided. It is taken off the gift and the donor’s total, and it is put back if the ' +
 				'dispute is won.',
 		facts: [
-			{ label: 'Amount', value: `${withdrawn.amountMinor} ${reversal.currency} (minor units)` },
+			{ label: 'Amount', value: inMinor(withdrawn.amountMinor) },
+			...(withdrawn.reportedMinor > withdrawn.amountMinor
+				? [
+						{
+							label: 'Capped',
+							value:
+								`${processor} reported the dispute as ${inMinor(withdrawn.reportedMinor)}, and earlier refunds had ` +
+								'already taken the rest of the gift, so what it took off the gift is capped at what was left.'
+						}
+					]
+				: []),
 			...(reversal.kind === 'dispute_opened' && reversal.respondBy !== null
 				? [{ label: 'Respond by', value: reversal.respondBy.toISOString() }]
 				: []),
@@ -614,7 +638,8 @@ async function refundNotPosted(
  */
 async function reinstate(
 	deps: SettleDeps,
-	reversal: FailedRefundRead | WonDisputeRead
+	reversal: FailedRefundRead | WonDisputeRead,
+	reversed: Payment
 ): Promise<SettleResult> {
 	const refundRow = await findPayment(
 		deps.db,
@@ -623,11 +648,7 @@ async function reinstate(
 	);
 	if (refundRow === null) {
 		return reversal.kind === 'dispute_won'
-			? {
-					ok: false,
-					reason: 'incomplete',
-					detail: `dispute ${reversal.providerReversalId} was won and what it withdrew is not recorded here yet, so it is worth delivering again.`
-				}
+			? wonUnheard(deps, reversal, reversed)
 			: {
 					ok: true,
 					outcome: 'ignored',
@@ -739,6 +760,46 @@ async function reinstate(
 				outcome: 'posted',
 				detail: `refund ${refundRow.id} did not stand and was put back.`
 			};
+}
+
+/**
+ * a dispute won that this deployment never heard open: every later delivery of it reads won too, so
+ * none can ever record the opening. the money went and came back, and only the fee may have stayed
+ * with the processor, so nothing is written and staff are told on every delivery that meets it —
+ * no row is left behind to tell a later one it was already told.
+ */
+async function wonUnheard(
+	deps: SettleDeps,
+	reversal: WonDisputeRead,
+	reversed: Payment
+): Promise<SettleResult> {
+	const processor = processorLabel(deps);
+	const returned = reversal.feeReturnedMinor;
+	await tellStaff(deps, {
+		headline: `A ${processor} dispute was opened and won before this deployment heard of it`,
+		body:
+			`${processor} reported a dispute won whose opening never reached this deployment, so the ` +
+			'books hold neither the money it took nor the money it gave back, and nothing was written. ' +
+			'The gift and the donor’s total stand as they were, which is where a win leaves them.',
+		facts: [
+			{ label: 'Dispute at the processor', value: reversal.providerReversalId },
+			{ label: 'Transaction disputed', value: reversal.reversedTxnId },
+			{ label: 'Donation', value: reversed.donationId },
+			{
+				label: 'Dispute fee given back',
+				value:
+					returned === null ? 'None given back.' : `${returned} ${reversed.currency} (minor units)`
+			}
+		],
+		action:
+			`Check the dispute’s fee in the ${processor} dashboard. Where a fee was charged and not given ` +
+			'back, post a correction in /admin/books for it: into processor fees, out of the account the gift went into.'
+	});
+	return {
+		ok: true,
+		outcome: 'unactionable',
+		detail: `dispute ${reversal.providerReversalId} was won with no opening recorded here; nothing was written.`
+	};
 }
 
 /**

@@ -1155,12 +1155,36 @@ describe('recordReversal() — a dispute won', () => {
 		expect(groups?.n).toBe(2);
 	});
 
-	it('holds a win open where the dispute’s withdrawal is not recorded yet, and writes nothing', async () => {
+	it('answers a win whose opening was never recorded with a 200, writes nothing, and tells staff the fee', async () => {
 		await settledGift();
+		const groups = await groupCount();
+		const mail = mailer();
 
-		const result = await recordReversal(deps(), won(), 'evt_d2');
+		const result = await recordReversal(
+			deps({ email: mail.port }),
+			won({ feeReturnedMinor: 1_500 }),
+			'evt_d2'
+		);
 
-		expect(result).toMatchObject({ ok: false, reason: 'incomplete' });
+		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
+		expect(await refundRows()).toEqual([]);
+		expect(await disputeRows()).toEqual([]);
+		expect(await groupCount()).toBe(groups);
+		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+		expect(mail.sent[0]?.text).toMatch(/dp_1/);
+		expect(mail.sent[0]?.text).toMatch(/1500 USD/);
+	});
+
+	it('tells staff of a win whose opening was never recorded once per delivery, each answered 200', async () => {
+		await settledGift();
+		const mail = mailer();
+
+		const first = await recordReversal(deps({ email: mail.port }), won(), 'evt_d2');
+		const later = await recordReversal(deps({ email: mail.port }), won(), 'evt_d3');
+
+		expect([first.ok, later.ok]).toEqual([true, true]);
+		expect(mail.sent).toHaveLength(2);
+		expect(mail.sent[1]?.text).toMatch(/none given back/i);
 		expect(await refundRows()).toEqual([]);
 	});
 });
@@ -1442,5 +1466,76 @@ describe('recordReversal() — a dispute after a partial refund', () => {
 			 where g.source_type in ('payment', 'refund') group by l.account_id`
 		).all<{ account_id: string; net: number }>();
 		expect(results.map((r) => r.net)).toEqual([0, 0, 0, 0]);
+	});
+});
+
+/** every account's net over the gift's own groups and every reversal of it. */
+async function netByAccount() {
+	const { results } = await env.DB.prepare(
+		`select l.account_id, sum(l.amount_minor) as net from ledger_entry l
+		 join entry_group g on g.id = l.entry_group_id
+		 where g.source_type in ('payment', 'refund') group by l.account_id`
+	).all<{ account_id: string; net: number }>();
+	return Object.fromEntries(results.map((r) => [r.account_id, r.net]));
+}
+
+describe('recordReversal() — a dispute of the whole charge after a partial refund', () => {
+	it('withdraws only what the refund left, so a loss takes every fund to nothing and staff hear of the cap', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), refund({ amountMinor: 3_000 }), 'evt_r1');
+		const mail = mailer();
+
+		const result = await recordReversal(
+			deps({ email: mail.port }),
+			lost({ amountMinor: 10_000, feeMinor: 1_500 }),
+			'evt_d1'
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect((await refundRows()).map((r) => r.amountMinor)).toEqual([3_000, 7_000]);
+		expect(await netByAccount()).toEqual({
+			[fund]: 0,
+			[postableId('undepositedFunds')]: -1_500,
+			[postableId('processorFees')]: 1_500
+		});
+		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'refunded', given: 0 });
+		expect(mail.sent).toHaveLength(1);
+		expect(mail.sent[0]?.text).toContain('7000 USD');
+		expect(mail.sent[0]?.text).toMatch(/10000 USD.*capped at what was left/s);
+	});
+
+	it('puts back, when won, exactly what it took, leaving the gift as the refund left it', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), refund({ amountMinor: 3_000 }), 'evt_r1');
+		const afterRefund = await netByAccount();
+		await recordReversal(deps(), opened({ amountMinor: 10_000, feeMinor: 1_500 }), 'evt_d1');
+
+		const result = await recordReversal(deps(), won({ feeReturnedMinor: 1_500 }), 'evt_d2');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await netByAccount()).toEqual({ ...afterRefund, [postableId('processorFees')]: 0 });
+		expect(await asAdminReads(gift.donationId)).toEqual({
+			status: 'partially_refunded',
+			given: 7_000
+		});
+	});
+
+	it('refuses a dispute of a gift earlier refunds took whole, writing nothing and naming the fee to staff', async () => {
+		await settledGift();
+		await recordReversal(deps(), refund({ amountMinor: 10_000 }), 'evt_r1');
+		const groups = await groupCount();
+		const mail = mailer();
+
+		const result = await recordReversal(
+			deps({ email: mail.port }),
+			opened({ amountMinor: 10_000, feeMinor: 1_500 }),
+			'evt_d1'
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
+		expect(await refundRows()).toHaveLength(1);
+		expect(await groupCount()).toBe(groups);
+		expect(mail.sent).toHaveLength(1);
+		expect(mail.sent[0]?.text).toMatch(/took the whole gift.*1500 USD/s);
 	});
 });
