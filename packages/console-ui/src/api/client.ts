@@ -24,6 +24,7 @@ import type {
 	ValuesRefusal,
 	VarsWritten,
 	WalletsLevel,
+	WebhookRepaired,
 	WidgetLevel,
 	ZapierPressBody,
 	ZapierPressed,
@@ -249,6 +250,18 @@ export const pressZapier = (body: ZapierPressBody): Promise<ZapierPressed> =>
  * pressing twice costs a round trip and nothing else.
  */
 export const levelWallets = (): Promise<WalletsLevel> => ask('/deployment/wallet-domains', 'POST');
+
+/**
+ * asks the deployment to switch its own Stripe endpoint back on and subscribe it to every event,
+ * leaving the signing secret it holds alone.
+ *
+ * **it carries no endpoint and none may ever be added**, for the reason {@link levelWallets}
+ * carries no hostname: which endpoint is this deployment's is settled by the address the press
+ * reached, inside the worker, so an id that travelled through this page would be a press on
+ * whichever endpoint the page said.
+ */
+export const repairWebhook = (): Promise<WebhookRepaired> =>
+	ask('/deployment/webhook-repair', 'POST');
 
 /**
  * stores the site list on the deployment, whole.

@@ -1,5 +1,8 @@
-import type { WebhookRepairReport } from '@better-giving/operator/console/payments';
-import type { NoReport, WebhookSecretReading, WebhookSubscriptionReading } from '../api/types';
+import type {
+	WebhookRepaired,
+	WebhookSecretReading,
+	WebhookSubscriptionReading
+} from '../api/types';
 
 // whether Stripe is telling this deployment that a gift was paid, read out of the two readings the
 // payments report carries about the endpoint, and what the repair press answered — out of the
@@ -18,15 +21,6 @@ import type { NoReport, WebhookSecretReading, WebhookSubscriptionReading } from 
 
 /** what the repair press posts as its intent. */
 export const WEBHOOK_REPAIR_INTENT = 'webhook-repair';
-
-/**
- * how one press of the repair went, in the shape the binary writes it
- * (`WebhookRepair` in packages/console/internal/deployment/webhookrepair.go): both members stated
- * on both arms, the one that does not apply as `null`.
- */
-export type WebhookRepaired =
-	| { kind: 'reported'; report: WebhookRepairReport; read: null }
-	| { kind: 'unanswered'; report: null; read: NoReport };
 
 /**
  * where payment notices stand, most basic fault first.

@@ -3,6 +3,7 @@ import {
 	chariotRun,
 	consoleVersion,
 	levelWallets,
+	repairWebhook,
 	saveNowpayments,
 	startChariotSetup,
 	startStripeSetup
@@ -182,5 +183,25 @@ describe('the press that registers the hostnames wallet buttons are drawn on', (
 		await expect(levelWallets()).resolves.toMatchObject({
 			report: { state: 'unreadable', reason: 'no_key' }
 		});
+	});
+});
+
+describe('the press that repairs where payment notices reach the deployment', () => {
+	it("posts to the binary with no body, because the endpoint is the deployment's own", async () => {
+		// an endpoint id that travelled through a page would be a press on whichever endpoint the page
+		// named, another deployment's on the same account included.
+		const calls = recording({
+			kind: 'reported',
+			report: { outcome: 'repaired', detail: null },
+			read: null
+		});
+
+		await repairWebhook();
+
+		expect(calls).toHaveLength(1);
+		const [path, init] = calls[0] ?? [];
+		expect(path).toBe('/api/deployment/webhook-repair');
+		expect(init?.method).toBe('POST');
+		expect(init?.body).toBeUndefined();
 	});
 });

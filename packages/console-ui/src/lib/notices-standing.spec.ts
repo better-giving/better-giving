@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { WebhookSecretReading, WebhookSubscriptionReading } from '../api/types';
-import type { WebhookRepaired } from './notices-standing';
+import type {
+	WebhookRepaired,
+	WebhookSecretReading,
+	WebhookSubscriptionReading
+} from '../api/types';
 import { noticesNote, noticesStanding, repairLanded } from './notices-standing';
 
 // what the payment notices row reads out of the endpoint's two readings, away from the row that

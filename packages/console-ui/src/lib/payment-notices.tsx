@@ -5,8 +5,11 @@ import { StatusLedger, StatusLine } from '@better-giving/operator/components/sta
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
 import { useEffect, useId, useRef } from 'react';
-import type { WebhookSecretReading, WebhookSubscriptionReading } from '../api/types';
-import type { WebhookRepaired } from './notices-standing';
+import type {
+	WebhookRepaired,
+	WebhookSecretReading,
+	WebhookSubscriptionReading
+} from '../api/types';
 import { noticesNote, noticesStanding, repairLanded } from './notices-standing';
 import { noAnswer } from './processor-screen';
 

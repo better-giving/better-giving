@@ -53,7 +53,8 @@ import type {
 	DeployVarName,
 	StripeSetup,
 	VarsUnwritten,
-	VarsWritten
+	VarsWritten,
+	WebhookRepaired
 } from '../api/types';
 import type { ConfirmLine } from './stripe-confirm';
 import { confirmLines, remakesSetup } from './stripe-confirm';
@@ -73,7 +74,6 @@ import {
 } from './stripe-press';
 import type { StripeAct, StripeKeyBoxes, StripeKeyName } from './stripe-keys';
 import { KEY_FIELD, SET_UP_INTENT, STRIPE_KEY_NAMES, stripeAsked, stripeForm } from './stripe-keys';
-import type { WebhookRepaired } from './notices-standing';
 import { WEBHOOK_REPAIR_INTENT, noticesStanding } from './notices-standing';
 import { PaymentNotices } from './payment-notices';
 import { useConsoleForm } from './use-console-form';

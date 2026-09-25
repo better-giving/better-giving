@@ -3,8 +3,12 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { prerenderToNodeStream } from 'react-dom/static';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it } from 'vitest';
-import type { PaymentsRead, WebhookSecretReading, WebhookSubscriptionReading } from '../api/types';
-import type { WebhookRepaired } from './notices-standing';
+import type {
+	PaymentsRead,
+	WebhookRepaired,
+	WebhookSecretReading,
+	WebhookSubscriptionReading
+} from '../api/types';
 import type { PaymentNoticesProps } from './payment-notices';
 import { PaymentNotices } from './payment-notices';
 import type { StripeSectionProps } from './stripe-section';

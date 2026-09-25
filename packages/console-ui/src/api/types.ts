@@ -1,3 +1,4 @@
+import type { WebhookRepairReport } from '@better-giving/operator/console/payments';
 import type {
 	QuickbooksPressReport,
 	QuickbooksReport
@@ -591,6 +592,15 @@ export type WalletLevellingReport =
 export type WalletsLevel =
 	| { kind: 'reported'; report: WalletLevellingReport }
 	| { kind: 'unanswered'; read: NoReport };
+
+/**
+ * how one press of the payment notices repair went, in the shape the binary writes it
+ * (`WebhookRepair` in packages/console/internal/deployment/webhookrepair.go): both members stated
+ * on both arms, the one that does not apply as `null`.
+ */
+export type WebhookRepaired =
+	| { kind: 'reported'; report: WebhookRepairReport; read: null }
+	| { kind: 'unanswered'; report: null; read: NoReport };
 
 /** what one processor account holds for gifts that repeat. */
 export type RecurringStanding = 'ready' | 'absent' | 'archived';
