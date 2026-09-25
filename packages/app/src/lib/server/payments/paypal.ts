@@ -24,9 +24,11 @@ import type {
 import { PAYPAL_RAILS, type PaypalRail } from '@better-giving/form/embed/rails';
 import { PAYPAL_SDK_PATH } from '@better-giving/form/v1';
 import {
+	DISPUTE_EVENT_TYPES,
 	RECURRING_COLLECTION_EVENT_TYPES,
 	RECURRING_EVENT_TYPES,
-	REFUND_EVENT_TYPES,
+	REVERSAL_EVENT_TYPES,
+	REVERSED_EVENT_TYPES,
 	SETTLEMENT_EVENT_TYPES,
 	SUBSCRIBED_EVENT_TYPES
 } from '@better-giving/operator/paypal/webhook-listener';
@@ -72,7 +74,7 @@ import type {
 // its own SDK for the same stated reason: so the contract has exactly one place to be stated.
 // everything else takes `PaymentProvider` from ./provider.ts.
 //
-// **it answers the one-off gift, the repeating one, a refund of either and the listener read, and
+// **it answers the one-off gift, the repeating one, a refund or dispute of either and the listener read, and
 // refuses the listener repairs and the wallet arms** — `unsupported`, exactly as ./factory.ts
 // answers for a processor with no adapter at all, and argued at each of them. the listener is registered by the console's binary
 // (`packages/console/internal/paypal`), so the repairs have no caller here
@@ -97,6 +99,36 @@ import type {
 // collection's is a Payments v1 refund of its sale. the events that name them are
 // `PAYMENT.CAPTURE.REFUNDED` and `PAYMENT.SALE.REFUNDED`
 // (https://developer.paypal.com/api/rest/webhooks/event-names), and `readReversal` argues the rest.
+//
+// **a dispute is read off `GET /v1/customer/disputes/{id}`** (`dispute` in customer_disputes_v1.json
+// in the same repository), and it moves money only where it took it (`heldMoney`): its transaction
+// `HELD` while PayPal decides an internal claim or `REVERSED` by a card issuer's chargeback, a seller
+// `DISPUTE_SETTLEMENT` debit, or a stage past the inquiry. an inquiry that never took the money moves
+// nothing however it closes. resolved, the outcome decides (`DISPUTE_OUTCOMES`). PayPal can hold the
+// funds of a case still at the inquiry stage and releases the hold when the case closes for the
+// merchant (https://docs.paypal.ai/growth/disputes/test-go-live). reading one needs PayPal's Disputes
+// feature on the app, and a 403 is refused terminally, telling staff to switch it on.
+//
+// **`PAYMENT.CAPTURE.REVERSED` and `PAYMENT.SALE.REVERSED` are PayPal taking the money back** —
+// "PayPal reverses a payment capture" and "PayPal reverses a sale", each carrying a refund of the
+// transaction (https://developer.paypal.com/api/rest/webhooks/event-names), and a transaction reads
+// `REVERSED` when "reversed due to a chargeback or other reversal type" (`transaction_info` in
+// customer_disputes_v1.json). so a reversal is never a refund: under a dispute standing on the
+// transaction it is that dispute, and with none it is a dispute lost, keyed on the reversal's own
+// id — the money is gone and there is no case to answer.
+//
+// **one chargeback withdraws once where its dispute is listed within `DISPUTE_WAIT_MS` of the
+// reversal.** a card chargeback arrives as a dispute and as a reversal; the reversal waits that long
+// for the dispute, and both then resolve to the key `withdrawalKeyOf` gives — the dispute's own id,
+// or the claim's it replaced. a dispute listed only after the wait finds the reversal already booked
+// under its own id, and its own withdrawal is refused by the writer for want of anything left, with
+// staff told.
+//
+// **PayPal's dispute fee** is read off the dispute's `fund_movements`: the seller's `DISPUTE_FEE` and
+// `CHARGEBACK_FEE` debits are what it charged, and credits of the same reasons are what it gave back
+// on a win. PayPal documents the fee as charged on a case the merchant loses without seller
+// protection (https://docs.paypal.ai/growth/disputes/test-go-live); whether and when it returns one
+// is read off the case.
 //
 // **one address, and nothing here reads a stage.** every call — the token, the SDK's controllers and
 // this module's own reach past them — goes to the origin of `PAYPAL_API_URL`, or of
@@ -382,13 +414,25 @@ export function paypalApiOrigin(apiUrl: string): string | null {
  */
 export function paypalSdkUrl(apiUrl: string): string | null {
 	const origin = paypalApiOrigin(apiUrl);
-	if (origin === null) return null;
+	return origin === null ? null : paypalPageUrl(origin, PAYPAL_SDK_PATH);
+}
+
+/** a page on the `www.` sibling of an API origin, or `null` where the host carries no `api-m.` label. */
+function paypalPageUrl(origin: string, pathname: string): string | null {
 	const url = new URL(origin);
 	if (!url.hostname.startsWith('api-m.')) return null;
 	url.hostname = `www.${url.hostname.slice('api-m.'.length)}`;
-	url.pathname = PAYPAL_SDK_PATH;
+	url.pathname = pathname;
 	return url.href;
 }
+
+/**
+ * where staff answer a dispute: the account's Resolution Center
+ * (https://docs.paypal.ai/growth/disputes/handle-disputes/use-resolution-center), which lists
+ * every open case by its id. PayPal publishes no address for one case, so the alert names the id
+ * beside this link.
+ */
+const RESOLUTION_CENTER_PATH = '/resolutioncenter';
 
 /** what is wrong with an address {@link paypalApiOrigin} refuses, as a clause a sentence carries. */
 export function unusablePaypalAddress(apiUrl: string): string {
@@ -419,6 +463,16 @@ const SIGNING_HEADERS: Readonly<Record<string, string>> = Object.freeze({
 function resourceIdOf(resource: unknown): string | null {
 	const object = json(resource);
 	return typeof object?.id === 'string' ? object.id : null;
+}
+
+/** a dispute names itself `dispute_id` (`dispute` in customer_disputes_v1.json). */
+function disputeIdOf(resource: unknown): string | null {
+	const id = json(resource)?.dispute_id;
+	return typeof id === 'string' && id !== '' ? id : null;
+}
+
+function isDisputeEvent(type: string): boolean {
+	return (DISPUTE_EVENT_TYPES as readonly string[]).includes(type);
 }
 
 /**
@@ -742,6 +796,7 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 		);
 	}
 	const { client, accessToken } = paypalClient(credentials, origin);
+	const resolutionCenter = paypalPageUrl(origin, RESOLUTION_CENTER_PATH);
 	const orders = new OrdersController(client);
 	const payments = new PaymentsController(client);
 	// built off this provider's own client rather than through {@link paypalSubscriptions}, which
@@ -949,18 +1004,17 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 	}
 
 	/**
-	 * a Payments v2 refund of a one-off gift's capture, read against the order it settled on.
-	 *
-	 * the refund names its capture only through its `up` link, and the capture names its order in
-	 * `supplementary_data.related_ids` — the id `readSettlement` reports and the gift's `payment` row
-	 * holds, so it is the reversed transaction. the metadata is the capture's `custom_id`, which
-	 * PayPal copies from the purchase unit; a refund's own `custom_id` is whatever the refund was
-	 * made with, and one made in PayPal's dashboard carries none.
+	 * a Payments v2 refund of a one-off gift's capture, which names the capture only through its `up`
+	 * link, read as {@link takenBack} decides against the capture's order ({@link captureReversed}).
 	 *
 	 * the figure is the refund's `amount`, in the currency the donor was charged in, and the fee
-	 * PayPal gave back is {@link returnedFeeOf}.
+	 * PayPal gave back is {@link returnedFeeOf}. a refund's own `custom_id` is whatever the refund was
+	 * made with, and one made in PayPal's dashboard carries none, so it is never read.
 	 */
-	async function readCaptureRefund(refundId: string): Promise<PaymentResult<ReversalRead>> {
+	async function readCaptureRefund(
+		refundId: string,
+		how: TakenBack
+	): Promise<PaymentResult<ReversalRead>> {
 		try {
 			const refund = (await payments.getRefund({ refundId })).result;
 			if (refund.status !== RefundStatus.Completed) {
@@ -977,43 +1031,39 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 						'an `up` link to it (https://developer.paypal.com/docs/api/payments/v2/#refunds_get).'
 				);
 			}
-			const captured = (await payments.getCapturedPayment({ captureId })).result;
-			return {
-				ok: true,
-				value: {
-					kind: 'refund',
-					// every capture this app takes is an order's; one with no order is another
-					// integration's, read against its own id so the writer finds no gift behind it.
-					reversedTxnId: captured.supplementaryData?.relatedIds?.orderId ?? captureId,
+			return takenBack(
+				{
+					how,
 					providerReversalId: refundId,
 					amountMinor,
 					currency,
 					occurredAt: at(refund.createTime),
-					reversedMetadata: decodeMetadata(captured.customId),
+					madeAt: whenever(refund.createTime),
 					feeReturnedMinor: returnedFeeOf(refund, currency)
-				}
-			};
+				},
+				captureId,
+				captureReversed
+			);
 		} catch (error) {
 			return classify(error);
 		}
 	}
 
 	/**
-	 * a Payments v1 refund of one collection, read against the sale it settled on.
-	 *
-	 * the sale id is what the collection's `payment` row holds. a sale carries no `custom_id`, so the
-	 * metadata is the commitment's, reached through the sale's `billing_agreement_id` exactly as
-	 * `readRecurringGift` reaches it; a sale under no subscription, or under an agreement PayPal
-	 * answers 404 for, is none of this app's collections and reads with none, which the writer
-	 * answers 200 and leaves.
+	 * a Payments v1 refund of one collection, read against the sale it settled on
+	 * ({@link saleReversed}).
 	 *
 	 * `GET /v1/payments/refund/{id}` is the same deprecated API generation as {@link readSale}, and
-	 * retires with it: `PAYMENT.SALE.REFUNDED` carries a v1 refund, and this is that resource's read.
+	 * retires with it: `PAYMENT.SALE.REFUNDED` and `PAYMENT.SALE.REVERSED` carry a v1 refund, and
+	 * this is that resource's read.
 	 * no spec ships for it; the fields read are `Refund` in PayPal's own PHP SDK
 	 * (https://github.com/paypal/PayPal-PHP-SDK/blob/master/lib/PayPal/Api/Refund.php), which
 	 * carries no fee figure — so no returned fee is read, and the collection's fee stays booked.
 	 */
-	async function readSaleRefund(refundId: string): Promise<PaymentResult<ReversalRead>> {
+	async function readSaleRefund(
+		refundId: string,
+		how: TakenBack
+	): Promise<PaymentResult<ReversalRead>> {
 		let answer: { status: number; body: unknown };
 		try {
 			answer = await call('GET', `/v1/payments/refund/${encodeURIComponent(refundId)}`);
@@ -1049,6 +1099,228 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 			);
 		}
 
+		return takenBack(
+			{
+				how,
+				providerReversalId: refundId,
+				amountMinor,
+				currency,
+				occurredAt: at(typeof refund.create_time === 'string' ? refund.create_time : undefined),
+				madeAt: whenever(typeof refund.create_time === 'string' ? refund.create_time : undefined),
+				feeReturnedMinor: null
+			},
+			saleId,
+			saleReversed
+		);
+	}
+
+	/**
+	 * a completed refund of a capture or a sale, as the reversal it is.
+	 *
+	 * a refund of a transaction that a dispute stands on — one that took the money and has not been
+	 * won or closed undecided — is that dispute's money, read as the dispute, fresh, under the key
+	 * {@link withdrawalKeyOf} gives it, so the writer finds it already recorded or records it once:
+	 *
+	 *   - a reversal is always the standing dispute's.
+	 *   - a refund is the dispute's where the dispute was lost: PayPal settles a claim the merchant
+	 *     accepted by refunding it (https://docs.paypal.ai/reference/api/rest/disputes-actions/accept-claim).
+	 *     beside a dispute still holding the money, which of the two it is waits on how the dispute
+	 *     closes: held open (`provider_error`, retryable) for {@link DISPUTE_WAIT_MS} after the refund
+	 *     was made, then refused terminally, naming both, for a person to settle.
+	 *
+	 * with no dispute standing, a refund is the merchant's own. a reversal is held open for the same
+	 * window, because a chargeback's dispute may not be listed yet, then read as a dispute lost under
+	 * its own id: PayPal took the money and there is no case to answer.
+	 */
+	async function takenBack(
+		taken: {
+			readonly how: TakenBack;
+			readonly providerReversalId: string;
+			readonly amountMinor: number;
+			readonly currency: string;
+			readonly occurredAt: Date;
+			/** when PayPal made the refund, or null where it said nothing readable. */
+			readonly madeAt: Date | null;
+			readonly feeReturnedMinor: number | null;
+		},
+		transactionId: string,
+		reversedOf: (transactionId: string) => Promise<PaymentResult<Reversed>>
+	): Promise<PaymentResult<ReversalRead>> {
+		const listed = await listDisputes(transactionId);
+		if (!listed.ok) return listed;
+		const fresh = taken.madeAt !== null && Date.now() - taken.madeAt.getTime() < DISPUTE_WAIT_MS;
+
+		for (const each of [...listed.value].reverse()) {
+			const fetched = await fetchDispute(each.id);
+			if (!fetched.ok) return fetched;
+			if (!standsOn(fetched.value)) continue;
+			const read = await readDispute(each.id, { disputed: fetched.value, listed: listed.value });
+			if (!read.ok || taken.how === 'reversed' || read.value.kind === 'dispute_lost') return read;
+			const both =
+				`PayPal refunded ${redactPublicId(taken.providerReversalId)} on a transaction whose ` +
+				`dispute ${redactPublicId(each.id)} still holds its money`;
+			return fresh
+				? {
+						ok: false,
+						reason: 'provider_error',
+						detail: `${both}, so whether the refund is the dispute’s or the merchant’s waits on how the dispute closes; this delivery is worth having again.`
+					}
+				: unsupported(
+						`${both} a day after the refund was made, so whether the refund is the dispute’s or ` +
+							'the merchant’s is a person’s call and nothing was written. Read both in PayPal and ' +
+							'correct the gift in /admin/books by hand.'
+					);
+		}
+
+		if (taken.how === 'reversed' && fresh) {
+			return {
+				ok: false,
+				reason: 'provider_error',
+				detail:
+					`PayPal reversed ${redactPublicId(taken.providerReversalId)} and lists no dispute on the ` +
+					'transaction yet; a chargeback’s dispute can follow its reversal, so this delivery is ' +
+					'worth having again.'
+			};
+		}
+
+		const reversed = await reversedOf(transactionId);
+		if (!reversed.ok) return reversed;
+		const { how, madeAt: _made, feeReturnedMinor, ...money } = taken;
+		return {
+			ok: true,
+			value:
+				how === 'reversed'
+					? {
+							kind: 'dispute_lost',
+							...reversed.value,
+							...money,
+							feeMinor: null,
+							reason: null,
+							dashboardUrl: null
+						}
+					: { kind: 'refund', ...reversed.value, ...money, feeReturnedMinor }
+		};
+	}
+
+	/**
+	 * the disputes on one transaction, oldest first
+	 * (`GET /v1/customer/disputes?disputed_transaction_id=`, `dispute_search` in
+	 * customer_disputes_v1.json).
+	 */
+	async function listDisputes(transactionId: string): Promise<PaymentResult<readonly Listed[]>> {
+		let answer: { status: number; body: unknown };
+		try {
+			answer = await call(
+				'GET',
+				`/v1/customer/disputes?disputed_transaction_id=${encodeURIComponent(transactionId)}`
+			);
+		} catch (error) {
+			return unreachable(error);
+		}
+		if (answer.status < 200 || answer.status >= 300) {
+			return disputesRefused(answer, 'PayPal could not be asked for the disputes on a transaction');
+		}
+		const items = json(answer.body)?.items;
+		const listed: Listed[] = [];
+		for (const each of Array.isArray(items) ? items : []) {
+			const item = json(each);
+			const id = item?.dispute_id;
+			if (typeof id === 'string' && id !== '') {
+				const created = typeof item?.create_time === 'string' ? item.create_time : undefined;
+				listed.push({ id, createdAt: whenever(created) ?? new Date(0) });
+			}
+		}
+		listed.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+		return { ok: true, value: listed };
+	}
+
+	/**
+	 * the id a dispute's withdrawal is recorded under: the earliest dispute on its transaction, opened
+	 * before it, that took money and was not won — or its own id where there is none.
+	 *
+	 * PayPal closes a claim `NONE` when a chargeback replaces it on the same transaction, and the
+	 * claim's money is the chargeback's from then on (`dispute_outcome` in customer_disputes_v1.json).
+	 * keyed on the claim, every report of the chargeback finds the withdrawal the claim recorded, and
+	 * its close settles it. an earlier dispute that was won gave its money back, so it keys nothing.
+	 */
+	async function withdrawalKeyOf(
+		transactionId: string,
+		disputeId: string,
+		disputed: Json,
+		known: readonly Listed[] | undefined
+	): Promise<PaymentResult<string>> {
+		let listed = known;
+		if (listed === undefined) {
+			const read = await listDisputes(transactionId);
+			if (!read.ok) return read;
+			listed = read.value;
+		}
+		const createdAt =
+			whenever(typeof disputed?.create_time === 'string' ? disputed.create_time : undefined) ??
+			new Date();
+		for (const earlier of listed) {
+			if (earlier.createdAt >= createdAt) break;
+			if (earlier.id === disputeId) continue;
+			const fetched = await fetchDispute(earlier.id);
+			if (!fetched.ok) return fetched;
+			if (heldMoney(fetched.value) && !wonFor(fetched.value)) {
+				return { ok: true, value: earlier.id };
+			}
+		}
+		return { ok: true, value: disputeId };
+	}
+
+	/** one dispute, fetched fresh (`GET /v1/customer/disputes/{id}`). */
+	async function fetchDispute(disputeId: string): Promise<PaymentResult<Json>> {
+		let answer: { status: number; body: unknown };
+		try {
+			answer = await call('GET', `/v1/customer/disputes/${encodeURIComponent(disputeId)}`);
+		} catch (error) {
+			return unreachable(error);
+		}
+		if (answer.status < 200 || answer.status >= 300) {
+			return disputesRefused(answer, 'PayPal could not be asked about a dispute');
+		}
+		const disputed = json(answer.body);
+		if (disputed === undefined) {
+			return {
+				ok: false,
+				reason: 'provider_error',
+				detail: `PayPal answered the read of dispute ${redactPublicId(disputeId)} with no object this app could read.`
+			};
+		}
+		return { ok: true, value: disputed };
+	}
+
+	/**
+	 * the gift behind a one-off gift's capture: the order it settled on, which is what the gift's
+	 * `payment` row holds, and the capture's `custom_id`, which PayPal copies from the purchase unit.
+	 */
+	async function captureReversed(captureId: string): Promise<PaymentResult<Reversed>> {
+		try {
+			const captured = (await payments.getCapturedPayment({ captureId })).result;
+			return {
+				ok: true,
+				value: {
+					// every capture this app takes is an order's; one with no order is another
+					// integration's, read against its own id so the writer finds no gift behind it.
+					reversedTxnId: captured.supplementaryData?.relatedIds?.orderId ?? captureId,
+					reversedMetadata: decodeMetadata(captured.customId)
+				}
+			};
+		} catch (error) {
+			return classify(error);
+		}
+	}
+
+	/**
+	 * the gift behind one collection: the sale, which is what the collection's `payment` row holds,
+	 * and the commitment's metadata, reached through the sale's `billing_agreement_id` exactly as
+	 * `readRecurringGift` reaches it. a sale under no subscription, or under one PayPal answers 404
+	 * for, is none of this app's collections and reads with none, which the writer answers 200 and
+	 * leaves.
+	 */
+	async function saleReversed(saleId: string): Promise<PaymentResult<Reversed>> {
 		const sale = await readSale(saleId);
 		if (!sale.ok) return sale;
 		const giftId = sale.value.billing_agreement_id;
@@ -1061,20 +1333,98 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 				if (!(error instanceof ApiError && error.statusCode === 404)) return classify(error);
 			}
 		}
+		return { ok: true, value: { reversedTxnId: saleId, reversedMetadata } };
+	}
 
-		return {
-			ok: true,
-			value: {
-				kind: 'refund',
-				reversedTxnId: saleId,
-				providerReversalId: refundId,
-				amountMinor,
-				currency,
-				occurredAt: at(typeof refund.create_time === 'string' ? refund.create_time : undefined),
-				reversedMetadata,
-				feeReturnedMinor: null
-			}
-		};
+	/**
+	 * the gift behind a transaction a dispute names, which is a capture or a sale: PayPal gives both
+	 * ids one shape, so the capture is asked first and a 404 sends the id to the sale read — the order
+	 * `readSettlement` asks in. an id neither read holds is another integration's on the same account,
+	 * read with no metadata so the writer finds no gift behind it and leaves it.
+	 */
+	async function transactionReversed(transactionId: string): Promise<PaymentResult<Reversed>> {
+		const captured = await captureReversed(transactionId);
+		if (captured.ok || captured.reason !== 'not_found') return captured;
+		const sold = await saleReversed(transactionId);
+		return !sold.ok && sold.reason === 'not_found'
+			? { ok: true, value: { reversedTxnId: transactionId, reversedMetadata: {} } }
+			: sold;
+	}
+
+	/**
+	 * a dispute, read fresh, as what it has done to the money — {@link disputeStateOf} decides which
+	 * — against the gift behind the one transaction it disputes, under {@link withdrawalKeyOf}'s key.
+	 * `known` is the dispute and its transaction's list where a caller already fetched them.
+	 */
+	async function readDispute(
+		disputeId: string,
+		known?: { readonly disputed: Json; readonly listed: readonly Listed[] }
+	): Promise<PaymentResult<ReversalRead>> {
+		let disputed = known?.disputed;
+		if (disputed === undefined) {
+			const fetched = await fetchDispute(disputeId);
+			if (!fetched.ok) return fetched;
+			disputed = fetched.value;
+		}
+		const state = disputeStateOf(disputed, disputeId);
+		if (state === null) {
+			return { ok: true, value: { kind: 'nothing_moved', providerReversalId: disputeId } };
+		}
+		if ('ok' in state) return state;
+
+		const key = await withdrawalKeyOf(state.transactionId, disputeId, disputed, known?.listed);
+		if (!key.ok) return key;
+		const reversed = await transactionReversed(state.transactionId);
+		if (!reversed.ok) return reversed;
+		const facts = { ...reversed.value, providerReversalId: key.value };
+		const reason = typeof disputed?.reason === 'string' ? disputed.reason : null;
+		const time = (field: 'create_time' | 'update_time') =>
+			at(typeof disputed?.[field] === 'string' ? disputed[field] : undefined);
+		switch (state.kind) {
+			case 'dispute_opened':
+				return {
+					ok: true,
+					value: {
+						kind: 'dispute_opened',
+						...facts,
+						amountMinor: state.amountMinor,
+						currency: state.currency,
+						occurredAt: time('create_time'),
+						feeMinor: disputeFeeOf(disputed, state.currency, 'DEBIT', disputeId),
+						respondBy: whenever(
+							typeof disputed?.seller_response_due_date === 'string'
+								? disputed.seller_response_due_date
+								: undefined
+						),
+						reason,
+						dashboardUrl: resolutionCenter
+					}
+				};
+			case 'dispute_lost':
+				return {
+					ok: true,
+					value: {
+						kind: 'dispute_lost',
+						...facts,
+						amountMinor: state.amountMinor,
+						currency: state.currency,
+						occurredAt: time('update_time'),
+						feeMinor: disputeFeeOf(disputed, state.currency, 'DEBIT', disputeId),
+						reason,
+						dashboardUrl: resolutionCenter
+					}
+				};
+			case 'dispute_won':
+				return {
+					ok: true,
+					value: {
+						kind: 'dispute_won',
+						...facts,
+						occurredAt: time('update_time'),
+						feeReturnedMinor: disputeFeeOf(disputed, state.currency, 'CREDIT', disputeId)
+					}
+				};
+		}
 	}
 
 	/**
@@ -1320,14 +1670,16 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 				return { ok: true, value: { id, kind: 'recurring', type, providerNoticeId, occurredAt } };
 			}
 
-			if ((REFUND_EVENT_TYPES as readonly string[]).includes(type)) {
-				const providerNoticeId = resourceIdOf(event.resource);
+			if ((REVERSAL_EVENT_TYPES as readonly string[]).includes(type)) {
+				const providerNoticeId = isDisputeEvent(type)
+					? disputeIdOf(event.resource)
+					: resourceIdOf(event.resource);
 				if (providerNoticeId === null) {
 					return unreadableResource(
 						type,
 						event,
-						'no refund',
-						'the Payments v2 refund and the Payments v1 refund shapes'
+						'no refund or dispute',
+						'the Payments v2 refund, the Payments v1 refund and the Disputes v1 dispute shapes'
 					);
 				}
 
@@ -1419,19 +1771,25 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 		},
 
 		/**
-		 * the refund a delivery names, fresh, read by its own status and never by the event that
-		 * carried it: only a completed refund moved money, and every other status — pending while an
-		 * eCheck clears, failed, cancelled — reads as nothing moved until a later delivery reads it
-		 * completed. the refund's own id is the reversal's; it is never the order's or the sale's.
+		 * the refund or the dispute a delivery names, fresh, and never by the event that carried it.
 		 *
-		 * `PAYMENT.SALE.REFUNDED` names a v1 refund of one collection and `PAYMENT.CAPTURE.REFUNDED`
-		 * a v2 refund of a one-off gift's capture (`REFUND_EVENT_TYPES` in
-		 * `@better-giving/operator/paypal/webhook-listener`), and each is read in its own vocabulary.
+		 * a refund is read by its own status: only a completed refund moved money, and every other
+		 * status — pending while an eCheck clears, failed, cancelled — reads as nothing moved until a
+		 * later delivery reads it completed. its own id is the reversal's; it is never the order's or
+		 * the sale's. `*.SALE.*` names a v1 refund of one collection and `*.CAPTURE.*` a v2 refund of a
+		 * one-off gift's capture, each read in its own vocabulary, and a dispute standing on either
+		 * decides what the refund is ({@link takenBack}).
+		 *
+		 * a dispute is read by {@link disputeStateOf}, under the key {@link withdrawalKeyOf} gives it.
 		 */
 		async readReversal(event: ReversalEvent): Promise<PaymentResult<ReversalRead>> {
-			return event.type === 'PAYMENT.SALE.REFUNDED'
-				? readSaleRefund(event.providerNoticeId)
-				: readCaptureRefund(event.providerNoticeId);
+			if (isDisputeEvent(event.type)) return readDispute(event.providerNoticeId);
+			const how: TakenBack = (REVERSED_EVENT_TYPES as readonly string[]).includes(event.type)
+				? 'reversed'
+				: 'refunded';
+			return event.type.startsWith('PAYMENT.SALE.')
+				? readSaleRefund(event.providerNoticeId, how)
+				: readCaptureRefund(event.providerNoticeId, how);
 		},
 
 		/**
@@ -2148,6 +2506,232 @@ function unreadableRefund(refundId: string): PaymentFailure {
 			'scale and the currency is a 3-letter ISO-4217 code; find the refund in PayPal and correct ' +
 			'the gift in /admin/books by hand.'
 	);
+}
+
+/** one dispute on a transaction, as PayPal lists it. */
+type Listed = { readonly id: string; readonly createdAt: Date };
+
+/**
+ * a refused disputes read. a 403 is PayPal's Disputes feature switched off on the app, which no
+ * redelivery changes: refused terminally so the writer tells staff, where held open it would be a
+ * dispute or a refund dropped unheard when PayPal stops redelivering.
+ */
+function disputesRefused(
+	answer: { status: number; body: unknown },
+	context: string
+): PaymentFailure {
+	if (answer.status !== 403) return classifyStatus(answer.status, answer.body, context);
+	return unsupported(
+		`${context}: PayPal refused this app the disputes read, so nothing was written. To fix it, ` +
+			'enable Disputes on the PayPal app whose keys this deployment holds, then correct the gift ' +
+			'in /admin/books by hand.'
+	);
+}
+
+/** whether the merchant sent money back (`*.REFUNDED`) or PayPal took it (`*.REVERSED`). */
+type TakenBack = 'refunded' | 'reversed';
+
+/** the gift a reversal is found through: the transaction its row holds, and the metadata naming it. */
+type Reversed = {
+	readonly reversedTxnId: string;
+	readonly reversedMetadata: Readonly<Record<string, string>>;
+};
+
+/**
+ * the states of a disputed transaction in which PayPal has the money rather than the merchant:
+ * held while an internal claim is decided, or reversed by a card issuer's chargeback
+ * (`transaction_info.transaction_status` in customer_disputes_v1.json).
+ */
+const WITHDRAWN_TRANSACTION_STATUSES: readonly string[] = ['HELD', 'REVERSED'];
+
+/**
+ * the stages past an inquiry (`dispute_lifecycle_stage` in customer_disputes_v1.json): a claim
+ * PayPal decides, or an appeal of one, which is a case holding the money.
+ */
+const HOLDING_STAGES: readonly string[] = ['CHARGEBACK', 'PRE_ARBITRATION', 'ARBITRATION'];
+
+/**
+ * whether a dispute took the merchant's money at any point: its one transaction held or reversed
+ * while it is open, a seller `DISPUTE_SETTLEMENT` debit in its `fund_movements`, or a stage past
+ * the inquiry. a resolved transaction no longer reads held, so a close is judged by the other two.
+ */
+function heldMoney(disputed: Json): boolean {
+	const transaction = json(
+		Array.isArray(disputed?.disputed_transactions) ? disputed.disputed_transactions[0] : undefined
+	);
+	if (
+		disputed?.status !== 'RESOLVED' &&
+		WITHDRAWN_TRANSACTION_STATUSES.includes(String(transaction?.transaction_status))
+	) {
+		return true;
+	}
+	const movements = Array.isArray(disputed?.fund_movements) ? disputed.fund_movements : [];
+	const settled = movements.some((each) => {
+		const movement = json(each);
+		return (
+			movement?.party === 'SELLER' &&
+			movement.type === 'DEBIT' &&
+			movement.reason === 'DISPUTE_SETTLEMENT'
+		);
+	});
+	return settled || HOLDING_STAGES.includes(String(disputed?.dispute_life_cycle_stage));
+}
+
+/**
+ * how a resolved dispute's outcome leaves the merchant (`dispute_outcome.outcome_code` in
+ * customer_disputes_v1.json). decided for the buyer, the money stays gone; decided for the seller,
+ * cancelled by the buyer, or covered by PayPal's own protection, the merchant keeps it. `NONE` is a
+ * dispute closed undecided because another opened on the same transaction, which carries the money
+ * from here, so it moves nothing.
+ */
+const DISPUTE_OUTCOMES: Readonly<Record<string, 'dispute_lost' | 'dispute_won' | null>> =
+	Object.freeze({
+		RESOLVED_BUYER_FAVOUR: 'dispute_lost',
+		RESOLVED_SELLER_FAVOUR: 'dispute_won',
+		CANCELED_BY_BUYER: 'dispute_won',
+		RESOLVED_WITH_PAYOUT: 'dispute_won',
+		NONE: null
+	});
+
+/**
+ * how long after PayPal made a refund or a reversal it is held open waiting on a dispute: for a
+ * chargeback's dispute to be listed, or for a dispute holding the money to close with the refund.
+ * measured from the refund's own `create_time`, which every redelivery carries alike, and well
+ * inside PayPal's redelivery of a non-2xx for up to three days
+ * (https://developer.paypal.com/api/rest/webhooks/rest/), so the terminal answer after it still
+ * reaches staff.
+ */
+const DISPUTE_WAIT_MS = 24 * 60 * 60 * 1_000;
+
+/** how a resolved dispute's outcome reads under {@link DISPUTE_OUTCOMES}; `undefined` for one it does not name. */
+function outcomeOf(disputed: Json): 'dispute_lost' | 'dispute_won' | null | undefined {
+	const code = String(json(disputed?.dispute_outcome)?.outcome_code);
+	return Object.hasOwn(DISPUTE_OUTCOMES, code) ? DISPUTE_OUTCOMES[code] : undefined;
+}
+
+/**
+ * whether the money on a dispute's transaction stands under it: it took the money and is open, or
+ * was lost. one won, or closed undecided, no longer holds anything.
+ */
+function standsOn(disputed: Json): boolean {
+	if (!heldMoney(disputed)) return false;
+	return disputed?.status !== 'RESOLVED' || outcomeOf(disputed) === 'dispute_lost';
+}
+
+/** whether a dispute closed with the merchant keeping the money. */
+function wonFor(disputed: Json): boolean {
+	return disputed?.status === 'RESOLVED' && outcomeOf(disputed) === 'dispute_won';
+}
+
+/**
+ * what a dispute has done to the money, off the dispute alone, or `null` where it has done nothing:
+ * an open inquiry that holds no funds, or a close that moves none.
+ */
+function disputeStateOf(
+	disputed: Json,
+	disputeId: string
+):
+	| {
+			readonly kind: 'dispute_opened' | 'dispute_lost';
+			readonly transactionId: string;
+			readonly amountMinor: number;
+			readonly currency: string;
+	  }
+	| { readonly kind: 'dispute_won'; readonly transactionId: string; readonly currency: string }
+	| PaymentFailure
+	| null {
+	const transactions = Array.isArray(disputed?.disputed_transactions)
+		? disputed.disputed_transactions
+		: [];
+	const transaction = transactions.length === 1 ? json(transactions[0]) : undefined;
+	const transactionId = transaction?.seller_transaction_id;
+	if (typeof transactionId !== 'string' || transactionId === '') {
+		return unsupported(
+			`PayPal's dispute ${redactPublicId(disputeId)} names ${transactions.length} transactions, ` +
+				'and this app reads a dispute over exactly one it can name, so which gift it is about ' +
+				'cannot be read and nothing was written. Find the case in PayPal’s Resolution Center ' +
+				'and correct the gifts in /admin/books by hand.'
+		);
+	}
+	let kind: 'dispute_opened' | 'dispute_lost' | 'dispute_won' | null;
+	const outcome = json(disputed?.dispute_outcome);
+	if (!heldMoney(disputed)) {
+		kind = null;
+	} else if (disputed?.status === 'RESOLVED') {
+		const closed = outcomeOf(disputed);
+		if (closed === undefined) {
+			const code = String(outcome?.outcome_code);
+			return unsupported(
+				`PayPal reported dispute ${redactPublicId(disputeId)} resolved as \`${redactPublicId(code)}\`, ` +
+					'which this app does not read as won or lost, so nothing was written. Find the case in ' +
+					'PayPal’s Resolution Center and correct the gift in /admin/books by hand.'
+			);
+		}
+		kind = closed;
+	} else {
+		kind = 'dispute_opened';
+	}
+	if (kind === null) return null;
+
+	// what the buyer was refunded where the dispute states it, which may be less than was disputed.
+	const money =
+		(kind === 'dispute_lost' ? json(outcome?.amount_refunded) : undefined) ??
+		json(disputed?.dispute_amount);
+	const currency = String(money?.currency_code ?? '').toUpperCase();
+	const amountMinor = minorOf(typeof money?.value === 'string' ? money.value : undefined, currency);
+	if (amountMinor === null) return unreadableDispute(disputeId);
+	return kind === 'dispute_won'
+		? { kind, transactionId, currency }
+		: { kind, transactionId, amountMinor, currency };
+}
+
+function unreadableDispute(disputeId: string): PaymentFailure {
+	return unsupported(
+		`PayPal reported dispute ${redactPublicId(disputeId)} with an amount or a currency this app ` +
+			'cannot read, so nothing was posted. Find the case in PayPal’s Resolution Center and ' +
+			'correct the gift in /admin/books by hand.'
+	);
+}
+
+/**
+ * PayPal's fee for a dispute, charged (`DEBIT`) or given back (`CREDIT`), off the dispute's
+ * `fund_movements`: the seller's movements for `DISPUTE_FEE` and `CHARGEBACK_FEE`
+ * (`fund_movement_reason` in customer_disputes_v1.json). none or zero is no figure. a movement in
+ * another currency, or with no figure this app can read, is left out of it and logged, since it is
+ * money the books do not hold.
+ */
+function disputeFeeOf(
+	disputed: Json,
+	currency: string,
+	type: 'DEBIT' | 'CREDIT',
+	disputeId: string
+): number | null {
+	const movements = Array.isArray(disputed?.fund_movements) ? disputed.fund_movements : [];
+	let total = 0;
+	for (const each of movements) {
+		const movement = json(each);
+		if (
+			movement?.party !== 'SELLER' ||
+			movement.type !== type ||
+			(movement.reason !== 'DISPUTE_FEE' && movement.reason !== 'CHARGEBACK_FEE')
+		) {
+			continue;
+		}
+		const amount = json(movement.amount);
+		const figure =
+			String(amount?.currency_code ?? '').toUpperCase() === currency
+				? minorOf(typeof amount?.value === 'string' ? amount.value : undefined, currency)
+				: null;
+		if (figure === null) {
+			console.warn(
+				'a PayPal dispute fee was left out of the books: it is in another currency than the dispute, or not a figure:',
+				JSON.stringify({ dispute: disputeId, type, reason: movement.reason, currency, amount })
+			);
+			continue;
+		}
+		total += figure;
+	}
+	return total === 0 ? null : total;
 }
 
 /**

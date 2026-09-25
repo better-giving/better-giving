@@ -6,7 +6,7 @@ import { listContacts } from '../contacts/queries';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import type { PostableAccountId } from '../db/postable';
-import { entryGroup, payment, recurringPlan } from '../db/schema';
+import { dispute, entryGroup, payment, recurringPlan } from '../db/schema';
 import type { EmailMessage, EmailProvider } from '../email/provider';
 import type { SettleResult } from '../donations/delivery';
 import { listDonations } from '../donations/queries';
@@ -15,9 +15,9 @@ import { settleDelivery } from '../donations/settle';
 import { createPaypalProvider, PAYPAL_DEFAULT_API_URL } from './paypal';
 import { soleProcessor } from './processors.testing';
 
-// a PayPal or Venmo refund reaching the books: the verified delivery, the adapter's fresh read of the
-// refund and of the capture or sale it reverses through the real SDK and its own calls, and the
-// writer (../donations/reverse.ts) against a real D1.
+// a PayPal or Venmo refund or dispute reaching the books: the verified delivery, the adapter's fresh
+// read of the refund or the dispute and of the capture or sale it reverses through the real SDK and
+// its own calls, and the writer (../donations/reverse.ts) against a real D1.
 //
 // what the writer does with each read is ../donations/reverse.workers.spec.ts's, and what the
 // adapter reads off each of PayPal's shapes is ./paypal.spec.ts's. what is here is the join, which
@@ -120,6 +120,8 @@ async function deliver(
 	answers: Answers
 ): Promise<{ result: SettleResult; calls: string[] }> {
 	const calls: string[] = [];
+	// a transaction with no dispute on it lists none, which is what every refund read asks first.
+	const answered: Answers = { 'GET /v1/customer/disputes': { items: [] }, ...answers };
 	vi.stubGlobal('fetch', async (input: Request | string | URL, init?: RequestInit) => {
 		const request = input instanceof Request ? input : new Request(String(input), init);
 		const { pathname } = new URL(request.url);
@@ -135,8 +137,8 @@ async function deliver(
 		}
 		const route = `${request.method} ${pathname}`;
 		calls.push(route);
-		return route in answers
-			? Response.json(answers[route])
+		return route in answered
+			? Response.json(answered[route])
 			: Response.json(
 					{ name: 'RESOURCE_NOT_FOUND', details: [{ issue: 'INVALID_RESOURCE_ID' }] },
 					{ status: 404 }
@@ -631,6 +633,497 @@ describe('a PayPal refund of a monthly charge not recorded yet', () => {
 		const later = await saleRefundDelivery(donationId);
 
 		expect(later.result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+	});
+});
+
+const DISPUTE_ID = 'PP-D-27803';
+const DISPUTED = '2026-08-22T09:46:54.926Z';
+const RESPOND_BY = '2026-09-01T09:46:54.926Z';
+const DECIDED = '2026-09-03T11:00:00.000Z';
+
+/**
+ * a dispute over `transactionId` as `GET /v1/customer/disputes/{id}` answers for it (`dispute` in
+ * customer_disputes_v1.json): a claim holding the whole $100.00 until a case overrides a field.
+ */
+function disputeOf(over: Record<string, unknown> = {}, transactionId = CAPTURE_ID) {
+	const { transaction_status: status = 'HELD', ...rest } = over;
+	return {
+		dispute_id: DISPUTE_ID,
+		create_time: DISPUTED,
+		update_time: DISPUTED,
+		disputed_transactions: [
+			{
+				seller_transaction_id: transactionId,
+				transaction_status: status,
+				gross_amount: { currency_code: 'USD', value: '100.00' }
+			}
+		],
+		reason: 'UNAUTHORISED',
+		status: 'WAITING_FOR_SELLER_RESPONSE',
+		dispute_amount: { currency_code: 'USD', value: '100.00' },
+		dispute_life_cycle_stage: 'CHARGEBACK',
+		dispute_channel: 'INTERNAL',
+		seller_response_due_date: RESPOND_BY,
+		...rest
+	};
+}
+
+/** {@link disputeOf} resolved under `outcome_code`, its transaction as `transaction_status` names. */
+function resolvedDispute(outcome_code: string, transaction_status = 'COMPLETED') {
+	return disputeOf({
+		status: 'RESOLVED',
+		update_time: DECIDED,
+		transaction_status,
+		dispute_outcome: { outcome_code }
+	});
+}
+
+/**
+ * one `CUSTOMER.DISPUTE.*` delivery, with PayPal answering the dispute as `disputed` and the
+ * capture it names. the delivery's own copy names the dispute and nothing else is read off it.
+ */
+function disputeDelivery(
+	eventId: string,
+	type: string,
+	donationId: string,
+	disputed: Record<string, unknown>
+) {
+	return deliver(
+		eventId,
+		type,
+		{ dispute_id: DISPUTE_ID, status: 'RESOLVED' },
+		{
+			[`GET /v1/customer/disputes/${DISPUTE_ID}`]: disputed,
+			[`GET /v2/payments/captures/${CAPTURE_ID}`]: captureOf(donationId)
+		}
+	);
+}
+
+/** the disputes on record, as `[outcome, respond by]`. */
+async function disputeRows() {
+	const rows = await db.select().from(dispute);
+	return rows.map((row) => [row.outcome, row.respondBy?.toISOString() ?? null] as const);
+}
+
+describe('a PayPal dispute holding a settled gift’s money', () => {
+	it.each(['paypal', 'venmo'] as const)(
+		'takes the %s gift’s money back, leaves the dispute open, and tells staff',
+		async (rail) => {
+			const donationId = await settledGift(rail);
+			sent = [];
+
+			const { result } = await disputeDelivery(
+				'WH-D1',
+				'CUSTOMER.DISPUTE.CREATED',
+				donationId,
+				disputeOf()
+			);
+
+			expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+			expect(await refundRows()).toEqual([[DISPUTE_ID, 10_000, 'succeeded']]);
+			expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+			expect(await disputeRows()).toEqual([[null, RESPOND_BY]]);
+			const alerts = toStaff();
+			expect(alerts).toHaveLength(1);
+			expect(alerts[0]?.text).toContain('10000 USD');
+			expect(alerts[0]?.text).toContain(RESPOND_BY);
+			expect(alerts[0]?.text).toContain('https://www.paypal.com/resolutioncenter');
+		}
+	);
+});
+
+describe('a PayPal dispute on one monthly charge', () => {
+	it('stops the monthly gift and says so to staff', async () => {
+		const donationId = await authorizedMonthlyGift();
+		await collect(donationId);
+		sent = [];
+
+		const { result, calls } = await deliver(
+			'WH-D1',
+			'CUSTOMER.DISPUTE.CREATED',
+			{ dispute_id: DISPUTE_ID },
+			{
+				[`GET /v1/customer/disputes/${DISPUTE_ID}`]: disputeOf(
+					{ dispute_amount: { currency_code: 'USD', value: '25.00' } },
+					SALE_ID
+				),
+				...collectionAnswers(donationId),
+				[`POST /v1/billing/subscriptions/${SUBSCRIPTION_ID}/cancel`]: null
+			}
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await refundRows()).toEqual([[DISPUTE_ID, 2_500, 'succeeded']]);
+		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+		expect(calls).toContain(`POST /v1/billing/subscriptions/${SUBSCRIPTION_ID}/cancel`);
+		const plans = await db.select({ status: recurringPlan.status }).from(recurringPlan);
+		expect(plans).toEqual([{ status: 'cancelled' }]);
+		expect(toStaff()).toHaveLength(1);
+		expect(toStaff()[0]?.text).toContain('Stopped: no further charges');
+	});
+});
+
+describe('a PayPal dispute decided', () => {
+	it('restores the gift when won', async () => {
+		const donationId = await settledGift();
+		await disputeDelivery('WH-D1', 'CUSTOMER.DISPUTE.CREATED', donationId, disputeOf());
+
+		const { result } = await disputeDelivery(
+			'WH-D2',
+			'CUSTOMER.DISPUTE.RESOLVED',
+			donationId,
+			resolvedDispute('RESOLVED_SELLER_FAVOUR')
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await refundRows()).toEqual([[DISPUTE_ID, 10_000, 'cancelled']]);
+		expect(await asAdminReads(donationId)).toEqual({ status: 'completed', given: 10_000 });
+		expect(await disputeRows()).toEqual([['won', RESPOND_BY]]);
+	});
+
+	it('leaves the gift reversed when lost', async () => {
+		const donationId = await settledGift();
+		await disputeDelivery('WH-D1', 'CUSTOMER.DISPUTE.CREATED', donationId, disputeOf());
+
+		const { result } = await disputeDelivery(
+			'WH-D2',
+			'CUSTOMER.DISPUTE.RESOLVED',
+			donationId,
+			resolvedDispute('RESOLVED_BUYER_FAVOUR', 'REVERSED')
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'updated' });
+		expect(await refundRows()).toEqual([[DISPUTE_ID, 10_000, 'succeeded']]);
+		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+		expect(await disputeRows()).toEqual([['lost', RESPOND_BY]]);
+	});
+});
+
+describe('a PayPal inquiry that holds no funds', () => {
+	it('moves nothing and answers 200', async () => {
+		const donationId = await settledGift();
+		sent = [];
+
+		const { result } = await disputeDelivery(
+			'WH-D1',
+			'CUSTOMER.DISPUTE.CREATED',
+			donationId,
+			disputeOf({ dispute_life_cycle_stage: 'INQUIRY', transaction_status: 'COMPLETED' })
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'ignored' });
+		expect(await refundRows()).toEqual([]);
+		expect(await disputeRows()).toEqual([]);
+		expect(await asAdminReads(donationId)).toEqual({ status: 'completed', given: 10_000 });
+		expect(toStaff()).toEqual([]);
+	});
+});
+
+describe('each PayPal dispute event delivered twice', () => {
+	it('posts once', async () => {
+		const donationId = await settledGift();
+		sent = [];
+
+		const outcomes = [];
+		for (const [eventId, type, disputed] of [
+			['WH-D1', 'CUSTOMER.DISPUTE.CREATED', disputeOf()],
+			['WH-D1', 'CUSTOMER.DISPUTE.CREATED', disputeOf()],
+			['WH-D2', 'CUSTOMER.DISPUTE.UPDATED', disputeOf()],
+			['WH-D2', 'CUSTOMER.DISPUTE.UPDATED', disputeOf()],
+			['WH-D3', 'CUSTOMER.DISPUTE.RESOLVED', resolvedDispute('RESOLVED_SELLER_FAVOUR')],
+			['WH-D3', 'CUSTOMER.DISPUTE.RESOLVED', resolvedDispute('RESOLVED_SELLER_FAVOUR')]
+		] as const) {
+			const { result } = await disputeDelivery(eventId, type, donationId, disputed);
+			outcomes.push(result.ok && result.outcome);
+		}
+
+		expect(outcomes).toEqual([
+			'posted',
+			'already_posted',
+			'already_posted',
+			'already_posted',
+			'posted',
+			'already_posted'
+		]);
+		expect(await refundRows()).toEqual([[DISPUTE_ID, 10_000, 'cancelled']]);
+		expect(await refundGroups()).toBe(1);
+		expect(toStaff()).toHaveLength(1);
+	});
+});
+
+describe('a PayPal dispute that arrives before its gift is recorded', () => {
+	it('is answered non-2xx, and posted by a delivery after the gift settles', async () => {
+		const donationId = await quotedGift();
+
+		const early = await disputeDelivery(
+			'WH-D1',
+			'CUSTOMER.DISPUTE.CREATED',
+			donationId,
+			disputeOf()
+		);
+
+		expect(early.result).toMatchObject({ ok: false, reason: 'incomplete' });
+		expect(await refundRows()).toEqual([]);
+
+		await settle(donationId);
+		const later = await disputeDelivery(
+			'WH-D1',
+			'CUSTOMER.DISPUTE.CREATED',
+			donationId,
+			disputeOf()
+		);
+
+		expect(later.result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+	});
+});
+
+/** PayPal's reversal of the whole capture: a Payments v2 refund, as `PAYMENT.CAPTURE.REVERSED` carries. */
+const REVERSAL = captureRefund('4VD21843TJ104552R', '100.00');
+
+/**
+ * one `PAYMENT.CAPTURE.REVERSED` delivery, with PayPal answering the reversal, the capture, and the
+ * disputes on the capture: none where `disputed` is null, else the one dispute, answered as it.
+ */
+function reversedDelivery(
+	eventId: string,
+	donationId: string,
+	disputed: Record<string, unknown> | null
+) {
+	return deliver(eventId, 'PAYMENT.CAPTURE.REVERSED', REVERSAL, {
+		[`GET /v2/payments/refunds/${REVERSAL.id}`]: REVERSAL,
+		[`GET /v2/payments/captures/${CAPTURE_ID}`]: captureOf(donationId, 'REVERSED'),
+		'GET /v1/customer/disputes': {
+			items: disputed === null ? [] : [{ dispute_id: DISPUTE_ID, create_time: DISPUTED }]
+		},
+		...(disputed === null ? {} : { [`GET /v1/customer/disputes/${DISPUTE_ID}`]: disputed })
+	});
+}
+
+describe('a PayPal capture reversed with no dispute behind it', () => {
+	it('is a dispute lost at once: the gift reads refunded and staff are told', async () => {
+		const donationId = await settledGift();
+		sent = [];
+
+		const { result } = await reversedDelivery('WH-V1', donationId, null);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await refundRows()).toEqual([[REVERSAL.id, 10_000, 'succeeded']]);
+		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+		expect(await disputeRows()).toEqual([['lost', null]]);
+		expect(toStaff()).toHaveLength(1);
+		expect(toStaff()[0]?.subject).toMatch(/dispute was lost/);
+	});
+});
+
+describe('a PayPal chargeback reported as a dispute and as a reversal', () => {
+	const chargeback = () =>
+		disputeOf({ dispute_channel: 'EXTERNAL', transaction_status: 'REVERSED' });
+
+	it('withdraws the money once when the dispute arrives first', async () => {
+		const donationId = await settledGift();
+
+		const opened = await disputeDelivery(
+			'WH-D1',
+			'CUSTOMER.DISPUTE.CREATED',
+			donationId,
+			chargeback()
+		);
+		const reversed = await reversedDelivery('WH-V1', donationId, chargeback());
+
+		expect(opened.result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(reversed.result).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect(await refundRows()).toEqual([[DISPUTE_ID, 10_000, 'succeeded']]);
+		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+	});
+
+	it('withdraws the money once when the reversal arrives first', async () => {
+		const donationId = await settledGift();
+
+		const reversed = await reversedDelivery('WH-V1', donationId, chargeback());
+		const opened = await disputeDelivery(
+			'WH-D1',
+			'CUSTOMER.DISPUTE.CREATED',
+			donationId,
+			chargeback()
+		);
+
+		expect(reversed.result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(opened.result).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect(await refundRows()).toEqual([[DISPUTE_ID, 10_000, 'succeeded']]);
+	});
+});
+
+describe('a PayPal claim the organisation accepted', () => {
+	/**
+	 * accepting a claim closes it for the buyer and PayPal refunds the capture from the merchant's
+	 * account (https://docs.paypal.ai/reference/api/rest/disputes-actions/accept-claim). the dispute
+	 * already took the money, so the refund is its close and never a second withdrawal.
+	 */
+	it('closes the dispute on the refund PayPal makes for it, and the gift never goes below nothing', async () => {
+		const donationId = await settledGift();
+		await disputeDelivery('WH-D1', 'CUSTOMER.DISPUTE.CREATED', donationId, disputeOf());
+		const lost = resolvedDispute('RESOLVED_BUYER_FAVOUR', 'REFUNDED');
+
+		const refunded = await deliver(
+			'WH-R1',
+			'PAYMENT.CAPTURE.REFUNDED',
+			captureRefund('1JU08902781691411', '100.00'),
+			{
+				'GET /v2/payments/refunds/1JU08902781691411': captureRefund('1JU08902781691411', '100.00'),
+				[`GET /v2/payments/captures/${CAPTURE_ID}`]: captureOf(donationId, 'REFUNDED'),
+				'GET /v1/customer/disputes': { items: [{ dispute_id: DISPUTE_ID, create_time: DISPUTED }] },
+				[`GET /v1/customer/disputes/${DISPUTE_ID}`]: lost
+			}
+		);
+		const closed = await disputeDelivery('WH-D2', 'CUSTOMER.DISPUTE.RESOLVED', donationId, lost);
+
+		expect(refunded.result).toMatchObject({ ok: true, outcome: 'updated' });
+		expect(closed.result).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect(await refundRows()).toEqual([[DISPUTE_ID, 10_000, 'succeeded']]);
+		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
+		expect(await disputeRows()).toEqual([['lost', RESPOND_BY]]);
+	});
+});
+
+describe('a PayPal inquiry the organisation settled with a refund', () => {
+	/**
+	 * the inquiry never held the money, so its close moves nothing: the $30 left as the refund,
+	 * which its own delivery booked, and the buyer's win is not a second withdrawal.
+	 */
+	it('takes the refund out once, whichever way the inquiry closes', async () => {
+		const donationId = await settledGift();
+		const inquiry = { dispute_life_cycle_stage: 'INQUIRY', transaction_status: 'COMPLETED' };
+		const refund = captureRefund('1JU08902781691411', '30.00');
+
+		const refunded = await deliver('WH-R1', 'PAYMENT.CAPTURE.REFUNDED', refund, {
+			[`GET /v2/payments/refunds/${refund.id}`]: refund,
+			[`GET /v2/payments/captures/${CAPTURE_ID}`]: captureOf(donationId, 'PARTIALLY_REFUNDED'),
+			'GET /v1/customer/disputes': { items: [{ dispute_id: DISPUTE_ID, create_time: DISPUTED }] },
+			[`GET /v1/customer/disputes/${DISPUTE_ID}`]: disputeOf(inquiry)
+		});
+		const closed = await disputeDelivery(
+			'WH-D2',
+			'CUSTOMER.DISPUTE.RESOLVED',
+			donationId,
+			disputeOf({
+				...inquiry,
+				status: 'RESOLVED',
+				update_time: DECIDED,
+				dispute_outcome: {
+					outcome_code: 'RESOLVED_BUYER_FAVOUR',
+					amount_refunded: { currency_code: 'USD', value: '30.00' }
+				}
+			})
+		);
+
+		expect(refunded.result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(closed.result).toMatchObject({ ok: true, outcome: 'ignored' });
+		expect(await refundRows()).toEqual([['1JU08902781691411', 3_000, 'succeeded']]);
+		expect(await asAdminReads(donationId)).toEqual({ status: 'partially_refunded', given: 7_000 });
+	});
+});
+
+describe('a PayPal chargeback that replaces a claim PayPal closed undecided', () => {
+	/**
+	 * PayPal closes the claim `NONE` when a chargeback opens on the same capture. the claim's
+	 * withdrawal is the chargeback's from then on: no second withdrawal, and the chargeback's win puts
+	 * the one withdrawal back.
+	 */
+	it('carries the claim’s withdrawal, and the chargeback’s close settles it', async () => {
+		const donationId = await settledGift();
+		const chargebackId = 'PP-D-30001';
+		const claimClosed = disputeOf({
+			status: 'RESOLVED',
+			update_time: '2026-08-29T09:59:00.000Z',
+			transaction_status: 'REVERSED',
+			dispute_outcome: { outcome_code: 'NONE' }
+		});
+		const chargeback = (over: Record<string, unknown>) => ({
+			...disputeOf({ dispute_channel: 'EXTERNAL', transaction_status: 'REVERSED', ...over }),
+			dispute_id: chargebackId,
+			create_time: '2026-08-29T10:00:00.000Z'
+		});
+		const both = {
+			[`GET /v2/payments/captures/${CAPTURE_ID}`]: captureOf(donationId, 'REVERSED'),
+			'GET /v1/customer/disputes': {
+				items: [
+					{ dispute_id: DISPUTE_ID, create_time: DISPUTED },
+					{ dispute_id: chargebackId, create_time: '2026-08-29T10:00:00.000Z' }
+				]
+			},
+			[`GET /v1/customer/disputes/${DISPUTE_ID}`]: claimClosed
+		};
+
+		const opened = await disputeDelivery(
+			'WH-D1',
+			'CUSTOMER.DISPUTE.CREATED',
+			donationId,
+			disputeOf()
+		);
+		const superseded = await disputeDelivery(
+			'WH-D2',
+			'CUSTOMER.DISPUTE.RESOLVED',
+			donationId,
+			claimClosed
+		);
+		const replaced = await deliver(
+			'WH-D3',
+			'CUSTOMER.DISPUTE.CREATED',
+			{ dispute_id: chargebackId },
+			{
+				...both,
+				[`GET /v1/customer/disputes/${chargebackId}`]: chargeback({})
+			}
+		);
+		const won = await deliver(
+			'WH-D4',
+			'CUSTOMER.DISPUTE.RESOLVED',
+			{ dispute_id: chargebackId },
+			{
+				...both,
+				[`GET /v1/customer/disputes/${chargebackId}`]: chargeback({
+					status: 'RESOLVED',
+					update_time: DECIDED,
+					transaction_status: 'COMPLETED',
+					dispute_outcome: { outcome_code: 'RESOLVED_SELLER_FAVOUR' }
+				})
+			}
+		);
+
+		expect(opened.result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(superseded.result).toMatchObject({ ok: true, outcome: 'ignored' });
+		expect(replaced.result).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect(won.result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await refundRows()).toEqual([[DISPUTE_ID, 10_000, 'cancelled']]);
+		expect(await asAdminReads(donationId)).toEqual({ status: 'completed', given: 10_000 });
+		expect(await disputeRows()).toEqual([['won', RESPOND_BY]]);
+	});
+});
+
+describe('a PayPal capture reversed beside an older dispute that was won', () => {
+	it('is booked on its own rather than dropped under the won dispute', async () => {
+		const donationId = await settledGift();
+		await disputeDelivery('WH-D1', 'CUSTOMER.DISPUTE.CREATED', donationId, disputeOf());
+		await disputeDelivery(
+			'WH-D2',
+			'CUSTOMER.DISPUTE.RESOLVED',
+			donationId,
+			resolvedDispute('RESOLVED_SELLER_FAVOUR')
+		);
+
+		const { result } = await reversedDelivery(
+			'WH-V1',
+			donationId,
+			resolvedDispute('RESOLVED_SELLER_FAVOUR')
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await refundRows()).toEqual([
+			[DISPUTE_ID, 10_000, 'cancelled'],
+			[REVERSAL.id, 10_000, 'succeeded']
+		]);
 		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
 	});
 });

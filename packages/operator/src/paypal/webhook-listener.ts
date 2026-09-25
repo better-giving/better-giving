@@ -104,10 +104,36 @@ export const RECURRING_EVENT_TYPES = [
  *
  * `PAYMENT.REFUND.PENDING` and `PAYMENT.REFUND.FAILED` are not here: PayPal documents both for an
  * eCheck-funded refund still clearing or one the bank did not issue, neither of which moved money,
- * and a refund that completes is `PAYMENT.CAPTURE.REFUNDED`. `*.REVERSED` is PayPal taking the money
- * back rather than the merchant sending it, which is a dispute's read and not a refund's.
+ * and a refund that completes is `PAYMENT.CAPTURE.REFUNDED`.
  */
 export const REFUND_EVENT_TYPES = ['PAYMENT.CAPTURE.REFUNDED', 'PAYMENT.SALE.REFUNDED'] as const;
+
+/**
+ * the deliveries that say PayPal took money back — a chargeback or another reversal the merchant did
+ * not send — each carrying a refund of the capture or the sale, in the same generations as
+ * `REFUND_EVENT_TYPES` (https://developer.paypal.com/api/rest/webhooks/event-names).
+ */
+export const REVERSED_EVENT_TYPES = ['PAYMENT.CAPTURE.REVERSED', 'PAYMENT.SALE.REVERSED'] as const;
+
+/**
+ * the deliveries about a dispute, each carrying the dispute.
+ *
+ * a dispute that opens as an inquiry holds no money, and what changes after the opening — a hold,
+ * an escalation — is reported as `CUSTOMER.DISPUTE.UPDATED`
+ * (https://developer.paypal.com/api/rest/webhooks/event-names, Disputes).
+ */
+export const DISPUTE_EVENT_TYPES = [
+	'CUSTOMER.DISPUTE.CREATED',
+	'CUSTOMER.DISPUTE.UPDATED',
+	'CUSTOMER.DISPUTE.RESOLVED'
+] as const;
+
+/** every delivery about money leaving a settled gift or coming back to it: one kind and one read. */
+export const REVERSAL_EVENT_TYPES = [
+	...REFUND_EVENT_TYPES,
+	...REVERSED_EVENT_TYPES,
+	...DISPUTE_EVENT_TYPES
+] as const;
 
 /**
  * everything the listener subscribes to, which is exactly what the deployment acts on.
@@ -121,5 +147,5 @@ export const REFUND_EVENT_TYPES = ['PAYMENT.CAPTURE.REFUNDED', 'PAYMENT.SALE.REF
 export const SUBSCRIBED_EVENT_TYPES = [
 	...SETTLEMENT_EVENT_TYPES,
 	...RECURRING_EVENT_TYPES,
-	...REFUND_EVENT_TYPES
+	...REVERSAL_EVENT_TYPES
 ] as const;
