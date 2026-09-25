@@ -56,25 +56,25 @@ const status = (page: string): string | null => {
 	return text;
 };
 
-const SWITCHED_OFF = /Zapier has switched off/;
-const STILL_ON = /may still look switched on in Zapier/;
+const SWITCHED_OFF = /Zapier has turned off/;
+const STILL_ON = /may still show as on in Zapier/;
 
 describe('ZapierSection after a replace', () => {
 	it('says how many Zaps were switched off, and nothing about any still on', () => {
 		const said = status(drawn(replaced(2, 0)));
-		expect(said).toMatch(/^Zapier has switched off 2 Zaps that used the old key\. Their owners/);
+		expect(said).toMatch(/^Zapier has turned off 2 Zaps that used the old key\. Their owners/);
 		expect(said).not.toMatch(STILL_ON);
 	});
 
 	it('says how many Zaps may still look on where none was switched off', () => {
 		const said = status(drawn(replaced(0, 1)));
-		expect(said).toMatch(/^1 Zap may still look switched on in Zapier/);
+		expect(said).toMatch(/^1 Zap may still show as on in Zapier/);
 		expect(said).not.toMatch(SWITCHED_OFF);
 	});
 
 	it('says both, the switched-off ones first', () => {
 		expect(status(drawn(replaced(1, 2)))).toMatch(
-			/^Zapier has switched off 1 Zap that used the old key\..* 2 more Zaps may still look switched on in Zapier/
+			/^Zapier has turned off 1 Zap that used the old key\..* 2 more Zaps may still show as on in Zapier/
 		);
 	});
 
@@ -85,6 +85,6 @@ describe('ZapierSection after a replace', () => {
 
 	it('still says it where the reading after the replace did not come back', () => {
 		const page = drawn(replaced(3, 0), { kind: 'unread', read: { kind: 'no-session' } });
-		expect(status(page)).toMatch(/^Zapier has switched off 3 Zaps/);
+		expect(status(page)).toMatch(/^Zapier has turned off 3 Zaps/);
 	});
 });

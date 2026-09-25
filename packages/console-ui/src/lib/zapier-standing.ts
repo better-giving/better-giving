@@ -109,7 +109,7 @@ export function replaceCosts(listening: number): string[] {
 		listening === 1
 			? '1 Zap listening on the current key stops.'
 			: `${listening} Zaps listening on the current key stop.`,
-		'Reconnect each Zap with the new key, then turn it off and on again: Zapier only subscribes a Zap when it is turned on, so a reconnected Zap left on hears nothing.'
+		'Zapier turns off each Zap it can reach. Reconnect each one with the new key, then turn it on: Zapier only subscribes a Zap when it is turned on, so a Zap still on after the replace has to be turned off and on again.'
 	];
 }
 
@@ -118,8 +118,8 @@ export function replaceCosts(listening: number): string[] {
  * it touched none — which is every make, and every other answer.
  *
  * two sentences because they ask two different things of a Zap's owner: a paused Zap reads as off
- * in Zapier and only wants reconnecting and switching back on, while one whose hook did not answer
- * still reads as on and hears nothing until it is switched off and on by hand — nothing asks
+ * in Zapier and only wants reconnecting and turning back on, while one whose hook did not answer
+ * still reads as on and hears nothing until it is turned off and on by hand — nothing asks
  * Zapier again (packages/operator/src/console/zapier.ts).
  */
 export function replacedSays(answer: ZapierAnswer | null): string[] {
@@ -129,15 +129,15 @@ export function replacedSays(answer: ZapierAnswer | null): string[] {
 	if (paused > 0)
 		said.push(
 			paused === 1
-				? 'Zapier has switched off 1 Zap that used the old key. Its owner needs to reconnect it with the new key and switch it back on.'
-				: `Zapier has switched off ${paused} Zaps that used the old key. Their owners need to reconnect them with the new key and switch them back on.`
+				? 'Zapier has turned off 1 Zap that used the old key. Its owner needs to reconnect it with the new key and turn it back on.'
+				: `Zapier has turned off ${paused} Zaps that used the old key. Their owners need to reconnect them with the new key and turn them back on.`
 		);
 	if (notPaused > 0) {
 		const more = paused > 0 ? ' more' : '';
 		said.push(
 			notPaused === 1
-				? `1${more} Zap may still look switched on in Zapier, but it hears nothing. Its owner needs to reconnect it with the new key, then switch it off and on by hand.`
-				: `${notPaused}${more} Zaps may still look switched on in Zapier, but they hear nothing. Their owners need to reconnect them with the new key, then switch them off and on by hand.`
+				? `1${more} Zap may still show as on in Zapier, but it hears nothing. Its owner needs to reconnect it with the new key, then turn it off and on again.`
+				: `${notPaused}${more} Zaps may still show as on in Zapier, but they hear nothing. Their owners need to reconnect them with the new key, then turn them off and on again.`
 		);
 	}
 	return said;

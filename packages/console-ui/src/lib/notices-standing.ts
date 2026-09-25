@@ -72,7 +72,7 @@ export function noticesNote(standing: NoticesStanding): string {
 		return 'Stripe has nowhere to tell this deployment a gift was paid, so card gifts are charged and never marked paid. Press Save with your two keys to set it up.';
 	}
 	if (standing.kind === 'unverified') {
-		return 'Stripe tells this deployment when a gift is paid, and this deployment can’t confirm those messages came from Stripe, so it turns every one away and card gifts are never marked paid. Press Save with your two keys to set it up again.';
+		return 'Stripe tells this deployment when a gift is paid, but this deployment can’t confirm those messages came from Stripe, so it turns every one away and card gifts are never marked paid. Press Save with your two keys to set it up again.';
 	}
 	const stops = standing.delivering
 		? 'Stripe isn’t telling this deployment about every kind of payment'

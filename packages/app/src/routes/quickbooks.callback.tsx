@@ -198,11 +198,11 @@ export default function QuickbooksCallback({ loaderData }: Route.ComponentProps)
 			<PanelRoute>
 				<h1>QuickBooks is connected to a different company</h1>
 				<p className="adm-prose">
-					{`The connection moved from ${loaderData.previousCompanyName ?? 'the company connected before'} to ${loaderData.companyName ?? 'a company whose name QuickBooks has not said yet'}.`}
+					{`The connection moved from ${loaderData.previousCompanyName ?? 'the company connected before'} to ${loaderData.companyName ?? 'a company QuickBooks hasn’t named yet'}.`}
 				</p>
 				<p className="adm-prose">
-					Nothing is sent to QuickBooks until the accounts are chosen. Choose the accounts again on
-					the console.
+					Go back to the console and choose the accounts again. Nothing is sent to QuickBooks until
+					you do.
 				</p>
 			</PanelRoute>
 		);

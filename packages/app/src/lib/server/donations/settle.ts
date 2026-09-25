@@ -1226,9 +1226,7 @@ async function reportedUnsettled(
 	await alert(deps, {
 		headline: `A ${processor} payment recorded as settled is now reported as ${settlement.status}`,
 		body:
-			`A payment this deployment recorded as settled is now reported by ${processor} as ` +
-			`${settlement.status}. Nothing was changed: the payment is still recorded as settled ` +
-			'until a person corrects it.',
+			'Nothing was changed: the payment is still recorded as settled until a person corrects it.',
 		facts: [
 			{ label: 'Payment', value: target.payment.id },
 			{ label: 'Donation', value: target.donation.id },

@@ -105,9 +105,9 @@ describe('replacedSays', () => {
 	});
 
 	const PAUSED_ONE =
-		'Zapier has switched off 1 Zap that used the old key. Its owner needs to reconnect it with the new key and switch it back on.';
+		'Zapier has turned off 1 Zap that used the old key. Its owner needs to reconnect it with the new key and turn it back on.';
 	const PAUSED_THREE =
-		'Zapier has switched off 3 Zaps that used the old key. Their owners need to reconnect them with the new key and switch them back on.';
+		'Zapier has turned off 3 Zaps that used the old key. Their owners need to reconnect them with the new key and turn them back on.';
 
 	it.each([
 		[1, PAUSED_ONE],
@@ -119,11 +119,11 @@ describe('replacedSays', () => {
 	it.each([
 		[
 			1,
-			'1 Zap may still look switched on in Zapier, but it hears nothing. Its owner needs to reconnect it with the new key, then switch it off and on by hand.'
+			'1 Zap may still show as on in Zapier, but it hears nothing. Its owner needs to reconnect it with the new key, then turn it off and on again.'
 		],
 		[
 			2,
-			'2 Zaps may still look switched on in Zapier, but they hear nothing. Their owners need to reconnect them with the new key, then switch them off and on by hand.'
+			'2 Zaps may still show as on in Zapier, but they hear nothing. Their owners need to reconnect them with the new key, then turn them off and on again.'
 		]
 	])('says %i Zaps that did not answer may still look on, to switch by hand', (notPaused, said) => {
 		expect(replacedSays(replaced(0, notPaused))).toEqual([said]);
@@ -132,7 +132,7 @@ describe('replacedSays', () => {
 	it('counts the ones that did not answer as more, after the paused ones', () => {
 		expect(replacedSays(replaced(3, 1))).toEqual([
 			PAUSED_THREE,
-			'1 more Zap may still look switched on in Zapier, but it hears nothing. Its owner needs to reconnect it with the new key, then switch it off and on by hand.'
+			'1 more Zap may still show as on in Zapier, but it hears nothing. Its owner needs to reconnect it with the new key, then turn it off and on again.'
 		]);
 	});
 

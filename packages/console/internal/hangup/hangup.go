@@ -16,9 +16,9 @@
 // report (../terminal/ledger.go's StillGoing), and a second one still ends the process.
 //
 // **the last release hands back the handling the process started with**, which is what a Stop after
-// a Notify does; go's Reset leaves a signal.Ignore in force for good. a process started ignoring
-// hang-ups (nohup) is one no hold has anything to do for, and one the release never re-sends to:
-// the re-sent hang-up would be ignored, and the release would wait on an ending that never comes.
+// a Notify does. a process started ignoring hang-ups (nohup) is one no hold has anything to do
+// for, and one the release never re-sends to: the re-sent hang-up would be ignored, and the release
+// would wait on an ending that never comes.
 package hangup
 
 import (

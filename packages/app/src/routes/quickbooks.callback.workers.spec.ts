@@ -346,7 +346,7 @@ describe('GET /quickbooks/callback', () => {
 		expect(stub.chartReads).toBe(1);
 		const page = markup(answered.data);
 		expect(page).toContain('moved from Hope Foundation to Grace Trust');
-		expect(page).toContain('Choose the accounts again');
+		expect(page).toContain('choose the accounts again');
 	});
 
 	it('spends the state cookie whether the trip landed or not', async () => {
