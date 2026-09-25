@@ -1,4 +1,5 @@
 import type { EntryContext } from 'react-router';
+import { PAYPAL_DEFAULT_API_URL, paypalApiOrigin, paypalSdkUrl } from '$lib/server/payments/paypal';
 
 // the content security policy and framing headers every document this deployment draws carries.
 //
@@ -74,11 +75,12 @@ function operatorPolicy(nonce: string): string[] {
  *   script-src and frame-src, `api.stripe.com` in connect-src, and `hooks.stripe.com` in frame-src
  *   for 3-D Secure and every redirecting method. its `maps.googleapis.com` entries are the address
  *   element's, which the card never mounts.
- * - paypal's web sdk v6 — the core is on `www.paypal.com` (`PAYPAL_CORE_URL` in
- *   packages/form/src/embed/paypal.ts) and its fraud collector on `c.paypal.com`; eligibility is read
- *   from `api-m.paypal.com`; the overlay a blocked popup falls back to is a frame on `www.paypal.com`,
- *   with `history.paypal.com` and `account.venmo.com` for venmo; the buttons' wordmarks are images
- *   on `www.paypalobjects.com`.
+ * - paypal's web sdk v6 — the core is on the origin `paypalSdkUrl` maps the deployment's
+ *   `PAYPAL_API_URL` to, and eligibility is read from that address itself (`www.paypal.com` and
+ *   `api-m.paypal.com` where it is unset); the overlay a blocked popup falls back to is a frame on
+ *   the core's origin. its fraud collector is on `c.paypal.com`, venmo's frames on
+ *   `history.paypal.com` and `account.venmo.com`, and the buttons' wordmarks are images on
+ *   `www.paypalobjects.com`, whatever the address.
  * - turnstile — https://developers.cloudflare.com/turnstile/reference/content-security-policy/:
  *   `challenges.cloudflare.com` in script-src and frame-src.
  * - chariot connect — `CHARIOT_SCRIPT_URL` in packages/form/src/embed/chariot.ts is on
@@ -92,7 +94,7 @@ function operatorPolicy(nonce: string): string[] {
  * (README.md). `font-src 'self'` stays because this route's error page is dressed from the operator
  * sheets and their fonts.
  */
-function donorPolicy(nonce: string): string[] {
+function donorPolicy(nonce: string, paypal: PaypalOrigins): string[] {
 	return [
 		"default-src 'self'",
 		[
@@ -101,7 +103,7 @@ function donorPolicy(nonce: string): string[] {
 			`'nonce-${nonce}'`,
 			'https://js.stripe.com',
 			'https://*.js.stripe.com',
-			'https://www.paypal.com',
+			...paypal.sdk,
 			'https://c.paypal.com',
 			'https://cdn.givechariot.com',
 			'https://challenges.cloudflare.com'
@@ -110,8 +112,8 @@ function donorPolicy(nonce: string): string[] {
 			'connect-src',
 			"'self'",
 			'https://api.stripe.com',
-			'https://www.paypal.com',
-			'https://api-m.paypal.com',
+			...paypal.sdk,
+			...paypal.api,
 			'https://c.paypal.com'
 		].join(' '),
 		[
@@ -119,7 +121,7 @@ function donorPolicy(nonce: string): string[] {
 			'https://js.stripe.com',
 			'https://*.js.stripe.com',
 			'https://hooks.stripe.com',
-			'https://www.paypal.com',
+			...paypal.sdk,
 			'https://history.paypal.com',
 			'https://account.venmo.com',
 			'https://secure.dafpay.com',
@@ -139,6 +141,28 @@ function donorPolicy(nonce: string): string[] {
 	];
 }
 
+/** the donor policy's two paypal sources, each empty where the address yields no origin for it. */
+interface PaypalOrigins {
+	readonly api: readonly string[];
+	readonly sdk: readonly string[];
+}
+
+/**
+ * the origins a deployment's `PAYPAL_API_URL` names, by the same two functions the served config's
+ * `sdkUrl` is built with.
+ *
+ * an address `paypalApiOrigin` refuses names neither: $lib/server/payments/factory.ts holds paypal
+ * unusable on such a deployment, so the card offers it nowhere and the page has nothing to reach.
+ */
+function paypalOrigins(apiUrl: string = PAYPAL_DEFAULT_API_URL): PaypalOrigins {
+	const api = paypalApiOrigin(apiUrl);
+	const sdk = paypalSdkUrl(apiUrl);
+	return {
+		api: api === null ? [] : [api],
+		sdk: sdk === null ? [] : [new URL(sdk).origin]
+	};
+}
+
 function isDonorPolicyHandle(handle: unknown): handle is DonorPolicyHandle {
 	return (
 		typeof handle === 'object' &&
@@ -147,14 +171,22 @@ function isDonorPolicyHandle(handle: unknown): handle is DonorPolicyHandle {
 	);
 }
 
-/** sets a document's headers, under the policy the routes it matched choose. */
-export function setDocumentHeaders(headers: Headers, context: EntryContext, nonce: string): void {
+/**
+ * sets a document's headers, under the policy the routes it matched choose. `paypalApiUrl` is the
+ * deployment's `PAYPAL_API_URL`, read by the donor policy alone.
+ */
+export function setDocumentHeaders(
+	headers: Headers,
+	context: EntryContext,
+	nonce: string,
+	paypalApiUrl: string | undefined
+): void {
 	const donor = context.staticHandlerContext.matches.some((match) =>
 		isDonorPolicyHandle(match.route.handle)
 	);
 	headers.set(
 		'Content-Security-Policy',
-		(donor ? donorPolicy(nonce) : operatorPolicy(nonce)).join('; ')
+		(donor ? donorPolicy(nonce, paypalOrigins(paypalApiUrl)) : operatorPolicy(nonce)).join('; ')
 	);
 	headers.set('X-Frame-Options', 'DENY');
 	headers.set('Referrer-Policy', donor ? 'strict-origin-when-cross-origin' : 'same-origin');

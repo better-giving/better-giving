@@ -1,6 +1,8 @@
 import { renderToReadableStream } from 'react-dom/server';
-import type { EntryContext } from 'react-router';
+import type { EntryContext, RouterContextProvider } from 'react-router';
 import { ServerRouter } from 'react-router';
+import { readConfigEnv } from '$lib/server/config/env';
+import { platform } from './context';
 import { mintNonce, setDocumentHeaders } from './document-policy';
 
 // the server render, revealed for `streamTimeout` and for the document's security headers.
@@ -21,7 +23,8 @@ export default async function handleRequest(
 	request: Request,
 	responseStatusCode: number,
 	responseHeaders: Headers,
-	routerContext: EntryContext
+	routerContext: EntryContext,
+	loadContext: RouterContextProvider
 ) {
 	const nonce = mintNonce();
 	let shellRendered = false;
@@ -43,6 +46,13 @@ export default async function handleRequest(
 	shellRendered = true;
 
 	responseHeaders.set('Content-Type', 'text/html');
-	setDocumentHeaders(responseHeaders, routerContext, nonce);
+	setDocumentHeaders(
+		responseHeaders,
+		routerContext,
+		nonce,
+		// narrowed as $lib/server/payments/factory.ts narrows it, so the policy reads the address the
+		// served config's `sdkUrl` was built from — a blank value is unset to both.
+		readConfigEnv(loadContext.get(platform).env).PAYPAL_API_URL
+	);
 	return new Response(body, { headers: responseHeaders, status: responseStatusCode });
 }

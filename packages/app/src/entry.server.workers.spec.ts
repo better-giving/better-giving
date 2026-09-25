@@ -8,6 +8,7 @@ import {
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
+import type { ConfigEnv } from '$lib/server/config/env';
 import { createDb } from '$lib/server/db/client';
 import * as entryServer from './entry.server';
 import { requestContext } from './request-context';
@@ -158,10 +159,11 @@ const handle = createRequestHandler(
 	'production'
 );
 
-function send(path: string, init?: RequestInit): Promise<Response> {
+/** a request sent to the deployment, whose vars are the pool's with `vars` laid over them. */
+function send(path: string, init?: RequestInit, vars: ConfigEnv = {}): Promise<Response> {
 	return handle(
 		new Request(`${ORIGIN}${path}`, init),
-		requestContext(DEPLOYED, createExecutionContext())
+		requestContext({ ...DEPLOYED, ...vars }, createExecutionContext())
 	);
 }
 
@@ -274,6 +276,12 @@ describe('a sign-in document', () => {
 	it('carries the strict policy, and its nonce is the one on every script it draws', async () => {
 		await expectStrictDocument(await send('/login'));
 	});
+
+	it('names no paypal origin whatever `PAYPAL_API_URL` is', async () => {
+		await expectStrictDocument(
+			await send('/login', undefined, { PAYPAL_API_URL: 'https://api-m.payments.example' })
+		);
+	});
 });
 
 describe('the donor page', () => {
@@ -327,6 +335,70 @@ describe('the donor page', () => {
 		expect(policy.get('style-src')).toEqual(["'self'", "'unsafe-inline'"]);
 		expect(response.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
 		await expectLocked(response, policy, nonce);
+	});
+
+	describe('on a deployment whose `PAYPAL_API_URL` is another origin', () => {
+		// a host whose first label is `api-m.`, so `paypalSdkUrl` maps it to its `www.` sibling.
+		const vars = { PAYPAL_API_URL: 'https://api-m.payments.example' };
+		const policyOf = async () =>
+			directives(
+				(await send('/frm_nosuchform', undefined, vars)).headers.get('content-security-policy')
+			);
+
+		it("loads paypal's script and frames from the sibling that address maps to", async () => {
+			const policy = await policyOf();
+			for (const name of ['script-src', 'frame-src']) {
+				expect(policy.get(name)).toContain('https://www.payments.example');
+				expect(policy.get(name)).not.toContain('https://www.paypal.com');
+			}
+		});
+
+		it('reaches that address and its sibling, and neither default', async () => {
+			const connect = (await policyOf()).get('connect-src');
+			expect(connect).toEqual([
+				"'self'",
+				'https://api.stripe.com',
+				'https://www.payments.example',
+				'https://api-m.payments.example',
+				'https://c.paypal.com'
+			]);
+		});
+
+		it('keeps every other paypal and venmo origin', async () => {
+			const policy = await policyOf();
+			expect(policy.get('script-src')).toContain('https://c.paypal.com');
+			expect(policy.get('frame-src')).toEqual(
+				expect.arrayContaining(['https://history.paypal.com', 'https://account.venmo.com'])
+			);
+			expect(policy.get('img-src')).toContain('https://www.paypalobjects.com');
+		});
+	});
+
+	it('reads a blank `PAYPAL_API_URL` as unset', async () => {
+		const response = await send('/frm_nosuchform', undefined, { PAYPAL_API_URL: ' ' });
+		expect(directives(response.headers.get('content-security-policy')).get('connect-src')).toEqual([
+			"'self'",
+			'https://api.stripe.com',
+			'https://www.paypal.com',
+			'https://api-m.paypal.com',
+			'https://c.paypal.com'
+		]);
+	});
+
+	it('names no paypal address on a deployment whose `PAYPAL_API_URL` is not an origin', async () => {
+		// the served config offers paypal nowhere on such a deployment, so the page reaches for none.
+		const response = await send('/frm_nosuchform', undefined, {
+			PAYPAL_API_URL: 'https://api-m.payments.example/v2'
+		});
+		const policy = directives(response.headers.get('content-security-policy'));
+		expect(policy.get('connect-src')).toEqual([
+			"'self'",
+			'https://api.stripe.com',
+			'https://c.paypal.com'
+		]);
+		for (const name of ['script-src', 'frame-src']) {
+			expect(policy.get(name)?.some((source) => source.startsWith('https://www.'))).toBe(false);
+		}
 	});
 
 	it('lets no inline script run but by the nonce', async () => {
