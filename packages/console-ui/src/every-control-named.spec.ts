@@ -11,10 +11,10 @@ import { describe, expect, it } from 'vitest';
 // happens and no reading goes wrong: the operator simply hunts for a control that does not exist,
 // which is a defect only somebody holding both files at once can see.
 //
-// **one press is sent to, and it is the whole of this.** {@link PRESSES} is the list, one entry per
-// press, each carrying the pattern that reads its word off the fold that draws it. every other box
-// and press on the folds is described in that document without anybody being told to go and press it
-// by name, and a name nobody is sent to has no second spelling to come apart from.
+// **the presses it sends an operator to are the whole of this.** {@link PRESSES} is the list, one
+// entry per press, each carrying the pattern that reads its word off the fold that draws it. every
+// other box and press on the folds is described in that document without anybody being told to go
+// and press it by name, and a name nobody is sent to has no second spelling to come apart from.
 //
 // **it reads the presses one at a time rather than sweeping a fold whole.** a fold draws several
 // presses and the document sends an operator to one of them, so a rule over everything the file
@@ -50,7 +50,9 @@ type Press = { readonly where: string; readonly pattern: RegExp };
 
 const PRESSES: readonly Press[] = [
 	// the donation processor's save, whose word is a prop on the shared press.
-	{ where: 'lib/stripe-section.tsx', pattern: /<SaveButton\s[^<]*?\blabel="([^"]+)"/ }
+	{ where: 'lib/stripe-section.tsx', pattern: /<SaveButton\s[^<]*?\blabel="([^"]+)"/ },
+	// the payment notices repair, whose word is the shared button's text.
+	{ where: 'lib/payment-notices.tsx', pattern: /<Button\s[^<]*?>\s*([^<{\s][^<{]*?)\s*<\/Button>/ }
 ];
 
 /** one drawn press: the word on it, and the line it is drawn at so a failure names where to go. */

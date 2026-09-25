@@ -15,8 +15,9 @@ import (
 // the errands this console proxies to the deployment: the organisation's legal identity and where
 // it reaches the operator, the test send, the payments reading, the repeating-gifts standing and
 // the press that provisions it, where the books stand and every press over that connection, where
-// the Zapier key stands and the press that makes or replaces it, the site list, and the press that
-// registers the hostnames a donor is drawn wallet buttons on.
+// the Zapier key stands and the press that makes or replaces it, the site list, the press that
+// registers the hostnames a donor is drawn wallet buttons on, and the press that repairs the
+// deployment's own Stripe endpoint.
 //
 // **the deployment is the authority for every one of them.** what a value may be, what a send did,
 // what the processor account holds and whether a site may be dropped are decided inside the worker,
@@ -81,7 +82,7 @@ func surfaceDoors(records state.Store, surface func(origin, token string) cf.Sen
 // which presses the deployment answers only once Intuit has, and so which go through the longer
 // door ./surfaceDoors is bound twice for.
 //
-// the accounts press fetches the company's whole chart to settle the three ids against before it
+// the accounts press fetches the company's whole chart to settle the ids against before it
 // stores anything, and the disconnect revokes the credential at Intuit before it deletes the row.
 // every other press is answered out of the deployment's own rows.
 //
@@ -167,7 +168,7 @@ func errandRoutes(routes *http.ServeMux, held, patient func() (cf.Get, cf.Post))
 
 	// one press over that connection, forwarded as it was typed.
 	//
-	// The body is decoded into the press itself and nothing here reads which of the three accounts
+	// The body is decoded into the press itself and nothing here reads which account
 	// belongs on which press: the deployment settles that against the connected company's own chart
 	// and refuses an id those books do not hold, and a rule written here would be a second opinion on
 	// a chart this binary cannot see.
@@ -222,6 +223,17 @@ func errandRoutes(routes *http.ServeMux, held, patient func() (cf.Get, cf.Post))
 	routes.HandleFunc("POST /api/deployment/wallet-domains", func(w http.ResponseWriter, r *http.Request) {
 		_, post := held()
 		answer(w, http.StatusOK, deployment.LevelWallets(r.Context(), post))
+	})
+
+	// asks the deployment to repair its own Stripe endpoint: subscribed to everything the app acts on
+	// and switched back on, with the signing secret it holds left alone.
+	//
+	// The page's body is not read, and no endpoint may ever be named in one: which endpoint is this
+	// deployment's is settled by the address the press reached, inside the worker
+	// (internal/deployment/webhookrepair.go).
+	routes.HandleFunc("POST /api/deployment/webhook-repair", func(w http.ResponseWriter, r *http.Request) {
+		_, post := held()
+		answer(w, http.StatusOK, deployment.RepairWebhook(r.Context(), post))
 	})
 
 	// stores the site list, whole.

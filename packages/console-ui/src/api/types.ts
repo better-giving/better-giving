@@ -1,4 +1,6 @@
+import type { WebhookRepairReport } from '@better-giving/operator/console/payments';
 import type {
+	QuickbooksAccountRole,
 	QuickbooksPressReport,
 	QuickbooksReport
 } from '@better-giving/operator/console/quickbooks';
@@ -592,6 +594,15 @@ export type WalletsLevel =
 	| { kind: 'reported'; report: WalletLevellingReport }
 	| { kind: 'unanswered'; read: NoReport };
 
+/**
+ * how one press of the payment notices repair went, in the shape the binary writes it
+ * (`WebhookRepair` in packages/console/internal/deployment/webhookrepair.go): both members stated
+ * on both arms, the one that does not apply as `null`.
+ */
+export type WebhookRepaired =
+	| { kind: 'reported'; report: WebhookRepairReport; read: null }
+	| { kind: 'unanswered'; report: null; read: NoReport };
+
 /** what one processor account holds for gifts that repeat. */
 export type RecurringStanding = 'ready' | 'absent' | 'archived';
 
@@ -694,13 +705,16 @@ export type QuickbooksRead =
 /**
  * what one press carries: the press, and whatever that press acts on.
  *
- * the three picks and the day are sent, where every other press on this console names nothing — the
+ * the picks and the day are sent, where every other press on this console names nothing — the
  * deployment settles what they mean against the connected company's own chart, and refuses an id
- * those books do not hold.
+ * those books do not hold. every holding is named, as an id or null for none.
  */
+/** the picks an accounts press may leave unchosen. */
+export type HoldingPick = Exclude<QuickbooksAccountRole, 'income' | 'fee'>;
+
 export type QuickbooksPressBody =
 	| { press: 'connect' | 'retry' | 'disconnect' }
-	| { press: 'accounts'; income: string; fee: string; deposit: string }
+	| ({ press: 'accounts'; income: string; fee: string } & Record<HoldingPick, string | null>)
 	| { press: 'start-date' | 'start-date-preview'; startAt: string };
 
 /**
@@ -979,7 +993,8 @@ export type PaypalFailure = {
  * which part of the PayPal chain is running (`packages/console/internal/paypal/setup.go`).
  *
  * `registering` is the address derived, the app's listeners read and the one here settled;
- * `storing` is the pair and that listener's id written onto the deployment in one write;
+ * `storing` is the pair, the address it was checked at and that listener's id written onto the
+ * deployment in one write;
  * `repeating` is the deployment asked to set up repeating gifts on that account.
  */
 export type PaypalStage = 'authorizing' | 'registering' | 'storing' | 'repeating';
@@ -1002,9 +1017,9 @@ export type PaypalFacts = {
  * how the PayPal chain ended.
  *
  * the wire is flat — every field on every answer, empty where a kind says nothing about it — and
- * this is it read per kind. **every stop in front of `storing` wrote nothing**: the pair and the
- * listener id are one write once the listener is settled, so a deployment is never left holding a
- * pair with no listener behind it.
+ * this is it read per kind. **every stop in front of `storing` wrote nothing**: the pair, its
+ * address and the listener id are one write once the listener is settled, so a deployment is never
+ * left holding a pair with no listener behind it.
  */
 export type PaypalSetup =
 	| { kind: 'done' }

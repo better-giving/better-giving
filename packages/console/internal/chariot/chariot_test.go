@@ -71,26 +71,3 @@ func TestWhatChariotSaidIsTheProblemDetailAlone(t *testing.T) {
 		t.Errorf("said %q", said)
 	}
 }
-
-func TestATypedAddressIsCheckedAndABlankOneIsLive(t *testing.T) {
-	for _, one := range []struct {
-		typed string
-		want  string
-		ok    bool
-	}{
-		{"", API, true},
-		{"  ", API, true},
-		{"https://api.givechariot.com", API, true},
-		{"https://sandboxapi.givechariot.com/", "https://sandboxapi.givechariot.com", true},
-		{"http://sandboxapi.givechariot.com", "", false},
-		{"https://sandboxapi.givechariot.com/v1", "", false},
-		{"https://sandboxapi.givechariot.com?x=1", "", false},
-		{"sandboxapi.givechariot.com", "", false},
-		{" https://api.givechariot.com", "", false},
-	} {
-		got, ok := Address(one.typed)
-		if got != one.want || ok != one.ok {
-			t.Errorf("Address(%q) = %q, %v, want %q, %v", one.typed, got, ok, one.want, one.ok)
-		}
-	}
-}

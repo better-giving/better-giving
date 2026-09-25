@@ -24,6 +24,7 @@ import type {
 	ValuesRefusal,
 	VarsWritten,
 	WalletsLevel,
+	WebhookRepaired,
 	WidgetLevel,
 	ZapierPressBody,
 	ZapierPressed,
@@ -134,7 +135,7 @@ export const homeReading = (): Promise<HomeReading> => ask('/home/reading', 'GET
  *
  * **every way it did not happen comes back as a value rather than thrown**, because each is a state
  * the fold draws at the control that was pressed. the binary refuses a name that is not a
- * deploy-time value, PayPal's three credentials, which only {@link startPaypalSetup} writes, and
+ * deploy-time value, PayPal's four values, which only {@link startPaypalSetup} writes, and
  * Chariot's four values, which only {@link startChariotSetup} writes, and NOWPayments' three, which only
  * {@link saveNowpayments} writes, before
  * cloudflare is asked — and that refusal is thrown: no control on this page can make one.
@@ -251,6 +252,18 @@ export const pressZapier = (body: ZapierPressBody): Promise<ZapierPressed> =>
 export const levelWallets = (): Promise<WalletsLevel> => ask('/deployment/wallet-domains', 'POST');
 
 /**
+ * asks the deployment to switch its own Stripe endpoint back on and subscribe it to every event,
+ * leaving the signing secret it holds alone.
+ *
+ * **it carries no endpoint and none may ever be added**, for the reason {@link levelWallets}
+ * carries no hostname: which endpoint is this deployment's is settled by the address the press
+ * reached, inside the worker, so an id that travelled through this page would be a press on
+ * whichever endpoint the page said.
+ */
+export const repairWebhook = (): Promise<WebhookRepaired> =>
+	ask('/deployment/webhook-repair', 'POST');
+
+/**
  * stores the site list on the deployment, whole.
  *
  * the whole list goes with every press, never one row: the endpoint stores a list and deletes what
@@ -322,15 +335,18 @@ export const stripeRun = async (): Promise<StripeRunRead | null> =>
 	(await ask<{ run: StripeRunRead | null }>('/stripe/run', 'GET')).run;
 
 /**
- * sets PayPal up from the pair, and answers as soon as the chain is under way.
+ * sets PayPal up from the pair and the address it is sent to, and answers as soon as the chain is
+ * under way.
  *
  * {@link startStripeSetup}'s arrangement: how far it has got is {@link paypalRun}, a press already
- * going is a value, and the pair leaves this page in this one body and reaches nothing else. the
- * listener, its address and the id stored beside the pair are all the binary's to settle.
+ * going is a value, and the pair leaves this page in this one body and reaches nothing else. an
+ * empty address is PayPal's default one. the listener, its address and the id stored beside the
+ * pair are all the binary's to settle.
  */
 export async function startPaypalSetup(pair: {
 	clientId: string;
 	secret: string;
+	address: string;
 }): Promise<PaypalStarted> {
 	const answer = await fetch('/api/paypal/setup', {
 		method: 'POST',

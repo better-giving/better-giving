@@ -87,11 +87,11 @@ import { sendTributeNotice } from './tribute-notice';
 // (`DONATION_METADATA_KEY` in ../payments/provider.ts, written by ./quote.ts), and the processor
 // mints a collection's intent itself and copies nothing onto it. so a settled transaction whose
 // intent names no gift is not one this app opened a payment row for, and it is answered `unnamed`
-// before any lookup happens.
+// whatever row its id matches.
 //
 // that is a refusal to act rather than a lookup that finds nothing, and the difference is the whole
 // point. ./collect.ts writes a `payment` row for a collection carrying that collection's own
-// transaction id, so a lookup by transaction id *would* find it — and posting against it would put
+// transaction id, so the lookup by transaction id does find it — and posting against it would put
 // every repeating gift in the books twice, both times reading clean. the database refuses the
 // second posting as well (`entry_group_source_idx`, keyed on that payment row's id), so this is
 // belt and braces rather than the only guard; what it buys over the constraint alone is that the
@@ -101,6 +101,19 @@ import { sendTributeNotice } from './tribute-notice';
 // a collection (`takesRepeatingGifts` in ../payments/provider.ts). Chariot is that processor, and a
 // grant carries nothing this app wrote — Create Grant takes no metadata, and what a browser put on
 // it is never read — so a Chariot settlement finds its gift by the grant id on the row alone.
+//
+// ---------------------------------------------------------------------------
+// the payment row is looked up before the transaction is read, and a read that can move money is
+// never made for a transaction no row names.
+//
+// PayPal's read is its capture (`readSettlement` in ../payments/paypal.ts), and another integration
+// on the same PayPal app receives this app's deliveries, so reading an order it opened would take
+// the money into books holding none of it, with nobody told. a PayPal transaction with no row here
+// is therefore answered `unnamed` unread (`READ_CAPTURES`). every other rail's read moves nothing,
+// and each still reads a transaction no row names, because the read is what says what the missing
+// row means: a Stripe intent naming a gift this deployment lost is an operator's to record
+// (`unmatched` below), and money sent again to a crypto address is named as a repeat by its read
+// alone (`recordRepeatDeposit`).
 //
 // ---------------------------------------------------------------------------
 // the fund a gift lands in is the one its own lines name, and no other.
@@ -149,9 +162,23 @@ import { sendTributeNotice } from './tribute-notice';
 //
 // where the payment cannot be read back — a key replaced since it was made, a repeat deposit the key
 // never created — the settlement the verified delivery stated stands in (`fallbackFor`), and only
-// for a state it ended in: a delivery can be older than the one that settled the payment, so a
-// state read off one never walks a settled payment back. nor does a later read of a crypto payment,
-// which can report a state from before the money landed (`write`).
+// for a state it ended in. a `pending` one writes nothing: the row was written pending when the
+// quote was minted, so a pending stand-in either repeats what the row says or, older than the
+// delivery that ended the attempt, reopens an attempt that is over.
+//
+// ---------------------------------------------------------------------------
+// a payment that settled is never walked back, on any rail (`write`).
+//
+// its entries, the row it owes QuickBooks and the rows it owes every listening Zap stay whatever a
+// later report says, so a status moved off `succeeded` would leave the gift reading `cancelled` or
+// `pending` while the books count it. a fresh read reporting such a payment unsettled — a grant the
+// fund cancelled, or a PayPal capture refunded or reversed, which reaches this only when a later
+// delivery about the order triggers a read, since neither is an event this app subscribes to —
+// changes nothing and tells an operator, because whatever the books hold for it may be money the
+// processor has taken back, and only a correction posted in /admin/books (../ledger/correct.ts)
+// takes it out. two reports are stale rather than news and say nothing: a
+// crypto read, which can report a state from before the coins landed, and a delivery's own state
+// standing in for a read, which can be older than the one that settled the payment.
 //
 // ---------------------------------------------------------------------------
 // "three days" below is Stripe's and PayPal's redelivery window. NOWPayments sends a non-2xx again
@@ -228,9 +255,15 @@ export async function settleDelivery(
 		if (verified.reason === 'bad_signature' || verified.reason === 'invalid_request') {
 			return { ok: false, reason: 'unverified', detail: verified.detail };
 		}
-		return isRetryable(verified.reason)
-			? { ok: false, reason: 'incomplete', detail: verified.detail }
-			: { ok: true, outcome: 'unactionable', detail: verified.detail };
+		if (isRetryable(verified.reason)) {
+			return { ok: false, reason: 'incomplete', detail: verified.detail };
+		}
+		// every other terminal refusal is a delivery that verified and cannot be read into an event,
+		// answered 200 because a redelivery reads the same, so the alert is the only sign a
+		// settlement was dropped. `internal_error` is the one left in the logs alone: a provider that
+		// could not be built answers every call with it, an unsigned body's verification included.
+		if (verified.reason !== 'internal_error') await unreadableDelivery(deps, verified.detail);
+		return { ok: true, outcome: 'unactionable', detail: verified.detail };
 	}
 	const event = verified.value;
 
@@ -275,6 +308,18 @@ export type TransactionToSettle = {
 };
 
 /**
+ * whether a processor's `readSettlement` can move money, which PayPal's alone does: it captures an
+ * approved order (`readSettlement` in ../payments/paypal.ts). total over `ProcessorName`, so a
+ * processor added without an answer stops the type check.
+ */
+const READ_CAPTURES: Readonly<Record<ProcessorName, boolean>> = Object.freeze({
+	stripe: false,
+	paypal: true,
+	chariot: false,
+	nowpayments: false
+});
+
+/**
  * the half of a delivery after verification: re-read, correct, post, then tell people.
  *
  * exported so a scheduled read holding a transaction id and no delivery settles it through the same
@@ -285,6 +330,18 @@ export async function settleTransaction(
 	deps: SettleDeps,
 	transaction: TransactionToSettle
 ): Promise<SettleResult> {
+	// the row before the read, because on one rail the read moves money. the header says which, and
+	// why every other rail still reads a transaction no row names.
+	const processor = deps.provider.processor;
+	const target = await findTarget(deps.db, processor, transaction.providerTxnId);
+	if (target === null && READ_CAPTURES[processor]) {
+		return {
+			ok: true,
+			outcome: 'unnamed',
+			detail: `transaction ${transaction.providerTxnId} has no payment row in this deployment, and reading it could capture it; nothing was read or written.`
+		};
+	}
+
 	// the transaction re-read rather than reconstructed from what arrived. deliveries carry no
 	// ordering guarantee, so a handler that rebuilt state from the sequence it happened to receive
 	// would be wrong for any donor whose bank was slow.
@@ -304,9 +361,9 @@ export async function settleTransaction(
 		if (fallback === null) return unreadable(deps, transaction, read);
 		settlement = fallback;
 	}
-	// a verified state standing in for a read never walks a settled payment back: it may be older
-	// than the one that settled it, and nothing here can say which came first.
-	const settledOnly = !read.ok;
+	// a verified state standing in for a read may be older than the one that settled the payment,
+	// and nothing here can say which came first.
+	const stoodInForRead = !read.ok;
 
 	// money sent again to an address whose payment already settled is a gift of its own. the read
 	// names its first payment, and where a read that answered does not, the verified delivery does.
@@ -317,20 +374,18 @@ export async function settleTransaction(
 
 	// the gift this transaction is for, as the intent itself names it. absent means this app did
 	// not mint the intent, which every collection under a repeating gift is — see the metadata
-	// paragraph in the header, which is where the reason this refuses rather than looks lives. a
+	// paragraph in the header, which is where the reason this refuses whatever row it found lives. a
 	// processor taking no repeating gift has no collection to confuse with a gift, and names its gift
 	// by nothing but the transaction id on the row.
-	const processor = deps.provider.processor;
 	const named = settlement.metadata[DONATION_METADATA_KEY]?.trim() || null;
 	if (named === null && takesRepeatingGifts(processor)) {
 		return {
 			ok: true,
 			outcome: 'unnamed',
-			detail: `transaction ${settlement.providerTxnId} names no gift in this deployment; no row was looked up and nothing was written.`
+			detail: `transaction ${settlement.providerTxnId} names no gift in this deployment; no row was written to.`
 		};
 	}
 
-	const target = await findTarget(deps.db, processor, settlement.providerTxnId);
 	if (target === null) {
 		// named, it is a gift this deployment minted and lost, which a person has to record. unnamed,
 		// nothing says it was ever this deployment's: a Chariot grant on the org's account can come
@@ -351,7 +406,7 @@ export async function settleTransaction(
 			: null;
 	const credits = recognition?.ok ? recognition.credits : null;
 
-	const written = await write(deps.db, target, settlement, credits, settledOnly);
+	const written = await write(deps.db, target, settlement, credits);
 	if (written === 'already_posted') {
 		// a dollar figure moves with every read — NOWPayments values what arrived at its estimate when
 		// asked — so only a different coin or amount of it is news.
@@ -370,6 +425,15 @@ export async function settleTransaction(
 		};
 	}
 	if (written === 'unchanged') {
+		// the two stale reports the header names say nothing, and nor does one whose row settled
+		// after it was looked up; any other is news.
+		if (
+			!stoodInForRead &&
+			target.payment.method !== 'crypto' &&
+			target.payment.status === 'succeeded'
+		) {
+			await reportedUnsettled(deps, target, settlement);
+		}
 		return {
 			ok: true,
 			outcome: 'ignored',
@@ -434,6 +498,20 @@ function fallbackFor(
 	if (delivered === undefined || (reason !== 'not_found' && reason !== 'not_configured'))
 		return null;
 	return delivered.status === 'pending' ? 'pending' : delivered;
+}
+
+/** a verified delivery the adapter could not read into an event, told to an operator. */
+async function unreadableDelivery(deps: SettleDeps, detail: string): Promise<void> {
+	const processor = processorLabel(deps);
+	await alert(deps, {
+		headline: `A ${processor} delivery verified and could not be read`,
+		body:
+			`${processor} signed a delivery this release cannot read, so nothing was written. ` +
+			'It was answered as received, and a redelivery would read the same, ' +
+			'so a payment it was about may be missing from the books.',
+		facts: [{ label: 'Reason', value: detail }],
+		action: `Find the delivery in the ${processor} dashboard's webhook log and reconcile any payment it names by hand.`
+	});
 }
 
 /** a transaction that could not be read, held open where the read is worth making again. */
@@ -693,17 +771,15 @@ async function write(
 	db: Db,
 	target: Target,
 	settlement: Settlement,
-	credits: GiftRevenue | null,
-	settledOnly: boolean
+	credits: GiftRevenue | null
 ): Promise<'written' | 'unchanged' | 'already_posted' | 'failed'> {
 	const row = target.payment;
-	// a crypto payment posted at what arrived, or one settled off a delivery's own state, is never
-	// walked back: a later read or an older delivery can report a state from before the money
-	// landed. the guard is in the statement, so no read taken beforehand decides it.
+	// a `succeeded` payment is never walked back, on any rail (the header says why). the guard is in
+	// the statement, so no read taken beforehand decides it.
 	const correcting =
-		(settledOnly || row.method === 'crypto') && settlement.status !== 'succeeded'
-			? and(eq(payment.id, row.id), ne(payment.status, 'succeeded'))
-			: eq(payment.id, row.id);
+		settlement.status === 'succeeded'
+			? eq(payment.id, row.id)
+			: and(eq(payment.id, row.id), ne(payment.status, 'succeeded'));
 	const writes: [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]] = [
 		db
 			.update(payment)
@@ -1076,7 +1152,7 @@ async function tellDonorNothingWasCollected(
  * the processor's own dashboard. it carries the donation id the intent was minted with, which is
  * what `DONATION_METADATA_KEY` in ../payments/provider.ts buys here — and by the time this is
  * reached the intent is known to carry one, because a transaction naming no gift is answered
- * `unnamed` above and never looked up at all.
+ * `unnamed` above whatever row it matches.
  */
 async function unmatched(
 	deps: SettleDeps,
@@ -1137,6 +1213,33 @@ async function revalued(deps: SettleDeps, target: Target, settlement: Settlement
 			}
 		],
 		action: `Compare the payment in the ${processor} dashboard with the gift in /admin, and correct it by hand if the posted value is wrong.`
+	});
+}
+
+/** a settled payment a fresh read reports unsettled, told to an operator and changing nothing. */
+async function reportedUnsettled(
+	deps: SettleDeps,
+	target: Target,
+	settlement: Settlement
+): Promise<void> {
+	const processor = processorLabel(deps);
+	await alert(deps, {
+		headline: `A ${processor} payment recorded as settled is now reported as ${settlement.status}`,
+		body:
+			'Nothing was changed: the payment is still recorded as settled until a person corrects it.',
+		facts: [
+			{ label: 'Payment', value: target.payment.id },
+			{ label: 'Donation', value: target.donation.id },
+			{ label: 'Transaction', value: settlement.providerTxnId },
+			{ label: 'Now reported as', value: settlement.status },
+			{
+				label: 'Recorded amount',
+				value: `${target.payment.amountMinor} ${target.payment.currency} (minor units)`
+			}
+		],
+		action:
+			`Check the payment in the ${processor} dashboard. If the money did go back, post a ` +
+			'correction in /admin/books against whatever the books hold for it.'
 	});
 }
 

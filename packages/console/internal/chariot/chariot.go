@@ -22,7 +22,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/better-giving/console/internal/cf"
@@ -43,7 +42,7 @@ type Request struct {
 // Call is one call bound to a key the caller never sees again.
 type Call func(ctx context.Context, request Request) cf.Answer
 
-// BindAt binds one api key against an address Address accepted, or a test host.
+// BindAt binds one api key against an address ../cf's Base accepted, or a test host.
 func BindAt(address, apiKey string) Call {
 	send := cf.JSONSend(strings.TrimSuffix(address, "/"), map[string]string{
 		"Authorization": "Bearer " + apiKey,
@@ -51,23 +50,6 @@ func BindAt(address, apiKey string) Call {
 	return func(ctx context.Context, request Request) cf.Answer {
 		return send(ctx, request.Method, request.Path, request.Body)
 	}
-}
-
-// Address is the address a press typed, as the one this console calls — and whether it is one.
-//
-// blank is live. anything else is an https origin and nothing more: a path would be joined in front
-// of every call's own, and the deployment joins the value the same way, so an address with one is
-// two ends calling somewhere neither documents.
-func Address(typed string) (string, bool) {
-	if strings.TrimSpace(typed) == "" {
-		return API, true
-	}
-	parsed, err := url.Parse(strings.TrimSuffix(typed, "/"))
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
-		parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
-		return "", false
-	}
-	return parsed.Scheme + "://" + parsed.Host, true
 }
 
 // ResultKind is one answer sorted into the states a screen draws differently.

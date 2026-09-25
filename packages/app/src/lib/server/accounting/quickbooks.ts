@@ -1,8 +1,11 @@
 import { majorText } from '../../forms/amounts';
 import {
 	failed,
+	isHoldingRole,
+	ROLE_LABELS,
 	type AccountingFailure,
 	type AccountingProvider,
+	type AccountRole,
 	type AccountingResult,
 	type CompanyIdentity,
 	type ConnectionSnapshot,
@@ -31,17 +34,19 @@ import {
 // base url a deployment is built with.
 //
 // ---------------------------------------------------------------------------
-// which record a gift becomes, and why it is not a sales receipt.
+// which record a gift becomes: a JournalEntry, and never a Deposit or a sales receipt.
 //
-// a gift is a **Deposit** and a correction is a **JournalEntry**, and the reason for the first is
-// that those are the two entities whose lines name an *account*. what this deployment holds for a
-// company is three account ids an operator picked off their own chart — income, the processor's
-// cut, and what the money landed in. a sales receipt's lines name an Item instead, and an item
-// carries its own income account, so sending one would mean minting items in the operator's
-// company and posting through whatever accounts those items point at: the three picks would decide
-// nothing. the deposit puts the gift at face value against the income account, the processor's cut
-// as a negative line against the fee account, and the net into the deposit account — which is the
-// same three-way movement ../donations/entries.ts posts here.
+// a gift and a correction are both a **JournalEntry**. the gift's money is not in the bank when it
+// is sent — it sits with the processor until a payout this app never hears about — so its asset
+// side is the holding account the operator picked for that processor (`HOLDING_ROLES` in
+// ./provider.ts), an Other Current Asset. a Deposit cannot carry that: its `DepositToAccountRef` is
+// the bank account the money was paid into, and a gift deposited there is a deposit the bank feed
+// never shows. a sales receipt's lines name an Item rather than an account, and an item carries its
+// own income account, so the income and fee picks would decide nothing and the fee would have no
+// line at all. a journal entry's lines each name an account and may name the donor as the line's
+// customer, which is the whole of what a gift needs: the gift at face value credited to income, the
+// processor's cut debited to fees, and the difference debited to the holding. that is the movement
+// ../donations/entries.ts posts here, the fee's sibling folded in.
 //
 // ---------------------------------------------------------------------------
 // what is not built, because nothing sends it.
@@ -271,15 +276,19 @@ export function createQuickbooksProvider(
 	 * the pair Intuit just issued, stored — or the pair whoever renewed first stored.
 	 *
 	 * written before the token is spent, and by the only writer this adapter has: a pair obtained
-	 * and dropped is the connection lost the next time the old one is presented. the write is
-	 * against `presented`, so the caller that lost the race writes nothing and reads the winner's
-	 * credential instead of overwriting it with one Intuit retired.
+	 * and dropped is the connection lost once the old one stops renewing. the write is against
+	 * `presented`, so the caller that lost the race writes nothing and reads the winner's
+	 * credential instead of overwriting it. its own pair is still live, since Intuit renews a
+	 * rotated-away token for 24 hours, but the row keeps one credential and the winner's landed
+	 * first.
 	 *
-	 * a write that could not be made at all is where the connection dies: Intuit has already
-	 * retired `presented` by then, so the credential this deployment holds is spent and no later
-	 * call revives it. it is a refusal rather than a throw because every caller of this port reads
-	 * `ok` — a console read promises a 200 whatever the books answer, and the delivery reads the
-	 * reason to tell an operator (./deliver.ts).
+	 * a write that could not be made at all leaves the connection standing: Intuit keeps
+	 * `presented` renewable for 24 hours after issuing a new pair
+	 * (https://developer.intuit.com/app/developer/qbo/docs/develop/sdks-and-samples-collections/nodejs/oauth-nodejs-client),
+	 * so the next run renews with the stored token and stores what that issues. it is a refusal
+	 * rather than a throw because every caller of this port reads `ok` — a console read promises a
+	 * 200 whatever the books answer, and the delivery reads the reason to decide what stops
+	 * (./deliver.ts).
 	 */
 	async function persist(
 		presented: string,
@@ -290,8 +299,8 @@ export function createQuickbooksProvider(
 			save = await store.saveTokens(presented, issued);
 		} catch (error) {
 			return failed(
-				'reconnect_needed',
-				`QuickBooks issued this deployment a new credential and it could not be stored (${faultName(error)}), so the one being held is spent. The QuickBooks company has to be connected again.`
+				'credential_unsaved',
+				`QuickBooks issued this deployment a new credential and it could not be stored (${faultName(error)}). The one already stored still renews, so the next call tries again.`
 			);
 		}
 		if (save === 'stored') return { ok: true, value: issued };
@@ -398,7 +407,7 @@ export function createQuickbooksProvider(
 	 */
 	async function create(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
-		entity: 'customer' | 'deposit' | 'journalentry',
+		entity: 'customer' | 'journalentry' | 'account',
 		keyed: Keyed,
 		json: unknown
 	): Promise<Answer | AccountingFailure> {
@@ -463,20 +472,23 @@ export function createQuickbooksProvider(
 	async function alreadyPosted(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
 		attempt: SendAttempt,
-		entity: 'Deposit' | 'JournalEntry',
+		entities: readonly PostedEntity[],
 		key: string,
 		txnDate: string
 	): Promise<AccountingResult<string | null>> {
 		// the claim counts an attempt before anything is sent (./deliver.ts), so a first attempt is
 		// a row nothing has ever sent and there is nothing to find.
 		if (attempt === 'first') return { ok: true, value: null };
-		const rows = await askAll(auth, `select * from ${entity} where TxnDate = '${txnDate}'`, entity);
-		if (!rows.ok) return rows;
 		const mark = keyMark(key);
-		for (const row of rows.value) {
-			if (stringField(row, 'PrivateNote')?.startsWith(mark) === true) {
-				const id = stringField(row, 'Id');
-				if (id !== null) return { ok: true, value: id };
+		for (const entity of entities) {
+			const statement = `select * from ${entity} where TxnDate = '${txnDate}'`;
+			const rows = await askAll(auth, statement, entity);
+			if (!rows.ok) return rows;
+			for (const row of rows.value) {
+				if (stringField(row, 'PrivateNote')?.startsWith(mark) === true) {
+					const id = stringField(row, 'Id');
+					if (id !== null) return { ok: true, value: id };
+				}
 			}
 		}
 		return { ok: true, value: null };
@@ -667,8 +679,8 @@ export function createQuickbooksProvider(
 		},
 
 		/**
-		 * the gift as one deposit: the money at face value into the income account, what the
-		 * processor kept as a line against it, and the net landing in the deposit account.
+		 * the gift as one journal entry: its face value credited to income, what the processor kept
+		 * debited to fees, and the rest debited to the account the money is held in.
 		 *
 		 * it is the same two entry groups the books hold (../donations/entries.ts), read as the one
 		 * transaction they are — which is why ../accounting/outbox.ts queues the gift and not its fee.
@@ -681,53 +693,52 @@ export function createQuickbooksProvider(
 			const keyed: Keyed = { key: gift.key, revision };
 			const auth = await authorized();
 			if (!auth.ok) return auth;
-			const accounts = chosenAccounts(auth.value.connection);
+			const roles: AccountRole[] = ['income', gift.holding];
+			if (gift.feeMinor > 0) roles.push('fee');
+			const accounts = chosenAccounts(auth.value.connection, roles);
 			if (!accounts.ok) return accounts;
 
 			const currency = await acceptedCurrency(auth.value, gift.currency);
 			if (!currency.ok) return currency;
 
 			const txnDate = transactionDate(gift.occurredAt);
-			const posted = await alreadyPosted(auth.value, attempt, 'Deposit', gift.key, txnDate);
+			const posted = await alreadyPosted(auth.value, attempt, GIFT_ENTITIES, gift.key, txnDate);
 			if (!posted.ok) return posted;
 			if (posted.value !== null) return { ok: true, value: { remoteId: posted.value } };
 
 			const customerId = await customerFor(auth.value, keyed, gift.donor);
 			if (!customerId.ok) return customerId;
 
-			const lines: unknown[] = [
-				{
-					DetailType: 'DepositLineDetail',
-					Amount: Number(majorText(gift.incomeMinor, gift.currency)),
-					Description: `Donation from ${gift.donor.displayName}`,
-					DepositLineDetail: {
-						AccountRef: { value: accounts.value.income },
-						Entity: { value: customerId.value, type: 'Customer' }
-					}
-				}
-			];
-			if (gift.feeMinor > 0) {
-				// negative, because the processor never sent the fee — it withheld it, so the deposit is
-				// the gift less what was kept, and the expense is recognised at face value beside it.
-				lines.push({
-					DetailType: 'DepositLineDetail',
-					Amount: -Number(majorText(gift.feeMinor, gift.currency)),
-					Description: 'Processing fee',
-					DepositLineDetail: { AccountRef: { value: accounts.value.fee } }
-				});
+			const donor: LineEntity = { Type: 'Customer', EntityRef: { value: customerId.value } };
+			const described = `Donation from ${gift.donor.displayName}`;
+			const line = (
+				posting: Posting,
+				amountMinor: number,
+				role: AccountRole,
+				words: string,
+				entity?: LineEntity
+			) => journalLine(posting, amountMinor, gift.currency, accounts.value[role], words, entity);
+
+			// what the holding gains is the gift less what the processor withheld; a cut as large as
+			// the gift leaves it nothing, and one larger takes from it.
+			const heldMinor = gift.incomeMinor - gift.feeMinor;
+			const lines: unknown[] = [];
+			if (heldMinor !== 0) {
+				const posting = heldMinor > 0 ? 'debit' : 'credit';
+				lines.push(line(posting, Math.abs(heldMinor), gift.holding, described, donor));
 			}
+			if (gift.feeMinor > 0) lines.push(line('debit', gift.feeMinor, 'fee', 'Processing fee'));
+			lines.push(line('credit', gift.incomeMinor, 'income', described, donor));
 
 			return createdRecord(
 				answered(
-					await create(auth.value, 'deposit', keyed, {
+					await create(auth.value, 'journalentry', keyed, {
 						TxnDate: txnDate,
 						CurrencyRef: { value: currency.value },
 						PrivateNote: privateNote(gift.key, gift.memo),
-						DepositToAccountRef: { value: accounts.value.deposit },
 						Line: lines
 					})
-				),
-				'Deposit'
+				)
 			);
 		},
 
@@ -746,14 +757,18 @@ export function createQuickbooksProvider(
 			const keyed: Keyed = { key: correction.key, revision };
 			const auth = await authorized();
 			if (!auth.ok) return auth;
-			const accounts = chosenAccounts(auth.value.connection);
+			const accounts = chosenAccounts(
+				auth.value.connection,
+				correction.lines.map((line) => line.role)
+			);
 			if (!accounts.ok) return accounts;
 
 			const named = correction.lines.map((line) => accounts.value[line.role]);
 			if (new Set(named).size === 1) {
-				// two of this app's accounts can map to one of the company's — the gift's own asset
-				// account and the bank it is swept into are both `deposit`. an entry naming the same
-				// account on both sides balances and moves nothing, and it reads as a correction made.
+				// two of this app's accounts can map to one of the company's — the deductible and the
+				// non-deductible funds are both `income`, and an operator may pick one account for two
+				// roles. an entry naming the same account on both sides balances and moves nothing, and
+				// it reads as a correction made.
 				return failed(
 					'invalid_record',
 					`This correction moves money between two accounts that are both sent to the same QuickBooks account, so it would post an entry that changes nothing. Correct it in QuickBooks instead.`
@@ -767,7 +782,7 @@ export function createQuickbooksProvider(
 			const posted = await alreadyPosted(
 				auth.value,
 				attempt,
-				'JournalEntry',
+				['JournalEntry'],
 				correction.key,
 				txnDate
 			);
@@ -780,18 +795,17 @@ export function createQuickbooksProvider(
 						TxnDate: txnDate,
 						CurrencyRef: { value: currency.value },
 						PrivateNote: privateNote(correction.key, correction.memo),
-						Line: correction.lines.map((line) => ({
-							DetailType: 'JournalEntryLineDetail',
-							Amount: Number(majorText(line.amountMinor, correction.currency)),
-							...(correction.memo === null ? {} : { Description: correction.memo }),
-							JournalEntryLineDetail: {
-								PostingType: line.posting === 'debit' ? 'Debit' : 'Credit',
-								AccountRef: { value: accounts.value[line.role] }
-							}
-						}))
+						Line: correction.lines.map((line) =>
+							journalLine(
+								line.posting,
+								line.amountMinor,
+								correction.currency,
+								accounts.value[line.role],
+								correction.memo
+							)
+						)
 					})
-				),
-				'JournalEntry'
+				)
 			);
 		},
 
@@ -807,18 +821,36 @@ export function createQuickbooksProvider(
 				// an inactive account cannot be posted to, so offering one is offering a choice that
 				// refuses every gift afterwards.
 				if (field(row, 'Active') === false) continue;
-				const id = stringField(row, 'Id');
-				const name = stringField(row, 'Name');
-				if (id === null || name === null) continue;
-				accounts.push({
-					id,
-					name,
-					type: stringField(row, 'AccountType') ?? '',
-					subType: stringField(row, 'AccountSubType'),
-					classification: stringField(row, 'Classification')
-				});
+				const account = ledgerAccountOf(row);
+				if (account !== null) accounts.push(account);
 			}
 			return { ok: true, value: accounts };
+		},
+
+		/**
+		 * an Other Current Asset, the type a holding takes (./quickbooks-accounts.ts).
+		 *
+		 * keyed on the company and the name, so two connects filling one company at once are answered
+		 * with the one account Intuit made for the first. a name the chart already holds — `Name` is
+		 * unique across a company's accounts — is refused in Intuit's words, and the role is left for
+		 * the operator to pick.
+		 */
+		async createHoldingAccount(name: string): Promise<AccountingResult<LedgerAccount>> {
+			const auth = await authorized();
+			if (!auth.ok) return auth;
+			const created = answered(
+				await create(
+					auth.value,
+					'account',
+					{ key: 'holding-account', revision: auth.value.connection.companyId },
+					{ Name: name, AccountType: 'Other Current Asset', AccountSubType: 'OtherCurrentAssets' }
+				)
+			);
+			if (!created.ok) return created;
+			const account = ledgerAccountOf(field(created.value, 'Account'));
+			return account === null
+				? failed('provider_error', 'QuickBooks created an account and named no id for it.')
+				: { ok: true, value: account };
 		},
 
 		async revokeTokens(): Promise<AccountingResult<null>> {
@@ -862,49 +894,74 @@ export function createQuickbooksProvider(
 }
 
 /**
- * the three accounts a send needs, or the refusal a company that has picked none gives.
+ * the accounts a record's roles name, or the refusal naming the roles nobody has picked.
  *
- * a connected company with no accounts chosen is an ordinary state rather than a fault: the
- * connection is made on one screen and the accounts on another, and a gift settling in between
- * arrives here. it is terminal, so the queued row waits for the sweep rather than spending its
- * attempts against a screen nobody has opened.
- *
- * one sentence for all three rather than a list of which are missing: they are written together and
- * cleared together (`saveQuickbooksAccounts` and `connectQuickbooks` in ./connection.ts), so a
- * connection holding one of them is a state nothing can produce.
+ * an unpicked role is an ordinary state rather than a fault: the connection is made on one screen
+ * and the accounts on another. income or fees unpicked is every record waiting, and the delivery
+ * stops its run on it rather than spending attempts against a screen nobody has opened. a holding
+ * unpicked is one party's records waiting — a processor this organisation may never take a gift
+ * through — so it has a reason of its own, and the delivery holds that row and goes on to the next
+ * (./deliver.ts).
  */
 function chosenAccounts(
-	connection: ConnectionSnapshot
-): AccountingResult<{ income: string; fee: string; deposit: string }> {
-	if (
-		connection.incomeAccountId === null ||
-		connection.feeAccountId === null ||
-		connection.depositAccountId === null
-	) {
+	connection: ConnectionSnapshot,
+	roles: readonly AccountRole[]
+): AccountingResult<Readonly<Record<AccountRole, string>>> {
+	const missing = [...new Set(roles)].filter((role) => connection.accounts[role] === null);
+	if (missing.length > 0) {
+		const named = missing.map((role) => ROLE_LABELS[role]).join(' or ');
 		return failed(
-			'accounts_not_chosen',
-			'No QuickBooks accounts are chosen for this company. Pick the income, fee and deposit accounts on the QuickBooks screen before anything can be sent.'
+			missing.every(isHoldingRole) ? 'holding_not_chosen' : 'accounts_not_chosen',
+			`No QuickBooks account is chosen for ${named}. Pick one on the QuickBooks screen, and this is sent again once it is.`
 		);
 	}
+	// a record reads only the roles it asked for, and every one of those is set.
+	return { ok: true, value: connection.accounts as Readonly<Record<AccountRole, string>> };
+}
+
+/**
+ * the entities a gift may already have landed as.
+ *
+ * `Deposit` is for a row queued while gifts were posted as deposits: its first answer may never
+ * have arrived, and the journal entry it is sent as now carries another body and so another request
+ * id, which Intuit would take as a new gift.
+ */
+const GIFT_ENTITIES = ['JournalEntry', 'Deposit'] as const;
+
+type PostedEntity = (typeof GIFT_ENTITIES)[number];
+
+type Posting = 'debit' | 'credit';
+
+/** the donor a line is posted against. */
+type LineEntity = { readonly Type: 'Customer'; readonly EntityRef: { readonly value: string } };
+
+/** one side of a journal entry, in the ledger's own direction and the currency's decimal. */
+function journalLine(
+	posting: Posting,
+	amountMinor: number,
+	currency: string,
+	accountId: string,
+	description: string | null,
+	entity?: LineEntity
+) {
 	return {
-		ok: true,
-		value: {
-			income: connection.incomeAccountId,
-			fee: connection.feeAccountId,
-			deposit: connection.depositAccountId
+		DetailType: 'JournalEntryLineDetail',
+		Amount: Number(majorText(amountMinor, currency)),
+		...(description === null ? {} : { Description: description }),
+		JournalEntryLineDetail: {
+			PostingType: posting === 'debit' ? 'Debit' : 'Credit',
+			AccountRef: { value: accountId },
+			...(entity === undefined ? {} : { Entity: entity })
 		}
 	};
 }
 
-/** the id QuickBooks gave what it just created. */
-function createdRecord(
-	result: AccountingResult<unknown>,
-	entity: 'Deposit' | 'JournalEntry'
-): AccountingResult<RemoteRecord> {
+/** the id QuickBooks gave the journal entry it just created. */
+function createdRecord(result: AccountingResult<unknown>): AccountingResult<RemoteRecord> {
 	if (!result.ok) return result;
-	const remoteId = stringField(field(result.value, entity), 'Id');
+	const remoteId = stringField(field(result.value, 'JournalEntry'), 'Id');
 	return remoteId === null
-		? failed('provider_error', `QuickBooks created a ${entity} and named no id for it.`)
+		? failed('provider_error', 'QuickBooks created a JournalEntry and named no id for it.')
 		: { ok: true, value: { remoteId } };
 }
 
@@ -1028,10 +1085,18 @@ function classify(answer: Answer): AccountingFailure {
 	if (answer.status >= 500) {
 		return failed('provider_error', `QuickBooks answered ${answer.status}${words}.`);
 	}
-	if (answer.status === 401 || answer.status === 403) {
+	if (answer.status === 401) {
 		return failed(
 			'reconnect_needed',
-			`QuickBooks refused the credential (${answer.status}${words}). The company has to be connected again.`
+			`QuickBooks refused the credential (401${words}). The company has to be connected again.`
+		);
+	}
+	// the whole run stops on it like a dead credential, but the repair is at Intuit rather than a
+	// reconnect: the connected user's role, or the company's subscription.
+	if (answer.status === 403) {
+		return failed(
+			'reconnect_needed',
+			`QuickBooks refused this action (403${words}). The Intuit user who connected the company, or the company’s QuickBooks subscription, lacks permission for it. Connecting again as the same user will not fix it: give that user the permission in QuickBooks, connect as a user who has it, or move the company to a QuickBooks subscription that includes it.`
 		);
 	}
 	if (answer.status === 404) {
@@ -1096,6 +1161,20 @@ function tokenPairOf(body: unknown): AccountingResult<TokenPair> {
 			refreshTokenExpiresAt:
 				refreshExpiresIn === null ? null : new Date(now + refreshExpiresIn * 1000)
 		}
+	};
+}
+
+/** one account as Intuit returns it, or null where it names no id or no name. */
+function ledgerAccountOf(row: unknown): LedgerAccount | null {
+	const id = stringField(row, 'Id');
+	const name = stringField(row, 'Name');
+	if (id === null || name === null) return null;
+	return {
+		id,
+		name,
+		type: stringField(row, 'AccountType') ?? '',
+		subType: stringField(row, 'AccountSubType'),
+		classification: stringField(row, 'Classification')
 	};
 }
 

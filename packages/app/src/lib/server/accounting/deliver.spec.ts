@@ -51,11 +51,13 @@ const LANDINGS: Readonly<Record<AccountingFailureReason, FailureLanding>> = {
 	reconnect_needed: 'run',
 	rate_limited: 'run',
 	unreachable: 'run',
+	credential_unsaved: 'run',
 	not_found: 'row',
 	unmapped_account: 'row',
 	invalid_record: 'row',
 	internal_error: 'row',
-	provider_error: 'attempt'
+	provider_error: 'attempt',
+	holding_not_chosen: 'attempt'
 };
 
 describe('where a refusal lands', () => {
@@ -86,12 +88,14 @@ const NOTICES: Readonly<Record<AccountingFailureReason, BlockedNotice>> = {
 	accounts_not_chosen: 'at_once',
 	unreachable: 'after_a_while',
 	rate_limited: 'never',
+	credential_unsaved: 'never',
 	not_connected: 'never',
 	not_found: 'never',
 	unmapped_account: 'never',
 	invalid_record: 'never',
 	internal_error: 'never',
-	provider_error: 'never'
+	provider_error: 'never',
+	holding_not_chosen: 'never'
 };
 
 describe('what a run that could not send anything tells an operator', () => {

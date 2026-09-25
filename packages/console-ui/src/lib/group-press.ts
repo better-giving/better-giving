@@ -36,7 +36,7 @@ import { unreadHeld } from './unread-held';
  * no lock: a write that loses a race here leaves a credential the rows in the block report exactly
  * as it is.
  *
- * **PayPal's group is drawn and never pressed.** its three names arrive only through the set-up
+ * **PayPal's group is drawn and never pressed.** its four names arrive only through the set-up
  * press on PayPal's page (../routes/_sections.payments.paypal.tsx), which settles the listener its
  * id names, and the binary refuses them on the values door
  * (`packages/console/internal/server/values.go`).

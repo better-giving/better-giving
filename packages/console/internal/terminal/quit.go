@@ -18,6 +18,12 @@ import (
 // deploys. so the prompt hands back ./ErrQuit, and ../../cmd/better-giving says how to pick the run
 // up again and exits as a shell's own interrupt would.
 //
+// **the process told to end at a prompt is the same quit.** bubbletea turns a SIGTERM into a quit
+// message, its Run returns no error for it, and huh passes that nil through with the form never
+// answered — so a form handed back without error is an answer only when huh says it completed, and
+// otherwise it is ./ErrQuit. read as success, the kill would be every prompt's bound value: the
+// newer console installed, an empty password written, the first placement taken.
+//
 // **an escape, and every other way a prompt ends without an answer, is not this.** those are a
 // press not made and keep the reading each prompt gives them (./prompt.go).
 //
@@ -25,7 +31,8 @@ import (
 // ctrl-c over a press waits it out rather than quitting, which ./ledger.go's StillGoing says at the
 // moment it happens, so a hint there would be a promise the screen breaks.
 
-// ErrQuit is the operator's ctrl-c at a prompt: the command ends where it stands.
+// ErrQuit is the operator's ctrl-c at a prompt, or the process told to end at one: the command ends
+// where it stands.
 var ErrQuit = errors.New("the operator quit at a prompt")
 
 // the binding a form ends on and the help line draws, one value for both so the key drawn is the
@@ -41,13 +48,17 @@ func formFor(field huh.Field, in io.Reader, to io.Writer) *huh.Form {
 }
 
 // what running a form is worth to the prompt that put it: ./ErrQuit for the operator's ctrl-c, which
-// is the one keystroke huh ends a form on unanswered, and the failure otherwise.
+// is the one keystroke huh ends a form on unanswered, and for a form that ended uncompleted with no
+// error, which is the process told to end; the failure otherwise.
 func ran(asking *huh.Form) error {
 	if err := asking.Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			return ErrQuit
 		}
 		return err
+	}
+	if asking.State != huh.StateCompleted {
+		return ErrQuit
 	}
 	return nil
 }

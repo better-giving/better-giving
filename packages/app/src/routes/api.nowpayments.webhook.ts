@@ -71,12 +71,12 @@ function methodNotAllowed(method: string): Response {
  * all until the payment's status next changes.
  *
  * every `ok` outcome is a 200, the nothing-written ones included — `refunded` or a status nobody
- * documented, a redelivery the books already hold, an address that expired with nothing sent, a
- * deposit to an address with no payment here — because a second delivery would reach each of them
- * identically.
+ * documented, a signed body naming no `payment_id` or `payment_status`, a redelivery the books
+ * already hold, an address that expired with nothing sent, a deposit to an address with no payment
+ * here — because a second delivery would reach each of them identically.
  *
  * - 400: `x-nowpayments-sig` missing, or not NOWPayments' HMAC under `NOWPAYMENTS_IPN_SECRET`, so
- *   nothing in the body may be believed; or a signed body naming no `payment_id` or `payment_status`.
+ *   nothing in the body may be believed.
  * - 503: `NOWPAYMENTS_IPN_SECRET` not set, or a verified IPN whose valuation or payment read did not
  *   answer, or a write the database refused. a payment the key cannot read — a key replaced since it
  *   was made — settles from the verified IPN instead of waiting. repeating it is safe:

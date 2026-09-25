@@ -17,22 +17,25 @@ import (
 // way, the poll reads the run internal/paypal holds, a landed run is consumed by the poll that
 // observed it, and a stopped one stays until the next press.
 //
-// **it is the only way the PayPal pair reaches a deployment from a screen.** the pair and the
-// listener's id are one write made after the listener is settled, and the deployment is then asked
-// to set up repeating gifts on that account, so a deployment is never holding a pair with no
-// listener behind it — a deployment whose approved orders are never captured. POST /api/values/vars
-// refuses the three names (./values.go's paypalSetUpOnly), so no fold can skip the listener.
+// **it is the only way the PayPal pair reaches a deployment from a screen.** the pair, the address it
+// was minted at and the listener's id are one write made after the listener is settled, and the
+// deployment is then asked to set up repeating gifts on that account, so a deployment is never
+// holding a pair with no listener behind it — a deployment whose approved orders are never captured.
+// POST /api/values/vars refuses the four names (./values.go's paypalSetUpOnly), so no fold can skip
+// the listener or move the address out from under the pair.
 //
 // **both halves are values for the length of one press**, handed straight to internal/paypal and
 // reaching no answer, no log line and no argument list; ./paypal_test.go asserts their absence from
-// what the poll hands back. no shape is read at this door: whether a pair authenticates is PayPal's to
-// answer, and the chain's first call asks it.
+// what the poll hands back. what is read at this door is shape alone: whether a pair authenticates at
+// the address is PayPal's to answer, and the chain's first call asks it.
 
-// the pair, as the fold posts it. both halves are required: a stored secret is readable by nothing,
-// so a press that left one box empty holds nothing a token can be minted with.
+// the pair and the address, as the fold posts them. both halves are required: a stored secret is
+// readable by nothing, so a press that left one box empty holds nothing a token can be minted with.
+// an empty address is paypal.DefaultAPIURL.
 type paypalPress struct {
 	ClientID string `json:"clientId"`
 	Secret   string `json:"secret"`
+	Address  string `json:"address"`
 }
 
 func paypalRoutes(
@@ -43,7 +46,7 @@ func paypalRoutes(
 	settings func(cf.Credential) cf.MultipartUpload,
 	store *account.Store,
 	doors func() (cf.Get, cf.Post),
-	bind func(clientID, secret string) paypal.Binding,
+	bind func(base, clientID, secret string) paypal.Binding,
 	presses *Presses,
 ) {
 	runs := &paypal.Runs{}
@@ -72,25 +75,33 @@ func paypalRoutes(
 			})
 			return
 		}
+		address, isAddress := cf.Base(posted.Address, paypal.DefaultAPIURL)
+		if !isAddress {
+			answer(w, http.StatusBadRequest, map[string]string{
+				"error": "the address slot holds something other than an https address with no path, " +
+					"and nothing at all is " + paypal.DefaultAPIURL,
+			})
+			return
+		}
 
 		door, held := writing(w, r, flow, reads, patches, settings, store)
 		if !held {
 			return
 		}
 
-		binding := bind(posted.ClientID, posted.Secret)
+		binding := bind(address, posted.ClientID, posted.Secret)
 		// the run outlives this request by design, so it is given a context of its own; each call
 		// carries a deadline of its own (internal/cf), which is what bounds the run.
 		started, going := runs.Start(context.Background(),
-			paypal.Asked{ClientID: posted.ClientID, Secret: posted.Secret},
+			paypal.Asked{ClientID: posted.ClientID, Secret: posted.Secret, Address: address},
 			paypal.Effects{
 				Authorize: binding.Authorize,
 				Bearer:    binding.Bearer,
 				Address: func(ctx context.Context) deployment.Address {
 					return deployment.PublicAddress(ctx, door.Get, door.AccountID, door.WorkerName)
 				},
-				Publish: func(ctx context.Context, values map[string]string) deployment.Written {
-					return deployment.SetVars(ctx, door, deployment.Stored(values))
+				Publish: func(ctx context.Context, values map[string]*string) deployment.Written {
+					return deployment.SetVars(ctx, door, values)
 				},
 				// the session is read at the press rather than closed over once, for the reason
 				// ./stripe.go's own Repeating states.

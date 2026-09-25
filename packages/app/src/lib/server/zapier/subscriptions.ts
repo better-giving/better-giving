@@ -1,5 +1,4 @@
 import { and, count, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
-import type { BatchItem } from 'drizzle-orm/batch';
 import { uuidv7 } from 'uuidv7';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
@@ -10,6 +9,7 @@ import {
 	type ZapierEndReason,
 	type ZapierTrigger
 } from '../db/schema';
+import { eachAtMost } from './each-at-most';
 
 // the Zaps listening: which hook is subscribed to which trigger, and every way one stops.
 //
@@ -126,6 +126,9 @@ export async function unsubscribe(db: Db, id: string): Promise<void> {
  * the other order would leave `every_open` naming nothing by the time the drop ran. a row already
  * sent or given up on keeps its status: it is history, not something owed. an already-ended
  * subscription keeps the reason it ended for.
+ *
+ * the second statement answers with the hook of each subscription it ended, and only those: what
+ * {@link pauseZaps} is handed after a replace.
  */
 export function endSubscriptionStatements(
 	db: Db,
@@ -133,7 +136,7 @@ export function endSubscriptionStatements(
 	reason: ZapierEndReason,
 	now: Date,
 	onlyIf?: SQL
-): [BatchItem<'sqlite'>, BatchItem<'sqlite'>] {
+) {
 	const open = and(
 		scope === 'every_open' ? undefined : eq(zapierSubscription.id, scope.id),
 		isNull(zapierSubscription.endedAt),
@@ -156,5 +159,64 @@ export function endSubscriptionStatements(
 			.update(zapierSubscription)
 			.set({ endedAt: now, endedReason: reason, updatedAt: now })
 			.where(open)
-	];
+			.returning({ hookUrl: zapierSubscription.hookUrl })
+	] as const;
+}
+
+/** what telling Zapier about ended Zaps came to: `paused` and `notPaused` sum to the hooks asked. */
+export type PauseOutcome = { readonly paused: number; readonly notPaused: number };
+
+/**
+ * a reverse unsubscribe to each of `hookUrls`: a DELETE to the hook itself, which pauses its Zap
+ * in Zapier and tells the Zap's owner to reconnect — "best practices when sending data to a REST
+ * hook trigger", https://docs.zapier.com/integrations/build/hook-trigger. without it a Zap this
+ * deployment has stopped posting to still reads as on, with no error, in its owner's account.
+ *
+ * handed only hooks whose ends have already committed, and it never throws: the ends are the truth
+ * and this is a courtesy to Zapier on top. a 2xx pauses the Zap; 404 and 410 mean the hook is
+ * already gone, which leaves nothing to pause. anything else, a timeout included, is `notPaused`
+ * and nothing asks again — the subscription is ended here whatever Zapier heard.
+ */
+export async function pauseZaps(
+	fetcher: typeof fetch,
+	hookUrls: readonly string[]
+): Promise<PauseOutcome> {
+	const pass = AbortSignal.timeout(PAUSE_PASS_MS);
+	let paused = 0;
+	await eachAtMost(PAUSES_AT_ONCE, hookUrls, async (hookUrl) => {
+		if (pass.aborted) return;
+		const signal = AbortSignal.any([pass, AbortSignal.timeout(PAUSE_TIMEOUT_MS)]);
+		if (await pauseOne(fetcher, hookUrl, signal)) paused += 1;
+	});
+	return { paused, notPaused: hookUrls.length - paused };
+}
+
+/** pauses in flight at once, as ./deliver.ts holds its posts to. */
+const PAUSES_AT_ONCE = 6;
+
+/** how long one hook is given to answer a pause. */
+const PAUSE_TIMEOUT_MS = 2_000;
+
+/**
+ * how long the whole pass may take; a hook not reached by then is `notPaused`. the replace is
+ * answered to a console that waits ten seconds (`ReadTimeout` in
+ * packages/console/internal/cf/client.go), and the pass is most of that answer.
+ */
+const PAUSE_PASS_MS = 4_000;
+
+/** a hook Zapier no longer has: nothing is left to pause. */
+const ALREADY_GONE = new Set([404, 410]);
+
+async function pauseOne(
+	fetcher: typeof fetch,
+	hookUrl: string,
+	signal: AbortSignal
+): Promise<boolean> {
+	try {
+		const response = await fetcher(hookUrl, { method: 'DELETE', signal });
+		await response.body?.cancel().catch(() => undefined);
+		return response.ok || ALREADY_GONE.has(response.status);
+	} catch {
+		return false;
+	}
 }

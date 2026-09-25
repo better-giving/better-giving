@@ -45,8 +45,15 @@ func quickbooksReported() map[string]any {
 			"companyName": "Hope Springs",
 			"income":      map[string]any{"id": "42", "name": "Donations"},
 			"fee":         map[string]any{"id": "7", "name": "Merchant fees"},
-			"deposit":     map[string]any{"id": "9", "name": "Undeposited funds"},
-			"startAt":     "2026-01-01T00:00:00.000Z",
+			// a holding one processor's gifts wait in, or the gifts received in hand: one this
+			// organisation takes nothing through stays unchosen.
+			"stripeBalance":      map[string]any{"id": "31", "name": "Stripe balance"},
+			"paypalBalance":      map[string]any{"id": "32", "name": "PayPal balance"},
+			"chariotBalance":     nil,
+			"nowpaymentsBalance": nil,
+			"undepositedFunds":   map[string]any{"id": "9", "name": "Undeposited funds"},
+			"awaitingAccounts":   false,
+			"startAt":            "2026-01-01T00:00:00.000Z",
 		},
 		"accounts": map[string]any{"state": "read", "accounts": []any{
 			map[string]any{
@@ -85,13 +92,20 @@ func quickbooksChartUnreadable() map[string]any {
 	return report
 }
 
-// what each press answers with: three of them have something to say beyond having happened, and what
-// the rest change is read back off the report.
+// what each press answers with: four of them have something to say beyond having happened, and what
+// the rest change is read back off the report. a disconnect answers on both arms of the revoke,
+// because the one intuit did not confirm is the one carrying where to finish it.
 func quickbooksPressReports() []map[string]any {
 	return []map[string]any{
 		{"press": "connect", "url": "https://appcenter.intuit.com/connect/oauth2?state=x"},
 		{"press": "accounts"},
 		{"press": "retry", "retried": float64(4)},
+		{"press": "disconnect", "revoke": map[string]any{"state": "revoked"}},
+		{"press": "disconnect", "revoke": map[string]any{
+			"state":  "not_revoked",
+			"detail": "Intuit did not answer the revoke.",
+			"fix":    "Remove this app from the company's connected apps at Intuit.",
+		}},
 		quickbooksPreviewed(),
 	}
 }
@@ -434,7 +448,7 @@ func TestAQuickbooksPressTheDeploymentRefusedKeepsItsSentence(t *testing.T) {
 			Kind: cf.Answered, Status: http.StatusBadRequest, Body: refused,
 		})
 		pressed := PressQuickbooks(context.Background(), post, QuickbooksPress{
-			Press: "accounts", Income: "42", Fee: "7", Deposit: "9",
+			Press: "accounts", Income: "42", Fee: "7", UndepositedFunds: picked("9"),
 		})
 		if pressed.Kind != QuickbooksUnanswered || pressed.Read.Kind != NoReportUnreadable {
 			t.Fatalf("%s was pressed %+v", what, pressed)
@@ -464,10 +478,16 @@ func TestAQuickbooksPressSendsOnlyWhatItCarries(t *testing.T) {
 			press: QuickbooksPress{Press: "connect"},
 			sent:  map[string]any{"press": "connect"},
 		},
-		"the three accounts, picked together": {
-			press: QuickbooksPress{Press: "accounts", Income: "42", Fee: "7", Deposit: "9"},
+		// every role is named on an accounts press, so a holding nobody chose travels as null
+		// rather than as nothing: a body leaving one out is refused.
+		"the accounts, with one holding chosen and the rest none": {
+			press: QuickbooksPress{
+				Press: "accounts", Income: "42", Fee: "7", StripeBalance: picked("31"),
+			},
 			sent: map[string]any{
-				"press": "accounts", "income": "42", "fee": "7", "deposit": "9",
+				"press": "accounts", "income": "42", "fee": "7",
+				"stripeBalance": "31", "paypalBalance": nil, "chariotBalance": nil,
+				"nowpaymentsBalance": nil, "undepositedFunds": nil,
 			},
 		},
 		"the day the books start from": {
@@ -489,4 +509,9 @@ func TestAQuickbooksPressSendsOnlyWhatItCarries(t *testing.T) {
 			t.Errorf("%s posted %v, want %v", what, press.body, one.sent)
 		}
 	}
+}
+
+// an account an operator chose, as the page names it.
+func picked(id string) *string {
+	return &id
 }

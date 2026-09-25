@@ -12,6 +12,7 @@ import { readPublishedConfig, renderableConfig } from '$lib/server/forms/publish
 import { cachedRails } from '$lib/server/forms/rail-cache';
 import { createPaymentProviders } from '$lib/server/payments/factory';
 import { database, platform } from '../context';
+import type { DonorPolicyHandle } from '../document-policy';
 import type { Route } from './+types/$formId';
 
 // the donor's page: one top-level segment, the form it names, and nothing else.
@@ -117,6 +118,13 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 export function headers({ loaderHeaders }: Route.HeadersArgs) {
 	return loaderHeaders;
 }
+
+/**
+ * the document policy this page is drawn under: the operator base widened by exactly the origins
+ * the card and its processors load. ../document-policy.ts lists them and cites each; every other
+ * document is drawn under the base alone.
+ */
+export const handle: DonorPolicyHandle = { documentPolicy: 'donor' };
 
 export function meta({ loaderData }: Route.MetaArgs): Route.MetaDescriptors {
 	// the organisation is named only where there is a form to give to. a refused address names

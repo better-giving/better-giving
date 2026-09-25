@@ -954,9 +954,9 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		 * integrator has always styled, and the provider's fields still appear inside it.
 		 *
 		 * that is this provider's constraint rather than every provider's, and the same node serves
-		 * both. the button surface `@paypal/paypal-js`'s `sdk-v6` entry loads is a custom element its
-		 * core script registers — `<paypal-button>`, an ordinary `<button>` and an inline svg in a
-		 * shadow root of its own, with no frame anywhere — so it has no container to lose track of
+		 * both. the button surface PayPal's v6 core script registers is a custom element —
+		 * `<paypal-button>`, an ordinary `<button>` and an inline svg in a shadow root of its own,
+		 * with no frame anywhere — so it has no container to lose track of
 		 * across a boundary. the same three mounts from byte-identical markup — an ordinary light-DOM
 		 * node, this slotted node, and directly inside this element's shadow root — paint the same
 		 * button at the same size in all three, and a click on it inside a shadow root is `composed`

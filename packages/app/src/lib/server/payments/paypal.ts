@@ -20,6 +20,7 @@ import type {
 	Subscription
 } from '@paypal/paypal-server-sdk';
 import { PAYPAL_RAILS, type PaypalRail } from '@better-giving/form/embed/rails';
+import { PAYPAL_SDK_PATH } from '@better-giving/form/v1';
 import {
 	RECURRING_COLLECTION_EVENT_TYPES,
 	RECURRING_EVENT_TYPES,
@@ -29,7 +30,7 @@ import {
 import type { PaymentStatus } from '../db/schema';
 import { majorText, readAmount } from '../../forms/amounts';
 import { redact, redactPublicId } from '../../redact';
-import { DONATION_METADATA_KEY, INTERVAL_METADATA_KEY } from './provider';
+import { DONATION_METADATA_KEY, INTERVAL_METADATA_KEY, refusing } from './provider';
 import type {
 	AccountChargeability,
 	Intent,
@@ -85,8 +86,10 @@ import type {
 // authenticated call because no controller and no spec ship for Payments v1. `readSale` argues why
 // a deprecated endpoint is the right one and what would replace it.
 //
-// **live only, and nothing here reads a stage.** `Environment.Production` is the one host, because
-// nothing in this project reads test-versus-live and rehearsing is a second deployment (DEPLOY.md).
+// **one address, and nothing here reads a stage.** every call — the token, the SDK's controllers and
+// this module's own reach past them — goes to the origin of `PAYPAL_API_URL`, or of
+// {@link PAYPAL_DEFAULT_API_URL} where it is unset. a key is good at one address only, and which one
+// a deployment talks to is typed rather than derived; rehearsing is a second deployment (DEPLOY.md).
 
 /** what the adapter needs to talk to an account. */
 export type PaypalCredentials = {
@@ -94,6 +97,8 @@ export type PaypalCredentials = {
 	readonly clientId: string;
 	/** `PAYPAL_CLIENT_SECRET`. server-only, never bundled, never logged, never echoed. */
 	readonly clientSecret: string;
+	/** `PAYPAL_API_URL`, or {@link PAYPAL_DEFAULT_API_URL} where it is unset (./factory.ts). */
+	readonly apiUrl: string;
 	/**
 	 * `PAYPAL_WEBHOOK_ID` — the id of the listener this deployment's deliveries are sent to, or
 	 * `null` where the deployment holds none.
@@ -326,14 +331,60 @@ const RECURRING_PRODUCT_TYPE = 'SERVICE';
  */
 const CANCEL_REASON = 'Stopped from this organisation’s better-giving dashboard.';
 
+/** the address a deployment with no `PAYPAL_API_URL` calls. */
+export const PAYPAL_DEFAULT_API_URL = 'https://api-m.paypal.com';
+
 /**
- * the one host this adapter talks to.
+ * the origin every call is sent to, or `null` for an address that is not an https origin.
  *
- * spelled here for the calls that reach past the SDK, and it is the same host the SDK resolves
- * `Environment.Production` to. there is no sandbox constant beside it because nothing in this
- * project reads test-versus-live: rehearsing is a second deployment (DEPLOY.md).
+ * a trailing slash is the one addition taken, because it names the same origin. a path, a query or
+ * a fragment is refused rather than dropped: each is a value that says something this adapter would
+ * silently not do. `http:` is refused because the token request carries the client secret.
  */
-const API_BASE = 'https://api-m.paypal.com';
+export function paypalApiOrigin(apiUrl: string): string | null {
+	let url: URL;
+	try {
+		url = new URL(apiUrl);
+	} catch {
+		return null;
+	}
+	const bare =
+		url.protocol === 'https:' &&
+		url.username === '' &&
+		url.password === '' &&
+		url.pathname === '/' &&
+		url.search === '' &&
+		url.hash === '' &&
+		!apiUrl.endsWith('?') &&
+		!apiUrl.endsWith('#');
+	return bare ? url.origin : null;
+}
+
+/**
+ * the script the donor's page starts PayPal's SDK from, for an API address {@link paypalApiOrigin}
+ * takes, or `null` where the host carries no `api-m.` label to derive one from.
+ *
+ * PayPal serves its API and its pages from sibling hosts, `api-m.` and `www.` under one domain, so
+ * the one rule is the label and any address an operator sets maps the same way.
+ * `Provider.sdkUrl` in packages/form/src/v1.ts is the field it fills.
+ */
+export function paypalSdkUrl(apiUrl: string): string | null {
+	const origin = paypalApiOrigin(apiUrl);
+	if (origin === null) return null;
+	const url = new URL(origin);
+	if (!url.hostname.startsWith('api-m.')) return null;
+	url.hostname = `www.${url.hostname.slice('api-m.'.length)}`;
+	url.pathname = PAYPAL_SDK_PATH;
+	return url.href;
+}
+
+/** what is wrong with an address {@link paypalApiOrigin} refuses, as a clause a sentence carries. */
+export function unusablePaypalAddress(apiUrl: string): string {
+	return (
+		`\`PAYPAL_API_URL\` is \`${apiUrl}\`, which is not an https origin with nothing after the ` +
+		`host, such as \`${PAYPAL_DEFAULT_API_URL}\``
+	);
+}
 
 /**
  * the five headers a delivery is signed with, and the field each one is sent for verification as.
@@ -366,6 +417,12 @@ function resourceIdOf(resource: unknown): string | null {
  * for one this adapter does not read arrives as. reported as `ignored` it would be a settlement
  * dropped in silence under a 200, which is the failure that loses a gift.
  *
+ * `unsupported` and not a retryable reason: every redelivery of this delivery carries the same
+ * resource and reads the same way, so a 5xx would buy PayPal's whole retry schedule of one answer.
+ * what changes it is a release that reads the shape, which is that reason's own definition
+ * (`PAYMENT_FAILURE_REASONS` in ./provider.ts). not `invalid_request` either, which
+ * `settleDelivery` in ../donations/settle.ts answers with a 400 — and PayPal redelivers any non-2xx.
+ *
  * `resource_type` and `resource_version` are reported rather than gated on. PayPal publishes
  * neither for any subscription event, so a gate on a value nobody has seen would refuse every live
  * delivery — naming them here is how they are learned off a real one.
@@ -378,7 +435,7 @@ function unreadableResource(
 ): PaymentFailure {
 	return {
 		ok: false,
-		reason: 'provider_error',
+		reason: 'unsupported',
 		detail:
 			`A verified \`${redactPublicId(type)}\` delivery named ${named}, so there is nothing to ` +
 			`reconcile it against. Its \`resource_type\` is ` +
@@ -596,8 +653,16 @@ const NO_WALLET_DOMAINS =
  * own retry cannot know whether the caller wants one, and every retry that matters here is the
  * caller's to make under the same `IntentRequest.idempotencyKey` — a retry underneath this port is
  * one nothing above it can see or bound.
+ *
+ * `env.fetch` is where the address is decided. the SDK takes an `Environment` naming one of its own
+ * two hosts and no address at all, so it is handed the one constant and every request it builds is
+ * re-addressed onto `origin` on its way out — the token request included, which is what makes a key
+ * minted at one address usable against it.
  */
-function paypalClient(credentials: PaypalCredentials): {
+function paypalClient(
+	credentials: PaypalCredentials,
+	origin: string
+): {
 	readonly client: Client;
 	readonly accessToken: () => Promise<string>;
 } {
@@ -617,7 +682,11 @@ function paypalClient(credentials: PaypalCredentials): {
 		},
 		timeout: TIMEOUT_MS,
 		httpClientOptions: { retryConfig: { maxNumberOfRetries: 0 } },
-		unstable_httpClientOptions: { adapter: 'fetch', fetchOptions: { cache: 'no-store' } }
+		unstable_httpClientOptions: {
+			adapter: 'fetch',
+			fetchOptions: { cache: 'no-store' },
+			env: { fetch: addressedTo(origin) }
+		}
 	});
 
 	return {
@@ -629,6 +698,15 @@ function paypalClient(credentials: PaypalCredentials): {
 	};
 }
 
+/** `fetch`, sending the request it is handed to the same path and query at `origin`. */
+function addressedTo(origin: string): typeof fetch {
+	return (input, init) => {
+		const request = new Request(input, init);
+		const { pathname, search } = new URL(request.url);
+		return fetch(new Request(`${origin}${pathname}${search}`, request));
+	};
+}
+
 /**
  * the controller {@link findOrCreateBillingPlan} makes its calls through, over one account.
  *
@@ -637,11 +715,21 @@ function paypalClient(credentials: PaypalCredentials): {
  * options on that client are the ones ./paypal.workers.spec.ts proves are needed.
  */
 export function paypalSubscriptions(credentials: PaypalCredentials): SubscriptionsController {
-	return new SubscriptionsController(paypalClient(credentials).client);
+	const origin = paypalApiOrigin(credentials.apiUrl);
+	if (origin === null) throw new Error(`${unusablePaypalAddress(credentials.apiUrl)}.`);
+	return new SubscriptionsController(paypalClient(credentials, origin).client);
 }
 
 export function createPaypalProvider(credentials: PaypalCredentials): PaymentProvider {
-	const { client, accessToken } = paypalClient(credentials);
+	const origin = paypalApiOrigin(credentials.apiUrl);
+	if (origin === null) {
+		return refusing(
+			'paypal',
+			'not_configured',
+			`${unusablePaypalAddress(credentials.apiUrl)}, so no call to PayPal can be made.`
+		);
+	}
+	const { client, accessToken } = paypalClient(credentials, origin);
 	const orders = new OrdersController(client);
 	const payments = new PaymentsController(client);
 	// built off this provider's own client rather than through {@link paypalSubscriptions}, which
@@ -666,7 +754,7 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 		path: string,
 		sending?: { readonly body?: unknown; readonly requestId?: string }
 	): Promise<{ status: number; body: unknown }> {
-		const answer = await fetch(`${API_BASE}${path}`, {
+		const answer = await fetch(`${origin}${path}`, {
 			method,
 			headers: {
 				authorization: `Bearer ${await accessToken()}`,
@@ -1789,19 +1877,28 @@ function noticeOf(
 const ALREADY_CAPTURED = 'ORDER_ALREADY_CAPTURED';
 
 /**
- * seven capture and order states onto this schema's four (`PAYMENT_STATUSES` in ../db/schema.ts).
+ * capture states onto this schema's four (`PAYMENT_STATUSES` in ../db/schema.ts).
  *
- * a refunded capture is `succeeded` and not a state of its own, because the capture did succeed: a
- * refund is a `payment` row of its own with its own id, which is the same split ./stripe.ts keeps.
+ * a capture whose whole amount went back — `REFUNDED`, or `REVERSED` on a chargeback — is `failed`,
+ * because the status is read after the fact: a first read of a capture already refunded that said
+ * `succeeded` would post revenue the organisation no longer holds, and nothing records the refund
+ * that would offset it. `failed` posts nothing, and `reference` on the settlement names the capture
+ * for whoever reconciles it. `REVERSED` is not in the published `capture_status` enum
+ * (payments_payment_v2.json in https://github.com/paypal/paypal-rest-api-specifications) and is
+ * held here as the word the `PAYMENT.CAPTURE.REVERSED` event is named for.
  *
- * everything this table does not hold is `pending`, including an order the payer has not approved
- * and a state added upstream — the direction that is safe to be wrong in, since the next read
- * corrects it and no posting is made on money reported as still in flight.
+ * `PARTIALLY_REFUNDED` stays `succeeded`: part of the money is still the organisation's, and the
+ * part that went back is a refund, which is a `payment` row of its own (`PAYMENT_STATUSES`).
+ *
+ * everything this table does not hold is `pending`, including PayPal's own `PENDING` and a state
+ * added upstream — the direction that is safe to be wrong in, since the next read corrects it and no
+ * posting is made on money reported as still in flight.
  */
 const CAPTURE_STATUSES: Readonly<Record<string, PaymentStatus>> = Object.freeze({
 	COMPLETED: 'succeeded',
 	PARTIALLY_REFUNDED: 'succeeded',
-	REFUNDED: 'succeeded',
+	REFUNDED: 'failed',
+	REVERSED: 'failed',
 	DECLINED: 'failed',
 	FAILED: 'failed'
 });
@@ -1906,6 +2003,8 @@ function settlementOf(order: Order, captured: CapturedPayment | null): Settlemen
 		// it; the purchase unit's before a capture exists. PayPal copies `custom_id` from one onto the
 		// other, so these are the same value read from whichever object exists.
 		metadata: decodeMetadata(captured?.customId ?? order.purchaseUnits?.[0]?.customId),
+		// the capture id is the transaction id PayPal's own activity list shows; an order id is not.
+		...(captured?.id ? { reference: captured.id } : {}),
 		occurredAt: at(captured?.createTime ?? order.createTime),
 		arrival: null
 	};
@@ -2049,8 +2148,9 @@ function classifyStatus(status: number, body: unknown, context: string): Payment
 			reason: 'not_configured',
 			detail:
 				'PayPal rejected this deployment’s credentials: `PAYPAL_CLIENT_ID` and ' +
-				`\`PAYPAL_CLIENT_SECRET\` are not a pair this account accepts, or the app they belong to ` +
-				`does not carry the permission this call needs. ${said}`
+				'`PAYPAL_CLIENT_SECRET` are not a pair the account at `PAYPAL_API_URL` accepts, or the ' +
+				'app they belong to does not carry the permission this call needs. The usual cause is ' +
+				`keys from an app at another of PayPal’s addresses. ${said}`
 		};
 	}
 

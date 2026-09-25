@@ -193,6 +193,13 @@ jobs:
       - name: build the app
         run: BETTER_GIVING_VERSION="${RELEASE_TAG#v}" pnpm --filter @better-giving/app build
 
+      # the same guard `pnpm run deploy` runs behind its own build (packages/app/scripts/preflight-deploy.js):
+      # no environment is selected here, matching the build above having no CLOUDFLARE_ENV, and it
+      # is what counts the embed's staged files — the one check standing between a dropped or
+      # reordered stage-embed step and a bundle `better-giving start` ships with a 404 in it.
+      - name: the build's embed and bindings are the ones this release ships
+        run: cd packages/app && node scripts/preflight-deploy.js
+
       - name: emit the worker without deploying it
         run: pnpm wrangler deploy --dry-run --outdir "$RUNNER_TEMP/worker"
 

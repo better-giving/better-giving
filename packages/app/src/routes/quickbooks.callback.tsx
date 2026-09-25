@@ -15,6 +15,7 @@ import {
 } from '$lib/server/accounting/connection';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
 import { readAuthEnv } from '$lib/server/auth';
+import { servedProcessors } from '$lib/server/payments/factory';
 import { secretEquals } from '$lib/server/secret-compare';
 import { database, platform } from '../context';
 import type { Route } from './+types/quickbooks.callback';
@@ -41,14 +42,23 @@ import type { Route } from './+types/quickbooks.callback';
 // meant to. a read that did not land leaves the row exactly as connected as it was, with the name
 // null until something reads it again ($lib/server/accounting/connection.ts).
 //
-// **the three accounts are filled from the company's own chart, afterwards and on the same terms.**
-// an operator connecting books has nothing picked, and a connection with nothing picked sends
-// nothing; so each role the chart names an account for ($lib/server/accounting/quickbooks-accounts.ts)
-// is saved and the console's pickers open on it. a role it names none for stays unpicked, and so
-// sends stay held until the operator picks it on the console. a chart that could not be read, or a
-// fault anywhere in the fill, leaves all three unpicked and logs why. a reconnect to the same
-// company keeps what was picked before ($lib/server/accounting/connection.ts), and nothing
-// overwrites it.
+// **the accounts are filled from the company's own chart, afterwards and on the same terms.** an
+// operator connecting books has nothing picked, and a connection with nothing picked sends nothing;
+// so each role the chart names an account for ($lib/server/accounting/quickbooks-accounts.ts) is
+// saved and the console's pickers open on it, and each processor this deployment takes gifts
+// through whose holding the chart names none for is given one ($lib/server/accounting/connection.ts).
+// a role left unpicked holds the gifts that need it until the operator picks it on the console. a
+// chart that could not be read, or a fault anywhere in the fill, leaves every role unpicked and logs
+// why. a reconnect to the same company keeps what was picked before, and nothing overwrites it.
+//
+// **a trip back naming a different company fills nothing.** the connect clears the old company's
+// accounts, and those unpicked accounts are the one thing holding every queued gift — donor names
+// and addresses among them — out of books nobody has yet said are the right ones. filling them from
+// the new chart would release that backlog within a minute of a wrong pick in Intuit's company
+// list. so the move is stored, the page names both companies, and sending waits for an operator
+// to choose on the console — across every reconnect in between, since the move is written on the
+// row and only an operator's save clears it. a reconnect while it stands draws the same page, with
+// no previous company to name.
 //
 // **it ends on a page rather than a redirect into either operator surface.** Intuit cannot be
 // pointed at a console running on somebody's laptop, and /admin is a different sign-in from the one
@@ -66,7 +76,7 @@ export const links = operatorLinks;
  */
 export function meta({ loaderData }: Route.MetaArgs): Route.MetaDescriptors {
 	const said =
-		loaderData.outcome === 'connected' ? 'QuickBooks connected' : 'QuickBooks not connected';
+		loaderData.outcome === 'refused' ? 'QuickBooks not connected' : 'QuickBooks connected';
 	return [{ title: `${said} · ${APP_NAME}` }];
 }
 
@@ -145,16 +155,26 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		return refused('exchange', 502, tokens.reason, tokens.detail);
 	}
 
-	await connectQuickbooks(db, { realmId, tokens: tokens.value, startAt: new Date() });
+	const before = await connectQuickbooks(db, {
+		realmId,
+		tokens: tokens.value,
+		startAt: new Date()
+	});
 
 	const company = await provider.readCompany();
 	if (company.ok) await saveQuickbooksCompanyName(db, company.value.companyName);
-	await fillAccountsFromChart(db, provider, realmId);
+	const companyName = company.ok ? company.value.companyName : null;
 
-	return data(
-		{ outcome: 'connected' as const, companyName: company.ok ? company.value.companyName : null },
-		{ headers: spent }
-	);
+	if (before !== null && (before.realmId !== realmId || before.movedAt !== null)) {
+		const previousCompanyName = before.realmId === realmId ? null : before.companyName;
+		return data(
+			{ outcome: 'switched' as const, previousCompanyName, companyName },
+			{ headers: spent }
+		);
+	}
+
+	await fillAccountsFromChart(db, provider, realmId, servedProcessors(env).configured);
+	return data({ outcome: 'connected' as const, companyName }, { headers: spent });
 }
 
 /**
@@ -173,6 +193,21 @@ export default function QuickbooksCallback({ loaderData }: Route.ComponentProps)
 						: `${loaderData.companyName} is connected`}
 				</h1>
 				<p className="adm-prose">You can close this tab.</p>
+			</PanelRoute>
+		);
+	}
+
+	if (loaderData.outcome === 'switched') {
+		return (
+			<PanelRoute>
+				<h1>QuickBooks is connected to a different company</h1>
+				<p className="adm-prose">
+					{`The connection moved from ${loaderData.previousCompanyName ?? 'the company connected before'} to ${loaderData.companyName ?? 'a company QuickBooks hasn’t named yet'}.`}
+				</p>
+				<p className="adm-prose">
+					Go back to the console and choose the accounts again. Nothing is sent to QuickBooks until
+					you do.
+				</p>
 			</PanelRoute>
 		);
 	}

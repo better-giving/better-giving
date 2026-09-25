@@ -139,6 +139,20 @@ describe('the embed cache tiers', () => {
 		}
 	});
 
+	// both are static assets served before the worker runs, so this file is the whole of their
+	// headers, and the document policy src/document-policy.ts sets never reaches them. a policy or
+	// a framing header here governs nothing on the page that loads the script — that page's own
+	// policy does — so one arriving is a rule copied onto the wrong kind of answer.
+	it('sends no document policy with either', () => {
+		for (const path of [LOADER_PATH, RUNTIME_ASSET]) {
+			const sent = rules()
+				.filter((rule) => matches(rule.pattern, path))
+				.flatMap((rule) => [...rule.headers.keys()]);
+			expect(sent).not.toContain('content-security-policy');
+			expect(sent).not.toContain('x-frame-options');
+		}
+	});
+
 	// the pattern matcher above is what every assertion here rests on, so it is held to a case it
 	// would be useless without: a rule that covers the loader without naming it.
 	it('sees a rule that covers the loader without naming it', () => {

@@ -1763,9 +1763,10 @@ describe('verifyEvent — an IPN checked and named', () => {
 	// `JSON.stringify` prints each spelling as `5745459419`, so all three verify under one signature;
 	// read as sent, each would be another payment and another event.
 	it.each(['5745459419.0', '5.745459419e9'])(
-		'refuses a signed payment id spelled %s rather than naming another payment',
+		'names no payment for a signed payment id spelled %s rather than naming another',
 		async (spelling) => {
 			serving(() => undefined);
+			vi.spyOn(console, 'warn').mockImplementation(() => {});
 			const signed = delivered(IPN_PAYMENT);
 
 			const result = await createNowpaymentsProvider(CREDENTIALS).verifyEvent({
@@ -1773,7 +1774,7 @@ describe('verifyEvent — an IPN checked and named', () => {
 				headers: signed.headers
 			});
 
-			expect(result.ok).toBe(false);
+			expect(result.ok && result.value.kind).toBe('ignored');
 		}
 	);
 
@@ -1792,19 +1793,6 @@ describe('verifyEvent — an IPN checked and named', () => {
 		expect(
 			result.ok && result.value.kind === 'settlement' && result.value.delivered
 		).toBeUndefined();
-	});
-
-	// the body is the only settlement for a payment the read will not answer, so it is asked for again.
-	it('refuses retryably where the estimate valuing the body did not answer', async () => {
-		serving((method, url) =>
-			method === 'GET' && url.pathname === '/v1/estimate' ? { status: 503 } : undefined
-		);
-
-		const result = await createNowpaymentsProvider(CREDENTIALS).verifyEvent(
-			delivered({ ...IPN_PAYMENT, actually_paid_at_fiat: 0 })
-		);
-
-		expect(result.ok === false && isRetryable(result.reason)).toBe(true);
 	});
 
 	it('names the same status with a different amount received as an event of its own', async () => {
@@ -1831,15 +1819,18 @@ describe('verifyEvent — an IPN checked and named', () => {
 		expect(sending.ok && finished.ok && sending.value.id !== finished.value.id).toBe(true);
 	});
 
-	it('refuses a verified body naming no payment, as a shape it cannot read', async () => {
-		serving(() => undefined);
+	// a redelivery of it would be the identical body, so it is acknowledged rather than refused.
+	it('answers a verified body naming no payment as ignored, asking NOWPayments nothing', async () => {
+		const calls = serving(() => undefined);
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
 		const result = await createNowpaymentsProvider(CREDENTIALS).verifyEvent(
 			delivered({ id: '123456789', batch_withdrawal_id: '987654321', status: 'CREATING' })
 		);
 
-		expect(result.ok === false && result.reason).toBe('invalid_request');
-		expect(result.ok === false ? result.detail : '').toContain('`payment_status`');
+		expect(result.ok && result.value.kind).toBe('ignored');
+		expect(calls).toHaveLength(0);
+		expect(warn).toHaveBeenCalledOnce();
 	});
 
 	it.each(['refunded', 'a_status_nobody_documented'])(
@@ -1855,6 +1846,73 @@ describe('verifyEvent — an IPN checked and named', () => {
 			expect(calls).toHaveLength(0);
 		}
 	);
+});
+
+// one delivery is `verifyEvent` then `readSettlement` on the one adapter (settleDelivery in
+// ../donations/settle.ts), and a redelivery of a settled payment is the same pair again.
+describe('a notification and the read it names', () => {
+	const UNVALUED = { ...IPN_PAYMENT, actually_paid_at_fiat: 0 };
+	const { actually_paid_at_fiat: _figure, ...READ_BACK } = UNVALUED;
+
+	it('asks for one estimate where the notification and the read value the same arrival', async () => {
+		const calls = serving((_method, url) => {
+			if (url.pathname === '/v1/payment/5745459419') return { status: 200, json: READ_BACK };
+			if (url.pathname === '/v1/estimate')
+				return { status: 200, json: { estimated_amount: '24.87' } };
+			return undefined;
+		});
+		const provider = createNowpaymentsProvider(CREDENTIALS);
+
+		const event = await provider.verifyEvent(delivered(UNVALUED));
+		const read = await provider.readSettlement('5745459419');
+
+		expect(
+			event.ok && event.value.kind === 'settlement' && event.value.delivered?.amountMinor
+		).toBe(2487);
+		expect(read.ok && read.value.amountMinor).toBe(2487);
+		expect(calls.filter((call) => call.url.pathname === '/v1/estimate')).toHaveLength(1);
+	});
+
+	it('settles from the read where the estimate valuing the notification did not answer', async () => {
+		let estimates = 0;
+		serving((_method, url) => {
+			if (url.pathname === '/v1/payment/5745459419') return { status: 200, json: READ_BACK };
+			if (url.pathname !== '/v1/estimate') return undefined;
+			estimates += 1;
+			return estimates === 1
+				? { status: 503 }
+				: { status: 200, json: { estimated_amount: '24.87' } };
+		});
+		const provider = createNowpaymentsProvider(CREDENTIALS);
+
+		const event = await provider.verifyEvent(delivered(UNVALUED));
+		const read = await provider.readSettlement('5745459419');
+
+		expect(event.ok && event.value).toMatchObject({
+			kind: 'settlement',
+			providerTxnId: '5745459419'
+		});
+		expect(event.ok && event.value.kind === 'settlement' && event.value.delivered).toBeUndefined();
+		expect(read.ok && read.value.amountMinor).toBe(2487);
+	});
+
+	// the notification is the only settlement for a payment the read will not answer, so it is asked
+	// for again rather than dropped.
+	it('refuses a read finding no payment retryably where the notification could not be valued', async () => {
+		serving((_method, url) => {
+			if (url.pathname === '/v1/payment/5745459419') {
+				return { status: 404, json: { message: 'Payment not found' } };
+			}
+			if (url.pathname === '/v1/estimate') return { status: 503 };
+			return undefined;
+		});
+		const provider = createNowpaymentsProvider(CREDENTIALS);
+
+		await provider.verifyEvent(delivered(UNVALUED));
+		const read = await provider.readSettlement('5745459419');
+
+		expect(read.ok === false && isRetryable(read.reason)).toBe(true);
+	});
 });
 
 describe('what the account is approved for', () => {

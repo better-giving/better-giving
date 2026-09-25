@@ -103,6 +103,8 @@ Which vendor lines you need follows the processors your deployment holds: the St
 
 Write `<your deployment origin>` as the origin the snippet's `src` points at, scheme and host, no path.
 
+The two PayPal entries `https://www.paypal.com` and `https://api-m.paypal.com` follow your deployment's `PAYPAL_API_URL`: where it names another address, list that address in place of `api-m.paypal.com`, and its host with the leading `api-m.` turned to `www.` in place of `www.paypal.com`.
+
 ```
 script-src   <your deployment origin>
              https://js.stripe.com https://*.js.stripe.com

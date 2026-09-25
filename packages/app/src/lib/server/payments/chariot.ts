@@ -38,8 +38,7 @@ import type {
 // leaves a grant's `status` an untyped string, and the API itself sends `Initiated`, `Completed` and
 // `Canceled` (a sandbox read of every grant on an account, 2026-09-15) — which is the vocabulary
 // `GRANT_STATUSES` below reads, case-folded so the reference's lowercase spellings of the same words
-// read the same, plus `Received`, the DAFpay guide's word for the organisation marking a grant
-// received.
+// read the same.
 //
 // **live by default, and nothing here reads a stage.** `CHARIOT_API_URL` unset is
 // `https://api.givechariot.com`; the sandbox is another address with its own keys, grants and
@@ -99,15 +98,13 @@ const GRANT_DEADLINE_MS = 20_000;
 /**
  * a grant's `status`, case-folded, to the row's vocabulary.
  *
- * `completed` is the grant marked received in Chariot's dashboard, and `received` is the DAFpay
- * guide's word for the same moment — the two statuses money moved on. `canceled` is the fund
- * cancelling it. every other word — `initiated`, the reference's `awaiting_*`, a word nobody has
- * documented yet — is a grant still on its way and reads as `pending`, which is the direction safe
- * to be wrong in: nothing is posted from `pending`, and the next delivery re-reads.
+ * `completed` is the grant marked received in Chariot's dashboard, the one status money moved on.
+ * `canceled` is the fund cancelling it. every other word — `initiated`, the reference's `awaiting_*`,
+ * a word nobody has documented yet — is a grant still on its way and reads as `pending`, which is the
+ * direction safe to be wrong in: nothing is posted from `pending`, and the next delivery re-reads.
  */
 const GRANT_STATUSES: Readonly<Record<string, PaymentStatus>> = Object.freeze({
 	completed: 'succeeded',
-	received: 'succeeded',
 	canceled: 'cancelled'
 });
 
@@ -313,14 +310,20 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 			const event = parseJson(delivery.body);
 			const id = stringField(event, 'id');
 			const category = stringField(event, 'category');
-			const occurredAt = dateOf(stringField(event, 'created_at'));
-			if (id === null || category === null || occurredAt === null) {
+			// the reference requires no field on an Event, so one with no readable time is dated by
+			// its arrival.
+			const occurredAt = dateOf(stringField(event, 'created_at')) ?? new Date();
+			// `unsupported`, which `settleDelivery` in ../donations/settle.ts answers 200: the same
+			// signed bytes read the same on every redelivery, and Chariot redelivers any non-2xx
+			// toward disabling the endpoint.
+			if (id === null || category === null) {
 				return {
 					ok: false,
-					reason: 'provider_error',
+					reason: 'unsupported',
 					detail:
-						'The delivery’s signature verified and its body is not an event this app can read, ' +
-						'so nothing was acted on. The signing secret is not the problem.'
+						'The delivery’s signature verified and its body names no `id` or no `category`, so ' +
+						'it is not an event this app can act on and nothing was read or written. The signing ' +
+						'secret is not the problem.'
 				};
 			}
 

@@ -1071,6 +1071,20 @@ describe('the accounts this deployment charges on', () => {
 		]);
 	});
 
+	/**
+	 * an address held in a shape no call can be sent to is named with the boxes to fill, because it is
+	 * the one value the operator has to correct — the pair beside it is set and may be fine.
+	 */
+	it('names an address it cannot call among what is unset, though the pair is held', async () => {
+		const reading = await readingFor('paypal', {
+			PAYPAL_CLIENT_ID: 'notarealclientid',
+			PAYPAL_CLIENT_SECRET: 'notarealclientsecret',
+			PAYPAL_API_URL: 'https://paypal-api.example.test/v1'
+		});
+
+		expect(reading.state === 'unconfigured' && reading.unset).toEqual(['PAYPAL_API_URL']);
+	});
+
 	/** and it says nothing whatever about that account — not a rail, not an endpoint, not a wallet. */
 	it('reports no reading at all under a processor it holds no credentials for', async () => {
 		const reading = await readingFor('paypal');

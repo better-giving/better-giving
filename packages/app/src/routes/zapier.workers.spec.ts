@@ -148,7 +148,7 @@ describe('a request without this deployment\u2019s key', () => {
 	});
 
 	it('is turned away once the key it carries has been replaced', async () => {
-		await replaceZapierKey(db);
+		await replaceZapierKey(db, async () => new Response(null, { status: 200 }));
 
 		const response = await meRoute(new Request(`${OWN}/zapier/me`, withKey(key)));
 

@@ -173,7 +173,7 @@ type Outcome struct {
 // the chain is reached, and written in one request body.
 type Asked struct {
 	APIKey string
-	// Address is what Address made of the typed one, API where it was blank.
+	// Address is what ../cf's Base made of the typed one, API where it was blank.
 	Address string
 }
 

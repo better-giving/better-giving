@@ -10,6 +10,7 @@ import type {
 	NoReport,
 	VarsUnwritten
 } from '../api/types';
+import { NOT_AN_ADDRESS, isApiAddress } from './api-address';
 import type { StatedForm } from './use-console-form';
 
 // what one press of ./chariot-section.tsx carries, the rules its two boxes are read against, the
@@ -49,21 +50,6 @@ export const CHARIOT_FIELD = <B extends ChariotBox>(box: B): `chariot:${B}` => `
 /** what a box left empty says under it. */
 export const CHARIOT_BLANK = 'required';
 
-/** what an address box holding something other than an address says under it. */
-export const CHARIOT_NOT_ADDRESS = 'an https:// address with nothing after the domain';
-
-/**
- * whether a typed address is one the binary calls, already trimmed.
- *
- * `Address` in packages/console/internal/chariot/chariot.go, read the same way: one trailing slash
- * is dropped, and what is left is an https origin and nothing more.
- */
-export function isChariotAddress(typed: string): boolean {
-	const bare = typed.endsWith('/') ? typed.slice(0, -1) : typed;
-	// no path, query, fragment or user in front of the host: any of them is past the origin.
-	return /^https:\/\/[^/?#@\s]+$/.test(bare) && URL.canParse(bare);
-}
-
 /*
  * the message sits on each type because conform hands an empty box over as `undefined`, and the trim
  * is the repair the binary would otherwise refuse the press for (`filled` in
@@ -76,10 +62,7 @@ const chariotBoxes = z.object({
 		.string()
 		.trim()
 		.optional()
-		.refine(
-			(typed) => typed === undefined || typed === '' || isChariotAddress(typed),
-			CHARIOT_NOT_ADDRESS
-		)
+		.refine((typed) => typed === undefined || typed === '' || isApiAddress(typed), NOT_AN_ADDRESS)
 });
 
 /**
@@ -115,8 +98,8 @@ export function chariotPosted(
 	};
 	const errors: Record<string, string> = {};
 	if (boxes.apiKey === '') errors[CHARIOT_FIELD('apiKey')] = CHARIOT_BLANK;
-	if (boxes.address !== '' && !isChariotAddress(boxes.address)) {
-		errors[CHARIOT_FIELD('address')] = CHARIOT_NOT_ADDRESS;
+	if (boxes.address !== '' && !isApiAddress(boxes.address)) {
+		errors[CHARIOT_FIELD('address')] = NOT_AN_ADDRESS;
 	}
 	if (Object.keys(errors).length > 0) return { ok: false, errors };
 	return { ok: true, boxes };
@@ -284,7 +267,7 @@ const STORED: readonly ChariotSetup['kind'][] = ['done', 'unretired'];
 /**
  * what the boxes are seeded from, and whether a write has put them back to it.
  *
- * `pairStanding` in ./paypal-setup.ts, over two boxes: what the press sent seeds them from the
+ * `boxesStanding` in ./paypal-setup.ts, over two boxes: what the press sent seeds them from the
  * answer that says it stored them until the reading after it lands.
  *
  * **a run the press started that has not stored them keeps them holding what was sent**, going or

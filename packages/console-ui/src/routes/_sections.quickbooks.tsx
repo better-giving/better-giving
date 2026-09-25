@@ -5,7 +5,7 @@ import { useMemo } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { useFetcher, useSubmit } from 'react-router';
 import { freeWithheldVars, pressQuickbooks, readQuickbooks } from '../api/client';
-import type { QuickbooksPressBody } from '../api/types';
+import type { HoldingPick, QuickbooksPressBody } from '../api/types';
 import { notReady, readConsole } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { groupPress } from '../lib/group-press';
@@ -103,13 +103,21 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 
 /** what one press carries, which is the press and whatever that press acts on. */
 function pressBody(press: QuickbooksPress, posted: FormData): QuickbooksPressBody {
-	if (press === 'accounts')
+	if (press === 'accounts') {
+		// an unchosen holding is sent as null, which the deployment reads as none rather than as a
+		// pick its chart does not hold.
+		const holding = (role: HoldingPick) => String(posted.get(role) ?? '') || null;
 		return {
 			press,
 			income: String(posted.get('income') ?? ''),
 			fee: String(posted.get('fee') ?? ''),
-			deposit: String(posted.get('deposit') ?? '')
+			stripeBalance: holding('stripeBalance'),
+			paypalBalance: holding('paypalBalance'),
+			chariotBalance: holding('chariotBalance'),
+			nowpaymentsBalance: holding('nowpaymentsBalance'),
+			undepositedFunds: holding('undepositedFunds')
 		};
+	}
 	if (press === 'start-date' || press === 'start-date-preview')
 		return { press, startAt: String(posted.get('startAt') ?? '') };
 	return { press };

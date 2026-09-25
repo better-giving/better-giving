@@ -4,14 +4,15 @@
 // has a sentence for is one of the kinds below.
 //
 // **the client id and secret are local values for the length of one press.** they arrive in this
-// process from the browser's own press, are closed over by Bind, and are never written down, logged,
-// put in a sentence a screen draws, or passed to a child process. the pair travels in a basic
-// authorization header on one call and the token it mints in a bearer header on the rest; no url
-// carries either, which is what makes a failure's own sentence safe to draw.
+// process from the browser's own press, are closed over by BindAt, and are never written down,
+// logged, put in a sentence a screen draws, or passed to a child process. the pair travels in a
+// basic authorization header on one call and the token it mints in a bearer header on the rest; no
+// url carries either, which is what makes a failure's own sentence safe to draw.
 //
-// **live only.** the host is PayPal's live API, the one packages/app/src/lib/server/payments/paypal.ts
-// talks to: nothing in this project reads test-versus-live, and rehearsing is a second deployment
-// (DEPLOY.md).
+// **the address is the operator's, typed beside the pair.** a pair answers at the one PayPal
+// address it was made at, and rehearsing is a second deployment (DEPLOY.md) — so the address is a
+// value like the pair, stored as `PAYPAL_API_URL`, blank meaning DefaultAPIURL, and the token the
+// chain mints first is the one check that the two belong together.
 //
 // every failure is a value, the way ../cf's are: nothing here returns an error.
 package paypal
@@ -27,8 +28,12 @@ import (
 	"github.com/better-giving/console/internal/cf"
 )
 
-// API is where PayPal answers.
-const API = "https://api-m.paypal.com"
+// DefaultAPIURL is the address a blank box stands for and a deployment holding no PAYPAL_API_URL
+// calls: `PAYPAL_DEFAULT_API_URL` in packages/app/src/lib/server/payments/paypal.ts.
+const DefaultAPIURL = "https://api-m.paypal.com"
+
+// APIURLVar is the var the address is stored as, written by the set-up press alone.
+const APIURLVar = "PAYPAL_API_URL"
 
 // Request is one call to PayPal past the token, as a value before it is made.
 type Request struct {
@@ -48,14 +53,10 @@ type Binding struct {
 	Bearer    func(accessToken string) Call
 }
 
-// Bind binds one client id and secret, against the live API.
+// BindAt binds one client id and secret against an address ../cf's Base accepted, or a test host.
 //
 // The chain is handed functions and never the pair, which is ../cf's arrangement for every
 // credential this binary holds.
-func Bind(clientID, secret string) Binding { return BindAt(API, clientID, secret) }
-
-// BindAt is that same binding against a host named, so a case can answer for PayPal with no app
-// and no network.
 func BindAt(base, clientID, secret string) Binding {
 	basic := base64.StdEncoding.EncodeToString([]byte(clientID + ":" + secret))
 	mint := cf.FormSend(base, map[string]string{"Authorization": "Basic " + basic})

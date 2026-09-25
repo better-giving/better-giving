@@ -371,7 +371,7 @@ describe('readRecurringProvision on a PayPal deployment', () => {
 	 * PayPal, answering the way it answers credentials it does not accept.
 	 *
 	 * stubbed rather than left to reach the network: this adapter asks the account what it holds,
-	 * and there is no sandbox in this project for a spec to dial (`API_BASE` in ./paypal.ts). the
+	 * and no spec in this project dials PayPal (`PAYPAL_DEFAULT_API_URL` in ./paypal.ts). the
 	 * credentials above are not real, so the request that would leave this machine is one that reaches
 	 * paypal.com and is refused — slowly, and differently on a laptop with no network.
 	 */

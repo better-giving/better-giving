@@ -1,12 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { startPaypalSetup } from '../api/client';
 import type { PaypalRunRead, PaypalSetup, PaypalStage } from '../api/types';
+import { NOT_AN_ADDRESS } from './api-address';
 import {
 	LINES,
 	PAIR_BLANK,
-	PAIR_FIELD,
+	PAYPAL_FIELD,
+	PAYPAL_FORM,
+	PAYPAL_DEFAULT_API_URL,
+	boxesStanding,
 	lineAt,
 	pairArmed,
-	pairStanding,
 	pairTurnedDown,
 	paypalPairPosted,
 	reportStands
@@ -19,26 +23,70 @@ const ended = (stage: PaypalStage, outcome: PaypalSetup): PaypalRunRead => ({
 	outcome
 });
 
-const body = (clientId: string, secret: string): FormData => {
+/** an address other than the default, which the screen knows nothing about. */
+const ELSEWHERE = 'https://paypal.example.org';
+
+const body = (clientId: string, secret: string, address = PAYPAL_DEFAULT_API_URL): FormData => {
 	const posted = new FormData();
-	posted.set(PAIR_FIELD('PAYPAL_CLIENT_ID'), clientId);
-	posted.set(PAIR_FIELD('PAYPAL_CLIENT_SECRET'), secret);
+	posted.set(PAYPAL_FIELD('PAYPAL_CLIENT_ID'), clientId);
+	posted.set(PAYPAL_FIELD('PAYPAL_CLIENT_SECRET'), secret);
+	posted.set(PAYPAL_FIELD('PAYPAL_API_URL'), address);
 	return posted;
 };
 
 describe('the pair a press posts', () => {
-	it('trims both halves rather than sending the binary a value it turns down', () => {
-		expect(paypalPairPosted(body('  id ', '\tsecret\n'))).toEqual({
+	it('trims every box rather than sending the binary a value it turns down', () => {
+		expect(paypalPairPosted(body('  id ', '\tsecret\n', ` ${ELSEWHERE} `))).toEqual({
 			ok: true,
-			pair: { clientId: 'id', secret: 'secret' }
+			pair: { clientId: 'id', secret: 'secret', address: ELSEWHERE }
 		});
 	});
 
-	it('refuses each empty half by its own name', () => {
-		expect(paypalPairPosted(body(' ', ''))).toEqual({
-			ok: false,
-			errors: { PAYPAL_CLIENT_ID: PAIR_BLANK, PAYPAL_CLIENT_SECRET: PAIR_BLANK }
+	it('takes an emptied address, which the binary reads as the default one', () => {
+		expect(paypalPairPosted(body('id', 'secret', ''))).toEqual({
+			ok: true,
+			pair: { clientId: 'id', secret: 'secret', address: '' }
 		});
+	});
+
+	it('refuses each box by its own name', () => {
+		expect(paypalPairPosted(body(' ', '', 'https://example.org/path'))).toEqual({
+			ok: false,
+			errors: {
+				PAYPAL_CLIENT_ID: PAIR_BLANK,
+				PAYPAL_CLIENT_SECRET: PAIR_BLANK,
+				PAYPAL_API_URL: NOT_AN_ADDRESS
+			}
+		});
+	});
+
+	it('is the rule the form runs first, on what conform hands over', () => {
+		const schema = PAYPAL_FORM.schema;
+		const pair = {
+			[PAYPAL_FIELD('PAYPAL_CLIENT_ID')]: 'id',
+			[PAYPAL_FIELD('PAYPAL_CLIENT_SECRET')]: 'secret'
+		};
+		expect(schema.safeParse(pair).success).toBe(true);
+		const refused = schema.safeParse({
+			...pair,
+			[PAYPAL_FIELD('PAYPAL_API_URL')]: 'https://example.org/path'
+		});
+		expect(refused.error?.issues.map((issue) => [issue.path[0], issue.message])).toEqual([
+			[PAYPAL_FIELD('PAYPAL_API_URL'), NOT_AN_ADDRESS]
+		]);
+	});
+
+	it('reaches the binary with the address in the one body the keys go in', async () => {
+		// the route's own composition: the body read by the boxes' rules, then handed on whole.
+		const sent: unknown[] = [];
+		vi.stubGlobal('fetch', (_path: string, init: RequestInit | undefined) => {
+			sent.push(JSON.parse(String(init?.body)));
+			return Promise.resolve(new Response(JSON.stringify({ run: null }), { status: 200 }));
+		});
+		const read = paypalPairPosted(body('id', 'secret', ELSEWHERE));
+		if (!read.ok) throw new Error('the boxes were refused');
+		await startPaypalSetup(read.pair);
+		expect(sent).toEqual([{ clientId: 'id', secret: 'secret', address: ELSEWHERE }]);
 	});
 });
 
@@ -110,22 +158,30 @@ describe('where a stopped run reports', () => {
 });
 
 describe('what the boxes are seeded from', () => {
-	const reported = { PAYPAL_CLIENT_ID: 'old', PAYPAL_CLIENT_SECRET: 'old-secret' };
-	const sent = { PAYPAL_CLIENT_ID: 'new', PAYPAL_CLIENT_SECRET: 'new-secret' };
+	const reported = {
+		PAYPAL_CLIENT_ID: 'old',
+		PAYPAL_CLIENT_SECRET: 'old-secret',
+		PAYPAL_API_URL: PAYPAL_DEFAULT_API_URL
+	};
+	const sent = {
+		PAYPAL_CLIENT_ID: 'new',
+		PAYPAL_CLIENT_SECRET: 'new-secret',
+		PAYPAL_API_URL: ELSEWHERE
+	};
 
-	it('is the pair sent, from the moment the run says it stored it until the re-read lands', () => {
+	it('is what was sent, from the moment the run says it stored it until the re-read lands', () => {
 		const done = ended('storing', { kind: 'done' });
-		expect(pairStanding({ reported, sent, run: done, reread: false })).toEqual({
+		expect(boxesStanding({ reported, sent, run: done, reread: false })).toEqual({
 			seeded: sent,
 			spent: true
 		});
-		expect(pairStanding({ reported, sent, run: done, reread: true })).toEqual({
+		expect(boxesStanding({ reported, sent, run: done, reread: true })).toEqual({
 			seeded: reported,
 			spent: true
 		});
 	});
 
-	it('is the pair sent where repeating gifts stopped, which is past the store', () => {
+	it('is what was sent where repeating gifts stopped, which is past the store', () => {
 		const unrepeating = (awaitingKey: boolean) =>
 			ended('repeating', {
 				kind: 'unrepeating',
@@ -134,12 +190,12 @@ describe('what the boxes are seeded from', () => {
 			});
 		for (const awaitingKey of [true, false]) {
 			expect(
-				pairStanding({ reported, sent, run: unrepeating(awaitingKey), reread: false })
+				boxesStanding({ reported, sent, run: unrepeating(awaitingKey), reread: false })
 			).toEqual({ seeded: sent, spent: true });
 		}
 	});
 
-	it('is the pair sent where the run stopped before the write landed', () => {
+	it('is what was sent where the run stopped before the write landed', () => {
 		const unstored = ended('storing', {
 			kind: 'unstored',
 			listenerId: 'WH-1',
@@ -150,7 +206,7 @@ describe('what the boxes are seeded from', () => {
 			failure: { kind: 'unreachable', detail: 'timeout' }
 		} as PaypalSetup);
 		for (const run of [unstored, unauthorized]) {
-			expect(pairStanding({ reported, sent, run, reread: false })).toEqual({
+			expect(boxesStanding({ reported, sent, run, reread: false })).toEqual({
 				seeded: sent,
 				spent: false
 			});
@@ -164,12 +220,12 @@ describe('what the boxes are seeded from', () => {
 			written: { kind: 'unreachable', detail: 'timeout' }
 		});
 		for (const run of [unstored, null]) {
-			expect(pairStanding({ reported, sent: null, run, reread: false })).toEqual({
+			expect(boxesStanding({ reported, sent: null, run, reread: false })).toEqual({
 				seeded: reported,
 				spent: false
 			});
 		}
-		expect(pairStanding({ reported, sent, run: null, reread: false })).toEqual({
+		expect(boxesStanding({ reported, sent, run: null, reread: false })).toEqual({
 			seeded: reported,
 			spent: false
 		});

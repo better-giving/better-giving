@@ -108,13 +108,14 @@ func TestANameOffTheEnumerationIsRefusedBeforeCloudflareIsAsked(t *testing.T) {
 	}
 }
 
-// paypal's three are written only by its set-up press, which settles the listener the id names, so a
-// write or a removal of one here would leave the pair and that listener disagreeing.
+// paypal's four are written only by its set-up press, which settles the listener the id names at the
+// address the pair was checked at, so a write or a removal of one here would leave them disagreeing.
 func TestPaypalsCredentialsAreRefusedAndTheRefusalNamesThePressThatSetsThem(t *testing.T) {
 	for _, body := range []string{
 		`{"values":{"PAYPAL_CLIENT_ID":"an-id"}}`,
 		`{"values":{"PAYPAL_CLIENT_SECRET":"a-secret"}}`,
 		`{"values":{"PAYPAL_WEBHOOK_ID":null}}`,
+		`{"values":{"PAYPAL_API_URL":"https://paypal.example"}}`,
 	} {
 		api, asked := writes(t, nil)
 		handler := pressing(t, "an-account", api)

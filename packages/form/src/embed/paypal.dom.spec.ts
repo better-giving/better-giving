@@ -3,7 +3,6 @@ import type { Failure } from '../checkout.machine';
 import type { FormConfig, PaymentMethod } from '../v1';
 import {
 	createPaymentSurface,
-	ensurePaypalScript,
 	loadPaypalScript,
 	outcomeOfTermination,
 	PAYPAL_CORE_URL,
@@ -145,42 +144,34 @@ describe('which PayPal namespace this page already holds', () => {
 	});
 });
 
-// the loader sets no nonce of its own, and the seam through which this repository's nonce
-// discipline reaches PayPal is the loader's own adoption selector — it takes over any script
-// already on the page whose src carries the core path and which is marked pending.
-describe('the core script this module plants ahead of the loader', () => {
-	const fresh = (): Document => document.implementation.createHTMLDocument('t');
+// the core is planted by this module wherever none is waiting yet, so the tag carries the host's
+// nonce where it serves one and the address the served config names. the tag is on the page as
+// soon as the call is made, which is what these read before any load event is fired.
+describe('the core script this module plants', () => {
+	const ELSEWHERE = 'https://www.paypal.example.test/web-sdk/v6/core';
+	const planted = (): HTMLScriptElement | null => document.querySelector('script');
 
-	it('carries everything the loader needs to adopt it and to name the namespace', () => {
-		const doc = fresh();
-		const script = ensurePaypalScript(doc, 'n0nce');
-		expect(script?.getAttribute('src')).toBe(PAYPAL_CORE_URL);
-		expect(script?.getAttribute('data-loading-state')).toBe('pending');
-		expect(script?.getAttribute('data-namespace')).toBe(PAYPAL_NAMESPACE);
-		expect(script?.nonce).toBe('n0nce');
+	afterEach(() => {
+		for (const script of document.querySelectorAll('script')) script.remove();
 	});
 
-	// with no nonce there is nothing to fix, and the loader owns its own tag on every page that
-	// does not serve a nonce policy — which is nearly all of them.
-	it('plants nothing where there is no nonce to carry', () => {
-		const doc = fresh();
-		expect(ensurePaypalScript(doc, '')).toBeNull();
-		expect(doc.querySelectorAll('script')).toHaveLength(0);
+	it('carries the address it is given, the nonce, and the namespace it defines', () => {
+		void loadPaypalScript(document, ELSEWHERE, 'n0nce');
+		expect(planted()?.getAttribute('src')).toBe(ELSEWHERE);
+		expect(planted()?.getAttribute('data-loading-state')).toBe('pending');
+		expect(planted()?.getAttribute('data-namespace')).toBe(PAYPAL_NAMESPACE);
+		expect(planted()?.nonce).toBe('n0nce');
 	});
 
-	// a second core script on one page throws inside `customElements.define` during its own
-	// top-level evaluation, so the tag already waiting is the tag the loader will adopt.
-	it('plants nothing beside a core already waiting on this page', () => {
-		const doc = fresh();
-		ensurePaypalScript(doc, 'n0nce');
-		expect(ensurePaypalScript(doc, 'n0nce')).toBeNull();
-		expect(doc.querySelectorAll('script')).toHaveLength(1);
+	it('plants the script without a nonce where the page carries none', () => {
+		void loadPaypalScript(document, PAYPAL_CORE_URL, '');
+		expect(planted()?.getAttribute('src')).toBe(PAYPAL_CORE_URL);
+		expect(planted()?.hasAttribute('nonce')).toBe(false);
 	});
 });
 
-// the tag a load hangs on stays in the document, and the loader's adoption selector is what makes
-// that other surfaces' problem: a dead tag left marked pending is one a second boot joins for a
-// load event that has already fired.
+// the tag a load hangs on stays in the document, and a dead tag left marked pending is one a
+// second boot waits on for a load event that has already fired.
 describe('that core script, run', () => {
 	const carried = (): HTMLScriptElement | null =>
 		document.querySelector(`script[src="${PAYPAL_CORE_URL}"]`);
@@ -191,7 +182,7 @@ describe('that core script, run', () => {
 	});
 
 	it('marks its own tag answered once the namespace is there', async () => {
-		const settling = loadPaypalScript(document, 'n0nce');
+		const settling = loadPaypalScript(document, PAYPAL_CORE_URL, 'n0nce');
 		(window as unknown as Record<string, unknown>)[PAYPAL_NAMESPACE] = {
 			createInstance: () => Promise.resolve({})
 		};
@@ -200,13 +191,33 @@ describe('that core script, run', () => {
 		expect(carried()?.getAttribute('data-loading-state')).toBe('resolved');
 	});
 
-	// left on the page marked pending it is what the loader adopts on the next attempt, and the
-	// promise it joins has already had the only event it was waiting for.
 	it('takes a tag that answered without defining the namespace back off the page', async () => {
-		const settling = loadPaypalScript(document, 'n0nce');
+		const settling = loadPaypalScript(document, PAYPAL_CORE_URL, 'n0nce');
 		carried()?.dispatchEvent(new Event('error'));
 		await settling;
 		expect(carried()).toBeNull();
+	});
+
+	// a host's own core, planted by PayPal's loader and not yet run, is the one core this page may
+	// hold: a second throws inside `customElements.define` during its own top-level evaluation, so
+	// this one is waited on, and left as its owner marked it.
+	it('waits on a core the host planted rather than planting its own', async () => {
+		const theirs = document.createElement('script');
+		theirs.setAttribute('src', PAYPAL_CORE_URL);
+		theirs.setAttribute('data-loading-state', 'pending');
+		document.head.appendChild(theirs);
+
+		let settled = false;
+		const settling = loadPaypalScript(document, PAYPAL_CORE_URL, '').then(() => {
+			settled = true;
+		});
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		theirs.dispatchEvent(new Event('load'));
+		await settling;
+
+		expect(document.querySelectorAll('script')).toHaveLength(1);
+		expect(theirs.getAttribute('data-loading-state')).toBe('pending');
 	});
 });
 
@@ -248,6 +259,8 @@ type SessionRecorder = {
 
 type Kit = {
 	readonly namespace: PaypalNamespaceLike;
+	/** the script the kit's own loader was asked to start the core from, each time. */
+	readonly loads: string[];
 	readonly created: Record<string, unknown>[];
 	readonly eligibilityAsks: Record<string, unknown>[];
 	readonly sessions: SessionRecorder[];
@@ -263,13 +276,14 @@ type Answers = {
 	readonly eligible?: readonly string[];
 	readonly findEligibleMethods?: () => Promise<EligibilityLike>;
 	readonly createInstance?: () => Promise<PaypalSdkLike>;
-	readonly load?: (() => Promise<PaypalNamespaceLike | null>) | undefined;
+	readonly load?: ((sdkUrl: string) => Promise<PaypalNamespaceLike | null>) | undefined;
 	readonly start?: () => Promise<unknown>;
 	readonly hasReturned?: boolean;
 };
 
 function kit(answers: Answers = {}): Kit {
 	const created: Record<string, unknown>[] = [];
+	const loads: string[] = [];
 	const eligibilityAsks: Record<string, unknown>[] = [];
 	const sessions: SessionRecorder[] = [];
 	const rails: (PaymentMethod | null)[] = [];
@@ -327,6 +341,7 @@ function kit(answers: Answers = {}): Kit {
 
 	return {
 		namespace,
+		loads,
 		created,
 		eligibilityAsks,
 		sessions,
@@ -335,7 +350,14 @@ function kit(answers: Answers = {}): Kit {
 		mount,
 		expire: () => fire?.(),
 		seam: {
-			load: answers.load ?? (() => Promise.resolve(namespace)),
+			// a loader handed in is passed through as itself, because a page's memory of a dead one is
+			// keyed on its identity.
+			load:
+				answers.load ??
+				((sdkUrl) => {
+					loads.push(sdkUrl);
+					return Promise.resolve(namespace);
+				}),
 			delay: (run) => {
 				fire = run;
 				return () => {
@@ -347,9 +369,9 @@ function kit(answers: Answers = {}): Kit {
 }
 
 /** the surface, and the microtasks its mount chain spends before anything is on screen. */
-async function mounted(kit: Kit): Promise<PaypalPaymentSurface> {
+async function mounted(kit: Kit, config: FormConfig = CONFIG): Promise<PaypalPaymentSurface> {
 	const surface = createPaymentSurface(
-		CONFIG,
+		config,
 		kit.mount,
 		(rail) => kit.rails.push(rail),
 		(failure) => kit.unavailable.push(failure),
@@ -378,6 +400,24 @@ describe('the buttons this adapter draws', () => {
 			pageType: 'checkout',
 			locale: 'en-US'
 		});
+	});
+
+	// the served config names the script because the deployment is what knows which address its
+	// keys were issued at, and the core's own origin is what decides which one it talks to.
+	it('starts the core from the script the served config names', async () => {
+		const k = kit();
+		const sdkUrl = 'https://www.paypal.example.test/web-sdk/v6/core';
+		await mounted(k, {
+			...CONFIG,
+			providers: [{ name: 'paypal', publishableKey: 'live_client_id', sdkUrl }]
+		});
+		expect(k.loads).toEqual([sdkUrl]);
+	});
+
+	it('starts PayPal’s own core where the served config names none', async () => {
+		const k = kit();
+		await mounted(k);
+		expect(k.loads).toEqual([PAYPAL_CORE_URL]);
 	});
 
 	it('leaves a rail the config does not offer out of the components it asks for', async () => {

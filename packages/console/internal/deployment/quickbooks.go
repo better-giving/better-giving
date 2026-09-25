@@ -19,10 +19,11 @@ import (
 // that this is an answer from that surface rather than an unrelated json body, and everything
 // inside it is rendered as it arrived.
 //
-// **the press is forwarded and never interpreted.** which press carries which values is settled in
-// the deployment against the connected company's own chart, and an id those books do not hold is
+// **the press is forwarded and never interpreted.** whether an id fits its role is settled in the
+// deployment against the connected company's own chart, and an id those books do not hold is
 // refused there — which arrives here as a non-200 and therefore as unanswered. a rule written here
-// would be a second opinion on a chart this binary cannot see.
+// would be a second opinion on a chart this binary cannot see. what this binary knows is the body's
+// shape: an accounts press names every role.
 //
 // every failure is a value: nothing here returns an error, and an error handed up to a handler
 // would be a 500 in place of the state that explains it.
@@ -76,16 +77,43 @@ const (
 
 // QuickbooksPress is what an operator pressed and whatever that press acts on.
 //
-// One struct rather than the values one at a time, so the three account ids are named where they
-// are filled in and cannot be handed over in each other's place. Which press carries which of them
-// is the deployment's, and an empty one is a value this press does not carry rather than a value
-// cleared: ./PressQuickbooks sends only what was filled in.
+// One struct rather than the values one at a time, so the account ids are named where they are
+// filled in and cannot be handed over in each other's place. A nil holding is one nobody chose, and
+// an empty start date is one this press does not carry: ./PressQuickbooks names every role on an
+// accounts press and nothing else, and on the rest sends the start date only where it was filled in.
 type QuickbooksPress struct {
-	Press   string `json:"press"`
-	Income  string `json:"income"`
-	Fee     string `json:"fee"`
-	Deposit string `json:"deposit"`
-	StartAt string `json:"startAt"`
+	Press              string  `json:"press"`
+	Income             string  `json:"income"`
+	Fee                string  `json:"fee"`
+	StripeBalance      *string `json:"stripeBalance"`
+	PaypalBalance      *string `json:"paypalBalance"`
+	ChariotBalance     *string `json:"chariotBalance"`
+	NowpaymentsBalance *string `json:"nowpaymentsBalance"`
+	UndepositedFunds   *string `json:"undepositedFunds"`
+	StartAt            string  `json:"startAt"`
+}
+
+// the body the deployment reads for that press.
+//
+// An accounts press names all seven roles, a holding nobody chose as null: the deployment refuses a
+// body leaving a role out, so a console knowing fewer roles than it does cannot clear the rest
+// (`QUICKBOOKS_PRESSES` in packages/operator/src/console/quickbooks.ts).
+func (press QuickbooksPress) body() map[string]any {
+	if press.Press == "accounts" {
+		return map[string]any{
+			"press": press.Press, "income": press.Income, "fee": press.Fee,
+			"stripeBalance":      chosenOrNone(press.StripeBalance),
+			"paypalBalance":      chosenOrNone(press.PaypalBalance),
+			"chariotBalance":     chosenOrNone(press.ChariotBalance),
+			"nowpaymentsBalance": chosenOrNone(press.NowpaymentsBalance),
+			"undepositedFunds":   chosenOrNone(press.UndepositedFunds),
+		}
+	}
+	body := map[string]any{"press": press.Press}
+	if press.StartAt != "" {
+		body["startAt"] = press.StartAt
+	}
+	return body
 }
 
 // QuickbooksPressed is how one press went.
@@ -104,21 +132,20 @@ func PressQuickbooks(ctx context.Context, post cf.Post, press QuickbooksPress) Q
 		read := NoReport{Kind: NoSession}
 		return QuickbooksPressed{Kind: QuickbooksUnanswered, Read: &read}
 	}
-	body := map[string]any{"press": press.Press}
-	for field, filled := range map[string]string{
-		"income": press.Income, "fee": press.Fee,
-		"deposit": press.Deposit, "startAt": press.StartAt,
-	} {
-		if filled != "" {
-			body[field] = filled
-		}
-	}
-	answer := post(ctx, QuickbooksPath, body)
+	answer := post(ctx, QuickbooksPath, press.body())
 	if report := pressReport(answer, press.Press); report != nil {
 		return QuickbooksPressed{Kind: QuickbooksReported, Report: report}
 	}
 	read := readNoReport(answer)
 	return QuickbooksPressed{Kind: QuickbooksUnanswered, Read: &read}
+}
+
+// the id, or an untyped nil where none was chosen: a nil *string held in an any is not nil.
+func chosenOrNone(id *string) any {
+	if id == nil {
+		return nil
+	}
+	return *id
 }
 
 // the answer as a report, or nil where it is not one.

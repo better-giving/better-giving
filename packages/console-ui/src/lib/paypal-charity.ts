@@ -16,8 +16,8 @@ import type { DeployValueName } from '@better-giving/operator/deploy-split';
 // unreachable from this page rather than merely unlikely: the payload is composed from the switch's
 // two positions, so no third thing can be carried whatever a box holds.
 //
-// **it is a press of its own and not part of the credentials group.** the three PayPal credentials
-// are one press because an operator holds them off one PayPal app (`PAYPAL_GROUP` in
+// **it is a press of its own and not part of the credentials group.** the PayPal credentials and
+// their address are one press because an operator holds them off one PayPal app (`PAYPAL_GROUP` in
 // ./secret-groups.ts); this is an answer about the organisation, given months after the keys are,
 // and folding it into that press would make changing it a re-commit of every credential beside it.
 //

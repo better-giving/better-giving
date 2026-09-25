@@ -1,31 +1,40 @@
-import type { AccountRole, LedgerAccount } from './provider';
+import { isHoldingRole, type AccountRole, type LedgerAccount } from './provider';
 
-// which of a QuickBooks company's accounts may hold each of the three roles.
+// which of a QuickBooks company's accounts may hold each role.
 //
-// Intuit's Accounting API reference names the AccountType values each account ref takes, and an
-// account outside them is refused with fault 6430 "Invalid account type"
-// (https://developer.intuit.com/app/developer/qbo/docs/api/accounting/all-entities/deposit):
-// - deposit is the Deposit's `DepositToAccountRef`, which takes "Other Current Asset or Bank",
-//   less undeposited funds: the same page has a deposit move money out of it, into the account
-//   this ref names, and QuickBooks' own deposit screen offers no way to deposit into it.
-// - income and fee are Deposit lines' `DepositLineDetail.AccountRef`, which takes Income, Other
-//   Income, Expense, Other Expense, Other Current Asset, Equity or COGS. each role is narrowed to
-//   the types that are income or cost, since either posted anywhere else lands on the wrong
-//   statement.
-// a correction's JournalEntry lines take any type, so they narrow nothing further
-// (https://developer.intuit.com/app/developer/qbo/docs/api/accounting/all-entities/journalentry).
+// every record this app sends is a JournalEntry, whose lines take an account of any type
+// (https://developer.intuit.com/app/developer/qbo/docs/api/accounting/all-entities/journalentry), so
+// Intuit refuses nothing here and the narrowing is this app's: a figure posted to the wrong kind of
+// account lands on the wrong statement with nothing refusing it.
+// - income takes Income or Other Income, and fee takes Expense, Other Expense or Cost of Goods Sold.
+// - every holding takes Other Current Asset and never Bank. no payout reaches QuickBooks from here
+//   (./provider.ts's `HOLDING_ROLES`), so a gift posted to the bank is a deposit the bank feed never
+//   shows, and the payout it does show is matched against nothing — a bookkeeper's quickest way past
+//   it is to add the payout as income, counting every gift in it twice.
+// - a processor's holding is never undeposited funds: that is where a gift received in hand waits
+//   to be banked, and one account holding two parties' money no longer says what either owes.
+const HOLDING_TYPES: ReadonlySet<string> = new Set(['Other Current Asset']);
+
 export const ROLE_TYPES: Record<AccountRole, ReadonlySet<string>> = {
-	deposit: new Set(['Bank', 'Other Current Asset']),
 	income: new Set(['Income', 'Other Income']),
-	fee: new Set(['Expense', 'Other Expense', 'Cost of Goods Sold'])
+	fee: new Set(['Expense', 'Other Expense', 'Cost of Goods Sold']),
+	stripeBalance: HOLDING_TYPES,
+	paypalBalance: HOLDING_TYPES,
+	chariotBalance: HOLDING_TYPES,
+	nowpaymentsBalance: HOLDING_TYPES,
+	undepositedFunds: HOLDING_TYPES
 };
 
 export const UNDEPOSITED_FUNDS = 'UndepositedFunds';
 
-/** whether Intuit takes this account in the place `role` is posted to. */
+/** whether this app will post `role` into this account. */
 export function fitsRole(account: LedgerAccount, role: AccountRole): boolean {
-	if (role === 'deposit' && account.subType === UNDEPOSITED_FUNDS) return false;
+	if (isProcessorHolding(role) && account.subType === UNDEPOSITED_FUNDS) return false;
 	return ROLE_TYPES[role].has(account.type);
+}
+
+function isProcessorHolding(role: AccountRole): boolean {
+	return isHoldingRole(role) && role !== 'undepositedFunds';
 }
 
 /** one account per role, or null where the chart names none for it. */
@@ -35,17 +44,12 @@ export type DefaultAccounts = Readonly<Record<AccountRole, LedgerAccount | null>
  * the roles the chart's own names settle, so a connection opens with them picked.
  *
  * a name match or nothing: which account a gift lands in is the operator's call, and a role left
- * null keeps every send held on `accounts_not_chosen` until they make it on the console. a guess by
- * account type alone would post real gifts into rent or sales with nobody having said so.
+ * null holds every send that needs it until they make it on the console. a guess by account type
+ * alone would post real gifts into rent or sales with nobody having said so.
+ * a processor's holding the chart names none for is one ./connection.ts may create instead.
  */
 export function defaultAccounts(chart: readonly LedgerAccount[]): DefaultAccounts {
 	return {
-		// bank only: an other current asset fits the role, but a reserve or prepaid account named
-		// "operating" is not where a payout lands.
-		deposit: firstNamed(
-			chart.filter((account) => account.type === 'Bank'),
-			[/checking/i, /operating/i]
-		),
 		income: firstNamed(fitting(chart, 'income'), [/donation/i, /contribution/i]),
 		// fees for moving money only; a bare /fee/ also answers "Legal & Professional Fees".
 		fee: firstNamed(fitting(chart, 'fee'), [
@@ -54,7 +58,16 @@ export function defaultAccounts(chart: readonly LedgerAccount[]): DefaultAccount
 			/processing/i,
 			/processor/i,
 			/\b(bank|card|transaction|payment|stripe|paypal) fees?\b/i
-		])
+		]),
+		stripeBalance: firstNamed(fitting(chart, 'stripeBalance'), [/stripe/i]),
+		paypalBalance: firstNamed(fitting(chart, 'paypalBalance'), [/paypal/i]),
+		chariotBalance: firstNamed(fitting(chart, 'chariotBalance'), [/chariot/i]),
+		nowpaymentsBalance: firstNamed(fitting(chart, 'nowpaymentsBalance'), [/now ?payments/i]),
+		// the subtype rather than a name: QuickBooks makes one for every company and a bookkeeper may
+		// have renamed it.
+		undepositedFunds:
+			fitting(chart, 'undepositedFunds').find((account) => account.subType === UNDEPOSITED_FUNDS) ??
+			null
 	};
 }
 

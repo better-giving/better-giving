@@ -103,19 +103,40 @@ describe('an account choice is an id with its label beside it', () => {
 	it.each([
 		['income', "income_account_id = null, income_account_name = 'Donations'"],
 		['fee', "fee_account_id = null, fee_account_name = 'Merchant fees'"],
-		['deposit', "deposit_account_id = null, deposit_account_name = 'Checking'"]
+		['stripe_balance', "stripe_balance_account_id = null, stripe_balance_account_name = 'Stripe'"],
+		['paypal_balance', "paypal_balance_account_id = null, paypal_balance_account_name = 'PayPal'"],
+		[
+			'chariot_balance',
+			"chariot_balance_account_id = null, chariot_balance_account_name = 'Chariot'"
+		],
+		[
+			'nowpayments_balance',
+			"nowpayments_balance_account_id = null, nowpayments_balance_account_name = 'NOWPayments'"
+		],
+		[
+			'undeposited_funds',
+			"undeposited_funds_account_id = null, undeposited_funds_account_name = 'Undeposited Funds'"
+		]
 	])('refuses a %s account name with no id under it', async (account, columns) => {
 		const message = await rejection(() => chooseAccounts(columns));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain(`quickbooks_connection_${account}_account_name_needs_id_check`);
 	});
 
-	it('admits a connection with none of the three chosen, which is how one arrives', async () => {
+	it('admits a connection with none chosen, which is how one arrives', async () => {
 		const row = await env.DB.prepare(
-			`select income_account_id as i, fee_account_id as f, deposit_account_id as d
+			`select income_account_id as i, fee_account_id as f, stripe_balance_account_id as s,
+			        undeposited_funds_account_id as u, moved_at as m
 			 from quickbooks_connection where id = 'quickbooks'`
 		).first();
-		expect(row).toEqual({ i: null, f: null, d: null });
+		expect(row).toEqual({ i: null, f: null, s: null, u: null, m: null });
+	});
+
+	it('keeps no bank deposit account, which nothing posts to', async () => {
+		const columns = await env.DB.prepare(
+			`select name from pragma_table_info('quickbooks_connection') where name like 'deposit%'`
+		).all();
+		expect(columns.results).toEqual([]);
 	});
 });
 

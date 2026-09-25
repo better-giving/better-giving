@@ -22,7 +22,8 @@ import {
 	listeningSays,
 	listeningTotal,
 	pressTrouble,
-	replaceCosts
+	replaceCosts,
+	replacedSays
 } from './zapier-standing';
 
 // what the Better Giving Zapier app notifies an operator about — its two triggers and the Zaps
@@ -80,6 +81,7 @@ export function ZapierSection({
 					<div className="adm-named">
 						<KeyBox keyText={standing.key} landed={freshKey(answer)} pending={pending} />
 					</div>
+					<Replaced answer={answer} />
 				</div>
 			</Section>
 		);
@@ -199,6 +201,21 @@ function Trouble({ answer }: { answer: ZapierAnswer | null }): ReactNode {
 }
 
 /**
+ * what a landed replace asks of the Zaps' owners, a named block's step under the press for the
+ * reason `KeyItem` gives its trouble. it is a status region mounted empty and written into, because
+ * one that arrives carrying its text is announced by nobody — and it stands out of the flow while it
+ * has nothing to say (`.adm-vh`), so it is no step under the press.
+ */
+function Replaced({ answer }: { answer: ZapierAnswer | null }): ReactNode {
+	const said = replacedSays(answer);
+	return (
+		<p role="status" className={said.length === 0 ? 'adm-vh' : 'adm-named adm-prose'}>
+			{said.join(' ')}
+		</p>
+	);
+}
+
+/**
  * one thing the app asks for, named by the caption over it — a group because the one-line slab
  * carries no caption of its own.
  */
@@ -242,6 +259,7 @@ function KeyItem({ answer, ...props }: KeyProps & { answer: ZapierAnswer | null 
 						<KeyPress press="replace" {...props} />
 					</Stack>
 					<Trouble answer={answer} />
+					<Replaced answer={answer} />
 				</div>
 			</div>
 		);

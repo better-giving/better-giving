@@ -39,16 +39,17 @@ import {
 	CHARITY_RATE,
 	charityApproved
 } from './paypal-charity';
-import type { PaypalPairBoxes, PaypalPairName } from './paypal-setup';
+import type { PaypalBoxName, PaypalBoxes } from './paypal-setup';
 import {
 	LINES,
-	PAIR_FIELD,
+	PAYPAL_BOX_NAMES,
+	PAYPAL_FIELD,
 	PAYPAL_FORM,
-	PAYPAL_PAIR_NAMES,
+	PAYPAL_DEFAULT_API_URL,
 	PAYPAL_SETUP_INTENT,
+	boxesStanding,
 	lineAt,
 	pairArmed,
-	pairStanding,
 	pairTurnedDown,
 	reportStands
 } from './paypal-setup';
@@ -75,8 +76,8 @@ import {
 import { useConsoleForm } from './use-console-form';
 import { FREE_INTENT, WithheldValues } from './withheld-values';
 
-// the whole of PayPal on this deployment — what its account answered, the two keys that set it up,
-// and the one answer about the organisation that prices a gift.
+// the whole of PayPal on this deployment — what its account answered, the two keys that set it up
+// and the address they are sent to, and the one answer about the organisation that prices a gift.
 //
 // **each processor has a page, and this is PayPal's** (../routes/_sections.payments.paypal.tsx). the
 // two processors are alternatives and a deployment set up on either is set up (`CHARGE_PAIRS` in
@@ -90,12 +91,12 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 // that configure it and nothing else. that is every deployment on Stripe alone, and every fresh fork.
 //
 // **one press sets PayPal up, and the webhook is nothing an operator types or visits.** the press
-// starts a run in the binary (`packages/console/internal/paypal/setup.go`): it checks the pair,
-// finds or registers the listener at this deployment's address, and writes the pair and that
-// listener's id onto the deployment in one write, then has the deployment set repeating gifts up on
-// the account. so `PAYPAL_WEBHOOK_ID` has no box, and the pair is never saved through the values door
-// — a pair written with no listener behind it is a deployment whose approved orders are never
-// captured.
+// starts a run in the binary (`packages/console/internal/paypal/setup.go`): it checks the pair at
+// the address in the third box, finds or registers the listener at this deployment's address, and
+// writes the pair, that address and that listener's id onto the deployment in one write, then has
+// the deployment set repeating gifts up on the account. so `PAYPAL_WEBHOOK_ID` has no box, and the
+// pair is never saved through the values door — a pair written with no listener behind it is a
+// deployment whose approved orders are never captured.
 //
 // **the run reports itself where it was pressed**, which is the Stripe screen's arrangement
 // (./stripe-section.tsx) cut to what this press is: a card goes up on the press, draws one line per
@@ -117,11 +118,14 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 // mounts it and the presses it makes are answered there. what it reaches for itself is the run while
 // it goes, which is the one reading that changes while it is on screen.
 
-/** where PayPal's own credentials are made, linked from the sentence under the keys heading. */
-const DASHBOARD = 'https://developer.paypal.com/dashboard/applications/live';
+/**
+ * where PayPal's own credentials are made, linked from the sentence under the keys heading. the page
+ * and not either of its tabs: which tab holds the keys is the address box's to say.
+ */
+const DASHBOARD = 'https://developer.paypal.com/dashboard/applications';
 
 /**
- * the group this section's press writes: the two boxes, and the listener id the run stores beside
+ * the group this section's press writes: the three boxes, and the listener id the run stores beside
  * them. taken out of the enumeration rather than named again.
  */
 const PAYPAL_WRITES = SECRET_GROUPS.filter((group) => group.id === PAYPAL_GROUP).flatMap(
@@ -135,13 +139,27 @@ const PAYPAL_WRITES = SECRET_GROUPS.filter((group) => group.id === PAYPAL_GROUP)
  * prints, because the Stripe screen draws a box called `Secret key`, and two boxes sharing an
  * accessible name across the two processors are controls a reader cannot tell apart by name.
  */
-const LABEL: Record<PaypalPairName, string> = {
+const LABEL: Record<PaypalBoxName, string> = {
 	PAYPAL_CLIENT_ID: 'Client ID',
-	PAYPAL_CLIENT_SECRET: 'Client secret'
+	PAYPAL_CLIENT_SECRET: 'Client secret',
+	PAYPAL_API_URL: 'API address'
 };
 
-/** the pair's box names, which a refusal of the pair is about together. */
-const PAIR_FIELDS = PAYPAL_PAIR_NAMES.map((name) => PAIR_FIELD(name));
+/** where a box's value comes from, for the boxes whose label cannot say it. */
+const HINT: Partial<Record<PaypalBoxName, ReactNode>> = {
+	PAYPAL_API_URL: (
+		<>
+			Leave this as it is unless you’re rehearsing on PayPal’s sandbox, whose address is{' '}
+			<InlineCode>https://api-m.sandbox.paypal.com</InlineCode>.
+		</>
+	)
+};
+
+/**
+ * every box's name, which a refusal of the pair is about together: PayPal answers for the pair at
+ * the address it was sent to, so a pair it turned down may be the address that is wrong.
+ */
+const BOX_FIELDS = PAYPAL_BOX_NAMES.map((name) => PAYPAL_FIELD(name));
 
 /** how often the screen asks how far the run has got. the Stripe screen's interval. */
 const POLL_MS = 2500;
@@ -455,7 +473,7 @@ function Rails({ standing }: { standing: ConfiguredPayments }): ReactNode {
 }
 
 /**
- * the two boxes, the one press, and the run it starts.
+ * the three boxes, the one press, and the run it starts.
  *
  * its own component because it holds the run's state and the form's, and the readings and the
  * charity switch beside it hold neither.
@@ -534,11 +552,11 @@ function PaypalKeysForm({
 		void revalidate();
 	}, [settled, revalidate]);
 
-	/* the pair as it stood at the submit, kept once the press is in flight: that is what the deployment
-	   holds the moment the run says it stored it (`pairStanding` in ./paypal-setup.ts). it outlives
-	   the page (./kept-press.ts). */
-	const typed = useRef<PaypalPairBoxes | null>(null);
-	const [sent, setSent] = useKeptPress<PaypalPairBoxes>(PAYPAL_SETUP_INTENT);
+	/* the boxes as they stood at the submit, kept once the press is in flight: that is what the
+	   deployment holds the moment the run says it stored them (`boxesStanding` in ./paypal-setup.ts).
+	   they outlive the page (./kept-press.ts). */
+	const typed = useRef<PaypalBoxes | null>(null);
+	const [sent, setSent] = useKeptPress<PaypalBoxes>(PAYPAL_SETUP_INTENT);
 	/** whether a press was made from this page, which is what a box-level report of a run is about. */
 	const [pressedHere, setPressedHere] = useState(false);
 	/* and the poll's answer dropped with the next press, or whenever the page's reading moves to a run
@@ -579,13 +597,18 @@ function PaypalKeysForm({
 
 	const reportedId = values.seeds.PAYPAL_CLIENT_ID ?? '';
 	const reportedSecret = values.seeds.PAYPAL_CLIENT_SECRET ?? '';
-	const reported: PaypalPairBoxes = useMemo(
-		() => ({ PAYPAL_CLIENT_ID: reportedId, PAYPAL_CLIENT_SECRET: reportedSecret }),
-		[reportedId, reportedSecret]
+	const reportedAddress = values.seeds.PAYPAL_API_URL || PAYPAL_DEFAULT_API_URL;
+	const reported: PaypalBoxes = useMemo(
+		() => ({
+			PAYPAL_CLIENT_ID: reportedId,
+			PAYPAL_CLIENT_SECRET: reportedSecret,
+			PAYPAL_API_URL: reportedAddress
+		}),
+		[reportedId, reportedSecret, reportedAddress]
 	);
 	const reread = useReseeded({ landed, pending: underway, reading });
 	const { seeded, spent } = useMemo(
-		() => pairStanding({ reported, sent, run: live, reread }),
+		() => boxesStanding({ reported, sent, run: live, reread }),
 		[reported, sent, live, reread]
 	);
 	const closed = keysClosed(phase, pressAnswer, busy, working, { landed, spent });
@@ -593,24 +616,25 @@ function PaypalKeysForm({
 	/** an answer keyed by value name, carried onto the boxes by what they post. */
 	const carried = (said: Record<string, string> | null): Record<string, string> | null => {
 		if (said === null) return null;
-		const named = PAYPAL_PAIR_NAMES.filter((name) => said[name] !== undefined);
+		const named = PAYPAL_BOX_NAMES.filter((name) => said[name] !== undefined);
 		if (named.length === 0) return null;
-		return Object.fromEntries(named.map((name) => [PAIR_FIELD(name), said[name] as string]));
+		return Object.fromEntries(named.map((name) => [PAYPAL_FIELD(name), said[name] as string]));
 	};
 	/* the pair turned down handed to the seam as the far end's answer about the first box, which puts
-	   the operator back in it and holds the next press until either box changes. the sentence itself
-	   stands at the press, since it is about both halves. */
-	const pairSentence = 'Invalid client ID or secret.';
+	   the operator back in it and holds the next press until any box changes. the sentence itself
+	   stands at the press, since it is about all three. */
+	const pairSentence = 'These keys don’t work at this API address. Check all three.';
 
 	const keys = useConsoleForm(PAYPAL_FORM, {
 		report: live,
 		landed,
 		spent,
 		refused: carried(namedBoxes ?? (refusedPair ? { PAYPAL_CLIENT_ID: pairSentence } : null)),
-		together: namedBoxes === null ? PAIR_FIELDS : null,
+		together: namedBoxes === null ? BOX_FIELDS : null,
 		defaultValue: {
-			[PAIR_FIELD('PAYPAL_CLIENT_ID')]: seeded.PAYPAL_CLIENT_ID,
-			[PAIR_FIELD('PAYPAL_CLIENT_SECRET')]: seeded.PAYPAL_CLIENT_SECRET
+			[PAYPAL_FIELD('PAYPAL_CLIENT_ID')]: seeded.PAYPAL_CLIENT_ID,
+			[PAYPAL_FIELD('PAYPAL_CLIENT_SECRET')]: seeded.PAYPAL_CLIENT_SECRET,
+			[PAYPAL_FIELD('PAYPAL_API_URL')]: seeded.PAYPAL_API_URL
 		},
 		busy: elsewhere,
 		pending: underway,
@@ -618,15 +642,18 @@ function PaypalKeysForm({
 	});
 	const form = keys.mount.ref;
 
-	/** one box bound, with a refusal about the whole pair drawn at neither box. */
-	const pairBox = (name: PaypalPairName) => {
-		const field = keys.fields[PAIR_FIELD(name)];
+	/** one box bound, with a refusal about the whole pair drawn at none of the boxes. */
+	const bind = (name: PaypalBoxName) => {
+		const field = keys.fields[PAYPAL_FIELD(name)];
 		const bound = keys.box(field);
 		const said = namedBoxes === null ? field.errors?.[0] : bound.error;
 		return { ...bound, message: said === undefined ? undefined : <MarkedText text={said} /> };
 	};
-	const clientId = pairBox('PAYPAL_CLIENT_ID');
-	const secret = pairBox('PAYPAL_CLIENT_SECRET');
+	const bound: Record<PaypalBoxName, ReturnType<typeof bind>> = {
+		PAYPAL_CLIENT_ID: bind('PAYPAL_CLIENT_ID'),
+		PAYPAL_CLIENT_SECRET: bind('PAYPAL_CLIENT_SECRET'),
+		PAYPAL_API_URL: bind('PAYPAL_API_URL')
+	};
 
 	/**
 	 * the card the press puts up, or `null` where none is up.
@@ -877,15 +904,16 @@ function PaypalKeysForm({
 		);
 	};
 
-	/** what the two boxes hold right now. */
-	const boxes = (element: HTMLFormElement): PaypalPairBoxes => {
-		const value = (name: PaypalPairName) => {
-			const control = element.elements.namedItem(PAIR_FIELD(name));
+	/** what the three boxes hold right now. */
+	const boxes = (element: HTMLFormElement): PaypalBoxes => {
+		const value = (name: PaypalBoxName) => {
+			const control = element.elements.namedItem(PAYPAL_FIELD(name));
 			return control instanceof HTMLInputElement ? control.value : '';
 		};
 		return {
 			PAYPAL_CLIENT_ID: value('PAYPAL_CLIENT_ID'),
-			PAYPAL_CLIENT_SECRET: value('PAYPAL_CLIENT_SECRET')
+			PAYPAL_CLIENT_SECRET: value('PAYPAL_CLIENT_SECRET'),
+			PAYPAL_API_URL: value('PAYPAL_API_URL').trim() || PAYPAL_DEFAULT_API_URL
 		};
 	};
 
@@ -895,14 +923,15 @@ function PaypalKeysForm({
 				<hgroup>
 					<h3>Your keys</h3>
 					{/* the one fact a box cannot carry — that both keys are on one app in PayPal's developer
-					    dashboard, and which dashboard. ./stripe-section.tsx says the same kind of thing about the
-					    other processor, under its keys heading. */}
+					    dashboard, and that the app is the one answering at the address in the box.
+					    ./stripe-section.tsx says the same kind of thing about the other processor, under its
+					    keys heading. */}
 					<p className="adm-prose">
-						Both are on one app in your PayPal developer dashboard:{' '}
+						Both are on one app in your PayPal developer dashboard, under{' '}
 						<a href={DASHBOARD} target="_blank" rel="noreferrer">
-							Apps &amp; Credentials &rarr; Live
+							Apps &amp; Credentials
 						</a>
-						.
+						, on the Live or Sandbox tab, whichever matches the API address below.
 					</p>
 				</hgroup>
 
@@ -922,25 +951,23 @@ function PaypalKeysForm({
 					}}
 				>
 					<div className="adm-stack">
-						{PAYPAL_PAIR_NAMES.map((name) => {
-							const box = name === 'PAYPAL_CLIENT_ID' ? clientId : secret;
-							return (
-								<Field
-									key={name}
-									id={box.id}
-									name={box.name}
-									label={LABEL[name]}
-									code
-									masked={isMasked(name)}
-									autoComplete="off"
-									spellCheck={false}
-									defaultValue={box.defaultValue}
-									disabled={closed}
-									onInput={box.onInput}
-									error={box.message}
-								/>
-							);
-						})}
+						{PAYPAL_BOX_NAMES.map((name) => (
+							<Field
+								key={name}
+								id={bound[name].id}
+								name={bound[name].name}
+								label={LABEL[name]}
+								hint={HINT[name]}
+								code
+								masked={isMasked(name)}
+								autoComplete="off"
+								spellCheck={false}
+								defaultValue={bound[name].defaultValue}
+								disabled={closed}
+								onInput={bound[name].onInput}
+								error={bound[name].message}
+							/>
+						))}
 						<WithheldValues
 							names={withheldAmong(values, PAYPAL_WRITES)}
 							all={values.withheld}
@@ -952,9 +979,9 @@ function PaypalKeysForm({
 						/>
 					</div>
 
-					{/* the pair turned down, at the press that asked and gone the moment either box is edited:
+					{/* the pair turned down, at the press that asked and gone the moment any box is edited:
 					    `standing` is the answer cut down to the boxes nobody has typed in since. */}
-					{refusedPair && keys.standing?.[PAIR_FIELD('PAYPAL_CLIENT_ID')] !== undefined ? (
+					{refusedPair && keys.standing?.[PAYPAL_FIELD('PAYPAL_CLIENT_ID')] !== undefined ? (
 						<FieldMessage>{pairSentence}</FieldMessage>
 					) : null}
 

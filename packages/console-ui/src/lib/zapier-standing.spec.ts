@@ -1,7 +1,7 @@
 import type { ZapierReport } from '@better-giving/operator/console/zapier';
 import { describe, expect, it } from 'vitest';
 import type { ZapierAnswer } from './zapier-standing';
-import { deliveriesSay, keyStanding, listeningSays } from './zapier-standing';
+import { deliveriesSay, keyStanding, listeningSays, replacedSays } from './zapier-standing';
 
 describe('listeningSays', () => {
 	it.each([
@@ -23,7 +23,15 @@ const MADE = '2026-09-01T00:00:00.000Z';
 
 const made = (key: string): ZapierAnswer => ({
 	kind: 'reported',
-	report: { ok: true, press: 'replace', key, madeAt: MADE, disconnected: 0 }
+	report: {
+		ok: true,
+		press: 'replace',
+		key,
+		madeAt: MADE,
+		disconnected: 0,
+		paused: 0,
+		notPaused: 0
+	}
 });
 
 describe('keyStanding', () => {
@@ -79,5 +87,66 @@ describe('deliveriesSay', () => {
 
 	it('says nothing with no key, whatever the rows hold', () => {
 		expect(deliveriesSay({ ...failing(2), key: null }, NOW)).toEqual([]);
+	});
+});
+
+describe('replacedSays', () => {
+	const replaced = (paused: number, notPaused: number): ZapierAnswer => ({
+		kind: 'reported',
+		report: {
+			ok: true,
+			press: 'replace',
+			key: 'bgz_new',
+			madeAt: MADE,
+			disconnected: paused + notPaused,
+			paused,
+			notPaused
+		}
+	});
+
+	const PAUSED_ONE =
+		'Zapier has turned off 1 Zap that used the old key. Its owner needs to reconnect it with the new key and turn it back on.';
+	const PAUSED_THREE =
+		'Zapier has turned off 3 Zaps that used the old key. Their owners need to reconnect them with the new key and turn them back on.';
+
+	it.each([
+		[1, PAUSED_ONE],
+		[3, PAUSED_THREE]
+	])('asks the owners of %i paused Zaps to reconnect and switch back on', (paused, said) => {
+		expect(replacedSays(replaced(paused, 0))).toEqual([said]);
+	});
+
+	it.each([
+		[
+			1,
+			'1 Zap may still show as on in Zapier, but it hears nothing. Its owner needs to reconnect it with the new key, then turn it off and on again.'
+		],
+		[
+			2,
+			'2 Zaps may still show as on in Zapier, but they hear nothing. Their owners need to reconnect them with the new key, then turn them off and on again.'
+		]
+	])('says %i Zaps that did not answer may still look on, to switch by hand', (notPaused, said) => {
+		expect(replacedSays(replaced(0, notPaused))).toEqual([said]);
+	});
+
+	it('counts the ones that did not answer as more, after the paused ones', () => {
+		expect(replacedSays(replaced(3, 1))).toEqual([
+			PAUSED_THREE,
+			'1 more Zap may still show as on in Zapier, but it hears nothing. Its owner needs to reconnect it with the new key, then turn it off and on again.'
+		]);
+	});
+
+	it('says nothing where no Zap was listening, and nothing for a press that did not land', () => {
+		expect(replacedSays(replaced(0, 0))).toEqual([]);
+		expect(replacedSays(null)).toEqual([]);
+		expect(
+			replacedSays({
+				kind: 'reported',
+				report: { ok: false, press: 'replace', detail: 'There is no key to replace.' }
+			})
+		).toEqual([]);
+		expect(
+			replacedSays({ kind: 'unanswered', press: 'replace', read: { kind: 'no-session' } })
+		).toEqual([]);
 	});
 });

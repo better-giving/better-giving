@@ -7,7 +7,7 @@ import {
 	INTUIT_TOKEN_URL,
 	QUICKBOOKS_SANDBOX_URL
 } from './quickbooks';
-import type { ConnectionSnapshot, ConnectionStore, TokenPair } from './provider';
+import type { AccountRole, ConnectionSnapshot, ConnectionStore, TokenPair } from './provider';
 
 // the adapter, exercised through a `fetch` that answers by route.
 //
@@ -69,7 +69,22 @@ const CREDENTIALS = {
  * answer `stored` to a caller the real store refuses. `elsewhere` is the other caller's write —
  * their pair, or the row gone — landing while this provider is mid-renewal.
  */
-function store(over: Partial<ConnectionSnapshot> = {}): ConnectionStore & {
+/** the chosen account ids, each role its own so a line says which role it was posted from. */
+const ACCOUNTS: Readonly<Record<AccountRole, string | null>> = {
+	income: '79',
+	fee: '80',
+	stripeBalance: '140',
+	paypalBalance: '141',
+	chariotBalance: '142',
+	nowpaymentsBalance: '143',
+	undepositedFunds: '4'
+};
+
+function store(
+	over: Partial<Omit<ConnectionSnapshot, 'accounts'>> & {
+		accounts?: Partial<Record<AccountRole, string | null>>;
+	} = {}
+): ConnectionStore & {
 	saved: TokenPair[];
 	snapshot: ConnectionSnapshot | null;
 	elsewhere(tokens: TokenPair | null): void;
@@ -81,10 +96,8 @@ function store(over: Partial<ConnectionSnapshot> = {}): ConnectionStore & {
 			accessTokenExpiresAt: new Date(NOW.getTime() + 3_600_000),
 			refreshToken: 'refresh-one',
 			refreshTokenExpiresAt: new Date(NOW.getTime() + 8_640_000_000),
-			incomeAccountId: '79',
-			feeAccountId: '80',
-			depositAccountId: '35',
-			...over
+			...over,
+			accounts: { ...ACCOUNTS, ...over.accounts }
 		},
 		saved: []
 	};
@@ -328,34 +341,42 @@ describe('the access token', () => {
 		expect(calls[1]?.authorization).toBe('Bearer access-theirs');
 	});
 
-	it('reports a pair it could not store as a connection to be made again', async () => {
-		serving((method, url) =>
+	it('reports a pair it could not store as a fault the next run retries with the token it holds', async () => {
+		const calls = serving((method, url) =>
 			method === 'POST' && url.href === INTUIT_TOKEN_URL
 				? {
 						status: 200,
 						json: { access_token: 'access-two', expires_in: 3600, refresh_token: 'refresh-two' }
 					}
-				: undefined
+				: url.pathname === '/v3/company/4620816365/query'
+					? { status: 200, json: COMPANY_QUERY }
+					: undefined
 		);
 		const held = store({ accessTokenExpiresAt: new Date(NOW.getTime() - 1) });
-		const provider = createQuickbooksProvider(CREDENTIALS, {
+		const failing = createQuickbooksProvider(CREDENTIALS, {
 			read: held.read,
 			saveTokens: async () => {
 				throw new Error('D1_ERROR');
 			}
 		});
 
-		// Intuit retired the presented token the moment it issued this pair, so a pair that could
-		// not be written is a connection nothing revives — and the caller is told rather than made
-		// to catch: a console read promises a 200 whatever the books answer.
-		const result = await provider.readCompany();
-
-		expect(result).toMatchObject({
+		// Intuit keeps the presented token renewable for 24 hours after issuing a new one, so a pair
+		// that could not be written is a write to try again, not a connection to make again.
+		expect(await failing.readCompany()).toMatchObject({
 			ok: false,
-			reason: 'reconnect_needed',
-			retryable: false,
-			detail: expect.stringContaining('connected again')
+			reason: 'credential_unsaved',
+			retryable: true,
+			detail: expect.not.stringContaining('connected again')
 		});
+
+		expect(await createQuickbooksProvider(CREDENTIALS, held).readCompany()).toMatchObject({
+			ok: true
+		});
+		const renewals = calls.filter((call) => call.url.href === INTUIT_TOKEN_URL);
+		expect(renewals.map((call) => new URLSearchParams(call.body).get('refresh_token'))).toEqual([
+			'refresh-one',
+			'refresh-one'
+		]);
 	});
 
 	it('reports a company disconnected mid-renewal as one there is nothing to send to', async () => {
@@ -446,8 +467,9 @@ const GIFT = {
 	donor: { displayName: 'Ada Lovelace', email: 'ada@example.org' },
 	memo: 'donation 019fb0d2-7d57-7c5e-a7df-baed1f27b405',
 	incomeMinor: 10_000,
-	feeMinor: 320
-};
+	feeMinor: 320,
+	holding: 'stripeBalance'
+} as const;
 
 /** the queue row's `updated_at` as a claim read it, which is what the delivery hands every send. */
 const REVISION = '1790000000000';
@@ -507,7 +529,7 @@ function isCreate(call: Recorded): boolean {
 }
 
 describe('sending a gift', () => {
-	it('deposits the gift into the chosen accounts, the processor’s cut as a line against it', async () => {
+	it('posts a journal entry: the gift credited to income, the cut to fees, the net held by Stripe', async () => {
 		const calls = servingCompany((statement) =>
 			statement.startsWith('select * from Customer')
 				? { status: 200, json: { QueryResponse: { Customer: [{ Id: '12' }] } } }
@@ -517,31 +539,59 @@ describe('sending a gift', () => {
 
 		const result = await provider.sendGift(GIFT, 'first', REVISION);
 
-		expect(result).toEqual({ ok: true, value: { remoteId: '987' } });
-		const post = calls.find((call) => call.url.pathname.endsWith('/deposit'));
-		expect(post?.url.pathname).toBe('/v3/company/4620816365/deposit');
+		expect(result).toEqual({ ok: true, value: { remoteId: '1200' } });
+		expect(calls.some((call) => call.url.pathname.endsWith('/deposit'))).toBe(false);
+		const post = calls.find((call) => call.url.pathname.endsWith('/journalentry'));
+		expect(post?.url.pathname).toBe('/v3/company/4620816365/journalentry');
 		expect(JSON.parse(post?.body ?? '{}')).toEqual({
 			TxnDate: '2026-03-01',
 			CurrencyRef: { value: 'USD' },
 			PrivateNote: `better-giving ${GIFT.key}\ndonation 019fb0d2-7d57-7c5e-a7df-baed1f27b405`,
-			DepositToAccountRef: { value: '35' },
 			Line: [
 				{
-					DetailType: 'DepositLineDetail',
-					Amount: 100,
+					DetailType: 'JournalEntryLineDetail',
+					Amount: 96.8,
 					Description: 'Donation from Ada Lovelace',
-					DepositLineDetail: {
-						AccountRef: { value: '79' },
-						Entity: { value: '12', type: 'Customer' }
+					JournalEntryLineDetail: {
+						PostingType: 'Debit',
+						AccountRef: { value: '140' },
+						Entity: { Type: 'Customer', EntityRef: { value: '12' } }
 					}
 				},
 				{
-					DetailType: 'DepositLineDetail',
-					Amount: -3.2,
+					DetailType: 'JournalEntryLineDetail',
+					Amount: 3.2,
 					Description: 'Processing fee',
-					DepositLineDetail: { AccountRef: { value: '80' } }
+					JournalEntryLineDetail: { PostingType: 'Debit', AccountRef: { value: '80' } }
+				},
+				{
+					DetailType: 'JournalEntryLineDetail',
+					Amount: 100,
+					Description: 'Donation from Ada Lovelace',
+					JournalEntryLineDetail: {
+						PostingType: 'Credit',
+						AccountRef: { value: '79' },
+						Entity: { Type: 'Customer', EntityRef: { value: '12' } }
+					}
 				}
 			]
+		});
+	});
+
+	it.each([
+		['paypalBalance', '141'],
+		['undepositedFunds', '4']
+	] as const)('holds a gift held in %s in that account', async (holding, accountId) => {
+		const calls = servingCompany();
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		await provider.sendGift({ ...GIFT, holding }, 'first', REVISION);
+
+		const post = calls.find((call) => call.url.pathname.endsWith('/journalentry'));
+		const [held] = JSON.parse(post?.body ?? '{}').Line;
+		expect(held.JournalEntryLineDetail).toMatchObject({
+			PostingType: 'Debit',
+			AccountRef: { value: accountId }
 		});
 	});
 
@@ -555,11 +605,12 @@ describe('sending a gift', () => {
 
 		await provider.sendGift({ ...GIFT, feeMinor: 0 }, 'first', REVISION);
 
-		const post = calls.find((call) => call.url.pathname.endsWith('/deposit'));
-		expect(JSON.parse(post?.body ?? '{}').Line).toHaveLength(1);
+		const post = calls.find((call) => call.url.pathname.endsWith('/journalentry'));
+		const lines = JSON.parse(post?.body ?? '{}').Line;
+		expect(lines.map((line: { Amount: number }) => line.Amount)).toEqual([100, 100]);
 	});
 
-	it('names the gift’s own currency on the deposit', async () => {
+	it('names the gift’s own currency on the entry', async () => {
 		const calls = servingCompany();
 		const provider = createQuickbooksProvider(CREDENTIALS, store());
 
@@ -569,10 +620,10 @@ describe('sending a gift', () => {
 			REVISION
 		);
 
-		const post = calls.find((call) => call.url.pathname.endsWith('/deposit'));
+		const post = calls.find((call) => call.url.pathname.endsWith('/journalentry'));
 		expect(JSON.parse(post?.body ?? '{}')).toMatchObject({
 			CurrencyRef: { value: 'GBP' },
-			Line: [{ Amount: 45 }]
+			Line: [{ Amount: 45 }, { Amount: 45 }]
 		});
 	});
 
@@ -616,7 +667,7 @@ describe('sending a gift', () => {
 		serving(() => undefined);
 		const provider = createQuickbooksProvider(
 			CREDENTIALS,
-			store({ incomeAccountId: null, feeAccountId: null })
+			store({ accounts: { income: null, fee: null } })
 		);
 
 		const result = await provider.sendGift(GIFT, 'first', REVISION);
@@ -624,6 +675,30 @@ describe('sending a gift', () => {
 		expect(result).toMatchObject({ ok: false, reason: 'accounts_not_chosen', retryable: false });
 		expect(result).toMatchObject({ detail: expect.stringContaining('income') });
 		expect(result).toMatchObject({ detail: expect.stringContaining('fee') });
+	});
+});
+
+describe('a holding nobody has picked', () => {
+	it('holds that processor’s gifts and sends every other processor’s', async () => {
+		const calls = servingCompany();
+		const provider = createQuickbooksProvider(
+			CREDENTIALS,
+			store({ accounts: { stripeBalance: null } })
+		);
+
+		const stripe = await provider.sendGift(GIFT, 'first', REVISION);
+		const paypal = await provider.sendGift(
+			{ ...GIFT, key: '019fb0b4-ec6c-7fbb-aa36-000000000003', holding: 'paypalBalance' },
+			'first',
+			REVISION
+		);
+
+		// its own reason rather than `accounts_not_chosen`, which stops a whole run: this is one party's
+		// gifts waiting, and the rows behind it are another's.
+		expect(stripe).toMatchObject({ ok: false, reason: 'holding_not_chosen', retryable: true });
+		expect(stripe).toMatchObject({ detail: expect.stringContaining('Stripe balance') });
+		expect(paypal).toEqual({ ok: true, value: { remoteId: '1200' } });
+		expect(calls.filter((call) => call.url.pathname.endsWith('/journalentry'))).toHaveLength(1);
 	});
 });
 
@@ -675,10 +750,10 @@ describe('matching the donor', () => {
 			DisplayName: 'Ada Lovelace',
 			PrimaryEmailAddr: { Address: 'ada@example.org' }
 		});
-		const deposit = calls.find((call) => call.url.pathname.endsWith('/deposit'));
-		expect(JSON.parse(deposit?.body ?? '{}').Line[0].DepositLineDetail.Entity).toEqual({
-			value: '77',
-			type: 'Customer'
+		const entry = calls.find((call) => call.url.pathname.endsWith('/journalentry'));
+		expect(JSON.parse(entry?.body ?? '{}').Line[0].JournalEntryLineDetail.Entity).toEqual({
+			Type: 'Customer',
+			EntityRef: { value: '77' }
 		});
 	});
 
@@ -724,10 +799,10 @@ describe('matching the donor', () => {
 				.filter((call) => call.url.pathname.endsWith('/customer'))
 				.map((call) => JSON.parse(call.body).DisplayName)
 		).toEqual(['Ada Lovelace', 'Ada Lovelace (donor)']);
-		const deposit = calls.find((call) => call.url.pathname.endsWith('/deposit'));
-		expect(JSON.parse(deposit?.body ?? '{}').Line[0].DepositLineDetail.Entity).toEqual({
-			value: '77',
-			type: 'Customer'
+		const entry = calls.find((call) => call.url.pathname.endsWith('/journalentry'));
+		expect(JSON.parse(entry?.body ?? '{}').Line[0].JournalEntryLineDetail.Entity).toEqual({
+			Type: 'Customer',
+			EntityRef: { value: '77' }
 		});
 	});
 
@@ -784,10 +859,10 @@ describe('matching the donor', () => {
 	});
 });
 
-/** the request id the deposit among `calls` was posted under. */
+/** the request id the journal entry among `calls` was posted under. */
 function requestId(calls: Recorded[]): string | null | undefined {
 	return calls
-		.find((call) => call.url.pathname.endsWith('/deposit'))
+		.find((call) => call.url.pathname.endsWith('/journalentry'))
 		?.url.searchParams.get('requestid');
 }
 
@@ -799,22 +874,22 @@ describe('a post that already landed', () => {
 		await provider.sendGift(GIFT, 'first', REVISION);
 
 		// the queue counts an attempt as it claims a row, so a first attempt is a row nothing has
-		// ever sent and the scan below — every deposit the company took that day, page by page,
+		// ever sent and the scan below — every entry the company took that day, page by page,
 		// metered — would find nothing. it is what a retry pays and a first attempt does not.
 		expect(
-			calls.map(asked).some((statement) => statement.startsWith('select * from Deposit'))
+			calls.map(asked).some((statement) => /^select \* from (JournalEntry|Deposit)/.test(statement))
 		).toBe(false);
 		expect(calls.some(isCreate)).toBe(true);
 	});
 
 	it('is answered with the record QuickBooks already holds, and nothing is posted again', async () => {
 		const calls = servingCompany((statement) =>
-			statement.startsWith('select * from Deposit')
+			statement.startsWith('select * from JournalEntry')
 				? {
 						status: 200,
 						json: {
 							QueryResponse: {
-								Deposit: [
+								JournalEntry: [
 									{ Id: '500', PrivateNote: 'better-giving some-other-entry' },
 									{ Id: '987', PrivateNote: `better-giving ${GIFT.key}\nwhatever` }
 								]
@@ -827,6 +902,27 @@ describe('a post that already landed', () => {
 
 		const result = await provider.sendGift(GIFT, 'again', REVISION);
 
+		expect(result).toEqual({ ok: true, value: { remoteId: '987' } });
+		expect(calls.some(isCreate)).toBe(false);
+	});
+
+	it('is found as the deposit a row queued before gifts were journal entries landed as', async () => {
+		const calls = servingCompany((statement) =>
+			statement.startsWith('select * from Deposit')
+				? {
+						status: 200,
+						json: {
+							QueryResponse: { Deposit: [{ Id: '987', PrivateNote: `better-giving ${GIFT.key}` }] }
+						}
+					}
+				: undefined
+		);
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		const result = await provider.sendGift(GIFT, 'again', REVISION);
+
+		// the entry it would post now is another body under another request id, so Intuit's replay
+		// cannot catch it — only this lookup stops the gift landing twice.
 		expect(result).toEqual({ ok: true, value: { remoteId: '987' } });
 		expect(calls.some(isCreate)).toBe(false);
 	});
@@ -846,11 +942,10 @@ describe('a post that already landed', () => {
 		const refused = servingCompany();
 		await createQuickbooksProvider(CREDENTIALS, store()).sendGift(GIFT, 'first', REVISION);
 		const repicked = servingCompany();
-		await createQuickbooksProvider(CREDENTIALS, store({ depositAccountId: '36' })).sendGift(
-			GIFT,
-			'again',
-			REVISION
-		);
+		await createQuickbooksProvider(
+			CREDENTIALS,
+			store({ accounts: { stripeBalance: '150' } })
+		).sendGift(GIFT, 'again', REVISION);
 
 		expect(requestId(repicked)).toMatch(new RegExp(`^${GIFT.key}-`));
 		expect(requestId(repicked)).not.toBe(requestId(refused));
@@ -875,7 +970,7 @@ describe('a post that already landed', () => {
 		const ids = calls.filter(isCreate).map((call) => call.url.searchParams.get('requestid'));
 		expect(calls.filter(isCreate).map((call) => call.url.pathname.split('/').at(-1))).toEqual([
 			'customer',
-			'deposit'
+			'journalentry'
 		]);
 		expect(ids.every((id) => id?.startsWith(`${GIFT.key}-`))).toBe(true);
 		expect(new Set(ids).size).toBe(2);
@@ -950,6 +1045,25 @@ describe('what a refusal costs the queued entry', () => {
 		});
 	});
 
+	it('stops on a 403 with the permission it lacks, which connecting again as the same user does not give', async () => {
+		servingCompany((statement) =>
+			statement.startsWith('select * from Customer')
+				? { status: 200, json: { QueryResponse: { Customer: [{ Id: '12' }] } } }
+				: statement === ''
+					? { status: 403, json: {} }
+					: undefined
+		);
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		const result = await provider.sendGift(GIFT, 'first', REVISION);
+
+		expect(result).toMatchObject({ ok: false, reason: 'reconnect_needed', retryable: false });
+		const detail = result.ok ? '' : result.detail;
+		expect(detail).toContain('subscription');
+		expect(detail).toContain('permission');
+		expect(detail).toContain('as the same user will not fix it');
+	});
+
 	it('reports a call that never answered as worth making again', async () => {
 		vi.stubGlobal('fetch', async () => {
 			throw new DOMException('The operation was aborted', 'TimeoutError');
@@ -971,7 +1085,7 @@ const CORRECTION = {
 	memo: 'gift posted to the wrong fund',
 	lines: [
 		{ role: 'income', posting: 'debit', amountMinor: 2_500 },
-		{ role: 'deposit', posting: 'credit', amountMinor: 2_500 }
+		{ role: 'undepositedFunds', posting: 'credit', amountMinor: 2_500 }
 	]
 } as const;
 
@@ -1001,7 +1115,7 @@ describe('sending a correction', () => {
 					DetailType: 'JournalEntryLineDetail',
 					Amount: 25,
 					Description: 'gift posted to the wrong fund',
-					JournalEntryLineDetail: { PostingType: 'Credit', AccountRef: { value: '35' } }
+					JournalEntryLineDetail: { PostingType: 'Credit', AccountRef: { value: '4' } }
 				}
 			]
 		});
@@ -1106,6 +1220,67 @@ describe('the chart of accounts', () => {
 					classification: 'Asset'
 				}
 			]
+		});
+	});
+
+	it('makes a holding account as an other current asset, never a bank account', async () => {
+		const calls = servingCompany((_statement, path) =>
+			path.endsWith('/account')
+				? {
+						status: 200,
+						json: {
+							Account: {
+								Id: '160',
+								Name: 'Stripe balance',
+								AccountType: 'Other Current Asset',
+								AccountSubType: 'OtherCurrentAssets',
+								Classification: 'Asset'
+							}
+						}
+					}
+				: undefined
+		);
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		const result = await provider.createHoldingAccount('Stripe balance');
+
+		expect(result).toEqual({
+			ok: true,
+			value: {
+				id: '160',
+				name: 'Stripe balance',
+				type: 'Other Current Asset',
+				subType: 'OtherCurrentAssets',
+				classification: 'Asset'
+			}
+		});
+		const post = calls.find((call) => call.url.pathname.endsWith('/account'));
+		expect(post?.url.pathname).toBe('/v3/company/4620816365/account');
+		expect(post?.url.searchParams.get('requestid')).not.toBeNull();
+		expect(JSON.parse(post?.body ?? '{}')).toEqual({
+			Name: 'Stripe balance',
+			AccountType: 'Other Current Asset',
+			AccountSubType: 'OtherCurrentAssets'
+		});
+	});
+
+	it('reports a name the chart already holds as Intuit’s refusal, making nothing', async () => {
+		servingCompany((_statement, path) =>
+			path.endsWith('/account')
+				? {
+						status: 400,
+						json: {
+							Fault: { Error: [{ Message: 'Duplicate Name Exists Error', code: '6240' }] }
+						}
+					}
+				: undefined
+		);
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		expect(await provider.createHoldingAccount('Stripe balance')).toMatchObject({
+			ok: false,
+			reason: 'invalid_record',
+			detail: expect.stringContaining('6240')
 		});
 	});
 });

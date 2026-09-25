@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -120,6 +121,32 @@ func errands(t *testing.T, answers map[string]any, origin string) (http.Handler,
 	}), asked
 }
 
+// the accounts press the page sends names every role, a holding nobody chose as null, and reaches
+// the deployment that way: a body this console refused at its own door, or one it passed on short
+// of a role, is a press the deployment never takes.
+func TestTheAccountsPressThePageSendsReachesTheDeploymentWithEveryRole(t *testing.T) {
+	handler, asked := errands(t, map[string]any{
+		"POST /console/quickbooks": map[string]any{"press": "accounts"},
+	}, "here")
+
+	status, answer := press(t, handler, "/api/deployment/quickbooks", `{
+		"press":"accounts","income":"42","fee":"7","stripeBalance":"31","paypalBalance":null,
+		"chariotBalance":null,"nowpaymentsBalance":null,"undepositedFunds":null
+	}`)
+	if status != http.StatusOK || answer["kind"] != "reported" {
+		t.Fatalf("%d %v", status, answer)
+	}
+	want := map[string]any{
+		"press": "accounts", "income": "42", "fee": "7", "stripeBalance": "31",
+		"paypalBalance": nil, "chariotBalance": nil, "nowpaymentsBalance": nil,
+		"undepositedFunds": nil,
+	}
+	calls := asked()
+	if len(calls) != 1 || !reflect.DeepEqual(calls[0].body, want) {
+		t.Fatalf("the deployment was asked %v", calls)
+	}
+}
+
 // the profile goes whole, at the address that stores one, over the session this console holds.
 func TestTheProfileIsPostedWholeOverTheSession(t *testing.T) {
 	handler, asked := errands(t, map[string]any{"POST /console/org": reported()}, "here")
@@ -170,6 +197,7 @@ func TestEveryErrandWithNoSessionMakesNoRequestAtAll(t *testing.T) {
 		"/api/deployment/sites":      `{"sites":[]}`,
 
 		"/api/deployment/wallet-domains": `{}`,
+		"/api/deployment/webhook-repair": `{}`,
 	} {
 		status, answer := press(t, handler, path, body)
 		read, _ := answer["read"].(map[string]any)
@@ -276,11 +304,16 @@ func TestTheOtherErrandsReachTheirOwnAddress(t *testing.T) {
 		"GET /console/quickbooks": map[string]any{
 			"connection": map[string]any{
 				"state": "connected", "realmId": "9341454792073042",
-				"companyName": "Hope Springs",
-				"income":      map[string]any{"id": "42", "name": "Donations"},
-				"fee":         map[string]any{"id": "7", "name": "Merchant fees"},
-				"deposit":     map[string]any{"id": "9", "name": "Undeposited funds"},
-				"startAt":     "2026-01-01T00:00:00.000Z",
+				"companyName":        "Hope Springs",
+				"income":             map[string]any{"id": "42", "name": "Donations"},
+				"fee":                map[string]any{"id": "7", "name": "Merchant fees"},
+				"stripeBalance":      map[string]any{"id": "31", "name": "Stripe balance"},
+				"paypalBalance":      nil,
+				"chariotBalance":     nil,
+				"nowpaymentsBalance": nil,
+				"undepositedFunds":   map[string]any{"id": "9", "name": "Undeposited funds"},
+				"awaitingAccounts":   false,
+				"startAt":            "2026-01-01T00:00:00.000Z",
 			},
 			"accounts":        map[string]any{"state": "read", "accounts": []any{}},
 			"backlog":         map[string]any{"failed": float64(0), "oldestWaitingAt": nil},
@@ -344,6 +377,44 @@ func TestTheOtherErrandsReachTheirOwnAddress(t *testing.T) {
 		if call.bearer != "Bearer "+errandToken {
 			t.Errorf("%s %s was asked without the session", call.method, call.path)
 		}
+	}
+}
+
+// the press reaches the deployment's repair naming Stripe and nothing else, and answers its report.
+func TestTheWebhookRepairAnswersTheDeploymentsReport(t *testing.T) {
+	handler, asked := errands(t, map[string]any{
+		"POST /console/webhook-repair": map[string]any{"outcome": "repaired", "detail": nil},
+	}, "here")
+
+	status, answer := press(t, handler, "/api/deployment/webhook-repair", `{}`)
+	report, _ := answer["report"].(map[string]any)
+	if status != http.StatusOK || answer["kind"] != "reported" || report["outcome"] != "repaired" {
+		t.Fatalf("%d %v", status, answer)
+	}
+	calls := asked()
+	if len(calls) != 1 || calls[0].method != http.MethodPost ||
+		calls[0].path != deployment.WebhookRepairPath || calls[0].bearer != "Bearer "+errandToken {
+		t.Fatalf("the deployment was asked %v", calls)
+	}
+	if len(calls[0].body) != 1 || calls[0].body["processor"] != "stripe" {
+		t.Fatalf("the repair posted %v", calls[0].body)
+	}
+}
+
+// a refusal is drawn at the button that was pressed, so it answers 200 carrying the deployment's own
+// words, like every errand here.
+func TestARefusedWebhookRepairCarriesTheDeploymentsWords(t *testing.T) {
+	handler, _ := errands(t, map[string]any{
+		"POST /console/webhook-repair": refusal{http.StatusUnauthorized, map[string]any{
+			"error": "session_mismatch", "message": "Another console.", "fix": "Connect again.",
+		}},
+	}, "here")
+
+	status, answer := press(t, handler, "/api/deployment/webhook-repair", `{}`)
+	read, _ := answer["read"].(map[string]any)
+	if status != http.StatusOK || answer["kind"] != "unanswered" || read["kind"] != "refused" ||
+		read["message"] != "Another console." || read["fix"] != "Connect again." {
+		t.Fatalf("%d %v", status, answer)
 	}
 }
 
@@ -452,6 +523,7 @@ func TestTheZapierKeyReachesThePageAndNothingElse(t *testing.T) {
 		"POST /console/zapier": map[string]any{
 			"ok": true, "press": "replace", "key": key,
 			"madeAt": "2026-09-22T10:00:00.000Z", "disconnected": float64(1),
+			"paused": float64(1), "notPaused": float64(0),
 		},
 	})
 	connected(t, records, surface.URL)
@@ -511,6 +583,7 @@ func TestAZapierAnswerIsNeverStored(t *testing.T) {
 		"POST /console/zapier": map[string]any{
 			"ok": true, "press": "make", "key": key,
 			"madeAt": "2026-09-22T10:00:00.000Z", "disconnected": float64(0),
+			"paused": float64(0), "notPaused": float64(0),
 		},
 	}, "here")
 	for _, request := range []*http.Request{

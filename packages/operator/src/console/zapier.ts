@@ -44,8 +44,11 @@ export interface ZapierReport {
  * what a press answers with.
  *
  * `key` is the plaintext, the same the next reading carries. `disconnected` is how many
- * subscriptions the old key took down with it, and 0 on `make`. a refusal's `detail` names the
- * press that would have landed.
+ * subscriptions the old key took down with it, and 0 on `make`. of those, `paused` is how many
+ * Zapier paused, asking the Zap's owner to reconnect, or no longer had, and `notPaused` how many
+ * hooks did not take it — a fault, an error or no answer — whose Zaps still read as on in Zapier
+ * until their owners turn them off and on again; nothing asks again. the two sum to
+ * `disconnected`. a refusal's `detail` names the press that would have landed.
  */
 export type ZapierPressReport =
 	| {
@@ -54,5 +57,7 @@ export type ZapierPressReport =
 			readonly key: string;
 			readonly madeAt: string;
 			readonly disconnected: number;
+			readonly paused: number;
+			readonly notPaused: number;
 	  }
 	| { readonly ok: false; readonly press: ZapierPress; readonly detail: string };

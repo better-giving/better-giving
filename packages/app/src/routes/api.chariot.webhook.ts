@@ -70,8 +70,8 @@ function methodNotAllowed(method: string): Response {
  * what Chariot is told: 2xx stops it, anything else is sent again.
  *
  * every `ok` outcome is a 200, the nothing-written ones included — a category this app ignores, a
- * redelivery the books already hold, a grant no gift here is bound to — because a second delivery
- * would reach each of them identically.
+ * redelivery the books already hold, a grant no gift here is bound to, a verified body naming no
+ * event `id` or `category` — because a second delivery would reach each of them identically.
  *
  * - 400, the signature: `chariot-webhook-signature` missing, unreadable, or not computed with
  *   `CHARIOT_WEBHOOK_SECRET`. nothing in the body may be believed, and a non-2xx is what shows a

@@ -84,9 +84,10 @@ func listed(listeners ...map[string]any) cf.Answer {
 
 // the whole press's effects, every one of them landing, which each case then spoils one of.
 type effects struct {
-	app       *app
-	address   deployment.Address
-	store     deployment.Written
+	app     *app
+	address deployment.Address
+	store   deployment.Written
+	// published is each write, a name taken off reading as `<removed>`.
 	published []map[string]string
 	repeating deployment.RecurringSetup
 	// repeatings is what each press of the deployment's own step was named, in order.
@@ -124,8 +125,16 @@ func (one *effects) bound() Effects {
 		Authorize: one.app.authorize,
 		Bearer:    one.app.bound,
 		Address:   func(context.Context) deployment.Address { return one.address },
-		Publish: func(_ context.Context, values map[string]string) deployment.Written {
-			one.published = append(one.published, values)
+		Publish: func(_ context.Context, values map[string]*string) deployment.Written {
+			flat := map[string]string{}
+			for name, value := range values {
+				if value == nil {
+					flat[name] = "<removed>"
+					continue
+				}
+				flat[name] = *value
+			}
+			one.published = append(one.published, flat)
 			return one.store
 		},
 		Repeating: func(_ context.Context, processor string) deployment.RecurringSetup {
@@ -138,10 +147,29 @@ func (one *effects) bound() Effects {
 }
 
 func pressed() Asked {
-	return Asked{ClientID: "Aa-client", Secret: "EL-secret"}
+	return Asked{ClientID: "Aa-client", Secret: "EL-secret", Address: DefaultAPIURL}
 }
 
-func TestAnAppWithNoListenerHereGetsOneAndTheDeploymentStoresAllThreeValues(t *testing.T) {
+// an address other than the default is stored beside the pair, and the default is stored as no
+// address: one left from an earlier press would otherwise send the pair somewhere else.
+func TestTheAddressThePairWasSetUpAtIsStoredBesideIt(t *testing.T) {
+	for _, one := range []struct{ asked, stored string }{
+		{DefaultAPIURL, "<removed>"},
+		{"https://paypal.example", "https://paypal.example"},
+	} {
+		held := working()
+		asked := pressed()
+		asked.Address = one.asked
+		if outcome := Chain(context.Background(), asked, held.bound()); outcome.Kind != Done {
+			t.Fatalf("%s: outcome = %+v, want done", one.asked, outcome)
+		}
+		if got := held.published[0][APIURLVar]; got != one.stored {
+			t.Errorf("%s: %s went up as %q, want %q", one.asked, APIURLVar, got, one.stored)
+		}
+	}
+}
+
+func TestAnAppWithNoListenerHereGetsOneAndTheDeploymentStoresAllFourValues(t *testing.T) {
 	held := working()
 	outcome := Chain(context.Background(), pressed(), held.bound())
 
@@ -168,6 +196,7 @@ func TestAnAppWithNoListenerHereGetsOneAndTheDeploymentStoresAllThreeValues(t *t
 		"PAYPAL_CLIENT_ID":     "Aa-client",
 		"PAYPAL_CLIENT_SECRET": "EL-secret",
 		"PAYPAL_WEBHOOK_ID":    "WH-NEW",
+		"PAYPAL_API_URL":       "<removed>",
 	}
 	for name, value := range want {
 		if held.published[0][name] != value {
@@ -289,13 +318,33 @@ func TestAPairPayPalMintsNoTokenForReadsNothingAndStoresNothing(t *testing.T) {
 	if outcome.Kind != Unauthorized || outcome.Failure == nil || outcome.Failure.Kind != Refused {
 		t.Fatalf("outcome = %+v, want unauthorized and refused", outcome)
 	}
-	if want := "PayPal said: Client Authentication failed"; outcome.Failure.Detail != want {
-		t.Errorf("detail = %q, want %q", outcome.Failure.Detail, want)
+	if want := "PayPal said: Client Authentication failed"; !strings.HasPrefix(outcome.Failure.Detail, want) {
+		t.Errorf("detail = %q, want it to start %q", outcome.Failure.Detail, want)
 	}
 	if want := []string{"POST /v1/oauth2/token"}; !slices.Equal(held.app.keys(), want) {
 		t.Errorf("calls = %v, want %v", held.app.keys(), want)
 	}
 	assertNothingStored(t, held)
+}
+
+// a pair from one PayPal address refused at another is the ordinary way a press fails, so the
+// refusal says where it was sent and what moves it.
+func TestAPairRefusedSaysWhichAddressItWasSentTo(t *testing.T) {
+	for _, at := range []string{DefaultAPIURL, "https://paypal.example"} {
+		held := working()
+		held.app.token = answered(401, map[string]any{"error": "invalid_client"})
+		asked := pressed()
+		asked.Address = at
+
+		outcome := Chain(context.Background(), asked, held.bound())
+
+		if outcome.Kind != Unauthorized || outcome.Failure == nil || outcome.Failure.Kind != Refused {
+			t.Fatalf("%s: outcome = %+v, want unauthorized and refused", at, outcome)
+		}
+		if !strings.Contains(outcome.Failure.Detail, "at "+at) {
+			t.Errorf("detail = %q, want it to name %s", outcome.Failure.Detail, at)
+		}
+	}
 }
 
 func TestADeploymentWithNoAddressRegistersNothing(t *testing.T) {

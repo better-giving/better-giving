@@ -53,7 +53,8 @@ import type {
 	DeployVarName,
 	StripeSetup,
 	VarsUnwritten,
-	VarsWritten
+	VarsWritten,
+	WebhookRepaired
 } from '../api/types';
 import type { ConfirmLine } from './stripe-confirm';
 import { confirmLines, remakesSetup } from './stripe-confirm';
@@ -73,6 +74,8 @@ import {
 } from './stripe-press';
 import type { StripeAct, StripeKeyBoxes, StripeKeyName } from './stripe-keys';
 import { KEY_FIELD, SET_UP_INTENT, STRIPE_KEY_NAMES, stripeAsked, stripeForm } from './stripe-keys';
+import { WEBHOOK_REPAIR_INTENT, noticesStanding } from './notices-standing';
+import { PaymentNotices } from './payment-notices';
 import { useConsoleForm } from './use-console-form';
 import { OPENING_STAGE, PUBLISHED, REACHED, STAGES, STEP, SUBJECTS } from './stripe-run-lines';
 import { WALLETS_INTENT } from './wallets-press';
@@ -94,12 +97,17 @@ import { WALLET_NAMES, linkStanding, walletHostLines, walletRows } from './walle
 // item a repeating gift is collected against on the account. no terminal step, no second band of
 // boxes for the same three values, and nobody is shown a `whsec_`.
 //
-// **the operator need not know about webhooks on this processor, and nothing in this half asks
-// them to.** the endpoint, the events it is subscribed to and the secret that proves a delivery came
-// from Stripe are all things the press establishes from the two keys, so none of them is a row, a
-// reading or a repair press here. what an operator is told about them is one line in the confirm, at
-// the moment it changes whether they press. the other processor's screen is set up the same way,
-// by one press over its pair (./paypal-section.tsx).
+// **whether Stripe is telling this deployment a gift was paid is a row here, and the machinery
+// behind it is not.** Stripe reports every payment result to the endpoint the press registers, and
+// it can stop on its own — switched off after deliveries fail, or short of an event — and a
+// deployment it has stopped telling charges card gifts that are never marked paid, with every other
+// line on this screen reading fine. so the row says that in those words (./payment-notices.tsx),
+// and where the fault is one the endpoint can be put right in place, the Repair press beside it
+// does that. the endpoint, the events it is subscribed to and the secret that proves a delivery
+// came from Stripe stay things the press establishes from the two keys: none of them is a box, and
+// what an operator is told about them is one line in the confirm, at the moment it changes whether
+// they press. the other processor's screen is set up by one press over its pair as well
+// (./paypal-section.tsx).
 //
 // **the boxes arrive holding what the deployment holds.** both keys are plain vars and the account
 // hands each value back (`DEPLOY_VARS` in packages/operator/src/deploy-split.ts), so an operator
@@ -172,15 +180,15 @@ import { WALLET_NAMES, linkStanding, walletHostLines, walletRows } from './walle
 // give. what reports it is the box, which is the one thing that has to change, and the card goes so
 // that the operator is left standing in it.
 //
-// **the two readings only the deployment can give stand at the head of the screen, above the boxes.**
-// which ways of paying the account is approved for, and where it stands on gifts that repeat. they
-// are what an operator opening this screen came to find out — where a deployment already holding its
-// keys stands — and the boxes underneath are what changes it, so the reading comes first and the
-// press that would rewrite it comes last. they are short enough to stand as themselves now that
-// nothing about the endpoint is among them, and a summary line over two ledgers would be a
-// disclosure an operator has to open to find out there was nothing behind it.
+// **the readings only the deployment can give stand at the head of the screen, above the boxes.**
+// which ways of paying the account is approved for, whether Stripe is telling it a gift was paid,
+// and where it stands on gifts that repeat. they are what an operator opening this screen came to
+// find out — where a deployment already holding its keys stands — and the boxes underneath are what
+// changes it, so the reading comes first and the press that would rewrite it comes last. each is
+// short enough to stand as itself, and a summary line over them would be a disclosure an operator
+// has to open to find out there was nothing behind it.
 //
-// **a screen with neither of them draws nothing up there at all** — no band, no empty form, no
+// **a screen with none of them draws nothing up there at all** — no band, no empty form, no
 // waiting placeholder. that is every deployment being set up for the first time, which is the state
 // where the space above the boxes is worth most.
 //
@@ -272,8 +280,9 @@ const withoutKey = (payments: PaymentsRead | null, gifts: RecurringRead | null):
  *
  * one of them has a box and one does not, and `MINTED_BY_CONSOLE` in ./secret-groups.ts is which:
  * the signing secret is issued by Stripe when the endpoint is registered and is stored in the same
- * breath, so a box for it would be a box nobody can correctly fill and a row for it would be a
- * reading about a webhook. where it is stated is the confirm, which is the one place this screen says
+ * breath, so a box for it would be a box nobody can correctly fill, and whether deliveries verify
+ * against it is the payment notices row's to say in a fundraiser's words (./payment-notices.tsx).
+ * where it is stated as a value is the confirm, which is the one place this screen says
  * which credentials the press touches — and there it is a line the press is about to write rather
  * than machinery an operator is asked to hold in their head.
  */
@@ -335,9 +344,9 @@ export type StripeSectionProps = {
 	 * screens await the same promise: a request each would be two views of one deployment able to
 	 * disagree by the time an operator reads them.
 	 *
-	 * what the Stripe half draws off it is the ways of paying. the report carries the endpoint's own
-	 * readings as well and nothing here reads them: they are machinery this press establishes, and
-	 * `packages/console/internal/deployment/payments.go` is where they still answer for.
+	 * what the Stripe half draws off it is the ways of paying, and — where the repair is mounted
+	 * ({@link StripeSectionProps.onWebhookRepair}) — the endpoint's two readings, as the one row that
+	 * says whether Stripe is telling this deployment a gift was paid.
 	 *
 	 * a promise rather than a value: it goes through the deployment's own console surface, and the
 	 * boxes are drawn out of what cloudflare said without waiting for it.
@@ -392,8 +401,21 @@ export type StripeSectionProps = {
 	wallets: WalletsLevel | null;
 	/** something else on the page is writing, which holds every control on it closed. */
 	busy: boolean;
-	/** which intent is in flight, or `null` where none is. */
+	/**
+	 * which intent is in flight, or `null` where none is. the repair press reads itself in flight off
+	 * {@link WEBHOOK_REPAIR_INTENT} here.
+	 */
 	pending: string | null;
+	/**
+	 * how the last press of the payment-notices repair went, or `null` where none has been answered
+	 * on this page.
+	 */
+	webhookRepair?: WebhookRepaired | null;
+	/**
+	 * the repair press's submit, which posts {@link WEBHOOK_REPAIR_INTENT}. absent, the payment
+	 * notices row is not drawn at all.
+	 */
+	onWebhookRepair?: () => void;
 };
 
 export function StripeSection({
@@ -411,7 +433,9 @@ export function StripeSection({
 	provision,
 	wallets,
 	busy,
-	pending
+	pending,
+	webhookRepair,
+	onWebhookRepair
 }: StripeSectionProps): ReactNode {
 	/* how far the press has got, asked of the binary rather than of the page: reading the page again
 	   is every round trip on it, one of them against the deployment this run is setting up. */
@@ -1370,10 +1394,10 @@ export function StripeSection({
 	/**
 	 * the one thing to say about a read this deployment tried to make and could not.
 	 *
-	 * **said once and never once per reading.** the rails and where the account stands on repeating
-	 * gifts are read through one port with one key, so both failing is one fact — drawn as a row in
-	 * each, an operator is told the same thing twice and has two places to look for the one sentence
-	 * that names what to do.
+	 * **said once and never once per reading.** the rails, the payment notices and where the account
+	 * stands on repeating gifts are read through one port with one key, so all of them failing is one
+	 * fact — drawn as a row in each, an operator is told the same thing again and has several places
+	 * to look for the one sentence that names what to do.
 	 *
 	 * **and nothing at all where nothing was asked.** a deployment holding no Stripe key is what the
 	 * two empty boxes below this already say, and a row here would restate them and then send an
@@ -1407,6 +1431,12 @@ export function StripeSection({
 			unread.push({ says: 'which ways of paying it can take', detail: railsRead.detail });
 		if (walletsRead?.state === 'unreadable')
 			unread.push({ says: 'which sites draw wallet buttons', detail: walletsRead.detail });
+		// the payment notices row's own read, said here only where that row is mounted to be spoiled.
+		if (onWebhookRepair !== undefined && stripe?.subscription.state === 'unreadable')
+			unread.push({
+				says: 'whether Stripe is telling it when a gift is paid',
+				detail: stripe.subscription.detail
+			});
 		if (giftsRead?.state === 'unreadable')
 			unread.push({ says: 'whether repeating gifts are set up', detail: giftsRead.detail });
 
@@ -1741,18 +1771,18 @@ export function StripeSection({
 	};
 
 	/**
-	 * the two readings only the deployment can give, drawn at the head of the screen above the boxes.
+	 * the readings only the deployment can give, drawn at the head of the screen above the boxes.
 	 *
-	 * neither is a step in setting this deployment up, and that is why nothing collects them into a
+	 * none is a step in setting this deployment up, and that is why nothing collects them into a
 	 * word: an account Stripe never approved for bank payments is not a deployment left unfinished,
 	 * and one that only ever wants one-time gifts is complete. what says whether this screen's job is
 	 * done is its rail cell's status (./console-pages.ts).
 	 *
-	 * each is named by its own band, and the two names are the fundraiser's rather than the
-	 * account's: what an operator is reading is which ways a donor may give and whether a donor may
-	 * ask to give again.
+	 * each is named by its own band, and the names are the fundraiser's rather than the account's:
+	 * what an operator is reading is which ways a donor may give, whether a gift is marked paid, and
+	 * whether a donor may ask to give again.
 	 *
-	 * **it draws nothing at all, form included, where none of the three has anything to say.** that
+	 * **it draws nothing at all, form included, where none of them has anything to say.** that
 	 * is every deployment holding no processor credentials at all, which is every deployment being
 	 * set up for the first time — and an empty band standing over the boxes costs the screen a step of
 	 * the section's own and a boundary above the block below it, which is a heading given a rule that
@@ -1766,7 +1796,9 @@ export function StripeSection({
 	 * sits in a wallet's own panel ({@link hostPanel}) — outside the form in the tree, and named back
 	 * on to it by {@link READINGS_FORM} — and the one that provisions what a repeating gift is
 	 * collected against stands under the Stripe lines where that account has nothing
-	 * (./recurring-block.tsx). so a form with nothing drawn provably holds neither.
+	 * (./recurring-block.tsx). so a form with nothing drawn provably holds neither. the repair beside
+	 * the payment notices posts nothing through it: it is the page's own submit
+	 * ({@link StripeSectionProps.onWebhookRepair}).
 	 */
 	const readings = (payments: PaymentsRead | null, gifts: RecurringRead | null): ReactNode => {
 		const unread = unreadable(payments, gifts);
@@ -1795,6 +1827,22 @@ export function StripeSection({
 					: rails(railsRead, hostLines, walletsResult);
 		/* and standing on its own where no panel was drawn to carry it. */
 		const loose = railsRead !== null && hostLines !== null ? null : walletsResult;
+		/* the endpoint's two readings as one row, where the page mounts the press beside it. its answer
+		   goes while any press on the page is writing, as the wallets' does: either a new press of it
+		   is under way, or another press is about to move what it was about. */
+		const notices =
+			onWebhookRepair === undefined ||
+			stripe === null ||
+			noticesStanding(stripe.webhook, stripe.subscription) === null ? null : (
+				<PaymentNotices
+					webhook={stripe.webhook}
+					subscription={stripe.subscription}
+					answer={busy ? null : (webhookRepair ?? null)}
+					closed={busy || working}
+					repairing={pending === WEBHOOK_REPAIR_INTENT}
+					onRepair={onWebhookRepair}
+				/>
+			);
 		// what the block below has in it, decided before it is drawn: a heading over nothing is a
 		// subject the screen raises and then says nothing about.
 		const repeats = recurringBlock({
@@ -1806,7 +1854,14 @@ export function StripeSection({
 			pending
 		});
 
-		if (unread === null && methods === null && loose === null && repeats === null) return null;
+		if (
+			unread === null &&
+			methods === null &&
+			loose === null &&
+			notices === null &&
+			repeats === null
+		)
+			return null;
 		return (
 			/* its own form, and the press inside it is the whole reason: provisioning what a repeating
 			   gift is collected against posts an intent and nothing else, so standing it in the keys
@@ -1817,6 +1872,7 @@ export function StripeSection({
 					{unread}
 					{methods}
 					{loose}
+					{notices}
 					{repeats}
 				</div>
 			</Form>

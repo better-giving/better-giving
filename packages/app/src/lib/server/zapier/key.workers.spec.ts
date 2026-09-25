@@ -5,7 +5,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { contact, donation, payment } from '../db/schema';
 import { makeZapierKey, readZapierKey, replaceZapierKey, verifyZapierKey } from './key';
-import { subscribe } from './subscriptions';
+import { subscribe, unsubscribe } from './subscriptions';
 
 // the deployment's Zapier key, against a real D1: the singleton and hash checks are the
 // database's, so what is stored is read back from the table rather than from the module.
@@ -136,7 +136,7 @@ describe('replacing the key', () => {
 		const old = await makeZapierKey(db);
 		if (!old.ok) throw new Error('a first make was refused');
 
-		const replaced = await replaceZapierKey(db);
+		const replaced = await replaceZapierKey(db, zapier);
 		if (!replaced.ok) throw new Error('the replace was refused');
 
 		expect(replaced.key).not.toBe(old.key);
@@ -147,7 +147,7 @@ describe('replacing the key', () => {
 	it('stores the new key and its hash in place of the old pair', async () => {
 		await makeZapierKey(db);
 
-		const replaced = await replaceZapierKey(db);
+		const replaced = await replaceZapierKey(db, zapier);
 		if (!replaced.ok) throw new Error('the replace was refused');
 
 		expect(await storedKeys()).toEqual([{ key: replaced.key, key_hash: sha256Hex(replaced.key) }]);
@@ -162,7 +162,7 @@ describe('replacing the key', () => {
 		await owe(gifts.id);
 		await owe(donors.id);
 
-		const replaced = await replaceZapierKey(db);
+		const replaced = await replaceZapierKey(db, zapier);
 
 		expect(replaced).toMatchObject({ ok: true, disconnected: 2 });
 		const { results: ended } = await env.DB.prepare(
@@ -178,7 +178,7 @@ describe('replacing the key', () => {
 	it('opens no subscription for a request verified under the key it replaced', async () => {
 		const verifiedUnder = await currentKeyHash();
 
-		await replaceZapierKey(db);
+		await replaceZapierKey(db, zapier);
 
 		expect(await subscribe(db, { trigger: 'new_gift', hookUrl: HOOK }, verifiedUnder)).toBeNull();
 		const open = await env.DB.prepare(
@@ -198,7 +198,7 @@ describe('replacing the key', () => {
 						? async (statements: D1PreparedStatement[]) => {
 								if (!overtaken) {
 									overtaken = true;
-									const winner = await replaceZapierKey(db);
+									const winner = await replaceZapierKey(db, zapier);
 									if (!winner.ok) throw new Error('the overtaking replace was refused');
 									const keyHash = await verifyZapierKey(db, bearer(winner.key));
 									const zap = await subscribe(
@@ -214,20 +214,119 @@ describe('replacing the key', () => {
 			})
 		);
 
-		expect(await replaceZapierKey(racing)).toEqual({ ok: false, reason: 'conflict' });
+		expect(await replaceZapierKey(racing, zapier)).toEqual({ ok: false, reason: 'conflict' });
 		const open = await env.DB.prepare(
 			'select id from zapier_subscription where ended_at is null'
 		).all<{ id: string }>();
 		expect(open.results.map((r) => r.id)).toEqual([madeOnWinner]);
 	});
 
+	it('asks Zapier to pause each Zap it ended, once the end has landed', async () => {
+		const keyHash = await currentKeyHash();
+		await subscribe(db, { trigger: 'new_gift', hookUrl: `${HOOK}a/` }, keyHash);
+		await subscribe(db, { trigger: 'new_donor', hookUrl: `${HOOK}b/` }, keyHash);
+		const left = await subscribe(db, { trigger: 'new_gift', hookUrl: `${HOOK}c/` }, keyHash);
+		if (left === null) throw new Error('a subscribe under the current key failed');
+		await unsubscribe(db, left.id);
+		const asked: { url: string; method: string; stillOpen: number }[] = [];
+
+		const replaced = await replaceZapierKey(db, async (input, init) => {
+			const open = await env.DB.prepare(
+				'select count(*) as open from zapier_subscription where ended_at is null'
+			).first<{ open: number }>();
+			asked.push({
+				url: String(input),
+				method: init?.method ?? 'GET',
+				stillOpen: open?.open ?? -1
+			});
+			return new Response(null, { status: 200 });
+		});
+
+		expect(replaced).toMatchObject({ ok: true, disconnected: 2, paused: 2, notPaused: 0 });
+		expect(asked.sort((a, b) => a.url.localeCompare(b.url))).toEqual([
+			{ url: `${HOOK}a/`, method: 'DELETE', stillOpen: 0 },
+			{ url: `${HOOK}b/`, method: 'DELETE', stillOpen: 0 }
+		]);
+	});
+
+	it('lands the replace whatever the hooks answer, and counts a fault, a 5xx or silence as not paused', async () => {
+		const keyHash = await currentKeyHash();
+		for (const hook of ['refuses', 'faults', 'hangs'])
+			await subscribe(db, { trigger: 'new_gift', hookUrl: `${HOOK}${hook}/` }, keyHash);
+
+		const replaced = await replaceZapierKey(db, async (input, init) => {
+			const url = String(input);
+			if (url.endsWith('refuses/')) return new Response('down', { status: 503 });
+			if (url.endsWith('faults/')) throw new TypeError('network connection lost');
+			return untilAborted(init?.signal);
+		});
+
+		if (!replaced.ok) throw new Error('the replace was refused');
+		expect(replaced).toMatchObject({ disconnected: 3, paused: 0, notPaused: 3 });
+		expect(await verifyZapierKey(db, bearer(replaced.key))).not.toBeNull();
+	});
+
+	it.each([404, 410])(
+		'counts a hook answering %i as paused: its Zap is already gone',
+		async (status) => {
+			const keyHash = await currentKeyHash();
+			await subscribe(db, { trigger: 'new_gift', hookUrl: HOOK }, keyHash);
+
+			const replaced = await replaceZapierKey(db, async () => new Response(null, { status }));
+
+			expect(replaced).toMatchObject({ ok: true, disconnected: 1, paused: 1, notPaused: 0 });
+		}
+	);
+
+	it('holds the pauses to six in flight at once', async () => {
+		const keyHash = await currentKeyHash();
+		for (let hook = 0; hook < 10; hook += 1)
+			await subscribe(db, { trigger: 'new_gift', hookUrl: `${HOOK}${hook}/` }, keyHash);
+		let inFlight = 0;
+		let most = 0;
+
+		const replaced = await replaceZapierKey(db, async () => {
+			inFlight += 1;
+			most = Math.max(most, inFlight);
+			await new Promise((settle) => setTimeout(settle, 20));
+			inFlight -= 1;
+			return new Response(null, { status: 200 });
+		});
+
+		expect(replaced).toMatchObject({ ok: true, paused: 10 });
+		expect(most).toBe(6);
+	});
+
+	it('answers inside the ten seconds the console waits on a press, however many hooks stay silent', async () => {
+		const keyHash = await currentKeyHash();
+		for (let hook = 0; hook < 40; hook += 1)
+			await subscribe(db, { trigger: 'new_gift', hookUrl: `${HOOK}${hook}/` }, keyHash);
+		const started = Date.now();
+
+		const replaced = await replaceZapierKey(db, async (_, init) => untilAborted(init?.signal));
+
+		// packages/console/internal/cf/client.go's `ReadTimeout`, which the press is sent under.
+		expect(Date.now() - started).toBeLessThan(10_000);
+		expect(replaced).toMatchObject({ ok: true, disconnected: 40, paused: 0, notPaused: 40 });
+	}, 30_000);
+
 	it('refuses while there is no key to replace', async () => {
-		expect(await replaceZapierKey(db)).toEqual({ ok: false, reason: 'no_key' });
+		expect(await replaceZapierKey(db, zapier)).toEqual({ ok: false, reason: 'no_key' });
 		expect(await storedKeys()).toEqual([]);
 	});
 });
 
 const HOOK = 'https://hooks.zapier.com/hooks/standard/1/2/3/';
+
+/** a hook that never answers: settles only by rejecting once `signal` aborts, as fetch does. */
+function untilAborted(signal: AbortSignal | null | undefined): Promise<Response> {
+	return new Promise((_, reject) => {
+		signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+	});
+}
+
+/** Zapier taking every pause it is sent. */
+const zapier: typeof fetch = async () => new Response(null, { status: 200 });
 
 /** a key made now, as the hash a request presenting it is verified under. */
 async function currentKeyHash(): Promise<string> {

@@ -8,8 +8,8 @@
 // **the connection is the deployment's and can be nowhere else.** the tokens live in
 // `quickbooks_connection` on the deployment's own D1 and the calls to Intuit are made with them, so
 // every reading below is one only the deployment can take. the console never holds a token and
-// never sees one: what crosses is a company's name, a chart of accounts an operator picks three
-// entries out of, and how far behind the books are.
+// never sees one: what crosses is a company's name, a chart of accounts an operator picks one
+// entry out of per role, and how far behind the books are.
 //
 // **connecting starts on the console and finishes in a browser.** the press below answers an
 // address, the operator's browser opens it, and Intuit sends that browser back to the deployment —
@@ -44,13 +44,27 @@ export interface ChosenAccountLine {
 }
 
 /**
- * the three places a gift is posted into, each one account an operator picks.
+ * the places a gift is posted into, each one account an operator picks.
  *
- *   income  — where the gift is counted as income.
- *   fee     — where the processor's fee is counted as a cost.
- *   deposit — the asset the gift arrived in.
+ *   income             — where the gift is counted as income.
+ *   fee                — where the processor's fee is counted as a cost.
+ *   stripeBalance, paypalBalance, chariotBalance, nowpaymentsBalance
+ *                      — where that processor's gifts are held until it pays out: an Other Current
+ *                        Asset, never a bank account.
+ *   undepositedFunds   — where a gift received in hand waits to be banked.
+ *
+ * no role is the bank. the deployment hears no payout, so a bookkeeper records each one off the bank
+ * feed as a transfer out of the holding it came from.
  */
-export const QUICKBOOKS_ACCOUNT_ROLES = ['income', 'fee', 'deposit'] as const;
+export const QUICKBOOKS_ACCOUNT_ROLES = [
+	'income',
+	'fee',
+	'stripeBalance',
+	'paypalBalance',
+	'chariotBalance',
+	'nowpaymentsBalance',
+	'undepositedFunds'
+] as const;
 
 export type QuickbooksAccountRole = (typeof QUICKBOOKS_ACCOUNT_ROLES)[number];
 
@@ -61,10 +75,10 @@ export type QuickbooksAccountRole = (typeof QUICKBOOKS_ACCOUNT_ROLES)[number];
  * translated: an operator recognises them from their own books, and a closed vocabulary here would
  * be a list to keep in step with somebody else's.
  *
- * `roles` is which of the three this account may be picked for, decided on the deployment: Intuit
- * refuses a post into an account whose type does not fit the place it is posted to, so the one list
- * is filtered per picker and an account fitting none is offered by none of them. a save naming an
- * account outside its role is refused whatever the screen offered.
+ * `roles` is which of the roles this account may be picked for, decided on the deployment: a figure
+ * posted into an account of the wrong type lands on the wrong statement, so the one list is filtered
+ * per picker and an account fitting none is offered by none of them. a save naming an account
+ * outside its role is refused whatever the screen offered.
  */
 export interface LedgerAccountLine {
 	readonly id: string;
@@ -82,8 +96,9 @@ export interface LedgerAccountLine {
  * what the company is called — the name is a label rather than the connection, so a read that did
  * not land leaves the connection standing and this null.
  *
- * the three accounts are null until an operator has picked them, and they are picked together: a
- * connection holding one of the three is a state the deployment refuses to write.
+ * each account is null until an operator has picked it. income and fee are saved together, and each
+ * holding may stay null: it holds that processor's gifts, or the gifts received in hand, and nothing
+ * else.
  */
 export interface QuickbooksCompany {
 	readonly state: 'connected';
@@ -92,7 +107,16 @@ export interface QuickbooksCompany {
 	readonly companyName: string | null;
 	readonly income: ChosenAccountLine | null;
 	readonly fee: ChosenAccountLine | null;
-	readonly deposit: ChosenAccountLine | null;
+	readonly stripeBalance: ChosenAccountLine | null;
+	readonly paypalBalance: ChosenAccountLine | null;
+	readonly chariotBalance: ChosenAccountLine | null;
+	readonly nowpaymentsBalance: ChosenAccountLine | null;
+	readonly undepositedFunds: ChosenAccountLine | null;
+	/**
+	 * whether the connection moved to this company and nobody has saved its accounts since. while it
+	 * is true nothing is sent and nothing is filled in for the operator, whatever reconnects happen.
+	 */
+	readonly awaitingAccounts: boolean;
 	/** the earliest business date a gift is sent from, as an ISO-8601 instant. */
 	readonly startAt: string;
 }
@@ -178,9 +202,11 @@ export interface QuickbooksReport {
  *                 minted here because this surface is behind the console's credential and the
  *                 address it answers is not: an unguarded one would let an outsider connect their
  *                 own books and take this organisation's gifts into them.
- *   accounts    — the three accounts a gift is posted into, by id. the names are read off the
- *                 company's own chart rather than sent, so a pick is checked against the books it
- *                 claims to be in.
+ *   accounts    — every role's account, by id: `income` and `fee` an id each, and each holding
+ *                 an id or null for none. every role is named in the body, so a console that knows
+ *                 fewer roles than the deployment is refused rather than clearing the rest. the
+ *                 names are read off the company's own chart rather than sent, so a pick is checked
+ *                 against the books it claims to be in.
  *   start-date  — the earliest business date a gift is sent from.
  *   start-date-preview
  *               — what moving that date would queue and drop, written nowhere: it takes the same
@@ -212,15 +238,28 @@ export interface QuickbooksStartAtSide {
 }
 
 /**
+ * whether Intuit took the revoke a disconnect made first.
+ *
+ * the connection is gone from the deployment on both arms. `not_revoked` is a revoke Intuit did not
+ * confirm, so the grant may still be live and the app among the company's connected apps until
+ * someone removes it there: `detail` is the deployment's sentence about why the revoke did not
+ * land, and `fix` says where.
+ */
+export type QuickbooksRevoke =
+	| { readonly state: 'revoked' }
+	| { readonly state: 'not_revoked'; readonly detail: string; readonly fix: string };
+
+/**
  * what a press that landed answers with.
  *
- * only three of them have anything to say beyond having happened, and what the rest change is read
+ * only four of them have anything to say beyond having happened, and what the rest change is read
  * back off {@link QuickbooksReport} — so there is no arm carrying a field that is null for every
  * press but one.
  */
 export type QuickbooksPressReport =
 	| { readonly press: 'connect'; readonly url: string }
-	| { readonly press: 'accounts' | 'start-date' | 'disconnect' }
+	| { readonly press: 'accounts' | 'start-date' }
+	| { readonly press: 'disconnect'; readonly revoke: QuickbooksRevoke }
 	| { readonly press: 'retry'; readonly retried: number }
 	| {
 			readonly press: 'start-date-preview';

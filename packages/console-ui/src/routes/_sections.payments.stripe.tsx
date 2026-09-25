@@ -1,16 +1,19 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
+import { useSubmit } from 'react-router';
 import {
 	freeWithheldVars,
 	homeReading,
 	levelWallets,
+	repairWebhook,
 	setUpRecurring,
 	setVars,
 	startStripeSetup
 } from '../api/client';
-import type { RecurringSetup, VarsWritten, WalletsLevel } from '../api/types';
+import type { RecurringSetup, VarsWritten, WalletsLevel, WebhookRepaired } from '../api/types';
 import { consoleRereads } from '../lib/dialog-params';
 import { heldValues } from '../lib/held-values';
+import { repairLanded, WEBHOOK_REPAIR_INTENT } from '../lib/notices-standing';
 import { forgetReadings, readProcessorPage } from '../lib/processor-cache';
 import { RECURRING_INTENT } from '../lib/recurring-block';
 import { STRIPE_REMOVAL, stripeKeyEdits } from '../lib/stripe-edits';
@@ -75,6 +78,16 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	 * (../lib/wallets-press.ts).
 	 */
 	if (intent === WALLETS_INTENT) return { wallets: await levelWallets() };
+
+	/**
+	 * asks the deployment to switch its own endpoint back on and subscribe it to every event, with
+	 * the signing secret it holds left alone.
+	 *
+	 * it answers as the two presses above it do and for the same reason, and nothing is posted with
+	 * it: which endpoint is this deployment's is settled by the address the press reached, inside
+	 * the worker (../lib/notices-standing.ts says which standing it is drawn on).
+	 */
+	if (intent === WEBHOOK_REPAIR_INTENT) return { webhookRepair: await repairWebhook() };
 
 	/**
 	 * does to the processor whatever the two Stripe boxes asked for, which is one of three acts.
@@ -142,12 +155,22 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	return { unknown: true as const };
 }
 
+/**
+ * every press re-reads as it does across the console, save a payment notices repair that did not
+ * answer `repaired`: its answer is drawn beside the row the reading already shows, and a re-read
+ * would be every loopback round trip this page takes, spent drawing that row again.
+ */
 export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean {
+	const answer: unknown = args.actionResult;
+	if (typeof answer === 'object' && answer !== null && 'webhookRepair' in answer) {
+		if (!repairLanded(answer.webhookRepair as WebhookRepaired)) return false;
+	}
 	return consoleRereads(args);
 }
 
 export default function StripePage({ loaderData, actionData, matches }: Route.ComponentProps) {
 	const shell = matches[1].loaderData;
+	const submit = useSubmit();
 	const press = usePress();
 	const intent = press.intent;
 	/* a setup run counts as this page writing, although no request is open for it: it writes two
@@ -173,6 +196,8 @@ export default function StripePage({ loaderData, actionData, matches }: Route.Co
 	// in front of.
 	const wallets: WalletsLevel | null =
 		actionData && 'wallets' in actionData ? actionData.wallets : null;
+	const webhookRepair: WebhookRepaired | null =
+		actionData && 'webhookRepair' in actionData ? actionData.webhookRepair : null;
 
 	return (
 		<Column>
@@ -190,6 +215,13 @@ export default function StripePage({ loaderData, actionData, matches }: Route.Co
 				freed={freed}
 				provision={provision}
 				wallets={wallets}
+				webhookRepair={webhookRepair}
+				onWebhookRepair={() =>
+					void submit(
+						{ intent: WEBHOOK_REPAIR_INTENT },
+						{ method: 'post', preventScrollReset: true }
+					)
+				}
 				busy={busy}
 				pending={intent}
 			/>

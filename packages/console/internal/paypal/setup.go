@@ -11,14 +11,14 @@ import (
 	"github.com/better-giving/console/internal/release"
 )
 
-// setting PayPal up from the screen: the client id and secret handed in, and one chain that leaves
-// the app's listener and the deployment in the state that pair implies.
+// setting PayPal up from the screen: the client id, the secret and the address handed in, and one
+// chain that leaves the app's listener and the deployment in the state that pair implies.
 //
 // **one press, because once the pair is in hand nothing is left to ask.** the listener at this
 // deployment's address is found or registered, its subscription is brought to exactly what the
-// deployment reads, the pair and the listener's id are written as vars in one write, and the
-// deployment is asked to put what a repeating gift is collected against on the account. the operator
-// never opens PayPal's dashboard for the listener and never types its id.
+// deployment reads, the pair, the address and the listener's id are written as vars in one write,
+// and the deployment is asked to put what a repeating gift is collected against on the account. the
+// operator never opens PayPal's dashboard for the listener and never types its id.
 //
 // **a listener already here is kept, which is where this differs from ../stripe.** Stripe hands a
 // signing secret over once, so an endpoint that is kept is one that console can never store a secret
@@ -51,11 +51,11 @@ import (
 type Stage string
 
 const (
-	// Authorizing is minting a token with the pair that was pasted.
+	// Authorizing is minting a token with the pair that was pasted, at the address sent with it.
 	Authorizing Stage = "authorizing"
 	// Registering is deriving the address, reading the app's listeners, and settling the one here.
 	Registering Stage = "registering"
-	// Storing is writing the pair and the listener's id onto the deployment, as vars.
+	// Storing is writing the pair, its address and the listener's id onto the deployment, as vars.
 	Storing Stage = "storing"
 	// Repeating is asking the deployment to put what a repeating gift is collected against on the
 	// PayPal account.
@@ -145,17 +145,20 @@ type Outcome struct {
 type Asked struct {
 	ClientID string
 	Secret   string
+	// Address is what ../cf's Base made of the typed one, DefaultAPIURL where it was blank.
+	Address string
 }
 
 // Effects is every effect the chain has, handed in, so every stage and failure above is reachable in
 // ./setup_test.go with no PayPal app, no cloudflare account and no network.
 type Effects struct {
-	// Authorize and Bearer are ./paypal.go's Binding.
+	// Authorize and Bearer are ./paypal.go's BindAt, bound to the pair at the address.
 	Authorize func(ctx context.Context) cf.Answer
 	Bearer    func(accessToken string) Call
 	Address   func(ctx context.Context) deployment.Address
-	// Publish writes vars, which is a read of the worker's bindings and one patch back.
-	Publish func(ctx context.Context, values map[string]string) deployment.Written
+	// Publish writes vars, which is a read of the worker's bindings and one patch back; a name mapped
+	// to nil is taken off.
+	Publish func(ctx context.Context, values map[string]*string) deployment.Written
 	// Repeating is the step the deployment makes rather than this console, and the one that can be
 	// answered by a deployment whose edge has not caught up with the write in front of it. It takes
 	// the account it is about, which the call site below names.
@@ -176,7 +179,7 @@ const listenersPath = "/v1/notifications/webhooks"
 //
 // the order is not interchangeable: a pair that mints no token can list nothing, a listener cannot be
 // matched without the address, the write carries the id the listener step settled on, and the
-// deployment builds its PayPal client out of the pair that write put there.
+// deployment builds its PayPal client out of the pair and the address that write put there.
 //
 // a stop at that last step leaves a deployment that works: it takes one-time gifts on PayPal, and
 // the repeating-gifts press on the same fold finishes it without the pair being pasted again.
@@ -194,6 +197,14 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 	}
 
 	minted := Read(effects.Authorize(ctx))
+	if minted.Kind == Refused {
+		refused := minted.Turned()
+		// a pair is refused at every address but the one it was made at, so where it went is half of
+		// what the operator has to check.
+		refused.Detail += ". PayPal refused the pair at " + asked.Address +
+			". A pair from an app at another PayPal address needs that address in the API address box."
+		return Outcome{Kind: Unauthorized, Failure: refused}
+	}
 	if minted.Kind != Value {
 		return Outcome{Kind: Unauthorized, Failure: minted.Turned()}
 	}
@@ -251,13 +262,21 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 	found()
 
 	at(Storing)
-	// the pair and the id in one write: a deployment holding the pair and another listener's id
-	// verifies nothing, and one holding the id and no pair captures nothing.
-	written := effects.Publish(ctx, map[string]string{
-		"PAYPAL_CLIENT_ID":     asked.ClientID,
-		"PAYPAL_CLIENT_SECRET": asked.Secret,
-		"PAYPAL_WEBHOOK_ID":    registration.ID,
-	})
+	// the pair, its address and the id in one write: a deployment holding the pair and another
+	// listener's id verifies nothing, one holding the id and no pair captures nothing, and one holding
+	// the pair at another address calls where the pair is refused.
+	values := map[string]*string{
+		"PAYPAL_CLIENT_ID":     &asked.ClientID,
+		"PAYPAL_CLIENT_SECRET": &asked.Secret,
+		"PAYPAL_WEBHOOK_ID":    &registration.ID,
+		// the default is what a deployment holding no address calls, so it is stored as no address: an
+		// address left from an earlier press would otherwise send this pair somewhere else.
+		APIURLVar: nil,
+	}
+	if asked.Address != DefaultAPIURL {
+		values[APIURLVar] = &asked.Address
+	}
+	written := effects.Publish(ctx, values)
 	if written.Kind != deployment.WriteSet && written.Kind != deployment.WriteUnchanged {
 		return Outcome{Kind: Unstored, ListenerID: registration.ID, Written: &written}
 	}

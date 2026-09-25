@@ -3,7 +3,7 @@ import { and, eq, exists } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { zapierKey } from '../db/schema';
 import { secretEquals } from '../secret-compare';
-import { endSubscriptionStatements } from './subscriptions';
+import { endSubscriptionStatements, type PauseOutcome, pauseZaps } from './subscriptions';
 
 // the one key Zapier presents on every call it makes to this deployment: made and replaced from
 // the console, checked on every `/zapier` request.
@@ -20,8 +20,11 @@ export type MadeZapierKey = { readonly ok: true; readonly key: string; readonly 
 /** a make refused because a key already exists: only `replace` cuts one. */
 export type ZapierKeyExists = { readonly ok: false; readonly reason: 'key_exists' };
 
-/** what a replace answers with: the new key, and how many Zaps the old one took down with it. */
-export type ReplacedZapierKey = MadeZapierKey & { readonly disconnected: number };
+/**
+ * what a replace answers with: the new key, how many Zaps the old one took down with it, and how
+ * many of those Zapier paused and how many it did not ({@link PauseOutcome}).
+ */
+export type ReplacedZapierKey = MadeZapierKey & { readonly disconnected: number } & PauseOutcome;
 
 /**
  * a replace refused: `no_key` when there is none yet (`make` starts one), `conflict` when another
@@ -74,11 +77,19 @@ export async function makeZapierKey(db: Db): Promise<MadeZapierKey | ZapierKeyEx
  * a REST hook receives events without presenting the key, so a replace that only cut the auth
  * would leave every Zap on the old key still receiving gifts. `disconnected` is how many ended.
  *
+ * **once that batch has committed, Zapier is told**: each ended hook is sent a pause
+ * (`pauseZaps` in ./subscriptions.ts), since a Zap nothing posts to again otherwise reads as on in
+ * Zapier, with no error. the pause cannot fail the replace or undo it, and `fetcher` is how it
+ * reaches Zapier.
+ *
  * the write is conditional on the hash read here, and the ends on that write having landed: of
  * two replaces racing, the second changes nothing — it ends no Zap made on the first's key — and
  * answers `conflict`. `created_at` moves with the key, so it stays the current key's make date.
  */
-export async function replaceZapierKey(db: Db): Promise<ReplacedZapierKey | ZapierKeyNotReplaced> {
+export async function replaceZapierKey(
+	db: Db,
+	fetcher: typeof fetch
+): Promise<ReplacedZapierKey | ZapierKeyNotReplaced> {
 	const current = await currentKey(db);
 	if (current === undefined) return { ok: false, reason: 'no_key' };
 	const key = newKey();
@@ -98,7 +109,9 @@ export async function replaceZapierKey(db: Db): Promise<ReplacedZapierKey | Zapi
 	]);
 	const [row] = written;
 	if (row === undefined) return { ok: false, reason: 'conflict' };
-	return { ok: true, key, madeAt: row.madeAt, disconnected: ended.meta.changes };
+	const hookUrls = ended.map((e) => e.hookUrl);
+	const pause = await pauseZaps(fetcher, hookUrls);
+	return { ok: true, key, madeAt: row.madeAt, disconnected: hookUrls.length, ...pause };
 }
 
 /**

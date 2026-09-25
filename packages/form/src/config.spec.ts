@@ -173,6 +173,35 @@ describe('a response the form cannot solicit a gift on', () => {
 		expect(config?.providers).toEqual([{ name: 'stripe', publishableKey: 'pk_test_x' }]);
 	});
 
+	it('carries the script a processor’s SDK is to be loaded from', () => {
+		const paypal = {
+			name: 'paypal',
+			publishableKey: 'AZ_client_id',
+			sdkUrl: 'https://www.paypal.example.test/web-sdk/v6/core'
+		};
+
+		expect(readFormConfig(withField('providers', [paypal]))?.providers).toEqual([paypal]);
+	});
+
+	// an entry naming a script it may not load is dropped whole rather than read with the address
+	// stripped: the adapter's default script against keys issued elsewhere is a button that fails
+	// for a reason the donor's page cannot see.
+	it.each([
+		['another path', 'https://www.paypal.example.test/sdk/js'],
+		['plain http', 'http://www.paypal.example.test/web-sdk/v6/core'],
+		['a relative path', '/web-sdk/v6/core'],
+		['a value that is not a string', 42]
+	])('drops an entry whose script address is %s', (_, sdkUrl) => {
+		const config = readFormConfig(
+			withField('providers', [
+				{ name: 'paypal', publishableKey: 'AZ_client_id', sdkUrl },
+				{ name: 'stripe', publishableKey: 'pk_test_x' }
+			])
+		);
+
+		expect(config?.providers).toEqual([{ name: 'stripe', publishableKey: 'pk_test_x' }]);
+	});
+
 	// a program the response states and this file cannot read is not a field with a safe reading:
 	// every reading available is a gift credited somewhere the org did not say, so the form does not
 	// render at all rather than solicit one.

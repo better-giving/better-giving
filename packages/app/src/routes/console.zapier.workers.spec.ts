@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { uuidv7 } from 'uuidv7';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	CONSOLE_SESSION_SECONDS,
 	CONSOLE_TOKEN_MIN_RANDOM,
@@ -148,7 +148,7 @@ describe('the make press', () => {
 		expect(response.status).toBe(200);
 		const made = (await response.json()) as ZapierPressReport;
 		if (!made.ok) throw new Error(`make refused: ${made.detail}`);
-		expect(made).toMatchObject({ press: 'make', disconnected: 0 });
+		expect(made).toMatchObject({ press: 'make', disconnected: 0, paused: 0, notPaused: 0 });
 		expect(made.key.length).toBeGreaterThan(0);
 
 		const reading = (await (await read()).json()) as ZapierReport;
@@ -168,6 +168,13 @@ describe('the make press', () => {
 });
 
 describe('the replace press', () => {
+	// ../../vitest.workers.config.ts sets `unstubGlobals`, so this Zapier is taken back after each case.
+	let zapierAnswers: () => Response;
+	beforeEach(() => {
+		zapierAnswers = () => new Response(null, { status: 200 });
+		vi.stubGlobal('fetch', async () => zapierAnswers());
+	});
+
 	it('refuses where no key is made, and names the create press', async () => {
 		const response = await press({ press: 'replace' });
 
@@ -200,6 +207,23 @@ describe('the replace press', () => {
 			key: { madeAt: replaced.madeAt, key: replaced.key },
 			listening: { newGift: 0, newDonor: 0 }
 		});
+	});
+
+	it('answers how many of the disconnected Zaps Zapier paused, and how many it did not', async () => {
+		const old = await made();
+		await listen('new_gift', old);
+		await listen('new_gift', old);
+		await listen('new_donor', old);
+		let refused = false;
+		zapierAnswers = () => {
+			if (refused) return new Response(null, { status: 200 });
+			refused = true;
+			return new Response('unavailable', { status: 503 });
+		};
+
+		const replaced = (await (await press({ press: 'replace' })).json()) as ZapierPressReport;
+
+		expect(replaced).toMatchObject({ ok: true, disconnected: 3, paused: 2, notPaused: 1 });
 	});
 });
 

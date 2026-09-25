@@ -251,6 +251,31 @@ describe('POST /api/chariot/webhook', () => {
 		expect(await postingGroups()).toBe(0);
 	});
 
+	/**
+	 * a body Chariot vouched for that names no event to act on. the same bytes read the same on
+	 * every redelivery, and Chariot redelivers any non-2xx toward disabling the endpoint, so it is
+	 * answered 200 with nothing read or written.
+	 */
+	it.each(['id', 'category'])(
+		'answers a signed delivery with no %s 200, reading and writing nothing',
+		async (field) => {
+			await recordedGift();
+			const chariot = chariotHolds([RECEIVED_GRANT]);
+			const { [field]: _, ...unnamed } = JSON.parse(grantUpdated());
+			const body = JSON.stringify(unnamed);
+
+			const response = await deliver(body, {
+				'chariot-webhook-signature': await signature(body)
+			});
+
+			expect(response.status).toBe(200);
+			expect(await response.json()).toMatchObject({ outcome: 'unactionable' });
+			expect(chariot.reads).toEqual([]);
+			expect(await paymentStatus()).toBe('pending');
+			expect(await postingGroups()).toBe(0);
+		}
+	);
+
 	/** the key is set and the secret is not: a half-finished set-up, held open for redelivery. */
 	it('asks for the delivery again when this deployment holds no signing secret', async () => {
 		const { CHARIOT_WEBHOOK_SECRET: _unset, ...noSecret } = CONFIGURED;

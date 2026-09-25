@@ -37,7 +37,9 @@ vi.mock('../api/client', async (original) => ({
 						press: body.press,
 						key: 'bgz_key',
 						madeAt: '2026-09-22T00:00:00.000Z',
-						disconnected: 0
+						disconnected: 0,
+						paused: 0,
+						notPaused: 0
 					}
 				}
 			: { kind: 'unanswered' as const, read: { kind: 'no-session' as const } };
@@ -189,7 +191,9 @@ describe('a press on the Zapier page', () => {
 						press: 'replace',
 						key: 'bgz_key',
 						madeAt: '2026-09-22T00:00:00.000Z',
-						disconnected: 0
+						disconnected: 0,
+						paused: 0,
+						notPaused: 0
 					}
 				}
 			}

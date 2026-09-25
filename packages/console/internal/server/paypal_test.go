@@ -58,6 +58,17 @@ func paypalApp(t *testing.T) (*httptest.Server, func() []string) {
 // cloudflare call and its body, and the last every errand the deployment was sent.
 func settingPaypal(t *testing.T, chosen string) (http.Handler, func() []string, *[]string, *httptest.Server, func() []errand) {
 	t.Helper()
+	handler, asked, cloudflare, surface, errands, _ := settingPaypalBound(t, chosen)
+	return handler, asked, cloudflare, surface, errands
+}
+
+// that same console, and every address the pair was asked to be bound to: the fake PayPal answers
+// every call whatever that address was.
+func settingPaypalBound(t *testing.T, chosen string) (
+	http.Handler, func() []string, *[]string, *httptest.Server, func() []errand, *[]string,
+) {
+	t.Helper()
+	bases := []string{}
 	records, flow, accounts := machine(t, chosen)
 	surface, errands := deployed(t, map[string]any{
 		"POST /console/recurring": map[string]any{
@@ -84,10 +95,11 @@ func settingPaypal(t *testing.T, chosen string) (http.Handler, func() []string, 
 		Reads:    func(cf.Credential) cf.Get { return cf.JSONGet(api.URL, nil) },
 		Patches:  func(cf.Credential) cf.Send { return cf.JSONSend(api.URL, nil) },
 		Settings: func(cf.Credential) cf.MultipartUpload { return cf.MultipartSend(api.URL, nil) },
-		Paypal: func(clientID, secret string) paypal.Binding {
+		Paypal: func(base, clientID, secret string) paypal.Binding {
+			bases = append(bases, base)
 			return paypal.BindAt(app.URL, clientID, secret)
 		},
-	}), asked, cloudflare, surface, errands
+	}), asked, cloudflare, surface, errands, &bases
 }
 
 const paypalPressed = `{"clientId":"Aa-client-typed","secret":"EL-secret-typed"}`
@@ -140,6 +152,38 @@ func TestThePaypalPressRegistersTheListenerAndWritesThePairAndItsIdAsVars(t *tes
 	}
 	if strings.Contains(held, "/secrets-bulk") {
 		t.Errorf("a configuration value was stored as a credential; the run made %v", *cloudflare)
+	}
+}
+
+func TestThePaypalPressBindsThePairToTheAddressItCarries(t *testing.T) {
+	for _, one := range []struct{ body, want string }{
+		{paypalPressed, paypal.DefaultAPIURL},
+		{`{"clientId":"Aa-a","secret":"EL-b","address":"https://paypal.example/"}`, "https://paypal.example"},
+	} {
+		handler, _, _, _, _, bases := settingPaypalBound(t, "an-account")
+		if status, answer := press(t, handler, "/api/paypal/setup", one.body); status != http.StatusOK {
+			t.Fatalf("%s: the press answered %d %v", one.body, status, answer)
+		}
+		polledPaypal(t, handler)
+
+		if len(*bases) != 1 || (*bases)[0] != one.want {
+			t.Errorf("%s: the pair was bound to %v, want %s", one.body, *bases, one.want)
+		}
+	}
+}
+
+func TestAPaypalAddressThatIsNotAnHttpsOriginIsRefusedBeforeAnythingLeavesThisMachine(t *testing.T) {
+	for _, address := range []string{"http://paypal.example", "https://paypal.example/v1", "paypal"} {
+		handler, asked, cloudflare, _, _, bases := settingPaypalBound(t, "an-account")
+		status, answer := press(t, handler, "/api/paypal/setup",
+			`{"clientId":"Aa-a","secret":"EL-b","address":"`+address+`"}`)
+
+		if status != http.StatusBadRequest || !strings.Contains(said(answer), "address") {
+			t.Errorf("%s: the press answered %d %v", address, status, answer)
+		}
+		if len(asked()) != 0 || len(*cloudflare) != 0 || len(*bases) != 0 {
+			t.Errorf("%s: PayPal was asked %v and cloudflare %v", address, asked(), *cloudflare)
+		}
 	}
 }
 

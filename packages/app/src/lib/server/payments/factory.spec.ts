@@ -300,14 +300,142 @@ describe('createPaymentProviders', () => {
 	);
 });
 
-/**
- * the sentence a deployment that can serve no form is handed, beside the one naming what is unset.
- *
- * the message says which values are short and this says where they come from, so it is the half
- * that can send an operator to the wrong dashboard — and every deployment it is read on holds no
- * usable processor at all, which is the only arm `publishedConfig` in ../forms/published-config.ts
- * reads it on.
- */
+describe('PayPal', () => {
+	/** a token and a created order the adapter is answered with, recording where each was sent. */
+	function orderAddress(): string[] {
+		const urls: string[] = [];
+		vi.stubGlobal('fetch', async (input: Request | string | URL) => {
+			const url = input instanceof Request ? input.url : String(input);
+			urls.push(url);
+			if (url.endsWith('/v1/oauth2/token')) {
+				return Response.json({
+					access_token: 'A21AA-token',
+					token_type: 'Bearer',
+					expires_in: 32400
+				});
+			}
+			return Response.json({ id: '5O190127TN364715T', status: 'CREATED' }, { status: 201 });
+		});
+		return urls;
+	}
+
+	const ORDER = {
+		amountMinor: 1000,
+		currency: 'USD',
+		method: 'paypal',
+		idempotencyKey: 'attempt-1',
+		deploymentOrigin: 'https://donate.example.org'
+	} as const;
+
+	it('calls PayPal’s own address where none is set', async () => {
+		const urls = orderAddress();
+
+		await createPaymentProviders(PAYPAL_CONFIGURED).for('paypal').createIntent(ORDER);
+
+		expect(urls).toEqual([
+			'https://api-m.paypal.com/v1/oauth2/token',
+			'https://api-m.paypal.com/v2/checkout/orders'
+		]);
+	});
+
+	it('mints its token and places its order at the address the deployment holds', async () => {
+		const urls = orderAddress();
+
+		await createPaymentProviders({
+			...PAYPAL_CONFIGURED,
+			PAYPAL_API_URL: 'https://paypal-api.example.test'
+		})
+			.for('paypal')
+			.createIntent(ORDER);
+
+		expect(urls).toEqual([
+			'https://paypal-api.example.test/v1/oauth2/token',
+			'https://paypal-api.example.test/v2/checkout/orders'
+		]);
+	});
+
+	it('takes an address typed with a trailing slash as its origin', async () => {
+		const urls = orderAddress();
+
+		await createPaymentProviders({
+			...PAYPAL_CONFIGURED,
+			PAYPAL_API_URL: 'https://paypal-api.example.test/'
+		})
+			.for('paypal')
+			.createIntent(ORDER);
+
+		expect(urls).toEqual([
+			'https://paypal-api.example.test/v1/oauth2/token',
+			'https://paypal-api.example.test/v2/checkout/orders'
+		]);
+	});
+
+	it.each([
+		['a path after the host', 'https://paypal-api.example.test/v1'],
+		['plain http', 'http://paypal-api.example.test'],
+		['no address at all', 'paypal-api.example.test']
+	])('reads an address with %s as PayPal not configured, naming it', async (_, address) => {
+		const urls = orderAddress();
+		const processors = createPaymentProviders({ ...PAYPAL_CONFIGURED, PAYPAL_API_URL: address });
+
+		const result = await processors.for('paypal').createIntent(ORDER);
+
+		expect(result.ok === false && result.reason).toBe('not_configured');
+		expect(result.ok === false ? result.detail : '').toContain('PAYPAL_API_URL');
+		expect(processors.configured).toEqual([]);
+		expect(urls).toEqual([]);
+	});
+
+	it('serves no form on an address it cannot call, and names the address as what is short', () => {
+		const served = servedProcessors({
+			...PAYPAL_CONFIGURED,
+			PAYPAL_API_URL: 'https://paypal-api.example.test/v1'
+		});
+
+		expect(served.serves).toBe(false);
+		expect(served.providers).toEqual([]);
+		expect(served.shortfall).toContain('`PAYPAL_API_URL`');
+	});
+
+	// the donor's page has to start the SDK against the address the keys belong to, so the served
+	// entry names the core script derived from it.
+	it('serves the script at the address the deployment holds', () => {
+		const served = servedProcessors({
+			...PAYPAL_CONFIGURED,
+			PAYPAL_API_URL: 'https://api-m.paypal.example.test'
+		});
+
+		expect(served.providers).toEqual([
+			{
+				name: 'paypal',
+				publishableKey: 'notarealclientid',
+				sdkUrl: 'https://www.paypal.example.test/web-sdk/v6/core'
+			}
+		]);
+	});
+
+	it('serves PayPal’s own script where no address is set', () => {
+		expect(servedProcessors(PAYPAL_CONFIGURED).providers).toEqual([
+			{
+				name: 'paypal',
+				publishableKey: 'notarealclientid',
+				sdkUrl: 'https://www.paypal.com/web-sdk/v6/core'
+			}
+		]);
+	});
+
+	// no script can be derived from a host without the `api-m.` label, so the entry names none and
+	// the donor's page starts its own default one.
+	it('names no script for an address it cannot derive one from', () => {
+		const served = servedProcessors({
+			...PAYPAL_CONFIGURED,
+			PAYPAL_API_URL: 'https://paypal-api.example.test'
+		});
+
+		expect(served.providers).toEqual([{ name: 'paypal', publishableKey: 'notarealclientid' }]);
+	});
+});
+
 describe('Chariot', () => {
 	/** a Create Grant the adapter answers, recording the address it was sent to. */
 	function grantAddress(): string[] {
@@ -398,6 +526,14 @@ describe('Chariot', () => {
 	});
 });
 
+/**
+ * the sentence a deployment that can serve no form is handed, beside the one naming what is unset.
+ *
+ * the message says which values are short and this says where they come from, so it is the half
+ * that can send an operator to the wrong dashboard — and every deployment it is read on holds no
+ * usable processor at all, which is the only arm `publishedConfig` in ../forms/published-config.ts
+ * reads it on.
+ */
 describe('servedProcessors — the fix', () => {
 	// the operator who filled one of PayPal's two boxes is setting PayPal up, whatever else is
 	// unset. a sentence naming Stripe's dashboard sends them somewhere they have no account.

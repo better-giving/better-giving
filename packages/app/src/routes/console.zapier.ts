@@ -58,7 +58,9 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 
 	const db = context.get(database);
 	const pressed =
-		press === 'make' ? withNoneDisconnected(await makeZapierKey(db)) : await replaceZapierKey(db);
+		press === 'make'
+			? withNoneDisconnected(await makeZapierKey(db))
+			: await replaceZapierKey(db, fetch);
 	if (!pressed.ok) return refused(press, pressed.reason);
 
 	const report: ZapierPressReport = {
@@ -66,7 +68,9 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 		press,
 		key: pressed.key,
 		madeAt: pressed.madeAt.toISOString(),
-		disconnected: pressed.disconnected
+		disconnected: pressed.disconnected,
+		paused: pressed.paused,
+		notPaused: pressed.notPaused
 	};
 	return consoleJson(report);
 }
@@ -96,7 +100,8 @@ const REFUSALS: Record<RefusalReason, string> = {
 /** a first key disconnects nothing: there was no key for a Zap to be on. */
 const withNoneDisconnected = (
 	made: MadeZapierKey | ZapierKeyExists
-): ReplacedZapierKey | ZapierKeyExists => (made.ok ? { ...made, disconnected: 0 } : made);
+): ReplacedZapierKey | ZapierKeyExists =>
+	made.ok ? { ...made, disconnected: 0, paused: 0, notPaused: 0 } : made;
 
 /** the press the body names, or undefined where it names none this address takes. */
 async function readPress(request: Request): Promise<ZapierPress | undefined> {

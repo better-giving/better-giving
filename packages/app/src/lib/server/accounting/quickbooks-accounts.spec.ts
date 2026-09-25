@@ -12,15 +12,28 @@ const account = (type: string, subType: string | null = null, name = type): Ledg
 	classification: null
 });
 
-describe('which accounts fit the deposit role', () => {
-	it('takes a bank account and refuses accounts receivable', () => {
-		expect(fitsRole(account('Bank', 'Checking'), 'deposit')).toBe(true);
-		expect(fitsRole(account('Accounts Receivable', 'AccountsReceivable'), 'deposit')).toBe(false);
-	});
+describe('which accounts fit a processor’s holding', () => {
+	it.each(['stripeBalance', 'paypalBalance', 'chariotBalance', 'nowpaymentsBalance'] as const)(
+		'%s takes an other current asset and refuses a bank account',
+		(role) => {
+			expect(fitsRole(account('Other Current Asset', 'OtherCurrentAssets'), role)).toBe(true);
+			expect(fitsRole(account('Bank', 'Checking'), role)).toBe(false);
+		}
+	);
 
-	it('takes an other current asset, but not undeposited funds', () => {
-		expect(fitsRole(account('Other Current Asset', 'OtherCurrentAssets'), 'deposit')).toBe(true);
-		expect(fitsRole(account('Other Current Asset', 'UndepositedFunds'), 'deposit')).toBe(false);
+	it('refuses undeposited funds, which holds what was received in hand', () => {
+		expect(fitsRole(account('Other Current Asset', 'UndepositedFunds'), 'stripeBalance')).toBe(
+			false
+		);
+	});
+});
+
+describe('which accounts fit undeposited funds', () => {
+	it('takes the built-in undeposited funds and refuses a bank account', () => {
+		expect(fitsRole(account('Other Current Asset', 'UndepositedFunds'), 'undepositedFunds')).toBe(
+			true
+		);
+		expect(fitsRole(account('Bank', 'Checking'), 'undepositedFunds')).toBe(false);
 	});
 });
 
@@ -41,34 +54,48 @@ describe('which accounts fit the fee role', () => {
 	});
 });
 
-describe('the default deposit account', () => {
-	it('is the first bank account, ahead of undeposited funds and other current assets', () => {
-		const checking = account('Bank', 'Checking', 'Checking');
-		const chart = [
-			account('Other Current Asset', 'UndepositedFunds', 'Undeposited Funds'),
-			account('Other Current Asset', 'PrepaidExpenses', 'Prepaid'),
-			checking,
-			account('Bank', 'Savings', 'Savings')
-		];
+describe('the default holding accounts', () => {
+	it.each([
+		['stripeBalance', 'Stripe balance'],
+		['stripeBalance', 'Stripe Clearing'],
+		['paypalBalance', 'PayPal balance'],
+		['chariotBalance', 'Chariot clearing'],
+		['nowpaymentsBalance', 'NOWPayments balance']
+	] as const)('%s is the other current asset named %s', (role, name) => {
+		const named = account('Other Current Asset', 'OtherCurrentAssets', name);
+		const chart = [account('Other Current Asset', 'PrepaidExpenses', 'Prepaid'), named];
 
-		expect(defaultAccounts(chart).deposit).toBe(checking);
+		expect(defaultAccounts(chart)[role]).toBe(named);
 	});
 
-	it('is left unpicked where no bank account is named checking or operating', () => {
+	it('is never a bank account, whatever it is named', () => {
 		const chart = [
-			account('Bank', 'Savings', 'Savings'),
-			account('Bank', 'Checking', 'PayPal bank'),
-			account('Other Current Asset', 'OtherCurrentAssets', 'Operating reserve')
+			account('Bank', 'Checking', 'Stripe'),
+			account('Bank', 'Checking', 'PayPal balance'),
+			account('Bank', 'Checking', 'Undeposited Funds')
 		];
 
-		expect(defaultAccounts(chart).deposit).toBeNull();
+		expect(defaultAccounts(chart)).toMatchObject({
+			stripeBalance: null,
+			paypalBalance: null,
+			undepositedFunds: null
+		});
 	});
 
-	it('is an operating account where none is named checking', () => {
-		const operating = account('Bank', 'Checking', 'Operating account');
-		const chart = [account('Bank', 'Savings', 'Savings'), operating];
+	it('is never undeposited funds for a processor', () => {
+		const chart = [account('Other Current Asset', 'UndepositedFunds', 'Stripe undeposited')];
 
-		expect(defaultAccounts(chart).deposit).toBe(operating);
+		expect(defaultAccounts(chart).stripeBalance).toBeNull();
+	});
+
+	it('is the built-in undeposited funds for a gift received in hand, whatever it is called', () => {
+		const undeposited = account('Other Current Asset', 'UndepositedFunds', 'Payments to deposit');
+		const chart = [
+			account('Other Current Asset', 'OtherCurrentAssets', 'Stripe balance'),
+			undeposited
+		];
+
+		expect(defaultAccounts(chart).undepositedFunds).toBe(undeposited);
 	});
 });
 
@@ -158,6 +185,14 @@ describe('a chart missing a role', () => {
 			account('Equity', 'OpeningBalanceEquity', 'Donations equity')
 		];
 
-		expect(defaultAccounts(chart)).toEqual({ deposit: null, income: null, fee: null });
+		expect(defaultAccounts(chart)).toEqual({
+			income: null,
+			fee: null,
+			stripeBalance: null,
+			paypalBalance: null,
+			chariotBalance: null,
+			nowpaymentsBalance: null,
+			undepositedFunds: null
+		});
 	});
 });

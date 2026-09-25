@@ -64,6 +64,13 @@
       "when": 1790160308469,
       "tag": "0008_zapier_keyless_row_dropped",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1790294934703,
+      "tag": "0009_quickbooks_holding_accounts",
+      "breakpoints": true
     }
   ]
 }

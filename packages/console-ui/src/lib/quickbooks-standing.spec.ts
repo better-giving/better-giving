@@ -21,6 +21,16 @@ import type {
 import {
 	CHOOSE,
 	FAILED,
+	HOLDING_HINT,
+	HOLDING_PICKS,
+	NONE,
+	PICK_GROUP_LEGEND,
+	PICK_LABEL,
+	awaitingSays,
+	holdingsDrawn,
+	misfitPick,
+	misfitSays,
+	revokeStands,
 	REFUSED,
 	UNANSWERED,
 	answeredSince,
@@ -63,6 +73,7 @@ import {
 	unanswered,
 	waitedSays
 } from './quickbooks-standing';
+import { CHARGE_PAIRS } from './processor-links';
 import { secretEdits } from './secret-edits';
 import { QUICKBOOKS_GROUP, SECRET_GROUPS, VALUE_FIELD } from './secret-groups';
 
@@ -71,11 +82,11 @@ import { QUICKBOOKS_GROUP, SECRET_GROUPS, VALUE_FIELD } from './secret-groups';
 
 const NOW = new Date('2026-09-20T12:00:00.000Z');
 
-/** a line of the chart, fitting all three pickers unless it is said to fit fewer. */
+/** a line of the chart, fitting income, fees and Stripe's holding unless it is said to fit fewer. */
 const account = (
 	id: string,
 	name: string,
-	roles: LedgerAccountLine['roles'] = ['income', 'fee', 'deposit']
+	roles: LedgerAccountLine['roles'] = ['income', 'fee', 'stripeBalance']
 ): LedgerAccountLine => ({
 	id,
 	name,
@@ -87,13 +98,26 @@ const account = (
 
 const CHART: LedgerAccountLine[] = [account('1', 'Donations'), account('2', 'Bank')];
 
+/** the holdings a case says nothing about, unchosen in the boxes as they are in `company()`. */
+const UNHELD = {
+	paypalBalance: '',
+	chariotBalance: '',
+	nowpaymentsBalance: '',
+	undepositedFunds: ''
+};
+
 const company = (over: Partial<QuickbooksCompany> = {}): QuickbooksCompany => ({
 	state: 'connected',
 	realmId: '9130',
 	companyName: 'Habitat',
 	income: { id: '1', name: 'Donations' },
 	fee: { id: '2', name: 'Bank' },
-	deposit: { id: '2', name: 'Bank' },
+	stripeBalance: { id: '2', name: 'Bank' },
+	paypalBalance: null,
+	chariotBalance: null,
+	nowpaymentsBalance: null,
+	undepositedFunds: null,
+	awaitingAccounts: false,
 	startAt: '2026-01-31T00:00:00.000Z',
 	...over
 });
@@ -224,7 +248,7 @@ describe('a picker offers only the accounts that fit it', () => {
 	const MIXED: LedgerAccountLine[] = [
 		account('10', 'Donations', ['income']),
 		account('20', 'Merchant fees', ['fee']),
-		account('30', 'Checking', ['deposit']),
+		account('30', 'Stripe balance', ['stripeBalance']),
 		account('40', 'Accounts receivable', [])
 	];
 	const offered = (role: AccountPick) =>
@@ -233,7 +257,7 @@ describe('a picker offers only the accounts that fit it', () => {
 	it('holds each picker to the accounts whose roles name it', () => {
 		// the one list, filtered three ways: an account offered where it does not fit is a save the
 		// deployment is certain to refuse.
-		expect([offered('income'), offered('fee'), offered('deposit')]).toEqual([
+		expect([offered('income'), offered('fee'), offered('stripeBalance')]).toEqual([
 			['', '10'],
 			['', '20'],
 			['', '30']
@@ -241,17 +265,18 @@ describe('a picker offers only the accounts that fit it', () => {
 	});
 
 	it('keeps a stored pick that does not fit, chosen and retired, until it is replaced', () => {
-		// a deployment holding Accounts Receivable as its deposit account: the screen says so rather
+		// a deployment holding Accounts Receivable as Stripe's holding: the screen says so rather
 		// than drawing the picker on an account the books do not post to.
 		const stored = { id: '40', name: 'Accounts receivable' };
-		const picker = accountPicker(MIXED, 'deposit', stored, '40');
+		const picker = accountPicker(MIXED, 'stripeBalance', stored, '40');
 
-		expect(picker.options.map((option) => option.value)).toEqual(['30']);
+		// none first, as every holding offers it, stored account or not.
+		expect(picker.options.map((option) => option.value)).toEqual(['', '30']);
 		// labelled as the offered lines are, off the chart that still holds it: the type is the
 		// reason it was retired.
 		expect(picker.retired).toEqual({ value: '40', label: 'Accounts receivable — Income' });
 		// and gone once another is chosen, as a deactivated one is.
-		expect(accountPicker(MIXED, 'deposit', stored, '30').retired).toBeUndefined();
+		expect(accountPicker(MIXED, 'stripeBalance', stored, '30').retired).toBeUndefined();
 	});
 
 	it('retires an account that fits another picker and not this one', () => {
@@ -265,40 +290,229 @@ describe('a picker offers only the accounts that fit it', () => {
 	});
 });
 
-describe('the three are one press', () => {
-	it('is no press while one of them is unchosen', () => {
-		expect(picksToSave({ income: '1', fee: '2', deposit: '' }, company(), CHART)).toBe(false);
+describe('the picks are one press', () => {
+	it('is no press while income or fees is unchosen', () => {
+		expect(
+			picksToSave({ ...UNHELD, income: '1', fee: '', stripeBalance: '2' }, company(), CHART)
+		).toBe(false);
+	});
+
+	it('is a press where a holding is left unchosen, which holds that processor’s gifts alone', () => {
+		expect(
+			picksToSave({ ...UNHELD, income: '1', fee: '2', stripeBalance: '' }, company(), CHART)
+		).toBe(true);
 	});
 
 	it('is no press where all three are what is already stored', () => {
-		expect(picksToSave({ income: '1', fee: '2', deposit: '2' }, company(), CHART)).toBe(false);
+		expect(
+			picksToSave({ ...UNHELD, income: '1', fee: '2', stripeBalance: '2' }, company(), CHART)
+		).toBe(false);
 	});
 
 	it('is a press where one of them moved', () => {
-		expect(picksToSave({ income: '2', fee: '2', deposit: '2' }, company(), CHART)).toBe(true);
+		expect(
+			picksToSave({ ...UNHELD, income: '2', fee: '2', stripeBalance: '2' }, company(), CHART)
+		).toBe(true);
 	});
 
 	it('is no press while one of them still shows a pick its picker does not offer', () => {
-		// Accounts Receivable held as the deposit account, carried as the picker's retired line: the
-		// income moved, and the save would still be refused over the deposit.
+		// Accounts Receivable held as Stripe's holding, carried as the picker's retired line: the
+		// income moved, and the save would still be refused over the holding.
 		const chart = [
 			account('1', 'Donations', ['income']),
 			account('3', 'Sponsorships', ['income']),
-			account('2', 'Bank', ['fee', 'deposit']),
+			account('2', 'Bank', ['fee', 'stripeBalance']),
 			account('4', 'Accounts receivable', [])
 		];
-		const stored = company({ deposit: { id: '4', name: 'Accounts receivable' } });
+		const stored = company({ stripeBalance: { id: '4', name: 'Accounts receivable' } });
 
-		expect(picksToSave({ income: '3', fee: '2', deposit: '4' }, stored, chart)).toBe(false);
+		expect(
+			picksToSave({ ...UNHELD, income: '3', fee: '2', stripeBalance: '4' }, stored, chart)
+		).toBe(false);
 		// and armed again once it is replaced.
-		expect(picksToSave({ income: '3', fee: '2', deposit: '2' }, stored, chart)).toBe(true);
+		expect(
+			picksToSave({ ...UNHELD, income: '3', fee: '2', stripeBalance: '2' }, stored, chart)
+		).toBe(true);
 		// an account the chart no longer holds at all is refused the same way.
-		expect(picksToSave({ income: '9', fee: '2', deposit: '2' }, stored, chart)).toBe(false);
+		expect(
+			picksToSave({ ...UNHELD, income: '9', fee: '2', stripeBalance: '2' }, stored, chart)
+		).toBe(false);
+	});
+
+	it('is a press over the stored picks on a connection awaiting its accounts', () => {
+		// the save is what releases a moved connection, so saving it as it stands is the press.
+		const moved = company({ awaitingAccounts: true });
+		expect(
+			picksToSave({ ...UNHELD, income: '1', fee: '2', stripeBalance: '2' }, moved, CHART)
+		).toBe(true);
 	});
 
 	it('is a press on a connection holding none of the three', () => {
-		const fresh = company({ income: null, fee: null, deposit: null });
-		expect(picksToSave({ income: '1', fee: '2', deposit: '2' }, fresh, CHART)).toBe(true);
+		const fresh = company({ income: null, fee: null, stripeBalance: null });
+		expect(
+			picksToSave({ ...UNHELD, income: '1', fee: '2', stripeBalance: '2' }, fresh, CHART)
+		).toBe(true);
+	});
+});
+
+describe('a holding offers none', () => {
+	it('offers none first on a holding the connection stores', () => {
+		const picker = accountPicker(CHART, 'stripeBalance', { id: '2', name: 'Bank' }, '2');
+		expect(picker.options[0]).toEqual({ value: '', label: NONE });
+	});
+
+	it('offers none, and not the prompt, on a holding storing nothing', () => {
+		expect(accountPicker(CHART, 'stripeBalance', null, '').options[0]).toEqual({
+			value: '',
+			label: NONE
+		});
+	});
+
+	it('leaves income without an empty line once it stores one', () => {
+		expect(
+			accountPicker(CHART, 'income', { id: '1', name: 'Donations' }, '1').options.map(
+				(option) => option.value
+			)
+		).toEqual(['1', '2']);
+	});
+
+	it('is a press set back to none from a stored holding', () => {
+		expect(
+			picksToSave({ ...UNHELD, income: '1', fee: '2', stripeBalance: '' }, company(), CHART)
+		).toBe(true);
+	});
+});
+
+describe('which holdings the section draws', () => {
+	const nothingStored = company({ stripeBalance: null });
+
+	it('draws the gifts recorded by hand alone where the deployment takes no processor', () => {
+		expect(holdingsDrawn(nothingStored, new Set())).toEqual(['undepositedFunds']);
+	});
+
+	it('draws a processor’s holding once its charge pair is held, and not on half of it', () => {
+		expect(holdingsDrawn(nothingStored, new Set(CHARGE_PAIRS.paypal))).toEqual([
+			'paypalBalance',
+			'undepositedFunds'
+		]);
+		expect(holdingsDrawn(nothingStored, new Set(CHARGE_PAIRS.paypal.slice(0, 1)))).toEqual([
+			'undepositedFunds'
+		]);
+	});
+
+	it('draws every holding in the wire’s order where every processor is set up', () => {
+		expect(holdingsDrawn(nothingStored, new Set(Object.values(CHARGE_PAIRS).flat()))).toEqual(
+			HOLDING_PICKS
+		);
+	});
+
+	it('draws a holding the connection stores whatever the processor', () => {
+		expect(holdingsDrawn(company(), new Set())).toEqual(['stripeBalance', 'undepositedFunds']);
+	});
+});
+
+describe('what each picker is called', () => {
+	it('names the two groups and every picker in fundraiser words', () => {
+		expect(PICK_GROUP_LEGEND).toEqual({
+			gift: 'What a gift is recorded as',
+			holding: 'Where money waits before it reaches your bank'
+		});
+		expect(PICK_LABEL).toEqual({
+			income: 'Income',
+			fee: 'Processing fees',
+			stripeBalance: 'Stripe balance',
+			paypalBalance: 'PayPal balance',
+			chariotBalance: 'Chariot balance',
+			nowpaymentsBalance: 'NOWPayments balance',
+			undepositedFunds: 'Gifts recorded by hand'
+		});
+	});
+
+	it('says over every holding that its money leaves as a transfer off the bank feed', () => {
+		for (const pick of HOLDING_PICKS)
+			expect(HOLDING_HINT[pick]).toMatch(
+				/from your bank feed as a transfer out of this account\.$/
+			);
+		expect(HOLDING_HINT.nowpaymentsBalance).toBe(
+			'Record each NOWPayments payout from your bank feed as a transfer out of this account.'
+		);
+	});
+});
+
+describe('a connection awaiting its accounts', () => {
+	it('says the connection moved, to which company, and that nothing is sent until a save', () => {
+		expect(awaitingSays(company({ awaitingAccounts: true }))).toBe(
+			'This connection moved to Habitat, and nothing is sent to QuickBooks until its accounts are saved.'
+		);
+	});
+
+	it('says nothing over a connection that stayed', () => {
+		expect(awaitingSays(company())).toBeNull();
+	});
+});
+
+describe('the picker a refusal of the accounts press names', () => {
+	const DRAWN: AccountPick[] = ['income', 'fee', 'stripeBalance', 'undepositedFunds'];
+	const refused = (over: Partial<Extract<NoReport, { kind: 'unreadable' }>>): QuickbooksAnswer => ({
+		kind: 'unanswered',
+		press: 'accounts',
+		read: {
+			kind: 'unreadable',
+			error: 'account_wrong_type',
+			detail:
+				'`stripeBalance` names Checking, a Bank account. Stripe balance is where a gift waits.',
+			fix: 'Send the `id` of an Other Current Asset account for `stripeBalance`.',
+			status: 400,
+			...over
+		}
+	});
+
+	it('is the holding a Bank account was chosen for', () => {
+		expect(misfitPick(refused({}), DRAWN)).toBe('stripeBalance');
+	});
+
+	it('is nothing where the named picker is not drawn, so the press says it', () => {
+		expect(misfitPick(refused({}), ['income', 'fee', 'undepositedFunds'])).toBeNull();
+	});
+
+	it('is nothing for another refusal, a failure outside 4xx, or another press', () => {
+		expect(misfitPick(refused({ error: 'bad_body' }), DRAWN)).toBeNull();
+		expect(misfitPick(refused({ status: 502 }), DRAWN)).toBeNull();
+		expect(misfitPick(silence('accounts'), DRAWN)).toBeNull();
+		expect(misfitPick(reported({ press: 'accounts' }), DRAWN)).toBeNull();
+	});
+
+	it('is nothing where the sentence names no role it leads with', () => {
+		expect(misfitPick(refused({ detail: 'Checking is a Bank account.' }), DRAWN)).toBeNull();
+		expect(misfitPick(refused({ detail: '`deposit` names Checking.' }), DRAWN)).toBeNull();
+	});
+
+	it('says at a holding what a holding takes, and at income or fees to pick again', () => {
+		expect(misfitSays('stripeBalance')).toBe(
+			'pick an Other Current Asset account, never a bank account'
+		);
+		expect(misfitSays('income')).toBe('pick another account from this list');
+	});
+});
+
+describe('what a disconnect answers about the revoke', () => {
+	it('carries the detail and the fix where Intuit did not confirm it', () => {
+		expect(
+			revokeStands(
+				reported({
+					press: 'disconnect',
+					revoke: { state: 'not_revoked', detail: 'Intuit answered 500.', fix: 'Open My Apps.' }
+				})
+			)
+		).toEqual({ detail: 'Intuit answered 500.', fix: 'Open My Apps.' });
+	});
+
+	it('says nothing where the revoke landed, or the answer is another press’s', () => {
+		expect(
+			revokeStands(reported({ press: 'disconnect', revoke: { state: 'revoked' } }))
+		).toBeNull();
+		expect(revokeStands(reported({ press: 'retry', retried: 0 }))).toBeNull();
+		expect(revokeStands(silence('disconnect'))).toBeNull();
 	});
 });
 
@@ -403,7 +617,9 @@ describe('which control an answer belongs to', () => {
 
 	it('hands the connect press its address and every other press none', () => {
 		expect(connectAddress(reported({ press: 'connect', url: CONSENT }))).toBe(CONSENT);
-		expect(connectAddress(reported({ press: 'disconnect' }))).toBeNull();
+		expect(
+			connectAddress(reported({ press: 'disconnect', revoke: { state: 'revoked' } }))
+		).toBeNull();
 		expect(connectAddress(silence('connect'))).toBeNull();
 		expect(connectAddress(null)).toBeNull();
 	});
@@ -758,6 +974,16 @@ describe('which steps stand open, shut, locked or out of sight', () => {
 			'setup: shut done',
 			'connect: open todo',
 			'accounts: locked todo',
+			'sync: hidden'
+		]);
+	});
+
+	it('reopens Accounts and hides sync over a connection that moved, whatever it stores', () => {
+		// nothing is sent until the moved connection's accounts are saved, so the step is not done.
+		expect(stand({ books: read({ connection: company({ awaitingAccounts: true }) }) })).toEqual([
+			'setup: shut done',
+			'connect: shut done',
+			'accounts: open todo',
 			'sync: hidden'
 		]);
 	});
@@ -1178,14 +1404,21 @@ describe('the rest of what the section says', () => {
 describe('the three pickers’ own press', () => {
 	it('is armed while one is unchosen, so pressing it can say which', () => {
 		const fresh = company({ fee: null });
-		expect(picksArmed({ income: '1', fee: '', deposit: '2' }, fresh, CHART)).toBe(true);
-		expect(picksMissing({ income: '1', fee: '', deposit: '' })).toEqual(['fee', 'deposit']);
+		expect(picksArmed({ ...UNHELD, income: '1', fee: '', stripeBalance: '2' }, fresh, CHART)).toBe(
+			true
+		);
+		// a holding may stay unchosen; income and fees may not.
+		expect(picksMissing({ ...UNHELD, income: '1', fee: '', stripeBalance: '' })).toEqual(['fee']);
 	});
 
 	it('is closed over what is already stored, and over a pick its picker does not offer', () => {
-		expect(picksArmed({ income: '1', fee: '2', deposit: '2' }, company(), CHART)).toBe(false);
-		expect(picksArmed({ income: '9', fee: '2', deposit: '2' }, company(), CHART)).toBe(false);
-		expect(picksMissing({ income: '1', fee: '2', deposit: '2' })).toEqual([]);
+		expect(
+			picksArmed({ ...UNHELD, income: '1', fee: '2', stripeBalance: '2' }, company(), CHART)
+		).toBe(false);
+		expect(
+			picksArmed({ ...UNHELD, income: '9', fee: '2', stripeBalance: '2' }, company(), CHART)
+		).toBe(false);
+		expect(picksMissing({ ...UNHELD, income: '1', fee: '2', stripeBalance: '2' })).toEqual([]);
 	});
 });
 

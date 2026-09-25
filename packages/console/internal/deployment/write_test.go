@@ -7,9 +7,12 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/better-giving/console/internal/cf"
 )
@@ -577,5 +580,279 @@ func TestWritingTheSessionNamesItAndNothingElse(t *testing.T) {
 	held, ok := secrets[ConsoleTokenName].(map[string]any)
 	if !ok || held["text"] != "bg1.1.secret" || held["type"] != "secret_text" {
 		t.Fatalf("sent %v", secrets)
+	}
+}
+
+// a worker's binding list held in memory and patched the way cloudflare patches it: a settings
+// patch replaces the whole list, resolving each `inherit` against what the list held, and a secrets
+// merge patch adds or deletes only the names it mentions.
+//
+// each settings read answers with the list it arrived to, after waiting until a second read has
+// arrived or `readsMeet` has passed — so two writes let in together both read the list before
+// either patches it.
+type heldWorker struct {
+	mu        sync.Mutex
+	bindings  []any
+	reads     int
+	readsMeet time.Duration
+	met       chan struct{}
+}
+
+func newHeldWorker(readsMeet time.Duration) *heldWorker {
+	return &heldWorker{bindings: []any{}, readsMeet: readsMeet, met: make(chan struct{})}
+}
+
+func (held *heldWorker) door() Door {
+	ok := func(result any) cf.Answer {
+		return cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: envelope(result)}
+	}
+	return Door{
+		AccountID:  account,
+		WorkerName: worker,
+		Get: func(context.Context, string) cf.Answer {
+			held.mu.Lock()
+			read := slices.Clone(held.bindings)
+			held.reads++
+			if held.reads == 2 {
+				close(held.met)
+			}
+			held.mu.Unlock()
+			select {
+			case <-held.met:
+			case <-time.After(held.readsMeet):
+			}
+			return ok(map[string]any{"bindings": read})
+		},
+		Settings: func(_ context.Context, _, _ string, parts []cf.Part, _ cf.Sending) cf.Answer {
+			var settings struct {
+				Bindings []map[string]any `json:"bindings"`
+			}
+			if err := json.Unmarshal(parts[0].Body, &settings); err != nil {
+				return cf.Answer{Kind: cf.Answered, Status: http.StatusBadRequest}
+			}
+			held.mu.Lock()
+			defer held.mu.Unlock()
+			list := []any{}
+			for _, row := range settings.Bindings {
+				if row["type"] != "inherit" {
+					list = append(list, row)
+					continue
+				}
+				if kept := held.named(row["name"]); kept != nil {
+					list = append(list, kept)
+				}
+			}
+			held.bindings = list
+			return ok(map[string]any{})
+		},
+		Patch: func(_ context.Context, _, _ string, body any) cf.Answer {
+			secrets, _ := body.(map[string]any)["secrets"].(map[string]any)
+			held.mu.Lock()
+			defer held.mu.Unlock()
+			for name, value := range secrets {
+				held.bindings = slices.DeleteFunc(held.bindings, func(row any) bool {
+					return row.(map[string]any)["name"] == name
+				})
+				if value != nil {
+					held.bindings = append(held.bindings, map[string]any{"name": name, "type": "secret_text"})
+				}
+			}
+			return ok(map[string]any{})
+		},
+	}
+}
+
+// the row the list holds under `name`, or nil; the caller holds mu.
+func (held *heldWorker) named(name any) map[string]any {
+	for _, row := range held.bindings {
+		if row := row.(map[string]any); row["name"] == name {
+			return row
+		}
+	}
+	return nil
+}
+
+func (held *heldWorker) holds(name string) bool {
+	held.mu.Lock()
+	defer held.mu.Unlock()
+	return held.named(name) != nil
+}
+
+// **two presses that each add a name both land.** the settings patch replaces the whole list, so a
+// press that read the list before the other patched would send a list without the other's new name
+// and delete it — a webhook secret gone from a fresh deployment, with both presses reporting set.
+func TestTwoPressesAddingDifferentNamesLeaveBothOnTheList(t *testing.T) {
+	held := newHeldWorker(250 * time.Millisecond)
+	open := held.door()
+
+	var both sync.WaitGroup
+	for _, name := range []string{"STRIPE_WEBHOOK_SECRET", "SMTP_HOST"} {
+		both.Add(1)
+		go func() {
+			defer both.Done()
+			if written := SetVars(t.Context(), open, map[string]*string{name: value("v")}); written.Kind != WriteSet {
+				t.Errorf("%s wrote %+v", name, written)
+			}
+		}()
+	}
+	both.Wait()
+
+	for _, name := range []string{"STRIPE_WEBHOOK_SECRET", "SMTP_HOST"} {
+		if !held.holds(name) {
+			t.Errorf("the list lost %s", name)
+		}
+	}
+}
+
+// **a credential stored while a var press is between its read and its patch stays stored.** the
+// patch sends back only what its read listed, so a secret that landed in between would be left off
+// the list and deleted.
+func TestASessionStoredDuringAVarPressIsKept(t *testing.T) {
+	held := newHeldWorker(250 * time.Millisecond)
+	open := held.door()
+
+	var both sync.WaitGroup
+	both.Add(2)
+	go func() {
+		defer both.Done()
+		if written := SetVars(t.Context(), open, map[string]*string{"SMTP_HOST": value("v")}); written.Kind != WriteSet {
+			t.Errorf("the var press wrote %+v", written)
+		}
+	}()
+	go func() {
+		defer both.Done()
+		// in behind the press's read, which is held for the moment a second read would take.
+		time.Sleep(50 * time.Millisecond)
+		if written := WriteConsoleToken(t.Context(), open, "bg1.1.secret"); written.Kind != WriteSet {
+			t.Errorf("the session wrote %+v", written)
+		}
+	}()
+	both.Wait()
+
+	for _, name := range []string{"SMTP_HOST", ConsoleTokenName} {
+		if !held.holds(name) {
+			t.Errorf("the list lost %s", name)
+		}
+	}
+}
+
+// a door whose settings read holds until `release` closes, telling `reading` when it has begun,
+// and counting every call made through it.
+func heldOpen(reading chan<- struct{}, release <-chan struct{}, calls *atomic.Int32) Door {
+	return Door{
+		AccountID:  account,
+		WorkerName: worker,
+		Get: func(context.Context, string) cf.Answer {
+			calls.Add(1)
+			reading <- struct{}{}
+			<-release
+			return cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: varsHeld()}
+		},
+		Settings: func(context.Context, string, string, []cf.Part, cf.Sending) cf.Answer {
+			calls.Add(1)
+			return cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: envelope(map[string]any{})}
+		},
+		Patch: func(context.Context, string, string, any) cf.Answer {
+			calls.Add(1)
+			return cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: envelope(map[string]any{})}
+		},
+	}
+}
+
+// **a press whose caller gave up while it waited its turn writes nothing and says why.** a tab
+// closed behind a press held up by a setup run is a press nobody is waiting on, and it must not
+// land later against a list read after the operator left.
+func TestAPressWhoseCallerGivesUpWhileWaitingWritesNothing(t *testing.T) {
+	reading, release := make(chan struct{}), make(chan struct{})
+	// a failed assertion below still gives the list back, so no later test waits on this one.
+	letGo := sync.OnceFunc(func() { close(release) })
+	defer letGo()
+	var calls atomic.Int32
+	open := heldOpen(reading, release, &calls)
+
+	first := make(chan Written, 1)
+	go func() { first <- SetVars(context.Background(), open, map[string]*string{"SMTP_HOST": value("v")}) }()
+	<-reading
+
+	for _, press := range []struct {
+		name  string
+		write func(context.Context) Written
+	}{
+		{"a var", func(ctx context.Context) Written {
+			return SetVars(ctx, open, map[string]*string{"SMTP_PORT": value("587")})
+		}},
+		{"a credential", func(ctx context.Context) Written { return WriteConsoleToken(ctx, open, "bg1.1.secret") }},
+	} {
+		t.Run(press.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+			defer cancel()
+			answered := make(chan Written, 1)
+			go func() { answered <- press.write(ctx) }()
+			select {
+			case written := <-answered:
+				if written.Kind != WriteUnreachable || written.Detail != context.DeadlineExceeded.Error() {
+					t.Fatalf("wrote %+v", written)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("the press was still waiting after its caller gave up")
+			}
+		})
+	}
+	if made := calls.Load(); made != 1 {
+		t.Fatalf("%d calls reached cloudflare while the first press held the list", made)
+	}
+
+	letGo()
+	if written := <-first; written.Kind != WriteSet {
+		t.Fatalf("the first press wrote %+v", written)
+	}
+}
+
+// **a press cloudflare refused gives the list back.** the next press is the operator trying again,
+// and it must not wait forever behind the one that failed.
+func TestAPressAfterOneThatFailedGoesAhead(t *testing.T) {
+	refusing := true
+	open := Door{
+		AccountID:  account,
+		WorkerName: worker,
+		Get: func(context.Context, string) cf.Answer {
+			return cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: varsHeld()}
+		},
+		Settings: func(context.Context, string, string, []cf.Part, cf.Sending) cf.Answer {
+			if refusing {
+				return cf.Answer{Kind: cf.Answered, Status: http.StatusBadRequest, Body: failed(10021, "no")}
+			}
+			return cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: envelope(map[string]any{})}
+		},
+	}
+	press := map[string]*string{"SMTP_HOST": value("v")}
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+
+	if written := SetVars(ctx, open, press); written.Kind != WriteFailed {
+		t.Fatalf("the refused press wrote %+v", written)
+	}
+	refusing = false
+	if written := SetVars(ctx, open, press); written.Kind != WriteSet {
+		t.Fatalf("the press after it wrote %+v", written)
+	}
+}
+
+// **one worker's press never waits on another's.** the turn is the list's, and two workers are two
+// lists.
+func TestAPressAtAnotherWorkerDoesNotWait(t *testing.T) {
+	reading, release := make(chan struct{}), make(chan struct{})
+	var calls atomic.Int32
+	open := heldOpen(reading, release, &calls)
+	go func() { _ = SetVars(context.Background(), open, map[string]*string{"SMTP_HOST": value("v")}) }()
+	<-reading
+	defer close(release)
+
+	other := open
+	other.WorkerName = worker + "-test"
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	if written := WriteConsoleToken(ctx, other, "bg1.1.secret"); written.Kind != WriteSet {
+		t.Fatalf("the other worker's press wrote %+v", written)
 	}
 }

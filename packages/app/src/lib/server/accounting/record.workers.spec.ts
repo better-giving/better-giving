@@ -1,10 +1,10 @@
 import { env } from 'cloudflare:test';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { chargeEntry, feeEntry } from '../donations/entries';
+import { chargeEntry, feeEntry, receivedInHandEntry } from '../donations/entries';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
-import { contact, donation, payment } from '../db/schema';
+import { contact, donation, payment, type PaymentProviderName } from '../db/schema';
 import { post, postingStatements, type Posting } from '../ledger/posting';
 import type { Settlement } from '../payments/provider';
 import { readSendable } from './record';
@@ -49,7 +49,10 @@ function settlement(over: Partial<Settlement> = {}): Settlement {
 }
 
 /** a donor, their gift and the attempt that settled it, as the money path writes them. */
-async function gift(over: { email?: string | null; displayName?: string } = {}) {
+async function gift(
+	over: { email?: string | null; displayName?: string; provider?: PaymentProviderName } = {}
+) {
+	const provider = over.provider ?? 'stripe';
 	const contactId = uuidv7();
 	const donationId = uuidv7();
 	const paymentId = uuidv7();
@@ -73,8 +76,10 @@ async function gift(over: { email?: string | null; displayName?: string } = {}) 
 			amountMinor: 10_000,
 			currency: 'USD',
 			direction: 'inbound',
-			method: 'card',
+			method: provider === 'manual' ? 'check' : 'card',
 			status: 'succeeded',
+			provider,
+			providerTxnId: provider === 'manual' ? null : `txn_${paymentId}`,
 			occurredAt: OCCURRED_AT
 		})
 	]);
@@ -122,9 +127,48 @@ describe('a gift', () => {
 					donor: { displayName: 'Ada Lovelace', email: 'ada@example.org' },
 					memo: `donation ${ids.donationId}`,
 					incomeMinor: 10_000,
-					feeMinor: 320
+					feeMinor: 320,
+					holding: 'stripeBalance'
 				}
 			}
+		});
+	});
+
+	it('is held by PayPal where PayPal settled it', async () => {
+		const ids = await gift({ provider: 'paypal' });
+		const { charge } = await postGift(ids);
+
+		expect(await readSendable(db, charge.group.id ?? '')).toMatchObject({
+			ok: true,
+			value: { gift: { holding: 'paypalBalance' } }
+		});
+	});
+
+	it('is in undeposited funds where it was received in hand', async () => {
+		const ids = await gift({ provider: 'manual' });
+		const received = receivedInHandEntry({
+			paymentId: ids.paymentId,
+			donationId: ids.donationId,
+			revenueAccountId: postableId('donationsDeductible'),
+			amountMinor: 10_000,
+			currency: 'USD',
+			dated: OCCURRED_AT
+		});
+		await commit([received]);
+
+		expect(await readSendable(db, received.group.id ?? '')).toMatchObject({
+			ok: true,
+			value: { gift: { holding: 'undepositedFunds', feeMinor: 0 } }
+		});
+	});
+
+	it('refuses a gift in processor clearing that no processor settled', async () => {
+		const ids = await gift({ provider: 'manual' });
+		const { charge } = await postGift(ids, { feeMinor: null });
+
+		expect(await readSendable(db, charge.group.id ?? '')).toMatchObject({
+			ok: false,
+			reason: 'unmapped_account'
 		});
 	});
 
@@ -187,7 +231,7 @@ describe('a correction', () => {
 			memo: 'gift posted to the wrong fund',
 			lines: [
 				{ accountId: postableId('donationsDeductible'), amountMinor: 2_500 },
-				{ accountId: postableId('undepositedFunds'), amountMinor: -2_500 }
+				{ accountId: postableId('bankCash'), amountMinor: -2_500 }
 			]
 		});
 		await commit([correction]);
@@ -203,11 +247,32 @@ describe('a correction', () => {
 					memo: 'gift posted to the wrong fund',
 					lines: [
 						{ role: 'income', posting: 'debit', amountMinor: 2_500 },
-						{ role: 'deposit', posting: 'credit', amountMinor: 2_500 }
+						{ role: 'undepositedFunds', posting: 'credit', amountMinor: 2_500 }
 					]
 				}
 			}
 		});
+	});
+
+	it('refuses one through processor clearing, which no payment says whose it is', async () => {
+		const correction = post({
+			sourceType: 'adjustment',
+			sourceId: uuidv7(),
+			currency: 'USD',
+			occurredAt: new Date('2026-04-30T00:00:00.000Z'),
+			memo: 'fee restated',
+			lines: [
+				{ accountId: postableId('processorFees'), amountMinor: 40 },
+				{ accountId: postableId('undepositedFunds'), amountMinor: -40 }
+			]
+		});
+		await commit([correction]);
+
+		const sendable = await readSendable(db, correction.group.id ?? '');
+
+		// 1020 holds every processor's money at once, and each has its own holding in QuickBooks.
+		expect(sendable).toMatchObject({ ok: false, reason: 'unmapped_account', retryable: false });
+		expect(sendable).toMatchObject({ detail: expect.stringContaining('Undeposited Funds') });
 	});
 
 	it('refuses one that names an account no QuickBooks account stands for', async () => {

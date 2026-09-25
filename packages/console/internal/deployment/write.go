@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sync"
 
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/release"
@@ -33,6 +34,14 @@ import (
 // frees the names a deployment is holding as credentials and the removal half of SetVars — because
 // leaving a binding off the settings patch is documented for the binding list and says nothing
 // about the secret behind one, while `null` here is cloudflare's own word for a deletion.
+//
+// **one write at a time changes a worker's binding list, and it holds that turn from the read it is
+// decided against to its last patch.** a settings patch replaces the whole list, so one built from
+// a read taken before another write landed deletes what that write added — a var or a credential
+// alike, with both writes reporting set. the setup runs keep writing after their request ends while
+// an operator presses folds, so two writes at one worker are the ordinary case. SetVars and
+// SetSecrets take the turn themselves and no caller does, which is what leaves no way round it; a
+// caller whose context ends while it waits writes nothing and is answered unreachable.
 //
 // **no value reaches a path, an argument list or a sentence.** every value travels in a request
 // body over https, the credential travels in a header (internal/cf), and what a screen draws about
@@ -146,6 +155,11 @@ func SetVars(ctx context.Context, door Door, wanted map[string]*string) Written 
 	if len(wanted) == 0 {
 		return Written{Kind: WriteNothing}
 	}
+	done, waited := holdBindingList(ctx, door)
+	if waited != nil {
+		return *waited
+	}
+	defer done()
 	names := release.DeployVars
 
 	answer := door.Get(ctx, settingsPath(door.AccountID, door.WorkerName))
@@ -227,7 +241,24 @@ func SetVars(ctx context.Context, door Door, wanted map[string]*string) Written 
 			return patched
 		}
 	}
-	return SetSecrets(ctx, door, free)
+	return patchSecrets(ctx, door, free)
+}
+
+// one turn at each worker's binding list, keyed by account and worker name — the header's
+// one-write-at-a-time rule.
+var bindingLists sync.Map
+
+// the turn at the door's worker, and the function that gives it back — or, where the caller's
+// context ended while it waited, the write that never happened.
+func holdBindingList(ctx context.Context, door Door) (func(), *Written) {
+	held, _ := bindingLists.LoadOrStore(door.AccountID+"/"+door.WorkerName, make(chan struct{}, 1))
+	turn := held.(chan struct{})
+	select {
+	case turn <- struct{}{}:
+		return func() { <-turn }, nil
+	case <-ctx.Done():
+		return nil, &Written{Kind: WriteUnreachable, Detail: ctx.Err().Error()}
+	}
 }
 
 // Stored is a set of values as the map SetVars takes.
@@ -298,6 +329,16 @@ func SetSecrets(ctx context.Context, door Door, payload map[string]*string) Writ
 	if len(payload) == 0 {
 		return Written{Kind: WriteNothing}
 	}
+	done, waited := holdBindingList(ctx, door)
+	if waited != nil {
+		return *waited
+	}
+	defer done()
+	return patchSecrets(ctx, door, payload)
+}
+
+// SetSecrets' request, for a caller already holding the worker's turn at its binding list.
+func patchSecrets(ctx context.Context, door Door, payload map[string]*string) Written {
 	return wrote(door.Patch(ctx, http.MethodPatch,
 		secretsBulkPath(door.AccountID, door.WorkerName), secretsBulkBody(payload)))
 }

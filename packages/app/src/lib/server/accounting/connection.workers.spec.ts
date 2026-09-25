@@ -37,6 +37,26 @@ const TOKENS = {
 	refreshTokenExpiresAt: new Date('2026-12-28T12:00:00.000Z')
 };
 
+/** a connection's accounts with none picked. */
+const NONE_PICKED = {
+	income: null,
+	fee: null,
+	stripeBalance: null,
+	paypalBalance: null,
+	chariotBalance: null,
+	nowpaymentsBalance: null,
+	undepositedFunds: null
+};
+
+/** what an operator saves: income, fees, Stripe's holding and undeposited funds. */
+const PICKED = {
+	...NONE_PICKED,
+	income: { id: '79', name: 'Donations' },
+	fee: { id: '80', name: 'Merchant fees' },
+	stripeBalance: { id: '140', name: 'Stripe balance' },
+	undepositedFunds: { id: '4', name: 'Undeposited Funds' }
+};
+
 async function connect(): Promise<void> {
 	await connectQuickbooks(db, {
 		realmId: '4620816365',
@@ -52,9 +72,8 @@ describe('connecting a company', () => {
 		expect(await readQuickbooksConnection(db)).toEqual({
 			realmId: '4620816365',
 			companyName: null,
-			income: null,
-			fee: null,
-			deposit: null,
+			accounts: NONE_PICKED,
+			movedAt: null,
 			startAt: CONNECTED_FROM
 		});
 	});
@@ -80,11 +99,7 @@ describe('connecting a company', () => {
 		await connect();
 		await saveQuickbooksCompanyName(db, 'Riverside Shelter');
 		await moveQuickbooksStartAt(db, new Date('2025-07-01T00:00:00.000Z'), new Date());
-		await saveQuickbooksAccounts(db, {
-			income: { id: '79', name: 'Donations' },
-			fee: { id: '80', name: 'Merchant fees' },
-			deposit: { id: '35', name: 'Checking' }
-		});
+		await saveQuickbooksAccounts(db, PICKED);
 
 		await connectQuickbooks(db, {
 			realmId: '4620816365',
@@ -95,9 +110,8 @@ describe('connecting a company', () => {
 		expect(await readQuickbooksConnection(db)).toEqual({
 			realmId: '4620816365',
 			companyName: 'Riverside Shelter',
-			income: { id: '79', name: 'Donations' },
-			fee: { id: '80', name: 'Merchant fees' },
-			deposit: { id: '35', name: 'Checking' },
+			accounts: PICKED,
+			movedAt: null,
 			startAt: new Date('2025-07-01T00:00:00.000Z')
 		});
 	});
@@ -106,11 +120,7 @@ describe('connecting a company', () => {
 		await connect();
 		await saveQuickbooksCompanyName(db, 'Riverside Shelter');
 		await moveQuickbooksStartAt(db, new Date('2025-07-01T00:00:00.000Z'), new Date());
-		await saveQuickbooksAccounts(db, {
-			income: { id: '79', name: 'Donations' },
-			fee: { id: '80', name: 'Merchant fees' },
-			deposit: { id: '35', name: 'Checking' }
-		});
+		await saveQuickbooksAccounts(db, PICKED);
 
 		await connectQuickbooks(db, {
 			realmId: '9999999999',
@@ -124,13 +134,44 @@ describe('connecting a company', () => {
 		expect(await readQuickbooksConnection(db)).toEqual({
 			realmId: '9999999999',
 			companyName: null,
-			income: null,
-			fee: null,
-			deposit: null,
+			accounts: NONE_PICKED,
+			movedAt: new Date('2026-05-01T00:00:00.000Z'),
 			// the operator's own answer rather than the company's, and as true of the books they have
 			// just connected as of the ones they left.
 			startAt: new Date('2025-07-01T00:00:00.000Z')
 		});
+	});
+
+	it('keeps a move standing across a reconnect to the same new company', async () => {
+		await connect();
+		const moved = {
+			realmId: '9999999999',
+			tokens: { ...TOKENS, accessToken: 'access-two', refreshToken: 'refresh-two' },
+			startAt: new Date('2026-05-01T00:00:00.000Z')
+		};
+		await connectQuickbooks(db, moved);
+
+		const replaced = await connectQuickbooks(db, {
+			...moved,
+			tokens: { ...TOKENS, accessToken: 'access-three', refreshToken: 'refresh-three' },
+			startAt: new Date('2026-06-01T00:00:00.000Z')
+		});
+
+		expect(replaced).toMatchObject({ realmId: '9999999999', movedAt: moved.startAt });
+		expect((await readQuickbooksConnection(db))?.movedAt).toEqual(moved.startAt);
+	});
+
+	it('ends a move once an operator saves the new company’s accounts', async () => {
+		await connect();
+		await connectQuickbooks(db, {
+			realmId: '9999999999',
+			tokens: { ...TOKENS, refreshToken: 'refresh-two' },
+			startAt: new Date('2026-05-01T00:00:00.000Z')
+		});
+
+		await saveQuickbooksAccounts(db, PICKED);
+
+		expect(await readQuickbooksConnection(db)).toMatchObject({ accounts: PICKED, movedAt: null });
 	});
 
 	it('names no company until one has been read back', async () => {
@@ -147,18 +188,20 @@ describe('connecting a company', () => {
 describe('the store the adapter takes', () => {
 	it('reads the connection with the accounts a send needs', async () => {
 		await connect();
-		await saveQuickbooksAccounts(db, {
-			income: { id: '79', name: 'Donations' },
-			fee: { id: '80', name: 'Merchant fees' },
-			deposit: { id: '35', name: 'Checking' }
-		});
+		await saveQuickbooksAccounts(db, PICKED);
 
 		expect(await quickbooksStore(db).read()).toEqual({
 			companyId: '4620816365',
 			...TOKENS,
-			incomeAccountId: '79',
-			feeAccountId: '80',
-			depositAccountId: '35'
+			accounts: {
+				income: '79',
+				fee: '80',
+				stripeBalance: '140',
+				paypalBalance: null,
+				chariotBalance: null,
+				nowpaymentsBalance: null,
+				undepositedFunds: '4'
+			}
 		});
 	});
 
@@ -177,8 +220,8 @@ describe('the store the adapter takes', () => {
 
 		expect(await quickbooksStore(db).saveTokens(TOKENS.refreshToken, rotated)).toBe('stored');
 
-		// Intuit retires the token it rotated away from, so a pair written anywhere but this column
-		// is the connection lost the next time the old one is presented.
+		// Intuit stops renewing the token it rotated away from 24 hours later, so a pair written
+		// anywhere but this column is the connection lost once that day is out.
 		expect(await quickbooksStore(db).read()).toMatchObject(rotated);
 	});
 
@@ -193,26 +236,22 @@ describe('the store the adapter takes', () => {
 			refreshToken: 'refresh-three'
 		});
 
-		// Intuit retired `refresh-one` when it issued the winner its pair, so a write landing here
-		// would replace a live credential with one that was already dead.
+		// the row holds one credential and the winner's landed first, so every later renewal is made
+		// from it; `refresh-one` still renews for Intuit's 24 hours, and nothing needs it to.
 		expect(outcome).toBe('superseded');
 		expect(await quickbooksStore(db).read()).toMatchObject(winner);
 	});
 
 	it('leaves the chosen accounts alone when it writes a rotated pair', async () => {
 		await connect();
-		await saveQuickbooksAccounts(db, {
-			income: { id: '79', name: 'Donations' },
-			fee: { id: '80', name: 'Merchant fees' },
-			deposit: { id: '35', name: 'Checking' }
-		});
+		await saveQuickbooksAccounts(db, PICKED);
 
 		await quickbooksStore(db).saveTokens(TOKENS.refreshToken, {
 			...TOKENS,
 			refreshToken: 'refresh-two'
 		});
 
-		expect(await quickbooksStore(db).read()).toMatchObject({ incomeAccountId: '79' });
+		expect(await quickbooksStore(db).read()).toMatchObject({ accounts: { income: '79' } });
 	});
 });
 
@@ -220,25 +259,18 @@ describe('the accounts an operator picks', () => {
 	it('stores each id with the name the screen shows beside it', async () => {
 		await connect();
 
-		await saveQuickbooksAccounts(db, {
-			income: { id: '79', name: 'Donations' },
-			fee: { id: '80', name: 'Merchant fees' },
-			deposit: { id: '35', name: 'Checking' }
-		});
+		await saveQuickbooksAccounts(db, PICKED);
 
-		expect(await readQuickbooksConnection(db)).toMatchObject({
-			income: { id: '79', name: 'Donations' },
-			fee: { id: '80', name: 'Merchant fees' },
-			deposit: { id: '35', name: 'Checking' }
-		});
+		expect(await readQuickbooksConnection(db)).toMatchObject({ accounts: PICKED });
 	});
 });
 
 describe('the accounts filled in at connect', () => {
 	const DEFAULTS = {
+		...NONE_PICKED,
 		income: { id: '81', name: 'Contributions' },
 		fee: { id: '82', name: 'Bank Charges' },
-		deposit: { id: '36', name: 'Savings' }
+		paypalBalance: { id: '150', name: 'PayPal balance' }
 	};
 
 	it('are written where none is held', async () => {
@@ -246,19 +278,7 @@ describe('the accounts filled in at connect', () => {
 
 		await fillQuickbooksAccounts(db, '4620816365', DEFAULTS);
 
-		expect(await readQuickbooksConnection(db)).toMatchObject(DEFAULTS);
-	});
-
-	it('write only the roles the chart named, leaving the rest unpicked', async () => {
-		await connect();
-
-		await fillQuickbooksAccounts(db, '4620816365', { ...DEFAULTS, fee: null, deposit: null });
-
-		expect(await readQuickbooksConnection(db)).toMatchObject({
-			income: DEFAULTS.income,
-			fee: null,
-			deposit: null
-		});
+		expect(await readQuickbooksConnection(db)).toMatchObject({ accounts: DEFAULTS });
 	});
 
 	// a reconnect to another company can land between the chart read and this write, and account
@@ -268,25 +288,29 @@ describe('the accounts filled in at connect', () => {
 
 		await fillQuickbooksAccounts(db, '9999999999', DEFAULTS);
 
-		expect(await readQuickbooksConnection(db)).toMatchObject({
-			income: null,
-			fee: null,
-			deposit: null
-		});
+		expect(await readQuickbooksConnection(db)).toMatchObject({ accounts: NONE_PICKED });
 	});
 
 	it('never overwrite accounts an operator already picked', async () => {
 		await connect();
-		const picked = {
-			income: { id: '79', name: 'Donations' },
-			fee: { id: '80', name: 'Merchant fees' },
-			deposit: { id: '35', name: 'Checking' }
-		};
-		await saveQuickbooksAccounts(db, picked);
+		await saveQuickbooksAccounts(db, PICKED);
 
 		await fillQuickbooksAccounts(db, '4620816365', DEFAULTS);
 
-		expect(await readQuickbooksConnection(db)).toMatchObject(picked);
+		expect(await readQuickbooksConnection(db)).toMatchObject({ accounts: PICKED });
+	});
+
+	it('write nothing onto a moved connection, whose accounts wait on an operator', async () => {
+		await connect();
+		await connectQuickbooks(db, {
+			realmId: '9999999999',
+			tokens: { ...TOKENS, refreshToken: 'refresh-two' },
+			startAt: new Date('2026-05-01T00:00:00.000Z')
+		});
+
+		await fillQuickbooksAccounts(db, '9999999999', DEFAULTS);
+
+		expect(await readQuickbooksConnection(db)).toMatchObject({ accounts: NONE_PICKED });
 	});
 });
 

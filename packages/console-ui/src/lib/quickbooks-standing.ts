@@ -7,9 +7,20 @@ import type {
 	QuickbooksReport,
 	QuickbooksStartAtSide
 } from '@better-giving/operator/console/quickbooks';
-import { QUICKBOOKS_RECOURSES } from '@better-giving/operator/console/quickbooks';
+import {
+	QUICKBOOKS_ACCOUNT_ROLES,
+	QUICKBOOKS_RECOURSES
+} from '@better-giving/operator/console/quickbooks';
+import type { SavedFormState } from '@better-giving/operator/saved-form-state.react';
 import { z } from 'zod';
-import type { NoReport, QuickbooksRead, VarsWritten } from '../api/types';
+import type {
+	HoldingPick,
+	NoReport,
+	PaymentProcessor,
+	QuickbooksRead,
+	VarsWritten
+} from '../api/types';
+import { CHARGE_PAIRS, PROCESSORS } from './processor-links';
 import { readableRefusal } from './unread-answer';
 import type { SecretEdits } from './secret-edits';
 import { VALUE_FIELD } from './secret-groups';
@@ -25,14 +36,16 @@ import type { StatedForm } from './use-console-form';
 // what put an outcome at the control that caused it — and a mismatch there reports a save at the
 // button that disconnected.
 //
-// **the three picks are one act.** a connection holding one of the three is a state the deployment
-// refuses to write (packages/operator/src/console/quickbooks.ts), so what arms the save is all
-// three chosen and at least one of them different — never a box at a time.
+// **the picks are one act.** the deployment stores them together and refuses a save without income
+// and fees (packages/operator/src/console/quickbooks.ts), so what arms the save is those two chosen
+// and at least one pick different — never a box at a time. a holding may stay unchosen.
 //
 // **no sentence here quotes the deployment.** its own detail names status codes and exception
 // names an operator does nothing with, so every trouble is one plain sentence at the step it
 // blocks: a press answered by nothing reads {@link UNANSWERED}, one the deployment refused reads
-// {@link REFUSED}, and one it failed at reads {@link FAILED} ({@link unansweredSays}).
+// {@link REFUSED}, and one it failed at reads {@link FAILED} ({@link unansweredSays}). the one
+// answer quoted is a revoke Intuit did not confirm ({@link revokeStands}): its trace is at Intuit,
+// where nothing on this screen can show it, and the deployment's fix is the only word on where.
 //
 // **how long the oldest has waited is said in the coarsest unit that is still true.** an operator
 // reading it is deciding whether the books are behind, and a figure to the minute over four days
@@ -263,12 +276,105 @@ export const unanswered = (
 ): NoReport | null =>
 	answer?.kind === 'unanswered' && answer.press === press ? answer.read : null;
 
-/** the three accounts a gift is posted into, in the order the section draws them. */
-export const PICKS = ['income', 'fee', 'deposit'] as const;
+/** the accounts a gift is posted into, in the order the section draws them: the wire's roles. */
+export const PICKS = QUICKBOOKS_ACCOUNT_ROLES;
 
 export type AccountPick = (typeof PICKS)[number];
 
-/** the three as the boxes hold them: an account id each, and `''` where one is unchosen. */
+/** what a gift is recorded as: the two every gift needs, and the first group the section draws. */
+export const GIFT_PICKS = ['income', 'fee'] as const satisfies readonly AccountPick[];
+
+const REQUIRED_PICKS: readonly AccountPick[] = GIFT_PICKS;
+
+/**
+ * where money waits before it reaches the bank, one account per processor and one for the gifts
+ * recorded by hand: the second group. each may stay unchosen.
+ */
+export const HOLDING_PICKS = [
+	'stripeBalance',
+	'paypalBalance',
+	'chariotBalance',
+	'nowpaymentsBalance',
+	'undepositedFunds'
+] as const satisfies readonly HoldingPick[];
+
+/** the holding each processor's gifts wait in until it pays out. */
+const HOLDING_OF: Readonly<Record<PaymentProcessor, HoldingPick>> = {
+	stripe: 'stripeBalance',
+	paypal: 'paypalBalance',
+	chariot: 'chariotBalance',
+	nowpayments: 'nowpaymentsBalance'
+};
+
+const isHolding = (pick: AccountPick): pick is HoldingPick =>
+	(HOLDING_PICKS as readonly AccountPick[]).includes(pick);
+
+/**
+ * the holdings the section draws a picker for: each processor this deployment takes gifts through,
+ * the one for gifts recorded by hand always, and any holding the connection already stores.
+ *
+ * **which processors those are is read off the held values**, the deployment's own reading
+ * (`CHARGE_PAIRS` in ./processor-links.ts): the QuickBooks report says nothing about processors,
+ * and the connect fills a holding for exactly these (`fillAccountsFromChart` in
+ * packages/app/src/lib/server/accounting/connection.ts). a picker for a processor nobody set up is
+ * a choice about gifts that never arrive.
+ *
+ * **a stored holding is drawn whatever the processor**, because the screen says where the books
+ * post today — keys removed since the pick leave it stored, and the picker is how it comes off. one
+ * not drawn is still posted as stored, since every role rides every save.
+ */
+export function holdingsDrawn(
+	company: QuickbooksCompany,
+	held: ReadonlySet<string>
+): HoldingPick[] {
+	const taken = new Set(
+		(Object.keys(HOLDING_OF) as PaymentProcessor[])
+			.filter((processor) => CHARGE_PAIRS[processor].every((name) => held.has(name)))
+			.map((processor) => HOLDING_OF[processor])
+	);
+	return HOLDING_PICKS.filter(
+		(pick) => pick === 'undepositedFunds' || taken.has(pick) || company[pick] !== null
+	);
+}
+
+/** what each picker is called: the legend over its group says what the group is for. */
+export const PICK_LABEL: Readonly<Record<AccountPick, string>> = {
+	income: 'Income',
+	fee: 'Processing fees',
+	stripeBalance: `${PROCESSORS.stripe.name} balance`,
+	paypalBalance: `${PROCESSORS.paypal.name} balance`,
+	chariotBalance: `${PROCESSORS.chariot.name} balance`,
+	nowpaymentsBalance: `${PROCESSORS.nowpayments.name} balance`,
+	undepositedFunds: 'Gifts recorded by hand'
+};
+
+/** the legend over each of the two groups. */
+export const PICK_GROUP_LEGEND = {
+	gift: 'What a gift is recorded as',
+	holding: 'Where money waits before it reaches your bank'
+} as const;
+
+/**
+ * the line over each holding's picker: what the bookkeeper does when the money moves on.
+ *
+ * the deployment hears no payout (`QUICKBOOKS_ACCOUNT_ROLES` in
+ * packages/operator/src/console/quickbooks.ts), so the money leaving a holding is recorded off the
+ * bank feed and never by this deployment — and a holding left unrecorded reads as money the
+ * processor still owes.
+ */
+export const HOLDING_HINT: Readonly<Record<HoldingPick, string>> = {
+	stripeBalance: payoutHint(PROCESSORS.stripe.name),
+	paypalBalance: payoutHint(PROCESSORS.paypal.name),
+	chariotBalance: payoutHint(PROCESSORS.chariot.name),
+	nowpaymentsBalance: payoutHint(PROCESSORS.nowpayments.name),
+	undepositedFunds: 'Record each deposit from your bank feed as a transfer out of this account.'
+};
+
+function payoutHint(processor: string): string {
+	return `Record each ${processor} payout from your bank feed as a transfer out of this account.`;
+}
+
+/** the picks as the boxes hold them: an account id each, and `''` where one is unchosen. */
 export type QuickbooksPicks = Readonly<Record<AccountPick, string>>;
 
 /** what one press posts as its intent, which is what an outcome is reported against. */
@@ -289,13 +395,16 @@ export type AccountPicker = {
 	readonly retired: AccountOption | undefined;
 };
 
-/** the empty line a picker offers while it is showing nothing. */
+/** the empty line income or fees offers while it is showing nothing. */
 export const CHOOSE = 'Choose an account';
+
+/** the empty line every holding offers, stored or not: the gifts it would hold wait unsent. */
+export const NONE = 'None';
 
 /**
  * one picker over the company's own chart, for a picker showing `showing`.
  *
- * **it offers only the accounts that fit it.** the deployment says which of the three each account
+ * **it offers only the accounts that fit it.** the deployment says which of the roles each account
  * may be picked for (`roles` on `LedgerAccountLine` in packages/operator/src/console/quickbooks.ts)
  * and refuses a save naming one outside its role, so an account offered where it does not fit is a
  * pick the press is certain to be refused over. a stored pick that does not fit is kept the way a
@@ -317,10 +426,14 @@ export const CHOOSE = 'Choose an account';
  * that account has no name anywhere on this screen, so the line carries the id the press would
  * send. a stored one does have a name and is drawn under it.
  *
- * **the empty line is what "nothing chosen" is, so it stands while the company stores nothing.** a
- * list that lost it on the first pick leaves a mis-pick on a fresh connection with no way back to
- * it, and the three are stored together (`picksToSave` below) — so there is nothing to go back to
- * once the connection holds one.
+ * **the empty line is what "nothing chosen" is, so income and fees offer it while the company
+ * stores nothing.** a list that lost it on the first pick leaves a mis-pick on a fresh connection
+ * with no way back to it, and the two are required together (`picksToSave` below) — so there is
+ * nothing to go back to once the connection holds one.
+ *
+ * **a holding offers it always, as {@link NONE}**, because none is a choice a holding may be saved
+ * with: it holds that one processor's gifts and nothing else, so a processor this organisation has
+ * stopped using is set back to none rather than left pointing at an account.
  */
 export function accountPicker(
 	chart: readonly LedgerAccountLine[],
@@ -332,8 +445,13 @@ export function accountPicker(
 		.filter((account) => account.roles.includes(role))
 		.map((account) => ({ value: account.id, label: `${account.name} — ${account.type}` }));
 	const offered = showing === '' || options.some((option) => option.value === showing);
+	const empty = isHolding(role)
+		? [{ value: '', label: NONE }]
+		: pick === null || showing === ''
+			? [{ value: '', label: CHOOSE }]
+			: [];
 	return {
-		options: pick === null || showing === '' ? [{ value: '', label: CHOOSE }, ...options] : options,
+		options: [...empty, ...options],
 		retired: offered ? undefined : { value: showing, label: retiredLabel(chart, pick, showing) }
 	};
 }
@@ -353,20 +471,23 @@ function retiredLabel(
 	return pick !== null && pick.id === showing ? pick.name : showing;
 }
 
-/** the three this connection posts to, as the boxes are drawn with them. */
-export const picksHeld = (company: QuickbooksCompany): QuickbooksPicks => ({
-	income: company.income?.id ?? '',
-	fee: company.fee?.id ?? '',
-	deposit: company.deposit?.id ?? ''
-});
+/** the accounts this connection posts to, as the boxes are drawn with them. */
+export const picksHeld = (company: QuickbooksCompany): QuickbooksPicks =>
+	Object.fromEntries(PICKS.map((pick) => [pick, company[pick]?.id ?? ''])) as Record<
+		AccountPick,
+		string
+	>;
 
 /**
- * whether the three in the boxes are a press: all of them chosen, every one an account its picker
- * offers, and not what is already stored.
+ * whether the picks in the boxes are a press: income and fees chosen, every pick showing an account
+ * its picker offers or a holding left unchosen, and not what is already stored.
  *
- * it is all three halves rather than the last alone because the three are stored together — two
- * chosen and one empty is a press the deployment refuses, and so is one still showing a retired
- * pick ({@link accountPicker}): an account that does not fit its place, or that the chart no longer
+ * a connection awaiting its accounts is a press over picks identical to the stored ones: the save
+ * is what releases it (`awaitingAccounts` in packages/operator/src/console/quickbooks.ts).
+ *
+ * it is all three halves rather than the last alone because the picks are stored together — income
+ * or fees empty is a press the deployment refuses, and so is one still showing a retired pick
+ * ({@link accountPicker}): an account that does not fit its place, or that the chart no longer
  * holds. arming either would spend a round trip to be told so.
  */
 export function picksToSave(
@@ -375,8 +496,10 @@ export function picksToSave(
 	chart: readonly LedgerAccountLine[]
 ): boolean {
 	const offered = (pick: AccountPick): boolean =>
+		(held[pick] === '' && !REQUIRED_PICKS.includes(pick)) ||
 		chart.some((account) => account.id === held[pick] && account.roles.includes(pick));
 	if (!PICKS.every(offered)) return false;
+	if (company.awaitingAccounts) return true;
 	const stored = picksHeld(company);
 	return PICKS.some((pick) => held[pick] !== stored[pick]);
 }
@@ -384,15 +507,15 @@ export function picksToSave(
 /** what a picker left unchosen at the press says. */
 export const PICK_BLANK = 'required';
 
-/** the pickers showing nothing, in the order they are drawn. */
+/** the pickers that must show something and show nothing, in the order they are drawn. */
 export const picksMissing = (held: QuickbooksPicks): AccountPick[] =>
-	PICKS.filter((pick) => held[pick] === '');
+	REQUIRED_PICKS.filter((pick) => held[pick] === '');
 
 /**
  * whether the pickers' save can be pressed: a press ({@link picksToSave}), or one left unchosen —
  * pressing then marks it (`PICK_BLANK`) rather than leaving an operator in front of a closed
- * button with no word on why. a connect fills what it can off the chart and can leave one of the
- * three empty, so a save closed over that is a step with no way on.
+ * button with no word on why. a connect fills what it can off the chart and can leave income or
+ * fees empty, so a save closed over that is a step with no way on.
  */
 export const picksArmed = (
 	held: QuickbooksPicks,
@@ -545,7 +668,7 @@ export function unansweredSays(read: NoReport): string {
 export type ChartStanding = {
 	/**
 	 * the step it blocks. a lapsed credential is Connect's — connecting again is what mends it —
-	 * and anything else leaves the connection standing and the three unpickable.
+	 * and anything else leaves the connection standing and the accounts unpickable.
 	 */
 	readonly step: 'connect' | 'accounts';
 	readonly says: string;
@@ -559,7 +682,7 @@ export type ChartStanding = {
  * with no parse in front of it (`ask` in ../api/client.ts) and the binary forwards the
  * deployment's body unread, so a deployment a release ahead of this console names a recourse this
  * has no entry for — and the type says otherwise. that one, and none at all, read as the plain
- * fact, at the step the three would be picked in.
+ * fact, at the step the accounts would be picked in.
  */
 export function chartStands(accounts: QuickbooksReport['accounts']): ChartStanding | null {
 	if (accounts === null || accounts.state === 'read') return null;
@@ -573,6 +696,83 @@ export function chartStands(accounts: QuickbooksReport['accounts']): ChartStandi
 		};
 	return { step: 'accounts', says: 'This deployment couldn’t read your chart of accounts.' };
 }
+
+/**
+ * what the Accounts step says over a connection that moved to another company, or `null` where it
+ * did not. the name stands mid-sentence, where a name that ends in a stop still reads whole.
+ */
+export const awaitingSays = (company: QuickbooksCompany): string | null =>
+	company.awaitingAccounts
+		? `This connection moved to ${companyCalled(company)}, and nothing is sent to QuickBooks until its accounts are saved.`
+		: null;
+
+/** the code the deployment refuses an account whose type does not fit its place under. */
+const WRONG_TYPE = 'account_wrong_type';
+
+/** the first name a refusal marks as code, which is the value it refuses. */
+const MARKED_NAME = /`([A-Za-z]+)`/;
+
+/**
+ * the drawn picker an accounts press was refused over, or `null` where the refusal is not that one
+ * or names no picker on the screen — which is then said at the press, as every other refusal is.
+ *
+ * **the code says which refusal it is and the refusal's first marked name says which picker.** the
+ * deployment writes a 4xx body for an agent to act on and names the offending value in it
+ * (CLAUDE.md → Boundaries), as a role in backticks leading its sentence
+ * (`misfit` in packages/app/src/routes/console.quickbooks.ts), and the binary forwards the sentence
+ * and not a field (`readNoReport` in packages/console/internal/deployment/report.go). the name is
+ * checked against what is drawn rather than trusted, so wording that stops leading with it falls
+ * back to the press and never marks the wrong picker.
+ *
+ * it reaches the pickers only where the chart moved under them: each offers only what fits it
+ * (`accountPicker` above), so an account changed to a Bank at Intuit after this chart was read is
+ * the refusal's one way here.
+ */
+export function misfitPick(
+	answer: QuickbooksAnswer | null,
+	drawn: readonly AccountPick[]
+): AccountPick | null {
+	const read = unanswered(answer, 'accounts');
+	if (read === null || read.kind !== 'unreadable' || read.error !== WRONG_TYPE) return null;
+	if (readableRefusal(read) === null) return null;
+	const named = MARKED_NAME.exec(read.detail)?.[1];
+	return drawn.find((pick) => pick === named) ?? null;
+}
+
+/**
+ * what a picker refused for its account's type says: the predicate its label completes. a holding
+ * takes an Other Current Asset of its own, and income or fees take what the re-read list offers.
+ */
+export const misfitSays = (pick: AccountPick): string =>
+	isHolding(pick)
+		? 'pick an Other Current Asset account, never a bank account'
+		: 'pick another account from this list';
+
+/**
+ * a disconnect whose revoke Intuit did not confirm, as the deployment said it, or `null`.
+ *
+ * the connection is gone on both arms, so the state the press leaves is its report — except that
+ * the app may still stand among the company's connected apps, which is a trace somewhere this
+ * screen cannot show (`QuickbooksRevoke` in packages/operator/src/console/quickbooks.ts). so this
+ * arm, and only this one, is said: the deployment's detail quoted and its fix saying where.
+ */
+export function revokeStands(
+	answer: QuickbooksAnswer | null
+): { readonly detail: string; readonly fix: string } | null {
+	if (answer?.kind !== 'reported' || answer.report.press !== 'disconnect') return null;
+	const { revoke } = answer.report;
+	return revoke.state === 'not_revoked' ? { detail: revoke.detail, fix: revoke.fix } : null;
+}
+
+/** the sentence over a revoke Intuit did not confirm. */
+export const NOT_REVOKED = 'Intuit didn’t confirm the disconnect.';
+
+/** a step's button saying `Saving` or `Saved`, reported up so the step stays open under it. */
+export type OnConfirming = (active: boolean) => void;
+
+/** whether a button's rung is one a finished step stays open for. */
+export const confirmingIn = (state: SavedFormState): boolean =>
+	state === 'pending' || state === 'done';
 
 /** the three steps the section draws as a checklist, in order. */
 export const STEPS = ['setup', 'connect', 'accounts'] as const;
@@ -629,11 +829,12 @@ export type StepsStanding = Readonly<Record<StepName, StepStanding>> & {
  * **the order is the code's.** Connect is locked until the keys are held, because every call to
  * Intuit is built from all three; Accounts until a company is connected, because the connect is
  * what fills them off the chart (`fillAccountsFromChart` in
- * packages/app/src/routes/quickbooks.callback.tsx); and sync is out of sight until all three are
- * picked, because nothing is sent before (`chosenAccounts` in
- * packages/app/src/lib/server/accounting/quickbooks.ts) — never drawn locked, since it is not a
- * step. trouble does not take it away: an outage is when an operator needs the backlog and its
- * retry.
+ * packages/app/src/routes/quickbooks.callback.tsx); and sync is out of sight until income and
+ * fees are picked and a moved connection's accounts saved, because nothing is sent before
+ * (`chosenAccounts` in packages/app/src/lib/server/accounting/quickbooks.ts, and
+ * `awaitingAccounts` in packages/operator/src/console/quickbooks.ts) — never drawn locked, since it
+ * is not a step. trouble does not take it away: an outage is when an operator needs the backlog and
+ * its retry.
  *
  * **the first unfinished step is open and a finished one is shut** — once its button has shown
  * the save that finished it: `confirming` is the step whose button is drawing `Saving` or `Saved`,
@@ -657,7 +858,10 @@ export function stepsStand(facts: {
 	const done: Record<StepName, boolean> = {
 		setup: configured,
 		connect: company !== null,
-		accounts: company !== null && PICKS.every((pick) => company[pick] !== null)
+		accounts:
+			company !== null &&
+			!company.awaitingAccounts &&
+			REQUIRED_PICKS.every((pick) => company[pick] !== null)
 	};
 	const trouble: Record<StepName, boolean> = {
 		setup: false,

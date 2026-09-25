@@ -56,15 +56,16 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	 * rather than from what the body claimed (`charityEdit` in ../lib/paypal-charity.ts), which is
 	 * what keeps a third spelling off a door that refuses one with a 400.
 	 *
-	 * it is a press of its own rather than a name in PayPal's group: the three credentials are one
-	 * errand off one PayPal app, and this is an answer about the organisation given months after
+	 * it is a press of its own rather than a name in PayPal's group: the credentials and their address
+	 * are one errand off one PayPal app, and this is an answer about the organisation given months after
 	 * them (../lib/secret-groups.ts).
 	 */
 	if (intent === CHARITY_INTENT) return { charity: await setVars(charityEdit(posted)) };
 
 	/**
-	 * sets PayPal up from the pair: the binary checks it, settles the listener at this deployment's
-	 * address and writes the pair and that listener's id in one write (`packages/console/internal/paypal`).
+	 * sets PayPal up from the pair and the address it is sent to: the binary checks the pair there,
+	 * settles the listener at this deployment's address and writes the pair, that address and that
+	 * listener's id in one write (`packages/console/internal/paypal`).
 	 *
 	 * started rather than awaited, for the Stripe press's reason (./_sections.payments.stripe.tsx),
 	 * and the pair is read by the boxes' own rule first so the binary is sent nothing it would turn down
@@ -99,8 +100,8 @@ export default function PaypalPage({ loaderData, actionData, matches }: Route.Co
 	const shell = matches[1].loaderData;
 	const press = usePress();
 	/* a setup run counts as this page writing, although no request is open for it: it writes the
-	   pair and the listener's id onto the deployment (`packages/console/internal/paypal`), and a
-	   second press made under it would be reading what this one is still changing. */
+	   pair, its address and the listener's id onto the deployment (`packages/console/internal/paypal`),
+	   and a second press made under it would be reading what this one is still changing. */
 	const busy = press.busy || loaderData.run?.kind === 'running';
 
 	/* the set-up press: its run off the loader, and the three answers that started none. */

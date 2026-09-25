@@ -28,6 +28,7 @@
 import {
 	FREQUENCIES,
 	PAYMENT_METHODS,
+	PAYPAL_SDK_PATH,
 	type FeeCoverage,
 	type FeeRule,
 	type FeeRules,
@@ -77,13 +78,23 @@ function vocabulary<T extends string>(value: unknown, allowed: readonly T[]): re
  *
  * neither field is a secret, by construction: both are embedded in public HTML on the org's own
  * site, which is what a publishable key is designed for.
+ *
+ * a script address that is present and not one `Provider.sdkUrl` in ./v1.ts allows makes the whole
+ * entry unreadable rather than being stripped: read without it, the adapter would start its default
+ * script against keys issued at another address, which is a button failing for a reason this page
+ * cannot state.
  */
 function provider(value: unknown): Provider | null {
 	const source = record(value);
 	if (source === null) return null;
 	const name = text(source.name);
 	const publishableKey = text(source.publishableKey);
-	return name === null || publishableKey === null ? null : { name, publishableKey };
+	if (name === null || publishableKey === null) return null;
+	if (source.sdkUrl === undefined) return { name, publishableKey };
+	const sdkUrl = httpsUrl(source.sdkUrl);
+	return sdkUrl !== null && new URL(sdkUrl).pathname === PAYPAL_SDK_PATH
+		? { name, publishableKey, sdkUrl }
+		: null;
 }
 
 /**
