@@ -220,7 +220,7 @@ function scriptTags(html: string): string[] {
 
 /**
  * what every document carries whichever policy it is drawn under: the directives no route widens,
- * the framing and referrer headers, and the policy's nonce on every script the document draws.
+ * the framing header, and the policy's nonce on every script the document draws.
  */
 async function expectLocked(
 	response: Response,
@@ -232,14 +232,18 @@ async function expectLocked(
 	expect(policy.get('form-action')).toEqual(["'self'"]);
 	expect(policy.get('frame-ancestors')).toEqual(["'none'"]);
 	expect(response.headers.get('x-frame-options')).toBe('DENY');
-	expect(response.headers.get('referrer-policy')).toBe('same-origin');
 
 	const scripts = scriptTags(await response.text());
 	expect(scripts.length).toBeGreaterThan(0);
 	for (const tag of scripts) expect(tag).toContain(` nonce="${nonce}"`);
 }
 
-/** a document answer's policy and framing headers, held to the dashboard's strict set. */
+/**
+ * a document answer's policy and framing headers, held to the dashboard's strict set.
+ *
+ * `style-src` is not read: vitest sets `import.meta.env.DEV` in this pool, so what arrives here is
+ * the dev server's variant. ./document-policy.spec.ts holds a build's and the dev server's apart.
+ */
 async function expectStrictDocument(response: Response): Promise<void> {
 	expect(response.status).toBe(200);
 	expect(response.headers.get('content-type')).toMatch(/^text\/html/);
@@ -249,6 +253,7 @@ async function expectStrictDocument(response: Response): Promise<void> {
 	expect(policy.get('default-src')).toEqual(["'self'"]);
 	expect(policy.get('script-src')).toEqual(["'self'", `'nonce-${nonce}'`]);
 	expect(policy.get('img-src')).toEqual(["'self'", 'data:']);
+	expect(response.headers.get('referrer-policy')).toBe('same-origin');
 	await expectLocked(response, policy, nonce);
 }
 
@@ -324,6 +329,7 @@ describe('the donor page', () => {
 		]);
 		expect(policy.get('font-src')).toEqual(["'self'", 'https://cdn.givechariot.com']);
 		expect(policy.get('style-src')).toEqual(["'self'", "'unsafe-inline'"]);
+		expect(response.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
 		await expectLocked(response, policy, nonce);
 	});
 
