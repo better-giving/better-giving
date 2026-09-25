@@ -104,6 +104,23 @@ type Post func(ctx context.Context, path string, body any) Answer
 // above hands back.
 type Send func(ctx context.Context, method, path string, body any) Answer
 
+// Base is an address an operator typed, as the host a call is bound to — and whether it is one.
+//
+// blank is `fallback`. anything else is an https origin and nothing more: a credential travels in a
+// header on every call, so an address that is not https would send it in the clear, and a path
+// would be joined in front of every call's own.
+func Base(typed, fallback string) (string, bool) {
+	if strings.TrimSpace(typed) == "" {
+		return fallback, true
+	}
+	parsed, err := url.Parse(strings.TrimSuffix(typed, "/"))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
+		parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
+		return "", false
+	}
+	return parsed.Scheme + "://" + parsed.Host, true
+}
+
 // JSONSend is a json call to one host, bound to its headers once.
 //
 // A body is what decides whether the request declares one: a call made with a nil body sends no

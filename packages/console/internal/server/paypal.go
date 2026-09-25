@@ -31,7 +31,7 @@ import (
 
 // the pair and the address, as the fold posts them. both halves are required: a stored secret is
 // readable by nothing, so a press that left one box empty holds nothing a token can be minted with.
-// an empty address is live.
+// an empty address is paypal.DefaultAPIURL.
 type paypalPress struct {
 	ClientID string `json:"clientId"`
 	Secret   string `json:"secret"`
@@ -75,11 +75,11 @@ func paypalRoutes(
 			})
 			return
 		}
-		address, isAddress := paypal.Address(posted.Address)
+		address, isAddress := cf.Base(posted.Address, paypal.DefaultAPIURL)
 		if !isAddress {
 			answer(w, http.StatusBadRequest, map[string]string{
 				"error": "the address slot holds something other than an https address with no path, " +
-					"and nothing at all is live",
+					"and nothing at all is " + paypal.DefaultAPIURL,
 			})
 			return
 		}

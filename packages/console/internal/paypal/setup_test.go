@@ -147,14 +147,14 @@ func (one *effects) bound() Effects {
 }
 
 func pressed() Asked {
-	return Asked{ClientID: "Aa-client", Secret: "EL-secret", Address: API}
+	return Asked{ClientID: "Aa-client", Secret: "EL-secret", Address: DefaultAPIURL}
 }
 
 // an address that is not live is stored beside the pair, and live is stored as no address: one
 // left from an earlier press would otherwise send a live pair somewhere else.
 func TestTheAddressThePairWasSetUpAtIsStoredBesideIt(t *testing.T) {
 	for _, one := range []struct{ asked, stored string }{
-		{API, "<removed>"},
+		{DefaultAPIURL, "<removed>"},
 		{"https://paypal.example", "https://paypal.example"},
 	} {
 		held := working()
@@ -330,7 +330,7 @@ func TestAPairPayPalMintsNoTokenForReadsNothingAndStoresNothing(t *testing.T) {
 // a pair from one PayPal address refused at another is the ordinary way a press fails, so the
 // refusal says where it was sent and what moves it.
 func TestAPairRefusedSaysWhichAddressItWasSentTo(t *testing.T) {
-	for _, at := range []string{API, "https://paypal.example"} {
+	for _, at := range []string{DefaultAPIURL, "https://paypal.example"} {
 		held := working()
 		held.app.token = answered(401, map[string]any{"error": "invalid_client"})
 		asked := pressed()

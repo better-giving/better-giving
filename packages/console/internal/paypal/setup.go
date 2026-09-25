@@ -55,7 +55,7 @@ const (
 	Authorizing Stage = "authorizing"
 	// Registering is deriving the address, reading the app's listeners, and settling the one here.
 	Registering Stage = "registering"
-	// Storing is writing the pair and the listener's id onto the deployment, as vars.
+	// Storing is writing the pair, its address and the listener's id onto the deployment, as vars.
 	Storing Stage = "storing"
 	// Repeating is asking the deployment to put what a repeating gift is collected against on the
 	// PayPal account.
@@ -145,7 +145,7 @@ type Outcome struct {
 type Asked struct {
 	ClientID string
 	Secret   string
-	// Address is what Address made of the typed one, API where it was blank.
+	// Address is what ../cf's Base made of the typed one, DefaultAPIURL where it was blank.
 	Address string
 }
 
@@ -269,11 +269,11 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 		"PAYPAL_CLIENT_ID":     &asked.ClientID,
 		"PAYPAL_CLIENT_SECRET": &asked.Secret,
 		"PAYPAL_WEBHOOK_ID":    &registration.ID,
-		// live is what a deployment holding no address calls, so live is stored as no address: an
-		// address left from an earlier press would otherwise send a live pair somewhere else.
+		// the default is what a deployment holding no address calls, so it is stored as no address: an
+		// address left from an earlier press would otherwise send this pair somewhere else.
 		APIURLVar: nil,
 	}
-	if asked.Address != API {
+	if asked.Address != DefaultAPIURL {
 		values[APIURLVar] = &asked.Address
 	}
 	written := effects.Publish(ctx, values)

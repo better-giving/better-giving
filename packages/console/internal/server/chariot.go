@@ -65,7 +65,7 @@ func chariotRoutes(
 			})
 			return
 		}
-		address, isAddress := chariot.Address(posted.Address)
+		address, isAddress := cf.Base(posted.Address, chariot.API)
 		if !isAddress {
 			answer(w, http.StatusBadRequest, map[string]string{
 				"error": "the address slot holds something other than an https address with no path, " +

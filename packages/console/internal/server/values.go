@@ -26,7 +26,7 @@ import (
 // **a body is refused in four cases.** internal/release holds that list, and a name off it is
 // refused here rather than written under whatever the page said — the console's own session
 // credential is on no enumeration and is not reachable through this door. the second is PayPal's
-// three credentials, Chariot's four values and NOWPayments' three, argued at ./paypalSetUpOnly,
+// four values, Chariot's four and NOWPayments' three, argued at ./paypalSetUpOnly,
 // ./chariotSetUpOnly and ./nowpaymentsSetUpOnly.
 // the third is a name carrying a blank, which is neither a value the deployment reads nor the
 // removal `null` is. the fourth is the charity-rate switch carrying anything but its one word,

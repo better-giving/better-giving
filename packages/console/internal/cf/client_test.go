@@ -383,3 +383,27 @@ func TestAMultipartCallWatchedByNothingReportsNothing(t *testing.T) {
 		t.Errorf("answer = %+v", answer)
 	}
 }
+
+func TestATypedBaseIsAnHttpsOriginAndABlankOneIsTheDefault(t *testing.T) {
+	const fallback = "https://api.example"
+	for _, one := range []struct {
+		typed, want string
+		ok          bool
+	}{
+		{"", fallback, true},
+		{"  ", fallback, true},
+		{"https://other.example/", "https://other.example", true},
+		{"http://other.example", "", false},
+		{"https://other.example/v1", "", false},
+		{"https://other.example?x=1", "", false},
+		{"https://other.example#x", "", false},
+		{"https://user@other.example", "", false},
+		{"other.example", "", false},
+		{" https://other.example", "", false},
+	} {
+		got, ok := Base(one.typed, fallback)
+		if got != one.want || ok != one.ok {
+			t.Errorf("Base(%q) = %q, %v, want %q, %v", one.typed, got, ok, one.want, one.ok)
+		}
+	}
+}

@@ -157,7 +157,7 @@ func TestThePaypalPressRegistersTheListenerAndWritesThePairAndItsIdAsVars(t *tes
 
 func TestThePaypalPressBindsThePairToTheAddressItCarries(t *testing.T) {
 	for _, one := range []struct{ body, want string }{
-		{paypalPressed, paypal.API},
+		{paypalPressed, paypal.DefaultAPIURL},
 		{`{"clientId":"Aa-a","secret":"EL-b","address":"https://paypal.example/"}`, "https://paypal.example"},
 	} {
 		handler, _, _, _, _, bases := settingPaypalBound(t, "an-account")

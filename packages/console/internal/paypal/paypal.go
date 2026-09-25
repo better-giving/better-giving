@@ -12,7 +12,7 @@
 // **the address is the operator's, and nothing checks the pair against it.** a pair answers at the
 // one PayPal address it was made at, and rehearsing is a second deployment (DEPLOY.md) — so the
 // address is a value like the pair, typed beside it and stored as `PAYPAL_API_URL`, blank meaning
-// live.
+// DefaultAPIURL.
 //
 // every failure is a value, the way ../cf's are: nothing here returns an error.
 package paypal
@@ -28,28 +28,12 @@ import (
 	"github.com/better-giving/console/internal/cf"
 )
 
-// API is where live PayPal answers, and the address a deployment holding no PAYPAL_API_URL calls.
-const API = "https://api-m.paypal.com"
+// DefaultAPIURL is the address a blank box stands for and a deployment holding no PAYPAL_API_URL
+// calls: `PAYPAL_DEFAULT_API_URL` in packages/app/src/lib/server/payments/paypal.ts.
+const DefaultAPIURL = "https://api-m.paypal.com"
 
 // APIURLVar is the var the address is stored as, written by the set-up press alone.
 const APIURLVar = "PAYPAL_API_URL"
-
-// Address is the address a press typed, as the one this console calls — and whether it is one.
-//
-// blank is live. anything else is an https origin and nothing more: the pair travels in a header on
-// every call, so an address that is not https would send it in the clear, and a path would be
-// joined in front of every call's own.
-func Address(typed string) (string, bool) {
-	if strings.TrimSpace(typed) == "" {
-		return API, true
-	}
-	parsed, err := url.Parse(strings.TrimSuffix(typed, "/"))
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
-		parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
-		return "", false
-	}
-	return parsed.Scheme + "://" + parsed.Host, true
-}
 
 // Request is one call to PayPal past the token, as a value before it is made.
 type Request struct {
@@ -69,7 +53,7 @@ type Binding struct {
 	Bearer    func(accessToken string) Call
 }
 
-// BindAt binds one client id and secret against an address Address accepted, or a test host.
+// BindAt binds one client id and secret against an address ../cf's Base accepted, or a test host.
 //
 // The chain is handed functions and never the pair, which is ../cf's arrangement for every
 // credential this binary holds.
