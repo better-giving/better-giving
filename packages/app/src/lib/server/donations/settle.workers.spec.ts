@@ -1123,7 +1123,7 @@ describe('settleDelivery() — a grant through Chariot', () => {
 		expect(mail.sent).toHaveLength(0);
 	});
 
-	it('keeps a grant posted when Chariot later reports it cancelled, and tells an operator once', async () => {
+	it('keeps a grant posted when Chariot later reports it cancelled, and tells an operator', async () => {
 		const gift = await pendingGrant();
 		await settleDelivery(deps({ provider: grant() }), DELIVERY);
 		const mail = mailer();
@@ -1192,6 +1192,56 @@ describe('settleDelivery() — a delivery this app cannot act on', () => {
 
 		// this endpoint is public, so an unverified delivery is anyone's — mailing on one would be
 		// a way to send mail from outside.
+		expect(mail.sent).toHaveLength(0);
+	});
+
+	/**
+	 * a delivery that verified and that the adapter cannot read into an event — a resource shape it
+	 * does not read, a body naming no event. answered 200, since every redelivery reads the same, so
+	 * the one sign of a settlement dropped is the alert.
+	 */
+	it.each([
+		['paypal', 'PayPal'],
+		['chariot', 'Chariot']
+	] as const)(
+		'tells an operator about a verified %s delivery it cannot read, and answers it',
+		async (processor, label) => {
+			const mail = mailer();
+			const detail =
+				'A verified delivery named no order, so there is nothing to reconcile it against.';
+
+			const result = await settleDelivery(
+				deps({
+					email: mail.port,
+					provider: provider({ ok: false, reason: 'unsupported', detail }, undefined, processor)
+				}),
+				DELIVERY
+			);
+
+			expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
+			expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+			expect(mail.sent[0]?.subject).toContain(label);
+			expect(mail.sent[0]?.text).toContain(detail);
+		}
+	);
+
+	/**
+	 * `internal_error` is also what a provider that could not be built answers every call with,
+	 * `verifyEvent` on an unsigned body included — so mailing on it would be a way to send mail from
+	 * outside, exactly as mailing on `bad_signature` would.
+	 */
+	it('sends no mail on a verification that faulted', async () => {
+		const mail = mailer();
+
+		const result = await settleDelivery(
+			deps({
+				email: mail.port,
+				provider: provider({ ok: false, reason: 'internal_error', detail: 'could not be built' })
+			}),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
 		expect(mail.sent).toHaveLength(0);
 	});
 
@@ -1568,18 +1618,19 @@ describe('the processor an operator is sent to', () => {
 
 	/**
 	 * the fourth path, which takes no `pendingGift` — it is the one reached precisely because this
-	 * deployment has no payment row for the transaction, so it cannot share the table above.
+	 * deployment has no payment row for the transaction, so it cannot share the table above. and on
+	 * a processor other than PayPal, whose read of a transaction no row names is never made.
 	 */
 	it('names the processor that settled against no gift here', async () => {
 		const mail = mailer();
 
 		const result = await settleDelivery(
-			deps({ email: mail.port, provider: provider(undefined, undefined, 'paypal') }),
+			deps({ email: mail.port, provider: provider(undefined, undefined, 'nowpayments') }),
 			DELIVERY
 		);
 
 		expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
-		expect(mail.sent[0]?.subject).toContain('PayPal');
+		expect(mail.sent[0]?.subject).toContain('NOWPayments');
 		expect(`${mail.sent[0]?.subject} ${mail.sent[0]?.text}`).not.toContain('Stripe');
 	});
 });
@@ -1641,14 +1692,18 @@ describe('settleDelivery() — a gift settled on PayPal', () => {
 		expect(await groupLines('payment', gift.paymentId)).not.toBeNull();
 	});
 
-	/** a capture state PayPal's adapter does not settle on — `REVERSED` on a chargeback — reads `pending`. */
+	/**
+	 * a capture refunded whole or reversed on a chargeback reads `failed`. neither is an event this
+	 * app subscribes to (`SETTLEMENT_EVENT_TYPES` in packages/operator/src/paypal/webhook-listener.ts),
+	 * so the read that finds one is made for a later delivery about the same order.
+	 */
 	it('keeps a posted capture settled when a later read finds it no longer completed, and tells an operator', async () => {
 		const gift = await paypalGift();
 		await settleDelivery(deps({ provider: captured() }), DELIVERY);
 		const mail = mailer();
 
 		const result = await settleDelivery(
-			deps({ email: mail.port, provider: captured({ status: 'pending', feeMinor: null }) }),
+			deps({ email: mail.port, provider: captured({ status: 'failed', feeMinor: null }) }),
 			DELIVERY
 		);
 
@@ -1658,19 +1713,43 @@ describe('settleDelivery() — a gift settled on PayPal', () => {
 		expect(await groupLines('payment', gift.paymentId)).not.toBeNull();
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 		expect(mail.sent[0]?.text).toContain(gift.paymentId);
+		expect(mail.sent[0]?.text).toContain('failed');
 	});
 
-	it('finds no gift for an order this deployment did not open on PayPal', async () => {
+	/**
+	 * PayPal's read captures an approved order, so an order another integration on the same PayPal
+	 * app opened would be captured by reading it — and none of these books would hold the money.
+	 */
+	it('never reads, and so never captures, an order this deployment holds no row for', async () => {
 		// the same order id against a row Stripe wrote: `payment_provider_txn_idx` is on the pair,
 		// so the processor is half the key and not decoration on it.
 		await pendingGift({ providerTxnId: '5O190127TN364715T' });
 		const mail = mailer();
+		const reads = vi.fn(captured().readSettlement);
 
-		const result = await settleDelivery(deps({ email: mail.port, provider: captured() }), DELIVERY);
+		const result = await settleDelivery(
+			deps({ email: mail.port, provider: { ...captured(), readSettlement: reads } }),
+			DELIVERY
+		);
 
-		expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
+		expect(result).toMatchObject({ ok: true, outcome: 'unnamed' });
+		expect(reads).not.toHaveBeenCalled();
 		const [groups] = await db.select({ n: sql<number>`count(*)` }).from(entryGroup);
 		expect(groups?.n).toBe(0);
+		expect(mail.sent).toHaveLength(0);
+	});
+
+	it('still captures an order it does hold a row for', async () => {
+		await paypalGift();
+		const reads = vi.fn(captured().readSettlement);
+
+		const result = await settleDelivery(
+			deps({ provider: { ...captured(), readSettlement: reads } }),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(reads).toHaveBeenCalledWith('5O190127TN364715T');
 	});
 });
 

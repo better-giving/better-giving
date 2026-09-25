@@ -32,16 +32,19 @@ import { readOrgProfile } from '../org/queries';
  *                    this deployment's — a Chariot grant names none, so one that is not this
  *                    deployment's is answered quietly.
  *   unactionable   — a delivery that verified and cannot be finished, where repeating it reaches
- *                    the same answer: the processor could not be read, or money moved and what is
- *                    known about it is not something the ledger can hold — a settlement carrying
- *                    figures `post()` refuses, which either half can be handed (`unpostable` in
- *                    ./entries.ts), or a settled gift whose own lines do not account for the amount
- *                    that moved (./settle.ts). an operator was told.
- *   unnamed        — a settled transaction whose intent names no gift in this deployment. nothing
- *                    was read further and nothing was written. it is the ordinary answer to the
- *                    `payment_intent.succeeded` that accompanies every collection under a
- *                    commitment — see the metadata paragraph in ./settle.ts's header, which is
- *                    where the rule that produces it lives.
+ *                    the same answer: the adapter could not read it into an event, the processor
+ *                    could not be read, or money moved and what is known about it is not something
+ *                    the ledger can hold — a settlement carrying figures `post()` refuses, which
+ *                    either half can be handed (`unpostable` in ./entries.ts), or a settled gift
+ *                    whose own lines do not account for the amount that moved (./settle.ts). an
+ *                    operator was told, except where the verification itself faulted
+ *                    (`internal_error`), which ./settle.ts leaves in the logs and says why.
+ *   unnamed        — a settled transaction whose intent names no gift in this deployment, or a
+ *                    PayPal order no payment row here names, which is never read because reading
+ *                    it can capture it. nothing was read further and nothing was written. it is the
+ *                    ordinary answer to the `payment_intent.succeeded` that accompanies every
+ *                    collection under a commitment — see the metadata paragraph in ./settle.ts's
+ *                    header, which is where the rule that produces it lives.
  *   uncollected    — a collection under a commitment that did not succeed. nothing was written,
  *                    because a collection has no row waiting for it to correct, and the rail's own
  *                    retry schedule is what tries again.

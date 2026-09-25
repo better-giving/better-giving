@@ -131,9 +131,9 @@ import { sendTributeNotice } from './tribute-notice';
 //   constraint alone would refuse the batch; both fire.
 //
 //   the `payment_intent.succeeded` that accompanies every collection — refused in ./settle.ts,
-//   before any lookup, because the intent behind a collection names no gift in its metadata. that
-//   is the guard which makes the order the two deliveries arrive in stop mattering; read its
-//   header for what it costs to get wrong.
+//   whatever row its id matches, because the intent behind a collection names no gift in its
+//   metadata. that is the guard which makes the order the two deliveries arrive in stop mattering;
+//   read its header for what it costs to get wrong.
 //
 // a UNIQUE rejection therefore does not mean "stop" on its own, which is the one place this path
 // is more than ./settle.ts. a commitment already opened is also what a *second* charge under a
@@ -753,9 +753,10 @@ async function writeAgainstPlan(
 	);
 	const wrote = await attempt(deps.db, [
 		...writes.statements,
-		// `refreshOf` decides from `plan` as it was read, and an operator's stop can commit before
-		// this batch does, so it applies only over the status it read: a stop matches nothing and
-		// stands, and the gift is recorded all the same, because the money moved.
+		// `refreshOf` decides from `plan` as it was read, and an operator's stop or a concurrent
+		// delivery lapsing the plan can commit before this batch does, so it applies only over the
+		// status it read: whichever change landed first matches nothing here and stands, and the gift
+		// is recorded all the same, because the money moved.
 		deps.db
 			.update(recurringPlan)
 			.set(refreshOf(plan, notice, event))

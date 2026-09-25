@@ -19,8 +19,8 @@ import {
 	type RecurringGiftNotice,
 	type Settlement
 } from '../payments/provider';
-import type { SettleDeps, SettleOutcome } from './delivery';
 import { stopRecurringPlan } from '../recurring/queries';
+import type { SettleDeps, SettleOutcome } from './delivery';
 import { recordAuthorizedGift, type AuthorizedGiftInput } from './record';
 import { settleDelivery } from './settle';
 
