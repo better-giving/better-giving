@@ -866,6 +866,13 @@ export type RecurringEvent = VerifiedDelivery & {
 export type ReversalEvent = VerifiedDelivery & {
 	readonly kind: 'reversal';
 	readonly providerNoticeId: string;
+	/**
+	 * the reversal as the verified body itself states it, under `SettlementEvent.delivered`'s rule and
+	 * for its reasons: NOWPayments' alone, a fallback and never the source. its one reader is that
+	 * adapter's own `readReversal`, and only where the read refused `not_found` or `not_configured`.
+	 * absent on every other processor, and where the body could not be read into a reversal.
+	 */
+	readonly delivered?: ReversalRead;
 };
 
 /** a delivery this app acts on nothing for, answered and logged. */

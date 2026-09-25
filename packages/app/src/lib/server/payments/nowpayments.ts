@@ -12,6 +12,8 @@ import {
 	type PaymentProvider,
 	type PaymentResult,
 	type RailSwitchboard,
+	type ReversalEvent,
+	type ReversalRead,
 	type Settlement,
 	type WebhookDelivery
 } from './provider';
@@ -34,24 +36,40 @@ import type { PaymentStatus } from '../db/schema';
 // ./provider.ts); the donor sends from their own wallet, and NOWPayments posts an IPN to the address
 // named on that payment.
 //
-// **it answers** `createIntent`, `verifyEvent`, `readSettlement`, `listPayableCoins` and the two
-// account reads, and refuses everything else as `unsupported`: a gift that repeats (a payment is one
-// deposit — `takesRepeatingGifts` in ./provider.ts keeps NOWPayments out of every repeating-gift
-// read), the listener arms (no endpoint is registered on the account; each payment carries its own
-// callback), and the wallet arms. no payout, conversion or sub-partner call is made here, ever: those
-// move money out of the account.
+// **it answers** `createIntent`, `verifyEvent`, `readSettlement`, `readReversal`, `listPayableCoins`
+// and the two account reads, and refuses everything else as `unsupported`: a gift that repeats (a
+// payment is one deposit — `takesRepeatingGifts` in ./provider.ts keeps NOWPayments out of every
+// repeating-gift read), the listener arms (no endpoint is registered on the account; each payment
+// carries its own callback), and the wallet arms. no payout, conversion or sub-partner call is made
+// here, ever: those move money out of the account.
 //
 // **an IPN names; the read settles.** a verified notification says which payment moved and to which
 // status, and carries the settlement its body states as `SettlementEvent.delivered` — the fallback
 // for a payment `GET /v1/payment/:id` will not answer. no callback reaches a machine without a public
 // address, so the arm is proven against signed fixtures (./nowpayments.spec.ts).
 //
+// **a refund is the whole payment, and its id is derived.** a `refunded` notification names a
+// reversal, and `readReversal` reads the payment into a refund of the whole of what it settled
+// (`amountMinor: null`): the gift is booked at the value that arrived, and a refund reverses that
+// figure rather than one re-priced at today's rate. NOWPayments mints no refund id, so the refund's
+// `providerReversalId` is `<payment_id>:refunded` — stable across every delivery, and never a
+// payment id, which is digits alone, so the refund row cannot collide with the gift's on
+// `payment_provider_txn_idx` in ../db/schema.ts. a payment nothing arrived on reads as
+// `nothing_moved`: it never settled, so there is nothing to reverse, and each such read is logged by
+// payment id (`warnedIfUnmoved`). a read that does not report the payment refunded yet is refused
+// retryably, since no second `refunded` notification follows; and one NOWPayments will not answer
+// falls back to the notification's own statement (`ReversalEvent.delivered` in ./provider.ts), as a
+// settlement does.
+//
 // **a repeat deposit is a payment of its own.** money sent again to a used address arrives under a new
 // `payment_id` with `parent_payment_id` set and the parent's `order_id`, marked `finished` or
 // `partially_paid`, converted at the rate when it landed (the collection's repeated-deposits section).
-// it is read by `parent_payment_id` alone. a wrong-asset deposit processed on the account arrives the
-// same way, in the coin that was sent, which is why the coin is read off the payment and never off the
-// intent.
+// it is read by `parent_payment_id` alone: its settlement carries no metadata, so it is never taken
+// for the gift the parent paid, while its refund carries the parent's `order_id` as the gift's id, so
+// a refund arriving before the deposit is recorded is held open rather than read as another
+// integration's — as is one whose deposit is never recorded, until the redeliveries run out. a
+// wrong-asset deposit processed on the account arrives the same way, in the coin that was sent,
+// which is why the coin is read off the payment and never off the intent.
 //
 // **unconfirmed until the test gift**, where the collection is silent:
 // - whether an IPN carries `created_at`/`updated_at`. its example carries neither, and a status read
@@ -61,6 +79,19 @@ import type { PaymentStatus } from '../db/schema';
 //   create payment request"; where it answers `not_found`, `delivered` is what is left.
 // - which of `full-currencies`' `precision` and `network_precision` is the number of decimals a coin
 //   can actually be sent in. they disagree per coin, and the smaller is taken (`decimalsCarried`).
+// - whether a `refunded` payment keeps `actually_paid` — the test gift must refund and read one back.
+//   the collection describes `refunded` only as the funds returned to the payer, and a refund whose
+//   payment reads nothing received is `nothing_moved` and logged: were it cleared, every refund of a
+//   settled gift would be acknowledged and left out of the books.
+// - whether a payment is refunded once. the derived id assumes it; a second refund of one payment
+//   would read as the first redelivered.
+// - the order of a refund and the settlement it reverses. a payment refunded before its settlement
+//   is recorded here reads `refunded` from then on, and `readSettlement` settles that at what
+//   arrived, so the gift is booked by whichever comes next — the settlement's notification
+//   delivered again, or ../donations/pending-crypto-read.ts for a deposit held and sent back that
+//   sends none — and the refund, held open meanwhile, is posted by its next delivery. a refund whose
+//   redeliveries run out first leaves the gift booked and not reversed, an operator's to correct.
+//   a repeat deposit the key cannot read back is booked and refunded from its own notifications.
 // - whether a `partially_paid` payment is later reported `finished` with more received. the collection
 //   names one way to `finished` — the merchant marking a small shortfall finished in the dashboard,
 //   the amount unchanged — and routes more money to the address as a repeat deposit. either way a
@@ -328,7 +359,8 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 		 * the same notification redelivered is the same event, and a new status, or the same status
 		 * reporting a different amount received, is a new one.
 		 *
-		 * `refunded` and any status NOWPayments has not documented are `ignored`, and so is a body naming
+		 * `refunded` names a reversal of the payment, carried with the reversal the body states as
+		 * `delivered`. any status NOWPayments has not documented is `ignored`, and so is a body naming
 		 * no `payment_id` as digits or no `payment_status`, which is logged as well: a redelivery of it
 		 * would be the identical body. every other names a settlement, carried with what the body
 		 * itself states as `delivered`; the settlement acted on is still `readSettlement`'s. a body
@@ -381,6 +413,18 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 			const occurredAt = timeOf(payment) ?? new Date();
 			const received = arrivedAmount(payment) ?? '0';
 			const named = { id: `${id}:${word}:${received}`, type: word, occurredAt };
+			if (word === REFUNDED) {
+				const stated = reversalOf(payment, occurredAt);
+				return {
+					ok: true,
+					value: {
+						...named,
+						kind: 'reversal',
+						providerNoticeId: id,
+						...(stated.ok ? { delivered: stated.value } : {})
+					}
+				};
+			}
 			if (!SETTLEMENT_STATUSES.has(word)) return { ok: true, value: { ...named, kind: 'ignored' } };
 
 			// a later delivery values the same arrival at a later estimate; the first posting stands
@@ -462,9 +506,23 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 		createRecurringGift: async () => unsupported(NO_REPEATING_GIFTS),
 		cancelRecurringGift: async () => unsupported(NO_REPEATING_GIFTS),
 		readRecurringGift: async () => unsupported(NO_REPEATING_GIFTS),
-		// no notification is read into a reversal yet (`verifyEvent` above), so nothing reaches this.
-		readReversal: async () =>
-			unsupported('This release reads no NOWPayments refund. Nothing was asked of NOWPayments.'),
+		/** `GET /v1/payment/:id` for the payment a `refunded` notification named, read into its refund. */
+		async readReversal(event: ReversalEvent): Promise<PaymentResult<ReversalRead>> {
+			const paymentId = event.providerNoticeId;
+			const answer = await call('GET', `/v1/payment/${encodeURIComponent(paymentId)}`);
+			if ('ok' in answer) return answer;
+			if (answer.status !== 200) {
+				const refused = classifyStatus(
+					answer.status,
+					answer.body,
+					`NOWPayments did not return refunded payment ${paymentId}`
+				);
+				const fallsBack = refused.reason === 'not_found' || refused.reason === 'not_configured';
+				if (!fallsBack || event.delivered === undefined) return refused;
+				return warnedIfUnmoved({ ok: true, value: event.delivered }, paymentId);
+			}
+			return warnedIfUnmoved(reversalOf(answer.body, event.occurredAt), paymentId);
+		},
 		listWebhookEndpoints: async () => unsupported(NO_LISTENER_ARMS),
 		registerWebhookEndpoint: async () => unsupported(NO_LISTENER_ARMS),
 		resubscribeWebhookEndpoint: async () => unsupported(NO_LISTENER_ARMS),
@@ -919,18 +977,25 @@ function figureOf(units: bigint, places: number): string {
  * a payment's `payment_status`, to the row's vocabulary, for a payment nothing has arrived on.
  *
  * `finished` and `partially_paid` are absent because they settle what arrived, whatever was asked —
- * and so do `expired` and `failed` with anything sent (`settlementOf`). every other word — `waiting`,
- * `confirming`, `confirmed`, `sending`, `refunded`, a word nobody has documented — reads as
- * `pending`, the direction safe to be wrong in: nothing is posted from it.
+ * and so do `expired`, `failed` and `refunded` with anything sent (`settlementOf`). every other word
+ * — `waiting`, `confirming`, `confirmed`, `sending`, `refunded` with nothing sent, a word nobody has
+ * documented — reads as `pending`, the direction safe to be wrong in: nothing is posted from it.
  */
 const UNPAID_STATUSES: Readonly<Record<string, PaymentStatus>> = Object.freeze({
 	expired: 'cancelled',
 	failed: 'failed'
 });
 
-const ARRIVED_STATUSES = new Set(['finished', 'partially_paid', 'expired', 'failed']);
+const REFUNDED = 'refunded';
 
-/** what an IPN names a settlement for; `refunded` and any undocumented word are `ignored`. */
+/**
+ * what settles at what arrived, where anything did. `refunded` among them: a payment refunded before
+ * its settlement was recorded reads `refunded` from then on, so its gift is booked at what arrived
+ * and the refund, delivered again, takes it back out.
+ */
+const ARRIVED_STATUSES = new Set(['finished', 'partially_paid', 'expired', 'failed', REFUNDED]);
+
+/** what an IPN names a settlement for; `REFUNDED` names a reversal, and any other word is `ignored`. */
 const SETTLEMENT_STATUSES = new Set([
 	'waiting',
 	'confirming',
@@ -1020,6 +1085,62 @@ async function settlementOf(
 			arrival: { coin, coinAmount: paid, valuedBy, repeatOf }
 		}
 	};
+}
+
+/**
+ * a payment read back, or as a `refunded` notification states it, as the refund of the whole of what
+ * it settled: `nothing_moved` where nothing arrived, and a retryable refusal where it is not reported
+ * refunded yet.
+ */
+function reversalOf(payment: unknown, arrivedAt: Date): PaymentResult<ReversalRead> {
+	const id = digitsOrNull(paymentIdField(payment, 'payment_id'));
+	if (id === null) return unreadable('a refunded payment');
+	const providerReversalId = `${id}:${REFUNDED}`;
+	const word = stringField(payment, 'payment_status');
+	if (word !== REFUNDED) {
+		return {
+			ok: false,
+			reason: 'provider_error',
+			detail:
+				`NOWPayments notified payment ${id} as refunded and its read reports it ${word ?? 'in no status'}, ` +
+				'so nothing was reversed. The read made again is worth making.'
+		};
+	}
+	const paid = arrivedAmount(payment);
+	if (paid === 'unreadable') return unreadable('a refunded payment whose amount received');
+	if (paid === null) return { ok: true, value: { kind: 'nothing_moved', providerReversalId } };
+	const orderId = stringField(payment, 'order_id');
+	return {
+		ok: true,
+		value: {
+			kind: 'refund',
+			reversedTxnId: id,
+			providerReversalId,
+			amountMinor: null,
+			currency: 'USD',
+			feeReturnedMinor: null,
+			occurredAt: timeOf(payment) ?? arrivedAt,
+			reversedMetadata: orderId === null ? {} : { [DONATION_METADATA_KEY]: orderId }
+		}
+	};
+}
+
+/**
+ * a refund read as `nothing_moved`, logged by payment id: whether a refund clears `actually_paid` is
+ * unconfirmed (the header's list), and were it cleared, this is a settled gift's refund left unposted
+ * with no later notification to post it.
+ */
+function warnedIfUnmoved(
+	read: PaymentResult<ReversalRead>,
+	paymentId: string
+): PaymentResult<ReversalRead> {
+	if (read.ok && read.value.kind === 'nothing_moved') {
+		console.warn(
+			'a NOWPayments payment read as refunded with nothing received, and nothing was reversed; if it had settled here, its refund is missing from the books:',
+			JSON.stringify({ payment: paymentId })
+		);
+	}
+	return read;
 }
 
 /**

@@ -1117,7 +1117,7 @@ describe('readSettlement — a payment read back', () => {
 		}
 	);
 
-	it.each(['finished', 'partially_paid'])(
+	it.each(['finished', 'partially_paid', 'refunded'])(
 		'settles a %s payment at the dollar value of what arrived',
 		async (payment_status) => {
 			serving(
@@ -1833,19 +1833,148 @@ describe('verifyEvent — an IPN checked and named', () => {
 		expect(warn).toHaveBeenCalledOnce();
 	});
 
-	it.each(['refunded', 'a_status_nobody_documented'])(
-		'answers a %s notification as ignored, reading nothing',
-		async (payment_status) => {
-			const calls = serving(() => undefined);
+	it('answers a notification in a status nobody documented as ignored, reading nothing', async () => {
+		const calls = serving(() => undefined);
 
-			const result = await createNowpaymentsProvider(CREDENTIALS).verifyEvent(
-				delivered({ ...IPN_PAYMENT, payment_status })
-			);
+		const result = await createNowpaymentsProvider(CREDENTIALS).verifyEvent(
+			delivered({ ...IPN_PAYMENT, payment_status: 'a_status_nobody_documented' })
+		);
 
-			expect(result.ok && result.value).toMatchObject({ kind: 'ignored', type: payment_status });
-			expect(calls).toHaveLength(0);
-		}
-	);
+		expect(result.ok && result.value).toMatchObject({
+			kind: 'ignored',
+			type: 'a_status_nobody_documented'
+		});
+		expect(calls).toHaveLength(0);
+	});
+});
+
+const REFUNDED_PAYMENT: Record<string, unknown> = {
+	...IPN_PAYMENT,
+	payment_status: 'refunded',
+	updated_at: '2026-09-19T09:30:00.000Z'
+};
+
+describe('verifyEvent and readReversal — a refunded payment', () => {
+	it('names a refunded notification as a reversal of its payment, reading nothing', async () => {
+		const calls = serving(() => undefined);
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).verifyEvent(
+			delivered(REFUNDED_PAYMENT)
+		);
+
+		expect(result.ok && result.value).toMatchObject({
+			kind: 'reversal',
+			type: 'refunded',
+			id: '5745459419:refunded:19.36121163',
+			providerNoticeId: '5745459419'
+		});
+		expect(calls).toHaveLength(0);
+	});
+
+	it('reads the payment fresh into a refund of the whole of what it settled', async () => {
+		const calls = serving((method, url) =>
+			method === 'GET' && url.pathname === '/v1/payment/5745459419'
+				? { status: 200, json: REFUNDED_PAYMENT }
+				: undefined
+		);
+		const provider = createNowpaymentsProvider(CREDENTIALS);
+		const named = await provider.verifyEvent(delivered(REFUNDED_PAYMENT));
+		if (!named.ok || named.value.kind !== 'reversal') throw new Error('not named a reversal');
+
+		const result = await provider.readReversal(named.value);
+
+		expect(result).toEqual({
+			ok: true,
+			value: {
+				kind: 'refund',
+				reversedTxnId: '5745459419',
+				providerReversalId: '5745459419:refunded',
+				amountMinor: null,
+				currency: 'USD',
+				feeReturnedMinor: null,
+				occurredAt: new Date('2026-09-19T09:30:00.000Z'),
+				reversedMetadata: { [DONATION_METADATA_KEY]: DONATION_ID }
+			}
+		});
+		expect(calls.map((call) => `${call.method} ${call.url.pathname}`)).toEqual([
+			'GET /v1/payment/5745459419'
+		]);
+	});
+
+	// NOWPayments sends one `refunded` notification per payment, so a refund the read does not show
+	// yet is asked for again rather than acknowledged.
+	it('refuses retryably where the read does not report the payment refunded yet', async () => {
+		serving((_method, url) =>
+			url.pathname === '/v1/payment/5745459419' ? { status: 200, json: IPN_PAYMENT } : undefined
+		);
+		const provider = createNowpaymentsProvider(CREDENTIALS);
+		const named = await provider.verifyEvent(delivered(REFUNDED_PAYMENT));
+		if (!named.ok || named.value.kind !== 'reversal') throw new Error('not named a reversal');
+
+		const result = await provider.readReversal(named.value);
+
+		expect(result.ok === false && isRetryable(result.reason)).toBe(true);
+	});
+
+	// whether a refund clears `actually_paid` is unconfirmed, so a refund reading nothing received is
+	// acknowledged and said out loud: were it cleared, this is a settled gift's refund going unposted.
+	it('reads a refunded payment nothing arrived on as nothing moved, and warns naming the payment', async () => {
+		const unpaid = { ...REFUNDED_PAYMENT, actually_paid: 0 };
+		serving((_method, url) =>
+			url.pathname === '/v1/payment/5745459419' ? { status: 200, json: unpaid } : undefined
+		);
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const provider = createNowpaymentsProvider(CREDENTIALS);
+		const named = await provider.verifyEvent(delivered(unpaid));
+		if (!named.ok || named.value.kind !== 'reversal') throw new Error('not named a reversal');
+
+		const result = await provider.readReversal(named.value);
+
+		expect(result).toEqual({
+			ok: true,
+			value: { kind: 'nothing_moved', providerReversalId: '5745459419:refunded' }
+		});
+		expect(warn).toHaveBeenCalledOnce();
+		expect(JSON.stringify(warn.mock.calls[0])).toContain('5745459419');
+	});
+
+	// a repeat deposit NOWPayments minted itself may not answer the read; the signed body is the fallback.
+	it.each([
+		['finds no payment', 404, 'not_found'],
+		['refuses the key', 401, 'not_configured']
+	])('reads the refund the notification states where the read %s', async (_case, status) => {
+		serving((_method, url) =>
+			url.pathname === '/v1/payment/5745459419' ? { status, json: { message: 'no' } } : undefined
+		);
+		const provider = createNowpaymentsProvider(CREDENTIALS);
+		const named = await provider.verifyEvent(delivered(REFUNDED_PAYMENT));
+		if (!named.ok || named.value.kind !== 'reversal') throw new Error('not named a reversal');
+
+		const result = await provider.readReversal(named.value);
+
+		expect(result.ok && result.value).toMatchObject({
+			kind: 'refund',
+			reversedTxnId: '5745459419',
+			providerReversalId: '5745459419:refunded',
+			amountMinor: null,
+			occurredAt: new Date('2026-09-19T09:30:00.000Z')
+		});
+	});
+
+	it('answers a read that fails any other way with its refusal, not the notification', async () => {
+		serving((_method, url) =>
+			url.pathname === '/v1/payment/5745459419'
+				? { status: 500, json: { message: 'down' } }
+				: undefined
+		);
+		const provider = createNowpaymentsProvider(CREDENTIALS);
+		const named = await provider.verifyEvent(delivered(REFUNDED_PAYMENT));
+		if (!named.ok || named.value.kind !== 'reversal') throw new Error('not named a reversal');
+
+		const result = await provider.readReversal(named.value);
+
+		expect(result.ok === false && result.reason).toBe('provider_error');
+	});
 });
 
 // one delivery is `verifyEvent` then `readSettlement` on the one adapter (settleDelivery in
@@ -2004,18 +2133,7 @@ describe('the arms a crypto payment has nothing behind', () => {
 				provider().replaceWebhookEndpoint('1', 'https://donate.example.org/api/nowpayments/webhook')
 		],
 		['listWalletDomains', () => provider().listWalletDomains()],
-		['registerWalletDomain', () => provider().registerWalletDomain('donate.example.org')],
-		[
-			'readReversal',
-			() =>
-				provider().readReversal({
-					id: 'ipn-1',
-					kind: 'reversal',
-					type: 'refunded',
-					providerNoticeId: '5745459419',
-					occurredAt: new Date(0)
-				})
-		]
+		['registerWalletDomain', () => provider().registerWalletDomain('donate.example.org')]
 	])('answers %s as unsupported, asking NOWPayments nothing', async (_name, ask) => {
 		const calls = serving(() => undefined);
 
