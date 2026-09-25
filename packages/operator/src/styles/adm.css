@@ -6124,16 +6124,6 @@
 			grid-template-columns: 1fr 1fr;
 		}
 
-		/* two cards of the same kind, weighed alike, abreast from here rather than from the wide
-		   breakpoint: neither holds a list, so neither needs the shell's width. alike in height as
-		   well, so a sentence that wraps in one card leaves no ragged foot. the class is doubled
-		   because the wide query's tracks on `.adm-cardpair` stand later in this layer and would
-		   otherwise take the pair back to its uneven split. */
-		.adm-cardpair.adm-cardpair--even {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-			align-items: stretch;
-		}
-
 		/* the two figures take the width their own values need and the series takes what is left,
 		   which is the track that has a shape to fill. the three stand on one top edge rather than
 		   stretching to the tallest: a figure pulled down to the height of the plot beside it reads
