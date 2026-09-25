@@ -440,7 +440,7 @@ describe('GET /quickbooks/callback', () => {
 		});
 		expect(stub.chartReads).toBe(1);
 		expect(stub.made).toEqual([]);
-		expect(markup(again.data)).toContain('Choose the accounts again');
+		expect(markup(again.data)).toContain('choose the accounts again');
 	});
 
 	it('reads a reconnect as an ordinary one once the moved company’s accounts are saved', async () => {
