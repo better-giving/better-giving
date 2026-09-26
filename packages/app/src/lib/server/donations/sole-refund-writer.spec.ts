@@ -14,8 +14,8 @@ import { describe, expect, it } from 'vitest';
 //
 // a source scan rather than a runtime hook, so it catches the writer nobody wrote a test for. it
 // reads text, so a computed column name fools it, and so does a status or amount update that finds
-// its refund row by id alone without naming the direction; what it defends against is a shortcut, not an
-// adversary. the reads that subtract refunds compare the column (`direction = 'refund'`,
+// its refund row by id alone without naming the direction; what it defends against is a shortcut,
+// not an adversary. the reads that subtract refunds compare the column (`direction = 'refund'`,
 // `a.direction === 'refund'`) and never set it, which is the whole difference the patterns below
 // look for. specs are exempt: a fixture row is not a refund.
 

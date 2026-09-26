@@ -116,11 +116,16 @@ export async function sendRefundNotice(deps: MailDeps, target: RefundNoticeTarge
 }
 
 /**
- * the day on the gift's receipt — `donation.received_at`, written at authorization and never moved
- * by a settlement — what is left of the gift: what it collected, less the refunds of it that stand
- * (`refundStands` in ../zapier/events.ts, so a dispute still open, which may yet be won, takes
- * nothing off) — and what of that is deductible: what is left, less the part that was never
- * deductible. neither goes below nothing.
+ * three things the notice states, read off the rows the refund's batch left:
+ *
+ *   - the day on the gift's receipt: `donation.received_at`, written at authorization and never
+ *     moved by a settlement.
+ *   - what is left of the gift: what it collected, less the refunds of it that stand
+ *     (`refundStands` in ../zapier/events.ts), so a dispute still open, which may yet be won, takes
+ *     nothing off.
+ *   - what of that is deductible: what is left, less the part that was never deductible.
+ *
+ * neither figure goes below nothing.
  */
 async function givenAndDeductible(
 	db: Db,

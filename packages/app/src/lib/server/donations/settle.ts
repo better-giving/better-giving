@@ -863,9 +863,10 @@ async function recognitionOf(
  * it. the correction still runs, alone, on a row not already settled — what the processor reports
  * about the rail and the time is a fact whatever the books do with it, and a row left saying
  * `pending` is a second thing for an operator to fix by hand. a row already settled with nothing
- * to post is left as the delivery that settled it wrote it, and the answer is `unchanged`. it runs on exactly what was reported, though, which is why two of the
- * three columns below are conditional: a column the processor said nothing usable about is left
- * standing rather than written with a guess or with a value the table will not hold.
+ * to post is left as the delivery that settled it wrote it, and the answer is `unchanged`. the
+ * correction runs on exactly what was reported, though, which is why two of the three columns
+ * below are conditional: a column the processor said nothing usable about is left standing rather
+ * than written with a guess or with a value the table will not hold.
  */
 async function write(
 	db: Db,
@@ -1520,9 +1521,9 @@ async function unrecordedDeposit(
  * is refused by `entry_group_source_idx` and answered `already_posted` above, before this runs.
  */
 async function tellPeople(deps: SettleDeps, target: Target, settlement: Settlement): Promise<void> {
-	// a gift the same read reports sent back is no gift to thank anybody for, and nobody is told of
-	// it: not the donor, not the person they named, not the organisation (`refundCarried`) — nor an
-	// operator asked to post the fee of a gift that no longer stands.
+	// a gift the same read reports sent back (`refundCarried` writes the refund) is no gift to thank
+	// anybody for, and nobody is told of it: not the donor, not the person they named, not the
+	// organisation, and no operator is asked to post the fee of a gift that no longer stands.
 	if (settlement.alsoRefunded !== undefined) return;
 
 	if (settlement.feeMinor === null) {

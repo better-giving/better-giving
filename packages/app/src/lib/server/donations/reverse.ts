@@ -55,11 +55,11 @@ import { sendRefundNotice } from './refund-notice';
 // exactly, and one naming no figure is what is left. a refund or a dispute naming more than is left
 // takes what is left, and the books never take a gift below nothing: a refund capped is told to
 // staff once, on the delivery that wrote it, and one finding nothing left writes nothing and is told
-// on each delivery that meets it. the processor's fee on the gift stays booked,
-// but for the part a processor gives back with a refund: that is the gift's own `'fee'` lines
-// reversed, in the refund's group, and no more of the fee than the gift still holds after what
-// earlier refunds that still stand gave back (`feeGivenBack` below). a figure over that is capped,
-// and the cap is logged rather than told to staff.
+// on each delivery that meets it. the processor's fee on the gift stays booked, but for the part a
+// processor gives back with a refund: that is the gift's own `'fee'` lines reversed, in the
+// refund's group, and no more of the fee than the gift still holds after what earlier refunds that
+// still stand gave back (`feeGivenBack` below). a figure over that is capped, and the cap is logged
+// rather than told to staff.
 //
 // ---------------------------------------------------------------------------
 // a refund is found through the gift, and the gift may not be here yet.
@@ -88,18 +88,18 @@ import { sendRefundNotice } from './refund-notice';
 // the same group. what it withdraws is capped at what earlier refunds left of the gift: a processor
 // may report the whole charge disputed after part of it was refunded, and the books never take a
 // gift below nothing. the fee is booked in full, and the alert names the figure reported. lost, it
-// closes the row and settles up in the same batch: a fee charged at the
-// close that the opening did not book, and what the processor took less than the opening withdrew,
-// post as one `('adjustment', refund row)` group (`settleUpEntry` in ./entries.ts), and none where
-// the close carries neither. where the processor took less, the refund row's amount is lowered to
-// what it took in the same batch, guarded on the dispute still being open, so the gift and the
-// donor's given follow the close; a close naming more never raises it. the row's group stays as the
-// opening wrote it, and the settle-up is its correction. nothing else changes a refund row's
-// amount (./sole-refund-writer.spec.ts). lost with no opening recorded, it
-// writes the opening's batch with the row already closed. won, it closes the row and puts back
-// exactly what the opening took, as a refund that did not stand is put back, with the fee where the
-// processor returned it; where the close names the fee the processor kept and it differs from what
-// the books then hold of the dispute, the difference is settled up in the same batch, under the same
+// closes the row and settles up in the same batch: a fee charged at the close that the opening did
+// not book, and what the processor took less than the opening withdrew, post as one
+// `('adjustment', refund row)` group (`settleUpEntry` in ./entries.ts), and none where the close
+// carries neither. where the processor took less, the refund row's amount is lowered to what it
+// took in the same batch, guarded on the dispute still being open, so the gift and the donor's given
+// follow the close; a close naming more never raises it. the row's group stays as the opening wrote
+// it, and the settle-up is its correction. nothing else changes a refund row's amount
+// (./sole-refund-writer.spec.ts). lost with no opening recorded, it writes the opening's batch with
+// the row already closed. won, it closes the row and puts back exactly what the opening took, as a
+// refund that did not stand is put back, with the fee where the processor returned it; where the
+// close names the fee the processor kept and it differs from what the books then hold of the
+// dispute, the difference is settled up in the same batch, under the same
 // `('adjustment', refund row)`, expensed or given back. won with no opening recorded, it writes no
 // row, because every later delivery reads won too: where the close names a fee kept and the books
 // hold the gift, that fee is settled up under `('adjustment', disputed payment)` and staff are told
@@ -129,27 +129,26 @@ import { sendRefundNotice } from './refund-notice';
 // short notice (./refund-notice.ts): what this refund took, and what of the gift is now deductible,
 // which that module reads off the rows this batch left. it goes whether or not the gift was ever
 // posted, because the money went back either way. a redelivery is answered `already_posted` before
-// it, and a dispute or a refund that did not stand
-// never reaches it, nor a refund ./settle.ts writes for a gift settled in the same delivery, whose
-// donor was sent no receipt (`RefundNotice`). a notice that fails is told to staff and never changes
-// the answer.
+// it, and a dispute or a refund that did not stand never reaches it, nor a refund ./settle.ts writes
+// for a gift settled in the same delivery, whose donor was sent no receipt (`RefundNotice`). a
+// notice that fails is told to staff and never changes the answer.
 //
 // ---------------------------------------------------------------------------
 // a reversal, its settle-up included, owes QuickBooks a row only where the group it answers holds
-// one (../accounting/outbox.ts). the fee a win nobody heard open kept is keyed on no refund row, so
-// the outbox queues it by its date as it queues a hand correction. a Zap on `gift_refunded` hears
-// of a refund and of a dispute lost, keyed on the refund row, in the batch that makes its money
-// final (`ReversalEntry` in ../books/writes.ts); never of a dispute opened or won, a refund that did
-// not stand, or a gift the books never held. a refund of one collection under a repeating gift
-// leaves the commitment collecting: stopping it is its own act.
+// one (../accounting/outbox.ts). the fee kept on a win whose opening never reached this deployment
+// is keyed on no refund row, so the outbox queues it by its date as it queues a hand correction. a
+// Zap on `gift_refunded` hears of a refund and of a dispute lost, keyed on the refund row, in the
+// batch that makes its money final (`ReversalEntry` in ../books/writes.ts); never of a dispute
+// opened or won, a refund that did not stand, or a gift the books never held. a refund of one
+// collection under a repeating gift leaves the commitment collecting: stopping it is its own act.
 //
 // ---------------------------------------------------------------------------
 // nothing here throws, for the reason ./settle.ts's header gives: a throw is a 500, read by the
 // processor as "deliver this again" for three days. what the refund row or the ledger would refuse
 // — a blank id, figures `unpostable` in ./entries.ts names, a fee given back that is not whole, a
-// currency other than the gift's — is refused at the door, told to an operator and answered 200 —
+// currency other than the gift's — is refused at the door, told to an operator and answered 200,
 // and a dispute's respond-by that is no date, or a blank reason, is read as none
-// (`withUsableDetails`) — so the one rejection left for `commit` is the UNIQUE a racing delivery
+// (`withUsableDetails`). so the one rejection left for `commit` is the UNIQUE a racing delivery
 // meets. every alert is sent through `tellStaff`, which reports a transport fault rather than
 // raising it, and a stop that faults is told as a stop that failed.
 
@@ -194,7 +193,7 @@ async function nothingMoved(
 		],
 		action:
 			`Check the refund in the ${processor} dashboard. Where money did go back to the donor, ` +
-			'post a correction in /admin/books for it, out of the account the gift went into and the fund it was given to.'
+			'post a correction in /admin/books for it, out of the account the gift went into, into the fund it was given to.'
 	});
 	return {
 		ok: true,
@@ -471,8 +470,8 @@ async function disputeRefused(
 	await tellStaff(deps, {
 		headline: `A ${processor} dispute could not be recorded against its gift`,
 		body: nothingLeft
-			? `A donor’s bank disputed a charge whose gift earlier refunds and disputes already took ` +
-				'whole, so nothing was written: the books already hold none of this gift.'
+			? `A donor’s bank disputed a charge whose gift earlier refunds and disputes had already taken ` +
+				'in full, so nothing was written: the books already hold none of this gift.'
 			: `${processor} reported a dispute the books cannot hold, so nothing was written: the gift ` +
 				'and the donor’s total stand as they were.',
 		facts: [
@@ -872,7 +871,7 @@ function stopSentence(outcome: StopOutcome, processor: string): string {
 			return `${processor} stopped it, and recording that here failed, so it may still read as collecting.`;
 		case 'refused':
 			return outcome.retryable
-				? `${processor} refused to stop it for now: ${outcome.detail} It is tried again when the dispute is delivered again.`
+				? `${processor} refused to stop it for now: ${outcome.detail} It is tried again when ${processor} sends the dispute again.`
 				: `Not stopped: ${outcome.detail}`;
 	}
 }
@@ -1000,7 +999,7 @@ async function refundBeyondDispute(
 		action:
 			`Compare the refund and the dispute in the ${processor} dashboard. Where the difference went ` +
 			'back to the donor as well, post a correction in /admin/books for it, out of the account the ' +
-			'gift went into and the fund it was given to.'
+			'gift went into, into the fund it was given to.'
 	});
 }
 
@@ -1018,8 +1017,8 @@ async function nothingLeftToRefund(
 	await tellStaff(deps, {
 		headline: `A ${processor} refund found nothing of its gift left to take`,
 		body:
-			`${processor} reported a refund of a gift whose earlier refunds and disputes already take the ` +
-			'whole of it here, so nothing was written: the books already hold none of this gift.',
+			`${processor} reported a refund of a gift whose earlier refunds and disputes had already taken ` +
+			'the whole of it here, so nothing was written: the books already hold none of this gift.',
 		facts: [
 			{ label: 'Refund at the processor', value: reversal.providerReversalId },
 			{ label: 'Transaction refunded', value: reversal.reversedTxnId },
@@ -1064,8 +1063,8 @@ async function refundNotPosted(
 		],
 		action:
 			`Check the refund in the ${processor} dashboard. Where the books hold this gift, post a ` +
-			'correction in /admin/books for the refunded amount, out of the account the gift went into ' +
-			'and into the fund it was given to.'
+			'correction in /admin/books for the refunded amount, out of the account the gift went into, ' +
+			'into the fund it was given to.'
 	});
 	return {
 		ok: true,
@@ -1386,9 +1385,9 @@ async function closedTheOtherWay(
 		action:
 			recorded === 'lost'
 				? `Check the dispute in the ${processor} dashboard. Where the money did come back, post a ` +
-					'correction in /admin/books for it, into the account the gift went into and the fund it was given to.'
+					'correction in /admin/books for it, out of the fund it was given to, into the account the gift went into.'
 				: `Check the dispute in the ${processor} dashboard. Where the money did go, post a ` +
-					'correction in /admin/books for it, out of the account the gift went into and the fund it was given to.'
+					'correction in /admin/books for it, out of the account the gift went into, into the fund it was given to.'
 	});
 	return {
 		ok: true,
@@ -1422,13 +1421,13 @@ async function refundDidNotStand(
 			{
 				label: 'Zaps',
 				value:
-					`Zaps on Gift refunded may already have been told of this refund, as id ${refundRow.id}, ` +
+					`Zaps on Gift Refunded may already have been told of this refund, as id ${refundRow.id}, ` +
 					'and nothing tells them it did not go through.'
 			}
 		],
 		action:
 			`Check the refund in the ${processor} dashboard, and let the donor know it did not go through. ` +
-			'Where a Zap on Gift refunded acted on it, undo what it did.'
+			'Where a Zap on Gift Refunded acted on it, undo what it did.'
 	});
 }
 

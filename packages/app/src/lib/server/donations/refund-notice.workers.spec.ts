@@ -6,9 +6,9 @@ import type { MailDeps } from './delivery';
 import { sendRefundNotice, type RefundNoticeTarget } from './refund-notice';
 
 // the one sender of the refund notice, against a real D1 for the donor it reads off the gift, the
-// organisation's details and the staff address an alert goes to. driven directly rather than through ./reverse.ts, the same as
-// ./tribute-notice.workers.spec.ts: which deliveries reach it is that writer's to prove, and what
-// one call does is this file's.
+// organisation's details and the staff address an alert goes to. driven directly rather than
+// through ./reverse.ts, the same as ./tribute-notice.workers.spec.ts: which deliveries reach it is
+// that writer's to prove, and what one call does is this file's.
 
 let db: Db;
 

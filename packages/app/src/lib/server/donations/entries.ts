@@ -40,10 +40,11 @@ import type { Settlement } from '../payments/provider';
  * than a whole settlement.
  *
  * every writer asks before it builds an entry — ./settle.ts, ./collect.ts and ./reverse.ts —
- * because all three have the same contract: they never throw. a `PostingError` out of `chargeEntry` is an exception on the money path, which is a 500,
- * which the processor reads as "deliver this again" for three days — against figures that will be
- * refused identically every time. a settlement the books cannot take is not a gift to record and it
- * is not an exception either; it is a delivery answered with a sentence somebody can act on.
+ * because all three have the same contract: they never throw. a `PostingError` out of
+ * `chargeEntry` is an exception on the money path, which is a 500, which the processor reads as
+ * "deliver this again" for three days — against figures that will be refused identically every
+ * time. a settlement the books cannot take is not a gift to record and it is not an exception
+ * either; it is a delivery answered with a sentence somebody can act on.
  *
  * what it deliberately does not state is the ledger's arithmetic. the balance and the arity `post()`
  * also checks are about the funds a caller credits rather than about the settlement, and the two
@@ -137,11 +138,11 @@ export type ChargedGift = {
  * spread across lines by ratio is a split nobody chose, and it needs a rounding rule to place a
  * residual that no fund has a claim to — so a caller whose figures disagree decides at its own door
  * what that means rather than handing over numbers to be adjusted here. the one exception is a
- * partial refund (`reversalEntry` below): it comes off every line of the gift in proportion, rounded
- * by `shareOf`'s rule, and any other split is a correction in /admin/books. and `post()` refuses an entry
- * group that does not sum to zero (`unbalanced`, ../ledger/posting.ts), which is the backstop that
- * makes a caller skipping that door a loud failure rather than books that do not say where the
- * money went.
+ * partial refund (`reversalEntry` below): it comes off every line of the gift in proportion,
+ * rounded by `shareOf`'s rule, and any other split is a correction in /admin/books. and `post()`
+ * refuses an entry group that does not sum to zero (`unbalanced`, ../ledger/posting.ts), which is
+ * the backstop that makes a caller skipping that door a loud failure rather than books that do not
+ * say where the money went.
  */
 export function chargeEntry(gift: ChargedGift, settlement: Settlement) {
 	const lines: PostingLine[] = [
@@ -251,7 +252,10 @@ export type RefundedMoney = {
 	readonly amountMinor: number;
 	readonly currency: string;
 	readonly occurredAt: Date;
-	/** minor units: what the processor charged for the reversal itself — a dispute fee. null where it charged none. */
+	/**
+	 * minor units: what the processor charged for the reversal itself, a dispute fee. null where it
+	 * charged none.
+	 */
 	readonly feeMinor: number | null;
 	/**
 	 * minor units: the part of the gift's own fee the processor gave back with a refund, no more
@@ -373,7 +377,7 @@ export function reinstatementEntry(
 		memo:
 			when.kind === 'dispute_won'
 				? `dispute on donation ${refund.donationId} won`
-				: `refund on donation ${refund.donationId} did not stand`,
+				: `refund on donation ${refund.donationId} did not go through`,
 		lines: [
 			...withoutReversalFee(refund.withdrawn),
 			...(returned === null || returned <= 0 ? [] : feeLines(returned))

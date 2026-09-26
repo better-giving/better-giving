@@ -751,7 +751,7 @@ describe('recordReversal() — a refund that did not stand', () => {
 	});
 
 	/** a Zap hears of a refund as it commits, and nothing follows it when the refund fails. */
-	it('tells staff that Zaps on Gift refunded may already have heard of the refund, by its id there', async () => {
+	it('tells staff that Zaps on Gift Refunded may already have heard of the refund, by its id there', async () => {
 		await settledGift();
 		await recordReversal(deps(), refund(), 'evt_r1');
 		const [row] = await refundRows();
@@ -759,7 +759,7 @@ describe('recordReversal() — a refund that did not stand', () => {
 
 		await recordReversal(deps({ email: mail.port }), failed(), 'evt_r2');
 
-		expect(mail.sent[0]?.text).toMatch(/Gift refunded/);
+		expect(mail.sent[0]?.text).toMatch(/Gift Refunded/);
 		expect(mail.sent[0]?.text).toContain(row?.id ?? 'no refund row');
 	});
 

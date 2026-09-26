@@ -158,7 +158,7 @@ describe('the memo an entry is listed under in /admin/books', () => {
 			).group.memo;
 
 		expect([memo('refund_failed'), memo('dispute_won')]).toEqual([
-			'refund on donation d-1 did not stand',
+			'refund on donation d-1 did not go through',
 			'dispute on donation d-1 won'
 		]);
 	});

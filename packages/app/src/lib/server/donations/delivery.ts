@@ -9,7 +9,7 @@ import { PROCESSOR_LABELS, type PayableCoin, type PaymentProvider } from '../pay
 import { readOrgProfile } from '../org/queries';
 
 // what one verified delivery may answer with, the one way this app tells an operator about a
-// delivery it could not finish, and the one reading of a delivery's batch the database refused
+// delivery it could not finish, and the one way a delivery's batch is committed and a refusal read
 // (`commit`).
 //
 // it is a module of its own because the answer is shared by the three writers that produce it:
