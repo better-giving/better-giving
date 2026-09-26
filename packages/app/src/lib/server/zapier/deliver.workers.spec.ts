@@ -216,7 +216,7 @@ describe('sendDueZapierEvents()', () => {
 		]);
 	});
 
-	it('still posts a refund queued before it stopped standing, as it happened', async () => {
+	it('drops a refund that stopped standing while its row waited, unposted, and says why', async () => {
 		const gift = await settle();
 		await listen('gift_refunded');
 		const refundId = await refund(gift);
@@ -225,7 +225,16 @@ describe('sendDueZapierEvents()', () => {
 
 		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000));
 
-		expect(zapier.posts.map((p) => [p.body.id, p.body.amount])).toEqual([[refundId, '20.00']]);
+		expect(zapier.posts).toEqual([]);
+		expect(await deliveryRows()).toEqual([
+			expect.objectContaining({
+				event_id: refundId,
+				status: 'dropped',
+				leased_until: null,
+				last_error:
+					'The refund this event was queued for no longer stands — it failed, or its dispute no longer reads as lost — so it was not sent.'
+			})
+		]);
 	});
 
 	it('still posts a gift to its new_gift hook when the gift was refunded while its row waited', async () => {

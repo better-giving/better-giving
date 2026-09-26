@@ -41,9 +41,9 @@ import {
 //
 // **"gift refunded" is keyed on the refund row**, so each refund of a gift, and each dispute lost
 // on it, is its own event, and a redelivery of one meets its own key. it is owed only while that
-// row stands (`refundStands`), read in the statement as the batch left it. that check is made when
-// the row is queued and never again: a queued delivery sends the refund as it happened, as a
-// queued `new_gift` sends a gift refunded since, and ./deliver.ts filters nothing at send.
+// row stands (`refundStands`), and the rule holds twice: here, read in the statement as the batch
+// left it, and again at send, where ./deliver.ts drops a queued row whose refund no longer stands.
+// a queued `new_gift` is the other way round and sends a gift refunded since, as it happened.
 
 /** the gift a settlement just made `succeeded`, and the donor it is filed under. */
 export type SettledGift = { readonly paymentId: string; readonly contactId: string };
@@ -94,8 +94,7 @@ export function zapierStatements(
  * **after the statement that inserts or closes that row**, for the foreign key as above, and gated
  * on {@link refundStands} as that statement left it: a lost close racing a win that committed first
  * matches no open dispute, and its batch still commits, so the gate is what keeps a won dispute
- * from being queued as a refund. the gate holds at queueing only; a row already queued sends as
- * the refund happened, whatever becomes of it after.
+ * from being queued as a refund. ./deliver.ts reads the same gate again at send.
  */
 export function giftRefundedStatements(db: Db, refundPaymentId: string): BatchItem<'sqlite'> {
 	const stands = db
@@ -107,8 +106,8 @@ export function giftRefundedStatements(db: Db, refundPaymentId: string): BatchIt
 
 /**
  * `row` is a refund whose money is gone for good: a refund-direction row still `succeeded`, and no
- * dispute on it that is open or was won. what a `gift_refunded` Zap is queued a row for, and what
- * its samples list (./payload.ts).
+ * dispute on it that is open or was won. a `gift_refunded` row is queued, and sent (./deliver.ts),
+ * only while this holds.
  */
 export function refundStands(db: Db, row: typeof payment) {
 	const unsettled = db

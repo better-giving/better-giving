@@ -1,5 +1,5 @@
 import type { Frequency, TributeKind } from '@better-giving/form/v1';
-import { and, desc, eq, inArray, lt, notExists, or, sql } from 'drizzle-orm';
+import { and, desc, eq, exists, inArray, lt, notExists, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import { projectTribute } from '../../donations/tributes';
 import { majorText } from '../../forms/amounts';
@@ -9,6 +9,7 @@ import {
 	contact,
 	dispute,
 	donation,
+	entryGroup,
 	form,
 	payment,
 	program,
@@ -75,10 +76,11 @@ export function donorEventOf(gift: GiftEvent): DonorEvent {
 }
 
 /**
- * what sent a gift's money back: `refund`, one the organisation made, or `dispute`, one the donor's
- * bank decided against the organisation. **the set may gain values**: a Zap branches on the values
- * it knows and lets any other pass, and a value's meaning never narrows, so a value is never split
- * into two later. the trigger's own description in packages/zapier says the same to a Zap's author.
+ * what sent a gift's money back: `refund`, one the organisation made, or `dispute`, a dispute the
+ * organisation lost or a payment the donor's bank returned. **the set may gain values**: a Zap
+ * branches on the values it knows and lets any other pass, and a value's meaning never narrows, so
+ * a value is never split into two later. the trigger's own description in packages/zapier says the
+ * same to a Zap's author.
  */
 export type RefundSource = 'refund' | 'dispute';
 
@@ -269,10 +271,20 @@ export async function readSamples<T extends ZapierTrigger>(
 	return (trigger === 'new_donor' ? gifts.map(donorEventOf) : gifts) as ZapierEvent[T][];
 }
 
-/** the latest refunds that stand, as `gift_refunded` hears of them (`refundStands` in ./events.ts). */
+/**
+ * the latest refunds a live `gift_refunded` event would be sent for: standing (`refundStands` in
+ * ./events.ts), of a gift whose settlement posted its `('payment', gift)` group — a refund or
+ * dispute of a gift the books never held queues no event (`withdraw` in ../donations/reverse.ts).
+ */
 async function refundSamples(db: Db): Promise<RefundEvent[]> {
+	const giftPosted = db
+		.select({ one: sql`1` })
+		.from(entryGroup)
+		.where(
+			and(eq(entryGroup.sourceType, 'payment'), eq(entryGroup.sourceId, payment.parentPaymentId))
+		);
 	const rows = await selectRefunds(db)
-		.where(refundStands(db, payment))
+		.where(and(refundStands(db, payment), exists(giftPosted)))
 		.orderBy(desc(payment.occurredAt), desc(payment.id))
 		.limit(SAMPLE_COUNT);
 	const events = await refundEventsOf(db, rows);

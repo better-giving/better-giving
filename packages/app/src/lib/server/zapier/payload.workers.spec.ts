@@ -15,6 +15,7 @@ import {
 	type NewDonation,
 	type NewPayment
 } from '../db/schema';
+import { post, postingStatements } from '../ledger/posting';
 import {
 	donorEventOf,
 	readGiftEvents,
@@ -37,6 +38,8 @@ beforeAll(() => {
 
 beforeEach(async () => {
 	for (const table of [
+		'ledger_entry',
+		'entry_group',
 		'dispute',
 		'payment',
 		'line_item',
@@ -314,6 +317,26 @@ async function seedRefund(
 	return id;
 }
 
+/** `gift`'s settlement posted to the books, the `('payment', gift)` group a refund of it reverses. */
+async function postGift(gift: { paymentId: string }): Promise<void> {
+	await db.batch(
+		postingStatements(
+			db,
+			post({
+				sourceType: 'payment',
+				sourceId: gift.paymentId,
+				currency: 'USD',
+				occurredAt: new Date('2026-09-10T12:00:00.000Z'),
+				memo: null,
+				lines: [
+					{ accountId: postableId('undepositedFunds'), amountMinor: 5_000 },
+					{ accountId: postableId('donationsDeductible'), amountMinor: -5_000 }
+				]
+			})
+		)
+	);
+}
+
 describe('readSamples()', () => {
 	it('hands a new-gift Zap the three latest settled gifts, newest first', async () => {
 		const contactId = await seedDonor();
@@ -355,6 +378,7 @@ describe('readSamples()', () => {
 
 	it('hands a gift-refunded Zap the three latest refunds that stand, newest first, each with its gift', async () => {
 		const gift = await seedGift(await seedDonor(), onDay(1));
+		await postGift(gift);
 		await seedRefund(gift, 2);
 		const third = await seedRefund(gift, 3);
 		const fourth = await seedRefund(gift, 4);
@@ -370,6 +394,18 @@ describe('readSamples()', () => {
 			[fourth, '20.00', gift.paymentId],
 			[third, '20.00', gift.paymentId]
 		]);
+	});
+
+	it('leaves out a refund of a gift whose settlement posted nothing, as no live event is queued for one', async () => {
+		const posted = await seedGift(await seedDonor(), onDay(1));
+		await postGift(posted);
+		const unposted = await seedGift(await seedDonor(), onDay(2));
+		const heard = await seedRefund(posted, 3);
+		await seedRefund(unposted, 4);
+
+		const samples = await readSamples(db, 'gift_refunded');
+
+		expect(samples.map((event) => event.id)).toEqual([heard]);
 	});
 
 	it('hands a deployment with no gift yet the fixed sample, for either trigger', async () => {
@@ -409,6 +445,7 @@ describe('a live event and its sample carry the same fields', () => {
 
 	it('for a refund', async () => {
 		const gift = await seedGift(await seedDonor({ primaryEmail: null }), onDay(1));
+		await postGift(gift);
 		const refundId = await seedRefund(gift, 2);
 
 		const [live] = await readSamples(db, 'gift_refunded');

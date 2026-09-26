@@ -2679,8 +2679,9 @@ export const zapierSubscription = sqliteTable(
 );
 
 /**
- * where one delivery stands. `dropped` is a row its subscription ended before it was sent, which
- * is not a failure: nobody was listening for it any more.
+ * where one delivery stands. `dropped` is a row its subscription ended before it was sent, or a
+ * `gift_refunded` row whose refund no longer stood when it came to be sent (../zapier/deliver.ts).
+ * neither is a failure: nobody was listening for it, or there was nothing true left to say.
  */
 export const ZAPIER_DELIVERY_STATUSES = ['pending', 'sent', 'failed', 'dropped'] as const;
 export type ZapierDeliveryStatus = (typeof ZAPIER_DELIVERY_STATUSES)[number];

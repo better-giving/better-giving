@@ -2,8 +2,10 @@ import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { postableId } from '$lib/server/db/accounts';
 import { createDb, type Db } from '$lib/server/db/client';
 import { contact, donation, orgProfile, payment } from '$lib/server/db/schema';
+import { post, postingStatements } from '$lib/server/ledger/posting';
 import { makeZapierKey, replaceZapierKey } from '$lib/server/zapier/key';
 import {
 	donorEventOf,
@@ -85,6 +87,8 @@ beforeEach(async () => {
 		'zapier_subscription',
 		'zapier_key',
 		'org_profile',
+		'ledger_entry',
+		'entry_group',
 		'payment',
 		'donation',
 		'contact'
@@ -318,7 +322,7 @@ function fieldsOf(value: unknown, at = ''): string[] {
 		.sort();
 }
 
-/** a settled one-off gift, answered with its payment id. */
+/** a settled one-off gift, posted to the books as a settlement posts it, answered with its payment id. */
 async function settledGift(): Promise<string> {
 	const [contactId, donationId, paymentId] = [uuidv7(), uuidv7(), uuidv7()];
 	const at = new Date('2026-09-10T12:00:00.000Z');
@@ -341,7 +345,21 @@ async function settledGift(): Promise<string> {
 			status: 'succeeded',
 			provider: 'manual',
 			occurredAt: at
-		})
+		}),
+		...postingStatements(
+			db,
+			post({
+				sourceType: 'payment',
+				sourceId: paymentId,
+				currency: 'USD',
+				occurredAt: at,
+				memo: null,
+				lines: [
+					{ accountId: postableId('undepositedFunds'), amountMinor: 5_000 },
+					{ accountId: postableId('donationsDeductible'), amountMinor: -5_000 }
+				]
+			})
+		)
 	]);
 	return paymentId;
 }
