@@ -256,8 +256,9 @@ func recorded(file File) string {
 
 // one statement string sent to the database, and whether it is a reason to stop.
 //
-// `file` is the migration the string is of, which a failure names beside what d1 said: the request
-// was one transaction, so neither the file nor its row stayed, and the next press sends it again.
+// `file` is the migration the string is of, which a failure names beside what d1 said: a string d1
+// turned down was one transaction, so neither the file nor its row stayed, and the next press sends
+// it again.
 func query(ctx context.Context, send cf.Send, path, file, sql string) (Result, bool) {
 	answer := send(ctx, http.MethodPost, path, map[string]string{"sql": sql})
 	if answer.Kind == cf.Unreachable {

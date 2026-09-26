@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createStripeProvider } from './stripe';
-// computed with WebCrypto in whichever pool imports it — here workerd's own, so a signature that
-// verifies is agreement between the runtime and the SDK's subtle-crypto provider.
+// `sign` computes with WebCrypto in whichever pool imports it — here workerd's own, so a signature
+// that verifies is agreement between the runtime and the SDK's subtle-crypto provider.
 import { sign } from './stripe.testing';
 
 // the adapter's two runtime dependencies, exercised inside workerd rather than described.

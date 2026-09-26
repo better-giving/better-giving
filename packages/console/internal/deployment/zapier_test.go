@@ -15,7 +15,7 @@ import (
 // a key as the deployment mints one, which every reading carries and so does the press that made it.
 const zapierKey = "bgz_q7Rk3vYh0cXw9LmN2pAe5sTu8jBf1gHd4iKo6lZyC0M"
 
-// a key made and two Zaps listening on it, with a delivery owed.
+// a key made and Zaps listening on every trigger, with a delivery owed.
 func zapierKeyed() map[string]any {
 	return map[string]any{
 		"key": map[string]any{"madeAt": "2026-09-01T09:00:00.000Z", "key": zapierKey},

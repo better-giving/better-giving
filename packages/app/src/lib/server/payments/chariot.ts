@@ -30,10 +30,10 @@ import type {
 //
 // **a DAFpay grant is all of Chariot this deployment reads.** Chariot's Gift Processing can also
 // take money into a Chariot account, and a deposit there can come back (a `Deposit` reads `failed`,
-// a `CheckDeposit` `returned`, in `specs/2026-04-01.yaml`). the organisation a deployment serves takes
-// its grants from the fund directly, so no deposit category is subscribed to and none is read: a
-// returned Chariot deposit, if one ever happens, is corrected by hand in /admin/books, which moves
-// the books and nothing about the gift.
+// a `CheckDeposit` `returned`, in `specs/2026-04-01.yaml` of the openapi repository below). the
+// organisation a deployment serves takes its grants from the fund directly, so no deposit category
+// is subscribed to and none is read: a returned Chariot deposit, if one ever happens, is corrected
+// by hand in /admin/books, which moves the books and nothing about the gift.
 //
 // **a grant received and then cancelled is the one reversal, read as a full refund.** a fund's money
 // is no longer the donor's — "the concept of refunds after the money leaves the DAF, does not apply"
@@ -53,11 +53,11 @@ import type {
 // `readReversal` reads the same grant into the same refund, under the same id; `verifyEvent` names
 // no reversal, so no delivery reaches it.
 //
-// **it answers the one-off grant, the delivery and the account read, and refuses everything else**
-// as `unsupported`: a gift that repeats (one-time only — `takesRepeatingGifts` in ./provider.ts
-// keeps Chariot out of every repeating-gift read, cadences included), the listener arms (the
-// console's binary creates the event subscription with a secret it mints), and the wallet arms
-// (Chariot draws no wallet).
+// **it answers the one-off grant, the delivery, the reversal read and the account read, and refuses
+// everything else** as `unsupported`: a gift that repeats (one-time only — `takesRepeatingGifts` in
+// ./provider.ts keeps Chariot out of every repeating-gift read, cadences included), the listener
+// arms (the console's binary creates the event subscription with a secret it mints), and the wallet
+// arms (Chariot draws no wallet).
 //
 // **the API takes no version header, so nothing is pinned on the wire.** request and response shapes
 // are the `2026-04-01` reference's (https://docs.givechariot.com/v2026-04-01/llms.txt, and

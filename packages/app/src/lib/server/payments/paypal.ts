@@ -1376,9 +1376,10 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 
 	/**
 	 * the gift behind a transaction a dispute names, which is a capture or a sale: PayPal gives both
-	 * ids one shape, so the capture is asked first and a 404 sends the id to the sale read — the order
-	 * `readSettlement` asks in. an id neither read holds is another integration's on the same account,
-	 * read with no metadata so the writer finds no gift behind it and leaves it.
+	 * ids one shape, so the capture is asked first and a 404 sends the id to the sale read — the
+	 * current API before the deprecated one, as `readSettlement` asks. an id neither read holds is
+	 * another integration's on the same account, read with no metadata so the writer finds no gift
+	 * behind it and leaves it.
 	 */
 	async function transactionReversed(transactionId: string): Promise<PaymentResult<Transaction>> {
 		const captured = await captureReversed(transactionId);
