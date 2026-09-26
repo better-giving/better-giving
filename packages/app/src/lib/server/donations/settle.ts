@@ -40,7 +40,7 @@ import {
 	type GiftRevenue,
 	type RevenueShare
 } from './entries';
-import { reverseDelivery } from './reverse';
+import { recordReversal, type RefundNotice, reverseDelivery } from './reverse';
 import { sendGrantReceived, sendReceipt } from './receipt';
 import { sendSettledNotice } from './settled-notice';
 import { sendTributeNotice } from './tribute-notice';
@@ -184,6 +184,16 @@ import { sendTributeNotice } from './tribute-notice';
 // crypto read, which can report a state from before the coins landed, and a delivery's own state
 // standing in for a read, which can be older than the one that settled the payment. money a refund
 // takes back is a row of its own (./reverse.ts), never a status on this one.
+//
+// ---------------------------------------------------------------------------
+// a read that reports the money sent back as well (`Settlement.alsoRefunded`) is the gift and its
+// refund, and both are written: the settlement here, then the whole of it refunded through the one
+// refund writer (`recordReversal` in ./reverse.ts), after any settlement that leaves the gift settled
+// here — this delivery's, or an earlier one's. the refund's id is its idempotency, so a redelivery,
+// or a refund its own notification already wrote, answers `already_posted`. a gift settled and
+// refunded in one delivery is receipted to nobody and nobody is sent word of its refund; a gift that
+// settled on an earlier delivery was receipted then, and its donor is sent the refund notice as for
+// any refund.
 //
 // ---------------------------------------------------------------------------
 // "three days" below is Stripe's and PayPal's redelivery window. NOWPayments sends a non-2xx again
@@ -378,7 +388,15 @@ export async function settleTransaction(
 	// names its first payment, and where a read that answered does not, the verified delivery does.
 	const repeatOf = settlement.arrival?.repeatOf ?? transaction.delivered?.arrival?.repeatOf ?? null;
 	if (repeatOf !== null && settlement.arrival !== null && settlement.status === 'succeeded') {
-		return recordRepeatDeposit(deps, transaction.eventId, settlement, repeatOf);
+		const deposited = await recordRepeatDeposit(deps, transaction.eventId, settlement, repeatOf);
+		if (
+			!deposited.ok ||
+			(deposited.outcome !== 'posted' && deposited.outcome !== 'already_posted')
+		) {
+			return deposited;
+		}
+		const notice = deposited.outcome === 'posted' ? 'withhold' : 'send';
+		return refundCarried(deps, transaction.eventId, settlement, deposited, notice);
 	}
 
 	// the gift this transaction is for, as the intent itself names it. absent means this app did
@@ -407,6 +425,19 @@ export async function settleTransaction(
 		};
 	}
 
+	// a gift settled here before this delivery was receipted then, so its donor hears of the refund.
+	const notice: RefundNotice = target.payment.status === 'succeeded' ? 'send' : 'withhold';
+	const settled = await settleTarget(deps, target, settlement, stoodInForRead);
+	return refundCarried(deps, transaction.eventId, settlement, settled, notice);
+}
+
+/** the write and what follows it, for a transaction whose payment row is here. */
+async function settleTarget(
+	deps: SettleDeps,
+	target: Target,
+	settlement: Settlement,
+	stoodInForRead: boolean
+): Promise<SettleResult> {
 	// what the gift's own lines say this money is for — read only where money moved, since a
 	// settlement that did not succeed posts nothing and its read would be a query spent on nothing.
 	const recognition =
@@ -508,6 +539,50 @@ export async function settleTransaction(
 		outcome: 'posted',
 		detail: `payment ${target.payment.id} settled and posted.`
 	};
+}
+
+/**
+ * the refund a settlement reports beside it (`Settlement.alsoRefunded` in ../payments/provider.ts),
+ * written through the one refund writer (`recordReversal` in ./reverse.ts) as the refund's own
+ * notification would be, once the gift is settled here: the whole of what settled, and no fee given
+ * back. the writer is its idempotency — a refund already written answers `already_posted` — so a
+ * delivery that settles nothing new still posts a refund that is not in the books yet.
+ *
+ * only after a settlement that left the gift settled here. a write that failed is answered as it
+ * was, and the redelivery that settles it posts the refund with it.
+ */
+async function refundCarried(
+	deps: SettleDeps,
+	eventId: string,
+	settlement: Settlement,
+	settled: SettleResult,
+	notice: RefundNotice
+): Promise<SettleResult> {
+	const carried = settlement.alsoRefunded;
+	if (carried === undefined || settlement.status !== 'succeeded' || !settled.ok) return settled;
+	const refunded = await recordReversal(
+		deps,
+		{
+			kind: 'refund',
+			reversedTxnId: settlement.providerTxnId,
+			providerReversalId: carried.providerReversalId,
+			amountMinor: null,
+			currency: settlement.currency,
+			feeReturnedMinor: null,
+			occurredAt: carried.occurredAt,
+			reversedMetadata: settlement.metadata
+		},
+		eventId,
+		notice
+	);
+	if (!refunded.ok) return refunded;
+	const outcome =
+		settled.outcome === 'posted' || refunded.outcome === 'posted'
+			? 'posted'
+			: refunded.outcome === 'already_posted'
+				? settled.outcome
+				: refunded.outcome;
+	return { ok: true, outcome, detail: `${settled.detail} ${refunded.detail}` };
 }
 
 /**
@@ -1467,6 +1542,10 @@ async function tellPeople(deps: SettleDeps, target: Target, settlement: Settleme
 			action: missingFeeCorrection(processor)
 		});
 	}
+
+	// a gift the same read reports sent back is no gift to thank anybody for, and nobody is told of
+	// it: not the donor, not the person they named, not the organisation (`refundCarried`).
+	if (settlement.alsoRefunded !== undefined) return;
 
 	// a donor-advised fund gift was deducted when the donor funded their account, so the grant gets
 	// a thank-you in place of a receipt, stamped on the same column (./receipt.ts).

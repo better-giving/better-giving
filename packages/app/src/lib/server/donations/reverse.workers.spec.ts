@@ -1496,6 +1496,149 @@ describe('recordReversal() — a dispute won', () => {
 	});
 });
 
+describe('recordReversal() — a dispute won after it opened, settling up the fee kept', () => {
+	it('books a kept fee the opening did not, out of 1020, keyed on the withdrawal', async () => {
+		await settledGift();
+		await recordReversal(deps(), opened({ feeMinor: null }), 'evt_d1');
+
+		const result = await recordReversal(deps(), won({ feeKeptMinor: 1_500 }), 'evt_d2');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		const [row] = await refundRows();
+		expect(await linesOf('adjustment', row?.id ?? '')).toEqual(
+			[
+				[postableId('processorFees'), 1_500],
+				[postableId('undepositedFunds'), -1_500]
+			].sort()
+		);
+	});
+
+	it('gives back into 1020 what the books hold of the fee beyond what the processor kept', async () => {
+		await settledGift();
+		await recordReversal(deps(), opened({ feeMinor: 1_500 }), 'evt_d1');
+
+		await recordReversal(deps(), won({ feeKeptMinor: 0 }), 'evt_d2');
+
+		const [row] = await refundRows();
+		expect(await linesOf('adjustment', row?.id ?? '')).toEqual(
+			[
+				[postableId('processorFees'), -1_500],
+				[postableId('undepositedFunds'), 1_500]
+			].sort()
+		);
+	});
+
+	it('posts no settle-up where the fee kept is what the books hold after the fee given back', async () => {
+		await settledGift();
+		await recordReversal(deps(), opened({ feeMinor: 1_500 }), 'evt_d1');
+
+		await recordReversal(deps(), won({ feeReturnedMinor: 1_000, feeKeptMinor: 500 }), 'evt_d2');
+
+		const [row] = await refundRows();
+		expect(await linesOf('adjustment', row?.id ?? '')).toBeNull();
+		expect(await linesOf('payment', row?.id ?? '')).not.toBeNull();
+	});
+
+	it('settles up once when the win is delivered again', async () => {
+		await settledGift();
+		await recordReversal(deps(), opened({ feeMinor: null }), 'evt_d1');
+		await recordReversal(deps(), won({ feeKeptMinor: 1_500 }), 'evt_d2');
+
+		const again = await recordReversal(deps(), won({ feeKeptMinor: 1_500 }), 'evt_d3');
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		const [adjustments] = await db
+			.select({ n: sql<number>`count(*)` })
+			.from(entryGroup)
+			.where(eq(entryGroup.sourceType, 'adjustment'));
+		expect(adjustments?.n).toBe(1);
+	});
+});
+
+describe('recordReversal() — a dispute won with no opening recorded, whose kept fee is known', () => {
+	it('books the fee kept out of 1020 against the disputed payment, and names it to staff once', async () => {
+		const gift = await settledGift();
+		const mail = mailer();
+
+		const result = await recordReversal(
+			deps({ email: mail.port }),
+			won({ feeKeptMinor: 1_500 }),
+			'evt_d2'
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await linesOf('adjustment', gift.paymentId)).toEqual(
+			[
+				[postableId('processorFees'), 1_500],
+				[postableId('undepositedFunds'), -1_500]
+			].sort()
+		);
+		expect(await refundRows()).toEqual([]);
+		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+		expect(mail.sent[0]?.text).toMatch(/1500 USD/);
+		expect(mail.sent[0]?.text).not.toMatch(/dashboard/i);
+	});
+
+	it('answers the win delivered again as already posted, booking and telling nothing more', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), won({ feeKeptMinor: 1_500 }), 'evt_d2');
+		const mail = mailer();
+
+		const again = await recordReversal(
+			deps({ email: mail.port }),
+			won({ feeKeptMinor: 1_500 }),
+			'evt_d3'
+		);
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect((await linesOf('adjustment', gift.paymentId))?.length).toBe(2);
+		expect(mail.sent).toEqual([]);
+	});
+
+	it('books nothing where the processor kept no fee, and tells staff nothing needs booking', async () => {
+		await settledGift();
+		const groups = await groupCount();
+		const mail = mailer();
+
+		const result = await recordReversal(
+			deps({ email: mail.port }),
+			won({ feeReturnedMinor: 1_500, feeKeptMinor: 0 }),
+			'evt_d2'
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
+		expect(await groupCount()).toBe(groups);
+		expect(mail.sent[0]?.text).toMatch(/nothing needs booking/i);
+	});
+
+	it('books nothing on a gift the books never held, naming the fee to staff to post by hand', async () => {
+		await settledGift({ settledMinor: 9_000 });
+		const groups = await groupCount();
+		const mail = mailer();
+
+		const result = await recordReversal(
+			deps({ email: mail.port }),
+			won({ feeKeptMinor: 1_500 }),
+			'evt_d2'
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
+		expect(await groupCount()).toBe(groups);
+		expect(mail.sent[0]?.text).toMatch(/1500 USD/);
+		expect(mail.sent[0]?.text).toMatch(/\/admin\/books/);
+	});
+
+	it('refuses a kept fee that is not a whole number of minor units, writing nothing', async () => {
+		await settledGift();
+		const groups = await groupCount();
+
+		const result = await recordReversal(deps(), won({ feeKeptMinor: 12.5 }), 'evt_d2');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
+		expect(await groupCount()).toBe(groups);
+	});
+});
+
 /** the processor reporting dispute `dp_1` lost, of the whole `pi_1` charge unless told otherwise. */
 function lost(over: Partial<Extract<Reversal, { kind: 'dispute_lost' }>> = {}): Reversal {
 	return {
@@ -1586,6 +1729,44 @@ describe('recordReversal() — a refund of a gift whose open dispute holds the m
 			status: 'partially_refunded',
 			given: 6_000
 		});
+	});
+
+	it('tells staff once of a refund larger than the dispute it closes, naming the difference, and posts as ever', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), opened({ amountMinor: 4_000 }), 'evt_d1');
+		const groups = await groupCount();
+		const mail = mailer();
+
+		const result = await recordReversal(
+			deps({ email: mail.port }),
+			refund({ amountMinor: 10_000 }),
+			'evt_r1'
+		);
+		const again = await recordReversal(
+			deps({ email: mail.port }),
+			refund({ amountMinor: 10_000 }),
+			'evt_r2'
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'updated' });
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect((await refundRows()).map((r) => [r.providerTxnId, r.amountMinor])).toEqual([
+			['dp_1', 4_000]
+		]);
+		expect(await groupCount()).toBe(groups);
+		expect((await asAdminReads(gift.donationId)).given).toBe(6_000);
+		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+		expect(mail.sent[0]?.text).toContain('6000 USD');
+	});
+
+	it('tells staff nothing of a refund no larger than the dispute it closes', async () => {
+		await settledGift();
+		await recordReversal(deps(), opened(), 'evt_d1');
+		const mail = mailer();
+
+		await recordReversal(deps({ email: mail.port }), refund({ amountMinor: 4_000 }), 'evt_r1');
+
+		expect(mail.sent).toEqual([]);
 	});
 
 	it('answers the refund delivered again as already posted, taking nothing more', async () => {

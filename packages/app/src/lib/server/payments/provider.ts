@@ -759,14 +759,17 @@ export type Settlement = {
 	readonly arrival: Arrival | null;
 	/**
 	 * the refund of the whole of this settlement, where the read that settles it already reports the
-	 * money sent back — NOWPayments' alone (./nowpayments.ts's header), whose read of a deposit held
-	 * and refunded is the last word on it. present only on a `succeeded` settlement; absent on every
-	 * other processor and every settlement not refunded.
+	 * money sent back — money that reached the processor and went back before it settled here, which
+	 * the processor may report nowhere else this deployment will read. which adapters report it, and
+	 * when, is in each one's header. present only on a `succeeded` settlement; absent on every
+	 * settlement not refunded.
 	 *
-	 * it names the refund as `ReversalFacts` does: `providerReversalId` is the one a `refunded`
-	 * notification's `readReversal` carries for the same payment, so the two report one withdrawal,
-	 * and `occurredAt` is when the refund happened. the rest is this settlement's own —
-	 * `reversedTxnId` is `providerTxnId`, and the money is the whole of `amountMinor` in `currency`.
+	 * it names the refund as `ReversalFacts` does: `providerReversalId` is the one the same adapter's
+	 * `readReversal` carries for the same refund, so the two report one withdrawal, and `occurredAt`
+	 * is when the refund happened. the rest is this settlement's own — `reversedTxnId` is
+	 * `providerTxnId`, `reversedMetadata` is `metadata`, and the money is the whole of `amountMinor`
+	 * in `currency`, with no fee given back. ../donations/settle.ts writes it through the one refund
+	 * writer, whether the gift settles in the same read or settled here before it.
 	 */
 	readonly alsoRefunded?: {
 		readonly providerReversalId: string;
@@ -1008,6 +1011,13 @@ export type Reversal =
 			 * none back, and then the fee stays booked.
 			 */
 			readonly feeReturnedMinor: number | null;
+			/**
+			 * minor units, in the disputed charge's currency as `Settlement.feeMinor` is: the dispute fee
+			 * the processor kept at the close — what it charged for the dispute less what it gave back.
+			 * 0 where it kept none. null or absent where the adapter could not read it, and then the
+			 * books settle nothing up at the close.
+			 */
+			readonly feeKeptMinor?: number | null;
 	  })
 	| (ReversalFacts & WithdrawnMoney & DisputeFacts & { readonly kind: 'dispute_lost' });
 

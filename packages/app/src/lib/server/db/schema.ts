@@ -581,9 +581,10 @@ export const account = sqliteTable(
  * tables to arrive early, and the pair is what the idempotency constraint is built on.
  *
  * `adjustment` is a correction, and links to nothing where a human posted it: that is not caused by
- * a record, so its `source_id` is minted for it. the one caused by a record is a lost dispute's
- * settle-up, keyed on its refund-direction row. the grain of all five is on `entry_group_source_idx`
- * below, which is the constraint it is part of.
+ * a record, so its `source_id` is minted for it. the one caused by a record is a dispute's settle-up
+ * at its close, keyed on its refund-direction row, or on the disputed payment where no opening was
+ * recorded. the grain of all five is on `entry_group_source_idx` below, which is the constraint it
+ * is part of.
  *
  * a dispute adds no member. what it withdraws is `'refund'` on its refund-direction row, and a won
  * dispute's money back is `'payment'` on that same row — the grain a refund that did not stand
@@ -683,9 +684,11 @@ export const entryGroup = sqliteTable(
 		 *                   natural key to be idempotent against, and two identical corrections
 		 *                   posted deliberately must both land. any borrowed id makes the
 		 *                   second one collide with the first and be refused as a redelivery.
-		 *                   the one borrowed id is a dispute's settle-up at a lost close: the
+		 *                   the borrowed ids are a dispute's settle-up at its close: the
 		 *                   refund-direction row's `payment.id`, one per dispute, so a redelivered
-		 *                   close collides.
+		 *                   close collides — and, for a win whose opening was never recorded, the
+		 *                   disputed payment's `payment.id`, one per charge, which holds while a
+		 *                   processor opens one dispute per charge.
 		 *
 		 * refunds are why this is written down. keying a refund on `donation.id` looks
 		 * natural — the refund is "about" that gift — and it makes the second refund on one

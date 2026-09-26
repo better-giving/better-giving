@@ -17,6 +17,7 @@ import type {
 	SettlementEvent
 } from '../payments/provider';
 import { recordDonation } from './record';
+import { recordReversal } from './reverse';
 import type { SettleDeps, SettleOutcome } from './delivery';
 import { failureIsNewsToTheDonor, settleDelivery, settleTransaction } from './settle';
 import { soleProcessor } from '../payments/processors.testing';
@@ -2110,6 +2111,123 @@ describe('settleDelivery() — a crypto gift valued at what arrived', () => {
 			expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 			const [groups] = await db.select({ n: sql<number>`count(*)` }).from(entryGroup);
 			expect(groups?.n).toBe(0);
+		});
+	});
+
+	describe('a payment the read reports refunded as well', () => {
+		const REFUND_ID = `${PAYMENT_ID}:refunded`;
+		const REFUNDED_AT = new Date('2026-08-05T16:00:00.000Z');
+
+		const refunded = () =>
+			nowpayments(
+				arrived({ alsoRefunded: { providerReversalId: REFUND_ID, occurredAt: REFUNDED_AT } })
+			);
+
+		/** the refund-direction rows. */
+		const refundRows = () => db.select().from(payment).where(eq(payment.direction, 'refund'));
+
+		it('settles the gift and posts its whole refund in one delivery, receipting nobody and sending no refund notice', async () => {
+			const gift = await pendingCrypto();
+			const mail = mailer();
+
+			const result = await settleDelivery(
+				deps({ provider: refunded(), email: mail.port }),
+				DELIVERY
+			);
+
+			expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+			expect(await refundRows()).toEqual([
+				expect.objectContaining({
+					donationId: gift.donationId,
+					status: 'succeeded',
+					provider: 'nowpayments',
+					providerTxnId: REFUND_ID,
+					amountMinor: 8_000,
+					occurredAt: REFUNDED_AT,
+					parentPaymentId: gift.paymentId
+				})
+			]);
+			const [refund] = await refundRows();
+			const withdrawn = await groupLines('refund', refund?.id ?? '');
+			expect(withdrawn?.lines.map((l) => l.amountMinor).sort((a, b) => a - b)).toEqual([
+				-8_000, 8_000
+			]);
+			expect(mail.sent.map((m) => m.to)).not.toContain('ada@example.org');
+		});
+
+		it('posts the refund of a gift settled and receipted on an earlier delivery, and tells the donor of it', async () => {
+			const gift = await pendingCrypto();
+			await settleDelivery(deps({ provider: nowpayments() }), DELIVERY);
+			const mail = mailer();
+
+			const result = await settleDelivery(
+				deps({ provider: refunded(), email: mail.port }),
+				DELIVERY
+			);
+
+			expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+			expect((await refundRows()).map((r) => [r.providerTxnId, r.parentPaymentId])).toEqual([
+				[REFUND_ID, gift.paymentId]
+			]);
+			expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org']);
+		});
+
+		it('answers the delivery again as already posted, refunding once and telling nobody', async () => {
+			await pendingCrypto();
+			await settleDelivery(deps({ provider: refunded() }), DELIVERY);
+			const mail = mailer();
+
+			const again = await settleDelivery(
+				deps({ provider: refunded(), email: mail.port }),
+				DELIVERY
+			);
+
+			expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+			expect(await refundRows()).toHaveLength(1);
+			expect(mail.sent).toEqual([]);
+		});
+
+		it('answers a refund its own notification already posted as already posted', async () => {
+			await pendingCrypto();
+			await settleDelivery(deps({ provider: nowpayments() }), DELIVERY);
+			await recordReversal(
+				deps({ provider: nowpayments() }),
+				{
+					kind: 'refund',
+					reversedTxnId: PAYMENT_ID,
+					providerReversalId: REFUND_ID,
+					amountMinor: null,
+					currency: 'USD',
+					feeReturnedMinor: null,
+					occurredAt: REFUNDED_AT,
+					reversedMetadata: {}
+				},
+				'refunded-ipn'
+			);
+
+			const again = await settleTransaction(deps({ provider: refunded() }), {
+				providerTxnId: PAYMENT_ID,
+				eventId: 'scheduled-read'
+			});
+
+			expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+			expect(await refundRows()).toHaveLength(1);
+		});
+
+		it('settles and refunds a gift a scheduled read finds sent back, with no delivery behind it', async () => {
+			const gift = await pendingCrypto();
+			const mail = mailer();
+
+			const result = await settleTransaction(deps({ provider: refunded(), email: mail.port }), {
+				providerTxnId: PAYMENT_ID,
+				eventId: 'scheduled-read'
+			});
+
+			expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+			const [row] = await db.select().from(payment).where(eq(payment.id, gift.paymentId));
+			expect(row?.status).toBe('succeeded');
+			expect((await refundRows()).map((r) => r.providerTxnId)).toEqual([REFUND_ID]);
+			expect(mail.sent.map((m) => m.to)).not.toContain('ada@example.org');
 		});
 	});
 });

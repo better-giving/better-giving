@@ -79,13 +79,16 @@ export function correctionWrites(db: Db, correction: Posting): Writes {
  *   refund_failed,
  *   dispute_won              — `('payment', refund row)`: a withdrawal that did not stand, mirrored
  *                              back (`reinstatementEntry`).
- *   settle_up                — `('adjustment', refund row)`: what a lost close charged or gave back
- *                              that the opening did not withdraw (`settleUpEntry`), or null where
- *                              the close carried nothing to settle.
+ *   settle_up                — `('adjustment', refund row)`: what a close charged or gave back that
+ *                              the books do not hold of the dispute (`settleUpEntry`), or null
+ *                              where a lost close carried nothing to settle. a win whose opening
+ *                              was never recorded is keyed on the disputed payment instead, since
+ *                              no refund row holds it.
  *
  * `finalRefundPaymentId` is the refund row whose money is now final — a refund, and a dispute
  * lost, whether it posts its withdrawal or closes one already posted — and a Zap on
- * `gift_refunded` hears of it. a dispute opened or won, and a refund that did not stand, name none.
+ * `gift_refunded` hears of it. a dispute opened or won, its settle-up included, and a refund that
+ * did not stand, name none.
  */
 export type ReversalEntry =
 	| {
@@ -101,7 +104,7 @@ export type ReversalEntry =
 	| {
 			readonly kind: 'settle_up';
 			readonly entry: Posting;
-			readonly finalRefundPaymentId: string;
+			readonly finalRefundPaymentId: string | null;
 	  }
 	| { readonly kind: 'settle_up'; readonly entry: null; readonly finalRefundPaymentId: string };
 

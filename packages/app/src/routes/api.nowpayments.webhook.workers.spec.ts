@@ -619,10 +619,10 @@ describe('POST /api/nowpayments/webhook — a refunded payment', () => {
 
 	/**
 	 * notifications carry no order, and once the refund is made the payment reads `refunded`: the
-	 * settlement delivered after it books the gift at what arrived, and the refund delivered again
-	 * takes it back out.
+	 * settlement delivered after it books the gift at what arrived and takes it back out, and the
+	 * refund delivered again finds it taken.
 	 */
-	it('posts a refund that outruns its settlement once the settlement delivered after it books the gift', async () => {
+	it('posts a refund that outruns its settlement with the settlement delivered after it', async () => {
 		await recordedGift();
 		nowpaymentsHolds([REFUNDED]);
 
@@ -636,7 +636,7 @@ describe('POST /api/nowpayments/webhook — a refunded payment', () => {
 
 		expect(await settlement.json()).toMatchObject({ outcome: 'posted' });
 		expect(again.status).toBe(200);
-		expect(await again.json()).toMatchObject({ outcome: 'posted' });
+		expect(await again.json()).toMatchObject({ outcome: 'already_posted' });
 		expect(await refundRows()).toEqual([
 			expect.objectContaining({ provider_txn_id: `${PAYMENT_ID}:refunded`, amount_minor: 2487 })
 		]);
@@ -646,9 +646,10 @@ describe('POST /api/nowpayments/webhook — a refunded payment', () => {
 
 	/**
 	 * a deposit held and sent back sends no settlement notification: the scheduled read finds the
-	 * payment still pending here, books it at what arrived, and the refund delivered again reverses it.
+	 * payment still pending here and books it at what arrived with its refund, and the refund
+	 * delivered again finds it taken.
 	 */
-	it('posts a refund of a deposit that never settled once the scheduled read books it', async () => {
+	it('posts a refund of a deposit that never settled with the scheduled read that books it', async () => {
 		await recordedGift();
 		const now = new Date();
 		await env.DB.prepare(
@@ -674,7 +675,7 @@ describe('POST /api/nowpayments/webhook — a refunded payment', () => {
 
 		expect(await paymentRow()).toMatchObject({ status: 'succeeded', amount_minor: 2487 });
 		expect(again.status).toBe(200);
-		expect(await again.json()).toMatchObject({ outcome: 'posted' });
+		expect(await again.json()).toMatchObject({ outcome: 'already_posted' });
 		expect(await refundRows()).toHaveLength(1);
 		expect(await standingBalances()).toEqual([]);
 		expect(await giftStatus()).toBe('refunded');
