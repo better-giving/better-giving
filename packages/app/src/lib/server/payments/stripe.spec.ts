@@ -1462,9 +1462,9 @@ describe('readReversal of a dispute', () => {
 	 * a dispute closed for the organisation reads as won once its money is back, dated by the
 	 * transaction that put it back. the dispute fee Stripe took when it opened stays taken — "the
 	 * dispute received fee is generally not" returned (https://docs.stripe.com/disputes/responding) —
-	 * and a reinstatement returning no fee reads as none given back.
+	 * and a reinstatement returning no fee reads as none given back and the whole fee kept.
 	 */
-	it('reads a dispute won with its money back as won, with no fee given back', async () => {
+	it('reads a dispute won with its money back as won, keeping the fee it took', async () => {
 		const { httpClient } = recording([
 			{
 				status: 200,
@@ -1485,7 +1485,8 @@ describe('readReversal of a dispute', () => {
 				providerReversalId: 'du_1',
 				occurredAt: new Date(1_771_500_000_000),
 				reversedMetadata: { donation_id: '01932f7c' },
-				feeReturnedMinor: null
+				feeReturnedMinor: null,
+				feeKeptMinor: 1_500
 			}
 		});
 	});
@@ -1823,6 +1824,92 @@ describe('readReversal of a dispute', () => {
 	});
 
 	/**
+	 * a won dispute names the fee Stripe kept: every fee charged for it less every fee given back. the
+	 * dispute received fee is "generally not" returned (https://docs.stripe.com/disputes/responding)
+	 * while the countered fee is (https://docs.stripe.com/disputes/how-disputes-work), so a win that
+	 * was answered keeps the one and gives back the other.
+	 */
+	it('reads the fee a won dispute kept', async () => {
+		const { httpClient } = recording([
+			{
+				status: 200,
+				json: disputeOf({
+					status: 'won',
+					balance_transactions: [WITHDRAWN, { ...REINSTATED, fee: -1_500, net: 11_829 }]
+				})
+			},
+			sourcedTo(COUNTERED)
+		]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
+			disputeNotice('charge.dispute.funds_reinstated')
+		);
+
+		expect(result.ok && result.value).toMatchObject({
+			kind: 'dispute_won',
+			feeReturnedMinor: 1_500,
+			feeKeptMinor: 1_500
+		});
+	});
+
+	/** a win that gave back every fee charged for it kept none, which is a figure and not an unknown. */
+	it('reads a won dispute that gave back every fee as keeping none', async () => {
+		const { httpClient } = recording([
+			{
+				status: 200,
+				json: disputeOf({
+					status: 'won',
+					balance_transactions: [WITHDRAWN, { ...REINSTATED, fee: -1_500, net: 11_829 }]
+				})
+			},
+			sourcedTo()
+		]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
+			disputeNotice('charge.dispute.funds_reinstated')
+		);
+
+		expect(result.ok && result.value).toMatchObject({
+			kind: 'dispute_won',
+			feeReturnedMinor: 1_500,
+			feeKeptMinor: 0
+		});
+	});
+
+	/**
+	 * a kept fee that cannot be figured is claimed as unknown rather than as none, and the log says
+	 * why: a fee booked in another currency than the withdrawal sums to no figure, and a withdrawal
+	 * converted from the gift's currency with no rate to convert by leaves none in the gift's.
+	 */
+	it.each([
+		[
+			'a fee booked in another currency',
+			disputeOf({ status: 'won', balance_transactions: [WITHDRAWN, REINSTATED] }),
+			sourcedTo({ ...COUNTERED, currency: 'eur' }),
+			'eur'
+		],
+		[
+			'no rate to convert by',
+			disputeOf({ status: 'won', currency: 'eur', balance_transactions: [WITHDRAWN, REINSTATED] }),
+			sourcedTo(),
+			'exchange rate'
+		]
+	])(
+		'reads no kept fee off a won dispute with %s, and logs why',
+		async (_case, disputed, sourced, why) => {
+			const logged = vi.spyOn(console, 'warn').mockImplementation(() => {});
+			const { httpClient } = recording([{ status: 200, json: disputed }, sourced]);
+
+			const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
+				disputeNotice('charge.dispute.funds_reinstated')
+			);
+
+			expect(result.ok && result.value).toMatchObject({ kind: 'dispute_won', feeKeptMinor: null });
+			expect(logged).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`du_1.*${why}`)));
+		}
+	);
+
+	/**
 	 * a fee given back on a transaction of its own is read too: the countered fee Stripe "returns only
 	 * if you win" (https://docs.stripe.com/disputes/how-disputes-work) need not ride the reinstatement.
 	 */
@@ -1928,6 +2015,34 @@ describe('readReversal of a dispute', () => {
 			kind: 'dispute_won',
 			feeReturnedMinor: 1_200
 		});
+	});
+
+	/**
+	 * the fee a win kept is in the gift's currency as an opening's is, converted at the withdrawal's
+	 * rate: 1,500 USD cents kept at 1.25 USD per EUR is 1,200 EUR cents, the figure the opening booked.
+	 */
+	it('converts the fee a won dispute kept into the gift’s currency at the withdrawal’s rate', async () => {
+		const converted = { currency: 'usd', exchange_rate: 1.25 };
+		const { httpClient } = recording([
+			{
+				status: 200,
+				json: disputeOf({
+					currency: 'eur',
+					status: 'won',
+					balance_transactions: [
+						{ ...WITHDRAWN, ...converted },
+						{ ...REINSTATED, ...converted, exchange_rate: 1.5 }
+					]
+				})
+			},
+			sourcedTo()
+		]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
+			disputeNotice('charge.dispute.funds_reinstated')
+		);
+
+		expect(result.ok && result.value).toMatchObject({ kind: 'dispute_won', feeKeptMinor: 1_200 });
 	});
 });
 

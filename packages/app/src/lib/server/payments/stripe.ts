@@ -1657,11 +1657,13 @@ export function createStripeProvider(
 	 *
 	 * the figure is the dispute's `amount`, in the currency the donor was charged in. the fee is every
 	 * fee booked against the dispute (`disputeFees` above): an opening or a loss carries what Stripe
-	 * kept, charged less given back, and a win what it gave back. each is summed in the account's
-	 * settlement currency and converted as a settlement's is (`feeOf` above), so a fee on a gift
-	 * charged in another currency is this app's conversion rather than a figure Stripe states — at the
-	 * withdrawal's rate both ways, so a fee out and back leaves nothing in processor fees. a list that
-	 * cannot be read is refused like the retrieve, rather than read as the withdrawal's fee alone.
+	 * kept, charged less given back, and a win both what it gave back and what it kept, the kept fee
+	 * null and logged where no figure can be had in the gift's currency. each is summed in the
+	 * account's settlement currency and converted as a settlement's is (`feeOf` above), so a fee on a
+	 * gift charged in another currency is this app's conversion rather than a figure Stripe states —
+	 * at the withdrawal's rate both ways, so a fee out and back leaves nothing in processor fees. a
+	 * list that cannot be read is refused like the retrieve, rather than read as the withdrawal's fee
+	 * alone.
 	 */
 	async function readDispute(event: ReversalEvent): Promise<PaymentResult<ReversalRead>> {
 		try {
@@ -1715,13 +1717,27 @@ export function createStripeProvider(
 
 			if (decidedForUs && reinstatement !== undefined) {
 				const returned = fees === null ? null : converted(fees.returned);
+				const kept = fees === null ? null : converted(fees.charged - fees.returned);
+				if (kept === null) {
+					const foreign = [...disputed.balance_transactions, ...sourced].find(
+						(moved) => moved.currency !== withdrawal.currency
+					);
+					console.warn(
+						`the fee Stripe kept on won dispute ${disputed.id} is unread: ${
+							foreign
+								? `a fee on it is booked in ${foreign.currency}, the withdrawal in ${withdrawal.currency}.`
+								: `its withdrawal in ${withdrawal.currency} carries no usable exchange rate to ${disputed.currency}.`
+						}`
+					);
+				}
 				return {
 					ok: true,
 					value: {
 						kind: 'dispute_won',
 						...facts,
 						occurredAt: atMillis(reinstatement.created),
-						feeReturnedMinor: returned !== null && returned > 0 ? returned : null
+						feeReturnedMinor: returned !== null && returned > 0 ? returned : null,
+						feeKeptMinor: kept
 					}
 				};
 			}
