@@ -859,9 +859,10 @@ export type RecurringEvent = VerifiedDelivery & {
 /**
  * a delivery about money leaving a settled transaction, or coming back to it.
  *
- * the id is the refund's or the dispute's, handed back to `readReversal` with the delivery it came
- * on and read by nothing else, for the reason `RecurringEvent` gives: which of the two it names is
- * decided by `type`, which is the adapter's vocabulary.
+ * the id is the refund's or the dispute's — or, where the processor mints no refund id, the refunded
+ * payment's — handed back to `readReversal` with the delivery it came on and read by nothing else,
+ * for the reason `RecurringEvent` gives: which of them it names is decided by `type`, which is the
+ * adapter's vocabulary.
  */
 export type ReversalEvent = VerifiedDelivery & {
 	readonly kind: 'reversal';
@@ -919,21 +920,28 @@ type ReversalFacts = {
 	 */
 	readonly reversedTxnId: string;
 	/**
-	 * the refund's or the dispute's own id, which becomes the refund row's `provider_txn_id` and is
-	 * the idempotency key. it never equals `reversedTxnId`: the two share
-	 * `payment_provider_txn_idx`, so a refund carrying the charge's id would be refused as the charge
-	 * redelivered. an adapter whose processor mints no id for a refund derives a stable one and
-	 * states the derivation in its header.
+	 * the withdrawal's identity: every report of one withdrawal of money carries the same key,
+	 * whichever event it rode. that is the refund's or the dispute's own id, or, where the processor
+	 * mints no refund id, a stable one derived from the refunded payment (./nowpayments.ts's header
+	 * states NOWPayments'). it becomes the refund row's `provider_txn_id` and is the idempotency key,
+	 * so one withdrawal reported under two keys is taken out twice. it never equals
+	 * `reversedTxnId`: the two share `payment_provider_txn_idx`, so a refund carrying the charge's id
+	 * would be refused as the charge redelivered.
 	 */
 	readonly providerReversalId: string;
-	/** business time: when the money moved. */
+	/**
+	 * business time. for a refund, a refund that failed and a dispute opened, when the money moved;
+	 * for a dispute won or lost, when it closed — which, for a loss reported with no opening, is also
+	 * the date its withdrawal is posted under.
+	 */
 	readonly occurredAt: Date;
 	/**
 	 * `IntentRequest.metadata` read back off the reversed transaction, under the contract
 	 * `Settlement.metadata` states — and, for a collection under a repeating gift, whose own charge
 	 * carries none, the commitment's (`commitmentMetadata` above), read off the commitment the
-	 * charge was collected under. it is what tells a gift not recorded yet, which is worth a
-	 * redelivery, from a charge this deployment never took, which is not.
+	 * charge was collected under. its `DONATION_METADATA_KEY` naming a gift recorded here is what
+	 * tells a charge that has not settled here yet, which is worth a redelivery, from one this
+	 * deployment never took, which is not (`chargeNotHere` in ../donations/reverse.ts).
 	 */
 	readonly reversedMetadata: Readonly<Record<string, string>>;
 };
@@ -995,7 +1003,18 @@ export type Reversal =
  */
 export type ReversalRead =
 	| Reversal
-	| { readonly kind: 'nothing_moved'; readonly providerReversalId: string };
+	| {
+			readonly kind: 'nothing_moved';
+			readonly providerReversalId: string;
+			/**
+			 * the transaction the reversal names, as `ReversalFacts.reversedTxnId`, from an adapter
+			 * whose processor sends no later event when the money moves, so this read is its last word
+			 * on the reversal. where that transaction settled here, the writer tells staff: a refund of
+			 * a settled gift reported as moving nothing is one this deployment would otherwise never
+			 * record. absent from an adapter whose processor reports the money when it moves.
+			 */
+			readonly reversedTxnId?: string;
+	  };
 
 /** a webhook delivery, exactly as it arrived. */
 export type WebhookDelivery = {

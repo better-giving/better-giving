@@ -1,5 +1,9 @@
+import { and, eq, sql } from 'drizzle-orm';
+import type { Db } from '../db/client';
+import { donation, payment } from '../db/schema';
 import { renderRefundNotice, type RefundNoticeInput } from '../email/refund-notice';
 import { readOrgProfile } from '../org/queries';
+import { refundStands } from '../zapier/events';
 import { alert, type MailDeps } from './delivery';
 import { findPaymentDonor } from './queries';
 
@@ -16,8 +20,14 @@ import { findPaymentDonor } from './queries';
 // against a row that answers every redelivery `already_posted` — so the notice would be lost
 // anyway, and the delivery log would say something untrue.
 
-/** one refund to tell a donor about, and the figures it is told in. */
-export type RefundNoticeTarget = Omit<RefundNoticeInput, 'org' | 'donorName'> & {
+/**
+ * one refund to tell a donor about, and the figures it is told in. the gift's day and what of it is
+ * now deductible are read here from the rows the refund's batch left (`givenAndDeductible`).
+ */
+export type RefundNoticeTarget = Pick<
+	RefundNoticeInput,
+	'giftMinor' | 'refundedMinor' | 'currency'
+> & {
 	/** the gift's own `payment` row, the one refunded. who is written to is read off it. */
 	readonly giftPaymentId: string;
 	/** the gift refunded, named in anything an operator is told. */
@@ -42,10 +52,9 @@ export async function sendRefundNotice(deps: MailDeps, target: RefundNoticeTarge
 			org: await readOrgProfile(deps.db),
 			donorName: donor.displayName,
 			giftMinor: target.giftMinor,
-			givenAt: target.givenAt,
 			refundedMinor: target.refundedMinor,
-			deductibleMinor: target.deductibleMinor,
-			currency: target.currency
+			currency: target.currency,
+			...(await givenAndDeductible(deps.db, target))
 		});
 		if (!rendered.ok) {
 			await alert(deps, {
@@ -103,4 +112,32 @@ export async function sendRefundNotice(deps: MailDeps, target: RefundNoticeTarge
 			// the alert rides the transport that may be what faulted. nothing on this path may throw.
 		}
 	}
+}
+
+/**
+ * the day on the gift's receipt — `donation.received_at`, written at authorization and never moved
+ * by a settlement — and what of the gift is now deductible: what it collected, less the refunds of
+ * it that stand (`refundStands` in ../zapier/events.ts, so a dispute still open, which may yet be
+ * won, takes nothing off), less the part that was never deductible, and never below nothing.
+ */
+async function givenAndDeductible(
+	db: Db,
+	target: RefundNoticeTarget
+): Promise<Pick<RefundNoticeInput, 'givenAt' | 'deductibleMinor'>> {
+	const [gift] = await db
+		.select({ givenAt: donation.receivedAt, nonDeductibleMinor: donation.nonDeductibleMinor })
+		.from(donation)
+		.where(eq(donation.id, target.donationId));
+	const [refunded] = await db
+		.select({ minor: sql<number>`coalesce(sum(${payment.amountMinor}), 0)` })
+		.from(payment)
+		.where(and(eq(payment.parentPaymentId, target.giftPaymentId), refundStands(db, payment)));
+	if (gift === undefined) throw new Error(`donation ${target.donationId} is not recorded.`);
+	return {
+		givenAt: gift.givenAt,
+		deductibleMinor: Math.max(
+			0,
+			target.giftMinor - (refunded?.minor ?? 0) - gift.nonDeductibleMinor
+		)
+	};
 }

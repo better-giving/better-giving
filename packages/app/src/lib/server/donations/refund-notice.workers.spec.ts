@@ -22,7 +22,7 @@ const GIFT_ID = '019fb400-0000-7000-8000-000000000003';
 const REFUND_ID = '019fb400-0000-7000-8000-000000000004';
 
 beforeEach(async () => {
-	for (const table of ['payment', 'donation', 'contact', 'org_profile']) {
+	for (const table of ['dispute', 'payment', 'donation', 'contact', 'org_profile']) {
 		await env.DB.prepare(`delete from ${table}`).run();
 	}
 	await env.DB.prepare(
@@ -76,16 +76,37 @@ const target = (over: Partial<RefundNoticeTarget> = {}): RefundNoticeTarget => (
 	donationId: DONATION_ID,
 	refundId: REFUND_ID,
 	giftMinor: 10_000,
-	givenAt: new Date('2026-08-03T12:00:00Z'),
 	refundedMinor: 2_500,
-	deductibleMinor: 7_500,
 	currency: 'USD',
 	...over
 });
 
+/** a refund-direction row of the gift, as the writer leaves one: standing unless told otherwise. */
+async function withdrawal(
+	id: string,
+	amountMinor: number,
+	disputed: 'open' | 'lost' | null = null
+) {
+	await env.DB.prepare(
+		`insert into payment (id, donation_id, amount_minor, currency, direction, method, status,
+		                      occurred_at, parent_payment_id, created_at)
+		 values (?, ?, ?, 'USD', 'refund', 'card', 'succeeded', 1787000000000, ?, 0)`
+	)
+		.bind(id, DONATION_ID, amountMinor, GIFT_ID)
+		.run();
+	if (disputed === null) return;
+	await env.DB.prepare(
+		`insert into dispute (payment_id, outcome, closed_at, created_at, updated_at)
+		 values (?, ?, ?, 0, 0)`
+	)
+		.bind(id, disputed === 'lost' ? 'lost' : null, disputed === 'lost' ? 1787000000000 : null)
+		.run();
+}
+
 describe('sendRefundNotice()', () => {
 	it('writes to the donor, naming the part refunded and what is now deductible', async () => {
 		await orgProfile();
+		await withdrawal(REFUND_ID, 2_500);
 		const mail = mailer();
 
 		await sendRefundNotice(deps(mail.port), target());
@@ -96,6 +117,48 @@ describe('sendRefundNotice()', () => {
 		expect(notice?.text).toContain('Dear Ada Okafor,');
 		expect(notice?.text).toContain('USD 25.00');
 		expect(notice?.text).toContain('USD 75.00');
+	});
+
+	/** the receipt names the day the gift was authorized, which a slow settlement does not move. */
+	it('names the gift by the day on its receipt, not the day it settled', async () => {
+		await orgProfile();
+		await env.DB.prepare('update payment set occurred_at = ? where id = ?')
+			.bind(Date.parse('2026-09-01T09:00:00Z'), GIFT_ID)
+			.run();
+		await withdrawal(REFUND_ID, 2_500);
+		const mail = mailer();
+
+		await sendRefundNotice(deps(mail.port), target());
+
+		expect(mail.sent[0]?.text).toContain('made on August 3, 2026');
+	});
+
+	it('states as deductible what the gift collected less the refunds that stand and the part that was never deductible', async () => {
+		await orgProfile();
+		await env.DB.prepare('update donation set non_deductible_minor = 1000 where id = ?')
+			.bind(DONATION_ID)
+			.run();
+		await withdrawal(REFUND_ID, 2_500);
+		await withdrawal('019fb400-0000-7000-8000-000000000005', 500, 'lost');
+		await withdrawal('019fb400-0000-7000-8000-000000000006', 3_000, 'open');
+		const mail = mailer();
+
+		await sendRefundNotice(deps(mail.port), target());
+
+		expect(mail.sent[0]?.text).toContain('the deductible amount of this gift is now USD 60.00');
+	});
+
+	it('states nothing deductible, never below it, once the refunds and the part never deductible reach the gift', async () => {
+		await orgProfile();
+		await env.DB.prepare('update donation set non_deductible_minor = 3000 where id = ?')
+			.bind(DONATION_ID)
+			.run();
+		await withdrawal(REFUND_ID, 8_000);
+		const mail = mailer();
+
+		await sendRefundNotice(deps(mail.port), target({ refundedMinor: 8_000 }));
+
+		expect(mail.sent[0]?.text).toContain('the deductible amount of this gift is now USD 0.00');
 	});
 
 	/** an unaddressed donor is not a fault: nobody is written to and nobody is alerted. */

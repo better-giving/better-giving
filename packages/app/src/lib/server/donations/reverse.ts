@@ -1,4 +1,4 @@
-import { and, eq, exists, isNull, lt, sql } from 'drizzle-orm';
+import { and, eq, exists, isNull, lt, or, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { type ReversalEntry, reversalWrites, type Writes } from '../books/writes';
 import type { Db } from '../db/client';
@@ -17,12 +17,12 @@ import { findEntryGroup } from '../ledger/queries';
 import { stopRecurringGift, type StopOutcome } from '../recurring/stop';
 import {
 	DONATION_METADATA_KEY,
-	INTERVAL_METADATA_KEY,
 	isRetryable,
 	type PaymentFailure,
 	type ProcessorName,
 	type Reversal,
-	type ReversalEvent
+	type ReversalEvent,
+	type ReversalRead
 } from '../payments/provider';
 import { alert, commit, processorLabel, type SettleDeps, type SettleResult } from './delivery';
 import { reinstatementEntry, reversalEntry, settleUpEntry, unpostable } from './entries';
@@ -52,7 +52,10 @@ import { sendRefundNotice } from './refund-notice';
 // ./entries.ts), so the money leaves whichever account the gift went into and every fund it
 // credited. each refund is apportioned against what earlier refunds and disputes that still stand
 // already took (`standingRefunds` below), so withdrawals adding up to the gift take every fund back
-// exactly, and one naming no figure is what is left. the processor's fee on the gift stays booked,
+// exactly, and one naming no figure is what is left. a refund or a dispute naming more than is left
+// takes what is left, and the books never take a gift below nothing: a refund capped is told to
+// staff once, on the delivery that wrote it, and one finding nothing left writes nothing and is told
+// on each delivery that meets it. the processor's fee on the gift stays booked,
 // but for the part a processor gives back with a refund: that is the gift's own `'fee'` lines
 // reversed, in the refund's group, and no more of the fee than the gift still holds after what
 // earlier refunds that still stand gave back (`feeGivenBack` below). a figure over that is capped,
@@ -62,11 +65,15 @@ import { sendRefundNotice } from './refund-notice';
 // a refund is found through the gift, and the gift may not be here yet.
 //
 // deliveries carry no ordering, so a refund can arrive before the settlement that put its gift in
-// the books — a collection under a repeating gift has no row at all until ./collect.ts writes it. a
-// charge whose metadata names a gift or a commitment of this deployment's (`namesThisDeployment`
-// below) is this deployment's, so a refund of it with no settled row behind it is answered
-// `incomplete` and the processor delivers it again. a charge naming neither is another
+// the books — a collection under a repeating gift has no row at all until ./collect.ts writes it.
+// a refund of a charge whose row is `pending`, or with no row whose metadata names a gift recorded
+// here (`chargeNotHere` below), is answered `incomplete` and the processor delivers it again. a
+// charge whose row ended `failed` or `cancelled`, or whose metadata names a gift that is not here,
+// never becomes one: it is answered 200 and told to staff. a charge naming no gift is another
 // integration's on the same account, answered 200 and left.
+//
+// a reversal read as having moved no money is answered 200 and nothing is written. where the read
+// names a charge that settled here, the processor sends nothing more about it, and staff are told.
 //
 // ---------------------------------------------------------------------------
 // a refund that did not stand flips its row to `cancelled` and mirrors its group back under
@@ -80,8 +87,8 @@ import { sendRefundNotice } from './refund-notice';
 // opened, it withdraws the money as a refund does, and the processor's dispute fee is expensed in
 // the same group. what it withdraws is capped at what earlier refunds left of the gift: a processor
 // may report the whole charge disputed after part of it was refunded, and the books never take a
-// gift below nothing. the fee is booked in full, and the alert names the figure reported. a refund
-// is never capped. lost, it closes the row and settles up in the same batch: a fee charged at the
+// gift below nothing. the fee is booked in full, and the alert names the figure reported. lost, it
+// closes the row and settles up in the same batch: a fee charged at the
 // close that the opening did not book, and what the processor took less than the opening withdrew,
 // post as one `('adjustment', refund row)` group (`settleUpEntry` in ./entries.ts), and none where
 // the close carries neither. where the processor took less, the refund row's amount is lowered to
@@ -95,6 +102,15 @@ import { sendRefundNotice } from './refund-notice';
 // delivery reads won too, and staff are told. a dispute reported closed one way after it was
 // recorded closed the other changes nothing and is told to staff.
 //
+// a refund of a gift whose open dispute holds the money is that dispute lost at the refund's figure,
+// through the same close and settle-up, and never a second withdrawal (`disputeHolding` below): the
+// donor has the money back once, and is sent no notice, as for any dispute. the close is dated by
+// the refund, which is how a redelivery of it is found, since no row holds the refund's own id.
+//
+// a dispute the books cannot take — nothing of the gift left, figures `unpostable` names, another
+// currency than the gift's — writes nothing, and still stops the plan below; staff are told on each
+// delivery that meets it what needs booking by hand and how the stop ended (`disputeRefused`).
+//
 // after the batch that withdrew the money, and never inside it, the gift's monthly plan is stopped
 // (../recurring/stop.ts), because it calls the processor: the card is disputing the charges. then
 // staff are told of the dispute once, with how the stop ended. a stop the processor refused for
@@ -104,9 +120,8 @@ import { sendRefundNotice } from './refund-notice';
 // told nothing.
 //
 // after the batch that wrote a refund, and only on the delivery that wrote it, the donor is sent one
-// short notice (./refund-notice.ts): what this refund took, and what of the gift is now deductible —
-// the gift less every refund and dispute of it that stands, and nothing once they add up to it. it
-// goes whether or not the gift was ever posted, because the money went back either way. a
+// short notice (./refund-notice.ts): what this refund took, and what of the gift is now deductible,
+// which that module reads off the rows this batch left. it goes whether or not the gift was ever posted, because the money went back either way. a
 // redelivery is answered `already_posted` before it, and a dispute or a refund that did not stand
 // never reaches it. a notice that fails is told to staff and never changes the answer.
 //
@@ -135,14 +150,47 @@ export async function reverseDelivery(
 ): Promise<SettleResult> {
 	const read = await deps.provider.readReversal(event);
 	if (!read.ok) return unreadableReversal(deps, event, read);
-	if (read.value.kind === 'nothing_moved') {
-		return {
-			ok: true,
-			outcome: 'ignored',
-			detail: `reversal ${read.value.providerReversalId} has moved no money yet; nothing was written.`
-		};
-	}
+	if (read.value.kind === 'nothing_moved') return nothingMoved(deps, read.value);
 	return recordReversal(deps, read.value, event.id);
+}
+
+/**
+ * a reversal read as having moved no money. where the read names a transaction that settled here,
+ * no later event reports the money (`ReversalRead` in ../payments/provider.ts), so staff are told.
+ */
+async function nothingMoved(
+	deps: SettleDeps,
+	read: Extract<ReversalRead, { kind: 'nothing_moved' }>
+): Promise<SettleResult> {
+	const ignored: SettleResult = {
+		ok: true,
+		outcome: 'ignored',
+		detail: `reversal ${read.providerReversalId} has moved no money yet; nothing was written.`
+	};
+	if (!read.reversedTxnId?.trim()) return ignored;
+	const reversed = await findPayment(deps.db, deps.provider.processor, read.reversedTxnId);
+	if (reversed?.status !== 'succeeded') return ignored;
+	const processor = processorLabel(deps);
+	await tellStaff(deps, {
+		headline: `A ${processor} refund of a settled gift was reported as moving no money`,
+		body:
+			`${processor} reported a refund of a gift that settled here, and read it as having sent ` +
+			'nothing back, so nothing was written: the gift and the donor’s total stand as they were. ' +
+			`${processor} sends nothing further about it.`,
+		facts: [
+			{ label: 'At the processor', value: read.providerReversalId },
+			{ label: 'Transaction refunded', value: read.reversedTxnId },
+			{ label: 'Donation', value: reversed.donationId }
+		],
+		action:
+			`Check the refund in the ${processor} dashboard. Where money did go back to the donor, ` +
+			'post a correction in /admin/books for it, out of the account the gift went into and the fund it was given to.'
+	});
+	return {
+		ok: true,
+		outcome: 'unactionable',
+		detail: `reversal ${read.providerReversalId} of settled transaction ${read.reversedTxnId} moved no money by the processor’s read; nothing was written.`
+	};
 }
 
 /** one reversal the processor has already read back, written against the gift it names. */
@@ -160,20 +208,15 @@ export async function recordReversal(
 	}
 	const processor = deps.provider.processor;
 	const reversed = await findPayment(deps.db, processor, reversal.reversedTxnId);
-	if (reversed === null && !namesThisDeployment(reversal.reversedMetadata)) {
-		return {
-			ok: true,
-			outcome: 'unmatched',
-			detail: `transaction ${reversal.reversedTxnId} has no payment row here and names no gift of this deployment’s; nothing was written.`
-		};
-	}
-	if (reversed === null || reversed.status !== 'succeeded') {
+	if (reversed === null) return chargeNotHere(deps, reversal, eventId);
+	if (reversed.status === 'pending') {
 		return {
 			ok: false,
 			reason: 'incomplete',
 			detail: `transaction ${reversal.reversedTxnId} names a gift of this deployment’s that has not settled here yet, so reversal ${reversal.providerReversalId} (event ${eventId}) was not written and is worth delivering again.`
 		};
 	}
+	if (reversed.status !== 'succeeded') return chargeNeverSettled(deps, reversal, reversed);
 	switch (reversal.kind) {
 		case 'refund':
 			return withdraw(deps, reversal, reversed);
@@ -216,8 +259,8 @@ function withUsableDetails(reversal: DisputeWithdrawalRead): DisputeWithdrawalRe
  * existing is what answers every later delivery of the same refund as `already_posted`. `posting`
  * is the group's statements, or the sentence saying why there are none.
  *
- * a refund naming no figure is whatever of the charge earlier refunds have not already taken, and a
- * dispute takes no more than that, whatever figure it names.
+ * a refund naming no figure is whatever of the charge earlier refunds and disputes have not already
+ * taken, and no withdrawal takes more than that, whatever figure it names.
  */
 async function withdraw(
 	deps: SettleDeps,
@@ -226,16 +269,22 @@ async function withdraw(
 ): Promise<SettleResult> {
 	const recorded = await findPayment(deps.db, deps.provider.processor, reversal.providerReversalId);
 	if (recorded !== null) return withdrawnBefore(deps, reversal, recorded);
+	if (reversal.kind === 'refund') {
+		const held = await disputeHolding(deps.db, reversed.id, reversal.occurredAt);
+		if (held !== null) return withdrawnBefore(deps, closedByRefund(reversal, held), held);
+	}
 
 	const alreadyRefundedMinor = await standingRefunds(deps.db, reversed.id);
 	const leftMinor = reversed.amountMinor - alreadyRefundedMinor;
 	const reportedMinor = reversal.amountMinor ?? leftMinor;
-	const amountMinor =
-		reversal.kind === 'refund' ? reportedMinor : Math.min(reportedMinor, leftMinor);
+	const amountMinor = Math.min(reportedMinor, leftMinor);
 	const feeMinor = reversal.kind === 'refund' ? null : reversal.feeMinor;
+	if (leftMinor <= 0 && reversal.kind === 'refund') {
+		return nothingLeftToRefund(deps, reversal, reversed, reportedMinor);
+	}
 	const refused =
-		(reversal.kind !== 'refund' && leftMinor <= 0
-			? `earlier refunds already took the whole gift, so the dispute has nothing of it left to withdraw, and its fee${feeMinor === null ? '' : ` of ${feeMinor} ${reversal.currency} (minor units)`} was not booked.`
+		(leftMinor <= 0
+			? 'earlier refunds and disputes already took the whole gift, so the dispute has nothing of it left to withdraw, and the books already hold none of it.'
 			: null) ??
 		unpostable({ ...reversal, amountMinor, feeMinor }) ??
 		(reversal.kind === 'refund' &&
@@ -246,7 +295,11 @@ async function withdraw(
 		(reversal.currency === reversed.currency
 			? null
 			: `the ${reversal.kind === 'refund' ? 'refund' : 'dispute'} is in ${reversal.currency} and the gift was paid in ${reversed.currency}, and one entry holds one currency.`);
-	if (refused !== null) return refundRefused(deps, reversal, refused);
+	if (refused !== null) {
+		return reversal.kind === 'refund'
+			? refundRefused(deps, reversal, refused)
+			: disputeRefused(deps, reversal, reversed, refused, leftMinor <= 0);
+	}
 
 	const refundId = uuidv7();
 	const charge = await findEntryGroup(deps.db, 'payment', reversed.id);
@@ -360,15 +413,15 @@ async function withdraw(
 		donationId: reversed.donationId,
 		refundId,
 		giftMinor: reversed.amountMinor,
-		givenAt: reversed.occurredAt,
 		refundedMinor: amountMinor,
-		// a refund is never capped at what is left, so the remainder can read below nothing.
-		deductibleMinor: Math.max(0, leftMinor - amountMinor),
 		currency: reversal.currency
 	});
+	const capped =
+		reportedMinor > amountMinor ? cappedFact(deps, reportedMinor, reversal.currency) : null;
 	if (typeof posting === 'string') {
-		return refundNotPosted(deps, reversal, reversed, refundId, amountMinor, posting);
+		return refundNotPosted(deps, reversal, reversed, refundId, amountMinor, posting, capped);
 	}
+	if (capped !== null) await refundCapped(deps, reversal, reversed, refundId, amountMinor, capped);
 	if (feeBack !== null && feeBack.bookedMinor < feeBack.reportedMinor) {
 		console.warn(
 			'a refund gave back more of its gift’s fee than the books still held, and only what they held was booked:',
@@ -376,6 +429,113 @@ async function withdraw(
 		);
 	}
 	return { ok: true, outcome: 'posted', detail: `refund ${refundId} posted.` };
+}
+
+/**
+ * a dispute the books cannot take: nothing of the gift left, figures `unpostable` names, or another
+ * currency than the gift's. nothing is written, and the gift's monthly plan is stopped all the same
+ * — the card is disputing the charge whatever the books could hold of it. staff are told on each
+ * delivery that meets it, because no row is left to say one already did: what of it needs booking
+ * by hand, and how the stop ended.
+ */
+async function disputeRefused(
+	deps: SettleDeps,
+	reversal: DisputeWithdrawalRead,
+	reversed: Payment,
+	problem: string,
+	nothingLeft: boolean
+): Promise<SettleResult> {
+	const stop = await stopPlanOf(deps, reversed.donationId);
+	const processor = processorLabel(deps);
+	await tellStaff(deps, {
+		headline: `A ${processor} dispute could not be recorded against its gift`,
+		body: nothingLeft
+			? `A donor’s bank disputed a charge whose gift earlier refunds and disputes already took ` +
+				'whole, so nothing was written: the books already hold none of this gift.'
+			: `${processor} reported a dispute the books cannot hold, so nothing was written: the gift ` +
+				'and the donor’s total stand as they were.',
+		facts: [
+			{ label: 'Dispute at the processor', value: reversal.providerReversalId },
+			{ label: 'Transaction disputed', value: reversal.reversedTxnId },
+			{ label: 'Donation', value: reversed.donationId },
+			{ label: 'Problem', value: problem },
+			{
+				label: 'Dispute fee',
+				value:
+					reversal.feeMinor === null
+						? 'None reported.'
+						: `${reversal.feeMinor} ${reversal.currency} (minor units), not booked.`
+			},
+			{
+				label: 'Monthly gift',
+				value:
+					stop === null ? 'None: this was a one-time gift.' : stopSentence(stop.outcome, processor)
+			},
+			...(reversal.dashboardUrl === null
+				? []
+				: [{ label: 'The dispute', value: reversal.dashboardUrl }])
+		],
+		action: nothingLeft
+			? `Where ${processor} charged a fee for the dispute, post a correction in /admin/books for it: ` +
+				'into processor fees, out of the account the gift went into. Nothing else needs booking.'
+			: `Check the dispute in the ${processor} dashboard and correct the gift in /admin/books by ` +
+				'hand for what it took, with its fee where one was charged.'
+	});
+	return (
+		stopHeldOpen(stop, reversal) ?? {
+			ok: true,
+			outcome: 'unactionable',
+			detail: `dispute ${reversal.providerReversalId} was not recorded: ${problem}`
+		}
+	);
+}
+
+/**
+ * the withdrawal of a dispute on `paymentId` that a refund dated `refundedAt` settles: one still
+ * open, or one that refund already closed. a close made by a refund is dated by it (`closedByRefund`),
+ * and no row holds the refund's own id, so that date is what a redelivery of the refund is found
+ * by. null where no dispute holds the gift's money.
+ */
+async function disputeHolding(
+	db: Db,
+	paymentId: string,
+	refundedAt: Date
+): Promise<Payment | null> {
+	const closedByThis = and(eq(dispute.outcome, 'lost'), eq(dispute.closedAt, refundedAt));
+	const [row] = await db
+		.select({ payment })
+		.from(payment)
+		.innerJoin(dispute, eq(dispute.paymentId, payment.id))
+		.where(
+			and(
+				eq(payment.parentPaymentId, paymentId),
+				eq(payment.direction, 'refund'),
+				eq(payment.status, 'succeeded'),
+				or(isNull(dispute.outcome), closedByThis)
+			)
+		)
+		.orderBy(sql`${dispute.outcome} is null`, payment.occurredAt)
+		.limit(1);
+	return row?.payment ?? null;
+}
+
+/**
+ * a refund of money a dispute holds, read as that dispute's loss: the donor has the money back, and
+ * what the dispute withdrew is lowered to what the refund sent, as a close naming less is.
+ */
+function closedByRefund(refund: RefundRead, held: Payment): DisputeWithdrawalRead {
+	return {
+		kind: 'dispute_lost',
+		reversedTxnId: refund.reversedTxnId,
+		providerReversalId: held.providerTxnId ?? refund.providerReversalId,
+		amountMinor: refund.amountMinor,
+		currency: refund.currency,
+		occurredAt: refund.occurredAt,
+		reversedMetadata: refund.reversedMetadata,
+		feeMinor: null,
+		reason: null,
+		dashboardUrl: null
+	};
 }
 
 /** a withdrawal as the composer takes it: a refund and a dispute lost are final, a dispute opened is not. */
@@ -563,14 +723,7 @@ async function disputeWithdrew(
 		facts: [
 			{ label: 'Amount', value: inMinor(withdrawn.amountMinor) },
 			...(withdrawn.reportedMinor > withdrawn.amountMinor
-				? [
-						{
-							label: 'Capped',
-							value:
-								`${processor} reported the dispute as ${inMinor(withdrawn.reportedMinor)}, and earlier refunds had ` +
-								'already taken the rest of the gift, so what it took off the gift is capped at what was left.'
-						}
-					]
+				? [cappedFact(deps, withdrawn.reportedMinor, reversal.currency)]
 				: []),
 			...(reversal.kind === 'dispute_opened' && reversal.respondBy !== null
 				? [{ label: 'Respond by', value: reversal.respondBy.toISOString() }]
@@ -744,6 +897,79 @@ async function refundRefused(
 	};
 }
 
+type Fact = Parameters<typeof alert>[1]['facts'][number];
+
+/** an alert's fact that a withdrawal took less than the processor reported, because less was left. */
+function cappedFact(deps: SettleDeps, reportedMinor: number, currency: string): Fact {
+	return {
+		label: 'Capped',
+		value:
+			`${processorLabel(deps)} reported ${reportedMinor} ${currency} (minor units), and earlier refunds and ` +
+			'disputes had already taken the rest of the gift, so what this took off the gift is capped at what was left.'
+	};
+}
+
+/** staff told, on the delivery that wrote it, that a refund took less than the processor reported. */
+async function refundCapped(
+	deps: SettleDeps,
+	reversal: RefundRead,
+	reversed: Payment,
+	refundId: string,
+	amountMinor: number,
+	capped: Fact
+): Promise<void> {
+	const processor = processorLabel(deps);
+	await tellStaff(deps, {
+		headline: `A ${processor} refund was more than was left of its gift`,
+		body:
+			`${processor} reported a refund of more than the gift’s earlier refunds and disputes had left ` +
+			'of it here, so it is recorded at what was left and the gift reads refunded in full.',
+		facts: [
+			{ label: 'Refund', value: refundId },
+			{ label: 'Donation', value: reversed.donationId },
+			{ label: 'Refund at the processor', value: reversal.providerReversalId },
+			{ label: 'Amount', value: `${amountMinor} ${reversal.currency} (minor units)` },
+			capped
+		],
+		action:
+			`Compare the gift’s refunds and disputes in the ${processor} dashboard with the ones recorded ` +
+			'here. Where more went back to the donor than the gift took in, post a correction in /admin/books for the difference.'
+	});
+}
+
+/**
+ * a refund of a gift its earlier refunds and disputes already took whole: nothing is written, and
+ * staff are told on each delivery that meets it, because no row is left to say one already did.
+ */
+async function nothingLeftToRefund(
+	deps: SettleDeps,
+	reversal: RefundRead,
+	reversed: Payment,
+	reportedMinor: number
+): Promise<SettleResult> {
+	const processor = processorLabel(deps);
+	await tellStaff(deps, {
+		headline: `A ${processor} refund found nothing of its gift left to take`,
+		body:
+			`${processor} reported a refund of a gift whose earlier refunds and disputes already take the ` +
+			'whole of it here, so nothing was written: the books already hold none of this gift.',
+		facts: [
+			{ label: 'Refund at the processor', value: reversal.providerReversalId },
+			{ label: 'Transaction refunded', value: reversal.reversedTxnId },
+			{ label: 'Donation', value: reversed.donationId },
+			{ label: 'Amount reported', value: `${reportedMinor} ${reversal.currency} (minor units)` }
+		],
+		action:
+			`Compare the gift’s refunds and disputes in the ${processor} dashboard with the ones recorded ` +
+			'here. Where more went back to the donor than the gift took in, post a correction in /admin/books for the difference.'
+	});
+	return {
+		ok: true,
+		outcome: 'unactionable',
+		detail: `refund ${reversal.providerReversalId} found nothing of payment ${reversed.id} left to take; nothing was written.`
+	};
+}
+
 /** a refund recorded against its gift and absent from the books, told to an operator. */
 async function refundNotPosted(
 	deps: SettleDeps,
@@ -751,7 +977,8 @@ async function refundNotPosted(
 	reversed: Payment,
 	refundId: string,
 	amountMinor: number,
-	problem: string
+	problem: string,
+	capped: Fact | null
 ): Promise<SettleResult> {
 	const processor = processorLabel(deps);
 	await tellStaff(deps, {
@@ -765,6 +992,7 @@ async function refundNotPosted(
 			{ label: 'Donation', value: reversed.donationId },
 			{ label: 'Refund at the processor', value: reversal.providerReversalId },
 			{ label: 'Amount', value: `${amountMinor} ${reversal.currency} (minor units)` },
+			...(capped === null ? [] : [capped]),
 			{ label: 'Problem', value: problem }
 		],
 		action:
@@ -995,7 +1223,8 @@ async function closedTheOtherWay(
 
 /**
  * staff told a refund did not stand, because the donor may already hold word that it went out and
- * nothing here writes to them.
+ * nothing here writes to them — and a Zap may already have heard of it, keyed on its row, with
+ * nothing to follow.
  */
 async function refundDidNotStand(
 	deps: SettleDeps,
@@ -1013,9 +1242,17 @@ async function refundDidNotStand(
 			{ label: 'Refund', value: refundRow.id },
 			{ label: 'Donation', value: refundRow.donationId },
 			{ label: 'Refund at the processor', value: reversal.providerReversalId },
-			{ label: 'Amount', value: `${refundRow.amountMinor} ${refundRow.currency} (minor units)` }
+			{ label: 'Amount', value: `${refundRow.amountMinor} ${refundRow.currency} (minor units)` },
+			{
+				label: 'Zaps',
+				value:
+					`Zaps on Gift refunded may already have been told of this refund, as id ${refundRow.id}, ` +
+					'and nothing tells them it did not go through.'
+			}
 		],
-		action: `Check the refund in the ${processor} dashboard, and let the donor know it did not go through.`
+		action:
+			`Check the refund in the ${processor} dashboard, and let the donor know it did not go through. ` +
+			'Where a Zap on Gift refunded acted on it, undo what it did.'
 	});
 }
 
@@ -1037,13 +1274,92 @@ async function tellStaff(deps: SettleDeps, input: Parameters<typeof alert>[1]): 
 }
 
 /**
- * whether a reversed charge's metadata says it is this deployment's: a gift's pointer, which every
- * intent and commitment this app mints carries, or a commitment's cadence, which a collection's
- * charge reads back off the commitment it was collected under (`ReversalFacts.reversedMetadata` in
- * ../payments/provider.ts).
+ * a reversal of a charge recorded here as `failed` or `cancelled`, which no redelivery settles:
+ * nothing is written, and staff are told, because the processor reports money moving on a charge
+ * this deployment reads as having taken none.
  */
-function namesThisDeployment(metadata: Readonly<Record<string, string>>): boolean {
-	return [DONATION_METADATA_KEY, INTERVAL_METADATA_KEY].some((key) => metadata[key]?.trim());
+async function chargeNeverSettled(
+	deps: SettleDeps,
+	reversal: Reversal,
+	reversed: Payment
+): Promise<SettleResult> {
+	const processor = processorLabel(deps);
+	await tellStaff(deps, {
+		headline: `A ${processor} refund or dispute names a charge that never settled here`,
+		body:
+			`${processor} reported a refund or a dispute of a charge this deployment recorded as ` +
+			`${reversed.status}, so the books hold no money of it to take back and nothing was written.`,
+		facts: [
+			{ label: 'At the processor', value: reversal.providerReversalId },
+			{ label: 'Transaction reversed', value: reversal.reversedTxnId },
+			{ label: 'Donation', value: reversed.donationId },
+			{ label: 'Recorded here as', value: reversed.status }
+		],
+		action:
+			`Check the charge in the ${processor} dashboard. Where it did take the donor’s money, ` +
+			'correct the gift in /admin/books by hand.'
+	});
+	return {
+		ok: true,
+		outcome: 'unactionable',
+		detail: `transaction ${reversal.reversedTxnId} is recorded as ${reversed.status}, so reversal ${reversal.providerReversalId} was not written.`
+	};
+}
+
+/**
+ * a reversal of a charge with no payment row here. held open only where the charge's metadata names
+ * a gift this deployment recorded: every gift is recorded at authorization, and a collection under a
+ * commitment reads back the commitment's pointer to its first gift (`ReversalFacts.reversedMetadata`
+ * in ../payments/provider.ts), so the row the charge settles into is the one still to come. a
+ * pointer to no gift here never becomes one — another deployment on the same account, most often —
+ * and is told to an operator once per delivery; a charge naming no gift is another integration's,
+ * answered quietly.
+ */
+async function chargeNotHere(
+	deps: SettleDeps,
+	reversal: Reversal,
+	eventId: string
+): Promise<SettleResult> {
+	const named = reversal.reversedMetadata[DONATION_METADATA_KEY];
+	if (!named?.trim()) {
+		return {
+			ok: true,
+			outcome: 'unmatched',
+			detail: `transaction ${reversal.reversedTxnId} has no payment row here and names no gift of this deployment’s; nothing was written.`
+		};
+	}
+	const [gift] = await deps.db
+		.select({ id: donation.id })
+		.from(donation)
+		.where(eq(donation.id, named));
+	if (gift !== undefined) {
+		return {
+			ok: false,
+			reason: 'incomplete',
+			detail: `transaction ${reversal.reversedTxnId} names gift ${named}, which has not settled here yet, so reversal ${reversal.providerReversalId} (event ${eventId}) was not written and is worth delivering again.`
+		};
+	}
+	const processor = processorLabel(deps);
+	await tellStaff(deps, {
+		headline: `A ${processor} refund or dispute names a gift this deployment has no record of`,
+		body:
+			`${processor} reported a refund or a dispute of a charge whose details name a gift, and no ` +
+			'gift here has that id, so nothing was written. It is most often a charge another ' +
+			`deployment took on the same ${processor} account.`,
+		facts: [
+			{ label: 'At the processor', value: reversal.providerReversalId },
+			{ label: 'Transaction reversed', value: reversal.reversedTxnId },
+			{ label: 'Gift named', value: named }
+		],
+		action:
+			`Find the charge in the ${processor} dashboard to see what took it. The books hold no gift ` +
+			'under that id, so nothing here needs correcting.'
+	});
+	return {
+		ok: true,
+		outcome: 'unmatched',
+		detail: `transaction ${reversal.reversedTxnId} has no payment row here and names gift ${named}, which this deployment has no record of; nothing was written.`
+	};
 }
 
 /**
