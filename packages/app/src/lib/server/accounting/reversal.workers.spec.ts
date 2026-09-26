@@ -18,10 +18,10 @@ import {
 	type Reversal,
 	type Settlement
 } from '../payments/provider';
-import { connectQuickbooks, saveQuickbooksAccounts } from './connection';
+import { connectQuickbooks, disconnectQuickbooks, saveQuickbooksAccounts } from './connection';
 import { sendDueEntries } from './deliver';
 import { createAccountingProvider } from './factory';
-import { moveQuickbooksStartAt, previewQuickbooksStartAt } from './outbox';
+import { moveQuickbooksStartAt, previewQuickbooksStartAt, queueOwedReversals } from './outbox';
 import { QUICKBOOKS_SANDBOX_URL } from './quickbooks';
 
 // what a refund or a dispute owes QuickBooks, against a real D1, from the gift it reverses.
@@ -218,7 +218,7 @@ describe('a refund', () => {
 		await settledGift();
 		// the gift went over, and the operator then moved the start date past the refund's day.
 		await env.DB.prepare(
-			`update quickbooks_sync set status = 'sent', attempts = 1, remote_id = '42'`
+			`update quickbooks_sync set status = 'sent', attempts = 1, remote_id = '42', realm_id = '4620816365'`
 		).run();
 		await env.DB.prepare(`update quickbooks_connection set start_at = ?`)
 			.bind(new Date('2026-09-01T00:00:00.000Z').getTime())
@@ -504,7 +504,7 @@ describe('moving the start date', () => {
 		await connect(BEFORE_THE_GIFT);
 		await refundedAndPutBack();
 		await env.DB.prepare(
-			`update quickbooks_sync set status = 'sent', attempts = 1, remote_id = '42'
+			`update quickbooks_sync set status = 'sent', attempts = 1, remote_id = '42', realm_id = '4620816365'
 			 where entry_group_id = (select id from entry_group where source_type = 'payment'
 			                         and source_id in (select id from payment where direction = 'inbound'))`
 		).run();
@@ -559,8 +559,11 @@ describe('sending a reversal', () => {
 		});
 	});
 
-	/** a company that knows the donor as customer 77 and takes every journal entry posted to it. */
-	function intuit(): Record<string, unknown>[] {
+	/**
+	 * a company that knows the donor as `donor.customer` (77 unless a case moves it), takes every
+	 * journal entry posted to it, and reads each one back by its id as it was posted.
+	 */
+	function intuit(donor = { customer: DONOR }): Record<string, unknown>[] {
 		const posted: Record<string, unknown>[] = [];
 		vi.stubGlobal('fetch', async (input: Request | string | URL, init?: RequestInit) => {
 			const request = input instanceof Request ? input : new Request(String(input), init);
@@ -575,7 +578,12 @@ describe('sending a reversal', () => {
 					});
 				}
 				if (body.startsWith('select * from Customer')) {
-					return Response.json({ QueryResponse: { Customer: [{ Id: DONOR }] } });
+					return Response.json({ QueryResponse: { Customer: [{ Id: donor.customer }] } });
+				}
+				const byId = /^select \* from JournalEntry where Id = '(\d+)'$/.exec(body);
+				const entry = byId === null ? undefined : posted[Number(byId[1]) - 1201];
+				if (entry !== undefined) {
+					return Response.json({ QueryResponse: { JournalEntry: [{ ...entry, Id: byId?.[1] }] } });
 				}
 				return Response.json({ QueryResponse: {} });
 			}
@@ -658,6 +666,21 @@ describe('sending a reversal', () => {
 		expect(total('Debit')).toBeCloseTo(total('Credit'), 10);
 	});
 
+	it('sends a refund against the customer its gift was posted to, whoever the donor matches now', async () => {
+		await settledGift();
+		await reversed(refund());
+		const donor = { customer: DONOR };
+		const posted = intuit(donor);
+		await run();
+		// the donor's email changed, or the bookkeeper merged customers: a lookup now finds another.
+		donor.customer = '88';
+
+		await run();
+
+		expect(posted.map((entry) => entry.TxnDate)).toEqual(['2026-08-03', '2026-08-20']);
+		expect(sides(posted[1]).map(([, , , customer]) => customer)).toEqual([DONOR, DONOR]);
+	});
+
 	/** the connection moved to another company, and that company's accounts picked. */
 	async function movedToAnotherCompany(): Promise<void> {
 		await connectQuickbooks(db, {
@@ -730,6 +753,37 @@ describe('sending a reversal', () => {
 		]);
 	});
 
+	it('queues nothing for a refund of a gift sent to a company nobody recorded', async () => {
+		await settledGift();
+		intuit();
+		await run();
+		// what migrations/0011_quickbooks_sync_realm.sql leaves on a row sent before the connection moved.
+		await env.DB.prepare(`update quickbooks_sync set realm_id = null`).run();
+
+		await reversed(refund());
+
+		expect(await queued()).toEqual([
+			{ source_type: 'payment', direction: 'inbound', status: 'sent' }
+		]);
+	});
+
+	it('never queues on a start-date move a refund of a gift sent to a company nobody recorded', async () => {
+		await settledGift();
+		intuit();
+		await run();
+		await env.DB.prepare(`update quickbooks_sync set realm_id = null`).run();
+		await reversed(refund());
+		const earlier = new Date('2025-10-01T00:00:00.000Z');
+
+		const preview = await previewQuickbooksStartAt(db, earlier, new Date());
+		await moveQuickbooksStartAt(db, earlier, new Date());
+
+		expect(await queued()).toEqual([
+			{ source_type: 'payment', direction: 'inbound', status: 'sent' }
+		]);
+		expect(preview.queues).toMatchObject({ reversals: 0 });
+	});
+
 	it('never sends a queued refund once its gift’s company is no longer connected', async () => {
 		await settledGift();
 		await reversed(refund());
@@ -761,6 +815,45 @@ describe('sending a reversal', () => {
 			{ source_type: 'payment', direction: 'inbound', status: 'sent' }
 		]);
 		expect(preview.queues).toMatchObject({ reversals: 0 });
+	});
+
+	it('queues on a connect to the same company every reversal made while it was disconnected', async () => {
+		await settledGift();
+		intuit();
+		await run();
+		await disconnectQuickbooks(db);
+		await reversed(refund());
+		await reversed({
+			kind: 'refund_failed',
+			reversedTxnId: 'pi_1',
+			providerReversalId: 're_1',
+			occurredAt: new Date('2026-09-15T00:00:00.000Z'),
+			reversedMetadata: {}
+		});
+		await connect(new Date());
+
+		await queueOwedReversals(db, new Date());
+
+		expect(await queued()).toEqual([
+			{ source_type: 'payment', direction: 'inbound', status: 'sent' },
+			{ source_type: 'refund', direction: 'refund', status: 'pending' },
+			{ source_type: 'payment', direction: 'refund', status: 'pending' }
+		]);
+	});
+
+	it('queues on a connect to another company nothing reversing a gift the first one holds', async () => {
+		await settledGift();
+		intuit();
+		await run();
+		await disconnectQuickbooks(db);
+		await reversed(refund());
+		await movedToAnotherCompany();
+
+		await queueOwedReversals(db, new Date());
+
+		expect(await queued()).toEqual([
+			{ source_type: 'payment', direction: 'inbound', status: 'sent' }
+		]);
 	});
 
 	it('holds a withdrawal back while its gift’s row is unsent, and leaves it untried', async () => {

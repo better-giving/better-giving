@@ -2528,7 +2528,8 @@ export const quickbooksSync = sqliteTable(
 
 		/**
 		 * the QuickBooks company (`quickbooks_connection.realm_id`) this row's record went to, or
-		 * may have: null until a delivery run first takes the row.
+		 * may have: null until a delivery run first takes the row, and null again on an attempt
+		 * given back to untried.
 		 *
 		 * the connection can be moved to another company, and a later record about this gift — a
 		 * refund of it — belongs in the books the gift itself reached, not in whichever company is

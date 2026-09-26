@@ -150,6 +150,11 @@ export type AccountingFailure = {
 	readonly reason: AccountingFailureReason;
 	readonly detail: string;
 	readonly retryable: boolean;
+	/**
+	 * the company a send addressed before it was refused, where it got as far as naming one: the
+	 * books a call that went out may have reached.
+	 */
+	readonly companyId?: string;
 };
 
 /** a refusal, with `retryable` taken off the partition above. */
@@ -279,10 +284,17 @@ export type CorrectionRecord = {
  * money leaving a gift already sent, or coming back to it, as it goes over: a refund's or a
  * dispute's withdrawal, a withdrawal put back when it did not stand, and a lost dispute's settle-up.
  *
- * a correcting entry's lines, with the gift's donor as their contact stands now, which the adapter
- * finds a customer for the way it finds a gift's.
+ * a correcting entry's lines, against the customer the record it answers was posted to. the donor as
+ * their contact stands now is what the adapter finds a customer for where that record names none.
  */
-export type ReversalRecord = CorrectionRecord & { readonly donor: Donor };
+export type ReversalRecord = CorrectionRecord & {
+	readonly donor: Donor;
+	/**
+	 * the record already in the company's books that this one answers — the gift, or the withdrawal
+	 * being put back or settled up: its entry group id, and what the provider called it.
+	 */
+	readonly answers: { readonly key: string; readonly remoteId: string };
+};
 
 /** what one queued entry group turns out to be. */
 export type Sendable =
@@ -304,9 +316,11 @@ export type Sendable =
  */
 export type SendAttempt = 'first' | 'again';
 
-/** what the provider called the record it created — `quickbooks_sync.remote_id`. */
+/** what the provider called the record it created — `quickbooks_sync.remote_id` — and where. */
 export type RemoteRecord = {
 	readonly remoteId: string;
+	/** the company it was created in, as the connection named it when the send read it. */
+	readonly companyId: string;
 };
 
 /** the company a connection points at, as the screen that made it shows it. */

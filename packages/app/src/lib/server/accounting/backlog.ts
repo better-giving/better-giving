@@ -1,6 +1,8 @@
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
-import { quickbooksSync } from '../db/schema';
+import { entryGroup, quickbooksSync } from '../db/schema';
+import { giftBehind, keyedOnARefund } from './outbox';
 
 // what the console says about the queue, and the one press an operator has over it.
 //
@@ -32,25 +34,65 @@ export interface QuickbooksBacklog {
 	 * the books are, and a gift waiting on a backoff is as far behind as one given up on.
 	 */
 	readonly oldestWaitingAt: Date | null;
+	/**
+	 * every refund, dispute or what puts one back that waits on a gift given up on, with that gift.
+	 *
+	 * none of them is tried until the gift is sent (./deliver.ts), so none has an error of its own to
+	 * show, and a gift an operator recorded in QuickBooks by hand instead of retrying leaves each one
+	 * waiting for good — a refund to record there by hand too.
+	 */
+	readonly heldBehindFailed: readonly HeldReversal[];
+}
+
+/** a reversal's queue row, by its entry group, and the gift's entry group it waits on. */
+export interface HeldReversal {
+	readonly entryGroupId: string;
+	readonly waitsOn: string;
 }
 
 /** every status that is not finished. `sent` is the one terminal state and is never read back. */
 const UNFINISHED = inArray(quickbooksSync.status, ['pending', 'failed']);
 
-/** the queue, in one read: two aggregates over the index the sweep already has. */
+const giftRow = alias(quickbooksSync, 'gift_row');
+
+/**
+ * the queue, in one batch: two aggregates over the index the sweep already has, and the reversals
+ * held behind a gift given up on — every reversal is keyed on a refund row whose parent is the gift.
+ */
 export async function readQuickbooksBacklog(db: Db): Promise<QuickbooksBacklog> {
-	const [row] = await db
-		.select({
-			failed: sql<number>`coalesce(sum(case when ${eq(quickbooksSync.status, 'failed')} then 1 else 0 end), 0)`,
-			oldestWaitingAt: sql<
-				number | null
-			>`min(case when ${UNFINISHED} then ${quickbooksSync.createdAt} end)`
-		})
-		.from(quickbooksSync);
+	const waitsOn = giftBehind(entryGroup.sourceId);
+	const [[row], held] = await db.batch([
+		db
+			.select({
+				failed: sql<number>`coalesce(sum(case when ${eq(quickbooksSync.status, 'failed')} then 1 else 0 end), 0)`,
+				oldestWaitingAt: sql<
+					number | null
+				>`min(case when ${UNFINISHED} then ${quickbooksSync.createdAt} end)`
+			})
+			.from(quickbooksSync),
+		db
+			.select({
+				entryGroupId: quickbooksSync.entryGroupId,
+				// aliased: a batch reads a row back by column name, and both of these are `entry_group_id`.
+				waitsOn: sql<string>`${giftRow.entryGroupId}`.as('waits_on')
+			})
+			.from(quickbooksSync)
+			.innerJoin(entryGroup, eq(entryGroup.id, quickbooksSync.entryGroupId))
+			.innerJoin(giftRow, eq(giftRow.entryGroupId, waitsOn))
+			.where(
+				and(
+					eq(quickbooksSync.status, 'pending'),
+					keyedOnARefund(entryGroup.sourceId),
+					eq(giftRow.status, 'failed')
+				)
+			)
+			.orderBy(asc(quickbooksSync.entryGroupId))
+	]);
 
 	return {
 		failed: row?.failed ?? 0,
-		oldestWaitingAt: row?.oldestWaitingAt == null ? null : new Date(row.oldestWaitingAt)
+		oldestWaitingAt: row?.oldestWaitingAt == null ? null : new Date(row.oldestWaitingAt),
+		heldBehindFailed: held
 	};
 }
 

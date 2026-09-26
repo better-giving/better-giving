@@ -14,6 +14,7 @@ import {
 	saveQuickbooksCompanyName
 } from '$lib/server/accounting/connection';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
+import { queueOwedReversals } from '$lib/server/accounting/outbox';
 import { readAuthEnv } from '$lib/server/auth';
 import { servedProcessors } from '$lib/server/payments/factory';
 import { secretEquals } from '$lib/server/secret-compare';
@@ -35,7 +36,12 @@ import type { Route } from './+types/quickbooks.callback';
 // **the code is exchanged once and the connection is written before anything else is asked.** a
 // code presented twice can invalidate the tokens it already issued
 // ($lib/server/accounting/provider.ts), so the order is fixed: check the `state`, take the realm off
-// the redirect, exchange, write. what comes after is a label.
+// the redirect, exchange, write. what comes after is the queue and a label.
+//
+// **a refund the books took while nothing was connected is queued as the connection is written.**
+// its own gate found no company, so a reconnect to the company holding its gift is the moment it is
+// owed there ($lib/server/accounting/outbox.ts's `queueOwedReversals`); against any other company
+// it queues nothing that company's books do not hold.
 //
 // **the company's name is read afterwards and its failure changes nothing.** the connection is the
 // tokens and the realm; the name is what an operator reads to tell they connected the books they
@@ -155,11 +161,13 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		return refused('exchange', 502, tokens.reason, tokens.detail);
 	}
 
+	const connectedAt = new Date();
 	const before = await connectQuickbooks(db, {
 		realmId,
 		tokens: tokens.value,
-		startAt: new Date()
+		startAt: connectedAt
 	});
+	await queueOwedReversals(db, connectedAt);
 
 	const company = await provider.readCompany();
 	if (company.ok) await saveQuickbooksCompanyName(db, company.value.companyName);

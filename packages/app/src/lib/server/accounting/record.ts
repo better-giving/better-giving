@@ -10,7 +10,7 @@ import {
 	type EntryLine
 } from '../ledger/queries';
 import { isProcessor } from '../payments/provider';
-import { keyedOnARefund } from './outbox';
+import { keyedOnARefund, readAnswered } from './outbox';
 import {
 	failed,
 	HOLDING_OF,
@@ -31,8 +31,9 @@ import {
 // knows nothing about QuickBooks, while ./quickbooks.ts speaks to QuickBooks and knows nothing
 // about `entry_group`.
 //
-// nothing here reads or writes `quickbooks_sync`. the outbox is written by the posting that owes it
-// and read by the delivery that sends it; this reads neither.
+// nothing here writes `quickbooks_sync`. the outbox is written by the posting that owes it and read
+// by the delivery that sends it; the one thing read off it here is where the record a reversal
+// answers went, through ./outbox.ts, which owns what a reversal answers.
 //
 // ---------------------------------------------------------------------------
 // two entry groups, one record.
@@ -141,8 +142,19 @@ async function isReversal(db: Db, entryGroupId: string): Promise<boolean> {
 	return row?.reversal === 1;
 }
 
-/** a reversal as one record: its lines, 1020's in the holding of the processor that refunded. */
+/**
+ * a reversal as one record: its lines, 1020's in the holding of the processor that refunded, and
+ * the record it answers in the company's books.
+ */
 async function reversalOf(db: Db, group: EntryGroupListRow): Promise<AccountingResult<Sendable>> {
+	const answers = await readAnswered(db, group.id);
+	if (answers === null) {
+		// unreachable through the delivery, which takes a reversal only once what it answers is sent.
+		return failed(
+			'internal_error',
+			`The journal entry ${group.id} reverses one QuickBooks holds no record of, so there is nothing in its books to take it off. Nothing was sent.`
+		);
+	}
 	const donor = await findPaymentDonor(db, group.sourceId);
 	if (donor === null) {
 		return failed(
@@ -170,6 +182,7 @@ async function reversalOf(db: Db, group: EntryGroupListRow): Promise<AccountingR
 				currency: group.currency,
 				memo: group.memo,
 				donor: { displayName: donor.displayName, email: donor.email },
+				answers,
 				lines: lines.value
 			}
 		}

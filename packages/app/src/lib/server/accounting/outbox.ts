@@ -47,12 +47,12 @@ import type { Posting } from '../ledger/posting';
 // gift is judged by when the money moved. inclusive at the start: an entry dated exactly at
 // `start_at` is queued.
 //
-// a reversal is judged by the group it answers instead, and its own date decides nothing. every
-// reversal's group is keyed on its refund-direction row (../donations/reverse.ts): the withdrawal
-// `('refund', row)` answers the gift `('payment', parent)`, and what puts a withdrawal back
-// `('payment', row)` or settles a lost dispute up `('adjustment', row)` answers the withdrawal. it
-// is owed exactly where that group holds a queue row, in any status, that did not go to another
-// company — so a refund of a gift QuickBooks was sent is sent after it whatever day it lands, and
+// a reversal is judged by the group it answers instead (`ANSWERED_BY_SOURCE_TYPE` below), and its
+// own date decides nothing. every reversal's group is keyed on its refund-direction row
+// (../donations/reverse.ts): the withdrawal `('refund', row)` answers the gift `('payment', parent)`,
+// and what puts a withdrawal back `('payment', row)` or settles a lost dispute up
+// `('adjustment', row)` answers the withdrawal. it is owed exactly where that group holds this
+// company's queue row, in any status — so a refund of a gift QuickBooks was sent is sent after it whatever day it lands, and
 // one of a gift QuickBooks never got, or that went to a company no longer connected
 // (`quickbooks_sync.realm_id`, written by ./deliver.ts), is never sent. a hand correction names no
 // gift, so its own date is the whole of its rule.
@@ -179,32 +179,80 @@ const answered = alias(entryGroup, 'answered');
 const waiting = alias(entryGroup, 'waiting');
 
 /** the id of the gift group behind refund row `sourceId`: `('payment', parent)`. */
-function giftBehind(sourceId: SQLWrapper): SQL {
+export function giftBehind(sourceId: SQLWrapper): SQL {
 	return sql`(select ${gift.id} from ${entryGroup} ${gift}
 		inner join ${payment} on ${payment.id} = ${sourceId} and ${payment.direction} = 'refund'
 		where ${gift.sourceType} = ${OWED_KINDS.gifts} and ${gift.sourceId} = ${payment.parentPaymentId})`;
 }
 
+/** the id of the withdrawal group keyed on refund row `sourceId`: `('refund', row)`. */
+function withdrawalOn(sourceId: SQLWrapper): SQL {
+	return sql`(select ${withdrawal.id} from ${entryGroup} ${withdrawal}
+		where ${withdrawal.sourceType} = ${OWED_KINDS.reversals} and ${withdrawal.sourceId} = ${sourceId})`;
+}
+
 /**
- * the id of the group a reversal's group answers: the gift behind it for a withdrawal, and the
- * withdrawal `('refund', row)` for what puts it back or settles it up.
+ * what a reversal's group answers, by the source type it is posted under — every one keyed on its
+ * refund-direction row. the withdrawal `('refund', row)` answers the gift behind it, and what puts a
+ * withdrawal back `('payment', row)` or settles a lost dispute up `('adjustment', row)` answers the
+ * withdrawal. ../books/writes.ts holds every reversal kind it composes to a key of this table, so a
+ * kind posted under any other source type is a compile error there rather than a reversal the SQL
+ * below answers with nothing.
  */
+export const ANSWERED_BY_SOURCE_TYPE = {
+	refund: giftBehind,
+	payment: withdrawalOn,
+	adjustment: withdrawalOn
+} as const satisfies Partial<Record<EntrySourceType, (sourceId: SQLWrapper) => SQL>>;
+
+export type ReversalSourceType = keyof typeof ANSWERED_BY_SOURCE_TYPE;
+
+/** the id of the group a reversal's group answers, rendered from {@link ANSWERED_BY_SOURCE_TYPE}. */
 function answeredGroupId(sourceType: SQLWrapper, sourceId: SQLWrapper): SQL {
-	return sql`case when ${sourceType} = ${OWED_KINDS.reversals} then ${giftBehind(sourceId)}
-		else (select ${withdrawal.id} from ${entryGroup} ${withdrawal}
-			where ${withdrawal.sourceType} = ${OWED_KINDS.reversals} and ${withdrawal.sourceId} = ${sourceId}) end`;
+	const arms = Object.entries(ANSWERED_BY_SOURCE_TYPE).map(
+		([type, groupOf]) => sql`when ${type} then ${groupOf(sourceId)}`
+	);
+	return sql`case ${sourceType} ${sql.join(arms, sql` `)} end`;
+}
+
+/**
+ * the record in the company's books that reversal group `entryGroupId` answers: that group's id, and
+ * the remote id its `sent` row carries — or null where it has none. read by ./record.ts as a
+ * reversal is sent, which the delivery does only once that row is `sent` to the company connected
+ * now ({@link awaitingWhatItAnswers}).
+ */
+export async function readAnswered(
+	db: Db,
+	entryGroupId: string
+): Promise<{ key: string; remoteId: string } | null> {
+	const [row] = await db
+		.select({ key: quickbooksSync.entryGroupId, remoteId: quickbooksSync.remoteId })
+		.from(quickbooksSync)
+		.where(
+			sql`${quickbooksSync.entryGroupId} = (select ${answeredGroupId(waiting.sourceType, waiting.sourceId)}
+				from ${entryGroup} ${waiting} where ${waiting.id} = ${entryGroupId})
+				and ${quickbooksSync.status} = 'sent'`
+		);
+	return row === undefined || row.remoteId === null
+		? null
+		: { key: row.key, remoteId: row.remoteId };
 }
 
 /** the realm of the company connected now, or null where none is. */
 export const CONNECTED_REALM = sql`(select ${quickbooksConnection.realmId} from ${quickbooksConnection} where ${quickbooksConnection.id} = ${CONNECTION_ID})`;
 
 /**
- * whether the queue row in scope is this company's: it names the company connected now, or none.
- * a row names one once an attempt at it may have reached Intuit (./deliver.ts), and a row that
- * reached another company is a record in books this connection does not hold — nothing that
- * reverses it belongs here.
+ * whether the queue row in scope is this company's: it names the company connected now, or it names
+ * none and nothing has ever sent it. a row names a company from the claim of any attempt that may
+ * reach Intuit (./deliver.ts), so a null on a row that was sent or tried is a company nobody
+ * recorded — migrations/0011_quickbooks_sync_realm.sql leaves one on a row sent before the
+ * connection moved — and a record in books this connection may not hold: nothing that reverses it
+ * belongs here.
+ *
+ * two-valued: a null realm compared is null, and `not` of that is null too, which no `where` takes.
  */
-const IN_THIS_COMPANY = sql`(${quickbooksSync.realmId} is null or ${quickbooksSync.realmId} = ${CONNECTED_REALM})`;
+const IN_THIS_COMPANY = sql`(coalesce(${quickbooksSync.realmId} = ${CONNECTED_REALM}, 0)
+	or (${quickbooksSync.realmId} is null and ${quickbooksSync.remoteId} is null and ${quickbooksSync.attempts} = 0))`;
 
 /** whether the group a reversal's group answers holds this company's queue row, in any status. */
 function answeredIsQueued(sourceType: SQLWrapper, sourceId: SQLWrapper): SQL {
@@ -342,6 +390,33 @@ export async function moveQuickbooksStartAt(db: Db, startAt: Date, now: Date): P
 		),
 		db.delete(quickbooksSync).where(droppedBy(STORED_START_AT, now))
 	]);
+}
+
+/**
+ * every reversal owed to the company connected now that holds no queue row: each one whose answered
+ * group holds this company's row, in any status — the rule a reversal is queued by as it lands.
+ *
+ * for a connect. a refund that lands while no company is connected is queued nowhere, and a
+ * reconnect writes the connection alone (./connection.ts), so without this a refund of a gift the
+ * company already holds is never sent. against another company it queues nothing a gift sent to the
+ * first one answers, because that row names the first company. two passes in one `batch()`, because
+ * a chain of reversals is two deep at most ({@link ANSWERED_BY_SOURCE_TYPE}): the second reaches
+ * what puts back or settles up a withdrawal the first just queued.
+ */
+export async function queueOwedReversals(db: Db, now: Date): Promise<void> {
+	const pass = () =>
+		db.insert(quickbooksSync).select((qb) =>
+			qb
+				.select(pendingRow(entryGroup.id, now, now))
+				.from(entryGroup)
+				.where(
+					sql`${CONNECTED_REALM} is not null
+						and ${keyedOnARefund(entryGroup.sourceId)}
+						and not exists (select 1 from ${quickbooksSync} where ${quickbooksSync.entryGroupId} = ${entryGroup.id})
+						and ${answeredIsQueued(entryGroup.sourceType, entryGroup.sourceId)}`
+				)
+		);
+	await db.batch([pass(), pass()]);
 }
 
 /**

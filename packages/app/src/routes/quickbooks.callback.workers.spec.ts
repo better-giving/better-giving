@@ -7,7 +7,10 @@ import {
 	readQuickbooksConnection,
 	saveQuickbooksAccounts
 } from '$lib/server/accounting/connection';
+import { postableId } from '$lib/server/db/accounts';
 import { createDb, type Db } from '$lib/server/db/client';
+import { contact, donation, payment, quickbooksSync } from '$lib/server/db/schema';
+import { post, postingStatements } from '$lib/server/ledger/posting';
 import { requiredCredentials } from '$lib/server/payments/factory';
 import {
 	failed,
@@ -139,7 +142,17 @@ let db: Db;
 
 beforeEach(async () => {
 	db = createDb(env.DB);
-	await env.DB.prepare('delete from quickbooks_connection').run();
+	for (const table of [
+		'quickbooks_sync',
+		'quickbooks_connection',
+		'ledger_entry',
+		'entry_group',
+		'payment',
+		'donation',
+		'contact'
+	]) {
+		await env.DB.prepare(`delete from ${table}`).run();
+	}
 	stub.exchanged = { ok: true, value: TOKENS };
 	stub.company = { ok: true, value: { companyId: REALM, companyName: 'Hope Foundation' } };
 	stub.accounts = null;
@@ -206,6 +219,77 @@ const NONE_PICKED = {
 	nowpaymentsBalance: null,
 	undepositedFunds: null
 };
+
+/**
+ * a 100.00 gift sent to `sentTo`, and a refund of it the books took while no company was connected:
+ * its group written, and no queue row, because the settle-time gate found no connection.
+ */
+async function sentGiftRefundedWhileDisconnected(sentTo = REALM): Promise<void> {
+	const contactId = crypto.randomUUID();
+	const donationId = crypto.randomUUID();
+	const giftId = crypto.randomUUID();
+	const refundId = crypto.randomUUID();
+	const at = new Date('2026-02-01T10:00:00.000Z');
+	const moved = (sourceType: 'payment' | 'refund', sourceId: string, sign: 1 | -1) =>
+		post({
+			sourceType,
+			sourceId,
+			currency: 'USD',
+			occurredAt: at,
+			memo: null,
+			lines: [
+				{ accountId: postableId('undepositedFunds'), amountMinor: sign * 10_000 },
+				{ accountId: postableId('donationsDeductible'), amountMinor: -sign * 10_000 }
+			]
+		});
+	const gift = moved('payment', giftId, 1);
+	const refund = moved('refund', refundId, -1);
+	const giftGroup = gift.group.id;
+	if (giftGroup === undefined) throw new Error('post() minted no entry group id');
+	const paid = {
+		donationId,
+		currency: 'USD',
+		method: 'card',
+		status: 'succeeded',
+		provider: 'stripe'
+	} as const;
+	await db.batch([
+		db.insert(contact).values({ id: contactId, kind: 'individual', displayName: 'Ada Lovelace' }),
+		db.insert(donation).values({
+			id: donationId,
+			contactId,
+			totalMinor: 10_000,
+			currency: 'USD',
+			receivedAt: at
+		}),
+		db.insert(payment).values({
+			...paid,
+			id: giftId,
+			amountMinor: 10_000,
+			direction: 'inbound',
+			providerTxnId: 'pi_1',
+			occurredAt: at
+		}),
+		db.insert(payment).values({
+			...paid,
+			id: refundId,
+			amountMinor: 10_000,
+			direction: 'refund',
+			parentPaymentId: giftId,
+			providerTxnId: 're_1',
+			occurredAt: at
+		}),
+		...postingStatements(db, gift),
+		...postingStatements(db, refund),
+		db.insert(quickbooksSync).values({
+			entryGroupId: giftGroup,
+			status: 'sent',
+			attempts: 1,
+			remoteId: '42',
+			realmId: sentTo
+		})
+	]);
+}
 
 /** the page drawn from what the loader handed it; the cast is the props react router injects. */
 function markup(loaderData: LoaderData): string {
@@ -355,6 +439,26 @@ describe('GET /quickbooks/callback', () => {
 		await back();
 
 		expect(stub.chartReads).toBe(1);
+	});
+
+	it('queues a refund made while the company was disconnected, once it is connected again', async () => {
+		await sentGiftRefundedWhileDisconnected();
+
+		await back();
+
+		const rows = await db
+			.select({ entryGroupId: quickbooksSync.entryGroupId, status: quickbooksSync.status })
+			.from(quickbooksSync);
+		expect(rows.map((row) => row.status).sort()).toEqual(['pending', 'sent']);
+	});
+
+	it('queues no refund of a gift another company holds, on a connect to this one', async () => {
+		await sentGiftRefundedWhileDisconnected(OTHER_REALM);
+
+		await back();
+
+		const rows = await db.select({ status: quickbooksSync.status }).from(quickbooksSync);
+		expect(rows.map((row) => row.status)).toEqual(['sent']);
 	});
 
 	it('keeps what was picked when the same company is connected again', async () => {

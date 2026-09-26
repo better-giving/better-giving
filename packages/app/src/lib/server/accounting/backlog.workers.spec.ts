@@ -4,7 +4,13 @@ import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
-import { quickbooksSync, type QuickbooksSyncStatus } from '../db/schema';
+import {
+	contact,
+	donation,
+	payment,
+	quickbooksSync,
+	type QuickbooksSyncStatus
+} from '../db/schema';
 import { post, postingStatements } from '../ledger/posting';
 import { readQuickbooksBacklog, retryFailedEntries } from './backlog';
 
@@ -26,7 +32,14 @@ beforeAll(() => {
 beforeEach(async () => {
 	// the lines before the group they hang off, and the queue before both: both are foreign keys,
 	// so any other order is a constraint violation rather than an empty table.
-	for (const table of ['quickbooks_sync', 'ledger_entry', 'entry_group']) {
+	for (const table of [
+		'quickbooks_sync',
+		'ledger_entry',
+		'entry_group',
+		'payment',
+		'donation',
+		'contact'
+	]) {
 		await env.DB.prepare(`delete from ${table}`).run();
 	}
 });
@@ -68,6 +81,81 @@ async function queued(input: {
 	return id;
 }
 
+/**
+ * a gift whose queue row is `giftStatus`, refunded in full, the refund queued and waiting: every
+ * row written the way the settlement and the refund write them, down to the payment rows the
+ * refund is keyed on.
+ */
+async function refundedGift(
+	giftStatus: 'failed' | 'sent'
+): Promise<{ gift: string; refund: string }> {
+	const contactId = uuidv7();
+	const donationId = uuidv7();
+	const giftId = uuidv7();
+	const refundId = uuidv7();
+	const at = new Date(NOW.getTime() - 60 * MINUTE);
+	const moved = (sourceType: 'payment' | 'refund', sourceId: string, sign: 1 | -1) =>
+		post({
+			sourceType,
+			sourceId,
+			currency: 'USD',
+			occurredAt: at,
+			memo: null,
+			lines: [
+				{ accountId: postableId('undepositedFunds'), amountMinor: sign * 10_000 },
+				{ accountId: postableId('donationsDeductible'), amountMinor: -sign * 10_000 }
+			]
+		});
+	const gift = moved('payment', giftId, 1);
+	const refund = moved('refund', refundId, -1);
+	const giftGroup = gift.group.id;
+	const refundGroup = refund.group.id;
+	if (giftGroup === undefined || refundGroup === undefined) {
+		throw new Error('post() minted no entry group id');
+	}
+	const paid = {
+		donationId,
+		amountMinor: 10_000,
+		currency: 'USD',
+		method: 'card',
+		status: 'succeeded',
+		provider: 'stripe',
+		occurredAt: at
+	} as const;
+	await db.batch([
+		db.insert(contact).values({ id: contactId, kind: 'individual', displayName: 'Ada Lovelace' }),
+		db.insert(donation).values({
+			id: donationId,
+			contactId,
+			totalMinor: 10_000,
+			currency: 'USD',
+			receivedAt: at
+		}),
+		db
+			.insert(payment)
+			.values({ ...paid, id: giftId, direction: 'inbound', providerTxnId: `pi_${giftId}` }),
+		db.insert(payment).values({
+			...paid,
+			id: refundId,
+			direction: 'refund',
+			parentPaymentId: giftId,
+			providerTxnId: `re_${refundId}`
+		}),
+		...postingStatements(db, gift),
+		...postingStatements(db, refund),
+		db.insert(quickbooksSync).values({
+			entryGroupId: giftGroup,
+			status: giftStatus,
+			attempts: 1,
+			remoteId: giftStatus === 'sent' ? '42' : null,
+			createdAt: at,
+			updatedAt: at
+		}),
+		db.insert(quickbooksSync).values({ entryGroupId: refundGroup, createdAt: at, updatedAt: at })
+	]);
+	return { gift: giftGroup, refund: refundGroup };
+}
+
 describe('the backlog the console reads', () => {
 	it('counts what was given up on and dates the oldest gift still owed', async () => {
 		await queued({ status: 'failed', minutesAgo: 90 });
@@ -76,14 +164,31 @@ describe('the backlog the console reads', () => {
 
 		expect(await readQuickbooksBacklog(db)).toEqual({
 			failed: 1,
-			oldestWaitingAt: new Date(NOW.getTime() - 200 * MINUTE)
+			oldestWaitingAt: new Date(NOW.getTime() - 200 * MINUTE),
+			heldBehindFailed: []
 		});
 	});
 
 	it('reads a queue with nothing owed as nothing owed', async () => {
 		await queued({ status: 'sent', minutesAgo: 500 });
 
-		expect(await readQuickbooksBacklog(db)).toEqual({ failed: 0, oldestWaitingAt: null });
+		expect(await readQuickbooksBacklog(db)).toEqual({
+			failed: 0,
+			oldestWaitingAt: null,
+			heldBehindFailed: []
+		});
+	});
+
+	it('names each refund waiting on a gift that was given up on, and the gift it waits on', async () => {
+		const failedGift = await refundedGift('failed');
+		// a refund behind a gift that went over is sent by the next run, and waits on nobody.
+		await refundedGift('sent');
+
+		const backlog = await readQuickbooksBacklog(db);
+
+		expect(backlog.heldBehindFailed).toEqual([
+			{ entryGroupId: failedGift.refund, waitsOn: failedGift.gift }
+		]);
 	});
 });
 

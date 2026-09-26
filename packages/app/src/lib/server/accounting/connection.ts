@@ -29,9 +29,9 @@ import { defaultAccounts } from './quickbooks-accounts';
 // ./deliver.ts writes that realm onto a queue row, for the same reason: which company a row's
 // record reached is judged by the statement that acts on it.
 //
-// **nothing here touches `quickbooks_sync`.** the outbox is written by the posting that owes it and
-// by a move of the start date (./outbox.ts), and read by the delivery that sends it; a connection is
-// none of those.
+// **nothing here touches `quickbooks_sync`.** the outbox is written by the posting that owes it, by
+// a move of the start date and by a connect's catching up (./outbox.ts), and read by the delivery
+// that sends it; a connection is none of those.
 //
 // ---------------------------------------------------------------------------
 // why the adapter takes {@link quickbooksStore} rather than a `Db`.

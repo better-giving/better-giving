@@ -129,10 +129,24 @@ function provider(
 	return { port, asked, attempts, revisions };
 }
 
+/** the company every fixture connection names, and the one a provider says it addressed. */
+const REALM = '4620816365';
+
 const accepted = (key: string): AccountingResult<RemoteRecord> => ({
 	ok: true,
-	value: { remoteId: `qb-${key.slice(0, 8)}` }
+	value: { remoteId: `qb-${key.slice(0, 8)}`, companyId: REALM }
 });
+
+/** the singleton connection, naming `realmId`: all the queue's own statements read off it. */
+async function connected(realmId = REALM): Promise<void> {
+	await env.DB.prepare(
+		`insert into quickbooks_connection (id, realm_id, access_token, access_token_expires_at,
+		                                    refresh_token, start_at, created_at, updated_at)
+		 values ('quickbooks', ?, 'access', 0, 'refresh', 0, 0, 0)`
+	)
+		.bind(realmId)
+		.run();
+}
 
 function deps(port: AccountingProvider, email: EmailProvider = mailer().port) {
 	return { db, provider: port, email };
@@ -573,6 +587,43 @@ describe('the due backlog', () => {
 		expect(await row(faulted)).toMatchObject({ attempts: 1, realmId: '4620816365' });
 		expect(await row(refused)).toMatchObject({ status: 'failed', realmId: '4620816365' });
 		expect(await row(blocked)).toMatchObject({ attempts: 0, realmId: null });
+	});
+
+	it('names the company the provider addressed, whichever is connected as the row is written', async () => {
+		// the connection moved between the adapter reading it and the row being written.
+		await connected('9130357184');
+		const sent = await queuedGift();
+		const faulted = await queuedGift();
+
+		await sendDueEntries(
+			deps(
+				provider((key) =>
+					key === sent
+						? accepted(key)
+						: { ...failed('provider_error', 'QuickBooks answered 502.'), companyId: REALM }
+				).port
+			),
+			NOW
+		);
+
+		expect(await row(sent)).toMatchObject({ status: 'sent', realmId: REALM });
+		expect(await row(faulted)).toMatchObject({ attempts: 1, realmId: REALM });
+	});
+
+	it('names the company connected at the claim on a row whose run died mid-send', async () => {
+		await connected();
+		const dying = await queuedGift();
+
+		await sendDueEntries(
+			deps(
+				provider(() => {
+					throw new Error('the isolate went away after the post landed');
+				}).port
+			),
+			NOW
+		);
+
+		expect(await row(dying)).toMatchObject({ status: 'pending', attempts: 1, realmId: REALM });
 	});
 
 	it('does not read a row whose wait is not over', async () => {

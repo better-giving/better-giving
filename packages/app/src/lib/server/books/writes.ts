@@ -1,5 +1,5 @@
 import type { BatchItem } from 'drizzle-orm/batch';
-import { outboxStatements } from '../accounting/outbox';
+import { outboxStatements, type ReversalSourceType } from '../accounting/outbox';
 import type { Db } from '../db/client';
 import type { EntrySourceType } from '../db/schema';
 import { type Posting, postingStatements } from '../ledger/posting';
@@ -112,7 +112,7 @@ const REVERSAL_SOURCE_TYPES = {
 	dispute_won: 'payment',
 	dispute_lost: 'refund',
 	settle_up: 'adjustment'
-} as const satisfies Record<ReversalKind | 'settle_up', EntrySourceType>;
+} as const satisfies Record<ReversalKind | 'settle_up', ReversalSourceType>;
 
 /**
  * a reversal's group, the queue row it owes, and its `gift_refunded` rows. whether QuickBooks is
