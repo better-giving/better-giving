@@ -630,7 +630,7 @@ export function heldSays({ refunds, gifts }: HeldStanding): string {
 	const on = gifts === 1 ? 'a gift' : 'gifts';
 	const which = gifts === 1 ? 'that gift' : 'one of those gifts';
 	const its = refunds === 1 ? 'its refund' : 'its refunds';
-	return `${waiting} on ${on} QuickBooks refused. If you record ${which} in QuickBooks by hand, record ${its} there by hand too.`;
+	return `${waiting} on ${on} that didn’t sync. If you record ${which} in QuickBooks by hand, record ${its} there by hand too.`;
 }
 
 /** what the press that queues them again reports, at itself. */

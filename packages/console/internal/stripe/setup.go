@@ -22,7 +22,7 @@ import (
 // very likely a second processor account or a second mode, so an endpoint, a subscription list or a
 // product already there belongs to whatever the last pair was. so the endpoint at this deployment's
 // address is deleted and made again on every press rather than kept. nothing in this file reads
-// test-versus-live to decide that, and nothing may: the one reading in this project is the stripe
+// test-versus-live to decide that, and nothing may: the one reading in this project is the Stripe
 // dispute alert's dashboard link, which follows the dispute's own `livemode` (CLAUDE.md).
 //
 // **the signing secret exists exactly once.** it is returned only in the response that creates the

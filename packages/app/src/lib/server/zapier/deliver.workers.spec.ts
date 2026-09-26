@@ -232,7 +232,7 @@ describe('sendDueZapierEvents()', () => {
 				status: 'dropped',
 				leased_until: null,
 				last_error:
-					'The refund this event was queued for no longer stands — it failed, or its dispute no longer reads as lost — so it was not sent.'
+					'The refund this event was queued for no longer stands: it failed, or its dispute no longer reads as lost. It was not sent.'
 			})
 		]);
 	});

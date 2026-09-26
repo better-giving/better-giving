@@ -645,19 +645,19 @@ describe('the refunds waiting behind a gift given up on', () => {
 	// recorded in QuickBooks by hand leaves each of its refunds to be recorded there by hand too.
 	it('says one refund behind one gift', () => {
 		expect(heldSays({ refunds: 1, gifts: 1 })).toBe(
-			'1 refund is waiting on a gift QuickBooks refused. If you record that gift in QuickBooks by hand, record its refund there by hand too.'
+			'1 refund is waiting on a gift that didn’t sync. If you record that gift in QuickBooks by hand, record its refund there by hand too.'
 		);
 	});
 
 	it('says several refunds behind one gift', () => {
 		expect(heldSays({ refunds: 3, gifts: 1 })).toBe(
-			'3 refunds are waiting on a gift QuickBooks refused. If you record that gift in QuickBooks by hand, record its refunds there by hand too.'
+			'3 refunds are waiting on a gift that didn’t sync. If you record that gift in QuickBooks by hand, record its refunds there by hand too.'
 		);
 	});
 
 	it('says refunds spread over several gifts', () => {
 		expect(heldSays({ refunds: 3, gifts: 2 })).toBe(
-			'3 refunds are waiting on gifts QuickBooks refused. If you record one of those gifts in QuickBooks by hand, record its refunds there by hand too.'
+			'3 refunds are waiting on gifts that didn’t sync. If you record one of those gifts in QuickBooks by hand, record its refunds there by hand too.'
 		);
 	});
 });

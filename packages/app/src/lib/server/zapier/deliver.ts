@@ -256,7 +256,7 @@ async function readStandingRefunds(db: Db, refundIds: readonly string[]): Promis
 }
 
 const REFUND_NO_LONGER_STANDS =
-	'The refund this event was queued for no longer stands — it failed, or its dispute no longer reads as lost — so it was not sent.';
+	'The refund this event was queued for no longer stands: it failed, or its dispute no longer reads as lost. It was not sent.';
 
 /** the events one run renders, each keyed by the payment its row names. */
 type Events = {

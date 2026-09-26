@@ -127,8 +127,9 @@ import { sendRefundNotice } from './refund-notice';
 //
 // after the batch that wrote a refund, and only on the delivery that wrote it, the donor is sent one
 // short notice (./refund-notice.ts): what this refund took, and what of the gift is now deductible,
-// which that module reads off the rows this batch left. it goes whether or not the gift was ever posted, because the money went back either way. a
-// redelivery is answered `already_posted` before it, and a dispute or a refund that did not stand
+// which that module reads off the rows this batch left. it goes whether or not the gift was ever
+// posted, because the money went back either way. a redelivery is answered `already_posted` before
+// it, and a dispute or a refund that did not stand
 // never reaches it, nor a refund ./settle.ts writes for a gift settled in the same delivery, whose
 // donor was sent no receipt (`RefundNotice`). a notice that fails is told to staff and never changes
 // the answer.
