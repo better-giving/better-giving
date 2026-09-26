@@ -178,8 +178,8 @@ export interface QuickbooksBacklogLine {
 	 */
 	readonly oldestWaitingAt: string | null;
 	/**
-	 * every refund, dispute or what puts one back that waits on a gift given up on, with that gift,
-	 * ordered by the reversal's entry group.
+	 * every refund, dispute, what puts one back or settles one up that waits on a gift given up on,
+	 * with that gift, ordered by the reversal's entry group.
 	 *
 	 * none of them is tried until the gift is sent, so none is counted in {@link failed} and none has
 	 * an error of its own: a retry that sends the gift sends each one after it, and a gift recorded
@@ -251,8 +251,8 @@ export interface QuickbooksStartAtSide {
 	readonly gifts: number;
 	readonly corrections: number;
 	/**
-	 * refunds and disputes, what put one back, and a lost dispute's settle-up. each moves with the
-	 * gift it reverses rather than by its own date, so its date is in neither bound.
+	 * refunds and disputes, what put one back, and a dispute's settle-up, lost or won. each moves
+	 * with the gift it reverses rather than by its own date, so its date is in neither bound.
 	 */
 	readonly reversals: number;
 	readonly earliest: string | null;

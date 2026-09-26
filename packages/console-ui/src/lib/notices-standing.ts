@@ -14,9 +14,9 @@ import type {
 // pins `node` and there is no dom, so a rule left inside the component is one no spec can reach.
 //
 // **the row says what the gift costs and never what the machine is called.** an operator reads
-// that card gifts are charged and never marked paid, or that refunds and disputes are missed; the
-// endpoint, its events and its signing secret are the Save's to establish, and the row names none of
-// them (CLAUDE.md → Product surface).
+// that card gifts are charged and never marked paid, or that refunded and disputed gifts go on
+// reading as paid; the endpoint, its events and its signing secret are the Save's to establish, and
+// the row names none of them (CLAUDE.md → Product surface).
 //
 // **an endpoint short only of refund and dispute events costs what those events carry and no
 // more.** a gift is still marked paid; it is its reversal that never arrives, so the gift goes on
@@ -106,7 +106,7 @@ export function noticesNote(standing: NoticesStanding): string {
 		return 'Stripe tells this deployment when a gift is paid, but this deployment can’t confirm those messages came from Stripe, so it turns every one away and card gifts are never marked paid. Press Save with your two keys to set it up again.';
 	}
 	if (standing.delivering && standing.missing === 'reversals') {
-		return 'Stripe isn’t telling this deployment when a gift is refunded or disputed, so refunds and disputes are missed and those gifts go on reading as paid.';
+		return 'Stripe isn’t telling this deployment when a gift is refunded or disputed, so those gifts go on reading as paid.';
 	}
 	const stops = standing.delivering
 		? 'Stripe isn’t telling this deployment about every kind of payment'

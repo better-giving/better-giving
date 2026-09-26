@@ -147,7 +147,7 @@ describe('noticesNote', () => {
 
 	it('says refunds and disputes are missed, and no more, where only those go untold', () => {
 		const note = noticesNote({ kind: 'incomplete', delivering: true, missing: 'reversals' });
-		expect(note).toContain('refunds and disputes');
+		expect(note).toContain('refunded or disputed');
 		expect(note).not.toContain('never marked paid');
 	});
 

@@ -6,9 +6,9 @@ import type { Route } from './+types/api.stripe.webhook';
 
 // where Stripe's notices about a gift land — a payment that settles it, a refund, or a dispute — and
 // reach the books: the processor's own callback, and one of the routes in this app whose caller is a
-// machine belonging to somebody else — the others are
-// ./api.paypal.webhook.ts, ./api.nowpayments.webhook.ts and ./api.chariot.webhook.ts, which take
-// this file's shape for PayPal, NOWPayments and Chariot.
+// machine belonging to somebody else — the others are ./api.paypal.webhook.ts,
+// ./api.nowpayments.webhook.ts and ./api.chariot.webhook.ts, which take this file's shape for
+// PayPal, NOWPayments and Chariot.
 //
 // a resource route: no component export, so react router answers with what the handlers return
 // instead of rendering anything (react-router/docs/how-to/resource-routes.md). the delivery is a

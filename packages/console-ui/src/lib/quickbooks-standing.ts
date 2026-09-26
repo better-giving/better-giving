@@ -1101,10 +1101,10 @@ function counted(side: QuickbooksStartAtSide): string[] {
  *
  * **the day decides a move earlier's queues and a move later's drops**, so the side read is the
  * direction's and the other is ignored. a refund or dispute moves with the gift it reverses rather
- * than by its own date, and one of a gift the books keep that holds no row of its own — it landed
- * while no company was connected — is queued by any move, whichever way it goes; a move later's
- * queues are those alone. a side counting nothing is a move with nothing to agree to and asks
- * nothing.
+ * than by its own date, and one with no row of its own, of a gift the books already hold — it
+ * landed while no company was connected — is queued by any move, whichever way it goes; a move
+ * later's queues are those alone. a side counting nothing is a move with nothing to agree to and
+ * asks nothing.
  */
 export function startDateAsk(
 	day: string,
