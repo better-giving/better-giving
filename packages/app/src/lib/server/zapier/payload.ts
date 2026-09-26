@@ -99,8 +99,8 @@ export type RefundEvent = {
 	readonly occurred_at: string;
 	/**
 	 * what left, in `amount`'s notation on `GiftEvent`. for a refund, what it gave back. for a
-	 * dispute, what the processor took as the close left it, which is less than the opening withdrew
-	 * where the close took less.
+	 * dispute, what the processor took as the close left it, which can be less than the opening
+	 * withdrew.
 	 */
 	readonly amount: string;
 	readonly amount_minor: number;

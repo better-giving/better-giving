@@ -699,7 +699,7 @@ export function createQuickbooksProvider(
 			// two of this app's accounts can map to one of the company's — the deductible and the
 			// non-deductible funds are both `income`, and an operator may pick one account for two
 			// roles. an entry naming the same account on both sides balances and moves nothing, and
-			// it reads as a correction made.
+			// it reads as a correction or a refund recorded.
 			return failed('invalid_record', movesNothing);
 		}
 

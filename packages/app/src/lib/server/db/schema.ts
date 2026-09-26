@@ -580,8 +580,8 @@ export const account = sqliteTable(
  * which is what lets the ledger exist before `payment`/`donation`/`refund` do — no FK forces those
  * tables to arrive early, and the pair is what the idempotency constraint is built on.
  *
- * `adjustment` is a correction, and links to nothing where a human posted it: that is not caused by
- * a record, so its `source_id` is minted for it. the one caused by a record is a dispute's settle-up
+ * `adjustment` is a correction. one a human posts is caused by no record and links to nothing, so
+ * its `source_id` is minted for it. the one caused by a record is a dispute's settle-up
  * at its close, keyed on its refund-direction row, or on the disputed payment where no opening was
  * recorded. the grain of all five is on `entry_group_source_idx` below, which is the constraint it
  * is part of.
@@ -684,7 +684,7 @@ export const entryGroup = sqliteTable(
 		 *                   natural key to be idempotent against, and two identical corrections
 		 *                   posted deliberately must both land. any borrowed id makes the
 		 *                   second one collide with the first and be refused as a redelivery.
-		 *                   the borrowed ids are a dispute's settle-up at its close: the
+		 *                   only a dispute's settle-up at its close borrows one: the
 		 *                   refund-direction row's `payment.id`, one per dispute, so a redelivered
 		 *                   close collides — and, for a win whose opening was never recorded, the
 		 *                   disputed payment's `payment.id`, one per charge, which holds while a

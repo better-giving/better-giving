@@ -260,7 +260,7 @@ describe('a refund', () => {
 
 		await reversed(refund());
 
-		// the gift's own date is inside the start date; it holds no row because nothing was
+		// the gift's own date is after the start date; it holds no row because nothing was
 		// connected when it settled, and a move is what would queue it.
 		expect(await queued()).toEqual([]);
 	});
@@ -448,7 +448,7 @@ describe('a dispute', () => {
 
 		await reversed(won({ feeKeptMinor: 1_500 }));
 
-		// the close is dated inside the start date, and a correction dated there would be queued.
+		// the close is dated after the start date, and a correction dated there would be queued.
 		expect(await queued()).toEqual([]);
 	});
 
@@ -459,7 +459,7 @@ describe('a dispute', () => {
 
 		await reversed(dispute('dispute_lost', { feeMinor: 1_500, occurredAt: CLOSED_AT }));
 
-		// the close is dated inside the start date, and a correction dated there would be queued.
+		// the close is dated after the start date, and a correction dated there would be queued.
 		expect(await queued()).toEqual([]);
 	});
 });
@@ -488,7 +488,7 @@ describe('a withdrawal that did not stand', () => {
 
 		await reversed({ ...facts('dp_1'), kind: 'dispute_won', feeReturnedMinor: 1_500 });
 
-		// dated inside the start date, and a gift dated there would be queued.
+		// dated after the start date, and a gift dated there would be queued.
 		expect(await queued()).toEqual([]);
 	});
 

@@ -1,7 +1,8 @@
 import { refundNotice } from '@better-giving/emails';
 
 // the notice a donor gets when part of a gift is refunded: the part, and what of the gift is now
-// deductible. a full refund reads the same with zero left, and its subject drops "part of".
+// deductible. a full refund names the gift alone and zero as deductible, and its subject drops
+// "part of".
 export default function RefundNotice() {
 	return refundNotice.template({
 		legalName: 'Hope Foundation',

@@ -23,7 +23,7 @@ import { correctionWrites } from './writes';
 // this is not a second writer. ../ledger/posting.ts is still the only module that may INSERT into
 // `entry_group` or `ledger_entry` — ../ledger/sole-writer.spec.ts holds that — and what happens here
 // is a caller's own `batch()` over the statements that module hands up, by way of ./writes.ts, which
-// is the arrangement its header argues at length.
+// is the arrangement ../ledger/posting.ts's header argues at length.
 
 /**
  * a correcting entry as a caller states it.
