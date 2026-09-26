@@ -708,8 +708,8 @@ describe('verifyEvent', () => {
 	 * the events about a plan, a product, and a subscription being made or revised are answered and
 	 * acted on for nothing: this app created each object itself and nothing here revises one
 	 * (`SUBSCRIBED_EVENT_TYPES` in packages/operator/src/paypal/webhook-listener.ts names what is
-	 * acted on). `ignored` is a success — the route answers 2xx and PayPal stops — where a refusal would buy days
-	 * of redelivery for a no-op.
+	 * acted on). `ignored` is a success — the route answers 2xx and PayPal stops — where a refusal
+	 * would buy days of redelivery for a no-op.
 	 */
 	it.each([
 		'BILLING.SUBSCRIPTION.CREATED',
@@ -1758,8 +1758,9 @@ describe('readReversal on PayPal taking money back', () => {
 	});
 
 	/**
-	 * a day on, the dispute has not closed with the refund, so which it is is a person's call:
-	 * refused terminally, naming both, so the writer tells staff rather than PayPal dropping it.
+	 * a day on, the dispute has not closed with the refund, so whether the refund is the dispute's or
+	 * the merchant's is a person's call: refused terminally, naming both, so the writer tells staff
+	 * rather than PayPal dropping it.
 	 */
 	it('refuses a day-old refund of a capture whose dispute still holds the money, naming both', async () => {
 		recording(refundBeside(DISPUTE));
@@ -2143,8 +2144,8 @@ describe('readSettlement', () => {
 	 * recorded — meets `REFUNDED`, `PARTIALLY_REFUNDED` or `REVERSED` where it would have met
 	 * `COMPLETED`. the money that went back is a refund row of its own, posted from the refund's own
 	 * delivery (../donations/reverse.ts); read here as `failed`, a gift whose first read met a
-	 * refunded capture was never counted, and its refund, finding no settled gift to reverse, was
-	 * retried and then dropped.
+	 * refunded capture would never be counted, and its refund, finding no settled gift to reverse,
+	 * would be retried and then dropped.
 	 */
 	it.each(['REFUNDED', 'PARTIALLY_REFUNDED', 'REVERSED'])(
 		'reads a %s capture as the settlement it was',

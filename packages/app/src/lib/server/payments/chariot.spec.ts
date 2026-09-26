@@ -730,8 +730,8 @@ describe('readReversal — a received grant cancelled', () => {
 		occurredAt: new Date('2024-11-02T09:00:01Z')
 	} as const;
 
-	// Chariot mints no id for the cancellation, so the refund's is derived from the grant's, and
-	// never is the grant's: the gift's own payment row holds that one.
+	// Chariot mints no id for the cancellation, so the refund's is derived from the grant's, and is
+	// never the grant's: the gift's own payment row holds that one.
 	it('reads the whole of what the grant settled back as a refund, under an id of its own', async () => {
 		const calls = recording([{ status: 200, json: CANCELLED_AFTER_RECEIVED }]);
 

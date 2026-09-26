@@ -74,11 +74,11 @@ import type {
 // its own SDK for the same stated reason: so the contract has exactly one place to be stated.
 // everything else takes `PaymentProvider` from ./provider.ts.
 //
-// **it answers the one-off gift, the repeating one, a refund or dispute of either and the listener read, and
-// refuses the listener repairs and the wallet arms** — `unsupported`, exactly as ./factory.ts
-// answers for a processor with no adapter at all, and argued at each of them. the listener is registered by the console's binary
-// (`packages/console/internal/paypal`), so the repairs have no caller here
-// (./webhook-registration.ts).
+// **it answers the one-off gift, the repeating one, a refund or dispute of either and the listener
+// read, and refuses the listener repairs and the wallet arms** — `unsupported`, exactly as
+// ./factory.ts answers for a processor with no adapter at all, and argued at each of them. the
+// listener is registered by the console's binary (`packages/console/internal/paypal`), so the
+// repairs have no caller here (./webhook-registration.ts).
 //
 // a gift that repeats is three objects on PayPal's side. the catalog product is what
 // `prepareRecurringGifts` provisions and `readRecurringGiftProvision` reads; a plan is per amount
@@ -1059,9 +1059,8 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 	 *
 	 * `GET /v1/payments/refund/{id}` is the same deprecated API generation as {@link readSale}, and
 	 * retires with it: `PAYMENT.SALE.REFUNDED` and `PAYMENT.SALE.REVERSED` carry a v1 refund, and
-	 * this is that resource's read.
-	 * no spec ships for it; the fields read are `Refund` in PayPal's own PHP SDK
-	 * (https://github.com/paypal/PayPal-PHP-SDK/blob/master/lib/PayPal/Api/Refund.php), which
+	 * this is that resource's read. no spec ships for it; the fields read are `Refund` in PayPal's own
+	 * PHP SDK (https://github.com/paypal/PayPal-PHP-SDK/blob/master/lib/PayPal/Api/Refund.php), which
 	 * carries no fee figure — so no returned fee is read, and the collection's fee stays booked.
 	 */
 	async function readSaleRefund(
@@ -1181,9 +1180,9 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 						detail: `${both}, so whether the refund is the dispute’s or the merchant’s waits on how the dispute closes; this delivery is worth having again.`
 					}
 				: unsupported(
-						`${both} a day after the refund was made, so whether the refund is the dispute’s or ` +
-							'the merchant’s is a person’s call and nothing was written. Read both in PayPal and ' +
-							'correct the gift in /admin/books by hand.'
+						`${both} a day or more after the refund was made, so whether the refund is the ` +
+							'dispute’s or the merchant’s is a person’s call and nothing was written. Read both in ' +
+							'PayPal and correct the gift in /admin/books by hand.'
 					);
 		}
 

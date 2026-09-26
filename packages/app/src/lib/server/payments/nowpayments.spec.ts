@@ -1160,7 +1160,8 @@ describe('readSettlement — a payment read back', () => {
 		});
 	});
 
-	// `updated_at` on a refunded payment is the refund; the gift, its receipt and its period are not.
+	// `updated_at` on a refunded payment is the refund's time; the gift, its receipt and its period
+	// are dated by the payment's creation.
 	it('dates a refunded payment’s settlement by its creation, not by the refund', async () => {
 		serving(
 			reading({

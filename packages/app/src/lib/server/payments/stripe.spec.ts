@@ -722,11 +722,10 @@ describe('verifyEvent', () => {
 	 * a delivery about a repeating gift is its own kind, and it names something that is not a
 	 * transaction.
 	 *
-	 * this is the whole of why widening `SETTLEMENT_EVENT_TYPES` was not the change: the object on a
-	 * delivery about a commitment is a subscription or an invoice, so its id is a `sub_…` or an
-	 * `in_…`. reported as a settlement it would be handed to `readSettlement`, which retrieves a
-	 * payment intent — a `not_found` against an id that exists, for every collection a donor ever
-	 * makes.
+	 * `SETTLEMENT_EVENT_TYPES` cannot carry it: the object on a delivery about a commitment is a
+	 * subscription or an invoice, so its id is a `sub_…` or an `in_…`. reported as a settlement it
+	 * would be handed to `readSettlement`, which retrieves a payment intent — a `not_found` against
+	 * an id that exists, for every collection a donor ever makes.
 	 */
 	it('reports a delivery about a repeating gift as its own kind', async () => {
 		const body = eventBody('customer.subscription.updated', {
@@ -1065,7 +1064,7 @@ describe('readReversal', () => {
 		);
 
 		expect(result.ok && result.value).toMatchObject({ kind: 'refund', reversedTxnId: 'pi_theirs' });
-		// exactly nothing: \`toMatchObject\` would take any metadata at all as matching \`{}\`.
+		// exactly nothing: `toMatchObject` would take any metadata at all as matching `{}`.
 		expect(result.ok && result.value.kind === 'refund' && result.value.reversedMetadata).toEqual(
 			{}
 		);
@@ -1091,7 +1090,7 @@ describe('readReversal', () => {
 		);
 
 		expect(result.ok && result.value).toMatchObject({ kind: 'refund', reversedTxnId: 'pi_other' });
-		// exactly nothing: \`toMatchObject\` would take any metadata at all as matching \`{}\`.
+		// exactly nothing: `toMatchObject` would take any metadata at all as matching `{}`.
 		expect(result.ok && result.value.kind === 'refund' && result.value.reversedMetadata).toEqual(
 			{}
 		);
@@ -1113,7 +1112,7 @@ describe('readReversal', () => {
 
 		expect(calls).toHaveLength(1);
 		expect(result.ok && result.value).toMatchObject({ kind: 'refund', reversedTxnId: 'ch_legacy' });
-		// exactly nothing: \`toMatchObject\` would take any metadata at all as matching \`{}\`.
+		// exactly nothing: `toMatchObject` would take any metadata at all as matching `{}`.
 		expect(result.ok && result.value.kind === 'refund' && result.value.reversedMetadata).toEqual(
 			{}
 		);

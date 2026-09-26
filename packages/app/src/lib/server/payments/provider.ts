@@ -811,8 +811,9 @@ export type Arrival = {
  *                a kind of its own with a read of its own — `readRecurringGift`, which is what turns
  *                it into the commitment it belongs to.
  *   reversal   — money leaving a transaction that already settled, or coming back to it. it names
- *                the refund rather than the transaction, so it is a kind of its own with a read of
- *                its own — `readReversal`, which says which settled transaction it reverses.
+ *                a refund or a dispute where the processor mints one, not the transaction, so it is
+ *                a kind of its own with a read of its own — `readReversal`, which says which settled
+ *                transaction it reverses.
  *   ignored    — a delivery this app subscribes to nothing for. it is answered and logged rather
  *                than dropped silently, so an endpoint subscribed to more than it handles is
  *                visible instead of merely quiet.
@@ -826,9 +827,10 @@ export type PaymentEventKind = (typeof PAYMENT_EVENT_KINDS)[number];
  * it holds no metadata, no amount and no status, and that is a rule rather than an omission: a
  * delivery is serialised in the API version the account held when it happened, so a replayed one
  * can carry an older shape for any field. what is read here is the little that has never moved.
- * everything a handler acts on comes from a read — `readSettlement` or `readRecurringGift` — which
- * fetches the object fresh against one pinned version. `SettlementEvent.delivered` is the one
- * exception, and says why.
+ * everything a handler acts on comes from a read — `readSettlement`, `readRecurringGift` or
+ * `readReversal` — which fetches the object fresh against one pinned version.
+ * `SettlementEvent.delivered` and `ReversalEvent.delivered` are the exceptions, and the first says
+ * why.
  */
 type VerifiedDelivery = {
 	/**
@@ -849,7 +851,7 @@ export type SettlementEvent = VerifiedDelivery & {
 	/** the transaction this is about, and never null on this kind. */
 	readonly providerTxnId: string;
 	/**
-	 * the settlement as the verified body itself states it — the one exception to `VerifiedDelivery`'s
+	 * the settlement as the verified body itself states it — an exception to `VerifiedDelivery`'s
 	 * rule, and NOWPayments' alone: its IPNs carry no version to replay an older shape under, and a
 	 * payment NOWPayments minted itself (a repeat deposit) may not answer the read.
 	 *
@@ -1810,8 +1812,8 @@ export interface PaymentProvider {
 	readRecurringGift(event: RecurringEvent): Promise<PaymentResult<RecurringGiftNotice>>;
 
 	/**
-	 * reads the refund a reversal delivery names, fresh, at the pinned version. the reconciliation
-	 * read for the reversal kind, safe to repeat.
+	 * reads the refund or dispute a reversal delivery names, fresh, at the pinned version. the
+	 * reconciliation read for the reversal kind, safe to repeat.
 	 *
 	 * it takes the whole delivery for the reason `readRecurringGift` does, and a caller acts on
 	 * nothing the delivery itself carried: a replayed body can be an older shape, and a refund can

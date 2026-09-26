@@ -44,8 +44,8 @@ export function recording(responses: readonly { status: number; json: unknown }[
 				// before any assertion is reached.
 				getRawResponse: () => ({}),
 				// required by the interface and never reached: nothing this adapter calls streams a
-				// response. omitted, the stub stops satisfying `HttpClientInterface` and every case
-				// below fails to type-check rather than to run.
+				// response. omitted, the stub stops satisfying `HttpClientInterface` and every spec
+				// that imports it fails to type-check rather than to run.
 				toStream: () => null,
 				// a fresh copy per answer. the SDK seals a non-writable `lastResponse` onto whatever
 				// this returns, so handing back a shared literal twice throws on the second call

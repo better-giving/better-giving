@@ -615,7 +615,7 @@ describe('a PayPal refund of one monthly charge', () => {
 		expect(await asAdminReads(donationId)).toEqual({ status: 'refunded', given: 0 });
 		const plans = await db.select({ status: recurringPlan.status }).from(recurringPlan);
 		expect(plans).toEqual([{ status: 'active' }]);
-		// read, and nothing asked of the commitment.
+		// only reads went out: nothing asked the commitment to stop or change.
 		expect(calls.every((call) => call.startsWith('GET '))).toBe(true);
 	});
 });
