@@ -757,6 +757,21 @@ export type Settlement = {
 	 * figures are restated to it before posting (../donations/settle.ts).
 	 */
 	readonly arrival: Arrival | null;
+	/**
+	 * the refund of the whole of this settlement, where the read that settles it already reports the
+	 * money sent back — NOWPayments' alone (./nowpayments.ts's header), whose read of a deposit held
+	 * and refunded is the last word on it. present only on a `succeeded` settlement; absent on every
+	 * other processor and every settlement not refunded.
+	 *
+	 * it names the refund as `ReversalFacts` does: `providerReversalId` is the one a `refunded`
+	 * notification's `readReversal` carries for the same payment, so the two report one withdrawal,
+	 * and `occurredAt` is when the refund happened. the rest is this settlement's own —
+	 * `reversedTxnId` is `providerTxnId`, and the money is the whole of `amountMinor` in `currency`.
+	 */
+	readonly alsoRefunded?: {
+		readonly providerReversalId: string;
+		readonly occurredAt: Date;
+	};
 };
 
 /** what reached the processor on a gift paid to an address. */
