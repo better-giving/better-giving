@@ -12,6 +12,7 @@ function data(overrides: Partial<RefundNoticeData> = {}): RefundNoticeData {
 		giftMinor: 10_000,
 		givenAt: new Date('2026-08-03T12:00:00Z'),
 		refundedMinor: 2_500,
+		remainingMinor: 7_500,
 		deductibleMinor: 7_500,
 		currency: 'USD',
 		...overrides
@@ -41,7 +42,7 @@ describe('refundNotice.template — what the donor is told of a refund', () => {
 	 * figure that replaces it, and "nothing" said as a number is the one they cannot misread.
 	 */
 	it('names a full refund as one, and zero as what is now deductible', async () => {
-		const full = { refundedMinor: 10_000, deductibleMinor: 0 };
+		const full = { refundedMinor: 10_000, remainingMinor: 0, deductibleMinor: 0 };
 		expect(refundNotice.template(data(full)).subject).toBe(
 			'Your gift to Hope Foundation has been refunded'
 		);
@@ -58,11 +59,26 @@ describe('refundNotice.template — what the donor is told of a refund', () => {
 	});
 
 	/**
+	 * the subject reads what is left of the gift, never what is deductible: a gift with a part that
+	 * was never deductible has nothing deductible long before nothing is left of it.
+	 */
+	it('says part of the gift was refunded while some is left, though none of it is deductible', () => {
+		const partOfAPartlyDeductibleGift = {
+			refundedMinor: 8_000,
+			remainingMinor: 2_000,
+			deductibleMinor: 0
+		};
+		expect(refundNotice.template(data(partOfAPartlyDeductibleGift)).subject).toBe(
+			'Part of your gift to Hope Foundation has been refunded'
+		);
+	});
+
+	/**
 	 * a gift refunded in parts: each notice names the part it is about, never the running total,
 	 * and the last one takes what is deductible to zero.
 	 */
 	it('names only its own part when the last of a gift is refunded', async () => {
-		const last = { refundedMinor: 7_500, deductibleMinor: 0 };
+		const last = { refundedMinor: 7_500, remainingMinor: 0, deductibleMinor: 0 };
 		expect(refundNotice.template(data(last)).subject).toBe(
 			'Your gift to Hope Foundation has been refunded'
 		);

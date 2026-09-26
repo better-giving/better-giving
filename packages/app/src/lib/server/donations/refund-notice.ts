@@ -21,8 +21,9 @@ import { findPaymentDonor } from './queries';
 // anyway, and the delivery log would say something untrue.
 
 /**
- * one refund to tell a donor about, and the figures it is told in. the gift's day and what of it is
- * now deductible are read here from the rows the refund's batch left (`givenAndDeductible`).
+ * one refund to tell a donor about, and the figures it is told in. the gift's day, what is left of
+ * it and what of it is now deductible are read here from the rows the refund's batch left
+ * (`givenAndDeductible`).
  */
 export type RefundNoticeTarget = Pick<
 	RefundNoticeInput,
@@ -116,14 +117,15 @@ export async function sendRefundNotice(deps: MailDeps, target: RefundNoticeTarge
 
 /**
  * the day on the gift's receipt — `donation.received_at`, written at authorization and never moved
- * by a settlement — and what of the gift is now deductible: what it collected, less the refunds of
- * it that stand (`refundStands` in ../zapier/events.ts, so a dispute still open, which may yet be
- * won, takes nothing off), less the part that was never deductible, and never below nothing.
+ * by a settlement — what is left of the gift: what it collected, less the refunds of it that stand
+ * (`refundStands` in ../zapier/events.ts, so a dispute still open, which may yet be won, takes
+ * nothing off) — and what of that is deductible: what is left, less the part that was never
+ * deductible. neither goes below nothing.
  */
 async function givenAndDeductible(
 	db: Db,
 	target: RefundNoticeTarget
-): Promise<Pick<RefundNoticeInput, 'givenAt' | 'deductibleMinor'>> {
+): Promise<Pick<RefundNoticeInput, 'givenAt' | 'remainingMinor' | 'deductibleMinor'>> {
 	const [gift] = await db
 		.select({ givenAt: donation.receivedAt, nonDeductibleMinor: donation.nonDeductibleMinor })
 		.from(donation)
@@ -133,11 +135,10 @@ async function givenAndDeductible(
 		.from(payment)
 		.where(and(eq(payment.parentPaymentId, target.giftPaymentId), refundStands(db, payment)));
 	if (gift === undefined) throw new Error(`donation ${target.donationId} is not recorded.`);
+	const remainingMinor = Math.max(0, target.giftMinor - (refunded?.minor ?? 0));
 	return {
 		givenAt: gift.givenAt,
-		deductibleMinor: Math.max(
-			0,
-			target.giftMinor - (refunded?.minor ?? 0) - gift.nonDeductibleMinor
-		)
+		remainingMinor,
+		deductibleMinor: Math.max(0, remainingMinor - gift.nonDeductibleMinor)
 	};
 }

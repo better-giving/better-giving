@@ -8,7 +8,7 @@ import type { RenderedEmail } from './provider';
 // to prove before it may be written, and the refusal when they do not. what it says is
 // packages/emails/src/templates/refund-notice.tsx's.
 //
-// no database and no clock here, the same as ./uncollected.ts. both figures arrive worked out, and
+// no database and no clock here, the same as ./uncollected.ts. every figure arrives worked out, and
 // when the notice is sent, and that it is sent once per refund, is the caller's.
 
 /** what the notice is about: one refund of one gift. */
@@ -23,7 +23,16 @@ export interface RefundNoticeInput {
 	readonly givenAt: Date;
 	/** minor units — this refund alone. */
 	readonly refundedMinor: number;
-	/** minor units — what the gift collected less every refund of it to date, zero after a full one. */
+	/**
+	 * minor units — what the gift collected less every refund of it that stands, this one included;
+	 * zero once the whole gift is refunded, and what the subject is read from. a dispute still open
+	 * takes nothing off it.
+	 */
+	readonly remainingMinor: number;
+	/**
+	 * minor units — `remainingMinor` less the gift's `donation.non_deductible_minor`, never below
+	 * zero; so zero here does not mean the whole gift was refunded.
+	 */
 	readonly deductibleMinor: number;
 	/** ISO-4217, uppercase, as `payment.currency` holds it. */
 	readonly currency: string;
@@ -60,6 +69,7 @@ export async function renderRefundNotice(input: RefundNoticeInput): Promise<Refu
 				giftMinor: input.giftMinor,
 				givenAt: input.givenAt,
 				refundedMinor: input.refundedMinor,
+				remainingMinor: input.remainingMinor,
 				deductibleMinor: input.deductibleMinor,
 				currency: input.currency
 			})

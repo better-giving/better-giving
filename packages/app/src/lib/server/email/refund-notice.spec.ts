@@ -28,6 +28,7 @@ function input(overrides: Partial<RefundNoticeInput> = {}): RefundNoticeInput {
 		giftMinor: 10_000,
 		givenAt: new Date('2026-08-03T12:00:00Z'),
 		refundedMinor: 2_500,
+		remainingMinor: 7_500,
 		deductibleMinor: 7_500,
 		currency: 'USD',
 		...overrides
@@ -45,6 +46,27 @@ describe('renderRefundNotice', () => {
 			expect(arm).toContain('USD 25.00');
 			expect(arm).toContain('USD 75.00');
 		}
+	});
+
+	it('says the gift was refunded once nothing of it is left', async () => {
+		const result = await renderRefundNotice(
+			input({ refundedMinor: 10_000, remainingMinor: 0, deductibleMinor: 0 })
+		);
+
+		expect(result.ok && result.message.subject).toBe(
+			'Your gift to Hope Foundation has been refunded'
+		);
+	});
+
+	/** nothing deductible is not nothing left: the gift's never-deductible part is still the donor's gift. */
+	it('says part of the gift was refunded while some is left, though none of it is deductible', async () => {
+		const result = await renderRefundNotice(
+			input({ refundedMinor: 8_000, remainingMinor: 2_000, deductibleMinor: 0 })
+		);
+
+		expect(result.ok && result.message.subject).toBe(
+			'Part of your gift to Hope Foundation has been refunded'
+		);
 	});
 
 	/**

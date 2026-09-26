@@ -9,6 +9,7 @@ export default function RefundNotice() {
 		giftMinor: 10_000,
 		givenAt: new Date('2026-08-03T12:00:00Z'),
 		refundedMinor: 2_500,
+		remainingMinor: 7_500,
 		deductibleMinor: 7_500,
 		currency: 'USD'
 	}).node;

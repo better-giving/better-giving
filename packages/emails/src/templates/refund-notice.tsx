@@ -5,7 +5,7 @@ import type { EmailTemplate } from '../template';
 // the donor's "we have refunded your gift" — a short notice, not a second receipt.
 //
 // pure, the same discipline ./receipt.tsx states: a model in, a subject and a body out, no
-// database, no clock, no I/O. the caller works out both figures and decides whether this is a
+// database, no clock, no I/O. the caller works out every figure and decides whether this is a
 // message worth sending; this decides only what it says.
 //
 // it carries two figures and names the gift they belong to. the receipt the donor already holds
@@ -17,7 +17,8 @@ import type { EmailTemplate } from '../template';
 //
 // a gift refunded in parts gets one notice per part, each naming its own part and the remainder
 // after it. the subject says "part of" while anything is left, which is what lets the last part's
-// notice read as the gift refunded.
+// notice read as the gift refunded. it reads `remainingMinor` for that, never `deductibleMinor`: a
+// gift with a part that was never deductible has nothing deductible long before nothing is left.
 //
 // `legalName` arrives proven, as it does for ./uncollected.tsx: a donor told about money leaving
 // their gift by somebody they cannot identify has been told nothing, and that refusal is the app's.
@@ -33,7 +34,17 @@ export interface RefundNoticeData {
 	readonly givenAt: Date;
 	/** minor units — this refund alone, never the running total of every refund. */
 	readonly refundedMinor: number;
-	/** minor units — what the gift collected less every refund of it to date, zero after a full one. */
+	/**
+	 * minor units — what the gift collected less every refund of it that stands, this one included;
+	 * zero once the whole gift is refunded. a dispute still open takes nothing off it. never printed —
+	 * it picks the subject.
+	 */
+	readonly remainingMinor: number;
+	/**
+	 * minor units — `remainingMinor` less the part of the gift that was never deductible
+	 * (`donation.non_deductible_minor`), never below zero. zero does not mean the whole gift was
+	 * refunded.
+	 */
 	readonly deductibleMinor: number;
 	/** ISO-4217, uppercase, as `payment.currency` holds it. every figure above is in it. */
 	readonly currency: string;
@@ -45,7 +56,7 @@ export function template(data: RefundNoticeData): EmailTemplate {
 	const deductible = formatMoney(data.deductibleMinor, data.currency);
 	const gift = `your gift of ${formatMoney(data.giftMinor, data.currency)}, made on ${formatDate(data.givenAt)}`;
 	const subject =
-		data.deductibleMinor === 0
+		data.remainingMinor === 0
 			? `Your gift to ${data.legalName} has been refunded`
 			: `Part of your gift to ${data.legalName} has been refunded`;
 	const greeting = data.donorName === null ? 'Hello,' : `Dear ${data.donorName},`;

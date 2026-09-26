@@ -161,6 +161,30 @@ describe('sendRefundNotice()', () => {
 		expect(mail.sent[0]?.text).toContain('the deductible amount of this gift is now USD 0.00');
 	});
 
+	it('says the whole gift was refunded once nothing of it is left', async () => {
+		await orgProfile();
+		await withdrawal(REFUND_ID, 10_000);
+		const mail = mailer();
+
+		await sendRefundNotice(deps(mail.port), target({ refundedMinor: 10_000 }));
+
+		expect(mail.sent[0]?.subject).toBe('Your gift to Hope Foundation has been refunded');
+	});
+
+	/** nothing deductible is not nothing left: the part never deductible is still the donor's gift. */
+	it('says part of the gift was refunded while some is left, though none of it is deductible', async () => {
+		await orgProfile();
+		await env.DB.prepare('update donation set non_deductible_minor = 3000 where id = ?')
+			.bind(DONATION_ID)
+			.run();
+		await withdrawal(REFUND_ID, 8_000);
+		const mail = mailer();
+
+		await sendRefundNotice(deps(mail.port), target({ refundedMinor: 8_000 }));
+
+		expect(mail.sent[0]?.subject).toBe('Part of your gift to Hope Foundation has been refunded');
+	});
+
 	/** an unaddressed donor is not a fault: nobody is written to and nobody is alerted. */
 	it('sends nothing where the donor gave no address', async () => {
 		await orgProfile();
