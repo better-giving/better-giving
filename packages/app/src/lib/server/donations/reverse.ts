@@ -117,7 +117,7 @@ import { sendRefundNotice } from './refund-notice';
 // currency than the gift's — writes nothing, and still stops the plan below; staff are told on each
 // delivery that meets it what needs booking by hand and how the stop ended (`disputeRefused`).
 //
-// after the batch that withdrew the money, and never inside it, the gift's monthly plan is stopped
+// after the batch that withdrew the money, and never inside it, the gift's repeating plan is stopped
 // (../recurring/stop.ts), because it calls the processor: the card is disputing the charges. then
 // staff are told of the dispute once, with how the stop ended. a stop the processor refused for
 // now holds the delivery open. each later delivery of the opening, and a loss recorded after it,
@@ -453,7 +453,7 @@ async function withdraw(
 
 /**
  * a dispute the books cannot take: nothing of the gift left, figures `unpostable` names, or another
- * currency than the gift's. nothing is written, and the gift's monthly plan is stopped all the same
+ * currency than the gift's. nothing is written, and the gift's repeating plan is stopped all the same
  * — the card is disputing the charge whatever the books could hold of it. staff are told on each
  * delivery that meets it, because no row is left to say one already did: what of it needs booking
  * by hand, and how the stop ended.
@@ -487,7 +487,7 @@ async function disputeRefused(
 						: `${reversal.feeMinor} ${reversal.currency} (minor units), not booked.`
 			},
 			{
-				label: 'Monthly gift',
+				label: 'Repeating gift',
 				value:
 					stop === null ? 'None: this was a one-time gift.' : stopSentence(stop.outcome, processor)
 			},
@@ -768,7 +768,7 @@ async function disputeWithdrew(
 			...(reversal.reason === null ? [] : [{ label: 'Reason', value: reversal.reason }]),
 			{ label: 'Donation', value: withdrawn.donationId },
 			{
-				label: 'Monthly gift',
+				label: 'Repeating gift',
 				value:
 					stop === null ? 'None: this was a one-time gift.' : stopSentence(stop.outcome, processor)
 			},
@@ -781,11 +781,11 @@ async function disputeWithdrew(
 	});
 }
 
-/** how stopping a disputed gift's monthly plan ended, or null where the gift has none. */
+/** how stopping a disputed gift's repeating plan ended, or null where the gift has none. */
 type PlanStop = { readonly planId: string; readonly outcome: StopOutcome } | null;
 
 /**
- * stops the monthly plan a disputed gift was collected under, and tells staff on its own where it
+ * stops the repeating plan a disputed gift was collected under, and tells staff on its own where it
  * could not be stopped for good. a processor call that throws is told as a stop that did not
  * happen.
  */
@@ -840,16 +840,16 @@ function stopHeldOpen(stop: PlanStop, reversal: WithdrawalRead): SettleResult | 
 	};
 }
 
-/** staff told a disputed gift's monthly plan is still collecting, or may be. */
+/** staff told a disputed gift's repeating plan is still collecting, or may be. */
 async function planNotStopped(deps: SettleDeps, stop: NonNullable<PlanStop>): Promise<void> {
 	const processor = processorLabel(deps);
 	await tellStaff(deps, {
-		headline: 'A disputed monthly gift could not be stopped',
+		headline: 'A disputed repeating gift could not be stopped',
 		body:
-			'A donor disputed a charge of their monthly gift, and the gift could not be stopped here, ' +
+			'A donor disputed a charge of their repeating gift, and the gift could not be stopped here, ' +
 			'so the processor may go on charging the card that is disputing it.',
 		facts: [
-			{ label: 'Monthly gift', value: stop.planId },
+			{ label: 'Repeating gift', value: stop.planId },
 			{ label: 'What happened', value: stopSentence(stop.outcome, processor) }
 		],
 		action: `Cancel the subscription in the ${processor} dashboard, then stop the gift at /admin/recurring/${stop.planId}.`
@@ -860,7 +860,7 @@ async function planNotStopped(deps: SettleDeps, stop: NonNullable<PlanStop>): Pr
 function stopSentence(outcome: StopOutcome, processor: string): string {
 	switch (outcome.outcome) {
 		case 'gone':
-			return 'No monthly gift is recorded here under that id, so there was nothing to stop.';
+			return 'No repeating gift is recorded here under that id, so there was nothing to stop.';
 		case 'already-stopped':
 			return 'It was already stopped.';
 		case 'nothing-to-stop':
@@ -1096,7 +1096,7 @@ async function reinstate(
 		return refundRefused(
 			deps,
 			reversal,
-			`the dispute fee kept is ${keptMinor}, which is not a whole number of minor units of none or more.`
+			`the dispute fee kept is ${keptMinor}, which is not a whole number of minor units, zero or more.`
 		);
 	}
 	if (refundRow === null) {

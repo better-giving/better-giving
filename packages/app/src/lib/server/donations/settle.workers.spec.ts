@@ -1497,7 +1497,7 @@ describe('settleDelivery() — a settled charge whose fee is unknown', () => {
 
 		const alerted = mail.sent.find((m) => m.subject.includes('no processor fee'));
 		expect(alerted?.text).toContain('/admin/books');
-		expect(alerted?.text).toContain('out of 1020 — Undeposited Funds into 5200 — Processor Fees');
+		expect(alerted?.text).toContain('out of 1020 — Undeposited Funds, into 5200 — Processor Fees');
 		expect(alerted?.text).not.toContain('outside it');
 	});
 });
@@ -1750,7 +1750,7 @@ describe('settleDelivery() — a gift settled on PayPal', () => {
 
 	/**
 	 * a later read reporting a posted payment `failed` leaves it settled. PayPal's own read never
-	 * reports a capture that settled this way — one refunded or reversed still reads `succeeded`
+	 * reports a settled capture `failed` — one refunded or reversed still reads `succeeded`
 	 * (`CAPTURE_STATUSES` in ../payments/paypal.ts) — so this holds the rule for any read that does.
 	 */
 	it('keeps a posted capture settled when a later read finds it no longer completed, and tells an operator', async () => {

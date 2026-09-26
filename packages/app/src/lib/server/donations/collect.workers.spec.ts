@@ -1903,7 +1903,7 @@ describe('settleDelivery() — a collection whose fee is unknown', () => {
 
 		const alerted = mail.sent.find((m) => m.subject.includes('no processor fee'));
 		expect(alerted?.text).toContain('/admin/books');
-		expect(alerted?.text).toContain('out of 1020 — Undeposited Funds into 5200 — Processor Fees');
+		expect(alerted?.text).toContain('out of 1020 — Undeposited Funds, into 5200 — Processor Fees');
 		expect(alerted?.text).not.toContain('outside it');
 	});
 

@@ -114,7 +114,7 @@ export type SettleDeps = {
 	readonly db: Db;
 	readonly provider: PaymentProvider;
 	/**
-	 * every processor this deployment holds, which a disputed gift's monthly plan is stopped through
+	 * every processor this deployment holds, which a disputed gift's repeating plan is stopped through
 	 * (./reverse.ts): the plan lives on whichever processor collected it. required, so a webhook
 	 * route that forgets it is a type error rather than a plan that silently never stops.
 	 */

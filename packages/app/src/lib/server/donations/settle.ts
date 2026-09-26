@@ -288,8 +288,8 @@ export async function settleDelivery(
 	// it, and the two halves answer in the vocabulary ./delivery.ts states.
 	if (event.kind === 'recurring') return collectRecurringGift(deps, event);
 
-	// a refund names a transaction this module settled, and writes a row of its own against it
-	// rather than correcting that one: ./reverse.ts owns it.
+	// a refund or a dispute names a transaction this module settled, and writes a row of its own
+	// against it rather than correcting that one: ./reverse.ts owns it.
 	if (event.kind === 'reversal') return reverseDelivery(deps, event);
 
 	if (event.kind === 'ignored') {

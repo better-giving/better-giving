@@ -502,10 +502,10 @@ export function missingFeeCorrection(processor: string): string {
 		`${account.code} — ${account.name}`;
 	return (
 		`Find this payment in the ${processor} dashboard and the fee it states, in the currency the ` +
-		`gift was charged in. Keep only a figure ${processor} states for this payment: a fee reported ` +
+		`gift was charged in. Use only a figure ${processor} states for this payment: a fee reported ` +
 		'in another currency is not one to convert, because the converted figure is one nobody ' +
 		'published. Post it in /admin/books as a correction dated the day the payment settled, out of ' +
-		`${label(POSTING_ACCOUNTS.undepositedFunds)} into ${label(POSTING_ACCOUNTS.processorFees)}.`
+		`${label(POSTING_ACCOUNTS.undepositedFunds)}, into ${label(POSTING_ACCOUNTS.processorFees)}.`
 	);
 }
 
