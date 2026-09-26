@@ -21,7 +21,7 @@ beforeAll(() => {
 });
 
 beforeEach(async () => {
-	// children before parents: each table below points at one after it.
+	// children before parents: no table below is pointed at by one after it.
 	for (const table of [
 		'dispute',
 		'zapier_delivery',

@@ -22,10 +22,11 @@
 -- transaction: those rows point at the name `zapier_subscription`, which the rename hands back.
 -- the rename does not take back the violations the drop counted, so without the closing
 -- `defer_foreign_keys=false` the commit fails with every row resolving. locally that `=false`
--- clears the violations deferred so far, as sqlite's `pragma.c` does, so the commit checks
--- nothing: a copy that lost a row commits its children orphaned, and
--- `newest-migration.workers.spec.ts`'s "leaves no foreign key pointing at nothing", which applies
--- this file over seeded rows, is the guard. D1's docs
+-- clears the violations deferred so far, as sqlite's source does
+-- (https://github.com/sqlite/sqlite/blob/master/src/pragma.c), so the commit checks nothing: a
+-- copy that lost a row commits its children orphaned, and `newest-migration.workers.spec.ts`'s
+-- "leaves no foreign key pointing at nothing", which applies this file over seeded rows, is the
+-- guard. D1's docs
 -- (https://developers.cloudflare.com/d1/sql-api/foreign-keys/) say instead that `=off` with
 -- violations outstanding fails with `FOREIGN KEY constraint failed`; which of the two a remote
 -- database does is proven only by applying this file to one that holds `zapier_delivery` rows.

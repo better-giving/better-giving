@@ -134,15 +134,17 @@ import type { PostableAccountId } from './postable';
 //    the deferral lasts to the end of the file's transaction. the closing `=false` is not
 //    optional: the rename does not take back the violations the drop counted, so without
 //    it the commit fails with every row resolving. locally it clears the violations
-//    deferred so far, as sqlite's `pragma.c` does, so the commit checks nothing and a
-//    rebuild that left child rows pointing at nothing — a copy step skipped, a row not
-//    copied — commits with them orphaned. the guard is `newest-migration.workers.spec.ts`'s
-//    "leaves no foreign key pointing at nothing", which reads `pragma_foreign_key_check`
-//    after applying every migration the test deployment has not, file by file, over
-//    seeded rows. D1's docs (https://developers.cloudflare.com/d1/sql-api/foreign-keys/)
-//    say instead that `=off` with violations outstanding fails with `FOREIGN KEY
-//    constraint failed`; which of the two a remote database does is proven only by a
-//    remote apply over rows the rebuild moves.
+//    deferred so far, as sqlite's source does
+//    (https://github.com/sqlite/sqlite/blob/master/src/pragma.c), so the commit checks
+//    nothing and a rebuild that left child rows pointing at nothing — a copy step skipped,
+//    a row not copied — commits with them orphaned. the guard is
+//    `newest-migration.workers.spec.ts`'s "leaves no foreign key pointing at nothing",
+//    which reads `pragma_foreign_key_check` after applying every migration the test
+//    deployment has not, file by file, over seeded rows. D1's docs
+//    (https://developers.cloudflare.com/d1/sql-api/foreign-keys/) say instead that `=off`
+//    with violations outstanding fails with `FOREIGN KEY constraint failed`; which of the
+//    two a remote database does is proven only by a remote apply over rows the rebuild
+//    moves.
 //    two caveats on the replacement. it resets at every commit, so it covers one
 //    transaction and must be re-set if a rebuild is ever split across files. and
 //    `ON DELETE CASCADE` is never deferrable — a cascade is an action, not a violation,
