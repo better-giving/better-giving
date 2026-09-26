@@ -76,6 +76,7 @@ export async function readPendingCryptoGifts(
 	const settleDeps = {
 		db: deps.db,
 		provider,
+		processors: deps.processors,
 		email: deps.email,
 		// the adapter keeps the account's coin lists for its life, a failed read included, so a run
 		// reads them once and a run whose read failed names every coin by its code.

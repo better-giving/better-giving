@@ -150,6 +150,11 @@ export type AccountingFailure = {
 	readonly reason: AccountingFailureReason;
 	readonly detail: string;
 	readonly retryable: boolean;
+	/**
+	 * the company a send addressed before it was refused, where it got as far as naming one: the
+	 * books a call that went out may have reached.
+	 */
+	readonly companyId?: string;
 };
 
 /** a refusal, with `retryable` taken off the partition above. */
@@ -270,15 +275,33 @@ export type CorrectionRecord = {
 	readonly key: string;
 	readonly occurredAt: Date;
 	readonly currency: string;
-	/** why the correction was posted — required at ../ledger/correct.ts, so never blank here. */
+	/** why the correction was posted — required at ../books/correct.ts, so never blank here. */
 	readonly memo: string | null;
 	readonly lines: readonly [CorrectionLine, CorrectionLine, ...CorrectionLine[]];
+};
+
+/**
+ * money leaving a gift already sent, or coming back to it, as it goes over: a refund's or a
+ * dispute's withdrawal, a withdrawal put back when it did not stand, and a dispute's settle-up at
+ * its close, lost or won.
+ *
+ * a correcting entry's lines, against the customer the record it answers was posted to. the donor as
+ * their contact stands now is what the adapter finds a customer for where that record names none.
+ */
+export type ReversalRecord = CorrectionRecord & {
+	readonly donor: Donor;
+	/**
+	 * the record already in the company's books that this one answers — the gift, or the withdrawal
+	 * being put back or settled up: its entry group id, and what the provider called it.
+	 */
+	readonly answers: { readonly key: string; readonly remoteId: string };
 };
 
 /** what one queued entry group turns out to be. */
 export type Sendable =
 	| { readonly kind: 'gift'; readonly gift: GiftRecord }
-	| { readonly kind: 'correction'; readonly correction: CorrectionRecord };
+	| { readonly kind: 'correction'; readonly correction: CorrectionRecord }
+	| { readonly kind: 'reversal'; readonly reversal: ReversalRecord };
 
 /**
  * whether the record being sent has been handed to the provider before.
@@ -294,9 +317,11 @@ export type Sendable =
  */
 export type SendAttempt = 'first' | 'again';
 
-/** what the provider called the record it created — `quickbooks_sync.remote_id`. */
+/** what the provider called the record it created — `quickbooks_sync.remote_id` — and where. */
 export type RemoteRecord = {
 	readonly remoteId: string;
+	/** the company it was created in, as the connection named it when the send read it. */
+	readonly companyId: string;
 };
 
 /** the company a connection points at, as the screen that made it shows it. */
@@ -405,8 +430,8 @@ export interface AccountingProvider {
 	 * one account made in the company's chart to hold a processor's money until it pays out, for a
 	 * connection whose chart names none.
 	 *
-	 * the only thing this port writes into a company besides a gift, a correction and the donor on
-	 * one, and it is asked for by the connect-time fill alone (./connection.ts).
+	 * the only thing this port writes into a company besides a gift, a correction, a reversal and
+	 * the donor on one, and it is asked for by the connect-time fill alone (./connection.ts).
 	 */
 	createHoldingAccount(name: string): Promise<AccountingResult<LedgerAccount>>;
 
@@ -427,6 +452,16 @@ export interface AccountingProvider {
 	/** one correcting entry into the company's books, keyed the same way. */
 	sendCorrection(
 		correction: CorrectionRecord,
+		attempt: SendAttempt,
+		revision: string
+	): Promise<AccountingResult<RemoteRecord>>;
+
+	/**
+	 * one reversal of a gift already sent into the company's books, keyed the same way. never sent
+	 * ahead of the record it answers (./deliver.ts).
+	 */
+	sendReversal(
+		reversal: ReversalRecord,
 		attempt: SendAttempt,
 		revision: string
 	): Promise<AccountingResult<RemoteRecord>>;

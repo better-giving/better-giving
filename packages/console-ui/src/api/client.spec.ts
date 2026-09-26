@@ -3,6 +3,9 @@ import {
 	chariotRun,
 	consoleVersion,
 	levelWallets,
+	pressQuickbooks,
+	readQuickbooks,
+	readZapier,
 	repairWebhook,
 	saveNowpayments,
 	startChariotSetup,
@@ -203,5 +206,115 @@ describe('the press that repairs where payment notices reach the deployment', ()
 		expect(path).toBe('/api/deployment/webhook-repair');
 		expect(init?.method).toBe('POST');
 		expect(init?.body).toBeUndefined();
+	});
+});
+
+describe('the reading of where the Zapier key stands', () => {
+	const reading = (listening: Record<string, number>) => ({
+		kind: 'read',
+		report: {
+			key: null,
+			listening,
+			deliveries: { waiting: 0, failed: 0, oldestWaitingAt: null }
+		}
+	});
+
+	it('counts no Zap on a trigger a deployment older than this console does not report', async () => {
+		answering(200, reading({ newGift: 2, newDonor: 1 }));
+
+		const read = await readZapier();
+
+		expect(read.kind === 'read' && read.report.listening).toEqual({
+			newGift: 2,
+			newDonor: 1,
+			giftRefunded: 0
+		});
+	});
+
+	it('keeps every count a deployment does report', async () => {
+		answering(200, reading({ newGift: 2, newDonor: 1, giftRefunded: 3 }));
+
+		const read = await readZapier();
+
+		expect(read.kind === 'read' && read.report.listening.giftRefunded).toBe(3);
+	});
+});
+
+describe('the preview of a move of the date QuickBooks syncs gifts from', () => {
+	const side = (reversals?: number) => ({
+		gifts: 0,
+		corrections: 0,
+		...(reversals === undefined ? {} : { reversals }),
+		earliest: null,
+		latest: null
+	});
+	const previewing = (queues: object, drops: object) => ({
+		kind: 'reported',
+		report: { press: 'start-date-preview', startAt: '2026-01-01T00:00:00.000Z', queues, drops }
+	});
+	const press = { press: 'start-date-preview', startAt: '2026-01-01' } as const;
+
+	it('counts no reversal on either side where a deployment older than this console reports none', async () => {
+		answering(200, previewing(side(), side()));
+
+		const pressed = await pressQuickbooks(press);
+
+		expect(
+			pressed.kind === 'reported' &&
+				pressed.report.press === 'start-date-preview' && [
+					pressed.report.queues.reversals,
+					pressed.report.drops.reversals
+				]
+		).toEqual([0, 0]);
+	});
+
+	it('keeps the reversals a deployment does report', async () => {
+		answering(200, previewing(side(2), side(5)));
+
+		const pressed = await pressQuickbooks(press);
+
+		expect(
+			pressed.kind === 'reported' &&
+				pressed.report.press === 'start-date-preview' && [
+					pressed.report.queues.reversals,
+					pressed.report.drops.reversals
+				]
+		).toEqual([2, 5]);
+	});
+});
+
+describe('the reading of where the books stand', () => {
+	const reading = (backlog: object) => ({
+		kind: 'read',
+		report: {
+			connection: { state: 'disconnected' },
+			accounts: null,
+			backlog,
+			callbackAddress: 'https://give.example.org/quickbooks/callback'
+		}
+	});
+
+	it('holds no refund behind a gift where a deployment older than this console reports none', async () => {
+		answering(200, reading({ failed: 1, oldestWaitingAt: '2026-02-01T00:00:00.000Z' }));
+
+		const read = await readQuickbooks();
+
+		expect(read.kind === 'read' && read.report.backlog).toEqual({
+			failed: 1,
+			oldestWaitingAt: '2026-02-01T00:00:00.000Z',
+			heldBehindFailed: []
+		});
+	});
+
+	it('keeps every held refund a deployment does report', async () => {
+		const held = [{ entryGroupId: 'refund-group', waitsOn: 'gift-group' }];
+		answering(
+			200,
+			reading({ failed: 1, oldestWaitingAt: '2026-02-01T00:00:00.000Z', heldBehindFailed: held })
+		);
+
+		const read = await readQuickbooks();
+
+		expect(read.kind === 'read' && read.report.backlog.heldBehindFailed).toEqual(held);
 	});
 });

@@ -19,14 +19,20 @@
 /**
  * what a gift can be, derived from its settlement attempts.
  *
- * the six are exhaustive over the rows that can exist, and each one names what produces it:
+ * the seven are exhaustive over the rows that can exist, and each one names what produces it:
  *
  *   pending            no settlement attempt yet, or none past `pending`.
  *   completed          an inbound attempt succeeded, and refunds do not reach what it collected.
  *   failed             the latest inbound attempt failed and none has succeeded.
  *   cancelled          the latest inbound attempt was abandoned and none has succeeded.
  *   refunded           succeeded refunds reach what the gift collected.
- *   partially_refunded succeeded refunds are less than that, and more than zero.
+ *   disputed           a `dispute` row with no outcome is keyed on one of the gift's refund rows:
+ *                      the donor's bank has taken money back and the processor has not ruled.
+ *                      it outranks both refund states, whatever the refunds add up to.
+ *   partially_refunded succeeded refunds are less than what the gift collected, and more than zero.
+ *
+ * a closed dispute produces nothing of its own. won, its refund row stops standing and the gift
+ * reads as it did before; lost, the row stands and counts as any refund does.
  */
 export const DONATION_STATUSES = [
 	'pending',
@@ -34,6 +40,7 @@ export const DONATION_STATUSES = [
 	'failed',
 	'cancelled',
 	'refunded',
+	'disputed',
 	'partially_refunded'
 ] as const;
 export type DonationStatus = (typeof DONATION_STATUSES)[number];
@@ -41,7 +48,7 @@ export type DonationStatus = (typeof DONATION_STATUSES)[number];
 /**
  * what a status is called on a screen.
  *
- * keyed by `DonationStatus` rather than `string`, so a seventh state is a type error here rather
+ * keyed by `DonationStatus` rather than `string`, so an eighth state is a type error here rather
  * than a raw `partially_refunded` rendered somewhere by a `?? value` fallback — the same
  * discipline `KIND_LABELS` in `$lib/contacts/kinds.ts` is under.
  */
@@ -51,5 +58,6 @@ export const DONATION_STATUS_LABELS: Record<DonationStatus, string> = {
 	failed: 'Failed',
 	cancelled: 'Cancelled',
 	refunded: 'Refunded',
+	disputed: 'Disputed',
 	partially_refunded: 'Partly refunded'
 };

@@ -5,6 +5,7 @@ import type { EmailMessage, EmailProvider } from '../email/provider';
 import type { PaymentProvider } from '../payments/provider';
 import type { SettleDeps } from './delivery';
 import { sendSettledNotice, type SettledGift } from './settled-notice';
+import { soleProcessor } from '../payments/processors.testing';
 
 // the organisation's own news that a gift settled, against a real D1: `alert` reads `org_profile`
 // for the address to send to, so there is a database in the path and the pool follows from that
@@ -48,7 +49,12 @@ const provider = new Proxy({} as PaymentProvider, {
 	}
 });
 
-const deps = (email: EmailProvider): SettleDeps => ({ db, provider, email });
+const deps = (email: EmailProvider): SettleDeps => ({
+	db,
+	provider,
+	processors: soleProcessor(provider),
+	email
+});
 
 const gift = (over: Partial<SettledGift> = {}): SettledGift => ({
 	amountMinor: 2500,

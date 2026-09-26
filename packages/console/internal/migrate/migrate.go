@@ -2,10 +2,14 @@
 // endpoint, with no wrangler on the machine that presses the button.
 //
 // **the whole of a file goes up as one `sql` string, and the row that records it goes with it.**
-// d1's query endpoint takes a multi-statement string and answers with one result per statement, so
-// nothing here splits a file, parses a `--> statement-breakpoint` or reads a statement's shape —
-// wrangler's own concatenation, file then `INSERT INTO d1_migrations`, travels verbatim. a row
-// cannot land without the file it records, which is what a resumed run rests on.
+// d1's query endpoint takes a multi-statement string and runs it as one implicit transaction
+// (https://developers.cloudflare.com/d1/sql-api/foreign-keys/), so a file and its row land together
+// or not at all. nothing here splits a file, parses a `--> statement-breakpoint` or reads a
+// statement's shape — wrangler's own concatenation, file then `INSERT INTO d1_migrations`, travels
+// verbatim. the string is also what a file's own pragma lasts for: `PRAGMA defer_foreign_keys` holds
+// to the end of the current transaction, and packages/app/migrations/0010's copy, drop and rename
+// stand on it, so a file split across requests would fail there on any database holding the rows
+// it moves.
 //
 // **every run re-reads the table first, and a file is recorded the moment it lands.** the pair is
 // what makes a run that died between files resume rather than repeat: what a second press applies
@@ -13,17 +17,16 @@
 // there, with the statement wrangler uses — a table of another shape under that name is a
 // deployment whose applied list `wrangler d1 migrations list` cannot read.
 //
-// **a file that failed part way through is the one state a rerun does not settle.** the statements
-// in front of the one that failed are committed and the row that would record the file is not, so
-// the next press sends the whole file again and dies on the first `CREATE TABLE` it repeats —
-// nothing here makes one conditional. what a failure carries is the file and which statement of it
-// stopped, because fixing that database is a hand at the console rather than another press.
+// **a file the database turned down left nothing behind, and a rerun sends it again whole.** none
+// of its statements and not its row stay, so the next press finds it pending and re-sends it, and
+// the files in front of it stay landed. what a failure carries is the file and d1's own words for
+// it — and, where the answer marks one statement's entry as not run rather than failing the
+// request, that statement's place in the string.
 //
-// **nothing rolls back and nothing is retried.** the query endpoint has no transaction to reach for
-// and a file is one request, so what it committed stays committed — and the migration is behind
-// CLAUDE.md's one-way door either way. so a failure names the file the database stopped on and the
-// run ends there, rather than carrying on into files written against a schema that was not
-// reached.
+// **nothing is retried, and the run ends at the file that failed.** a file is written against the
+// schema the ones before it leave, so a run carrying on past one that did not land would be
+// applying files to a schema that was not reached — and each file that did land is behind
+// CLAUDE.md's one-way door either way.
 //
 // every failure is a value, the way ../cf's are: nothing here returns an error, and an error handed
 // up to a handler would be a 500 in place of the state that explains it.
@@ -125,8 +128,8 @@ func Apply(ctx context.Context, send cf.Send, account, database string, carried 
 		saw("", 0, len(pending))
 	}
 	for at, file := range pending {
-		// between files rather than inside one: a run stopped part way through a file is a file
-		// half applied with no row to say so, and the request is what the context would cut.
+		// checked between files as well as carried into the request: a request the context cuts is
+		// a file d1 may still land whole, row and all, and no further one is started behind it.
 		if ctx.Err() != nil {
 			result.Kind = Cancelled
 			result.Detail = ctx.Err().Error()
@@ -253,9 +256,9 @@ func recorded(file File) string {
 
 // one statement string sent to the database, and whether it is a reason to stop.
 //
-// `file` is the migration the string is of, which a failure names beside the statement of it that
-// stopped: the file has to be repaired by hand from there, because the statements in front of the
-// one that failed are committed and no row records the file.
+// `file` is the migration the string is of, which a failure names beside what d1 said: a string d1
+// turned down was one transaction, so neither the file nor its row stayed, and the next press sends
+// it again.
 func query(ctx context.Context, send cf.Send, path, file, sql string) (Result, bool) {
 	answer := send(ctx, http.MethodPost, path, map[string]string{"sql": sql})
 	if answer.Kind == cf.Unreachable {

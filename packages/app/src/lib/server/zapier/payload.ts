@@ -1,12 +1,15 @@
 import type { Frequency, TributeKind } from '@better-giving/form/v1';
-import { and, desc, eq, inArray, lt, notExists, or, sql } from 'drizzle-orm';
+import { and, desc, eq, exists, inArray, lt, notExists, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import { projectTribute } from '../../donations/tributes';
 import { majorText } from '../../forms/amounts';
 import type { Db } from '../db/client';
+import { refundStands } from './events';
 import {
 	contact,
+	dispute,
 	donation,
+	entryGroup,
 	form,
 	payment,
 	program,
@@ -15,13 +18,14 @@ import {
 	type ZapierTrigger
 } from '../db/schema';
 
-// what a Zap is handed about a gift — the public contract every field a user maps into a Zap is
-// read from, and the one render both the live send and the sample list go through.
+// what a Zap is handed about a gift or a refund of one — the public contract every field a user
+// maps into a Zap is read from, and the one render both the live send and the sample list go
+// through.
 //
 // **the keys are permanent.** each is a field some organisation's Zap has mapped, so a rename
 // breaks that Zap silently on its next run: add a key, never rename or drop one. every key is
-// present on every event, null where the gift has nothing to say, because a Zap maps the fields
-// the sample showed it and a key missing from a live event is a blank in whatever it writes.
+// present on every event, null where the gift or refund has nothing to say, because a Zap maps the
+// fields the sample showed it and a key missing from a live event is a blank in whatever it writes.
 //
 // the tribute's notify name and address are not here: they name a third person who gave nothing
 // and asked for nothing, and the gift reaches a Zap without them.
@@ -72,6 +76,41 @@ export function donorEventOf(gift: GiftEvent): DonorEvent {
 }
 
 /**
+ * what sent a gift's money back: `refund`, one the organisation made, or `dispute`, a dispute the
+ * organisation lost or a payment the donor's bank returned. **the set may gain values**: a Zap
+ * branches on the values it knows and lets any other pass, and a value's meaning never narrows, so
+ * a value is never split into two later. the trigger's own description in packages/zapier says the
+ * same to a Zap's author.
+ */
+export type RefundSource = 'refund' | 'dispute';
+
+/**
+ * one refund, or one dispute lost, as a `gift_refunded` Zap receives it: what left, and the gift it
+ * left. `id` is the refund's own payment id, stable across retries and distinct from the gift's, so
+ * a second refund of one gift is a second event.
+ */
+export type RefundEvent = {
+	readonly id: string;
+	/**
+	 * when the money left the organisation, ISO 8601 in UTC. for a refund, when it was made. for a
+	 * dispute, when it opened and withdrew the money, which may be weeks before it was lost and this
+	 * event sent; where no opening was recorded, when it closed.
+	 */
+	readonly occurred_at: string;
+	/**
+	 * what left, in `amount`'s notation on `GiftEvent`. for a refund, what it gave back. for a
+	 * dispute, what the processor took as the close left it, which can be less than the opening
+	 * withdrew.
+	 */
+	readonly amount: string;
+	readonly amount_minor: number;
+	readonly currency: string;
+	readonly source: RefundSource;
+	/** the gift the money came out of, as a `new_gift` Zap receives it. */
+	readonly gift: GiftEvent;
+};
+
+/**
  * payment ids per query. D1 caps a query at 100 bound parameters
  * (https://developers.cloudflare.com/d1/platform/limits/), and each id is one.
  */
@@ -92,6 +131,72 @@ export async function readGiftEvents(
 			inArray(payment.id, ids.slice(start, start + IDS_PER_READ))
 		);
 		for (const row of rows) events.set(row.id, render(row));
+	}
+	return events;
+}
+
+/**
+ * the refund events for `refundIds`, refund-direction payment rows, keyed by refund id. like
+ * {@link readGiftEvents}, an id with no refund and gift behind it has no entry.
+ */
+export async function readRefundEvents(
+	db: Db,
+	refundIds: readonly string[]
+): Promise<Map<string, RefundEvent>> {
+	const ids = [...new Set(refundIds)];
+	const refunds: RefundRow[] = [];
+	for (let start = 0; start < ids.length; start += IDS_PER_READ) {
+		refunds.push(
+			...(await selectRefunds(db).where(
+				and(
+					eq(payment.direction, 'refund'),
+					inArray(payment.id, ids.slice(start, start + IDS_PER_READ))
+				)
+			))
+		);
+	}
+	return refundEventsOf(db, refunds);
+}
+
+/** a refund row with a `dispute` row on it is a dispute's withdrawal; any other is a refund. */
+function selectRefunds(db: Db) {
+	const disputed = alias(dispute, 'disputed');
+	return db
+		.select({
+			id: payment.id,
+			giftId: payment.parentPaymentId,
+			occurredAt: payment.occurredAt,
+			amountMinor: payment.amountMinor,
+			currency: payment.currency,
+			source: sql<RefundSource>`case when ${disputed.paymentId} is null then 'refund' else 'dispute' end`
+		})
+		.from(payment)
+		.leftJoin(disputed, eq(disputed.paymentId, payment.id));
+}
+
+type RefundRow = Awaited<ReturnType<ReturnType<typeof selectRefunds>['all']>>[number];
+
+async function refundEventsOf(
+	db: Db,
+	refunds: readonly RefundRow[]
+): Promise<Map<string, RefundEvent>> {
+	const gifts = await readGiftEvents(
+		db,
+		refunds.flatMap((r) => (r.giftId === null ? [] : [r.giftId]))
+	);
+	const events = new Map<string, RefundEvent>();
+	for (const refund of refunds) {
+		const gift = refund.giftId === null ? undefined : gifts.get(refund.giftId);
+		if (gift === undefined) continue;
+		events.set(refund.id, {
+			id: refund.id,
+			occurred_at: refund.occurredAt.toISOString(),
+			amount: majorText(refund.amountMinor, refund.currency),
+			amount_minor: refund.amountMinor,
+			currency: refund.currency,
+			source: refund.source,
+			gift
+		});
 	}
 	return events;
 }
@@ -127,8 +232,23 @@ export const SAMPLE_GIFT: GiftEvent = {
 /** the new-donor sample, the donor whose first gift is `SAMPLE_GIFT`. */
 export const SAMPLE_DONOR: DonorEvent = donorEventOf(SAMPLE_GIFT);
 
+/** the refund sample: $20 of `SAMPLE_GIFT` given back. */
+export const SAMPLE_REFUND: RefundEvent = {
+	id: '01920000-0000-7000-8000-000000000005',
+	occurred_at: '2026-01-20T09:00:00.000Z',
+	amount: '20.00',
+	amount_minor: 2_000,
+	currency: 'USD',
+	source: 'refund',
+	gift: SAMPLE_GIFT
+};
+
 /** what each trigger's Zap receives. */
-export type ZapierEvent = { readonly new_gift: GiftEvent; readonly new_donor: DonorEvent };
+export type ZapierEvent = {
+	readonly new_gift: GiftEvent;
+	readonly new_donor: DonorEvent;
+	readonly gift_refunded: RefundEvent;
+};
 
 /** how many events the Zap editor is shown to map fields from. */
 const SAMPLE_COUNT = 3;
@@ -141,6 +261,7 @@ export async function readSamples<T extends ZapierTrigger>(
 	db: Db,
 	trigger: T
 ): Promise<ZapierEvent[T][]> {
+	if (trigger === 'gift_refunded') return (await refundSamples(db)) as ZapierEvent[T][];
 	const settled = and(eq(payment.status, 'succeeded'), eq(payment.direction, 'inbound'));
 	const rows = await selectGifts(db)
 		.where(trigger === 'new_donor' ? and(settled, notExists(earlierGiftOfDonor(db))) : settled)
@@ -148,6 +269,27 @@ export async function readSamples<T extends ZapierTrigger>(
 		.limit(SAMPLE_COUNT);
 	const gifts = rows.length === 0 ? [SAMPLE_GIFT] : rows.map(render);
 	return (trigger === 'new_donor' ? gifts.map(donorEventOf) : gifts) as ZapierEvent[T][];
+}
+
+/**
+ * the latest refunds a live `gift_refunded` event would be sent for: standing (`refundStands` in
+ * ./events.ts), of a gift whose settlement posted its `('payment', gift)` group — a refund or
+ * dispute of a gift the books never held queues no event (`withdraw` in ../donations/reverse.ts).
+ */
+async function refundSamples(db: Db): Promise<RefundEvent[]> {
+	const giftPosted = db
+		.select({ one: sql`1` })
+		.from(entryGroup)
+		.where(
+			and(eq(entryGroup.sourceType, 'payment'), eq(entryGroup.sourceId, payment.parentPaymentId))
+		);
+	const rows = await selectRefunds(db)
+		.where(and(refundStands(db, payment), exists(giftPosted)))
+		.orderBy(desc(payment.occurredAt), desc(payment.id))
+		.limit(SAMPLE_COUNT);
+	const events = await refundEventsOf(db, rows);
+	const samples = rows.flatMap((row) => events.get(row.id) ?? []);
+	return samples.length === 0 ? [SAMPLE_REFUND] : samples;
 }
 
 /**

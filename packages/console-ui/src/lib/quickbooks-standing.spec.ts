@@ -57,6 +57,7 @@ import {
 	stepsStand,
 	backlogSays,
 	backlogStands,
+	heldSays,
 	connectAddress,
 	credentialsPhase,
 	credentialsStands,
@@ -126,7 +127,7 @@ const company = (over: Partial<QuickbooksCompany> = {}): QuickbooksCompany => ({
 const report = (over: Partial<QuickbooksReport> = {}): QuickbooksReport => ({
 	connection: company(),
 	accounts: { state: 'read', accounts: CHART },
-	backlog: { failed: 0, oldestWaitingAt: null },
+	backlog: { failed: 0, oldestWaitingAt: null, heldBehindFailed: [] },
 	callbackAddress: 'https://give.example.org/quickbooks/callback',
 	...over
 });
@@ -555,16 +556,61 @@ describe('how long the oldest has waited', () => {
 describe('the backlog speaks only where a gift was given up on', () => {
 	it('says nothing at all where none was, however many are still on their way', () => {
 		expect(
-			backlogStands(report({ backlog: { failed: 0, oldestWaitingAt: NOW.toISOString() } }), NOW)
+			backlogStands(
+				report({
+					backlog: { failed: 0, oldestWaitingAt: NOW.toISOString(), heldBehindFailed: [] }
+				}),
+				NOW
+			)
 		).toBeNull();
 	});
 
 	it('names how many were given up on and how far behind the books are', () => {
 		const stands = backlogStands(
-			report({ backlog: { failed: 3, oldestWaitingAt: '2026-09-16T12:00:00.000Z' } }),
+			report({
+				backlog: { failed: 3, oldestWaitingAt: '2026-09-16T12:00:00.000Z', heldBehindFailed: [] }
+			}),
 			NOW
 		);
-		expect(stands).toEqual({ failed: 3, waited: '4\u00a0days' });
+		expect(stands).toEqual({ failed: 3, waited: '4\u00a0days', held: null });
+	});
+
+	it('counts the refunds waiting behind a gift given up on, and the gifts they wait on', () => {
+		const stands = backlogStands(
+			report({
+				backlog: {
+					failed: 2,
+					oldestWaitingAt: '2026-09-16T12:00:00.000Z',
+					heldBehindFailed: [
+						{ entryGroupId: 'r1', waitsOn: 'g1' },
+						{ entryGroupId: 'r2', waitsOn: 'g1' },
+						{ entryGroupId: 'r3', waitsOn: 'g2' }
+					]
+				}
+			}),
+			NOW
+		);
+		expect(stands).toEqual({
+			failed: 2,
+			waited: '4\u00a0days',
+			held: { refunds: 3, gifts: 2 }
+		});
+	});
+
+	it('says nothing of held refunds where no company is connected either', () => {
+		const stands = backlogStands(
+			report({
+				connection: { state: 'disconnected' },
+				accounts: null,
+				backlog: {
+					failed: 1,
+					oldestWaitingAt: '2026-09-16T12:00:00.000Z',
+					heldBehindFailed: [{ entryGroupId: 'r1', waitsOn: 'g1' }]
+				}
+			}),
+			NOW
+		);
+		expect(stands).toBeNull();
 	});
 
 	it('says nothing where no company is connected, whatever the rows say', () => {
@@ -574,7 +620,7 @@ describe('the backlog speaks only where a gift was given up on', () => {
 			report({
 				connection: { state: 'disconnected' },
 				accounts: null,
-				backlog: { failed: 3, oldestWaitingAt: '2026-09-16T12:00:00.000Z' }
+				backlog: { failed: 3, oldestWaitingAt: '2026-09-16T12:00:00.000Z', heldBehindFailed: [] }
 			}),
 			NOW
 		);
@@ -584,13 +630,35 @@ describe('the backlog speaks only where a gift was given up on', () => {
 	it('says the two figures separately, each as what it is', () => {
 		// the wait spans every gift still owed and the count is the given-up-on ones alone, so one
 		// sentence over both would report a healthy gift's wait as a failure's.
-		expect(backlogSays({ failed: 3, waited: '4 days' })).toBe(
+		expect(backlogSays({ failed: 3, waited: '4 days', held: null })).toBe(
 			'3 gifts didn’t sync. QuickBooks is 4 days behind.'
 		);
 	});
 
 	it('says one gift as one gift', () => {
-		expect(backlogSays({ failed: 1, waited: null })).toBe('1 gift didn’t sync.');
+		expect(backlogSays({ failed: 1, waited: null, held: null })).toBe('1 gift didn’t sync.');
+	});
+});
+
+describe('the refunds waiting behind a gift given up on', () => {
+	// none of them is counted in `failed` and none is tried until its gift is sent, so a gift
+	// recorded in QuickBooks by hand leaves each of its refunds to be recorded there by hand too.
+	it('says one refund behind one gift', () => {
+		expect(heldSays({ refunds: 1, gifts: 1 })).toBe(
+			'1 refund is waiting on a gift that didn’t sync. If you record that gift in QuickBooks by hand, record its refund there by hand too.'
+		);
+	});
+
+	it('says several refunds behind one gift', () => {
+		expect(heldSays({ refunds: 3, gifts: 1 })).toBe(
+			'3 refunds are waiting on a gift that didn’t sync. If you record that gift in QuickBooks by hand, record its refunds there by hand too.'
+		);
+	});
+
+	it('says refunds spread over several gifts', () => {
+		expect(heldSays({ refunds: 3, gifts: 2 })).toBe(
+			'3 refunds are waiting on gifts that didn’t sync. If you record one of those gifts in QuickBooks by hand, record its refunds there by hand too.'
+		);
 	});
 });
 
@@ -1197,6 +1265,7 @@ describe('which preview a press of the day acts on', () => {
 	const side = (gifts: number) => ({
 		gifts,
 		corrections: 0,
+		reversals: 0,
 		earliest: gifts > 0 ? '2026-06-03T00:00:00.000Z' : null,
 		latest: gifts > 0 ? '2026-08-31T00:00:00.000Z' : null
 	});
@@ -1236,10 +1305,12 @@ describe('what the press over the day asks before it moves', () => {
 		gifts: number,
 		corrections: number,
 		earliest: string | null,
-		latest: string | null
+		latest: string | null,
+		reversals = 0
 	) => ({
 		gifts,
 		corrections,
+		reversals,
 		earliest,
 		latest
 	});
@@ -1285,6 +1356,42 @@ describe('what the press over the day asks before it moves', () => {
 		});
 	});
 
+	it('asks before sending refunds and disputes, where they are all an earlier date sends', () => {
+		const ask = startDateAsk('2026-06-01', RIVERBANK, {
+			queues: side(0, 0, null, null, 2),
+			drops: NONE
+		});
+		expect(ask?.lines).toEqual([
+			'Refunds and disputes · 2',
+			'Company · Riverbank Trust Inc.',
+			'Any of these already entered in QuickBooks by hand will appear there twice.'
+		]);
+	});
+
+	it('asks before skipping refunds and disputes, where they are all a later date skips', () => {
+		const ask = startDateAsk('2026-09-15', RIVERBANK, {
+			queues: NONE,
+			drops: side(0, 0, null, null, 1)
+		});
+		expect(ask?.lines).toEqual([
+			'Refunds and disputes · 1',
+			'These won’t be sent to Riverbank Trust Inc.'
+		]);
+	});
+
+	it('counts refunds and disputes after gifts and corrections, before the dates', () => {
+		const ask = startDateAsk('2026-06-01', RIVERBANK, {
+			queues: side(3, 1, '2026-06-03T00:00:00.000Z', '2026-06-04T00:00:00.000Z', 2),
+			drops: NONE
+		});
+		expect(ask?.lines.slice(0, 4)).toEqual([
+			'Gifts · 3',
+			'Corrections · 1',
+			'Refunds and disputes · 2',
+			'Dated · 3 to 4 June 2026'
+		]);
+	});
+
 	it('leaves out a count that is zero', () => {
 		const ask = startDateAsk('2026-06-01', RIVERBANK, {
 			queues: side(0, 4, '2026-07-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z'),
@@ -1295,7 +1402,7 @@ describe('what the press over the day asks before it moves', () => {
 
 	it('reads the side the move touches, and asks nothing where that side is empty', () => {
 		const busy = side(5, 1, '2026-06-03T00:00:00.000Z', '2026-06-04T00:00:00.000Z');
-		// earlier queues and never drops; later drops and never queues.
+		// an earlier move reads what it queues and a later one what it drops; the other side is ignored.
 		expect(startDateAsk('2026-06-01', RIVERBANK, { queues: NONE, drops: busy })).toBeNull();
 		expect(startDateAsk('2026-09-15', RIVERBANK, { queues: busy, drops: NONE })).toBeNull();
 	});

@@ -49,11 +49,18 @@ export const RECURRING_STATUS_TONES: Record<RecurringPlanStatus, Tone> = {
 // both refund states are `note` and neither is `done`. a refund is a gift that ended, and the
 // accent on `Refunded` would say the one thing an operator must not read off a colour here: that
 // the money is in.
+//
+// `disputed` is `attention`: the gift waits on the organisation's evidence before the processor's
+// deadline, then on the processor's ruling. not `blocker`, since nothing has been refused yet — a
+// loss reads as a refund does, on the refund states' rung, and a win reads as the gift did before.
+// never `done`, since the processor has already taken the money back out. ./status-tones.spec.ts
+// holds the last.
 export const DONATION_STATUS_TONES: Record<DonationStatus, Tone> = {
 	pending: 'attention',
 	completed: 'done',
 	failed: 'blocker',
 	cancelled: 'note',
 	refunded: 'note',
+	disputed: 'attention',
 	partially_refunded: 'note'
 };

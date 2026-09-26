@@ -64,7 +64,14 @@ describe('what an endpoint is registered as', () => {
 			'invoice.paid',
 			'invoice.payment_failed',
 			'customer.subscription.updated',
-			'customer.subscription.deleted'
+			'customer.subscription.deleted',
+			'refund.created',
+			'refund.updated',
+			'refund.failed',
+			'charge.dispute.created',
+			'charge.dispute.funds_withdrawn',
+			'charge.dispute.funds_reinstated',
+			'charge.dispute.closed'
 		]);
 	});
 });

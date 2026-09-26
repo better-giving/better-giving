@@ -177,6 +177,22 @@ export interface QuickbooksBacklogLine {
 	 * screen saying it was would read a gift queued behind a backfill back as a failure that old.
 	 */
 	readonly oldestWaitingAt: string | null;
+	/**
+	 * every refund, dispute, what puts one back or settles one up that waits on a gift given up on,
+	 * with that gift, ordered by the reversal's entry group.
+	 *
+	 * none of them is tried until the gift is sent, so none is counted in {@link failed} and none has
+	 * an error of its own: a retry that sends the gift sends each one after it, and a gift recorded
+	 * in QuickBooks by hand instead leaves each one to be recorded there by hand too. a console reads
+	 * it as empty from a deployment older than itself, which names none.
+	 */
+	readonly heldBehindFailed: readonly QuickbooksHeldReversal[];
+}
+
+/** a reversal waiting in the queue, and the gift it waits on — each by its entry group's id. */
+export interface QuickbooksHeldReversal {
+	readonly entryGroupId: string;
+	readonly waitsOn: string;
 }
 
 /** everything the screen draws, in one read. */
@@ -227,12 +243,18 @@ export const QUICKBOOKS_PRESSES = [
 export type QuickbooksPress = (typeof QUICKBOOKS_PRESSES)[number];
 
 /**
- * the owed records one side of a start-date move touches: gifts and corrections counted apart, and
- * the business dates they span as ISO-8601 instants, both null where the side touches nothing.
+ * the owed records one side of a start-date move touches: gifts, corrections and reversals counted
+ * apart, and the business dates the gifts and corrections span as ISO-8601 instants, both null
+ * where the side touches neither.
  */
 export interface QuickbooksStartAtSide {
 	readonly gifts: number;
 	readonly corrections: number;
+	/**
+	 * refunds and disputes, what put one back, and a dispute's settle-up, lost or won. each moves
+	 * with the gift it reverses rather than by its own date, so its date is in neither bound.
+	 */
+	readonly reversals: number;
 	readonly earliest: string | null;
 	readonly latest: string | null;
 }

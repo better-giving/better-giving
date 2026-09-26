@@ -322,7 +322,11 @@ func TestTheDeployVarsAreTheOnesBothOperatorSurfacesRead(t *testing.T) {
 	}
 }
 
-// every name one `as const` list in that module holds, in the order it holds them.
+// a member of an `as const` list: a quoted name, or a spread of another list in the same module.
+var listMember = regexp.MustCompile(`'([^']+)'|\.\.\.([A-Za-z_][A-Za-z0-9_]*)`)
+
+// every name one `as const` list in that module holds, in the order it holds them, with each
+// spread resolved in place against that module's own constant of that name, however deep.
 func namesIn(t *testing.T, source, constant string) []string {
 	t.Helper()
 	block := regexp.MustCompile(`export const ` + constant + `\s*=\s*\[([^\]]*)\]`).
@@ -331,7 +335,11 @@ func namesIn(t *testing.T, source, constant string) []string {
 		t.Fatalf("no %s is stated", constant)
 	}
 	names := []string{}
-	for _, match := range regexp.MustCompile(`'([^']+)'`).FindAllStringSubmatch(block[1], -1) {
+	for _, match := range listMember.FindAllStringSubmatch(block[1], -1) {
+		if spread := match[2]; spread != "" {
+			names = append(names, namesIn(t, source, spread)...)
+			continue
+		}
 		names = append(names, match[1])
 	}
 	if len(names) == 0 {
@@ -411,17 +419,10 @@ func TestTheEndpointIsSpelledTheWayBothEndsSpellIt(t *testing.T) {
 		}
 	}
 
-	// the subscription is composed there out of three lists and is flattened here, so the order is
-	// that module's composition read back rather than a list of its own: a member added to any of
-	// the three and not to this binary is a delivery the endpoint is registered without.
-	stated := []string{}
-	for _, constant := range []string{
-		"SETTLEMENT_EVENT_TYPES",
-		"RECURRING_COLLECTION_EVENT_TYPES",
-		"RECURRING_COMMITMENT_EVENT_TYPES",
-	} {
-		stated = append(stated, namesIn(t, source, constant)...)
-	}
+	// the subscription is composed there out of other lists and is flattened here, so it is read
+	// through every spread `SUBSCRIBED_EVENT_TYPES` makes: a member added to any list it composes,
+	// or a list added to it, and not to this binary is a delivery the endpoint is registered without.
+	stated := namesIn(t, source, "SUBSCRIBED_EVENT_TYPES")
 	if strings.Join(stated, ",") != strings.Join(SubscribedEventTypes, ",") {
 		t.Errorf("the endpoint subscribes to %v and this binary holds %v", stated, SubscribedEventTypes)
 	}
@@ -438,14 +439,7 @@ func TestTheListenerIsSpelledTheWayBothEndsSpellIt(t *testing.T) {
 		t.Errorf("PAYPAL_WEBHOOK_PATH states %q and this binary holds %q", stated, PaypalWebhookPath)
 	}
 
-	stated := []string{}
-	for _, constant := range []string{
-		"SETTLEMENT_EVENT_TYPES",
-		"RECURRING_COLLECTION_EVENT_TYPES",
-		"RECURRING_COMMITMENT_EVENT_TYPES",
-	} {
-		stated = append(stated, namesIn(t, source, constant)...)
-	}
+	stated := namesIn(t, source, "SUBSCRIBED_EVENT_TYPES")
 	if strings.Join(stated, ",") != strings.Join(PaypalEventTypes, ",") {
 		t.Errorf("the listener subscribes to %v and this binary holds %v", stated, PaypalEventTypes)
 	}

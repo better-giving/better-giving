@@ -84,9 +84,9 @@ import type { Route } from './+types/console.quickbooks';
 // acts on is settled here rather than sent.
 //
 // **the backlog is the one thing here that is not about Intuit at all.** how many gifts were given
-// up on, and how far behind the books are, are rows in `quickbooks_sync`
-// ($lib/server/accounting/backlog.ts) — read without a credential, so a deployment whose connection
-// has died still says how much is waiting behind it.
+// up on, the refunds waiting behind them, and how far behind the books are, are rows in
+// `quickbooks_sync` ($lib/server/accounting/backlog.ts) — read without a credential, so a
+// deployment whose connection has died still says how much is waiting behind it.
 //
 // **this is a block and never a member of the report**, the decision ./console.recurring.ts and
 // ./console.payments.ts both state: a deployment that keeps its books elsewhere is not half set up,
@@ -127,7 +127,8 @@ export async function loader({ context, request }: Route.LoaderArgs): Promise<Re
 		accounts: connection === null ? null : await accountsReading(env, db),
 		backlog: {
 			failed: backlog.failed,
-			oldestWaitingAt: backlog.oldestWaitingAt?.toISOString() ?? null
+			oldestWaitingAt: backlog.oldestWaitingAt?.toISOString() ?? null,
+			heldBehindFailed: backlog.heldBehindFailed
 		},
 		// what an operator registers at Intuit, so it is the same address the round trip is made
 		// against and not whichever hostname the console reached this deployment on.
@@ -282,6 +283,7 @@ function startAtSide(side: StartAtMoveSide): QuickbooksStartAtSide {
 	return {
 		gifts: side.gifts,
 		corrections: side.corrections,
+		reversals: side.reversals,
 		earliest: side.earliest?.toISOString() ?? null,
 		latest: side.latest?.toISOString() ?? null
 	};

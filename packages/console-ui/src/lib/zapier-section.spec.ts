@@ -5,15 +5,17 @@ import { describe, expect, it } from 'vitest';
 import type { ZapierRead } from '../api/types';
 import type { ZapierAnswer, ZapierSectionProps } from './zapier-section';
 import { ZapierSection } from './zapier-section';
+import { TRIGGER_MARK, TRIGGER_NAME } from './zapier-standing';
 
-// the Zapier section's answer to a replace, as markup: what it says under the press, and that the
-// status region it says it in is drawn whether or not there is anything to say.
+// the Zapier section as markup: the trigger cards it lists, and its answer to a replace — what it
+// says under the press, and that the status region it says it in is drawn whether or not there is
+// anything to say.
 // ../../vite.config.ts pins `node` and there is no dom, so every wording is held in
 // ./zapier-standing.spec.ts (`replacedSays`) and this holds where it is drawn.
 
 const REPORT: ZapierReport = {
 	key: { madeAt: '2026-09-01T00:00:00.000Z', key: 'bgz_new' },
-	listening: { newGift: 0, newDonor: 0 },
+	listening: { newGift: 0, newDonor: 0, giftRefunded: 0 },
 	deliveries: { waiting: 0, failed: 0, oldestWaitingAt: null }
 };
 
@@ -86,5 +88,39 @@ describe('ZapierSection after a replace', () => {
 	it('still says it where the reading after the replace did not come back', () => {
 		const page = drawn(replaced(3, 0), { kind: 'unread', read: { kind: 'no-session' } });
 		expect(status(page)).toMatch(/^Zapier has turned off 3 Zaps/);
+	});
+});
+
+/** each trigger card's title, mark and listeners, in the order the section draws them. */
+const cards = (page: string) =>
+	[
+		...page.matchAll(
+			/<div class="adm-record">.*?class="lucide lucide-([a-z-]+) .*?<h2 class="adm-record__title">([^<]*)<\/h2>(?:<span class="adm-prose">([^<]*)<\/span>)?<\/div><\/div>/g
+		)
+	].map(([, mark, name, listening]) => ({ name, mark, listening: listening ?? null }));
+
+describe('ZapierSection’s triggers', () => {
+	it('draws the three cards, refunds last, each with its own mark and its own listeners', () => {
+		const page = drawn(null, {
+			kind: 'read',
+			report: { ...REPORT, listening: { newDonor: 0, newGift: 1, giftRefunded: 2 } }
+		});
+		expect(cards(page)).toEqual([
+			{ name: TRIGGER_NAME.newDonor, mark: TRIGGER_MARK.newDonor, listening: null },
+			{ name: TRIGGER_NAME.newGift, mark: TRIGGER_MARK.newGift, listening: '1 Zap listening' },
+			{
+				name: TRIGGER_NAME.giftRefunded,
+				mark: TRIGGER_MARK.giftRefunded,
+				listening: '2 Zaps listening'
+			}
+		]);
+	});
+
+	it('counts no listeners on any card where there is no key', () => {
+		const page = drawn(null, {
+			kind: 'read',
+			report: { ...REPORT, key: null, listening: { newDonor: 1, newGift: 1, giftRefunded: 1 } }
+		});
+		expect(cards(page).map((card) => card.listening)).toEqual([null, null, null]);
 	});
 });

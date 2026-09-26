@@ -8,7 +8,8 @@
 // (`packages/app/src/routes/api.paypal.webhook.ts`).
 //
 // `packages/console/internal/release/config.go` holds the binary's copy, and its config_test.go
-// gates that copy against this file. what is served at the address is
+// gates that copy against `PAYPAL_WEBHOOK_PATH` and `SUBSCRIBED_EVENT_TYPES`, read through every
+// spread in it, so each list it spreads is gated too. what is served at the address is
 // `packages/app/src/routes/api.paypal.webhook.ts`, whose path comes from its own name, and
 // `packages/app/src/routes.spec.ts` pins that path.
 //
@@ -94,6 +95,47 @@ export const RECURRING_EVENT_TYPES = [
 ] as const;
 
 /**
+ * the deliveries that say a merchant refunded money this deployment settled, each naming the refund.
+ *
+ * one per settled object: `PAYMENT.CAPTURE.REFUNDED` carries a Payments v2 refund of a one-off
+ * gift's capture, and `PAYMENT.SALE.REFUNDED` a Payments v1 refund of one collection under a
+ * repeating gift (https://developer.paypal.com/api/rest/webhooks/event-names). each names exactly one
+ * refund, so one delivery is one refund row.
+ *
+ * `PAYMENT.REFUND.PENDING` and `PAYMENT.REFUND.FAILED` are not here: PayPal documents both for an
+ * eCheck-funded refund still clearing or one the bank did not issue, neither of which moved money,
+ * and a refund that completes is `PAYMENT.CAPTURE.REFUNDED`.
+ */
+export const REFUND_EVENT_TYPES = ['PAYMENT.CAPTURE.REFUNDED', 'PAYMENT.SALE.REFUNDED'] as const;
+
+/**
+ * the deliveries that say PayPal took money back — a chargeback or another reversal the merchant did
+ * not send — each carrying a refund of the capture or the sale, in the same generations as
+ * `REFUND_EVENT_TYPES` (https://developer.paypal.com/api/rest/webhooks/event-names).
+ */
+export const REVERSED_EVENT_TYPES = ['PAYMENT.CAPTURE.REVERSED', 'PAYMENT.SALE.REVERSED'] as const;
+
+/**
+ * the deliveries about a dispute, each carrying the dispute.
+ *
+ * a dispute that opens as an inquiry holds no money, and what changes after the opening — a hold,
+ * an escalation — is reported as `CUSTOMER.DISPUTE.UPDATED`
+ * (https://developer.paypal.com/api/rest/webhooks/event-names, Disputes).
+ */
+export const DISPUTE_EVENT_TYPES = [
+	'CUSTOMER.DISPUTE.CREATED',
+	'CUSTOMER.DISPUTE.UPDATED',
+	'CUSTOMER.DISPUTE.RESOLVED'
+] as const;
+
+/** every delivery about money leaving a settled gift or coming back to it: one kind and one read. */
+export const REVERSAL_EVENT_TYPES = [
+	...REFUND_EVENT_TYPES,
+	...REVERSED_EVENT_TYPES,
+	...DISPUTE_EVENT_TYPES
+] as const;
+
+/**
  * everything the listener subscribes to, which is exactly what the deployment acts on.
  *
  * everything outside it verifies, reports `ignored`, and is answered — a listener subscribed to more
@@ -104,5 +146,6 @@ export const RECURRING_EVENT_TYPES = [
  */
 export const SUBSCRIBED_EVENT_TYPES = [
 	...SETTLEMENT_EVENT_TYPES,
-	...RECURRING_EVENT_TYPES
+	...RECURRING_EVENT_TYPES,
+	...REVERSAL_EVENT_TYPES
 ] as const;

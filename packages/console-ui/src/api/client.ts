@@ -30,6 +30,11 @@ import type {
 	ZapierPressed,
 	ZapierRead
 } from './types';
+import type {
+	QuickbooksBacklogLine,
+	QuickbooksStartAtSide
+} from '@better-giving/operator/console/quickbooks';
+import type { ZapierReport } from '@better-giving/operator/console/zapier';
 
 // the console's own process, reached from the page it serves.
 //
@@ -212,7 +217,16 @@ export const setUpRecurring = (): Promise<RecurringSetup> => ask('/deployment/re
  * its own D1 and the chart of accounts is read with them, so this console holds no Intuit
  * credential and asks Intuit nothing.
  */
-export const readQuickbooks = (): Promise<QuickbooksRead> => ask('/deployment/quickbooks', 'GET');
+export async function readQuickbooks(): Promise<QuickbooksRead> {
+	const read = await ask<QuickbooksRead>('/deployment/quickbooks', 'GET');
+	if (read.kind !== 'read') return read;
+	// a deployment older than this console names no refund held behind a gift, and the binary
+	// passes `backlog` through as it came.
+	const { backlog } = read.report;
+	return { ...read, report: { ...read.report, backlog: { ...NOTHING_HELD, ...backlog } } };
+}
+
+const NOTHING_HELD: Pick<QuickbooksBacklogLine, 'heldBehindFailed'> = { heldBehindFailed: [] };
 
 /**
  * one press over that connection.
@@ -221,15 +235,42 @@ export const readQuickbooks = (): Promise<QuickbooksRead> => ask('/deployment/qu
  * opens it, and Intuit sends that browser back to the deployment — never to this console, which is
  * a binary on somebody's laptop Intuit cannot reach.
  */
-export const pressQuickbooks = (body: QuickbooksPressBody): Promise<QuickbooksPressed> =>
-	post('/deployment/quickbooks', body);
+export async function pressQuickbooks(body: QuickbooksPressBody): Promise<QuickbooksPressed> {
+	const pressed = await post<QuickbooksPressed>('/deployment/quickbooks', body);
+	if (pressed.kind !== 'reported' || pressed.report.press !== 'start-date-preview') return pressed;
+	// a deployment older than this console counts no reversals on either side of a move, and the
+	// binary passes the report through as it came.
+	const { queues, drops } = pressed.report;
+	return {
+		...pressed,
+		report: {
+			...pressed.report,
+			queues: { ...NO_REVERSALS, ...queues },
+			drops: { ...NO_REVERSALS, ...drops }
+		}
+	};
+}
+
+const NO_REVERSALS: Pick<QuickbooksStartAtSide, 'reversals'> = { reversals: 0 };
 
 /**
  * where this deployment's Zapier key stands, how many Zaps are listening on it, and how its
  * deliveries are going. every reading carries the key, or null for a key made before the
  * deployment stored it.
  */
-export const readZapier = (): Promise<ZapierRead> => ask('/deployment/zapier', 'GET');
+export async function readZapier(): Promise<ZapierRead> {
+	const read = await ask<ZapierRead>('/deployment/zapier', 'GET');
+	if (read.kind !== 'read') return read;
+	// a deployment older than this console reports no count for a trigger it does not have yet, and
+	// the binary passes `listening` through as it came.
+	const { listening } = read.report;
+	return {
+		...read,
+		report: { ...read.report, listening: { ...NO_ZAPS_LISTENING, ...listening } }
+	};
+}
+
+const NO_ZAPS_LISTENING: ZapierReport['listening'] = { newGift: 0, newDonor: 0, giftRefunded: 0 };
 
 /** makes the key, or replaces it; the answer carries the new key. */
 export const pressZapier = (body: ZapierPressBody): Promise<ZapierPressed> =>

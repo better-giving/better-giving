@@ -1,10 +1,18 @@
 import { env } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { postableId } from '$lib/server/db/accounts';
 import { createDb, type Db } from '$lib/server/db/client';
 import { contact, donation, orgProfile, payment } from '$lib/server/db/schema';
+import { post, postingStatements } from '$lib/server/ledger/posting';
 import { makeZapierKey, replaceZapierKey } from '$lib/server/zapier/key';
-import { donorEventOf, readGiftEvents, type GiftEvent } from '$lib/server/zapier/payload';
+import {
+	donorEventOf,
+	readGiftEvents,
+	readRefundEvents,
+	type GiftEvent
+} from '$lib/server/zapier/payload';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as surface from './zapier';
 import * as hooks from './zapier.hooks';
@@ -79,6 +87,8 @@ beforeEach(async () => {
 		'zapier_subscription',
 		'zapier_key',
 		'org_profile',
+		'ledger_entry',
+		'entry_group',
 		'payment',
 		'donation',
 		'contact'
@@ -282,6 +292,18 @@ describe('the samples the Zap editor shows', () => {
 		expect(fieldsOf(data[0])).toEqual(fieldsOf(eventOf(live)));
 	});
 
+	it('answers gift_refunded with the live refund event, never a gift', async () => {
+		const giftId = await settledGift();
+		const refundId = await refundOf(giftId);
+		const live = (await readRefundEvents(db, [refundId])).get(refundId);
+		if (live === undefined) throw new Error('the refund rendered no event');
+
+		const response = await samplesOf('gift_refunded');
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ data: [live] });
+	});
+
 	it('refuses a trigger it does not have, listing the ones it does', async () => {
 		const response = await samplesOf('new_refund');
 
@@ -300,7 +322,7 @@ function fieldsOf(value: unknown, at = ''): string[] {
 		.sort();
 }
 
-/** a settled one-off gift, answered with its payment id. */
+/** a settled one-off gift, posted to the books as a settlement posts it, answered with its payment id. */
 async function settledGift(): Promise<string> {
 	const [contactId, donationId, paymentId] = [uuidv7(), uuidv7(), uuidv7()];
 	const at = new Date('2026-09-10T12:00:00.000Z');
@@ -323,9 +345,45 @@ async function settledGift(): Promise<string> {
 			status: 'succeeded',
 			provider: 'manual',
 			occurredAt: at
-		})
+		}),
+		...postingStatements(
+			db,
+			post({
+				sourceType: 'payment',
+				sourceId: paymentId,
+				currency: 'USD',
+				occurredAt: at,
+				memo: null,
+				lines: [
+					{ accountId: postableId('undepositedFunds'), amountMinor: 5_000 },
+					{ accountId: postableId('donationsDeductible'), amountMinor: -5_000 }
+				]
+			})
+		)
 	]);
 	return paymentId;
+}
+
+/** $20 of gift `giftId` refunded, and the refund row's id. */
+async function refundOf(giftId: string): Promise<string> {
+	const [gift] = await db
+		.select({ donationId: payment.donationId })
+		.from(payment)
+		.where(eq(payment.id, giftId));
+	const id = uuidv7();
+	await db.insert(payment).values({
+		id,
+		donationId: gift?.donationId ?? '',
+		amountMinor: 2_000,
+		currency: 'USD',
+		direction: 'refund',
+		method: 'check',
+		status: 'succeeded',
+		provider: 'manual',
+		occurredAt: new Date('2026-09-12T12:00:00.000Z'),
+		parentPaymentId: giftId
+	});
+	return id;
 }
 
 describe('a caller over the limit', () => {

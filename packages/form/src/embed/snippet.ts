@@ -29,9 +29,9 @@ import { PRE_UPGRADE_RESERVATION } from './reservation';
  * sends, on a gift where no money moved.
  *
  * no guard is built here and none is to be added. nothing in this project reads test-versus-live —
- * no marker, no stage flag, no branch on which deployment this is — and a rehearsal deployment is
- * permitted live keys, so its keys would not identify it either. what answers this is the operator
- * knowing, and DEPLOY.md is where they are told.
+ * no marker, no stage flag, no branch on which deployment this is — beyond a Stripe dispute alert's
+ * dashboard link, and a rehearsal deployment is permitted live keys, so its keys would not identify
+ * it either. what answers this is the operator knowing, and DEPLOY.md is where they are told.
  *
  * the style block is not decoration and is not optional: it is what holds the element's box while
  * the runtime is still on its way, and without it every visitor to the page takes a reflow of the

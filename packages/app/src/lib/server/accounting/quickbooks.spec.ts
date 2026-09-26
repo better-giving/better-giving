@@ -539,7 +539,7 @@ describe('sending a gift', () => {
 
 		const result = await provider.sendGift(GIFT, 'first', REVISION);
 
-		expect(result).toEqual({ ok: true, value: { remoteId: '1200' } });
+		expect(result).toEqual({ ok: true, value: { remoteId: '1200', companyId: '4620816365' } });
 		expect(calls.some((call) => call.url.pathname.endsWith('/deposit'))).toBe(false);
 		const post = calls.find((call) => call.url.pathname.endsWith('/journalentry'));
 		expect(post?.url.pathname).toBe('/v3/company/4620816365/journalentry');
@@ -697,7 +697,7 @@ describe('a holding nobody has picked', () => {
 		// gifts waiting, and the rows behind it are another's.
 		expect(stripe).toMatchObject({ ok: false, reason: 'holding_not_chosen', retryable: true });
 		expect(stripe).toMatchObject({ detail: expect.stringContaining('Stripe balance') });
-		expect(paypal).toEqual({ ok: true, value: { remoteId: '1200' } });
+		expect(paypal).toEqual({ ok: true, value: { remoteId: '1200', companyId: '4620816365' } });
 		expect(calls.filter((call) => call.url.pathname.endsWith('/journalentry'))).toHaveLength(1);
 	});
 });
@@ -902,7 +902,7 @@ describe('a post that already landed', () => {
 
 		const result = await provider.sendGift(GIFT, 'again', REVISION);
 
-		expect(result).toEqual({ ok: true, value: { remoteId: '987' } });
+		expect(result).toEqual({ ok: true, value: { remoteId: '987', companyId: '4620816365' } });
 		expect(calls.some(isCreate)).toBe(false);
 	});
 
@@ -923,7 +923,7 @@ describe('a post that already landed', () => {
 
 		// the entry it would post now is another body under another request id, so Intuit's replay
 		// cannot catch it — only this lookup stops the gift landing twice.
-		expect(result).toEqual({ ok: true, value: { remoteId: '987' } });
+		expect(result).toEqual({ ok: true, value: { remoteId: '987', companyId: '4620816365' } });
 		expect(calls.some(isCreate)).toBe(false);
 	});
 
@@ -1015,6 +1015,29 @@ describe('what a refusal costs the queued entry', () => {
 		});
 	});
 
+	it('names the company it addressed on a refusal, whose books the post may have reached', async () => {
+		servingCompany((statement) => (statement === '' ? { status: 503, json: {} } : undefined));
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		expect(await provider.sendGift(GIFT, 'first', REVISION)).toMatchObject({
+			ok: false,
+			reason: 'provider_error',
+			companyId: '4620816365'
+		});
+	});
+
+	it('names no company where none was connected to address', async () => {
+		serving(() => undefined);
+		const unconnected = store();
+		unconnected.elsewhere(null);
+		const provider = createQuickbooksProvider(CREDENTIALS, unconnected);
+
+		const result = await provider.sendGift(GIFT, 'first', REVISION);
+
+		expect(result).toMatchObject({ ok: false, reason: 'not_connected' });
+		expect(result).not.toHaveProperty('companyId');
+	});
+
 	it('reports a fault Intuit named, so the console can show why', async () => {
 		servingCompany((statement) =>
 			statement.startsWith('select * from Customer')
@@ -1096,7 +1119,7 @@ describe('sending a correction', () => {
 
 		const result = await provider.sendCorrection(CORRECTION, 'first', REVISION);
 
-		expect(result).toEqual({ ok: true, value: { remoteId: '1200' } });
+		expect(result).toEqual({ ok: true, value: { remoteId: '1200', companyId: '4620816365' } });
 		const post = calls.find((call) => call.url.pathname.endsWith('/journalentry'));
 		expect(post?.url.pathname).toBe('/v3/company/4620816365/journalentry');
 		expect(post?.url.searchParams.get('requestid')).toMatch(new RegExp(`^${CORRECTION.key}-`));
@@ -1138,7 +1161,7 @@ describe('sending a correction', () => {
 
 		expect(await provider.sendCorrection(CORRECTION, 'again', REVISION)).toEqual({
 			ok: true,
-			value: { remoteId: '1200' }
+			value: { remoteId: '1200', companyId: '4620816365' }
 		});
 		expect(calls.some(isCreate)).toBe(false);
 	});
@@ -1161,7 +1184,178 @@ describe('sending a correction', () => {
 
 		// both of this app's accounts map to the one QuickBooks account, so the entry would move
 		// nothing — and an entry that moves nothing is worse than none: it reads as a correction made.
-		expect(result).toMatchObject({ ok: false, reason: 'invalid_record', retryable: false });
+		expect(result).toMatchObject({
+			ok: false,
+			reason: 'invalid_record',
+			retryable: false,
+			detail:
+				'This correction moves money between two accounts that are both sent to the same QuickBooks account, so it would post an entry that changes nothing. Correct it in QuickBooks instead.'
+		});
+	});
+});
+
+/** a refund of {@link GIFT}, answering the journal entry the gift went over as. */
+const REVERSAL = {
+	key: '019fb0d9-1c2e-7a3b-8f4d-5e6a7b8c9d0e',
+	occurredAt: new Date('2026-05-02T00:00:00.000Z'),
+	currency: 'USD',
+	memo: 'refund 019fb0d9-0a1b-7c2d-9e3f-4a5b6c7d8e9f',
+	donor: { displayName: 'Ada Lovelace', email: 'ada@example.org' },
+	answers: { key: GIFT.key, remoteId: '1200' },
+	lines: [
+		{ role: 'income', posting: 'debit', amountMinor: 10_000 },
+		{ role: 'stripeBalance', posting: 'credit', amountMinor: 10_000 }
+	]
+} as const;
+
+/** the answered gift's entry as Intuit reads it back, its donor lines naming `customerId`. */
+function giftEntry(customerId: string, note = `better-giving ${GIFT.key}`) {
+	const entity = { Type: 'Customer', EntityRef: { value: customerId, name: 'Ada Lovelace' } };
+	return {
+		status: 200,
+		json: {
+			QueryResponse: {
+				JournalEntry: [
+					{
+						Id: '1200',
+						PrivateNote: note,
+						Line: [
+							{
+								DetailType: 'JournalEntryLineDetail',
+								JournalEntryLineDetail: {
+									PostingType: 'Debit',
+									AccountRef: { value: '140' },
+									Entity: entity
+								}
+							},
+							{
+								DetailType: 'JournalEntryLineDetail',
+								JournalEntryLineDetail: {
+									PostingType: 'Credit',
+									AccountRef: { value: '79' },
+									Entity: entity
+								}
+							}
+						]
+					}
+				]
+			}
+		}
+	};
+}
+
+const READS_THE_GIFT = "select * from JournalEntry where Id = '1200'";
+
+describe('sending a reversal', () => {
+	it('posts against the customer the gift’s own entry names, looking nobody up', async () => {
+		const calls = servingCompany((statement) =>
+			statement === READS_THE_GIFT ? giftEntry('12') : undefined
+		);
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		const result = await provider.sendReversal(REVERSAL, 'first', REVISION);
+
+		expect(result).toMatchObject({
+			ok: true,
+			value: { remoteId: '1200', companyId: '4620816365' }
+		});
+		expect(calls.map(asked).filter((query) => query.startsWith('select * from Customer'))).toEqual(
+			[]
+		);
+		expect(calls.some((call) => call.url.pathname.endsWith('/customer'))).toBe(false);
+		const post = calls.find((call) => call.url.pathname.endsWith('/journalentry'));
+		const lines = JSON.parse(post?.body ?? '{}').Line;
+		expect(
+			lines.map((line: { JournalEntryLineDetail: unknown }) => line.JournalEntryLineDetail)
+		).toEqual([
+			{
+				PostingType: 'Debit',
+				AccountRef: { value: '79' },
+				Entity: { Type: 'Customer', EntityRef: { value: '12' } }
+			},
+			{
+				PostingType: 'Credit',
+				AccountRef: { value: '140' },
+				Entity: { Type: 'Customer', EntityRef: { value: '12' } }
+			}
+		]);
+	});
+
+	it.each([
+		['is gone from the company', { status: 200, json: { QueryResponse: {} } }],
+		['is not the one this app posted', giftEntry('12', 'better-giving some-other-entry')]
+	])('finds the donor by name after an email miss where the gift’s entry %s', async (_, entry) => {
+		const calls = servingCompany((statement) => {
+			if (statement === READS_THE_GIFT) return entry;
+			if (statement.startsWith('select * from Customer where DisplayName')) {
+				return { status: 200, json: { QueryResponse: { Customer: [{ Id: '44' }] } } };
+			}
+			return undefined;
+		});
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		const result = await provider.sendReversal(REVERSAL, 'first', REVISION);
+
+		expect(result).toMatchObject({
+			ok: true,
+			value: { remoteId: '1200', companyId: '4620816365' }
+		});
+		expect(calls.map(asked).filter((query) => query.startsWith('select * from Customer'))).toEqual([
+			"select * from Customer where PrimaryEmailAddr = 'ada@example.org' and Active = true",
+			"select * from Customer where DisplayName = 'Ada Lovelace' and Active = true"
+		]);
+		expect(calls.some((call) => call.url.pathname.endsWith('/customer'))).toBe(false);
+		const post = calls.find((call) => call.url.pathname.endsWith('/journalentry'));
+		expect(JSON.parse(post?.body ?? '{}').Line[0].JournalEntryLineDetail.Entity).toEqual({
+			Type: 'Customer',
+			EntityRef: { value: '44' }
+		});
+	});
+
+	it('is answered with the entry QuickBooks already holds on a retry, reading nothing else', async () => {
+		const calls = servingCompany((statement) =>
+			statement.startsWith("select * from JournalEntry where TxnDate = '2026-05-02'")
+				? {
+						status: 200,
+						json: {
+							QueryResponse: {
+								JournalEntry: [
+									{ Id: '1200', PrivateNote: `better-giving ${GIFT.key}` },
+									{ Id: '1310', PrivateNote: `better-giving ${REVERSAL.key}\n${REVERSAL.memo}` }
+								]
+							}
+						}
+					}
+				: undefined
+		);
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		const result = await provider.sendReversal(REVERSAL, 'again', REVISION);
+
+		expect(result).toMatchObject({
+			ok: true,
+			value: { remoteId: '1310', companyId: '4620816365' }
+		});
+		expect(calls.some(isCreate)).toBe(false);
+		expect(calls.map(asked)).not.toContain(READS_THE_GIFT);
+	});
+
+	it('refuses a reversal whose sides all land in one account, naming a refund or dispute', async () => {
+		serving(() => undefined);
+		const provider = createQuickbooksProvider(
+			CREDENTIALS,
+			store({ accounts: { stripeBalance: '79' } })
+		);
+
+		const result = await provider.sendReversal(REVERSAL, 'first', REVISION);
+
+		expect(result).toMatchObject({
+			ok: false,
+			reason: 'invalid_record',
+			retryable: false,
+			detail:
+				'This refund or dispute moves money between accounts that are all sent to the same QuickBooks account, so it would post an entry that changes nothing. Record it in QuickBooks instead.'
+		});
 	});
 });
 

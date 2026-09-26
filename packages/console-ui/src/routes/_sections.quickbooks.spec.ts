@@ -26,7 +26,7 @@ const report = (): QuickbooksReport => ({
 			}
 		: { state: 'disconnected' },
 	accounts: null,
-	backlog: { failed: 0, oldestWaitingAt: null },
+	backlog: { failed: 0, oldestWaitingAt: null, heldBehindFailed: [] },
 	callbackAddress: 'https://give.example.org/quickbooks/callback'
 });
 

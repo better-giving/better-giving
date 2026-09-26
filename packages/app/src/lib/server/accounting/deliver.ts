@@ -20,8 +20,12 @@ import type {
 	AccountingFailure,
 	AccountingFailureReason,
 	AccountingProvider,
-	SendAttempt
+	AccountingResult,
+	RemoteRecord,
+	SendAttempt,
+	Sendable
 } from './provider';
+import { awaitingWhatItAnswers, CONNECTED_REALM } from './outbox';
 import { readSendable } from './record';
 
 // the outbox, delivered: what reads `quickbooks_sync` and sends what it names.
@@ -55,13 +59,19 @@ import { readSendable } from './record';
 // mid-send writes nothing more, and its rows come back once the lease passes, counted, so the next
 // send looks before it posts.
 //
+// the claim also names the company connected as it takes the row, so no row an attempt may have
+// taken to Intuit reads as belonging to no company (`IN_THIS_COMPANY` in ./outbox.ts). the
+// answer then writes the company the adapter says it addressed, which is another where the
+// connection moved mid-send; an attempt given back leaves a row nothing has sent naming none again.
+//
 // ---------------------------------------------------------------------------
 // the three statuses, and every one a *run* writes is written here.
 //
 // the one other writer is ./backlog.ts, and it writes one transition: `failed` back to `pending`,
 // when an operator presses retry on the console. so a status moves by a run or by a person and by
 // nothing else. moving the start date (./outbox.ts) adds `pending` rows and removes rows no run
-// has ever sent, and changes the status of none.
+// has ever sent, a connect adds the reversals it owes (`queueOwedReversals` there), and neither
+// changes the status of any.
 //
 //   pending — owed and not finished, whether or not it has failed before. `attempts` counts the
 //             tries and `last_error` holds the last one's words.
@@ -230,16 +240,18 @@ function waitIsOver(now: Date): SQL {
 }
 
 /**
- * the rows a run may take: owed, and held by nobody.
+ * the rows a run may take: owed, held by nobody, and not a reversal whose gift has yet to go over.
  *
  * a lease that has run out is no lease — the run that wrote it is gone and the gift is owed either
  * way. `pending` and no other status: a row given up on waits for a person, and a sent one is
- * finished.
+ * finished. a reversal waits on the row it answers being `sent` (`awaitingWhatItAnswers` in
+ * ./outbox.ts), and is taken by the first run after it is.
  */
 function unclaimed(now: Date) {
 	return and(
 		eq(quickbooksSync.status, 'pending'),
-		or(isNull(quickbooksSync.leasedUntil), lte(quickbooksSync.leasedUntil, now))
+		or(isNull(quickbooksSync.leasedUntil), lte(quickbooksSync.leasedUntil, now)),
+		sql`not ${awaitingWhatItAnswers(quickbooksSync.entryGroupId)}`
 	);
 }
 
@@ -385,6 +397,7 @@ export async function sendQueuedEntry(
 			// landing and writing it down, and the count it left is what tells the next send to look
 			// before it posts, and a start-date move not to drop the row (./outbox.ts).
 			attempts: sql`${quickbooksSync.attempts} + 1`,
+			realmId: CONNECTED_REALM,
 			// held where it is, the way `stamp` below holds it: `updated_at` is what the backoff is
 			// measured from, and it moves when a row-level answer is written.
 			updatedAt: sql`${quickbooksSync.updatedAt}`
@@ -403,10 +416,7 @@ export async function sendQueuedEntry(
 	// held by the claim, so it is the `updated_at` the last row-level answer or retry wrote: the same
 	// after a call that never answered, a stopped run or a run that died.
 	const revision = String(claimed.updatedAt.getTime());
-	const sent =
-		sendable.value.kind === 'gift'
-			? await deps.provider.sendGift(sendable.value.gift, attempt, revision)
-			: await deps.provider.sendCorrection(sendable.value.correction, attempt, revision);
+	const sent = await sendOver(deps.provider, sendable.value, attempt, revision);
 	if (!sent.ok) return land(deps.db, entryGroupId, sent, 'sent', now);
 
 	await deps.db
@@ -416,16 +426,36 @@ export async function sendQueuedEntry(
 			remoteId: sent.value.remoteId,
 			lastError: null,
 			leasedUntil: null,
-			updatedAt: now
+			updatedAt: now,
+			realmId: sent.value.companyId
 		})
 		.where(eq(quickbooksSync.entryGroupId, entryGroupId));
 	return { disposition: 'sent', remoteId: sent.value.remoteId };
 }
 
+function sendOver(
+	provider: AccountingProvider,
+	sendable: Sendable,
+	attempt: SendAttempt,
+	revision: string
+): Promise<AccountingResult<RemoteRecord>> {
+	switch (sendable.kind) {
+		case 'gift':
+			return provider.sendGift(sendable.gift, attempt, revision);
+		case 'correction':
+			return provider.sendCorrection(sendable.correction, attempt, revision);
+		case 'reversal':
+			return provider.sendReversal(sendable.reversal, attempt, revision);
+	}
+}
+
 /** why nothing was claimed, in the words a person reads. nothing was sent on any of these paths. */
 async function unclaimable(db: Db, entryGroupId: string): Promise<QueuedEntryResult> {
 	const [queued] = await db
-		.select({ status: quickbooksSync.status })
+		.select({
+			status: quickbooksSync.status,
+			awaiting: sql<number>`${awaitingWhatItAnswers(quickbooksSync.entryGroupId)}`
+		})
 		.from(quickbooksSync)
 		.where(eq(quickbooksSync.entryGroupId, entryGroupId));
 
@@ -447,6 +477,12 @@ async function unclaimable(db: Db, entryGroupId: string): Promise<QueuedEntryRes
 		return {
 			disposition: 'nothing_owed',
 			detail: `The journal entry ${entryGroupId} was given up on, and reaches QuickBooks only if somebody retries it.`
+		};
+	}
+	if (queued.awaiting === 1) {
+		return {
+			disposition: 'nothing_owed',
+			detail: `The journal entry ${entryGroupId} reverses one the connected QuickBooks company does not hold yet, and reaches QuickBooks only after that one does.`
 		};
 	}
 	return {
@@ -473,17 +509,25 @@ async function land(
 	// the run-level answers other than `unreachable` say nothing was made. `unreachable` keeps
 	// the attempt: a call whose answer never came may have created the record, and the count is
 	// what tells the next send to look before it posts.
-	const givenBack =
-		handed === 'unsent' || (landing === 'run' && failure.reason !== 'unreachable')
-			? { attempts: sql`${quickbooksSync.attempts} - 1` }
-			: {};
+	const givesBack = handed === 'unsent' || (landing === 'run' && failure.reason !== 'unreachable');
+	// an attempt that stays counted may have reached the company the send addressed, so the row
+	// names it where the adapter said, and keeps the claim's where it did not: a later record about
+	// the same gift goes only to the books this one may be in (./outbox.ts). one given back leaves a
+	// row nothing ever sent naming no company, which is what the outbox reads such a row by.
+	const addressed = failure.companyId === undefined ? {} : { realmId: failure.companyId };
+	const claimLeaves = givesBack
+		? {
+				attempts: sql`${quickbooksSync.attempts} - 1`,
+				realmId: sql`case when ${quickbooksSync.attempts} = 1 and ${quickbooksSync.remoteId} is null then null else ${quickbooksSync.realmId} end`
+			}
+		: addressed;
 	if (landing === 'run') {
 		// the row is left exactly as it stands, minus the claim: nothing about it is why the run
 		// stopped, and the next run has to be free to read it again.
 		await db
 			.update(quickbooksSync)
 			.set({
-				...givenBack,
+				...claimLeaves,
 				leasedUntil: null,
 				updatedAt: sql`${quickbooksSync.updatedAt}`
 			})
@@ -495,7 +539,7 @@ async function land(
 		await db
 			.update(quickbooksSync)
 			.set({
-				...givenBack,
+				...claimLeaves,
 				status: 'failed',
 				lastError: failure.detail,
 				leasedUntil: null,
@@ -508,6 +552,7 @@ async function land(
 	await db
 		.update(quickbooksSync)
 		.set({
+			...addressed,
 			lastError: failure.detail,
 			// given back rather than left to expire: the backoff is what decides when this row is
 			// read again, and a lease outliving it would be a second, longer wait nobody asked for.

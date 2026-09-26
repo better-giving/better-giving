@@ -449,7 +449,10 @@ export function newContactRow(input: ParsedContact, consented: boolean | null): 
  * single `batch()`:
  *
  *   const donor = newContactRow(parsed, consented);
- *   await db.batch([contactInsertStatement(db, donor), donationStmt, ...postingStatements(db, posting)]);
+ *   await db.batch([
+ *     contactInsertStatement(db, donor), donationStmt, paymentStmt,
+ *     ...settledGiftWrites(db, { charge, fee, contactId: donor.id }) // ../books/writes.ts
+ *   ]);
  *
  * it is the twin of `postingStatements(db, posting)` in ../ledger/posting.ts, and it exists
  * for the reason that one does: the table object stays inside the module that owns the table.

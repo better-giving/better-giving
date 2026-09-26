@@ -23,7 +23,7 @@ import {
 import { ENTRY_SOURCE_LABELS } from '$lib/ledger/sources';
 import { invalid, parseForm } from '$lib/server/conform';
 import { pickableAccounts, postableIdFromSubmitted } from '$lib/server/db/accounts';
-import { postCorrection } from '$lib/server/ledger/correct';
+import { postCorrection } from '$lib/server/books/correct';
 import {
 	ENTRY_GROUP_LIST_LIMIT,
 	type EntryGroupListRow,
@@ -63,7 +63,7 @@ import type { Route } from './+types/_app.admin.books';
 //
 // this file is deliberately thin. what a box may hold is `$lib/ledger/input-schema.ts`, what a
 // correction *is* — the source type, the currency, the sign convention and the one `batch()` — is
-// `$lib/server/ledger/correct.ts`, and what the entries are is `$lib/server/ledger/queries.ts`; the
+// `$lib/server/books/correct.ts`, and what the entries are is `$lib/server/ledger/queries.ts`; the
 // only job here is turning a request into one and a failure into the other. that split is the one
 // every other write route on this dashboard is under (`createContact`, `createForm`), and it is
 // what keeps a second poster — a backfill, a repair run from the console — from copying the sign

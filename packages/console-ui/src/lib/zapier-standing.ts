@@ -1,3 +1,4 @@
+import type { MarkName } from '@better-giving/operator/components/status/Mark';
 import type {
 	ZapierPress,
 	ZapierPressReport,
@@ -71,13 +72,25 @@ export const UNKNOWN: Record<ZapierPress, string> = {
 	replace: 'it can’t say whether the key was replaced'
 };
 
-/** the two events the app hands to a Zap, keyed as the reading counts their listeners. */
+/** the events the app hands to a Zap, keyed as the reading counts their listeners. */
 export type ZapierTrigger = keyof ZapierReport['listening'];
 
-/** the title on each trigger's card. */
+/**
+ * the title on each trigger's card, naming what one event is. the refund trigger fires on every
+ * refund of a gift, a partial one and a dispute lost included
+ * (packages/app/src/lib/server/zapier/events.ts), so its unit is the refund and not the gift.
+ */
 export const TRIGGER_NAME: Record<ZapierTrigger, string> = {
 	newGift: 'Settled gifts',
-	newDonor: 'New donors'
+	newDonor: 'New donors',
+	giftRefunded: 'Refunds'
+};
+
+/** the mark at the leading edge of each trigger's card. */
+export const TRIGGER_MARK: Record<ZapierTrigger, MarkName> = {
+	newDonor: 'user-plus',
+	newGift: 'stamp',
+	giftRefunded: 'arrow-left'
 };
 
 /**
@@ -91,7 +104,7 @@ export function listeningSays(count: number): string | null {
 
 /** every subscription the current key holds open, which is what a replace ends. */
 export const listeningTotal = (report: ZapierReport): number =>
-	report.listening.newGift + report.listening.newDonor;
+	Object.values(report.listening).reduce((total, count) => total + count, 0);
 
 /**
  * what a replace costs, one line each, for the confirm and for nowhere else.
@@ -151,7 +164,7 @@ const HOUR = 60 * 60_000;
  * working is the silent default: a delivery waiting on a backoff is on its way, and a queue a few
  * minutes deep is the every-minute cron doing its job. what speaks is a delivery given up on, and a
  * queue whose oldest delivery has waited past the hour. a failure is counted as a delivery and never
- * as a gift: the count spans both triggers (packages/app/src/lib/server/zapier/report.ts), and a new
+ * as a gift: the count spans every trigger (packages/app/src/lib/server/zapier/report.ts), and a new
  * donor's delivery failing is no gift going astray.
  *
  * two sentences because they are two measurements: the wait spans every delivery still owed, healthy

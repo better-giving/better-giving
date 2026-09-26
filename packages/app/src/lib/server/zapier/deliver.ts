@@ -1,8 +1,16 @@
 import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
+import { payment, zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
 import { eachAtMost } from './each-at-most';
-import { donorEventOf, type GiftEvent, readGiftEvents } from './payload';
+import { refundStands } from './events';
+import {
+	donorEventOf,
+	type GiftEvent,
+	readGiftEvents,
+	readRefundEvents,
+	type RefundEvent,
+	type ZapierEvent
+} from './payload';
 import { endSubscriptionStatements } from './subscriptions';
 
 // the Zapier outbox, delivered: what reads `zapier_delivery` and posts each row to its Zap's hook.
@@ -32,6 +40,13 @@ import { endSubscriptionStatements } from './subscriptions';
 // a row still owed {@link GIVE_UP_AFTER_MS} after it was queued is `failed` at the next run's
 // start, without another post; the console counts those and nothing re-queues one. one hook
 // failing never stops the rest: every row's outcome is its own write.
+//
+// **a `gift_refunded` row is sent only while its refund still stands**, read at send as well as at
+// queueing (`refundStands` in ./events.ts). a refund that failed after it was queued, or a
+// dispute whose loss no longer holds, is `dropped` unposted, with the reason in `last_error`: no
+// event follows it, so posting it would leave a Zap acting on money that came back. what already
+// went out stays out. a `new_gift` row is sent as it happened, because a refund of it since is
+// an event of its own.
 
 /** everything one run needs, per invocation. `fetch` is handed in so a spec can answer for Zapier. */
 export type ZapierDeliveryDeps = { readonly db: Db; readonly fetch: typeof fetch };
@@ -86,17 +101,23 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 	if (claimed.length === 0) return;
 
 	const hooks = await readHooks(deps.db, [...new Set(claimed.map((c) => c.subscriptionId))]);
-	const gifts = await readGiftEvents(
-		deps.db,
-		claimed.map((c) => c.paymentId)
-	);
+	const isRefund = (row: Claimed) => hooks.get(row.subscriptionId)?.trigger === 'gift_refunded';
+	const refundIds = claimed.filter(isRefund).map((c) => c.paymentId);
+	const events: Events = {
+		gifts: await readGiftEvents(
+			deps.db,
+			claimed.filter((c) => !isRefund(c)).map((c) => c.paymentId)
+		),
+		refunds: await readRefundEvents(deps.db, refundIds)
+	};
+	const standing = await readStandingRefunds(deps.db, refundIds);
 	const gone = new Set<string>();
 
 	await eachAtMost(POSTS_AT_ONCE, claimed, async (row) => {
 		if (gone.has(row.subscriptionId)) return;
 		const hook = hooks.get(row.subscriptionId);
-		const gift = gifts.get(row.paymentId);
-		if (hook === undefined || gift === undefined) {
+		const event = hook === undefined ? undefined : eventFor(hook.trigger, row.paymentId, events);
+		if (hook === undefined || event === undefined) {
 			const missing =
 				hook === undefined ? `subscription ${row.subscriptionId}` : `payment ${row.paymentId}`;
 			await land(deps.db, row, lease, now, {
@@ -105,11 +126,18 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 			});
 			return;
 		}
+		if (hook.trigger === 'gift_refunded' && !standing.has(row.paymentId)) {
+			await land(deps.db, row, lease, now, {
+				status: 'dropped',
+				lastError: REFUND_NO_LONGER_STANDS
+			});
+			return;
+		}
 
 		// the wall clock, not `now`: what matters is whether a post started now can finish before
 		// the next run may take the row. one that cannot is left for that run.
 		if (lease.getTime() - Date.now() < POST_TIMEOUT_MS) return;
-		const answer = await post(deps.fetch, hook.url, eventFor(hook.trigger, gift));
+		const answer = await post(deps.fetch, hook.url, event);
 		if (answer === 'gone') {
 			gone.add(row.subscriptionId);
 			await deps.db.batch(
@@ -214,8 +242,44 @@ async function readHooks(db: Db, ids: readonly string[]): Promise<Map<string, Ho
 	return new Map(rows.map((r) => [r.id, { url: r.url, trigger: r.trigger }]));
 }
 
-function eventFor(trigger: ZapierTrigger, gift: GiftEvent) {
-	return trigger === 'new_donor' ? donorEventOf(gift) : gift;
+/**
+ * of `refundIds`, the refunds that still stand ({@link refundStands}), read as this run renders
+ * them. at most `CLAIMS_PER_RUN` ids, as {@link readHooks}.
+ */
+async function readStandingRefunds(db: Db, refundIds: readonly string[]): Promise<Set<string>> {
+	if (refundIds.length === 0) return new Set();
+	const rows = await db
+		.select({ id: payment.id })
+		.from(payment)
+		.where(and(inArray(payment.id, [...new Set(refundIds)]), refundStands(db, payment)));
+	return new Set(rows.map((r) => r.id));
+}
+
+const REFUND_NO_LONGER_STANDS =
+	'The refund this event was queued for no longer stands: it failed, or its dispute no longer reads as lost. It was not sent.';
+
+/** the events one run renders, each keyed by the payment its row names. */
+type Events = {
+	readonly gifts: ReadonlyMap<string, GiftEvent>;
+	readonly refunds: ReadonlyMap<string, RefundEvent>;
+};
+
+/** what a `trigger` Zap is posted about the payment its row names, or undefined where it could not be read. */
+function eventFor(
+	trigger: ZapierTrigger,
+	paymentId: string,
+	events: Events
+): ZapierEvent[ZapierTrigger] | undefined {
+	switch (trigger) {
+		case 'new_gift':
+			return events.gifts.get(paymentId);
+		case 'new_donor': {
+			const gift = events.gifts.get(paymentId);
+			return gift === undefined ? undefined : donorEventOf(gift);
+		}
+		case 'gift_refunded':
+			return events.refunds.get(paymentId);
+	}
 }
 
 /**
@@ -230,7 +294,7 @@ async function land(
 	lease: Date,
 	now: Date,
 	outcome:
-		| { readonly status: 'sent' | 'failed'; readonly lastError: string | null }
+		| { readonly status: 'sent' | 'failed' | 'dropped'; readonly lastError: string | null }
 		| { readonly nextAttemptAt: Date; readonly lastError: string }
 ): Promise<void> {
 	await db

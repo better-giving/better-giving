@@ -29,7 +29,11 @@ export interface ZapierReport {
 	/** the key, or null before one is made. `madeAt` is an ISO-8601 instant; `key` is the plaintext. */
 	readonly key: { readonly madeAt: string; readonly key: string } | null;
 	/** the open subscriptions per trigger — what `replace` would disconnect. */
-	readonly listening: { readonly newGift: number; readonly newDonor: number };
+	readonly listening: {
+		readonly newGift: number;
+		readonly newDonor: number;
+		readonly giftRefunded: number;
+	};
 	readonly deliveries: {
 		/** events still owed to a Zap, whether due now or waiting on a backoff. */
 		readonly waiting: number;

@@ -221,6 +221,35 @@ describe('a delivery row is claimed by one run at a time', () => {
 	});
 });
 
+describe('a delivery row names the company it went to', () => {
+	it('arrives naming none, since nothing has been sent', async () => {
+		const entryGroupId = await postEntryGroup('don_realm_unsent');
+		await insertSync(entryGroupId);
+		const row = await env.DB.prepare(
+			'select realm_id as r from quickbooks_sync where entry_group_id = ?'
+		)
+			.bind(entryGroupId)
+			.first();
+		expect(row).toEqual({ r: null });
+	});
+
+	// a blank realm reads as a company named and matches none, which is the one answer worse than
+	// null for a refund looking for where its gift went.
+	it.each(['', ' \t'])('refuses a blank realm %j', async (realm) => {
+		const entryGroupId = await postEntryGroup(`don_realm_blank_${realm.length}`);
+		const message = await rejection(() =>
+			env.DB.prepare(
+				`insert into quickbooks_sync (entry_group_id, realm_id, created_at, updated_at)
+				 values (?, ?, 0, 0)`
+			)
+				.bind(entryGroupId, realm)
+				.run()
+		);
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('quickbooks_sync_realm_id_not_blank_check');
+	});
+});
+
 describe('STRICT rejects a non-integer written to an integer column', () => {
 	it('refuses a fractional start_at on the connection', async () => {
 		// an update rather than an insert: the table holds one row and only one, so a second

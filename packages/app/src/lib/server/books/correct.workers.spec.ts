@@ -4,8 +4,8 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import { type Correction, postCorrection } from './correct';
-import { PostingError } from './posting';
-import { findEntryGroup, readRaisedByMonth } from './queries';
+import { PostingError } from '../ledger/posting';
+import { findEntryGroup, readRaisedByMonth } from '../ledger/queries';
 
 // the one write a human performs against the ledger, against a real D1.
 //
@@ -71,7 +71,7 @@ async function lines() {
 describe('postCorrection()', () => {
 	it('lands one adjustment of two lines, the one figure with its sign flipped', async () => {
 		// the sign convention lives here and at no call site — `+` is a debit and `−` a credit,
-		// project-wide (./posting.ts). the same figure is used on both sides, which is what makes
+		// project-wide (../ledger/posting.ts). the same figure is used on both sides, which is what makes
 		// the entry balanced by construction rather than by arithmetic somebody could get wrong.
 		const input = correction();
 		expect(await postCorrection(db, input)).toEqual({ ok: true });
@@ -176,6 +176,15 @@ describe('postCorrection() — what a correction owes QuickBooks', () => {
 	it('queues nothing where no company is connected', async () => {
 		expect(await postCorrection(db, correction())).toEqual({ ok: true });
 
+		expect(await queuedForQuickbooks()).toEqual([]);
+	});
+
+	it('queues nothing dated before the start date, by its own date alone', async () => {
+		await connect(new Date('2026-04-01T00:00:00.000Z'));
+
+		expect(await postCorrection(db, correction())).toEqual({ ok: true });
+
+		// a correction names no gift, so its own date is the whole of what decides it.
 		expect(await queuedForQuickbooks()).toEqual([]);
 	});
 

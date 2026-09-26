@@ -147,14 +147,14 @@ const subscriptionRow = (id: string) =>
 		.bind(id)
 		.first();
 
-describe('a subscription listens for one of the two triggers', () => {
-	it.each(['new_gift', 'new_donor'])('accepts %s', async (trigger) => {
+describe('a subscription listens for one of the three triggers', () => {
+	it.each(['new_gift', 'new_donor', 'gift_refunded'])('accepts %s', async (trigger) => {
 		const id = `sub-trigger-${trigger}`;
 		await insertSubscription({ id, trigger });
 		expect(await subscriptionRow(id)).toMatchObject({ trigger });
 	});
 
-	it.each(['new_payment', 'NEW_GIFT', ''])('refuses %j', async (trigger) => {
+	it.each(['new_payment', 'NEW_GIFT', 'gift_disputed', ''])('refuses %j', async (trigger) => {
 		const message = await rejection(() =>
 			insertSubscription({ id: `sub-trigger-bad-${trigger}`, trigger })
 		);

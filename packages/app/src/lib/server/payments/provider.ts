@@ -757,6 +757,24 @@ export type Settlement = {
 	 * figures are restated to it before posting (../donations/settle.ts).
 	 */
 	readonly arrival: Arrival | null;
+	/**
+	 * the refund of the whole of this settlement, where the read that settles it already reports the
+	 * money sent back — money that reached the processor and went back before it settled here, which
+	 * the processor may report nowhere else this deployment will read. which adapters report it, and
+	 * when, is in each one's header. present only on a `succeeded` settlement; absent on every
+	 * settlement not refunded.
+	 *
+	 * it names the refund as `ReversalFacts` does: `providerReversalId` is the one the same adapter's
+	 * `readReversal` carries for the same refund, so the two report one withdrawal, and `occurredAt`
+	 * is when the refund happened. the rest is this settlement's own — `reversedTxnId` is
+	 * `providerTxnId`, `reversedMetadata` is `metadata`, and the money is the whole of `amountMinor`
+	 * in `currency`, with no fee given back. ../donations/settle.ts writes it through the one refund
+	 * writer, whether the gift settles in the same read or settled here before it.
+	 */
+	readonly alsoRefunded?: {
+		readonly providerReversalId: string;
+		readonly occurredAt: Date;
+	};
 };
 
 /** what reached the processor on a gift paid to an address. */
@@ -792,11 +810,15 @@ export type Arrival = {
  *                commitment's own standing. it names neither a transaction nor a donation, so it is
  *                a kind of its own with a read of its own — `readRecurringGift`, which is what turns
  *                it into the commitment it belongs to.
+ *   reversal   — money leaving a transaction that already settled, or coming back to it. it names
+ *                a refund or a dispute where the processor mints one, not the transaction, so it is
+ *                a kind of its own with a read of its own — `readReversal`, which says which settled
+ *                transaction it reverses.
  *   ignored    — a delivery this app subscribes to nothing for. it is answered and logged rather
  *                than dropped silently, so an endpoint subscribed to more than it handles is
  *                visible instead of merely quiet.
  */
-export const PAYMENT_EVENT_KINDS = ['settlement', 'recurring', 'ignored'] as const;
+export const PAYMENT_EVENT_KINDS = ['settlement', 'recurring', 'reversal', 'ignored'] as const;
 export type PaymentEventKind = (typeof PAYMENT_EVENT_KINDS)[number];
 
 /**
@@ -805,9 +827,10 @@ export type PaymentEventKind = (typeof PAYMENT_EVENT_KINDS)[number];
  * it holds no metadata, no amount and no status, and that is a rule rather than an omission: a
  * delivery is serialised in the API version the account held when it happened, so a replayed one
  * can carry an older shape for any field. what is read here is the little that has never moved.
- * everything a handler acts on comes from a read — `readSettlement` or `readRecurringGift` — which
- * fetches the object fresh against one pinned version. `SettlementEvent.delivered` is the one
- * exception, and says why.
+ * everything a handler acts on comes from a read — `readSettlement`, `readRecurringGift` or
+ * `readReversal` — which fetches the object fresh against one pinned version.
+ * `SettlementEvent.delivered` and `ReversalEvent.delivered` are the exceptions, and the first says
+ * why.
  */
 type VerifiedDelivery = {
 	/**
@@ -828,7 +851,7 @@ export type SettlementEvent = VerifiedDelivery & {
 	/** the transaction this is about, and never null on this kind. */
 	readonly providerTxnId: string;
 	/**
-	 * the settlement as the verified body itself states it — the one exception to `VerifiedDelivery`'s
+	 * the settlement as the verified body itself states it — an exception to `VerifiedDelivery`'s
 	 * rule, and NOWPayments' alone: its IPNs carry no version to replay an older shape under, and a
 	 * payment NOWPayments minted itself (a repeat deposit) may not answer the read.
 	 *
@@ -853,6 +876,26 @@ export type RecurringEvent = VerifiedDelivery & {
 	readonly providerNoticeId: string;
 };
 
+/**
+ * a delivery about money leaving a settled transaction, or coming back to it.
+ *
+ * the id is the refund's or the dispute's — or, where the processor mints no refund id, the refunded
+ * payment's — handed back to `readReversal` with the delivery it came on and read by nothing else,
+ * for the reason `RecurringEvent` gives: which of them it names is decided by `type`, which is the
+ * adapter's vocabulary.
+ */
+export type ReversalEvent = VerifiedDelivery & {
+	readonly kind: 'reversal';
+	readonly providerNoticeId: string;
+	/**
+	 * the reversal as the verified body itself states it, under `SettlementEvent.delivered`'s rule and
+	 * for its reasons: NOWPayments' alone, a fallback and never the source. its one reader is that
+	 * adapter's own `readReversal`, and only where the read refused `not_found` or `not_configured`.
+	 * absent on every other processor, and where the body could not be read into a reversal.
+	 */
+	readonly delivered?: ReversalRead;
+};
+
 /** a delivery this app acts on nothing for, answered and logged. */
 export type IgnoredEvent = VerifiedDelivery & {
 	readonly kind: 'ignored';
@@ -865,7 +908,140 @@ export type IgnoredEvent = VerifiedDelivery & {
  * kind and a nullable field per kind would let a handler reach for the id of a delivery that has
  * none. narrowed on `kind`, the id a read arm needs is the only one in scope.
  */
-export type PaymentEvent = SettlementEvent | RecurringEvent | IgnoredEvent;
+export type PaymentEvent = SettlementEvent | RecurringEvent | ReversalEvent | IgnoredEvent;
+
+/**
+ * what a reversal did to a settled transaction.
+ *
+ *   refund         — money the processor sent back to the donor, in whole or in part.
+ *   refund_failed  — a refund that had gone out and did not stand: the money is the
+ *                    organisation's again.
+ *   dispute_opened — the donor's bank disputed the charge and the processor took the money back
+ *                    while it is decided.
+ *   dispute_won    — the dispute closed for the organisation: the money came back.
+ *   dispute_lost   — the dispute closed for the donor: the money stays gone. a processor that
+ *                    reports no opening sends this alone, and a bank debit returned after it
+ *                    settled is one: the bank's return has no appeal.
+ */
+export const REVERSAL_KINDS = [
+	'refund',
+	'refund_failed',
+	'dispute_opened',
+	'dispute_won',
+	'dispute_lost'
+] as const satisfies readonly Reversal['kind'][];
+export type ReversalKind = (typeof REVERSAL_KINDS)[number];
+
+/** what every reversal names, whichever way the money went. */
+type ReversalFacts = {
+	/**
+	 * the transaction the gift settled on, in the same id space as `Settlement.providerTxnId` for
+	 * this processor, so it is found through `payment_provider_txn_idx`.
+	 */
+	readonly reversedTxnId: string;
+	/**
+	 * the withdrawal's identity: every report of one withdrawal of money carries the same key,
+	 * whichever event it rode. that is the refund's or the dispute's own id, or, where the processor
+	 * mints no refund id, a stable one derived from the refunded payment (./nowpayments.ts's header
+	 * states NOWPayments'). it becomes the refund row's `provider_txn_id` and is the idempotency key,
+	 * so one withdrawal reported under two keys is taken out twice. it never equals
+	 * `reversedTxnId`: the two share `payment_provider_txn_idx`, so a refund carrying the charge's id
+	 * would be refused as the charge redelivered.
+	 */
+	readonly providerReversalId: string;
+	/**
+	 * business time. for a refund, a refund that failed and a dispute opened, when the money moved;
+	 * for a dispute won or lost, when it closed — which, for a loss reported with no opening, is also
+	 * the date its withdrawal is posted under.
+	 */
+	readonly occurredAt: Date;
+	/**
+	 * `IntentRequest.metadata` read back off the reversed transaction, under the contract
+	 * `Settlement.metadata` states — and, for a collection under a repeating gift, whose own charge
+	 * carries none, the commitment's (`commitmentMetadata` above), read off the commitment the
+	 * charge was collected under. its `DONATION_METADATA_KEY` naming a gift recorded here is what
+	 * tells a charge that has not settled here yet, which is worth a redelivery, from one this
+	 * deployment never took, which is not (`chargeNotHere` in ../donations/reverse.ts).
+	 */
+	readonly reversedMetadata: Readonly<Record<string, string>>;
+};
+
+/** the money a reversal takes out of the gift. */
+type WithdrawnMoney = {
+	/**
+	 * minor units, positive. null means the rest of what the reversed transaction settled —
+	 * whatever earlier refunds and disputes have not already taken — for a processor that reports a
+	 * full reversal with no figure in the settlement's currency.
+	 */
+	readonly amountMinor: number | null;
+	/** ISO-4217, uppercase. */
+	readonly currency: string;
+};
+
+/** what a dispute that withdraws money names beside the money. */
+type DisputeFacts = {
+	/** minor units: what the processor charged for the dispute itself, booked as a processor fee. null where it charged none. */
+	readonly feeMinor: number | null;
+	/** the processor's reason code, verbatim. */
+	readonly reason: string | null;
+	/** where staff answer the dispute in the processor's dashboard. told to staff and never stored. */
+	readonly dashboardUrl: string | null;
+};
+
+export type Reversal =
+	| (ReversalFacts &
+			WithdrawnMoney & {
+				readonly kind: 'refund';
+				/**
+				 * minor units, in the refund's currency: the part of its fee the processor gave back with
+				 * the refund. null where it gave none back, and then the fee stays booked.
+				 */
+				readonly feeReturnedMinor: number | null;
+			})
+	| (ReversalFacts & { readonly kind: 'refund_failed' })
+	| (ReversalFacts &
+			WithdrawnMoney &
+			DisputeFacts & {
+				readonly kind: 'dispute_opened';
+				/** the processor's deadline for the organisation's response. null where it names none. */
+				readonly respondBy: Date | null;
+			})
+	| (ReversalFacts & {
+			readonly kind: 'dispute_won';
+			/**
+			 * minor units: the dispute fee the processor gave back with the money. null where it gave
+			 * none back, and then the fee stays booked.
+			 */
+			readonly feeReturnedMinor: number | null;
+			/**
+			 * minor units, in the disputed charge's currency as `Settlement.feeMinor` is: the dispute fee
+			 * the processor kept at the close — what it charged for the dispute less what it gave back.
+			 * 0 where it kept none. null or absent where the adapter could not read it, and then the
+			 * books settle nothing up at the close.
+			 */
+			readonly feeKeptMinor?: number | null;
+	  })
+	| (ReversalFacts & WithdrawnMoney & DisputeFacts & { readonly kind: 'dispute_lost' });
+
+/**
+ * what `readReversal` finds: money that moved, or a reversal that has moved none yet — a refund
+ * still pending, or a dispute that is an inquiry and has withdrawn nothing. the processor's next
+ * event reports the money when it moves.
+ */
+export type ReversalRead =
+	| Reversal
+	| {
+			readonly kind: 'nothing_moved';
+			readonly providerReversalId: string;
+			/**
+			 * the transaction the reversal names, as `ReversalFacts.reversedTxnId`, from an adapter
+			 * whose processor sends no later event when the money moves, so this read is its last word
+			 * on the reversal. where that transaction settled here, the writer tells staff: a refund of
+			 * a settled gift reported as moving nothing is one this deployment would otherwise never
+			 * record. absent from an adapter whose processor reports the money when it moves.
+			 */
+			readonly reversedTxnId?: string;
+	  };
 
 /** a webhook delivery, exactly as it arrived. */
 export type WebhookDelivery = {
@@ -1636,6 +1812,16 @@ export interface PaymentProvider {
 	readRecurringGift(event: RecurringEvent): Promise<PaymentResult<RecurringGiftNotice>>;
 
 	/**
+	 * reads the refund or dispute a reversal delivery names, fresh, at the pinned version. the
+	 * reconciliation read for the reversal kind, safe to repeat.
+	 *
+	 * it takes the whole delivery for the reason `readRecurringGift` does, and a caller acts on
+	 * nothing the delivery itself carried: a replayed body can be an older shape, and a refund can
+	 * have failed since the event that named it was sent.
+	 */
+	readReversal(event: ReversalEvent): Promise<PaymentResult<ReversalRead>>;
+
+	/**
 	 * what the account these credentials name is approved to charge. reads nothing about a payment
 	 * and changes nothing.
 	 *
@@ -1840,6 +2026,7 @@ export function sealed(provider: PaymentProvider): PaymentProvider {
 		verifyEvent: (delivery) => guard(() => provider.verifyEvent(delivery)),
 		readSettlement: (providerTxnId) => guard(() => provider.readSettlement(providerTxnId)),
 		readRecurringGift: (event) => guard(() => provider.readRecurringGift(event)),
+		readReversal: (event) => guard(() => provider.readReversal(event)),
 		readAccountChargeability: () => guard(() => provider.readAccountChargeability()),
 		readRailSwitchboard: () => guard(() => provider.readRailSwitchboard()),
 		listWebhookEndpoints: () => guard(() => provider.listWebhookEndpoints()),
@@ -1936,6 +2123,9 @@ export function refusing(
 			return refusal;
 		},
 		async readRecurringGift(): Promise<PaymentResult<RecurringGiftNotice>> {
+			return refusal;
+		},
+		async readReversal(): Promise<PaymentResult<ReversalRead>> {
 			return refusal;
 		},
 		async readAccountChargeability(): Promise<PaymentResult<AccountChargeability>> {

@@ -80,6 +80,18 @@ const GRANT = {
 	metadata: { don_id: 'set-by-a-browser' }
 };
 
+/** a grant the organisation marked received, and that was cancelled after. */
+const CANCELLED_AFTER_RECEIVED = {
+	...GRANT,
+	status: 'Canceled',
+	updatedAt: '2024-11-02T09:00:00Z',
+	statuses: [
+		{ id: 's1', status: 'Initiated', createdAt: '2024-10-17T12:38:06.999787Z' },
+		{ id: 's2', status: 'Completed', createdAt: '2024-10-21T03:05:45.833Z' },
+		{ id: 's3', status: 'Canceled', createdAt: '2024-11-02T09:00:00Z' }
+	]
+};
+
 const GRANT_REQUEST: IntentRequest = {
 	amountMinor: 5000,
 	currency: 'USD',
@@ -288,9 +300,9 @@ describe('readSettlement — Get Grant', () => {
 	/**
 	 * the vocabulary the API sends is `Initiated`, `Completed`, `Canceled` (a sandbox read,
 	 * 2026-09-15); the lowercase spellings are the `2026-04-01` reference's, which the same words
-	 * read the same under. every other word — `awaiting_daf_submission`, `received`, which is in
-	 * neither the reference nor the sandbox's simulations, a status nobody has documented —
-	 * is a grant still on its way, and nothing may be acted on from that.
+	 * read the same under, and `Received` and `Cancelled` are the DAFpay transactions guide's words
+	 * for the same two states. every other word — `awaiting_daf_submission`, a status nobody has
+	 * documented — is a grant still on its way, and nothing may be acted on from that.
 	 */
 	it.each([
 		['Initiated', 'pending'],
@@ -298,8 +310,8 @@ describe('readSettlement — Get Grant', () => {
 		['Canceled', 'cancelled'],
 		['completed', 'succeeded'],
 		['canceled', 'cancelled'],
-		['Received', 'pending'],
-		['received', 'pending'],
+		['Received', 'succeeded'],
+		['Cancelled', 'cancelled'],
 		['initiated', 'pending'],
 		['awaiting_daf_submission', 'pending'],
 		['Paid', 'pending']
@@ -412,6 +424,54 @@ describe('readSettlement — Get Grant', () => {
 		expect(result.ok && 'reference' in result.value).toBe(false);
 	});
 
+	// the grant was marked received and cancelled after: the gift it settled, as of its receipt, and
+	// the whole of it refunded, as of its cancellation — one answer whether or not the gift has
+	// settled here yet.
+	it('reads a grant cancelled after it was received as settled then refunded', async () => {
+		recording([{ status: 200, json: CANCELLED_AFTER_RECEIVED }]);
+
+		const result = await createChariotProvider(CREDENTIALS).readSettlement(GRANT_ID);
+
+		expect(result).toStrictEqual({
+			ok: true,
+			value: {
+				providerTxnId: GRANT_ID,
+				status: 'succeeded',
+				method: 'daf',
+				amountMinor: 5000,
+				currency: 'USD',
+				feeMinor: 145,
+				metadata: {},
+				reference: 'L9E182VBGP',
+				occurredAt: new Date('2024-10-21T03:05:45.833Z'),
+				arrival: null,
+				alsoRefunded: {
+					providerReversalId: `${GRANT_ID}:canceled`,
+					occurredAt: new Date('2024-11-02T09:00:00Z')
+				}
+			}
+		});
+	});
+
+	// a grant cancelled before anyone marked it received settled no gift, so there is nothing to refund.
+	it.each([
+		['with no status history', { ...GRANT, status: 'Canceled' }],
+		[
+			'whose history never reads received',
+			{
+				...CANCELLED_AFTER_RECEIVED,
+				statuses: CANCELLED_AFTER_RECEIVED.statuses.filter((entry) => entry.status !== 'Completed')
+			}
+		]
+	])('reads a grant cancelled %s as cancelled, carrying no refund', async (_case, grant) => {
+		recording([{ status: 200, json: grant }]);
+
+		const result = await createChariotProvider(CREDENTIALS).readSettlement(GRANT_ID);
+
+		expect(result.ok && result.value.status).toBe('cancelled');
+		expect(result.ok && 'alsoRefunded' in result.value).toBe(false);
+	});
+
 	it('answers a grant the account does not hold as not found', async () => {
 		recording([{ status: 404, json: { title: 'Not Found', status: 404, detail: 'no grant' } }]);
 
@@ -443,7 +503,11 @@ describe('verifyEvent — the signed delivery', () => {
 		};
 	}
 
-	it('answers a grant update as a settlement naming the grant', async () => {
+	// whatever the grant now is — on its way, received, cancelled, cancelled after it was received —
+	// the settlement read says, so nothing is asked of Chariot here.
+	it('answers a grant update as a settlement naming the grant, asking Chariot nothing', async () => {
+		const calls = recording([]);
+
 		const result = await createChariotProvider(CREDENTIALS).verifyEvent(
 			delivery(`t=${T},v1=${sign(T, BODY)}`)
 		);
@@ -458,6 +522,7 @@ describe('verifyEvent — the signed delivery', () => {
 				providerTxnId: GRANT_ID
 			}
 		});
+		expect(calls).toEqual([]);
 	});
 
 	// the 2026-04-01 reference requires no field on an Event.
@@ -465,6 +530,7 @@ describe('verifyEvent — the signed delivery', () => {
 		vi.useFakeTimers({ now: new Date('2026-09-24T10:00:00Z') });
 		const { created_at: _, ...undated } = JSON.parse(BODY);
 		const body = JSON.stringify(undated);
+		recording([]);
 
 		const result = await createChariotProvider(CREDENTIALS).verifyEvent(
 			delivery(`t=${T},v1=${sign(T, body)}`, body)
@@ -508,6 +574,7 @@ describe('verifyEvent — the signed delivery', () => {
 	// Chariot vouching for the body.
 	it('accepts a delivery where any one of several v1 signatures matches', async () => {
 		const header = `t=${T},v1=${sign(T, BODY, 'an-old-secret')},v1=${sign(T, BODY)}`;
+		recording([]);
 
 		const result = await createChariotProvider(CREDENTIALS).verifyEvent(delivery(header));
 
@@ -516,6 +583,7 @@ describe('verifyEvent — the signed delivery', () => {
 
 	it('passes over a v1 value that is not a signature at all', async () => {
 		const header = `t=${T},v1=abc,v1=${sign(T, BODY)}`;
+		recording([]);
 
 		const result = await createChariotProvider(CREDENTIALS).verifyEvent(delivery(header));
 
@@ -570,6 +638,49 @@ describe('verifyEvent — the signed delivery', () => {
 
 		expect(result.ok && result.value.kind).toBe('ignored');
 	});
+
+	// every `EventCategory` in `specs/2026-04-01.yaml` (https://github.com/chariot-giving/chariot-openapi),
+	// with the object each is about. none names a refund or a dispute: a grant received and then
+	// cancelled reaches the books through the settlement read (`readSettlement` above), and a returned
+	// deposit is not read here at all (./chariot.ts's header).
+	it.each([
+		['grant.created', 'grant', 'ignored'],
+		['grant.updated', 'grant', 'settlement'],
+		['unintegrated_grant.created', 'unintegrated_grant', 'ignored'],
+		['unintegrated_grant.updated', 'unintegrated_grant', 'ignored'],
+		['donor_account.created', 'donor_account', 'ignored'],
+		['donor_account.updated', 'donor_account', 'ignored'],
+		['authorization_token.created', 'authorization_token', 'ignored'],
+		['authorization_token.updated', 'authorization_token', 'ignored'],
+		['grant_request.created', 'grant_request', 'ignored'],
+		['grant_request.updated', 'grant_request', 'ignored'],
+		['disbursement.created', 'disbursement', 'ignored'],
+		['disbursement.updated', 'disbursement', 'ignored'],
+		['inbound_transfer.created', 'inbound_transfer', 'ignored'],
+		['inbound_transfer.updated', 'inbound_transfer', 'ignored'],
+		['donation.created', 'donation', 'ignored'],
+		['donation.updated', 'donation', 'ignored'],
+		['deposit.created', 'deposit', 'ignored'],
+		['deposit.updated', 'deposit', 'ignored'],
+		['verification_request.created', 'verification_request', 'ignored'],
+		['verification_request.updated', 'verification_request', 'ignored']
+	])('reads a documented %s delivery about a %s as %s', async (category, objectType, kind) => {
+		const calls = recording([]);
+		const body = JSON.stringify({
+			id: 'event_789',
+			created_at: '2024-01-19T18:48:56Z',
+			category,
+			associated_object_type: objectType,
+			associated_object_id: 'object_1'
+		});
+
+		const result = await createChariotProvider(CREDENTIALS).verifyEvent(
+			delivery(`t=${T},v1=${sign(T, body)}`, body)
+		);
+
+		expect(result.ok && result.value.kind).toBe(kind);
+		expect(calls).toHaveLength(0);
+	});
 });
 
 describe('what the account is approved for', () => {
@@ -607,6 +718,65 @@ describe('what the account is approved for', () => {
 
 		expect(result).toStrictEqual({ ok: true, value: { daf: { offered: true, switchedOn: true } } });
 		expect(calls).toHaveLength(0);
+	});
+});
+
+describe('readReversal — a received grant cancelled', () => {
+	const NOTICE = {
+		id: 'event_123abc',
+		kind: 'reversal',
+		type: 'grant.updated',
+		providerNoticeId: GRANT_ID,
+		occurredAt: new Date('2024-11-02T09:00:01Z')
+	} as const;
+
+	// Chariot mints no id for the cancellation, so the refund's is derived from the grant's, and is
+	// never the grant's: the gift's own payment row holds that one.
+	it('reads the whole of what the grant settled back as a refund, under an id of its own', async () => {
+		const calls = recording([{ status: 200, json: CANCELLED_AFTER_RECEIVED }]);
+
+		const result = await createChariotProvider(CREDENTIALS).readReversal(NOTICE);
+
+		expect(result).toStrictEqual({
+			ok: true,
+			value: {
+				kind: 'refund',
+				reversedTxnId: GRANT_ID,
+				providerReversalId: `${GRANT_ID}:canceled`,
+				occurredAt: new Date('2024-11-02T09:00:00Z'),
+				reversedMetadata: {},
+				amountMinor: null,
+				currency: 'USD',
+				feeReturnedMinor: null
+			}
+		});
+		expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+			`GET https://sandboxapi.givechariot.com/v1/grants/${GRANT_ID}`
+		]);
+	});
+
+	// read fresh, the grant is what counts, and a grant read received again has taken nothing back
+	// since the delivery that named it.
+	it.each([
+		['received again', { ...CANCELLED_AFTER_RECEIVED, status: 'Completed' }],
+		['cancelled and never received', { ...GRANT, status: 'Canceled' }]
+	])('reads a grant now %s as nothing moved', async (_case, grant) => {
+		recording([{ status: 200, json: grant }]);
+
+		const result = await createChariotProvider(CREDENTIALS).readReversal(NOTICE);
+
+		expect(result).toStrictEqual({
+			ok: true,
+			value: { kind: 'nothing_moved', providerReversalId: `${GRANT_ID}:canceled` }
+		});
+	});
+
+	it('answers a grant Chariot does not return as not found', async () => {
+		recording([{ status: 404, json: { title: 'Not Found', status: 404, detail: 'no grant' } }]);
+
+		const result = await createChariotProvider(CREDENTIALS).readReversal(NOTICE);
+
+		expect(result.ok === false && result.reason).toBe('not_found');
 	});
 });
 

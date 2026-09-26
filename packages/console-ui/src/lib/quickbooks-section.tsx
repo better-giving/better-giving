@@ -52,6 +52,7 @@ import {
 	credentialsPhase,
 	credentialsStands,
 	disconnectLines,
+	heldSays,
 	holdOpen,
 	keysAsk,
 	landedPress,
@@ -935,8 +936,8 @@ function Disconnect({
 }
 
 /**
- * the gifts that were given up on, and the press that queues them again — which reports what it
- * queued on itself, and stands until that report has been seen.
+ * the gifts that were given up on, the refunds waiting behind them, and the press that queues the
+ * gifts again — which reports what it queued on itself, and stands until that report has been seen.
  */
 function Backlog({
 	report,
@@ -971,7 +972,10 @@ function Backlog({
 	if (!button.shown && said?.says == null && silent === null) return null;
 	return (
 		<Stack tight>
-			{stands === null ? null : <FieldMessage>{backlogSays(stands)}</FieldMessage>}
+			{stands === null ? null : <FieldMessage tone="needed">{backlogSays(stands)}</FieldMessage>}
+			{stands?.held == null ? null : (
+				<FieldMessage tone="needed">{heldSays(stands.held)}</FieldMessage>
+			)}
 			<div className="adm-actions">
 				{button.shown ? (
 					/* one element from rest to report, so the keyboard stays on the press that
@@ -1005,9 +1009,11 @@ function dayIn(form: HTMLFormElement): string {
  * the earliest date a gift may carry to reach the books.
  *
  * **the save asks the deployment what the move touches before it makes it.** a move earlier
- * queues every gift owed from the new day on and a move later skips the unsent ones before it, so
- * the press previews first and the move goes only once that answer is read: straight away where
- * it touches nothing, and behind a confirm naming what it sends or skips where it does
+ * queues every gift owed from the new day on and a move later skips the unsent ones before it,
+ * each gift's refunds and disputes moving with it — and a refund or dispute of a gift the books
+ * already hold, with no row of its own, is queued by a move in either direction. so the press
+ * previews first and the move goes only once that answer is read: straight away where it touches
+ * nothing it would ask about, and behind a confirm naming what it sends or skips where it does
  * (`startDateAsk` in ./quickbooks-standing.ts).
  */
 function StartDateForm({

@@ -15,6 +15,7 @@ import {
 	type GiftRecord,
 	type LedgerAccount,
 	type RemoteRecord,
+	type ReversalRecord,
 	type SendAttempt,
 	type TokenPair,
 	type TokenSave
@@ -36,9 +37,9 @@ import {
 // ---------------------------------------------------------------------------
 // which record a gift becomes: a JournalEntry, and never a Deposit or a sales receipt.
 //
-// a gift and a correction are both a **JournalEntry**. the gift's money is not in the bank when it
-// is sent — it sits with the processor until a payout this app never hears about — so its asset
-// side is the holding account the operator picked for that processor (`HOLDING_ROLES` in
+// a gift, a correction and a reversal are each a **JournalEntry**. the gift's money is not in the
+// bank when it is sent — it sits with the processor until a payout this app never hears about — so
+// its asset side is the holding account the operator picked for that processor (`HOLDING_ROLES` in
 // ./provider.ts), an Other Current Asset. a Deposit cannot carry that: its `DepositToAccountRef` is
 // the bank account the money was paid into, and a gift deposited there is a deposit the bank feed
 // never shows. a sales receipt's lines name an Item rather than an account, and an item carries its
@@ -47,6 +48,10 @@ import {
 // customer, which is the whole of what a gift needs: the gift at face value credited to income, the
 // processor's cut debited to fees, and the difference debited to the holding. that is the movement
 // ../donations/entries.ts posts here, the fee's sibling folded in.
+//
+// a refund or a dispute is a journal entry of its own, dated the day the money left, taking the
+// gift's lines back out against its donor — never a void of the gift's entry, which would
+// take the gift out of the period it was given in. what puts one back is the same entry mirrored.
 //
 // ---------------------------------------------------------------------------
 // what is not built, because nothing sends it.
@@ -644,6 +649,172 @@ export function createQuickbooksProvider(
 		);
 	}
 
+	/**
+	 * the customer a reversal is posted against: the one the record it answers names, so a refund
+	 * sits under the same customer as its gift in every per-customer report whatever the donor's
+	 * contact has become since. one metered read, against the one to four the ladder spends.
+	 *
+	 * the ladder only where that record is not in the company's books as this app posted it — deleted,
+	 * or another record under that id — or names no customer.
+	 */
+	async function customerAnswering(
+		auth: { connection: ConnectionSnapshot; accessToken: string },
+		keyed: Keyed,
+		reversal: ReversalRecord
+	): Promise<AccountingResult<string>> {
+		const answered = await ask(
+			auth,
+			`select * from JournalEntry where Id = '${escaped(reversal.answers.remoteId)}'`
+		);
+		if (!answered.ok) return answered;
+		const [entry] = queryRows(answered.value, 'JournalEntry');
+		if (stringField(entry, 'PrivateNote')?.startsWith(keyMark(reversal.answers.key)) === true) {
+			const named = customerOnLines(field(entry, 'Line'));
+			if (named !== null) return { ok: true, value: named };
+		}
+		return customerFor(auth, keyed, reversal.donor);
+	}
+
+	/**
+	 * a journal entry of named sides, against the customer `reversal` answers where one is given.
+	 * `movesNothing` is what an operator is told where every side lands in one QuickBooks account.
+	 */
+	async function sendJournal(
+		auth: { connection: ConnectionSnapshot; accessToken: string },
+		record: CorrectionRecord,
+		reversal: ReversalRecord | null,
+		movesNothing: string,
+		attempt: SendAttempt,
+		revision: string
+	): Promise<AccountingResult<string>> {
+		const keyed: Keyed = { key: record.key, revision };
+		const accounts = chosenAccounts(
+			auth.connection,
+			record.lines.map((line) => line.role)
+		);
+		if (!accounts.ok) return accounts;
+
+		const named = record.lines.map((line) => accounts.value[line.role]);
+		if (new Set(named).size === 1) {
+			// two of this app's accounts can map to one of the company's — the deductible and the
+			// non-deductible funds are both `income`, and an operator may pick one account for two
+			// roles. an entry naming the same account on both sides balances and moves nothing, and
+			// it reads as a correction or a refund recorded.
+			return failed('invalid_record', movesNothing);
+		}
+
+		const currency = await acceptedCurrency(auth, record.currency);
+		if (!currency.ok) return currency;
+
+		const txnDate = transactionDate(record.occurredAt);
+		const posted = await alreadyPosted(auth, attempt, ['JournalEntry'], record.key, txnDate);
+		if (!posted.ok) return posted;
+		if (posted.value !== null) return { ok: true, value: posted.value };
+
+		let customer: LineEntity | undefined;
+		if (reversal !== null) {
+			const customerId = await customerAnswering(auth, keyed, reversal);
+			if (!customerId.ok) return customerId;
+			customer = { Type: 'Customer', EntityRef: { value: customerId.value } };
+		}
+
+		return createdRecord(
+			answered(
+				await create(auth, 'journalentry', keyed, {
+					TxnDate: txnDate,
+					CurrencyRef: { value: currency.value },
+					PrivateNote: privateNote(record.key, record.memo),
+					Line: record.lines.map((line) =>
+						journalLine(
+							line.posting,
+							line.amountMinor,
+							record.currency,
+							accounts.value[line.role],
+							record.memo,
+							line.role === 'fee' ? undefined : customer
+						)
+					)
+				})
+			)
+		);
+	}
+
+	/**
+	 * a record posted to the company connected as the call reads it, answered with the company it
+	 * addressed — on a refusal too, since a call that went out may have reached those books.
+	 */
+	async function addressed(
+		post: (auth: {
+			connection: ConnectionSnapshot;
+			accessToken: string;
+		}) => Promise<AccountingResult<string>>
+	): Promise<AccountingResult<RemoteRecord>> {
+		const auth = await authorized();
+		if (!auth.ok) return auth;
+		const { companyId } = auth.value.connection;
+		const result = await post(auth.value);
+		return result.ok
+			? { ok: true, value: { remoteId: result.value, companyId } }
+			: { ...result, companyId };
+	}
+
+	/** {@link AccountingProvider.sendGift}, against the company `auth` names: the id it posted. */
+	async function giftJournal(
+		auth: { connection: ConnectionSnapshot; accessToken: string },
+		gift: GiftRecord,
+		attempt: SendAttempt,
+		revision: string
+	): Promise<AccountingResult<string>> {
+		const keyed: Keyed = { key: gift.key, revision };
+		const roles: AccountRole[] = ['income', gift.holding];
+		if (gift.feeMinor > 0) roles.push('fee');
+		const accounts = chosenAccounts(auth.connection, roles);
+		if (!accounts.ok) return accounts;
+
+		const currency = await acceptedCurrency(auth, gift.currency);
+		if (!currency.ok) return currency;
+
+		const txnDate = transactionDate(gift.occurredAt);
+		const posted = await alreadyPosted(auth, attempt, GIFT_ENTITIES, gift.key, txnDate);
+		if (!posted.ok) return posted;
+		if (posted.value !== null) return { ok: true, value: posted.value };
+
+		const customerId = await customerFor(auth, keyed, gift.donor);
+		if (!customerId.ok) return customerId;
+
+		const donor: LineEntity = { Type: 'Customer', EntityRef: { value: customerId.value } };
+		const described = `Donation from ${gift.donor.displayName}`;
+		const line = (
+			posting: Posting,
+			amountMinor: number,
+			role: AccountRole,
+			words: string,
+			entity?: LineEntity
+		) => journalLine(posting, amountMinor, gift.currency, accounts.value[role], words, entity);
+
+		// what the holding gains is the gift less what the processor withheld; a cut as large as
+		// the gift leaves it nothing, and one larger takes from it.
+		const heldMinor = gift.incomeMinor - gift.feeMinor;
+		const lines: unknown[] = [];
+		if (heldMinor !== 0) {
+			const posting = heldMinor > 0 ? 'debit' : 'credit';
+			lines.push(line(posting, Math.abs(heldMinor), gift.holding, described, donor));
+		}
+		if (gift.feeMinor > 0) lines.push(line('debit', gift.feeMinor, 'fee', 'Processing fee'));
+		lines.push(line('credit', gift.incomeMinor, 'income', described, donor));
+
+		return createdRecord(
+			answered(
+				await create(auth, 'journalentry', keyed, {
+					TxnDate: txnDate,
+					CurrencyRef: { value: currency.value },
+					PrivateNote: privateNote(gift.key, gift.memo),
+					Line: lines
+				})
+			)
+		);
+	}
+
 	return {
 		async authorizeUrl(input: {
 			readonly redirectUri: string;
@@ -690,63 +861,14 @@ export function createQuickbooksProvider(
 			attempt: SendAttempt,
 			revision: string
 		): Promise<AccountingResult<RemoteRecord>> {
-			const keyed: Keyed = { key: gift.key, revision };
-			const auth = await authorized();
-			if (!auth.ok) return auth;
-			const roles: AccountRole[] = ['income', gift.holding];
-			if (gift.feeMinor > 0) roles.push('fee');
-			const accounts = chosenAccounts(auth.value.connection, roles);
-			if (!accounts.ok) return accounts;
-
-			const currency = await acceptedCurrency(auth.value, gift.currency);
-			if (!currency.ok) return currency;
-
-			const txnDate = transactionDate(gift.occurredAt);
-			const posted = await alreadyPosted(auth.value, attempt, GIFT_ENTITIES, gift.key, txnDate);
-			if (!posted.ok) return posted;
-			if (posted.value !== null) return { ok: true, value: { remoteId: posted.value } };
-
-			const customerId = await customerFor(auth.value, keyed, gift.donor);
-			if (!customerId.ok) return customerId;
-
-			const donor: LineEntity = { Type: 'Customer', EntityRef: { value: customerId.value } };
-			const described = `Donation from ${gift.donor.displayName}`;
-			const line = (
-				posting: Posting,
-				amountMinor: number,
-				role: AccountRole,
-				words: string,
-				entity?: LineEntity
-			) => journalLine(posting, amountMinor, gift.currency, accounts.value[role], words, entity);
-
-			// what the holding gains is the gift less what the processor withheld; a cut as large as
-			// the gift leaves it nothing, and one larger takes from it.
-			const heldMinor = gift.incomeMinor - gift.feeMinor;
-			const lines: unknown[] = [];
-			if (heldMinor !== 0) {
-				const posting = heldMinor > 0 ? 'debit' : 'credit';
-				lines.push(line(posting, Math.abs(heldMinor), gift.holding, described, donor));
-			}
-			if (gift.feeMinor > 0) lines.push(line('debit', gift.feeMinor, 'fee', 'Processing fee'));
-			lines.push(line('credit', gift.incomeMinor, 'income', described, donor));
-
-			return createdRecord(
-				answered(
-					await create(auth.value, 'journalentry', keyed, {
-						TxnDate: txnDate,
-						CurrencyRef: { value: currency.value },
-						PrivateNote: privateNote(gift.key, gift.memo),
-						Line: lines
-					})
-				)
-			);
+			return addressed((auth) => giftJournal(auth, gift, attempt, revision));
 		},
 
 		/**
 		 * a correcting entry as one journal entry, each side in the account its role maps to.
 		 *
 		 * a journal entry is the one shape that takes both sides explicitly, which is what a
-		 * correction is: ../ledger/correct.ts builds it as one figure moved between two accounts, and
+		 * correction is: ../books/correct.ts builds it as one figure moved between two accounts, and
 		 * the debit and the credit are named here rather than signed.
 		 */
 		async sendCorrection(
@@ -754,57 +876,35 @@ export function createQuickbooksProvider(
 			attempt: SendAttempt,
 			revision: string
 		): Promise<AccountingResult<RemoteRecord>> {
-			const keyed: Keyed = { key: correction.key, revision };
-			const auth = await authorized();
-			if (!auth.ok) return auth;
-			const accounts = chosenAccounts(
-				auth.value.connection,
-				correction.lines.map((line) => line.role)
+			return addressed((auth) =>
+				sendJournal(
+					auth,
+					correction,
+					null,
+					'This correction moves money between two accounts that are both sent to the same QuickBooks account, so it would post an entry that changes nothing. Correct it in QuickBooks instead.',
+					attempt,
+					revision
+				)
 			);
-			if (!accounts.ok) return accounts;
+		},
 
-			const named = correction.lines.map((line) => accounts.value[line.role]);
-			if (new Set(named).size === 1) {
-				// two of this app's accounts can map to one of the company's — the deductible and the
-				// non-deductible funds are both `income`, and an operator may pick one account for two
-				// roles. an entry naming the same account on both sides balances and moves nothing, and
-				// it reads as a correction made.
-				return failed(
-					'invalid_record',
-					`This correction moves money between two accounts that are both sent to the same QuickBooks account, so it would post an entry that changes nothing. Correct it in QuickBooks instead.`
-				);
-			}
-
-			const currency = await acceptedCurrency(auth.value, correction.currency);
-			if (!currency.ok) return currency;
-
-			const txnDate = transactionDate(correction.occurredAt);
-			const posted = await alreadyPosted(
-				auth.value,
-				attempt,
-				['JournalEntry'],
-				correction.key,
-				txnDate
-			);
-			if (!posted.ok) return posted;
-			if (posted.value !== null) return { ok: true, value: { remoteId: posted.value } };
-
-			return createdRecord(
-				answered(
-					await create(auth.value, 'journalentry', keyed, {
-						TxnDate: txnDate,
-						CurrencyRef: { value: currency.value },
-						PrivateNote: privateNote(correction.key, correction.memo),
-						Line: correction.lines.map((line) =>
-							journalLine(
-								line.posting,
-								line.amountMinor,
-								correction.currency,
-								accounts.value[line.role],
-								correction.memo
-							)
-						)
-					})
+		/**
+		 * a reversal as one journal entry, the same shape as a correction, with the donor named on
+		 * its income and holding lines as a gift's are — the customer the record it answers names.
+		 */
+		async sendReversal(
+			reversal: ReversalRecord,
+			attempt: SendAttempt,
+			revision: string
+		): Promise<AccountingResult<RemoteRecord>> {
+			return addressed((auth) =>
+				sendJournal(
+					auth,
+					reversal,
+					reversal,
+					'This refund or dispute moves money between accounts that are all sent to the same QuickBooks account, so it would post an entry that changes nothing. Record it in QuickBooks instead.',
+					attempt,
+					revision
 				)
 			);
 		},
@@ -956,13 +1056,25 @@ function journalLine(
 	};
 }
 
+/** the customer the first line naming one is posted against, or null where no line names one. */
+function customerOnLines(lines: unknown): string | null {
+	if (!Array.isArray(lines)) return null;
+	for (const line of lines) {
+		const entity = field(field(line, 'JournalEntryLineDetail'), 'Entity');
+		if (stringField(entity, 'Type') !== 'Customer') continue;
+		const id = stringField(field(entity, 'EntityRef'), 'value');
+		if (id !== null) return id;
+	}
+	return null;
+}
+
 /** the id QuickBooks gave the journal entry it just created. */
-function createdRecord(result: AccountingResult<unknown>): AccountingResult<RemoteRecord> {
+function createdRecord(result: AccountingResult<unknown>): AccountingResult<string> {
 	if (!result.ok) return result;
 	const remoteId = stringField(field(result.value, 'JournalEntry'), 'Id');
 	return remoteId === null
 		? failed('provider_error', 'QuickBooks created a JournalEntry and named no id for it.')
-		: { ok: true, value: { remoteId } };
+		: { ok: true, value: remoteId };
 }
 
 /**

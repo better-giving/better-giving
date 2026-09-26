@@ -1,6 +1,11 @@
 import { env } from 'cloudflare:test';
 import type { MiddlewareFunction } from 'react-router';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { parseContact } from '$lib/server/contacts/contact-input';
+import { postableId } from '$lib/server/db/accounts';
+import { createDb } from '$lib/server/db/client';
+import { recordDonation } from '$lib/server/donations/record';
+import { sign } from '$lib/server/payments/stripe.testing';
 import { mountRoutes } from '../route-request.testing';
 import * as webhook from './api.stripe.webhook';
 
@@ -14,7 +19,8 @@ import * as webhook from './api.stripe.webhook';
 // about the runtime this deploys to.
 //
 // nothing here reaches the network: a signature that does not verify is refused before any HTTP
-// call, and a deployment with no credentials refuses before that.
+// call, and a deployment with no credentials refuses before that. the refund cases at the foot of
+// the file sign with the configured secret and answer the adapter's reads from a stubbed `fetch`.
 //
 // the route is driven through react router rather than by calling its `action`, for the reason
 // ../route-request.testing.ts argues at length — `queryRoute` without `generateMiddlewareResponse`
@@ -213,5 +219,176 @@ describe('the raw body the signature is computed over', () => {
 
 		expect(request.reads).toBe(2);
 		expect(response.status).toBe(500);
+	});
+});
+
+/**
+ * a refund reaching the books through this route, with Stripe's answers scripted on a stubbed
+ * `fetch` by path — the adapter's own reads, as $lib/server/payments/stripe-refunds.workers.spec.ts
+ * scripts them, so the status asserted is the one Stripe reads for a delivery the writer acted on.
+ */
+describe('POST /api/stripe/webhook — a refund', () => {
+	const FORM_ID = 'frm_striperoute00001';
+	/** when the gift's charge settled and when the refund was made, in Stripe's seconds. */
+	const SETTLED = 1_786_000_000;
+	const REFUNDED = 1_787_000_000;
+
+	beforeEach(async () => {
+		for (const table of [
+			'dispute',
+			'zapier_delivery',
+			'quickbooks_sync',
+			'ledger_entry',
+			'entry_group',
+			'payment',
+			'line_item',
+			'donation',
+			'contact',
+			'form'
+		]) {
+			await env.DB.prepare(`delete from ${table}`).run();
+		}
+		await env.DB.prepare(
+			`insert into form (id, name, status, revenue_account_id, currency, min_minor, max_minor,
+			                   suggested_amounts, allowed_origins, created_at, updated_at)
+			 values (?, 'General Fund', 'live', ?, 'USD', 500, 1000000, '[]', '[]', 0, 0)`
+		)
+			.bind(FORM_ID, postableId('donationsDeductible'))
+			.run();
+	});
+
+	/** a $100 card gift quoted on `pi_1`, as the donation endpoint records one. */
+	async function quotedGift(): Promise<string> {
+		const donationId = crypto.randomUUID();
+		const donor = parseContact({
+			kind: 'individual',
+			first_name: 'Ada',
+			last_name: 'Okafor',
+			primary_email: 'ada@example.org'
+		});
+		if (!donor.ok) throw new Error('the fixture donor did not parse');
+		const recorded = await recordDonation(createDb(env.DB), {
+			donationId,
+			donor: donor.value,
+			formId: FORM_ID,
+			origin: 'https://acme.org',
+			currency: 'USD',
+			processor: 'stripe',
+			totalMinor: 10_000,
+			feeMinor: 0,
+			lines: [
+				{
+					label: 'Donation',
+					revenueAccountId: postableId('donationsDeductible'),
+					amountMinor: 10_000
+				}
+			],
+			method: 'card',
+			providerTxnId: 'pi_1',
+			occurredAt: new Date(SETTLED * 1000),
+			consentedToContact: false,
+			note: undefined,
+			tribute: null,
+			programId: null
+		});
+		if (!recorded.ok) throw new Error(`the fixture gift was not recorded: ${recorded.detail}`);
+		return donationId;
+	}
+
+	/** Stripe answering the settlement read of `pi_1` and the reversal read of `re_1`; anything else 404s. */
+	function stripeHolds(donationId: string): void {
+		const answers: Readonly<Record<string, unknown>> = {
+			'GET /v1/payment_intents/pi_1': {
+				id: 'pi_1',
+				object: 'payment_intent',
+				status: 'succeeded',
+				amount: 10_000,
+				currency: 'usd',
+				created: SETTLED,
+				metadata: { donation_id: donationId },
+				latest_charge: {
+					id: 'ch_1',
+					object: 'charge',
+					amount: 10_000,
+					created: SETTLED,
+					payment_method_details: { type: 'card' },
+					balance_transaction: {
+						id: 'txn_1',
+						object: 'balance_transaction',
+						currency: 'usd',
+						fee: 320,
+						exchange_rate: null,
+						created: SETTLED
+					}
+				}
+			},
+			'GET /v1/refunds/re_1': {
+				id: 're_1',
+				object: 'refund',
+				amount: 10_000,
+				currency: 'usd',
+				created: REFUNDED,
+				status: 'succeeded',
+				charge: 'ch_1',
+				balance_transaction: 'txn_r1',
+				metadata: {},
+				reason: 'requested_by_customer',
+				payment_intent: {
+					id: 'pi_1',
+					object: 'payment_intent',
+					metadata: { donation_id: donationId }
+				}
+			}
+		};
+		vi.stubGlobal('fetch', async (input: Request | string | URL, init?: RequestInit) => {
+			const request = input instanceof Request ? input : new Request(String(input), init);
+			const route = `${request.method} ${new URL(request.url).pathname}`;
+			return route in answers
+				? Response.json(answers[route])
+				: Response.json({ error: { type: 'invalid_request_error' } }, { status: 404 });
+		});
+	}
+
+	/** one event, signed under the configured secret as Stripe signs it. */
+	async function signed(id: string, type: string, object: Record<string, unknown>) {
+		const body = JSON.stringify({ id, object: 'event', type, created: REFUNDED, data: { object } });
+		return deliver(body, await sign(body, CONFIGURED.STRIPE_WEBHOOK_SECRET));
+	}
+
+	const settlement = () =>
+		signed('evt_settle', 'payment_intent.succeeded', { id: 'pi_1', object: 'payment_intent' });
+	const refund = () => signed('evt_r1', 'refund.created', { id: 're_1', object: 'refund' });
+
+	async function refundRows() {
+		const { results } = await env.DB.prepare(
+			`select provider_txn_id, amount_minor from payment where direction = 'refund'`
+		).all<{ provider_txn_id: string; amount_minor: number }>();
+		return results;
+	}
+
+	it('posts the refund of a settled gift, and answers 200', async () => {
+		stripeHolds(await quotedGift());
+		await settlement();
+
+		const { response } = await refund();
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ outcome: 'posted' });
+		expect(await refundRows()).toEqual([{ provider_txn_id: 're_1', amount_minor: 10_000 }]);
+	});
+
+	it('asks again for a refund that arrives before its gift settles, and posts it once it has', async () => {
+		stripeHolds(await quotedGift());
+
+		const early = await refund();
+
+		expect(early.response.status).toBe(503);
+		expect(await refundRows()).toEqual([]);
+
+		await settlement();
+		const again = await refund();
+
+		expect(again.response.status).toBe(200);
+		expect(await refundRows()).toEqual([{ provider_txn_id: 're_1', amount_minor: 10_000 }]);
 	});
 });

@@ -8,7 +8,7 @@ import type {
 import { deploymentUrl } from '../deployment.js';
 
 /** a trigger the deployment has, by the key its `/zapier` routes name it with. */
-type TriggerKey = 'new_gift' | 'new_donor';
+type TriggerKey = 'new_gift' | 'new_donor' | 'gift_refunded';
 
 type HookTrigger = {
 	key: TriggerKey;

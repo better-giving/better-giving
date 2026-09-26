@@ -4,8 +4,9 @@ import { createPaymentProviders } from '$lib/server/payments/factory';
 import { database, platform } from '../context';
 import type { Route } from './+types/api.paypal.webhook';
 
-// where a settled PayPal payment becomes a gift in the books: the processor's own callback, and one
-// of the routes in this app whose caller is a machine belonging to somebody else.
+// where PayPal's notices about a gift land — a payment that settles it, a refund, or a dispute — and
+// reach the books: the processor's own callback, and one of the routes in this app whose caller is a
+// machine belonging to somebody else.
 //
 // it is ./api.stripe.webhook.ts's shape, deliberately and down to the status table, because the two
 // routes make the same decision for two processors and the whole of what differs is which adapter
@@ -40,8 +41,9 @@ import type { Route } from './+types/api.paypal.webhook';
 // gated against, and ../routes.spec.ts pins this file's name to it.
 //
 // what is decided here and what is not. everything the delivery does is `settleDelivery`'s
-// ($lib/server/donations/settle.ts); this file owns which status each outcome answers with, which
-// is the one decision the processor actually reads.
+// ($lib/server/donations/settle.ts, and $lib/server/donations/reverse.ts for a refund or a dispute);
+// this file owns which status each outcome answers with, which is the one decision the processor
+// actually reads.
 //
 // nothing here is a module-scope singleton. the D1 handle arrives on the request context, which
 // ../request-context.ts seeds per request, and both ports are built from that env on the call.
@@ -56,10 +58,12 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 	if (request.method !== 'POST') return methodNotAllowed(request.method);
 
 	const { env } = context.get(platform);
+	const processors = createPaymentProviders(env);
 	const result = await settleDelivery(
 		{
 			db: context.get(database),
-			provider: createPaymentProviders(env).for('paypal'),
+			provider: processors.for('paypal'),
+			processors,
 			email: createEmailProvider(env)
 		},
 		// the headers whole, because which of them verifies a delivery is the adapter's fact
@@ -108,9 +112,9 @@ function methodNotAllowed(method: string): Response {
  *
  * 2xx means stop, and everything else means send it again. every outcome above is a 200, including
  * the ones where nothing was written: a delivery this app subscribes to nothing for, a redelivery
- * the books already hold, and a settlement with no gift behind it are all things a second delivery
- * would reach identically, so asking for one buys days of retries and an endpoint PayPal marks as
- * failing.
+ * the books already hold, a settlement with no gift behind it, and a refund or dispute of a capture
+ * this deployment never recorded are all things a second delivery would reach identically, so
+ * asking for one buys days of retries and an endpoint PayPal marks as failing.
  *
  * - 400, the signature. either the delivery carried none of the five headers PayPal signs with, or
  *   PayPal declined to vouch for it — so nothing in the body may be believed, including whether it
@@ -119,12 +123,16 @@ function methodNotAllowed(method: string): Response {
  *   dashboard, which is the only place that fault is visible, and a 200 would leave it reading as
  *   healthy while every approved order went uncaptured.
  * - 503, everything verified and something this deployment depends on did not answer — PayPal
- *   unreachable, a read that never came back, a write the database refused, or no listener id set
- *   at all. the delivery is worth having again, and repeating it is safe twice over: the capture
- *   carries a request id derived from the order (`readSettlement` in
- *   $lib/server/payments/paypal.ts) so a second attempt resolves to the capture that already
- *   exists, and the constraint that refuses a duplicate posting (`entry_group_source_idx` in
- *   $lib/server/db/schema.ts) is what makes the identical batch a no-op the second time.
+ *   unreachable, a read that never came back, a write the database refused, no listener id set at
+ *   all, or a refund or dispute of a gift recorded here that has not settled yet — deliveries carry
+ *   no order, and the settlement's own delivery books the gift the next attempt reverses. the
+ *   delivery is worth having again, and repeating it is safe twice over: the capture carries a
+ *   request id derived from the order (`readSettlement` in $lib/server/payments/paypal.ts) so a
+ *   second attempt resolves to the capture that already exists, and two indexes in
+ *   $lib/server/db/schema.ts make the identical batch a no-op the second time —
+ *   `entry_group_source_idx` refuses a posting already made, and `payment_provider_txn_idx` refuses
+ *   the payment row a collection or a reversal writes, whose posting is keyed to an id minted fresh
+ *   on each delivery and so is one the first index cannot see.
  *
  * no `Retry-After`. the processor's schedule is its own; a header from here would either be ignored
  * or would be this app guessing at somebody else's queue.

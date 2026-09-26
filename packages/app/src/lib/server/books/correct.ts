@@ -1,16 +1,16 @@
 import { FORM_CURRENCY } from '../../forms/amounts';
-import { outboxStatements } from '../accounting/outbox';
 import type { Db } from '../db/client';
 import type { PostableAccountId } from '../db/postable';
 import { sqliteResultCode } from '../db/rejection';
-import { post, postingStatements } from './posting';
+import { post } from '../ledger/posting';
+import { correctionWrites } from './writes';
 
 // the one write a human performs against the ledger: a correcting entry, moving one figure out of
 // one account and into another.
 //
 // it is a module and not a route's action for the reason `createContact` and `createForm` are:
-// every other caller of `post()` in ./posting.ts is a server module on the settlement path, and a
-// second poster — a backfill, a repair run from the console — must not have to copy the sign
+// every other caller of `post()` in ../ledger/posting.ts is a server module on the settlement path,
+// and a second poster — a backfill, a repair run from the console — must not have to copy the sign
 // convention, the source type or the currency out of a screen to get an entry into the books. what
 // is here is everything a caller would otherwise have had to know; what is left to the route is
 // parsing a body and answering with a page.
@@ -20,10 +20,10 @@ import { post, postingStatements } from './posting';
 // anyone to get wrong and no arm on which `post()`'s sums-to-zero rejection is reachable. a
 // correction that needs three lines is a decision to widen this module out loud.
 //
-// this is not a second writer. ./posting.ts is still the only module that may INSERT into
-// `entry_group` or `ledger_entry` — ./sole-writer.spec.ts holds that — and what happens here is a
-// caller's own `batch()` over the statements that module hands up, which is the arrangement its
-// header argues at length.
+// this is not a second writer. ../ledger/posting.ts is still the only module that may INSERT into
+// `entry_group` or `ledger_entry` — ../ledger/sole-writer.spec.ts holds that — and what happens here
+// is a caller's own `batch()` over the statements that module hands up, by way of ./writes.ts, which
+// is the arrangement ../ledger/posting.ts's header argues at length.
 
 /**
  * a correcting entry as a caller states it.
@@ -88,8 +88,8 @@ export type CorrectionPosted = { ok: true } | { ok: false; reason: 'already_post
  * post one correcting entry, or report that its id is already in the books.
  *
  * no entry group id is handed back. a caller that needs the row reads it by the pair it already
- * holds — `findEntryGroup(db, 'adjustment', sourceId)` in ./queries.ts — which is also the read
- * that answers on the `already_posted` arm, where there is no write to have returned one.
+ * holds — `findEntryGroup(db, 'adjustment', sourceId)` in ../ledger/queries.ts — which is also the
+ * read that answers on the `already_posted` arm, where there is no write to have returned one.
  *
  * a figure that is not positive, or the same account on both sides, throws before anything is
  * written: `post()` refuses neither a negative, which balances and posts the correction the other
@@ -121,8 +121,8 @@ export async function postCorrection(db: Db, correction: Correction): Promise<Co
 		currency: FORM_CURRENCY,
 		occurredAt: correction.occurredAt,
 		memo: correction.note,
-		// `+` is a debit and `−` is a credit, project-wide — ./posting.ts's header settles it. the
-		// convention is spelled here and at no call site, which is the whole reason this module
+		// `+` is a debit and `−` is a credit, project-wide — ../ledger/posting.ts's header settles it.
+		// the convention is spelled here and at no call site, which is the whole reason this module
 		// exists: a second poster copying it by hand is a second poster who can invert it.
 		lines: [
 			{ accountId: correction.into, amountMinor: correction.amountMinor },
@@ -134,8 +134,7 @@ export async function postCorrection(db: Db, correction: Correction): Promise<Co
 		// one `batch()` and the whole entry in it: the group, its lines and what the books owe
 		// QuickBooks land together or not at all. `Db` omits `transaction` (CLAUDE.md), so there is no
 		// other shape this could take.
-		const statements = postingStatements(db, posting);
-		await db.batch([...statements, ...outboxStatements(db, [posting])]);
+		await db.batch(correctionWrites(db, posting));
 	} catch (e) {
 		// the only unique index any statement in this batch can violate is `entry_group_source_idx`:
 		// the group's own id is a fresh uuidv7 minted inside `post()`, each line's id likewise, and

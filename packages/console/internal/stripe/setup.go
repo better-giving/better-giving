@@ -21,8 +21,8 @@ import (
 // **a different key pair re-establishes everything, and nothing is carried over.** two keys are
 // very likely a second processor account or a second mode, so an endpoint, a subscription list or a
 // product already there belongs to whatever the last pair was. so the endpoint at this deployment's
-// address is deleted and made again on every press rather than kept. nothing here reads the mode to
-// decide that and nothing may: this repository holds no test-versus-live handling anywhere.
+// address is deleted and made again on every press rather than kept. nothing in this file reads
+// test-versus-live to decide that, and nothing may (CLAUDE.md, product surface).
 //
 // **the signing secret exists exactly once.** it is returned only in the response that creates the
 // endpoint, and no read on either of the processor's APIs hands it back

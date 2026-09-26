@@ -118,7 +118,7 @@ describe('GET /console/zapier', () => {
 		expect(response.headers.get('cache-control')).toBe('no-store');
 		expect((await response.json()) as ZapierReport).toEqual({
 			key: null,
-			listening: { newGift: 0, newDonor: 0 },
+			listening: { newGift: 0, newDonor: 0, giftRefunded: 0 },
 			deliveries: { waiting: 0, failed: 0, oldestWaitingAt: null }
 		});
 	});
@@ -128,12 +128,13 @@ describe('GET /console/zapier', () => {
 		await listen('new_gift', key);
 		await listen('new_gift', key);
 		await listen('new_donor', key);
+		await listen('gift_refunded', key);
 		const before = Date.now();
 		await settle();
 
 		const report = (await (await read()).json()) as ZapierReport;
 
-		expect(report.listening).toEqual({ newGift: 2, newDonor: 1 });
+		expect(report.listening).toEqual({ newGift: 2, newDonor: 1, giftRefunded: 1 });
 		expect(report.deliveries).toMatchObject({ waiting: 3, failed: 0 });
 		expect(Date.parse(report.deliveries.oldestWaitingAt ?? '')).toBeGreaterThanOrEqual(
 			before - 1000
@@ -205,7 +206,7 @@ describe('the replace press', () => {
 		const reading = (await (await read()).json()) as ZapierReport;
 		expect(reading).toMatchObject({
 			key: { madeAt: replaced.madeAt, key: replaced.key },
-			listening: { newGift: 0, newDonor: 0 }
+			listening: { newGift: 0, newDonor: 0, giftRefunded: 0 }
 		});
 	});
 

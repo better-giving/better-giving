@@ -158,7 +158,7 @@ async function withoutTable<T>(table: string, during: () => Promise<T>): Promise
 describe('posting a correction', () => {
 	it('writes the read values and answers on the screen with the movement it made', async () => {
 		// what a correction *is* — the source type, the currency, the sign convention and the one
-		// `batch()` — is `$lib/server/ledger/correct.ts` and is covered there, against the same D1.
+		// `batch()` — is `$lib/server/books/correct.ts` and is covered there, against the same D1.
 		// what is this route's own is the translation, and the answer the press reports at the button.
 		const { status, answer } = await post(CORRECTION);
 		expect(status).toBe(200);

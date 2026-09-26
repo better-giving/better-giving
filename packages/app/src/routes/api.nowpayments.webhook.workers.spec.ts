@@ -3,9 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOWPAYMENTS_IPN_PATH } from '@better-giving/operator/nowpayments/ipn-callback';
 import { parseContact } from '$lib/server/contacts/contact-input';
 import { createDb } from '$lib/server/db/client';
+import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
+import { listDonations } from '$lib/server/donations/queries';
 import type { PostableAccountId } from '$lib/server/db/postable';
 import { recordDonation } from '$lib/server/donations/record';
+import { createPaymentProviders } from '$lib/server/payments/factory';
 import { mountRoutes } from '../route-request.testing';
+import * as surface from './api.v1';
+import * as giftStanding from './api.v1.forms.$id.donations.$donationId';
 import * as webhook from './api.nowpayments.webhook';
 
 // the endpoint's own decision: which status NOWPayments is told, and what a signed IPN leaves in the
@@ -285,21 +290,18 @@ describe('POST /api/nowpayments/webhook', () => {
 		expect(await postingGroups()).toBe(0);
 	});
 
-	it.each(['refunded', 'wrong_asset_confirmed'])(
-		'answers a %s notification 200, reading and writing nothing',
-		async (payment_status) => {
-			await recordedGift();
-			const nowpayments = nowpaymentsHolds([PAID]);
+	it('answers a notification in a status nobody documented 200, reading and writing nothing', async () => {
+		await recordedGift();
+		const nowpayments = nowpaymentsHolds([PAID]);
 
-			const response = await deliver({ ...PAID, payment_status });
+		const response = await deliver({ ...PAID, payment_status: 'wrong_asset_confirmed' });
 
-			expect(response.status).toBe(200);
-			expect(await response.json()).toMatchObject({ outcome: 'ignored' });
-			expect(nowpayments.calls).toEqual([]);
-			expect(await paymentRow()).toMatchObject({ status: 'pending' });
-			expect(await postingGroups()).toBe(0);
-		}
-	);
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ outcome: 'ignored' });
+		expect(nowpayments.calls).toEqual([]);
+		expect(await paymentRow()).toMatchObject({ status: 'pending' });
+		expect(await postingGroups()).toBe(0);
+	});
 
 	/**
 	 * a repeat deposit NOWPayments minted itself, which the key may not read back: the IPN's own
@@ -517,3 +519,232 @@ describe('POST /api/nowpayments/webhook', () => {
 		expect(request.bodyUsed).toBe(false);
 	});
 });
+
+/** `PAID` after NOWPayments sent its coin back to the donor. */
+const REFUNDED: Record<string, unknown> = {
+	...PAID,
+	payment_status: 'refunded',
+	updated_at: '2026-09-19T09:30:00.000Z'
+};
+
+type RefundRow = {
+	provider_txn_id: string;
+	amount_minor: number;
+	status: string;
+	parent_payment_id: string | null;
+};
+
+async function refundRows(): Promise<RefundRow[]> {
+	const rows = await env.DB.prepare(
+		`select provider_txn_id, amount_minor, status, parent_payment_id
+		 from payment where direction = 'refund' order by created_at`
+	).all<RefundRow>();
+	return rows.results;
+}
+
+/** each ledger account's balance that is not zero: what the books still hold, across every group. */
+async function standingBalances(): Promise<{ account_id: string; balance: number }[]> {
+	const rows = await env.DB.prepare(
+		`select account_id, sum(amount_minor) as balance from ledger_entry
+		 group by account_id having sum(amount_minor) <> 0`
+	).all<{ account_id: string; balance: number }>();
+	return rows.results;
+}
+
+async function giftStatus(donationId = DONATION_ID): Promise<string | undefined> {
+	const { donations } = await listDonations(createDb(env.DB));
+	return donations.find((gift) => gift.id === donationId)?.status;
+}
+
+describe('POST /api/nowpayments/webhook — a refunded payment', () => {
+	it('reverses a settled gift at the value it was booked at, and the gift reads refunded', async () => {
+		await recordedGift();
+		nowpaymentsHolds([PAID]);
+		await deliver(PAID);
+		const settled = await paymentRow();
+		expect(await standingBalances()).not.toEqual([]);
+		nowpaymentsHolds([REFUNDED]);
+
+		const response = await deliver(REFUNDED);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ outcome: 'posted' });
+		expect(await refundRows()).toEqual([
+			{
+				provider_txn_id: `${PAYMENT_ID}:refunded`,
+				amount_minor: 2487,
+				status: 'succeeded',
+				parent_payment_id: settled?.id
+			}
+		]);
+		expect(await postingGroups()).toBe(2);
+		expect(await standingBalances()).toEqual([]);
+		expect(await giftStatus()).toBe('refunded');
+	});
+
+	it('posts a refund delivered twice once, under one id that is not the payment’s', async () => {
+		await recordedGift();
+		nowpaymentsHolds([PAID]);
+		await deliver(PAID);
+		nowpaymentsHolds([REFUNDED]);
+		await deliver(REFUNDED);
+
+		const again = await deliver(REFUNDED);
+
+		expect(again.status).toBe(200);
+		expect(await again.json()).toMatchObject({ outcome: 'already_posted' });
+		expect((await refundRows()).map((row) => row.provider_txn_id)).toEqual([
+			`${PAYMENT_ID}:refunded`
+		]);
+		expect(await postingGroups()).toBe(2);
+		expect(await giftStatus()).toBe('refunded');
+	});
+
+	/** an address that saw no coin: nothing settled, so nothing is there to reverse, now or later. */
+	it('answers a refund of a payment nothing arrived on 200, writing nothing', async () => {
+		await recordedGift();
+		const unpaid = { ...REFUNDED, actually_paid: 0 };
+		nowpaymentsHolds([unpaid]);
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		const response = await deliver(unpaid);
+
+		expect(warn).toHaveBeenCalledOnce();
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ outcome: 'ignored' });
+		expect(await refundRows()).toEqual([]);
+		expect(await paymentRow()).toMatchObject({ status: 'pending' });
+		expect(await postingGroups()).toBe(0);
+	});
+
+	/**
+	 * notifications carry no order, and once the refund is made the payment reads `refunded`: the
+	 * settlement delivered after it books the gift at what arrived and takes it back out, and the
+	 * refund delivered again finds it taken.
+	 */
+	it('posts a refund that outruns its settlement with the settlement delivered after it', async () => {
+		await recordedGift();
+		nowpaymentsHolds([REFUNDED]);
+
+		const early = await deliver(REFUNDED);
+
+		expect(early.status).toBe(503);
+		expect(await refundRows()).toEqual([]);
+
+		const settlement = await deliver(PAID);
+		const again = await deliver(REFUNDED);
+
+		expect(await settlement.json()).toMatchObject({ outcome: 'posted' });
+		expect(again.status).toBe(200);
+		expect(await again.json()).toMatchObject({ outcome: 'already_posted' });
+		expect(await refundRows()).toEqual([
+			expect.objectContaining({ provider_txn_id: `${PAYMENT_ID}:refunded`, amount_minor: 2487 })
+		]);
+		expect(await standingBalances()).toEqual([]);
+		expect(await giftStatus()).toBe('refunded');
+	});
+
+	/**
+	 * a deposit held and sent back sends no settlement notification: the scheduled read finds the
+	 * payment still pending here and books it at what arrived with its refund, and the refund
+	 * delivered again finds it taken.
+	 */
+	it('posts a refund of a deposit that never settled with the scheduled read that books it', async () => {
+		await recordedGift();
+		const now = new Date();
+		await env.DB.prepare(
+			`update payment set created_at = ?, valid_until = ? where provider_txn_id = ?`
+		)
+			.bind(now.getTime() - 60 * 60_000, now.getTime() + 24 * 60 * 60_000, PAYMENT_ID)
+			.run();
+		nowpaymentsHolds([REFUNDED]);
+
+		const early = await deliver(REFUNDED);
+
+		expect(early.status).toBe(503);
+
+		await readPendingCryptoGifts(
+			{
+				db: createDb(env.DB),
+				processors: createPaymentProviders(envWith(CONFIGURED)),
+				email: { send: async () => ({ ok: true }) }
+			},
+			now
+		);
+		const again = await deliver(REFUNDED);
+
+		expect(await paymentRow()).toMatchObject({ status: 'succeeded', amount_minor: 2487 });
+		expect(again.status).toBe(200);
+		expect(await again.json()).toMatchObject({ outcome: 'already_posted' });
+		expect(await refundRows()).toHaveLength(1);
+		expect(await standingBalances()).toEqual([]);
+		expect(await giftStatus()).toBe('refunded');
+	});
+
+	/**
+	 * a repeat deposit the key cannot read back settles and is refunded from its signed notifications,
+	 * so its refund, held open until the deposit is recorded, is posted by the delivery after.
+	 */
+	it('asks again for a refund that outruns its repeat deposit, and posts it once the deposit is recorded', async () => {
+		await recordedGift();
+		nowpaymentsHolds([PAID]);
+		await deliver(PAID);
+		const refunded = { ...REPEAT, payment_status: 'refunded' };
+
+		const early = await deliver(refunded);
+
+		expect(early.status).toBe(503);
+		expect(await refundRows()).toEqual([]);
+
+		await deliver(REPEAT);
+		const child = await paymentRow(CHILD_ID);
+		const later = await deliver(refunded);
+
+		expect(later.status).toBe(200);
+		expect(await later.json()).toMatchObject({ outcome: 'posted' });
+		expect(await refundRows()).toEqual([
+			{
+				provider_txn_id: `${CHILD_ID}:refunded`,
+				amount_minor: 514,
+				status: 'succeeded',
+				parent_payment_id: child?.id
+			}
+		]);
+		expect(await giftStatus(child?.donation_id)).toBe('refunded');
+		expect(await giftStatus()).toBe('completed');
+	});
+
+	/** the waiting screen says the coin arrived, and a refund afterwards is not the donor's to be shown. */
+	it('leaves the donation form’s poll answering as it did before the refund', async () => {
+		await recordedGift();
+		nowpaymentsHolds([PAID]);
+		await deliver(PAID);
+		const before = await pollAnswer();
+		nowpaymentsHolds([REFUNDED]);
+
+		await deliver(REFUNDED);
+
+		expect(await refundRows()).toHaveLength(1);
+		expect(before).toEqual({ status: 200, body: { state: 'received' } });
+		expect(await pollAnswer()).toEqual(before);
+	});
+});
+
+const poll = mountRoutes([
+	{ path: 'api/v1', module: surface },
+	{ path: 'forms/:id/donations/:donationId', module: giftStanding }
+]);
+
+/** `GET /api/v1/forms/:id/donations/:donationId`, the read the form's waiting screen polls. */
+async function pollAnswer(): Promise<{ status: number; body: unknown }> {
+	const response = await poll(
+		new Request(
+			`https://give.example.workers.dev/api/v1/forms/${FORM_ID}/donations/${DONATION_ID}`,
+			{
+				headers: { 'cf-connecting-ip': '203.0.113.77' }
+			}
+		),
+		{ env }
+	);
+	return { status: response.status, body: await response.json() };
+}

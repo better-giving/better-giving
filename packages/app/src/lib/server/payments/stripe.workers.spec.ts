@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createStripeProvider } from './stripe';
+// `sign` computes with WebCrypto in whichever pool imports it — here workerd's own, so a signature
+// that verifies is agreement between the runtime and the SDK's subtle-crypto provider.
+import { sign } from './stripe.testing';
 
 // the adapter's two runtime dependencies, exercised inside workerd rather than described.
 //
@@ -23,29 +26,6 @@ import { createStripeProvider } from './stripe';
 // test is the client and the crypto provider production constructs, not one a test handed in.
 
 const CREDENTIALS = { secretKey: 'sk_test_notarealkey', webhookSecret: 'whsec_notarealsecret' };
-
-/**
- * a `stripe-signature` header, computed here rather than asked for.
- *
- * `t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<body>">` —
- * https://docs.stripe.com/webhooks#verify-manually. computed with the runtime's own WebCrypto,
- * which is deliberate: the adapter verifies with the SDK's subtle-crypto provider, so agreement
- * between the two is a fact about workerd rather than about the library agreeing with itself.
- */
-async function sign(body: string, secret: string) {
-	const at = Math.floor(Date.now() / 1000);
-	const encoder = new TextEncoder();
-	const key = await crypto.subtle.importKey(
-		'raw',
-		encoder.encode(secret),
-		{ name: 'HMAC', hash: 'SHA-256' },
-		false,
-		['sign']
-	);
-	const mac = await crypto.subtle.sign('HMAC', key, encoder.encode(`${at}.${body}`));
-	const hex = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
-	return `t=${at},v1=${hex}`;
-}
 
 const BODY = JSON.stringify({
 	id: 'evt_1',

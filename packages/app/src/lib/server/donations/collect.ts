@@ -3,7 +3,7 @@ import type { BatchItem } from 'drizzle-orm/batch';
 import { uuidv7 } from 'uuidv7';
 import { projectTribute } from '../../donations/tributes';
 import type { RecurringPlanStatus } from '../../recurring/statuses';
-import { outboxStatements } from '../accounting/outbox';
+import { settledGiftWrites } from '../books/writes';
 import { readContactSummaries, type ContactSummary } from '../contacts/queries';
 import type { Db } from '../db/client';
 import type { PostableAccountId } from '../db/postable';
@@ -25,7 +25,6 @@ import {
 } from '../db/schema';
 import type { ReceiptContribution } from '../email/receipt';
 import { readForm } from '../forms/queries';
-import { postingStatements } from '../ledger/posting';
 import {
 	DONATION_METADATA_KEY,
 	FEE_COVERED_METADATA_KEY,
@@ -37,9 +36,8 @@ import {
 	type RecurringGiftNotice,
 	type Settlement
 } from '../payments/provider';
-import { zapierStatements } from '../zapier/events';
 import { alert, processorLabel, type SettleDeps, type SettleResult } from './delivery';
-import { chargeEntry, feeEntry, unpostable } from './entries';
+import { chargeEntry, feeEntry, missingFeeCorrection, unpostable } from './entries';
 import { sendReceipt, type ReceiptOutcome } from './receipt';
 import { sendSettledNotice, type Repeating } from './settled-notice';
 import { sendTributeNotice } from './tribute-notice';
@@ -852,16 +850,7 @@ async function answerTo(
 						{ label: 'Repeating gift', value: about.notice.providerGiftId },
 						{ label: 'Transaction', value: about.settlement.providerTxnId }
 					],
-					// the same repair ./settle.ts names, and for the same reason: nothing in the
-					// dashboard posts a correcting entry, so the figure is all this alert can hand
-					// over.
-					action:
-						`Find this payment in the ${processor} dashboard and keep the fee it states, in ` +
-						'the currency the gift was charged in. Keep only a figure ' +
-						`${processor} states for this payment: a fee reported in another currency is not ` +
-						'one to convert, because the converted figure is one nobody published. This ' +
-						'deployment records nothing for it, so carry that figure into the books your ' +
-						'organisation keeps outside it.'
+					action: missingFeeCorrection(processor)
 				});
 			}
 
@@ -1223,8 +1212,6 @@ function chargeWrites(
 		donationId,
 		revenue: [{ accountId: fund, amountMinor: settlement.amountMinor }] as const
 	};
-	const charge = chargeEntry(gift, settlement);
-	const fee = feeEntry(gift, settlement);
 
 	return {
 		// foreign-key order: the gift, its line and its payment, then the entries keyed to that
@@ -1236,10 +1223,11 @@ function chargeWrites(
 			db.insert(donation).values(giftRow),
 			db.insert(lineItem).values(lineRow),
 			db.insert(payment).values(paymentRow),
-			...postingStatements(db, charge),
-			...(fee === null ? [] : postingStatements(db, fee)),
-			...outboxStatements(db, [charge, fee]),
-			...zapierStatements(db, { paymentId, contactId })
+			...settledGiftWrites(db, {
+				charge: chargeEntry(gift, settlement),
+				fee: feeEntry(gift, settlement),
+				contactId
+			})
 		],
 		charge: {
 			donationId,
@@ -1327,8 +1315,6 @@ function claimWrites(
 		donationId: gift.id,
 		revenue: [{ accountId: fund, amountMinor: settlement.amountMinor }] as const
 	};
-	const charge = chargeEntry(posting, settlement);
-	const fee = feeEntry(posting, settlement);
 
 	return {
 		statements: [
@@ -1350,10 +1336,11 @@ function claimWrites(
 				})
 				.where(eq(lineItem.donationId, gift.id)),
 			db.insert(payment).values(paymentRow),
-			...postingStatements(db, charge),
-			...(fee === null ? [] : postingStatements(db, fee)),
-			...outboxStatements(db, [charge, fee]),
-			...zapierStatements(db, { paymentId, contactId: gift.contactId })
+			...settledGiftWrites(db, {
+				charge: chargeEntry(posting, settlement),
+				fee: feeEntry(posting, settlement),
+				contactId: gift.contactId
+			})
 		],
 		charge: {
 			donationId: gift.id,

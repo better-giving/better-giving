@@ -73,8 +73,8 @@ import {
 // no invariant in this system is enforced by an atomic read-then-write, and a lost race is
 // settled by a correcting entry rather than by a rollback. nothing needs one today by
 // design — derived balances remove read-modify-write, and idempotency is `entry_group`'s
-// unique index rather than a check-then-insert, per the paragraph above. refunds are what
-// will test it: `refund <= received` is cross-row, so no `CHECK` expresses it and two
+// unique index rather than a check-then-insert, per the paragraph above. refunds would
+// want one: `refund <= received` is cross-row, so no `CHECK` expresses it and two
 // concurrent refunds can both post. the answer there is a compensating entry a human posts,
 // which is what double-entry books are for. this is the ceiling the design was drawn
 // against rather than a platform defect, and working around it would cost every call site.
@@ -264,9 +264,12 @@ export function post(input: PostingInput): Posting {
 }
 
 /**
- * the statements that write `posting`, for splicing into the caller's single `batch()`:
+ * the statements that write `posting`, for splicing into a caller's single `batch()`. outside the
+ * specs its one caller is ../books/writes.ts, and a writer takes them from there —
+ * `settledGiftWrites`, `correctionWrites` or `reversalWrites`, spliced after its own payment row
+ * where it writes one:
  *
- *   await db.batch([donationStmt, ...postingStatements(db, posting)]);
+ *   await db.batch([paymentStmt, ...settledGiftWrites(db, { charge, fee, contactId })]);
  *
  * one statement per row, never a multi-row `INSERT` — D1 caps a query at 100 bound
  * parameters, and a multi-row insert is also the shape that makes a partial failure

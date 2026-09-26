@@ -115,9 +115,11 @@ import type { PostableAccountId } from './postable';
 //
 // 2. if a generated migration rebuilds a table, hand-edit its pragmas.
 //    drizzle-kit wraps a rebuild in `PRAGMA foreign_keys=OFF` / `=ON`. sqlite documents
-//    that pragma as a no-op inside a transaction, and the whole migration runs in one —
-//    which is the mechanism, not "D1 ignores it". (the no-op is itself the evidence a
-//    migration file is wrapped in a transaction.) so the rebuild's
+//    that pragma as a no-op inside a transaction, and the whole migration runs in one on
+//    every apply path — wrangler's `--local` sends a file as one batch, and wrangler's
+//    `--remote` and `better-giving start` send it as one query request D1 runs as one
+//    implicit transaction (packages/console/internal/migrate/migrate.go). that is the
+//    mechanism, not "D1 ignores it". so the rebuild's
 //    `DROP TABLE account` fails with FOREIGN KEY constraint failed. two ways in: a
 //    separate child table holding rows that point at the dropped table, and — the one
 //    live today — the self-reference, which fails specifically because drizzle renders
@@ -128,12 +130,26 @@ import type { PostableAccountId } from './postable';
 //    atomically, but it is the migration step of `deploy` that fails and `wrangler deploy`
 //    runs behind it, so a fork that hits it cannot deploy at all. replace the emitted pair with
 //        PRAGMA defer_foreign_keys=true;  ...rebuild...  PRAGMA defer_foreign_keys=false;
-//    which D1 honours, and which defers enforcement to commit instead of disabling it.
+//    which D1 honours: the `DROP` no longer fails on the rows pointing at the table, and
+//    the deferral lasts to the end of the file's transaction. the closing `=false` is not
+//    optional: the rename does not take back the violations the drop counted, so without
+//    it the commit fails with every row resolving. locally it clears the violations
+//    deferred so far, as sqlite's source does
+//    (https://github.com/sqlite/sqlite/blob/master/src/pragma.c), so the commit checks
+//    nothing and a rebuild that left child rows pointing at nothing — a copy step skipped,
+//    a row not copied — commits with them orphaned. the guard is
+//    `newest-migration.workers.spec.ts`'s "leaves no foreign key pointing at nothing",
+//    which reads `pragma_foreign_key_check` after applying every migration the test
+//    deployment has not, file by file, over seeded rows. D1's docs
+//    (https://developers.cloudflare.com/d1/sql-api/foreign-keys/) say instead that `=off`
+//    with violations outstanding fails with `FOREIGN KEY constraint failed`; which of the
+//    two a remote database does is proven only by a remote apply over rows the rebuild
+//    moves.
 //    two caveats on the replacement. it resets at every commit, so it covers one
 //    transaction and must be re-set if a rebuild is ever split across files. and
 //    `ON DELETE CASCADE` is never deferrable — a cascade is an action, not a violation,
-//    so it fires during the rebuild's implicit delete, empties the child table, and then
-//    passes the commit-time check because the orphans it would have caught are gone.
+//    so it fires during the rebuild's implicit delete and empties the child table, leaving
+//    no orphan for any check to find.
 //    that is why exactly one FK in this schema carries a cascade —
 //    `auth_session.user_id -> auth_user.id`, argued at its own declaration in
 //    ./auth-schema.ts — and no other may: a session is worthless without its user and no
@@ -566,9 +582,16 @@ export const account = sqliteTable(
  * which is what lets the ledger exist before `payment`/`donation`/`refund` do — no FK forces those
  * tables to arrive early, and the pair is what the idempotency constraint is built on.
  *
- * `adjustment` is the one member that links to nothing: a correction is posted by a human rather
- * than caused by a record, so its `source_id` is minted for it. the grain of all five is on
- * `entry_group_source_idx` below, which is the constraint it is part of.
+ * `adjustment` is a correction. one a human posts is caused by no record and links to nothing, so
+ * its `source_id` is minted for it. the one caused by a record is a dispute's settle-up
+ * at its close, keyed on its refund-direction row, or on the disputed payment where no opening was
+ * recorded. the grain of all five is on `entry_group_source_idx` below, which is the constraint it
+ * is part of.
+ *
+ * a dispute adds no member. what it withdraws is `'refund'` on its refund-direction row, and a won
+ * dispute's money back is `'payment'` on that same row — the grain a refund that did not stand
+ * already has — so widening this list, which rebuilds `entry_group` under every table pointing at
+ * it, is never paid for a dispute.
  *
  * declared here rather than in a leaf, which is the default this file's `enums` rule states: no
  * module this file imports needs it. /admin/books lists journal entries and draws a word for each
@@ -652,7 +675,10 @@ export const entryGroup = sqliteTable(
 		 *                   donation" is the rule this enforces.
 		 *   'payment'    -> `payment.id`. one settlement event, one posting. a gift settling in
 		 *                   instalments is several `payment` rows and therefore several entries.
+		 *                   on a `direction = 'refund'` row it is that refund's reinstatement: the
+		 *                   money back where the refund did not stand, or the dispute was won.
 		 *   'refund'     -> `payment.id` — the refund's own row, never the donation it reverses.
+		 *                   a dispute's withdrawal is one too, its fee inside the same group.
 		 *   'fee'        -> `payment.id` of the settlement the fee was deducted from.
 		 *   'adjustment' -> a uuidv7 minted for the correction, one per correction, borrowed
 		 *                   from nothing — not the payment, donation or entry being corrected.
@@ -660,6 +686,11 @@ export const entryGroup = sqliteTable(
 		 *                   natural key to be idempotent against, and two identical corrections
 		 *                   posted deliberately must both land. any borrowed id makes the
 		 *                   second one collide with the first and be refused as a redelivery.
+		 *                   only a dispute's settle-up at its close borrows one: the
+		 *                   refund-direction row's `payment.id`, one per dispute, so a redelivered
+		 *                   close collides — and, for a win whose opening was never recorded, the
+		 *                   disputed payment's `payment.id`, one per charge, which holds while a
+		 *                   processor opens one dispute per charge.
 		 *
 		 * refunds are why this is written down. keying a refund on `donation.id` looks
 		 * natural — the refund is "about" that gift — and it makes the second refund on one
@@ -1035,18 +1066,20 @@ export const form = sqliteTable(
  * asymmetry seals it: sqlite does `ADD COLUMN` natively, while dropping a column carrying
  * a check is the 12-step rebuild — so not having it is the cheap direction to reverse.
  *
- * the projection, and what produces each state. this list is a contract with `payment`,
- * not a wish: every member below is derivable from rows that exist. `failed` and `cancelled`
- * are the two that depend on `payment.status` and are why it exists — with `payment` holding
- * settlement facts only, a failed charge writes no row, so `failed` is indistinguishable from
- * `pending` and `cancelled` has no substrate at all.
+ * the projection, and what produces each state. this list is a contract with `payment` and
+ * `dispute`, not a wish: every member below is derivable from rows that exist. `failed` and
+ * `cancelled` are the two that depend on `payment.status` and are why it exists — with `payment`
+ * holding settlement facts only, a failed charge writes no row, so `failed` is indistinguishable
+ * from `pending` and `cancelled` has no substrate at all.
  *
  *   pending            no `payment` row yet, or the latest inbound attempt is `pending`.
  *   completed          an inbound `succeeded` payment, and refunds do not reach the total.
  *   failed             the latest inbound attempt is `failed` and none has succeeded.
  *   cancelled          the latest inbound attempt is `cancelled` and none has succeeded.
  *   refunded           `succeeded` refunds sum to the inbound total.
- *   partially_refunded `succeeded` refunds sum to less than it, and more than zero.
+ *   disputed           a `dispute` row with no outcome is keyed on one of the gift's refunds,
+ *                      whatever the refunds sum to.
+ *   partially_refunded `succeeded` refunds sum to less than the inbound total, and more than zero.
  *
  * two rules govern that list, and they are what make it exhaustive rather than a set of
  * cases. a gift with any `succeeded` inbound attempt is collected, and no later attempt
@@ -1482,6 +1515,11 @@ const NON_PROCESSOR_PROVIDERS = ['manual'] as const satisfies readonly PaymentPr
  * staff have recorded but not banked); `cancelled` is an attempt abandoned before any
  * money moved, which is a different fact from one the rail refused.
  *
+ * on a `direction = 'refund'` row, `cancelled` is a refund that did not stand: it went out and
+ * the money came back — a refund that failed, or a dispute the organisation won. that row is
+ * the one `succeeded` payment ever walked back, and only `lib/server/donations/reverse.ts`
+ * walks it; an inbound row that settled stays settled.
+ *
  * deliberately not `refunded`. a refund is a separate `payment` row with
  * `direction = 'refund'`, which is what keeps this table append-shaped and keeps a
  * reconciler reading one row per real event. a `refunded` member here would make the same
@@ -1489,9 +1527,10 @@ const NON_PROCESSOR_PROVIDERS = ['manual'] as const satisfies readonly PaymentPr
  * able to hold the two in agreement.
  *
  * `disputed`/`chargeback` are absent for the opposite reason: they are real and they are
- * not settlement outcomes, they are later events about a settled payment. they arrive as
- * their own rows or their own table when disputes land, and adding a member to this list
- * afterwards is a table rebuild — so the list is short on purpose rather than by omission.
+ * not settlement outcomes, they are later events about a settled payment. the money a dispute
+ * withdraws is a `direction = 'refund'` row of its own, and its state is `dispute`'s. adding a
+ * member to this list is a table rebuild — so the list is short on purpose rather than by
+ * omission.
  */
 export const PAYMENT_STATUSES = ['pending', 'succeeded', 'failed', 'cancelled'] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
@@ -1520,6 +1559,12 @@ export const payment = sqliteTable(
 		donationId: text('donation_id')
 			.notNull()
 			.references(() => donation.id),
+		/**
+		 * on a `direction = 'refund'` row, what the refund or dispute took. one thing changes it
+		 * after the row is written: a dispute lost after it opened, whose close lowers it to what the
+		 * processor finally took (`closeLost` in ../donations/reverse.ts). nothing else does, and
+		 * nothing raises it.
+		 */
 		amountMinor: integer('amount_minor').notNull(),
 		currency: text('currency').notNull(),
 		direction: text('direction').$type<PaymentDirection>().notNull(),
@@ -1604,10 +1649,11 @@ export const payment = sqliteTable(
 		 */
 		validUntil: at('valid_until'),
 		/**
-		 * on a repeat deposit — a second sending to an address whose first already settled — the
-		 * payment row of that first sending. this deployment's own `payment.id`, never
-		 * NOWPayments' parent id: theirs is the parent row's `provider_txn_id`, which is how the
-		 * parent is found before this is written. null on every first payment.
+		 * the payment this row follows from: on a repeat deposit — a second sending to an address
+		 * whose first already settled — the payment row of that first sending; on a
+		 * `direction = 'refund'` row, the inbound payment it reverses. this deployment's own
+		 * `payment.id`, never a processor's id: theirs is the parent row's `provider_txn_id`, which is
+		 * how the parent is found before this is written. null on every first inbound payment.
 		 */
 		parentPaymentId: text('parent_payment_id').references((): AnySQLiteColumn => payment.id)
 	},
@@ -1747,6 +1793,58 @@ export const payment = sqliteTable(
 		 * direction to be wrong in.
 		 */
 		uniqueIndex('payment_provider_txn_idx').on(t.provider, t.providerTxnId)
+	]
+);
+
+/** how a dispute closed. an open dispute has no outcome at all. */
+export const DISPUTE_OUTCOMES = ['won', 'lost'] as const;
+export type DisputeOutcome = (typeof DISPUTE_OUTCOMES)[number];
+
+/**
+ * one row per dispute a processor opened against a gift: its state, never its money.
+ *
+ * the money the dispute withdrew is a `payment` row of its own, `direction = 'refund'` with the
+ * dispute's id as its `provider_txn_id`, and this row is keyed on that one. so the dispute has no
+ * id of its own and no processor-id column: `payment_provider_txn_idx` is already the one key a
+ * redelivered dispute collides on, and a second copy here would have to stay in agreement with it.
+ *
+ * nothing references this table, so widening `DISPUTE_OUTCOMES` rebuilds a leaf and never the
+ * rule-2 rebuild of a referenced table. that a gift is disputed is stored nowhere else: it is a row
+ * here with no outcome.
+ */
+export const dispute = sqliteTable(
+	'dispute',
+	{
+		/** the refund-direction row holding the money this dispute withdrew. */
+		paymentId: text('payment_id')
+			.primaryKey()
+			.references(() => payment.id),
+		/**
+		 * null while the dispute is open. set once, together with `closed_at`, under
+		 * `where outcome is null` — so a second report of the close changes no row.
+		 */
+		outcome: text('outcome').$type<DisputeOutcome>(),
+		/** the processor's deadline for the organisation's response. null where it named none. */
+		respondBy: at('respond_by'),
+		/** the processor's reason code, verbatim. */
+		reason: text('reason'),
+		closedAt: at('closed_at'),
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check(
+			'dispute_outcome_check',
+			sql`${t.outcome} is null or ${enumCheck(t.outcome, DISPUTE_OUTCOMES)}`
+		),
+		// a close with no outcome reads as ended for nothing, and an outcome with no close as a
+		// dispute decided at no time.
+		check(
+			'dispute_closed_with_outcome_check',
+			sql`(${t.outcome} is null) = (${t.closedAt} is null)`
+		),
+		check('dispute_reason_not_blank_check', optionalNotBlank(t.reason))
 	]
 );
 
@@ -2431,13 +2529,29 @@ export const quickbooksSync = sqliteTable(
 		 * it expires rather than being held, because a run that died mid-send writes nothing to
 		 * give the row back.
 		 */
-		leasedUntil: at('leased_until')
+		leasedUntil: at('leased_until'),
+
+		/**
+		 * the QuickBooks company (`quickbooks_connection.realm_id`) this row's record went to, or
+		 * may have: null until a delivery run first takes the row, and null again on an attempt
+		 * given back to untried.
+		 *
+		 * the connection can be moved to another company, and a later record about this gift — a
+		 * refund of it — belongs in the books the gift itself reached, not in whichever company is
+		 * connected by then. `remote_id` is an id inside one company and names nothing in another.
+		 *
+		 * null on a row that has left for Intuit (`remote_id` set, or `attempts > 0`) is a company
+		 * nobody recorded — a row the backfill in migrations/0011_quickbooks_sync_realm.sql could not
+		 * place. a row that migration did place names the company connected when it ran.
+		 */
+		realmId: text('realm_id')
 	},
 	(t) => [
 		check('quickbooks_sync_status_check', enumCheck(t.status, QUICKBOOKS_SYNC_STATUSES)),
 		check('quickbooks_sync_attempts_check', sql`${t.attempts} >= 0`),
 		check('quickbooks_sync_remote_id_not_blank_check', optionalNotBlank(t.remoteId)),
 		check('quickbooks_sync_last_error_not_blank_check', optionalNotBlank(t.lastError)),
+		check('quickbooks_sync_realm_id_not_blank_check', optionalNotBlank(t.realmId)),
 		// `status` leads because the sweep reads the rows that are not finished, the minority of a
 		// table that grows with every gift the deployment ever took. the sweep's order is sorted
 		// over what that narrows to (../accounting/deliver.ts's `dueRows`), because it is read off
@@ -2507,7 +2621,7 @@ export const zapierKey = sqliteTable(
  * the events a Zap can subscribe to. declared here rather than in a leaf, on this file's `enums`
  * rule: no module this file imports needs it.
  */
-export const ZAPIER_TRIGGERS = ['new_gift', 'new_donor'] as const;
+export const ZAPIER_TRIGGERS = ['new_gift', 'new_donor', 'gift_refunded'] as const;
 export type ZapierTrigger = (typeof ZAPIER_TRIGGERS)[number];
 
 /**
@@ -2570,8 +2684,9 @@ export const zapierSubscription = sqliteTable(
 );
 
 /**
- * where one delivery stands. `dropped` is a row its subscription ended before it was sent, which
- * is not a failure: nobody was listening for it any more.
+ * where one delivery stands. `dropped` is a row its subscription ended before it was sent, or a
+ * `gift_refunded` row whose refund no longer stood when it came to be sent (../zapier/deliver.ts).
+ * neither is a failure: nobody was listening for it, or there was nothing true left to say.
  */
 export const ZAPIER_DELIVERY_STATUSES = ['pending', 'sent', 'failed', 'dropped'] as const;
 export type ZapierDeliveryStatus = (typeof ZAPIER_DELIVERY_STATUSES)[number];
@@ -2601,7 +2716,8 @@ export const zapierDelivery = sqliteTable(
 
 		/**
 		 * the id sent as the payload's `id`, the same on every retry: the payment id for
-		 * `new_gift`, the contact id for `new_donor`. nothing drops a redelivery on it — Zapier
+		 * `new_gift`, the contact id for `new_donor`, the refund row's id for `gift_refunded`.
+		 * nothing drops a redelivery on it — Zapier
 		 * dedupes polling triggers only, so a repeated post runs the Zap again (../zapier/deliver.ts).
 		 */
 		eventId: text('event_id').notNull(),

@@ -2,9 +2,8 @@ import { and, eq, ne } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import { uuidv7 } from 'uuidv7';
 import { projectTribute } from '../../donations/tributes';
-import { outboxStatements } from '../accounting/outbox';
+import { settledGiftWrites, type Writes } from '../books/writes';
 import type { Db } from '../db/client';
-import { sqliteResultCode } from '../db/rejection';
 import {
 	contact,
 	donation,
@@ -18,7 +17,7 @@ import {
 } from '../db/schema';
 import type { CryptoReceived } from '../email/receipt';
 import { renderUncollectedNotice } from '../email/uncollected';
-import { postingStatements } from '../ledger/posting';
+import { findEntryGroup } from '../ledger/queries';
 import { readOrgProfile } from '../org/queries';
 import {
 	DONATION_METADATA_KEY,
@@ -31,10 +30,17 @@ import {
 	type Settlement,
 	type WebhookDelivery
 } from '../payments/provider';
-import { zapierStatements } from '../zapier/events';
 import { collectRecurringGift } from './collect';
-import { alert, processorLabel, type SettleDeps, type SettleResult } from './delivery';
-import { chargeEntry, feeEntry, unpostable, type GiftRevenue, type RevenueShare } from './entries';
+import { alert, commit, processorLabel, type SettleDeps, type SettleResult } from './delivery';
+import {
+	chargeEntry,
+	feeEntry,
+	missingFeeCorrection,
+	unpostable,
+	type GiftRevenue,
+	type RevenueShare
+} from './entries';
+import { recordReversal, type RefundNotice, reverseDelivery } from './reverse';
 import { sendGrantReceived, sendReceipt } from './receipt';
 import { sendSettledNotice } from './settled-notice';
 import { sendTributeNotice } from './tribute-notice';
@@ -167,18 +173,27 @@ import { sendTributeNotice } from './tribute-notice';
 // delivery that ended the attempt, reopens an attempt that is over.
 //
 // ---------------------------------------------------------------------------
-// a payment that settled is never walked back, on any rail (`write`).
+// a payment that settled is never walked back here, on any rail (`write`).
 //
 // its entries, the row it owes QuickBooks and the rows it owes every listening Zap stay whatever a
 // later report says, so a status moved off `succeeded` would leave the gift reading `cancelled` or
 // `pending` while the books count it. a fresh read reporting such a payment unsettled — a grant the
-// fund cancelled, or a PayPal capture refunded or reversed, which reaches this only when a later
-// delivery about the order triggers a read, since neither is an event this app subscribes to —
-// changes nothing and tells an operator, because whatever the books hold for it may be money the
-// processor has taken back, and only a correction posted in /admin/books (../ledger/correct.ts)
-// takes it out. two reports are stale rather than news and say nothing: a
+// fund cancelled — changes nothing and tells an operator, because whatever the books hold for it
+// may be money the processor has taken back, and only a correction posted in /admin/books
+// (../books/correct.ts) takes it out. two reports are stale rather than news and say nothing: a
 // crypto read, which can report a state from before the coins landed, and a delivery's own state
-// standing in for a read, which can be older than the one that settled the payment.
+// standing in for a read, which can be older than the one that settled the payment. money a refund
+// takes back is a row of its own (./reverse.ts), never a status on this one.
+//
+// ---------------------------------------------------------------------------
+// a read that reports the money sent back as well (`Settlement.alsoRefunded`) is the gift and its
+// refund, and both are written: the settlement here, then the whole of it refunded through the one
+// refund writer (`recordReversal` in ./reverse.ts), after any settlement that leaves the gift settled
+// here — this delivery's, or an earlier one's. the refund's id is its idempotency, so a redelivery,
+// or a refund its own notification already wrote, answers `already_posted`. a gift settled and
+// refunded in one delivery is receipted to nobody, nobody is sent word of its refund, and no operator
+// is asked to post a fee it arrived without; a gift that settled on an earlier delivery was receipted
+// then, and its donor is sent the refund notice as for any refund.
 //
 // ---------------------------------------------------------------------------
 // "three days" below is Stripe's and PayPal's redelivery window. NOWPayments sends a non-2xx again
@@ -272,6 +287,10 @@ export async function settleDelivery(
 	// neither, so it is an insert of both plus a posting rather than an update. ./collect.ts owns
 	// it, and the two halves answer in the vocabulary ./delivery.ts states.
 	if (event.kind === 'recurring') return collectRecurringGift(deps, event);
+
+	// a refund or a dispute names a transaction this module settled, and writes a row of its own
+	// against it rather than correcting that one: ./reverse.ts owns it.
+	if (event.kind === 'reversal') return reverseDelivery(deps, event);
 
 	if (event.kind === 'ignored') {
 		return {
@@ -369,7 +388,15 @@ export async function settleTransaction(
 	// names its first payment, and where a read that answered does not, the verified delivery does.
 	const repeatOf = settlement.arrival?.repeatOf ?? transaction.delivered?.arrival?.repeatOf ?? null;
 	if (repeatOf !== null && settlement.arrival !== null && settlement.status === 'succeeded') {
-		return recordRepeatDeposit(deps, transaction.eventId, settlement, repeatOf);
+		const deposited = await recordRepeatDeposit(deps, transaction.eventId, settlement, repeatOf);
+		if (
+			!deposited.ok ||
+			(deposited.outcome !== 'posted' && deposited.outcome !== 'already_posted')
+		) {
+			return deposited;
+		}
+		const notice = deposited.outcome === 'posted' ? 'withhold' : 'send';
+		return refundCarried(deps, transaction.eventId, settlement, deposited, notice);
 	}
 
 	// the gift this transaction is for, as the intent itself names it. absent means this app did
@@ -398,6 +425,19 @@ export async function settleTransaction(
 		};
 	}
 
+	// a gift settled here before this delivery was receipted then, so its donor hears of the refund.
+	const notice: RefundNotice = target.payment.status === 'succeeded' ? 'send' : 'withhold';
+	const settled = await settleTarget(deps, target, settlement, stoodInForRead);
+	return refundCarried(deps, transaction.eventId, settlement, settled, notice);
+}
+
+/** the write and what follows it, for a transaction whose payment row is here. */
+async function settleTarget(
+	deps: SettleDeps,
+	target: Target,
+	settlement: Settlement,
+	stoodInForRead: boolean
+): Promise<SettleResult> {
 	// what the gift's own lines say this money is for — read only where money moved, since a
 	// settlement that did not succeed posts nothing and its read would be a query spent on nothing.
 	const recognition =
@@ -425,6 +465,21 @@ export async function settleTransaction(
 		};
 	}
 	if (written === 'unchanged') {
+		// settled on an earlier delivery, and this read's figures post nothing: either the books hold
+		// the gift already, or they could not take it then and an operator was told then.
+		if (settlement.status === 'succeeded') {
+			return (await findEntryGroup(deps.db, 'payment', target.payment.id)) === null
+				? {
+						ok: true,
+						outcome: 'unactionable',
+						detail: `payment ${target.payment.id} settled on an earlier delivery and the books could not take it; an operator was told then.`
+					}
+				: {
+						ok: true,
+						outcome: 'already_posted',
+						detail: `payment ${target.payment.id} is already in the books; this delivery changed nothing.`
+					};
+		}
 		// the two stale reports the header names say nothing, and nor does one whose row settled
 		// after it was looked up; any other is news.
 		if (
@@ -484,6 +539,50 @@ export async function settleTransaction(
 		outcome: 'posted',
 		detail: `payment ${target.payment.id} settled and posted.`
 	};
+}
+
+/**
+ * the refund a settlement reports beside it (`Settlement.alsoRefunded` in ../payments/provider.ts),
+ * written through the one refund writer (`recordReversal` in ./reverse.ts) as the refund's own
+ * notification would be, once the gift is settled here: the whole of what settled, and no fee given
+ * back. the writer is its idempotency — a refund already written answers `already_posted` — so a
+ * delivery that settles nothing new still posts a refund that is not in the books yet.
+ *
+ * only after a settlement that left the gift settled here. a write that failed is answered as it
+ * was, and the redelivery that settles it posts the refund with it.
+ */
+async function refundCarried(
+	deps: SettleDeps,
+	eventId: string,
+	settlement: Settlement,
+	settled: SettleResult,
+	notice: RefundNotice
+): Promise<SettleResult> {
+	const carried = settlement.alsoRefunded;
+	if (carried === undefined || settlement.status !== 'succeeded' || !settled.ok) return settled;
+	const refunded = await recordReversal(
+		deps,
+		{
+			kind: 'refund',
+			reversedTxnId: settlement.providerTxnId,
+			providerReversalId: carried.providerReversalId,
+			amountMinor: null,
+			currency: settlement.currency,
+			feeReturnedMinor: null,
+			occurredAt: carried.occurredAt,
+			reversedMetadata: settlement.metadata
+		},
+		eventId,
+		notice
+	);
+	if (!refunded.ok) return refunded;
+	const outcome =
+		settled.outcome === 'posted' || refunded.outcome === 'posted'
+			? 'posted'
+			: refunded.outcome === 'already_posted'
+				? settled.outcome
+				: refunded.outcome;
+	return { ok: true, outcome, detail: `${settled.detail} ${refunded.detail}` };
 }
 
 /**
@@ -761,11 +860,13 @@ async function recognitionOf(
  *
  * `credits` is null where nothing is posted at all: a transaction that did not succeed, a settled
  * one carrying figures the ledger will not take, and a settled one whose lines cannot account for
- * it. the correction still runs, alone — what the processor reports about the rail and the time is
- * a fact whatever the books do with it, and a row left saying `pending` is a second thing for an
- * operator to fix by hand. it runs on exactly what was reported, though, which is why two of the
- * three columns below are conditional: a column the processor said nothing usable about is left
- * standing rather than written with a guess or with a value the table will not hold.
+ * it. the correction still runs, alone, on a row not already settled — what the processor reports
+ * about the rail and the time is a fact whatever the books do with it, and a row left saying
+ * `pending` is a second thing for an operator to fix by hand. a row already settled with nothing
+ * to post is left as the delivery that settled it wrote it, and the answer is `unchanged`. the
+ * correction runs on exactly what was reported, though, which is why two of the three columns
+ * below are conditional: a column the processor said nothing usable about is left standing rather
+ * than written with a guess or with a value the table will not hold.
  */
 async function write(
 	db: Db,
@@ -774,13 +875,15 @@ async function write(
 	credits: GiftRevenue | null
 ): Promise<'written' | 'unchanged' | 'already_posted' | 'failed'> {
 	const row = target.payment;
-	// a `succeeded` payment is never walked back, on any rail (the header says why). the guard is in
-	// the statement, so no read taken beforehand decides it.
+	// a `succeeded` payment is never walked back, on any rail (the header says why), and one settled
+	// with nothing to post is corrected once: the delivery whose correction moved it is the one that
+	// tells an operator the books could not take it. the guard is in the statement, so no read taken
+	// beforehand decides it.
 	const correcting =
-		settlement.status === 'succeeded'
+		settlement.status === 'succeeded' && credits !== null
 			? eq(payment.id, row.id)
 			: and(eq(payment.id, row.id), ne(payment.status, 'succeeded'));
-	const writes: [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]] = [
+	const writes: Writes = [
 		db
 			.update(payment)
 			.set({
@@ -806,14 +909,12 @@ async function write(
 	if (credits !== null) {
 		if (settlement.arrival !== null) writes.push(...restatement(db, target, settlement));
 		const gift = { paymentId: row.id, donationId: row.donationId, revenue: credits };
-		const charge = chargeEntry(gift, settlement);
-		const fee = feeEntry(gift, settlement);
-		writes.push(...postingStatements(db, charge));
-		if (fee !== null) writes.push(...postingStatements(db, fee));
-		// after the groups, because `quickbooks_sync.entry_group_id` points at them.
-		writes.push(...outboxStatements(db, [charge, fee]));
 		writes.push(
-			...zapierStatements(db, { paymentId: row.id, contactId: target.donation.contactId })
+			...settledGiftWrites(db, {
+				charge: chargeEntry(gift, settlement),
+				fee: feeEntry(gift, settlement),
+				contactId: target.donation.contactId
+			})
 		);
 	}
 
@@ -822,27 +923,6 @@ async function write(
 	// the correction's own rows: none is a guarded row that was already settled.
 	const [corrected] = committed;
 	return Array.isArray(corrected) && corrected.length === 0 ? 'unchanged' : 'written';
-}
-
-/**
- * one settlement's batch and what each statement returned, or a redelivery told apart from a write
- * the database refused.
- */
-async function commit(
-	db: Db,
-	writes: [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]]
-): Promise<readonly unknown[] | 'already_posted' | 'failed'> {
-	try {
-		return await db.batch(writes);
-	} catch (error) {
-		if (sqliteResultCode(error) === 'SQLITE_CONSTRAINT_UNIQUE') return 'already_posted';
-		try {
-			console.error('settling a payment failed:', error);
-		} catch {
-			// nothing to report it to, and nothing this function may throw.
-		}
-		return 'failed';
-	}
 }
 
 /**
@@ -1286,8 +1366,6 @@ async function recordRepeatDeposit(
 		donationId,
 		revenue: [{ accountId: fund.accountId, amountMinor: settlement.amountMinor }] as const
 	};
-	const charge = chargeEntry(gift, settlement);
-	const fee = feeEntry(gift, settlement);
 	const written = await commit(deps.db, [
 		deps.db.insert(donation).values({
 			id: donationId,
@@ -1326,10 +1404,11 @@ async function recordRepeatDeposit(
 			coinAmount: settlement.arrival?.coinAmount ?? null,
 			parentPaymentId: first.payment.id
 		}),
-		...postingStatements(deps.db, charge),
-		...(fee === null ? [] : postingStatements(deps.db, fee)),
-		...outboxStatements(deps.db, [charge, fee]),
-		...zapierStatements(deps.db, { paymentId, contactId: first.donation.contactId })
+		...settledGiftWrites(deps.db, {
+			charge: chargeEntry(gift, settlement),
+			fee: feeEntry(gift, settlement),
+			contactId: first.donation.contactId
+		})
 	]);
 	if (written === 'already_posted') {
 		return {
@@ -1442,12 +1521,17 @@ async function unrecordedDeposit(
  * is refused by `entry_group_source_idx` and answered `already_posted` above, before this runs.
  */
 async function tellPeople(deps: SettleDeps, target: Target, settlement: Settlement): Promise<void> {
+	// a gift the same read reports sent back (`refundCarried` writes the refund) is no gift to thank
+	// anybody for, and nobody is told of it: not the donor, not the person they named, not the
+	// organisation, and no operator is asked to post the fee of a gift that no longer stands.
+	if (settlement.alsoRefunded !== undefined) return;
+
 	if (settlement.feeMinor === null) {
 		// a figure that is genuinely absent rather than one this delivery arrived ahead of, and each
 		// adapter earns that for its own processor: ../payments/stripe.ts asks again inside the
 		// delivery and refuses it while the figure is still coming, and PayPal publishes the fee on
 		// the capture that carries it (`feeOf` in ../payments/paypal.ts), so a completed capture has
-		// it in the same answer. so this alert is unconditional rather than a guess at a race.
+		// it in the same answer. so this alert is no guess at a race.
 		const processor = processorLabel(deps);
 		await alert(deps, {
 			headline: 'A settled gift was posted with no processor fee',
@@ -1461,16 +1545,7 @@ async function tellPeople(deps: SettleDeps, target: Target, settlement: Settleme
 				{ label: 'Donation', value: target.donation.id },
 				{ label: 'Transaction', value: settlement.providerTxnId }
 			],
-			// what an operator can actually do, and no more. the figure has to come from the
-			// processor because this app could not read it, and nothing in the dashboard posts a
-			// correcting entry — `post` in ../ledger/posting.ts is reached from the settlement path
-			// alone — so handing over the figure is the whole of what this alert can do with it.
-			action:
-				`Find this payment in the ${processor} dashboard and keep the fee it states, in the ` +
-				`currency the gift was charged in. Keep only a figure ${processor} states for this ` +
-				'payment: a fee reported in another currency is not one to convert, because the ' +
-				'converted figure is one nobody published. This deployment records nothing for it, ' +
-				'so carry that figure into the books your organisation keeps outside it.'
+			action: missingFeeCorrection(processor)
 		});
 	}
 

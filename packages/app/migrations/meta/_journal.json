@@ -71,6 +71,20 @@
       "when": 1790294934703,
       "tag": "0009_quickbooks_holding_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1790336168932,
+      "tag": "0010_gift_refunded_trigger_and_dispute",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1790361048917,
+      "tag": "0011_quickbooks_sync_realm",
+      "breakpoints": true
     }
   ]
 }

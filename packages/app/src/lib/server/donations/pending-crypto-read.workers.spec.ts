@@ -339,7 +339,15 @@ describe('readPendingCryptoGifts()', () => {
 		const both = deps(NOWPAYMENTS_ENV, mail.port);
 
 		const [delivered] = await Promise.all([
-			settleDelivery({ db, provider: both.processors.for('nowpayments'), email: both.email }, ipn),
+			settleDelivery(
+				{
+					db,
+					provider: both.processors.for('nowpayments'),
+					processors: both.processors,
+					email: both.email
+				},
+				ipn
+			),
 			readPendingCryptoGifts(both, NOW)
 		]);
 

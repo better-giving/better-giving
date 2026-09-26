@@ -9,6 +9,7 @@ import {
 	type ZapierEndReason,
 	type ZapierTrigger
 } from '../db/schema';
+import type { ZapierReport } from '@better-giving/operator/console/zapier';
 import { eachAtMost } from './each-at-most';
 
 // the Zaps listening: which hook is subscribed to which trigger, and every way one stops.
@@ -97,16 +98,18 @@ async function openFor(db: Db, hookUrl: string) {
 }
 
 /** how many Zaps are listening to each trigger — what replacing the key would disconnect. */
-export async function countListening(
-	db: Db
-): Promise<{ readonly newGift: number; readonly newDonor: number }> {
+export async function countListening(db: Db): Promise<ZapierReport['listening']> {
 	const rows = await db
 		.select({ trigger: zapierSubscription.trigger, listening: count() })
 		.from(zapierSubscription)
 		.where(isNull(zapierSubscription.endedAt))
 		.groupBy(zapierSubscription.trigger);
 	const of = (trigger: ZapierTrigger) => rows.find((r) => r.trigger === trigger)?.listening ?? 0;
-	return { newGift: of('new_gift'), newDonor: of('new_donor') };
+	return {
+		newGift: of('new_gift'),
+		newDonor: of('new_donor'),
+		giftRefunded: of('gift_refunded')
+	};
 }
 
 /**

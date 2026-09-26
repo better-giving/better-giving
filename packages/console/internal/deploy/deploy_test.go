@@ -287,9 +287,9 @@ func stagesAsText(stages []Stage) []string {
 }
 
 func TestEveryStatementOfAMigrationGoesUpOnTheBoundAWholeFileFitsIn(t *testing.T) {
-	// the bound a screen's read is made with cuts a migration file part way through, and d1 has
-	// committed what it got through by the time it does — so the schema calls are the one part of a
-	// deploy the read's own deadline is not put on.
+	// the bound a screen's read is made with cuts a migration file's request off, and a call cut
+	// there stops the run on a file d1 may still land whole — so the schema calls are the one part
+	// of a deploy the read's own deadline is not put on.
 	held := &account{}
 	deployed(t, held, packed(t, baked()))
 

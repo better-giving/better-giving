@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { SAMPLE_DONOR, SAMPLE_GIFT } from './payload';
+import { SAMPLE_DONOR, SAMPLE_GIFT, SAMPLE_REFUND } from './payload';
 
 // the guard on packages/zapier's static samples: the event a Zap editor shows before any gift or
 // donor exists has the keys a live event has, nested ones included.
@@ -31,5 +31,9 @@ describe("packages/zapier's static samples", () => {
 
 	it('new_donor has the keys of SAMPLE_DONOR', () => {
 		expect(keyPaths(sample('new_donor'))).toEqual(keyPaths(SAMPLE_DONOR));
+	});
+
+	it('gift_refunded has the keys of SAMPLE_REFUND', () => {
+		expect(keyPaths(sample('gift_refunded'))).toEqual(keyPaths(SAMPLE_REFUND));
 	});
 });

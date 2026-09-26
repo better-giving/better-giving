@@ -32,7 +32,34 @@ beforeEach(async () => {
 	await env.DB.prepare('delete from ledger_entry').run();
 	await env.DB.prepare('delete from entry_group').run();
 	await env.DB.prepare('delete from quickbooks_connection').run();
+	await env.DB.prepare('delete from payment').run();
+	await env.DB.prepare('delete from donation').run();
+	await env.DB.prepare('delete from contact').run();
 });
+
+/**
+ * a refund-direction payment row, the source a refund that did not stand is posted against as
+ * `('payment', row)`, and its id.
+ */
+async function refundRow(): Promise<string> {
+	const [contactId, donationId, refundId] = [uuidv7(), uuidv7(), uuidv7()];
+	await env.DB.batch([
+		env.DB.prepare(
+			`insert into contact (id, kind, display_name, created_at, updated_at)
+			 values (?, 'individual', 'Ada Okafor', 0, 0)`
+		).bind(contactId),
+		env.DB.prepare(
+			`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
+			 values (?, ?, 10000, 'USD', 0, 0)`
+		).bind(donationId, contactId),
+		env.DB.prepare(
+			`insert into payment (id, donation_id, amount_minor, currency, direction, method, status,
+			                      provider, provider_txn_id, occurred_at, created_at)
+			 values (?, ?, 10000, 'USD', 'refund', 'card', 'cancelled', 'stripe', 're_1', 0, 0)`
+		).bind(refundId, donationId)
+	]);
+	return refundId;
+}
 
 const CONNECTED_FROM = new Date('2026-01-01T00:00:00.000Z');
 
@@ -242,6 +269,42 @@ describe('moving the date a connection starts from', () => {
 		expect(await queued()).toMatchObject([{ entry_group_id: charge.group.id }]);
 	});
 
+	it('never queues a refund that did not stand as though it were a gift', async () => {
+		const gift = posting({ occurredAt: new Date('2025-12-01T00:00:00.000Z') });
+		const reinstatement = posting({
+			sourceType: 'payment',
+			sourceId: await refundRow(),
+			occurredAt: new Date('2025-12-15T00:00:00.000Z')
+		});
+		await db.batch([...postingStatements(db, gift), ...postingStatements(db, reinstatement)]);
+		await connect();
+		const earlier = new Date('2025-10-01T00:00:00.000Z');
+
+		const preview = await previewQuickbooksStartAt(db, earlier, NOW);
+		await moveQuickbooksStartAt(db, earlier, NOW);
+
+		expect(preview.queues.gifts).toBe(1);
+		expect(await queued()).toMatchObject([{ entry_group_id: gift.group.id }]);
+	});
+
+	it('never queues a lost dispute’s settle-up as though it were a hand correction', async () => {
+		const gift = posting({ occurredAt: new Date('2025-12-01T00:00:00.000Z') });
+		const settleUp = posting({
+			sourceType: 'adjustment',
+			sourceId: await refundRow(),
+			occurredAt: new Date('2025-12-15T00:00:00.000Z')
+		});
+		await db.batch([...postingStatements(db, gift), ...postingStatements(db, settleUp)]);
+		await connect();
+		const earlier = new Date('2025-10-01T00:00:00.000Z');
+
+		const preview = await previewQuickbooksStartAt(db, earlier, NOW);
+		await moveQuickbooksStartAt(db, earlier, NOW);
+
+		expect(preview.queues.corrections).toBe(0);
+		expect(await queued()).toMatchObject([{ entry_group_id: gift.group.id }]);
+	});
+
 	it('judges a gift settling afterwards by the moved date', async () => {
 		await connect(new Date('2026-04-01T00:00:00.000Z'));
 		await moveQuickbooksStartAt(db, new Date('2026-02-01T00:00:00.000Z'), NOW);
@@ -371,7 +434,7 @@ describe('moving the date a connection starts from', () => {
 
 describe('what a move would do, asked before it is made', () => {
 	const NOW = new Date('2026-06-01T00:00:00.000Z');
-	const NONE = { gifts: 0, corrections: 0, earliest: null, latest: null };
+	const NONE = { gifts: 0, corrections: 0, reversals: 0, earliest: null, latest: null };
 
 	it('answers with what an earlier date then queues, gifts and corrections apart', async () => {
 		const first = new Date('2025-10-02T00:00:00.000Z');
@@ -390,7 +453,7 @@ describe('what a move would do, asked before it is made', () => {
 		await moveQuickbooksStartAt(db, proposed, NOW);
 
 		expect(answer).toEqual({
-			queues: { gifts: 2, corrections: 1, earliest: first, latest: last },
+			queues: { gifts: 2, corrections: 1, reversals: 0, earliest: first, latest: last },
 			drops: NONE
 		});
 		expect(await queued()).toHaveLength(4);
@@ -412,7 +475,7 @@ describe('what a move would do, asked before it is made', () => {
 
 		expect(answer).toEqual({
 			queues: NONE,
-			drops: { gifts: 1, corrections: 2, earliest: first, latest: last }
+			drops: { gifts: 1, corrections: 2, reversals: 0, earliest: first, latest: last }
 		});
 		expect(await queued()).toHaveLength(4);
 		await moveQuickbooksStartAt(db, proposed, NOW);

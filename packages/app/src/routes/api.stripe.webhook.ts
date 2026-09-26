@@ -4,10 +4,11 @@ import { createPaymentProviders } from '$lib/server/payments/factory';
 import { database, platform } from '../context';
 import type { Route } from './+types/api.stripe.webhook';
 
-// where a settled Stripe payment becomes a gift in the books: the processor's own callback, and one
-// of the routes in this app whose caller is a machine belonging to somebody else — the others are
-// ./api.paypal.webhook.ts and ./api.chariot.webhook.ts, which take this file's shape for PayPal and
-// Chariot.
+// where Stripe's notices about a gift land — a payment that settles it, a refund, or a dispute — and
+// reach the books: the processor's own callback, and one of the routes in this app whose caller is a
+// machine belonging to somebody else — the others are ./api.paypal.webhook.ts,
+// ./api.nowpayments.webhook.ts and ./api.chariot.webhook.ts, which take this file's shape for
+// PayPal, NOWPayments and Chariot.
 //
 // a resource route: no component export, so react router answers with what the handlers return
 // instead of rendering anything (react-router/docs/how-to/resource-routes.md). the delivery is a
@@ -34,8 +35,9 @@ import type { Route } from './+types/api.stripe.webhook';
 // and are read once.
 //
 // what is decided here and what is not. everything the delivery does is `settleDelivery`'s
-// ($lib/server/donations/settle.ts); this file owns which status each outcome answers with, which
-// is the one decision the processor actually reads.
+// ($lib/server/donations/settle.ts, and $lib/server/donations/reverse.ts for a refund or a dispute);
+// this file owns which status each outcome answers with, which is the one decision the processor
+// actually reads.
 //
 // nothing here is a module-scope singleton. the D1 handle arrives on the request context, which
 // ../request-context.ts seeds per request, and both ports are built from that env on the call.
@@ -50,10 +52,12 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 	if (request.method !== 'POST') return methodNotAllowed(request.method);
 
 	const { env } = context.get(platform);
+	const processors = createPaymentProviders(env);
 	const result = await settleDelivery(
 		{
 			db: context.get(database),
-			provider: createPaymentProviders(env).for('stripe'),
+			provider: processors.for('stripe'),
+			processors,
 			email: createEmailProvider(env)
 		},
 		// the headers whole, because which of them verifies a delivery is the adapter's fact
@@ -103,9 +107,10 @@ function methodNotAllowed(method: string): Response {
  * 2xx means stop, and everything else means send it again — that is the processor's rule rather
  * than this app's, and it is what makes the split load-bearing. every outcome above is a 200,
  * including the ones where nothing was written: a delivery this app subscribes to nothing for, a
- * redelivery the books already hold, and a settlement with no gift behind it are all things a
- * second delivery would reach identically, so asking for one buys three days of retries and an
- * endpoint the processor marks as failing.
+ * redelivery the books already hold, a settlement with no gift behind it, and a refund or dispute
+ * of a charge this deployment never recorded are all things a second delivery would reach
+ * identically, so asking for one buys three days of retries and an endpoint the processor marks as
+ * failing.
  *
  * - 400, the signature. no body was read, so nothing about the delivery is known — including
  *   whether it came from the processor at all. non-2xx rather than 200 because of who reads it: a
@@ -113,10 +118,14 @@ function methodNotAllowed(method: string): Response {
  *   own dashboard, which is the only place that fault is visible, and a 200 would leave it reading
  *   as healthy while every settlement was dropped.
  * - 503, everything verified and something this deployment depends on did not answer — the
- *   processor shedding load, a read that never came back, a write the database refused, or a fee
- *   the processor has not finished computing. the delivery is worth having again, and repeating it
- *   is safe: the constraint that refuses a duplicate posting (`entry_group_source_idx` in
- *   $lib/server/db/schema.ts) is what makes the identical batch a no-op the second time.
+ *   processor shedding load, a read that never came back, a write the database refused, a fee the
+ *   processor has not finished computing, or a refund or dispute of a gift recorded here that has
+ *   not settled yet — deliveries carry no order, and the settlement's own delivery books the gift
+ *   the next attempt reverses. the delivery is worth having again, and repeating it is safe: two
+ *   indexes in $lib/server/db/schema.ts make the identical batch a no-op the second time —
+ *   `entry_group_source_idx` refuses a posting already made, and `payment_provider_txn_idx`
+ *   refuses the payment row a collection or a reversal writes, whose posting is keyed to an id
+ *   minted fresh on each delivery and so is one the first index cannot see.
  *
  * no `Retry-After`. the processor's schedule is its own and it backs off across three days; a
  * header from here would either be ignored or would be this app guessing at somebody else's queue.

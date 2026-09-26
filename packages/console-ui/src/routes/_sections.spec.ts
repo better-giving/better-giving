@@ -54,7 +54,7 @@ vi.mock('../api/client', async (original) => ({
 			kind: 'read' as const,
 			report: {
 				key: null,
-				listening: { newGift: 0, newDonor: 0 },
+				listening: { newGift: 0, newDonor: 0, giftRefunded: 0 },
 				deliveries: { waiting: 0, failed: 0, oldestWaitingAt: null }
 			}
 		};
