@@ -365,11 +365,13 @@ const DISPUTE_EVENT = {
 /**
  * PayPal taking a capture's money back, in the shape `PAYMENT.CAPTURE.REVERSED` carries: a
  * Payments v2 refund of the capture, which is the method PayPal names for the event
- * (https://developer.paypal.com/api/rest/webhooks/event-names).
+ * (https://developer.paypal.com/api/rest/webhooks/event-names). its figure signed negative, the way
+ * money leaving the merchant may be stated: what the reads hold to is its magnitude.
  */
 const CAPTURE_REVERSAL = {
 	...CAPTURE_REFUND,
 	id: '4VD21843TJ104552R',
+	amount: { currency_code: 'USD', value: '-97.00' },
 	links: [
 		{
 			rel: 'self',
@@ -1051,6 +1053,84 @@ describe('readReversal on a dispute', () => {
 		});
 	});
 
+	/**
+	 * the transaction's fee PayPal reimburses at a dispute's close (a seller `REVERSED_TRANSACTION_FEE`
+	 * credit) is fee given back: on a loss it comes off what the dispute charged.
+	 */
+	it('reads a lost dispute’s fee net of the transaction fee PayPal reimbursed', async () => {
+		recording([
+			{
+				status: 200,
+				json: {
+					...DISPUTE,
+					status: 'RESOLVED',
+					update_time: '2026-09-03T11:00:00.000Z',
+					dispute_outcome: { outcome_code: 'RESOLVED_BUYER_FAVOUR' },
+					fund_movements: [
+						{
+							party: 'SELLER',
+							type: 'DEBIT',
+							reason: 'DISPUTE_FEE',
+							amount: { currency_code: 'USD', value: '15.00' }
+						},
+						{
+							party: 'SELLER',
+							type: 'CREDIT',
+							reason: 'REVERSED_TRANSACTION_FEE',
+							amount: { currency_code: 'USD', value: '3.11' }
+						}
+					]
+				}
+			},
+			alone(),
+			{ status: 200, json: CAPTURE }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('CUSTOMER.DISPUTE.RESOLVED', 'PP-D-27803')
+		);
+
+		expect(result.ok && result.value).toMatchObject({ kind: 'dispute_lost', feeMinor: 1189 });
+	});
+
+	/**
+	 * a lost dispute carries no fee given back, so a reimbursement over what the dispute charged has
+	 * nowhere to go: the fee reads as none, and what was left over is logged.
+	 */
+	it('logs a lost dispute’s reimbursed fee beyond what the dispute charged', async () => {
+		const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		recording([
+			{
+				status: 200,
+				json: {
+					...DISPUTE,
+					status: 'RESOLVED',
+					update_time: '2026-09-03T11:00:00.000Z',
+					dispute_outcome: { outcome_code: 'RESOLVED_BUYER_FAVOUR' },
+					fund_movements: [
+						{
+							party: 'SELLER',
+							type: 'CREDIT',
+							reason: 'REVERSED_TRANSACTION_FEE',
+							amount: { currency_code: 'USD', value: '3.11' }
+						}
+					]
+				}
+			},
+			alone(),
+			{ status: 200, json: CAPTURE }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('CUSTOMER.DISPUTE.RESOLVED', 'PP-D-27803')
+		);
+
+		expect(result.ok && result.value).toMatchObject({ kind: 'dispute_lost', feeMinor: null });
+		expect(warned).toHaveBeenCalledOnce();
+		expect(JSON.stringify(warned.mock.calls[0])).toContain('PP-D-27803');
+		expect(JSON.stringify(warned.mock.calls[0])).toContain('311');
+	});
+
 	/** a resolved dispute, its transaction back to completed, closed under `outcome_code`. */
 	const resolved = (outcome_code: string, extra: Record<string, unknown> = {}) => ({
 		...DISPUTE,
@@ -1065,10 +1145,10 @@ describe('readReversal on a dispute', () => {
 
 	/**
 	 * a dispute that leaves the merchant the money is won: decided for them, cancelled by the buyer,
-	 * or paid out by PayPal's own protection. the fee PayPal gives back is the seller's
-	 * `DISPUTE_FEE` credit.
+	 * paid out by PayPal's own protection, or denied under the deprecated code. the fee PayPal gives
+	 * back is the seller's `DISPUTE_FEE` credit.
 	 */
-	it.each(['RESOLVED_SELLER_FAVOUR', 'CANCELED_BY_BUYER', 'RESOLVED_WITH_PAYOUT'])(
+	it.each(['RESOLVED_SELLER_FAVOUR', 'CANCELED_BY_BUYER', 'RESOLVED_WITH_PAYOUT', 'DENIED'])(
 		'reads a dispute resolved %s as won, with the fee given back',
 		async (outcome) => {
 			recording([
@@ -1104,6 +1184,76 @@ describe('readReversal on a dispute', () => {
 		}
 	);
 
+	/** a transaction fee PayPal reimburses at a win is fee given back beside the dispute fee. */
+	it('reads a won dispute’s fee given back with the transaction fee PayPal reimbursed', async () => {
+		recording([
+			{
+				status: 200,
+				json: resolved('RESOLVED_SELLER_FAVOUR', {
+					fund_movements: [
+						{
+							party: 'SELLER',
+							type: 'CREDIT',
+							reason: 'DISPUTE_FEE',
+							amount: { currency_code: 'USD', value: '15.00' }
+						},
+						{
+							party: 'SELLER',
+							type: 'CREDIT',
+							reason: 'REVERSED_TRANSACTION_FEE',
+							amount: { currency_code: 'USD', value: '3.11' }
+						}
+					]
+				})
+			},
+			alone(),
+			{ status: 200, json: CAPTURE }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('CUSTOMER.DISPUTE.RESOLVED', 'PP-D-27803')
+		);
+
+		expect(result.ok && result.value).toMatchObject({
+			kind: 'dispute_won',
+			feeReturnedMinor: 1811
+		});
+	});
+
+	/**
+	 * a reimbursed transaction fee is capped at the fee PayPal charged on the transaction, which is
+	 * all the books ever held of it, and the cap is logged.
+	 */
+	it('caps a reimbursed transaction fee at the fee the capture was charged, and logs the cap', async () => {
+		const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		recording([
+			{
+				status: 200,
+				json: resolved('RESOLVED_SELLER_FAVOUR', {
+					fund_movements: [
+						{
+							party: 'SELLER',
+							type: 'CREDIT',
+							reason: 'REVERSED_TRANSACTION_FEE',
+							amount: { currency_code: 'USD', value: '5.00' }
+						}
+					]
+				})
+			},
+			alone(),
+			{ status: 200, json: CAPTURE }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('CUSTOMER.DISPUTE.RESOLVED', 'PP-D-27803')
+		);
+
+		expect(result.ok && result.value).toMatchObject({ kind: 'dispute_won', feeReturnedMinor: 311 });
+		expect(warned).toHaveBeenCalledOnce();
+		expect(JSON.stringify(warned.mock.calls[0])).toContain('PP-D-27803');
+		warned.mockRestore();
+	});
+
 	/**
 	 * an inquiry that never held the money moves nothing however it closes: no seller
 	 * `DISPUTE_SETTLEMENT` debit and never past the inquiry stage. what moved, moved as the
@@ -1124,6 +1274,21 @@ describe('readReversal on a dispute', () => {
 			expect(apiCall(calls, 1)).toBeUndefined();
 		}
 	);
+
+	/** `ACCEPTED`, deprecated, is PayPal accepting the buyer's dispute: the money stays gone. */
+	it('reads a dispute resolved under the deprecated ACCEPTED as lost', async () => {
+		recording([
+			{ status: 200, json: resolved('ACCEPTED') },
+			alone(),
+			{ status: 200, json: CAPTURE }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('CUSTOMER.DISPUTE.RESOLVED', 'PP-D-27803')
+		);
+
+		expect(result.ok && result.value).toMatchObject({ kind: 'dispute_lost', amountMinor: 9700 });
+	});
 
 	/** the seller's settlement debit is what says an inquiry held the money, whatever its stage. */
 	it('reads an inquiry that held the money, resolved for the buyer, as lost', async () => {
@@ -1311,7 +1476,7 @@ describe('readReversal on a dispute', () => {
 	 * rather than guessed at.
 	 */
 	it('refuses a dispute resolved under an outcome it cannot read', async () => {
-		recording([{ status: 200, json: resolved('DENIED') }]);
+		recording([{ status: 200, json: resolved('UNPUBLISHED_OUTCOME') }]);
 
 		const result = await createPaypalProvider(CREDENTIALS).readReversal(
 			reversal('CUSTOMER.DISPUTE.RESOLVED', 'PP-D-27803')
@@ -1363,6 +1528,49 @@ describe('readReversal on a dispute', () => {
 			providerReversalId: 'PP-D-27803',
 			reversedMetadata: { donation_id: 'd-1' }
 		});
+	});
+
+	/** a monthly charge's reimbursed fee is capped at the sale's own `transaction_fee`. */
+	it('reads a lost dispute over a monthly charge net of the fee reimbursed, up to the sale’s fee', async () => {
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+		recording([
+			{
+				status: 200,
+				json: resolved('RESOLVED_BUYER_FAVOUR', {
+					disputed_transactions: [
+						{
+							...DISPUTE.disputed_transactions[0],
+							seller_transaction_id: '1KE4800513426762K',
+							transaction_status: 'REVERSED'
+						}
+					],
+					fund_movements: [
+						{
+							party: 'SELLER',
+							type: 'DEBIT',
+							reason: 'DISPUTE_FEE',
+							amount: { currency_code: 'USD', value: '15.00' }
+						},
+						{
+							party: 'SELLER',
+							type: 'CREDIT',
+							reason: 'REVERSED_TRANSACTION_FEE',
+							amount: { currency_code: 'USD', value: '5.00' }
+						}
+					]
+				})
+			},
+			alone(),
+			{ status: 404, json: { name: 'RESOURCE_NOT_FOUND' } },
+			{ status: 200, json: SALE },
+			{ status: 200, json: commitment() }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('CUSTOMER.DISPUTE.RESOLVED', 'PP-D-27803')
+		);
+
+		expect(result.ok && result.value).toMatchObject({ kind: 'dispute_lost', feeMinor: 1189 });
 	});
 });
 
@@ -1589,17 +1797,45 @@ describe('readReversal on PayPal taking money back', () => {
 	});
 
 	/**
-	 * an app without PayPal's Disputes feature is refused the list, and a refund on it cannot be
-	 * told from a dispute's money: refused terminally, so staff are told to switch the feature on.
+	 * an app without PayPal's Disputes feature is refused the list. a refund on it is read as the
+	 * merchant's own — the writer caps it at what is left of the gift — and the missing feature is
+	 * logged, naming the transaction, rather than the refund dropped.
 	 */
-	it('refuses a refund, naming the Disputes feature, where PayPal refuses the disputes read', async () => {
+	it('reads a refund as the merchant’s, and logs the missing Disputes feature, where PayPal refuses the disputes read', async () => {
+		const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		recording([
 			{ status: 200, json: CAPTURE_REFUND },
-			{ status: 403, json: { name: 'NOT_AUTHORIZED' } }
+			{ status: 403, json: { name: 'NOT_AUTHORIZED' } },
+			{ status: 200, json: CAPTURE }
 		]);
 
 		const result = await createPaypalProvider(CREDENTIALS).readReversal(
 			reversal('PAYMENT.CAPTURE.REFUNDED', CAPTURE_REFUND.id)
+		);
+
+		expect(result.ok && result.value).toMatchObject({
+			kind: 'refund',
+			providerReversalId: '1JU08902781691411',
+			reversedTxnId: '5O190127TN364715T',
+			amountMinor: 9700
+		});
+		expect(warned).toHaveBeenCalledOnce();
+		expect(JSON.stringify(warned.mock.calls[0])).toContain('3C679366HH908993F');
+		expect(JSON.stringify(warned.mock.calls[0])).toContain('Disputes');
+	});
+
+	/**
+	 * a reversal is a dispute's money or a dispute lost, and which cannot be read without the
+	 * disputes list: refused terminally, so staff are told to switch the feature on.
+	 */
+	it('refuses a reversal, naming the Disputes feature, where PayPal refuses the disputes read', async () => {
+		recording([
+			{ status: 200, json: CAPTURE_REVERSAL },
+			{ status: 403, json: { name: 'NOT_AUTHORIZED' } }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('PAYMENT.CAPTURE.REVERSED', CAPTURE_REVERSAL.id)
 		);
 
 		expect(result.ok === false && result.reason).toBe('unsupported');
@@ -3223,7 +3459,7 @@ describe('readReversal on a repeating gift’s charge', () => {
 	/** a reversed collection no dispute stands behind is lost at once, keyed on the reversal. */
 	it('reads a sale reversal with no dispute on the sale as a dispute lost', async () => {
 		const { calls } = recording([
-			{ status: 200, json: SALE_REFUND },
+			{ status: 200, json: { ...SALE_REFUND, amount: { total: '-97.13', currency: 'USD' } } },
 			disputesListed(),
 			{ status: 200, json: SALE },
 			{ status: 200, json: commitment() }

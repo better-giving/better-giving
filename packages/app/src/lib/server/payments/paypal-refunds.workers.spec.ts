@@ -879,8 +879,11 @@ describe('a PayPal dispute that arrives before its gift is recorded', () => {
 	});
 });
 
-/** PayPal's reversal of the whole capture: a Payments v2 refund, as `PAYMENT.CAPTURE.REVERSED` carries. */
-const REVERSAL = captureRefund('4VD21843TJ104552R', '100.00');
+/**
+ * PayPal's reversal of the whole capture: a Payments v2 refund, as `PAYMENT.CAPTURE.REVERSED`
+ * carries, its figure signed negative as money leaving the merchant may be stated.
+ */
+const REVERSAL = captureRefund('4VD21843TJ104552R', '-100.00');
 
 /**
  * one `PAYMENT.CAPTURE.REVERSED` delivery, with PayPal answering the reversal, the capture, and the

@@ -8,8 +8,8 @@
 // (`packages/app/src/routes/api.paypal.webhook.ts`).
 //
 // `packages/console/internal/release/config.go` holds the binary's copy, and its config_test.go
-// gates that copy against `PAYPAL_WEBHOOK_PATH` and the settlement and recurring lists below, each
-// read by name. what is served at the address is
+// gates that copy against `PAYPAL_WEBHOOK_PATH` and `SUBSCRIBED_EVENT_TYPES`, read through every
+// spread in it, so each list below it names is gated too. what is served at the address is
 // `packages/app/src/routes/api.paypal.webhook.ts`, whose path comes from its own name, and
 // `packages/app/src/routes.spec.ts` pins that path.
 //

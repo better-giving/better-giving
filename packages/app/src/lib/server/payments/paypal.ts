@@ -107,7 +107,9 @@ import type {
 // nothing however it closes. resolved, the outcome decides (`DISPUTE_OUTCOMES`). PayPal can hold the
 // funds of a case still at the inquiry stage and releases the hold when the case closes for the
 // merchant (https://docs.paypal.ai/growth/disputes/test-go-live). reading one needs PayPal's Disputes
-// feature on the app, and a 403 is refused terminally, telling staff to switch it on.
+// feature on the app. without it a refund is read as the merchant's own and the missing feature
+// logged, and a dispute or a reversal, which cannot be read without it, is refused terminally,
+// telling staff to switch it on.
 //
 // **`PAYMENT.CAPTURE.REVERSED` and `PAYMENT.SALE.REVERSED` are PayPal taking the money back** —
 // "PayPal reverses a payment capture" and "PayPal reverses a sale", each carrying a refund of the
@@ -126,9 +128,11 @@ import type {
 //
 // **PayPal's dispute fee** is read off the dispute's `fund_movements`: the seller's `DISPUTE_FEE` and
 // `CHARGEBACK_FEE` debits are what it charged, and credits of the same reasons are what it gave back
-// on a win. PayPal documents the fee as charged on a case the merchant loses without seller
-// protection (https://docs.paypal.ai/growth/disputes/test-go-live); whether and when it returns one
-// is read off the case.
+// on a win. a seller `REVERSED_TRANSACTION_FEE` credit is the transaction's own fee reimbursed, fee
+// given back as well: capped at the fee the transaction was charged, it comes off a loss's fee,
+// never below nothing, and joins a win's. PayPal documents the fee as charged on a case the merchant
+// loses without seller protection (https://docs.paypal.ai/growth/disputes/test-go-live); whether and
+// when it returns one is read off the case.
 //
 // **one address, and nothing here reads a stage.** every call — the token, the SDK's controllers and
 // this module's own reach past them — goes to the origin of `PAYPAL_API_URL`, or of
@@ -1021,7 +1025,7 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 				return { ok: true, value: { kind: 'nothing_moved', providerReversalId: refundId } };
 			}
 			const currency = (refund.amount?.currencyCode ?? '').toUpperCase();
-			const amountMinor = minorOf(refund.amount?.value, currency);
+			const amountMinor = minorOf(takenFigure(refund.amount?.value, how), currency);
 			if (amountMinor === null) return unreadableRefund(refundId);
 			const captureId = upLinkId(refund.links);
 			if (captureId === null) {
@@ -1087,7 +1091,7 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 		const amount = json(refund.amount);
 		const currency = String(amount?.currency ?? '').toUpperCase();
 		const amountMinor = minorOf(
-			typeof amount?.total === 'string' ? amount.total : undefined,
+			takenFigure(typeof amount?.total === 'string' ? amount.total : undefined, how),
 			currency
 		);
 		if (amountMinor === null) return unreadableRefund(refundId);
@@ -1131,6 +1135,9 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 	 * with no dispute standing, a refund is the merchant's own. a reversal is held open for the same
 	 * window, because a chargeback's dispute may not be listed yet, then read as a dispute lost under
 	 * its own id: PayPal took the money and there is no case to answer.
+	 *
+	 * where PayPal refuses the disputes list, a refund is read as the merchant's own, logged, and the
+	 * writer caps it at what is left of the gift; a reversal is refused ({@link disputesOff}).
 	 */
 	async function takenBack(
 		taken: {
@@ -1144,17 +1151,25 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 			readonly feeReturnedMinor: number | null;
 		},
 		transactionId: string,
-		reversedOf: (transactionId: string) => Promise<PaymentResult<Reversed>>
+		reversedOf: (transactionId: string) => Promise<PaymentResult<Transaction>>
 	): Promise<PaymentResult<ReversalRead>> {
 		const listed = await listDisputes(transactionId);
 		if (!listed.ok) return listed;
+		if (listed.value === null) {
+			if (taken.how === 'reversed') return disputesOff(LIST_CONTEXT);
+			console.warn(
+				'a PayPal refund was read as the merchant’s own without its disputes: PayPal refused the disputes read, so Disputes is off on the PayPal app whose keys this deployment holds:',
+				JSON.stringify({ refund: taken.providerReversalId, transaction: transactionId })
+			);
+		}
+		const disputes = listed.value ?? [];
 		const fresh = taken.madeAt !== null && Date.now() - taken.madeAt.getTime() < DISPUTE_WAIT_MS;
 
-		for (const each of [...listed.value].reverse()) {
+		for (const each of [...disputes].reverse()) {
 			const fetched = await fetchDispute(each.id);
 			if (!fetched.ok) return fetched;
 			if (!standsOn(fetched.value)) continue;
-			const read = await readDispute(each.id, { disputed: fetched.value, listed: listed.value });
+			const read = await readDispute(each.id, { disputed: fetched.value, listed: disputes });
 			if (!read.ok || taken.how === 'reversed' || read.value.kind === 'dispute_lost') return read;
 			const both =
 				`PayPal refunded ${redactPublicId(taken.providerReversalId)} on a transaction whose ` +
@@ -1192,33 +1207,41 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 				how === 'reversed'
 					? {
 							kind: 'dispute_lost',
-							...reversed.value,
+							...reversed.value.gift,
 							...money,
 							feeMinor: null,
 							reason: null,
 							dashboardUrl: null
 						}
-					: { kind: 'refund', ...reversed.value, ...money, feeReturnedMinor }
+					: { kind: 'refund', ...reversed.value.gift, ...money, feeReturnedMinor }
 		};
 	}
 
 	/**
 	 * the disputes on one transaction, oldest first
 	 * (`GET /v1/customer/disputes?disputed_transaction_id=`, `dispute_search` in
-	 * customer_disputes_v1.json).
+	 * customer_disputes_v1.json), or null where PayPal refuses the read with a 403: its Disputes
+	 * feature is off on the app.
+	 *
+	 * one page of 50, the most PayPal serves, and no further page is asked for. PayPal lists only
+	 * disputes updated in the last 180 days by default (`update_time_after`), so one older than that
+	 * is not among them.
 	 */
-	async function listDisputes(transactionId: string): Promise<PaymentResult<readonly Listed[]>> {
+	async function listDisputes(
+		transactionId: string
+	): Promise<PaymentResult<readonly Listed[] | null>> {
 		let answer: { status: number; body: unknown };
 		try {
 			answer = await call(
 				'GET',
-				`/v1/customer/disputes?disputed_transaction_id=${encodeURIComponent(transactionId)}`
+				`/v1/customer/disputes?disputed_transaction_id=${encodeURIComponent(transactionId)}&page_size=50`
 			);
 		} catch (error) {
 			return unreachable(error);
 		}
+		if (answer.status === 403) return { ok: true, value: null };
 		if (answer.status < 200 || answer.status >= 300) {
-			return disputesRefused(answer, 'PayPal could not be asked for the disputes on a transaction');
+			return classifyStatus(answer.status, answer.body, LIST_CONTEXT);
 		}
 		const items = json(answer.body)?.items;
 		const listed: Listed[] = [];
@@ -1253,6 +1276,7 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 		if (listed === undefined) {
 			const read = await listDisputes(transactionId);
 			if (!read.ok) return read;
+			if (read.value === null) return disputesOff(LIST_CONTEXT);
 			listed = read.value;
 		}
 		const createdAt =
@@ -1278,8 +1302,9 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 		} catch (error) {
 			return unreachable(error);
 		}
+		if (answer.status === 403) return disputesOff(READ_CONTEXT);
 		if (answer.status < 200 || answer.status >= 300) {
-			return disputesRefused(answer, 'PayPal could not be asked about a dispute');
+			return classifyStatus(answer.status, answer.body, READ_CONTEXT);
 		}
 		const disputed = json(answer.body);
 		if (disputed === undefined) {
@@ -1296,16 +1321,20 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 	 * the gift behind a one-off gift's capture: the order it settled on, which is what the gift's
 	 * `payment` row holds, and the capture's `custom_id`, which PayPal copies from the purchase unit.
 	 */
-	async function captureReversed(captureId: string): Promise<PaymentResult<Reversed>> {
+	async function captureReversed(captureId: string): Promise<PaymentResult<Transaction>> {
 		try {
 			const captured = (await payments.getCapturedPayment({ captureId })).result;
+			const fee = captured.sellerReceivableBreakdown?.paypalFee;
 			return {
 				ok: true,
 				value: {
-					// every capture this app takes is an order's; one with no order is another
-					// integration's, read against its own id so the writer finds no gift behind it.
-					reversedTxnId: captured.supplementaryData?.relatedIds?.orderId ?? captureId,
-					reversedMetadata: decodeMetadata(captured.customId)
+					gift: {
+						// every capture this app takes is an order's; one with no order is another
+						// integration's, read against its own id so the writer finds no gift behind it.
+						reversedTxnId: captured.supplementaryData?.relatedIds?.orderId ?? captureId,
+						reversedMetadata: decodeMetadata(captured.customId)
+					},
+					fee: fee ? { value: fee.value, currency: fee.currencyCode } : null
 				}
 			};
 		} catch (error) {
@@ -1320,7 +1349,7 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 	 * for, is none of this app's collections and reads with none, which the writer answers 200 and
 	 * leaves.
 	 */
-	async function saleReversed(saleId: string): Promise<PaymentResult<Reversed>> {
+	async function saleReversed(saleId: string): Promise<PaymentResult<Transaction>> {
 		const sale = await readSale(saleId);
 		if (!sale.ok) return sale;
 		const giftId = sale.value.billing_agreement_id;
@@ -1333,7 +1362,17 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 				if (!(error instanceof ApiError && error.statusCode === 404)) return classify(error);
 			}
 		}
-		return { ok: true, value: { reversedTxnId: saleId, reversedMetadata } };
+		const fee = json(sale.value.transaction_fee);
+		return {
+			ok: true,
+			value: {
+				gift: { reversedTxnId: saleId, reversedMetadata },
+				fee:
+					typeof fee?.value === 'string' && typeof fee.currency === 'string'
+						? { value: fee.value, currency: fee.currency }
+						: null
+			}
+		};
 	}
 
 	/**
@@ -1342,12 +1381,15 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 	 * `readSettlement` asks in. an id neither read holds is another integration's on the same account,
 	 * read with no metadata so the writer finds no gift behind it and leaves it.
 	 */
-	async function transactionReversed(transactionId: string): Promise<PaymentResult<Reversed>> {
+	async function transactionReversed(transactionId: string): Promise<PaymentResult<Transaction>> {
 		const captured = await captureReversed(transactionId);
 		if (captured.ok || captured.reason !== 'not_found') return captured;
 		const sold = await saleReversed(transactionId);
 		return !sold.ok && sold.reason === 'not_found'
-			? { ok: true, value: { reversedTxnId: transactionId, reversedMetadata: {} } }
+			? {
+					ok: true,
+					value: { gift: { reversedTxnId: transactionId, reversedMetadata: {} }, fee: null }
+				}
 			: sold;
 	}
 
@@ -1376,7 +1418,8 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 		if (!key.ok) return key;
 		const reversed = await transactionReversed(state.transactionId);
 		if (!reversed.ok) return reversed;
-		const facts = { ...reversed.value, providerReversalId: key.value };
+		const facts = { ...reversed.value.gift, providerReversalId: key.value };
+		const charged = chargedFeeOf(reversed.value, state.currency);
 		const reason = typeof disputed?.reason === 'string' ? disputed.reason : null;
 		const time = (field: 'create_time' | 'update_time') =>
 			at(typeof disputed?.[field] === 'string' ? disputed[field] : undefined);
@@ -1390,7 +1433,7 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 						amountMinor: state.amountMinor,
 						currency: state.currency,
 						occurredAt: time('create_time'),
-						feeMinor: disputeFeeOf(disputed, state.currency, 'DEBIT', disputeId),
+						feeMinor: disputeFeeChargedOf(disputed, state.currency, disputeId),
 						respondBy: whenever(
 							typeof disputed?.seller_response_due_date === 'string'
 								? disputed.seller_response_due_date
@@ -1409,7 +1452,7 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 						amountMinor: state.amountMinor,
 						currency: state.currency,
 						occurredAt: time('update_time'),
-						feeMinor: disputeFeeOf(disputed, state.currency, 'DEBIT', disputeId),
+						feeMinor: lostDisputeFeeOf(disputed, state.currency, charged, disputeId),
 						reason,
 						dashboardUrl: resolutionCenter
 					}
@@ -1421,7 +1464,7 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 						kind: 'dispute_won',
 						...facts,
 						occurredAt: time('update_time'),
-						feeReturnedMinor: disputeFeeOf(disputed, state.currency, 'CREDIT', disputeId)
+						feeReturnedMinor: wonDisputeFeeOf(disputed, state.currency, charged, disputeId)
 					}
 				};
 		}
@@ -2511,31 +2554,56 @@ function unreadableRefund(refundId: string): PaymentFailure {
 /** one dispute on a transaction, as PayPal lists it. */
 type Listed = { readonly id: string; readonly createdAt: Date };
 
+const LIST_CONTEXT = 'PayPal could not be asked for the disputes on a transaction';
+const READ_CONTEXT = 'PayPal could not be asked about a dispute';
+
 /**
- * a refused disputes read. a 403 is PayPal's Disputes feature switched off on the app, which no
- * redelivery changes: refused terminally so the writer tells staff, where held open it would be a
- * dispute or a refund dropped unheard when PayPal stops redelivering.
+ * PayPal's Disputes feature switched off on the app, which no redelivery changes: refused
+ * terminally so the writer tells staff, where held open it would be a dispute dropped unheard when
+ * PayPal stops redelivering. once the feature is on, PayPal resending the event records it in full
+ * (`POST /v1/notifications/webhooks-events/{event_id}/resend` in notifications_webhooks_v1.json in
+ * https://github.com/paypal/paypal-rest-api-specifications).
  */
-function disputesRefused(
-	answer: { status: number; body: unknown },
-	context: string
-): PaymentFailure {
-	if (answer.status !== 403) return classifyStatus(answer.status, answer.body, context);
+function disputesOff(context: string): PaymentFailure {
 	return unsupported(
 		`${context}: PayPal refused this app the disputes read, so nothing was written. To fix it, ` +
-			'enable Disputes on the PayPal app whose keys this deployment holds, then correct the gift ' +
-			'in /admin/books by hand.'
+			'enable Disputes on the PayPal app whose keys this deployment holds, then have PayPal ' +
+			'resend this event.'
 	);
 }
 
 /** whether the merchant sent money back (`*.REFUNDED`) or PayPal took it (`*.REVERSED`). */
 type TakenBack = 'refunded' | 'reversed';
 
+/**
+ * a refund's decimal figure as the money taken back. a reversal's is read as its magnitude: PayPal
+ * may state money leaving the merchant signed negative, and which way it went is the event's to say.
+ */
+function takenFigure(value: string | undefined, how: TakenBack): string | undefined {
+	return how === 'reversed' && value?.startsWith('-') ? value.slice(1) : value;
+}
+
 /** the gift a reversal is found through: the transaction its row holds, and the metadata naming it. */
 type Reversed = {
 	readonly reversedTxnId: string;
 	readonly reversedMetadata: Readonly<Record<string, string>>;
 };
+
+/** a disputed transaction: the gift behind it, and the fee PayPal charged on it as PayPal states it. */
+type Transaction = {
+	readonly gift: Reversed;
+	readonly fee: { readonly value: string; readonly currency: string } | null;
+};
+
+/**
+ * minor units: the fee PayPal charged on a transaction, in `currency`, which is all the books hold
+ * of it — `feeOf`'s rule, so a fee in another currency, or none, is nothing.
+ */
+function chargedFeeOf(transaction: Transaction, currency: string): number {
+	const fee = transaction.fee;
+	if (fee === null || fee.currency.toUpperCase() !== currency) return 0;
+	return minorOf(fee.value, currency) ?? 0;
+}
 
 /**
  * the states of a disputed transaction in which PayPal has the money rather than the merchant:
@@ -2580,16 +2648,19 @@ function heldMoney(disputed: Json): boolean {
 /**
  * how a resolved dispute's outcome leaves the merchant (`dispute_outcome.outcome_code` in
  * customer_disputes_v1.json). decided for the buyer, the money stays gone; decided for the seller,
- * cancelled by the buyer, or covered by PayPal's own protection, the merchant keeps it. `NONE` is a
- * dispute closed undecided because another opened on the same transaction, which carries the money
- * from here, so it moves nothing.
+ * cancelled by the buyer, or covered by PayPal's own protection, the merchant keeps it. `ACCEPTED`
+ * and `DENIED` are the deprecated spellings of PayPal accepting or denying the buyer's dispute, and
+ * read the same way. `NONE` is a dispute closed undecided because another opened on the same
+ * transaction, which carries the money from here, so it moves nothing.
  */
 const DISPUTE_OUTCOMES: Readonly<Record<string, 'dispute_lost' | 'dispute_won' | null>> =
 	Object.freeze({
 		RESOLVED_BUYER_FAVOUR: 'dispute_lost',
+		ACCEPTED: 'dispute_lost',
 		RESOLVED_SELLER_FAVOUR: 'dispute_won',
 		CANCELED_BY_BUYER: 'dispute_won',
 		RESOLVED_WITH_PAYOUT: 'dispute_won',
+		DENIED: 'dispute_won',
 		NONE: null
 	});
 
@@ -2693,19 +2764,24 @@ function unreadableDispute(disputeId: string): PaymentFailure {
 	);
 }
 
+/** what PayPal charges for a dispute itself (`fund_movement_reason` in customer_disputes_v1.json). */
+const DISPUTE_FEE_REASONS: readonly string[] = ['DISPUTE_FEE', 'CHARGEBACK_FEE'];
+
+/** the transaction's own fee, reimbursed to the seller as part of the dispute's resolution. */
+const REIMBURSED_FEE_REASONS: readonly string[] = ['REVERSED_TRANSACTION_FEE'];
+
 /**
- * PayPal's fee for a dispute, charged (`DEBIT`) or given back (`CREDIT`), off the dispute's
- * `fund_movements`: the seller's movements for `DISPUTE_FEE` and `CHARGEBACK_FEE`
- * (`fund_movement_reason` in customer_disputes_v1.json). none or zero is no figure. a movement in
- * another currency, or with no figure this app can read, is left out of it and logged, since it is
- * money the books do not hold.
+ * the seller's `fund_movements` of one `type` for any of `reasons`, summed in minor units; zero
+ * where there are none. a movement in another currency, or with no figure this app can read, is
+ * left out of it and logged, since it is money the books do not hold.
  */
-function disputeFeeOf(
+function sellerMovementsOf(
 	disputed: Json,
 	currency: string,
 	type: 'DEBIT' | 'CREDIT',
+	reasons: readonly string[],
 	disputeId: string
-): number | null {
+): number {
 	const movements = Array.isArray(disputed?.fund_movements) ? disputed.fund_movements : [];
 	let total = 0;
 	for (const each of movements) {
@@ -2713,7 +2789,7 @@ function disputeFeeOf(
 		if (
 			movement?.party !== 'SELLER' ||
 			movement.type !== type ||
-			(movement.reason !== 'DISPUTE_FEE' && movement.reason !== 'CHARGEBACK_FEE')
+			!reasons.includes(String(movement.reason))
 		) {
 			continue;
 		}
@@ -2731,7 +2807,78 @@ function disputeFeeOf(
 		}
 		total += figure;
 	}
-	return total === 0 ? null : total;
+	return total;
+}
+
+/** what PayPal has charged for a dispute so far. none or zero is no figure. */
+function disputeFeeChargedOf(disputed: Json, currency: string, disputeId: string): number | null {
+	return figureOrNone(
+		sellerMovementsOf(disputed, currency, 'DEBIT', DISPUTE_FEE_REASONS, disputeId)
+	);
+}
+
+/**
+ * a lost dispute's fee: what PayPal charged for it, less the transaction fee it reimbursed at the
+ * close ({@link reimbursedFeeOf}), and never below nothing. a lost dispute carries no fee given
+ * back (`Reversal` in ./provider.ts), so a reimbursement beyond the charge is logged.
+ */
+function lostDisputeFeeOf(
+	disputed: Json,
+	currency: string,
+	transactionFee: number,
+	disputeId: string
+): number | null {
+	const charged = sellerMovementsOf(disputed, currency, 'DEBIT', DISPUTE_FEE_REASONS, disputeId);
+	const reimbursed = reimbursedFeeOf(disputed, currency, transactionFee, disputeId);
+	if (reimbursed > charged) {
+		console.warn(
+			'a PayPal reimbursed transaction fee beyond a lost dispute’s fee was left out of the books:',
+			JSON.stringify({ dispute: disputeId, currency, reimbursed, charged })
+		);
+	}
+	return figureOrNone(Math.max(0, charged - reimbursed));
+}
+
+/** a won dispute's fee given back: the dispute fee returned, and the transaction fee reimbursed. */
+function wonDisputeFeeOf(
+	disputed: Json,
+	currency: string,
+	transactionFee: number,
+	disputeId: string
+): number | null {
+	return figureOrNone(
+		sellerMovementsOf(disputed, currency, 'CREDIT', DISPUTE_FEE_REASONS, disputeId) +
+			reimbursedFeeOf(disputed, currency, transactionFee, disputeId)
+	);
+}
+
+/**
+ * the transaction fee PayPal reimbursed at a dispute's close, capped at `transactionFee` — what it
+ * charged on the transaction, and all the books hold of it. the cap is logged.
+ */
+function reimbursedFeeOf(
+	disputed: Json,
+	currency: string,
+	transactionFee: number,
+	disputeId: string
+): number {
+	const reported = sellerMovementsOf(
+		disputed,
+		currency,
+		'CREDIT',
+		REIMBURSED_FEE_REASONS,
+		disputeId
+	);
+	if (reported <= transactionFee) return reported;
+	console.warn(
+		'a PayPal reimbursed transaction fee was capped at the fee charged on the transaction:',
+		JSON.stringify({ dispute: disputeId, currency, reported, charged: transactionFee })
+	);
+	return transactionFee;
+}
+
+function figureOrNone(minor: number): number | null {
+	return minor === 0 ? null : minor;
 }
 
 /**
