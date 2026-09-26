@@ -204,6 +204,43 @@ describe('POST /api/chariot/webhook', () => {
 	});
 
 	/**
+	 * a grant marked received by mistake and cancelled through Chariot's support after: the gift
+	 * settled here, and the whole of it goes back as a refund row of its own, written once.
+	 */
+	it('refunds a settled gift whose grant is later cancelled, once', async () => {
+		await recordedGift();
+		chariotHolds([RECEIVED_GRANT]);
+		const received = grantUpdated();
+		await deliver(received, { 'chariot-webhook-signature': await signature(received) });
+		const cancelledAfter = {
+			...RECEIVED_GRANT,
+			status: 'Canceled',
+			updatedAt: '2026-09-20T12:00:00.000Z',
+			statuses: [
+				{ id: 's1', status: 'Initiated', createdAt: '2026-09-14T12:00:00.000Z' },
+				{ id: 's2', status: 'Completed', createdAt: '2026-09-15T12:00:00.000Z' },
+				{ id: 's3', status: 'Canceled', createdAt: '2026-09-20T12:00:00.000Z' }
+			]
+		};
+		chariotHolds([cancelledAfter]);
+		const cancelled = JSON.stringify({ ...JSON.parse(grantUpdated()), id: 'event_456def' });
+		const signing = { 'chariot-webhook-signature': await signature(cancelled) };
+
+		const response = await deliver(cancelled, signing);
+		const again = await deliver(cancelled, signing);
+
+		expect(response.status).toBe(200);
+		expect(again.status).toBe(200);
+		expect(await again.json()).toMatchObject({ outcome: 'already_posted' });
+		const refunds = await env.DB.prepare(
+			`select provider_txn_id, amount_minor, status from payment where direction = 'refund'`
+		).all();
+		expect(refunds.results).toEqual([
+			{ provider_txn_id: `${GRANT_ID}:canceled`, amount_minor: 10_000, status: 'succeeded' }
+		]);
+	});
+
+	/**
 	 * a grant on the organisation's Chariot account that no gift here is bound to. 200, because no
 	 * redelivery makes a row appear and a non-2xx would buy retries that end the same way.
 	 */

@@ -1,16 +1,19 @@
 import { CHARIOT_RAILS } from '@better-giving/form/embed/rails';
 import type { PaymentStatus } from '../db/schema';
-import type {
-	AccountChargeability,
-	Intent,
-	IntentRequest,
-	PaymentEvent,
-	PaymentFailure,
-	PaymentProvider,
-	PaymentResult,
-	RailSwitchboard,
-	Settlement,
-	WebhookDelivery
+import {
+	type AccountChargeability,
+	type Intent,
+	type IntentRequest,
+	isRetryable,
+	type PaymentEvent,
+	type PaymentFailure,
+	type PaymentProvider,
+	type PaymentResult,
+	type RailSwitchboard,
+	type ReversalEvent,
+	type ReversalRead,
+	type Settlement,
+	type WebhookDelivery
 } from './provider';
 
 // the Chariot adapter: a gift from a donor-advised fund, taken as a grant through Chariot's DAFpay.
@@ -23,17 +26,31 @@ import type {
 // the grant in Chariot's own window first; the server's Create Grant, from the workflow session that
 // window handed the browser, is what creates it (`IntentRequest.authorizedSessionId` in
 // ./provider.ts); the fund pays the organisation directly weeks later, and a person marks it received
-// in Chariot's dashboard, which reaches this deployment as a `grant.updated` delivery. Chariot holds
-// none of the money and reports no payout.
+// in Chariot's dashboard, which reaches this deployment as a `grant.updated` delivery. a grant's
+// money never passes through Chariot, and Chariot reports no payout of it.
 //
-// **Chariot reports no reversal of a grant, so no delivery is read as one.** a fund's money is no
-// longer the donor's: "the concept of refunds after the money leaves the DAF, does not apply", and a
-// donor cancels before the fund pays, if at all (https://docs.givechariot.com/v2026-04-01/guides/dafpay/integrating-dafpay/transactions,
-// "Cancellations & Refunds"; its source is `fern/versions/v2026-04-01/pages/integrating-dafpay/transactions.mdx`
-// in the openapi repository below). the reference has no refund or dispute object and no event
-// category for one, so `verifyEvent` yields no `reversal` and `readReversal` answers `unsupported`.
-// a grant marked received and later read as cancelled is `settleDelivery`'s
-// (../donations/settle.ts): it changes nothing and tells an operator.
+// **a DAFpay grant is all of Chariot this deployment reads.** Chariot's Gift Processing can also
+// take money into a Chariot account, and a deposit there can come back (a `Deposit` reads `failed`,
+// a `CheckDeposit` `returned`, in `specs/2026-04-01.yaml`). the organisation a deployment serves takes
+// its grants from the fund directly, so no deposit category is subscribed to and none is read: a
+// returned Chariot deposit, if one ever happens, is corrected by hand in /admin/books, which moves
+// the books and nothing about the gift.
+//
+// **a grant received and then cancelled is the one reversal, read as a full refund.** a fund's money
+// is no longer the donor's — "the concept of refunds after the money leaves the DAF, does not apply"
+// (https://docs.givechariot.com/v2026-04-01/guides/dafpay/integrating-dafpay/transactions, "Cancellations
+// & Refunds"; its source is `fern/versions/v2026-04-01/pages/integrating-dafpay/transactions.mdx` in
+// the openapi repository below) — so the reference has no refund or dispute object and no event
+// category for one. what it has is a grant marked received by mistake, which the same page leaves
+// room for (a payout can be matched to a grant by little more than fund name and amount), and
+// cancelled through Chariot's support after. so `verifyEvent` reads the grant a `grant.updated` names: cancelled now, with a
+// received status in its history, it is a `reversal`, and `readReversal` reads it again into a
+// `refund` of the whole of what settled, under `<grant id>:canceled` — Chariot mints no id for it,
+// and the grant's own id is the gift's payment row's. anything else is a `settlement`, so a grant
+// cancelled before it was ever received keeps the settlement path's cancelled answer. a read that
+// may answer next time holds the delivery open, because the kind turns on it. the history stands in
+// for the gift's row, which this module never reads: a grant received and cancelled before this
+// deployment settled it reaches `recordReversal` (../donations/reverse.ts) as a gift not settled yet.
 //
 // **it answers the one-off grant, the delivery and the account read, and refuses everything else**
 // as `unsupported`: a gift that repeats (one-time only — `takesRepeatingGifts` in ./provider.ts
@@ -47,7 +64,7 @@ import type {
 // leaves a grant's `status` an untyped string, and the API itself sends `Initiated`, `Completed` and
 // `Canceled` (a sandbox read of every grant on an account, 2026-09-15) — which is the vocabulary
 // `GRANT_STATUSES` below reads, case-folded so the reference's lowercase spellings of the same words
-// read the same.
+// read the same, beside the transactions guide's `Received` and `Cancelled` for the same two states.
 //
 // **live by default, and nothing here reads a stage.** `CHARIOT_API_URL` unset is
 // `https://api.givechariot.com`; the sandbox is another address with its own keys, grants and
@@ -73,8 +90,7 @@ export type ChariotCredentials = {
 export const CHARIOT_LIVE_API_URL = 'https://api.givechariot.com';
 
 /**
- * the one event category this app settles on, and the one the console's subscription is created
- * for.
+ * the one event category this app acts on, and the one the console's subscription is created for.
  *
  * a status change arrives as `grant.updated`, and a grant this app created is already on its row by
  * the time any change could matter. every other category is answered `ignored`.
@@ -108,13 +124,17 @@ const GRANT_DEADLINE_MS = 20_000;
  * a grant's `status`, case-folded, to the row's vocabulary.
  *
  * `completed` is the grant marked received in Chariot's dashboard, the one status money moved on.
- * `canceled` is the fund cancelling it. every other word — `initiated`, the reference's `awaiting_*`,
- * a word nobody has documented yet — is a grant still on its way and reads as `pending`, which is the
- * direction safe to be wrong in: nothing is posted from `pending`, and the next delivery re-reads.
+ * `canceled` is the fund cancelling it. `received` and `cancelled` are the DAFpay transactions
+ * guide's spellings of the same two (https://docs.givechariot.com/v2026-04-01/guides/dafpay/integrating-dafpay/transactions).
+ * every other word — `initiated`, the reference's `awaiting_*`, a word nobody has documented yet —
+ * is a grant still on its way and reads as `pending`, which is the direction safe to be wrong in:
+ * nothing is posted from `pending`, and the next delivery re-reads.
  */
 const GRANT_STATUSES: Readonly<Record<string, PaymentStatus>> = Object.freeze({
 	completed: 'succeeded',
-	canceled: 'cancelled'
+	received: 'succeeded',
+	canceled: 'cancelled',
+	cancelled: 'cancelled'
 });
 
 const SIGNATURE_HEADER = 'chariot-webhook-signature';
@@ -165,6 +185,16 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 			parsed = null;
 		}
 		return { status: response.status, body: parsed };
+	}
+
+	/** Get Grant, answered with the grant's body as Chariot sent it. */
+	async function getGrant(grantId: string): Promise<PaymentResult<unknown>> {
+		const answer = await call('GET', `/v1/grants/${encodeURIComponent(grantId)}`);
+		if ('ok' in answer) return answer;
+		if (answer.status !== 200) {
+			return classifyStatus(answer.status, answer.body, `Chariot did not return grant ${grantId}`);
+		}
+		return { ok: true, value: answer.body };
 	}
 
 	return {
@@ -270,12 +300,13 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 		 * `crypto.subtle.verify` does the comparison, which is constant-time.
 		 *
 		 * **no replay window.** Chariot's reference sets none, and a genuine delivery replayed does
-		 * nothing but make the settlement path re-read the grant's current state, which is idempotent;
-		 * a window would instead refuse Chariot's own redeliveries if they carry the first attempt's
-		 * signature, which the reference does not say they don't.
+		 * nothing but re-read the grant's current state, which is idempotent; a window would instead
+		 * refuse Chariot's own redeliveries if they carry the first attempt's signature, which the
+		 * reference does not say they don't.
 		 *
 		 * the payload is thin — an id, a category and the object it is about — so nothing but those is
-		 * read, and what the grant now is comes from `readSettlement`.
+		 * read off it. what the grant now is comes from Get Grant: here, to say whether a grant update is
+		 * a settlement or a reversal (the header), and again in the read arm that kind names.
 		 */
 		async verifyEvent(delivery: WebhookDelivery): Promise<PaymentResult<PaymentEvent>> {
 			// `not_configured` rather than `bad_signature`, which holds the delivery open across the
@@ -342,6 +373,14 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 				stringField(event, 'associated_object_type') === 'grant' &&
 				grantId !== null
 			) {
+				const grant = await getGrant(grantId);
+				if (!grant.ok && isRetryable(grant.reason)) return grant;
+				if (grant.ok && isCancelledAfterReceipt(grant.value)) {
+					return {
+						ok: true,
+						value: { id, kind: 'reversal', type: category, occurredAt, providerNoticeId: grantId }
+					};
+				}
 				return {
 					ok: true,
 					value: { id, kind: 'settlement', type: category, occurredAt, providerTxnId: grantId }
@@ -352,16 +391,8 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 
 		/** Get Grant, read into the row's vocabulary. */
 		async readSettlement(providerTxnId: string): Promise<PaymentResult<Settlement>> {
-			const answer = await call('GET', `/v1/grants/${encodeURIComponent(providerTxnId)}`);
-			if ('ok' in answer) return answer;
-			if (answer.status !== 200) {
-				return classifyStatus(
-					answer.status,
-					answer.body,
-					`Chariot did not return grant ${providerTxnId}`
-				);
-			}
-			return settlementOf(answer.body);
+			const grant = await getGrant(providerTxnId);
+			return grant.ok ? settlementOf(grant.value) : grant;
 		},
 
 		/**
@@ -406,11 +437,10 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 		createRecurringGift: async () => unsupported(NO_REPEATING_GRANTS),
 		cancelRecurringGift: async () => unsupported(NO_REPEATING_GRANTS),
 		readRecurringGift: async () => unsupported(NO_REPEATING_GRANTS),
-		// `verifyEvent` yields no reversal (the header), so nothing reaches this.
-		readReversal: async () =>
-			unsupported(
-				'Chariot reports no refund or dispute on a grant, so there is no reversal to read. Nothing was asked of Chariot.'
-			),
+		async readReversal(event: ReversalEvent): Promise<PaymentResult<ReversalRead>> {
+			const grant = await getGrant(event.providerNoticeId);
+			return grant.ok ? reversalOf(grant.value) : grant;
+		},
 		listWebhookEndpoints: async () => unsupported(NO_LISTENER_ARMS),
 		registerWebhookEndpoint: async () => unsupported(NO_LISTENER_ARMS),
 		resubscribeWebhookEndpoint: async () => unsupported(NO_LISTENER_ARMS),
@@ -523,6 +553,44 @@ function settlementOf(grant: unknown): PaymentResult<Settlement> {
 			arrival: null
 		}
 	};
+}
+
+/**
+ * a received grant read cancelled, as the refund of the whole of what it settled; any other grant as
+ * nothing moved.
+ */
+function reversalOf(grant: unknown): PaymentResult<ReversalRead> {
+	const id = stringField(grant, 'id');
+	if (id === null) return unreadable('a grant');
+	const providerReversalId = `${id}:canceled`;
+	if (!isCancelledAfterReceipt(grant))
+		return { ok: true, value: { kind: 'nothing_moved', providerReversalId } };
+	const occurredAt = occurredAtOf(grant, stringField(grant, 'status'));
+	if (occurredAt === null) return unreadable('a grant carrying no time');
+	return {
+		ok: true,
+		value: {
+			kind: 'refund',
+			reversedTxnId: id,
+			providerReversalId,
+			occurredAt,
+			// `Settlement.metadata`'s rule, as `settlementOf` reads it: the grant's is a browser's.
+			reversedMetadata: {},
+			amountMinor: null,
+			currency: 'USD',
+			feeReturnedMinor: null
+		}
+	};
+}
+
+/** a grant read cancelled now whose status history says it was received first. */
+function isCancelledAfterReceipt(grant: unknown): boolean {
+	const history = field(grant, 'statuses');
+	return (
+		statusOf(stringField(grant, 'status')) === 'cancelled' &&
+		Array.isArray(history) &&
+		history.some((entry) => statusOf(stringField(entry, 'status')) === 'succeeded')
+	);
 }
 
 function statusOf(word: string | null): PaymentStatus {
