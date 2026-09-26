@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { STRIPE_RAILS } from '@better-giving/form/embed/rails';
-import type { RecurringEvent, ReversalEvent } from './provider';
+import { isRetryable, type RecurringEvent, type ReversalEvent } from './provider';
 import {
 	API_VERSION,
 	RECURRING_EVENT_TYPES,
@@ -896,20 +896,25 @@ describe('readReversal', () => {
 	 *
 	 * the refund's own status decides, read fresh — a bank debit's refund waits on the debit, and a
 	 * card's can wait on the donor's bank — and the `refund.updated` that reports it succeeded is the
-	 * delivery that posts it.
+	 * delivery that posts it. a `canceled` refund was cancelled while it waited — the installed SDK's
+	 * `refunds.cancel` takes one "with a status of requires_action" — so nothing was posted for it and
+	 * nothing is owed back; a `null` status (nullable on that SDK's `Refund`) reports nothing yet.
 	 */
-	it.each(['pending', 'requires_action'])('reads a %s refund as nothing moved', async (status) => {
-		const { httpClient } = recording([{ status: 200, json: refundOf({ status }) }]);
+	it.each(['pending', 'requires_action', 'canceled', null])(
+		'reads a %s refund as nothing moved',
+		async (status) => {
+			const { httpClient } = recording([{ status: 200, json: refundOf({ status }) }]);
 
-		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
-			refundNotice('refund.updated')
-		);
+			const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
+				refundNotice('refund.updated')
+			);
 
-		expect(result).toEqual({
-			ok: true,
-			value: { kind: 'nothing_moved', providerReversalId: 're_1' }
-		});
-	});
+			expect(result).toEqual({
+				ok: true,
+				value: { kind: 'nothing_moved', providerReversalId: 're_1' }
+			});
+		}
+	);
 
 	/**
 	 * a refund that failed reads as not standing, dated when the money came back.
@@ -1241,16 +1246,43 @@ function disputeOf(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-/** a verified dispute delivery, as `verifyEvent` hands one over. */
-function disputeNotice(type = 'charge.dispute.created'): ReversalEvent {
+/**
+ * a fee Stripe booked against a dispute on a balance transaction of its own, sourced to the dispute
+ * and moving no disputed money: its whole `net` is the fee. which fees Stripe books this way rather
+ * than on the withdrawal's `fee` is unverified (the header of ./stripe.ts), so both are read.
+ */
+const COUNTERED = {
+	id: 'txn_d3',
+	object: 'balance_transaction',
+	amount: -1_500,
+	currency: 'usd',
+	fee: 0,
+	net: -1_500,
+	exchange_rate: null as number | null,
+	created: 1_770_400_000,
+	reporting_category: 'fee',
+	type: 'stripe_fee',
+	source: 'du_1'
+};
+
+/** Stripe's answer to listing the balance transactions sourced to a dispute. */
+function sourcedTo(...transactions: readonly object[]) {
 	return {
-		id: 'evt_1',
-		kind: 'reversal',
-		type,
-		providerNoticeId: 'du_1',
-		occurredAt: new Date(1_770_300_000_000)
+		status: 200,
+		json: { object: 'list', url: '/v1/balance_transactions', has_more: false, data: transactions }
 	};
 }
+
+/** a verified dispute delivery, as `verifyEvent` hands one over: `occurredAt` is the event's `created`. */
+function disputeNotice(
+	type = 'charge.dispute.created',
+	occurredAt = new Date(1_770_300_000_000)
+): ReversalEvent {
+	return { id: 'evt_1', kind: 'reversal', type, providerNoticeId: 'du_1', occurredAt };
+}
+
+/** when a dispute closed: the `charge.dispute.closed` event's `created`, weeks after the withdrawal. */
+const CLOSED = new Date(1_772_000_000_000);
 
 describe('readReversal of a dispute', () => {
 	/**
@@ -1259,16 +1291,18 @@ describe('readReversal of a dispute', () => {
 	 * Stripe's reason code, and where in the dashboard it is answered.
 	 */
 	it('reads a dispute that withdrew the money as opened', async () => {
-		const { httpClient, calls } = recording([{ status: 200, json: disputeOf() }]);
+		const { httpClient, calls } = recording([{ status: 200, json: disputeOf() }, sourcedTo()]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
 			disputeNotice()
 		);
 
-		expect(calls).toHaveLength(1);
+		expect(calls.map((call) => call.path.split('?')[0])).toEqual([
+			'/v1/disputes/du_1',
+			'/v1/balance_transactions'
+		]);
 		expect(calls[0]?.method).toBe('GET');
 		const asked = decodeURIComponent(calls[0]?.path ?? '');
-		expect(asked).toContain('/v1/disputes/du_1');
 		expect(asked).toContain('expand[0]=charge');
 		expect(asked).toContain('expand[1]=payment_intent');
 		expect(result).toEqual({
@@ -1290,6 +1324,80 @@ describe('readReversal of a dispute', () => {
 	});
 
 	/**
+	 * every fee Stripe booked against the dispute is read, not only the withdrawal's own: answering a
+	 * dispute costs "an additional dispute countered fee"
+	 * (https://docs.stripe.com/disputes/how-disputes-work), and it is read off every balance
+	 * transaction sourced to the dispute — the source a dispute's transactions carry
+	 * (https://docs.stripe.com/changelog/2015-08-19/balance-transactions-refunds-disputes-specify-source).
+	 */
+	it('reads every fee booked against an open dispute', async () => {
+		const { httpClient, calls } = recording([
+			{ status: 200, json: disputeOf({ status: 'under_review' }) },
+			sourcedTo(WITHDRAWN, COUNTERED)
+		]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
+			disputeNotice('charge.dispute.funds_withdrawn')
+		);
+
+		expect(calls[1]?.method).toBe('GET');
+		expect(calls[1]?.path.split('?')[0]).toBe('/v1/balance_transactions');
+		expect(new URLSearchParams(calls[1]?.path.split('?')[1]).get('source')).toBe('du_1');
+		expect(result.ok && result.value).toMatchObject({ kind: 'dispute_opened', feeMinor: 3_000 });
+	});
+
+	/**
+	 * a loss carries every fee Stripe kept for the dispute, the countered fee included, and the writer
+	 * settles up what the opening did not book (`settleUpEntry` in ../donations/entries.ts).
+	 */
+	it('reads every fee booked against a lost dispute', async () => {
+		const { httpClient } = recording([
+			{ status: 200, json: disputeOf({ status: 'lost' }) },
+			sourcedTo(WITHDRAWN, COUNTERED)
+		]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
+			disputeNotice('charge.dispute.closed', CLOSED)
+		);
+
+		expect(result.ok && result.value).toMatchObject({ kind: 'dispute_lost', feeMinor: 3_000 });
+	});
+
+	/**
+	 * a fee list that cannot be read is no fee figure: the read is refused, retryably, rather than
+	 * posting the withdrawal's fee alone and never reading the rest.
+	 */
+	it.each([
+		[403, { type: 'invalid_request_error', message: 'not permitted' }],
+		[500, { type: 'api_error', message: 'Something went wrong' }]
+	])('refuses a dispute whose fees answer %s, retryably', async (status, error) => {
+		const { httpClient } = recording([
+			{ status: 200, json: disputeOf() },
+			{ status, json: { error } }
+		]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
+			disputeNotice()
+		);
+
+		expect(result.ok === false && isRetryable(result.reason)).toBe(true);
+	});
+
+	/** a fee in another currency than the withdrawal's sums to no figure, and none is claimed. */
+	it('reads no fee where one is booked in another currency than the withdrawal', async () => {
+		const { httpClient } = recording([
+			{ status: 200, json: disputeOf() },
+			sourcedTo(WITHDRAWN, { ...COUNTERED, currency: 'eur' })
+		]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
+			disputeNotice()
+		);
+
+		expect(result.ok && result.value).toMatchObject({ kind: 'dispute_opened', feeMinor: null });
+	});
+
+	/**
 	 * an inquiry withdraws nothing — its money stays in the balance while the bank asks — so it moves
 	 * nothing, whatever the delivery that named it. its escalation withdraws the money and reads again.
 	 */
@@ -1300,7 +1408,8 @@ describe('readReversal of a dispute', () => {
 				{
 					status: 200,
 					json: disputeOf({ status, balance_transactions: [], is_charge_refundable: true })
-				}
+				},
+				sourcedTo()
 			]);
 
 			const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
@@ -1318,12 +1427,18 @@ describe('readReversal of a dispute', () => {
 	 * a dispute closed for the donor reads as lost: the money it withdrew stays gone, with nothing
 	 * left to answer, so no deadline is carried. it carries everything an opening would have, because
 	 * a loss can be the first delivery that reaches the deployment.
+	 *
+	 * dated when it closed, which the dispute itself does not record (no close time on the installed
+	 * SDK's `Dispute`), so it is the close's own delivery that dates it.
 	 */
-	it('reads a dispute closed for the donor as lost', async () => {
-		const { httpClient } = recording([{ status: 200, json: disputeOf({ status: 'lost' }) }]);
+	it('reads a dispute closed for the donor as lost, dated by its close', async () => {
+		const { httpClient } = recording([
+			{ status: 200, json: disputeOf({ status: 'lost' }) },
+			sourcedTo()
+		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
-			disputeNotice('charge.dispute.closed')
+			disputeNotice('charge.dispute.closed', CLOSED)
 		);
 
 		expect(result).toEqual({
@@ -1334,7 +1449,7 @@ describe('readReversal of a dispute', () => {
 				providerReversalId: 'du_1',
 				amountMinor: 10_329,
 				currency: 'USD',
-				occurredAt: new Date(1_770_300_000_000),
+				occurredAt: CLOSED,
 				reversedMetadata: { donation_id: '01932f7c' },
 				feeMinor: 1_500,
 				reason: 'fraudulent',
@@ -1354,7 +1469,8 @@ describe('readReversal of a dispute', () => {
 			{
 				status: 200,
 				json: disputeOf({ status: 'won', balance_transactions: [WITHDRAWN, REINSTATED] })
-			}
+			},
+			sourcedTo()
 		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
@@ -1400,7 +1516,8 @@ describe('readReversal of a dispute', () => {
 						},
 						balance_transactions: [{ ...WITHDRAWN, fee: 400, net: -10_729 }]
 					})
-				}
+				},
+				sourcedTo()
 			]);
 
 			const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
@@ -1440,7 +1557,8 @@ describe('readReversal of a dispute', () => {
 					},
 					balance_transactions: [WITHDRAWN, REINSTATED]
 				})
-			}
+			},
+			sourcedTo()
 		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
@@ -1455,7 +1573,10 @@ describe('readReversal of a dispute', () => {
 	 * page would open a dispute that does not exist there.
 	 */
 	it('links a test-mode dispute to the test-mode dashboard', async () => {
-		const { httpClient } = recording([{ status: 200, json: disputeOf({ livemode: false }) }]);
+		const { httpClient } = recording([
+			{ status: 200, json: disputeOf({ livemode: false }) },
+			sourcedTo()
+		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
 			disputeNotice()
@@ -1483,7 +1604,8 @@ describe('readReversal of a dispute', () => {
 						submission_count: 0
 					}
 				})
-			}
+			},
+			sourcedTo()
 		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
@@ -1508,14 +1630,18 @@ describe('readReversal of a dispute', () => {
 					payment_intent: null,
 					charge: { id: 'ch_legacy', object: 'charge', payment_method_details: { type: 'card' } }
 				})
-			}
+			},
+			sourcedTo()
 		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
 			disputeNotice()
 		);
 
-		expect(calls).toHaveLength(1);
+		expect(calls.map((call) => call.path.split('?')[0])).toEqual([
+			'/v1/disputes/du_1',
+			'/v1/balance_transactions'
+		]);
 		expect(result.ok && result.value).toMatchObject({
 			kind: 'dispute_opened',
 			reversedTxnId: 'ch_legacy'
@@ -1530,7 +1656,7 @@ describe('readReversal of a dispute', () => {
 		['payment_intent', { payment_intent: 'pi_1' }],
 		['charge', { charge: 'ch_1' }]
 	])('refuses a dispute whose %s came back unexpanded', async (_field, overrides) => {
-		const { httpClient } = recording([{ status: 200, json: disputeOf(overrides) }]);
+		const { httpClient } = recording([{ status: 200, json: disputeOf(overrides) }, sourcedTo()]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
 			disputeNotice()
@@ -1556,19 +1682,47 @@ describe('readReversal of a dispute', () => {
 					status: 'lost',
 					balance_transactions: [WITHDRAWN, { ...REINSTATED, amount: 3_000, net: 3_000 }]
 				})
-			}
+			},
+			sourcedTo()
 		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
-			disputeNotice('charge.dispute.funds_reinstated')
+			disputeNotice('charge.dispute.closed', CLOSED)
 		);
 
 		expect(result.ok && result.value).toMatchObject({
 			kind: 'dispute_lost',
 			amountMinor: 10_329,
 			currency: 'USD',
-			occurredAt: new Date(1_770_300_000_000),
+			occurredAt: CLOSED,
 			feeMinor: 1_500
+		});
+	});
+
+	/**
+	 * a lost dispute read off any delivery but its close — a redelivered opening, or the reinstatement
+	 * of a partly refunded payment's lost dispute arriving first — holds no close time to date a loss
+	 * by. it reads as the withdrawal that delivery witnessed, with nothing left to answer, and the
+	 * close's own delivery closes it: the first loss recorded is the one whose date stands.
+	 */
+	it.each([
+		'charge.dispute.created',
+		'charge.dispute.funds_withdrawn',
+		'charge.dispute.funds_reinstated'
+	])('reads a lost card dispute delivered by %s as its withdrawal', async (type) => {
+		const { httpClient } = recording([
+			{ status: 200, json: disputeOf({ status: 'lost' }) },
+			sourcedTo()
+		]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
+			disputeNotice(type, CLOSED)
+		);
+
+		expect(result.ok && result.value).toMatchObject({
+			kind: 'dispute_opened',
+			occurredAt: new Date(1_770_300_000_000),
+			respondBy: null
 		});
 	});
 
@@ -1578,7 +1732,10 @@ describe('readReversal of a dispute', () => {
 	 * because a dispute recorded won answers every later delivery as already posted.
 	 */
 	it('reads a dispute won before its money is back as nothing moved', async () => {
-		const { httpClient } = recording([{ status: 200, json: disputeOf({ status: 'won' }) }]);
+		const { httpClient } = recording([
+			{ status: 200, json: disputeOf({ status: 'won' }) },
+			sourcedTo()
+		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
 			disputeNotice('charge.dispute.closed')
@@ -1601,7 +1758,8 @@ describe('readReversal of a dispute', () => {
 			{
 				status: 200,
 				json: disputeOf({ status: 'prevented', balance_transactions: [WITHDRAWN, REINSTATED] })
-			}
+			},
+			sourcedTo()
 		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
@@ -1622,7 +1780,8 @@ describe('readReversal of a dispute', () => {
 			{
 				status: 200,
 				json: disputeOf({ status: 'prevented', balance_transactions: balanceTransactions })
-			}
+			},
+			sourcedTo()
 		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
@@ -1649,7 +1808,8 @@ describe('readReversal of a dispute', () => {
 					status: 'won',
 					balance_transactions: [WITHDRAWN, { ...REINSTATED, fee: -1_500, net: 11_829 }]
 				})
-			}
+			},
+			sourcedTo()
 		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
@@ -1663,19 +1823,22 @@ describe('readReversal of a dispute', () => {
 	});
 
 	/**
-	 * never more back than the withdrawal's own fee, which is all the opening booked. a countered fee
-	 * charged outside the dispute's two transactions was never booked here, so returning it too would
-	 * credit processor fees with money that was never expensed and overstate 1020 by it.
+	 * a fee given back on a transaction of its own is read too: the countered fee Stripe "returns only
+	 * if you win" (https://docs.stripe.com/disputes/how-disputes-work) need not ride the reinstatement.
 	 */
-	it('gives back no more of a fee than the dispute’s withdrawal took', async () => {
+	it('reads a fee a won dispute gave back on a transaction of its own', async () => {
 		const { httpClient } = recording([
 			{
 				status: 200,
-				json: disputeOf({
-					status: 'won',
-					balance_transactions: [WITHDRAWN, { ...REINSTATED, fee: -3_000, net: 13_329 }]
-				})
-			}
+				json: disputeOf({ status: 'won', balance_transactions: [WITHDRAWN, REINSTATED] })
+			},
+			sourcedTo(WITHDRAWN, COUNTERED, REINSTATED, {
+				...COUNTERED,
+				id: 'txn_d4',
+				amount: 1_500,
+				net: 1_500,
+				created: 1_771_500_000
+			})
 		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
@@ -1685,6 +1848,32 @@ describe('readReversal of a dispute', () => {
 		expect(result.ok && result.value).toMatchObject({
 			kind: 'dispute_won',
 			feeReturnedMinor: 1_500
+		});
+	});
+
+	/**
+	 * never more back than Stripe charged for the dispute: a give-back past every fee booked against it
+	 * would credit processor fees with money never expensed and overstate 1020 by the excess.
+	 */
+	it('gives back no more of a fee than the dispute was charged', async () => {
+		const { httpClient } = recording([
+			{
+				status: 200,
+				json: disputeOf({
+					status: 'won',
+					balance_transactions: [WITHDRAWN, { ...REINSTATED, fee: -4_000, net: 14_329 }]
+				})
+			},
+			sourcedTo(COUNTERED)
+		]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readReversal(
+			disputeNotice('charge.dispute.funds_reinstated')
+		);
+
+		expect(result.ok && result.value).toMatchObject({
+			kind: 'dispute_won',
+			feeReturnedMinor: 3_000
 		});
 	});
 
@@ -1705,7 +1894,8 @@ describe('readReversal of a dispute', () => {
 					currency: 'eur',
 					balance_transactions: [{ ...WITHDRAWN, ...converted }]
 				})
-			}
+			},
+			sourcedTo()
 		]);
 		const won = recording([
 			{
@@ -1718,7 +1908,8 @@ describe('readReversal of a dispute', () => {
 						{ ...REINSTATED, ...converted, exchange_rate: 1.5, fee: -1_500 }
 					]
 				})
-			}
+			},
+			sourcedTo()
 		]);
 
 		const openRead = await createStripeProvider(CREDENTIALS, {
