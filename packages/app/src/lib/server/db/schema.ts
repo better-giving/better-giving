@@ -115,9 +115,11 @@ import type { PostableAccountId } from './postable';
 //
 // 2. if a generated migration rebuilds a table, hand-edit its pragmas.
 //    drizzle-kit wraps a rebuild in `PRAGMA foreign_keys=OFF` / `=ON`. sqlite documents
-//    that pragma as a no-op inside a transaction, and the whole migration runs in one —
-//    which is the mechanism, not "D1 ignores it". (the no-op is itself the evidence a
-//    migration file is wrapped in a transaction.) so the rebuild's
+//    that pragma as a no-op inside a transaction, and the whole migration runs in one on
+//    every apply path — wrangler's `--local` sends a file as one batch, and wrangler's
+//    `--remote` and `better-giving start` send it as one query request D1 runs as one
+//    implicit transaction (packages/console/internal/migrate/migrate.go). that is the
+//    mechanism, not "D1 ignores it". so the rebuild's
 //    `DROP TABLE account` fails with FOREIGN KEY constraint failed. two ways in: a
 //    separate child table holding rows that point at the dropped table, and — the one
 //    live today — the self-reference, which fails specifically because drizzle renders
@@ -128,13 +130,19 @@ import type { PostableAccountId } from './postable';
 //    atomically, but it is the migration step of `deploy` that fails and `wrangler deploy`
 //    runs behind it, so a fork that hits it cannot deploy at all. replace the emitted pair with
 //        PRAGMA defer_foreign_keys=true;  ...rebuild...  PRAGMA defer_foreign_keys=false;
-//    which D1 honours: the `DROP` no longer fails on the rows pointing at the table.
-//    it lets the rebuild through and checks nothing: `defer_foreign_keys=false` clears
-//    the violations deferred so far, so the commit finds none, and a rebuild that left
-//    child rows pointing at nothing — a copy step skipped, a row not copied — commits
-//    with them orphaned. the one guard is `newest-migration.workers.spec.ts`'s "leaves
-//    no foreign key pointing at nothing", which reads `pragma_foreign_key_check` after
-//    applying the newest migration over seeded rows.
+//    which D1 honours: the `DROP` no longer fails on the rows pointing at the table, and
+//    the deferral lasts to the end of the file's transaction. the closing `=false` is not
+//    optional: the rename does not take back the violations the drop counted, so without
+//    it the commit fails with every row resolving. locally it clears the violations
+//    deferred so far, as sqlite's `pragma.c` does, so the commit checks nothing and a
+//    rebuild that left child rows pointing at nothing — a copy step skipped, a row not
+//    copied — commits with them orphaned. the guard is `newest-migration.workers.spec.ts`'s
+//    "leaves no foreign key pointing at nothing", which reads `pragma_foreign_key_check`
+//    after applying every migration the test deployment has not, file by file, over
+//    seeded rows. D1's docs (https://developers.cloudflare.com/d1/sql-api/foreign-keys/)
+//    say instead that `=off` with violations outstanding fails with `FOREIGN KEY
+//    constraint failed`; which of the two a remote database does is proven only by a
+//    remote apply over rows the rebuild moves.
 //    two caveats on the replacement. it resets at every commit, so it covers one
 //    transaction and must be re-set if a rebuild is ever split across files. and
 //    `ON DELETE CASCADE` is never deferrable — a cascade is an action, not a violation,

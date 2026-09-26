@@ -4,18 +4,23 @@ import { post, postingStatements } from '../ledger/posting';
 import { donationRevenueAccount, POSTING_ACCOUNTS, postableId } from './accounts';
 import { createDb } from './client';
 
-// the newest migration, applied over a database that already holds gifts.
+// every migration the test deployment has not applied, over a database that already holds gifts.
 //
 // every other workers spec runs against an empty schema the whole chain built at once, so a
 // rebuild that drops rows, or a `DROP TABLE` whose deferral is missing, passes all of them: an
 // empty table copies clean. the deployment that matters is the one already taking gifts, and its
-// remote apply is a one-way door (CONTRIBUTING.md -> Migrations). so this file stops the chain one
-// short on `UNMIGRATED_DB`, seeds a row of every shape the payment and recurring tables hold,
-// applies the newest file the way wrangler does — one batch — and reads every table back.
+// remote apply is a one-way door (CONTRIBUTING.md -> Migrations). so this file stops the chain on
+// `UNMIGRATED_DB` in front of `FIRST_UNAPPLIED`, seeds a row of every shape the payment,
+// recurring, Zapier and QuickBooks tables hold, applies each file from there as one batch with its
+// `d1_migrations` row — one file, one transaction, as both remote apply paths run it
+// (packages/console/internal/migrate/migrate.go) — and reads every table back.
 //
-// the seed is written against the schema before the newest migration. a later migration that
-// renames or drops a seeded column turns this red at its seed, which is the point to re-seed; a
-// squash into one file leaves nothing to stop short of, and the first assertion says so.
+// `FIRST_UNAPPLIED` is the oldest file the test deployment's `d1_migrations` does not list. move it
+// forward once that deployment has applied it, never back: every file behind it has crossed the
+// door, and every file from it on runs over the seed. the seed is written against the schema in
+// front of it. a later migration that renames or drops a seeded column turns this red at its seed,
+// which is the point to re-seed, and a table the stop moves past starts empty until a row is added
+// for it; a squash into one file leaves nothing to stop short of, and the first assertion says so.
 
 const CONTACT_ID = '019fb300-0000-7000-8000-000000000001';
 const FORM_ID = 'frm_migrationprobe';
@@ -27,6 +32,10 @@ const OPEN_ZAP = '019fb300-0000-7000-8000-000000000005';
 const ENDED_ZAP = '019fb300-0000-7000-8000-000000000006';
 
 const REALM = '4620816365';
+
+const FIRST_UNAPPLIED = '0010_gift_refunded_trigger_and_dispute.sql';
+const STOP = env.TEST_MIGRATIONS.findIndex((m) => m.name === FIRST_UNAPPLIED);
+const nowhereToStop = STOP < 1;
 
 const db = () => env.UNMIGRATED_DB;
 
@@ -196,40 +205,56 @@ async function postEntryGroup(sourceId: string): Promise<string> {
 	return posting.group.id!;
 }
 
-let migrated: Promise<{ before: Map<string, Row[]>; after: Map<string, Row[]> }> | undefined;
+async function recorded(): Promise<string[]> {
+	const { results } = await db()
+		.prepare('select name from d1_migrations order by id')
+		.all<{ name: string }>();
+	return results.map((r) => r.name);
+}
 
-/** the chain stopped one short, seeded, then finished — once, for every block in this file. */
+let migrated:
+	| Promise<{ before: Map<string, Row[]>; after: Map<string, Row[]>; overSeed: string[] }>
+	| undefined;
+
+/** the chain stopped in front of `FIRST_UNAPPLIED`, seeded, then finished — once, for every block here. */
 function migrateOverSeed() {
 	migrated ??= (async () => {
 		const chain = env.TEST_MIGRATIONS;
-		await applyD1Migrations(db(), chain.slice(0, -1));
+		await applyD1Migrations(db(), chain.slice(0, STOP));
+		const underSeed = await recorded();
 		await seed();
 		const before = await snapshot();
 		await applyD1Migrations(db(), chain);
-		return { before, after: await snapshot() };
+		const overSeed = (await recorded()).slice(underSeed.length);
+		return { before, after: await snapshot(), overSeed };
 	})();
 	return migrated;
 }
 
-describe('the newest migration keeps every row the database already held', () => {
+describe('the migrations not yet applied keep every row the database already held', () => {
 	const chain = env.TEST_MIGRATIONS;
-	const squashed = chain.length < 2;
 	let before: Map<string, Row[]>;
 	let after: Map<string, Row[]>;
+	let overSeed: string[];
 
 	beforeAll(async () => {
-		if (squashed) return;
-		({ before, after } = await migrateOverSeed());
+		if (nowhereToStop) return;
+		({ before, after, overSeed } = await migrateOverSeed());
+	});
+
+	it.skipIf(nowhereToStop)('applies every file the test deployment has not, over the seed', () => {
+		expect(overSeed[0]).toBe(FIRST_UNAPPLIED);
+		expect(overSeed.at(-1)).toBe(chain.at(-1)!.name);
 	});
 
 	it('has an earlier migration to stop short of', () => {
 		expect(
-			chain.length,
-			'one migration file: the chain was squashed, so there is no populated database to migrate. delete this spec until the next migration lands.'
-		).toBeGreaterThan(1);
+			STOP,
+			`${FIRST_UNAPPLIED} is not in migrations/ with a file in front of it: after a squash there is no populated database to migrate, so delete this spec until the next migration lands; otherwise name the oldest file the test deployment has not applied`
+		).toBeGreaterThan(0);
 	});
 
-	it.skipIf(squashed)(
+	it.skipIf(nowhereToStop)(
 		'leaves every table holding the rows it held, column for column',
 		async () => {
 			expect([...before.keys()].length).toBeGreaterThan(5);
@@ -237,13 +262,13 @@ describe('the newest migration keeps every row the database already held', () =>
 				const columns = rows.length > 0 ? Object.keys(rows[0]!) : [];
 				expect(
 					(after.get(table) ?? []).map((r) => project(r, columns)),
-					`${table} lost or changed rows across the newest migration`
+					`${table} lost or changed rows across the migrations from ${FIRST_UNAPPLIED}`
 				).toEqual(rows.map((r) => project(r, columns)));
 			}
 		}
 	);
 
-	it.skipIf(squashed)(
+	it.skipIf(nowhereToStop)(
 		'keeps the seeded gifts, so the comparison above is over rows rather than empty tables',
 		() => {
 			expect(after.get('payment')?.map((r) => r.id)).toEqual([
@@ -272,20 +297,23 @@ describe('the newest migration keeps every row the database already held', () =>
 		}
 	);
 
-	it.skipIf(squashed)('keeps a key already stored, and every Zap on it stays subscribed', () => {
-		expect(after.get('zapier_key')?.map((r) => r.key)).toEqual([ZAPIER_KEY]);
-		expect(after.get('zapier_subscription')?.find((r) => r.id === OPEN_ZAP)).toMatchObject({
-			ended_at: null,
-			ended_reason: null
-		});
-		expect(after.get('zapier_delivery')?.map((r) => [r.status, r.leased_until])).toEqual([
-			['pending', 4],
-			['sent', null],
-			['sent', null]
-		]);
-	});
+	it.skipIf(nowhereToStop)(
+		'keeps a key already stored, and every Zap on it stays subscribed',
+		() => {
+			expect(after.get('zapier_key')?.map((r) => r.key)).toEqual([ZAPIER_KEY]);
+			expect(after.get('zapier_subscription')?.find((r) => r.id === OPEN_ZAP)).toMatchObject({
+				ended_at: null,
+				ended_reason: null
+			});
+			expect(after.get('zapier_delivery')?.map((r) => [r.status, r.leased_until])).toEqual([
+				['pending', 4],
+				['sent', null],
+				['sent', null]
+			]);
+		}
+	);
 
-	it.skipIf(squashed)('leaves no foreign key pointing at nothing', async () => {
+	it.skipIf(nowhereToStop)('leaves no foreign key pointing at nothing', async () => {
 		const { results } = await db().prepare('select * from pragma_foreign_key_check').all();
 		expect(results).toEqual([]);
 	});
@@ -295,14 +323,12 @@ describe('the newest migration keeps every row the database already held', () =>
 // the rebuilt subscription table takes the new trigger and its seeded rows' deliveries still
 // resolve to it, and a dispute can be written against the refund row the seed holds.
 describe('0010 takes a gift_refunded Zap and a dispute on a database already taking gifts', () => {
-	const squashed = env.TEST_MIGRATIONS.length < 2;
-
 	beforeAll(async () => {
-		if (squashed) return;
+		if (nowhereToStop) return;
 		await migrateOverSeed();
 	});
 
-	it.skipIf(squashed)(
+	it.skipIf(nowhereToStop)(
 		'subscribes a Zap to gift_refunded, and a delivery row resolves to it',
 		async () => {
 			await db().batch([
@@ -325,7 +351,7 @@ describe('0010 takes a gift_refunded Zap and a dispute on a database already tak
 		}
 	);
 
-	it.skipIf(squashed)('records a dispute against the seeded refund row', async () => {
+	it.skipIf(nowhereToStop)('records a dispute against the seeded refund row', async () => {
 		await db()
 			.prepare(
 				`insert into dispute (payment_id, reason, created_at, updated_at)
@@ -340,28 +366,27 @@ describe('0010 takes a gift_refunded Zap and a dispute on a database already tak
 // what 0011 is for: a delivery row already sent or taken names the company connected when the
 // column arrived, and one never taken names none.
 describe('0011 records the company a row already sent went to', () => {
-	const squashed = env.TEST_MIGRATIONS.length < 2;
 	let realmOf: (entryGroupId: string) => unknown;
 
 	beforeAll(async () => {
-		if (squashed) return;
+		if (nowhereToStop) return;
 		const { after } = await migrateOverSeed();
 		const rows = after.get('quickbooks_sync') ?? [];
 		realmOf = (id) => rows.find((r) => r.entry_group_id === id)?.realm_id;
 	});
 
-	it.skipIf(squashed)('names the connected company on a row it sent', () => {
+	it.skipIf(nowhereToStop)('names the connected company on a row it sent', () => {
 		expect(realmOf(SYNC.sent)).toBe(REALM);
 	});
 
-	it.skipIf(squashed)(
+	it.skipIf(nowhereToStop)(
 		'names it on a row a run took and has not sent, which may have reached it',
 		() => {
 			expect(realmOf(SYNC.tried)).toBe(REALM);
 		}
 	);
 
-	it.skipIf(squashed)('names none on a row no run has taken', () => {
+	it.skipIf(nowhereToStop)('names none on a row no run has taken', () => {
 		expect(realmOf(SYNC.untaken)).toBeNull();
 	});
 });
@@ -370,13 +395,12 @@ describe('0011 records the company a row already sent went to', () => {
 // ends every Zap on it the way a replace ends them. the seed above holds a stored key, so this
 // clears it and runs 0008 again, one batch, the way wrangler applies a file.
 describe('0008 drops a key that was never stored, and ends every Zap on it', () => {
-	const squashed = env.TEST_MIGRATIONS.length < 2;
 	let zapierKeys: Row[];
 	let subscriptions: Row[];
 	let deliveries: Row[];
 
 	beforeAll(async () => {
-		if (squashed) return;
+		if (nowhereToStop) return;
 		await migrateOverSeed();
 		await db().prepare(`update zapier_key set key = null`).run();
 		const dropped = env.TEST_MIGRATIONS.find(
@@ -390,18 +414,18 @@ describe('0008 drops a key that was never stored, and ends every Zap on it', () 
 		deliveries = (await db().prepare(`select * from zapier_delivery`).all<Row>()).results;
 	});
 
-	it.skipIf(squashed)('leaves no key row', () => {
+	it.skipIf(nowhereToStop)('leaves no key row', () => {
 		expect(zapierKeys).toEqual([]);
 	});
 
-	it.skipIf(squashed)('ends the open subscription as key_replaced, now', () => {
+	it.skipIf(nowhereToStop)('ends the open subscription as key_replaced, now', () => {
 		const open = subscriptions.find((r) => r.id === OPEN_ZAP)!;
 		expect(open.ended_reason).toBe('key_replaced');
 		expect(open.ended_at).toBeGreaterThan(Date.now() - 60_000);
 		expect(open.updated_at).toBe(open.ended_at);
 	});
 
-	it.skipIf(squashed)('leaves a subscription that had already ended as it ended', () => {
+	it.skipIf(nowhereToStop)('leaves a subscription that had already ended as it ended', () => {
 		expect(subscriptions.find((r) => r.id === ENDED_ZAP)).toMatchObject({
 			ended_at: 5,
 			ended_reason: 'unsubscribed',
@@ -409,13 +433,13 @@ describe('0008 drops a key that was never stored, and ends every Zap on it', () 
 		});
 	});
 
-	it.skipIf(squashed)('drops what the ended subscription was still owed', () => {
+	it.skipIf(nowhereToStop)('drops what the ended subscription was still owed', () => {
 		const owed = deliveries.find((r) => r.event_id === 'evt-probe')!;
 		expect(owed).toMatchObject({ status: 'dropped', leased_until: null });
 		expect(owed.updated_at).toBeGreaterThan(Date.now() - 60_000);
 	});
 
-	it.skipIf(squashed)('leaves a delivery already sent as it was sent', () => {
+	it.skipIf(nowhereToStop)('leaves a delivery already sent as it was sent', () => {
 		expect(deliveries.find((r) => r.event_id === 'evt-sent')).toMatchObject({
 			status: 'sent',
 			updated_at: 1
@@ -427,11 +451,10 @@ describe('0008 drops a key that was never stored, and ends every Zap on it', () 
 // the rows already sent went to the company it left. this marks the seeded connection moved and
 // runs 0011's backfill again, alone — its `ADD COLUMN` has already run and cannot run twice.
 describe('0011 names no company on a sent row while the connection is moved', () => {
-	const squashed = env.TEST_MIGRATIONS.length < 2;
 	let realms: unknown[];
 
 	beforeAll(async () => {
-		if (squashed) return;
+		if (nowhereToStop) return;
 		await migrateOverSeed();
 		const backfill = env.TEST_MIGRATIONS.find(
 			(m) => m.name === '0011_quickbooks_sync_realm.sql'
@@ -448,7 +471,7 @@ describe('0011 names no company on a sent row while the connection is moved', ()
 		realms = results.map((r) => r.realm_id);
 	});
 
-	it.skipIf(squashed)('leaves every row naming none', () => {
+	it.skipIf(nowhereToStop)('leaves every row naming none', () => {
 		expect(realms).toEqual([null, null, null]);
 	});
 });
