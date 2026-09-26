@@ -141,7 +141,7 @@ type Options struct {
 	Send cf.Send
 	// Migrate is that same call on that same credential, bound to the deadline a whole migration
 	// file takes rather than the one a screen's read is held to (internal/cf's APISchemaSend). Send
-	// where it is nil, which is the bound this app's first migration is cut part way through.
+	// where it is nil, which is a bound this app's first migration outlasts.
 	Migrate cf.Send
 	// Upload is a multipart call on the same credential, which the script goes up through.
 	Upload cf.MultipartUpload

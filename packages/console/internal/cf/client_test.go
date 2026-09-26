@@ -247,7 +247,7 @@ func TestAMultipartCallThatReachedNothingIsAnAnswerRatherThanAnError(t *testing.
 
 func TestACallMayBeBoundToADeadlineOfItsOwn(t *testing.T) {
 	// applying a migration file is the one call this console makes that the bound a read is made
-	// with cuts part way through, and d1 has committed what it got through by the time it does.
+	// with cuts off, and a call cut there stops the run on a file d1 may still land whole.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(120 * time.Millisecond)
 		_, _ = io.WriteString(w, `{"success":true,"result":[]}`)

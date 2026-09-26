@@ -177,8 +177,8 @@ func TestADatabaseHoldingEveryFileIsAppliedNothing(t *testing.T) {
 }
 
 func TestAFileThatFailedIsNamedAndTheRunStopsThere(t *testing.T) {
-	// nothing rolls back and nothing is retried: what the operator is owed is which file the
-	// database stopped on, because the ones in front of it are applied and stay applied.
+	// nothing is retried: what the operator is owed is which file the database stopped on, because
+	// the ones in front of it are applied and stay applied.
 	held := &database{refuses: "create table 0001_b"}
 	result, landed := applied(t, held, carried("0000_a.sql", "0001_b.sql", "0002_c.sql"))
 

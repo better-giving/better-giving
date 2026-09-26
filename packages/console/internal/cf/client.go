@@ -63,8 +63,8 @@ const uploadTimeout = 5 * time.Minute
 // far past the ten seconds a read is bounded by, and for a reason of its own: a migration file goes
 // up as one string of ddl and d1 answers only once it has run all of it, so this app's first
 // migration is tens of kilobytes of statements against a remote database inside one request. a call
-// cut at the read's bound leaves a database that has already committed what it got through, and
-// nothing here makes a `CREATE TABLE` conditional — so the rerun dies on the first one it repeats.
+// cut at the read's bound stops the run as unreachable on a file d1 may still land whole, row and
+// all.
 const schemaTimeout = 5 * time.Minute
 
 // AnswerKind is which of the two ways a call ended. A zero Answer is neither and never leaves this
@@ -137,8 +137,8 @@ func JSONSend(base string, headers map[string]string) Send {
 // read is made with.
 //
 // **the bound belongs to the call and not to the client, because one of them is not a read.** the
-// ten seconds a screen's read is held to is what a migration file is cut part way through, and what
-// that leaves behind is a database that committed it and no row saying so.
+// ten seconds a screen's read is held to is what a migration file outlasts, and a call cut there
+// reports a stop on a file the database may go on to land.
 func JSONSendWithin(base string, headers map[string]string, within time.Duration) Send {
 	return func(ctx context.Context, method, path string, body any) Answer {
 		var reader io.Reader

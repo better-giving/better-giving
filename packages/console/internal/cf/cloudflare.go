@@ -145,8 +145,8 @@ func APISend(credential Credential) Send { return JSONSend(API, apiHeaders(crede
 // APISchemaSend is the same call bound to the time applying a schema takes rather than to the time
 // a screen's read is held to.
 //
-// The one call this console makes that a read's bound cuts part way through, and the one whose
-// cutting leaves something behind: ./client.go's schemaTimeout says what that is.
+// The one call this console makes that outlasts a read's bound, and the one whose cutting reads as
+// a stop on a file that may still land: ./client.go's schemaTimeout says why.
 func APISchemaSend(credential Credential) Send {
 	return JSONSendWithin(API, apiHeaders(credential), schemaTimeout)
 }
