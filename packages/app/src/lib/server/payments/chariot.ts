@@ -1,19 +1,18 @@
 import { CHARIOT_RAILS } from '@better-giving/form/embed/rails';
 import type { PaymentStatus } from '../db/schema';
-import {
-	type AccountChargeability,
-	type Intent,
-	type IntentRequest,
-	isRetryable,
-	type PaymentEvent,
-	type PaymentFailure,
-	type PaymentProvider,
-	type PaymentResult,
-	type RailSwitchboard,
-	type ReversalEvent,
-	type ReversalRead,
-	type Settlement,
-	type WebhookDelivery
+import type {
+	AccountChargeability,
+	Intent,
+	IntentRequest,
+	PaymentEvent,
+	PaymentFailure,
+	PaymentProvider,
+	PaymentResult,
+	RailSwitchboard,
+	ReversalEvent,
+	ReversalRead,
+	Settlement,
+	WebhookDelivery
 } from './provider';
 
 // the Chariot adapter: a gift from a donor-advised fund, taken as a grant through Chariot's DAFpay.
@@ -43,14 +42,16 @@ import {
 // the openapi repository below) — so the reference has no refund or dispute object and no event
 // category for one. what it has is a grant marked received by mistake, which the same page leaves
 // room for (a payout can be matched to a grant by little more than fund name and amount), and
-// cancelled through Chariot's support after. so `verifyEvent` reads the grant a `grant.updated` names: cancelled now, with a
-// received status in its history, it is a `reversal`, and `readReversal` reads it again into a
-// `refund` of the whole of what settled, under `<grant id>:canceled` — Chariot mints no id for it,
-// and the grant's own id is the gift's payment row's. anything else is a `settlement`, so a grant
-// cancelled before it was ever received keeps the settlement path's cancelled answer. a read that
-// may answer next time holds the delivery open, because the kind turns on it. the history stands in
-// for the gift's row, which this module never reads: a grant received and cancelled before this
-// deployment settled it reaches `recordReversal` (../donations/reverse.ts) as a gift not settled yet.
+// cancelled through Chariot's support after. every `grant.updated` is a `settlement`, and
+// `readSettlement` reads a grant cancelled now with a received status in its history as the
+// `succeeded` settlement of its receipt carrying the whole of it refunded (`Settlement.alsoRefunded`
+// in ./provider.ts), under `<grant id>:canceled` as of its cancellation — Chariot mints no id for
+// it, and the grant's own id is the gift's payment row's. the history stands in for the gift's row,
+// which this module never reads, so the one answer serves a gift settled here on an earlier delivery
+// and one that never was: ../donations/settle.ts settles what is not settled yet, then refunds it. a
+// grant cancelled before it was ever received reads `cancelled`, with nothing to refund.
+// `readReversal` reads the same grant into the same refund, under the same id; `verifyEvent` names
+// no reversal, so no delivery reaches it.
 //
 // **it answers the one-off grant, the delivery and the account read, and refuses everything else**
 // as `unsupported`: a gift that repeats (one-time only — `takesRepeatingGifts` in ./provider.ts
@@ -305,8 +306,8 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 		 * reference does not say they don't.
 		 *
 		 * the payload is thin — an id, a category and the object it is about — so nothing but those is
-		 * read off it. what the grant now is comes from Get Grant: here, to say whether a grant update is
-		 * a settlement or a reversal (the header), and again in the read arm that kind names.
+		 * read off it, and nothing is asked of Chariot: what the grant now is, a cancellation after its
+		 * receipt included, is the settlement read's (the header).
 		 */
 		async verifyEvent(delivery: WebhookDelivery): Promise<PaymentResult<PaymentEvent>> {
 			// `not_configured` rather than `bad_signature`, which holds the delivery open across the
@@ -373,14 +374,6 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 				stringField(event, 'associated_object_type') === 'grant' &&
 				grantId !== null
 			) {
-				const grant = await getGrant(grantId);
-				if (!grant.ok && isRetryable(grant.reason)) return grant;
-				if (grant.ok && isCancelledAfterReceipt(grant.value)) {
-					return {
-						ok: true,
-						value: { id, kind: 'reversal', type: category, occurredAt, providerNoticeId: grantId }
-					};
-				}
 				return {
 					ok: true,
 					value: { id, kind: 'settlement', type: category, occurredAt, providerTxnId: grantId }
@@ -525,10 +518,13 @@ function settlementOf(grant: unknown): PaymentResult<Settlement> {
 	const amount = field(grant, 'amount');
 	if (id === null || !isPositiveCents(amount)) return unreadable('a grant');
 
-	const word = stringField(grant, 'status');
-	const status = statusOf(word);
-	const occurredAt = occurredAtOf(grant, word);
-	if (occurredAt === null) return unreadable('a grant carrying no time');
+	const refunded = isCancelledAfterReceipt(grant);
+	const status = refunded ? 'succeeded' : statusOf(stringField(grant, 'status'));
+	const occurredAt = occurredAtOf(grant, status);
+	const cancelledAt = refunded ? occurredAtOf(grant, 'cancelled') : null;
+	if (occurredAt === null || (refunded && cancelledAt === null)) {
+		return unreadable('a grant carrying no time');
+	}
 
 	// the sandbox puts it on every grant from Create Grant onward, whatever its status; the reference
 	// leaves it optional, so a grant without one still settles.
@@ -543,14 +539,18 @@ function settlementOf(grant: unknown): PaymentResult<Settlement> {
 			amountMinor: amount,
 			currency: 'USD',
 			// the fee on a grant still on its way is an estimate and a cancelled grant carries none, so
-			// only a received grant's is money the organisation does not keep.
+			// only a received grant's is money the organisation does not keep — read off the grant as it
+			// is now, which a grant cancelled after its receipt may no longer carry.
 			feeMinor: status === 'succeeded' ? feeOf(grant) : null,
 			// what a browser wrote on the grant in Chariot's window is never this app's own record:
 			// the gift a grant belongs to is the row the server bound the grant id to.
 			metadata: {},
 			...(trackingId !== null && { reference: trackingId }),
 			occurredAt,
-			arrival: null
+			arrival: null,
+			...(cancelledAt !== null && {
+				alsoRefunded: { providerReversalId: cancellationIdOf(id), occurredAt: cancelledAt }
+			})
 		}
 	};
 }
@@ -562,10 +562,10 @@ function settlementOf(grant: unknown): PaymentResult<Settlement> {
 function reversalOf(grant: unknown): PaymentResult<ReversalRead> {
 	const id = stringField(grant, 'id');
 	if (id === null) return unreadable('a grant');
-	const providerReversalId = `${id}:canceled`;
+	const providerReversalId = cancellationIdOf(id);
 	if (!isCancelledAfterReceipt(grant))
 		return { ok: true, value: { kind: 'nothing_moved', providerReversalId } };
-	const occurredAt = occurredAtOf(grant, stringField(grant, 'status'));
+	const occurredAt = occurredAtOf(grant, 'cancelled');
 	if (occurredAt === null) return unreadable('a grant carrying no time');
 	return {
 		ok: true,
@@ -581,6 +581,11 @@ function reversalOf(grant: unknown): PaymentResult<ReversalRead> {
 			feeReturnedMinor: null
 		}
 	};
+}
+
+/** the refund id of a received grant's cancellation (the header). */
+function cancellationIdOf(grantId: string): string {
+	return `${grantId}:canceled`;
 }
 
 /** a grant read cancelled now whose status history says it was received first. */
@@ -618,14 +623,14 @@ function feeOf(grant: unknown): number | null {
 }
 
 /**
- * when the grant entered the status it is in, off its status history; the grant's own last update
- * where the history does not say.
+ * when the grant last entered a status read as `status`, off its status history; the grant's own
+ * last update where the history does not say.
  */
-function occurredAtOf(grant: unknown, word: string | null): Date | null {
+function occurredAtOf(grant: unknown, status: PaymentStatus): Date | null {
 	const history = field(grant, 'statuses');
-	if (word !== null && Array.isArray(history)) {
+	if (Array.isArray(history)) {
 		const entered = history
-			.filter((entry) => stringField(entry, 'status')?.toLowerCase() === word.toLowerCase())
+			.filter((entry) => statusOf(stringField(entry, 'status')) === status)
 			.at(-1);
 		const at = dateOf(stringField(entered, 'createdAt'));
 		if (at !== null) return at;

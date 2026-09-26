@@ -56,6 +56,18 @@ const RECEIVED_GRANT = {
 	feeDetail: { total: 290, contributions: [{ name: 'Chariot', amount: 290, feeType: 'chariot' }] }
 };
 
+/** the same grant marked received by mistake and cancelled through Chariot's support after. */
+const CANCELLED_AFTER_RECEIVED = {
+	...RECEIVED_GRANT,
+	status: 'Canceled',
+	updatedAt: '2026-09-20T12:00:00.000Z',
+	statuses: [
+		{ id: 's1', status: 'Initiated', createdAt: '2026-09-14T12:00:00.000Z' },
+		{ id: 's2', status: 'Completed', createdAt: '2026-09-15T12:00:00.000Z' },
+		{ id: 's3', status: 'Canceled', createdAt: '2026-09-20T12:00:00.000Z' }
+	]
+};
+
 /**
  * the pool's env with a case's deploy-time values. a proxy, for the reason `envWith` in
  * ./api.paypal.webhook.workers.spec.ts gives.
@@ -212,17 +224,7 @@ describe('POST /api/chariot/webhook', () => {
 		chariotHolds([RECEIVED_GRANT]);
 		const received = grantUpdated();
 		await deliver(received, { 'chariot-webhook-signature': await signature(received) });
-		const cancelledAfter = {
-			...RECEIVED_GRANT,
-			status: 'Canceled',
-			updatedAt: '2026-09-20T12:00:00.000Z',
-			statuses: [
-				{ id: 's1', status: 'Initiated', createdAt: '2026-09-14T12:00:00.000Z' },
-				{ id: 's2', status: 'Completed', createdAt: '2026-09-15T12:00:00.000Z' },
-				{ id: 's3', status: 'Canceled', createdAt: '2026-09-20T12:00:00.000Z' }
-			]
-		};
-		chariotHolds([cancelledAfter]);
+		chariotHolds([CANCELLED_AFTER_RECEIVED]);
 		const cancelled = JSON.stringify({ ...JSON.parse(grantUpdated()), id: 'event_456def' });
 		const signing = { 'chariot-webhook-signature': await signature(cancelled) };
 
@@ -238,6 +240,33 @@ describe('POST /api/chariot/webhook', () => {
 		expect(refunds.results).toEqual([
 			{ provider_txn_id: `${GRANT_ID}:canceled`, amount_minor: 10_000, status: 'succeeded' }
 		]);
+	});
+
+	/**
+	 * the grant was received and cancelled before any delivery settled the gift here: the one
+	 * delivery books the gift and the whole of it refunded, and its redelivery finds both there.
+	 */
+	it('books and refunds a gift whose grant was cancelled before it settled here, once', async () => {
+		await recordedGift();
+		chariotHolds([CANCELLED_AFTER_RECEIVED]);
+		const body = grantUpdated();
+		const signing = { 'chariot-webhook-signature': await signature(body) };
+
+		const response = await deliver(body, signing);
+		const posted = await postingGroups();
+		const again = await deliver(body, signing);
+
+		expect(response.status).toBe(200);
+		expect(await paymentStatus()).toBe('succeeded');
+		const refunds = await env.DB.prepare(
+			`select provider_txn_id, amount_minor, status from payment where direction = 'refund'`
+		).all();
+		expect(refunds.results).toEqual([
+			{ provider_txn_id: `${GRANT_ID}:canceled`, amount_minor: 10_000, status: 'succeeded' }
+		]);
+		expect(again.status).toBe(200);
+		expect(await again.json()).toMatchObject({ outcome: 'already_posted' });
+		expect(await postingGroups()).toBe(posted);
 	});
 
 	/**
