@@ -20,7 +20,7 @@ import {
 } from '$lib/server/accounting/provider';
 import { postableId } from '$lib/server/db/accounts';
 import { createDb, type Db } from '$lib/server/db/client';
-import { quickbooksSync } from '$lib/server/db/schema';
+import { contact, donation, payment, quickbooksSync } from '$lib/server/db/schema';
 import { post, postingStatements } from '$lib/server/ledger/posting';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as quickbooks from './console.quickbooks';
@@ -157,7 +157,15 @@ beforeEach(async () => {
 	db = createDb(env.DB);
 	// the lines before the group they hang off, and the queue before both: both are foreign keys,
 	// so any other order is a constraint violation rather than an empty table.
-	for (const table of ['quickbooks_sync', 'ledger_entry', 'entry_group', 'quickbooks_connection']) {
+	for (const table of [
+		'quickbooks_sync',
+		'ledger_entry',
+		'entry_group',
+		'payment',
+		'donation',
+		'contact',
+		'quickbooks_connection'
+	]) {
 		await env.DB.prepare(`delete from ${table}`).run();
 	}
 	stub.accounts = { ok: true, value: CHART };
@@ -212,6 +220,73 @@ async function givenUp(): Promise<string> {
 	return id;
 }
 
+/**
+ * a gift given up on, refunded in full, and the refund queued behind it: the payment rows written
+ * the way the settlement and the refund write them, since a refund is found by its parent payment.
+ */
+async function refundBehindGivenUp(): Promise<{ gift: string; refund: string }> {
+	const at = new Date('2026-02-01T00:00:00.000Z');
+	const contactId = crypto.randomUUID();
+	const donationId = crypto.randomUUID();
+	const giftId = crypto.randomUUID();
+	const refundId = crypto.randomUUID();
+	const moved = (sourceType: 'payment' | 'refund', sourceId: string, sign: 1 | -1) =>
+		post({
+			sourceType,
+			sourceId,
+			currency: 'USD',
+			occurredAt: at,
+			memo: null,
+			lines: [
+				{ accountId: postableId('undepositedFunds'), amountMinor: sign * 10_000 },
+				{ accountId: postableId('donationsDeductible'), amountMinor: -sign * 10_000 }
+			]
+		});
+	const gift = moved('payment', giftId, 1);
+	const refund = moved('refund', refundId, -1);
+	const giftGroup = gift.group.id;
+	const refundGroup = refund.group.id;
+	if (giftGroup === undefined || refundGroup === undefined)
+		throw new Error('post() minted no entry group id');
+	const paid = {
+		donationId,
+		amountMinor: 10_000,
+		currency: 'USD',
+		method: 'card',
+		status: 'succeeded',
+		provider: 'stripe',
+		occurredAt: at
+	} as const;
+	await db.batch([
+		db.insert(contact).values({ id: contactId, kind: 'individual', displayName: 'Ada Lovelace' }),
+		db
+			.insert(donation)
+			.values({ id: donationId, contactId, totalMinor: 10_000, currency: 'USD', receivedAt: at }),
+		db
+			.insert(payment)
+			.values({ ...paid, id: giftId, direction: 'inbound', providerTxnId: `pi_${giftId}` }),
+		db.insert(payment).values({
+			...paid,
+			id: refundId,
+			direction: 'refund',
+			parentPaymentId: giftId,
+			providerTxnId: `re_${refundId}`
+		}),
+		...postingStatements(db, gift),
+		...postingStatements(db, refund),
+		db.insert(quickbooksSync).values({
+			entryGroupId: giftGroup,
+			status: 'failed',
+			attempts: 3,
+			lastError: 'Intuit refused the payload.',
+			createdAt: at,
+			updatedAt: at
+		}),
+		db.insert(quickbooksSync).values({ entryGroupId: refundGroup, createdAt: at, updatedAt: at })
+	]);
+	return { gift: giftGroup, refund: refundGroup };
+}
+
 describe('GET /console/quickbooks', () => {
 	it('says no company is connected, and asks Intuit nothing', async () => {
 		const answered = await read();
@@ -220,7 +295,7 @@ describe('GET /console/quickbooks', () => {
 		expect(await answered.json<QuickbooksReport>()).toEqual({
 			connection: { state: 'disconnected' },
 			accounts: null,
-			backlog: { failed: 0, oldestWaitingAt: null },
+			backlog: { failed: 0, oldestWaitingAt: null, heldBehindFailed: [] },
 			callbackAddress: `${OWN}/quickbooks/callback`
 		});
 	});
@@ -278,8 +353,19 @@ describe('GET /console/quickbooks', () => {
 		});
 		expect(report.backlog).toEqual({
 			failed: 1,
-			oldestWaitingAt: new Date('2026-02-01T00:00:00.000Z').toISOString()
+			oldestWaitingAt: new Date('2026-02-01T00:00:00.000Z').toISOString(),
+			heldBehindFailed: []
 		});
+	});
+
+	it('names each refund held behind a gift that was given up on, and the gift it waits on', async () => {
+		const held = await refundBehindGivenUp();
+
+		const report = await (await read()).json<QuickbooksReport>();
+
+		expect(report.backlog.heldBehindFailed).toEqual([
+			{ entryGroupId: held.refund, waitsOn: held.gift }
+		]);
 	});
 
 	it('says a lapsed credential is one to connect again', async () => {

@@ -177,6 +177,22 @@ export interface QuickbooksBacklogLine {
 	 * screen saying it was would read a gift queued behind a backfill back as a failure that old.
 	 */
 	readonly oldestWaitingAt: string | null;
+	/**
+	 * every refund, dispute or what puts one back that waits on a gift given up on, with that gift,
+	 * ordered by the reversal's entry group.
+	 *
+	 * none of them is tried until the gift is sent, so none is counted in {@link failed} and none has
+	 * an error of its own: a retry that sends the gift sends each one after it, and a gift recorded
+	 * in QuickBooks by hand instead leaves each one to be recorded there by hand too. a console reads
+	 * it as empty from a deployment older than itself, which names none.
+	 */
+	readonly heldBehindFailed: readonly QuickbooksHeldReversal[];
+}
+
+/** a reversal waiting in the queue, and the gift it waits on — each by its entry group's id. */
+export interface QuickbooksHeldReversal {
+	readonly entryGroupId: string;
+	readonly waitsOn: string;
 }
 
 /** everything the screen draws, in one read. */

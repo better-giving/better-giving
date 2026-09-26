@@ -59,7 +59,7 @@ const company = (over: Partial<QuickbooksCompany> = {}): QuickbooksCompany => ({
 const report = (over: Partial<QuickbooksReport> = {}): QuickbooksReport => ({
 	connection: company(),
 	accounts: { state: 'read', accounts: CHART },
-	backlog: { failed: 0, oldestWaitingAt: null },
+	backlog: { failed: 0, oldestWaitingAt: null, heldBehindFailed: [] },
 	callbackAddress: 'https://give.example.org/quickbooks/callback',
 	...over
 });

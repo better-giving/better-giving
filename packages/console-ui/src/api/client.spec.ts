@@ -4,6 +4,7 @@ import {
 	consoleVersion,
 	levelWallets,
 	pressQuickbooks,
+	readQuickbooks,
 	readZapier,
 	repairWebhook,
 	saveNowpayments,
@@ -279,5 +280,41 @@ describe('the preview of a move of the date QuickBooks syncs gifts from', () => 
 					pressed.report.drops.reversals
 				]
 		).toEqual([2, 5]);
+	});
+});
+
+describe('the reading of where the books stand', () => {
+	const reading = (backlog: object) => ({
+		kind: 'read',
+		report: {
+			connection: { state: 'disconnected' },
+			accounts: null,
+			backlog,
+			callbackAddress: 'https://give.example.org/quickbooks/callback'
+		}
+	});
+
+	it('holds no refund behind a gift where a deployment older than this console reports none', async () => {
+		answering(200, reading({ failed: 1, oldestWaitingAt: '2026-02-01T00:00:00.000Z' }));
+
+		const read = await readQuickbooks();
+
+		expect(read.kind === 'read' && read.report.backlog).toEqual({
+			failed: 1,
+			oldestWaitingAt: '2026-02-01T00:00:00.000Z',
+			heldBehindFailed: []
+		});
+	});
+
+	it('keeps every held refund a deployment does report', async () => {
+		const held = [{ entryGroupId: 'refund-group', waitsOn: 'gift-group' }];
+		answering(
+			200,
+			reading({ failed: 1, oldestWaitingAt: '2026-02-01T00:00:00.000Z', heldBehindFailed: held })
+		);
+
+		const read = await readQuickbooks();
+
+		expect(read.kind === 'read' && read.report.backlog.heldBehindFailed).toEqual(held);
 	});
 });

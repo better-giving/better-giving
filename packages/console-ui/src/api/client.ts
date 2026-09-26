@@ -30,7 +30,10 @@ import type {
 	ZapierPressed,
 	ZapierRead
 } from './types';
-import type { QuickbooksStartAtSide } from '@better-giving/operator/console/quickbooks';
+import type {
+	QuickbooksBacklogLine,
+	QuickbooksStartAtSide
+} from '@better-giving/operator/console/quickbooks';
 import type { ZapierReport } from '@better-giving/operator/console/zapier';
 
 // the console's own process, reached from the page it serves.
@@ -214,7 +217,16 @@ export const setUpRecurring = (): Promise<RecurringSetup> => ask('/deployment/re
  * its own D1 and the chart of accounts is read with them, so this console holds no Intuit
  * credential and asks Intuit nothing.
  */
-export const readQuickbooks = (): Promise<QuickbooksRead> => ask('/deployment/quickbooks', 'GET');
+export async function readQuickbooks(): Promise<QuickbooksRead> {
+	const read = await ask<QuickbooksRead>('/deployment/quickbooks', 'GET');
+	if (read.kind !== 'read') return read;
+	// a deployment older than this console names no refund held behind a gift, and the binary
+	// passes `backlog` through as it came.
+	const { backlog } = read.report;
+	return { ...read, report: { ...read.report, backlog: { ...NOTHING_HELD, ...backlog } } };
+}
+
+const NOTHING_HELD: Pick<QuickbooksBacklogLine, 'heldBehindFailed'> = { heldBehindFailed: [] };
 
 /**
  * one press over that connection.

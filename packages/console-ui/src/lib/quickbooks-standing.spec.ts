@@ -126,7 +126,7 @@ const company = (over: Partial<QuickbooksCompany> = {}): QuickbooksCompany => ({
 const report = (over: Partial<QuickbooksReport> = {}): QuickbooksReport => ({
 	connection: company(),
 	accounts: { state: 'read', accounts: CHART },
-	backlog: { failed: 0, oldestWaitingAt: null },
+	backlog: { failed: 0, oldestWaitingAt: null, heldBehindFailed: [] },
 	callbackAddress: 'https://give.example.org/quickbooks/callback',
 	...over
 });
@@ -555,13 +555,20 @@ describe('how long the oldest has waited', () => {
 describe('the backlog speaks only where a gift was given up on', () => {
 	it('says nothing at all where none was, however many are still on their way', () => {
 		expect(
-			backlogStands(report({ backlog: { failed: 0, oldestWaitingAt: NOW.toISOString() } }), NOW)
+			backlogStands(
+				report({
+					backlog: { failed: 0, oldestWaitingAt: NOW.toISOString(), heldBehindFailed: [] }
+				}),
+				NOW
+			)
 		).toBeNull();
 	});
 
 	it('names how many were given up on and how far behind the books are', () => {
 		const stands = backlogStands(
-			report({ backlog: { failed: 3, oldestWaitingAt: '2026-09-16T12:00:00.000Z' } }),
+			report({
+				backlog: { failed: 3, oldestWaitingAt: '2026-09-16T12:00:00.000Z', heldBehindFailed: [] }
+			}),
 			NOW
 		);
 		expect(stands).toEqual({ failed: 3, waited: '4\u00a0days' });
@@ -574,7 +581,7 @@ describe('the backlog speaks only where a gift was given up on', () => {
 			report({
 				connection: { state: 'disconnected' },
 				accounts: null,
-				backlog: { failed: 3, oldestWaitingAt: '2026-09-16T12:00:00.000Z' }
+				backlog: { failed: 3, oldestWaitingAt: '2026-09-16T12:00:00.000Z', heldBehindFailed: [] }
 			}),
 			NOW
 		);
