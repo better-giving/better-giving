@@ -57,6 +57,7 @@ import {
 	stepsStand,
 	backlogSays,
 	backlogStands,
+	heldSays,
 	connectAddress,
 	credentialsPhase,
 	credentialsStands,
@@ -571,7 +572,45 @@ describe('the backlog speaks only where a gift was given up on', () => {
 			}),
 			NOW
 		);
-		expect(stands).toEqual({ failed: 3, waited: '4\u00a0days' });
+		expect(stands).toEqual({ failed: 3, waited: '4\u00a0days', held: null });
+	});
+
+	it('counts the refunds waiting behind a gift given up on, and the gifts they wait on', () => {
+		const stands = backlogStands(
+			report({
+				backlog: {
+					failed: 2,
+					oldestWaitingAt: '2026-09-16T12:00:00.000Z',
+					heldBehindFailed: [
+						{ entryGroupId: 'r1', waitsOn: 'g1' },
+						{ entryGroupId: 'r2', waitsOn: 'g1' },
+						{ entryGroupId: 'r3', waitsOn: 'g2' }
+					]
+				}
+			}),
+			NOW
+		);
+		expect(stands).toEqual({
+			failed: 2,
+			waited: '4\u00a0days',
+			held: { refunds: 3, gifts: 2 }
+		});
+	});
+
+	it('says nothing of held refunds where no company is connected either', () => {
+		const stands = backlogStands(
+			report({
+				connection: { state: 'disconnected' },
+				accounts: null,
+				backlog: {
+					failed: 1,
+					oldestWaitingAt: '2026-09-16T12:00:00.000Z',
+					heldBehindFailed: [{ entryGroupId: 'r1', waitsOn: 'g1' }]
+				}
+			}),
+			NOW
+		);
+		expect(stands).toBeNull();
 	});
 
 	it('says nothing where no company is connected, whatever the rows say', () => {
@@ -591,13 +630,35 @@ describe('the backlog speaks only where a gift was given up on', () => {
 	it('says the two figures separately, each as what it is', () => {
 		// the wait spans every gift still owed and the count is the given-up-on ones alone, so one
 		// sentence over both would report a healthy gift's wait as a failure's.
-		expect(backlogSays({ failed: 3, waited: '4 days' })).toBe(
+		expect(backlogSays({ failed: 3, waited: '4 days', held: null })).toBe(
 			'3 gifts didn’t sync. QuickBooks is 4 days behind.'
 		);
 	});
 
 	it('says one gift as one gift', () => {
-		expect(backlogSays({ failed: 1, waited: null })).toBe('1 gift didn’t sync.');
+		expect(backlogSays({ failed: 1, waited: null, held: null })).toBe('1 gift didn’t sync.');
+	});
+});
+
+describe('the refunds waiting behind a gift given up on', () => {
+	// none of them is counted in `failed` and none is tried until its gift is sent, so a gift
+	// recorded in QuickBooks by hand leaves each of its refunds to be recorded there by hand too.
+	it('says one refund behind one gift', () => {
+		expect(heldSays({ refunds: 1, gifts: 1 })).toBe(
+			'1 refund is waiting on a gift QuickBooks refused. If you record that gift in QuickBooks by hand, record its refund there by hand too.'
+		);
+	});
+
+	it('says several refunds behind one gift', () => {
+		expect(heldSays({ refunds: 3, gifts: 1 })).toBe(
+			'3 refunds are waiting on a gift QuickBooks refused. If you record that gift in QuickBooks by hand, record its refunds there by hand too.'
+		);
+	});
+
+	it('says refunds spread over several gifts', () => {
+		expect(heldSays({ refunds: 3, gifts: 2 })).toBe(
+			'3 refunds are waiting on gifts QuickBooks refused. If you record one of those gifts in QuickBooks by hand, record its refunds there by hand too.'
+		);
 	});
 });
 

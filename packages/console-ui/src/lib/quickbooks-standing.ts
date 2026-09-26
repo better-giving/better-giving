@@ -561,7 +561,15 @@ export function waitedSays(since: string | null, now: Date): string | null {
 }
 
 /** what the backlog has to say, or `null` where it has nothing: no gift was given up on. */
-export type BacklogStanding = { readonly failed: number; readonly waited: string | null };
+export type BacklogStanding = {
+	readonly failed: number;
+	readonly waited: string | null;
+	/** the refunds waiting behind those gifts, or `null` where none is. */
+	readonly held: HeldStanding | null;
+};
+
+/** how many refunds wait behind a gift given up on, and how many gifts they wait on between them. */
+export type HeldStanding = { readonly refunds: number; readonly gifts: number };
 
 /**
  * the backlog where it is worth a word, and `null` where it is not.
@@ -569,6 +577,11 @@ export type BacklogStanding = { readonly failed: number; readonly waited: string
  * working is the silent default, so a deployment whose gifts are going over says nothing at all —
  * and a gift merely waiting on a backoff is on its way. what speaks is a gift that was given up
  * on, which is also the whole of what the retry press acts on.
+ *
+ * the refunds held behind such a gift speak with it and never alone: each waits on a gift the
+ * same read counts in `failed` (`readQuickbooksBacklog` in
+ * packages/app/src/lib/server/accounting/backlog.ts reads both in one batch), so a held refund is
+ * never without a gift given up on to stand behind.
  *
  * **a deployment with no company connected says nothing either, whatever the rows hold.** the
  * backlog is read without a credential, so a deployment that has just disconnected still counts
@@ -579,9 +592,16 @@ export type BacklogStanding = { readonly failed: number; readonly waited: string
  */
 export function backlogStands(report: QuickbooksReport, now: Date): BacklogStanding | null {
 	if (report.connection.state !== 'connected') return null;
-	const { failed, oldestWaitingAt } = report.backlog;
+	const { failed, oldestWaitingAt, heldBehindFailed } = report.backlog;
 	if (failed < 1) return null;
-	return { failed, waited: waitedSays(oldestWaitingAt, now) };
+	const held =
+		heldBehindFailed.length === 0
+			? null
+			: {
+					refunds: heldBehindFailed.length,
+					gifts: new Set(heldBehindFailed.map((line) => line.waitsOn)).size
+				};
+	return { failed, waited: waitedSays(oldestWaitingAt, now), held };
 }
 
 /**
@@ -595,6 +615,22 @@ export function backlogStands(report: QuickbooksReport, now: Date): BacklogStand
 export function backlogSays({ failed, waited }: BacklogStanding): string {
 	const gifts = failed === 1 ? '1 gift didn’t sync' : `${failed} gifts didn’t sync`;
 	return waited === null ? `${gifts}.` : `${gifts}. QuickBooks is ${waited} behind.`;
+}
+
+/**
+ * the refunds waiting behind a gift given up on, in a fundraiser's words.
+ *
+ * the second sentence is the one the operator acts on. a held refund is tried only once its gift is
+ * sent, so a gift recorded in QuickBooks by hand rather than tried again sends none of its refunds,
+ * and each is theirs to record there too (`heldBehindFailed` in
+ * packages/operator/src/console/quickbooks.ts).
+ */
+export function heldSays({ refunds, gifts }: HeldStanding): string {
+	const waiting = refunds === 1 ? '1 refund is waiting' : `${refunds} refunds are waiting`;
+	const on = gifts === 1 ? 'a gift' : 'gifts';
+	const which = gifts === 1 ? 'that gift' : 'one of those gifts';
+	const its = refunds === 1 ? 'its refund' : 'its refunds';
+	return `${waiting} on ${on} QuickBooks refused. If you record ${which} in QuickBooks by hand, record ${its} there by hand too.`;
 }
 
 /** what the press that queues them again reports, at itself. */
