@@ -2155,6 +2155,26 @@ describe('settleDelivery() — a crypto gift valued at what arrived', () => {
 			expect(mail.sent.map((m) => m.to)).not.toContain('ada@example.org');
 		});
 
+		it('asks nobody to post the missing fee of a gift refunded in the same delivery', async () => {
+			await pendingCrypto();
+			const mail = mailer();
+
+			await settleDelivery(deps({ provider: refunded(), email: mail.port }), DELIVERY);
+
+			expect(mail.sent.filter((m) => m.subject.includes('no processor fee'))).toEqual([]);
+		});
+
+		it('still asks for the missing fee of a gift the same read reports standing', async () => {
+			await pendingCrypto();
+			const mail = mailer();
+
+			await settleDelivery(deps({ provider: nowpayments(), email: mail.port }), DELIVERY);
+
+			expect(
+				mail.sent.filter((m) => m.subject.includes('no processor fee')).map((m) => m.to)
+			).toEqual(['ops@hope.example']);
+		});
+
 		it('posts the refund of a gift settled and receipted on an earlier delivery, and tells the donor of it', async () => {
 			const gift = await pendingCrypto();
 			await settleDelivery(deps({ provider: nowpayments() }), DELIVERY);

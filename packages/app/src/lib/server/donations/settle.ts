@@ -191,9 +191,9 @@ import { sendTributeNotice } from './tribute-notice';
 // refund writer (`recordReversal` in ./reverse.ts), after any settlement that leaves the gift settled
 // here — this delivery's, or an earlier one's. the refund's id is its idempotency, so a redelivery,
 // or a refund its own notification already wrote, answers `already_posted`. a gift settled and
-// refunded in one delivery is receipted to nobody and nobody is sent word of its refund; a gift that
-// settled on an earlier delivery was receipted then, and its donor is sent the refund notice as for
-// any refund.
+// refunded in one delivery is receipted to nobody, nobody is sent word of its refund, and no operator
+// is asked to post a fee it arrived without; a gift that settled on an earlier delivery was receipted
+// then, and its donor is sent the refund notice as for any refund.
 //
 // ---------------------------------------------------------------------------
 // "three days" below is Stripe's and PayPal's redelivery window. NOWPayments sends a non-2xx again
@@ -1520,12 +1520,17 @@ async function unrecordedDeposit(
  * is refused by `entry_group_source_idx` and answered `already_posted` above, before this runs.
  */
 async function tellPeople(deps: SettleDeps, target: Target, settlement: Settlement): Promise<void> {
+	// a gift the same read reports sent back is no gift to thank anybody for, and nobody is told of
+	// it: not the donor, not the person they named, not the organisation (`refundCarried`) — nor an
+	// operator asked to post the fee of a gift that no longer stands.
+	if (settlement.alsoRefunded !== undefined) return;
+
 	if (settlement.feeMinor === null) {
 		// a figure that is genuinely absent rather than one this delivery arrived ahead of, and each
 		// adapter earns that for its own processor: ../payments/stripe.ts asks again inside the
 		// delivery and refuses it while the figure is still coming, and PayPal publishes the fee on
 		// the capture that carries it (`feeOf` in ../payments/paypal.ts), so a completed capture has
-		// it in the same answer. so this alert is unconditional rather than a guess at a race.
+		// it in the same answer. so this alert is no guess at a race.
 		const processor = processorLabel(deps);
 		await alert(deps, {
 			headline: 'A settled gift was posted with no processor fee',
@@ -1542,10 +1547,6 @@ async function tellPeople(deps: SettleDeps, target: Target, settlement: Settleme
 			action: missingFeeCorrection(processor)
 		});
 	}
-
-	// a gift the same read reports sent back is no gift to thank anybody for, and nobody is told of
-	// it: not the donor, not the person they named, not the organisation (`refundCarried`).
-	if (settlement.alsoRefunded !== undefined) return;
 
 	// a donor-advised fund gift was deducted when the donor funded their account, so the grant gets
 	// a thank-you in place of a receipt, stamped on the same column (./receipt.ts).
