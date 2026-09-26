@@ -316,7 +316,7 @@ func TestTheOtherErrandsReachTheirOwnAddress(t *testing.T) {
 				"startAt":            "2026-01-01T00:00:00.000Z",
 			},
 			"accounts":        map[string]any{"state": "read", "accounts": []any{}},
-			"backlog":         map[string]any{"failed": float64(0), "oldestWaitingAt": nil},
+			"backlog":         map[string]any{"failed": float64(0), "oldestWaitingAt": nil, "heldBehindFailed": []any{}},
 			"callbackAddress": "https://give.example.org/quickbooks/callback",
 		},
 		"POST /console/quickbooks":     map[string]any{"press": "connect", "url": "https://intuit.example"},
