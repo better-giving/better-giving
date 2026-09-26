@@ -61,8 +61,8 @@ import { readSendable } from './record';
 //
 // the claim also names the company connected as it takes the row, so no row an attempt may have
 // taken to Intuit reads as belonging to no company (`IN_THIS_COMPANY` in ./outbox.ts). the
-// answer then writes the company the adapter says it addressed, which a move landing mid-send can
-// make another; an attempt given back leaves a row nothing has sent naming none again.
+// answer then writes the company the adapter says it addressed, which is another where the
+// connection moved mid-send; an attempt given back leaves a row nothing has sent naming none again.
 //
 // ---------------------------------------------------------------------------
 // the three statuses, and every one a *run* writes is written here.
@@ -482,7 +482,7 @@ async function unclaimable(db: Db, entryGroupId: string): Promise<QueuedEntryRes
 	if (queued.awaiting === 1) {
 		return {
 			disposition: 'nothing_owed',
-			detail: `The journal entry ${entryGroupId} reverses one QuickBooks does not hold yet, and is sent once that one is.`
+			detail: `The journal entry ${entryGroupId} reverses one the connected QuickBooks company does not hold yet, and reaches QuickBooks only after that one does.`
 		};
 	}
 	return {

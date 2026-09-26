@@ -292,8 +292,7 @@ export type ReversalRecord = CorrectionRecord & {
 	readonly donor: Donor;
 	/**
 	 * the record already in the company's books that this one answers — the gift, or the withdrawal
-	 * being put back or settled up, or the gift a won dispute's settle-up keyed on it settles up: its
-	 * entry group id, and what the provider called it.
+	 * being put back or settled up: its entry group id, and what the provider called it.
 	 */
 	readonly answers: { readonly key: string; readonly remoteId: string };
 };

@@ -55,10 +55,10 @@ import type { Posting } from '../ledger/posting';
 // won, `('adjustment', row)` answer the withdrawal; and the settle-up of a dispute won whose
 // opening was never recorded, `('adjustment', gift's row)`, answers the gift `('payment', row)`
 // itself. it is owed exactly where that group holds this company's queue row, in any status — so a
-// refund of a gift QuickBooks was sent is sent after it whatever day it lands, and one of a gift
-// QuickBooks never got, or that went to a company no longer connected (`quickbooks_sync.realm_id`,
-// written by ./deliver.ts), is never sent. a hand correction names no
-// gift, so its own date is the whole of its rule.
+// refund of a gift queued for this company is sent after it whatever day it lands, and one of a
+// gift never queued, or that went to a company no longer connected (`quickbooks_sync.realm_id`,
+// written by ./deliver.ts), is not queued. a hand correction names no gift, so its own date is the
+// whole of its rule.
 //
 // **the date decides the queue whenever it moves, not only as a gift settles.** a gift is judged
 // by the date as it stands when its batch commits, and moving the date judges every gift again by
