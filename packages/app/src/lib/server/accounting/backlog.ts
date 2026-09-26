@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
 import { entryGroup, quickbooksSync } from '../db/schema';
-import { giftBehind, keyedOnARefund } from './outbox';
+import { giftOf, isReversal } from './outbox';
 
 // what the console says about the queue, and the one press an operator has over it.
 //
@@ -35,7 +35,8 @@ export interface QuickbooksBacklog {
 	 */
 	readonly oldestWaitingAt: Date | null;
 	/**
-	 * every refund, dispute or what puts one back that waits on a gift given up on, with that gift.
+	 * every refund, dispute, what puts one back or settles one up that waits on a gift given up on,
+	 * with that gift.
 	 *
 	 * none of them is tried until the gift is sent (./deliver.ts), so none has an error of its own to
 	 * show, and a gift an operator recorded in QuickBooks by hand instead of retrying leaves each one
@@ -57,10 +58,11 @@ const giftRow = alias(quickbooksSync, 'gift_row');
 
 /**
  * the queue, in one batch: two aggregates over the index the sweep already has, and the reversals
- * held behind a gift given up on — every reversal is keyed on a refund row whose parent is the gift.
+ * held behind a gift given up on — each keyed on the gift's own payment row or a refund of it
+ * (`giftOf` in ./outbox.ts).
  */
 export async function readQuickbooksBacklog(db: Db): Promise<QuickbooksBacklog> {
-	const waitsOn = giftBehind(entryGroup.sourceId);
+	const waitsOn = giftOf(entryGroup.sourceId);
 	const [[row], held] = await db.batch([
 		db
 			.select({
@@ -82,7 +84,7 @@ export async function readQuickbooksBacklog(db: Db): Promise<QuickbooksBacklog> 
 			.where(
 				and(
 					eq(quickbooksSync.status, 'pending'),
-					keyedOnARefund(entryGroup.sourceId),
+					isReversal(entryGroup.sourceType, entryGroup.sourceId),
 					eq(giftRow.status, 'failed')
 				)
 			)

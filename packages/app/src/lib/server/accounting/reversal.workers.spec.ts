@@ -194,6 +194,19 @@ function dispute(
 	return kind === 'dispute_opened' ? { ...facts, kind, respondBy: null } : { ...facts, kind };
 }
 
+/** `dp_1` won on 2026-09-15, naming no fee given back, and none kept unless told otherwise. */
+function won(over: { readonly feeKeptMinor?: number | null } = {}): Reversal {
+	return {
+		kind: 'dispute_won',
+		reversedTxnId: 'pi_1',
+		providerReversalId: 'dp_1',
+		occurredAt: new Date('2026-09-15T00:00:00.000Z'),
+		reversedMetadata: {},
+		feeReturnedMinor: null,
+		...over
+	};
+}
+
 /** a reversal written through the writer's own seam, refusing to go on where it did not post. */
 async function reversed(reversal: Reversal): Promise<void> {
 	const result = await recordReversal(deps(), reversal, `evt_${reversal.providerReversalId}`);
@@ -402,6 +415,43 @@ describe('a dispute', () => {
 		]);
 	});
 
+	it('queues a won close’s settle-up of the fee kept where its withdrawal holds a queue row', async () => {
+		await connect(new Date('2026-01-01T00:00:00.000Z'));
+		await settledGift();
+		await reversed(dispute('dispute_opened', { feeMinor: null }));
+
+		await reversed(won({ feeKeptMinor: 1_500 }));
+
+		expect(await queued()).toEqual([
+			{ source_type: 'payment', direction: 'inbound', status: 'pending' },
+			{ source_type: 'refund', direction: 'refund', status: 'pending' },
+			{ source_type: 'adjustment', direction: 'refund', status: 'pending' },
+			{ source_type: 'payment', direction: 'refund', status: 'pending' }
+		]);
+	});
+
+	it('queues a won close’s settle-up of the fee kept where the gift holds a queue row, though no opening was heard', async () => {
+		await connect(new Date('2026-01-01T00:00:00.000Z'));
+		await settledGift();
+
+		await reversed(won({ feeKeptMinor: 1_500 }));
+
+		expect(await queued()).toEqual([
+			{ source_type: 'payment', direction: 'inbound', status: 'pending' },
+			{ source_type: 'adjustment', direction: 'inbound', status: 'pending' }
+		]);
+	});
+
+	it('queues no settle-up of the fee kept where no opening was heard and the gift holds no queue row', async () => {
+		await connect(new Date('2026-08-10T00:00:00.000Z'));
+		await settledGift();
+
+		await reversed(won({ feeKeptMinor: 1_500 }));
+
+		// the close is dated inside the start date, and a correction dated there would be queued.
+		expect(await queued()).toEqual([]);
+	});
+
 	it('queues no settle-up of a withdrawal QuickBooks never got', async () => {
 		await connect(new Date('2026-08-10T00:00:00.000Z'));
 		await settledGift();
@@ -519,6 +569,40 @@ describe('moving the start date', () => {
 			{ source_type: 'payment', direction: 'refund', status: 'pending' }
 		]);
 		expect(preview.drops).toMatchObject({ gifts: 0, reversals: 0 });
+	});
+
+	it('earlier, queues a gift together with its won close’s settle-up where no opening was heard', async () => {
+		await connect(AFTER_THE_GIFT);
+		await settledGift();
+		await reversed(won({ feeKeptMinor: 1_500 }));
+
+		const preview = await previewQuickbooksStartAt(db, BEFORE_THE_GIFT, NOW);
+		await moveQuickbooksStartAt(db, BEFORE_THE_GIFT, NOW);
+
+		expect(await queued()).toEqual([
+			{ source_type: 'payment', direction: 'inbound', status: 'pending' },
+			{ source_type: 'adjustment', direction: 'inbound', status: 'pending' }
+		]);
+		expect(preview.queues).toMatchObject({
+			gifts: 1,
+			corrections: 0,
+			reversals: 1,
+			earliest: SETTLED_AT,
+			latest: SETTLED_AT
+		});
+	});
+
+	it('later, drops an unsent gift together with its won close’s settle-up where no opening was heard', async () => {
+		await connect(BEFORE_THE_GIFT);
+		await settledGift();
+		await reversed(won({ feeKeptMinor: 1_500 }));
+
+		const preview = await previewQuickbooksStartAt(db, AFTER_THE_GIFT, NOW);
+		await moveQuickbooksStartAt(db, AFTER_THE_GIFT, NOW);
+
+		// the settle-up is dated after the new date; it goes because its gift does.
+		expect(await queued()).toEqual([]);
+		expect(preview.drops).toMatchObject({ gifts: 1, corrections: 0, reversals: 1 });
 	});
 
 	it('never queues a refund put back as a new gift, where the gift it answers stays unqueued', async () => {
@@ -841,6 +925,22 @@ describe('sending a reversal', () => {
 		]);
 	});
 
+	it('queues on a connect to the same company a won close’s settle-up made while it was disconnected, where no opening was heard', async () => {
+		await settledGift();
+		intuit();
+		await run();
+		await disconnectQuickbooks(db);
+		await reversed(won({ feeKeptMinor: 1_500 }));
+		await connect(new Date());
+
+		await queueOwedReversals(db, new Date());
+
+		expect(await queued()).toEqual([
+			{ source_type: 'payment', direction: 'inbound', status: 'sent' },
+			{ source_type: 'adjustment', direction: 'inbound', status: 'pending' }
+		]);
+	});
+
 	it('queues on a connect to another company nothing reversing a gift the first one holds', async () => {
 		await settledGift();
 		intuit();
@@ -909,6 +1009,66 @@ describe('sending a reversal', () => {
 			[STRIPE, 'Debit', 15, DONOR],
 			[INCOME, 'Credit', 100, DONOR],
 			[FEES, 'Credit', 15, null]
+		]);
+	});
+
+	it('sends a won close’s settle-up of the fee kept after its withdrawal, as a reversal against the gift’s customer', async () => {
+		await settledGift();
+		await reversed(dispute('dispute_opened', { feeMinor: null }));
+		await reversed(won({ feeKeptMinor: 1_500 }));
+		const posted = intuit();
+
+		await run();
+		await run();
+		await run();
+
+		expect(posted.map((entry) => entry.TxnDate)).toEqual([
+			'2026-08-03',
+			'2026-08-20',
+			'2026-09-15',
+			'2026-09-15'
+		]);
+		expect(posted.slice(2).map(sides)).toContainEqual([
+			[STRIPE, 'Credit', 15, DONOR],
+			[FEES, 'Debit', 15, null]
+		]);
+		expect((await queued()).map((row) => row.status)).toEqual(['sent', 'sent', 'sent', 'sent']);
+	});
+
+	it('sends a won close’s settle-up of the fee kept after its gift where no opening was heard, as a reversal against the gift’s customer', async () => {
+		await settledGift();
+		await reversed(won({ feeKeptMinor: 1_500 }));
+		const posted = intuit();
+
+		await run();
+		await run();
+
+		expect(posted.map((entry) => entry.TxnDate)).toEqual(['2026-08-03', '2026-09-15']);
+		expect(sides(posted[1])).toEqual([
+			[STRIPE, 'Credit', 15, DONOR],
+			[FEES, 'Debit', 15, null]
+		]);
+		expect(await queued()).toEqual([
+			{ source_type: 'payment', direction: 'inbound', status: 'sent' },
+			{ source_type: 'adjustment', direction: 'inbound', status: 'sent' }
+		]);
+	});
+
+	it('holds a won close’s settle-up where no opening was heard back while its gift’s row is unsent', async () => {
+		await settledGift();
+		await reversed(won({ feeKeptMinor: 1_500 }));
+		await env.DB.prepare(
+			`update quickbooks_sync set status = 'failed', attempts = 1
+			 where entry_group_id = (select id from entry_group where source_type = 'payment')`
+		).run();
+		const posted = intuit();
+
+		await run();
+
+		expect(posted).toEqual([]);
+		expect(await queued()).toEqual([
+			{ source_type: 'payment', direction: 'inbound', status: 'failed' },
+			{ source_type: 'adjustment', direction: 'inbound', status: 'pending' }
 		]);
 	});
 

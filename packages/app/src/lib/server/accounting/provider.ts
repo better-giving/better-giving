@@ -282,7 +282,8 @@ export type CorrectionRecord = {
 
 /**
  * money leaving a gift already sent, or coming back to it, as it goes over: a refund's or a
- * dispute's withdrawal, a withdrawal put back when it did not stand, and a lost dispute's settle-up.
+ * dispute's withdrawal, a withdrawal put back when it did not stand, and a dispute's settle-up at
+ * its close, lost or won.
  *
  * a correcting entry's lines, against the customer the record it answers was posted to. the donor as
  * their contact stands now is what the adapter finds a customer for where that record names none.
@@ -291,7 +292,8 @@ export type ReversalRecord = CorrectionRecord & {
 	readonly donor: Donor;
 	/**
 	 * the record already in the company's books that this one answers — the gift, or the withdrawal
-	 * being put back or settled up: its entry group id, and what the provider called it.
+	 * being put back or settled up, or the gift a won dispute's settle-up keyed on it settles up: its
+	 * entry group id, and what the provider called it.
 	 */
 	readonly answers: { readonly key: string; readonly remoteId: string };
 };

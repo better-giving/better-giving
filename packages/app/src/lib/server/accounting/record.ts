@@ -10,7 +10,7 @@ import {
 	type EntryLine
 } from '../ledger/queries';
 import { isProcessor } from '../payments/provider';
-import { keyedOnARefund, readAnswered } from './outbox';
+import { isReversal, readAnswered } from './outbox';
 import {
 	failed,
 	HOLDING_OF,
@@ -45,13 +45,15 @@ import {
 // group at all, and it is why a `fee` id arriving here is a defect rather than something to map.
 //
 // ---------------------------------------------------------------------------
-// a group keyed on a refund-direction row is a reversal, whatever its source type.
+// a reversal is read off the payment row its group is keyed on, before its source type.
 //
 // ../donations/reverse.ts posts a withdrawal under `('refund', row)`, puts one that did not stand
-// back under `('payment', row)`, and settles up a lost dispute under `('adjustment', row)`. read by
-// source type alone, the second would go over as a new gift and the third as a hand correction, so
-// the row is read first and all three go over as what they are: the lines they hold, each in its
-// role, against the gift's donor.
+// back under `('payment', row)`, and settles up a dispute at its close, lost or won, under
+// `('adjustment', row)` — or, for a win whose opening was never recorded, under
+// `('adjustment', the gift's own row)`. read by source type alone, what puts a withdrawal back
+// would go over as a new gift and every settle-up as a hand correction, which names no processor
+// for its 1020 line and is refused. so the pair is read first (`isReversal` in ./outbox.ts) and
+// each goes over as what it is: the lines it holds, each in its role, against the gift's donor.
 
 /**
  * which of the operator's roles each of this app's nine accounts stands for.
@@ -119,7 +121,7 @@ export async function readSendable(
 		);
 	}
 
-	if (group.sourceType !== 'fee' && (await isReversal(db, group.id))) {
+	if (await answersAnotherGroup(db, group.id)) {
 		return reversalOf(db, group);
 	}
 	if (group.sourceType === 'payment') return giftOf(db, group);
@@ -134,9 +136,9 @@ export async function readSendable(
 	);
 }
 
-async function isReversal(db: Db, entryGroupId: string): Promise<boolean> {
+async function answersAnotherGroup(db: Db, entryGroupId: string): Promise<boolean> {
 	const [row] = await db
-		.select({ reversal: sql<number>`${keyedOnARefund(entryGroup.sourceId)}` })
+		.select({ reversal: sql<number>`${isReversal(entryGroup.sourceType, entryGroup.sourceId)}` })
 		.from(entryGroup)
 		.where(eq(entryGroup.id, entryGroupId));
 	return row?.reversal === 1;
@@ -159,7 +161,7 @@ async function reversalOf(db: Db, group: EntryGroupListRow): Promise<AccountingR
 	if (donor === null) {
 		return failed(
 			'internal_error',
-			`The books hold a reversal against refund ${group.sourceId} and no gift behind it names a donor, so there is nobody to take it off. Nothing was sent.`
+			`The books hold a reversal against payment ${group.sourceId} and no gift behind it names a donor, so there is nobody to take it off. Nothing was sent.`
 		);
 	}
 	const lines = sidesOf(

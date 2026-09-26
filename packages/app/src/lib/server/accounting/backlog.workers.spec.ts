@@ -7,6 +7,7 @@ import { createDb, type Db } from '../db/client';
 import {
 	contact,
 	donation,
+	entryGroup,
 	payment,
 	quickbooksSync,
 	type QuickbooksSyncStatus
@@ -156,6 +157,36 @@ async function refundedGift(
 	return { gift: giftGroup, refund: refundGroup };
 }
 
+/**
+ * the settle-up of a dispute won whose opening was never recorded, on the gift in `giftGroup`:
+ * the fee the processor kept, keyed on the gift's own payment row, queued and waiting.
+ */
+async function settledUpOnGift(giftGroup: string): Promise<string> {
+	const [giftRow] = await db
+		.select({ sourceId: entryGroup.sourceId })
+		.from(entryGroup)
+		.where(eq(entryGroup.id, giftGroup));
+	if (giftRow === undefined) throw new Error(`no entry group ${giftGroup}`);
+	const settleUp = post({
+		sourceType: 'adjustment',
+		sourceId: giftRow.sourceId,
+		currency: 'USD',
+		occurredAt: NOW,
+		memo: null,
+		lines: [
+			{ accountId: postableId('processorFees'), amountMinor: 1_500 },
+			{ accountId: postableId('undepositedFunds'), amountMinor: -1_500 }
+		]
+	});
+	const id = settleUp.group.id;
+	if (id === undefined) throw new Error('post() minted no entry group id');
+	await db.batch([
+		...postingStatements(db, settleUp),
+		db.insert(quickbooksSync).values({ entryGroupId: id, createdAt: NOW, updatedAt: NOW })
+	]);
+	return id;
+}
+
 describe('the backlog the console reads', () => {
 	it('counts what was given up on and dates the oldest gift still owed', async () => {
 		await queued({ status: 'failed', minutesAgo: 90 });
@@ -188,6 +219,18 @@ describe('the backlog the console reads', () => {
 
 		expect(backlog.heldBehindFailed).toEqual([
 			{ entryGroupId: failedGift.refund, waitsOn: failedGift.gift }
+		]);
+	});
+
+	it('names a won dispute’s settle-up keyed on the gift itself as waiting on a gift given up on', async () => {
+		const failedGift = await refundedGift('failed');
+		const settleUp = await settledUpOnGift(failedGift.gift);
+
+		const backlog = await readQuickbooksBacklog(db);
+
+		expect(backlog.heldBehindFailed).toEqual([
+			{ entryGroupId: failedGift.refund, waitsOn: failedGift.gift },
+			{ entryGroupId: settleUp, waitsOn: failedGift.gift }
 		]);
 	});
 });

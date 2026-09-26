@@ -7,7 +7,8 @@ import {
 	entryGroup,
 	quickbooksConnection,
 	quickbooksSync,
-	type EntrySourceType
+	type EntrySourceType,
+	type PaymentDirection
 } from '../db/schema';
 import type { Posting } from '../ledger/posting';
 
@@ -48,13 +49,15 @@ import type { Posting } from '../ledger/posting';
 // `start_at` is queued.
 //
 // a reversal is judged by the group it answers instead (`ANSWERED_BY_SOURCE_TYPE` below), and its
-// own date decides nothing. every reversal's group is keyed on its refund-direction row
-// (../donations/reverse.ts): the withdrawal `('refund', row)` answers the gift `('payment', parent)`,
-// and what puts a withdrawal back `('payment', row)` or settles a lost dispute up
-// `('adjustment', row)` answers the withdrawal. it is owed exactly where that group holds this
-// company's queue row, in any status — so a refund of a gift QuickBooks was sent is sent after it whatever day it lands, and
-// one of a gift QuickBooks never got, or that went to a company no longer connected
-// (`quickbooks_sync.realm_id`, written by ./deliver.ts), is never sent. a hand correction names no
+// own date decides nothing. every reversal's group is keyed on a payment row
+// (../donations/reverse.ts): the withdrawal `('refund', row)` answers the gift `('payment', parent)`;
+// what puts a withdrawal back `('payment', row)` and a dispute's settle-up at its close, lost or
+// won, `('adjustment', row)` answer the withdrawal; and the settle-up of a dispute won whose
+// opening was never recorded, `('adjustment', gift's row)`, answers the gift `('payment', row)`
+// itself. it is owed exactly where that group holds this company's queue row, in any status — so a
+// refund of a gift QuickBooks was sent is sent after it whatever day it lands, and one of a gift
+// QuickBooks never got, or that went to a company no longer connected (`quickbooks_sync.realm_id`,
+// written by ./deliver.ts), is never sent. a hand correction names no
 // gift, so its own date is the whole of its rule.
 //
 // **the date decides the queue whenever it moves, not only as a gift settles.** a gift is judged
@@ -81,7 +84,8 @@ import type { Posting } from '../ledger/posting';
 // deliberately not one of them, because a processor's cut becomes a line on the record its sibling
 // `payment` group is sent as (./record.ts assembles the pair), and a row for it would send the same
 // money twice. `donation` is a source type nothing in this tree posts. whether a `payment` or an
-// `adjustment` group is a reversal is read off the row it is keyed on, never off its type.
+// `adjustment` group is a reversal is read off the payment row it is keyed on, never off its type
+// alone.
 
 /** the source type each kind of record owed to QuickBooks is posted under. */
 const OWED_KINDS = {
@@ -152,7 +156,7 @@ export function outboxStatements(
 					.where(
 						and(
 							eq(quickbooksConnection.id, CONNECTION_ID),
-							sql`case when ${keyedOnARefund(sql`${sourceId}`)}
+							sql`case when ${isReversal(sql`${sourceType}`, sql`${sourceId}`)}
 								then ${answeredIsQueued(sql`${sourceType}`, sql`${sourceId}`)}
 								else ${lte(quickbooksConnection.startAt, occurredAt)} end`
 						)
@@ -163,26 +167,23 @@ export function outboxStatements(
 	return statements;
 }
 
-/**
- * whether a group keyed on `sourceId` is a reversal's: each is keyed on its refund-direction row.
- * ./record.ts reads a queued group by this too, so the queue and the send cannot disagree on it.
- */
-export function keyedOnARefund(sourceId: SQLWrapper): SQL {
-	return sql`exists (select 1 from ${payment} where ${payment.id} = ${sourceId} and ${payment.direction} = 'refund')`;
-}
-
-// each group a fragment below reads beside another is aliased, and `from entry_group <alias>` is
+// each table a fragment below reads beside another is aliased, and `from entry_group <alias>` is
 // spelled out: drizzle renders an aliased table inside `sql` as its alias alone.
 const gift = alias(entryGroup, 'gift');
 const withdrawal = alias(entryGroup, 'withdrawal');
 const answered = alias(entryGroup, 'answered');
 const waiting = alias(entryGroup, 'waiting');
+const keyed = alias(payment, 'keyed');
 
-/** the id of the gift group behind refund row `sourceId`: `('payment', parent)`. */
-export function giftBehind(sourceId: SQLWrapper): SQL {
+/**
+ * the id of the gift group payment row `sourceId` belongs to: `('payment', row)` on the gift's own
+ * row, and `('payment', parent)` on a refund of it.
+ */
+export function giftOf(sourceId: SQLWrapper): SQL {
 	return sql`(select ${gift.id} from ${entryGroup} ${gift}
-		inner join ${payment} on ${payment.id} = ${sourceId} and ${payment.direction} = 'refund'
-		where ${gift.sourceType} = ${OWED_KINDS.gifts} and ${gift.sourceId} = ${payment.parentPaymentId})`;
+		inner join ${payment} on ${payment.id} = ${sourceId}
+		where ${gift.sourceType} = ${OWED_KINDS.gifts}
+			and ${gift.sourceId} = case ${payment.direction} when 'refund' then ${payment.parentPaymentId} else ${payment.id} end)`;
 }
 
 /** the id of the withdrawal group keyed on refund row `sourceId`: `('refund', row)`. */
@@ -192,27 +193,58 @@ function withdrawalOn(sourceId: SQLWrapper): SQL {
 }
 
 /**
- * what a reversal's group answers, by the source type it is posted under — every one keyed on its
- * refund-direction row. the withdrawal `('refund', row)` answers the gift behind it, and what puts a
- * withdrawal back `('payment', row)` or settles a lost dispute up `('adjustment', row)` answers the
- * withdrawal. ../books/writes.ts holds every reversal kind it composes to a key of this table, so a
- * kind posted under any other source type is a compile error there rather than a reversal the SQL
- * below answers with nothing.
+ * what a reversal's group answers, by the source type it is posted under and the direction of the
+ * payment row it is keyed on. a group whose pair is not here is no reversal: a gift, a hand
+ * correction keyed on an id minted for it, or a fee. ../donations/reverse.ts keys every reversal:
+ *
+ *   ('refund', refund row)          the withdrawal, answering the gift behind it.
+ *   ('payment', refund row)         what puts a withdrawal back, answering the withdrawal.
+ *   ('adjustment', refund row)      a dispute's settle-up at its close, lost or won, answering the
+ *                                   withdrawal.
+ *   ('adjustment', inbound row)     the settle-up of a dispute won whose opening was never
+ *                                   recorded — no withdrawal holds it — answering the gift itself.
+ *
+ * ../books/writes.ts holds every reversal kind it composes to a source type here, so a kind posted
+ * under any other is a compile error there rather than a reversal the SQL below answers with nothing.
  */
 export const ANSWERED_BY_SOURCE_TYPE = {
-	refund: giftBehind,
-	payment: withdrawalOn,
-	adjustment: withdrawalOn
-} as const satisfies Partial<Record<EntrySourceType, (sourceId: SQLWrapper) => SQL>>;
+	refund: { refund: giftOf },
+	payment: { refund: withdrawalOn },
+	adjustment: { refund: withdrawalOn, inbound: giftOf }
+} as const satisfies Partial<
+	Record<EntrySourceType, Partial<Record<PaymentDirection, (sourceId: SQLWrapper) => SQL>>>
+>;
 
 export type ReversalSourceType = keyof typeof ANSWERED_BY_SOURCE_TYPE;
 
+/** each pair {@link ANSWERED_BY_SOURCE_TYPE} holds, over the payment row aliased `keyed`. */
+const ANSWERED_PAIRS = Object.entries(ANSWERED_BY_SOURCE_TYPE).flatMap(([type, byDirection]) =>
+	Object.entries(byDirection).map(([direction, groupOf]) => ({ type, direction, groupOf }))
+);
+
+/**
+ * whether a group posted under `sourceType` on `sourceId` is a reversal's: its pair is one
+ * {@link ANSWERED_BY_SOURCE_TYPE} holds. ./record.ts reads a queued group by this too, so the queue
+ * and the send cannot disagree on it.
+ */
+export function isReversal(sourceType: SQLWrapper, sourceId: SQLWrapper): SQL {
+	const pairs = ANSWERED_PAIRS.map(
+		({ type, direction }) => sql`(${sourceType} = ${type} and ${keyed.direction} = ${direction})`
+	);
+	return sql`exists (select 1 from ${payment} ${keyed}
+		where ${keyed.id} = ${sourceId} and (${sql.join(pairs, sql` or `)}))`;
+}
+
+/** whether the entry group in scope is a reversal's. */
+const REVERSAL_IN_SCOPE = isReversal(entryGroup.sourceType, entryGroup.sourceId);
+
 /** the id of the group a reversal's group answers, rendered from {@link ANSWERED_BY_SOURCE_TYPE}. */
 function answeredGroupId(sourceType: SQLWrapper, sourceId: SQLWrapper): SQL {
-	const arms = Object.entries(ANSWERED_BY_SOURCE_TYPE).map(
-		([type, groupOf]) => sql`when ${type} then ${groupOf(sourceId)}`
+	const arms = ANSWERED_PAIRS.map(
+		({ type, direction, groupOf }) =>
+			sql`when ${sourceType} = ${type} and ${keyed.direction} = ${direction} then ${groupOf(sourceId)}`
 	);
-	return sql`case ${sourceType} ${sql.join(arms, sql` `)} end`;
+	return sql`(select case ${sql.join(arms, sql` `)} end from ${payment} ${keyed} where ${keyed.id} = ${sourceId})`;
 }
 
 /**
@@ -269,7 +301,7 @@ function answeredIsQueued(sourceType: SQLWrapper, sourceId: SQLWrapper): SQL {
 export function awaitingWhatItAnswers(entryGroupId: typeof quickbooksSync.entryGroupId): SQL {
 	return sql`exists (select 1 from ${entryGroup} ${waiting}
 		where ${waiting.id} = ${entryGroupId}
-			and ${keyedOnARefund(waiting.sourceId)}
+			and ${isReversal(waiting.sourceType, waiting.sourceId)}
 			and not exists (select 1 from ${quickbooksSync}
 				where ${quickbooksSync.entryGroupId} = ${answeredGroupId(waiting.sourceType, waiting.sourceId)}
 					and ${quickbooksSync.status} = 'sent' and ${IN_THIS_COMPANY}))`;
@@ -344,12 +376,12 @@ function keptWhateverTheDate(groupId: SQLWrapper, now: Date): SQL {
  */
 function owedFrom(boundary: SQL, now: Date): SQL {
 	const giftHoldsOne = sql`exists (select 1 from ${entryGroup} ${answered}
-		where ${answered.id} = ${giftBehind(entryGroup.sourceId)}
+		where ${answered.id} = ${giftOf(entryGroup.sourceId)}
 			and (${answered.occurredAt} >= ${boundary} or ${keptWhateverTheDate(answered.id, now)})
 			and not exists (select 1 from ${quickbooksSync}
 				where ${quickbooksSync.entryGroupId} = ${answered.id} and not ${IN_THIS_COMPANY}))`;
 	return sql`${boundary} is not null and case
-		when ${keyedOnARefund(entryGroup.sourceId)} then ${giftHoldsOne}
+		when ${REVERSAL_IN_SCOPE} then ${giftHoldsOne}
 		else ${entryGroup.occurredAt} >= ${boundary} end`;
 }
 
@@ -411,7 +443,7 @@ export async function queueOwedReversals(db: Db, now: Date): Promise<void> {
 				.from(entryGroup)
 				.where(
 					sql`${CONNECTED_REALM} is not null
-						and ${keyedOnARefund(entryGroup.sourceId)}
+						and ${REVERSAL_IN_SCOPE}
 						and not exists (select 1 from ${quickbooksSync} where ${quickbooksSync.entryGroupId} = ${entryGroup.id})
 						and ${answeredIsQueued(entryGroup.sourceType, entryGroup.sourceId)}`
 				)
@@ -427,7 +459,7 @@ export async function queueOwedReversals(db: Db, now: Date): Promise<void> {
 export type StartAtMoveSide = {
 	readonly gifts: number;
 	readonly corrections: number;
-	/** refunds and disputes, what put one back, and a lost dispute's settle-up. */
+	/** refunds and disputes, what put one back, and a dispute's settle-up, lost or won. */
 	readonly reversals: number;
 	readonly earliest: Date | null;
 	readonly latest: Date | null;
@@ -448,24 +480,20 @@ export type StartAtMove = {
  */
 const SIDE_FIELDS = {
 	gifts:
-		sql<number>`count(case when ${entryGroup.sourceType} = ${OWED_KINDS.gifts} and not ${keyedOnARefund(entryGroup.sourceId)} then 1 end)`.as(
+		sql<number>`count(case when ${entryGroup.sourceType} = ${OWED_KINDS.gifts} and not ${REVERSAL_IN_SCOPE} then 1 end)`.as(
 			'gifts'
 		),
 	corrections:
-		sql<number>`count(case when ${entryGroup.sourceType} = ${OWED_KINDS.corrections} and not ${keyedOnARefund(entryGroup.sourceId)} then 1 end)`.as(
+		sql<number>`count(case when ${entryGroup.sourceType} = ${OWED_KINDS.corrections} and not ${REVERSAL_IN_SCOPE} then 1 end)`.as(
 			'corrections'
 		),
-	reversals: sql<number>`count(case when ${keyedOnARefund(entryGroup.sourceId)} then 1 end)`.as(
-		'reversals'
-	),
-	earliest:
-		sql`min(case when not ${keyedOnARefund(entryGroup.sourceId)} then ${entryGroup.occurredAt} end)`
-			.mapWith(entryGroup.occurredAt)
-			.as('earliest'),
-	latest:
-		sql`max(case when not ${keyedOnARefund(entryGroup.sourceId)} then ${entryGroup.occurredAt} end)`
-			.mapWith(entryGroup.occurredAt)
-			.as('latest')
+	reversals: sql<number>`count(case when ${REVERSAL_IN_SCOPE} then 1 end)`.as('reversals'),
+	earliest: sql`min(case when not ${REVERSAL_IN_SCOPE} then ${entryGroup.occurredAt} end)`
+		.mapWith(entryGroup.occurredAt)
+		.as('earliest'),
+	latest: sql`max(case when not ${REVERSAL_IN_SCOPE} then ${entryGroup.occurredAt} end)`
+		.mapWith(entryGroup.occurredAt)
+		.as('latest')
 };
 
 const TOUCHES_NOTHING: StartAtMoveSide = {

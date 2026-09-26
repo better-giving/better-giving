@@ -69,8 +69,8 @@ export function correctionWrites(db: Db, correction: Posting): Writes {
 
 /**
  * money leaving a gift already in the books, or coming back to it, by the port's own kind of
- * reversal (`Reversal` in ../payments/provider.ts), and the settle-up of a dispute lost after it
- * opened.
+ * reversal (`Reversal` in ../payments/provider.ts), and the settle-up of a dispute's fee at its
+ * close, lost or won.
  *
  *   refund, dispute_opened,
  *   dispute_lost             — `('refund', refund row)`: the gift's lines reversed
