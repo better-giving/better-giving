@@ -1006,9 +1006,10 @@ function dayIn(form: HTMLFormElement): string {
  *
  * **the save asks the deployment what the move touches before it makes it.** a move earlier
  * queues every gift owed from the new day on and a move later skips the unsent ones before it,
- * each gift's refunds and disputes moving with it, so the press previews first and the move goes
- * only once that answer is read: straight away where it sends or skips nothing it would ask
- * about, and behind a confirm naming what it sends or skips where it does
+ * each gift's refunds and disputes moving with it — and a refund or dispute of a gift the books
+ * already hold, with no row of its own, is queued by a move in either direction. so the press
+ * previews first and the move goes only once that answer is read: straight away where it touches
+ * nothing it would ask about, and behind a confirm naming what it sends or skips where it does
  * (`startDateAsk` in ./quickbooks-standing.ts).
  */
 function StartDateForm({

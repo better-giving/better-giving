@@ -18,7 +18,8 @@ import Donations from './_app.admin.donations._index';
 //
 // it is not the browser spec CLAUDE.md bans over a dashboard screen: nothing here reads a computed
 // style. what a case names a class for is where a thing is drawn — which line the press stands on —
-// and never what it looks like there.
+// or which tone rung a `StatusWord` stands on, off its `adm-state--<tone>` class; never what either
+// looks like there.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

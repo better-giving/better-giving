@@ -52,8 +52,9 @@ export const RECURRING_STATUS_TONES: Record<RecurringPlanStatus, Tone> = {
 //
 // `disputed` is `attention`: the gift waits on the organisation's evidence before the processor's
 // deadline, then on the processor's ruling. not `blocker`, since nothing has been refused yet — a
-// loss reads `Refunded` on its own rung and a win reads as the gift did before. never `done`, since
-// the processor has already taken the money back out. ./status-tones.spec.ts holds the last.
+// loss reads as a refund does, on the refund states' rung, and a win reads as the gift did before.
+// never `done`, since the processor has already taken the money back out. ./status-tones.spec.ts
+// holds the last.
 export const DONATION_STATUS_TONES: Record<DonationStatus, Tone> = {
 	pending: 'attention',
 	completed: 'done',
