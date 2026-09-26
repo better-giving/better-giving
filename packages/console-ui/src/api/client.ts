@@ -30,6 +30,7 @@ import type {
 	ZapierPressed,
 	ZapierRead
 } from './types';
+import type { QuickbooksStartAtSide } from '@better-giving/operator/console/quickbooks';
 import type { ZapierReport } from '@better-giving/operator/console/zapier';
 
 // the console's own process, reached from the page it serves.
@@ -222,8 +223,23 @@ export const readQuickbooks = (): Promise<QuickbooksRead> => ask('/deployment/qu
  * opens it, and Intuit sends that browser back to the deployment — never to this console, which is
  * a binary on somebody's laptop Intuit cannot reach.
  */
-export const pressQuickbooks = (body: QuickbooksPressBody): Promise<QuickbooksPressed> =>
-	post('/deployment/quickbooks', body);
+export async function pressQuickbooks(body: QuickbooksPressBody): Promise<QuickbooksPressed> {
+	const pressed = await post<QuickbooksPressed>('/deployment/quickbooks', body);
+	if (pressed.kind !== 'reported' || pressed.report.press !== 'start-date-preview') return pressed;
+	// a deployment older than this console counts no reversals on either side of a move, and the
+	// binary passes the report through as it came.
+	const { queues, drops } = pressed.report;
+	return {
+		...pressed,
+		report: {
+			...pressed.report,
+			queues: { ...NO_REVERSALS, ...queues },
+			drops: { ...NO_REVERSALS, ...drops }
+		}
+	};
+}
+
+const NO_REVERSALS: Pick<QuickbooksStartAtSide, 'reversals'> = { reversals: 0 };
 
 /**
  * where this deployment's Zapier key stands, how many Zaps are listening on it, and how its

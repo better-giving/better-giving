@@ -3,6 +3,7 @@ import {
 	chariotRun,
 	consoleVersion,
 	levelWallets,
+	pressQuickbooks,
 	readZapier,
 	repairWebhook,
 	saveNowpayments,
@@ -235,5 +236,48 @@ describe('the reading of where the Zapier key stands', () => {
 		const read = await readZapier();
 
 		expect(read.kind === 'read' && read.report.listening.giftRefunded).toBe(3);
+	});
+});
+
+describe('the preview of a move of the date QuickBooks syncs gifts from', () => {
+	const side = (reversals?: number) => ({
+		gifts: 0,
+		corrections: 0,
+		...(reversals === undefined ? {} : { reversals }),
+		earliest: null,
+		latest: null
+	});
+	const previewing = (queues: object, drops: object) => ({
+		kind: 'reported',
+		report: { press: 'start-date-preview', startAt: '2026-01-01T00:00:00.000Z', queues, drops }
+	});
+	const press = { press: 'start-date-preview', startAt: '2026-01-01' } as const;
+
+	it('counts no reversal on either side where a deployment older than this console reports none', async () => {
+		answering(200, previewing(side(), side()));
+
+		const pressed = await pressQuickbooks(press);
+
+		expect(
+			pressed.kind === 'reported' &&
+				pressed.report.press === 'start-date-preview' && [
+					pressed.report.queues.reversals,
+					pressed.report.drops.reversals
+				]
+		).toEqual([0, 0]);
+	});
+
+	it('keeps the reversals a deployment does report', async () => {
+		answering(200, previewing(side(2), side(5)));
+
+		const pressed = await pressQuickbooks(press);
+
+		expect(
+			pressed.kind === 'reported' &&
+				pressed.report.press === 'start-date-preview' && [
+					pressed.report.queues.reversals,
+					pressed.report.drops.reversals
+				]
+		).toEqual([2, 5]);
 	});
 });
