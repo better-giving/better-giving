@@ -155,8 +155,9 @@ let db: Db;
 
 beforeEach(async () => {
 	db = createDb(env.DB);
-	// the lines before the group they hang off, and the queue before both: both are foreign keys,
-	// so any other order is a constraint violation rather than an empty table.
+	// the lines before the group they hang off, the queue before both, and a payment before its
+	// gift and the gift before its donor: each is a foreign key, so any other order is a constraint
+	// violation rather than an empty table.
 	for (const table of [
 		'quickbooks_sync',
 		'ledger_entry',

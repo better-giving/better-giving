@@ -229,8 +229,6 @@ it('draws no tracking id on a gift that has none', () => {
 });
 
 it('draws a disputed gift’s word in the tone of a gift waiting on somebody', () => {
-	// the word is the table's `StatusWord`, which carries its tone as `adm-state--<tone>`; what is
-	// held is which rung, and never what the rung looks like.
 	const root = screen([gift({ status: 'disputed' })]);
 	expect(cell(root, 'Status')).toBe('Disputed');
 	const word = root.querySelector('tbody .adm-state');

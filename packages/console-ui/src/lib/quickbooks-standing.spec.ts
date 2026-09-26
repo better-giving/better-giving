@@ -1402,7 +1402,7 @@ describe('what the press over the day asks before it moves', () => {
 
 	it('reads the side the move touches, and asks nothing where that side is empty', () => {
 		const busy = side(5, 1, '2026-06-03T00:00:00.000Z', '2026-06-04T00:00:00.000Z');
-		// the day decides what an earlier move queues and what a later one drops.
+		// an earlier move reads what it queues and a later one what it drops; the other side is ignored.
 		expect(startDateAsk('2026-06-01', RIVERBANK, { queues: NONE, drops: busy })).toBeNull();
 		expect(startDateAsk('2026-09-15', RIVERBANK, { queues: busy, drops: NONE })).toBeNull();
 	});

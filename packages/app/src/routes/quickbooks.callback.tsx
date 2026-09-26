@@ -38,10 +38,10 @@ import type { Route } from './+types/quickbooks.callback';
 // ($lib/server/accounting/provider.ts), so the order is fixed: check the `state`, take the realm off
 // the redirect, exchange, write. what comes after is the queue and a label.
 //
-// **a refund the books took while nothing was connected is queued as the connection is written.**
-// its own gate found no company, so a reconnect to the company holding its gift is the moment it is
-// owed there ($lib/server/accounting/outbox.ts's `queueOwedReversals`); against any other company
-// it queues nothing that company's books do not hold.
+// **a refund or dispute the books took while nothing was connected is queued once the connection
+// is written.** its own gate found no company, so a reconnect to the company holding its gift is the
+// moment it is owed there ($lib/server/accounting/outbox.ts's `queueOwedReversals`); against any
+// other company it queues nothing, because that company's books do not hold the gift.
 //
 // **the company's name is read afterwards and its failure changes nothing.** the connection is the
 // tokens and the realm; the name is what an operator reads to tell they connected the books they
