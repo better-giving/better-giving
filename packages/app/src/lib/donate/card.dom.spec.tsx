@@ -13,7 +13,7 @@ import type {
 import { CHARIOT_TAG } from '@better-giving/form/embed/chariot';
 import type { ChallengeSeam, TurnstileLike } from '@better-giving/form/embed/turnstile';
 import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from '@better-giving/form/parts';
-import { DEPOSIT_POLL_MS } from '@better-giving/form/machine';
+import { DEPOSIT_POLL_MS, MICRODEPOSIT_WINDOW_MS } from '@better-giving/form/machine';
 import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
 import { act, createRef } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -870,8 +870,15 @@ it('states the granted figures on the ending, not the ones the form showed', asy
 // one takeover giving way to another is no screen change, and it can take the control holding the
 // caret with it: Give and Authorize go to a wait that paints no primary.
 describe('where the caret goes when one takeover replaces another', () => {
-	const TAKEOVER_HEADING = 'section.takeover > h2';
-	const PRIMARY = 'section.takeover > button[part~="action"]';
+	// through the screen the card shows rather than the takeover's class: the card holds the section
+	// by ref, and these specs pass or fail on that ref alone.
+	function takeoverHeading(root: HTMLElement): HTMLElement {
+		return one(screen(root), ':scope > h2');
+	}
+
+	function takeoverPrimary(root: HTMLElement): HTMLElement {
+		return one(screen(root), ':scope > button[part~="action"]');
+	}
 
 	/** the deployment's quote endpoint, answering every request with `body`. */
 	function quoting(body: unknown): void {
@@ -917,24 +924,24 @@ describe('where the caret goes when one takeover replaces another', () => {
 
 	it('lands on the heading when Give on the correction screen hands the card to the wait', async () => {
 		const root = await donated(MOVED);
-		expect(one(root, TAKEOVER_HEADING).textContent).toBe(copy.CORRECTION_HEADING);
+		expect(takeoverHeading(root).textContent).toBe(copy.CORRECTION_HEADING);
 
-		await pressHeld(one(root, PRIMARY));
+		await pressHeld(takeoverPrimary(root));
 
-		expect(one(root, TAKEOVER_HEADING).textContent).toBe(copy.RESUMING_HEADING);
-		expect(one(root, PRIMARY).hidden).toBe(true);
-		expect(document.activeElement).toBe(one(root, TAKEOVER_HEADING));
+		expect(takeoverHeading(root).textContent).toBe(copy.RESUMING_HEADING);
+		expect(takeoverPrimary(root).hidden).toBe(true);
+		expect(document.activeElement).toBe(takeoverHeading(root));
 	});
 
 	it('lands on the heading when Authorize on the mandate hands the card to the wait', async () => {
 		const root = await donated(MANDATE);
-		expect(one(root, TAKEOVER_HEADING).textContent).toBe(copy.MANDATE_HEADING);
+		expect(takeoverHeading(root).textContent).toBe(copy.MANDATE_HEADING);
 
-		await pressHeld(one(root, PRIMARY));
+		await pressHeld(takeoverPrimary(root));
 
-		expect(one(root, TAKEOVER_HEADING).textContent).toBe(copy.RESUMING_HEADING);
-		expect(one(root, PRIMARY).hidden).toBe(true);
-		expect(document.activeElement).toBe(one(root, TAKEOVER_HEADING));
+		expect(takeoverHeading(root).textContent).toBe(copy.RESUMING_HEADING);
+		expect(takeoverPrimary(root).hidden).toBe(true);
+		expect(document.activeElement).toBe(takeoverHeading(root));
 	});
 
 	// after Give the wait has put the caret on the heading, and a heading's words replaced under a
@@ -947,8 +954,8 @@ describe('where the caret goes when one takeover replaces another', () => {
 					settle = resolve;
 				})
 		});
-		await pressHeld(one(root, PRIMARY));
-		const heading = one(root, TAKEOVER_HEADING);
+		await pressHeld(takeoverPrimary(root));
+		const heading = takeoverHeading(root);
 		expect(document.activeElement).toBe(heading);
 		expect(said(root)).toBe(copy.confirming('card'));
 
@@ -970,9 +977,41 @@ describe('where the caret goes when one takeover replaces another', () => {
 			{ confirm: async () => ({ paymentIntent: { status: 'processing' } }) }
 		);
 
-		expect(one(root, TAKEOVER_HEADING).textContent).toBe(copy.PROCESSING_HEADING);
-		expect(document.activeElement).toBe(one(root, TAKEOVER_HEADING));
+		expect(takeoverHeading(root).textContent).toBe(copy.PROCESSING_HEADING);
+		expect(document.activeElement).toBe(takeoverHeading(root));
 		expect(said(root)).toBe('');
+	});
+
+	// the flow closes the verification window on its own clock, under the caret the arrival put on
+	// the heading: focusing the node that holds focus says nothing, so the region says the new words.
+	it('says the window closing to a donor whose caret is on the heading', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		onTestFinished(() => {
+			vi.useRealTimers();
+		});
+		const root = await donated(
+			{ paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor: 2606 },
+			{
+				confirm: async () => ({
+					paymentIntent: {
+						status: 'requires_action',
+						next_action: { type: 'verify_with_microdeposits' }
+					}
+				})
+			}
+		);
+		const heading = takeoverHeading(root);
+		expect(heading.textContent).toBe(copy.VERIFY_HEADING);
+		expect(document.activeElement).toBe(heading);
+		expect(said(root)).toBe('');
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(MICRODEPOSIT_WINDOW_MS);
+		});
+
+		expect(heading.textContent).toBe(copy.EXPIRED_HEADING);
+		expect(document.activeElement).toBe(heading);
+		expect(said(root)).toBe(`${copy.EXPIRED_HEADING}.`);
 	});
 
 	// a resume boots onto a takeover and is replaced by its outcome a moment later, with the caret
@@ -996,7 +1035,7 @@ describe('where the caret goes when one takeover replaces another', () => {
 					answer = () => resolve({ paymentIntent: { status: 'succeeded' } });
 				})
 		});
-		expect(one(root, TAKEOVER_HEADING).textContent).toBe(copy.RESUMING_HEADING);
+		expect(takeoverHeading(root).textContent).toBe(copy.RESUMING_HEADING);
 		expect(document.activeElement).toBe(elsewhere);
 
 		await act(async () => {
@@ -1004,7 +1043,7 @@ describe('where the caret goes when one takeover replaces another', () => {
 			for (let at = 0; at < 20; at += 1) await Promise.resolve();
 		});
 
-		expect(one(root, TAKEOVER_HEADING).textContent).toBe(copy.SUCCESS_HEADING);
+		expect(takeoverHeading(root).textContent).toBe(copy.SUCCESS_HEADING);
 		expect(document.activeElement).toBe(elsewhere);
 	});
 
@@ -1029,14 +1068,14 @@ describe('where the caret goes when one takeover replaces another', () => {
 					answer = () => resolve({ paymentIntent: { status: 'processing' } });
 				})
 		});
-		expect(one(root, TAKEOVER_HEADING).textContent).toBe(copy.RESUMING_HEADING);
+		expect(takeoverHeading(root).textContent).toBe(copy.RESUMING_HEADING);
 
 		await act(async () => {
 			answer();
 			for (let at = 0; at < 20; at += 1) await Promise.resolve();
 		});
 
-		expect(one(root, TAKEOVER_HEADING).textContent).toBe(copy.PROCESSING_HEADING);
+		expect(takeoverHeading(root).textContent).toBe(copy.PROCESSING_HEADING);
 		expect(document.activeElement).toBe(elsewhere);
 		expect(said(root)).toBe(`${copy.PROCESSING_HEADING}.`);
 	});

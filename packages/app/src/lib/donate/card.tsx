@@ -385,6 +385,7 @@ function CheckoutCard({
 		give: useRef<HTMLHeadingElement | null>(null),
 		takeover: useRef<HTMLHeadingElement | null>(null)
 	};
+	const takeoverSection = useRef<HTMLElement | null>(null);
 
 	useEffect(() => {
 		deposit?.update(takeover.deposit);
@@ -393,8 +394,7 @@ function CheckoutCard({
 	// read in the render rather than in the effect below: the commit between them hides whatever this
 	// screen stops drawing, and a hidden node gives the caret up.
 	const caret = typeof document === 'undefined' ? null : document.activeElement;
-	const caretInTakeover =
-		caret !== null && headings.takeover.current?.closest('.takeover')?.contains(caret) === true;
+	const caretInTakeover = caret !== null && takeoverSection.current?.contains(caret) === true;
 	const withinTakeover = shown === 'takeover' && screen.current.shown === 'takeover';
 
 	/**
@@ -825,6 +825,7 @@ function CheckoutCard({
 						busy={busy}
 						receipt={inTakeover ? receipt : null}
 						headingRef={headings.takeover}
+						sectionRef={takeoverSection}
 						deposit={deposit?.root ?? null}
 						onPrimary={onPrimary}
 						onSecondary={onSecondary}
