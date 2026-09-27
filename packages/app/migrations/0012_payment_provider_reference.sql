@@ -1,0 +1,14 @@
+-- a payment carries the reference its processor shows for it, so staff can match a gift to the
+-- processor's own record after the processor stops answering for it — for Chariot, a grant's
+-- tracking ID. `payment` gains `provider_reference`, null where the processor gave none, never
+-- blank, and never on a row naming no provider. `src/lib/server/db/schema.ts` argues the column
+-- beside it.
+--
+-- no table is rebuilt: a native `ADD COLUMN` with both checks on the column, which sqlite tests
+-- against every row already there, and every one holds null. a rebuild's copy step would select
+-- `provider_reference` from the old table, which D1's double-quoted-literal fallback reads as the
+-- text `provider_reference` in every row. the checks are unqualified, so they survive a later
+-- rename of the table.
+--
+-- no backfill: a row already written has no reference stored anywhere to copy.
+ALTER TABLE `payment` ADD `provider_reference` text CONSTRAINT "payment_provider_reference_not_blank_check" CHECK("provider_reference" is null or trim("provider_reference", char(32, 9, 10, 11, 12, 13, 160)) <> '') CONSTRAINT "payment_provider_reference_needs_provider_check" CHECK("provider_reference" is null or "provider" is not null);

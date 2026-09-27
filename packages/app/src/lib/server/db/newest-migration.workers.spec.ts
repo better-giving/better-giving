@@ -391,6 +391,40 @@ describe('0011 records the company a row already sent went to', () => {
 	});
 });
 
+// what 0012 is for: every payment already written arrives with no reference, and the seeded
+// chariot row takes its grant's tracking ID once the column is there.
+describe('0012 gives a payment already written a place for its processor reference', () => {
+	let references: Row[];
+
+	beforeAll(async () => {
+		if (nowhereToStop) return;
+		const { after } = await migrateOverSeed();
+		references = (after.get('payment') ?? []).map((r) => ({
+			id: r.id,
+			provider_reference: r.provider_reference
+		}));
+	});
+
+	it.skipIf(nowhereToStop)('leaves every seeded payment holding none', () => {
+		expect(references).toEqual(
+			['p-card', 'p-refund', 'p-venmo', 'p-daf', 'p-cash', 'p-unknown'].map((id) => ({
+				id,
+				provider_reference: null
+			}))
+		);
+	});
+
+	it.skipIf(nowhereToStop)('stores a tracking ID on the seeded chariot row', async () => {
+		await db()
+			.prepare(`update payment set provider_reference = 'TRK-probe' where id = 'p-daf'`)
+			.run();
+		const row = await db()
+			.prepare(`select provider_reference as r from payment where id = 'p-daf'`)
+			.first();
+		expect(row).toEqual({ r: 'TRK-probe' });
+	});
+});
+
 // a key minted before 0007 stored it has nothing for the console to show, so 0008 drops its row and
 // ends every Zap on it the way a replace ends them. the seed above holds a stored key, so this
 // clears it and runs 0008 again, one batch, the way wrangler applies a file.
