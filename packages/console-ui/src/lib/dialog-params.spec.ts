@@ -66,6 +66,36 @@ describe('whether a console screen reads again', () => {
 		expect(consoleRereads(pressed('/payments/stripe', '/payments/stripe?close'))).toBe(false);
 	});
 
+	it('does not over a site list the deployment turned down', () => {
+		const refused = { kind: 'refused', message: 'Each site is an address.', fix: null };
+		const blocked = { kind: 'blocked', message: 'Two forms list it.', fix: null, inUse: [] };
+
+		expect(consoleRereads(posted('/sites', '/sites', { sites: { written: refused } }))).toBe(false);
+		expect(consoleRereads(posted('/sites', '/sites', { sites: { written: blocked } }))).toBe(false);
+	});
+
+	it('does over a site list that was stored', () => {
+		const written = { kind: 'saved', sites: ['https://riverbank.org'] };
+
+		expect(consoleRereads(posted('/sites', '/sites', { sites: { written } }))).toBe(true);
+	});
+
+	it('does not over mail credentials refused before anything was sent', () => {
+		const secrets = { group: 'mail', errors: { SMTP_HOST: 'Add the host.' } };
+
+		expect(consoleRereads(posted('/smtp', '/smtp', { secrets }))).toBe(false);
+	});
+
+	it('does over mail credentials that were stored', () => {
+		const secrets = { group: 'mail', written: { kind: 'set' } };
+
+		expect(consoleRereads(posted('/smtp', '/smtp', { secrets }))).toBe(true);
+	});
+
+	it('does not over a test send to an address the binary turned down', () => {
+		expect(consoleRereads(posted('/smtp', '/smtp', { test: { kind: 'bad-address' } }))).toBe(false);
+	});
+
 	it('leaves every other navigation to the router', () => {
 		expect(consoleRereads(posted('/sites', '/sites', { sites: {} }))).toBe(true);
 		expect(consoleRereads({ ...pressed('/sites', '/smtp'), defaultShouldRevalidate: false })).toBe(
