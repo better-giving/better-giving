@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { estimateDeductedFee, estimateFee } from '@better-giving/form/fee';
 import type { ApiErrorCode, Deposit, FormConfig, Frequency, Quote } from '@better-giving/form/v1';
+import { formatMinor } from '../../donations/money';
 import { majorText } from '../../forms/amounts';
 import type { TurnstileCheck, TurnstileResult } from '../api/turnstile';
 import type { Db } from '../db/client';
@@ -819,24 +820,27 @@ async function mintGrant(
 		);
 	}
 
+	// the amount and the day as the donations screen's Amount and Received columns print them.
+	const amount = formatMinor(total, 'USD');
+	const receivedOn = new Date().toISOString().slice(0, 10);
 	later(
 		deps,
 		alert(deps, {
 			headline: 'A donor-advised fund grant was created with no gift recorded against it',
 			body:
 				'Chariot created the grant and the gift could not be written here, so the donor was told ' +
-				'it did not go through. If they tried again with the same session, the gift is recorded ' +
-				'against this grant and nothing more is needed. If not, the fund will still pay the grant, ' +
-				'and nothing in this deployment will record it when it does.',
+				'it did not go through. If they tried again with the same session and it went through, ' +
+				'the gift is recorded against this grant and nothing more is needed. If not, the fund ' +
+				'will still pay the grant, and nothing in this deployment will record it when it does.',
 			facts: [
 				{ label: 'Grant', value: created.value.providerTxnId },
-				{ label: 'Amount', value: `$${majorText(total, 'USD')}` },
+				{ label: 'Amount', value: amount },
 				{ label: 'Reason', value: written.detail }
 			],
 			action:
-				`Open grant ${created.value.providerTxnId} in the Chariot dashboard and note its tracking ` +
-				'ID. Look for a gift with that tracking ID in the dashboard here, and record the gift by ' +
-				'hand only if none is there.'
+				`Look in the dashboard here for a donor-advised fund gift of ${amount} received on or ` +
+				`after ${receivedOn}. One showing no tracking ID may still be this grant’s gift, so ` +
+				'count it. Record the gift by hand only if no such gift is there.'
 		})
 	);
 	return refuse(

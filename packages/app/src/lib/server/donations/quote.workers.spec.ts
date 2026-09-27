@@ -1613,15 +1613,21 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 	/**
 	 * the donor was answered 500 and may press again with the same session, which records the gift
 	 * against the grant Chariot already holds — a hand entry made on top of that is the gift twice.
+	 * the dashboard draws a gift's tracking ID only some of the time, so the match is on what every
+	 * row shows: its amount and the day it was received.
 	 */
-	it('tells an operator to look here for the grant’s gift before recording one by hand', async () => {
+	it('tells an operator to look here for a gift of the grant’s amount and date before recording one by hand', async () => {
+		const before = new Date().toISOString().slice(0, 10);
 		const { mail } = await mintGrantWithNoGift();
+		const after = new Date().toISOString().slice(0, 10);
 
 		// the plain-text arm wraps long lines, and the facts print above the action.
 		const text = (mail.sent[0]?.text ?? '').replace(/\s+/g, ' ');
 		const action = text.slice(text.indexOf('What to do:'));
-		expect(action).toContain(GRANT_ID);
-		expect(action).toContain('dashboard here');
+		expect(action).toContain('$103.00');
+		expect([before, after].some((day) => action.includes(day))).toBe(true);
+		expect(action).toContain('no tracking ID');
+		expect(action.indexOf('dashboard here')).toBeGreaterThan(-1);
 		expect(action.indexOf('dashboard here')).toBeLessThan(action.indexOf('by hand'));
 	});
 
