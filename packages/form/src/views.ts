@@ -268,6 +268,40 @@ function holdsCaret(node: Element): boolean {
 }
 
 /**
+ * every shadow root a card has been painted in, which is how one card tells another holding the
+ * caret.
+ *
+ * module-wide because every element on a page runs this one module, whichever tag defined it.
+ */
+const cardRoots = new WeakSet<Node>();
+
+/**
+ * whether the caret is in a card other than the one painted in `own`, as far as the page lets it
+ * be followed.
+ *
+ * the search starts in the scope `own`'s host stands in, which this card can always read, and
+ * climbs a scope at a time until one holds the caret. from there it follows open shadow roots down
+ * — every card's is open — and walks back up past hosts, so a caret in another card's payment
+ * fields, which are that host's own light dom, counts as in that card. a card inside a closed root
+ * this one does not also stand in is out of sight, and reads as the host page.
+ */
+function caretInAnotherCard(own: ShadowRoot): boolean {
+	let scope: Node = own.host.getRootNode();
+	let caret = (scope as Document | ShadowRoot).activeElement;
+	while (caret === null && 'host' in scope) {
+		scope = (scope as ShadowRoot).host.getRootNode();
+		caret = (scope as Document | ShadowRoot).activeElement;
+	}
+	while (caret?.shadowRoot?.activeElement) caret = caret.shadowRoot.activeElement;
+	for (let node: Node | null = caret; node !== null; ) {
+		const shadow = (node as Partial<Element>).shadowRoot;
+		if (shadow != null && shadow !== own && cardRoots.has(shadow)) return true;
+		node = node.parentNode ?? (node as Partial<ShadowRoot>).host ?? null;
+	}
+	return false;
+}
+
+/**
  * who a donor on a given rail is waiting on, which is four answers rather than eight.
  *
  * the wallets are a card presented differently and wait on the same issuer; the two hosted-window
@@ -2598,6 +2632,7 @@ export function createCard(
 
 	function update(api: DomApi): void {
 		current = api;
+		if (!painted) cardRoots.add(root.getRootNode());
 		const step = visibleStep(api, shown);
 		const busy = api.continueButton['aria-busy'];
 		const screen = step === 'takeover' ? takeoverFor(api.state, config, money) : BLANK;
@@ -2624,7 +2659,8 @@ export function createCard(
 		// caret with it: Give and Authorize go to a wait that paints no primary, and the address
 		// block leaves with whatever Copy held it. taken back only from inside the takeover — a resume
 		// boots onto one and is replaced by its outcome with the caret still on the host page. the
-		// caret is read before the patch hides anything, because a hidden node gives it up.
+		// caret is read before the patch hides anything, because a hidden node gives it up
+		// (`takes the caret off a control the moment it is hidden` in ./element.browser.spec.ts).
 		const within = step === 'takeover' && shownBefore === 'takeover';
 		const caretInTakeover = within && holdsCaret(takeover);
 		const newHeading = within && screen.heading !== drawnHeading;
@@ -2632,8 +2668,13 @@ export function createCard(
 			caretInTakeover && (newHeading || (screen.primary?.label ?? null) !== drawnPrimary);
 		// a new heading the caret does not arrive on is read by nobody, so the region says it: the
 		// caret already on the heading, where focusing it again says nothing, or off the takeover,
-		// where nothing moves it.
-		const retitled = newHeading && (!caretInTakeover || holdsCaret(takeoverHeading));
+		// where nothing moves it — unless it is in another card on the page, whose donor is busy
+		// with that one.
+		const retitled =
+			newHeading &&
+			(caretInTakeover
+				? holdsCaret(takeoverHeading)
+				: !caretInAnotherCard(takeover.getRootNode() as ShadowRoot));
 		drawnHeading = screen.heading;
 		drawnPrimary = screen.primary?.label ?? null;
 		if (step !== shown) moved = true;
