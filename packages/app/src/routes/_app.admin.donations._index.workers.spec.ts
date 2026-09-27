@@ -193,6 +193,7 @@ async function attempt(
 		coin?: string | null;
 		coinAmount?: string | null;
 		parentPaymentId?: string | null;
+		providerReference?: string | null;
 	} = {}
 ) {
 	const {
@@ -202,13 +203,14 @@ async function attempt(
 		status = 'succeeded',
 		coin = null,
 		coinAmount = null,
-		parentPaymentId = null
+		parentPaymentId = null,
+		providerReference = null
 	} = over;
 	await env.DB.prepare(
 		`insert into payment (id, donation_id, amount_minor, currency, direction, method, status,
 		                      provider, provider_txn_id, occurred_at, created_at, coin, coin_amount,
-		                      parent_payment_id)
-		 values (?, ?, 12345, 'USD', 'inbound', ?, ?, ?, ?, 0, 0, ?, ?, ?)`
+		                      parent_payment_id, provider_reference)
+		 values (?, ?, 12345, 'USD', 'inbound', ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)`
 	)
 		.bind(
 			id,
@@ -219,7 +221,8 @@ async function attempt(
 			provider === null ? null : `txn_${id}`,
 			coin,
 			coinAmount,
-			parentPaymentId
+			parentPaymentId,
+			providerReference
 		)
 		.run();
 }
@@ -547,9 +550,9 @@ describe('/admin/donations load', () => {
 		expect((await runLoad()).donations[0]?.paidWith).toBeNull();
 	});
 
-	it('reads the tracking id of a grant still on its way from Chariot', async () => {
+	it('reads the tracking id of a grant still on its way from Chariot, where none is stored', async () => {
 		// the organisation marks a grant received in Chariot's dashboard, matching the fund's payment
-		// by this id. the id is not stored: the processor holds it for as long as it holds the grant.
+		// by this id. a grant written before the id was stored is asked about live.
 		const id = await gift();
 		await attempt(id, { method: 'daf', provider: 'chariot', status: 'pending' });
 		const { reads } = chariotAnswers((grantId) =>
@@ -600,6 +603,39 @@ describe('/admin/donations load', () => {
 		const { donations } = await runLoad(envWith(CHARIOT_CONFIGURED));
 		expect(reads).toEqual([]);
 		expect(donations.map((d) => d.trackingId)).toEqual([null, null]);
+	});
+
+	it('draws the tracking id stored on a grant that has settled', async () => {
+		const id = await gift();
+		await attempt(id, { method: 'daf', provider: 'chariot', providerReference: 'L9E182VBGP' });
+
+		const { donations } = await runLoad();
+		expect(donations[0]?.trackingId).toBe('L9E182VBGP');
+	});
+
+	it('draws the tracking id stored on a grant still on its way, asking Chariot nothing', async () => {
+		const id = await gift();
+		await attempt(id, {
+			method: 'daf',
+			provider: 'chariot',
+			status: 'pending',
+			providerReference: 'L9E182VBGP'
+		});
+		const { reads } = chariotAnswers((grantId) =>
+			Response.json(pendingGrant(grantId, 'LIVEANSWER'))
+		);
+
+		const { donations } = await runLoad(envWith(CHARIOT_CONFIGURED));
+		expect(reads).toEqual([]);
+		expect(donations[0]?.trackingId).toBe('L9E182VBGP');
+	});
+
+	it('draws no tracking id on a gift Chariot did not move, whatever its payment stores', async () => {
+		const id = await gift();
+		await attempt(id, { providerReference: 'ch_reference' });
+
+		const { donations } = await runLoad();
+		expect(donations[0]?.trackingId).toBeNull();
 	});
 
 	it('reports the cap so the page can say the list is one', async () => {

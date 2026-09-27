@@ -281,7 +281,7 @@ const DONATION_COLUMNS = {
  * charge, which is what a screen asks the processor about the deciding attempt by.
  */
 type AttemptRow = SettlementAttempt &
-	Pick<Payment, 'donationId' | 'providerTxnId' | 'coin' | 'coinAmount'>;
+	Pick<Payment, 'donationId' | 'providerTxnId' | 'providerReference' | 'coin' | 'coinAmount'>;
 
 /**
  * the columns of `payment` the projections read, and whether an open dispute is keyed on the row.
@@ -290,9 +290,10 @@ type AttemptRow = SettlementAttempt &
  * `projectRail` answers with, and a rail nothing selects is the reason no screen could say how a
  * gift arrived. `provider_txn_id` is selected for the one question this app cannot answer from its
  * own rows — the reference a processor holds for the charge (`Settlement.reference` in
- * ../payments/provider.ts) — and stops at the loader that asks it. `coin` and `coin_amount` are what
- * `projectCoinReceived` answers with. the rest of the row stays out on the argument
- * `DONATION_COLUMNS` above makes.
+ * ../payments/provider.ts) — and stops at the loader that asks it. `provider_reference` is that same
+ * reference where the processor gave it when the payment was written, which spares the question.
+ * `coin` and `coin_amount` are what `projectCoinReceived` answers with. the rest of the row stays
+ * out on the argument `DONATION_COLUMNS` above makes.
  *
  * `disputeOpen` is read off a left join to `dispute` on its primary key, which is the payment row's
  * id: at most one row per attempt, so the join adds no row and binds no parameter.
@@ -309,6 +310,7 @@ const ATTEMPT_COLUMNS = {
 	method: payment.method,
 	provider: payment.provider,
 	providerTxnId: payment.providerTxnId,
+	providerReference: payment.providerReference,
 	occurredAt: payment.occurredAt,
 	coin: payment.coin,
 	coinAmount: payment.coinAmount,
@@ -339,6 +341,12 @@ export type DonationListRow = Omit<
 	 * browser payload.
 	 */
 	providerTxnId: Payment['providerTxnId'];
+	/**
+	 * what the organisation matches that attempt by on the processor's own side, as stored when the
+	 * payment was written, or `null` where nothing was. see `payment.provider_reference` in
+	 * ../db/schema.ts.
+	 */
+	providerReference: Payment['providerReference'];
 	/** what a crypto gift received, or `null` where nothing has. see `projectCoinReceived`. */
 	coinReceived: CoinReceived | null;
 	/**
@@ -441,20 +449,25 @@ export async function listDonations(db: Db): Promise<DonationPage> {
 	}
 
 	return {
-		donations: page.map(({ contactId, recurringId, tributeKind, tributeHonoree, ...row }) => ({
-			...row,
-			// a gift whose donor row is missing is unreachable — `donation.contact_id` is NOT NULL
-			// and its foreign key is `NO ACTION`, so the parent cannot be deleted out from under it.
-			// the fallback is here because the lookup is a `Map`, and a blank cell would be a worse
-			// answer to a state that cannot happen than a word saying so.
-			donorName: names.get(contactId) ?? 'Unknown donor',
-			status: projectStatus(byDonation.get(row.id) ?? []),
-			rail: projectRail(byDonation.get(row.id) ?? []),
-			providerTxnId: decidingAttempt(byDonation.get(row.id) ?? [])?.providerTxnId ?? null,
-			coinReceived: projectCoinReceived(byDonation.get(row.id) ?? []),
-			repeating: recurringId !== null,
-			tribute: projectTribute(tributeKind, tributeHonoree)
-		})),
+		donations: page.map(({ contactId, recurringId, tributeKind, tributeHonoree, ...row }) => {
+			const attempts = byDonation.get(row.id) ?? [];
+			const deciding = decidingAttempt(attempts);
+			return {
+				...row,
+				// a gift whose donor row is missing is unreachable — `donation.contact_id` is NOT NULL
+				// and its foreign key is `NO ACTION`, so the parent cannot be deleted out from under it.
+				// the fallback is here because the lookup is a `Map`, and a blank cell would be a worse
+				// answer to a state that cannot happen than a word saying so.
+				donorName: names.get(contactId) ?? 'Unknown donor',
+				status: projectStatus(attempts),
+				rail: projectRail(attempts),
+				providerTxnId: deciding?.providerTxnId ?? null,
+				providerReference: deciding?.providerReference ?? null,
+				coinReceived: projectCoinReceived(attempts),
+				repeating: recurringId !== null,
+				tribute: projectTribute(tributeKind, tributeHonoree)
+			};
+		}),
 		hasMore
 	};
 }
