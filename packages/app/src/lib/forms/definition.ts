@@ -128,6 +128,8 @@ export type StatedForm<S extends z.ZodObject> = FormDefinition<S> & {
 	 * enum that is a member nobody chose.
 	 */
 	readonly mustArrive: readonly string[];
+	/** the boxes that hold rows, which are the only names a row editor's Add or Remove may carry. */
+	readonly lists: readonly string[];
 };
 
 /**
@@ -203,6 +205,7 @@ function nesting(field: $ZodType): string | null {
 export function defineForm<S extends z.ZodObject>(form: FormDefinition<S>): StatedForm<S> {
 	const withheld = new Set<string>(form.withheld ?? []);
 	const mustArrive: string[] = [];
+	const lists: string[] = [];
 
 	for (const [name, field] of Object.entries(form.schema.shape as Record<string, $ZodType>)) {
 		const nested = nesting(field);
@@ -217,10 +220,11 @@ export function defineForm<S extends z.ZodObject>(form: FormDefinition<S>): Stat
 			);
 		}
 		const kind = core(field)._zod.def.type;
-		if (kind !== 'array' && kind !== 'boolean') mustArrive.push(name);
+		if (kind === 'array') lists.push(name);
+		else if (kind !== 'boolean') mustArrive.push(name);
 	}
 
-	return { ...form, mustArrive };
+	return { ...form, mustArrive, lists };
 }
 
 /**
@@ -240,7 +244,7 @@ export function defineForm<S extends z.ZodObject>(form: FormDefinition<S>): Stat
  *
  * the `__…__` shape says what conform's own `__intent__` and `__state__` say about themselves:
  * this is not a box and no schema states it. the name is this app's because conform reserves
- * exactly those two and no third — a body carrying one of theirs is refused before the parse, and
- * `RESERVED_NAMES` in `$lib/server/conform.ts` argues why.
+ * exactly those two and no third — a body carrying one of theirs is refused before the parse, bar a
+ * row editor's Add or Remove under `__intent__`, and `INTENT` in `$lib/server/conform.ts` argues why.
  */
 export const WHICH_FORM = '__form_id__';

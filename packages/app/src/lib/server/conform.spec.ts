@@ -207,6 +207,135 @@ describe('a submitted form', () => {
 	});
 });
 
+describe('a row editor’s Add or Remove, pressed before the screen hydrated', () => {
+	// conform renders both as a submit button carrying `__intent__`, so until the screen hydrates
+	// the press posts to the action like any other submit, with the rows spelled one index each as
+	// `getFieldList()` names them. the answer is the typed values back and the list redrawn.
+
+	/** a body with every box and `rows` under the list's own indexed names. */
+	function withRows(rows: readonly string[]): FormData {
+		const body = complete();
+		body.delete('allowed_origins');
+		for (const [index, row] of rows.entries()) body.set(`allowed_origins[${index}]`, row);
+		return body;
+	}
+
+	function pressing(body: FormData, intent: object): FormData {
+		body.set('__intent__', JSON.stringify(intent));
+		return body;
+	}
+
+	const INSERT = { type: 'insert', payload: { name: 'allowed_origins' } };
+
+	it('answers an Add on a list of two with the typed values and a third row', () => {
+		const body = pressing(withRows(['https://a.example', 'https://b.example']), INSERT);
+
+		const { result } = parseForm(body, FORM).reject();
+
+		expect(result.initialValue).toMatchObject({
+			name: 'Spring appeal',
+			status: 'live',
+			allowed_origins: ['https://a.example', 'https://b.example', undefined]
+		});
+	});
+
+	it('answers an Add on a list of one with that row and a second', () => {
+		const body = pressing(withRows(['https://a.example']), INSERT);
+
+		const { result } = parseForm(body, FORM).reject();
+
+		expect(result.initialValue).toMatchObject({
+			name: 'Spring appeal',
+			allowed_origins: ['https://a.example', undefined]
+		});
+	});
+
+	it('answers an Add on an emptied list with its first row', () => {
+		const body = pressing(withRows([]), INSERT);
+
+		const { result } = parseForm(body, FORM).reject();
+
+		expect(result.initialValue).toMatchObject({
+			name: 'Spring appeal',
+			allowed_origins: [undefined]
+		});
+	});
+
+	it('answers a Remove on a list of two with the row that is left', () => {
+		const body = pressing(withRows(['https://a.example', 'https://b.example']), {
+			type: 'remove',
+			payload: { name: 'allowed_origins', index: 0 }
+		});
+
+		const { result } = parseForm(body, FORM).reject();
+
+		expect(result.initialValue).toMatchObject({
+			name: 'Spring appeal',
+			allowed_origins: ['https://b.example']
+		});
+	});
+
+	/** the status and sentence of the refusal `parseForm` throws for `body`. */
+	async function refused(body: FormData): Promise<{ status: number; sentence: string }> {
+		try {
+			parseForm(body, FORM);
+		} catch (thrown) {
+			if (!(thrown instanceof Response)) throw thrown;
+			return { status: thrown.status, sentence: await thrown.text() };
+		}
+		throw new Error('expected the body to be refused');
+	}
+
+	it('refuses an `update`, which writes to whatever path it names', async () => {
+		const body = pressing(withRows(['https://a.example']), {
+			type: 'update',
+			payload: { name: 'allowed_origins', index: 100000, value: 'https://b.example' }
+		});
+
+		const { status, sentence } = await refused(body);
+
+		expect(status).toBe(400);
+		expect(sentence).toContain('`__intent__`');
+	});
+
+	it('refuses a press naming a row past the bound on a body’s shape', async () => {
+		const body = pressing(withRows(['https://a.example']), {
+			type: 'insert',
+			payload: { name: 'allowed_origins', index: 100 }
+		});
+
+		expect((await refused(body)).status).toBe(400);
+	});
+
+	it('refuses an Add carrying a value of its own for the new row', async () => {
+		// no row editor here passes one, and conform drops it into the list whatever its shape.
+		const body = pressing(withRows(['https://a.example']), {
+			type: 'insert',
+			payload: { name: 'allowed_origins', defaultValue: { nested: 'x' } }
+		});
+
+		expect((await refused(body)).status).toBe(400);
+	});
+
+	it('refuses a press naming a box that holds no rows', async () => {
+		// conform would splice into the name's string and throw out of the parse as a 500.
+		const body = pressing(complete(), { type: 'insert', payload: { name: 'name' } });
+
+		expect((await refused(body)).status).toBe(400);
+	});
+
+	it('refuses a press on a list sent under its bare name rather than row by row', async () => {
+		// one bare value reaches conform as a string rather than a list, and the insert throws out
+		// of the parse as a 500. no row editor draws its rows this way.
+		const body = pressing(complete(), INSERT);
+
+		const { status, sentence } = await refused(body);
+
+		expect(status).toBe(400);
+		expect(sentence).toContain('allowed_origins[0]');
+	});
+});
+
 describe('a withheld box', () => {
 	// the staff password. every rejection sends the submitted values back so the boxes keep what was
 	// typed, so a form that carries a credential has to state it once at the form rather than empty

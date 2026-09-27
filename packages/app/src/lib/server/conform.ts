@@ -1,6 +1,6 @@
 import { parseWithZod } from '@conform-to/zod/v4';
 import { data } from 'react-router';
-import type { z } from 'zod';
+import { z } from 'zod';
 import {
 	type FormRejection,
 	type RejectionStatus,
@@ -128,15 +128,17 @@ const INCOMPLETE = 'Reload the page and try again. Part of the form did not subm
 const FLAT_NAME = /^[^.[\]]+(?:\[(\d+)\])?$/;
 
 /**
- * conform's own reserved names, which match `FLAT_NAME` and are refused beside it.
+ * conform's two reserved names, which match `FLAT_NAME` and are read apart from it.
  *
  * conform `JSON.parse`s either value unguarded and throws on one it cannot read, so a body carrying
- * one would reach the parse as a 500. an intent it can read is no safer: `update` writes to any path
- * it names, past `MAX_ROW_INDEX`. nothing this app renders writes `__state__`. `__intent__` is a row
- * editor's Add and Remove, which conform applies in the browser and never submits once the screen
- * has hydrated — a press before that is refused with the rest.
+ * one reaches the parse as a 500 unless it is refused first. nothing this app renders writes
+ * `__state__`, and a body carrying it is refused. `__intent__` is a row editor's Add or Remove,
+ * which the button posts until the screen hydrates, so `pressedList` lets those two through and
+ * every other intent is refused: one conform can read is no safer than one it cannot, since
+ * `update` writes to any path it names, past `MAX_ROW_INDEX`.
  */
-const RESERVED_NAMES: ReadonlySet<string> = new Set(['__intent__', '__state__']);
+const INTENT = '__intent__';
+const STATE = '__state__';
 
 /**
  * the highest row index a body may name.
@@ -148,6 +150,30 @@ const RESERVED_NAMES: ReadonlySet<string> = new Set(['__intent__', '__state__'])
  * hundred thousand entries assembled and then reported on.
  */
 const MAX_ROW_INDEX = 100;
+
+/**
+ * an Add or Remove as conform's `getButtonProps` writes one onto the button, with no `defaultValue`:
+ * no row editor here passes one, and it would drop any value into the list.
+ */
+const LIST_PRESS = z.strictObject({
+	type: z.enum(['insert', 'remove']),
+	payload: z.strictObject({ name: z.string(), index: z.int().min(0).lt(MAX_ROW_INDEX).optional() })
+});
+
+/** the list a body's `__intent__` adds a row to or removes one from, or `null` for any other intent. */
+function pressedList<S extends z.ZodObject>(body: FormData, form: StatedForm<S>): string | null {
+	const sent = body.getAll(INTENT);
+	if (sent.length !== 1 || typeof sent[0] !== 'string') return null;
+	let intent: unknown;
+	try {
+		intent = JSON.parse(sent[0]);
+	} catch {
+		return null;
+	}
+	const press = LIST_PRESS.safeParse(intent);
+	if (!press.success || !form.lists.includes(press.data.payload.name)) return null;
+	return press.data.payload.name;
+}
 
 /**
  * which of a screen's forms this body was submitted from.
@@ -177,16 +203,35 @@ export function submittedForm<Id extends string>(body: FormData, forms: readonly
  *
  * refuses before the schema runs where the body is not one this app's markup could have sent: a
  * name that reaches inside another value, a name conform reserves, a row index past the bound, or a
- * box the form states and the body does not carry.
+ * box the form states and the body does not carry. the one reserved name it reads is `__intent__`
+ * carrying a row editor's Add or Remove on a list this form states, with the list's rows spelled
+ * one index each as the editor draws them; that parse has no `value` and comes back not `ok`, so
+ * the action's rejection returns the typed boxes with the list redrawn.
  */
 export function parseForm<S extends z.ZodObject>(
 	body: FormData,
 	form: StatedForm<S>
 ): ParsedForm<z.output<S>> {
+	const pressed = body.has(INTENT) ? pressedList(body, form) : null;
+	// conform reads a lone bare value as a string rather than a list and throws on the press.
+	if (pressed !== null && body.has(pressed)) {
+		throw new Response(
+			`\`${pressed}\` arrived under its bare name beside an Add or Remove; send its rows as \`${pressed}[0]\`, \`${pressed}[1]\` and on.`,
+			{ status: 400 }
+		);
+	}
+
 	for (const key of body.keys()) {
-		if (RESERVED_NAMES.has(key)) {
+		if (key === INTENT && pressed !== null) continue;
+		if (key === INTENT) {
 			throw new Response(
-				`\`${key}\` is a name conform reserves for its own state and this form does not read it; drop it from the body.`,
+				`\`${INTENT}\` is read only as a row editor's Add or Remove: {"type":"insert"|"remove","payload":{"name":<one of ${form.lists.join(', ') || 'no list on this form'}>,"index"?:<0 to ${MAX_ROW_INDEX - 1}>}}, sent once. send one of those or drop it from the body.`,
+				{ status: 400 }
+			);
+		}
+		if (key === STATE) {
+			throw new Response(
+				`\`${STATE}\` is a name conform reserves for its own state and this form does not read it; drop it from the body.`,
 				{ status: 400 }
 			);
 		}
