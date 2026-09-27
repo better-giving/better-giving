@@ -307,6 +307,16 @@ describe('a row editor’s Add or Remove, pressed before the screen hydrated', (
 		expect((await refused(body)).status).toBe(400);
 	});
 
+	it('refuses a Remove that names no row', async () => {
+		// conform splices at an absent index as if it were 0, so the first row would go.
+		const body = pressing(withRows(['https://a.example', 'https://b.example']), {
+			type: 'remove',
+			payload: { name: 'allowed_origins' }
+		});
+
+		expect((await refused(body)).status).toBe(400);
+	});
+
 	it('refuses an Add carrying a value of its own for the new row', async () => {
 		// no row editor here passes one, and conform drops it into the list whatever its shape.
 		const body = pressing(withRows(['https://a.example']), {

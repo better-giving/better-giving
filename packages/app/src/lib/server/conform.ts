@@ -151,16 +151,31 @@ const STATE = '__state__';
  */
 const MAX_ROW_INDEX = 100;
 
+const ROW_INDEX = z.int().min(0).lt(MAX_ROW_INDEX);
+
 /**
  * an Add or Remove as conform's `getButtonProps` writes one onto the button, with no `defaultValue`:
  * no row editor here passes one, and it would drop any value into the list.
  */
-const LIST_PRESS = z.strictObject({
-	type: z.enum(['insert', 'remove']),
-	payload: z.strictObject({ name: z.string(), index: z.int().min(0).lt(MAX_ROW_INDEX).optional() })
-});
+const LIST_PRESS = z.discriminatedUnion('type', [
+	z.strictObject({
+		type: z.literal('insert'),
+		payload: z.strictObject({ name: z.string(), index: ROW_INDEX.optional() })
+	}),
+	// conform splices at an absent index as if it were 0, so a Remove names its row.
+	z.strictObject({
+		type: z.literal('remove'),
+		payload: z.strictObject({ name: z.string(), index: ROW_INDEX })
+	})
+]);
 
-/** the list a body's `__intent__` adds a row to or removes one from, or `null` for any other intent. */
+/**
+ * the list a body's `__intent__` adds a row to or removes one from, or `null` for any other intent.
+ *
+ * this is the pre-hydration fallback, and `insertWhenValid` in `$lib/admin/use-admin-form.ts` does
+ * not run in front of it: an Add under rows the schema refuses is let through here, and the reply
+ * carries those rows back with the new one beneath.
+ */
 function pressedList<S extends z.ZodObject>(body: FormData, form: StatedForm<S>): string | null {
 	const sent = body.getAll(INTENT);
 	if (sent.length !== 1 || typeof sent[0] !== 'string') return null;
