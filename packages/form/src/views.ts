@@ -258,6 +258,21 @@ function visibleStep(api: DomApi, last: Screen): Screen {
 }
 
 /**
+ * whether the caret is inside `node`, through any shadow roots between the document and it.
+ *
+ * walked down from the document rather than read off `node`'s own root: happy-dom's
+ * `ShadowRoot.activeElement` throws on a focused node since removed, where the document's drops it.
+ */
+function holdsCaret(node: Element): boolean {
+	let at: Element | null = node.ownerDocument.activeElement;
+	while (at !== null) {
+		if (node.contains(at)) return true;
+		at = at.shadowRoot?.activeElement ?? null;
+	}
+	return false;
+}
+
+/**
  * who a donor on a given rail is waiting on, which is four answers rather than eight.
  *
  * the wallets are a card presented differently and wait on the same issuer; the two hosted-window
@@ -1076,8 +1091,12 @@ export function createCard(
 	let shown: Screen = 'amount';
 	/** the projected step the last patch drew, which is what tells a refusal landing from a press. */
 	let stepBefore: State['step'] | null = null;
-	/** whether the last patch drew the address block, which is what tells the block leaving. */
-	let depositShown = false;
+	/**
+	 * the takeover's heading and primary label as the last patch drew them, which is what tells one
+	 * takeover replacing another.
+	 */
+	let drawnHeading = '';
+	let drawnPrimary: string | null = null;
 	/** whether the flow has changed screen at all, which is what the entry motion waits for. */
 	let moved = false;
 	/**
@@ -2606,6 +2625,21 @@ export function createCard(
 		// rendering would move the caret on a page it does not own.
 		const advanced = painted && step !== shown;
 		const shownBefore = shown;
+		// one takeover replacing another is no screen change, and it can take the control holding the
+		// caret with it: Give and Authorize go to a wait that paints no primary, and the address
+		// block leaves with whatever Copy held it. taken back only from inside the takeover — a resume
+		// boots onto one and is replaced by its outcome with the caret still on the host page. the
+		// caret is read before the patch hides anything, because a hidden node gives it up.
+		const within = step === 'takeover' && shownBefore === 'takeover';
+		const replaced =
+			within &&
+			holdsCaret(takeover) &&
+			(screen.heading !== drawnHeading || (screen.primary?.label ?? null) !== drawnPrimary);
+		// and new words under a caret already on the heading are read by nobody: focusing the node
+		// that holds focus says nothing, so the region says them.
+		const retitled = within && screen.heading !== drawnHeading && holdsCaret(takeoverHeading);
+		drawnHeading = screen.heading;
+		drawnPrimary = screen.primary?.label ?? null;
 		if (step !== shown) moved = true;
 		toggleAttribute(root, 'data-moved', moved ? '' : null);
 		shown = step;
@@ -2813,6 +2847,9 @@ export function createCard(
 		// then the fee decision, which is the one press on this card that changes the money without
 		// moving the caret or the screen — a donor watching the control they just pressed is the donor
 		// least likely to see the figure that moved.
+		//
+		// the retitled heading last: a screen's own sentence and the wait's both say more than its
+		// heading does.
 		say(
 			screen.announce !== ''
 				? screen.announce
@@ -2824,7 +2861,9 @@ export function createCard(
 							? totalWords
 							: busy
 								? workingWords(api.state)
-								: '',
+								: retitled
+									? `${screen.heading}.`
+									: '',
 			repeated
 		);
 		repeated = false;
@@ -2841,13 +2880,10 @@ export function createCard(
 			api.state.step === 'give' &&
 			api.state.method === 'crypto' &&
 			((advanced && shownBefore === 'takeover') || (coinRefused && stepBefore === 'working'));
-		// the address block leaving the card takes whatever Copy held the caret with it.
-		const addressLeft = depositShown && screen.deposit === null && step === 'takeover';
-		depositShown = screen.deposit !== null;
 		stepBefore = api.state.step;
 		if (backToCoins) coinPicker.focus();
 		else if (advanced && refusedAmount) figureControl().focus();
-		else if (advanced || addressLeft) headings[step].focus();
+		else if (advanced || replaced) headings[step].focus();
 		painted = true;
 	}
 

@@ -49,8 +49,9 @@ import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
 //     collapses five machine states into one thing a donor is told and the projection cannot say
 //     which screen asked.
 //   - the caret. a screen change hides the control that held focus, so focus is put on the heading
-//     of the screen that arrived — never on the first paint, and never before the section it lands
-//     in is out of `hidden`.
+//     of the screen that arrived — never on the flow's first paint, and never before the section it
+//     lands in is out of `hidden`. one takeover replacing another is no screen change and can hide
+//     that control too, so it is taken back to the heading from inside the takeover.
 //   - what is said out loud, on one channel, decided in one place.
 //
 // the two mount nodes are the card's and the checkout's between them: this file renders them and
@@ -360,14 +361,19 @@ function CheckoutCard({
 		painted: boolean;
 		/** the projected step the last commit drew, which tells a coin refusal landing from a press. */
 		step: State['step'] | null;
-		/** whether the last commit stood the address block on the card. */
-		deposit: boolean;
+		/**
+		 * the takeover's heading and primary label as the last commit drew them, which is what tells
+		 * one takeover replacing another.
+		 */
+		heading: string;
+		primary: string | null;
 	}>({
 		shown: 'amount',
 		moved: false,
 		painted: false,
 		step: null,
-		deposit: false
+		heading: '',
+		primary: null
 	});
 	const shown = visibleStep(api.state, screen.current.shown);
 	const moved = screen.current.moved || shown !== screen.current.shown;
@@ -384,19 +390,59 @@ function CheckoutCard({
 		deposit?.update(takeover.deposit);
 	});
 
+	// read in the render rather than in the effect below: the commit between them hides whatever this
+	// screen stops drawing, and a hidden node gives the caret up.
+	const caret = typeof document === 'undefined' ? null : document.activeElement;
+	const withinTakeover = shown === 'takeover' && screen.current.shown === 'takeover';
+
+	/**
+	 * a takeover's heading replaced under a caret already on it, said out loud.
+	 *
+	 * focusing the node that holds focus says nothing, so the region says the new words. cached
+	 * against the snapshot it was read for, as `decline` is: the commit that draws the new heading
+	 * is what makes the next render's comparison come out equal.
+	 */
+	const retitle = useRef<{ at: CheckoutSnapshot | null; words: string }>({ at: null, words: '' });
+	if (retitle.current.at !== snapshot) {
+		retitle.current = {
+			at: snapshot,
+			words:
+				withinTakeover &&
+				takeover.heading !== screen.current.heading &&
+				caret !== null &&
+				caret === headings.takeover.current
+					? `${takeover.heading}.`
+					: ''
+		};
+	}
+
 	useEffect(() => {
 		const before = screen.current;
 		const state = api.state;
+		const primary = takeover.primary?.label ?? null;
 		screen.current = {
 			shown,
 			moved: before.moved || shown !== before.shown,
-			painted: true,
+			// the server's render and the live flow's first snapshot are one paint: the actor is built
+			// after the first commit, so a resume's takeover arrives on the second.
+			painted: before.painted || live !== null,
 			step: state.step,
-			deposit: takeover.deposit !== null
+			heading: takeover.heading,
+			primary
 		};
-		// never on the first paint: a donor returning from their bank boots straight onto a takeover,
-		// and a card that took focus as it rendered would move the caret on a page nobody asked it to.
+		// never on the flow's first paint: a donor returning from their bank boots straight onto a
+		// takeover, and a card that took focus as it rendered would move the caret on a page nobody
+		// asked it to.
 		const advanced = before.painted && shown !== before.shown;
+		// one takeover replacing another can take the control holding the caret with it: Give and
+		// Authorize go to a wait that paints no primary, and the address block leaves with whatever
+		// Copy held it. taken back only from inside the takeover — a resume's outcome replaces the
+		// takeover it booted onto with the caret still on the page.
+		const replaced =
+			withinTakeover &&
+			caret !== null &&
+			headings.takeover.current?.parentElement?.contains(caret) === true &&
+			(takeover.heading !== before.heading || primary !== before.primary);
 		// three arrivals put the caret on the control that fixes what the donor arrived about rather
 		// than on the heading: a coin's refusal of the amount on the control holding the figure, and a
 		// refusal of the coin — or a way back from the address screen — on the coin list.
@@ -404,12 +450,10 @@ function CheckoutCard({
 			state.step === 'give' &&
 			state.method === 'crypto' &&
 			((advanced && before.shown === 'takeover') || (coinRefused && before.step === 'working'));
-		// the address block leaving the card takes whatever Copy held the caret with it.
-		const addressLeft = before.deposit && takeover.deposit === null && shown === 'takeover';
 		if (backToCoins) live?.coins.focus();
 		else if (advanced && state.step === 'amount' && state.refusal !== undefined) {
 			figureControl()?.focus();
-		} else if (advanced || addressLeft) headings[shown].current?.focus();
+		} else if (advanced || replaced) headings[shown].current?.focus();
 	});
 
 	// ── the receipt ──────────────────────────────────────────────────────────────────────────────
@@ -672,7 +716,8 @@ function CheckoutCard({
 	const busy = api.continueButton['aria-busy'];
 	// the takeover's own words first: a screen that has taken the whole card is not one a numbered step
 	// is still asking anything on. the review step's refusal stands ahead of the fee decision because
-	// it is a thing the donor has been asked for and has not done.
+	// it is a thing the donor has been asked for and has not done. the retitled heading last: a
+	// screen's own sentence and the wait's both say more than its heading does.
 	const words =
 		takeover.announce !== ''
 			? takeover.announce
@@ -686,7 +731,7 @@ function CheckoutCard({
 							? (shot?.words ?? '')
 							: busy
 								? workingWords(api.state)
-								: '';
+								: retitle.current.words;
 
 	// ── the card ─────────────────────────────────────────────────────────────────────────────────
 
