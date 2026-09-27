@@ -1020,3 +1020,17 @@ func TestAStopEndsEveryWaitForTheEdge(t *testing.T) {
 		t.Error("the console stopped and the presses were never told")
 	}
 }
+
+// a terminal closed under a press ends its wait for the edge as a ctrl-c does.
+func TestAHangUpEndsEveryWaitForTheEdge(t *testing.T) {
+	presses := &server.Presses{}
+	heard := make(chan struct{})
+	defer stopOnHangUp(heard, presses)()
+
+	close(heard)
+	select {
+	case <-presses.Stopping():
+	case <-time.After(time.Second):
+		t.Error("the terminal hung up and the presses were never told")
+	}
+}

@@ -29,6 +29,7 @@ import (
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/effects"
+	"github.com/better-giving/console/internal/hangup"
 	"github.com/better-giving/console/internal/oauth"
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/server"
@@ -505,6 +506,8 @@ func serve(
 		Close:    func() { once.Do(func() { close(closed) }) },
 	}), port)
 
+	defer stopOnHangUp(hangup.Heard(), presses)()
+
 	// the signal is taken before the server starts, so a ctrl-c arriving in the first moments of the
 	// run is one this process ends on rather than one the default behaviour kills it on.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -627,6 +630,23 @@ func endRun(to io.Writer, listening *http.Server, presses *server.Presses, last 
 	shut := listening.Shutdown(closing)
 	terminal.Say(to, last)
 	return shut
+}
+
+// ends every wait for the edge once a hang-up is heard under a press, until the returned quit.
+//
+// the third way a run's terminal goes, and the one that leaves no run to end: the press is still
+// held to its last call and the hang-up ends the process at its release (../../internal/hangup), so
+// only the wait endRun cuts short is cut here.
+func stopOnHangUp(heard <-chan struct{}, presses *server.Presses) (quit func()) {
+	quitting := make(chan struct{})
+	go func() {
+		select {
+		case <-heard:
+			presses.Stop()
+		case <-quitting:
+		}
+	}()
+	return func() { close(quitting) }
 }
 
 // the run ended by a ctrl-c in this terminal, which is where the operator typed the command and so
