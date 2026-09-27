@@ -52,11 +52,15 @@ import type { ZapierReport } from '@better-giving/operator/console/zapier';
 // out, so there is nothing here for an operator to act on. `consoleVersion` below is the one
 // exception and states its own reason.
 
-/** one call to the local process, answered as json or thrown. */
-async function ask<T>(path: string, method: 'GET' | 'POST'): Promise<T> {
+/**
+ * one call to the local process, answered as json or thrown. `signal` is a loader's request's, so a
+ * reading the router abandoned is not asked for.
+ */
+async function ask<T>(path: string, method: 'GET' | 'POST', signal?: AbortSignal): Promise<T> {
 	const answer = await fetch(`/api${path}`, {
 		method,
-		headers: { accept: 'application/json' }
+		headers: { accept: 'application/json' },
+		signal: signal ?? null
 	});
 	const read = await parsed(answer);
 	if (!answer.ok) throw new Error(refusal(read, answer.status));
@@ -196,7 +200,8 @@ export const sendTestEmail = (to: string): Promise<TestSend> =>
 	post('/deployment/test-email', { to });
 
 /** what the deployment says about the account it charges on. */
-export const readPayments = (): Promise<PaymentsRead> => ask('/deployment/payments', 'GET');
+export const readPayments = (signal?: AbortSignal): Promise<PaymentsRead> =>
+	ask('/deployment/payments', 'GET', signal);
 
 /**
  * where the deployment stands on gifts that repeat.
@@ -204,7 +209,8 @@ export const readPayments = (): Promise<PaymentsRead> => ask('/deployment/paymen
  * the read changes nothing: the press below is the find-or-create arm, and a screen drawn from that
  * one would provision an operator's processor account as a side effect of them opening a page.
  */
-export const readRecurring = (): Promise<RecurringRead> => ask('/deployment/recurring', 'GET');
+export const readRecurring = (signal?: AbortSignal): Promise<RecurringRead> =>
+	ask('/deployment/recurring', 'GET', signal);
 
 /** asks the deployment to put what a repeating gift is charged against on that account. */
 export const setUpRecurring = (): Promise<RecurringSetup> => ask('/deployment/recurring', 'POST');
@@ -372,8 +378,8 @@ function startedOrUnwritten<Run>(
  * that stopped is left where it is — a failure has to survive a reload — and the next press clears
  * it.
  */
-export const stripeRun = async (): Promise<StripeRunRead | null> =>
-	(await ask<{ run: StripeRunRead | null }>('/stripe/run', 'GET')).run;
+export const stripeRun = async (signal?: AbortSignal): Promise<StripeRunRead | null> =>
+	(await ask<{ run: StripeRunRead | null }>('/stripe/run', 'GET', signal)).run;
 
 /**
  * sets PayPal up from the pair and the address it is sent to, and answers as soon as the chain is
@@ -408,8 +414,8 @@ export async function startPaypalSetup(pair: {
  *
  * a run that landed is consumed by the reading that observed it, for {@link stripeRun}'s reason.
  */
-export const paypalRun = async (): Promise<PaypalRunRead | null> =>
-	(await ask<{ run: PaypalRunRead | null }>('/paypal/run', 'GET')).run;
+export const paypalRun = async (signal?: AbortSignal): Promise<PaypalRunRead | null> =>
+	(await ask<{ run: PaypalRunRead | null }>('/paypal/run', 'GET', signal)).run;
 
 /**
  * sets Chariot up from the key and the address, and answers as soon as the chain is under way.
@@ -442,8 +448,8 @@ export async function startChariotSetup(boxes: {
  *
  * a run that landed is consumed by the reading that observed it, for {@link stripeRun}'s reason.
  */
-export const chariotRun = async (): Promise<ChariotRunRead | null> =>
-	(await ask<{ run: ChariotRunRead | null }>('/chariot/run', 'GET')).run;
+export const chariotRun = async (signal?: AbortSignal): Promise<ChariotRunRead | null> =>
+	(await ask<{ run: ChariotRunRead | null }>('/chariot/run', 'GET', signal)).run;
 
 /**
  * stores NOWPayments' three values, answering once the binary has checked the key and the payout

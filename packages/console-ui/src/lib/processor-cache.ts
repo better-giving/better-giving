@@ -22,14 +22,17 @@ import { readProcessorScreen } from './processor-reading';
 //   once a run stops (./stripe-section.tsx) — which wants what the binary says now;
 // - an entry the page itself reads past (`standing`), because what it holds could have moved with
 //   nothing pressed here: a run going or ended — a going one has since moved on, and an ended one's
-//   report was consumed by the reading that kept it (../api/client.ts), so it is never drawn twice
-//   from here — a books page with no company connected, since a company is connected in a
+//   report was consumed by the reading that kept it (../api/client.ts), so it is drawn once from
+//   here and never twice: a page's own reading draws it as it lands, and one read ahead of the press
+//   (`undrawn`) is served to the first move into its page that the router does not abandon — a
+//   books page with no company connected, since a company is connected in a
 //   browser at the deployment and never here, and a Zapier page with a key, since a Zap is turned
 //   on at Zapier;
 // - anything after a press, on any page: every `clientAction` forgets every entry before it writes
 //   (`forgetReadings`), so nothing drawn after a write was read before it. a reading that was in
-//   flight when that happened is thrown away when it lands rather than kept. a press that writes
-//   nothing — the books page's start-date preview — forgets nothing.
+//   flight when that happened is thrown away when it lands rather than kept, and so is one whose
+//   move the router abandoned, which no page draws. a press that writes nothing — the books page's
+//   start-date preview — forgets nothing.
 //
 // an entry whose payments or recurring reading rejects is dropped, so the next visit asks again
 // rather than meeting the same error from memory.
@@ -60,7 +63,7 @@ const RUNS = {
 	paypal: paypalRun,
 	chariot: chariotRun,
 	nowpayments: async () => null
-} satisfies Record<PaymentProcessor, () => Promise<unknown>>;
+} satisfies Record<PaymentProcessor, (signal: AbortSignal) => Promise<unknown>>;
 
 type RunOf<P extends PaymentProcessor> = Awaited<ReturnType<(typeof RUNS)[P]>>;
 
@@ -80,12 +83,21 @@ const written = new Set<string>();
 /** the reading ahead of a press, per page, and the count it was started under. `null` read nothing. */
 const warming = new Map<string, { under: number; screen: Promise<Kept | null> }>();
 
-/** the store, with a write from a reading started before the last forgetting dropped. */
-function storeUnder(under: number): CacheAdapter {
+/**
+ * ended runs a reading ahead kept and no page has drawn yet. keyed by the run, since the page is
+ * handed a copy of the kept screen (`cacheClientLoader`) that shares the run and nothing else.
+ */
+const undrawn = new WeakSet<NonNullable<Kept['run']>>();
+
+/**
+ * the store, with a write dropped from a reading started before the last forgetting or one the
+ * router abandoned (`signal`), which no page draws.
+ */
+function storeUnder(under: number, signal: AbortSignal): CacheAdapter {
 	return {
 		getItem: (key) => cache.getItem(key),
 		setItem: (key, value) => {
-			if (under !== forgotten) return;
+			if (under !== forgotten || signal.aborted) return;
 			written.add(key);
 			return cache.setItem(key, value);
 		},
@@ -138,7 +150,7 @@ export async function readKeptPage<T>(
 				}
 			}
 		},
-		{ type: 'normal', key, adapter: storeUnder(under) }
+		{ type: 'normal', key, adapter: storeUnder(under, args.request.signal) }
 	).then((loaded) => {
 		if (taken !== null) took?.(taken);
 		return loaded;
@@ -146,7 +158,7 @@ export async function readKeptPage<T>(
 }
 
 /** a processor page's `clientLoader`. */
-export function readProcessorPage<P extends PaymentProcessor>(
+export async function readProcessorPage<P extends PaymentProcessor>(
 	args: LoaderFunctionArgs,
 	processor: P
 ): Promise<ProcessorScreen<P>> {
@@ -158,15 +170,20 @@ export function readProcessorPage<P extends PaymentProcessor>(
 	// asks again for itself.
 	const warm = isDrawn(key) ? undefined : warming.get(key);
 	const joined = warm?.under === forgotten ? warm.screen.catch(() => null) : null;
-	const readRun = RUNS[processor] as () => Promise<RunOf<P>>;
+	const readRun = RUNS[processor] as (signal: AbortSignal) => Promise<RunOf<P>>;
 
-	return readKeptPage<ProcessorScreen<P>>(
+	const screen = await readKeptPage<ProcessorScreen<P>>(
 		args,
 		async () =>
 			((await joined) as ProcessorScreen<P> | null) ??
 			(await readProcessorScreen(request, readRun)),
-		{ standing: (kept) => kept.run === null, took: (read) => dropOnFailure(key, read) }
+		{
+			standing: (kept) => kept.run === null || undrawn.has(kept.run),
+			took: (read) => dropOnFailure(key, read)
+		}
 	);
+	if (screen.run !== null && !request.signal.aborted) undrawn.delete(screen.run);
+	return screen;
 }
 
 /** every writing `clientAction`'s first step: nothing read before a press is drawn after it. */
@@ -198,10 +215,14 @@ export function warmProcessorPage(href: string, origin: string): void {
 	const under = forgotten;
 	const screen = (async (): Promise<Kept | null> => {
 		if ((await cache.getItem(href)) !== undefined) return null;
-		const readRun: () => Promise<Kept['run']> = RUNS[processor];
-		const read = await readProcessorScreen(new Request(new URL(href, origin)), readRun);
-		if ((await cache.getItem(href)) === undefined) await storeUnder(under).setItem(href, read);
+		const readRun: (signal: AbortSignal) => Promise<Kept['run']> = RUNS[processor];
+		const request = new Request(new URL(href, origin));
+		const read = await readProcessorScreen(request, readRun);
+		if ((await cache.getItem(href)) === undefined) {
+			await storeUnder(under, request.signal).setItem(href, read);
+		}
 		dropOnFailure(href, read);
+		if (read.run?.kind === 'ended') undrawn.add(read.run);
 		return read;
 	})();
 	warming.set(href, { under, screen });

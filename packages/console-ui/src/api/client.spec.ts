@@ -9,7 +9,8 @@ import {
 	repairWebhook,
 	saveNowpayments,
 	startChariotSetup,
-	startStripeSetup
+	startStripeSetup,
+	stripeRun
 } from './client';
 
 // what the page does with each way the binary answers a press.
@@ -83,6 +84,24 @@ describe('the press that sets stripe up from the two keys', () => {
 		answering(200, nowhere);
 
 		await expect(startStripeSetup(keys)).resolves.toEqual({ started: false, unwritten: nowhere });
+	});
+});
+
+describe('the reading of how far the stripe press has got', () => {
+	it('asks nothing for a reading the router abandoned, leaving a landed run to the next', async () => {
+		// the binary hands a landed run to the one reading that asked for it (./client.ts).
+		const asked: string[] = [];
+		vi.stubGlobal('fetch', (path: string, init: RequestInit | undefined) => {
+			// as the platform's fetch refuses an aborted signal before sending anything.
+			init?.signal?.throwIfAborted();
+			asked.push(path);
+			return Promise.resolve(new Response(JSON.stringify({ run: { kind: 'ended' } })));
+		});
+		const navigation = new AbortController();
+		navigation.abort();
+
+		await expect(stripeRun(navigation.signal)).rejects.toThrow();
+		expect(asked).toEqual([]);
 	});
 });
 

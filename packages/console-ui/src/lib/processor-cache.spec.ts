@@ -9,30 +9,31 @@ import type { StripeRunRead } from '../api/types';
 const binary = vi.hoisted(() => ({
 	runs: 0,
 	run: null as unknown,
+	answered: null as (() => void) | null,
 	payments: 0,
 	failPayments: false,
 	face: 'ready' as 'ready' | 'connect'
 }));
 
-vi.mock('../api/client', () => ({
-	stripeRun: async () => {
+vi.mock('../api/client', () => {
+	// an aborted signal is refused before the binary is reached, as `fetch` refuses it.
+	const run = async (signal?: AbortSignal) => {
+		signal?.throwIfAborted();
 		binary.runs += 1;
+		binary.answered?.();
 		return binary.run;
-	},
-	paypalRun: async () => {
-		binary.runs += 1;
-		return binary.run;
-	},
-	chariotRun: async () => {
-		binary.runs += 1;
-		return binary.run;
-	},
-	readPayments: () => {
-		binary.payments += 1;
-		return binary.failPayments ? Promise.reject(new Error('unanswered')) : Promise.resolve({});
-	},
-	readRecurring: () => Promise.resolve({})
-}));
+	};
+	return {
+		stripeRun: run,
+		paypalRun: run,
+		chariotRun: run,
+		readPayments: () => {
+			binary.payments += 1;
+			return binary.failPayments ? Promise.reject(new Error('unanswered')) : Promise.resolve({});
+		},
+		readRecurring: () => Promise.resolve({})
+	};
+});
 
 vi.mock('./console-reading', async (original) => ({
 	...(await original<Record<string, unknown>>()),
@@ -53,8 +54,8 @@ const { forgetReadings, readProcessorPage, warmProcessorPage } = await import('.
 const ORIGIN = 'http://localhost';
 
 /** the arguments a navigation to `href` hands the page's loader. */
-const move = (href: string) =>
-	({ request: new Request(new URL(href, ORIGIN)) }) as unknown as LoaderFunctionArgs;
+const move = (href: string, signal: AbortSignal | null = null) =>
+	({ request: new Request(new URL(href, ORIGIN), { signal }) }) as unknown as LoaderFunctionArgs;
 
 /** a turn of the loop, which is every chance a promise with nothing to wait on would have had. */
 const turn = () => new Promise((settle) => setTimeout(settle, 0));
@@ -63,6 +64,7 @@ beforeEach(async () => {
 	await forgetReadings();
 	binary.runs = 0;
 	binary.run = null;
+	binary.answered = null;
 	binary.payments = 0;
 	binary.failPayments = false;
 	binary.face = 'ready';
@@ -70,12 +72,15 @@ beforeEach(async () => {
 });
 
 /** a visit to `href` from another page, with the bar over it seen to its end. */
-async function visit(href: string) {
+async function visit(href: string, signal?: AbortSignal) {
 	const off = bar.subscribeProgressBar(() => {
 		if (bar.progressBarFinishing()) queueMicrotask(bar.progressBarLanded);
 	});
 	try {
-		return await readProcessorPage(move(href), href === '/payments/stripe' ? 'stripe' : 'paypal');
+		return await readProcessorPage(
+			move(href, signal),
+			href === '/payments/stripe' ? 'stripe' : 'paypal'
+		);
 	} finally {
 		off();
 	}
@@ -172,6 +177,25 @@ describe('a processor page read between visits', () => {
 		expect(binary.runs).toBe(2);
 	});
 
+	it('keeps nothing from a reading the router abandoned after the binary answered it', async () => {
+		const navigation = new AbortController();
+		binary.answered = () => navigation.abort();
+		await visit('/payments/stripe', navigation.signal);
+		bar.pageDrawn('/organisation');
+		await visit('/payments/stripe');
+
+		expect(binary.runs).toBe(2);
+	});
+
+	it('asks the binary for no run where the router abandoned the reading before it got there', async () => {
+		const navigation = new AbortController();
+		const first = visit('/payments/stripe', navigation.signal);
+		navigation.abort();
+
+		await expect(first).rejects.toThrow();
+		expect(binary.runs).toBe(0);
+	});
+
 	it('reads again where the payments reading kept for it failed', async () => {
 		binary.failPayments = true;
 		const failed = await visit('/payments/stripe');
@@ -200,6 +224,48 @@ describe('a processor page read ahead of the press on its rail cell', () => {
 		await visit('/payments/paypal');
 
 		expect(binary.runs).toBe(1);
+	});
+
+	it('hands the press the run report it read, with no second read', async () => {
+		// the binary hands a landed run to one reading only (../api/client.ts), so a second read
+		// would draw the page with the report gone.
+		const ended = { kind: 'ended' } satisfies Partial<StripeRunRead>;
+		binary.run = ended;
+		warmProcessorPage('/payments/stripe', ORIGIN);
+		await turn();
+		binary.run = null;
+		const drawn = await visit('/payments/stripe');
+
+		expect(binary.runs).toBe(1);
+		expect(drawn.run).toBe(ended);
+	});
+
+	it('hands its run report to one visit only', async () => {
+		binary.run = { kind: 'ended' } satisfies Partial<StripeRunRead>;
+		warmProcessorPage('/payments/stripe', ORIGIN);
+		await turn();
+		binary.run = null;
+		await visit('/payments/stripe');
+		bar.pageDrawn('/organisation');
+		const again = await visit('/payments/stripe');
+
+		expect(binary.runs).toBe(2);
+		expect(again.run).toBeNull();
+	});
+
+	it('keeps its run report for the next visit where the router abandoned the one that waited for it', async () => {
+		const ended = { kind: 'ended' } satisfies Partial<StripeRunRead>;
+		binary.run = ended;
+		warmProcessorPage('/payments/stripe', ORIGIN);
+		const navigation = new AbortController();
+		const abandoned = visit('/payments/stripe', navigation.signal);
+		navigation.abort();
+		await abandoned;
+		binary.run = null;
+		const drawn = await visit('/payments/stripe');
+
+		expect(binary.runs).toBe(1);
+		expect(drawn.run).toBe(ended);
 	});
 
 	it('draws no bar while it reads', async () => {

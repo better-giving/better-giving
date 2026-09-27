@@ -19,7 +19,10 @@ import { notReady, readConsole } from './console-reading';
 // no bar is held here: whether this reading stands behind one is ./processor-cache.ts's to say, since
 // a reading taken ahead of a press on the rail stands behind none.
 
-export async function readProcessorScreen<Run>(request: Request, readRun: () => Promise<Run>) {
+export async function readProcessorScreen<Run>(
+	request: Request,
+	readRun: (signal: AbortSignal) => Promise<Run>
+) {
 	const read = await readConsole(request);
 	if (read.reading.face.kind !== 'ready') notReady(read);
 
@@ -31,9 +34,9 @@ export async function readProcessorScreen<Run>(request: Request, readRun: () => 
 	// and `RecurringReport` in ../api/types.ts), so gating either on a Stripe key would leave a
 	// deployment set up on PayPal alone with no reading of the account it does charge on — and, on
 	// the recurring one, no press that could put what a repeating gift needs on it.
-	const payments = readPayments();
-	const recurring = readRecurring();
-	const run = await readRun();
+	const payments = readPayments(request.signal);
+	const recurring = readRecurring(request.signal);
+	const run = await readRun(request.signal);
 
 	return {
 		payments,
