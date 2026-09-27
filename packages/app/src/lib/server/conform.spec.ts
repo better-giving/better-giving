@@ -7,8 +7,9 @@ import { invalid, parseForm, submittedForm } from './conform';
 //
 // every case here is a submission conform would otherwise report as valid: an absent box that a
 // schema default fills in, an absent `<select>` that an enum stands in for, a value posted under a
-// nested name. the schema below is deliberately the shape those failures need — a defaulted text
-// box, a defaulted enum, a list — rather than a copy of any real form's.
+// nested name — or one conform would throw on, a value posted under one of its reserved names. the
+// schema below is deliberately the shape those failures need — a defaulted text box, a defaulted
+// enum, a list — rather than a copy of any real form's.
 //
 // what a form's own shape decides is asked once when the form is stated rather than here, so the
 // cases about a schema that nests and a credential a form must withhold are
@@ -170,6 +171,39 @@ describe('a submitted form', () => {
 		// the offending name is in the body, because a 4xx nobody renders is read by whoever is
 		// holding the request.
 		await expect((thrown as Response).text()).resolves.toContain('giving.min');
+	});
+
+	it('refuses a body carrying conform’s reserved `__intent__`', async () => {
+		// conform `JSON.parse`s the value unguarded, so `x` would throw out of the parse as a 500.
+		const body = complete();
+		body.set('__intent__', 'x');
+
+		let thrown: unknown;
+		try {
+			parseForm(body, FORM);
+		} catch (raised) {
+			thrown = raised;
+		}
+
+		expect(thrown).toBeInstanceOf(Response);
+		expect((thrown as Response).status).toBe(400);
+		await expect((thrown as Response).text()).resolves.toContain('`__intent__`');
+	});
+
+	it('refuses a body carrying conform’s reserved `__state__`', async () => {
+		const body = complete();
+		body.set('__state__', 'x');
+
+		let thrown: unknown;
+		try {
+			parseForm(body, FORM);
+		} catch (raised) {
+			thrown = raised;
+		}
+
+		expect(thrown).toBeInstanceOf(Response);
+		expect((thrown as Response).status).toBe(400);
+		await expect((thrown as Response).text()).resolves.toContain('`__state__`');
 	});
 });
 

@@ -123,10 +123,20 @@ const INCOMPLETE = 'Reload the page and try again. Part of the form did not subm
  * a name a body may carry: one box, or one row of a repeating editor.
  *
  * a dot and a bracketed word are conform's two ways of spelling a path into an object, so both are
- * outside this. `__intent__` and `__state__` are conform's own reserved names and match it, which
- * leaves an intent body to be refused by the parse rather than by its shape.
+ * outside this.
  */
 const FLAT_NAME = /^[^.[\]]+(?:\[(\d+)\])?$/;
+
+/**
+ * conform's own reserved names, which match `FLAT_NAME` and are refused beside it.
+ *
+ * conform `JSON.parse`s either value unguarded and throws on one it cannot read, so a body carrying
+ * one would reach the parse as a 500. an intent it can read is no safer: `update` writes to any path
+ * it names, past `MAX_ROW_INDEX`. nothing this app renders writes `__state__`. `__intent__` is a row
+ * editor's Add and Remove, which conform applies in the browser and never submits once the screen
+ * has hydrated — a press before that is refused with the rest.
+ */
+const RESERVED_NAMES: ReadonlySet<string> = new Set(['__intent__', '__state__']);
 
 /**
  * the highest row index a body may name.
@@ -166,14 +176,20 @@ export function submittedForm<Id extends string>(body: FormData, forms: readonly
  * parse a submitted body against the form that states it.
  *
  * refuses before the schema runs where the body is not one this app's markup could have sent: a
- * name that reaches inside another value, a row index past the bound, or a box the form states and
- * the body does not carry.
+ * name that reaches inside another value, a name conform reserves, a row index past the bound, or a
+ * box the form states and the body does not carry.
  */
 export function parseForm<S extends z.ZodObject>(
 	body: FormData,
 	form: StatedForm<S>
 ): ParsedForm<z.output<S>> {
 	for (const key of body.keys()) {
+		if (RESERVED_NAMES.has(key)) {
+			throw new Response(
+				`\`${key}\` is a name conform reserves for its own state and this form does not read it; drop it from the body.`,
+				{ status: 400 }
+			);
+		}
 		const shape = FLAT_NAME.exec(key);
 		if (shape === null) {
 			throw new Response(`\`${key}\` names a value inside another; this form's fields are flat.`, {
