@@ -22,17 +22,18 @@ import { readProcessorScreen } from './processor-reading';
 //   once a run stops (./stripe-section.tsx) — which wants what the binary says now;
 // - an entry the page itself reads past (`standing`), because what it holds could have moved with
 //   nothing pressed here: a run going or ended — a going one has since moved on, and an ended one's
-//   report was consumed by the reading that kept it (../api/client.ts), so it is drawn once from
-//   here and never twice: a page's own reading draws it as it lands, and one read ahead of the press
-//   (`undrawn`) is served to the first move into its page that the router does not abandon — a
-//   books page with no company connected, since a company is connected in a
-//   browser at the deployment and never here, and a Zapier page with a key, since a Zap is turned
-//   on at Zapier;
+//   report was consumed by the reading that kept it (../api/client.ts) — a books page with no
+//   company connected, since a company is connected in a browser at the deployment and never here,
+//   and a Zapier page with a key, since a Zap is turned on at Zapier;
 // - anything after a press, on any page: every `clientAction` forgets every entry before it writes
 //   (`forgetReadings`), so nothing drawn after a write was read before it. a reading that was in
 //   flight when that happened is thrown away when it lands rather than kept, and so is one whose
 //   move the router abandoned, which no page draws. a press that writes nothing — the books page's
 //   start-date preview — forgets nothing.
+//
+// **an ended run is drawn once from here and never twice.** a page's own reading draws it as it
+// lands; one read ahead of the press (`undrawn`) is served to the first move into its page that the
+// router does not abandon, and read past after that.
 //
 // an entry whose payments or recurring reading rejects is dropped, so the next visit asks again
 // rather than meeting the same error from memory.
@@ -85,7 +86,8 @@ const warming = new Map<string, { under: number; screen: Promise<Kept | null> }>
 
 /**
  * ended runs a reading ahead kept and no page has drawn yet. keyed by the run, since the page is
- * handed a copy of the kept screen (`cacheClientLoader`) that shares the run and nothing else.
+ * handed a shallow copy of the kept screen (`cacheClientLoader`): a different object holding the
+ * same run.
  */
 const undrawn = new WeakSet<NonNullable<Kept['run']>>();
 

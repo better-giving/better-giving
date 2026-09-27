@@ -27,11 +27,16 @@ vi.mock('../api/client', () => {
 		stripeRun: run,
 		paypalRun: run,
 		chariotRun: run,
-		readPayments: () => {
+		readPayments: async (signal?: AbortSignal) => {
+			signal?.throwIfAborted();
 			binary.payments += 1;
-			return binary.failPayments ? Promise.reject(new Error('unanswered')) : Promise.resolve({});
+			if (binary.failPayments) throw new Error('unanswered');
+			return {};
 		},
-		readRecurring: () => Promise.resolve({})
+		readRecurring: async (signal?: AbortSignal) => {
+			signal?.throwIfAborted();
+			return {};
+		}
 	};
 });
 
@@ -194,6 +199,22 @@ describe('a processor page read between visits', () => {
 
 		await expect(first).rejects.toThrow();
 		expect(binary.runs).toBe(0);
+	});
+
+	it('leaves no rejection unhandled where the router abandoned the reading', async () => {
+		const unhandled = vi.fn();
+		process.on('unhandledRejection', unhandled);
+		try {
+			const navigation = new AbortController();
+			const abandoned = visit('/payments/stripe', navigation.signal);
+			navigation.abort();
+			await expect(abandoned).rejects.toThrow();
+			await turn();
+		} finally {
+			process.off('unhandledRejection', unhandled);
+		}
+
+		expect(unhandled).not.toHaveBeenCalled();
 	});
 
 	it('reads again where the payments reading kept for it failed', async () => {

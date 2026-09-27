@@ -36,6 +36,9 @@ export async function readProcessorScreen<Run>(
 	// the recurring one, no press that could put what a repeating gift needs on it.
 	const payments = readPayments(request.signal);
 	const recurring = readRecurring(request.signal);
+	// a run read that throws leaves both with no reader, so their rejection is marked handled here;
+	// a page drawing them still meets it.
+	for (const reading of [payments, recurring]) reading.catch(() => {});
 	const run = await readRun(request.signal);
 
 	return {
