@@ -1637,21 +1637,22 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 	});
 
 	/**
-	 * the donor was answered 500, and the form spends the fund's approval on that answer
-	 * (`keepsFundApproval` in packages/form/src/checkout.machine.ts), so a Try again opens the fund's
-	 * window and makes a second grant with its own gift. a gift of the same amount here may be that
-	 * one, and counting it leaves this grant with no record when the fund pays it.
+	 * a donor who saw the 500 has had the fund's approval spent (`keepsFundApproval` in
+	 * packages/form/src/checkout.machine.ts), so their Try again makes a second grant with its own gift,
+	 * and a gift of the same amount here may be that one. a donor whose answer never arrived keeps the
+	 * approval, and their Try again can record this grant's gift after all. only the grant's tracking
+	 * ID tells the two apart.
 	 */
-	it('tells an operator to record the grant by hand unless Chariot shows it cancelled, never to count a matching gift', async () => {
+	it('tells an operator to look here for the grant’s tracking ID before recording it by hand unless Chariot shows it cancelled', async () => {
 		const { mail } = await mintGrantWithNoGift();
 
 		// the plain-text arm wraps long lines, and the facts print above the action.
 		const text = (mail.sent[0]?.text ?? '').replace(/\s+/g, ' ');
 		const action = text.slice(text.indexOf('What to do:'));
-		expect(action).toContain('Chariot dashboard');
+		expect(action).toContain('tracking ID');
+		expect(action).toContain('already recorded');
+		expect(action.indexOf('tracking ID')).toBeLessThan(action.indexOf('by hand'));
 		expect(action).toContain('unless Chariot shows it cancelled');
-		expect(action).toContain('by hand');
-		expect(action).not.toContain('count');
 		expect(action).not.toContain('on or after');
 	});
 

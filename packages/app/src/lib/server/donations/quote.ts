@@ -827,26 +827,29 @@ async function mintGrant(
 		);
 	}
 
-	// this refusal spends the donor's fund approval (`keepsFundApproval` in
-	// packages/form/src/checkout.machine.ts), so a Try again is a new session and a second grant. a
-	// gift of the same amount here is never evidence for this one.
+	// a donor who saw this refusal has had the fund's approval spent (`keepsFundApproval` in
+	// packages/form/src/checkout.machine.ts), so their Try again is a new session and a second grant.
+	// one whose answer never arrived keeps it, and their Try again resends this session and can write
+	// this grant's gift. the grant's tracking ID is the only match that tells the two apart.
 	later(
 		deps,
 		alert(deps, {
 			headline: 'A donor-advised fund grant was created with no gift recorded against it',
 			body:
 				'Chariot created the grant and the gift could not be written here, so the donor was told ' +
-				'it did not go through. A donor who tried again made a separate grant with its own gift, ' +
-				'and that gift does not stand for this one. This grant has no gift recorded here, and the ' +
-				'fund will still pay it.',
+				'it did not go through. A donor who tried again usually made a separate grant with its ' +
+				'own gift, which does not stand for this one. A donor who never saw the failure may have ' +
+				'tried again and recorded this grant’s gift after all. Otherwise this grant has no gift ' +
+				'recorded here, and the fund will still pay it.',
 			facts: [
 				{ label: 'Grant', value: created.value.providerTxnId },
 				{ label: 'Amount', value: formatMinor(total, 'USD') },
 				{ label: 'Reason', value: written.detail }
 			],
 			action:
-				'Find this grant in the Chariot dashboard by the grant id above. Record its gift by hand ' +
-				'unless Chariot shows it cancelled.'
+				'Find this grant in the Chariot dashboard by the grant id above and note its tracking ID. ' +
+				'If a gift in the dashboard here shows that tracking ID, it is already recorded. ' +
+				'Otherwise record it by hand unless Chariot shows it cancelled.'
 		})
 	);
 	return refuse(
