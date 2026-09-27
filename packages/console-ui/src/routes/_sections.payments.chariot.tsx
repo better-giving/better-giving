@@ -1,4 +1,5 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
+import { useEffect } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { freeWithheldVars, startChariotSetup } from '../api/client';
 import type { VarsWritten } from '../api/types';
@@ -6,7 +7,7 @@ import type { ChariotPress } from '../lib/chariot-section';
 import { ChariotSection } from '../lib/chariot-section';
 import { CHARIOT_SETUP_INTENT, chariotPosted } from '../lib/chariot-setup';
 import { consoleRereads } from '../lib/dialog-params';
-import { forgetReadings, readProcessorPage } from '../lib/processor-cache';
+import { forgetReadings, readProcessorPage, runDrawn } from '../lib/processor-cache';
 import { usePress } from '../lib/use-press';
 import { FREE_INTENT } from '../lib/withheld-values';
 import { TITLE as CONSOLE_TITLE } from './_index';
@@ -74,6 +75,7 @@ export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean {
 export default function ChariotPage({ loaderData, actionData, matches }: Route.ComponentProps) {
 	const shell = matches[1].loaderData;
 	const press = usePress();
+	useEffect(() => runDrawn(loaderData.run), [loaderData.run]);
 	/* a setup run counts as this page writing, although no request is open for it: it writes the four
 	   values onto the deployment, and a second press made under it would be reading what this one is
 	   still changing. */

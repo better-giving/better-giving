@@ -13,16 +13,13 @@ import { notReady, readConsole } from './console-reading';
 // decided before anything renders.
 //
 // **the setup run is read after that decision and never before it.** a run that landed is consumed
-// by the reading that observed it (../api/client.ts), so a read on a face that is not ready is a report
-// thrown away with nothing on screen to give it.
+// by the reading that observed it (../api/client.ts), so a read on a face that is not ready takes a
+// report with nothing on screen to give it.
 //
 // no bar is held here: whether this reading stands behind one is ./processor-cache.ts's to say, since
 // a reading taken ahead of a press on the rail stands behind none.
 
-export async function readProcessorScreen<Run>(
-	request: Request,
-	readRun: (signal: AbortSignal) => Promise<Run>
-) {
+export async function readProcessorScreen<Run>(request: Request, readRun: () => Promise<Run>) {
 	const read = await readConsole(request);
 	if (read.reading.face.kind !== 'ready') notReady(read);
 
@@ -39,7 +36,10 @@ export async function readProcessorScreen<Run>(
 	// a run read that throws leaves both with no reader, so their rejection is marked handled here;
 	// a page drawing them still meets it.
 	for (const reading of [payments, recurring]) reading.catch(() => {});
-	const run = await readRun(request.signal);
+	// the run read takes no signal, since the binary answering it hands over the only copy of a landed
+	// run; a move already abandoned asks for none.
+	request.signal.throwIfAborted();
+	const run = await readRun();
 
 	return {
 		payments,

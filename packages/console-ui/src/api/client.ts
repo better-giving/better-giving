@@ -377,9 +377,12 @@ function startedOrUnwritten<Run>(
  * dropped: a reload afterwards is a clean face rather than the last press reported again. a run
  * that stopped is left where it is — a failure has to survive a reload — and the next press clears
  * it.
+ *
+ * **so it takes no signal**: an abort landing after the binary answered would drop that only copy
+ * inside `fetch`. once asked, it is read to the end.
  */
-export const stripeRun = async (signal?: AbortSignal): Promise<StripeRunRead | null> =>
-	(await ask<{ run: StripeRunRead | null }>('/stripe/run', 'GET', signal)).run;
+export const stripeRun = async (): Promise<StripeRunRead | null> =>
+	(await ask<{ run: StripeRunRead | null }>('/stripe/run', 'GET')).run;
 
 /**
  * sets PayPal up from the pair and the address it is sent to, and answers as soon as the chain is
@@ -414,8 +417,8 @@ export async function startPaypalSetup(pair: {
  *
  * a run that landed is consumed by the reading that observed it, for {@link stripeRun}'s reason.
  */
-export const paypalRun = async (signal?: AbortSignal): Promise<PaypalRunRead | null> =>
-	(await ask<{ run: PaypalRunRead | null }>('/paypal/run', 'GET', signal)).run;
+export const paypalRun = async (): Promise<PaypalRunRead | null> =>
+	(await ask<{ run: PaypalRunRead | null }>('/paypal/run', 'GET')).run;
 
 /**
  * sets Chariot up from the key and the address, and answers as soon as the chain is under way.
@@ -448,8 +451,8 @@ export async function startChariotSetup(boxes: {
  *
  * a run that landed is consumed by the reading that observed it, for {@link stripeRun}'s reason.
  */
-export const chariotRun = async (signal?: AbortSignal): Promise<ChariotRunRead | null> =>
-	(await ask<{ run: ChariotRunRead | null }>('/chariot/run', 'GET', signal)).run;
+export const chariotRun = async (): Promise<ChariotRunRead | null> =>
+	(await ask<{ run: ChariotRunRead | null }>('/chariot/run', 'GET')).run;
 
 /**
  * stores NOWPayments' three values, answering once the binary has checked the key and the payout

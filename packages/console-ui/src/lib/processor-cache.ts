@@ -21,22 +21,26 @@ import { readProcessorScreen } from './processor-reading';
 // - a re-read of the page already on the screen — a press's revalidation, and the page asking again
 //   once a run stops (./stripe-section.tsx) — which wants what the binary says now;
 // - an entry the page itself reads past (`standing`), because what it holds could have moved with
-//   nothing pressed here: a run going or ended — a going one has since moved on, and an ended one's
-//   report was consumed by the reading that kept it (../api/client.ts) — a books page with no
-//   company connected, since a company is connected in a browser at the deployment and never here,
-//   and a Zapier page with a key, since a Zap is turned on at Zapier;
+//   nothing pressed here: a run going, which has since moved on, or ended with its report already
+//   drawn — a books page with no company connected, since a company is connected in a browser at
+//   the deployment and never here, and a Zapier page with a key, since a Zap is turned on at Zapier;
 // - anything after a press, on any page: every `clientAction` forgets every entry before it writes
 //   (`forgetReadings`), so nothing drawn after a write was read before it. a reading that was in
 //   flight when that happened is thrown away when it lands rather than kept, and so is one whose
 //   move the router abandoned, which no page draws. a press that writes nothing — the books page's
 //   start-date preview — forgets nothing.
 //
-// **an ended run is drawn once from here and never twice.** a page's own reading draws it as it
-// lands; one read ahead of the press (`undrawn`) is served to the first move into its page that the
-// router does not abandon, and read past after that.
-//
 // an entry whose payments or recurring reading rejects is dropped, so the next visit asks again
 // rather than meeting the same error from memory.
+//
+// **an ended run's report reaches exactly one draw of its page.** the binary hands a landed run to
+// the one read that observed it (../api/client.ts), and that read is sent with no signal, so once
+// asked it lands. every ended run a reading takes — the page's own or one read ahead, kept or thrown
+// away, its move abandoned or not — is held under its page (`undrawn`), and neither forgetting nor a
+// failed payments or recurring reading lets go of it. a move into the page draws it wherever the
+// binary said no newer run, and a kept entry holding it is served rather than read past. it is let
+// go only by the page's render once drawn (`runDrawn`): a loader's return is no draw, since the
+// router abandons a move whose layout is still reading when the operator clicks elsewhere.
 //
 // **the bar over the screen being replaced is finished by a reading that reaches the binary**: a
 // processor page is opened from the rail, which reads nothing again above it, and is an address an
@@ -47,8 +51,8 @@ import { readProcessorScreen } from './processor-reading';
 // **a rail cell for a processor page reads that page ahead of the press** (`warmProcessorPage`, from
 // ./router-link.tsx), when it is hovered or focused and nothing is kept for it yet. that reading
 // stands behind no bar, one at a time per page, and a press made while it is in flight waits for it
-// behind the bar rather than reading a second time — a run that landed is consumed by the reading
-// that observed it (../api/client.ts), so a second read would lose the report.
+// behind the bar rather than reading a second time. one started while the press's own reading is
+// going joins nothing and reads again, finding the run already taken and held for that press.
 //
 // **and never for the page already on the screen**, whose cell is under the pointer as often as not.
 // that page asks after its own run (./stripe-section.tsx), and a reading ahead that got to the landed
@@ -64,7 +68,7 @@ const RUNS = {
 	paypal: paypalRun,
 	chariot: chariotRun,
 	nowpayments: async () => null
-} satisfies Record<PaymentProcessor, (signal: AbortSignal) => Promise<unknown>>;
+} satisfies Record<PaymentProcessor, () => Promise<unknown>>;
 
 type RunOf<P extends PaymentProcessor> = Awaited<ReturnType<(typeof RUNS)[P]>>;
 
@@ -84,22 +88,27 @@ const written = new Set<string>();
 /** the reading ahead of a press, per page, and the count it was started under. `null` read nothing. */
 const warming = new Map<string, { under: number; screen: Promise<Kept | null> }>();
 
-/**
- * ended runs a reading ahead kept and no page has drawn yet. keyed by the run, since the page is
- * handed a shallow copy of the kept screen (`cacheClientLoader`): a different object holding the
- * same run.
- */
-const undrawn = new WeakSet<NonNullable<Kept['run']>>();
+/** the ended run each page's readings took off the binary and no draw of that page has received. */
+const undrawn = new Map<string, NonNullable<Kept['run']>>();
+
+/** `processor`'s run read, holding an ended run under `key` until a draw of that page receives it. */
+function runReader(processor: PaymentProcessor, key: string): () => Promise<Kept['run']> {
+	return async () => {
+		const run = await RUNS[processor]();
+		if (run?.kind === 'ended') undrawn.set(key, run);
+		return run;
+	};
+}
 
 /**
  * the store, with a write dropped from a reading started before the last forgetting or one the
- * router abandoned (`signal`), which no page draws.
+ * router abandoned (`signal`), which no page draws. a reading ahead has no router to abandon it.
  */
-function storeUnder(under: number, signal: AbortSignal): CacheAdapter {
+function storeUnder(under: number, signal?: AbortSignal): CacheAdapter {
 	return {
 		getItem: (key) => cache.getItem(key),
 		setItem: (key, value) => {
-			if (under !== forgotten || signal.aborted) return;
+			if (under !== forgotten || signal?.aborted) return;
 			written.add(key);
 			return cache.setItem(key, value);
 		},
@@ -172,20 +181,23 @@ export async function readProcessorPage<P extends PaymentProcessor>(
 	// asks again for itself.
 	const warm = isDrawn(key) ? undefined : warming.get(key);
 	const joined = warm?.under === forgotten ? warm.screen.catch(() => null) : null;
-	const readRun = RUNS[processor] as (signal: AbortSignal) => Promise<RunOf<P>>;
 
 	const screen = await readKeptPage<ProcessorScreen<P>>(
 		args,
 		async () =>
 			((await joined) as ProcessorScreen<P> | null) ??
-			(await readProcessorScreen(request, readRun)),
+			(await readProcessorScreen(request, runReader(processor, key) as () => Promise<RunOf<P>>)),
 		{
-			standing: (kept) => kept.run === null || undrawn.has(kept.run),
+			standing: (kept) => kept.run === null || kept.run === undrawn.get(key),
 			took: (read) => dropOnFailure(key, read)
 		}
 	);
-	if (screen.run !== null && !request.signal.aborted) undrawn.delete(screen.run);
-	return screen;
+	return { ...screen, run: (screen.run ?? undrawn.get(key) ?? null) as ProcessorScreen<P>['run'] };
+}
+
+/** a processor page's render, once it has drawn `run`: a report drawn is never drawn again. */
+export function runDrawn(run: Kept['run']): void {
+	for (const [key, held] of undrawn) if (held === run) undrawn.delete(key);
 }
 
 /** every writing `clientAction`'s first step: nothing read before a press is drawn after it. */
@@ -217,14 +229,12 @@ export function warmProcessorPage(href: string, origin: string): void {
 	const under = forgotten;
 	const screen = (async (): Promise<Kept | null> => {
 		if ((await cache.getItem(href)) !== undefined) return null;
-		const readRun: (signal: AbortSignal) => Promise<Kept['run']> = RUNS[processor];
 		const request = new Request(new URL(href, origin));
-		const read = await readProcessorScreen(request, readRun);
+		const read = await readProcessorScreen(request, runReader(processor, href));
 		if ((await cache.getItem(href)) === undefined) {
-			await storeUnder(under, request.signal).setItem(href, read);
+			await storeUnder(under).setItem(href, read);
 		}
 		dropOnFailure(href, read);
-		if (read.run?.kind === 'ended') undrawn.add(read.run);
 		return read;
 	})();
 	warming.set(href, { under, screen });
