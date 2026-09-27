@@ -3,7 +3,8 @@ import type { DonationListRow } from './queries';
 
 // the id an organisation marks a donor-advised-fund grant received by, in Chariot's own dashboard:
 // the fund pays out later and the payment names the grant's tracking id, not this app's. it is also
-// what staff match a gift by when a grant's write fails and its alert names only the tracking id.
+// what staff match a gift by when a grant's write fails and its alert names the tracking id beside
+// the grant id.
 //
 // the stored value comes first: `payment.provider_reference` (../db/schema.ts), on every Chariot
 // gift whatever its state, with no call made. only a pending grant stored without one is read live

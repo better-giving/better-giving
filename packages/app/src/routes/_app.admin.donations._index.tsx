@@ -200,8 +200,8 @@ export async function loader({ context }: Route.LoaderArgs) {
 			// so the name crosses as the string it is stored as.
 			program: d.programName,
 			// what the organisation matches a grant's arriving payment by in Chariot's dashboard, and
-			// what staff match a gift by when a grant's write-failure alert names only this id. the
-			// stored value first, on every Chariot gift whatever its state; read live only for a
+			// what staff match a gift by when a grant's write-failure alert names it beside the grant id.
+			// the stored value first, on every Chariot gift whatever its state; read live only for a
 			// pending grant stored without one (`readTrackingIds`). null on every other gift and on
 			// one Chariot did not answer for in time. the grant id it was asked by stays here.
 			trackingId: trackingIds.get(d.id) ?? null
