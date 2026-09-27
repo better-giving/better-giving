@@ -870,8 +870,8 @@ it('states the granted figures on the ending, not the ones the form showed', asy
 // one takeover giving way to another is no screen change, and it can take the control holding the
 // caret with it: Give and Authorize go to a wait that paints no primary.
 describe('where the caret goes when one takeover replaces another', () => {
-	// through the screen the card shows rather than the takeover's class: the card holds the section
-	// by ref, and these specs pass or fail on that ref alone.
+	// through the screen the card shows rather than the takeover's class, so a renamed class leaves
+	// these specs reading the same elements and only the card's section ref decides the outcome.
 	function takeoverHeading(root: HTMLElement): HTMLElement {
 		return one(screen(root), ':scope > h2');
 	}

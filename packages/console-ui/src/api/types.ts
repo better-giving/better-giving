@@ -155,8 +155,8 @@ export type DeployedValues = { vars: VarsRead };
  * the release the binary was baked from. `better-giving start` records the account before the page
  * is served, so there is always one to state.
  *
- * `remembered` is whether this machine will still know the account after a restart: it is false
- * where the state directory could not be written, and the choice then holds for this run.
+ * `remembered` is whether the account was written to this machine when it was chosen: it is false
+ * where the state directory could not be written, and the choice holds for this run either way.
  */
 export type HomeShape = {
 	workerName: string;
