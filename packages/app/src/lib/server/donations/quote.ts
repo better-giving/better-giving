@@ -743,6 +743,11 @@ async function mintGrant(
 		// since the same session answers the grant it holds; one who leaves does not, and the
 		// settlement path answers a grant no row names quietly (./settle.ts).
 		if (created.reason === 'unreachable') {
+			// the amount and the day as the donations screen's Amount and Received columns print them.
+			const amount = formatMinor(total, 'USD');
+			const receivedOn = new Date().toISOString().slice(0, 10);
+			const { displayName, primaryEmail } = submission.donor;
+			const donor = primaryEmail === null ? displayName : `${displayName} (${primaryEmail})`;
 			later(
 				deps,
 				alert(deps, {
@@ -755,12 +760,14 @@ async function mintGrant(
 						'it is.',
 					facts: [
 						{ label: 'Session', value: authorization.id },
-						{ label: 'Amount', value: `$${majorText(total, 'USD')}` },
+						{ label: 'Amount', value: amount },
 						{ label: 'Reason', value: created.detail }
 					],
 					action:
-						'Look for a grant on this session in the Chariot dashboard. If one is there and no gift ' +
-						'for it is in the dashboard here, record the gift by hand.'
+						'Look for a grant on this session in the Chariot dashboard. If one is there, look in ' +
+						`the dashboard here for a donor-advised fund gift of ${amount} from ${donor}, received ` +
+						`on or after ${receivedOn}. The list shows the newest gifts, and Export reaches older ` +
+						'ones. Record the gift by hand only if no such gift is there.'
 				})
 			);
 		}
@@ -820,27 +827,26 @@ async function mintGrant(
 		);
 	}
 
-	// the amount and the day as the donations screen's Amount and Received columns print them.
-	const amount = formatMinor(total, 'USD');
-	const receivedOn = new Date().toISOString().slice(0, 10);
+	// this refusal spends the donor's fund approval (`keepsFundApproval` in
+	// packages/form/src/checkout.machine.ts), so a Try again is a new session and a second grant. a
+	// gift of the same amount here is never evidence for this one.
 	later(
 		deps,
 		alert(deps, {
 			headline: 'A donor-advised fund grant was created with no gift recorded against it',
 			body:
 				'Chariot created the grant and the gift could not be written here, so the donor was told ' +
-				'it did not go through. If they tried again with the same session and it went through, ' +
-				'the gift is recorded against this grant and nothing more is needed. If not, the fund ' +
-				'will still pay the grant, and nothing in this deployment will record it when it does.',
+				'it did not go through. A donor who tried again made a separate grant with its own gift, ' +
+				'and that gift does not stand for this one. This grant has no gift recorded here, and the ' +
+				'fund will still pay it.',
 			facts: [
 				{ label: 'Grant', value: created.value.providerTxnId },
-				{ label: 'Amount', value: amount },
+				{ label: 'Amount', value: formatMinor(total, 'USD') },
 				{ label: 'Reason', value: written.detail }
 			],
 			action:
-				`Look in the dashboard here for a donor-advised fund gift of ${amount} received on or ` +
-				`after ${receivedOn}. One showing no tracking ID may still be this grant’s gift, so ` +
-				'count it. Record the gift by hand only if no such gift is there.'
+				'Find this grant in the Chariot dashboard by the grant id above. Record its gift by hand ' +
+				'unless Chariot shows it cancelled.'
 		})
 	);
 	return refuse(

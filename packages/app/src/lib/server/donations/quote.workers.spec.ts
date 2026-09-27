@@ -1576,6 +1576,32 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		expect(mail.sent[0]?.text).toContain('103.00');
 	});
 
+	/**
+	 * this refusal keeps the fund's approval, so a donor's Try again resends the same session and
+	 * records the gift against the grant Chariot holds. staff match that gift on what the donations
+	 * screen shows, never on the session, which no screen here draws.
+	 */
+	it('tells an operator to match a gift here by the amount as the dashboard prints it, the day and the donor', async () => {
+		await env.DB.prepare(`update org_profile set notification_email = 'ops@hope.example'`).run();
+		const mail = mailer();
+		const port = chariotProvider([{ ok: false, reason: 'unreachable', detail: 'no answer' }]);
+
+		const before = new Date().toISOString().slice(0, 10);
+		await mint(
+			chariotDeps(port.port, { email: mail.port }),
+			fundGift({ authorizedMinor: 150_000 })
+		);
+		const after = new Date().toISOString().slice(0, 10);
+
+		const text = (mail.sent[0]?.text ?? '').replace(/\s+/g, ' ');
+		const action = text.slice(text.indexOf('What to do:'));
+		expect(action).toContain('$1,500.00');
+		expect([before, after].some((day) => action.includes(day))).toBe(true);
+		expect(action).toContain('Ada Okafor');
+		expect(action).toContain('ada@example.org');
+		expect(action).toContain('Export');
+	});
+
 	it('tells no operator anything when Chariot answered that it created no grant', async () => {
 		await env.DB.prepare(`update org_profile set notification_email = 'ops@hope.example'`).run();
 		const mail = mailer();
@@ -1611,24 +1637,22 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 	});
 
 	/**
-	 * the donor was answered 500 and may press again with the same session, which records the gift
-	 * against the grant Chariot already holds — a hand entry made on top of that is the gift twice.
-	 * the dashboard draws a gift's tracking ID only some of the time, so the match is on what every
-	 * row shows: its amount and the day it was received.
+	 * the donor was answered 500, and the form spends the fund's approval on that answer
+	 * (`keepsFundApproval` in packages/form/src/checkout.machine.ts), so a Try again opens the fund's
+	 * window and makes a second grant with its own gift. a gift of the same amount here may be that
+	 * one, and counting it leaves this grant with no record when the fund pays it.
 	 */
-	it('tells an operator to look here for a gift of the grant’s amount and date before recording one by hand', async () => {
-		const before = new Date().toISOString().slice(0, 10);
+	it('tells an operator to record the grant by hand unless Chariot shows it cancelled, never to count a matching gift', async () => {
 		const { mail } = await mintGrantWithNoGift();
-		const after = new Date().toISOString().slice(0, 10);
 
 		// the plain-text arm wraps long lines, and the facts print above the action.
 		const text = (mail.sent[0]?.text ?? '').replace(/\s+/g, ' ');
 		const action = text.slice(text.indexOf('What to do:'));
-		expect(action).toContain('$103.00');
-		expect([before, after].some((day) => action.includes(day))).toBe(true);
-		expect(action).toContain('no tracking ID');
-		expect(action.indexOf('dashboard here')).toBeGreaterThan(-1);
-		expect(action.indexOf('dashboard here')).toBeLessThan(action.indexOf('by hand'));
+		expect(action).toContain('Chariot dashboard');
+		expect(action).toContain('unless Chariot shows it cancelled');
+		expect(action).toContain('by hand');
+		expect(action).not.toContain('count');
+		expect(action).not.toContain('on or after');
 	});
 
 	/**
