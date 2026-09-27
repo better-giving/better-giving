@@ -1170,7 +1170,11 @@ describe('a crypto gift', () => {
 		);
 		if (option === undefined) throw new Error(`no ${ticker} in the coin list`);
 		press(option);
-		await act(async () => {});
+		// a pick hands the caret back to the box a frame later (`setFinalFocus` in @zag-js/combobox),
+		// and a donor's next press never lands inside that frame. waited out here, since under a
+		// faked clock that frame runs only when the clock is next moved: after Donate, it takes the
+		// caret off the heading.
+		await act(() => new Promise<void>((settle) => requestAnimationFrame(() => settle())));
 	}
 
 	/** the review step of a one-time gift with the crypto option open. */
