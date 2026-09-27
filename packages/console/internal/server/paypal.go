@@ -91,7 +91,10 @@ func paypalRoutes(
 
 		binding := bind(address, posted.ClientID, posted.Secret)
 		// the run outlives this request by design, so it is given a context of its own; each call
-		// carries a deadline of its own (internal/cf), which is what bounds the run.
+		// carries a deadline of its own (internal/cf), and the wait for the edge to serve the pair is
+		// bounded by deployment.KeyBound, which together bound the run. a stop ends that wait
+		// (./presses.go).
+		stopping := presses.Stopping()
 		started, going := runs.Start(context.Background(),
 			paypal.Asked{ClientID: posted.ClientID, Secret: posted.Secret, Address: address},
 			paypal.Effects{
@@ -104,10 +107,12 @@ func paypalRoutes(
 					return deployment.SetVars(ctx, door, values)
 				},
 				// the session is read at the press rather than closed over once, for the reason
-				// ./stripe.go's own Repeating states.
+				// ./stripe.go's own Covering states.
 				Repeating: func(ctx context.Context, processor string) deployment.RecurringSetup {
-					_, post := doors()
-					return deployment.SetUpRecurring(ctx, post, processor)
+					return deployment.WaitingOnKey(stopping, func(ctx context.Context) deployment.RecurringSetup {
+						_, post := doors()
+						return deployment.SetUpRecurring(ctx, post, processor)
+					})(ctx)
 				},
 			})
 		if !going {

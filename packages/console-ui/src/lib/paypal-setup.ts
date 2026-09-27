@@ -171,6 +171,13 @@ export function reportStands(live: PaypalRunRead | null, cardUp: boolean): boole
 const STORED: readonly PaypalSetup['kind'][] = ['done', 'unrepeating'];
 
 /**
+ * whether the run this screen is holding wrote the pair, which is what makes the deployment worth
+ * reading again.
+ */
+export const pairStored = (run: PaypalRunRead | null): boolean =>
+	run?.kind === 'ended' && STORED.includes(run.outcome.kind);
+
+/**
  * what the boxes are seeded from, and whether a write has put them back to it.
  *
  * `storing` is one write and the only one, so the stops past it — `done`, and `unrepeating` after

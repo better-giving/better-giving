@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -61,17 +62,27 @@ func processor(t *testing.T, gate chan struct{}) (*httptest.Server, func() []str
 // the run's own steps asked it for.
 func setting(t *testing.T, chosen string, gate chan struct{}) (http.Handler, *httptest.Server, func() []string, func() []string, func() []errand) {
 	t.Helper()
+	// one account, because the press this run makes names the one it has just stored a key for:
+	// a deployment holding PayPal's keys as well answers about that account and no other.
+	return settingOn(t, chosen, gate, map[string]any{
+		"outcome": "set_up",
+		"processors": []any{
+			map[string]any{"processor": "stripe", "label": "Stripe", "outcome": "set_up"},
+		},
+	}, walletsLevelled, nil)
+}
+
+// the deployment's answer to the wallets press where it registered every host it holds.
+var walletsLevelled = map[string]any{"state": "levelled", "hosts": []any{}}
+
+// setting, with the deployment answering the repeating-gift press with `recurring`, the wallets
+// press with `wallets`, and the stop the server hears being `presses`, nil for one of its own.
+func settingOn(t *testing.T, chosen string, gate chan struct{}, recurring, wallets any, presses *Presses) (http.Handler, *httptest.Server, func() []string, func() []string, func() []errand) {
+	t.Helper()
 	records, flow, accounts := machine(t, chosen)
 	surface, errands := deployed(t, map[string]any{
-		// one account, because the press this run makes names the one it has just stored a key for:
-		// a deployment holding PayPal's keys as well answers about that account and no other.
-		"POST /console/recurring": map[string]any{
-			"outcome": "set_up",
-			"processors": []any{
-				map[string]any{"processor": "stripe", "label": "Stripe", "outcome": "set_up"},
-			},
-		},
-		"POST /console/wallet-domains": map[string]any{"state": "levelled", "hosts": []any{}},
+		"POST /console/recurring":      recurring,
+		"POST /console/wallet-domains": wallets,
 	})
 	connected(t, records, surface.URL)
 
@@ -99,6 +110,7 @@ func setting(t *testing.T, chosen string, gate chan struct{}) (http.Handler, *ht
 			Processor: func(string) stripe.Call {
 				return stripe.Calls(cf.FormSender(stripes.URL, nil))
 			},
+			Presses: presses,
 		}), surface, asked, func() []string {
 			read := []string{}
 			for _, one := range errands() {
@@ -378,5 +390,63 @@ func TestTheRunPressesTheDeploymentAboutTheAccountItJustStoredAKeyFor(t *testing
 	}
 	if pressing[0].body["processor"] != release.StripeProcessor {
 		t.Errorf("the press asked %v, want the account the run stored a key for", pressing[0].body)
+	}
+}
+
+// closing the console ends a run's wait for the edge at once, and the run ends on the awaiting-key
+// outcome it has rather than holding the stop for the rest of the bound.
+func TestAStopEndsTheWaitForTheEdgeAndTheRunEndsAwaitingTheKey(t *testing.T) {
+	presses := &Presses{}
+	handler, _, _, _, errands := settingOn(t, "an-account", nil, map[string]any{
+		"outcome": "failed",
+		"processors": []any{map[string]any{
+			"processor": "stripe", "label": "Stripe", "outcome": "failed",
+			"detail": "`STRIPE_SECRET_KEY` is not set.", "reason": "no_key",
+		}},
+	}, walletsLevelled, presses)
+	press(t, handler, "/api/stripe/setup", pressed)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for !slices.ContainsFunc(errands(), func(one errand) bool { return one.path == deployment.RecurringPath }) {
+		if time.Now().After(deadline) {
+			t.Fatal("the run never pressed the deployment")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	presses.Stop()
+
+	run := polled(t, handler, func(run map[string]any) bool { return run != nil && run["kind"] == "ended" })
+	outcome, _ := run["outcome"].(map[string]any)
+	if outcome["kind"] != string(stripe.Unrepeating) || outcome["awaitingKey"] != true {
+		t.Errorf("outcome = %v, want unrepeating, awaiting the key", outcome)
+	}
+}
+
+// the wallets wait hears the stop as the repeating one does.
+func TestAStopEndsTheWaitForTheEdgeAndTheRunEndsUncoveredAwaitingTheKey(t *testing.T) {
+	presses := &Presses{}
+	handler, _, _, _, errands := settingOn(t, "an-account", nil, map[string]any{
+		"outcome": "set_up",
+		"processors": []any{
+			map[string]any{"processor": "stripe", "label": "Stripe", "outcome": "set_up"},
+		},
+	}, map[string]any{
+		"state": "unreadable", "reason": "no_key", "detail": "`STRIPE_SECRET_KEY` is not set.",
+	}, presses)
+	press(t, handler, "/api/stripe/setup", pressed)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for !slices.ContainsFunc(errands(), func(one errand) bool { return one.path == deployment.WalletDomainsPath }) {
+		if time.Now().After(deadline) {
+			t.Fatal("the run never pressed the deployment about the wallets")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	presses.Stop()
+
+	run := polled(t, handler, func(run map[string]any) bool { return run != nil && run["kind"] == "ended" })
+	outcome, _ := run["outcome"].(map[string]any)
+	if outcome["kind"] != string(stripe.Uncovered) || outcome["awaitingKey"] != true {
+		t.Errorf("outcome = %v, want uncovered, awaiting the key", outcome)
 	}
 }

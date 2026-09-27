@@ -77,23 +77,28 @@ func stripeRoutes(
 
 		// the run outlives this request by design, so it is given a context of its own: one that
 		// ended with the handler would cancel every call the chain has left to make. each of those
-		// calls carries a deadline of its own (internal/cf), which is what bounds the run.
+		// calls carries a deadline of its own (internal/cf), and each of the two waits for the edge to
+		// serve the key is bounded by deployment.KeyBound, which together bound the run. a stop ends
+		// either wait (./presses.go).
+		stopping := presses.Stopping()
 		started, going := runs.Start(context.Background(), asked, stripe.Effects{
 			Call: processor(posted.Secret),
 			Address: func(ctx context.Context) deployment.Address {
 				return deployment.PublicAddress(ctx, door.Get, door.AccountID, door.WorkerName)
 			},
 			Repeating: func(ctx context.Context, processor string) deployment.RecurringSetup {
-				_, post := doors()
-				return deployment.SetUpRecurring(ctx, post, processor)
+				return deployment.WaitingOnKey(stopping, func(ctx context.Context) deployment.RecurringSetup {
+					_, post := doors()
+					return deployment.SetUpRecurring(ctx, post, processor)
+				})(ctx)
 			},
 			// the session is read at the press rather than closed over once, which is
 			// internal/deployment's arrangement for every credential: a run outliving the request it
 			// was started by is one this console may re-mint a session under while it goes.
-			Covering: func(ctx context.Context) deployment.WalletsLevel {
+			Covering: deployment.WaitingOnKey(stopping, func(ctx context.Context) deployment.WalletsLevel {
 				_, post := doors()
 				return deployment.LevelWallets(ctx, post)
-			},
+			}),
 			Publish: func(ctx context.Context, values map[string]string) deployment.Written {
 				return deployment.SetVars(ctx, door, deployment.Stored(values))
 			},
