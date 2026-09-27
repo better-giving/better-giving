@@ -231,7 +231,8 @@ describe('a wallet stop awaiting the key on stripe', () => {
 	] as const)(
 		'where the payments reading %s, the line reads %s with note %s',
 		(_, read, word, note) => {
-			// the recurring reading says the opposite throughout: ready, and never keyless.
+			// the recurring reading is ready in one pass and keyless in the other, so a wallet line drawn
+			// off it would fail one of them.
 			for (const gift of [ready('stripe'), gifts()]) {
 				const line = ledgerLines('stripe', run, read, gift)[3];
 				expect(line?.word).toBe(word);
