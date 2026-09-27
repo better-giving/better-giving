@@ -240,7 +240,7 @@ export function defineForm<S extends z.ZodObject>(form: FormDefinition<S>): Stat
  *
  * the `__…__` shape says what conform's own `__intent__` and `__state__` say about themselves:
  * this is not a box and no schema states it. the name is this app's because conform reserves
- * exactly those two and no third — a body carrying one of theirs is refused before the parse, which
- * `RESERVED_NAMES` in `$lib/server/conform.ts` is where that is argued.
+ * exactly those two and no third — a body carrying one of theirs is refused before the parse, and
+ * `RESERVED_NAMES` in `$lib/server/conform.ts` argues why.
  */
 export const WHICH_FORM = '__form_id__';
