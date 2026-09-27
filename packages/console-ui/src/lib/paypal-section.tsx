@@ -72,6 +72,7 @@ import {
 	answerLanded,
 	answeredRefusal,
 	keysClosed,
+	landedHere,
 	runUnderway,
 	standingRefusal,
 	writingElsewhere
@@ -626,12 +627,15 @@ function PaypalKeysForm({
 		}),
 		[reportedId, reportedSecret, reportedAddress]
 	);
-	const reread = useReseeded({ landed, pending: underway, reading });
+	/* the run counted as this form's write only where a press on this page made it and no refusal
+	   has come since (`landedHere` in ./stripe-press.ts). */
+	const ownWrite = landedHere({ written: landed, pressedHere, refusal: pressRefusal });
+	const reread = useReseeded({ landed: ownWrite, pending: underway, reading });
 	const { seeded, spent } = useMemo(
 		() => boxesStanding({ reported, sent, run: live, reread }),
 		[reported, sent, live, reread]
 	);
-	const closed = keysClosed(phase, pressAnswer, busy, working, { landed, spent });
+	const closed = keysClosed(phase, pressAnswer, busy, working, { landed: ownWrite, spent });
 
 	/** an answer keyed by value name, carried onto the boxes by what they post. */
 	const carried = (said: Record<string, string> | null): Record<string, string> | null => {
@@ -647,7 +651,7 @@ function PaypalKeysForm({
 
 	const keys = useConsoleForm(PAYPAL_FORM, {
 		report: live,
-		landed,
+		landed: ownWrite,
 		spent,
 		refused: carried(namedBoxes ?? (refusedPair ? { PAYPAL_CLIENT_ID: pairSentence } : null)),
 		together: namedBoxes === null ? BOX_FIELDS : null,

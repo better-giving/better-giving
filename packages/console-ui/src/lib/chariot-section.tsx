@@ -29,6 +29,7 @@ import type {
 	VarsWritten
 } from '../api/types';
 import type { ChariotBox, ChariotBoxes, ChariotStop, FailedCall } from './chariot-setup';
+import { SECTION_PAGES } from './console-pages';
 import {
 	CHARIOT_BOXES,
 	CHARIOT_FIELD,
@@ -59,6 +60,7 @@ import {
 	answerLanded,
 	answeredRefusal,
 	keysClosed,
+	landedHere,
 	runUnderway,
 	standingRefusal,
 	writingElsewhere
@@ -446,19 +448,22 @@ function ChariotKeysForm({
 		() => ({ apiKey: reportedKey, address: reportedAddress }),
 		[reportedKey, reportedAddress]
 	);
-	const reread = useReseeded({ landed, pending: underway, reading });
+	/* the run counted as this form's write only where a press on this page made it and no refusal
+	   has come since (`landedHere` in ./stripe-press.ts). */
+	const ownWrite = landedHere({ written: landed, pressedHere, refusal: pressRefusal });
+	const reread = useReseeded({ landed: ownWrite, pending: underway, reading });
 	const { seeded, spent } = useMemo(
 		() => boxesStanding({ reported, sent, run: live, reread }),
 		[reported, sent, live, reread]
 	);
-	const closed = keysClosed(phase, pressAnswer, busy, working, { landed, spent });
+	const closed = keysClosed(phase, pressAnswer, busy, working, { landed: ownWrite, spent });
 
 	const keySentence = 'Chariot didn’t accept this key at this address. Check both.';
 	const doorSentence = 'The console couldn’t read these boxes. Check both.';
 
 	const keys = useConsoleForm(CHARIOT_FORM, {
 		report: live,
-		landed,
+		landed: ownWrite,
 		spent,
 		/* a refusal about the key and the address together is handed to the seam as the far end's
 		   answer about the key's box, which puts the operator back in it, and as about both boxes, so
@@ -588,21 +593,22 @@ function ChariotKeysForm({
 			case 'no-ein':
 				return (
 					<FieldMessage>
-						Add your EIN in the <Link to="/organisation">Organisation</Link> section first.
+						Add your EIN in the <Link to={SECTION_PAGES.organisation}>Organisation</Link> section
+						first.
 					</FieldMessage>
 				);
 			case 'no-contact':
 				return (
 					<FieldMessage>
-						Chariot needs a contact email for your organisation. Add a notification email in{' '}
-						<Link to="/organisation">Organisation</Link>, then press Save again.
+						Chariot uses your notification email as its contact. Add it in{' '}
+						<Link to={SECTION_PAGES.notifications}>Notifications</Link>, then press Save again.
 					</FieldMessage>
 				);
 			case 'unlisted':
 				return (
 					<FieldMessage>
 						Your EIN isn’t in Chariot’s directory. Check it in{' '}
-						<Link to="/organisation">Organisation</Link>, or ask{' '}
+						<Link to={SECTION_PAGES.organisation}>Organisation</Link>, or ask{' '}
 						<a href={`mailto:${SUPPORT}`}>{SUPPORT}</a> to add you.
 					</FieldMessage>
 				);
@@ -627,7 +633,7 @@ function ChariotKeysForm({
 				return (
 					<FieldMessage>
 						Chariot doesn’t accept fund gifts for {stop.name ?? 'your organisation'}. Check your EIN
-						in <Link to="/organisation">Organisation</Link>, or contact Chariot.
+						in <Link to={SECTION_PAGES.organisation}>Organisation</Link>, or contact Chariot.
 					</FieldMessage>
 				);
 			case 'nowhere':

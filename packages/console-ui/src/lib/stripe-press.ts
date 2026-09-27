@@ -137,6 +137,26 @@ export type KeysWrite = {
 };
 
 /**
+ * whether this form's last press left something on the deployment, which is what `landed` means to
+ * {@link KeysWrite}, to ./reseed.ts and to the save button's tick (./use-console-form.ts).
+ *
+ * **the run a processor fold holds is not that on its own.** it is the binary's memory and comes back
+ * with a reload or a return to the page, still reading as stored — and a page opened after it is
+ * already drawn from the reading that followed it, so there is nothing for its boxes to wait on and
+ * nothing to put them back to. and once the latest press is turned down, the run still on the page is an earlier
+ * press's: counted as this one's, it closes the boxes holding the pair that was refused, then puts
+ * them back over it when the refusal's re-read lands.
+ */
+export const landedHere = (press: {
+	/** the run this fold holds stored what it was sent, or the press's own answer says it wrote. */
+	readonly written: boolean;
+	/** a press of this form has gone from this mount of the page. */
+	readonly pressedHere: boolean;
+	/** what the latest press was turned down for, or `null` ({@link standingRefusal}). */
+	readonly refusal: PressRefusal | null;
+}): boolean => press.written && press.pressedHere && press.refusal === null;
+
+/**
  * whether the two key boxes and the press under them are closed.
  *
  * **the one thing that does not close them is a refused press being re-read.** a press the
