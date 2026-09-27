@@ -393,14 +393,19 @@ function CheckoutCard({
 	// read in the render rather than in the effect below: the commit between them hides whatever this
 	// screen stops drawing, and a hidden node gives the caret up.
 	const caret = typeof document === 'undefined' ? null : document.activeElement;
+	const caretInTakeover =
+		caret !== null && headings.takeover.current?.closest('.takeover')?.contains(caret) === true;
 	const withinTakeover = shown === 'takeover' && screen.current.shown === 'takeover';
 
 	/**
-	 * a takeover's heading replaced under a caret already on it, said out loud.
+	 * a takeover's heading replaced, said out loud wherever no caret move reads it.
 	 *
-	 * focusing the node that holds focus says nothing, so the region says the new words. cached
-	 * against the snapshot it was read for, as `decline` is: the commit that draws the new heading
-	 * is what makes the next render's comparison come out equal.
+	 * a caret elsewhere inside the takeover is moved onto the heading, and arriving there reads it.
+	 * that leaves a caret already on the heading, where focusing the node that holds focus says
+	 * nothing, and a caret outside the takeover, which is never taken — a resume's outcome and the
+	 * address closing both arrive with the donor anywhere on the page. cached against the snapshot it
+	 * was read for, as `decline` is: the commit that draws the new heading is what makes the next
+	 * render's comparison come out equal.
 	 */
 	const retitle = useRef<{ at: CheckoutSnapshot | null; words: string }>({ at: null, words: '' });
 	if (retitle.current.at !== snapshot) {
@@ -409,8 +414,7 @@ function CheckoutCard({
 			words:
 				withinTakeover &&
 				takeover.heading !== screen.current.heading &&
-				caret !== null &&
-				caret === headings.takeover.current
+				(caret === headings.takeover.current || !caretInTakeover)
 					? `${takeover.heading}.`
 					: ''
 		};
@@ -440,8 +444,7 @@ function CheckoutCard({
 		// takeover it booted onto with the caret still on the page.
 		const replaced =
 			withinTakeover &&
-			caret !== null &&
-			headings.takeover.current?.parentElement?.contains(caret) === true &&
+			caretInTakeover &&
 			(takeover.heading !== before.heading || primary !== before.primary);
 		// three arrivals put the caret on the control that fixes what the donor arrived about rather
 		// than on the heading: a coin's refusal of the amount on the control holding the figure, and a

@@ -1007,6 +1007,39 @@ describe('where the caret goes when one takeover replaces another', () => {
 		expect(one(root, TAKEOVER_HEADING).textContent).toBe(copy.SUCCESS_HEADING);
 		expect(document.activeElement).toBe(elsewhere);
 	});
+
+	// nothing moves the caret onto a heading it is not near, so the region is what tells a donor
+	// elsewhere on the page that the screen changed.
+	it('says the heading a resume’s outcome replaces the takeover with, to a caret outside it', async () => {
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+		elsewhere.focus();
+		window.history.replaceState(
+			null,
+			'',
+			`?bg_donate_form=${CONFIG.formId}&payment_intent_client_secret=pi_1_secret_x`
+		);
+		let answer: () => void = () => {};
+		const { root } = await card(CONFIG, {
+			retrieve: () =>
+				new Promise((resolve) => {
+					answer = () => resolve({ paymentIntent: { status: 'processing' } });
+				})
+		});
+		expect(one(root, TAKEOVER_HEADING).textContent).toBe(copy.RESUMING_HEADING);
+
+		await act(async () => {
+			answer();
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+
+		expect(one(root, TAKEOVER_HEADING).textContent).toBe(copy.PROCESSING_HEADING);
+		expect(document.activeElement).toBe(elsewhere);
+		expect(said(root)).toBe(`${copy.PROCESSING_HEADING}.`);
+	});
 });
 
 describe('a crypto gift', () => {
@@ -1300,6 +1333,60 @@ describe('a crypto gift', () => {
 		const before = server.reads;
 		await tick(DEPOSIT_POLL_MS);
 		expect(server.reads).toBeGreaterThan(before);
+	});
+
+	// the flow replaces the heading on its own clock, under a caret the address screen put on it:
+	// focusing the node that holds focus says nothing, so the region says the new words.
+	it('says the address closing, and then expiring, to a caret on the heading', async () => {
+		// a second short of the send-by, so the address closes between two readings: a reading
+		// landing in the same task is a snapshot with nothing to say, and it would clear the region.
+		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
+		const { root, server } = await atAddress();
+		const heading = one(screen(root), 'h2');
+		expect(document.activeElement).toBe(heading);
+
+		await tick(1000);
+
+		expect(heading.textContent).toBe(copy.CHECKING_HEADING);
+		expect(document.activeElement).toBe(heading);
+		expect(said(root)).toBe(`${copy.CHECKING_HEADING}.`);
+
+		server.state = 'expired';
+		await tick(DEPOSIT_POLL_MS);
+
+		expect(heading.textContent).toBe(copy.EXPIRED_HEADING);
+		expect(document.activeElement).toBe(heading);
+		expect(said(root)).toBe(`${copy.EXPIRED_HEADING}.`);
+	});
+
+	// a donor who stepped off the card while waiting on the chain is told each change, and the caret
+	// stays where they put it.
+	it('says the address closing, and then expiring, to a caret outside the card', async () => {
+		// a second short of the send-by, so the address closes between two readings: a reading
+		// landing in the same task is a snapshot with nothing to say, and it would clear the region.
+		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
+		const { root, server } = await atAddress();
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+		act(() => {
+			elsewhere.focus();
+		});
+
+		await tick(1000);
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.CHECKING_HEADING);
+		expect(document.activeElement).toBe(elsewhere);
+		expect(said(root)).toBe(`${copy.CHECKING_HEADING}.`);
+
+		server.state = 'expired';
+		await tick(DEPOSIT_POLL_MS);
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.EXPIRED_HEADING);
+		expect(document.activeElement).toBe(elsewhere);
+		expect(said(root)).toBe(`${copy.EXPIRED_HEADING}.`);
 	});
 
 	it('lands a gift below the coin’s minimum on the amount step, naming the minimum', async () => {

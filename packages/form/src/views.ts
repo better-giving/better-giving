@@ -258,18 +258,13 @@ function visibleStep(api: DomApi, last: Screen): Screen {
 }
 
 /**
- * whether the caret is inside `node`, through any shadow roots between the document and it.
+ * whether the caret is inside `node`, read off `node`'s own root.
  *
- * walked down from the document rather than read off `node`'s own root: happy-dom's
- * `ShadowRoot.activeElement` throws on a focused node since removed, where the document's drops it.
+ * the root is the one place the caret is visible from wherever the element is mounted: a host page
+ * may hold it inside a closed shadow root of its own, and nothing above that root sees in.
  */
 function holdsCaret(node: Element): boolean {
-	let at: Element | null = node.ownerDocument.activeElement;
-	while (at !== null) {
-		if (node.contains(at)) return true;
-		at = at.shadowRoot?.activeElement ?? null;
-	}
-	return false;
+	return node.contains((node.getRootNode() as Document | ShadowRoot).activeElement);
 }
 
 /**
@@ -2631,13 +2626,14 @@ export function createCard(
 		// boots onto one and is replaced by its outcome with the caret still on the host page. the
 		// caret is read before the patch hides anything, because a hidden node gives it up.
 		const within = step === 'takeover' && shownBefore === 'takeover';
+		const caretInTakeover = within && holdsCaret(takeover);
+		const newHeading = within && screen.heading !== drawnHeading;
 		const replaced =
-			within &&
-			holdsCaret(takeover) &&
-			(screen.heading !== drawnHeading || (screen.primary?.label ?? null) !== drawnPrimary);
-		// and new words under a caret already on the heading are read by nobody: focusing the node
-		// that holds focus says nothing, so the region says them.
-		const retitled = within && screen.heading !== drawnHeading && holdsCaret(takeoverHeading);
+			caretInTakeover && (newHeading || (screen.primary?.label ?? null) !== drawnPrimary);
+		// a new heading the caret does not arrive on is read by nobody, so the region says it: the
+		// caret already on the heading, where focusing it again says nothing, or off the takeover,
+		// where nothing moves it.
+		const retitled = newHeading && (!caretInTakeover || holdsCaret(takeoverHeading));
 		drawnHeading = screen.heading;
 		drawnPrimary = screen.primary?.label ?? null;
 		if (step !== shown) moved = true;

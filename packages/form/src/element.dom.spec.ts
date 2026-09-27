@@ -161,10 +161,28 @@ type Options = {
 	readonly rowCount?: number;
 	readonly attributes?: Readonly<Record<string, string>>;
 	readonly children?: string;
+	/** where the element is put; the document's body where unsaid. */
+	readonly parent?: ParentNode;
 };
+
+/**
+ * takes the caret off whatever holds it.
+ *
+ * happy-dom's `ShadowRoot.activeElement` throws while the caret is in another shadow tree, and the
+ * card reads its own when one takeover replaces another — so a card mounted beside one holding the
+ * caret, or after a spec that left it on one, would throw there.
+ */
+function dropCaret(): void {
+	const parking = document.createElement('button');
+	document.body.append(parking);
+	parking.focus();
+	parking.blur();
+	parking.remove();
+}
 
 /** registers a tag, mounts one element on it and waits for its configuration. */
 async function mount(options: Options = {}): Promise<Mounted> {
+	dropCaret();
 	const tag = `${DONATE_FORM_TAG}-${(tags += 1)}`;
 	let report: (method: PaymentMethod | null) => void = () => {};
 	let stop: (failure: Failure) => void = () => {};
@@ -217,7 +235,7 @@ async function mount(options: Options = {}): Promise<Mounted> {
 		host.setAttribute(name, value);
 	}
 	if (options.children !== undefined) host.innerHTML = options.children;
-	document.body.appendChild(host);
+	(options.parent ?? document.body).appendChild(host);
 	await settle();
 	return {
 		...view(host),
@@ -496,6 +514,7 @@ function shows(card: Mounted, selector: string): string {
 }
 
 afterEach(() => {
+	dropCaret();
 	document.body.replaceChildren();
 });
 
@@ -3240,6 +3259,23 @@ describe('where focus goes when the screen changes', () => {
 		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
 	});
 
+	// an integrator's own component can hold the element inside a closed shadow root, where the
+	// document's `activeElement` stops at that component.
+	it('lands on the heading after Give with the element inside a closed shadow root', async () => {
+		const outer = document.createElement('div');
+		document.body.append(outer);
+		const card = await atCorrection({
+			parent: outer.attachShadow({ mode: 'closed' }),
+			ports: { confirm: () => new Promise<never>(() => {}) }
+		});
+		primary(card).focus();
+		primary(card).click();
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Finishing your gift');
+		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+	});
+
 	// the resume boots onto a takeover and is replaced by its outcome a moment later, with the
 	// caret wherever the host page left it.
 	it('takes no focus when a resume’s outcome replaces the takeover it booted onto', async () => {
@@ -3259,6 +3295,26 @@ describe('where focus goes when the screen changes', () => {
 
 		expect(card.text('.takeover [part~="heading"]')).toBe('Thank you');
 		expect(card.shadow.activeElement).toBeNull();
+	});
+
+	// a resume's outcome replaces the takeover it booted onto with the caret still on the host page,
+	// so nothing moves it there and the region is what says the screen changed.
+	it('says the heading a resume settles on, and leaves the caret on the host page', async () => {
+		const settled = {
+			processing: 'Your gift is on its way.',
+			awaiting_microdeposits: 'Check your bank account.',
+			verification_expired: 'This gift needs to be started again.'
+		} as const;
+		for (const kind of ['processing', 'awaiting_microdeposits', 'verification_expired'] as const) {
+			const card = await mount({
+				resume: { paymentToken: 'pi_1_secret_x' },
+				ports: { resume: async () => ({ kind }) }
+			});
+			await settle();
+
+			expect(card.shadow.activeElement).toBeNull();
+			expect(card.text('[role="status"]')).toBe(settled[kind]);
+		}
 	});
 
 	// the one screen change that is a whole new card. the press that asked for it took the control
@@ -4102,6 +4158,10 @@ describe('the verification screens', () => {
 		confirm: async () => ({ kind: 'awaiting_microdeposits' as const, expiresAt: deadline })
 	};
 
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	it('states the deadline as a date rather than as a window', async () => {
 		// the donor may read this page days after it was painted, by which point "within 10 days"
 		// names nothing they can check.
@@ -4129,11 +4189,9 @@ describe('the verification screens', () => {
 	it('says the window closing to a donor whose caret is on the heading', async () => {
 		vi.useFakeTimers({ shouldAdvanceTime: true, now: deadline - 1000 });
 		const card = await atSubmitted({ ports: { ...awaiting, now: () => Date.now() } });
-		const before = card.shadow.activeElement;
+		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
 		await vi.advanceTimersByTimeAsync(1000);
-		vi.useRealTimers();
 
-		expect(before).toBe(card.find('.takeover [part~="heading"]'));
 		expect(card.text('.takeover [part~="heading"]')).toBe('This gift needs to be started again');
 		expect(card.text('[role="status"]')).toBe('This gift needs to be started again.');
 	});
@@ -4478,8 +4536,7 @@ describe('the waiting screens, per rail', () => {
 	it('leaves the heading to the caret that arrives on it', async () => {
 		const kinds = ['processing', 'awaiting_microdeposits', 'redirecting'] as const;
 		for (const kind of kinds) {
-			// read before the next card mounts: happy-dom's `ShadowRoot.activeElement` throws while
-			// the caret is in another card's tree.
+			// read before the next card mounts, which drops the caret (`dropCaret`).
 			const card = await atSubmittedOn('ach', { ports: { confirm: async () => ({ kind }) } });
 
 			expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
@@ -5910,6 +5967,29 @@ describe('a crypto gift', () => {
 
 		expect(heading(expiring.card)).toBe('This gift needs to be started again');
 		expect(region(expiring.card)).toBe('This gift needs to be started again.');
+	});
+
+	// the donor gone to their wallet, with the caret on the host page: nothing takes it back, and the
+	// region is what says the address closed and then expired.
+	it('says the address closing and then expiring to a caret on the host page', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
+		let state: 'waiting' | 'expired' = 'waiting';
+		const { card } = await atAddress(USDT, 'USDT', {
+			ports: { now: () => Date.now(), status: async () => ({ state }) }
+		});
+		const outside = document.createElement('button');
+		document.body.append(outside);
+		outside.focus();
+
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(heading(card)).toBe('Checking for your gift');
+		expect(region(card)).toBe('Checking for your gift.');
+
+		state = 'expired';
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+		expect(heading(card)).toBe('This gift needs to be started again');
+		expect(region(card)).toBe('This gift needs to be started again.');
+		expect(document.activeElement).toBe(outside);
 	});
 
 	it('offers a new address once the server says this one expired, and starts again at the coin', async () => {
