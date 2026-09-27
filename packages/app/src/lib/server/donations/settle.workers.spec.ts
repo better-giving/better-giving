@@ -129,6 +129,8 @@ async function pendingGift(
 		 */
 		processor?: ProcessorName;
 		providerTxnId?: string;
+		/** what the intent's processor gave to match the payment by, where it gave one. */
+		providerReference?: string;
 		/** `null` is a gift from a donor who left the address box empty. */
 		donorEmail?: string | null;
 		/** what the gift is made of. the total follows from it, the way `recordDonation` requires. */
@@ -156,6 +158,7 @@ async function pendingGift(
 		lines,
 		method: over.method ?? 'card',
 		providerTxnId: over.providerTxnId ?? 'pi_settle_1',
+		...(over.providerReference === undefined ? {} : { providerReference: over.providerReference }),
 		...(over.deposit === undefined ? {} : { deposit: over.deposit }),
 		occurredAt: new Date('2026-08-01T09:00:00.000Z'),
 		consentedToContact: false,
@@ -1076,8 +1079,38 @@ describe('settleDelivery() — a grant through Chariot', () => {
 			'chariot'
 		);
 
-	const pendingGrant = () =>
-		pendingGift({ method: 'daf', processor: 'chariot', providerTxnId: GRANT_ID });
+	const pendingGrant = (providerReference?: string) =>
+		pendingGift({
+			method: 'daf',
+			processor: 'chariot',
+			providerTxnId: GRANT_ID,
+			...(providerReference === undefined ? {} : { providerReference })
+		});
+
+	const storedReference = async (paymentId: string) => {
+		const [row] = await db
+			.select({ reference: payment.providerReference })
+			.from(payment)
+			.where(eq(payment.id, paymentId));
+		return row?.reference;
+	};
+
+	// Create Grant may answer a grant with no tracking ID; the grant read later carries it.
+	it('stores the tracking ID a settlement reads on a gift written without one', async () => {
+		const gift = await pendingGrant();
+
+		await settleDelivery(deps({ provider: grant({ reference: 'CH-LATE0001' }) }), DELIVERY);
+
+		expect(await storedReference(gift.paymentId)).toBe('CH-LATE0001');
+	});
+
+	it('keeps the tracking ID a gift was written with over the one a settlement reads', async () => {
+		const gift = await pendingGrant('CH-FIRST001');
+
+		await settleDelivery(deps({ provider: grant({ reference: 'CH-OTHER001' }) }), DELIVERY);
+
+		expect(await storedReference(gift.paymentId)).toBe('CH-FIRST001');
+	});
 
 	it('settles the gift the grant id is bound to, with no gift named on the grant', async () => {
 		const gift = await pendingGrant();

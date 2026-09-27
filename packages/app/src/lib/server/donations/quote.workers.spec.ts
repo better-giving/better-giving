@@ -363,6 +363,14 @@ describe('mintQuote() — a gift that goes through', () => {
 		expect(paid).toMatchObject({ status: 'pending', provider: 'stripe', providerTxnId: 'pi_1' });
 	});
 
+	// only a Chariot grant has a reference to give when its intent is minted.
+	it('stores no reference for an intent that carries none', async () => {
+		await mint();
+
+		const [paid] = await db.select({ reference: payment.providerReference }).from(payment);
+		expect(paid).toEqual({ reference: null });
+	});
+
 	it('puts nothing in the books, because nothing has been collected', async () => {
 		await mint();
 
@@ -1380,6 +1388,7 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 	};
 	const SESSION = 'cfe09e64-6a74-4dab-a565-361185a6f248';
 	const GRANT_ID = '1e60800e-849b-43d1-870e-57afc8d75473';
+	const TRACKING_ID = 'CH-7Q4K2M9X';
 	const grant = (): PaymentResult<Intent> => ({
 		ok: true,
 		value: { providerTxnId: GRANT_ID, paymentToken: GRANT_ID }
@@ -1455,6 +1464,22 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 			providerTxnId: GRANT_ID,
 			amountMinor: 10_300
 		});
+	});
+
+	// the id staff match a grant by in Chariot's dashboard, stored so the gift shows it once the live
+	// read no longer reaches it.
+	it('stores the grant’s tracking ID on its gift’s payment', async () => {
+		const tracked = chariotProvider([
+			{
+				ok: true,
+				value: { providerTxnId: GRANT_ID, paymentToken: GRANT_ID, reference: TRACKING_ID }
+			}
+		]);
+
+		await mint(chariotDeps(tracked.port), fundGift());
+
+		const [paid] = await db.select({ reference: payment.providerReference }).from(payment);
+		expect(paid?.reference).toBe(TRACKING_ID);
 	});
 
 	/**
@@ -1613,11 +1638,11 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 	});
 
 	/** Chariot creates the grant and the gift's write then fails, with an operator to tell. */
-	async function mintGrantWithNoGift() {
+	async function mintGrantWithNoGift(created: PaymentResult<Intent> = grant()) {
 		await env.DB.prepare(`update org_profile set notification_email = 'ops@hope.example'`).run();
 		const mail = mailer();
 		// the form goes between the read at the top of the request and the write at the bottom.
-		const port = chariotProvider([grant()], async () => {
+		const port = chariotProvider([created], async () => {
 			await env.DB.prepare('delete from form').run();
 		});
 		const result = await mint(chariotDeps(port.port, { email: mail.port }), fundGift());
@@ -1654,6 +1679,25 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		expect(action.indexOf('tracking ID')).toBeLessThan(action.indexOf('by hand'));
 		expect(action).toContain('unless Chariot shows the grant cancelled');
 		expect(action).not.toContain('on or after');
+		expect(text).not.toContain('Tracking ID:');
+	});
+
+	// the gift a donor's unseen retry recorded carries the same tracking ID on its row, so the match
+	// needs no trip to Chariot's dashboard.
+	it('tells an operator the grant’s tracking ID and to record its gift by hand only if no gift here shows it', async () => {
+		const { mail } = await mintGrantWithNoGift({
+			ok: true,
+			value: { providerTxnId: GRANT_ID, paymentToken: GRANT_ID, reference: TRACKING_ID }
+		});
+
+		const text = (mail.sent[0]?.text ?? '').replace(/\s+/g, ' ');
+		const action = text.slice(text.indexOf('What to do:'));
+		expect(text.slice(0, text.indexOf('What to do:'))).toContain(`Tracking ID: ${TRACKING_ID}`);
+		expect(action).toContain(`shows tracking ID ${TRACKING_ID}, it is already recorded`);
+		expect(action).toContain(
+			'Otherwise record the gift by hand, unless Chariot shows the grant cancelled'
+		);
+		expect(action).not.toContain('note its tracking ID');
 	});
 
 	/**

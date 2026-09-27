@@ -193,6 +193,8 @@ export type RecordDonationInput = {
 	readonly processor: ProcessorName;
 	/** the processor's id for the intent this gift is being paid with — `Intent.providerTxnId`. */
 	readonly providerTxnId: string;
+	/** `Intent.reference`, where the processor gave one — `payment.provider_reference`. */
+	readonly providerReference?: string;
 	/**
 	 * the address a crypto gift is sent to, as the processor minted it — present exactly on the
 	 * `crypto` rail, and refused on any other (`problemWith`).
@@ -546,6 +548,7 @@ async function write(db: Db, input: RecordDonationInput): Promise<RecordedDonati
 		status: 'pending',
 		provider: input.processor,
 		providerTxnId: input.providerTxnId,
+		providerReference: input.providerReference ?? null,
 		occurredAt: input.occurredAt,
 		...(input.deposit === undefined
 			? {}

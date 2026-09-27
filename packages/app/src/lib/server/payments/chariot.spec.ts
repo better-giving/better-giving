@@ -111,7 +111,7 @@ describe('createIntent — Create Grant', () => {
 
 		expect(result).toEqual({
 			ok: true,
-			value: { providerTxnId: GRANT_ID, paymentToken: GRANT_ID }
+			value: { providerTxnId: GRANT_ID, paymentToken: GRANT_ID, reference: 'L9E182VBGP' }
 		});
 		expect(calls).toHaveLength(1);
 		expect(calls[0]?.method).toBe('POST');
@@ -121,6 +121,17 @@ describe('createIntent — Create Grant', () => {
 			workflowSessionId: SESSION,
 			amount: 5000
 		});
+	});
+
+	// the spec leaves `trackingId` optional on the grant Create Grant answers.
+	it('carries no reference on a created grant with no tracking id', async () => {
+		const { trackingId: _, ...untracked } = GRANT;
+		recording([{ status: 201, json: untracked }]);
+
+		const result = await createChariotProvider(CREDENTIALS).createIntent(GRANT_REQUEST);
+
+		expect(result.ok && result.value.providerTxnId).toBe(GRANT_ID);
+		expect(result.ok && 'reference' in result.value).toBe(false);
 	});
 
 	// funds take whole dollars only; a cent off one is this app's pricing gone wrong, and Chariot is

@@ -475,6 +475,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 		method: submission.method,
 		processor: provider.processor,
 		providerTxnId: intent.value.providerTxnId,
+		...(intent.value.reference === undefined ? {} : { providerReference: intent.value.reference }),
 		...(deposit === undefined ? {} : { deposit }),
 		occurredAt: new Date(),
 		consentedToContact: submission.consentedToContact,
@@ -792,6 +793,9 @@ async function mintGrant(
 		method: 'daf',
 		processor: provider.processor,
 		providerTxnId: created.value.providerTxnId,
+		...(created.value.reference === undefined
+			? {}
+			: { providerReference: created.value.reference }),
 		occurredAt: new Date(),
 		consentedToContact: submission.consentedToContact,
 		note: submission.note,
@@ -830,7 +834,9 @@ async function mintGrant(
 	// a donor who saw this refusal has had the fund's approval spent (`keepsFundApproval` in
 	// packages/form/src/checkout.machine.ts), so their Try again is a new session and a second grant.
 	// one whose answer never arrived keeps it, and their Try again resends this session and can write
-	// this grant's gift. the grant's tracking ID is the only match that tells the two apart.
+	// this grant's gift. the grant's tracking ID is the only match that tells the two apart, and that
+	// gift's row carries it (`payment.provider_reference`).
+	const trackingId = created.value.reference;
 	later(
 		deps,
 		alert(deps, {
@@ -843,12 +849,15 @@ async function mintGrant(
 				'no gift recorded here, and the fund will still pay it.',
 			facts: [
 				{ label: 'Grant', value: created.value.providerTxnId },
+				...(trackingId === undefined ? [] : [{ label: 'Tracking ID', value: trackingId }]),
 				{ label: 'Amount', value: formatMinor(total, 'USD') },
 				{ label: 'Reason', value: written.detail }
 			],
 			action:
-				'Find this grant in the Chariot dashboard by the grant ID above and note its tracking ID. ' +
-				'If a gift in the dashboard here shows that tracking ID, it is already recorded. ' +
+				(trackingId === undefined
+					? 'Find this grant in the Chariot dashboard by the grant ID above and note its tracking ' +
+						'ID. If a gift in the dashboard here shows that tracking ID, it is already recorded. '
+					: `If a gift in the dashboard here shows tracking ID ${trackingId}, it is already recorded. `) +
 				'Otherwise record the gift by hand, unless Chariot shows the grant cancelled.'
 		})
 	);
