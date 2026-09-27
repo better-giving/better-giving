@@ -32,15 +32,21 @@ import { useEffect, useRef } from 'react';
  * the deployment cannot report back leaves every seed on the form exactly as it was — the mark over
  * a credential is the same mark — and a comparison of seeds would read that as a re-read that never
  * came, leaving the boxes holding a credential under a button drawing `Saved`.
+ *
+ * never while a press is in flight: until the effect in {@link useReseeded} takes this press's
+ * reading, what the boxes are compared against can still be an earlier press's, and the boxes it
+ * would put back are the ones being sent.
  */
 export const reseeded = (press: {
 	/** whether this form's last answer says the write landed. */
 	readonly landed: boolean;
+	/** this form's own press in flight. */
+	readonly pending: boolean;
 	/** the reading its boxes are drawn from now. */
 	readonly reading: unknown;
 	/** the reading they were drawn from when its press went. */
 	readonly pressedWith: unknown;
-}): boolean => press.landed && press.reading !== press.pressedWith;
+}): boolean => press.landed && !press.pending && press.reading !== press.pressedWith;
 
 /**
  * the same reading taken over a form's own press, as the flag `useConsoleForm` takes.
@@ -65,6 +71,7 @@ export function useReseeded(press: {
 
 	return reseeded({
 		landed: press.landed,
+		pending: press.pending,
 		reading: press.reading,
 		pressedWith: pressedWith.current
 	});

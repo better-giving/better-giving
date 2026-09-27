@@ -6,6 +6,7 @@ import {
 	answeredRefusal,
 	keysClosed,
 	keysStanding,
+	landedHere,
 	reportStands,
 	secretStored,
 	runUnderway,
@@ -93,6 +94,41 @@ describe('keysClosed', () => {
 
 	it('leaves them open on a page with nothing in flight at all', () => {
 		expect(keysClosed(IDLE, DOOR, false, false, UNWRITTEN)).toBe(false);
+	});
+});
+
+describe('landedHere', () => {
+	it('is the write this page pressed for, once its run has stored it', () => {
+		expect(landedHere({ written: true, pressedHere: true, refusal: null })).toBe(true);
+	});
+
+	// a run is the binary's memory and comes back with a reload or a return to the page, and the
+	// reading that page is drawn from is already the one after it.
+	it('is not a stored run this page made no press for, so the boxes are open on arrival', () => {
+		const write = landedHere({ written: true, pressedHere: false, refusal: null });
+		expect(write).toBe(false);
+		expect(keysClosed(IDLE, NOTHING, false, false, { landed: write, spent: false })).toBe(false);
+	});
+
+	// the run on the page is the earlier press's, and the boxes hold the pair just turned down.
+	it('is not an earlier press’s stored run once the latest press is refused', () => {
+		const write = landedHere({ written: true, pressedHere: true, refusal: { kind: 'pair' } });
+		expect(write).toBe(false);
+		expect(keysClosed(IDLE, DOOR, false, false, { landed: write, spent: false })).toBe(false);
+		expect(
+			landedHere({
+				written: true,
+				pressedHere: true,
+				refusal: {
+					kind: 'boxes',
+					errors: { STRIPE_SECRET_KEY: 'That is not a Stripe secret key.' }
+				}
+			})
+		).toBe(false);
+	});
+
+	it('is nothing where no run stored anything, whoever pressed', () => {
+		expect(landedHere({ written: false, pressedHere: true, refusal: null })).toBe(false);
 	});
 });
 
@@ -359,10 +395,16 @@ describe('keysStanding', () => {
 
 	// a run outlives the page it was pressed on, so a fold drawn over a reload holds an answer to a
 	// press whose boxes are gone.
-	it('reads no pair where this page made no press', () => {
+	it('reads no pair off a stored run where nothing was kept, and is not spent before the reading', () => {
 		expect(
 			keysStanding({ reported: REPORTED, sent: null, run: ended({ kind: 'done' }), reread: false })
 		).toEqual({ seeded: REPORTED, holds: REPORTED, spent: false, armed: false });
+	});
+
+	it('is spent where nothing was kept once the reading after the run has landed', () => {
+		expect(
+			keysStanding({ reported: REPORTED, sent: null, run: ended({ kind: 'done' }), reread: true })
+		).toEqual({ seeded: REPORTED, holds: REPORTED, spent: true, armed: false });
 	});
 
 	// a reload drops what was kept, so a stopped run on a fresh page seeds and arms nothing.

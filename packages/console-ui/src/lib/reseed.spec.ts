@@ -13,17 +13,23 @@ const after = { mail: {} };
 
 describe('when a landed write puts the boxes back', () => {
 	it('does not, while the only reading on the screen is the one the press was made against', () => {
-		expect(reseeded({ landed: true, reading: before, pressedWith: before })).toBe(false);
+		expect(reseeded({ landed: true, pending: false, reading: before, pressedWith: before })).toBe(
+			false
+		);
 	});
 
 	it('does, on the reading that landed after it', () => {
-		expect(reseeded({ landed: true, reading: after, pressedWith: before })).toBe(true);
+		expect(reseeded({ landed: true, pending: false, reading: after, pressedWith: before })).toBe(
+			true
+		);
 	});
 
 	// a press turned down leaves the boxes holding what was typed: what has to change is one of
 	// them, and the operator is standing in it.
 	it('leaves them alone where nothing was written, however many readings land', () => {
-		expect(reseeded({ landed: false, reading: after, pressedWith: before })).toBe(false);
+		expect(reseeded({ landed: false, pending: false, reading: after, pressedWith: before })).toBe(
+			false
+		);
 	});
 
 	/**
@@ -33,6 +39,16 @@ describe('when a landed write puts the boxes back', () => {
 	 */
 	it('tells two readings apart by which reading they are, not by what they hold', () => {
 		expect(before).toEqual(after);
-		expect(reseeded({ landed: true, reading: after, pressedWith: before })).toBe(true);
+		expect(reseeded({ landed: true, pending: false, reading: after, pressedWith: before })).toBe(
+			true
+		);
+	});
+
+	// a second press over the same form, before its own reading has been taken: what the boxes are
+	// compared against is still the first press's, and putting them back empties what is being sent.
+	it('does not while the next press is in flight, against the reading the last one left', () => {
+		expect(reseeded({ landed: true, pending: true, reading: after, pressedWith: before })).toBe(
+			false
+		);
 	});
 });

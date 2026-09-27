@@ -69,6 +69,7 @@ import {
 	answeredRefusal,
 	keysClosed,
 	keysStanding,
+	landedHere,
 	reportStands,
 	runUnderway,
 	secretStored,
@@ -693,12 +694,15 @@ export function StripeSection({
 
 	/** the two ways one press of this form leaves something on the deployment. */
 	const keysLanded = landed || removed?.kind === 'set';
+	/* and counted as this form's write only where a press on this page made it and no refusal has
+	   come since (`landedHere` in ./stripe-press.ts). */
+	const ownWrite = landedHere({ written: keysLanded, pressedHere, refusal: pressRefusal });
 	/* whether the reading this press set off has landed (./reseed.ts). what is handed in is the
 	   values prop itself rather than the seeds read off it: a record built at every render is a new
 	   reading at every render, and this one is the deployment answered once per re-read.
 	   what a press is made against is taken while `underway` is true, which is the whole of the press
 	   — the request, and then the run it started. */
-	const reread = useReseeded({ landed: keysLanded, pending: underway, reading: values.vars });
+	const reread = useReseeded({ landed: ownWrite, pending: underway, reading: values.vars });
 	/* what the two boxes hold and whether they have been put back to it: this press's own answer
 	   where it says the deployment took the pair, what it sent where its run has not stored it, and
 	   the reading after it otherwise (`keysStanding` in ./stripe-press.ts). the answer is seconds
@@ -721,11 +725,11 @@ export function StripeSection({
 	   only these two boxes and the save under them are drawn from it. every other control on this
 	   screen carries a press of its own, and each of those is closed while any press on the page is
 	   writing. */
-	const closed = keysClosed(phase, pressAnswer, busy, working, { landed: keysLanded, spent });
+	const closed = keysClosed(phase, pressAnswer, busy, working, { landed: ownWrite, spent });
 
 	const keys = useConsoleForm(stated, {
 		report: live,
-		landed: keysLanded,
+		landed: ownWrite,
 		spent,
 		refused: carried(namedBoxes ?? keyRefused),
 		/* the boxes seeded from what the deployment holds ({@link seeded}), keyed by what they post.
