@@ -3,6 +3,7 @@ package account
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/better-giving/console/internal/state"
@@ -50,6 +51,35 @@ func TestTheRecordIsTheAccountAndNothingElse(t *testing.T) {
 	}
 }
 
+func TestThisRunsChoiceOutlastsAnotherProcessRecordingADifferentAccount(t *testing.T) {
+	dir := t.TempDir()
+	running := New(state.At(dir))
+	if !running.Choose(Account{ID: "this-runs-account", Name: "hound-haven"}) {
+		t.Fatal("a writable directory said the choice was not remembered")
+	}
+	// a second console on the same machine, the way `better-giving login` in another terminal is.
+	New(state.At(dir)).Choose(Account{ID: "another-account", Name: "cat-corner"})
+
+	chosen := running.Chosen()
+	if chosen == nil || chosen.Account.ID != "this-runs-account" || !chosen.Remembered {
+		t.Fatalf("the running console moved to %+v", chosen)
+	}
+}
+
+func TestWritingThroughAnAnswerChangesNoOtherAnswer(t *testing.T) {
+	store := New(state.At(t.TempDir()))
+	store.Choose(Account{ID: "an-account", Name: "hound-haven"})
+
+	answered := store.Chosen()
+	answered.Account.ID = "a-caller's-edit"
+	answered.Remembered = false
+
+	chosen := store.Chosen()
+	if chosen.Account.ID != "an-account" || !chosen.Remembered {
+		t.Fatalf("one caller's edit reached the next answer: %+v", chosen)
+	}
+}
+
 func TestAMachineThatCannotBeWrittenOnKeepsTheChoiceForThisRun(t *testing.T) {
 	// a directory that cannot be made: the path names a file, so creating anything under it fails
 	// the way a read-only home or a directory somebody else owns does.
@@ -90,6 +120,61 @@ func TestAChoiceThatCouldNotBeWrittenIsAnsweredOverTheOlderRecord(t *testing.T) 
 	}
 	if chosen.Remembered {
 		t.Fatal("a choice nothing recorded was answered as remembered")
+	}
+}
+
+// a directory that takes every write and holds nothing, so the only shared state under test is the
+// store's own.
+type acceptingWrites struct{}
+
+func (acceptingWrites) Read(string) ([]byte, error) { return nil, nil }
+func (acceptingWrites) Write(string, []byte) error  { return nil }
+
+// handlers answer Chosen while a choice is being made; -race is what fails this when either side
+// goes unguarded.
+func TestChoosingWhileHandlersAskIsSafe(t *testing.T) {
+	store := &Store{state: acceptingWrites{}}
+	var askers sync.WaitGroup
+	for range 4 {
+		askers.Add(1)
+		go func() {
+			defer askers.Done()
+			for range 100 {
+				store.Chosen()
+			}
+		}()
+	}
+	for range 100 {
+		store.Choose(Account{ID: "an-account", Name: "hound-haven"})
+	}
+	askers.Wait()
+}
+
+// a directory that reports whether the store's lock was free while it was being written.
+type watchingTheLock struct {
+	store       *Store
+	writtenFree *bool
+}
+
+func (watchingTheLock) Read(string) ([]byte, error) { return nil, nil }
+func (dir watchingTheLock) Write(string, []byte) error {
+	if dir.store.mutex.TryLock() {
+		*dir.writtenFree = true
+		dir.store.mutex.Unlock()
+	}
+	return nil
+}
+
+// two overlapping choices each write and then hold; were the lock free between the two steps, the
+// run could end holding one account while the disk holds the other.
+func TestAChoiceIsWrittenAndHeldUnderOneLock(t *testing.T) {
+	var writtenFree bool
+	store := &Store{}
+	store.state = watchingTheLock{store: store, writtenFree: &writtenFree}
+
+	store.Choose(Account{ID: "an-account", Name: "hound-haven"})
+	if writtenFree {
+		t.Fatal("the record was written while another choice could take the lock")
 	}
 }
 
