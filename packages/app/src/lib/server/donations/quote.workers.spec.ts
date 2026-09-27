@@ -1586,23 +1586,43 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		expect(mail.sent).toHaveLength(0);
 	});
 
-	/**
-	 * a grant that exists with no gift recorded against it is visible nowhere else: the settlement path
-	 * answers an unknown grant quietly, so this press is the one place the loss can be reported.
-	 */
-	it('tells an operator the grant id when the gift cannot be recorded against a created grant', async () => {
+	/** Chariot creates the grant and the gift's write then fails, with an operator to tell. */
+	async function mintGrantWithNoGift() {
 		await env.DB.prepare(`update org_profile set notification_email = 'ops@hope.example'`).run();
 		const mail = mailer();
 		// the form goes between the read at the top of the request and the write at the bottom.
 		const port = chariotProvider([grant()], async () => {
 			await env.DB.prepare('delete from form').run();
 		});
-
 		const result = await mint(chariotDeps(port.port, { email: mail.port }), fundGift());
+		return { result, mail };
+	}
+
+	/**
+	 * a grant that exists with no gift recorded against it is visible nowhere else: the settlement path
+	 * answers an unknown grant quietly, so this press is the one place the loss can be reported.
+	 */
+	it('tells an operator the grant id when the gift cannot be recorded against a created grant', async () => {
+		const { result, mail } = await mintGrantWithNoGift();
 
 		expect(result.ok || result.reason).toBe('internal_error');
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 		expect(mail.sent[0]?.text).toContain(GRANT_ID);
+	});
+
+	/**
+	 * the donor was answered 500 and may press again with the same session, which records the gift
+	 * against the grant Chariot already holds — a hand entry made on top of that is the gift twice.
+	 */
+	it('tells an operator to look here for the grant’s gift before recording one by hand', async () => {
+		const { mail } = await mintGrantWithNoGift();
+
+		// the plain-text arm wraps long lines, and the facts print above the action.
+		const text = (mail.sent[0]?.text ?? '').replace(/\s+/g, ' ');
+		const action = text.slice(text.indexOf('What to do:'));
+		expect(action).toContain(GRANT_ID);
+		expect(action).toContain('dashboard here');
+		expect(action.indexOf('dashboard here')).toBeLessThan(action.indexOf('by hand'));
 	});
 
 	/**
