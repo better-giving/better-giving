@@ -141,9 +141,9 @@ export type KeysWrite = {
  * {@link KeysWrite}, to ./reseed.ts and to the save button's tick (./use-console-form.ts).
  *
  * **the run a processor fold holds is not that on its own.** it is the binary's memory and comes back
- * with a reload or a return to the page, still reading as stored — and a page drawn after it was
- * drawn from the reading after it, so there is nothing for its boxes to wait on and nothing to put
- * them back to. and once the latest press is turned down, the run still on the page is an earlier
+ * with a reload or a return to the page, still reading as stored — and a page opened after it is
+ * already drawn from the reading that followed it, so there is nothing for its boxes to wait on and
+ * nothing to put them back to. and once the latest press is turned down, the run still on the page is an earlier
  * press's: counted as this one's, it closes the boxes holding the pair that was refused, then puts
  * them back over it when the refusal's re-read lands.
  */

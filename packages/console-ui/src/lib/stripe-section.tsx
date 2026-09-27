@@ -694,8 +694,8 @@ export function StripeSection({
 
 	/** the two ways one press of this form leaves something on the deployment. */
 	const keysLanded = landed || removed?.kind === 'set';
-	/* and counted as this form's write only where a press on this page made it and no refusal has
-	   come since (`landedHere` in ./stripe-press.ts). */
+	/* counted as this form's write only where a press on this page made it and no refusal has come
+	   since (`landedHere` in ./stripe-press.ts). */
 	const ownWrite = landedHere({ written: keysLanded, pressedHere, refusal: pressRefusal });
 	/* whether the reading this press set off has landed (./reseed.ts). what is handed in is the
 	   values prop itself rather than the seeds read off it: a record built at every render is a new
