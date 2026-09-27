@@ -3328,6 +3328,26 @@ describe('where focus goes when the screen changes', () => {
 		}
 	});
 
+	// a departure tears down a task after the disconnect (`#leaving` in ./element.ts), and an outcome
+	// can land in that task: the host is off the document, and its root is the host itself.
+	it('draws a resume’s outcome that lands between leaving the page and the teardown', async () => {
+		let answer: () => void = () => {};
+		const card = await mount({
+			resume: { paymentToken: 'pi_1_secret_x' },
+			ports: {
+				resume: () =>
+					new Promise((resolve) => {
+						answer = () => resolve({ kind: 'processing' });
+					})
+			}
+		});
+		answer();
+		card.host.remove();
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Your gift is on its way');
+	});
+
 	// the heading is the least a screen can say. one with a sentence of its own, and the wait with
 	// its, say that instead of the heading they replaced — never both.
 	it('says a resume’s own ending over the heading it settles on', async () => {

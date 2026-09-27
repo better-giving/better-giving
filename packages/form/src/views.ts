@@ -271,7 +271,9 @@ function holdsCaret(node: Element): boolean {
  * every shadow root a card has been painted in, which is how one card tells another holding the
  * caret.
  *
- * module-wide because every element on a page runs this one module, whichever tag defined it.
+ * module-wide, so it spans every tag this module defined. a card from another copy of this module
+ * — a page loading two deployments' embed.js — is not in it, and a caret there reads as the host
+ * page's.
  */
 const cardRoots = new WeakSet<Node>();
 
@@ -286,14 +288,15 @@ const cardRoots = new WeakSet<Node>();
  * this one does not also stand in is out of sight, and reads as the host page.
  */
 function caretInAnotherCard(own: ShadowRoot): boolean {
+	// a host off the document is its own root, and an element has no `activeElement` at all.
 	let scope: Node = own.host.getRootNode();
-	let caret = (scope as Document | ShadowRoot).activeElement;
-	while (caret === null && 'host' in scope) {
+	let caret = (scope as Partial<Document | ShadowRoot>).activeElement ?? null;
+	while (caret === null && scope.nodeType === Node.DOCUMENT_FRAGMENT_NODE && 'host' in scope) {
 		scope = (scope as ShadowRoot).host.getRootNode();
-		caret = (scope as Document | ShadowRoot).activeElement;
+		caret = (scope as Partial<Document | ShadowRoot>).activeElement ?? null;
 	}
 	while (caret?.shadowRoot?.activeElement) caret = caret.shadowRoot.activeElement;
-	for (let node: Node | null = caret; node !== null; ) {
+	for (let node: Node | null = caret; node != null; ) {
 		const shadow = (node as Partial<Element>).shadowRoot;
 		if (shadow != null && shadow !== own && cardRoots.has(shadow)) return true;
 		node = node.parentNode ?? (node as Partial<ShadowRoot>).host ?? null;

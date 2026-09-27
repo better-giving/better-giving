@@ -5,10 +5,18 @@ import { defineDonateForm, DONATE_FORM_TAG } from './element';
 import type { CheckoutPorts } from './ports';
 import type { FormConfig, PaymentMethod } from './v1';
 
-// what a lightweight DOM cannot see about the element's stylesheets: which document a constructed
-// sheet belongs to, and what a card renders as when the `@property` registrations its seeds derive
-// from are not in the tree. both are engine behaviour, and both are the whole reason `sheetsFor`
-// puts a second copy of the token sheet in the document at all.
+// what a lightweight DOM cannot see about the element, each of it engine behaviour:
+//
+//  - its stylesheets: which document a constructed sheet belongs to, and what a card renders as when
+//    the `@property` registrations its seeds derive from are not in the tree — the whole reason
+//    `sheetsFor` puts a second copy of the token sheet in the document at all.
+//  - the box a host page holds before upgrade, which is a used box and needs a layout.
+//  - the closed choices operated by pointer and keyboard, and where the open list stands over a
+//    host box that clips.
+//  - where the caret goes: whether a pointer press focuses the control, whether a hidden control
+//    gives the caret up, what a closed root lets a read see, and which card on a page holds it.
+//    happy-dom focuses nothing on `click()`, keeps the caret on a hidden node, and throws reading a
+//    second shadow root's `activeElement`.
 //
 // like every spec in this pool it runs from `pnpm test:browser` and not from `pnpm test`, so it does
 // not gate `deploy`; see vitest.browser.config.ts.
