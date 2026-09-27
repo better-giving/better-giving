@@ -5,7 +5,7 @@ import { defineDonateForm, DONATE_FORM_TAG } from './element';
 import type { CheckoutPorts } from './ports';
 import type { FormConfig, PaymentMethod } from './v1';
 
-// what a lightweight DOM cannot see about the element, each of it engine behaviour:
+// what a lightweight DOM cannot see about the element, all of it engine behaviour:
 //
 //  - its stylesheets: which document a constructed sheet belongs to, and what a card renders as when
 //    the `@property` registrations its seeds derive from are not in the tree — the whole reason

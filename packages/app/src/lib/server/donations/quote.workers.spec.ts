@@ -1643,7 +1643,7 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 	 * approval, and their Try again can record this grant's gift after all. only the grant's tracking
 	 * ID tells the two apart.
 	 */
-	it('tells an operator to look here for the grant’s tracking ID before recording it by hand unless Chariot shows it cancelled', async () => {
+	it('tells an operator to look here for the grant’s tracking ID before recording its gift by hand unless Chariot shows the grant cancelled', async () => {
 		const { mail } = await mintGrantWithNoGift();
 
 		// the plain-text arm wraps long lines, and the facts print above the action.
@@ -1652,7 +1652,7 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		expect(action).toContain('tracking ID');
 		expect(action).toContain('already recorded');
 		expect(action.indexOf('tracking ID')).toBeLessThan(action.indexOf('by hand'));
-		expect(action).toContain('unless Chariot shows it cancelled');
+		expect(action).toContain('unless Chariot shows the grant cancelled');
 		expect(action).not.toContain('on or after');
 	});
 

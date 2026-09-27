@@ -836,20 +836,20 @@ async function mintGrant(
 		alert(deps, {
 			headline: 'A donor-advised fund grant was created with no gift recorded against it',
 			body:
-				'Chariot created the grant and the gift could not be written here, so the donor was told ' +
-				'it did not go through. A donor who tried again usually made a separate grant with its ' +
-				'own gift, which does not stand for this one. A donor who never saw the failure may have ' +
-				'tried again and recorded this grant’s gift after all. Otherwise this grant has no gift ' +
-				'recorded here, and the fund will still pay it.',
+				'Chariot created the grant and the gift could not be written here, so the donor’s page ' +
+				'said it did not go through. A donor who saw that and tried again made a separate grant ' +
+				'with its own gift, which does not stand for this one. A donor whose page never said so ' +
+				'may have tried again and recorded this grant’s gift after all. Otherwise this grant has ' +
+				'no gift recorded here, and the fund will still pay it.',
 			facts: [
 				{ label: 'Grant', value: created.value.providerTxnId },
 				{ label: 'Amount', value: formatMinor(total, 'USD') },
 				{ label: 'Reason', value: written.detail }
 			],
 			action:
-				'Find this grant in the Chariot dashboard by the grant id above and note its tracking ID. ' +
+				'Find this grant in the Chariot dashboard by the grant ID above and note its tracking ID. ' +
 				'If a gift in the dashboard here shows that tracking ID, it is already recorded. ' +
-				'Otherwise record it by hand unless Chariot shows it cancelled.'
+				'Otherwise record the gift by hand, unless Chariot shows the grant cancelled.'
 		})
 	);
 	return refuse(

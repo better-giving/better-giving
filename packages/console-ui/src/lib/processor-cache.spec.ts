@@ -52,8 +52,8 @@ vi.mock('./console-reading', async (original) => ({
 	})
 }));
 
-// the module is fresh per test: a run report no draw received is held across every forgetting by
-// design, so one test's undrawn report would otherwise be the next test's first draw. the store is
+// the module is fresh per test: a run report no draw received is held across every forgetting, so
+// one test's undrawn report would otherwise be the next test's first draw. the store is
 // `remix-client-cache`'s, which a module reset leaves standing, so the last test's module forgets
 // what it kept first.
 let bar: typeof import('@better-giving/operator/progress-bar');
@@ -102,7 +102,7 @@ async function readForVisit(href: string, signal?: AbortSignal) {
 	}
 }
 
-/** a visit to `href`, drawn out of what it read as the page's render does unless the router abandoned it. */
+/** a visit to `href`, its run marked drawn as the page's render marks it, unless the router abandoned it. */
 async function visit(href: string, signal?: AbortSignal) {
 	const screen = await readForVisit(href, signal);
 	if (!signal?.aborted) runDrawn(screen.run);
