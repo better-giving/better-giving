@@ -55,3 +55,25 @@ func TestTheProcessorSetupStillGoingIsNamedByTheStageItIsIn(t *testing.T) {
 	}
 	close(gate)
 }
+
+// a stop is heard by every wait a press is making for the edge, and a second one is no panic.
+func TestAStopIsHeardOnceAndTwiceAlike(t *testing.T) {
+	presses := &Presses{}
+	stopping := presses.Stopping()
+	select {
+	case <-stopping:
+		t.Fatal("heard a stop before one was made")
+	default:
+	}
+
+	presses.Stop()
+	presses.Stop()
+
+	for _, heard := range []<-chan struct{}{stopping, presses.Stopping()} {
+		select {
+		case <-heard:
+		default:
+			t.Error("a stop was made and not heard")
+		}
+	}
+}

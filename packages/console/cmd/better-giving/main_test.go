@@ -16,6 +16,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -23,6 +25,8 @@ import (
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/effects"
+	"github.com/better-giving/console/internal/hangup"
+	"github.com/better-giving/console/internal/hangup/hanguptest"
 	"github.com/better-giving/console/internal/oauth"
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/server"
@@ -1004,5 +1008,93 @@ func TestNoSentenceThisPackageSaysIsWorkedOutBeforeACommandRunsIt(t *testing.T) 
 	}
 	if len(worked) > 0 {
 		t.Errorf("%v at init, want a function for each of them", worked)
+	}
+}
+
+// a press whose run is sitting in a wait for the edge: it is going until it is told to stop.
+type waitingOnTheEdge struct {
+	once    sync.Once
+	stopped chan struct{}
+}
+
+func (press *waitingOnTheEdge) Stop() { press.once.Do(func() { close(press.stopped) }) }
+
+func (press *waitingOnTheEdge) Going() (string, bool) {
+	select {
+	case <-press.stopped:
+		return "", false
+	default:
+		return "stripe is still being set up", true
+	}
+}
+
+// a stop ends a run's wait for the edge before it waits for the press, whichever way the console
+// was closed: told after, the press would sit out the rest of its bound.
+func TestAStopEndsEveryWaitForTheEdge(t *testing.T) {
+	press := &waitingOnTheEdge{stopped: make(chan struct{})}
+
+	ended := make(chan error, 1)
+	go func() { ended <- endRun(&strings.Builder{}, &http.Server{}, press, stillUp()) }()
+
+	select {
+	case err := <-ended:
+		if err != nil {
+			t.Fatalf("endRun = %v, want a server that was never serving shut cleanly", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stop waited on a press it had not yet told to stop")
+	}
+}
+
+// a terminal closed under a press ends its wait for the edge as a ctrl-c does.
+func TestAHangUpEndsEveryWaitForTheEdge(t *testing.T) {
+	presses := &server.Presses{}
+	heard := make(chan struct{})
+	defer stopOnHangUp(heard, presses)()
+
+	close(heard)
+	select {
+	case <-presses.Stopping():
+	case <-time.After(time.Second):
+		t.Error("the terminal hung up and the presses were never told")
+	}
+}
+
+// a served console's presses are told to stop by a hang-up heard under one.
+func TestAServedConsoleHearsAHangUpUnderAPress(t *testing.T) {
+	said, ended := hanguptest.Child(t, func() {
+		presses, deaf := hearingHangUps()
+		defer deaf()
+		release := hangup.Hold()
+		hanguptest.HangUp()
+		select {
+		case <-presses.Stopping():
+			fmt.Println("the presses were told")
+		case <-time.After(time.Second):
+		}
+		release()
+	})
+	if !strings.Contains(said, "the presses were told") {
+		t.Errorf("printed %q, want a hang-up under a press to stop the server's presses", said)
+	}
+	if ended != syscall.SIGHUP {
+		t.Errorf("ended on %v, want the held hang-up to end the process at the release", ended)
+	}
+}
+
+// a server that has ended stops listening for a hang-up: its presses are told nothing after.
+func TestAHangUpHeardAfterTheQuitStopsNothing(t *testing.T) {
+	presses := &server.Presses{}
+	heard := make(chan struct{})
+	quit := stopOnHangUp(heard, presses)
+
+	quit()
+	// time for the listener to take the quit: with both closed at once its select picks either.
+	time.Sleep(50 * time.Millisecond)
+	close(heard)
+	select {
+	case <-presses.Stopping():
+		t.Error("the presses of a server that had ended were told to stop")
+	case <-time.After(100 * time.Millisecond):
 	}
 }

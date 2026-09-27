@@ -12,6 +12,11 @@
 // hold is sent again once no hold is left, and the process ends then, as it would have — rather
 // than going on to serve a console, holding its port, for a terminal nobody is at.
 //
+// **a held hang-up is heard at once, not only at the release.** Heard closes the moment one is
+// caught, so a wait with nothing left to finish (../deployment/keyed.go's wait for the edge) ends
+// then rather than sitting out its bound for a terminal that is gone; the calls a press makes are
+// still held to the end.
+//
 // **a hold is on SIGHUP alone.** a ctrl-c during a press is bubbletea's to take and the ledger's to
 // report (../terminal/ledger.go's StillGoing), and a second one still ends the process.
 //
@@ -38,6 +43,11 @@ var (
 	holds int
 	// caught is the one channel every hold shares, notified while holds is above zero.
 	caught = make(chan os.Signal, 1)
+	// listening ends the watch over caught, and took answers whether the watch took a hang-up.
+	listening chan struct{}
+	took      chan bool
+	heard     = make(chan struct{})
+	hearing   sync.Once
 )
 
 // how long a release that re-sent a held hang-up waits for it to end the process before returning:
@@ -56,9 +66,35 @@ func Hold() (release func()) {
 	holds++
 	if holds == 1 {
 		signal.Notify(caught, syscall.SIGHUP)
+		listening, took = make(chan struct{}), make(chan bool, 1)
+		go watch(listening, took)
 	}
 	var once sync.Once
 	return func() { once.Do(let) }
+}
+
+// Heard closes once a hang-up is caught under a hold, and stays closed for the life of the process.
+//
+// never reopened because the process does not outlive it: the last release re-sends the hang-up
+// and its default action ends the process there. a second SIGHUP listener anywhere in the binary
+// would take that re-sent hang-up instead, leaving a live process whose every later wait for the
+// edge reads as stopped at its first ask.
+func Heard() <-chan struct{} {
+	return heard
+}
+
+func watch(listening <-chan struct{}, took chan<- bool) {
+	saw := false
+	for {
+		select {
+		case <-caught:
+			saw = true
+			hearing.Do(func() { close(heard) })
+		case <-listening:
+			took <- saw
+			return
+		}
+	}
 }
 
 func let() {
@@ -68,12 +104,19 @@ func let() {
 	if holds > 0 {
 		return
 	}
-	// Stop returns once every signal delivered before it is on the channel.
+	// once Stop returns, caught receives no more hang-ups. one dropped before it on the full
+	// one-slot buffer came behind one already held, which the watch took or the drain below finds.
 	signal.Stop(caught)
+	close(listening)
+	// a hang-up the watch took, or one it had not reached when it was told to stop.
+	held := <-took
 	select {
 	case <-caught:
+		held = true
+	default:
+	}
+	if held {
 		_ = syscall.Kill(os.Getpid(), syscall.SIGHUP)
 		time.Sleep(ending)
-	default:
 	}
 }

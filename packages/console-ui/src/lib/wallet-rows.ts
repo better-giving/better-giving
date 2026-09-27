@@ -106,6 +106,31 @@ export function walletRows(lines: readonly WalletHostLine[], wallet: Wallet): re
 }
 
 /**
+ * whether one wallet's panel is short of nothing, which is what keeps the Register press out of it.
+ *
+ * one row not showing is enough to draw the press, whichever of the other three it is: each is a
+ * site the one press acts on (./wallets-press.ts).
+ */
+export const panelCovered = (rows: readonly WalletRow[]): boolean =>
+	rows.every((row) => row.standing === 'showing');
+
+/**
+ * whether no wallet's panel draws the Register press, off the same rows each panel is drawn from.
+ *
+ * it is what lets a run's wallet line read as finished once the account says so
+ * (./awaiting-note.ts): a line saying done while one panel still offers the press would be two
+ * answers to one question on one screen.
+ *
+ * **no sites at all is not covered**, for {@link linkStanding}'s reason: `every` over an empty list
+ * is true, and a finished line over sites nobody asked about says the opposite of what is true.
+ */
+export const sitesCovered = (lines: readonly WalletHostLine[]): boolean =>
+	lines.length > 0 &&
+	(Object.keys(WALLET_NAMES) as Wallet[]).every((wallet) =>
+		panelCovered(walletRows(lines, wallet))
+	);
+
+/**
  * whether a wallet is drawn on every site this deployment wants buttons on.
  *
  * it is what gives the Link row its word and its tone, because Link is no rail this form offers and
@@ -122,7 +147,7 @@ export type LinkStanding = 'everywhere' | 'not_everywhere';
 
 export function linkStanding(rows: readonly WalletRow[]): LinkStanding {
 	if (rows.length === 0) return 'not_everywhere';
-	return rows.every((row) => row.standing === 'showing') ? 'everywhere' : 'not_everywhere';
+	return panelCovered(rows) ? 'everywhere' : 'not_everywhere';
 }
 
 /**

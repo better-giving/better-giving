@@ -190,9 +190,10 @@ type Outcome struct {
 	// Levelled is what the deployment said about the wallet registrations, on Uncovered.
 	Levelled *deployment.WalletsLevel `json:"levelled"`
 	// AwaitingKey is that refusal being the deployment not holding the secret key yet, on
-	// Unrepeating and Uncovered. The write landed seconds earlier and its edge has not caught up, so
-	// what the screen has to say is that this finishes itself on the next press — and never the
-	// deployment's own sentence, which names a value this press has already set.
+	// Unrepeating and Uncovered. The write landed and its edge had not caught up by the end of the
+	// wait for it (../deployment/keyed.go), so what the screen has to say is that the next press
+	// finishes it — and never the deployment's own sentence, which names a value this press has
+	// already set.
 	AwaitingKey bool `json:"awaitingKey"`
 	// Published is the var write that did not land, on NotPublished.
 	Published *deployment.Written `json:"published"`

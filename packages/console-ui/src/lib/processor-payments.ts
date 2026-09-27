@@ -35,6 +35,13 @@ export function processorStanding(
 }
 
 /**
+ * whether a read that landed reports this processor as holding no credentials. a read that failed,
+ * was never made, or left the processor out is not that.
+ */
+export const paymentsKeyless = (read: PaymentsRead | null, processor: PaymentProcessor): boolean =>
+	processorStanding(read, processor)?.state === 'unconfigured';
+
+/**
  * the readings a configured processor answered with, or `null` where it holds no credentials.
  *
  * **`null` here is not a failure and a screen may not draw it as one.** it is the deployment saying

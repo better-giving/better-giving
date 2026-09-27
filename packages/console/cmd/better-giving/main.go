@@ -29,6 +29,7 @@ import (
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/effects"
+	"github.com/better-giving/console/internal/hangup"
 	"github.com/better-giving/console/internal/oauth"
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/server"
@@ -488,7 +489,8 @@ func serve(
 ) error {
 	// what a stop has to wait for: the presses this server holds outlive the requests that start
 	// them, so nothing else on the machine knows one is running.
-	presses := &server.Presses{}
+	presses, deaf := hearingHangUps()
+	defer deaf()
 	// the close press, as the one thing that ends this run from outside the terminal it was typed
 	// in. the guard is here rather than in the handler: the page may be pressed twice, and closing
 	// a channel that is already closed is a panic in this process.
@@ -617,13 +619,46 @@ func unbound(at string, err error) error {
 // because the two ways of ending say different things: the close press is the one that leaves this terminal
 // wondering what went with the page, and a ctrl-c is the operator in this terminal asking to stop
 // the command they typed here.
-func endRun(to io.Writer, listening *http.Server, presses *server.Presses, last string) error {
+func endRun(to io.Writer, listening *http.Server, presses stoppable, last string) error {
+	// a run's wait for the edge to serve a key is the one part of a press not waited for here: the
+	// next press finishes it, and the stop would otherwise sit out the rest of its bound.
+	presses.Stop()
 	waitForPress(to, presses.Going, waited)
 	closing, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	shut := listening.Shutdown(closing)
 	terminal.Say(to, last)
 	return shut
+}
+
+// what endRun stops and then waits on, which is *server.Presses.
+type stoppable interface {
+	Stop()
+	Going() (string, bool)
+}
+
+// the presses a server holds, already told to stop once a hang-up is heard under one, until the
+// returned quit.
+func hearingHangUps() (presses *server.Presses, quit func()) {
+	presses = &server.Presses{}
+	return presses, stopOnHangUp(hangup.Heard(), presses)
+}
+
+// ends every wait for the edge once a hang-up is heard under a press, until the returned quit.
+//
+// the third way a run's terminal goes, and the one that leaves no run to end: the press is still
+// held to its last call and the hang-up ends the process at its release (../../internal/hangup), so
+// only the wait endRun cuts short is cut here.
+func stopOnHangUp(heard <-chan struct{}, presses *server.Presses) (quit func()) {
+	quitting := make(chan struct{})
+	go func() {
+		select {
+		case <-heard:
+			presses.Stop()
+		case <-quitting:
+		}
+	}()
+	return func() { close(quitting) }
 }
 
 // the run ended by a ctrl-c in this terminal, which is where the operator typed the command and so

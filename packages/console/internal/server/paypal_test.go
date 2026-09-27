@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -68,16 +69,23 @@ func settingPaypalBound(t *testing.T, chosen string) (
 	http.Handler, func() []string, *[]string, *httptest.Server, func() []errand, *[]string,
 ) {
 	t.Helper()
+	return settingPaypalOn(t, chosen, map[string]any{
+		"outcome": "set_up",
+		"processors": []any{
+			map[string]any{"processor": "paypal", "label": "PayPal", "outcome": "set_up"},
+		},
+	}, nil)
+}
+
+// that same console, with the deployment answering the repeating-plan press with `recurring` and
+// the stop the server hears being `presses`, nil for one of its own.
+func settingPaypalOn(t *testing.T, chosen string, recurring any, presses *Presses) (
+	http.Handler, func() []string, *[]string, *httptest.Server, func() []errand, *[]string,
+) {
+	t.Helper()
 	bases := []string{}
 	records, flow, accounts := machine(t, chosen)
-	surface, errands := deployed(t, map[string]any{
-		"POST /console/recurring": map[string]any{
-			"outcome": "set_up",
-			"processors": []any{
-				map[string]any{"processor": "paypal", "label": "PayPal", "outcome": "set_up"},
-			},
-		},
-	})
+	surface, errands := deployed(t, map[string]any{"POST /console/recurring": recurring})
 	connected(t, records, surface.URL)
 	api, cloudflare := writes(t, map[string]any{
 		"GET " + settingsOf(release.Baked.Name): resulting(map[string]any{"bindings": []any{}}),
@@ -99,6 +107,7 @@ func settingPaypalBound(t *testing.T, chosen string) (
 			bases = append(bases, base)
 			return paypal.BindAt(app.URL, clientID, secret)
 		},
+		Presses: presses,
 	}), asked, cloudflare, surface, errands, &bases
 }
 
@@ -285,5 +294,34 @@ func TestAPaypalRunThatStoppedAtTheRepeatingPlanStaysUntilTheNextPress(t *testin
 	_, again := ask(t, handler, "/api/paypal/run")
 	if again["run"] == nil {
 		t.Error("a run that stopped was dropped by the reading that observed it")
+	}
+}
+
+// closing the console ends the PayPal run's wait for the edge at once, as it does Stripe's
+// (./stripe_test.go's TestAStopEndsTheWaitForTheEdgeAndTheRunEndsAwaitingTheKey).
+func TestAStopEndsThePaypalWaitForTheEdgeAndTheRunEndsAwaitingTheKey(t *testing.T) {
+	presses := &Presses{}
+	handler, _, _, _, errands, _ := settingPaypalOn(t, "an-account", map[string]any{
+		"outcome": "failed",
+		"processors": []any{map[string]any{
+			"processor": "paypal", "label": "PayPal", "outcome": "failed",
+			"detail": "`PAYPAL_CLIENT_SECRET` is not set.", "reason": "no_key",
+		}},
+	}, presses)
+	press(t, handler, "/api/paypal/setup", paypalPressed)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for !slices.ContainsFunc(errands(), func(one errand) bool { return one.path == deployment.RecurringPath }) {
+		if time.Now().After(deadline) {
+			t.Fatal("the run never pressed the deployment")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	presses.Stop()
+
+	run := polledPaypal(t, handler)
+	outcome, _ := run["outcome"].(map[string]any)
+	if outcome["kind"] != "unrepeating" || outcome["awaitingKey"] != true {
+		t.Errorf("outcome = %v, want unrepeating, awaiting the key", outcome)
 	}
 }
