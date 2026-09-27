@@ -57,7 +57,8 @@ type Holder[Progress any, Outcome any] struct {
 //
 // **ctx is the run's own and never the request's.** the press answers before the chain does, so a
 // context that ended with the handler would cancel every call the run has left to make; each of
-// those calls carries a deadline of its own, which is what bounds the run.
+// those calls carries a deadline of its own, and a chain that waits on the edge to serve a key
+// between them waits no longer than ../deployment/keyed.go's KeyBound, which together bound the run.
 //
 // `failed` is the outcome a chain that panicked ends as, and it is asked for rather than made here
 // because what a stopped run says is each fold's own vocabulary. It is called on the run's own

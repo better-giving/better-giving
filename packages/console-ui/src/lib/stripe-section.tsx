@@ -35,6 +35,9 @@ import { recurringBlock } from './recurring-block';
 import { pollOutlived, runKind, standingRun } from './run-poll';
 import { configuredStanding, processorStanding, STANDING } from './processor-payments';
 import { accountsSaid, recurringReading } from './recurring-rows';
+import type { AwaitingLine } from './awaiting-note';
+import { awaitingLine, awaitsKey, keepRereading } from './awaiting-note';
+import { useKeyRereads } from './key-rereads';
 import { PAYMENTS_GROUP, SECRET_GROUPS, MINTED_BY_CONSOLE, isMasked } from './secret-groups';
 import { FREE_INTENT, WithheldValues } from './withheld-values';
 import type {
@@ -192,10 +195,11 @@ import { WALLET_NAMES, linkStanding, walletHostLines, walletRows } from './walle
 // waiting placeholder. that is every deployment being set up for the first time, which is the state
 // where the space above the boxes is worth most.
 //
-// **and they are asked for again after a run that stored the key.** the store reaches cloudflare's
-// edge a moment after the run reports done, and a deployment asked in between answers as one
-// holding no key at all — which is the pair of readings this screen draws nothing for, so a set-up
-// that worked would show no sign of it until the page was read again (`REREADS` below).
+// **and they are asked for again after a run that stored the key.** the run has already waited on
+// cloudflare's edge serving it, and a page read after that can still land on an edge that has not
+// caught up — which answers as a deployment holding no key at all, the pair of readings this screen
+// draws nothing for, so a set-up that worked would show no sign of it until the page was read again
+// (./key-rereads.ts).
 //
 // **the account name stands above them and is the one reading up there that is not permanent.** it
 // comes out of the last run's facts and nothing else holds it, so it is drawn after a press in this
@@ -237,42 +241,6 @@ const READINGS_FORM = 'stripe-readings-form';
 
 /** how often this screen asks how far the run has got. the Creating screen's interval. */
 const POLL_MS = 2500;
-
-/**
- * how long the screen waits before reading the deployment again once a run has stored the key, and —
- * by its length — how many times it is willing to.
- *
- * **the wait is cloudflare's edge and not this console's.** the store lands seconds before the run
- * reports done and the edge picks it up a moment later, so a deployment asked in between answers
- * every Stripe read as one it had no key to make (`awaitingKey` in ../api/types.ts) — and both
- * readings at the head of this screen draw nothing for that, deliberately. one reading taken the
- * instant the run stops very often falls inside that moment, and what an operator is left looking
- * at is the screen they pressed in, unchanged, until they reload the page.
- *
- * front-loaded and bounded: the edge is usually there within a second or two, and a deployment
- * still answering `no key` half a minute later is not behind — it is something this console cannot
- * name from here. what happens at the end of it is nothing at all: the screen goes on drawing no line
- * for a deployment answering that it holds no key, which is what it draws for that answer anyway.
- */
-const REREADS: readonly number[] = [1500, 3000, 5000, 8000, 12000];
-
-/**
- * whether both readings came back saying this deployment holds no Stripe key.
- *
- * `null` is the read nobody made — the route asks for neither on a face that draws no
- * screen — and the deployment says it itself in the same shape on both addresses: a processor it
- * holds no credentials for is reported as `unconfigured` and carries no reading
- * (`ProcessorPayments` in ../api/types.ts), and it carries no standing on the recurring report at
- * all (./recurring-rows.ts). those are the whole of what this screen draws nothing for, which is what
- * makes them the thing to wait on: every other answer is one it has a line for.
- */
-const withoutKey = (payments: PaymentsRead | null, gifts: RecurringRead | null): boolean => {
-	const stripe = processorStanding(payments, 'stripe');
-	return (
-		(payments === null || stripe?.state === 'unconfigured') &&
-		(gifts === null || recurringReading(gifts, 'stripe') === null)
-	);
-};
 
 /**
  * the two credentials one press of this screen writes, taken out of the enumeration rather than named
@@ -528,47 +496,11 @@ export function StripeSection({
 		void revalidator.revalidate();
 	}, [settled, revalidator]);
 
-	/* and asked for again, for as long as the deployment answers that it is holding no key.
-	   `REREADS` is why: the one reading above is taken the instant the run stops, which is
-	   very often before cloudflare's edge has picked the key up — and the answer to that reading is
-	   two readings this screen draws nothing for, so an operator whose set-up worked sees no sign of
-	   it until they reload.
-
-	   the promises are what this waits on rather than the run: they are handed down fresh by every
-	   revalidation, so each answer is what schedules the next ask — and a screen that is drawing
-	   something already asks for nothing. the count is a ref because nothing on the screen is drawn
-	   from it.
-
-	   the press itself is taken out of the object holding it: that object is remade every time the
-	   revalidation state changes — twice per ask — so an effect keyed on it would clear and restart
-	   its own wait, while the function inside it is the router's own and does not move. */
-	const { revalidate } = revalidator;
-	const rereads = useRef(0);
-	useEffect(() => {
-		if (!storedKey) {
-			rereads.current = 0;
-			return;
-		}
-		const wait = REREADS[rereads.current];
-		if (wait === undefined) return;
-		let gone = false;
-		let timer: ReturnType<typeof setTimeout> | undefined;
-		void Promise.all([payments, recurring]).then(
-			([payments, gifts]) => {
-				if (gone || !withoutKey(payments, gifts)) return;
-				timer = setTimeout(() => {
-					rereads.current += 1;
-					void revalidate();
-				}, wait);
-			},
-			// a read that threw is the page's error boundary's, and this screen is off the screen by then.
-			() => {}
-		);
-		return () => {
-			gone = true;
-			clearTimeout(timer);
-		};
-	}, [storedKey, payments, recurring, revalidate]);
+	/* and asked for again, for as long as the deployment's latest reading is still behind the key
+	   the run stored (./key-rereads.ts). */
+	useKeyRereads(storedKey, payments, recurring, (payments, gifts) =>
+		keepRereading('stripe', live?.kind === 'ended' ? live.outcome : null, payments, gifts)
+	);
 
 	/** what this deployment holds, or `null` where that read did not land (./held-values.ts). */
 	const holding = values.vars.kind === 'read' ? heldValues(values.vars.vars) : null;
@@ -1118,7 +1050,7 @@ export function StripeSection({
 	 * operator somewhere different. the two that name a state nothing else could have told them are
 	 * an endpoint deleted with no replacement, and a signing secret that no longer exists anywhere.
 	 */
-	const stopped = (outcome: StripeSetup): ReactNode => {
+	const stopped = (outcome: StripeSetup, awaiting: AwaitingLine | null): ReactNode => {
 		if (outcome.kind === 'done') return null;
 		// the console itself, and not a step of the chain: nothing observed how far the press got, so
 		// no processor answer is drawn — there is none (./press-stopped.ts).
@@ -1207,18 +1139,30 @@ export function StripeSection({
 			);
 		}
 		if (outcome.kind === 'unrepeating') {
-			/* the deployment is holding a key it has not picked up yet, which is this press's own store
-			   a moment behind the edge rather than anything an operator has to fix. the deployment's
-			   sentence says to set a value this press has already set, so it is not drawn at all —
-			   what is drawn is the one press that finishes it, which is under this on the same screen. */
+			/* the deployment not holding a key this press stored is its edge behind the store rather than
+			   anything an operator has to fix. the deployment's sentence says to set a value this press
+			   has already set, so it is not drawn at all — what is drawn is what the latest reading says
+			   is left (./awaiting-note.ts), and the one press that finishes it is in the repeating-gift
+			   block above this on the same screen. */
 			if (outcome.awaitingKey) {
-				return (
-					<Banner tone="note" word="The keys are stored and published">
-						This deployment serves a donation form and takes one-time gifts. It hasn’t picked the
-						secret key up yet, so recurring gifts are not set up. Press{' '}
-						<strong>Set up recurring gifts</strong> below in a moment.
-					</Banner>
-				);
+				if (awaiting === 'keyless') {
+					return (
+						<Banner tone="note" word="The keys are stored and published">
+							This deployment serves a donation form and takes one-time gifts. It hasn’t picked the
+							secret key up yet, so recurring gifts are not set up. Once it has, press{' '}
+							<strong>Set up recurring gifts</strong> above.
+						</Banner>
+					);
+				}
+				if (awaiting === 'press') {
+					return (
+						<Banner tone="note" word="The keys are stored and published">
+							This deployment serves a donation form and takes one-time gifts. Recurring gifts are
+							not set up yet: press <strong>Set up recurring gifts</strong> above.
+						</Banner>
+					);
+				}
+				return null;
 			}
 			if (outcome.setup.kind === 'unanswered') {
 				return noAnswer(outcome.setup.read, 'the repeating-gift item was not set up');
@@ -1247,15 +1191,16 @@ export function StripeSection({
 			);
 		}
 		if (outcome.kind === 'uncovered') {
-			/* the same edge lag the step above it can meet, and the same answer: what is drawn is that
-			   this finishes itself, never the deployment's sentence naming a value this press has set. */
+			/* the same edge lag the step above it can meet, and the same answer: a note while the payments
+			   reading still reports no key, and never the deployment's sentence naming a value this press
+			   has set. */
 			if (outcome.awaitingKey) {
-				return (
+				return awaiting === 'keyless' ? (
 					<Banner tone="note" word="The keys are stored and published">
 						This deployment serves a donation form and takes gifts. It hasn’t picked the secret key
 						up yet, so none of your sites was registered and no wallet button is drawn on them.
 					</Banner>
-				);
+				) : null;
 			}
 			if (outcome.levelled.kind === 'unanswered') {
 				return noAnswer(outcome.levelled.read, 'no site was registered for wallet buttons');
@@ -1327,67 +1272,93 @@ export function StripeSection({
 			? [PUBLISHED]
 			: SUBJECTS;
 		const reached = publishing ? 0 : REACHED[stage];
-		/* every line the run has reached is opened into its own steps, and a line still waiting has
-		   none: its subject has no steps taken yet. a line that is done keeps the steps it took
-		   standing, because what a finished subject was made of is an account this screen gives nowhere
-		   else — a run that closed each line behind it would leave an operator who looked away with
-		   four words and no record of what earned them. nothing here is a control and nothing shuts on
-		   a press, so what opens a line is the run arriving at it.
+		/* a stop awaiting the key is drawn as the latest reading says (./awaiting-note.ts), so the
+		   line it stopped on can read as finished — and a finished line keeps its steps like any other,
+		   every one of them done. */
+		const drawn = (awaiting: AwaitingLine | null): ReactNode => {
+			const finished = (at: number): boolean =>
+				at < reached || (at === reached && awaiting === 'done');
+			/* every line the run has reached is opened into its own steps, and a line still waiting has
+			   none: its subject has no steps taken yet. a line that is done keeps the steps it took
+			   standing, because what a finished subject was made of is an account this screen gives nowhere
+			   else — a run that closed each line behind it would leave an operator who looked away with
+			   four words and no record of what earned them. nothing here is a control and nothing shuts on
+			   a press, so what opens a line is the run arriving at it.
 
-		   the line a stopped run is standing under is the one that keeps its steps shut: the stage it
-		   stopped at is the stage it was working, so a step drawn there would read `Working` under a
-		   line that reads `Stopped`. what stands in their place is the sentence naming what to do,
-		   attached to that same line.
+			   the line a stopped run is standing under is the one that keeps its steps shut: the stage it
+			   stopped at is the stage it was working, so a step drawn there would read `Working` under a
+			   line that reads `Stopped`. what stands in their place is the sentence naming what to do,
+			   attached to that same line.
 
-		   whatever the line's subject is made of is handed over whole, single stages included: the
-		   ledger folds a step that stands alone into the line above it and draws no run
-		   (packages/operator/src/components/status/StatusLine.jsx), so a filter here would be that
-		   rule stated a second time. */
-		const steps = (at: number): ReactNode => {
-			if (publishing || at > reached || (failed && at === reached)) return undefined;
-			return STAGES.filter((stage) => REACHED[stage] === at).map((stage) => (
-				<StatusStep
-					key={stage}
-					state={
-						STAGES.indexOf(stage) < now
-							? 'done'
-							: STAGES.indexOf(stage) === now
-								? 'running'
-								: 'waiting'
-					}
-				>
-					{STEP[stage]}
-				</StatusStep>
-			));
+			   whatever the line's subject is made of is handed over whole, single stages included: the
+			   ledger folds a step that stands alone into the line above it and draws no run
+			   (packages/operator/src/components/status/StatusLine.jsx), so a filter here would be that
+			   rule stated a second time. */
+			const steps = (at: number): ReactNode => {
+				if (publishing || at > reached || (failed && at === reached && !finished(at))) {
+					return undefined;
+				}
+				return STAGES.filter((stage) => REACHED[stage] === at).map((stage) => (
+					<StatusStep
+						key={stage}
+						state={
+							STAGES.indexOf(stage) < now || finished(at)
+								? 'done'
+								: STAGES.indexOf(stage) === now
+									? 'running'
+									: 'waiting'
+						}
+					>
+						{STEP[stage]}
+					</StatusStep>
+				));
+			};
+			const tone = (at: number): Tone | 'running' | 'done' =>
+				finished(at) ? 'done' : at > reached ? 'note' : failed ? 'blocker' : 'running';
+			const word = (at: number): string =>
+				finished(at) ? 'Done' : at > reached ? 'Waiting' : failed ? 'Stopped' : 'Working';
+			const said = (at: number): ReactNode =>
+				at === reached && read?.kind === 'ended' ? stopped(read.outcome, awaiting) : null;
+			return (
+				// polite: the lines change on their own and nothing is being asked of the reader, so
+				// hearing one land is worth more than being interrupted by it.
+				<div role="status">
+					<StatusLedger>
+						{lines.map((subject, at) => {
+							const attached = said(at);
+							return (
+								<StatusLine
+									key={subject.id}
+									labelAs="h4"
+									label={subject.label}
+									note={subject.note}
+									tone={tone(at)}
+									dim={at > reached}
+									mark={at > reached ? 'circle-dashed' : undefined}
+									word={word(at)}
+									steps={steps(at)}
+								>
+									{attached === null ? null : <div className="adm-status__attach">{attached}</div>}
+								</StatusLine>
+							);
+						})}
+					</StatusLedger>
+				</div>
+			);
 		};
-		const tone = (at: number): Tone | 'running' | 'done' =>
-			at < reached ? 'done' : at > reached ? 'note' : failed ? 'blocker' : 'running';
-		const word = (at: number): string =>
-			at < reached ? 'Done' : at > reached ? 'Waiting' : failed ? 'Stopped' : 'Working';
+		const outcome = read?.kind === 'ended' ? read.outcome : null;
+		if (outcome === null || !awaitsKey(outcome)) return drawn(null);
+		// until both readings land the line stands as the run left it, with no note under it.
 		return (
-			// polite: the lines change on their own and nothing is being asked of the reader, so
-			// hearing one land is worth more than being interrupted by it.
-			<div role="status">
-				<StatusLedger>
-					{lines.map((subject, at) => (
-						<StatusLine
-							key={subject.id}
-							labelAs="h4"
-							label={subject.label}
-							note={subject.note}
-							tone={tone(at)}
-							dim={at > reached}
-							mark={at > reached ? 'circle-dashed' : undefined}
-							word={word(at)}
-							steps={steps(at)}
-						>
-							{at === reached && read?.kind === 'ended' ? (
-								<div className="adm-status__attach">{stopped(read.outcome)}</div>
-							) : null}
-						</StatusLine>
-					))}
-				</StatusLedger>
-			</div>
+			<Suspense fallback={drawn('stopped')}>
+				<Await resolve={payments}>
+					{(payments) => (
+						<Await resolve={recurring}>
+							{(gifts) => drawn(awaitingLine('stripe', outcome, payments, gifts))}
+						</Await>
+					)}
+				</Await>
+			</Suspense>
 		);
 	};
 

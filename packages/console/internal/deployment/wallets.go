@@ -102,9 +102,10 @@ func LevelWallets(ctx context.Context, post cf.Post) WalletsLevel {
 //
 // The same meaning ./recurring.go's has and read off the answer rather than out of a sentence: this
 // press states which of the two ways the read failed, so what a screen decides on is the fact. what
-// it buys is the same — the write landed seconds earlier and its edge has not caught up, so the
-// thing to say is that the next press finishes it rather than the deployment's own sentence, which
-// names a value that press has already set.
+// it buys is the same — the write landed and its edge is not serving it yet, which a run asks again
+// on for up to KeyBound (./keyed.go), and once that runs out the thing to say is that the next press
+// finishes it rather than the deployment's own sentence, which names a value that press has already
+// set.
 func (level WalletsLevel) AwaitsKey() bool {
 	return level.Kind == WalletsLevelReported && level.Report != nil &&
 		level.Report.State == "unreadable" && level.Report.Reason == "no_key"

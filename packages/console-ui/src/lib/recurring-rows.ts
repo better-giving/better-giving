@@ -105,6 +105,15 @@ export function recurringReading(
 }
 
 /**
+ * whether a read that landed carries no standing for this processor, which is the deployment holding
+ * no key for it. a read that failed or was never made is not that.
+ */
+export const recurringKeyless = (
+	read: RecurringRead | null,
+	processor: PaymentProcessor
+): boolean => read !== null && read.kind === 'read' && recurringReading(read, processor) === null;
+
+/**
  * the accounts a sentence is about, in a fundraiser's words.
  *
  * written once and read by every sentence in the block, because the alternative is each of them

@@ -618,6 +618,9 @@ func unbound(at string, err error) error {
 // wondering what went with the page, and a ctrl-c is the operator in this terminal asking to stop
 // the command they typed here.
 func endRun(to io.Writer, listening *http.Server, presses *server.Presses, last string) error {
+	// a run's wait for the edge to serve a key is the one part of a press not waited for here: the
+	// next press finishes it, and the stop would otherwise sit out the rest of its bound.
+	presses.Stop()
 	waitForPress(to, presses.Going, waited)
 	closing, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

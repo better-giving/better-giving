@@ -1006,3 +1006,17 @@ func TestNoSentenceThisPackageSaysIsWorkedOutBeforeACommandRunsIt(t *testing.T) 
 		t.Errorf("%v at init, want a function for each of them", worked)
 	}
 }
+
+// a stop ends a run's wait for the edge, whichever way the console was closed.
+func TestAStopEndsEveryWaitForTheEdge(t *testing.T) {
+	presses := &server.Presses{}
+
+	if err := endRun(&strings.Builder{}, &http.Server{}, presses, stillUp()); err != nil {
+		t.Fatalf("endRun = %v, want a server that was never serving shut cleanly", err)
+	}
+	select {
+	case <-presses.Stopping():
+	default:
+		t.Error("the console stopped and the presses were never told")
+	}
+}

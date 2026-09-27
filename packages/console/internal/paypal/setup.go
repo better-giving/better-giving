@@ -134,9 +134,9 @@ type Outcome struct {
 	// Setup is what the deployment said about the repeating-gift plan, on Unrepeating alone.
 	Setup *deployment.RecurringSetup `json:"setup"`
 	// AwaitingKey is that refusal being the deployment not serving the pair yet, on Unrepeating. The
-	// write landed seconds earlier and its edge has not caught up, so what the screen has to say is
-	// that this finishes itself on the next press — and never the deployment's own sentence, which
-	// names a value this press has already set.
+	// write landed and its edge had not caught up by the end of the wait for it
+	// (../deployment/keyed.go), so what the screen has to say is that the next press finishes it —
+	// and never the deployment's own sentence, which names a value this press has already set.
 	AwaitingKey bool `json:"awaitingKey"`
 }
 

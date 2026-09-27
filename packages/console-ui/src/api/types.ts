@@ -900,10 +900,11 @@ export type StripeSetup =
 	 * everything in front of it landed, so what it leaves is a deployment that serves a donation
 	 * form and takes one-time gifts.
 	 *
-	 * `awaitingKey` is that refusal being the deployment not holding the secret key yet: the store
-	 * landed seconds earlier and its edge has not caught up. `setup` still carries what the
-	 * deployment said, and on that arm it is not drawn — the sentence names a value this press has
-	 * already set.
+	 * `awaitingKey` is that refusal being the deployment not holding the secret key yet: the write
+	 * landed and its edge had not caught up by `KeyBound` (packages/console/internal/deployment/keyed.go),
+	 * so what the screen draws is what its latest reading says is left (../lib/awaiting-note.ts) — and
+	 * never the deployment's own sentence, which `setup` still carries and which names a value this
+	 * press has already set.
 	 */
 	| { kind: 'unrepeating'; setup: RecurringSetup; awaitingKey: boolean }
 	/**
@@ -1045,9 +1046,11 @@ export type PaypalSetup =
 	 * everything in front of it landed, so what it leaves is a deployment taking one-time gifts on
 	 * PayPal.
 	 *
-	 * `awaitingKey` is that refusal being the deployment not serving the pair yet: the store landed
-	 * seconds earlier and its edge has not caught up. `setup` still carries what the deployment
-	 * said, and on that arm it is not drawn — the sentence names a value this press has already set.
+	 * `awaitingKey` is that refusal being the deployment not serving the pair yet: the write landed
+	 * and its edge had not caught up by `KeyBound` (packages/console/internal/deployment/keyed.go), so
+	 * what the screen draws is what its latest reading says is left (../lib/awaiting-note.ts) — and
+	 * never the deployment's own sentence, which `setup` still carries and which names a value this
+	 * press has already set.
 	 */
 	| { kind: 'unrepeating'; setup: RecurringSetup; awaitingKey: boolean }
 	/** the console failed part way through, and how far it got was not observed. carries nothing. */
