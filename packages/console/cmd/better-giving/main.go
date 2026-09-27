@@ -489,7 +489,8 @@ func serve(
 ) error {
 	// what a stop has to wait for: the presses this server holds outlive the requests that start
 	// them, so nothing else on the machine knows one is running.
-	presses := &server.Presses{}
+	presses, deaf := hearingHangUps()
+	defer deaf()
 	// the close press, as the one thing that ends this run from outside the terminal it was typed
 	// in. the guard is here rather than in the handler: the page may be pressed twice, and closing
 	// a channel that is already closed is a panic in this process.
@@ -505,8 +506,6 @@ func serve(
 		Presses:  presses,
 		Close:    func() { once.Do(func() { close(closed) }) },
 	}), port)
-
-	defer stopOnHangUp(hangup.Heard(), presses)()
 
 	// the signal is taken before the server starts, so a ctrl-c arriving in the first moments of the
 	// run is one this process ends on rather than one the default behaviour kills it on.
@@ -620,7 +619,7 @@ func unbound(at string, err error) error {
 // because the two ways of ending say different things: the close press is the one that leaves this terminal
 // wondering what went with the page, and a ctrl-c is the operator in this terminal asking to stop
 // the command they typed here.
-func endRun(to io.Writer, listening *http.Server, presses *server.Presses, last string) error {
+func endRun(to io.Writer, listening *http.Server, presses stoppable, last string) error {
 	// a run's wait for the edge to serve a key is the one part of a press not waited for here: the
 	// next press finishes it, and the stop would otherwise sit out the rest of its bound.
 	presses.Stop()
@@ -630,6 +629,19 @@ func endRun(to io.Writer, listening *http.Server, presses *server.Presses, last 
 	shut := listening.Shutdown(closing)
 	terminal.Say(to, last)
 	return shut
+}
+
+// what endRun stops and then waits on, which is *server.Presses.
+type stoppable interface {
+	Stop()
+	Going() (string, bool)
+}
+
+// the presses a server holds, already told to stop once a hang-up is heard under one, until the
+// returned quit.
+func hearingHangUps() (presses *server.Presses, quit func()) {
+	presses = &server.Presses{}
+	return presses, stopOnHangUp(hangup.Heard(), presses)
 }
 
 // ends every wait for the edge once a hang-up is heard under a press, until the returned quit.

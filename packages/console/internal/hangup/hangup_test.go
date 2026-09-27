@@ -96,3 +96,28 @@ func TestAHangUpDuringAHoldIsHeardAtOnceAndStillEndsTheProcessAtTheRelease(t *te
 			said, ended)
 	}
 }
+
+// every press is a hold of its own, so a hang-up under the second is the common one.
+func TestAHangUpUnderASecondHoldIsHeardAndEndsTheProcessAtItsRelease(t *testing.T) {
+	said, ended := hanguptest.Child(t, func() {
+		Hold()()
+		release := Hold()
+		hanguptest.HangUp()
+		select {
+		case <-Heard():
+			fmt.Println("the hang-up was heard")
+		case <-time.After(time.Second):
+		}
+		fmt.Println("the second press went on")
+		release()
+		fmt.Println("the process went on")
+	})
+	if !strings.Contains(said, "the hang-up was heard") ||
+		!strings.Contains(said, "the second press went on") {
+		t.Errorf("printed %q, want the second press to hear the hang-up and outlive it", said)
+	}
+	if strings.Contains(said, "the process went on") || ended != syscall.SIGHUP {
+		t.Errorf("printed %q and ended on %v, want the held hang-up to end it at the release",
+			said, ended)
+	}
+}

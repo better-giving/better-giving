@@ -73,7 +73,12 @@ func Hold() (release func()) {
 	return func() { once.Do(let) }
 }
 
-// Heard closes once a hang-up is caught under a hold, and stays closed.
+// Heard closes once a hang-up is caught under a hold, and stays closed for the life of the process.
+//
+// never reopened because the process does not outlive it: the last release re-sends the hang-up
+// and its default action ends the process there. a second SIGHUP listener anywhere in the binary
+// would take that re-sent hang-up instead, leaving a live process whose every later wait for the
+// edge reads as stopped at its first ask.
 func Heard() <-chan struct{} {
 	return heard
 }
@@ -99,7 +104,8 @@ func let() {
 	if holds > 0 {
 		return
 	}
-	// Stop returns once every signal delivered before it is on the channel.
+	// once Stop returns, caught receives no more hang-ups. one dropped before it on the full
+	// one-slot buffer came behind one already held, which the watch took or the drain below finds.
 	signal.Stop(caught)
 	close(listening)
 	// a hang-up the watch took, or one it had not reached when it was told to stop.

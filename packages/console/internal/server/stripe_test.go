@@ -69,17 +69,20 @@ func setting(t *testing.T, chosen string, gate chan struct{}) (http.Handler, *ht
 		"processors": []any{
 			map[string]any{"processor": "stripe", "label": "Stripe", "outcome": "set_up"},
 		},
-	}, nil)
+	}, walletsLevelled, nil)
 }
 
-// setting, with the deployment answering the repeating-gift press with `recurring` and the stop
-// the server hears being `presses`, nil for one of its own.
-func settingOn(t *testing.T, chosen string, gate chan struct{}, recurring any, presses *Presses) (http.Handler, *httptest.Server, func() []string, func() []string, func() []errand) {
+// the deployment's answer to the wallets press where it registered every host it holds.
+var walletsLevelled = map[string]any{"state": "levelled", "hosts": []any{}}
+
+// setting, with the deployment answering the repeating-gift press with `recurring`, the wallets
+// press with `wallets`, and the stop the server hears being `presses`, nil for one of its own.
+func settingOn(t *testing.T, chosen string, gate chan struct{}, recurring, wallets any, presses *Presses) (http.Handler, *httptest.Server, func() []string, func() []string, func() []errand) {
 	t.Helper()
 	records, flow, accounts := machine(t, chosen)
 	surface, errands := deployed(t, map[string]any{
 		"POST /console/recurring":      recurring,
-		"POST /console/wallet-domains": map[string]any{"state": "levelled", "hosts": []any{}},
+		"POST /console/wallet-domains": wallets,
 	})
 	connected(t, records, surface.URL)
 
@@ -400,7 +403,7 @@ func TestAStopEndsTheWaitForTheEdgeAndTheRunEndsAwaitingTheKey(t *testing.T) {
 			"processor": "stripe", "label": "Stripe", "outcome": "failed",
 			"detail": "`STRIPE_SECRET_KEY` is not set.", "reason": "no_key",
 		}},
-	}, presses)
+	}, walletsLevelled, presses)
 	press(t, handler, "/api/stripe/setup", pressed)
 
 	deadline := time.Now().Add(3 * time.Second)
@@ -416,5 +419,34 @@ func TestAStopEndsTheWaitForTheEdgeAndTheRunEndsAwaitingTheKey(t *testing.T) {
 	outcome, _ := run["outcome"].(map[string]any)
 	if outcome["kind"] != string(stripe.Unrepeating) || outcome["awaitingKey"] != true {
 		t.Errorf("outcome = %v, want unrepeating, awaiting the key", outcome)
+	}
+}
+
+// the wallets wait hears the stop as the repeating one does.
+func TestAStopEndsTheWaitForTheEdgeAndTheRunEndsUncoveredAwaitingTheKey(t *testing.T) {
+	presses := &Presses{}
+	handler, _, _, _, errands := settingOn(t, "an-account", nil, map[string]any{
+		"outcome": "set_up",
+		"processors": []any{
+			map[string]any{"processor": "stripe", "label": "Stripe", "outcome": "set_up"},
+		},
+	}, map[string]any{
+		"state": "unreadable", "reason": "no_key", "detail": "`STRIPE_SECRET_KEY` is not set.",
+	}, presses)
+	press(t, handler, "/api/stripe/setup", pressed)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for !slices.ContainsFunc(errands(), func(one errand) bool { return one.path == deployment.WalletDomainsPath }) {
+		if time.Now().After(deadline) {
+			t.Fatal("the run never pressed the deployment about the wallets")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	presses.Stop()
+
+	run := polled(t, handler, func(run map[string]any) bool { return run != nil && run["kind"] == "ended" })
+	outcome, _ := run["outcome"].(map[string]any)
+	if outcome["kind"] != string(stripe.Uncovered) || outcome["awaitingKey"] != true {
+		t.Errorf("outcome = %v, want uncovered, awaiting the key", outcome)
 	}
 }

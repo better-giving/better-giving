@@ -110,14 +110,18 @@ func TestWaitingOnKeyAsksAgainAfterAPause(t *testing.T) {
 // context and is the answer handed back.
 func TestAStopEndsTheWaitAndLetsTheAskInFlightFinish(t *testing.T) {
 	stopping := make(chan struct{})
-	gate := make(chan struct{})
 	asking := make(chan struct{})
 	asks := 0
 	var cut error
 	ask := func(ctx context.Context) keyAnswer {
 		asks++
 		close(asking)
-		<-gate
+		<-stopping
+		// a context the stop reaches is cancelled within this; one it never reaches pays it in full.
+		select {
+		case <-ctx.Done():
+		case <-time.After(200 * time.Millisecond):
+		}
 		cut = ctx.Err()
 		return keyAnswer{awaiting: true, ask: asks}
 	}
@@ -128,7 +132,6 @@ func TestAStopEndsTheWaitAndLetsTheAskInFlightFinish(t *testing.T) {
 	}()
 	<-asking
 	close(stopping)
-	close(gate)
 
 	select {
 	case got := <-ended:
@@ -138,5 +141,27 @@ func TestAStopEndsTheWaitAndLetsTheAskInFlightFinish(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the wait outlived the stop")
+	}
+}
+
+// a wait begun after the stop asks once and hands that answer back, as Stripe's wallets wait does
+// when the stop landed during its repeating one.
+func TestAWaitBegunAfterTheStopAsksOnce(t *testing.T) {
+	stopping := make(chan struct{})
+	close(stopping)
+	ask, asks := lagging(1)
+
+	ended := make(chan keyAnswer, 1)
+	go func() {
+		ended <- waitingOnKey(stopping, ask, time.Minute, time.Minute)(context.Background())
+	}()
+
+	select {
+	case got := <-ended:
+		if !got.awaiting || *asks != 1 {
+			t.Errorf("answer = %+v after %d asks, want the one ask handed back", got, *asks)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a wait begun after the stop waited anyway")
 	}
 }

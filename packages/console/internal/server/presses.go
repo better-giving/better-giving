@@ -15,6 +15,10 @@ import "sync"
 // **it carries a sentence and never the run.** what a stop prints is read by an operator who is
 // watching a console close, so each holder hands over the one line that says what they are waiting
 // for; nothing here reaches the outcome, which is the page's to draw and not a terminal's.
+//
+// **and it carries the stop into a run's wait for the edge**, the one signal sent the other way:
+// Stopping is what each run's waits are bound with (./stripe.go, ./paypal.go), so a stop cuts a
+// wait short and never a call.
 
 // Presses is every long press this server holds, as the readings a stop makes.
 type Presses struct {
