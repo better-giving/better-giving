@@ -394,7 +394,7 @@ func TestTheRunPressesTheDeploymentAboutTheAccountItJustStoredAKeyFor(t *testing
 }
 
 // closing the console ends a run's wait for the edge at once, and the run ends on the awaiting-key
-// note it has rather than holding the stop for the rest of the bound.
+// outcome it has rather than holding the stop for the rest of the bound.
 func TestAStopEndsTheWaitForTheEdgeAndTheRunEndsAwaitingTheKey(t *testing.T) {
 	presses := &Presses{}
 	handler, _, _, _, errands := settingOn(t, "an-account", nil, map[string]any{

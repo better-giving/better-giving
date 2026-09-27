@@ -13,8 +13,8 @@ import type {
 import type { LedgerLine } from './awaiting-note';
 import { awaitingNote, keepRereading, ledgerLines } from './awaiting-note';
 
-// the line a run stopped on while the deployment was still behind its own store, held against the
-// page's latest reading. this package has no DOM pool (../../vite.config.ts), so the rule is a value
+// each line of a run's ledger, and the page read again after it, held against the
+// page's latest readings. this package has no DOM pool (../../vite.config.ts), so the rule is a value
 // these can hold.
 
 const noReport = {} as NoReport;

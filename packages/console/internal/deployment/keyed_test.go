@@ -33,7 +33,7 @@ func TestAnAnswerAwaitingTheKeyIsAskedAgainUntilTheEdgeServesIt(t *testing.T) {
 	}
 }
 
-// the bound elapsing is the note the screen already draws, and never a failure of its own.
+// the bound elapsing hands back the awaiting-key answer the run ends on, never a failure of its own.
 func TestTheBoundElapsingHandsBackTheLastAnswer(t *testing.T) {
 	ask, asks := lagging(1 << 30)
 

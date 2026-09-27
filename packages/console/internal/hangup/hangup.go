@@ -43,7 +43,7 @@ var (
 	holds int
 	// caught is the one channel every hold shares, notified while holds is above zero.
 	caught = make(chan os.Signal, 1)
-	// listening ends the watch over caught, and its answer is whether the watch took a hang-up.
+	// listening ends the watch over caught, and took answers whether the watch took a hang-up.
 	listening chan struct{}
 	took      chan bool
 	heard     = make(chan struct{})

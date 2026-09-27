@@ -100,7 +100,7 @@ export type LedgerSteps = 'shut' | 'done' | 'live';
 export type LedgerLine = {
 	readonly word: 'Working' | 'Waiting' | 'Done' | 'Stopped' | 'Not ran';
 	readonly tone: 'running' | 'note' | 'done' | 'blocker';
-	/** a line whose subject this run has not made, drawn muted with an open mark. */
+	/** a line whose subject nothing shows done yet, drawn muted with an open mark. */
 	readonly dim: boolean;
 	readonly mark: 'circle-dashed' | undefined;
 	readonly steps: LedgerSteps;

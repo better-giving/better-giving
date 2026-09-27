@@ -1192,8 +1192,8 @@ export function StripeSection({
 			if (outcome.awaitingKey) {
 				return note === 'keyless' ? (
 					<Banner tone="note" word="The keys are stored and published">
-						This deployment serves a donation form and takes gifts. It hasn’t picked the secret key
-						up yet, so none of your sites was registered and no wallet button is drawn on them.
+						This deployment serves a donation form and takes gifts. It hasn’t picked up the secret
+						key yet, so none of your sites was registered and no wallet button is drawn on them.
 					</Banner>
 				) : null;
 			}
