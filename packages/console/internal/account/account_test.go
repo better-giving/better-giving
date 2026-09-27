@@ -70,3 +70,34 @@ func TestAMachineThatCannotBeWrittenOnKeepsTheChoiceForThisRun(t *testing.T) {
 		t.Fatal("a choice nothing recorded was answered as remembered")
 	}
 }
+
+// a directory whose older record still reads back and which refuses every write, the way a config
+// directory that went read-only, or a full disk, holds on to the account.json it already had.
+type refusingWrites struct{ held []byte }
+
+func (dir refusingWrites) Read(string) ([]byte, error) { return dir.held, nil }
+func (refusingWrites) Write(string, []byte) error      { return os.ErrPermission }
+
+func TestAChoiceThatCouldNotBeWrittenIsAnsweredOverTheOlderRecord(t *testing.T) {
+	store := &Store{state: refusingWrites{held: []byte(`{"id":"the-old-account","name":"old-haven"}`)}}
+
+	if store.Choose(Account{ID: "the-new-account", Name: "hound-haven"}) {
+		t.Fatal("a refused write said the choice was remembered")
+	}
+	chosen := store.Chosen()
+	if chosen == nil || chosen.Account.ID != "the-new-account" {
+		t.Fatalf("the operator chose the-new-account and the console answered %+v", chosen)
+	}
+	if chosen.Remembered {
+		t.Fatal("a choice nothing recorded was answered as remembered")
+	}
+}
+
+func TestARunThatChoseNothingAnswersTheRecord(t *testing.T) {
+	store := &Store{state: refusingWrites{held: []byte(`{"id":"the-old-account","name":"old-haven"}`)}}
+
+	chosen := store.Chosen()
+	if chosen == nil || chosen.Account.ID != "the-old-account" || !chosen.Remembered {
+		t.Fatalf("the record on disk was answered as %+v", chosen)
+	}
+}

@@ -38,9 +38,16 @@ type Choice struct {
 	Remembered bool
 }
 
+// the two calls this store makes on a directory of records, which state.Store answers and a test
+// answers with a write that fails while an older record still reads back.
+type records interface {
+	Read(name string) ([]byte, error)
+	Write(name string, data []byte) error
+}
+
 // Store is what this machine remembers about the account, on disk and for this run.
 type Store struct {
-	state   state.Store
+	state   records
 	mutex   sync.Mutex
 	session *Choice
 }
@@ -49,13 +56,20 @@ type Store struct {
 func New(store state.Store) *Store { return &Store{state: store} }
 
 // Chosen is the account this deployment is in, or nil while nothing has been chosen.
+//
+// a choice made in this run is answered before the record: where its write failed, the record is
+// still the account chosen before it.
 func (store *Store) Chosen() *Choice {
+	store.mutex.Lock()
+	session := store.session
+	store.mutex.Unlock()
+	if session != nil {
+		return session
+	}
 	if recorded := store.recorded(); recorded != nil {
 		return &Choice{Account: *recorded, Remembered: true}
 	}
-	store.mutex.Lock()
-	defer store.mutex.Unlock()
-	return store.session
+	return nil
 }
 
 // Choose records which account this deployment is in, and answers whether it will be remembered.
