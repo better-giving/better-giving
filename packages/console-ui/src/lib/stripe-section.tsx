@@ -35,8 +35,8 @@ import { recurringBlock } from './recurring-block';
 import { pollOutlived, runKind, standingRun } from './run-poll';
 import { configuredStanding, processorStanding, STANDING } from './processor-payments';
 import { accountsSaid, recurringReading } from './recurring-rows';
-import type { AwaitingLine } from './awaiting-note';
-import { awaitingLine, awaitsKey, keepRereading, walletsDone } from './awaiting-note';
+import type { AwaitingNote } from './awaiting-note';
+import { keepRereading, ledgerLines } from './awaiting-note';
 import { useKeyRereads } from './key-rereads';
 import { PAYMENTS_GROUP, SECRET_GROUPS, MINTED_BY_CONSOLE, isMasked } from './secret-groups';
 import { FREE_INTENT, WithheldValues } from './withheld-values';
@@ -1056,7 +1056,7 @@ export function StripeSection({
 	 * operator somewhere different. the two that name a state nothing else could have told them are
 	 * an endpoint deleted with no replacement, and a signing secret that no longer exists anywhere.
 	 */
-	const stopped = (outcome: StripeSetup, awaiting: AwaitingLine | null): ReactNode => {
+	const stopped = (outcome: StripeSetup, note: AwaitingNote): ReactNode => {
 		if (outcome.kind === 'done') return null;
 		// the console itself, and not a step of the chain: nothing observed how far the press got, so
 		// no processor answer is drawn — there is none (./press-stopped.ts).
@@ -1148,27 +1148,16 @@ export function StripeSection({
 			/* the deployment not holding a key this press stored is its edge behind the store rather than
 			   anything an operator has to fix. the deployment's sentence says to set a value this press
 			   has already set, so it is not drawn at all — what is drawn is what the latest reading says
-			   is left (./awaiting-note.ts), and the one press that finishes it is in the repeating-gift
-			   block above this on the same screen. */
+			   is left (./awaiting-note.ts), and the one press that finishes it is the repeating-gift
+			   block's on the same screen, drawn once a reading carries the key. the note names no
+			   direction: this ledger is read in the reporting card as well as under the boxes. */
 			if (outcome.awaitingKey) {
-				if (awaiting === 'keyless') {
-					return (
-						<Banner tone="note" word="The keys are stored and published">
-							This deployment serves a donation form and takes one-time gifts. It hasn’t picked the
-							secret key up yet, so recurring gifts are not set up. Once it has, press{' '}
-							<strong>Set up recurring gifts</strong> above.
-						</Banner>
-					);
-				}
-				if (awaiting === 'press') {
-					return (
-						<Banner tone="note" word="The keys are stored and published">
-							This deployment serves a donation form and takes one-time gifts. Recurring gifts are
-							not set up yet: press <strong>Set up recurring gifts</strong> above.
-						</Banner>
-					);
-				}
-				return null;
+				return note === 'keyless' ? (
+					<Banner tone="note" word="The keys are stored and published">
+						This deployment serves a donation form and takes one-time gifts. It hasn’t picked up the
+						secret key yet. Once it has, this page shows <strong>Set up recurring gifts</strong>.
+					</Banner>
+				) : null;
 			}
 			if (outcome.setup.kind === 'unanswered') {
 				return noAnswer(outcome.setup.read, 'the repeating-gift item was not set up');
@@ -1201,7 +1190,7 @@ export function StripeSection({
 			   reading still reports no key, and never the deployment's sentence naming a value this press
 			   has set. */
 			if (outcome.awaitingKey) {
-				return awaiting === 'keyless' ? (
+				return note === 'keyless' ? (
 					<Banner tone="note" word="The keys are stored and published">
 						This deployment serves a donation form and takes gifts. It hasn’t picked the secret key
 						up yet, so none of your sites was registered and no wallet button is drawn on them.
@@ -1266,9 +1255,6 @@ export function StripeSection({
 	const ledger = (read: StripeRunRead | null): ReactNode => {
 		const stage = read?.stage ?? OPENING_STAGE;
 		const now = STAGES.indexOf(stage);
-		// a run that is not running is a run that stopped: the ledger is drawn over one of those two
-		// and never over one that landed, which is what the caller decides.
-		const failed = read !== null && read.kind === 'ended';
 		/* a publish draws the one line that act has of its own rather than the errand's three: its
 		   single stage falls under the middle one, which stands for an errand against Stripe this
 		   press does not make — and the two steps beside it, both behind the one it runs, would be
@@ -1278,102 +1264,88 @@ export function StripeSection({
 			? [PUBLISHED]
 			: SUBJECTS;
 		const reached = publishing ? 0 : REACHED[stage];
-		/* a stop awaiting the key is drawn as the latest reading says (./awaiting-note.ts), so the
-		   line it stopped on can read as finished, and so can the wallet line behind a repeating-gift
-		   stop — and a finished line keeps its steps like any other, every one of them done. */
-		const drawn = (awaiting: AwaitingLine | null, wallets: boolean): ReactNode => {
-			const finished = (at: number): boolean =>
-				at < reached ||
-				(at === reached && awaiting === 'done') ||
-				(wallets && lines[at]?.id === 'wallets');
-			// a line the run never reached, unless the reading has since finished it.
-			const ahead = (at: number): boolean => at > reached && !finished(at);
-			/* every line the run has reached is opened into its own steps, and a line still waiting has
-			   none: its subject has no steps taken yet. a line that is done keeps the steps it took
-			   standing, because what a finished subject was made of is an account this screen gives nowhere
-			   else — a run that closed each line behind it would leave an operator who looked away with
-			   four words and no record of what earned them. nothing here is a control and nothing shuts on
-			   a press, so what opens a line is the run arriving at it.
-
-			   the line a stopped run is standing under is the one that keeps its steps shut: the stage it
-			   stopped at is the stage it was working, so a step drawn there would read `Working` under a
-			   line that reads `Stopped`. what stands in their place is the sentence naming what to do,
-			   attached to that same line.
-
-			   whatever the line's subject is made of is handed over whole, single stages included: the
-			   ledger folds a step that stands alone into the line above it and draws no run
-			   (packages/operator/src/components/status/StatusLine.jsx), so a filter here would be that
-			   rule stated a second time. */
-			const steps = (at: number): ReactNode => {
-				if (publishing || ahead(at) || (failed && at === reached && !finished(at))) {
-					return undefined;
-				}
-				return STAGES.filter((stage) => REACHED[stage] === at).map((stage) => (
-					<StatusStep
-						key={stage}
-						state={
-							STAGES.indexOf(stage) < now || finished(at)
-								? 'done'
-								: STAGES.indexOf(stage) === now
-									? 'running'
-									: 'waiting'
-						}
-					>
-						{STEP[stage]}
-					</StatusStep>
-				));
-			};
-			const tone = (at: number): Tone | 'running' | 'done' =>
-				finished(at) ? 'done' : ahead(at) ? 'note' : failed ? 'blocker' : 'running';
-			const word = (at: number): string =>
-				finished(at) ? 'Done' : ahead(at) ? 'Waiting' : failed ? 'Stopped' : 'Working';
-			const said = (at: number): ReactNode =>
-				at === reached && read?.kind === 'ended' ? stopped(read.outcome, awaiting) : null;
-			return (
-				// polite: the lines change on their own and nothing is being asked of the reader, so
-				// hearing one land is worth more than being interrupted by it.
-				<div role="status">
-					<StatusLedger>
-						{lines.map((subject, at) => {
-							const attached = said(at);
-							return (
-								<StatusLine
-									key={subject.id}
-									labelAs="h4"
-									label={subject.label}
-									note={subject.note}
-									tone={tone(at)}
-									dim={ahead(at)}
-									mark={ahead(at) ? 'circle-dashed' : undefined}
-									word={word(at)}
-									steps={steps(at)}
-								>
-									{attached === null ? null : <div className="adm-status__attach">{attached}</div>}
-								</StatusLine>
-							);
-						})}
-					</StatusLedger>
-				</div>
-			);
-		};
+		// a run that is not running is a run that stopped: the ledger is drawn over one of those two
+		// and never over one that landed, which is what the caller decides.
 		const outcome = read?.kind === 'ended' ? read.outcome : null;
-		if (outcome === null || !awaitsKey(outcome)) return drawn(null, false);
-		// until both readings land the line stands as the run left it, with no note under it.
+		const run = { subjects: lines.map((line) => line.id), reached, outcome };
+		/* what each line reads is ./awaiting-note.ts's, held against the page's latest readings — so a
+		   line the run stopped on or never reached can read as finished once the account says so.
+
+		   a line's steps open as that module says. a line the run reached opens into its own steps, and
+		   a line it did not has none: none of them were this run's, whatever the line reads. a line
+		   that is done keeps the steps it took standing, because what a finished subject was made of is
+		   an account this screen gives nowhere else — a run that closed each line behind it would leave
+		   an operator who looked away with four words and no record of what earned them. nothing here
+		   is a control and nothing shuts on a press, so what opens a line is the run arriving at it.
+
+		   the line a stopped run is standing under keeps its steps shut: the stage it stopped at is the
+		   stage it was working, so a step drawn there would read `Working` under a line that reads
+		   `Stopped`. whatever the stop has to say is attached to that same line, and a stop whose way
+		   out the block holding the reading already draws says nothing there.
+
+		   whatever the line's subject is made of is handed over whole, single stages included: the
+		   ledger folds a step that stands alone into the line above it and draws no run
+		   (packages/operator/src/components/status/StatusLine.jsx), so a filter here would be that
+		   rule stated a second time. */
+		const drawn = (payments: PaymentsRead | null, gifts: RecurringRead | null): ReactNode =>
+			ledgerLines('stripe', run, payments, gifts).map((line, at) => {
+				const subject = lines[at];
+				if (subject === undefined) return null;
+				const attached = at === reached && outcome !== null ? stopped(outcome, line.note) : null;
+				const steps =
+					publishing || line.steps === 'shut'
+						? undefined
+						: STAGES.filter((stage) => REACHED[stage] === at).map((stage) => (
+								<StatusStep
+									key={stage}
+									state={
+										line.steps === 'done' || STAGES.indexOf(stage) < now
+											? 'done'
+											: STAGES.indexOf(stage) === now
+												? 'running'
+												: 'waiting'
+									}
+								>
+									{STEP[stage]}
+								</StatusStep>
+							));
+				return (
+					<StatusLine
+						key={subject.id}
+						labelAs="h4"
+						label={subject.label}
+						note={subject.note}
+						tone={line.tone}
+						dim={line.dim}
+						mark={line.mark}
+						word={line.word}
+						steps={steps}
+					>
+						{attached === null ? null : <div className="adm-status__attach">{attached}</div>}
+					</StatusLine>
+				);
+			});
 		return (
-			<Suspense fallback={drawn('stopped', false)}>
-				<Await resolve={payments}>
-					{(payments) => (
-						<Await resolve={recurring}>
-							{(gifts) =>
-								drawn(
-									awaitingLine('stripe', outcome, payments, gifts),
-									walletsDone('stripe', outcome, payments)
-								)
-							}
-						</Await>
+			// polite: the lines change on their own and nothing is being asked of the reader, so
+			// hearing one land is worth more than being interrupted by it. the region stays one element
+			// from the run going to its end and the readings landing on it, so each change is announced
+			// rather than arriving in a region mounted already holding it.
+			<div role="status">
+				<StatusLedger>
+					{outcome === null ? (
+						drawn(null, null)
+					) : (
+						// until both readings land the lines stand as the run left them, with no note.
+						<Suspense fallback={drawn(null, null)}>
+							<Await resolve={payments}>
+								{(payments) => (
+									<Await resolve={recurring}>{(gifts) => drawn(payments, gifts)}</Await>
+								)}
+							</Await>
+						</Suspense>
 					)}
-				</Await>
-			</Suspense>
+				</StatusLedger>
+			</div>
 		);
 	};
 

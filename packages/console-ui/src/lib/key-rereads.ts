@@ -16,9 +16,16 @@ import type { PaymentsRead, RecurringRead } from '../api/types';
  * for, or a note on the stopped line about a key no reading has reported (./awaiting-note.ts).
  *
  * front-loaded and bounded, because the run already spent the long wait: what happens at the end of
- * it is nothing at all, and the screen goes on drawing what the last reading said.
+ * it is nothing at all, and the screen goes on drawing what the last reading said — except under a
+ * `keyless` note, which promises the press once the key lands, so the last wait repeats until it does.
  */
 const REREADS: readonly number[] = [1500, 3000, 5000, 8000, 12000];
+
+/**
+ * how long a screen goes on reading: `REREADS` out where `bounded`, on past them at the last wait
+ * where `unbounded`, and not at all where `null`.
+ */
+export type Rereading = 'unbounded' | 'bounded' | null;
 
 /**
  * reads the page again after a run that stored a key, for as long as `keepGoing` says the latest
@@ -36,7 +43,7 @@ export function useKeyRereads(
 	stored: boolean,
 	payments: Promise<PaymentsRead | null>,
 	recurring: Promise<RecurringRead | null>,
-	keepGoing: (payments: PaymentsRead | null, gifts: RecurringRead | null) => boolean
+	keepGoing: (payments: PaymentsRead | null, gifts: RecurringRead | null) => Rereading
 ): void {
 	const { revalidate } = useRevalidator();
 	const behind = useEffectEvent(keepGoing);
@@ -46,13 +53,15 @@ export function useKeyRereads(
 			rereads.current = 0;
 			return;
 		}
-		const wait = REREADS[rereads.current];
-		if (wait === undefined) return;
 		let gone = false;
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		void Promise.all([payments, recurring]).then(
 			([payments, gifts]) => {
-				if (gone || !behind(payments, gifts)) return;
+				if (gone) return;
+				const going = behind(payments, gifts);
+				const wait =
+					REREADS[rereads.current] ?? (going === 'unbounded' ? REREADS.at(-1) : undefined);
+				if (going === null || wait === undefined) return;
 				timer = setTimeout(() => {
 					rereads.current += 1;
 					void revalidate();

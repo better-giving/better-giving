@@ -1,5 +1,4 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
-import type { Tone } from '@better-giving/operator/components/closed-sets';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { CheckboxGroup } from '@better-giving/operator/components/forms/CheckboxGroup';
@@ -60,8 +59,8 @@ import { STANDING, configuredStanding, hoistSharedNote } from './processor-payme
 import { keysTrouble, noAnswer } from './processor-screen';
 import { recurringBlock } from './recurring-block';
 import { accountsSaid, recurringReading } from './recurring-rows';
-import type { AwaitingLine } from './awaiting-note';
-import { awaitingLine, awaitsKey, keepRereading } from './awaiting-note';
+import type { AwaitingNote } from './awaiting-note';
+import { keepRereading, ledgerLines } from './awaiting-note';
 import { useKeyRereads } from './key-rereads';
 import { useReseeded } from './reseed';
 import { Said } from './said';
@@ -769,7 +768,7 @@ function PaypalKeysForm({
 	);
 
 	/** what stopped the run, drawn under the line whose stage it stopped at. */
-	const stopped = (outcome: PaypalSetup, awaiting: AwaitingLine | null): ReactNode => {
+	const stopped = (outcome: PaypalSetup, note: AwaitingNote): ReactNode => {
 		switch (outcome.kind) {
 			case 'done':
 				return null;
@@ -777,26 +776,16 @@ function PaypalKeysForm({
 				/* the deployment not serving the pair this press wrote is its edge behind the write, not
 				   anything to fix. its sentence names a value this press has already set, so it is not
 				   drawn — what is drawn is what the latest reading says is left (./awaiting-note.ts), and
-				   the press that finishes it is in the recurring donation block above the boxes. */
+				   the press that finishes it is the recurring donation block's, drawn once a reading
+				   carries the pair. the note names no direction: this ledger is read in the reporting
+				   card as well as under the boxes. */
 				if (outcome.awaitingKey) {
-					if (awaiting === 'keyless') {
-						return (
-							<Banner tone="note" word="Your keys are saved">
-								This deployment takes one-time gifts through PayPal. It hasn’t picked the keys up
-								yet, so recurring gifts are not set up. Once it has, press{' '}
-								<strong>Set up recurring gifts</strong> above.
-							</Banner>
-						);
-					}
-					if (awaiting === 'press') {
-						return (
-							<Banner tone="note" word="Your keys are saved">
-								This deployment takes one-time gifts through PayPal. Recurring gifts are not set up
-								yet: press <strong>Set up recurring gifts</strong> above.
-							</Banner>
-						);
-					}
-					return null;
+					return note === 'keyless' ? (
+						<Banner tone="note" word="Your keys are saved">
+							This deployment takes one-time gifts through PayPal. It hasn’t picked up the keys yet.
+							Once it has, this page shows <strong>Set up recurring gifts</strong>.
+						</Banner>
+					) : null;
 				}
 				if (outcome.setup.kind === 'unanswered') {
 					return noAnswer(outcome.setup.read, 'repeating gifts were not set up');
@@ -906,55 +895,48 @@ function PaypalKeysForm({
 	 */
 	const ledger = (read: PaypalRunRead | null): ReactNode => {
 		const reached = lineAt(read?.stage ?? 'authorizing');
-		const failed = read?.kind === 'ended';
-		// a stop awaiting the key is drawn as the latest reading says (./awaiting-note.ts).
-		const drawn = (awaiting: AwaitingLine | null): ReactNode => {
-			const finished = (at: number): boolean =>
-				at < reached || (at === reached && awaiting === 'done');
-			const tone = (at: number): Tone | 'running' | 'done' =>
-				finished(at) ? 'done' : at > reached ? 'note' : failed ? 'blocker' : 'running';
-			const word = (at: number): string =>
-				finished(at) ? 'Done' : at > reached ? 'Waiting' : failed ? 'Stopped' : 'Working';
-			const said = (at: number): ReactNode =>
-				at === reached && read?.kind === 'ended' ? stopped(read.outcome, awaiting) : null;
-			return (
-				// polite: the lines change on their own and nothing is asked of the reader.
-				<div role="status">
-					<StatusLedger>
-						{LINES.map((line, at) => {
-							const attached = said(at);
-							return (
-								<StatusLine
-									key={line.stage}
-									labelAs="h4"
-									label={line.label}
-									note={line.note}
-									tone={tone(at)}
-									dim={at > reached}
-									mark={at > reached ? 'circle-dashed' : undefined}
-									word={word(at)}
-								>
-									{attached === null ? null : <div className="adm-status__attach">{attached}</div>}
-								</StatusLine>
-							);
-						})}
-					</StatusLedger>
-				</div>
-			);
-		};
 		const outcome = read?.kind === 'ended' ? read.outcome : null;
-		if (outcome === null || !awaitsKey(outcome)) return drawn(null);
-		// until both readings land the line stands as the run left it, with no note under it.
+		const run = { subjects: LINES.map((line) => line.stage), reached, outcome };
+		// each line reads as ./awaiting-note.ts says, against the page's latest readings.
+		const drawn = (payments: PaymentsRead | null, gifts: RecurringRead | null): ReactNode =>
+			ledgerLines('paypal', run, payments, gifts).map((line, at) => {
+				const subject = LINES[at];
+				if (subject === undefined) return null;
+				const attached = at === reached && outcome !== null ? stopped(outcome, line.note) : null;
+				return (
+					<StatusLine
+						key={subject.stage}
+						labelAs="h4"
+						label={subject.label}
+						note={subject.note}
+						tone={line.tone}
+						dim={line.dim}
+						mark={line.mark}
+						word={line.word}
+					>
+						{attached === null ? null : <div className="adm-status__attach">{attached}</div>}
+					</StatusLine>
+				);
+			});
 		return (
-			<Suspense fallback={drawn('stopped')}>
-				<Await resolve={payments}>
-					{(payments) => (
-						<Await resolve={recurring}>
-							{(gifts) => drawn(awaitingLine('paypal', outcome, payments, gifts))}
-						</Await>
+			// polite: the lines change on their own and nothing is asked of the reader. one element from
+			// the run going to the readings landing on its end, so each change is announced.
+			<div role="status">
+				<StatusLedger>
+					{outcome === null ? (
+						drawn(null, null)
+					) : (
+						// until both readings land the lines stand as the run left them, with no note.
+						<Suspense fallback={drawn(null, null)}>
+							<Await resolve={payments}>
+								{(payments) => (
+									<Await resolve={recurring}>{(gifts) => drawn(payments, gifts)}</Await>
+								)}
+							</Await>
+						</Suspense>
 					)}
-				</Await>
-			</Suspense>
+				</StatusLedger>
+			</div>
 		);
 	};
 
