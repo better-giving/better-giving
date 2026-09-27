@@ -36,7 +36,7 @@ import { pollOutlived, runKind, standingRun } from './run-poll';
 import { configuredStanding, processorStanding, STANDING } from './processor-payments';
 import { accountsSaid, recurringReading } from './recurring-rows';
 import type { AwaitingLine } from './awaiting-note';
-import { awaitingLine, awaitsKey, keepRereading } from './awaiting-note';
+import { awaitingLine, awaitsKey, keepRereading, walletsDone } from './awaiting-note';
 import { useKeyRereads } from './key-rereads';
 import { PAYMENTS_GROUP, SECRET_GROUPS, MINTED_BY_CONSOLE, isMasked } from './secret-groups';
 import { FREE_INTENT, WithheldValues } from './withheld-values';
@@ -83,7 +83,13 @@ import { useConsoleForm } from './use-console-form';
 import { OPENING_STAGE, PUBLISHED, REACHED, STAGES, STEP, SUBJECTS } from './stripe-run-lines';
 import { WALLETS_INTENT } from './wallets-press';
 import type { WalletRow, WalletRowStanding, LinkStanding } from './wallet-rows';
-import { WALLET_NAMES, linkStanding, walletHostLines, walletRows } from './wallet-rows';
+import {
+	WALLET_NAMES,
+	linkStanding,
+	panelCovered,
+	walletHostLines,
+	walletRows
+} from './wallet-rows';
 
 // the whole of Stripe on this deployment — two boxes, one press, and what the account is approved
 // for — read and set on Stripe's own screen.
@@ -1273,11 +1279,15 @@ export function StripeSection({
 			: SUBJECTS;
 		const reached = publishing ? 0 : REACHED[stage];
 		/* a stop awaiting the key is drawn as the latest reading says (./awaiting-note.ts), so the
-		   line it stopped on can read as finished — and a finished line keeps its steps like any other,
-		   every one of them done. */
-		const drawn = (awaiting: AwaitingLine | null): ReactNode => {
+		   line it stopped on can read as finished, and so can the wallet line behind a repeating-gift
+		   stop — and a finished line keeps its steps like any other, every one of them done. */
+		const drawn = (awaiting: AwaitingLine | null, wallets: boolean): ReactNode => {
 			const finished = (at: number): boolean =>
-				at < reached || (at === reached && awaiting === 'done');
+				at < reached ||
+				(at === reached && awaiting === 'done') ||
+				(wallets && lines[at]?.id === 'wallets');
+			// a line the run never reached, unless the reading has since finished it.
+			const ahead = (at: number): boolean => at > reached && !finished(at);
 			/* every line the run has reached is opened into its own steps, and a line still waiting has
 			   none: its subject has no steps taken yet. a line that is done keeps the steps it took
 			   standing, because what a finished subject was made of is an account this screen gives nowhere
@@ -1295,7 +1305,7 @@ export function StripeSection({
 			   (packages/operator/src/components/status/StatusLine.jsx), so a filter here would be that
 			   rule stated a second time. */
 			const steps = (at: number): ReactNode => {
-				if (publishing || at > reached || (failed && at === reached && !finished(at))) {
+				if (publishing || ahead(at) || (failed && at === reached && !finished(at))) {
 					return undefined;
 				}
 				return STAGES.filter((stage) => REACHED[stage] === at).map((stage) => (
@@ -1314,9 +1324,9 @@ export function StripeSection({
 				));
 			};
 			const tone = (at: number): Tone | 'running' | 'done' =>
-				finished(at) ? 'done' : at > reached ? 'note' : failed ? 'blocker' : 'running';
+				finished(at) ? 'done' : ahead(at) ? 'note' : failed ? 'blocker' : 'running';
 			const word = (at: number): string =>
-				finished(at) ? 'Done' : at > reached ? 'Waiting' : failed ? 'Stopped' : 'Working';
+				finished(at) ? 'Done' : ahead(at) ? 'Waiting' : failed ? 'Stopped' : 'Working';
 			const said = (at: number): ReactNode =>
 				at === reached && read?.kind === 'ended' ? stopped(read.outcome, awaiting) : null;
 			return (
@@ -1333,8 +1343,8 @@ export function StripeSection({
 									label={subject.label}
 									note={subject.note}
 									tone={tone(at)}
-									dim={at > reached}
-									mark={at > reached ? 'circle-dashed' : undefined}
+									dim={ahead(at)}
+									mark={ahead(at) ? 'circle-dashed' : undefined}
 									word={word(at)}
 									steps={steps(at)}
 								>
@@ -1347,14 +1357,19 @@ export function StripeSection({
 			);
 		};
 		const outcome = read?.kind === 'ended' ? read.outcome : null;
-		if (outcome === null || !awaitsKey(outcome)) return drawn(null);
+		if (outcome === null || !awaitsKey(outcome)) return drawn(null, false);
 		// until both readings land the line stands as the run left it, with no note under it.
 		return (
-			<Suspense fallback={drawn('stopped')}>
+			<Suspense fallback={drawn('stopped', false)}>
 				<Await resolve={payments}>
 					{(payments) => (
 						<Await resolve={recurring}>
-							{(gifts) => drawn(awaitingLine('stripe', outcome, payments, gifts))}
+							{(gifts) =>
+								drawn(
+									awaitingLine('stripe', outcome, payments, gifts),
+									walletsDone('stripe', outcome, payments)
+								)
+							}
 						</Await>
 					)}
 				</Await>
@@ -1580,7 +1595,7 @@ export function StripeSection({
 	): ReactNode => {
 		const name = WALLET_NAMES[wallet];
 		const rows = walletRows(hosts, wallet);
-		const covered = rows.every((row) => row.standing === 'showing');
+		const covered = panelCovered(rows);
 		return (
 			<AnchoredPanel mark="info" label={`Where ${name} shows`}>
 				<p className="adm-prose">{name} only shows on sites registered with Stripe.</p>

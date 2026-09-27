@@ -5,8 +5,9 @@ import type {
 	RecurringRead,
 	StripeSetup
 } from '../api/types';
-import { paymentsKeyless } from './processor-payments';
+import { configuredStanding, paymentsKeyless, processorStanding } from './processor-payments';
 import { recurringKeyless, recurringReading } from './recurring-rows';
+import { sitesCovered } from './wallet-rows';
 
 // what the line a run stopped on draws, where the stop was the deployment not holding the key the
 // run had just stored — held against the page's latest reading rather than the run's.
@@ -44,11 +45,30 @@ export const awaitsKey = (outcome: Setup): boolean =>
 	(outcome.kind === 'unrepeating' || outcome.kind === 'uncovered') && outcome.awaitingKey;
 
 /**
+ * whether the wallet line reads as finished after a stop awaiting the key, whichever line it stopped
+ * on.
+ *
+ * finished where the payments reading holds this processor's sites and no wallet's panel on the
+ * payments fold would draw the Register press over them (`sitesCovered` in ./wallet-rows.ts). a
+ * repeating-gift stop never reached the wallet line, so this is the one thing that can move it off
+ * `Waiting`; on a wallet stop it is the line's `done`.
+ */
+export function walletsDone(
+	processor: PaymentProcessor,
+	outcome: Setup,
+	payments: PaymentsRead | null
+): boolean {
+	if (!awaitsKey(outcome)) return false;
+	const wallets = configuredStanding(processorStanding(payments, processor))?.wallets ?? null;
+	return wallets?.state === 'read' && sitesCovered(wallets.hosts);
+}
+
+/**
  * what the line this outcome stopped on draws, or `null` where it did not stop awaiting the key.
  *
- * **a wallet stop never reads `done` and never points at a press.** nothing in the payments reading
- * says the sites were registered since, so once the key lands the line stays as the run left it and
- * the wallet rows on the payments fold carry their own press.
+ * **a wallet stop never points at a press.** a site still short of a wallet is one the payments
+ * fold's own panel carries the press for, so the line stays as the run left it until
+ * {@link walletsDone} says there is nothing left to register.
  */
 export function awaitingLine(
 	processor: PaymentProcessor,
@@ -58,7 +78,8 @@ export function awaitingLine(
 ): AwaitingLine | null {
 	if (!awaitsKey(outcome)) return null;
 	if (outcome.kind === 'uncovered') {
-		return paymentsKeyless(payments, processor) ? 'keyless' : 'stopped';
+		if (paymentsKeyless(payments, processor)) return 'keyless';
+		return walletsDone(processor, outcome, payments) ? 'done' : 'stopped';
 	}
 	if (recurringKeyless(gifts, processor)) return 'keyless';
 	const reading = recurringReading(gifts, processor);

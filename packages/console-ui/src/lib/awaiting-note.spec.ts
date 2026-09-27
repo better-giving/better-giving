@@ -6,9 +6,11 @@ import type {
 	ProcessorRecurring,
 	RecurringRead,
 	RecurringReading,
-	StripeSetup
+	StripeSetup,
+	WalletHostLine,
+	WalletsReading
 } from '../api/types';
-import { awaitingLine, keepRereading } from './awaiting-note';
+import { awaitingLine, keepRereading, walletsDone } from './awaiting-note';
 
 // the line a run stopped on while the deployment was still behind its own store, held against the
 // page's latest reading. this package has no DOM pool (../../vite.config.ts), so the rule is a value
@@ -39,15 +41,29 @@ const unconfigured = (processor: 'stripe' | 'paypal'): ProcessorPayments => ({
 	unset: []
 });
 
-const configured = (processor: 'stripe' | 'paypal'): ProcessorPayments => ({
+const configured = (
+	processor: 'stripe' | 'paypal',
+	wallets: WalletsReading | null = null
+): ProcessorPayments => ({
 	processor,
 	label: processor,
 	state: 'configured',
 	rails: {} as never,
 	webhook: {} as never,
 	subscription: {} as never,
-	wallets: null
+	wallets
 });
+
+const active = { state: 'active', detail: null } as const;
+
+const drawing = (host: string): WalletHostLine => ({
+	host,
+	own: false,
+	standing: 'drawing',
+	wallets: { apple_pay: active, google_pay: active, link: active }
+});
+
+const sites = (...hosts: WalletHostLine[]): WalletsReading => ({ state: 'read', hosts });
 
 const payments = (...processors: ProcessorPayments[]): PaymentsRead => ({
 	kind: 'read',
@@ -55,6 +71,10 @@ const payments = (...processors: ProcessorPayments[]): PaymentsRead => ({
 });
 
 const paymentsUnread: PaymentsRead = { kind: 'unread', read: noReport };
+
+const registered = payments(
+	configured('stripe', sites(drawing('a.example'), drawing('b.example')))
+);
 
 const unrepeating = (awaitingKey: boolean) =>
 	({ kind: 'unrepeating', setup: {} as never, awaitingKey }) as const;
@@ -102,8 +122,8 @@ describe('a wallet stop on stripe', () => {
 
 	it.each([
 		['reports stripe unconfigured', payments(unconfigured('stripe')), 'keyless'],
-		// no reading says the sites were registered since, so the line never reads done.
-		['reports stripe configured', payments(configured('stripe')), 'stopped'],
+		['reports every site drawing every wallet', registered, 'done'],
+		['reports stripe configured with no site reading', payments(configured('stripe')), 'stopped'],
 		['leaves stripe out', payments(unconfigured('paypal')), 'stopped'],
 		['failed', paymentsUnread, 'stopped'],
 		['was never made', null, 'stopped']
@@ -115,6 +135,57 @@ describe('a wallet stop on stripe', () => {
 		expect(
 			awaitingLine('stripe', uncovered(false), payments(unconfigured('stripe')), other)
 		).toBeNull();
+	});
+});
+
+describe('the wallet line behind a stop awaiting the key', () => {
+	const inactive = { state: 'inactive', detail: null } as const;
+
+	it.each([
+		['a repeating-gift stop', unrepeating(true)],
+		['a wallet stop', uncovered(true)]
+	] as const)('is done after %s once every site draws every wallet', (_, stop) => {
+		expect(walletsDone('stripe', stop, registered)).toBe(true);
+	});
+
+	it.each([
+		[
+			'a site the account holds nothing for',
+			sites(drawing('a.example'), { host: 'b.example', own: false, standing: 'unregistered' })
+		],
+		[
+			'a site switched off',
+			sites({ ...drawing('a.example'), standing: 'switched_off' } as WalletHostLine)
+		],
+		[
+			'a site holding one wallet back',
+			sites({
+				host: 'a.example',
+				own: true,
+				standing: 'wallet_inactive',
+				wallets: { apple_pay: active, google_pay: inactive, link: active }
+			})
+		],
+		['a site read that could not be made', { state: 'unreadable', detail: 'x' } as const],
+		['a site read that holds no sites', sites()]
+	] as const)('is not done on %s', (_, reading) => {
+		expect(walletsDone('stripe', unrepeating(true), payments(configured('stripe', reading)))).toBe(
+			false
+		);
+	});
+
+	it.each([
+		['failed', paymentsUnread],
+		['was never made', null],
+		['reports stripe unconfigured', payments(unconfigured('stripe'))],
+		['answers for another processor', payments(configured('paypal', sites(drawing('a.example'))))]
+	] as const)('is not done where the payments reading %s', (_, read) => {
+		expect(walletsDone('stripe', unrepeating(true), read)).toBe(false);
+	});
+
+	it('is not done where the stop was not the key arriving late', () => {
+		expect(walletsDone('stripe', unrepeating(false), registered)).toBe(false);
+		expect(walletsDone('stripe', uncovered(false), registered)).toBe(false);
 	});
 });
 
