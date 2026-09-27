@@ -363,6 +363,14 @@ describe('mintQuote() — a gift that goes through', () => {
 		expect(paid).toMatchObject({ status: 'pending', provider: 'stripe', providerTxnId: 'pi_1' });
 	});
 
+	// only a Chariot grant has a reference to give when its intent is minted.
+	it('stores no reference for an intent that carries none', async () => {
+		await mint();
+
+		const [paid] = await db.select({ reference: payment.providerReference }).from(payment);
+		expect(paid).toEqual({ reference: null });
+	});
+
 	it('puts nothing in the books, because nothing has been collected', async () => {
 		await mint();
 
@@ -1380,6 +1388,7 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 	};
 	const SESSION = 'cfe09e64-6a74-4dab-a565-361185a6f248';
 	const GRANT_ID = '1e60800e-849b-43d1-870e-57afc8d75473';
+	const TRACKING_ID = 'CH-7Q4K2M9X';
 	const grant = (): PaymentResult<Intent> => ({
 		ok: true,
 		value: { providerTxnId: GRANT_ID, paymentToken: GRANT_ID }
@@ -1455,6 +1464,22 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 			providerTxnId: GRANT_ID,
 			amountMinor: 10_300
 		});
+	});
+
+	// the id staff match a grant by in Chariot's dashboard, stored so the gift shows it once the live
+	// read no longer reaches it.
+	it('stores the grant’s tracking ID on its gift’s payment', async () => {
+		const tracked = chariotProvider([
+			{
+				ok: true,
+				value: { providerTxnId: GRANT_ID, paymentToken: GRANT_ID, reference: TRACKING_ID }
+			}
+		]);
+
+		await mint(chariotDeps(tracked.port), fundGift());
+
+		const [paid] = await db.select({ reference: payment.providerReference }).from(payment);
+		expect(paid?.reference).toBe(TRACKING_ID);
 	});
 
 	/**
@@ -1576,6 +1601,32 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		expect(mail.sent[0]?.text).toContain('103.00');
 	});
 
+	/**
+	 * this refusal keeps the fund's approval, so a donor's Try again resends the same session and
+	 * records the gift against the grant Chariot holds. staff match that gift on what the donations
+	 * screen shows, never on the session, which no screen here draws.
+	 */
+	it('tells an operator to match a gift here by the amount as the dashboard prints it, the day and the donor', async () => {
+		await env.DB.prepare(`update org_profile set notification_email = 'ops@hope.example'`).run();
+		const mail = mailer();
+		const port = chariotProvider([{ ok: false, reason: 'unreachable', detail: 'no answer' }]);
+
+		const before = new Date().toISOString().slice(0, 10);
+		await mint(
+			chariotDeps(port.port, { email: mail.port }),
+			fundGift({ authorizedMinor: 150_000 })
+		);
+		const after = new Date().toISOString().slice(0, 10);
+
+		const text = (mail.sent[0]?.text ?? '').replace(/\s+/g, ' ');
+		const action = text.slice(text.indexOf('What to do:'));
+		expect(action).toContain('$1,500.00');
+		expect([before, after].some((day) => action.includes(day))).toBe(true);
+		expect(action).toContain('Ada Okafor');
+		expect(action).toContain('ada@example.org');
+		expect(action).toContain('Export');
+	});
+
 	it('tells no operator anything when Chariot answered that it created no grant', async () => {
 		await env.DB.prepare(`update org_profile set notification_email = 'ops@hope.example'`).run();
 		const mail = mailer();
@@ -1586,23 +1637,67 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		expect(mail.sent).toHaveLength(0);
 	});
 
+	/** Chariot creates the grant and the gift's write then fails, with an operator to tell. */
+	async function mintGrantWithNoGift(created: PaymentResult<Intent> = grant()) {
+		await env.DB.prepare(`update org_profile set notification_email = 'ops@hope.example'`).run();
+		const mail = mailer();
+		// the form goes between the read at the top of the request and the write at the bottom.
+		const port = chariotProvider([created], async () => {
+			await env.DB.prepare('delete from form').run();
+		});
+		const result = await mint(chariotDeps(port.port, { email: mail.port }), fundGift());
+		return { result, mail };
+	}
+
 	/**
 	 * a grant that exists with no gift recorded against it is visible nowhere else: the settlement path
 	 * answers an unknown grant quietly, so this press is the one place the loss can be reported.
 	 */
 	it('tells an operator the grant id when the gift cannot be recorded against a created grant', async () => {
-		await env.DB.prepare(`update org_profile set notification_email = 'ops@hope.example'`).run();
-		const mail = mailer();
-		// the form goes between the read at the top of the request and the write at the bottom.
-		const port = chariotProvider([grant()], async () => {
-			await env.DB.prepare('delete from form').run();
-		});
-
-		const result = await mint(chariotDeps(port.port, { email: mail.port }), fundGift());
+		const { result, mail } = await mintGrantWithNoGift();
 
 		expect(result.ok || result.reason).toBe('internal_error');
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 		expect(mail.sent[0]?.text).toContain(GRANT_ID);
+	});
+
+	/**
+	 * a donor who saw the 500 has had the fund's approval spent (`keepsFundApproval` in
+	 * packages/form/src/checkout.machine.ts), so their Try again makes a second grant with its own gift,
+	 * and a gift of the same amount here may be that one. a donor whose answer never arrived keeps the
+	 * approval, and their Try again can record this grant's gift after all. only the grant's tracking
+	 * ID tells the two apart.
+	 */
+	it('tells an operator to look here for the grant’s tracking ID before recording its gift by hand unless Chariot shows the grant cancelled', async () => {
+		const { mail } = await mintGrantWithNoGift();
+
+		// the plain-text arm wraps long lines, and the facts print above the action.
+		const text = (mail.sent[0]?.text ?? '').replace(/\s+/g, ' ');
+		const action = text.slice(text.indexOf('What to do:'));
+		expect(action).toContain('tracking ID');
+		expect(action).toContain('already recorded');
+		expect(action.indexOf('tracking ID')).toBeLessThan(action.indexOf('by hand'));
+		expect(action).toContain('unless Chariot shows the grant cancelled');
+		expect(action).not.toContain('on or after');
+		expect(text).not.toContain('Tracking ID:');
+	});
+
+	// the gift a donor's unseen retry recorded carries the same tracking ID on its row, so the match
+	// needs no trip to Chariot's dashboard.
+	it('tells an operator the grant’s tracking ID and to record its gift by hand only if no gift here shows it', async () => {
+		const { mail } = await mintGrantWithNoGift({
+			ok: true,
+			value: { providerTxnId: GRANT_ID, paymentToken: GRANT_ID, reference: TRACKING_ID }
+		});
+
+		const text = (mail.sent[0]?.text ?? '').replace(/\s+/g, ' ');
+		const action = text.slice(text.indexOf('What to do:'));
+		expect(text.slice(0, text.indexOf('What to do:'))).toContain(`Tracking ID: ${TRACKING_ID}`);
+		expect(action).toContain(`shows tracking ID ${TRACKING_ID}, it is already recorded`);
+		expect(action).toContain(
+			'Otherwise record the gift by hand, unless Chariot shows the grant cancelled'
+		);
+		expect(action).not.toContain('note its tracking ID');
 	});
 
 	/**

@@ -1,4 +1,5 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
+import { useEffect } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { useSubmit } from 'react-router';
 import {
@@ -14,7 +15,7 @@ import type { RecurringSetup, VarsWritten, WalletsLevel, WebhookRepaired } from 
 import { consoleRereads } from '../lib/dialog-params';
 import { heldValues } from '../lib/held-values';
 import { repairLanded, WEBHOOK_REPAIR_INTENT } from '../lib/notices-standing';
-import { forgetReadings, readProcessorPage } from '../lib/processor-cache';
+import { forgetReadings, readProcessorPage, runDrawn } from '../lib/processor-cache';
 import { RECURRING_INTENT } from '../lib/recurring-block';
 import { STRIPE_REMOVAL, stripeKeyEdits } from '../lib/stripe-edits';
 import { SET_UP_INTENT } from '../lib/stripe-keys';
@@ -172,6 +173,7 @@ export default function StripePage({ loaderData, actionData, matches }: Route.Co
 	const shell = matches[1].loaderData;
 	const submit = useSubmit();
 	const press = usePress();
+	useEffect(() => runDrawn(loaderData.run), [loaderData.run]);
 	const intent = press.intent;
 	/* a setup run counts as this page writing, although no request is open for it: it writes two
 	   credentials and a var onto the deployment (`packages/console/internal/stripe`), and a second

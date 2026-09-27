@@ -1655,7 +1655,15 @@ export const payment = sqliteTable(
 		 * `payment.id`, never a processor's id: theirs is the parent row's `provider_txn_id`, which is
 		 * how the parent is found before this is written. null on every first inbound payment.
 		 */
-		parentPaymentId: text('parent_payment_id').references((): AnySQLiteColumn => payment.id)
+		parentPaymentId: text('parent_payment_id').references((): AnySQLiteColumn => payment.id),
+		/**
+		 * what an organisation matches this payment by on the processor's own side — on a `chariot`
+		 * row, the grant's tracking ID. as the processor gave it, and null where it gave none.
+		 *
+		 * not a key: unindexed, held unique by nothing, and no read looks a row up by it. the
+		 * processor's key for a row is `provider_txn_id`.
+		 */
+		providerReference: text('provider_reference')
 	},
 	(t) => [
 		check('payment_direction_check', enumCheck(t.direction, PAYMENT_DIRECTIONS)),
@@ -1724,6 +1732,12 @@ export const payment = sqliteTable(
 		 * compensating entry a human writes, which is what double-entry books are for.
 		 */
 		check('payment_amount_minor_positive_check', sql`${t.amountMinor} > 0`),
+		check('payment_provider_reference_not_blank_check', optionalNotBlank(t.providerReference)),
+		// a reference is a processor's, so a row naming none has nobody to have issued one.
+		check(
+			'payment_provider_reference_needs_provider_check',
+			sql`${t.providerReference} is null or ${t.provider} is not null`
+		),
 		check('payment_coin_not_blank_check', optionalNotBlank(t.coin)),
 		// one spelling per coin, as NOWPayments' codes are compared once lowercased: `USDTTRC20`
 		// and `usdttrc20` stored side by side would read as two coins.

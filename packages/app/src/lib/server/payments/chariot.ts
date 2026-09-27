@@ -289,7 +289,15 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 
 			const id = stringField(answer.body, 'id');
 			if (id === null) return unreadable('the grant it created');
-			return { ok: true, value: { providerTxnId: id, paymentToken: id } };
+			const trackingId = stringField(answer.body, 'trackingId');
+			return {
+				ok: true,
+				value: {
+					providerTxnId: id,
+					paymentToken: id,
+					...(trackingId !== null && { reference: trackingId })
+				}
+			};
 		},
 
 		/**

@@ -13,7 +13,7 @@ import type {
 import { CHARIOT_TAG } from '@better-giving/form/embed/chariot';
 import type { ChallengeSeam, TurnstileLike } from '@better-giving/form/embed/turnstile';
 import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from '@better-giving/form/parts';
-import { DEPOSIT_POLL_MS } from '@better-giving/form/machine';
+import { DEPOSIT_POLL_MS, MICRODEPOSIT_WINDOW_MS } from '@better-giving/form/machine';
 import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
 import { act, createRef } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -81,8 +81,14 @@ const CONFIG: FormConfig = {
 	}
 };
 
+/** what the provider answers a confirmation and a resume's read with, where a spec says. */
+type Answers = {
+	readonly confirm?: () => Promise<unknown>;
+	readonly retrieve?: () => Promise<unknown>;
+};
+
 /** the payment provider, as a plain object, with the one report the flow needs off it. */
-function paymentProvider() {
+function paymentProvider(answers: Answers = {}) {
 	const change: ((payload: PaymentChangeLike) => void)[] = [];
 	const held: Record<string, unknown[]> = { change, ready: [], loaderror: [] };
 	const element = {
@@ -102,8 +108,8 @@ function paymentProvider() {
 	const stripe = {
 		elements: () => ({ create: () => element, update: async () => {}, submit: async () => ({}) }),
 		// never settles, so a gift that reaches the charge stays on the beat that is announced as one.
-		confirmPayment: () => new Promise(() => {}),
-		retrievePaymentIntent: async () => ({})
+		confirmPayment: answers.confirm ?? (() => new Promise(() => {})),
+		retrievePaymentIntent: answers.retrieve ?? (async () => ({}))
 	} as unknown as StripeLike;
 	return {
 		load: async () => stripe,
@@ -177,8 +183,8 @@ const CHALLENGE: ChallengeSeam = {
  * built and subscribed a few microtasks after the effect that asked for it, and a spec that reported
  * a rail before then would be reporting into nothing.
  */
-async function card(config: FormConfig = CONFIG) {
-	const payment = paymentProvider();
+async function card(config: FormConfig = CONFIG, answers: Answers = {}) {
+	const payment = paymentProvider(answers);
 	const paypal = paypalProvider();
 	const host = document.createElement('div');
 	document.body.appendChild(host);
@@ -861,6 +867,220 @@ it('states the granted figures on the ending, not the ones the form showed', asy
 	expect(one(ending, '.prose').textContent).not.toContain('charge');
 });
 
+// one takeover giving way to another is no screen change, and it can take the control holding the
+// caret with it: Give and Authorize go to a wait that paints no primary.
+describe('where the caret goes when one takeover replaces another', () => {
+	// through the screen the card shows rather than the takeover's class, so a renamed class leaves
+	// these specs reading the same elements and only the card's section ref decides the outcome.
+	function takeoverHeading(root: HTMLElement): HTMLElement {
+		return one(screen(root), ':scope > h2');
+	}
+
+	function takeoverPrimary(root: HTMLElement): HTMLElement {
+		return one(screen(root), ':scope > button[part~="action"]');
+	}
+
+	/** the deployment's quote endpoint, answering every request with `body`. */
+	function quoting(body: unknown): void {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify(body), {
+						status: 200,
+						headers: { 'content-type': 'application/json' }
+					})
+			)
+		);
+	}
+
+	/** a control pressed from the keyboard, so the caret starts on it. */
+	async function pressHeld(node: HTMLElement): Promise<void> {
+		await act(async () => {
+			node.focus();
+			node.click();
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+	}
+
+	/** the review step of a card gift, with Donate pressed from the keyboard. */
+	async function donated(quote: unknown, answers: Answers = {}) {
+		quoting(quote);
+		const { root, payment } = await card(CONFIG, answers);
+		walkToGive(root);
+		payment.pick('card');
+		await pressHeld(one(root, 'button[part~="submit"]'));
+		return root;
+	}
+
+	// a figure other than the one the review step shows, which is what lands on the correction.
+	const MOVED = { paymentToken: 'pi_1_secret_x', feeMinor: 200, totalMinor: 2700 };
+	const MANDATE = {
+		paymentToken: 'pi_1_secret_x',
+		feeMinor: 106,
+		totalMinor: 2606,
+		mandate: { text: 'By clicking, you authorize the debit of your account.' }
+	};
+
+	it('lands on the heading when Give on the correction screen hands the card to the wait', async () => {
+		const root = await donated(MOVED);
+		expect(takeoverHeading(root).textContent).toBe(copy.CORRECTION_HEADING);
+
+		await pressHeld(takeoverPrimary(root));
+
+		expect(takeoverHeading(root).textContent).toBe(copy.RESUMING_HEADING);
+		expect(takeoverPrimary(root).hidden).toBe(true);
+		expect(document.activeElement).toBe(takeoverHeading(root));
+	});
+
+	it('lands on the heading when Authorize on the mandate hands the card to the wait', async () => {
+		const root = await donated(MANDATE);
+		expect(takeoverHeading(root).textContent).toBe(copy.MANDATE_HEADING);
+
+		await pressHeld(takeoverPrimary(root));
+
+		expect(takeoverHeading(root).textContent).toBe(copy.RESUMING_HEADING);
+		expect(takeoverPrimary(root).hidden).toBe(true);
+		expect(document.activeElement).toBe(takeoverHeading(root));
+	});
+
+	// after Give the wait has put the caret on the heading, and a heading's words replaced under a
+	// caret already on it are read by nobody unless the region reads them.
+	it('says a heading replaced under the caret once, in its own words', async () => {
+		let settle: (result: unknown) => void = () => {};
+		const root = await donated(MOVED, {
+			confirm: () =>
+				new Promise((resolve) => {
+					settle = resolve;
+				})
+		});
+		await pressHeld(takeoverPrimary(root));
+		const heading = takeoverHeading(root);
+		expect(document.activeElement).toBe(heading);
+		expect(said(root)).toBe(copy.confirming('card'));
+
+		await act(async () => {
+			settle({ paymentIntent: { status: 'processing' } });
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+
+		expect(heading.textContent).toBe(copy.PROCESSING_HEADING);
+		expect(document.activeElement).toBe(heading);
+		expect(said(root)).toBe(`${copy.PROCESSING_HEADING}.`);
+	});
+
+	// straight from the review step the caret arrives on the heading, and arriving reads it: the
+	// region saying the same words again is the heading twice.
+	it('leaves the heading to the caret that arrives on it', async () => {
+		const root = await donated(
+			{ paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor: 2606 },
+			{ confirm: async () => ({ paymentIntent: { status: 'processing' } }) }
+		);
+
+		expect(takeoverHeading(root).textContent).toBe(copy.PROCESSING_HEADING);
+		expect(document.activeElement).toBe(takeoverHeading(root));
+		expect(said(root)).toBe('');
+	});
+
+	// the flow closes the verification window on its own clock, under the caret the arrival put on
+	// the heading: focusing the node that holds focus says nothing, so the region says the new words.
+	it('says the window closing to a donor whose caret is on the heading', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		onTestFinished(() => {
+			vi.useRealTimers();
+		});
+		const root = await donated(
+			{ paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor: 2606 },
+			{
+				confirm: async () => ({
+					paymentIntent: {
+						status: 'requires_action',
+						next_action: { type: 'verify_with_microdeposits' }
+					}
+				})
+			}
+		);
+		const heading = takeoverHeading(root);
+		expect(heading.textContent).toBe(copy.VERIFY_HEADING);
+		expect(document.activeElement).toBe(heading);
+		expect(said(root)).toBe('');
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(MICRODEPOSIT_WINDOW_MS);
+		});
+
+		expect(heading.textContent).toBe(copy.EXPIRED_HEADING);
+		expect(document.activeElement).toBe(heading);
+		expect(said(root)).toBe(`${copy.EXPIRED_HEADING}.`);
+	});
+
+	// a resume boots onto a takeover and is replaced by its outcome a moment later, with the caret
+	// wherever the page left it.
+	it('takes no focus when a resume’s outcome replaces the takeover it booted onto', async () => {
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+		elsewhere.focus();
+		window.history.replaceState(
+			null,
+			'',
+			`?bg_donate_form=${CONFIG.formId}&payment_intent_client_secret=pi_1_secret_x`
+		);
+		let answer: () => void = () => {};
+		const { root } = await card(CONFIG, {
+			retrieve: () =>
+				new Promise((resolve) => {
+					answer = () => resolve({ paymentIntent: { status: 'succeeded' } });
+				})
+		});
+		expect(takeoverHeading(root).textContent).toBe(copy.RESUMING_HEADING);
+		expect(document.activeElement).toBe(elsewhere);
+
+		await act(async () => {
+			answer();
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+
+		expect(takeoverHeading(root).textContent).toBe(copy.SUCCESS_HEADING);
+		expect(document.activeElement).toBe(elsewhere);
+	});
+
+	// nothing moves the caret onto a heading it is not near, so the region is what tells a donor
+	// elsewhere on the page that the screen changed.
+	it('says the heading a resume’s outcome replaces the takeover with, to a caret outside it', async () => {
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+		elsewhere.focus();
+		window.history.replaceState(
+			null,
+			'',
+			`?bg_donate_form=${CONFIG.formId}&payment_intent_client_secret=pi_1_secret_x`
+		);
+		let answer: () => void = () => {};
+		const { root } = await card(CONFIG, {
+			retrieve: () =>
+				new Promise((resolve) => {
+					answer = () => resolve({ paymentIntent: { status: 'processing' } });
+				})
+		});
+		expect(takeoverHeading(root).textContent).toBe(copy.RESUMING_HEADING);
+
+		await act(async () => {
+			answer();
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+
+		expect(takeoverHeading(root).textContent).toBe(copy.PROCESSING_HEADING);
+		expect(document.activeElement).toBe(elsewhere);
+		expect(said(root)).toBe(`${copy.PROCESSING_HEADING}.`);
+	});
+});
+
 describe('a crypto gift', () => {
 	const CRYPTO: FormConfig = {
 		...CONFIG,
@@ -1152,6 +1372,60 @@ describe('a crypto gift', () => {
 		const before = server.reads;
 		await tick(DEPOSIT_POLL_MS);
 		expect(server.reads).toBeGreaterThan(before);
+	});
+
+	// the flow replaces the heading on its own clock, under a caret the address screen put on it:
+	// focusing the node that holds focus says nothing, so the region says the new words.
+	it('says the address closing, and then expiring, to a caret on the heading', async () => {
+		// a second short of the send-by, so the address closes between two readings: a reading
+		// landing in the same task is a snapshot with nothing to say, and it would clear the region.
+		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
+		const { root, server } = await atAddress();
+		const heading = one(screen(root), 'h2');
+		expect(document.activeElement).toBe(heading);
+
+		await tick(1000);
+
+		expect(heading.textContent).toBe(copy.CHECKING_HEADING);
+		expect(document.activeElement).toBe(heading);
+		expect(said(root)).toBe(`${copy.CHECKING_HEADING}.`);
+
+		server.state = 'expired';
+		await tick(DEPOSIT_POLL_MS);
+
+		expect(heading.textContent).toBe(copy.EXPIRED_HEADING);
+		expect(document.activeElement).toBe(heading);
+		expect(said(root)).toBe(`${copy.EXPIRED_HEADING}.`);
+	});
+
+	// a donor who stepped off the card while waiting on the chain is told each change, and the caret
+	// stays where they put it.
+	it('says the address closing, and then expiring, to a caret outside the card', async () => {
+		// a second short of the send-by, so the address closes between two readings: a reading
+		// landing in the same task is a snapshot with nothing to say, and it would clear the region.
+		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
+		const { root, server } = await atAddress();
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+		act(() => {
+			elsewhere.focus();
+		});
+
+		await tick(1000);
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.CHECKING_HEADING);
+		expect(document.activeElement).toBe(elsewhere);
+		expect(said(root)).toBe(`${copy.CHECKING_HEADING}.`);
+
+		server.state = 'expired';
+		await tick(DEPOSIT_POLL_MS);
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.EXPIRED_HEADING);
+		expect(document.activeElement).toBe(elsewhere);
+		expect(said(root)).toBe(`${copy.EXPIRED_HEADING}.`);
 	});
 
 	it('lands a gift below the coin’s minimum on the amount step, naming the minimum', async () => {

@@ -75,6 +75,7 @@ function draw(state: State): HTMLElement {
 				busy={false}
 				receipt={null}
 				headingRef={createRef<HTMLHeadingElement>()}
+				sectionRef={createRef<HTMLElement>()}
 				deposit={null}
 				onPrimary={() => {}}
 				onSecondary={() => {}}

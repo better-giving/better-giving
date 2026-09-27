@@ -258,6 +258,53 @@ function visibleStep(api: DomApi, last: Screen): Screen {
 }
 
 /**
+ * whether the caret is inside `node`, read off `node`'s own root.
+ *
+ * the root is the one place the caret is visible from wherever the element is mounted: a host page
+ * may hold it inside a closed shadow root of its own, and nothing above that root sees in.
+ */
+function holdsCaret(node: Element): boolean {
+	return node.contains((node.getRootNode() as Document | ShadowRoot).activeElement);
+}
+
+/**
+ * every shadow root a card has been painted in, which is how one card tells another holding the
+ * caret.
+ *
+ * module-wide, so it spans every tag this module defined. a card from another copy of this module
+ * — a page loading two deployments' embed.js — is not in it, and a caret there reads as the host
+ * page's.
+ */
+const cardRoots = new WeakSet<Node>();
+
+/**
+ * whether the caret is in a card other than the one painted in `own`, as far as the page lets it
+ * be followed.
+ *
+ * the search starts in the scope `own`'s host stands in, which this card can always read, and
+ * climbs a scope at a time until one holds the caret. from there it follows open shadow roots down
+ * — every card's is open — and walks back up past hosts, so a caret in another card's payment
+ * fields, which are that host's own light dom, counts as in that card. a card inside a closed root
+ * this one does not also stand in is out of sight, and reads as the host page.
+ */
+function caretInAnotherCard(own: ShadowRoot): boolean {
+	// a host off the document is its own root, and an element has no `activeElement` at all.
+	let scope: Node = own.host.getRootNode();
+	let caret = (scope as Partial<Document | ShadowRoot>).activeElement ?? null;
+	while (caret === null && scope.nodeType === Node.DOCUMENT_FRAGMENT_NODE && 'host' in scope) {
+		scope = (scope as ShadowRoot).host.getRootNode();
+		caret = (scope as Partial<Document | ShadowRoot>).activeElement ?? null;
+	}
+	while (caret?.shadowRoot?.activeElement) caret = caret.shadowRoot.activeElement;
+	for (let node: Node | null = caret; node != null; ) {
+		const shadow = (node as Partial<Element>).shadowRoot;
+		if (shadow != null && shadow !== own && cardRoots.has(shadow)) return true;
+		node = node.parentNode ?? (node as Partial<ShadowRoot>).host ?? null;
+	}
+	return false;
+}
+
+/**
  * who a donor on a given rail is waiting on, which is four answers rather than eight.
  *
  * the wallets are a card presented differently and wait on the same issuer; the two hosted-window
@@ -1076,8 +1123,12 @@ export function createCard(
 	let shown: Screen = 'amount';
 	/** the projected step the last patch drew, which is what tells a refusal landing from a press. */
 	let stepBefore: State['step'] | null = null;
-	/** whether the last patch drew the address block, which is what tells the block leaving. */
-	let depositShown = false;
+	/**
+	 * the takeover's heading and primary label as the last patch drew them, which is what tells one
+	 * takeover replacing another.
+	 */
+	let drawnHeading = '';
+	let drawnPrimary: string | null = null;
 	/** whether the flow has changed screen at all, which is what the entry motion waits for. */
 	let moved = false;
 	/**
@@ -2584,6 +2635,7 @@ export function createCard(
 
 	function update(api: DomApi): void {
 		current = api;
+		if (!painted) cardRoots.add(root.getRootNode());
 		const step = visibleStep(api, shown);
 		const busy = api.continueButton['aria-busy'];
 		const screen = step === 'takeover' ? takeoverFor(api.state, config, money) : BLANK;
@@ -2606,6 +2658,28 @@ export function createCard(
 		// rendering would move the caret on a page it does not own.
 		const advanced = painted && step !== shown;
 		const shownBefore = shown;
+		// one takeover replacing another is no screen change, and it can take the control holding the
+		// caret with it: Give and Authorize go to a wait that paints no primary, and the address
+		// block leaves with whatever Copy held it. taken back only from inside the takeover — a resume
+		// boots onto one and is replaced by its outcome with the caret still on the host page. the
+		// caret is read before the patch hides anything, because a hidden node gives it up
+		// (`takes the caret off a control the moment it is hidden` in ./element.browser.spec.ts).
+		const within = step === 'takeover' && shownBefore === 'takeover';
+		const caretInTakeover = within && holdsCaret(takeover);
+		const newHeading = within && screen.heading !== drawnHeading;
+		const replaced =
+			caretInTakeover && (newHeading || (screen.primary?.label ?? null) !== drawnPrimary);
+		// a new heading the caret does not arrive on is read by nobody, so the region says it: the
+		// caret already on the heading, where focusing it again says nothing, or off the takeover,
+		// where nothing moves it — unless it is in another card on the page, whose donor is busy
+		// with that one.
+		const retitled =
+			newHeading &&
+			(caretInTakeover
+				? holdsCaret(takeoverHeading)
+				: !caretInAnotherCard(takeover.getRootNode() as ShadowRoot));
+		drawnHeading = screen.heading;
+		drawnPrimary = screen.primary?.label ?? null;
 		if (step !== shown) moved = true;
 		toggleAttribute(root, 'data-moved', moved ? '' : null);
 		shown = step;
@@ -2813,6 +2887,9 @@ export function createCard(
 		// then the fee decision, which is the one press on this card that changes the money without
 		// moving the caret or the screen — a donor watching the control they just pressed is the donor
 		// least likely to see the figure that moved.
+		//
+		// the retitled heading last: a screen's own sentence and the wait's both say more than its
+		// heading does.
 		say(
 			screen.announce !== ''
 				? screen.announce
@@ -2824,7 +2901,9 @@ export function createCard(
 							? totalWords
 							: busy
 								? workingWords(api.state)
-								: '',
+								: retitled
+									? `${screen.heading}.`
+									: '',
 			repeated
 		);
 		repeated = false;
@@ -2841,13 +2920,10 @@ export function createCard(
 			api.state.step === 'give' &&
 			api.state.method === 'crypto' &&
 			((advanced && shownBefore === 'takeover') || (coinRefused && stepBefore === 'working'));
-		// the address block leaving the card takes whatever Copy held the caret with it.
-		const addressLeft = depositShown && screen.deposit === null && step === 'takeover';
-		depositShown = screen.deposit !== null;
 		stepBefore = api.state.step;
 		if (backToCoins) coinPicker.focus();
 		else if (advanced && refusedAmount) figureControl().focus();
-		else if (advanced || addressLeft) headings[step].focus();
+		else if (advanced || replaced) headings[step].focus();
 		painted = true;
 	}
 

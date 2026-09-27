@@ -1,4 +1,5 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
+import { useEffect } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { freeWithheldVars, setUpRecurring, setVars, startPaypalSetup } from '../api/client';
 import type { RecurringSetup, VarsWritten } from '../api/types';
@@ -7,7 +8,7 @@ import { CHARITY_INTENT, charityEdit } from '../lib/paypal-charity';
 import type { PaypalPress } from '../lib/paypal-section';
 import { PaypalSection } from '../lib/paypal-section';
 import { PAYPAL_SETUP_INTENT, paypalPairPosted } from '../lib/paypal-setup';
-import { forgetReadings, readProcessorPage } from '../lib/processor-cache';
+import { forgetReadings, readProcessorPage, runDrawn } from '../lib/processor-cache';
 import { RECURRING_INTENT } from '../lib/recurring-block';
 import { usePress } from '../lib/use-press';
 import { FREE_INTENT } from '../lib/withheld-values';
@@ -99,6 +100,7 @@ export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean {
 export default function PaypalPage({ loaderData, actionData, matches }: Route.ComponentProps) {
 	const shell = matches[1].loaderData;
 	const press = usePress();
+	useEffect(() => runDrawn(loaderData.run), [loaderData.run]);
 	/* a setup run counts as this page writing, although no request is open for it: it writes the
 	   pair, its address and the listener's id onto the deployment (`packages/console/internal/paypal`),
 	   and a second press made under it would be reading what this one is still changing. */

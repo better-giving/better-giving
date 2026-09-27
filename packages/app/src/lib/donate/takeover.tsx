@@ -345,6 +345,7 @@ export type TakeoverScreenProps = {
 	/** the receipt block, shown only on a screen that states one and only once it has figures. */
 	readonly receipt: ReactNode;
 	readonly headingRef: RefObject<HTMLHeadingElement | null>;
+	readonly sectionRef: RefObject<HTMLElement | null>;
 	/**
 	 * the address block (`createDepositBlock` in @better-giving/form/deposit), built by the card and
 	 * patched from `screen.deposit`; `null` until the live flow has started.
@@ -360,6 +361,7 @@ export function TakeoverScreen({
 	busy,
 	receipt,
 	headingRef,
+	sectionRef,
 	deposit,
 	onPrimary,
 	onSecondary
@@ -374,7 +376,7 @@ export function TakeoverScreen({
 		before.parentNode?.insertBefore(deposit, before);
 	}, [deposit]);
 	return (
-		<section className="step takeover" hidden={hidden}>
+		<section className="step takeover" hidden={hidden} ref={sectionRef}>
 			{/*
 			 * `tabindex="-1"` for the reason the numbered steps' headings carry it: arriving here hides
 			 * the step that held focus, and a takeover the donor is never taken to is one a screen reader

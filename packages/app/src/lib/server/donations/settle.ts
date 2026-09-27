@@ -1,4 +1,4 @@
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import { uuidv7 } from 'uuidv7';
 import { projectTribute } from '../../donations/tributes';
@@ -864,8 +864,8 @@ async function recognitionOf(
  * about the rail and the time is a fact whatever the books do with it, and a row left saying
  * `pending` is a second thing for an operator to fix by hand. a row already settled with nothing
  * to post is left as the delivery that settled it wrote it, and the answer is `unchanged`. the
- * correction runs on exactly what was reported, though, which is why two of the three columns
- * below are conditional: a column the processor said nothing usable about is left standing rather
+ * correction runs on exactly what was reported, though, which is why every column below but the
+ * status is conditional: a column the processor said nothing usable about is left standing rather
  * than written with a guess or with a value the table will not hold.
  */
 async function write(
@@ -900,7 +900,14 @@ async function write(
 				// to post it under; here the quoted one is simply left standing.
 				...(Number.isNaN(settlement.occurredAt.getTime())
 					? {}
-					: { occurredAt: settlement.occurredAt })
+					: { occurredAt: settlement.occurredAt }),
+				// fills a row written without one and never replaces one: the first a gift showed is the
+				// one staff may already have matched it by.
+				...(settlement.reference === undefined
+					? {}
+					: {
+							providerReference: sql`coalesce(${payment.providerReference}, ${settlement.reference})`
+						})
 			})
 			.where(correcting)
 			.returning({ id: payment.id })

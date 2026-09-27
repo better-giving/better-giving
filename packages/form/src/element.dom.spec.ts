@@ -161,10 +161,29 @@ type Options = {
 	readonly rowCount?: number;
 	readonly attributes?: Readonly<Record<string, string>>;
 	readonly children?: string;
+	/** where the element is put; the document's body where unsaid. */
+	readonly parent?: ParentNode;
 };
+
+/**
+ * takes the caret off whatever holds it.
+ *
+ * happy-dom's `ShadowRoot.activeElement` throws while the caret is in another shadow tree, and the
+ * card reads its own when one takeover replaces another — so a card mounted beside one holding the
+ * caret, or after a spec that left it on one, would throw there. two cards sharing a page's caret
+ * are ./element.browser.spec.ts's question for that reason.
+ */
+function dropCaret(): void {
+	const parking = document.createElement('button');
+	document.body.append(parking);
+	parking.focus();
+	parking.blur();
+	parking.remove();
+}
 
 /** registers a tag, mounts one element on it and waits for its configuration. */
 async function mount(options: Options = {}): Promise<Mounted> {
+	dropCaret();
 	const tag = `${DONATE_FORM_TAG}-${(tags += 1)}`;
 	let report: (method: PaymentMethod | null) => void = () => {};
 	let stop: (failure: Failure) => void = () => {};
@@ -217,7 +236,7 @@ async function mount(options: Options = {}): Promise<Mounted> {
 		host.setAttribute(name, value);
 	}
 	if (options.children !== undefined) host.innerHTML = options.children;
-	document.body.appendChild(host);
+	(options.parent ?? document.body).appendChild(host);
 	await settle();
 	return {
 		...view(host),
@@ -496,6 +515,7 @@ function shows(card: Mounted, selector: string): string {
 }
 
 afterEach(() => {
+	dropCaret();
 	document.body.replaceChildren();
 });
 
@@ -3227,6 +3247,154 @@ describe('where focus goes when the screen changes', () => {
 		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
 	});
 
+	// one takeover giving way to another is no screen change, and the wait after Give paints no
+	// primary — the press hides the control holding the caret.
+	it('lands on the heading when Give on the correction screen hands the card to the wait', async () => {
+		const card = await atCorrection({ ports: { confirm: () => new Promise<never>(() => {}) } });
+		primary(card).focus();
+		primary(card).click();
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Finishing your gift');
+		expect(primary(card).hidden).toBe(true);
+		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+	});
+
+	// an integrator's own component can hold the element inside a closed shadow root, where the
+	// document's `activeElement` stops at that component.
+	it('lands on the heading after Give with the element inside a closed shadow root', async () => {
+		const outer = document.createElement('div');
+		document.body.append(outer);
+		const card = await atCorrection({
+			parent: outer.attachShadow({ mode: 'closed' }),
+			ports: { confirm: () => new Promise<never>(() => {}) }
+		});
+		primary(card).focus();
+		primary(card).click();
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Finishing your gift');
+		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+	});
+
+	// the resume boots onto a takeover and is replaced by its outcome a moment later, with the
+	// caret wherever the host page left it.
+	it('takes no focus when a resume’s outcome replaces the takeover it booted onto', async () => {
+		let answer: () => void = () => {};
+		const card = await mount({
+			resume: { paymentToken: 'pi_1_secret_x' },
+			ports: {
+				resume: () =>
+					new Promise((resolve) => {
+						answer = () => resolve({ kind: 'succeeded' });
+					})
+			}
+		});
+		expect(card.text('.takeover [part~="heading"]')).toBe('Finishing your gift');
+		answer();
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Thank you');
+		expect(card.shadow.activeElement).toBeNull();
+	});
+
+	// a resume's outcome replaces the takeover it booted onto with the caret still on the host page,
+	// so nothing moves it there and the region is what says the screen changed.
+	it('says the heading a resume settles on, and leaves the caret on the host page', async () => {
+		const settled = {
+			processing: 'Your gift is on its way.',
+			awaiting_microdeposits: 'Check your bank account.',
+			verification_expired: 'This gift needs to be started again.'
+		} as const;
+		for (const kind of ['processing', 'awaiting_microdeposits', 'verification_expired'] as const) {
+			let answer: () => void = () => {};
+			const card = await mount({
+				resume: { paymentToken: 'pi_1_secret_x' },
+				ports: {
+					resume: () =>
+						new Promise((resolve) => {
+							answer = () => resolve({ kind });
+						})
+				}
+			});
+			const outside = document.createElement('button');
+			document.body.append(outside);
+			outside.focus();
+			answer();
+			await settle();
+
+			expect(card.text('[role="status"]')).toBe(settled[kind]);
+			expect(document.activeElement).toBe(outside);
+		}
+	});
+
+	// a departure tears down a task after the disconnect (`#leaving` in ./element.ts), and an outcome
+	// can land in that task: the host is off the document, and its root is the host itself.
+	it('draws a resume’s outcome that lands between leaving the page and the teardown', async () => {
+		let answer: () => void = () => {};
+		const card = await mount({
+			resume: { paymentToken: 'pi_1_secret_x' },
+			ports: {
+				resume: () =>
+					new Promise((resolve) => {
+						answer = () => resolve({ kind: 'processing' });
+					})
+			}
+		});
+		answer();
+		card.host.remove();
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Your gift is on its way');
+	});
+
+	// the heading is the least a screen can say. one with a sentence of its own, and the wait with
+	// its, say that instead of the heading they replaced — never both.
+	it('says a resume’s own ending over the heading it settles on', async () => {
+		const card = await mount({
+			resume: { paymentToken: 'pi_1_secret_x' },
+			ports: { resume: async () => ({ kind: 'succeeded' }) }
+		});
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Thank you');
+		expect(card.text('[role="status"]')).toBe('Your gift went through.');
+	});
+
+	it('says the refusal over the heading when the wait after Give ends in one', async () => {
+		let refuse: () => void = () => {};
+		const card = await atCorrection({
+			ports: {
+				confirm: () =>
+					new Promise((resolve) => {
+						refuse = () =>
+							resolve({ kind: 'declined' as const, message: 'Your card was declined.' });
+					})
+			}
+		});
+		primary(card).focus();
+		primary(card).click();
+		await settle();
+		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+		refuse();
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('This gift was not completed');
+		expect(card.text('[role="status"]')).toBe('Your card was declined.');
+	});
+
+	// a mouse press on Give focuses nothing in some engines, so the caret is still on the heading the
+	// correction put it on when the wait replaces it.
+	it('says the wait over its heading when Give is pressed with the caret on the heading', async () => {
+		const card = await atCorrection({ ports: { confirm: () => new Promise<never>(() => {}) } });
+		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+		primary(card).click();
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Finishing your gift');
+		expect(card.text('[role="status"]')).toBe('Confirming your gift with your card issuer.');
+	});
+
 	// the one screen change that is a whole new card. the press that asked for it took the control
 	// holding focus off the page, so the caret would otherwise land on the host's own document.
 	it('lands on the first step’s heading when the donor starts a second gift', async () => {
@@ -4036,6 +4204,21 @@ describe('the mandate', () => {
 		expect(well.getAttribute('aria-label')).toBe('Payment authorization');
 	});
 
+	// the wait after Authorize is the same takeover with no primary, so the press hides the control
+	// holding the caret.
+	it('puts the caret on the heading when Authorize hands the card to the wait', async () => {
+		const card = await atSubmitted({
+			ports: { quote: async () => MANDATE, confirm: () => new Promise<never>(() => {}) }
+		});
+		primary(card).focus();
+		primary(card).click();
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Finishing your gift');
+		expect(primary(card).hidden).toBe(true);
+		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+	});
+
 	it('returns to the review step when the donor declines, rather than failing', async () => {
 		// refusing to authorize a debit is a change of rail, not an error — and the picker is the
 		// provider's own fields, which are on the review step.
@@ -4052,6 +4235,10 @@ describe('the verification screens', () => {
 	const awaiting = {
 		confirm: async () => ({ kind: 'awaiting_microdeposits' as const, expiresAt: deadline })
 	};
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
 
 	it('states the deadline as a date rather than as a window', async () => {
 		// the donor may read this page days after it was painted, by which point "within 10 days"
@@ -4075,6 +4262,16 @@ describe('the verification screens', () => {
 
 		expect(card.text('.takeover [part~="heading"]')).toBe('Check your bank account');
 		expect(card.find('.message').hidden).toBe(true);
+	});
+
+	it('says the window closing to a donor whose caret is on the heading', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true, now: deadline - 1000 });
+		const card = await atSubmitted({ ports: { ...awaiting, now: () => Date.now() } });
+		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+		await vi.advanceTimersByTimeAsync(1000);
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('This gift needs to be started again');
+		expect(card.text('[role="status"]')).toBe('This gift needs to be started again.');
 	});
 
 	it('offers a fresh start once the window has closed', async () => {
@@ -4409,6 +4606,38 @@ describe('the waiting screens, per rail', () => {
 			expect(shows(screen, '.takeover .prose')).toContain(
 				'Nothing here will charge you a second time.'
 			);
+		}
+	});
+
+	// straight from the review step the caret arrives on the heading, and arriving reads it. the
+	// region saying the same words again is the heading twice.
+	it('leaves the heading to the caret that arrives on it', async () => {
+		const kinds = ['processing', 'awaiting_microdeposits', 'redirecting'] as const;
+		for (const kind of kinds) {
+			// read before the next card mounts, which drops the caret (`dropCaret`).
+			const card = await atSubmittedOn('ach', { ports: { confirm: async () => ({ kind }) } });
+
+			expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+			expect(card.text('[role="status"]')).toBe('');
+		}
+	});
+
+	// after the correction the wait has put the caret on the heading, and a heading's words replaced
+	// under a caret already on it are not read again.
+	it('says a heading replaced under the caret, in the heading’s own words', async () => {
+		const settled = {
+			processing: 'Your gift is on its way.',
+			awaiting_microdeposits: 'Check your bank account.',
+			redirecting: 'Continue with your card issuer.'
+		} as const;
+		for (const kind of ['processing', 'awaiting_microdeposits', 'redirecting'] as const) {
+			const card = await atCorrection({ ports: { confirm: async () => ({ kind }) } });
+			primary(card).focus();
+			primary(card).click();
+			await settle();
+
+			expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+			expect(card.text('[role="status"]')).toBe(settled[kind]);
 		}
 	});
 
@@ -5792,6 +6021,84 @@ describe('a crypto gift', () => {
 		);
 		expect(card.find('.deposit').hidden).toBe(true);
 		expect(card.find('.takeover > .foot > [part~="action-quiet"]').hidden).toBe(true);
+	});
+
+	it('says the address closing, and the address expiring, to a caret on the heading', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
+		const closing = await atAddress(USDT, 'USDT', { ports: { now: () => Date.now() } });
+		expect(closing.card.shadow.activeElement).toBe(
+			closing.card.find('.takeover [part~="heading"]')
+		);
+		await vi.advanceTimersByTimeAsync(1000);
+
+		expect(heading(closing.card)).toBe('Checking for your gift');
+		expect(region(closing.card)).toBe('Checking for your gift.');
+
+		closing.card.host.remove();
+		const expiring = await atAddress(USDT, 'USDT', {
+			ports: { status: async () => ({ state: 'expired' }) }
+		});
+		expect(expiring.card.shadow.activeElement).toBe(
+			expiring.card.find('.takeover [part~="heading"]')
+		);
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+
+		expect(heading(expiring.card)).toBe('This gift needs to be started again');
+		expect(region(expiring.card)).toBe('This gift needs to be started again.');
+	});
+
+	// the address block leaves with whatever control on it held the caret, and the screen after it
+	// draws neither Copy nor the way back to the coins.
+	it('puts the caret on the heading when the address closes under Copy', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
+		const { card } = await atAddress(USDT, 'USDT', { ports: { now: () => Date.now() } });
+		const copy = card.find('.deposit [aria-label="Copy address"]');
+		copy.focus();
+		expect(card.shadow.activeElement).toBe(copy);
+
+		await vi.advanceTimersByTimeAsync(1000);
+
+		expect(heading(card)).toBe('Checking for your gift');
+		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+		expect(region(card)).toBe('');
+	});
+
+	it('puts the caret on the heading when the address expires under Use a different coin', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const { card } = await atAddress(USDT, 'USDT', {
+			ports: { status: async () => ({ state: 'expired' }) }
+		});
+		secondary(card).focus();
+		expect(card.shadow.activeElement).toBe(secondary(card));
+
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+
+		expect(heading(card)).toBe('This gift needs to be started again');
+		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+		expect(region(card)).toBe('');
+	});
+
+	// the donor gone to their wallet, with the caret on the host page: nothing takes it back, and the
+	// region is what says the address closed and then expired.
+	it('says the address closing and then expiring to a caret on the host page', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
+		let state: 'waiting' | 'expired' = 'waiting';
+		const { card } = await atAddress(USDT, 'USDT', {
+			ports: { now: () => Date.now(), status: async () => ({ state }) }
+		});
+		const outside = document.createElement('button');
+		document.body.append(outside);
+		outside.focus();
+
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(heading(card)).toBe('Checking for your gift');
+		expect(region(card)).toBe('Checking for your gift.');
+
+		state = 'expired';
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+		expect(heading(card)).toBe('This gift needs to be started again');
+		expect(region(card)).toBe('This gift needs to be started again.');
+		expect(document.activeElement).toBe(outside);
 	});
 
 	it('offers a new address once the server says this one expired, and starts again at the coin', async () => {

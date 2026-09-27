@@ -34,7 +34,8 @@ type home struct {
 	WorkerName   string          `json:"workerName"`
 	DatabaseName string          `json:"databaseName"`
 	Account      account.Account `json:"account"`
-	// Remembered is whether this machine will still know the account after a restart.
+	// Remembered is whether this run's account was written to this machine when it was chosen, or
+	// read from what was written; it says nothing of what another process has written since.
 	Remembered bool `json:"remembered"`
 	// NotKept is the folder a sign-in this machine could not write down would have gone in, and null
 	// where nothing failed to keep. the credential in hand is good either way; what is lost is the

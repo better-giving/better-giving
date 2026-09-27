@@ -9,30 +9,35 @@ import type { StripeRunRead } from '../api/types';
 const binary = vi.hoisted(() => ({
 	runs: 0,
 	run: null as unknown,
+	answered: null as (() => void) | null,
 	payments: 0,
 	failPayments: false,
 	face: 'ready' as 'ready' | 'connect'
 }));
 
-vi.mock('../api/client', () => ({
-	stripeRun: async () => {
+vi.mock('../api/client', () => {
+	const run = async () => {
 		binary.runs += 1;
+		binary.answered?.();
 		return binary.run;
-	},
-	paypalRun: async () => {
-		binary.runs += 1;
-		return binary.run;
-	},
-	chariotRun: async () => {
-		binary.runs += 1;
-		return binary.run;
-	},
-	readPayments: () => {
-		binary.payments += 1;
-		return binary.failPayments ? Promise.reject(new Error('unanswered')) : Promise.resolve({});
-	},
-	readRecurring: () => Promise.resolve({})
-}));
+	};
+	return {
+		stripeRun: run,
+		paypalRun: run,
+		chariotRun: run,
+		// an aborted signal is refused before the binary is reached, as `fetch` refuses it.
+		readPayments: async (signal?: AbortSignal) => {
+			signal?.throwIfAborted();
+			binary.payments += 1;
+			if (binary.failPayments) throw new Error('unanswered');
+			return {};
+		},
+		readRecurring: async (signal?: AbortSignal) => {
+			signal?.throwIfAborted();
+			return {};
+		}
+	};
+});
 
 vi.mock('./console-reading', async (original) => ({
 	...(await original<Record<string, unknown>>()),
@@ -47,38 +52,61 @@ vi.mock('./console-reading', async (original) => ({
 	})
 }));
 
-const bar = await import('@better-giving/operator/progress-bar');
-const { forgetReadings, readProcessorPage, warmProcessorPage } = await import('./processor-cache');
+// the module is fresh per test: a run report no draw received is held across every forgetting, so
+// one test's undrawn report would otherwise be the next test's first draw. the store is
+// `remix-client-cache`'s, which a module reset leaves standing, so the last test's module forgets
+// what it kept first.
+let bar: typeof import('@better-giving/operator/progress-bar');
+let forgetReadings: typeof import('./processor-cache').forgetReadings;
+let readProcessorPage: typeof import('./processor-cache').readProcessorPage;
+let runDrawn: typeof import('./processor-cache').runDrawn;
+let warmProcessorPage: typeof import('./processor-cache').warmProcessorPage;
 
 const ORIGIN = 'http://localhost';
 
 /** the arguments a navigation to `href` hands the page's loader. */
-const move = (href: string) =>
-	({ request: new Request(new URL(href, ORIGIN)) }) as unknown as LoaderFunctionArgs;
+const move = (href: string, signal: AbortSignal | null = null) =>
+	({ request: new Request(new URL(href, ORIGIN), { signal }) }) as unknown as LoaderFunctionArgs;
 
 /** a turn of the loop, which is every chance a promise with nothing to wait on would have had. */
 const turn = () => new Promise((settle) => setTimeout(settle, 0));
 
 beforeEach(async () => {
-	await forgetReadings();
+	await forgetReadings?.();
+	vi.resetModules();
+	bar = await import('@better-giving/operator/progress-bar');
+	({ forgetReadings, readProcessorPage, runDrawn, warmProcessorPage } = await import(
+		'./processor-cache'
+	));
 	binary.runs = 0;
 	binary.run = null;
+	binary.answered = null;
 	binary.payments = 0;
 	binary.failPayments = false;
 	binary.face = 'ready';
 	bar.pageDrawn('/organisation');
 });
 
-/** a visit to `href` from another page, with the bar over it seen to its end. */
-async function visit(href: string) {
+/** the reading of a visit to `href` from another page, with the bar over it seen to its end. */
+async function readForVisit(href: string, signal?: AbortSignal) {
 	const off = bar.subscribeProgressBar(() => {
 		if (bar.progressBarFinishing()) queueMicrotask(bar.progressBarLanded);
 	});
 	try {
-		return await readProcessorPage(move(href), href === '/payments/stripe' ? 'stripe' : 'paypal');
+		return await readProcessorPage(
+			move(href, signal),
+			href === '/payments/stripe' ? 'stripe' : 'paypal'
+		);
 	} finally {
 		off();
 	}
+}
+
+/** a visit to `href`, its run marked drawn as the page's render marks it, unless the router abandoned it. */
+async function visit(href: string, signal?: AbortSignal) {
+	const screen = await readForVisit(href, signal);
+	if (!signal?.aborted) runDrawn(screen.run);
+	return screen;
 }
 
 describe('a processor page read between visits', () => {
@@ -172,6 +200,66 @@ describe('a processor page read between visits', () => {
 		expect(binary.runs).toBe(2);
 	});
 
+	it('keeps nothing from a reading the router abandoned after the binary answered it', async () => {
+		const navigation = new AbortController();
+		binary.answered = () => navigation.abort();
+		await visit('/payments/stripe', navigation.signal);
+		bar.pageDrawn('/organisation');
+		await visit('/payments/stripe');
+
+		expect(binary.runs).toBe(2);
+	});
+
+	it('draws the run report on the next visit where the router abandoned the reading that took it', async () => {
+		const ended = { kind: 'ended' } satisfies Partial<StripeRunRead>;
+		binary.run = ended;
+		const navigation = new AbortController();
+		binary.answered = () => navigation.abort();
+		await visit('/payments/stripe', navigation.signal).catch(() => {});
+		binary.run = null;
+		bar.pageDrawn('/organisation');
+		const drawn = await visit('/payments/stripe');
+
+		expect(drawn.run).toBe(ended);
+	});
+
+	it('draws the run report on the next visit where the router abandoned the move after the reading returned', async () => {
+		// the layout's own reading can still be going when the page's lands, and a click elsewhere then
+		// abandons the move with nothing drawn.
+		const ended = { kind: 'ended' } satisfies Partial<StripeRunRead>;
+		binary.run = ended;
+		await readForVisit('/payments/stripe');
+		binary.run = null;
+		const drawn = await visit('/payments/stripe');
+
+		expect(drawn.run).toBe(ended);
+	});
+
+	it('asks the binary for no run where the router abandoned the reading before it got there', async () => {
+		const navigation = new AbortController();
+		const first = visit('/payments/stripe', navigation.signal);
+		navigation.abort();
+
+		await expect(first).rejects.toThrow();
+		expect(binary.runs).toBe(0);
+	});
+
+	it('leaves no rejection unhandled where the router abandoned the reading', async () => {
+		const unhandled = vi.fn();
+		process.on('unhandledRejection', unhandled);
+		try {
+			const navigation = new AbortController();
+			const abandoned = visit('/payments/stripe', navigation.signal);
+			navigation.abort();
+			await expect(abandoned).rejects.toThrow();
+			await turn();
+		} finally {
+			process.off('unhandledRejection', unhandled);
+		}
+
+		expect(unhandled).not.toHaveBeenCalled();
+	});
+
 	it('reads again where the payments reading kept for it failed', async () => {
 		binary.failPayments = true;
 		const failed = await visit('/payments/stripe');
@@ -200,6 +288,94 @@ describe('a processor page read ahead of the press on its rail cell', () => {
 		await visit('/payments/paypal');
 
 		expect(binary.runs).toBe(1);
+	});
+
+	it('hands the press the run report it read, with no second read', async () => {
+		// the binary hands a landed run to one reading only (../api/client.ts), so a second read
+		// would draw the page with the report gone.
+		const ended = { kind: 'ended' } satisfies Partial<StripeRunRead>;
+		binary.run = ended;
+		warmProcessorPage('/payments/stripe', ORIGIN);
+		await turn();
+		binary.run = null;
+		const drawn = await visit('/payments/stripe');
+
+		expect(binary.runs).toBe(1);
+		expect(drawn.run).toBe(ended);
+	});
+
+	it('hands its run report to one visit only', async () => {
+		binary.run = { kind: 'ended' } satisfies Partial<StripeRunRead>;
+		warmProcessorPage('/payments/stripe', ORIGIN);
+		await turn();
+		binary.run = null;
+		await visit('/payments/stripe');
+		bar.pageDrawn('/organisation');
+		const again = await visit('/payments/stripe');
+
+		expect(binary.runs).toBe(2);
+		expect(again.run).toBeNull();
+	});
+
+	it('keeps its run report for the next visit where the router abandoned the one that waited for it', async () => {
+		const ended = { kind: 'ended' } satisfies Partial<StripeRunRead>;
+		binary.run = ended;
+		warmProcessorPage('/payments/stripe', ORIGIN);
+		const navigation = new AbortController();
+		const abandoned = visit('/payments/stripe', navigation.signal);
+		navigation.abort();
+		await abandoned;
+		binary.run = null;
+		const drawn = await visit('/payments/stripe');
+
+		expect(binary.runs).toBe(1);
+		expect(drawn.run).toBe(ended);
+	});
+
+	it('hands the press its run report where its payments reading failed', async () => {
+		const ended = { kind: 'ended' } satisfies Partial<StripeRunRead>;
+		binary.run = ended;
+		binary.failPayments = true;
+		warmProcessorPage('/payments/stripe', ORIGIN);
+		await turn();
+		binary.run = null;
+		binary.failPayments = false;
+		const drawn = await visit('/payments/stripe');
+
+		expect(drawn.run).toBe(ended);
+	});
+
+	it('hands the press its run report where a press on another page forgot every reading', async () => {
+		const ended = { kind: 'ended' } satisfies Partial<StripeRunRead>;
+		binary.run = ended;
+		warmProcessorPage('/payments/stripe', ORIGIN);
+		await turn();
+		binary.run = null;
+		await forgetReadings();
+		const drawn = await visit('/payments/stripe');
+
+		expect(drawn.run).toBe(ended);
+	});
+
+	it('draws its run report once where the cell is read ahead again during the press', async () => {
+		const ended = { kind: 'ended' } satisfies Partial<StripeRunRead>;
+		binary.run = ended;
+		binary.answered = () => {
+			binary.answered = null;
+			queueMicrotask(() => {
+				binary.run = null;
+				warmProcessorPage('/payments/stripe', ORIGIN);
+			});
+		};
+		const drawn = await visit('/payments/stripe');
+		await turn();
+		const asked = binary.runs;
+		bar.pageDrawn('/organisation');
+		const again = await visit('/payments/stripe');
+
+		expect(drawn.run).toBe(ended);
+		expect(again.run).toBeNull();
+		expect(asked).toBeLessThanOrEqual(2);
 	});
 
 	it('draws no bar while it reads', async () => {

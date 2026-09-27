@@ -3,12 +3,20 @@ import { userEvent } from 'vitest/browser';
 import { PRE_UPGRADE_RESERVATION_CSS, RESERVED_MIN_HEIGHT } from './embed/reservation';
 import { defineDonateForm, DONATE_FORM_TAG } from './element';
 import type { CheckoutPorts } from './ports';
-import type { FormConfig } from './v1';
+import type { FormConfig, PaymentMethod } from './v1';
 
-// what a lightweight DOM cannot see about the element's stylesheets: which document a constructed
-// sheet belongs to, and what a card renders as when the `@property` registrations its seeds derive
-// from are not in the tree. both are engine behaviour, and both are the whole reason `sheetsFor`
-// puts a second copy of the token sheet in the document at all.
+// what a lightweight DOM cannot see about the element, all of it engine behaviour:
+//
+//  - its stylesheets: which document a constructed sheet belongs to, and what a card renders as when
+//    the `@property` registrations its seeds derive from are not in the tree — the whole reason
+//    `sheetsFor` puts a second copy of the token sheet in the document at all.
+//  - the box a host page holds before upgrade, which is a used box and needs a layout.
+//  - the closed choices operated by pointer and keyboard, and where the open list stands over a
+//    host box that clips.
+//  - where the caret goes: whether a pointer press focuses the control, whether a hidden control
+//    gives the caret up, what a closed root lets a read see, and which card on a page holds it.
+//    happy-dom focuses nothing on `click()`, keeps the caret on a hidden node, and throws reading a
+//    second shadow root's `activeElement`.
 //
 // like every spec in this pool it runs from `pnpm test:browser` and not from `pnpm test`, so it does
 // not gate `deploy`; see vitest.browser.config.ts.
@@ -55,27 +63,47 @@ function settle(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+type Mounting = {
+	readonly ports?: Partial<CheckoutPorts>;
+	/** the payment token a redirect came back with, which boots the flow into a resume. */
+	readonly resume?: { readonly paymentToken: string };
+	/** where the element is put; the document's body where unsaid. */
+	readonly parent?: ParentNode;
+	/** handed the payment provider's rail report once the card has asked for a checkout. */
+	readonly railed?: (report: (method: PaymentMethod | null) => void) => void;
+	/** handed the node the payment provider paints its own fields into. */
+	readonly painted?: (node: HTMLElement) => void;
+};
+
 /** one element on the page, upgraded, carrying the sheets its own code adopted. */
-async function mount(config: FormConfig = CONFIG): Promise<HTMLElement> {
+async function mount(config: FormConfig = CONFIG, options: Mounting = {}): Promise<HTMLElement> {
 	const tag = `${DONATE_FORM_TAG}-${(tags += 1)}`;
 	defineDonateForm(
 		{
 			loadConfig: async () => config,
-			checkout: (config) => ({
-				input: { config, ports: PORTS },
-				cadence: () => {},
-				offerFund: () => {},
-				offerCrypto: () => {},
-				rows: () => {},
-				stop: () => {}
-			}),
+			checkout: (config, node, onRail) => {
+				options.railed?.(onRail);
+				options.painted?.(node);
+				return {
+					input: {
+						config,
+						ports: { ...PORTS, ...options.ports },
+						...(options.resume === undefined ? {} : { resume: options.resume })
+					},
+					cadence: () => {},
+					offerFund: () => {},
+					offerCrypto: () => {},
+					rows: () => {},
+					stop: () => {}
+				};
+			},
 			challenge: () => ({ reset: () => {}, stop: () => {} })
 		},
 		tag
 	);
 	const host = document.createElement(tag);
 	host.setAttribute('form', CONFIG.formId);
-	document.body.appendChild(host);
+	(options.parent ?? document.body).appendChild(host);
 	planted.push(host);
 	await settle();
 	return host;
@@ -96,6 +124,33 @@ function background(host: HTMLElement): string {
 	const card = host.shadowRoot?.querySelector("[part~='card']");
 	if (card === undefined || card === null) throw new Error('the element rendered no card');
 	return getComputedStyle(card).backgroundColor;
+}
+
+function shadow(host: HTMLElement): ShadowRoot {
+	const root = host.shadowRoot;
+	if (root === null) throw new Error('the element has no shadow root');
+	return root;
+}
+
+/** the donor walked from the amount step to the review, typing what the details step asks. */
+function review(root: ShadowRoot): void {
+	const forward = () =>
+		root
+			.querySelector<HTMLElement>('.step:not([hidden]) [part~="action"]:not([part~="submit"])')
+			?.click();
+	const type = (selector: string, value: string) => {
+		const field = root.querySelector<HTMLInputElement>(selector);
+		if (field === null) throw new Error(`no ${selector}`);
+		field.value = value;
+		field.dispatchEvent(new Event('input', { bubbles: true }));
+	};
+	root.querySelector<HTMLElement>('[part~="frequency-option"] input')?.click();
+	root.querySelector<HTMLElement>('[part~="amount-option"] input')?.click();
+	forward();
+	type('#email', 'donor@example.org');
+	type('#first-name', 'Ada');
+	type('#last-name', 'Lovelace');
+	forward();
 }
 
 afterEach(() => {
@@ -273,12 +328,6 @@ describe('the closed choices on the amount step', () => {
 		}
 	};
 
-	function shadow(host: HTMLElement): ShadowRoot {
-		const root = host.shadowRoot;
-		if (root === null) throw new Error('the element has no shadow root');
-		return root;
-	}
-
 	/** the words the closed box is showing, as a sighted donor reads them. */
 	function showing(box: HTMLElement): string {
 		return box.innerText.trim();
@@ -293,27 +342,6 @@ describe('the closed choices on the amount step', () => {
 			if (found === undefined || !found.checkVisibility()) throw new Error(`no row reads ${words}`);
 			return found;
 		});
-	}
-
-	/** the donor walked from the amount step to the review, typing what the details step asks. */
-	function review(root: ShadowRoot): void {
-		const forward = () =>
-			root
-				.querySelector<HTMLElement>('.step:not([hidden]) [part~="action"]:not([part~="submit"])')
-				?.click();
-		const type = (selector: string, value: string) => {
-			const field = root.querySelector<HTMLInputElement>(selector);
-			if (field === null) throw new Error(`no ${selector}`);
-			field.value = value;
-			field.dispatchEvent(new Event('input', { bubbles: true }));
-		};
-		root.querySelector<HTMLElement>('[part~="frequency-option"] input')?.click();
-		root.querySelector<HTMLElement>('[part~="amount-option"] input')?.click();
-		forward();
-		type('#email', 'donor@example.org');
-		type('#first-name', 'Ada');
-		type('#last-name', 'Lovelace');
-		forward();
 	}
 
 	it('credits the gift to the cause a donor picks from the open list', async () => {
@@ -505,5 +533,225 @@ describe('the closed choices on the amount step', () => {
 
 		await vi.waitFor(() => expect(box.getAttribute('aria-expanded')).toBe('false'));
 		expect(root.querySelector('#program-positioner')?.matches(':popover-open')).toBe(false);
+	});
+});
+
+// two embeds on one page share its one caret. a card whose heading is replaced while the caret is
+// off it says the new heading, because nothing moves the caret there — but a caret in another card
+// is a donor busy with that card, and this one speaking into it is noise over what they are doing.
+describe('two cards on one page', () => {
+	/** a card booted onto a resume, holding its outcome until the case delivers it. */
+	async function resuming(parent?: ParentNode): Promise<{ root: ShadowRoot; settles(): void }> {
+		let answer: () => void = () => {};
+		const host = await mount(CONFIG, {
+			...(parent === undefined ? {} : { parent }),
+			resume: { paymentToken: 'pi_1_secret_x' },
+			ports: {
+				resume: () =>
+					new Promise((resolve) => {
+						answer = () => resolve({ kind: 'processing' });
+					})
+			}
+		});
+		return { root: shadow(host), settles: () => answer() };
+	}
+
+	/** what the card's live region is saying, once a first sentence has had its task to wait. */
+	async function said(root: ShadowRoot): Promise<string> {
+		await settle();
+		await settle();
+		return root.querySelector('[role="status"]')?.textContent ?? '';
+	}
+
+	/** the control a donor on the amount step presses next, which is always on screen there. */
+	function onward(root: ShadowRoot): HTMLElement {
+		const node = root.querySelector<HTMLElement>(
+			'.step:not([hidden]) [part~="action"]:not([part~="submit"])'
+		);
+		if (node === null) throw new Error('no Continue on screen');
+		return node;
+	}
+
+	it('says the heading replaced under a caret on the host page', async () => {
+		const other = await mount();
+		const card = await resuming();
+		const outside = document.createElement('button');
+		document.body.append(outside);
+		planted.push(outside);
+		outside.focus();
+		card.settles();
+
+		expect(await said(card.root)).toBe('Your gift is on its way.');
+		expect(shadow(other).activeElement).toBeNull();
+		expect(document.activeElement).toBe(outside);
+	});
+
+	it('says nothing of it while the caret is on another card', async () => {
+		const other = await mount();
+		const card = await resuming();
+		onward(shadow(other)).focus();
+		card.settles();
+
+		expect(await said(card.root)).toBe('');
+		expect(card.root.querySelector('.takeover [part~="heading"]')?.textContent).toBe(
+			'Your gift is on its way'
+		);
+		expect(shadow(other).activeElement).toBe(onward(shadow(other)));
+	});
+
+	// the payment provider's fields are the host's own light dom, slotted into the card, so a caret
+	// in them sits under the other card's host rather than in its shadow root.
+	it('says nothing of it while the caret is in another card’s payment fields', async () => {
+		const fields: HTMLElement[] = [];
+		let report: (method: PaymentMethod | null) => void = () => {};
+		const other = await mount(CONFIG, {
+			railed: (onRail) => {
+				report = onRail;
+			},
+			painted: (node) => fields.push(node)
+		});
+		review(shadow(other));
+		report('card');
+		const field = document.createElement('input');
+		field.setAttribute('aria-label', 'Card number');
+		fields[0]?.append(field);
+		const card = await resuming();
+		field.focus();
+		card.settles();
+
+		expect(document.activeElement).toBe(field);
+		expect(await said(card.root)).toBe('');
+	});
+
+	// a host page built from components of its own can hold an embed inside one, where the page's
+	// caret reads as that component rather than as the card.
+	it('says nothing of it while the caret is on a card inside the host page’s own component', async () => {
+		const wrapper = document.createElement('div');
+		document.body.append(wrapper);
+		planted.push(wrapper);
+		const other = await mount(CONFIG, { parent: wrapper.attachShadow({ mode: 'open' }) });
+		const card = await resuming();
+		onward(shadow(other)).focus();
+		card.settles();
+
+		expect(document.activeElement).toBe(wrapper);
+		expect(await said(card.root)).toBe('');
+	});
+
+	it('says nothing of it from inside a closed root while the caret is on a card outside', async () => {
+		const other = await mount();
+		const wrapper = document.createElement('div');
+		document.body.append(wrapper);
+		planted.push(wrapper);
+		const card = await resuming(wrapper.attachShadow({ mode: 'closed' }));
+		onward(shadow(other)).focus();
+		card.settles();
+
+		expect(await said(card.root)).toBe('');
+		expect(shadow(other).activeElement).toBe(onward(shadow(other)));
+	});
+});
+
+// one takeover replacing another is no screen change, and the wait after Give paints no primary, so
+// the press hides the control holding the caret. a real click is what decides where the caret is
+// when the patch reads it — happy-dom's `click()` focuses nothing, and there the dom pool has to put
+// the caret on the control by hand first.
+describe('the caret when one takeover replaces another', () => {
+	/** the correction screen, with the charge after Give held so the wait stays on screen. */
+	async function atCorrection(parent?: ParentNode): Promise<ShadowRoot> {
+		let report: (method: PaymentMethod | null) => void = () => {};
+		const host = await mount(CONFIG, {
+			...(parent === undefined ? {} : { parent }),
+			railed: (onRail) => {
+				report = onRail;
+			},
+			ports: {
+				quote: async () => ({ paymentToken: 'pi_1', feeMinor: 150, totalMinor: 2650 }),
+				confirm: () => new Promise<never>(() => {})
+			}
+		});
+		const root = shadow(host);
+		review(root);
+		report('card');
+		root.querySelector<HTMLElement>('[part~="submit"]')?.click();
+		await settle();
+		return root;
+	}
+
+	function heading(root: ShadowRoot): HTMLElement {
+		const node = root.querySelector<HTMLElement>('.takeover [part~="heading"]');
+		if (node === null) throw new Error('no takeover heading');
+		return node;
+	}
+
+	function give(root: ShadowRoot): HTMLElement {
+		const node = root.querySelector<HTMLElement>('.takeover > [part~="action"]');
+		if (node === null) throw new Error('no takeover primary');
+		return node;
+	}
+
+	/** every node the caret lands on inside `root` from here on, in order. */
+	function caretMoves(root: ShadowRoot): EventTarget[] {
+		const landed: EventTarget[] = [];
+		root.addEventListener('focusin', (event) => {
+			if (event.target !== null) landed.push(event.target);
+		});
+		return landed;
+	}
+
+	// the premise under the order `update` in ./views.ts reads the caret in: the engine takes the
+	// caret off a control the moment it is hidden, so a read after the patch finds it gone.
+	it('takes the caret off a control the moment it is hidden', async () => {
+		const outer = document.createElement('div');
+		document.body.append(outer);
+		planted.push(outer);
+		const root = outer.attachShadow({ mode: 'open' });
+		const control = document.createElement('button');
+		control.textContent = 'Give';
+		root.append(control);
+		await userEvent.click(control);
+		expect(root.activeElement).toBe(control);
+
+		control.hidden = true;
+
+		expect(root.activeElement).toBeNull();
+	});
+
+	it('lands on the heading after a pointer press on Give, with no focus asked for first', async () => {
+		const root = await atCorrection();
+		expect(heading(root).textContent).toBe('The total changed');
+		const focused = caretMoves(root);
+		const press = give(root);
+
+		await userEvent.click(press);
+
+		expect(heading(root).textContent).toBe('Finishing your gift');
+		expect(press.hidden).toBe(true);
+		expect(focused).toEqual([press, heading(root)]);
+		expect(root.activeElement).toBe(heading(root));
+	});
+
+	it('lands on the heading after a pointer press on Give inside a closed shadow root', async () => {
+		const outer = document.createElement('div');
+		document.body.append(outer);
+		planted.push(outer);
+		const root = await atCorrection(outer.attachShadow({ mode: 'closed' }));
+		const focused = caretMoves(root);
+		const press = give(root);
+		// no locator reaches into a closed root, so the pointer goes where Give is drawn instead.
+		const drawn = press.getBoundingClientRect();
+		const around = outer.getBoundingClientRect();
+
+		await userEvent.click(outer, {
+			position: {
+				x: drawn.left - around.left + drawn.width / 2,
+				y: drawn.top - around.top + drawn.height / 2
+			}
+		});
+
+		expect(heading(root).textContent).toBe('Finishing your gift');
+		expect(focused).toEqual([press, heading(root)]);
+		expect(root.activeElement).toBe(heading(root));
+		expect(document.activeElement).toBe(outer);
 	});
 });

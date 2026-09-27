@@ -630,6 +630,12 @@ export type Intent = {
 	 * which a waiting screen reads the gift's standing by.
 	 */
 	readonly paymentToken: string;
+	/**
+	 * the id an organisation matches this payment by in its processor's own dashboard, as
+	 * `Settlement.reference` below reads it — stored as `payment.provider_reference`. absent where the
+	 * processor has none to give when the intent is minted.
+	 */
+	readonly reference?: string;
 	/** present exactly on a gift paid to an address, and what the donor is shown to pay it. */
 	readonly deposit?: DepositInstructions;
 };
@@ -741,9 +747,9 @@ export type Settlement = {
 	/**
 	 * the id an organisation matches the arriving money by in its processor's own dashboard.
 	 *
-	 * read back on every settlement rather than stored, because the processor holds it for as long
-	 * as it holds the transaction. absent where the processor gives the organisation no such id to
-	 * match by.
+	 * read back on every settlement, and stored as `payment.provider_reference` only where the row
+	 * holds none (../donations/settle.ts) — a row written with `Intent.reference` keeps that one.
+	 * absent where the processor gives the organisation no such id to match by.
 	 */
 	readonly reference?: string;
 	/** business time: when the money moved, as the ledger's `occurred_at` wants it. */

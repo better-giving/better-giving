@@ -307,7 +307,11 @@ export function useConsoleForm<S extends z.ZodObject>(
 
 	   the answer is a dependency beside the names, so that a second refusal naming the same box
 	   moves focus again: the press before it put focus on the button, and an effect keyed on the
-	   names alone would leave it there with the sentence somewhere else on the screen. */
+	   names alone would leave it there with the sentence somewhere else on the screen.
+
+	   the move runs once, on the render the answer lands in, and a closed box takes no focus — so
+	   it lands only because a refusal ends the navigation there rather than re-reading the page
+	   with the press still posted (`consoleRereads` in ./dialog-params.ts). */
 	const report = options.report;
 	useEffect(() => {
 		setFixed(NONE);

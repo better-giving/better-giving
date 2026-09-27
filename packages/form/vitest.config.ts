@@ -50,13 +50,14 @@ export default defineConfig({
 				resolve: { conditions: ['browser'] },
 				test: {
 					name: 'dom',
-					// a lightweight DOM is blind to the two things the element actually needs proven
-					// — layout and `@container`/`oklch(from …)`-derived output — so it earns no keep
-					// for those. what it does earn its keep for is structure, attributes, events,
-					// slots and the upgrade lifecycle, and happy-dom's shadow DOM and custom-element
-					// support covers that surface. the two properties this pool cannot see stay with
-					// the `browser` project, run out of band from `test`/`deploy` (see
-					// vitest.browser.config.ts).
+					// a lightweight DOM is blind to layout and `@container`/`oklch(from …)`-derived
+					// output, so it earns no keep for those, and its focus follows its own rules rather
+					// than an engine's: what a pointer press focuses and what a hidden control gives up
+					// are not its to prove, and a caret a dom spec needs is put there by hand. what it
+					// does earn its keep for is structure, attributes, events, slots and the upgrade
+					// lifecycle, and happy-dom's shadow DOM and custom-element support covers that
+					// surface. what this pool cannot see stays with the `browser` project, run out of
+					// band from `test`/`deploy` (see vitest.browser.config.ts).
 					environment: 'happy-dom',
 					// a `<script src>` reaching the document is what the embed loader does, and
 					// happy-dom loads no external script — it logs a DOMException for each one and

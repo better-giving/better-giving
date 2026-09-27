@@ -1,5 +1,6 @@
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { saidClosing } from './close-answer';
+import { saidRefused } from './refused-answer';
 
 // every address parameter that opens a dialog on this console, and the reading that keeps opening
 // one off the loader.
@@ -50,7 +51,8 @@ export function opensOrDropsDialog({
 
 /**
  * the `shouldRevalidate` every console route with a loader states: every press re-reads, except the
- * one that ends the process it would read, and no link that only opens or drops a dialog does.
+ * one that ends the process it would read and one turned down over its boxes (./refused-answer.ts),
+ * and no link that only opens or drops a dialog does.
  *
  * the binary answers the close and then stops, so a read after it cannot land: it reaches nothing,
  * the loader rejects, and the operator meets the boundary that says the console crashed in place of
@@ -60,6 +62,7 @@ export function opensOrDropsDialog({
  */
 export function consoleRereads(args: ShouldRevalidateFunctionArgs): boolean {
 	if (saidClosing(args.actionResult)) return false;
+	if (saidRefused(args.actionResult)) return false;
 	if (opensOrDropsDialog(args)) return false;
 	return args.defaultShouldRevalidate;
 }

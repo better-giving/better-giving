@@ -52,11 +52,15 @@ import type { ZapierReport } from '@better-giving/operator/console/zapier';
 // out, so there is nothing here for an operator to act on. `consoleVersion` below is the one
 // exception and states its own reason.
 
-/** one call to the local process, answered as json or thrown. */
-async function ask<T>(path: string, method: 'GET' | 'POST'): Promise<T> {
+/**
+ * one call to the local process, answered as json or thrown. `signal` is a loader's request's, so a
+ * reading the router abandoned is not asked for.
+ */
+async function ask<T>(path: string, method: 'GET' | 'POST', signal?: AbortSignal): Promise<T> {
 	const answer = await fetch(`/api${path}`, {
 		method,
-		headers: { accept: 'application/json' }
+		headers: { accept: 'application/json' },
+		signal: signal ?? null
 	});
 	const read = await parsed(answer);
 	if (!answer.ok) throw new Error(refusal(read, answer.status));
@@ -196,7 +200,8 @@ export const sendTestEmail = (to: string): Promise<TestSend> =>
 	post('/deployment/test-email', { to });
 
 /** what the deployment says about the account it charges on. */
-export const readPayments = (): Promise<PaymentsRead> => ask('/deployment/payments', 'GET');
+export const readPayments = (signal?: AbortSignal): Promise<PaymentsRead> =>
+	ask('/deployment/payments', 'GET', signal);
 
 /**
  * where the deployment stands on gifts that repeat.
@@ -204,7 +209,8 @@ export const readPayments = (): Promise<PaymentsRead> => ask('/deployment/paymen
  * the read changes nothing: the press below is the find-or-create arm, and a screen drawn from that
  * one would provision an operator's processor account as a side effect of them opening a page.
  */
-export const readRecurring = (): Promise<RecurringRead> => ask('/deployment/recurring', 'GET');
+export const readRecurring = (signal?: AbortSignal): Promise<RecurringRead> =>
+	ask('/deployment/recurring', 'GET', signal);
 
 /** asks the deployment to put what a repeating gift is charged against on that account. */
 export const setUpRecurring = (): Promise<RecurringSetup> => ask('/deployment/recurring', 'POST');
@@ -371,6 +377,9 @@ function startedOrUnwritten<Run>(
  * dropped: a reload afterwards is a clean face rather than the last press reported again. a run
  * that stopped is left where it is — a failure has to survive a reload — and the next press clears
  * it.
+ *
+ * **so it takes no signal**: an abort landing after the binary answered would drop that only copy
+ * inside `fetch`. once asked, it is read to the end.
  */
 export const stripeRun = async (): Promise<StripeRunRead | null> =>
 	(await ask<{ run: StripeRunRead | null }>('/stripe/run', 'GET')).run;

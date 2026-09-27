@@ -199,9 +199,11 @@ export async function loader({ context }: Route.LoaderArgs) {
 			// selected at all, so there is no pointer here to pass on. no lookup and no locale in it,
 			// so the name crosses as the string it is stored as.
 			program: d.programName,
-			// what the organisation matches a pending grant's arriving payment by in Chariot's
-			// dashboard, read live (`readTrackingIds`), and null on every other gift and on one
-			// Chariot did not answer for in time. the grant id it was asked by stays here.
+			// what the organisation matches a grant's arriving payment by in Chariot's dashboard, and
+			// what staff match a gift by when a grant's write-failure alert names it beside the grant id.
+			// the stored value first, on every Chariot gift whatever its state; read live only for a
+			// pending grant stored without one (`readTrackingIds`). null on every other gift and on
+			// one Chariot did not answer for in time. the grant id it was asked by stays here.
 			trackingId: trackingIds.get(d.id) ?? null
 		})),
 		// so the page can say the list is capped rather than silently showing a prefix.
@@ -289,9 +291,8 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 									)
 								}
 							: d.amount,
-						// a pending grant carries the id the organisation marks it received by in
-						// Chariot's dashboard, beside the state it would change. code, because an
-						// operator retypes it.
+						// a grant carries the id the organisation marks it received by in Chariot's
+						// dashboard, beside its state. code, because an operator retypes it.
 						status: d.trackingId ? (
 							<>
 								<StatusWord tone={DONATION_STATUS_TONES[d.status]}>
