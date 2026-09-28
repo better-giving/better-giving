@@ -5421,13 +5421,15 @@
 		gap: var(--admin-space-2);
 	}
 
-	/* the refusal a press came back with, on its own row under the presses. the region is on the
-	   page before it has anything to say, so it is announced when it does; while it is empty the
-	   bar's row gap above it is taken back, and it holds no room. */
+	/* the refusal a press came back with, on its own row under the presses, and beside it why a held
+	   Publish is held. the region is on the page before it has anything to say, so it is announced
+	   when it does; while it is empty the bar's row gap above it is taken back, and it holds no room. */
 	.adm-publishbar__report {
 		flex-basis: 100%;
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: flex-end;
+		gap: var(--admin-space-2) var(--admin-space-4);
 	}
 
 	.adm-publishbar__report:empty {
