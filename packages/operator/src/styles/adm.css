@@ -5096,6 +5096,196 @@
 		border: 0;
 		border-radius: var(--admin-radius-0);
 	}
+
+	/* ---------- the chat --------------------------------------------------------------
+
+	   a page's chat, in its sheet: the turns in the body, and under them in the foot the
+	   suggestions, the photo on its way in and the box. the operator's words sit in a sunken
+	   bubble at the end edge and a reply is plain text at the start, so whose turn is whose is
+	   read from where it stands rather than from a label. inside a turn is a step apart and
+	   between turns is several, so a reply and the note under it read as one turn.
+	   packages/app/src/lib/admin/chat/ draws all of it. */
+	.adm-chat__log {
+		display: grid;
+		align-content: start;
+		gap: var(--admin-space-8);
+	}
+
+	.adm-chat__turn {
+		display: grid;
+		gap: var(--admin-space-3);
+		font-size: var(--admin-body-size);
+		line-height: var(--admin-body-lh);
+	}
+
+	.adm-chat__mine {
+		justify-self: end;
+		max-inline-size: 85%;
+		display: grid;
+		gap: var(--admin-space-3);
+		padding: var(--admin-space-4) var(--admin-space-5);
+		background: var(--admin-surface-sunken);
+		border-radius: var(--admin-radius);
+	}
+
+	/* a photo the operator sent, at the end edge above the words it came with. the fill is what
+	   stands there until the picture has loaded. */
+	.adm-chat__photo {
+		justify-self: end;
+		inline-size: var(--admin-space-12);
+		aspect-ratio: 4 / 3;
+		object-fit: cover;
+		background: var(--admin-surface-fill);
+		border-radius: var(--admin-radius);
+	}
+
+	/* the line under a reply the free model wrote. its mark keeps to the first line when the
+	   sentence wraps, as `.adm-momentary`'s does. */
+	.adm-chat__note {
+		display: flex;
+		align-items: start;
+		gap: var(--admin-space-3);
+		font-size: var(--admin-caption-size);
+		line-height: var(--admin-caption-lh);
+		color: var(--admin-ink-muted);
+	}
+
+	.adm-chat__note > .adm-mark {
+		flex: none;
+		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
+	}
+
+	.adm-chat__waiting {
+		display: flex;
+		align-items: center;
+		gap: var(--admin-space-4);
+		color: var(--admin-ink-2);
+	}
+
+	/* the sheet's foot lays its children in a row; this takes the whole of it. */
+	.adm-chat__foot {
+		display: grid;
+		gap: var(--admin-space-5);
+		inline-size: 100%;
+	}
+
+	.adm-chat__suggestions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--admin-space-3);
+	}
+
+	/* the box is the field, and the textarea inside it draws nothing of its own — the ring is the
+	   box's, as `.adm-coinbox`'s is, so Attach and Send stand inside what is focused. */
+	.adm-composer {
+		display: grid;
+		gap: var(--admin-space-3);
+		padding: var(--admin-space-3);
+		background: var(--admin-field-bg);
+		border: var(--admin-border-width) solid var(--admin-field-border);
+		border-radius: var(--admin-radius);
+	}
+
+	.adm-composer:has(.adm-composer__input:focus-visible),
+	.adm-composer:has(.adm-composer__input.is-focus) {
+		outline: var(--admin-focus-width) solid transparent;
+		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
+	}
+
+	/* two lines tall at rest, and taller as the words need it. */
+	.adm-composer__input {
+		min-block-size: calc(2lh + var(--admin-space-4));
+		padding: var(--admin-space-2) var(--admin-space-3);
+		font-size: var(--admin-field-size);
+		line-height: var(--admin-field-lh);
+		color: var(--admin-ink);
+		background: transparent;
+		border: 0;
+		outline: none;
+		resize: none;
+		field-sizing: content;
+	}
+
+	.adm-composer__input:focus-visible,
+	.adm-composer__input.is-focus {
+		outline: none;
+		box-shadow: none;
+	}
+
+	.adm-composer__input::placeholder {
+		color: var(--admin-field-placeholder);
+		opacity: 1;
+	}
+
+	.adm-composer__row {
+		display: flex;
+		align-items: center;
+		gap: var(--admin-space-4);
+	}
+
+	/* at the row's end whether or not an attach press stands at its start. */
+	.adm-composer__send {
+		margin-inline-start: auto;
+	}
+
+	/* a photo on its way into the chat: its thumbnail, its name, and where it stands. */
+	.adm-attachment {
+		display: flex;
+		align-items: center;
+		gap: var(--admin-space-4);
+		padding: var(--admin-space-3);
+		font-size: var(--admin-aside-size);
+		line-height: var(--admin-aside-lh);
+		background: var(--admin-surface-sunken);
+		border-radius: var(--admin-radius);
+	}
+
+	/* a picture when there is one to show and the image mark until then, in the one box. */
+	.adm-attachment__thumb {
+		flex: none;
+		display: grid;
+		place-items: center;
+		inline-size: var(--admin-thumb-size);
+		block-size: var(--admin-thumb-size);
+		object-fit: cover;
+		color: var(--admin-ink-muted);
+		background: var(--admin-surface-fill);
+		border-radius: var(--admin-radius);
+	}
+
+	.adm-attachment__text {
+		flex: 1;
+		min-inline-size: 0;
+		display: grid;
+		gap: var(--admin-space-1);
+	}
+
+	.adm-attachment__name {
+		overflow: hidden;
+		font-weight: var(--admin-label-weight);
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.adm-attachment__state {
+		display: flex;
+		align-items: start;
+		gap: var(--admin-space-3);
+		color: var(--admin-ink-2);
+	}
+
+	.adm-attachment__state > .adm-mark {
+		flex: none;
+		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
+	}
+
+	.adm-attachment--refused {
+		background: var(--admin-tone-blocker-tint);
+	}
+
+	.adm-attachment--refused .adm-attachment__state {
+		color: var(--admin-tone-blocker-ink);
+	}
 }
 
 @layer layout {
