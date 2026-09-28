@@ -8,7 +8,7 @@ import { formatMinorBrief, minorUnitDigits } from '$lib/donations/money';
 import { majorEntry, readAmount } from '$lib/forms/amounts';
 import { FORM_FIELD_LABELS } from '$lib/forms/fields';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import { type Box, boxErrorId, boxProps } from '../use-admin-form';
+import { type Box, boxErrorId, boxProps, listPress, useHydrated } from '../use-admin-form';
 
 // what a donor may give: the currency the figures are in, the two bounds, and the amounts a donor
 // is offered as buttons.
@@ -26,7 +26,10 @@ import { type Box, boxErrorId, boxProps } from '../use-admin-form';
 // indexed name — `suggested_amounts[0]` — which is the one bracket a submitted body may hold and
 // the reason `$lib/server/conform.ts` bounds the index rather than refusing it. adding and removing
 // a row are the form's own controls, handed in as button props by the screen that holds the form,
-// so this group states no intent of its own and neither screen states the arithmetic twice.
+// so this group states no intent of its own and neither screen states the arithmetic twice. they
+// are drawn through `listPress` (../use-admin-form.ts), which keeps them from being the form's
+// default button: Enter in any box here presses the screen's own submit — the sheet's Done, the
+// group's Save, Create — and never Add.
 //
 // a row is a box with a name of its own, so it is refused under itself. `suggestedAmountsRule` in
 // `$lib/forms/input-schema.ts` keys an offending amount to `suggested_amounts[1]`, which is the
@@ -195,6 +198,7 @@ type FormGivingFieldsProps = {
 
 export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivingFieldsProps) {
 	const capError = amounts.errors?.[0];
+	const hydrated = useHydrated();
 
 	const capErrorId = boxErrorId(amounts.id);
 	const suggestedHintId = `${amounts.id}-hint`;
@@ -451,7 +455,7 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 										variant="quiet"
 										mark="trash-2"
 										aria-label={`Remove suggested amount ${index + 1}`}
-										{...amounts.remove(index)}
+										{...listPress(amounts.remove(index), hydrated)}
 									>
 										Remove
 									</Button>
@@ -467,7 +471,7 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 					) : null}
 
 					<div className="adm-actions">
-						<Button mark="plus" {...amounts.add}>
+						<Button mark="plus" {...listPress(amounts.add, hydrated)}>
 							Add an amount
 						</Button>
 					</div>
