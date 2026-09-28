@@ -534,13 +534,14 @@ export function confirming(method: PaymentMethod | undefined): string {
 // ── the page ─────────────────────────────────────────────────────────────────────────────────
 
 /**
- * what a donor gets where the address names no form this deployment can draw.
+ * what a donor gets where /donate or a campaign's address takes no gift: an address no published
+ * campaign answers, or a page whose served config refuses.
  *
  * a sentence rather than a bare status, because the reader is a person holding a link that did not
  * work rather than an agent reading a body. it names no form id and no deployment: an address that
  * was turned down says nothing back about what would have been accepted.
  */
-export const NO_FORM = 'This link does not open a donation form. Check the address you were given.';
+export const NO_FORM = 'This page is not taking gifts right now.';
 
 /** an ended campaign's heading, at its address and in the tab. */
 export function campaignEnded(name: string): string {

@@ -1053,9 +1053,8 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 	});
 
 	it('lets a form on no site at all go Live', async () => {
-		// where a form loads is not a second gate on Live. every form this deployment serves loads on
-		// the donation page it answers on its own address whatever is ticked, so the empty list is a
-		// complete state and a form on no site publishes.
+		// where a form goes is not a second gate on Live. a form is made ahead of the site it goes on,
+		// so the empty list is a complete state and a form on no site publishes.
 		await env.DB.prepare('update form set allowed_origins = ? where id = ?')
 			.bind('[]', FORM_ID)
 			.run();
@@ -1149,10 +1148,9 @@ describe('/admin/forms/[id] — the sites tick boxes', () => {
 		expect((await readForm(db, FORM_ID))?.allowedOrigins).toEqual(['https://give.acme.org']);
 	});
 
-	it('empties a form of every site, because a form on no site is a form', async () => {
-		// a form ticked onto nothing loads on the donation page this deployment answers on its own
-		// address and takes real gifts there, so this group states no rule at all about the empty
-		// list and neither does the status group.
+	it('empties a form of every site, because a form may wait on no site', async () => {
+		// a form stands on no site while the site it goes on is still being made, so this group states
+		// no rule at all about the empty list and neither does the status group.
 		//
 		// the group with nothing ticked submits no key at all, which is the body this posts.
 		const { failure, redirect } = await post(ORIGINS_FORM, FORM_ID, {});
