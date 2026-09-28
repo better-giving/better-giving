@@ -108,6 +108,9 @@ const said = (root: HTMLElement) =>
 
 it('posts the whole look against the look’s version, with no colour where none is set', async () => {
 	const root = await drawn();
+	const colour = root.querySelector<HTMLInputElement>('input[type="color"]');
+	const describedBy = colour?.getAttribute('aria-describedby');
+	expect(describedBy && document.getElementById(describedBy)?.textContent).toBe('No colour set');
 
 	act(() => radio(root, 'warm').click());
 	await settle();

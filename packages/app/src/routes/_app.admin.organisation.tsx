@@ -415,18 +415,8 @@ function StorySection({
 	);
 }
 
-/** the organisation's look as the loader reads it: a brand colour, or `null` for none set. */
-type StoredLook = Omit<Look, 'brandColour'> & { readonly brandColour: string | null };
-
-/**
- * the colour the picker shows while no brand colour is set: the donation form's own grey,
- * `--donate-primary`'s `oklch(0.27 0 0)` in packages/form/src/styles/tokens.css, as the picker's
- * `#rrggbb`. a pick of a shade or a corner reports it back, and it is read as no colour then.
- */
-const NO_BRAND_SHOWN = '#262626'; // raw-colour-ok: the donor page's unseeded brand, as a picker value
-
 /** the look a body carries, where its shade and corner are ones the control can draw. */
-function lookIn(read: (box: string) => unknown): StoredLook | null {
+function lookIn(read: (box: string) => unknown): Look | null {
 	const shade = read('shade');
 	const corner = read('corner');
 	const colour = read('brandColour');
@@ -456,16 +446,16 @@ function lookRefusal(answer: AdminActionData): string | undefined {
  * a refusal leaves the refused pick drawn, the way a refused form keeps what was typed, and a 4xx
  * revalidates nothing, so a stale page stays stale until it is reloaded, as the refusal says.
  */
-function LookSection({ look, version }: { readonly look: StoredLook; readonly version: string }) {
+function LookSection({ look, version }: { readonly look: Look; readonly version: string }) {
 	const fetcher = useFetcher<Route.ComponentProps['actionData']>({ key: LOOK_FORM_ID });
-	const [waiting, setWaiting] = useState<StoredLook | null>(null);
+	const [waiting, setWaiting] = useState<Look | null>(null);
 
 	const busy = fetcher.state !== 'idle';
 	const sent = busy ? fetcher.formData?.get(WHICH_FORM) : null;
 	const answer = busy ? undefined : fetcher.data;
 
 	const post = useCallback(
-		(form: string, at: string, next?: StoredLook) => {
+		(form: string, at: string, next?: Look) => {
 			const body = new FormData();
 			body.set(WHICH_FORM, form);
 			body.set(RECORD_VERSION, at);
@@ -493,14 +483,7 @@ function LookSection({ look, version }: { readonly look: StoredLook; readonly ve
 		sent === LOOK_EDIT.id && fetcher.formData ? lookIn((box) => fetcher.formData?.get(box)) : null;
 	const shown = waiting ?? inFlight ?? refusedPick ?? look;
 
-	const onChange = (picked: Look) => {
-		const next: StoredLook = {
-			...picked,
-			brandColour:
-				shown.brandColour === null && picked.brandColour === NO_BRAND_SHOWN
-					? null
-					: picked.brandColour
-		};
+	const onChange = (next: Look) => {
 		if (busy) setWaiting(next);
 		else post(LOOK_EDIT.id, version, next);
 	};
@@ -513,11 +496,7 @@ function LookSection({ look, version }: { readonly look: StoredLook; readonly ve
 	return (
 		<Section card>
 			<h2>Look</h2>
-			<LookControl
-				mode="organisation"
-				value={{ ...shown, brandColour: shown.brandColour ?? NO_BRAND_SHOWN }}
-				onChange={onChange}
-			/>
+			<LookControl mode="organisation" value={shown} onChange={onChange} />
 			<div className="adm-actions">
 				{/* mounted empty, so the answer arriving in it is announced. */}
 				<span role="status">
