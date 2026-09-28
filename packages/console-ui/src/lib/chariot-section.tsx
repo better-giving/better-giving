@@ -12,6 +12,7 @@ import {
 	CHARIOT_WEBHOOK_PATH
 } from '@better-giving/operator/chariot/webhook-subscription';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import type { ReactNode } from 'react';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Await, Form, Link, useRevalidator } from 'react-router';
@@ -593,7 +594,7 @@ function ChariotKeysForm({
 			case 'no-ein':
 				return (
 					<FieldMessage>
-						Add your EIN in the <Link to={SECTION_PAGES.organisation}>Organisation</Link> section
+						Add your EIN in the <Link to={SECTION_PAGES.organisation}>{IDENTITY_FOLD}</Link> section
 						first.
 					</FieldMessage>
 				);
@@ -608,7 +609,7 @@ function ChariotKeysForm({
 				return (
 					<FieldMessage>
 						Your EIN isn’t in Chariot’s directory. Check it in{' '}
-						<Link to={SECTION_PAGES.organisation}>Organisation</Link>, or ask{' '}
+						<Link to={SECTION_PAGES.organisation}>{IDENTITY_FOLD}</Link>, or ask{' '}
 						<a href={`mailto:${SUPPORT}`}>{SUPPORT}</a> to add you.
 					</FieldMessage>
 				);
@@ -633,7 +634,7 @@ function ChariotKeysForm({
 				return (
 					<FieldMessage>
 						Chariot doesn’t accept fund gifts for {stop.name ?? 'your organisation'}. Check your EIN
-						in <Link to={SECTION_PAGES.organisation}>Organisation</Link>, or contact Chariot.
+						in <Link to={SECTION_PAGES.organisation}>{IDENTITY_FOLD}</Link>, or contact Chariot.
 					</FieldMessage>
 				);
 			case 'nowhere':

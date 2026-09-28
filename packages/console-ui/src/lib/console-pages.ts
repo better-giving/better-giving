@@ -116,7 +116,7 @@ export function railGroups(
 		{
 			destinations: [
 				cell('password', 'Password', 'key-round'),
-				cell('organisation', 'Organisation', 'building-2')
+				cell('organisation', FOLD_LABELS.organisation, 'building-2')
 			]
 		},
 		{

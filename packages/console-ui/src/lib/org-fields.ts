@@ -160,7 +160,7 @@ export const ORG_FIELDS: Record<OrgProfileField, OrgFieldCopy> = {
  */
 export const NOTIFICATION_BOXES: readonly OrgProfileField[] = ['notification_email'];
 
-/** the rest, which is the organisation's own identity and what the Organisation fold draws. */
+/** the rest, which is the organisation's own identity and what the Legal details fold draws. */
 export const IDENTITY_BOXES: readonly OrgProfileField[] = ORG_PROFILE_FIELDS.filter(
 	(field) => !NOTIFICATION_BOXES.includes(field)
 );

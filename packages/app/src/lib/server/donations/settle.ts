@@ -1,3 +1,4 @@
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { and, eq, ne, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import { uuidv7 } from 'uuidv7';
@@ -1199,8 +1200,7 @@ async function tellDonorNothingWasCollected(
 				{ label: 'Donation', value: target.donation.id },
 				{ label: 'Reason', value: rendered.detail }
 			],
-			action:
-				'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.'
+			action: `Open the console (\`better-giving start\`) and fill in the organisation’s details under ${IDENTITY_FOLD}.`
 		});
 		return;
 	}

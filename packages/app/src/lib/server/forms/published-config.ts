@@ -7,6 +7,7 @@ import type {
 	PaymentMethod,
 	Program
 } from '@better-giving/form/v1';
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { OFFERED_PAYMENT_METHODS } from '../../forms/offered-rails';
 import { readConfigEnv, type ConfigEnv } from '../config/env';
 import type { Db } from '../db/client';
@@ -444,7 +445,7 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 				`${absent.join(' and ')} ${absent.length === 1 ? 'is' : 'are'} not set. A form that ` +
 				'asks for a tax-deductible gift may not omit them.',
 			'Open the console (`better-giving start`). The registered name and the EIN are under ' +
-				'Organisation.'
+				`${IDENTITY_FOLD}.`
 		);
 	}
 

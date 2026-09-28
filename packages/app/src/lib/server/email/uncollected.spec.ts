@@ -1,3 +1,4 @@
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { describe, expect, it } from 'vitest';
 import type { OrgProfile } from '../db/schema';
 import { renderUncollectedNotice, type UncollectedInput } from './uncollected';
@@ -48,6 +49,6 @@ describe('renderUncollectedNotice — what it will not write', () => {
 		if (result.ok) return;
 		expect(result.reason).toBe('org_name_unknown');
 		// the sentence reaches an operator through an alert, so it says which box to fill in.
-		expect(result.detail).toContain('Organisation');
+		expect(result.detail).toContain(IDENTITY_FOLD);
 	});
 });

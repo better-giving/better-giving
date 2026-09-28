@@ -1,4 +1,5 @@
 import type { TributeKind } from '@better-giving/form/v1';
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { donation } from '../db/schema';
@@ -205,8 +206,7 @@ async function claimAndSend(
 					{ label: 'Donation', value: donationId },
 					{ label: 'Reason', value: rendered.detail }
 				],
-				action:
-					'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.'
+				action: `Open the console (\`better-giving start\`) and fill in the organisation’s details under ${IDENTITY_FOLD}.`
 			});
 			return 'not_sent';
 		}

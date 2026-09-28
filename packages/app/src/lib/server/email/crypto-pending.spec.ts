@@ -1,3 +1,4 @@
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { describe, expect, it } from 'vitest';
 import type { OrgProfile } from '../db/schema';
 import { renderCryptoPending, type CryptoPendingInput } from './crypto-pending';
@@ -41,7 +42,7 @@ describe('renderCryptoPending', () => {
 		for (const org of [null, { ...ORG, legalName: '  ' }]) {
 			const result = await renderCryptoPending(input({ org }));
 			expect(result).toMatchObject({ ok: false, reason: 'org_name_unknown' });
-			if (!result.ok) expect(result.detail).toContain('under Organisation');
+			if (!result.ok) expect(result.detail).toContain(`under ${IDENTITY_FOLD}`);
 		}
 	});
 
