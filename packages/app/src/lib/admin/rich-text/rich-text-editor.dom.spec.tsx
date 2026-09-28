@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it, onTestFinished } from 'vitest';
+import { useFocusOnRefusal } from '$lib/admin/editor/done-sheet';
 import { LIST_DEPTH_MAX, parseRichText, type RichTextDocument } from '$lib/rich-text/document';
 import { RichTextEditor, type RichTextEditorProps } from './rich-text-editor';
 
@@ -21,9 +22,12 @@ async function mount(props: Partial<RichTextEditorProps> = {}) {
 	const host = document.createElement('div');
 	document.body.appendChild(host);
 	const root = createRoot(host);
-	await act(async () => {
-		root.render(<RichTextEditor name="mission" label="Mission" {...props} />);
-	});
+	const rerender = async (next: Partial<RichTextEditorProps>) => {
+		await act(async () => {
+			root.render(<RichTextEditor name="mission" label="Mission" {...next} />);
+		});
+	};
+	await rerender(props);
 	onTestFinished(() => {
 		act(() => root.unmount());
 		host.remove();
@@ -31,7 +35,7 @@ async function mount(props: Partial<RichTextEditorProps> = {}) {
 	const content = one<HTMLElement & { editor?: Editor }>(host, '[role="textbox"]');
 	const editor = content.editor;
 	if (editor === undefined) throw new Error('the editor never mounted on its content element');
-	return { host, editor, content };
+	return { host, editor, content, rerender };
 }
 
 function one<T extends Element>(host: HTMLElement, selector: string): T {
@@ -312,5 +316,60 @@ describe('the toolbar', () => {
 	it('describes the box by the ids the caller hands it', async () => {
 		const { content } = await mount({ describedBy: 'mission-hint mission-err' });
 		expect(content.getAttribute('aria-describedby')).toBe('mission-hint mission-err');
+	});
+});
+
+describe('a refusal from the action', () => {
+	const refusal = 'Write the mission in a sentence or two.';
+
+	it('is drawn in the field’s own error row, describing the box and marking it refused', async () => {
+		const { host, content } = await mount({ describedBy: 'mission-hint', error: refusal });
+		const row = one<HTMLElement>(host, '.adm-field > .adm-field__error');
+		expect(row.textContent).toBe(refusal);
+		expect(content.getAttribute('aria-describedby')).toBe(`mission-hint ${row.id}`);
+		expect(content.getAttribute('aria-invalid')).toBe('true');
+	});
+
+	it('arrives on a box already drawn, and leaves it with the refusal', async () => {
+		const { host, content, rerender } = await mount();
+		expect(host.querySelector('.adm-field__error')).toBeNull();
+		expect(content.hasAttribute('aria-invalid')).toBe(false);
+
+		await rerender({ error: refusal });
+		const row = one<HTMLElement>(host, '.adm-field > .adm-field__error');
+		expect(content.getAttribute('aria-describedby')).toBe(row.id);
+		expect(content.getAttribute('aria-invalid')).toBe('true');
+
+		await rerender({});
+		expect(host.querySelector('.adm-field__error')).toBeNull();
+		expect(content.hasAttribute('aria-describedby')).toBe(false);
+		expect(content.hasAttribute('aria-invalid')).toBe(false);
+	});
+
+	it('puts the caller’s id on the editable, where useFocusOnRefusal finds it', async () => {
+		function Refusable({ error }: { error?: string }) {
+			useFocusOnRefusal(error, 'story-mission');
+			return (
+				<RichTextEditor name="mission" label="Mission" id="story-mission" error={error ?? null} />
+			);
+		}
+		const host = document.createElement('div');
+		document.body.appendChild(host);
+		const root = createRoot(host);
+		onTestFinished(() => {
+			act(() => root.unmount());
+			host.remove();
+		});
+		await act(async () => {
+			root.render(<Refusable />);
+		});
+		const content = one<HTMLElement>(host, '[role="textbox"]');
+		expect(content.id).toBe('story-mission');
+		expect(document.activeElement).not.toBe(content);
+
+		await act(async () => {
+			root.render(<Refusable error={refusal} />);
+		});
+		expect(document.activeElement).toBe(content);
 	});
 });

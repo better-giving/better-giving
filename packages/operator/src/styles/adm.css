@@ -5817,6 +5817,12 @@
 		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
 	}
 
+	/* refused as `.adm-affixed` is, by the ink of its edge alone: a heavier edge would move the bar
+	   and the words inside it. */
+	.adm-rte:has(.adm-rte__content[aria-invalid='true']) {
+		border-color: var(--admin-field-border-invalid);
+	}
+
 	.adm-rte__bar {
 		display: flex;
 		flex-wrap: wrap;
