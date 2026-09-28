@@ -1,9 +1,9 @@
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull, notExists } from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { FORM_CURRENCY } from '../../forms/amounts';
 import { postableId } from '../db/accounts';
 import type { Db } from '../db/client';
-import { form, type Form, program } from '../db/schema';
+import { form, type Form, page, type PageType, program } from '../db/schema';
 import type {
 	FormRecord,
 	ParsedForm,
@@ -81,6 +81,16 @@ const FORM_COLUMNS = {
 } satisfies Record<keyof FormListRow, SQLiteColumn>;
 
 /**
+ * a `form` row no page names, which is what makes it one of the Forms screens'. a page's own row is
+ * its donation settings and is edited in the page's editor (`page` in ../db/schema.ts), so the list
+ * leaves it out and every write below refuses it at its `where`. the readers of one row by id —
+ * the served config, the charge, a gift's own form — still read it.
+ */
+function ownedByNoPage(db: Db) {
+	return notExists(db.select({ id: page.id }).from(page).where(eq(page.formId, form.id)));
+}
+
+/**
  * every form, oldest first.
  *
  * a list and never a lookup, and that holds from both ends: a fresh deployment has no forms at
@@ -97,13 +107,13 @@ const FORM_COLUMNS = {
  * contacts and for a stronger reason: forms archive rather than delete (see FORM_STATUSES in
  * ../../forms/statuses.ts), so an archived row still has an id and a snippet — and listing it would
  * hand an operator something to paste into a site plus a live box that writes an allowlist for
- * a form staff have already retired.
+ * a form staff have already retired. a page's own row is left out too (`ownedByNoPage` above).
  */
 export async function readForms(db: Db): Promise<FormListRow[]> {
 	const rows = await db
 		.select(FORM_COLUMNS)
 		.from(form)
-		.where(isNull(form.archivedAt))
+		.where(and(isNull(form.archivedAt), ownedByNoPage(db)))
 		// `created_at` orders the list without being selected — it is a fact about the rows, not
 		// one this page renders.
 		.orderBy(asc(form.createdAt), asc(form.id));
@@ -268,6 +278,38 @@ export async function readForm(db: Db, id: string): Promise<StoredForm | null> {
 }
 
 /**
+ * the page whose donation settings a `form` row is, as a refusal names it: the Donation page has no
+ * name (`page_name_check` in ../db/schema.ts), a campaign always has one.
+ */
+export type OwningPage =
+	| { readonly type: 'donation_page' }
+	| { readonly type: 'campaign'; readonly name: string };
+
+/** the owning page off a row joined to `page`, or `null` for a row no page names. */
+function owningPage(row: {
+	pageType: PageType | null;
+	pageName: string | null;
+}): OwningPage | null {
+	if (row.pageType === null) return null;
+	if (row.pageType === 'donation_page') return { type: 'donation_page' };
+	if (row.pageName === null) {
+		// unreachable: `page_name_check` refuses a campaign without a name.
+		throw new Error('a campaign page has no name');
+	}
+	return { type: 'campaign', name: row.pageName };
+}
+
+/** the page that owns the `form` row `id`, or `null` when no page names it or no row has that id. */
+export async function readOwningPage(db: Db, id: string): Promise<OwningPage | null> {
+	const [row] = await db
+		.select({ pageType: page.type, pageName: page.name })
+		.from(page)
+		.where(eq(page.formId, id))
+		.limit(1);
+	return row ? owningPage(row) : null;
+}
+
+/**
  * one form's `allowed_origins`, and the whole of what the public api may know about a form
  * before a browser has been allowed to ask it anything.
  *
@@ -332,32 +374,46 @@ export async function readFormOrigins(db: Db, id: string): Promise<readonly stri
 // and that is what moves the version every write here is compared against.
 // ---------------------------------------------------------------------------
 
+/** a write refused because the row is a page's donation settings, naming that page. */
+export type PageOwned = { readonly ownedBy: OwningPage };
+
 /**
  * what a group write did.
  *
  * `gone` is a row that is missing or archived. `stale` is a row that has been written since the
  * version the caller was drawn from, and is refused rather than overwritten: a save replaces every
  * column its group owns, so a tab drawn before a publish would put the draft status back and take
- * the form off every donor page with nobody told.
+ * the form off every donor page with nobody told. `PageOwned` is a row a page owns, whose settings
+ * are edited in that page's editor.
  */
-export type FormSave = 'saved' | 'gone' | 'stale';
+export type FormSave = 'saved' | 'gone' | 'stale' | PageOwned;
 
-/** the one row a group write may land on: this id, not archived, and still at `version`. */
-function writable(id: string, version: Date) {
-	return and(eq(form.id, id), isNull(form.archivedAt), eq(form.updatedAt, version));
+/** the one row a group write may land on: this id, not archived, no page's, and still at `version`. */
+function writable(db: Db, id: string, version: Date) {
+	return and(
+		eq(form.id, id),
+		isNull(form.archivedAt),
+		ownedByNoPage(db),
+		eq(form.updatedAt, version)
+	);
 }
 
 /**
- * which refusal a group write that matched no row met, read after the write rather than in front
- * of it. it picks the sentence and guards nothing: the refusal already happened at the `where`.
+ * which refusal a write that matched no row met, read after the write rather than in front of it.
+ * it picks the sentence and guards nothing: the refusal already happened at the `where`. a page's
+ * row is named whether or not it is archived: the page's editor is the one place it can be changed.
  */
-async function missed(db: Db, id: string): Promise<'gone' | 'stale'> {
+async function missed(db: Db, id: string): Promise<'gone' | 'stale' | PageOwned> {
 	const [row] = await db
-		.select({ archivedAt: form.archivedAt })
+		.select({ archivedAt: form.archivedAt, pageType: page.type, pageName: page.name })
 		.from(form)
+		.leftJoin(page, eq(page.formId, form.id))
 		.where(eq(form.id, id))
 		.limit(1);
-	return row === undefined || row.archivedAt !== null ? 'gone' : 'stale';
+	if (row === undefined) return 'gone';
+	const ownedBy = owningPage(row);
+	if (ownedBy !== null) return { ownedBy };
+	return row.archivedAt !== null ? 'gone' : 'stale';
 }
 
 /**
@@ -376,7 +432,7 @@ export async function updateFormName(
 	const updated = await db
 		.update(form)
 		.set({ name: input.name, status: input.status })
-		.where(writable(id, version))
+		.where(writable(db, id, version))
 		.returning({ id: form.id });
 
 	return updated.length > 0 ? 'saved' : await missed(db, id);
@@ -396,7 +452,7 @@ export async function updateFormGiving(
 			maxMinor: input.maxMinor,
 			suggestedAmounts: encodeSuggestedAmounts(input.suggestedAmounts)
 		})
-		.where(writable(id, version))
+		.where(writable(db, id, version))
 		.returning({ id: form.id });
 
 	return updated.length > 0 ? 'saved' : await missed(db, id);
@@ -417,18 +473,18 @@ export async function updateFormOrigins(
 	const updated = await db
 		.update(form)
 		.set({ allowedOrigins: encodeAllowedOrigins(input.allowedOrigins) })
-		.where(writable(id, version))
+		.where(writable(db, id, version))
 		.returning({ id: form.id });
 
 	return updated.length > 0 ? 'saved' : await missed(db, id);
 }
 
 /**
- * what a save of the program group did, which is four answers: the three every group write has
+ * what a save of the program group did, which is five answers: the four every group write has
  * (`FormSave`), and one of its own.
  *
  * `unknown_program` is its own word because it is its own sentence on the screen, and it is the
- * one of the four an operator can fix without leaving the page: `gone` says this form is not there
+ * one of the five an operator can fix without leaving the page: `gone` says this form is not there
  * to write to and `stale` that the page is behind it, where this says the cause it was pointed at
  * is not one this deployment still offers. it is decided before the write, so a stale tab pinning
  * a retired cause hears about the cause first.
@@ -457,7 +513,7 @@ export async function updateFormProgram(
 	const updated = await db
 		.update(form)
 		.set({ programMode: input.programMode, programId: input.programId })
-		.where(writable(id, version))
+		.where(writable(db, id, version))
 		.returning({ id: form.id });
 
 	return updated.length > 0 ? 'saved' : await missed(db, id);
@@ -478,14 +534,17 @@ export async function updateFormProgram(
  *
  * `false` means there was nothing to archive — no such form, or one that already is. the two
  * are the same answer to the screen that asked, and refusing the second is what keeps a
- * double-click from overwriting the timestamp that records when it happened.
+ * double-click from overwriting the timestamp that records when it happened. a page's row is
+ * refused as `PageOwned`, as every group write refuses it.
  */
-export async function archiveForm(db: Db, id: string): Promise<boolean> {
+export async function archiveForm(db: Db, id: string): Promise<boolean | PageOwned> {
 	const archived = await db
 		.update(form)
 		.set({ status: 'archived', archivedAt: new Date() })
-		.where(and(eq(form.id, id), isNull(form.archivedAt)))
+		.where(and(eq(form.id, id), isNull(form.archivedAt), ownedByNoPage(db)))
 		.returning({ id: form.id });
 
-	return archived.length > 0;
+	if (archived.length > 0) return true;
+	const miss = await missed(db, id);
+	return typeof miss === 'object' ? miss : false;
 }

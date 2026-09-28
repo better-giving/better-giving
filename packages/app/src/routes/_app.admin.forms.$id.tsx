@@ -69,7 +69,9 @@ import {
 	archiveForm,
 	type FormSave,
 	type ProgramSave,
+	type OwningPage,
 	readForm,
+	readOwningPage,
 	updateFormGiving,
 	updateFormName,
 	updateFormOrigins,
@@ -218,6 +220,22 @@ const LIVE_WITHHELD =
  * ./_app.admin.forms.new.tsx refuses a create with, so a screen cannot word one state two ways.
  */
 const NO_SUCH_PROGRAM = 'Choose an active program.';
+
+/**
+ * the page a refusal names as the owner of a row: the Donation page by the word screens call it,
+ * a campaign by its own name.
+ */
+function ownerWords(owner: OwningPage): string {
+	return owner.type === 'donation_page' ? 'the Donation page' : `the campaign “${owner.name}”`;
+}
+
+/**
+ * the sentence a write answers with when the row is a page's donation settings. no screen draws a
+ * save or an archive for one — the loader 404s it — so this answers a hand-built body, at that 404.
+ */
+function pageOwnedRefusal(owner: OwningPage): string {
+	return `Nothing was changed: these donation settings belong to ${ownerWords(owner)} and are edited in its editor rather than under /admin/forms.`;
+}
 
 /**
  * the sentence a group save answers with when the row is not there to be written.
@@ -409,13 +427,14 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	const url = new URL(request.url);
 
 	let record: Awaited<ReturnType<typeof readForm>>;
+	let owner: Awaited<ReturnType<typeof readOwningPage>>;
 	let profile: Awaited<ReturnType<typeof readOrgProfile>>;
 	let sites: string[];
 	let programs: Awaited<ReturnType<typeof readActivePrograms>>;
 
 	try {
-		// four independent reads, so they go together: none is an input to another, and awaiting them
-		// in turn pays four round trips for one screen. every one of them is this deployment's own
+		// five independent reads, so they go together: none is an input to another, and awaiting them
+		// in turn pays five round trips for one screen. every one of them is this deployment's own
 		// database — nothing on this screen leaves the deployment, because neither of the two values
 		// that would need the processor is a form's to answer and both are the console's.
 		//
@@ -432,11 +451,15 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		// this form is archived is `record`'s to say and `record` is one of the three, so the only way
 		// to skip it would be to await the row first and the list after — a second round trip on
 		// every reading of the page that is not archived.
-		[record, profile, sites, programs] = await Promise.all([
+		//
+		// the fifth is the page this id's row belongs to, if any: a page's donation settings are edited
+		// in its editor and never here.
+		[record, profile, sites, programs, owner] = await Promise.all([
 			readForm(db, params.id),
 			readOrgProfile(db),
 			readSites(db),
-			readActivePrograms(db)
+			readActivePrograms(db),
+			readOwningPage(db, params.id)
 		]);
 	} catch (e) {
 		console.error('reading a donation form failed:', e);
@@ -455,11 +478,17 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		);
 	}
 
+	if (owner !== null) {
+		notFound(
+			`The donation settings \`${redactPublicId(params.id)}\` belong to ${ownerWords(owner)} and are edited in its editor rather than under /admin/forms.`
+		);
+	}
+
 	const archived = record.status === 'archived';
 
 	// the cause this form names, where it names one the active list no longer holds — a cause
-	// retired after this form was pinned to it. a fifth read rather than a fourth, because it takes
-	// the row's own `program_id` and there is nothing to read until the first four have landed; it
+	// retired after this form was pinned to it. a sixth read rather than a fifth, because it takes
+	// the row's own `program_id` and there is nothing to read until the first five have landed; it
 	// is skipped on every form that is not in that state, which is every form on a deployment that
 	// has retired nothing.
 	//
@@ -689,6 +718,9 @@ export async function action(args: Route.ActionArgs) {
 			return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
 		}
 
+		if (typeof saved === 'object') {
+			return invalid(404, submission.reject({ formErrors: [pageOwnedRefusal(saved.ownedBy)] }));
+		}
 		if (saved === 'gone') return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
 		if (saved === 'stale') {
 			return invalid(409, submission.reject({ formErrors: [STALE_SAVE] }));
@@ -730,10 +762,13 @@ export async function action(args: Route.ActionArgs) {
 			return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
 		}
 
-		// four answers and four sentences. the cause is the one an operator can fix without
+		// five answers and five sentences. the cause is the one an operator can fix without
 		// leaving the page, so it is keyed to the box they pick in rather than banner-ed.
 		if (saved === 'unknown_program') {
 			return invalid(400, submission.reject({ fieldErrors: { program_id: [NO_SUCH_PROGRAM] } }));
+		}
+		if (typeof saved === 'object') {
+			return invalid(404, submission.reject({ formErrors: [pageOwnedRefusal(saved.ownedBy)] }));
 		}
 		if (saved === 'gone') return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
 		if (saved === 'stale') {
@@ -772,6 +807,9 @@ export async function action(args: Route.ActionArgs) {
 			return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
 		}
 
+		if (typeof saved === 'object') {
+			return invalid(404, submission.reject({ formErrors: [pageOwnedRefusal(saved.ownedBy)] }));
+		}
 		if (saved === 'gone') return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
 		if (saved === 'stale') {
 			return invalid(409, submission.reject({ formErrors: [STALE_SAVE] }));
@@ -834,6 +872,9 @@ export async function action(args: Route.ActionArgs) {
 			return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
 		}
 
+		if (typeof saved === 'object') {
+			return invalid(404, submission.reject({ formErrors: [pageOwnedRefusal(saved.ownedBy)] }));
+		}
 		if (saved === 'gone') return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
 		if (saved === 'stale') {
 			return invalid(409, submission.reject({ formErrors: [STALE_SAVE] }));
@@ -858,7 +899,7 @@ export async function action(args: Route.ActionArgs) {
 	 */
 	async function archive({ context, params, request }: Route.ActionArgs) {
 		const id = params.id;
-		let archived: boolean;
+		let archived: Awaited<ReturnType<typeof archiveForm>>;
 		try {
 			archived = await archiveForm(context.get(database), id);
 		} catch (e) {
@@ -866,6 +907,9 @@ export async function action(args: Route.ActionArgs) {
 			return invalid(500, unread(FORM_ARCHIVE, ARCHIVE_FAILED));
 		}
 
+		if (typeof archived === 'object') {
+			return invalid(404, unread(FORM_ARCHIVE, pageOwnedRefusal(archived.ownedBy)));
+		}
 		if (!archived) return invalid(400, unread(FORM_ARCHIVE, ARCHIVE_GONE));
 
 		return redirectWithFlash(request, SAVED_FLASH, screen(id), ARCHIVED);
