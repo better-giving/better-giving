@@ -36,7 +36,8 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 //
 // it is a component and not a screen: ../routes/_sections.ai-model.tsx mounts it and answers its
 // presses. every reading it draws is a value out of ./ai-model.ts, which is where they are held
-// (./ai-model.spec.ts), since this package has no DOM pool.
+// (./ai-model.spec.ts); the markup it draws them into is held by ./ai-model-section.spec.ts, and a
+// press by neither, since this package has no DOM pool.
 
 const DASHBOARD = 'https://dash.cloudflare.com';
 

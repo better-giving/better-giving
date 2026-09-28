@@ -2,6 +2,10 @@ import { type ReactNode, act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub } from 'react-router';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { editorBlocks } from '$lib/page/block-edit';
+import { BLOCK_TYPES, type Block, type Page } from '$lib/page/catalog';
+import { defaultCampaign, defaultDonationPage } from '$lib/page/defaults';
+import { ChatSheet } from '../chat/chat-sheet';
 import { AddressSheet } from './address-sheet';
 import { BlockSheet } from './block-sheet';
 import { EditorEntries, EditorShell } from './editor-shell';
@@ -12,12 +16,13 @@ import { PreviewFrame } from './preview-frame';
 import { PublishBar } from './publish-bar';
 import { SettingsSheet } from './settings-sheet';
 
-// the editor's parts, mounted so what a reader meets is looked at: the sheet a floating entry opens
-// and the two ways out of it, the groups Settings draws only when handed, the names a picture and
-// the name box carry, where Reset to default is offered and which presses the bar draws without a
-// handler, the address's refusal at Save, the goal's figure in and out, and which messages the
-// preview frame listens to. nothing
-// here reads a class or a sentence's look — how the editor looks is left to a person looking at it.
+// the editor's parts, mounted so what a reader meets is looked at: the sheet each floating entry
+// opens and the ways out of it, the groups Settings draws only when handed, the names a picture and
+// the name box carry and a drawing for every variant the catalog offers, where Reset to default and
+// Open are offered and which presses the bar draws without a handler, the address's save and its
+// refusal at Save, the goal's figure in and out, and which messages the preview frame listens to.
+// nothing here reads a class or a sentence's look — how the editor looks is left to a person
+// looking at it.
 //
 // the tab ring kept inside a sheet and the page made inert behind it are the top layer's, which
 // happy-dom does not have; what is asserted is that the sheet is shown as a modal and takes the
@@ -119,6 +124,62 @@ describe('a sheet opened from a floating entry', () => {
 		const root = mount(<Editor />);
 		const { entry, sheet } = opened(root);
 		act(() => button(sheet, 'Close').click());
+		expect(root.querySelector('dialog')).toBeNull();
+		expect(document.activeElement).toBe(entry);
+	});
+});
+
+describe('the chat sheet opened from its floating entry', () => {
+	function Editor() {
+		const [open, setOpen] = useState(false);
+		return (
+			<EditorShell
+				bar={null}
+				preview={null}
+				entries={<EditorEntries onChat={() => setOpen(true)} onSettings={() => {}} />}
+			>
+				{open ? (
+					<ChatSheet
+						messages={[]}
+						isRunning={false}
+						onSend={() => {}}
+						onDismiss={() => setOpen(false)}
+						suggestions={['Add a FAQ']}
+						imageSrc={(id) => `/image/${id}`}
+					/>
+				) : null}
+			</EditorShell>
+		);
+	}
+
+	function opened(root: HTMLElement): { entry: HTMLButtonElement; sheet: HTMLDialogElement } {
+		const entry = button(root, 'Chat');
+		entry.focus();
+		act(() => entry.click());
+		const sheet = root.querySelector('dialog');
+		if (sheet === null) throw new Error('the entry opened no sheet');
+		return { entry, sheet };
+	}
+
+	it('is shown as a modal holding the chat, with the focus inside it', () => {
+		const { sheet } = opened(mount(<Editor />));
+		expect(sheet.open).toBe(true);
+		expect(sheet.querySelector('textarea')).not.toBeNull();
+		expect(sheet.contains(document.activeElement)).toBe(true);
+	});
+
+	it('goes on its X and hands the focus back to Chat', () => {
+		const root = mount(<Editor />);
+		const { entry, sheet } = opened(root);
+		act(() => button(sheet, 'Close').click());
+		expect(root.querySelector('dialog')).toBeNull();
+		expect(document.activeElement).toBe(entry);
+	});
+
+	it('goes on Escape and hands the focus back to Chat', () => {
+		const root = mount(<Editor />);
+		const { entry, sheet } = opened(root);
+		act(() => sheet.dispatchEvent(new Event('cancel', { cancelable: true })));
 		expect(root.querySelector('dialog')).toBeNull();
 		expect(document.activeElement).toBe(entry);
 	});
@@ -255,6 +316,57 @@ describe('the pictures', () => {
 		expect(drawn).toEqual([true, true, true, true]);
 	});
 
+	/** a draft holding one block of every type the catalog has, so every variant is offered. */
+	function everyBlock(): Page {
+		const placed: Block[] = [
+			...defaultCampaign().blocks,
+			...defaultDonationPage().blocks,
+			{ id: 'tiers', type: 'impact-tiers', variant: 'cards', background: 'none', tiers: [] },
+			{ id: 'faq', type: 'faq', variant: 'accordion', background: 'none', items: [] },
+			{
+				id: 'photo',
+				type: 'image',
+				variant: 'column',
+				background: 'none',
+				imageId: null,
+				alt: null
+			}
+		];
+		const blocks = BLOCK_TYPES.map((type) => {
+			const found = placed.find((block) => block.type === type);
+			if (found === undefined) throw new Error(`no ${type} block in the case's draft; add one`);
+			return found;
+		});
+		return { ...defaultCampaign(), blocks };
+	}
+
+	it('draw every variant the catalog gives a block, each under its label', () => {
+		const undrawn: string[] = [];
+		for (const block of editorBlocks(everyBlock(), 'USD')) {
+			if (block.variant === null) continue;
+			const root = mount(
+				<PicturePicker
+					legend={block.label}
+					name={block.id}
+					set={{ block: block.type }}
+					options={block.variants}
+					value={block.variant}
+					onPick={() => {}}
+				/>
+			);
+			const faces = [...root.querySelectorAll('label')];
+			expect(faces.map((face) => face.textContent)).toEqual(
+				block.variants.map((variant) => variant.label)
+			);
+			faces.forEach((face, at) => {
+				if ((face.querySelector('.adm-picture__art')?.childElementCount ?? 0) === 0) {
+					undrawn.push(`${block.type}:${block.variants[at]?.value}`);
+				}
+			});
+		}
+		expect(undrawn).toEqual([]);
+	});
+
 	it('hand a pick to the caller, and a block sheet posts its words without it', () => {
 		const onPick = vi.fn();
 		const onDone = vi.fn();
@@ -375,6 +487,33 @@ describe('the publish bar', () => {
 		expect(names(routed(bar(undefined)))).not.toContain('Reset to default');
 	});
 
+	const openLink = (root: HTMLElement) =>
+		[...root.querySelectorAll('a')].find((one) => one.textContent?.startsWith('Open'));
+
+	it('opens the live page in a new tab, named by its address', () => {
+		const open = openLink(routed(bar(undefined)));
+		expect(open?.getAttribute('href')).toBe('/donate');
+		expect(open?.textContent).toBe('Open /donate (opens in a new tab)');
+		expect(open?.target).toBe('_blank');
+		expect(open?.rel.split(' ')).toContain('noopener');
+	});
+
+	it('offers no Open while nothing is live', () => {
+		const root = routed(
+			<PublishBar
+				closeHref="/admin/campaigns"
+				page={{ kind: 'campaign', name: 'Winter coat drive', onRename: () => {} }}
+				state="unpublished"
+				livePath="/winter-coat-drive"
+				publishing={false}
+				republished={false}
+				onPublish={() => {}}
+				undoing={false}
+			/>
+		);
+		expect(openLink(root)).toBeUndefined();
+	});
+
 	it('has its report region on the page before there is a refusal', () => {
 		const region = routed(bar(undefined)).querySelector('[role="status"]');
 		expect(region).not.toBeNull();
@@ -440,6 +579,37 @@ describe('the address', () => {
 			onDismiss={() => {}}
 		/>
 	);
+
+	it('saves a changed address trimmed, and reads Saved once it lands', () => {
+		const onSave = vi.fn();
+		const at = (slug: string, state: { saving?: boolean; saved?: boolean } = {}) => (
+			<AddressSheet
+				host="give.riverbanktrust.org/"
+				slug={slug}
+				onSave={onSave}
+				saving={state.saving ?? false}
+				saved={state.saved ?? false}
+				onDismiss={() => {}}
+			/>
+		);
+		const { root, redraw } = mountable(at('winter-coat-drive'));
+		const box = root.querySelector<HTMLInputElement>('dialog input');
+		if (box === null) throw new Error('no address box');
+		const save = button(root, 'Save address');
+
+		typeInto(box, '  coats-for-kids ');
+		act(() => save.click());
+		expect(onSave.mock.calls).toEqual([['coats-for-kids']]);
+
+		redraw(at('winter-coat-drive', { saving: true }));
+		expect(save.getAttribute('aria-busy')).toBe('true');
+
+		redraw(at('coats-for-kids', { saved: true }));
+		expect(save.textContent).toBe('Saved');
+		expect(save.getAttribute('aria-disabled')).toBe('true');
+		act(() => save.click());
+		expect(onSave).toHaveBeenCalledOnce();
+	});
 
 	it('has its refusal region on the page before there is a refusal', () => {
 		const root = mount(sheet(null));
