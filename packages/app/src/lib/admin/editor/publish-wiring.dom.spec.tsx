@@ -180,6 +180,30 @@ describe('Publish', () => {
 	});
 });
 
+describe('a confirm reopened after a refusal', () => {
+	it('opens without the refusal it was cancelled on', async () => {
+		const text =
+			'Nothing was published: the program chosen for gifts is no longer offered. Choose another.';
+		answers = [
+			{
+				body: {
+					form: { id: 'page-first-publish', result: { status: 'error', error: { '': [text] } } }
+				},
+				status: 422
+			}
+		];
+		await screen({ first: true });
+		await press(button('Publish', bar()));
+		await press(button('Publish', dialog() ?? document));
+		expect(dialog()?.textContent).toContain(text);
+
+		await press(button('Cancel', dialog() ?? document));
+		await press(button('Publish', bar()));
+
+		expect(dialog()?.textContent).not.toContain(text);
+	});
+});
+
 describe('Discard changes', () => {
 	it('is confirmed before it posts, and the confirm goes once it lands', async () => {
 		answers = [{ body: { discarded: true }, leaves: { version: 2, state: 'live' } }];

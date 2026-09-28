@@ -302,6 +302,21 @@ describe('Publish, Undo and Discard changes', () => {
 		expect((await donationPage())?.published).toBe(made.published);
 	});
 
+	it('takes no “Gifts go to”, which is a campaign’s first Publish alone', async () => {
+		const body = new FormData();
+		body.set(WHICH_FORM, 'page-first-publish');
+		body.set(RECORD_VERSION, String((await open()).version));
+		body.set('gifts_go_to', 'none');
+
+		const response = await request(
+			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
+			{ env }
+		);
+
+		expect(response.status).toBe(400);
+		expect(await response.text()).toContain('names no form on this screen');
+	});
+
 	it('discards changes: the draft is the live page again', async () => {
 		await open();
 		await changeDraft('Keep Elm Street warm.');

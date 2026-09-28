@@ -7,7 +7,8 @@ import { endOfDay } from '../../page/end-date';
 import { createDb, type Db } from '../db/client';
 import { chatTurn, form, page, program } from '../db/schema';
 import { readForm } from '../forms/queries';
-import { insertPage, SETTINGS } from './page-row.testing';
+import { draftTurn } from './draft';
+import { answering, insertPage, SETTINGS } from './page-row.testing';
 import { discardChanges, publishPage, undoPublish } from './publish';
 import { endCampaign } from './queries';
 
@@ -96,6 +97,63 @@ describe('Publish on the Donation page', () => {
 		expect(after.draft).toBe(after.published);
 		expect(JSON.parse(after.lastPublished ?? 'null')).toEqual(LIVE_DONATION_PAGE);
 		expect(await ownedSettings(pageId)).toEqual(CHANGED_SETTINGS);
+	});
+});
+
+describe('the page a Publish replaces', () => {
+	it('is kept for Undo only where it passes the page rule', async () => {
+		const pageId = await insertPage(db, 'donation_page', LIVE_DONATION_PAGE);
+		const failing = {
+			...LIVE_DONATION_PAGE,
+			blocks: LIVE_DONATION_PAGE.blocks.filter((block) => block.type !== 'donation-box')
+		};
+		await db
+			.update(page)
+			.set({ published: JSON.stringify(failing) })
+			.where(eq(page.id, pageId));
+		await draftAs(pageId, { ...LIVE_DONATION_PAGE, shareMessage: 'Warm coats.' });
+
+		const outcome = await publishPage(
+			db,
+			{ type: 'donation_page' },
+			(await stored(pageId)).updatedAt,
+			{
+				now: NOW
+			}
+		);
+
+		expect(outcome).toEqual({ kind: 'published', undoable: false });
+		expect((await stored(pageId)).lastPublished).toBeNull();
+	});
+
+	it('leaves the settings row’s fund, currency and sites as they are, as does its Undo', async () => {
+		const pageId = await insertPage(db, 'donation_page', LIVE_DONATION_PAGE);
+		const kept = await readForm(db, (await stored(pageId)).formId);
+		await draftAs(pageId, {
+			...LIVE_DONATION_PAGE,
+			settings: {
+				...CHANGED_SETTINGS,
+				revenueAccountId: 'acct_elsewhere',
+				currency: 'EUR',
+				allowedOrigins: ['https://acme.org']
+			}
+		});
+		const untouched = (row: typeof kept) => ({
+			revenueAccountId: row?.revenueAccountId,
+			currency: row?.currency,
+			allowedOrigins: row?.allowedOrigins
+		});
+
+		await publishPage(db, { type: 'donation_page' }, (await stored(pageId)).updatedAt, {
+			now: NOW
+		});
+		const published = await readForm(db, (await stored(pageId)).formId);
+		await undoPublish(db, { type: 'donation_page' }, (await stored(pageId)).updatedAt);
+		const undone = await readForm(db, (await stored(pageId)).formId);
+
+		expect(published).toMatchObject({ minMinor: CHANGED_SETTINGS.minMinor });
+		expect(untouched(published)).toEqual(untouched(kept));
+		expect(untouched(undone)).toEqual(untouched(kept));
 	});
 });
 
@@ -265,6 +323,24 @@ describe('a campaign’s first Publish', () => {
 		expect(await stored(pageId)).toEqual(drawn);
 	});
 
+	it('takes the retired program the draft already pins, as its confirm offers it', async () => {
+		const retired = await aProgram('Summer camp', true);
+		const pinned = { ...SETTINGS, programMode: 'pinned' as const, programId: retired };
+		const pageId = await insertPage(db, 'campaign', { ...CAMPAIGN, settings: pinned });
+		const drawn = await stored(pageId);
+
+		const outcome = await publishPage(db, { type: 'campaign', id: pageId }, drawn.updatedAt, {
+			now: NOW,
+			giftsGoTo: retired
+		});
+
+		expect(outcome).toEqual({ kind: 'published', undoable: false });
+		expect(await ownedSettings(pageId)).toMatchObject({
+			programMode: 'pinned',
+			programId: retired
+		});
+	});
+
 	it('refuses a program no longer offered, and nothing goes live', async () => {
 		const pageId = await insertPage(db, 'campaign', CAMPAIGN);
 		const retired = await aProgram('Summer camp', true);
@@ -283,6 +359,31 @@ describe('a campaign’s first Publish', () => {
 	});
 });
 
+describe('where gifts go', () => {
+	it.each([
+		['a program', 'pick'],
+		['the draft’s own', null]
+	] as const)(
+		'is refused as %s on a page already published, and nothing moves',
+		async (_, pick) => {
+			const pageId = await insertPage(db, 'campaign', CAMPAIGN, CAMPAIGN);
+			const coats = await aProgram('Winter coats');
+			const drawn = await stored(pageId);
+
+			const outcome = await publishPage(db, { type: 'campaign', id: pageId }, drawn.updatedAt, {
+				now: NOW,
+				giftsGoTo: pick === null ? null : coats
+			});
+
+			expect(outcome).toEqual({
+				kind: 'refused',
+				text: 'Nothing was published: where gifts go is asked only at a campaign’s first Publish. Change it in Settings, Donation settings, then publish.'
+			});
+			expect(await stored(pageId)).toEqual(drawn);
+		}
+	);
+});
+
 describe('an ended campaign published again', () => {
 	/** a campaign published live at its own address, then ended. */
 	async function endedCampaign(): Promise<string> {
@@ -293,7 +394,7 @@ describe('an ended campaign published again', () => {
 		return pageId;
 	}
 
-	it('is live again at its address, taking gifts through its settings row', async () => {
+	it('is live again at its address, taking gifts through its settings row, with nothing to undo', async () => {
 		const pageId = await endedCampaign();
 		const drawn = await stored(pageId);
 
@@ -301,9 +402,9 @@ describe('an ended campaign published again', () => {
 			now: NOW
 		});
 
-		expect(outcome).toEqual({ kind: 'published', undoable: true });
+		expect(outcome).toEqual({ kind: 'published', undoable: false });
 		const after = await stored(pageId);
-		expect(after).toMatchObject({ state: 'live', slug: 'winter-coat-drive' });
+		expect(after).toMatchObject({ state: 'live', slug: 'winter-coat-drive', lastPublished: null });
 		expect(await readForm(db, after.formId)).toMatchObject({ status: 'live' });
 	});
 
@@ -320,7 +421,7 @@ describe('an ended campaign published again', () => {
 			now: NOW
 		});
 
-		expect(outcome).toEqual({ kind: 'published', undoable: true });
+		expect(outcome).toEqual({ kind: 'published', undoable: false });
 		expect(await stored(pageId)).toMatchObject({ state: 'live', slug: 'winter-coat-drive-2' });
 		expect((await stored(taker)).slug).toBe('winter-coat-drive');
 	});
@@ -347,6 +448,50 @@ describe('Undo', () => {
 		const after = await stored(pageId);
 		expect(JSON.parse(after.published ?? 'null')).toEqual(LIVE_DONATION_PAGE);
 		expect(JSON.parse(after.lastPublished ?? 'null')).toEqual(republished);
+		expect(await ownedSettings(pageId)).toEqual(SETTINGS);
+	});
+
+	it('is refused when the page has been written since the editor was drawn, and nothing moves', async () => {
+		const pageId = await insertPage(db, 'donation_page', LIVE_DONATION_PAGE);
+		await ownRow(pageId, SETTINGS, 'live');
+		await draftAs(pageId, { ...LIVE_DONATION_PAGE, settings: CHANGED_SETTINGS });
+		await publishPage(db, { type: 'donation_page' }, (await stored(pageId)).updatedAt, {
+			now: NOW
+		});
+		const drawn = await stored(pageId);
+		await draftAs(pageId, { ...LIVE_DONATION_PAGE, shareMessage: 'Warm coats.' });
+		const written = await stored(pageId);
+
+		const outcome = await undoPublish(db, { type: 'donation_page' }, drawn.updatedAt);
+
+		expect(outcome).toEqual({ kind: 'stale' });
+		expect(await stored(pageId)).toEqual(written);
+		expect(await ownedSettings(pageId)).toEqual(CHANGED_SETTINGS);
+	});
+
+	it('is refused where it would pin gifts to a program since retired, naming it', async () => {
+		const pageId = await insertPage(db, 'donation_page', LIVE_DONATION_PAGE);
+		const coats = await aProgram('Winter coats');
+		const pinned = { ...SETTINGS, programMode: 'pinned' as const, programId: coats };
+		for (const settings of [pinned, SETTINGS]) {
+			await draftAs(pageId, { ...LIVE_DONATION_PAGE, settings });
+			await publishPage(db, { type: 'donation_page' }, (await stored(pageId)).updatedAt, {
+				now: NOW
+			});
+		}
+		await db
+			.update(program)
+			.set({ status: 'archived', archivedAt: new Date(NOW) })
+			.where(eq(program.id, coats));
+		const drawn = await stored(pageId);
+
+		const outcome = await undoPublish(db, { type: 'donation_page' }, drawn.updatedAt);
+
+		expect(outcome).toEqual({
+			kind: 'refused',
+			text: 'Nothing was undone: the page before gave its gifts to Winter coats, which is no longer offered.'
+		});
+		expect(await stored(pageId)).toEqual(drawn);
 		expect(await ownedSettings(pageId)).toEqual(SETTINGS);
 	});
 
@@ -426,6 +571,24 @@ describe('Discard changes', () => {
 
 		expect(outcome).toEqual({ kind: 'stale' });
 		expect(await stored(pageId)).toEqual(written);
+		expect(await turnsOn(pageId)).toBe(2);
+	});
+
+	it('is refused when a chat turn has landed since the editor was drawn, and keeps it', async () => {
+		const pageId = await insertPage(db, 'donation_page', LIVE_DONATION_PAGE);
+		await draftAs(pageId, { ...LIVE_DONATION_PAGE, shareMessage: 'Warm coats.' });
+		const drawn = await stored(pageId);
+		const AI = answering({ say: 'Neon!', page: { kind: 'merge', doc: { palette: 'neon' } } });
+		const refusedTurn = await draftTurn(
+			db,
+			{ ...env, AI },
+			{ pageId, message: 'make it neon', imageIds: [], timeZone: 'America/New_York', now: NOW }
+		);
+		expect(refusedTurn).toMatchObject({ ok: true, outcome: 'refused' });
+
+		const outcome = await discardChanges(db, { type: 'donation_page' }, drawn.updatedAt);
+
+		expect(outcome).toEqual({ kind: 'stale' });
 		expect(await turnsOn(pageId)).toBe(2);
 	});
 

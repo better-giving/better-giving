@@ -181,8 +181,8 @@ async function slugHolder(
 /** what a rename did: the page as drawn is no longer the page stored, or there is none. */
 export type NameWrite = 'written' | 'stale' | 'gone';
 
-/** a free address is found this many times before a rename gives up on the race. */
-const SLUG_ATTEMPTS = 5;
+/** a free address is found this many times before a write taking one gives up on the race. */
+export const SLUG_ATTEMPTS = 5;
 
 /**
  * renames a campaign — the row's `name`, which the dashboard shows, and its draft's, which donors
@@ -238,9 +238,14 @@ export async function draftSettingsOf(db: Db, row: Page): Promise<DraftSettings>
 	const draft = parsePage(row.type, JSON.parse(row.draft));
 	if (!draft.ok) throw new Error(`page ${row.id}'s stored draft fails its rule: ${draft.message}`);
 	if (draft.page.settings !== undefined) return draft.page.settings;
+	return settingsOfRow(await readOwnedRow(db, row));
+}
+
+/** the settings row a page owns; `page_form_id_idx` and its foreign key hold that there is one. */
+export async function readOwnedRow(db: Db, row: Page): Promise<StoredForm> {
 	const owned = await readForm(db, row.formId);
 	if (owned === null) throw new Error(`page ${row.id}'s settings row ${row.formId} is gone`);
-	return settingsOfRow(owned);
+	return owned;
 }
 
 /** a settings row as a page document's `settings` holds it. */
@@ -264,6 +269,19 @@ export type SettingsTarget =
 	| { readonly type: 'campaign'; readonly id: string }
 	| { readonly type: 'donation_page' };
 
+/** the page `target` names; null where there is none. */
+export async function readTarget(db: Db, target: SettingsTarget): Promise<Page | null> {
+	const [row] = await db
+		.select()
+		.from(page)
+		.where(
+			target.type === 'campaign'
+				? and(eq(page.id, target.id), eq(page.type, 'campaign'))
+				: eq(page.type, 'donation_page')
+		);
+	return row ?? null;
+}
+
 /** what a donation-settings save did; `unknown_program` pins a cause no longer offered. */
 export type SettingsWrite = 'written' | 'stale' | 'gone' | 'unknown_program';
 
@@ -282,15 +300,8 @@ export async function updateDraftSettings(
 	version: Date,
 	input: { readonly program: ParsedFormProgram; readonly giving: ParsedFormGiving }
 ): Promise<SettingsWrite> {
-	const [row] = await db
-		.select()
-		.from(page)
-		.where(
-			target.type === 'campaign'
-				? and(eq(page.id, target.id), eq(page.type, 'campaign'))
-				: eq(page.type, 'donation_page')
-		);
-	if (!row) return 'gone';
+	const row = await readTarget(db, target);
+	if (row === null) return 'gone';
 
 	const held = await draftSettingsOf(db, row);
 	const { programMode, programId } = input.program;

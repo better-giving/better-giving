@@ -22,7 +22,7 @@ import type { BarPress, PublishState } from './publish-bar';
 // stands while the latest answer is a republish and the draft is still what is live, so the next
 // edit takes both down. a press stays held from its post until the revalidation it brings lands,
 // and a confirm stays up, held, until its answer does: a refusal is said in it, and a success takes
-// it down.
+// it down. a confirm cancelled on a refusal opens again without it.
 
 /** what the editor's action answers the four presses: one of the three, or a refusal. */
 type PressAnswer = {
@@ -72,6 +72,8 @@ export function usePublishPresses({
 }): Presses {
 	const presses = useFetcher<PressAnswer>({ key: 'page-presses' });
 	const [asked, setAsked] = useState<'first-publish' | 'discard' | null>(null);
+	/** the answer a confirm was cancelled on, whose refusal it does not open on again. */
+	const [cancelledOn, setCancelledOn] = useState<PressAnswer | undefined>(undefined);
 
 	const busy = presses.state !== 'idle';
 	const pressing = busy ? presses.formData?.get(WHICH_FORM) : null;
@@ -94,6 +96,12 @@ export function usePublishPresses({
 	const publishRefusal = refusalOf(answer, PUBLISH_FORM_ID);
 	const undoRefusal = refusalOf(answer, UNDO_FORM_ID);
 
+	const cancel = () => {
+		setCancelledOn(answer);
+		setAsked(null);
+	};
+	const confirmAnswer = answer === cancelledOn ? undefined : answer;
+
 	let confirm: ReactNode = null;
 	if (asked === 'first-publish' && first) {
 		confirm = (
@@ -101,8 +109,8 @@ export function usePublishPresses({
 				{...first}
 				publishing={pressing === FIRST_PUBLISH_FORM_ID}
 				onPublish={(program) => press(FIRST_PUBLISH_FORM_ID, { [GIFTS_GO_TO]: program })}
-				onCancel={() => setAsked(null)}
-				refusal={refusalOf(answer, FIRST_PUBLISH_FORM_ID)}
+				onCancel={cancel}
+				refusal={refusalOf(confirmAnswer, FIRST_PUBLISH_FORM_ID)}
 			/>
 		);
 	} else if (asked === 'discard') {
@@ -110,8 +118,8 @@ export function usePublishPresses({
 			<DiscardConfirm
 				discarding={pressing === DISCARD_FORM_ID}
 				onDiscard={() => press(DISCARD_FORM_ID)}
-				onCancel={() => setAsked(null)}
-				refusal={refusalOf(answer, DISCARD_FORM_ID)}
+				onCancel={cancel}
+				refusal={refusalOf(confirmAnswer, DISCARD_FORM_ID)}
 			/>
 		);
 	}

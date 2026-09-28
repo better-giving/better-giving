@@ -21,7 +21,7 @@ import { SettingsSheet, type SettingsRow } from '$lib/admin/editor/settings-shee
 import { screenTitle } from '$lib/admin/screen-title';
 import { resultFor } from '$lib/admin/use-admin-form';
 import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
-import { PROGRAM_MODE_LABELS, type ProgramMode } from '$lib/forms/program-modes';
+import { PROGRAM_MODE_LABELS } from '$lib/forms/program-modes';
 import { BLOCK_FORM_IDS } from '$lib/page/block-edit';
 import { HEADING_MAX } from '$lib/page/catalog';
 import {
@@ -125,6 +125,7 @@ const SCREEN_FORMS = [
 	ADDRESS_FORM_ID,
 	PAGE_SETTINGS_FORM_ID,
 	...PUBLISH_FORMS,
+	FIRST_PUBLISH_FORM_ID,
 	...PAGE_SETTING_FORM_IDS,
 	...BLOCK_FORM_IDS
 ] as const;
@@ -324,15 +325,12 @@ type Question = Extract<NonNullable<Answer>, { ask: unknown }>['ask'];
 /** the questions a move has been answered yes to, as the boxes post them. */
 type Confirmed = { readonly move: boolean; readonly takeover: boolean };
 
-/** a press whose write belongs to a later part of the editor. */
-function noPress() {}
-
 /**
  * the first Publish's "Gifts go to": the active programs, the retired one the draft still pins, and
  * the draft's own mode where it pins none, on what the draft holds now.
  */
 function giftsGoTo(settings: SettingsSeed): Pick<FirstPublish, 'programs' | 'program'> {
-	const mode = settings.boxes.program_mode as ProgramMode;
+	const mode = settings.boxes.program_mode;
 	const pinned = mode === 'pinned';
 	return {
 		programs: [

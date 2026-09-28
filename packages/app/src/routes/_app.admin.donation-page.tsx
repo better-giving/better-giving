@@ -25,7 +25,6 @@ import {
 } from '$lib/page/page-settings-form';
 import {
 	DISCARD_FORM_ID,
-	FIRST_PUBLISH_FORM_ID,
 	PUBLISH_FORM_ID,
 	PUBLISH_FORMS,
 	UNDO_FORM_ID
@@ -183,7 +182,6 @@ export async function action({ context, request }: Route.ActionArgs) {
 		case PAGE_SETTINGS_FORM_ID:
 			return saveDraftSettings(db, { type: 'donation_page' }, body, NO_DONATION_PAGE);
 		case PUBLISH_FORM_ID:
-		case FIRST_PUBLISH_FORM_ID:
 		case UNDO_FORM_ID:
 		case DISCARD_FORM_ID:
 			return answerPublishPress(db, { type: 'donation_page' }, body, NO_DONATION_PAGE);
@@ -203,9 +201,6 @@ type Answer = Route.ComponentProps['actionData'];
 function refusal(answer: Answer | undefined, form: { id: string }, box: string): string | null {
 	return resultFor(form, answer)?.error?.[box]?.[0] ?? null;
 }
-
-/** a press whose write belongs to a later part of the editor. */
-function noPress() {}
 
 export default function DonationPageEditor({ loaderData }: Route.ComponentProps) {
 	const { state, version, preview, askMission, storyVersion } = loaderData;
