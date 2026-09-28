@@ -19,7 +19,7 @@ import { CONTACT_KINDS, type ContactKind } from '../../contacts/kinds';
 // `RECURRING_INTERVALS`, which is the wire's frequency vocabulary minus `one_time`.
 import type { Frequency } from '@better-giving/form/v1';
 import { PROGRAM_MODES, type ProgramMode } from '../../forms/program-modes';
-import { CORNERS, LOOK_KEYS, PAGE_KEYS, SHADES } from '../../page/keys';
+import { CORNERS, LOOK_KEYS, PAGE_KEYS, PAGE_TYPES, type PageType, SHADES } from '../../page/keys';
 import { FORM_STATUSES, type FormStatus } from '../../forms/statuses';
 import { PROGRAM_STATUSES, type ProgramStatus } from '../../programs/statuses';
 import { RECURRING_PLAN_STATUSES, type RecurringPlanStatus } from '../../recurring/statuses';
@@ -85,7 +85,9 @@ import type { PostableAccountId } from './postable';
 //             ../../forms/program-modes.ts): a component renders the words and cannot
 //             import from `$lib/server/**` at all. `SHADES` and `CORNERS` moved for that
 //             reason too, with the page document's key names beside them
-//             (../../page/keys.ts), since the page catalog reads the keys the checks here do.
+//             (../../page/keys.ts), since the page catalog reads the keys the checks here do,
+//             and `PAGE_TYPES` joined them there because the catalog reads a page by its type
+//             (../../page/catalog.ts).
 //             this list is every vocabulary that has left, and a move not added to it makes
 //             it read as complete while under-reporting.
 //             one vocabulary is not derived into a check at all: `donation.tribute_kind`,
@@ -2893,9 +2895,6 @@ export const orgPresentation = sqliteTable(
 		)
 	]
 );
-
-export const PAGE_TYPES = ['donation_page', 'campaign'] as const;
-export type PageType = (typeof PAGE_TYPES)[number];
 
 /**
  * `never_published` until a campaign's first publish; `live` while it answers at its address;

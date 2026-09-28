@@ -3,7 +3,8 @@ import { eq } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
-import { chatTurn, form, page, type PageState, type PageType } from '../db/schema';
+import { chatTurn, form, page, type PageState } from '../db/schema';
+import type { PageType } from '../../page/keys';
 import { deleteNeverPublishedCampaign } from './queries';
 
 // the one delete of a page: a campaign that has never been live, with its owned settings row and
