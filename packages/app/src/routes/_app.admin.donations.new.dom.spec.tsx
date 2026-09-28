@@ -322,6 +322,9 @@ it('says a gift was filed under the donor already holding the address, and a rec
 	});
 	expect(status(root)).toContain('Filed under the donor already holding that email address.');
 	expect(status(root)).toContain('Receipt not sent.');
+	const notSent = root.querySelector('.adm-actions [role="status"] .adm-momentary--blocked');
+	expect(notSent?.textContent).toBe('Receipt not sent.');
+	expect(notSent?.querySelector('svg')?.classList.contains('lucide-circle-alert')).toBe(true);
 });
 
 /**

@@ -620,7 +620,7 @@ function LookSection({ look, version }: { readonly look: Look; readonly version:
 							{undoing ? 'Undoing…' : 'Saving…'}
 						</StatusWord>
 					) : refusal !== undefined ? (
-						<StatusWord register="momentary" blocked>
+						<StatusWord register="momentary" blocked mark="circle-alert">
 							<MarkedText text={refusal} />
 						</StatusWord>
 					) : landed === 'look' ? (
