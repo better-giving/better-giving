@@ -7,20 +7,34 @@ import { useEditorChat } from '$lib/admin/editor/chat-wiring';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorEntries, EditorShell } from '$lib/admin/editor/editor-shell';
 import { NameSheet } from '$lib/admin/editor/name-sheet';
+import {
+	EndDateSettingsSheet,
+	GoalSettingsSheet,
+	PageLookSettings,
+	ShareMessageSettingsSheet
+} from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
 import { SettingsSheet, type SettingsRow } from '$lib/admin/editor/settings-sheet';
 import { screenTitle } from '$lib/admin/screen-title';
 import { resultFor } from '$lib/admin/use-admin-form';
-import { FORM_CURRENCY } from '$lib/forms/amounts';
 import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { HEADING_MAX } from '$lib/page/catalog';
+import {
+	PAGE_END_DATE_FORM_ID,
+	PAGE_GOAL_FORM_ID,
+	PAGE_LOOK_FORM_ID,
+	PAGE_SETTING_FORM_IDS,
+	PAGE_SHARE_FORM_ID,
+	type PageSettingsSeed
+} from '$lib/page/page-settings-form';
 import { PAGE_SETTINGS_FORM_ID, type SettingsSeed } from '$lib/page/settings-form';
 import { checkSlug, type SlugCheck } from '$lib/page/slug';
 import { invalid, parseForm, submittedForm, submittedVersion } from '$lib/server/conform';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
 import { editorPage, readEditorSettings, saveDraftSettings } from '$lib/server/pages/editor';
+import { readPageSettings, savePageSetting } from '$lib/server/pages/page-settings';
 import {
 	type NameWrite,
 	readPage,
@@ -49,6 +63,8 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 //
 // **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
 // only at Publish; the Donation page's editor saves them the same way ($lib/server/pages/editor.ts).
+// so are the look, the goal, the end date and the share message
+// ($lib/server/pages/page-settings.ts).
 //
 // every press is written against the version the editor was drawn at (`submittedVersion`), and the
 // preview is keyed on it, so the frame reloads on the render a landed write's revalidation brings.
@@ -83,7 +99,12 @@ const ADDRESS_EDIT = defineForm({
 	})
 });
 
-const SCREEN_FORMS = [NAME_FORM_ID, ADDRESS_FORM_ID, PAGE_SETTINGS_FORM_ID] as const;
+const SCREEN_FORMS = [
+	NAME_FORM_ID,
+	ADDRESS_FORM_ID,
+	PAGE_SETTINGS_FORM_ID,
+	...PAGE_SETTING_FORM_IDS
+] as const;
 
 const DONATION_PAGE_PATH = '/donate';
 
@@ -104,6 +125,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	const db = context.get(database);
 	let row: Page | null;
 	let settings: SettingsSeed;
+	let pageSettings: PageSettingsSeed;
 	try {
 		row = await readPage(db, params.pageId);
 	} catch (e) {
@@ -112,14 +134,18 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	}
 	if (row === null || row.type !== 'campaign' || row.name === null) notFound(gone(params.pageId));
 	try {
-		settings = await readEditorSettings(db, row);
+		[settings, pageSettings] = await Promise.all([
+			readEditorSettings(db, row),
+			readPageSettings(db, row)
+		]);
 	} catch (e) {
-		console.error(`loading campaign ${params.pageId}'s donation settings failed:`, e);
+		console.error(`loading campaign ${params.pageId}'s settings failed:`, e);
 		loadFailed('This campaign');
 	}
 	return {
 		...editorPage(row),
 		settings,
+		pageSettings,
 		name: row.name,
 		address: row.slug === null ? null : `/${row.slug}`,
 		host: `${new URL(request.url).host}/`
@@ -145,7 +171,8 @@ function slugPredicate(refused: Exclude<SlugCheck, { ok: true }>): string {
 export async function action({ context, params, request }: Route.ActionArgs) {
 	const body = await request.formData();
 
-	switch (submittedForm(body, SCREEN_FORMS)) {
+	const pressed = submittedForm(body, SCREEN_FORMS);
+	switch (pressed) {
 		case NAME_FORM_ID:
 			return saveName();
 		case ADDRESS_FORM_ID:
@@ -154,6 +181,17 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 			return saveDraftSettings(
 				context.get(database),
 				{ id: params.pageId, type: 'campaign' },
+				body,
+				gone(params.pageId)
+			);
+		case PAGE_LOOK_FORM_ID:
+		case PAGE_GOAL_FORM_ID:
+		case PAGE_END_DATE_FORM_ID:
+		case PAGE_SHARE_FORM_ID:
+			return savePageSetting(
+				context.get(database),
+				{ id: params.pageId, type: 'campaign' },
+				pressed,
 				body,
 				gone(params.pageId)
 			);
@@ -244,9 +282,6 @@ type Question = Extract<NonNullable<Answer>, { ask: unknown }>['ask'];
 /** the questions a move has been answered yes to, as the boxes post them. */
 type Confirmed = { readonly move: boolean; readonly takeover: boolean };
 
-/** a sheet opened from Settings. */
-type Opened = Extract<SettingsRow, 'name' | 'address' | 'donation-settings'>;
-
 /** a press whose write belongs to a later part of the editor. */
 function noPress() {}
 
@@ -258,7 +293,7 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 	const addressFetcher = useFetcher<Answer>({ key: ADDRESS_EDIT.id });
 
 	const [settings, setSettings] = useState(false);
-	const [opened, setOpened] = useState<Opened | null>(null);
+	const [opened, setOpened] = useState<SettingsRow | null>(null);
 	/** where the last rename was made, so its refusal is said there. */
 	const [renamedIn, setRenamedIn] = useState<'bar' | 'sheet'>('bar');
 	/** the address last saved, and the questions answered yes so far on the way to it. */
@@ -349,7 +384,7 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 						name,
 						address: address ?? '',
 						goalMinor: loaderData.goalMinor,
-						currency: FORM_CURRENCY,
+						currency: donationSettings.currency,
 						endDate: loaderData.endDate
 					}}
 					blocks={[]}
@@ -357,12 +392,10 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 					layouts={[]}
 					layout=""
 					onLayout={noPress}
-					look={null}
+					look={<PageLookSettings seed={loaderData.pageSettings} version={version} />}
 					shareMessage={loaderData.shareMessage}
 					donationSettings={donationSettings.summary}
-					onOpen={(row) => {
-						if (row === 'name' || row === 'address' || row === 'donation-settings') setOpened(row);
-					}}
+					onOpen={setOpened}
 				/>
 			) : null}
 			{opened === 'name' ? (
@@ -373,6 +406,32 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 					error={renamedIn === 'sheet' ? refusal(nameAnswer, NAME_EDIT, 'name') : null}
 					refusal={renamedIn === 'sheet' ? refusal(nameAnswer, NAME_EDIT, '') : null}
 					onDismiss={() => setOpened(null)}
+				/>
+			) : null}
+			{opened === 'goal' ? (
+				<GoalSettingsSheet
+					goalMinor={loaderData.goalMinor}
+					currency={donationSettings.currency}
+					version={version}
+					onDismiss={() => setOpened(null)}
+					onSaved={() => setOpened(null)}
+				/>
+			) : null}
+			{opened === 'end-date' ? (
+				<EndDateSettingsSheet
+					endDate={loaderData.endDate}
+					version={version}
+					onDismiss={() => setOpened(null)}
+					onSaved={() => setOpened(null)}
+				/>
+			) : null}
+			{opened === 'share-message' ? (
+				<ShareMessageSettingsSheet
+					own={loaderData.shareMessage}
+					seed={loaderData.pageSettings}
+					version={version}
+					onDismiss={() => setOpened(null)}
+					onSaved={() => setOpened(null)}
 				/>
 			) : null}
 			{opened === 'donation-settings' ? (

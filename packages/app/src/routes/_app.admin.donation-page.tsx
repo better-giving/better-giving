@@ -5,12 +5,21 @@ import { useEditorChat } from '$lib/admin/editor/chat-wiring';
 import { MissionAsk } from '$lib/admin/editor/confirms';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorEntries, EditorShell } from '$lib/admin/editor/editor-shell';
+import { PageLookSettings, ShareMessageSettingsSheet } from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
 import { SettingsSheet } from '$lib/admin/editor/settings-sheet';
 import { screenTitle } from '$lib/admin/screen-title';
 import { resultFor } from '$lib/admin/use-admin-form';
 import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
+import {
+	PAGE_END_DATE_FORM_ID,
+	PAGE_GOAL_FORM_ID,
+	PAGE_LOOK_FORM_ID,
+	PAGE_SETTING_FORM_IDS,
+	PAGE_SHARE_FORM_ID,
+	type PageSettingsSeed
+} from '$lib/page/page-settings-form';
 import { PAGE_SETTINGS_FORM_ID, type SettingsSeed } from '$lib/page/settings-form';
 import { parseRichText, textDocument } from '$lib/rich-text/document';
 import { invalid, parseForm, submittedDigest, submittedForm } from '$lib/server/conform';
@@ -20,6 +29,7 @@ import type { Story } from '$lib/server/org/presentation';
 import { readOrgStory, type StoryWrite, updateOrgStory } from '$lib/server/org/queries';
 import { ensureDonationPage, markDonationEditorVisited } from '$lib/server/pages/donation-page';
 import { editorPage, readEditorSettings, saveDraftSettings } from '$lib/server/pages/editor';
+import { readPageSettings, savePageSetting } from '$lib/server/pages/page-settings';
 import { database } from '../context';
 import type { BareHandle } from './_app';
 import type { Route } from './+types/_app.admin.donation-page';
@@ -34,7 +44,9 @@ import type { Route } from './+types/_app.admin.donation-page';
 // than a 404, as /donate answers before anyone has opened it.
 //
 // **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
-// only at Publish, as a campaign's are ($lib/server/pages/editor.ts).
+// only at Publish, as a campaign's are ($lib/server/pages/editor.ts). so are the look and the share
+// message ($lib/server/pages/page-settings.ts); a goal and an end date are a campaign's alone, and
+// this action refuses them.
 //
 // **the mission ask.** while the Organisation's mission is empty and this editor has never been
 // answered, it asks for the mission once, optionally. a Save writes what was typed to the
@@ -58,7 +70,12 @@ const MISSION_SAVE = defineForm({
 /** the mission ask's Skip, and every other way out of it. */
 const MISSION_SKIP = defineForm({ id: SKIP_FORM_ID, schema: z.object({}) });
 
-const SCREEN_FORMS = [SAVE_FORM_ID, SKIP_FORM_ID, PAGE_SETTINGS_FORM_ID] as const;
+const SCREEN_FORMS = [
+	SAVE_FORM_ID,
+	SKIP_FORM_ID,
+	PAGE_SETTINGS_FORM_ID,
+	...PAGE_SETTING_FORM_IDS
+] as const;
 
 const STALE_STORY =
 	'Nothing was saved: the Organisation page’s story has been saved since this editor was opened. ' +
@@ -76,9 +93,14 @@ export async function loader({ context }: Route.LoaderArgs) {
 	let row: Page;
 	let story: { story: Story; version: string };
 	let settings: SettingsSeed;
+	let pageSettings: PageSettingsSeed;
 	try {
 		row = await ensureDonationPage(db);
-		[story, settings] = await Promise.all([readOrgStory(db), readEditorSettings(db, row)]);
+		[story, settings, pageSettings] = await Promise.all([
+			readOrgStory(db),
+			readEditorSettings(db, row),
+			readPageSettings(db, row)
+		]);
 	} catch (e) {
 		console.error('loading the Donation page editor failed:', e);
 		loadFailed('The Donation page');
@@ -86,6 +108,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 	return {
 		...editorPage(row),
 		settings,
+		pageSettings,
 		askMission: story.story.mission === null && row.editorVisitedAt === null,
 		storyVersion: story.version
 	};
@@ -95,7 +118,8 @@ export async function action({ context, request }: Route.ActionArgs) {
 	const body = await request.formData();
 	const db = context.get(database);
 
-	switch (submittedForm(body, SCREEN_FORMS)) {
+	const pressed = submittedForm(body, SCREEN_FORMS);
+	switch (pressed) {
 		case SAVE_FORM_ID: {
 			const submission = parseForm(body, MISSION_SAVE);
 			if (!submission.ok) return invalid(400, submission.reject());
@@ -135,6 +159,11 @@ export async function action({ context, request }: Route.ActionArgs) {
 		}
 		case PAGE_SETTINGS_FORM_ID:
 			return saveDraftSettings(db, { type: 'donation_page' }, body, NO_DONATION_PAGE);
+		case PAGE_LOOK_FORM_ID:
+		case PAGE_GOAL_FORM_ID:
+		case PAGE_END_DATE_FORM_ID:
+		case PAGE_SHARE_FORM_ID:
+			return savePageSetting(db, { type: 'donation_page' }, pressed, body, NO_DONATION_PAGE);
 	}
 }
 
@@ -152,6 +181,7 @@ export default function DonationPageEditor({ loaderData }: Route.ComponentProps)
 	const { state, version, preview, askMission, storyVersion } = loaderData;
 	const [settings, setSettings] = useState(false);
 	const [donationSettings, setDonationSettings] = useState(false);
+	const [shareMessage, setShareMessage] = useState(false);
 	const chat = useEditorChat(loaderData.chat);
 
 	const mission = useFetcher<Answer>({ key: 'mission-ask' });
@@ -204,12 +234,22 @@ export default function DonationPageEditor({ loaderData }: Route.ComponentProps)
 					layouts={[]}
 					layout=""
 					onLayout={noPress}
-					look={null}
+					look={<PageLookSettings seed={loaderData.pageSettings} version={version} />}
 					shareMessage={loaderData.shareMessage}
 					donationSettings={loaderData.settings.summary}
 					onOpen={(row) => {
 						if (row === 'donation-settings') setDonationSettings(true);
+						if (row === 'share-message') setShareMessage(true);
 					}}
+				/>
+			) : null}
+			{shareMessage ? (
+				<ShareMessageSettingsSheet
+					own={loaderData.shareMessage}
+					seed={loaderData.pageSettings}
+					version={version}
+					onDismiss={() => setShareMessage(false)}
+					onSaved={() => setShareMessage(false)}
 				/>
 			) : null}
 			{donationSettings ? (

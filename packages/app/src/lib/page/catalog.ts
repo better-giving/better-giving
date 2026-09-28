@@ -139,9 +139,10 @@ const blockId = z.string().regex(new RegExp(`^[A-Za-z0-9_-]{1,${ID_MAX}}$`), {
 const look = z.strictObject({
 	[LOOK_KEYS.shade]: oneOf(SHADES, 'a shade', 'a look is'),
 	[LOOK_KEYS.corner]: oneOf(CORNERS, 'a corner', 'a look is'),
-	[LOOK_KEYS.brandColour]: z.string().regex(/^#[0-9a-f]{6}$/, {
-		error: 'a brand colour is a lowercase #rrggbb'
-	})
+	[LOOK_KEYS.brandColour]: z
+		.string()
+		.regex(/^#[0-9a-f]{6}$/, { error: 'a brand colour is a lowercase #rrggbb, or null for none' })
+		.nullable()
 });
 
 type Names = readonly [string, ...string[]];
