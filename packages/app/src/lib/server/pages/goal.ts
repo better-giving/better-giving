@@ -1,6 +1,6 @@
 import type { PageGoal } from '../../donate/blocks/types';
 import type { Page } from '../../page/catalog';
-import { dayOf } from '../../page/end-date';
+import { endDayOf } from '../../page/end-date';
 import type { Db } from '../db/client';
 import { type RaisedThroughForm, readRaisedThroughForm } from '../ledger/queries';
 
@@ -38,24 +38,19 @@ export async function pageGoal(
 ): Promise<PageGoal | null> {
 	if (page.goalMinor === undefined) return null;
 	const { raisedMinor } = await campaignRaised(db, formId);
-	// the read rule holds `endsAt` and `endsZone` both or neither.
-	const { endsAt, endsZone } = page;
+	const day = endDayOf(page);
 	return {
 		raisedMinor,
 		goalMinor: page.goalMinor,
-		endsAt:
-			endsAt === undefined || endsZone === undefined ? null : lastDay(endsAt, endsZone, locale)
+		endsAt: day === null ? null : worded(day, locale)
 	};
 }
 
 /**
- * the day an end closes on, as a page states it: "December 31". the day is the one chosen, in the
- * zone it was chosen in, whatever zone the worker or the donor is in.
+ * a day, `YYYY-MM-DD`, as a page states it: "December 31". the day's own midnight, worded in UTC,
+ * so the words name that day whatever zone the worker or the donor is in.
  */
-function lastDay(endsAt: number, timeZone: string, locale: string): string | null {
-	const day = dayOf(endsAt, timeZone);
-	if (day === null) return null;
-	// the day's own midnight in UTC, worded in UTC, so the words name the day `dayOf` found.
+function worded(day: string, locale: string): string {
 	return new Intl.DateTimeFormat(locale, {
 		month: 'long',
 		day: 'numeric',

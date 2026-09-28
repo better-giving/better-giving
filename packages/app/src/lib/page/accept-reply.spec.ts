@@ -452,6 +452,20 @@ describe('what a reply sets', () => {
 		});
 	});
 
+	it('reads the end it holds as its day in the zone it was chosen in', () => {
+		// the end of 31 December in los angeles, already 1 January in london where it is read
+		const current = {
+			...campaign(),
+			endsAt: Date.parse('2027-01-01T08:00:00Z') - 1,
+			endsZone: 'America/Los_Angeles'
+		};
+		const result = accept(
+			{ say: 'Kept it.', set: { endDate: '2026-12-31' } },
+			{ current, timeZone: 'Europe/London' }
+		);
+		expect(result).toMatchObject({ ok: true, draft: current, changes: [] });
+	});
+
 	it('stores the zone the new day was chosen in beside the end', () => {
 		// set in london, moved by an operator in los angeles, on PST by January, UTC-8
 		const current = {

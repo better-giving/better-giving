@@ -61,7 +61,7 @@ import { formatMinorBrief } from '../donations/money';
 import { FORM_CURRENCY, majorEntry, readAmount, readSuggestedAmounts } from '../forms/amounts';
 import type { ProgramMode } from '../forms/program-modes';
 import { draftFromPage, pageFromDraft } from './ai-catalog';
-import { dayOf, endOfDay } from './end-date';
+import { endDayOf, endOfDay } from './end-date';
 import { HEADING_MAX, type Page, parsePage } from './catalog';
 import { PAGE_KEYS, type PageType } from './keys';
 import { applyPatch, deeperThan, mergePatch, outOfBounds, pointer } from './json-patch';
@@ -388,7 +388,7 @@ function settle(
 		changes.push({ field: 'goal', from: current.goalMinor ?? null, to: set.goalMinor });
 		onto.goalMinor = set.goalMinor;
 	}
-	const endedOn = current.endsAt === undefined ? null : dayOf(current.endsAt, timeZone);
+	const endedOn = endDayOf(current);
 	if (set.endDate !== undefined && set.endDate !== endedOn) {
 		const end = endOfDay({ day: set.endDate, timeZone, now });
 		if (!end.ok) return { ok: false, reason: `set.endDate: ${end.reason}` };

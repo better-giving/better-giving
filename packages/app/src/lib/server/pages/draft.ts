@@ -12,7 +12,7 @@ import {
 } from '../../page/accept-reply';
 import { draftFromPage, pageCatalog } from '../../page/ai-catalog';
 import { type Page, parsePage } from '../../page/catalog';
-import { dayOf } from '../../page/end-date';
+import { dayOf, endDayOf } from '../../page/end-date';
 import type { ChatNote, PageType } from '../../page/keys';
 import { plainText } from '../../rich-text/document';
 import { type ChatMessage as ModelMessage, generate } from '../ai/generate';
@@ -329,7 +329,7 @@ function contextLines({
 		...(type === 'campaign'
 			? [
 					`- goal: ${current.goalMinor === undefined ? 'none' : money(current.goalMinor)}`,
-					`- end date: ${current.endsAt === undefined ? 'none' : (dayOf(current.endsAt, timeZone) ?? 'none')}`
+					`- end date: ${endDayOf(current) ?? 'none'}`
 				]
 			: []),
 		settings === undefined
