@@ -93,7 +93,8 @@ function editor() {
 
 const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 
-async function pick(root: HTMLElement) {
+/** a photo picked, and the resize answering with `resized` — a 480 kB WebP unless a case says. */
+async function pick(root: HTMLElement, resized?: Resized) {
 	const input = root.querySelector<HTMLInputElement>('input[type="file"]');
 	if (input === null) throw new Error('no picker');
 	Object.defineProperty(input, 'files', {
@@ -104,7 +105,9 @@ async function pick(root: HTMLElement) {
 		input.dispatchEvent(new Event('change', { bubbles: true }));
 	});
 	const blob = new Blob([new Uint8Array(480_000)], { type: 'image/webp' });
-	await act(async () => resizes.shift()?.({ ok: true, blob, width: 1600, height: 1067 }));
+	await act(async () =>
+		resizes.shift()?.(resized ?? { ok: true, blob, width: 1600, height: 1067 })
+	);
 	await settle();
 }
 
@@ -177,6 +180,26 @@ describe('a placed photo’s sheet', () => {
 		expect(document.activeElement).toBe(box);
 		const said = box?.getAttribute('aria-describedby')?.split(' ') ?? [];
 		expect(said.map((id) => document.getElementById(id)?.textContent)).toContain(words);
+	});
+
+	it('says a refused resize at the press, posts nothing, and keeps the photo placed', async () => {
+		const root = editor();
+
+		await pick(root, { ok: false, reason: 'too-large-after-resize' });
+
+		const said = root.querySelector('.adm-placed [role="status"]');
+		expect(said?.textContent).toBe(
+			'That photo is too large even after resizing. Choose a smaller one.'
+		);
+		const press = root.querySelector('.adm-placed button');
+		expect(press?.getAttribute('aria-describedby')).toBe(said?.id);
+		expect([uploads, shown(root), pressWords(root)]).toEqual([
+			[],
+			`/image/${PLACED}`,
+			'Replace photo'
+		]);
+		await done(root);
+		expect(saves).toEqual([expect.objectContaining({ image_id: PLACED, alt: 'Volunteers' })]);
 	});
 
 	it('says a refused upload at the press, and keeps the photo placed', async () => {
