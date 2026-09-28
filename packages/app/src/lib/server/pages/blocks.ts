@@ -22,9 +22,10 @@ import { type Page as PageRow, page } from '../db/schema';
 import { draftSettingsOf, type SettingsTarget } from './queries';
 
 // the editor's hand edits to a page's draft, the Donation page's and a campaign's alike: a block's
-// words from its sheet's one Done. every one is written to the draft alone, against the version the
-// editor was drawn at, so nothing here reaches donors before Publish and a press drawn before
-// another save — a chat turn's, a rename — is refused rather than putting back what that save moved.
+// words from its sheet's one Done, and a variant or the layout from its picture. every one is
+// written to the draft alone, against the version the editor was drawn at, so nothing here reaches
+// donors before Publish and a press drawn before another save — a chat turn's, a rename — is
+// refused rather than putting back what that save moved.
 //
 // the words are the block catalog's to judge ($lib/page/catalog.ts): each block's `BLOCK_DATA` rule
 // runs over what its boxes posted so a refusal lands under the box that posted the value, and the
@@ -32,8 +33,9 @@ import { draftSettingsOf, type SettingsTarget } from './queries';
 // chat turn's draft goes through too. a hand edit replaces only the block it names, so a later chat
 // turn is shown the draft with it and keeps what it was not asked to change (./draft.ts).
 //
-// each form's id and rules are $lib/page/block-edit.ts's; which block a body names is `block_id`, and one naming a
-// block the page does not hold, or a block of another type, is refused naming it.
+// each form's id and rules are $lib/page/block-edit.ts's. which block a body names is
+// `block_id`, and one naming a block the page does not hold, or a block of another type, is
+// refused naming it.
 
 const BLOCK_TITLE = defineForm({ id: BLOCK_FORMS.title, schema: BLOCK_TITLE_INPUT });
 const BLOCK_STORY = defineForm({ id: BLOCK_FORMS.story, schema: BLOCK_STORY_INPUT });
