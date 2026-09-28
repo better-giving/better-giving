@@ -292,15 +292,19 @@ describe('stopRecurringPlan', () => {
 			return results;
 		}
 
-		it.each(['active', 'lapsed'] as const)(
-			'owes stopping a commitment that is %s as one recurring gift ended, about that change',
-			async (status) => {
+		// a lapsed commitment has already ended once; stopping it moves `payment_failed` to `stopped`.
+		it.each([
+			['active', 'recurring_gift.ended'],
+			['lapsed', 'recurring_gift.updated']
+		] as const)(
+			'owes stopping a commitment that is %s as one %s, about that change',
+			async (status, event) => {
 				const id = await plan({ status });
 
 				expect(await stopRecurringPlan(db, id, new Date(Date.UTC(2026, 7, 10)))).toBe(true);
 
 				expect(await owed()).toEqual([
-					{ event: 'recurring_gift.ended', subject_id: expect.stringMatching(`^${id}:\\d+$`) }
+					{ event, subject_id: expect.stringMatching(`^${id}:\\d+$`) }
 				]);
 			}
 		);

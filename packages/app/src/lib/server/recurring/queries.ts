@@ -2,7 +2,7 @@ import { count, desc, eq, sql, type SQL } from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { RECURRING_PLAN_STATUSES, type RecurringPlanStatus } from '$lib/recurring/statuses';
 import { readContactSummaries } from '../contacts/queries';
-import { planChangeStatements } from './changes';
+import { applyPlanChange } from './changes';
 import type { Db } from '../db/client';
 import { recurringPlan, type RecurringPlan } from '../db/schema';
 
@@ -254,8 +254,9 @@ export async function readRecurringPlan(db: Db, id: string): Promise<RecurringPl
 
 /**
  * records that a commitment has stopped: the status, the date and the expectation, in one
- * statement, with the `recurring_gift.ended` it owes a destination in front of it in the same
- * `batch()` (./changes.ts).
+ * statement, with the event it owes a destination in front of it in the same `batch()`
+ * (./changes.ts): `recurring_gift.ended` for a live commitment, `recurring_gift.updated` for a
+ * lapsed one, which has ended already.
  *
  * the three have to be one statement. `recurring_plan_ended_at_check` refuses a row whose status
  * and `ended_at` disagree, and a `next_charge_at` left behind would be this deployment saying a
@@ -284,15 +285,11 @@ export async function readRecurringPlan(db: Db, id: string): Promise<RecurringPl
  * `updated_at` is not named — it carries `$onUpdateFn`, so drizzle adds it to every `set`.
  */
 export async function stopRecurringPlan(db: Db, id: string, endedAt: Date): Promise<boolean> {
-	const [, stopped] = await db.batch(
-		planChangeStatements(db, id, ['active', 'lapsed'], {
-			status: 'cancelled',
-			endedAt: sql`coalesce(${recurringPlan.endedAt}, ${endedAt.getTime()})`,
-			nextChargeAt: null
-		})
-	);
-
-	return stopped.length > 0;
+	return applyPlanChange(db, id, ['active', 'lapsed'], {
+		status: 'cancelled',
+		endedAt: sql`coalesce(${recurringPlan.endedAt}, ${endedAt.getTime()})`,
+		nextChargeAt: null
+	});
 }
 
 /**

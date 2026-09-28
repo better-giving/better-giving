@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq, sql } from 'drizzle-orm';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POSTING_ACCOUNTS } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import type { PostableAccountId } from '../db/postable';
@@ -2550,6 +2550,29 @@ describe('settleDelivery() — what a commitment owes a destination listening fo
 		expect(await stand('active', 'evt_standing_2')).toMatchObject({ outcome: 'updated' });
 
 		expect(await changes()).toEqual(['recurring_gift.ended', 'recurring_gift.updated']);
+	});
+
+	it('owes a revived commitment that lapses again a second recurring gift ended', async () => {
+		// each change is keyed on the millisecond it was written, so each is given its own.
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			vi.setSystemTime(new Date('2026-11-03T12:00:00.000Z'));
+			await settleDelivery(deps(), DELIVERY);
+			vi.setSystemTime(new Date('2026-11-03T12:00:01.000Z'));
+			await stand('lapsed');
+			vi.setSystemTime(new Date('2026-11-03T12:00:02.000Z'));
+			await stand('active', 'evt_standing_2');
+			vi.setSystemTime(new Date('2026-11-03T12:00:03.000Z'));
+			await stand('lapsed', 'evt_standing_3');
+		} finally {
+			vi.useRealTimers();
+		}
+
+		expect(await changes()).toEqual([
+			'recurring_gift.ended',
+			'recurring_gift.updated',
+			'recurring_gift.ended'
+		]);
 	});
 
 	it('owes a lapsed commitment revived by a collection as a recurring gift updated', async () => {

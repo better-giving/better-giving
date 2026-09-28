@@ -41,7 +41,7 @@ import { chargeEntry, feeEntry, missingFeeCorrection, unpostable } from './entri
 import { sendReceipt, type ReceiptOutcome } from './receipt';
 import { sendSettledNotice, type Repeating } from './settled-notice';
 import { sendTributeNotice } from './tribute-notice';
-import { planChangeStatements } from '../recurring/changes';
+import { applyPlanChange, planChangeStatements } from '../recurring/changes';
 import { recurringGiftStartedWebhookStatements } from '../webhooks/events';
 
 // the books for a gift that repeats: what one collection under a standing commitment writes, and
@@ -442,24 +442,20 @@ async function recordStanding(
 	if (plan === null) return null;
 
 	if (revives(notice, plan)) {
-		const [, restored] = await db.batch(
-			planChangeStatements(db, plan.id, ['lapsed'], {
-				status: 'active',
-				endedAt: null,
-				nextChargeAt: notice.nextChargeAt
-			})
-		);
-		return restored.length > 0 ? 'revived' : null;
+		const restored = await applyPlanChange(db, plan.id, ['lapsed'], {
+			status: 'active',
+			endedAt: null,
+			nextChargeAt: notice.nextChargeAt
+		});
+		return restored ? 'revived' : null;
 	}
 
 	const ending = endingOf(notice, event);
 	if (ending === null) return null;
 
-	const [, marked] = await db.batch(
-		planChangeStatements(db, plan.id, ['active'], { ...ending, nextChargeAt: null })
-	);
+	const marked = await applyPlanChange(db, plan.id, ['active'], { ...ending, nextChargeAt: null });
 
-	return marked.length > 0 ? 'stopped' : null;
+	return marked ? 'stopped' : null;
 }
 
 /**
