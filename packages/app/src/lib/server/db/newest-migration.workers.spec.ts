@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto';
 import { applyD1Migrations, env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { findKeyByPresented } from '../integrations/keys';
 import { post, postingStatements } from '../ledger/posting';
 import { donationRevenueAccount, POSTING_ACCOUNTS, postableId } from './accounts';
 import { createDb } from './client';
@@ -21,6 +23,7 @@ import { createDb } from './client';
 // front of it. a later migration that renames or drops a seeded column turns this red at its seed,
 // which is the point to re-seed, and a table the stop moves past starts empty until a row is added
 // for it; a squash into one file leaves nothing to stop short of, and the first assertion says so.
+// `api_key` is one: `seedApiKeys` writes it in front of the file that rebuilds it.
 
 const CONTACT_ID = '019fb300-0000-7000-8000-000000000001';
 const FORM_ID = 'frm_migrationprobe';
@@ -28,6 +31,7 @@ const PLAN_ID = '019fb300-0000-7000-8000-000000000002';
 const ONE_TIME_ID = '019fb300-0000-7000-8000-000000000003';
 const CHARGE_ID = '019fb300-0000-7000-8000-000000000004';
 const ZAPIER_KEY = `bgz_${'AZaz09-_'.repeat(5)}abc`;
+const ZAPIER_KEY_MADE_AT = 1_790_000_000_000;
 const OPEN_ZAP = '019fb300-0000-7000-8000-000000000005';
 const ENDED_ZAP = '019fb300-0000-7000-8000-000000000006';
 
@@ -36,6 +40,17 @@ const REALM = '4620816365';
 const FIRST_UNAPPLIED = '0010_gift_refunded_trigger_and_dispute.sql';
 const STOP = env.TEST_MIGRATIONS.findIndex((m) => m.name === FIRST_UNAPPLIED);
 const nowhereToStop = STOP < 1;
+
+const API_KEY_REBUILT_BY = '0017_zapier_key_is_an_api_key.sql';
+const API_KEY_REBUILD = env.TEST_MIGRATIONS.findIndex((m) => m.name === API_KEY_REBUILT_BY);
+
+/**
+ * columns a file from the stop on rewrites on purpose, each asserted in that file's own block
+ * below, so the column-for-column comparison skips them.
+ */
+const REWRITTEN: Record<string, readonly string[]> = { zapier_key: ['key', 'updated_at'] };
+
+const sha256Hex = (value: string) => createHash('sha256').update(value).digest('hex');
 
 const db = () => env.UNMIGRATED_DB;
 
@@ -106,9 +121,9 @@ async function seed() {
 		db()
 			.prepare(
 				`insert into zapier_key (id, key_hash, key, created_at, updated_at)
-				 values ('zapier', '${'a'.repeat(64)}', ?, 0, 0)`
+				 values ('zapier', ?, ?, ?, ?)`
 			)
-			.bind(ZAPIER_KEY),
+			.bind(sha256Hex(ZAPIER_KEY), ZAPIER_KEY, ZAPIER_KEY_MADE_AT, ZAPIER_KEY_MADE_AT),
 		db()
 			.prepare(
 				`insert into zapier_subscription
@@ -185,6 +200,20 @@ async function seed() {
 
 const SYNC = { sent: '', tried: '', untaken: '' };
 
+/** a live key that has been used and a revoked, archived one, in the shape 0013 made them. */
+async function seedApiKeys() {
+	await db()
+		.prepare(
+			`insert into api_key
+			   (id, name, kind, key_hash, prefix, last_four, created_at, last_used_at, revoked_at,
+			    archived_at)
+			 values ('key-live', 'CRM sync', 'api', ?, 'bgk_7Qm2', 'wxyz', 1, 2, null, null),
+			        ('key-gone', 'warehouse', 'api', ?, 'bgk_Zz09', 'Ab12', 3, null, 4, 5)`
+		)
+		.bind('b'.repeat(64), 'c'.repeat(64))
+		.run();
+}
+
 /**
  * a journal entry for a delivery row to hang off, posted through `post()`: ../ledger/sole-writer.spec.ts
  * refuses a direct write to the ledger tables anywhere outside the ledger module.
@@ -213,7 +242,12 @@ async function recorded(): Promise<string[]> {
 }
 
 let migrated:
-	| Promise<{ before: Map<string, Row[]>; after: Map<string, Row[]>; overSeed: string[] }>
+	| Promise<{
+			before: Map<string, Row[]>;
+			apiKeysBefore: Row[];
+			after: Map<string, Row[]>;
+			overSeed: string[];
+	  }>
 	| undefined;
 
 /** the chain stopped in front of `FIRST_UNAPPLIED`, seeded, then finished — once, for every block here. */
@@ -224,9 +258,13 @@ function migrateOverSeed() {
 		const underSeed = await recorded();
 		await seed();
 		const before = await snapshot();
+		await applyD1Migrations(db(), chain.slice(0, API_KEY_REBUILD));
+		await seedApiKeys();
+		const apiKeysBefore = (await db().prepare('select * from api_key order by rowid').all<Row>())
+			.results;
 		await applyD1Migrations(db(), chain);
 		const overSeed = (await recorded()).slice(underSeed.length);
-		return { before, after: await snapshot(), overSeed };
+		return { before, apiKeysBefore, after: await snapshot(), overSeed };
 	})();
 	return migrated;
 }
@@ -259,11 +297,13 @@ describe('the migrations not yet applied keep every row the database already hel
 		async () => {
 			expect([...before.keys()].length).toBeGreaterThan(5);
 			for (const [table, rows] of before) {
+				const rewritten = REWRITTEN[table] ?? [];
 				const columns = rows.length > 0 ? Object.keys(rows[0]!) : [];
+				const kept = columns.filter((c) => !rewritten.includes(c));
 				expect(
-					(after.get(table) ?? []).map((r) => project(r, columns)),
+					(after.get(table) ?? []).map((r) => project(r, kept)),
 					`${table} lost or changed rows across the migrations from ${FIRST_UNAPPLIED}`
-				).toEqual(rows.map((r) => project(r, columns)));
+				).toEqual(rows.map((r) => project(r, kept)));
 			}
 		}
 	);
@@ -298,9 +338,12 @@ describe('the migrations not yet applied keep every row the database already hel
 	);
 
 	it.skipIf(nowhereToStop)(
-		'keeps a key already stored, and every Zap on it stays subscribed',
-		() => {
-			expect(after.get('zapier_key')?.map((r) => r.key)).toEqual([ZAPIER_KEY]);
+		'keeps a key already made admitting, and every Zap on it stays subscribed',
+		async () => {
+			expect(await findKeyByPresented(createDb(db()), ZAPIER_KEY)).toMatchObject({
+				kind: 'zapier',
+				revokedAt: null
+			});
 			expect(after.get('zapier_subscription')?.find((r) => r.id === OPEN_ZAP)).toMatchObject({
 				ended_at: null,
 				ended_reason: null
@@ -422,6 +465,88 @@ describe('0012 gives a payment already written a place for its processor referen
 			.prepare(`select provider_reference as r from payment where id = 'p-daf'`)
 			.first();
 		expect(row).toEqual({ r: 'TRK-probe' });
+	});
+});
+
+// what 0017 is for: the Zapier key already made becomes Zapier's row of `api_key`, admitted by the
+// same hash, and the plaintext `zapier_key` held is stored nowhere after it.
+describe('0017 carries the Zapier key into api_key and keeps no plaintext', () => {
+	let after: Map<string, Row[]>;
+	let apiKeysBefore: Row[];
+
+	beforeAll(async () => {
+		if (nowhereToStop) return;
+		({ after, apiKeysBefore } = await migrateOverSeed());
+	});
+
+	it.skipIf(nowhereToStop)('writes one zapier row, admitted by the hash the key had', () => {
+		const zapier = (after.get('api_key') ?? []).filter((r) => r.kind === 'zapier');
+		expect(zapier).toEqual([
+			{
+				id: expect.stringMatching(
+					/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+				),
+				name: 'Zapier',
+				kind: 'zapier',
+				key_hash: sha256Hex(ZAPIER_KEY),
+				prefix: ZAPIER_KEY.slice(0, 8),
+				last_four: ZAPIER_KEY.slice(-4),
+				created_at: ZAPIER_KEY_MADE_AT,
+				last_used_at: null,
+				revoked_at: null,
+				archived_at: null
+			}
+		]);
+	});
+
+	it.skipIf(nowhereToStop)('mints the row a uuidv7 of when the key was made', () => {
+		const [zapier] = (after.get('api_key') ?? []).filter((r) => r.kind === 'zapier');
+		const millis = parseInt(String(zapier?.id).replace('-', '').slice(0, 12), 16);
+		expect(millis).toBe(ZAPIER_KEY_MADE_AT);
+	});
+
+	it.skipIf(nowhereToStop)('leaves the key itself in no column of any table', () => {
+		const secret = ZAPIER_KEY.slice(4);
+		for (const [table, rows] of after) {
+			for (const row of rows) {
+				for (const [column, value] of Object.entries(row)) {
+					expect(String(value), `${table}.${column}`).not.toContain(secret);
+				}
+			}
+		}
+		expect(after.get('zapier_key')?.map((r) => r.key)).toEqual([null]);
+	});
+
+	it.skipIf(nowhereToStop)('keeps every key already in api_key, column for column', () => {
+		expect((after.get('api_key') ?? []).filter((r) => r.kind === 'api')).toEqual(apiKeysBefore);
+	});
+});
+
+// a `zapier_key` row with no stored key has nothing to cut a prefix from. 0008 deleted the one
+// such row a deployment could hold, but the copy still reads only rows holding a key: this runs
+// 0017's copy again, alone, over the row it left keyless.
+describe('0017 copies nothing from a zapier_key row holding no key', () => {
+	let zapierRows: Row[];
+
+	beforeAll(async () => {
+		if (nowhereToStop) return;
+		await migrateOverSeed();
+		const copy = env.TEST_MIGRATIONS.find((m) => m.name === API_KEY_REBUILT_BY)!.queries.filter(
+			(q) => q.startsWith('INSERT INTO `api_key`')
+		);
+		expect(copy).toHaveLength(1);
+		const keyless = await db().prepare(`select key, key_hash from zapier_key`).all<Row>();
+		expect(keyless.results).toEqual([{ key: null, key_hash: sha256Hex(ZAPIER_KEY) }]);
+		await db().batch([
+			db().prepare(`delete from api_key where kind = 'zapier'`),
+			...copy.map((q) => db().prepare(q))
+		]);
+		zapierRows = (await db().prepare(`select * from api_key where kind = 'zapier'`).all<Row>())
+			.results;
+	});
+
+	it.skipIf(nowhereToStop)('writes no zapier row', () => {
+		expect(zapierRows).toEqual([]);
 	});
 });
 

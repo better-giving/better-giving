@@ -2,7 +2,14 @@ import { createHash } from 'node:crypto';
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import { API_KEY_SHAPE, findKeyByPresented, mintApiKey, revokeApiKey, touchLastUsed } from './keys';
+import {
+	API_KEY_SHAPE,
+	findKeyByPresented,
+	mintApiKey,
+	revokeApiKey,
+	touchLastUsed,
+	ZAPIER_KEY_SHAPE
+} from './keys';
 
 // the integration keys against a real D1: what is stored is read back from the table rather than
 // from the module, so a key that reached a column is caught however it got there.
@@ -50,6 +57,23 @@ describe('minting a key', () => {
 		for (const value of Object.values(row)) {
 			expect(String(value)).not.toContain(secret);
 		}
+	});
+});
+
+describe("minting Zapier's key", () => {
+	it('mints the bgz_ and base64url shape Zapier has always presented, stored like any key', async () => {
+		const minted = await mintApiKey(db, { name: 'Zapier', kind: 'zapier' });
+		expect(minted.key).toMatch(ZAPIER_KEY_SHAPE);
+		expect(minted.key).not.toMatch(API_KEY_SHAPE);
+
+		const [row] = await storedRows();
+		expect(row).toMatchObject({
+			kind: 'zapier',
+			key_hash: sha256Hex(minted.key),
+			prefix: minted.key.slice(0, 8),
+			last_four: minted.key.slice(-4)
+		});
+		expect(await findKeyByPresented(db, minted.key)).toMatchObject({ id: minted.id });
 	});
 });
 

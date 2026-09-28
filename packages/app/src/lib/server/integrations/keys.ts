@@ -21,12 +21,12 @@ export type MintedApiKey = {
 	readonly createdAt: Date;
 };
 
-/** a new key of `kind`, named `name`, stored as its hash. */
+/** a new key of `kind`, in that kind's shape, named `name`, stored as its hash. */
 export async function mintApiKey(
 	db: Db,
 	input: { readonly name: string; readonly kind: ApiKeyKind }
 ): Promise<MintedApiKey> {
-	const key = newKey();
+	const key = NEW_KEY[input.kind]();
 	const prefix = key.slice(0, 8);
 	const lastFour = key.slice(-4);
 	const row = await db
@@ -102,15 +102,24 @@ const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 /** 62^43 exceeds 2^256, so 43 characters hold any 32 bytes. */
 const SECRET_LENGTH = 43;
 
-/** every key `mintApiKey` makes, and nothing else: `bgk_` and 43 base62 characters. */
+/** every `api` key `mintApiKey` makes, and nothing else: `bgk_` and 43 base62 characters. */
 export const API_KEY_SHAPE = /^bgk_[0-9A-Za-z]{43}$/;
+
+/**
+ * every `zapier` key `mintApiKey` makes, and nothing else: `bgz_` and 43 base64url characters. the
+ * shape Zapier's app has presented since before keys were rows here (../zapier/key.ts), so a key
+ * made either way is the same to it.
+ */
+export const ZAPIER_KEY_SHAPE = /^bgz_[A-Za-z0-9_-]{43}$/;
+
+const NEW_KEY: Record<ApiKeyKind, () => string> = { api: newApiKey, zapier: newZapierKey };
 
 /**
  * `bgk_` and 32 random bytes in base62, left-padded to a fixed 43 characters: 256 bits, a prefix a
  * secret scanner can find, and no `_` or `-` in the secret for a split or a double-click to break
  * on.
  */
-function newKey(): string {
+function newApiKey(): string {
 	let n = BigInt(`0x${randomBytes(32).toString('hex')}`);
 	let secret = '';
 	for (let i = 0; i < SECRET_LENGTH; i++) {
@@ -118,6 +127,11 @@ function newKey(): string {
 		n /= 62n;
 	}
 	return `bgk_${secret}`;
+}
+
+/** `bgz_` and 32 random bytes as unpadded base64url: 256 bits in 43 characters. */
+function newZapierKey(): string {
+	return `bgz_${randomBytes(32).toString('base64url')}`;
 }
 
 /** the lowercase hex SHA-256 of the whole key string, as `api_key.key_hash` holds it. */

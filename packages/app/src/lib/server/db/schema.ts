@@ -2620,7 +2620,7 @@ export const apiKey = sqliteTable(
 		/** the lowercase hex SHA-256 of the whole key string. */
 		keyHash: text('key_hash').notNull(),
 
-		/** the key's first 8 characters, `bgk_` and four more. */
+		/** the key's first 8 characters: its kind's head, `bgk_` or `bgz_`, and four more. */
 		prefix: text('prefix').notNull(),
 
 		/** the key's last 4 characters. */
@@ -2647,16 +2647,24 @@ export const apiKey = sqliteTable(
 		),
 		/**
 		 * the key's head and tail, and no longer: a `prefix` or `last_four` that held more would be
-		 * the key itself stored in pieces. both are base62 past the `bgk_`, and `glob` is
-		 * case-sensitive, so a prefix cannot pass as `BGK_`.
+		 * the key itself stored in pieces. each is cut from its kind's own shape
+		 * (../integrations/keys.ts): an `api` key is base62 past `bgk_`, and a `zapier` key base64url
+		 * past `bgz_`, the shape Zapier's app presents. `glob` is case-sensitive, so a prefix cannot
+		 * pass as `BGK_`, and `-` is last in its class, where glob reads it as itself.
 		 */
 		check(
 			'api_key_prefix_check',
-			sql`length(${t.prefix}) = 8 and ${t.prefix} glob 'bgk_*' and substr(${t.prefix}, 5) not glob '*[^0-9A-Za-z]*'`
+			sql`length(${t.prefix}) = 8 and (
+				(${t.kind} = 'api' and ${t.prefix} glob 'bgk_*' and substr(${t.prefix}, 5) not glob '*[^0-9A-Za-z]*')
+				or (${t.kind} = 'zapier' and ${t.prefix} glob 'bgz_*' and substr(${t.prefix}, 5) not glob '*[^A-Za-z0-9_-]*')
+			)`
 		),
 		check(
 			'api_key_last_four_check',
-			sql`length(${t.lastFour}) = 4 and ${t.lastFour} not glob '*[^0-9A-Za-z]*'`
+			sql`length(${t.lastFour}) = 4 and (
+				(${t.kind} = 'api' and ${t.lastFour} not glob '*[^0-9A-Za-z]*')
+				or (${t.kind} = 'zapier' and ${t.lastFour} not glob '*[^A-Za-z0-9_-]*')
+			)`
 		),
 		check(
 			'api_key_archived_revoked_check',
@@ -2701,9 +2709,9 @@ export const zapierKey = sqliteTable(
 		// append new columns below this line — see rule 1 at the top of this file.
 
 		/**
-		 * the key the console shows, as `newKey()` in ../zapier/key.ts makes it. nullable in sql
-		 * only: key.ts never writes `null`, and migrations/0008_zapier_keyless_row_dropped.sql deleted
-		 * the one row that held it.
+		 * the key the console shows, as `newKey()` in ../zapier/key.ts makes it. key.ts never writes
+		 * `null`; migrations/0017_zapier_key_is_an_api_key.sql did, on a row whose hash it carried
+		 * into `api_key`, so a row may hold a hash and no key.
 		 */
 		key: text('key')
 	},

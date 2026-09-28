@@ -731,11 +731,11 @@ describe('a request whose key does not check out', () => {
 		expect(body.message).toContain(`revoked at ${revokedAt?.toISOString()}`);
 	});
 
-	it('refuses Zapier’s key exactly as it refuses one never made', async () => {
+	it('refuses Zapier’s key exactly as it refuses one of its shape never made', async () => {
 		const zapier = await mintApiKey(db, { name: 'Zapier', kind: 'zapier' });
 
 		expect(await refusedWith(`Bearer ${zapier.key}`)).toStrictEqual(
-			await refusedWith(`Bearer bgk_${'A'.repeat(43)}`)
+			await refusedWith(`Bearer bgz_${'A'.repeat(43)}`)
 		);
 	});
 
