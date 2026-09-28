@@ -97,8 +97,14 @@ export type AddedDonor = ApiDonor & { readonly first_gift: ApiGift };
 /** the subject a delivery row names, as ./deliver.ts claims it. */
 type Subject = { readonly event: WebhookEvent; readonly subjectId: string };
 
-/** a row's `data`, or the words `last_error` keeps for why it is not sent. */
-type Rendered = { readonly data: unknown } | { readonly unsent: string };
+/**
+ * a row's `data`, or the words `last_error` keeps for why it is not sent: `unsent` where it could
+ * not be rendered, `dropped` where it was rightly withheld.
+ */
+type Rendered =
+	| { readonly data: unknown }
+	| { readonly unsent: string }
+	| { readonly dropped: string };
 
 /** each of `subjects` rendered, read in one pass over the lot. */
 export async function renderSubjects(
@@ -149,7 +155,7 @@ export async function renderSubjects(
 			case 'gift.refunded': {
 				const found = withdrawalOf(subjectId);
 				if (found === undefined) return unreadable('refund', subjectId);
-				if (!standing.has(subjectId)) return { unsent: REFUND_NO_LONGER_STANDS };
+				if (!standing.has(subjectId)) return { dropped: REFUND_NO_LONGER_STANDS };
 				return { data: refundedGift(found.row, found.gift) };
 			}
 			case 'gift.dispute_opened': {

@@ -8,8 +8,13 @@ import { parseContact } from '../contacts/contact-input';
 import { commitDonor } from '../donations/donor';
 import { readGiftPage, readGifts } from '../integrations/gift';
 import type { WebhookEvent } from '../../webhooks/catalog';
-import { sendDueWebhooks, WEBHOOK_RETRY_SCHEDULE_MS } from './deliver';
-import { createDestination } from './destinations';
+import {
+	DESTINATION_PAUSE_AFTER_MS,
+	type PausedDestination,
+	sendDueWebhooks,
+	WEBHOOK_RETRY_SCHEDULE_MS
+} from './deliver';
+import { createDestination, resumeDestination } from './destinations';
 import { stopRecurringPlan } from '../recurring/queries';
 import {
 	disputeOpenedWebhookStatements,
@@ -58,11 +63,36 @@ afterEach(() => {
 const START = new Date('2026-09-28T12:00:00.000Z');
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
+const later = (ms: number) => new Date(START.getTime() + ms);
 
 /** a run scheduled at `at`, with the wall clock there too. */
-async function runAt(at: Date, fetch: typeof globalThis.fetch): Promise<void> {
+async function runAt(
+	at: Date,
+	fetch: typeof globalThis.fetch,
+	onPaused: (destination: PausedDestination) => Promise<void> = async () => undefined
+): Promise<void> {
 	vi.setSystemTime(at);
-	await sendDueWebhooks({ db, fetch }, at);
+	await sendDueWebhooks({ db, fetch, onPaused }, at);
+}
+
+/**
+ * every run the cron would make up to `until` that has something due, each at the moment its
+ * earliest row falls due.
+ */
+async function runThrough(
+	until: Date,
+	fetch: typeof globalThis.fetch,
+	onPaused?: (destination: PausedDestination) => Promise<void>
+): Promise<void> {
+	for (;;) {
+		const due = await env.DB.prepare(
+			`select min(next_attempt_at) as at from webhook_delivery
+			 where status = 'pending'
+			   and destination_id in (select id from webhook_destination where paused_at is null)`
+		).first<{ at: number | null }>();
+		if (due?.at == null || due.at > until.getTime()) return;
+		await runAt(new Date(due.at), fetch, onPaused);
+	}
 }
 
 let made = 0;
@@ -432,6 +462,212 @@ describe('sendDueWebhooks() — a post that fails', () => {
 	});
 });
 
+describe('sendDueWebhooks() — a destination failing for three days', () => {
+	const failing = () => receivers(() => new Response('down', { status: 503 }));
+
+	async function pausedAt(id: string) {
+		return (
+			await env.DB.prepare('select paused_at from webhook_destination where id = ?')
+				.bind(id)
+				.first<{ paused_at: number | null }>()
+		)?.paused_at;
+	}
+
+	it('pauses on a retry failing three days after the first failure, and says so once', async () => {
+		const target = await destination();
+		await settle();
+		await settle();
+		const receiving = failing();
+		const paused = vi.fn(async (_: PausedDestination) => undefined);
+
+		await runAt(START, receiving.fetch, paused);
+		await runAt(later(MINUTE), receiving.fetch, paused);
+		expect(await pausedAt(target.id)).toBeNull();
+
+		const threeDays = later(DESTINATION_PAUSE_AFTER_MS);
+		await runAt(threeDays, receiving.fetch, paused);
+
+		expect(receiving.posts).toHaveLength(6);
+		expect(await pausedAt(target.id)).toBe(threeDays.getTime());
+		expect(paused).toHaveBeenCalledOnce();
+		expect(paused).toHaveBeenCalledWith({ id: target.id, url: target.url, reason: 'failing' });
+	});
+
+	it('does not pause on a row’s first failure, however long ago the failures began', async () => {
+		const target = await destination();
+		await settle();
+		const receiving = failing();
+		const paused = vi.fn(async (_: PausedDestination) => undefined);
+		await runThrough(later(DESTINATION_PAUSE_AFTER_MS), receiving.fetch, paused);
+		expect((await rows()).map((row) => row.status)).toEqual(['failed']);
+
+		const threeDays = later(DESTINATION_PAUSE_AFTER_MS);
+		vi.setSystemTime(threeDays);
+		await settle();
+		await runAt(threeDays, receiving.fetch, paused);
+		expect(await pausedAt(target.id)).toBeNull();
+
+		await runAt(new Date(threeDays.getTime() + MINUTE), receiving.fetch, paused);
+		expect(await pausedAt(target.id)).not.toBeNull();
+		expect(paused).toHaveBeenCalledOnce();
+	});
+
+	it('starts the three days again from the first failure after a post is taken', async () => {
+		const target = await destination();
+		await settle();
+		let answering = 503;
+		const receiving = receivers(() => new Response('', { status: answering }));
+		const paused = vi.fn(async (_: PausedDestination) => undefined);
+		await runAt(START, receiving.fetch, paused);
+
+		answering = 200;
+		const taken = later(DESTINATION_PAUSE_AFTER_MS / 2);
+		vi.setSystemTime(taken);
+		await settle();
+		await runAt(taken, receiving.fetch, paused);
+
+		answering = 503;
+		const failingAgain = new Date(taken.getTime() + HOUR);
+		vi.setSystemTime(failingAgain);
+		await settle();
+		await runThrough(later(DESTINATION_PAUSE_AFTER_MS + 24 * HOUR), receiving.fetch, paused);
+
+		expect(await pausedAt(target.id)).toBeNull();
+		expect(paused).not.toHaveBeenCalled();
+	});
+
+	it('posts nothing more once paused, and tells of the pause no second time', async () => {
+		const target = await destination();
+		await settle();
+		const receiving = failing();
+		const paused = vi.fn(async (_: PausedDestination) => undefined);
+		await runAt(START, receiving.fetch, paused);
+		await runAt(later(DESTINATION_PAUSE_AFTER_MS), receiving.fetch, paused);
+		const postsAtPause = receiving.posts.length;
+
+		const fourthDay = later(DESTINATION_PAUSE_AFTER_MS + 24 * HOUR);
+		vi.setSystemTime(fourthDay);
+		await settle();
+		await runThrough(fourthDay, receiving.fetch, paused);
+		await runAt(fourthDay, receiving.fetch, paused);
+
+		expect(receiving.posts).toHaveLength(postsAtPause);
+		expect(paused).toHaveBeenCalledOnce();
+		expect(await pausedAt(target.id)).toBe(later(DESTINATION_PAUSE_AFTER_MS).getTime());
+		expect((await rows()).map((row) => row.status)).toEqual(['pending', 'pending']);
+	});
+
+	it('pauses at once on a 410, the row kept owed', async () => {
+		const target = await destination();
+		await settle();
+		const receiving = receivers(() => new Response('', { status: 410 }));
+		const paused = vi.fn(async (_: PausedDestination) => undefined);
+
+		await runAt(START, receiving.fetch, paused);
+
+		expect(await pausedAt(target.id)).toBe(START.getTime());
+		expect(paused).toHaveBeenCalledExactlyOnceWith({
+			id: target.id,
+			url: target.url,
+			reason: 'gone'
+		});
+		expect(await rows()).toEqual([
+			expect.objectContaining({ status: 'pending', attempts: 1, last_status: 410 })
+		]);
+	});
+
+	it('keeps the pause when telling of it throws, and never tells of it again', async () => {
+		const target = await destination();
+		await settle();
+		const receiving = receivers(() => new Response('', { status: 410 }));
+		const paused = vi.fn(async (_: PausedDestination) => {
+			throw new Error('mail relay refused');
+		});
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+		await runAt(START, receiving.fetch, paused);
+		await runAt(later(DESTINATION_PAUSE_AFTER_MS), receiving.fetch, paused);
+
+		expect(await pausedAt(target.id)).toBe(START.getTime());
+		expect(paused).toHaveBeenCalledOnce();
+		expect(logged).toHaveBeenCalledOnce();
+		logged.mockRestore();
+	});
+});
+
+describe('resumeDestination() — the held window, re-sent', () => {
+	/** a gift settled at `when`, and the id of the row it queued. */
+	async function settleAt(when: Date): Promise<{ paymentId: string; rowId: string }> {
+		vi.setSystemTime(when);
+		const paymentId = await settle();
+		const row = await env.DB.prepare('select id from webhook_delivery where subject_id = ?')
+			.bind(paymentId)
+			.first<{ id: string }>();
+		if (row === null) throw new Error('the gift queued no row');
+		return { paymentId, rowId: row.id };
+	}
+
+	it('re-sends each held delivery once under its own webhook-id, and what follows flows', async () => {
+		const target = await destination();
+		let answering = 503;
+		const receiving = receivers(() => new Response('', { status: answering }));
+
+		const beforeWindow = await settleAt(START);
+		await runThrough(later(52 * HOUR), receiving.fetch);
+		answering = 200;
+		await settleAt(later(52 * HOUR));
+		await runAt(later(52 * HOUR), receiving.fetch);
+
+		answering = 503;
+		const exhausted = await settleAt(later(53 * HOUR));
+		await runThrough(later(110 * HOUR), receiving.fetch);
+		const unreadable = await settleAt(later(110 * HOUR));
+		await env.DB.prepare(`update payment set status = 'failed' where id = ?`)
+			.bind(unreadable.paymentId)
+			.run();
+		const retrying = await settleAt(later(110 * HOUR));
+		await runThrough(later(130 * HOUR), receiving.fetch);
+		const whilePaused = await settleAt(later(131 * HOUR));
+		expect(
+			(
+				await env.DB.prepare('select paused_at from webhook_destination where id = ?')
+					.bind(target.id)
+					.first<{ paused_at: number | null }>()
+			)?.paused_at
+		).not.toBeNull();
+
+		const resumedAt = later(140 * HOUR);
+		vi.setSystemTime(resumedAt);
+		const resumed = await resumeDestination(db, target.id, resumedAt);
+		expect(resumed).toEqual({ ok: true, requeued: 3 });
+
+		answering = 200;
+		const postedBefore = receiving.posts.length;
+		await runAt(resumedAt, receiving.fetch);
+		await runThrough(later(200 * HOUR), receiving.fetch);
+		const resent = receiving.posts
+			.slice(postedBefore)
+			.map((post) => post.headers.get('webhook-id'));
+		expect(resent.sort()).toEqual([exhausted.rowId, retrying.rowId, whilePaused.rowId].sort());
+
+		const after = await settleAt(later(201 * HOUR));
+		await runAt(later(201 * HOUR), receiving.fetch);
+		expect(receiving.posts.at(-1)?.headers.get('webhook-id')).toBe(after.rowId);
+
+		const statusOf = async (id: string) =>
+			(
+				await env.DB.prepare('select status from webhook_delivery where id = ?')
+					.bind(id)
+					.first<{ status: string }>()
+			)?.status;
+		expect(await statusOf(beforeWindow.rowId)).toBe('failed');
+		expect(await statusOf(unreadable.rowId)).toBe('failed');
+		for (const { rowId } of [exhausted, retrying, whilePaused, after]) {
+			expect(await statusOf(rowId)).toBe('delivered');
+		}
+	});
+});
+
 describe('sendDueWebhooks() — lanes', () => {
 	it('posts to at most two destinations at once, and to every one of them', async () => {
 		for (let made = 0; made < 7; made++) await destination();
@@ -625,7 +861,7 @@ describe('sendDueWebhooks() — a gift refunded and a dispute opened', () => {
 		expect(JSON.parse(receiving.posts[0]?.body ?? '{}').data.respond_by).toBeNull();
 	});
 
-	it('fails a refund that stopped standing after it was queued, unposted, and says why', async () => {
+	it('drops a refund that stopped standing after it was queued, unposted, and says why', async () => {
 		await listening(['gift.refunded']);
 		const refundId = await withdraw(await settle());
 		await db.update(payment).set({ status: 'cancelled' }).where(eq(payment.id, refundId));
@@ -636,7 +872,7 @@ describe('sendDueWebhooks() — a gift refunded and a dispute opened', () => {
 		expect(receiving.posts).toEqual([]);
 		expect(await rows()).toEqual([
 			expect.objectContaining({
-				status: 'failed',
+				status: 'dropped',
 				attempts: 0,
 				last_status: null,
 				last_error:

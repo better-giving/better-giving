@@ -2917,10 +2917,12 @@ export const webhookDestinationEvent = sqliteTable(
 
 /**
  * where one delivery stands. `failed` is a row whose every attempt on the retry schedule failed,
- * or one sent nothing because its destination or its subject could not be read, or its refund no
- * longer stands (../webhooks/payload.ts); it is kept, for the destination's recent deliveries.
+ * or one sent nothing because its destination or its subject could not be read. `dropped` is a
+ * `gift.refunded` row withheld because its refund no longer stands (../webhooks/payload.ts): the
+ * event was right not to go, and is not a failure. both are kept, for the destination's recent
+ * deliveries.
  */
-export const WEBHOOK_DELIVERY_STATUSES = ['pending', 'delivered', 'failed'] as const;
+export const WEBHOOK_DELIVERY_STATUSES = ['pending', 'delivered', 'failed', 'dropped'] as const;
 export type WebhookDeliveryStatus = (typeof WEBHOOK_DELIVERY_STATUSES)[number];
 
 /**
@@ -2988,7 +2990,15 @@ export const webhookDelivery = sqliteTable(
 		// the fan-out writes these rows with an INSERT…SELECT, which never runs a `$defaultFn`,
 		// so it binds both itself.
 		createdAt: createdAt(),
-		updatedAt: updatedAt()
+		updatedAt: updatedAt(),
+
+		/**
+		 * a JSON object of the facts the event's payload needs that cannot be read again at send —
+		 * for `recurring_gift.charge_failed`, the attempt that failed. written with the row, in the
+		 * batch of the change it reports; everything that can be read again is still rendered at
+		 * send from `subject_id`. null where the event needs nothing kept. parsed by its reader.
+		 */
+		detail: text('detail')
 		// append new columns below this line — see rule 1 at the top of this file.
 	},
 	(t) => [
@@ -3005,6 +3015,10 @@ export const webhookDelivery = sqliteTable(
 			sql`${t.lastStatus} is null or ${t.lastStatus} between 100 and 599`
 		),
 		check('webhook_delivery_last_error_not_blank_check', optionalNotBlank(t.lastError)),
+		check(
+			'webhook_delivery_detail_object_check',
+			sql`${t.detail} is null or (${jsonObject(t.detail)})`
+		),
 		// a delivered row says when, and no other row does.
 		check(
 			'webhook_delivery_delivered_check',

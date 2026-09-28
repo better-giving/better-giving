@@ -66,7 +66,8 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, now: Date) => Promise
 				now
 			),
 			sendDueZapierEvents({ db, fetch }, now),
-			sendDueWebhooks({ db, fetch }, now)
+			// a pause is told to no one: the destination's `paused_at` is its only record.
+			sendDueWebhooks({ db, fetch, onPaused: async () => undefined }, now)
 		]);
 	}
 };

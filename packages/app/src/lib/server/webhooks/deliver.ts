@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { webhookDelivery, webhookDestination } from '../db/schema';
 import { inPage } from '../integrations/paging';
@@ -22,7 +22,8 @@ import { signedHeaders } from './sign';
 // when the event was recorded — the row's `created_at`, the same on every attempt — and `data` is
 // the event's subject with its gift as the read API answers it at that moment. a retry renders
 // again, so it carries where the gift stands by then. a row whose destination or subject cannot be
-// read, or whose refund no longer stands, is `failed` unposted, with why in `last_error`.
+// read is `failed` unposted, and one whose refund no longer stands `dropped` unposted, each with
+// why in `last_error`.
 //
 // where each answer lands:
 //   2xx      — `delivered`, with the status and the time, and the destination's run of failures,
@@ -33,17 +34,54 @@ import { signedHeaders } from './sign';
 //              out the next step of {@link WEBHOOK_RETRY_SCHEDULE_MS}, or is `failed` after the
 //              last, and the destination's `failing_since` is set unless it already was — the mark
 //              and the row's outcome in one batch.
+//   410      — a failure as above, and the destination paused at once: Standard Webhooks reads a
+//              410 as the endpoint withdrawn.
 // a failed row is kept, for the destination's recent deliveries.
 //
+// **a destination failing for {@link DESTINATION_PAUSE_AFTER_MS} is paused.** a failure on a row
+// that had already failed before, where the destination's `failing_since` is that far behind,
+// pauses it in the row's outcome batch — every post to it for three days failed and none taken. a
+// row's first failure never pauses, since a mark can outlive a quiet spell with nothing posted.
+// the pause is a guarded write that answers only where it took, so of the runs that fail on one
+// destination at once exactly one learns it paused it, and tells `onPaused` after its batch has
+// committed. a hook that throws is logged and never asked again, so no pause is told of twice.
+//
 // **a paused or archived destination's rows are not claimed.** a paused one's rows wait, owed,
-// until it is resumed; an archived one is sent nothing more.
+// until it is resumed (`resumeDestination` in ./destinations.ts); an archived one is sent nothing
+// more.
 //
 // the run's scheduled time decides what is due and when a failure is next due, so steps line up
 // with the cron; the wall clock stamps each attempt's `webhook-timestamp` and `delivered_at`, the
 // moment it was actually made.
 
-/** everything one run needs, per invocation. `fetch` is handed in so a spec can answer for receivers. */
-export type WebhookDeliveryDeps = { readonly db: Db; readonly fetch: typeof fetch };
+/**
+ * why a destination was paused: every post to it failed for {@link DESTINATION_PAUSE_AFTER_MS}, or
+ * it answered 410, which Standard Webhooks reads as the endpoint withdrawn.
+ */
+export type PauseReason = 'failing' | 'gone';
+
+/** a destination a run has just paused, as the hook told of it receives it. */
+export type PausedDestination = {
+	readonly id: string;
+	readonly url: string;
+	readonly reason: PauseReason;
+};
+
+/**
+ * everything one run needs, per invocation. `fetch` is handed in so a spec can answer for
+ * receivers. `onPaused` is told of each pause once, after the batch that made it has committed.
+ */
+export type WebhookDeliveryDeps = {
+	readonly db: Db;
+	readonly fetch: typeof fetch;
+	readonly onPaused: (destination: PausedDestination) => Promise<void>;
+};
+
+/**
+ * how long every post to a destination may fail, from the first failure after the last post it
+ * took, before a retry's failure pauses it.
+ */
+export const DESTINATION_PAUSE_AFTER_MS = 72 * 60 * 60_000;
 
 /**
  * how long a row waits after each failed post, the first entry after the first: about 52 hours
@@ -134,6 +172,10 @@ export async function sendDueWebhooks(deps: WebhookDeliveryDeps, now: Date): Pro
 			await unsent(row, rendered.unsent);
 			return;
 		}
+		if ('dropped' in rendered) {
+			await claim.land(row, { status: 'dropped', lastError: rendered.dropped, updatedAt: now });
+			return;
+		}
 
 		const answer = await post(deps.fetch, destination, row, rendered.data);
 		const attempts = row.attempts + 1;
@@ -159,7 +201,7 @@ export async function sendDueWebhooks(deps: WebhookDeliveryDeps, now: Date): Pro
 			]);
 			return;
 		}
-		await db.batch([
+		const failed = [
 			db
 				.update(webhookDestination)
 				.set({ failingSince: sql`coalesce(${webhookDestination.failingSince}, ${now.getTime()})` })
@@ -171,8 +213,63 @@ export async function sendDueWebhooks(deps: WebhookDeliveryDeps, now: Date): Pro
 				lastError: answer.error,
 				updatedAt: now
 			})
+		] as const;
+		const reason = pauseReason(row, answer.status);
+		if (reason === undefined) {
+			await db.batch(failed);
+			return;
+		}
+		const [, , [paused]] = await db.batch([
+			...failed,
+			pauseStatement(db, row.destinationId, reason, now)
 		]);
+		if (paused !== undefined) await tellPaused(deps.onPaused, { ...paused, reason });
 	});
+}
+
+/** why a failed post may pause its destination, or undefined where it may not. */
+function pauseReason(row: Claimed, status: number | null): PauseReason | undefined {
+	if (status === 410) return 'gone';
+	return row.attempts > 0 ? 'failing' : undefined;
+}
+
+/**
+ * the destination paused at `now`, only where no run paused it first and, for `failing`, where its
+ * run of failures began {@link DESTINATION_PAUSE_AFTER_MS} or more before `now`. it answers with
+ * the destination where it paused it, so one run alone learns of the pause.
+ */
+function pauseStatement(db: Db, destinationId: string, reason: PauseReason, now: Date) {
+	return db
+		.update(webhookDestination)
+		.set({ pausedAt: now })
+		.where(
+			and(
+				eq(webhookDestination.id, destinationId),
+				isNull(webhookDestination.pausedAt),
+				reason === 'failing'
+					? lte(
+							webhookDestination.failingSince,
+							new Date(now.getTime() - DESTINATION_PAUSE_AFTER_MS)
+						)
+					: undefined
+			)
+		)
+		.returning({ id: webhookDestination.id, url: webhookDestination.url });
+}
+
+/** `onPaused` told of a pause that has committed, and a throw from it logged. */
+async function tellPaused(
+	onPaused: WebhookDeliveryDeps['onPaused'],
+	destination: PausedDestination
+): Promise<void> {
+	try {
+		await onPaused(destination);
+	} catch (error) {
+		console.error(
+			`telling of paused destination ${destination.id} failed, and is not retried:`,
+			error
+		);
+	}
 }
 
 /** where a row that has now failed `attempts` posts stands: waiting out its next step, or failed. */
@@ -181,6 +278,42 @@ function afterFailure(attempts: number, now: Date): Outcome<typeof webhookDelive
 	return wait === undefined
 		? { status: 'failed' }
 		: { nextAttemptAt: new Date(now.getTime() + wait) };
+}
+
+/**
+ * the held window of the paused destination `destinationId`, due at `now`: every row still owed,
+ * and every row failed on every post the retry schedule allows that was queued since its run of
+ * failures began. each starts the schedule afresh under its own id, and the statement answers with
+ * the ids it re-queued. a row failed unsent — its subject unreadable — or dropped is not re-sent,
+ * since sending it again would find the same. it matches nothing once the destination is resumed,
+ * so it runs in front of the write that resumes it.
+ */
+export function requeueHeldStatement(db: Db, destinationId: string, now: Date) {
+	const paused = db
+		.select({ id: webhookDestination.id })
+		.from(webhookDestination)
+		.where(and(eq(webhookDestination.id, destinationId), isNotNull(webhookDestination.pausedAt)));
+	const failingSince = db
+		.select({ failingSince: webhookDestination.failingSince })
+		.from(webhookDestination)
+		.where(eq(webhookDestination.id, destinationId));
+	return db
+		.update(webhookDelivery)
+		.set({ status: 'pending', attempts: 0, nextAttemptAt: now, updatedAt: now })
+		.where(
+			and(
+				eq(webhookDelivery.destinationId, paused),
+				or(
+					eq(webhookDelivery.status, 'pending'),
+					and(
+						eq(webhookDelivery.status, 'failed'),
+						gte(webhookDelivery.attempts, WEBHOOK_RETRY_SCHEDULE_MS.length + 1),
+						gte(webhookDelivery.createdAt, failingSince)
+					)
+				)
+			)
+		)
+		.returning({ id: webhookDelivery.id });
 }
 
 /** the due rows of destinations neither paused nor archived, leased to this run. */

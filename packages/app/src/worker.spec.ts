@@ -151,7 +151,7 @@ describe('which run an expression reaches', () => {
 			SCHEDULED_AT
 		);
 		expect(sendDueWebhooks).toHaveBeenCalledWith(
-			{ db: expect.anything(), fetch: expect.any(Function) },
+			{ db: expect.anything(), fetch: expect.any(Function), onPaused: expect.any(Function) },
 			SCHEDULED_AT
 		);
 		expect(readPendingCryptoGifts).not.toHaveBeenCalled();

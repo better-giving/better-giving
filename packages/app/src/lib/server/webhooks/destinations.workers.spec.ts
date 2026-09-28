@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { rejectionCode } from '../db/rejection.testing';
-import { createDestination } from './destinations';
+import { createDestination, resumeDestination } from './destinations';
 
 // a destination as it is made, against a real D1: what is stored, what comes back once, and the
 // address refused before anything is written. the https rule is held twice — here, where a caller
@@ -122,5 +122,59 @@ describe('createDestination()', () => {
 				.run()
 		);
 		expect(code).toContain('SQLITE_CONSTRAINT_CHECK');
+	});
+});
+
+describe('resumeDestination()', () => {
+	const NOW = new Date('2026-09-28T12:00:00.000Z');
+
+	async function made() {
+		const created = await createDestination(db, {
+			url: 'https://crm.example.org/hooks/giving',
+			events: ['gift.made']
+		});
+		if (!created.ok) throw new Error(created.detail);
+		return created.destination.id;
+	}
+
+	it('refuses a destination that does not exist, naming the id', async () => {
+		const id = '019fb300-0000-7000-8000-00000000dead';
+
+		expect(await resumeDestination(db, id, NOW)).toEqual({
+			ok: false,
+			reason: 'not_found',
+			detail: `No destination has the id ${id}.`
+		});
+	});
+
+	it('refuses a destination that is not paused, and re-queues none of its rows', async () => {
+		const id = await made();
+		await env.DB.prepare(
+			`insert into webhook_delivery (id, destination_id, event, subject_id, status, attempts,
+			   next_attempt_at, created_at, updated_at)
+			 values (?, ?, 'gift.made', 'pay_1', 'pending', 3, ?, 0, 0)`
+		)
+			.bind(`msg_${crypto.randomUUID()}`, id, NOW.getTime() + 60_000)
+			.run();
+
+		expect(await resumeDestination(db, id, NOW)).toMatchObject({ ok: false, reason: 'not_paused' });
+		expect(
+			await env.DB.prepare('select attempts, next_attempt_at from webhook_delivery').first()
+		).toEqual({ attempts: 3, next_attempt_at: NOW.getTime() + 60_000 });
+	});
+
+	it('clears the pause and the failing mark, and a second resume is refused', async () => {
+		const id = await made();
+		await env.DB.prepare(
+			'update webhook_destination set paused_at = 1, failing_since = 1 where id = ?'
+		)
+			.bind(id)
+			.run();
+
+		expect(await resumeDestination(db, id, NOW)).toEqual({ ok: true, requeued: 0 });
+		expect(
+			await env.DB.prepare('select paused_at, failing_since from webhook_destination').first()
+		).toEqual({ paused_at: null, failing_since: null });
+		expect(await resumeDestination(db, id, NOW)).toMatchObject({ ok: false, reason: 'not_paused' });
 	});
 });
