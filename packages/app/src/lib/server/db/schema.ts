@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import {
 	check,
 	foreignKey,
@@ -18,6 +18,7 @@ import { CONTACT_KINDS, type ContactKind } from '../../contacts/kinds';
 // `RECURRING_INTERVALS`, which is the wire's frequency vocabulary minus `one_time`.
 import type { Frequency } from '@better-giving/form/v1';
 import { PROGRAM_MODES, type ProgramMode } from '../../forms/program-modes';
+import { CORNERS, LOOK_KEYS, PAGE_KEYS, SHADES } from '../../page/keys';
 import { FORM_STATUSES, type FormStatus } from '../../forms/statuses';
 import { PROGRAM_STATUSES, type ProgramStatus } from '../../programs/statuses';
 import { RECURRING_PLAN_STATUSES, type RecurringPlanStatus } from '../../recurring/statuses';
@@ -81,9 +82,11 @@ import type { PostableAccountId } from './postable';
 //             `PROGRAM_STATUSES` and `PROGRAM_MODES` moved for that same reason (see
 //             ../../forms/statuses.ts, ../../programs/statuses.ts and
 //             ../../forms/program-modes.ts): a component renders the words and cannot
-//             import from `$lib/server/**` at all. this list is every vocabulary that has
-//             left, and a move not added to it makes it read as complete while
-//             under-reporting.
+//             import from `$lib/server/**` at all. `SHADES` and `CORNERS` moved for that
+//             reason too, with the page document's key names beside them
+//             (../../page/keys.ts), since the page catalog reads the keys the checks here do.
+//             this list is every vocabulary that has left, and a move not added to it makes
+//             it read as complete while under-reporting.
 //             one vocabulary is not derived into a check at all: `donation.tribute_kind`,
 //             which arrived by `ADD COLUMN` on a table with children, where a check is
 //             the rebuild rule 2 below describes. `TRIBUTE_KINDS` is the donation form's
@@ -281,15 +284,20 @@ const updatedAt = () =>
 		.$onUpdateFn(() => new Date());
 
 /**
- * check body for a closed enum, derived from the TS const array so a new member
- * cannot update the union while leaving the constraint behind — which would compile
- * and then be rejected by the database at runtime.
+ * a closed vocabulary as a SQL list, for a check's `in (...)`.
  *
  * `sql.raw` is safe here and only here: every input is a literal from this module's
  * own `as const` arrays, never a value off a request.
  */
+const quotedList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
+
+/**
+ * check body for a closed enum, derived from the TS const array so a new member
+ * cannot update the union while leaving the constraint behind — which would compile
+ * and then be rejected by the database at runtime.
+ */
 const enumCheck = (col: SQLiteColumn, values: readonly string[]) =>
-	sql`${col} in (${sql.raw(values.map((v) => `'${v}'`).join(', '))})`;
+	sql`${col} in (${quotedList(values)})`;
 
 /**
  * `integer({ mode: 'boolean' })` is an affinity, not a constraint: `2` and `'yes'`
@@ -892,6 +900,9 @@ export const program = sqliteTable(
  * fundraiser has to take anyway, since a form nobody named or pointed at a fund is not
  * one they can use. `donation.form_id` is nullable because staff-entered cash and cheques
  * have no form behind them.
+ *
+ * a page — the donation page or a campaign — owns one row here as its donation settings
+ * (`page.form_id`), made with the page rather than in /admin/forms. `page` says what owning it means.
  */
 export const form = sqliteTable(
 	'form',
@@ -2040,7 +2051,8 @@ export const recurringPlan = sqliteTable(
 );
 
 /**
- * the organization's own identity — the fundraiser's side of a receipt.
+ * the organization's own identity — the fundraiser's side of a receipt. what a donor page says about
+ * the organisation — its story, look and sharing — is `org_presentation`'s.
  *
  * this is receipt content, never a credential and never something the app is constructed from:
  * nothing fails to boot because it is unset. the deploy-time secrets rule is untouched — no Stripe
@@ -2785,6 +2797,287 @@ export const zapierDelivery = sqliteTable(
 	]
 );
 
+// ---------------------------------------------------------------------------
+// the pages this deployment serves on its own address, and what they say about the organisation:
+// `org_presentation`, `page` and `chat_turn`.
+//
+// each page and each of the organisation's three parts is held as a JSON document whose shape is
+// the parse boundary's, and the database reads a handful of keys out of them with `json_extract`.
+// a key a check reads is pinned by that check: rename it in the document and the check reads null,
+// which it accepts. so every such key is named once, in ../../page/keys.ts, for the checks here and
+// the page catalog's parser alike.
+// ---------------------------------------------------------------------------
+
+/**
+ * a quoted JSON path from the document root through `keys`, for `json_extract` in a check.
+ *
+ * `sql.raw` is safe for the reason `quotedList` gives: every key is a constant from
+ * ../../page/keys.ts, never a value off a request.
+ */
+const jsonPath = (...keys: readonly string[]) => sql.raw(`'${['$', ...keys].join('.')}'`);
+
+/** check body: the key at `path`, a quoted JSON path, is absent from `doc` or one of `values`. */
+const jsonKeyIn = (doc: SQLiteColumn, path: SQL, values: readonly string[]) => {
+	const key = sql`json_extract(${doc}, ${path})`;
+	return sql`(${key} is null or ${key} in (${quotedList(values)}))`;
+};
+
+/**
+ * check body for the look held at `at` in `doc` (no keys: the document itself): its shade and
+ * corner from their closed sets and its brand colour a lowercase `#rrggbb`, each where present.
+ *
+ * the colour is the one free value on a donor page's stylesheet, so anything but six hex digits —
+ * a colour name, `#fa0`, a trailing `;` — is refused here as well as at the parse.
+ */
+const lookFields = (doc: SQLiteColumn, at: readonly string[]) => {
+	const colour = sql`json_extract(${doc}, ${jsonPath(...at, LOOK_KEYS.brandColour)})`;
+	return sql`${jsonKeyIn(doc, jsonPath(...at, LOOK_KEYS.shade), SHADES)} and ${jsonKeyIn(doc, jsonPath(...at, LOOK_KEYS.corner), CORNERS)} and (${colour} is null or ${colour} glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]')`;
+};
+
+/** check body for a column holding a look: a JSON object, with `lookFields`. */
+const lookCheck = (doc: SQLiteColumn) => sql`${jsonObject(doc)} and ${lookFields(doc, [])}`;
+
+/**
+ * the organisation as its donor pages present it — its story (mission and an optional vision),
+ * its look (brand colour, shade, corner) and its sharing (share channels in their order, a default
+ * share message, its social links).
+ *
+ * not `org_profile`, which is the legal identity a receipt carries and the console's to edit. this
+ * row is the dashboard's organisation page, and every page reads it when drawn, so a save reaches
+ * every page that uses the organisation's story, look or sharing at once.
+ *
+ * one row, ever — `org_presentation_id_check`, as on `org_profile` — and none is seeded: absent,
+ * each part reads as our defaults. the first save of any part writes the row, the other two at
+ * `{}`, which also reads as the defaults key by key.
+ *
+ * each part is saved on its own and keeps the version it replaced in its `_previous` column, so
+ * undo is one statement per part — `set look = look_previous, look_previous = look`, which sqlite
+ * evaluates against the row as it stood — and a `_previous` that is null has nothing to undo.
+ *
+ * `story` holds the mission and vision as structured rich-text documents, never HTML. `look` is
+ * checked by `lookCheck` in both of its columns, since undo writes the previous look back unread.
+ * `story` and `sharing` are asserted to be objects and nothing more.
+ */
+export const orgPresentation = sqliteTable(
+	'org_presentation',
+	{
+		// the singleton key, as `org_profile.id` is.
+		id: text('id').primaryKey(),
+		story: text('story').notNull().default('{}'),
+		look: text('look').notNull().default('{}'),
+		sharing: text('sharing').notNull().default('{}'),
+		storyPrevious: text('story_previous'),
+		lookPrevious: text('look_previous'),
+		sharingPrevious: text('sharing_previous'),
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check('org_presentation_id_check', sql`${t.id} = 'default'`),
+		check('org_presentation_story_object_check', jsonObject(t.story)),
+		check('org_presentation_look_check', lookCheck(t.look)),
+		check('org_presentation_sharing_object_check', jsonObject(t.sharing)),
+		check(
+			'org_presentation_story_previous_object_check',
+			sql`${t.storyPrevious} is null or (${jsonObject(t.storyPrevious)})`
+		),
+		check(
+			'org_presentation_look_previous_check',
+			sql`${t.lookPrevious} is null or (${lookCheck(t.lookPrevious)})`
+		),
+		check(
+			'org_presentation_sharing_previous_object_check',
+			sql`${t.sharingPrevious} is null or (${jsonObject(t.sharingPrevious)})`
+		)
+	]
+);
+
+export const PAGE_TYPES = ['donation_page', 'campaign'] as const;
+export type PageType = (typeof PAGE_TYPES)[number];
+
+/**
+ * `never_published` until a campaign's first publish; `live` while it answers at its address;
+ * `ended` once it has been taken down. a campaign goes back from `ended` to `live` by publishing
+ * again, and never back to `never_published`.
+ */
+export const PAGE_STATES = ['never_published', 'live', 'ended'] as const;
+export type PageState = (typeof PAGE_STATES)[number];
+
+/** check body: a page document carries neither of a campaign's two keys, a goal and an end date. */
+const noCampaignSettings = (doc: SQLiteColumn) =>
+	sql`json_extract(${doc}, ${jsonPath(PAGE_KEYS.goalMinor)}) is null and json_extract(${doc}, ${jsonPath(PAGE_KEYS.endsAt)}) is null`;
+
+/**
+ * check body for a page document's own look: absent or null, meaning the organisation's, or an
+ * object `lookFields` accepts. a null document extracts null and passes.
+ */
+const pageLookCheck = (doc: SQLiteColumn) => {
+	const look = jsonPath(PAGE_KEYS.look);
+	return sql`json_extract(${doc}, ${look}) is null or (json_type(${doc}, ${look}) = 'object' and ${lookFields(doc, [PAGE_KEYS.look])})`;
+};
+
+/**
+ * a donor page served on this deployment's own address: the donation page at `/donate`, or a
+ * campaign at `/<slug>`. there is no third kind.
+ *
+ * **a page owns one `form` row** — `form_id`, unique, so no two pages share one — and that row is
+ * its live donation settings, the same shape an embedded form has. the donation box, the served
+ * config and the books read it unchanged, and a gift through a page names it in `donation.form_id`
+ * exactly as a gift through a form does. "page-owned" is this reference and nothing else: no flag
+ * on `form` says it, so a `form` row is page-owned exactly when a page names it.
+ *
+ * **three documents, in the page format.** `draft` is what the editor changes; `published` is what
+ * donors are served, present exactly once the page has been live; `last_published` is the page
+ * `published` replaced, kept for undo. the page's own look, its share message, its two switches
+ * ("Open on monthly", "Dedication on by default"), a campaign's goal and end date, and its
+ * donation settings are keys inside those documents and never columns — so nothing is live that
+ * publish did not put there, and a draft's donation settings reach the owned row, and so what
+ * donors are charged, only when publish writes them in the same `batch()` as `published`. a
+ * published document keeps the settings it went live with, so undo puts those back on the owned
+ * row alongside the page.
+ *
+ * the database reads three of those keys, named in ../../page/keys.ts: `goalMinor` and `endsAt` are
+ * refused on the donation page (`page_campaign_only_settings_check`), and `look`, where present, is
+ * held to the closed sets the organisation's look is (`page_<document>_look_check`), each in all
+ * three documents. the header over this section says what reading a key pins.
+ *
+ * **one donation page**, held by `page_one_donation_page_idx` rather than by any read. no row is
+ * seeded, for the reason `form` gives; the app makes the donation page on first need, and two
+ * first needs at once are settled by that index: the losing `batch()` fails whole, its owned
+ * `form` insert with it, and the loser then reads the winner's row. the donation page is always
+ * `live`, and has no name (screens call it "Donation page"), no slug, no goal and no end date.
+ * `editor_visited_at` is its alone: when its editor was first opened, so the mission is asked for
+ * once.
+ *
+ * **a campaign** is named, and holds a slug from creation, unique among the slugs held — a
+ * never-published campaign's included. an ended campaign keeps its slug until another campaign
+ * takes it, which sets the ended one's to null in the same write; it is the one campaign that may
+ * hold none. the slug's spelling, and the routes it may not shadow, are the parse's.
+ *
+ * **a page that has been live is never deleted**: a gift may point at its owned row. ending is
+ * `state`, and there is no `archived_at`. the one delete is a never-published campaign's, with its
+ * chat and its owned row, in ../pages/queries.ts, gated by ../pages/sole-deleter.spec.ts.
+ */
+export const page = sqliteTable(
+	'page',
+	{
+		id: id(),
+		type: text('type').$type<PageType>().notNull(),
+		/** a campaign's name, which its first slug is made from; null on the donation page. */
+		name: text('name'),
+		/** a campaign's address under the deployment's own origin; null on the donation page. */
+		slug: text('slug'),
+		state: text('state').$type<PageState>().notNull(),
+		/** no `ON DELETE` action — see the `ON DELETE` note over `program`. */
+		formId: text('form_id')
+			.notNull()
+			.references(() => form.id),
+		draft: text('draft').notNull(),
+		published: text('published'),
+		lastPublished: text('last_published'),
+		editorVisitedAt: at('editor_visited_at'),
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check('page_type_check', enumCheck(t.type, PAGE_TYPES)),
+		check('page_state_check', enumCheck(t.state, PAGE_STATES)),
+		// each rule keyed on a type is written as an implication, so an off-list type is refused by
+		// `page_type_check` alone and names it.
+		check(
+			'page_donation_page_live_check',
+			sql`${t.type} <> 'donation_page' or ${t.state} = 'live'`
+		),
+		check(
+			'page_name_check',
+			sql`(${t.type} <> 'donation_page' or ${t.name} is null) and (${t.type} <> 'campaign' or (${t.name} is not null and ${notBlank(t.name)}))`
+		),
+		check(
+			'page_slug_check',
+			sql`(${t.type} <> 'donation_page' or ${t.slug} is null) and (${t.type} <> 'campaign' or ${t.slug} is not null or ${t.state} = 'ended')`
+		),
+		check('page_published_check', sql`(${t.published} is null) = (${t.state} = 'never_published')`),
+		check(
+			'page_last_published_check',
+			sql`${t.lastPublished} is null or ${t.published} is not null`
+		),
+		// the three object checks come before the look and campaign-only checks, which call
+		// `json_extract` and would raise a malformed-JSON error of their own on a document these refuse.
+		check('page_draft_object_check', jsonObject(t.draft)),
+		check(
+			'page_published_object_check',
+			sql`${t.published} is null or (${jsonObject(t.published)})`
+		),
+		check(
+			'page_last_published_object_check',
+			sql`${t.lastPublished} is null or (${jsonObject(t.lastPublished)})`
+		),
+		check('page_draft_look_check', pageLookCheck(t.draft)),
+		check('page_published_look_check', pageLookCheck(t.published)),
+		check('page_last_published_look_check', pageLookCheck(t.lastPublished)),
+		check(
+			'page_campaign_only_settings_check',
+			sql`${t.type} <> 'donation_page' or (${noCampaignSettings(t.draft)} and ${noCampaignSettings(t.published)} and ${noCampaignSettings(t.lastPublished)})`
+		),
+		check(
+			'page_editor_visited_check',
+			sql`${t.editorVisitedAt} is null or ${t.type} = 'donation_page'`
+		),
+		uniqueIndex('page_form_id_idx').on(t.formId),
+		uniqueIndex('page_slug_idx').on(t.slug).where(sql`${t.slug} is not null`),
+		uniqueIndex('page_one_donation_page_idx').on(t.type).where(sql`${t.type} = 'donation_page'`)
+	]
+);
+
+export const CHAT_AUTHORS = ['operator', 'assistant'] as const;
+export type ChatAuthor = (typeof CHAT_AUTHORS)[number];
+
+/**
+ * one turn of a page's chat, in the order `seq` gives — unique per page, and the index that finds a
+ * page's turns. a turn is written once and never changed, so there is no `updated_at`.
+ *
+ * the chat is kept across publish and cleared for one page by one statement,
+ * `delete from chat_turn where page_id = ?`.
+ *
+ * `model` names what wrote an assistant turn, and an operator's turn has none. `image_ids` is the
+ * JSON array of the photos attached to the turn, by id; a turn's text may be blank only when a
+ * photo is what it carries.
+ *
+ * `page_id` is `NO ACTION`, like every domain key here (rule 2 at the top of this file): a cascade
+ * would fire during any rebuild of `page` and empty every chat. deleting a page deletes its turns
+ * first, in the same `batch()` — ../pages/queries.ts.
+ */
+export const chatTurn = sqliteTable(
+	'chat_turn',
+	{
+		id: id(),
+		pageId: text('page_id')
+			.notNull()
+			.references(() => page.id),
+		seq: integer('seq').notNull(),
+		author: text('author').$type<ChatAuthor>().notNull(),
+		text: text('text').notNull(),
+		model: text('model'),
+		imageIds: text('image_ids').notNull().default('[]'),
+		createdAt: createdAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check('chat_turn_author_check', enumCheck(t.author, CHAT_AUTHORS)),
+		check(
+			'chat_turn_model_check',
+			sql`(${t.model} is not null) = (${t.author} = 'assistant') and (${optionalNotBlank(t.model)})`
+		),
+		// before `chat_turn_text_check`, whose `json_array_length` would raise its own error on
+		// malformed JSON.
+		check('chat_turn_image_ids_array_check', jsonArray(t.imageIds)),
+		check('chat_turn_text_check', sql`${notBlank(t.text)} or json_array_length(${t.imageIds}) > 0`),
+		uniqueIndex('chat_turn_page_seq_idx').on(t.pageId, t.seq)
+	]
+);
+
 export type Contact = typeof contact.$inferSelect;
 export type NewContact = typeof contact.$inferInsert;
 export type Account = typeof account.$inferSelect;
@@ -2819,6 +3112,12 @@ export type ZapierSubscription = typeof zapierSubscription.$inferSelect;
 export type NewZapierSubscription = typeof zapierSubscription.$inferInsert;
 export type ZapierDelivery = typeof zapierDelivery.$inferSelect;
 export type NewZapierDelivery = typeof zapierDelivery.$inferInsert;
+export type OrgPresentation = typeof orgPresentation.$inferSelect;
+export type NewOrgPresentation = typeof orgPresentation.$inferInsert;
+export type Page = typeof page.$inferSelect;
+export type NewPage = typeof page.$inferInsert;
+export type ChatTurn = typeof chatTurn.$inferSelect;
+export type NewChatTurn = typeof chatTurn.$inferInsert;
 
 // tables better-auth owns, kept in their own file because their columns are dictated
 // by better-auth's core schema rather than by the domain. re-exported here — not
