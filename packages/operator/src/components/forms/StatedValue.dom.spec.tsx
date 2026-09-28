@@ -55,4 +55,17 @@ describe('a stated value mounted into a document', () => {
 		expect(value(reading)?.className).toBe('adm-stated__value adm-num');
 		expect(value(shown)?.className).toBe('adm-headline__value adm-num');
 	});
+
+	it('drops its block padding only when it is asked to stand flush', () => {
+		// the padding is the block's own spacing, and a run that spaces its items already has one.
+		const rest = render(StatedValue, { label: 'Currency', value: 'GBP' });
+		const flush = render(StatedValue, {
+			label: 'Your deployment address',
+			value: 'https://give.riverbanktrust.org',
+			flush: true
+		});
+
+		expect(rest.querySelector('.adm-stated')?.className).toBe('adm-stated');
+		expect(flush.querySelector('.adm-stated')?.className).toBe('adm-stated adm-stated--flush');
+	});
 });

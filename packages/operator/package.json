@@ -85,7 +85,8 @@
 		"./styles/base.css": "./src/styles/base.css",
 		"./styles/adm.css": "./src/styles/adm.css",
 		"./styles/fonts.css": "./src/styles/fonts.css",
-		"./styles/raw-values": "./src/styles/raw-values.ts"
+		"./styles/raw-values": "./src/styles/raw-values.ts",
+		"./brand/zapier.png": "./src/styles/brand/zapier.png"
 	},
 	"scripts": {
 		"check": "tsc --noEmit && tsc -p tsconfig.specs.json --noEmit",

@@ -3553,6 +3553,13 @@
 		padding-block: var(--admin-space-4);
 	}
 
+	/* a stated value standing as one item of a run that spaces its own items — a `.adm-grouped`
+	   group, whose gap is the step between them and which the block's own padding would be stacked
+	   on top of. worn through packages/operator/src/components/forms/StatedValue.jsx's `flush`. */
+	.adm-stated--flush {
+		padding-block: 0;
+	}
+
 	.adm-stated__label {
 		font-size: var(--admin-label-size);
 		font-weight: var(--admin-label-weight);

@@ -12,6 +12,8 @@
  *   changes under the reader's eye does not shift the ones beside it and a column of them lines up
  *   on the decimal. a value that is a word or a literal leaves it off: tabular figures inside prose
  *   set the digits wider than the letters around them.
+ * @property {boolean | undefined} [flush] no block padding, for a value standing as one item of a
+ *   run that spaces its own items — ../../styles/adm.css's `.adm-stated--flush` says which.
  *
  * @typedef {object} StatedFigure the reading rung, which is every value but the one figure a screen
  *   is read for.
@@ -36,9 +38,9 @@
    its own, so ../../styles/adm.css and ../../styles/base.css draw the differences and this part
    states none of them. */
 /** @param {StatedValueProps} props */
-export function StatedValue({ label, value, children, code, num, display }) {
+export function StatedValue({ label, value, children, code, num, display, flush }) {
 	return (
-		<div className="adm-stated">
+		<div className={flush ? 'adm-stated adm-stated--flush' : 'adm-stated'}>
 			{label ? <span className="adm-stated__label">{label}</span> : null}
 			{/* the display rung stands in the reading rung's place rather than over it: one class or
 			    the other, so neither rule has to outrank anything. the chip is the value's whole cell
