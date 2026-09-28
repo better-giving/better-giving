@@ -3,7 +3,7 @@ import {
 	rawLengthViolations,
 	stripComments
 } from '@better-giving/operator/styles/raw-values';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
@@ -40,6 +40,10 @@ import { PageRoot } from './page-root';
 // the operator sweeps in packages/operator/src/styles/raw-values.ts handed a copy of the sheet with
 // the token declarations blanked out. the container breakpoints the header names are the one literal
 // a condition may carry.
+//
+// the blocks: ./page-view.tsx and ./blocks/*.tsx write no raw colour or length into a style object,
+// and every class they write is one ./page.css draws, or the form's layout sheet for its `.vh`: a
+// class nothing draws paints nothing and fails nowhere else.
 //
 // contrast: the page's grounds and inks, worked out from the two sheets as written by
 // ./page-colour.testing.ts across a sweep of brand colours, for every palette, shade and ground.
@@ -329,6 +333,17 @@ describe('text on every ground clears 4.5:1 for every brand colour', () => {
 	});
 });
 
+describe('the focus ring on a strong ground', () => {
+	// a strong ground carries one ink, and a ring drawn on it is that ink (`--page-ring` in
+	// ./page.css); a ring is a boundary rather than text, so it is held to 3:1.
+	it.each(cases)(
+		'holds `--page-on-strong` at 3:1 on the strong ground on %s, %s',
+		(palette, shade) => {
+			expect(floor(palette, shade, 'strong', '--page-on-strong')).toBeGreaterThanOrEqual(3);
+		}
+	);
+});
+
 describe('the primary as ink', () => {
 	// a link and a tier's amount are drawn in it on the page ground and on a soft one.
 	it.each(cases)(
@@ -363,5 +378,37 @@ describe('the scrim under the cover title', () => {
 		const ground = overWhite(colour(`oklch(${stop[1]})`), Number(stop[2]));
 		const ink = resolve(scopeFor('plain', 'light', 'none', null), '--_n1');
 		expect(contrast(ink, ground)).toBeGreaterThanOrEqual(4.5);
+	});
+});
+
+describe('the blocks ./page.css draws', () => {
+	const here = relative(process.cwd(), import.meta.dirname);
+	const components = [
+		join(here, 'page-view.tsx'),
+		...globSync(join(here, 'blocks/*.tsx')).filter((file) => !file.includes('.spec.'))
+	];
+	const FORM_LAYOUT = require.resolve('@better-giving/form/styles/layout.css');
+	const drawn = new Set(
+		[pageText, readFileSync(FORM_LAYOUT, 'utf8')].flatMap((css) =>
+			[...stripComments(css).matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1] ?? '')
+		)
+	);
+
+	it('finds the components it is meant to be guarding', () => {
+		expect(components.length).toBeGreaterThan(8);
+	});
+
+	it('writes no colour and no length into a style object', () => {
+		expect([...rawColourViolations(components), ...rawLengthViolations(components)]).toEqual([]);
+	});
+
+	it('writes only classes a sheet draws', () => {
+		const written = components.flatMap((file) =>
+			[...readFileSync(file, 'utf8').matchAll(/className="([^"]+)"/g)].flatMap((m) =>
+				(m[1] ?? '').split(/\s+/).map((name) => `${relative(here, file)} .${name}`)
+			)
+		);
+		expect(written.length).toBeGreaterThan(0);
+		expect(written.filter((entry) => !drawn.has(entry.slice(entry.indexOf(' .') + 2)))).toEqual([]);
 	});
 });

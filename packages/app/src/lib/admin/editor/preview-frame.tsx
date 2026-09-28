@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { BLOCK_MESSAGE, type BlockMessage } from '../../page/preview-message';
 
 // the page's draft, framed across the whole editor.
 //
@@ -11,11 +12,6 @@ import { useEffect, useRef } from 'react';
 // the frame itself is out of the tab order: the keyboard's way to a block is the Settings sheet's
 // block list (./settings-sheet.tsx), and a tab stop on a document nothing inside can be operated in
 // is one the reader has to walk past on every lap.
-
-/** what the preview posts when a block is clicked. */
-export const BLOCK_MESSAGE = 'bg-page-block';
-
-type BlockMessage = { readonly type: typeof BLOCK_MESSAGE; readonly id: string };
 
 function isBlockMessage(data: unknown): data is BlockMessage {
 	if (typeof data !== 'object' || data === null) return false;
