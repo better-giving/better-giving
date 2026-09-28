@@ -347,6 +347,11 @@ describe('what a page carries beside its blocks', () => {
 		expect(parsePage('campaign', page([box], { look }))).toMatchObject({ ok: false, path });
 	});
 
+	it('accepts a look of the page’s own with no brand colour, as the Organisation’s may be', () => {
+		const input = page([box], { look: { shade: 'cool', corner: 'square', brandColour: null } });
+		expect(parsePage('campaign', input)).toEqual({ ok: true, page: input });
+	});
+
 	it('refuses a share message over its length', () => {
 		const shareMessage = 'x'.repeat(SHARE_MESSAGE_MAX + 1);
 		expect(parsePage('campaign', page([box], { shareMessage }))).toEqual({
