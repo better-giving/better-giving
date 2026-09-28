@@ -46,8 +46,9 @@ import {
 // every route is in one of three categories, and a name that no longer matches a file fails too,
 // so a list cannot rot into permission for a route that was moved or deleted.
 //
-// the three, and the third is not a kind of public. a route is under the protected layout, in
-// which case the gate redirects an anonymous caller to the login; or it is on PUBLIC_ROUTE_FILES
+// the three, and the third is not a kind of public. a route is under the protected layout, or is
+// the preview that mounts the same gate itself, in which case the gate redirects an anonymous
+// caller to the login; or it is on PUBLIC_ROUTE_FILES
 // below, which is a decision somebody typed next to the reason; or it is on the console surface,
 // which is neither. `/console` is checked by a credential rather than by a session
 // ($lib/server/console/access.ts), so it may not sit under the layout, where the gate would answer
@@ -127,7 +128,8 @@ const DONOR_PAGE = 'routes/donate.tsx';
 const CAMPAIGN_PAGE = 'routes/$slug.tsx';
 
 /**
- * the donor's pages, which are the screens outside the layout that wear no operator stylesheet.
+ * the donor's pages, which with the preview below are the screens outside the layout that wear no
+ * operator stylesheet.
  *
  * each draws the donation form's own card and links the form's four sheets in its own `links`, and
  * those four are unlayered while every operator declaration is layered (src/app.css) — so a
@@ -136,6 +138,14 @@ const CAMPAIGN_PAGE = 'routes/$slug.tsx';
  * carrying the operator sheet without holding these to it.
  */
 const DONOR_PAGES: readonly string[] = [DONOR_PAGE, CAMPAIGN_PAGE];
+
+/**
+ * the editor's preview of a page, the one route outside the protected layout that is behind the
+ * login: it mounts the layout's own gate itself, because the layout's frame would be drawn around a
+ * page that has to look as a donor sees it. the file's own header argues it; the cases below hold
+ * it to mounting the gate, and to the donor page's sheets rather than the operator's.
+ */
+const PREVIEW_PAGE = 'routes/preview.$pageId.tsx';
 
 /**
  * every route file that is deliberately served to anonymous callers.
@@ -354,6 +364,7 @@ function ungatedRoutes(manifest: readonly RouteRecord[], allowed: readonly strin
 		.filter(
 			(route) =>
 				!under(route, PROTECTED_LAYOUT) &&
+				route.file !== PREVIEW_PAGE &&
 				!allowed.includes(route.file) &&
 				!consoleRoute(route) &&
 				!zapierRoute(route)
@@ -667,6 +678,7 @@ describe('the route surface', () => {
 		{ address: '/reset', file: 'routes/reset.tsx' },
 		{ address: '/admin', file: 'routes/_app.admin._index.tsx' },
 		{ address: '/donate', file: DONOR_PAGE },
+		{ address: '/preview/0198c1d2-0000-7000-8000-000000000001', file: PREVIEW_PAGE },
 		{ address: API_BASE_PATH, file: API_LAYOUT },
 		{ address: CONSOLE_BASE_PATH, file: CONSOLE_LAYOUT }
 	])('keeps $address on $file', async ({ address, file }) => {
@@ -742,7 +754,17 @@ describe('where middleware is mounted', () => {
 			.filter((r) => exportsMiddleware(readFromDisk(r.file) ?? ''))
 			.map((r) => r.file)
 			.sort();
-		expect(mounted).toEqual([API_LAYOUT, CONSOLE_LAYOUT, PROTECTED_LAYOUT, ZAPIER_LAYOUT].sort());
+		expect(mounted).toEqual(
+			[API_LAYOUT, CONSOLE_LAYOUT, PROTECTED_LAYOUT, ZAPIER_LAYOUT, PREVIEW_PAGE].sort()
+		);
+	});
+
+	// the preview is the one exception above, and what it mounts is the layout's own gate and
+	// nothing else — a gate of its own would be a second one to keep true.
+	it('is the session gate alone on the preview, as on the protected layout', () => {
+		const gate = /export const middleware: Route\.MiddlewareFunction\[\] = \[staffGate\];/;
+		expect(readFromDisk(PROTECTED_LAYOUT) ?? '').toMatch(gate);
+		expect(readFromDisk(PREVIEW_PAGE) ?? '').toMatch(gate);
 	});
 
 	it('is never the root route, which every request passes through', () => {
@@ -838,22 +860,25 @@ describe('the stylesheet a screen outside the layout carries', () => {
 	});
 
 	/**
-	 * and the donor's pages carry none of it, which the sweep above cannot say for them.
-	 *
-	 * they are excluded from that sweep by name, so a line adding the operator sheet to one would
-	 * pass everything else in this file — and what that produces is not an exception on one screen:
-	 * the operator reset zeroes `border` on `*` and `background` on every control, from a layer the
+	 * and the donor's pages and the preview carry none of it, which the sweep above cannot say for
+	 * them: the donor's pages are excluded from it by name, and it passes the preview's `links`, the
+	 * donor sheets. so a line adding the operator sheet to one would pass everything else in this
+	 * file — and what that produces is not an exception on one screen: the operator reset zeroes
+	 * `border` on `*` and `background` on every control, from a layer the
 	 * form's own unlayered rules then outrank back. src/app.css argues both directions.
 	 *
 	 * the import rather than the name, because ./routes/donate.tsx's header names the helper to say
 	 * it does not use it.
 	 */
-	it.each(DONOR_PAGES)('imports neither the helper nor the sheet on %s', (file) => {
-		const source = readFromDisk(file) ?? '';
-		expect(source).not.toBe('');
-		expect(source).not.toMatch(/from '\$lib\/admin\/operator-links'/);
-		expect(source).not.toMatch(/from '[^']*app\.css/);
-	});
+	it.each([...DONOR_PAGES, PREVIEW_PAGE])(
+		'imports neither the helper nor the sheet on %s',
+		(file) => {
+			const source = readFromDisk(file) ?? '';
+			expect(source).not.toBe('');
+			expect(source).not.toMatch(/from '\$lib\/admin\/operator-links'/);
+			expect(source).not.toMatch(/from '[^']*app\.css/);
+		}
+	);
 
 	it('is carried by every screen this app serves outside the layout', () => {
 		expect(routes.length).toBeGreaterThan(0);
@@ -952,7 +977,10 @@ describe('the session the gate resolved', () => {
 
 	it('is resolved once, by the gate, and not again by a route beneath it', () => {
 		const offenders = routes
-			.filter((r) => r.file !== PROTECTED_LAYOUT && under(r, PROTECTED_LAYOUT))
+			.filter(
+				(r) =>
+					(r.file !== PROTECTED_LAYOUT && under(r, PROTECTED_LAYOUT)) || r.file === PREVIEW_PAGE
+			)
 			.filter((r) => resolvesItsOwnSession(readFromDisk(r.file) ?? ''))
 			.map((r) => r.file);
 		expect(

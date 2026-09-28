@@ -1,4 +1,5 @@
 import { createExecutionContext, env } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createStaticHandler, type LoaderFunction } from 'react-router';
@@ -12,11 +13,16 @@ import { edgeCache } from '$lib/server/edge-cache.testing';
 import { parseFormInput } from '$lib/server/forms/form-input';
 import { ownedFormInsert } from '$lib/server/forms/queries';
 import { expectRecordedAsAForm } from '$lib/server/pages/owned-settings-gift.testing';
+import { endCampaign } from '$lib/server/pages/queries';
 import { gift } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { requestContext } from '../request-context';
+import { mountRoutes } from '../route-request.testing';
 import type { Route } from './+types/$slug';
 import * as campaignPage from './$slug';
+import * as surface from './api.v1';
+import * as servedConfig from './api.v1.forms.$id.config';
+import * as gifts from './api.v1.forms.$id.donations';
 
 // a campaign at its own address, against the real D1 the pool binds.
 //
@@ -72,7 +78,7 @@ const stripeEnv = new Proxy(env, {
 type Campaign = {
 	readonly name?: string;
 	readonly slug?: string | null;
-	readonly state?: 'never_published' | 'live' | 'ended';
+	readonly state?: 'never_published' | 'live';
 	readonly published?: unknown;
 };
 
@@ -219,6 +225,117 @@ describe('a published campaign the read rule refuses', () => {
 	});
 });
 
+/** a campaign published and then ended, as End and the end date leave it; its owned form's id. */
+async function endedCampaign(): Promise<string> {
+	const formId = await campaign();
+	const [row] = await db.select({ id: page.id }).from(page).where(eq(page.formId, formId));
+	if (!row || !(await endCampaign(db, row.id))) throw new Error('the fixture campaign did not end');
+	return formId;
+}
+
+/** the element whose opening tag carries `attribute`, to its closing tag. */
+function element(html: string, tag: string, attribute: string): string {
+	const found = new RegExp(`<${tag}[^>]*${attribute}[^>]*>[\\s\\S]*?</${tag}>`).exec(html);
+	return found?.[0] ?? '';
+}
+
+describe('an ended campaign at its address', () => {
+	it('says it has ended and sends the donor on to /donate, with nothing to give through', async () => {
+		await endedCampaign();
+
+		const answered = await visit();
+		expect(answered.status).toBe(200);
+		expect(answered.headers.get('cache-control')).toBe('no-store');
+		const html = markup(answered.data);
+		expect(element(html, 'h1', '')).toContain('Winter coat drive has ended');
+		const link = element(html, 'a', 'href="/donate"');
+		expect(link).toContain('part="action"');
+		expect(link).toContain('Donate to Hope Foundation');
+		expect(html).toMatch(/^<div[^>]*data-donate-root/);
+		expect(html).not.toContain('data-block=');
+		expect(html).not.toContain('$25');
+	});
+
+	it('says in the tab that it has ended', async () => {
+		await endedCampaign();
+		const answered = await visit();
+		expect(campaignPage.meta({ loaderData: answered.data } as unknown as Route.MetaArgs)).toEqual([
+			{ title: 'Winter coat drive has ended' }
+		]);
+	});
+
+	it('refuses a new gift against its settings row as an unpublished form refuses one', async () => {
+		const ended = await endedCampaign();
+		const settings = parseFormInput({ ...NEW_FORM, name: 'embedded appeal', status: 'draft' });
+		if (!settings.ok) throw new Error('the fixture draft form did not parse');
+		const draft = ownedFormInsert(db, settings.value);
+		await draft.statement;
+
+		const answers = await giftAnswers(ended);
+		expect(answers).toEqual({
+			config: { status: 409, error: 'form_not_published' },
+			gift: { status: 409, error: 'form_not_published' }
+		});
+		expect(answers).toEqual(await giftAnswers(draft.id));
+	});
+});
+
+/** the served config endpoint and the gift endpoint, each under the api surface's layout. */
+const configRoute = mountRoutes([
+	{ path: 'api/v1', module: surface },
+	{ path: 'forms/:id/config', module: servedConfig }
+]);
+const giftRoute = mountRoutes([
+	{ path: 'api/v1', module: surface },
+	{ path: 'forms/:id/donations', module: gifts }
+]);
+
+/** a caller of its own for each request, so the surface's meter never answers for the form. */
+let callers = 0;
+function nextCaller(): string {
+	callers += 1;
+	return `2001:db8::59:${callers}`;
+}
+
+/** what the card on a donor page here is answered for `formId`: its config, then a gift. */
+async function giftAnswers(formId: string) {
+	const headers = () =>
+		new Headers({
+			origin: OWN,
+			accept: 'application/json',
+			'content-type': 'application/json',
+			'cf-connecting-ip': nextCaller()
+		});
+	const config = await configRoute(
+		new Request(`${OWN}/api/v1/forms/${formId}/config`, { headers: headers() }),
+		{ env: stripeEnv }
+	);
+	const gift = await giftRoute(
+		new Request(`${OWN}/api/v1/forms/${formId}/donations`, {
+			method: 'POST',
+			headers: headers(),
+			body: JSON.stringify({
+				formId,
+				amountMinor: 5_000,
+				frequency: 'one_time',
+				method: 'card',
+				coversFee: false,
+				email: 'ada@example.org',
+				firstName: 'Ada',
+				lastName: 'Okafor',
+				consentedToContact: false,
+				turnstileToken: 'tok'
+			})
+		}),
+		{ env: stripeEnv }
+	);
+	const code = async (response: Response) => ((await response.json()) as { error?: string }).error;
+	return {
+		config: { status: config.status, error: await code(config) },
+		gift: { status: gift.status, error: await code(gift) }
+	};
+}
+
 describe('an address no published campaign answers', () => {
 	/** the refusal every one of these draws: a 404 nothing keeps, naming nobody. */
 	function expectRefused(answered: Awaited<ReturnType<typeof visit>>): void {
@@ -233,11 +350,6 @@ describe('an address no published campaign answers', () => {
 
 	it('refuses a campaign never published', async () => {
 		await campaign({ state: 'never_published' });
-		expectRefused(await visit());
-	});
-
-	it('refuses a campaign that has ended', async () => {
-		await campaign({ state: 'ended' });
 		expectRefused(await visit());
 	});
 

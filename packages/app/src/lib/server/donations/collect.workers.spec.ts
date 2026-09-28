@@ -4,7 +4,15 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { POSTING_ACCOUNTS } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import type { PostableAccountId } from '../db/postable';
-import { donation, entryGroup, ledgerEntry, lineItem, payment, recurringPlan } from '../db/schema';
+import {
+	donation,
+	entryGroup,
+	ledgerEntry,
+	lineItem,
+	page,
+	payment,
+	recurringPlan
+} from '../db/schema';
 import type { EmailMessage, EmailProvider } from '../email/provider';
 import {
 	DONATION_METADATA_KEY,
@@ -19,6 +27,7 @@ import {
 	type RecurringGiftNotice,
 	type Settlement
 } from '../payments/provider';
+import { endCampaign } from '../pages/queries';
 import { stopRecurringPlan } from '../recurring/queries';
 import type { SettleDeps, SettleOutcome } from './delivery';
 import { recordAuthorizedGift, type AuthorizedGiftInput } from './record';
@@ -76,6 +85,7 @@ beforeEach(async () => {
 		'donation',
 		'recurring_plan',
 		'contact',
+		'page',
 		'form',
 		'program',
 		'org_profile'
@@ -510,6 +520,40 @@ describe('settleDelivery() — a later collection under a commitment already ope
 			.where(eq(payment.providerTxnId, 'pi_collect_2'));
 		const charge = await groupLines('payment', later!.id);
 		expect(charge?.lines.some((l) => l.accountId === moved!.id)).toBe(true);
+	});
+
+	it('keeps collecting after the campaign whose settings row it began on has ended', async () => {
+		const [campaign] = await db
+			.insert(page)
+			.values({
+				type: 'campaign',
+				name: 'Winter coat drive',
+				slug: 'winter-coat-drive',
+				state: 'live',
+				formId: FORM_ID,
+				draft: '{}',
+				published: '{}'
+			})
+			.returning({ id: page.id });
+		expect(await endCampaign(db, campaign!.id)).toBe(true);
+
+		const result = await settleDelivery(
+			deps({
+				provider: provider({
+					verify: { ok: true, value: secondCollection.event },
+					gift: { ok: true, value: secondCollection.notice },
+					settled: { ok: true, value: secondCollection.settlement }
+				})
+			}),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		const [later] = await db
+			.select()
+			.from(payment)
+			.where(eq(payment.providerTxnId, 'pi_collect_2'));
+		expect(later?.status).toBe('succeeded');
 	});
 });
 
