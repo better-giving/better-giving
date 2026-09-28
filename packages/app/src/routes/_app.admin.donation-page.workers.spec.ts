@@ -213,6 +213,135 @@ describe('the mission ask', () => {
 	});
 });
 
+describe('Publish, Undo and Discard changes', () => {
+	async function press(which: string, version: number) {
+		const body = new FormData();
+		body.set(WHICH_FORM, which);
+		body.set(RECORD_VERSION, String(version));
+		return request(
+			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
+			{ env }
+		);
+	}
+
+	/** the Donation page's draft with a share message of its own, as a write leaves it. */
+	async function changeDraft(message: string) {
+		const made = await donationPage();
+		if (made === null) throw new Error('the editor made no Donation page');
+		await db
+			.update(page)
+			.set({
+				draft: JSON.stringify({ ...JSON.parse(made.draft), shareMessage: message }),
+				updatedAt: new Date(made.updatedAt.getTime() + 1_000)
+			})
+			.where(eq(page.id, made.id));
+	}
+
+	/** the message a refused press is answered with. */
+	async function refusal(response: Response): Promise<unknown> {
+		const answer = (await response.json()) as {
+			form?: { result?: { error?: Record<string, string[]> } };
+		};
+		return answer.form?.result?.error?.[''];
+	}
+
+	it('publishes with no confirm, as a republish Undo can take back', async () => {
+		await open();
+		await changeDraft('Keep Elm Street warm.');
+
+		const response = await press('page-publish', (await open()).version);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ published: true, undoable: true });
+		expect((await open()).state).toBe('live');
+	});
+
+	it('undoes the republish, leaving the draft as it was published', async () => {
+		await open();
+		await changeDraft('Keep Elm Street warm.');
+		await press('page-publish', (await open()).version);
+
+		const response = await press('page-undo', (await open()).version);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ undone: true });
+		expect((await open()).state).toBe('changed');
+	});
+
+	it('refuses Undo where no Publish has replaced anything, saying so', async () => {
+		const response = await press('page-undo', (await open()).version);
+
+		expect(response.status).toBe(409);
+		expect(await refusal(response)).toEqual([
+			'Nothing was undone: no earlier version of this page was published.'
+		]);
+	});
+
+	it('refuses a Publish of a draft the page rule refuses, naming why', async () => {
+		await open();
+		const made = await donationPage();
+		if (made === null) throw new Error('the editor made no Donation page');
+		const draft = JSON.parse(made.draft) as { blocks: { type: string }[] };
+		await db
+			.update(page)
+			.set({
+				draft: JSON.stringify({
+					...draft,
+					blocks: draft.blocks.filter((block) => block.type !== 'donation-box')
+				})
+			})
+			.where(eq(page.id, made.id));
+		const written = await donationPage();
+
+		const response = await press('page-publish', written?.updatedAt.getTime() ?? 0);
+
+		expect(response.status).toBe(422);
+		expect(await refusal(response)).toEqual([
+			'Nothing was published: a page holds exactly one donation box, and this one holds none.'
+		]);
+		expect((await donationPage())?.published).toBe(made.published);
+	});
+
+	it('takes no “Gifts go to”, which is a campaign’s first Publish alone', async () => {
+		const body = new FormData();
+		body.set(WHICH_FORM, 'page-first-publish');
+		body.set(RECORD_VERSION, String((await open()).version));
+		body.set('gifts_go_to', 'none');
+
+		const response = await request(
+			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
+			{ env }
+		);
+
+		expect(response.status).toBe(400);
+		expect(await response.text()).toContain('names no form on this screen');
+	});
+
+	it('discards changes: the draft is the live page again', async () => {
+		await open();
+		await changeDraft('Keep Elm Street warm.');
+
+		const response = await press('page-discard', (await open()).version);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ discarded: true });
+		expect((await open()).state).toBe('live');
+	});
+
+	it('refuses a press drawn before the page last moved, and nothing changes', async () => {
+		const { version } = await open();
+		await changeDraft('Keep Elm Street warm.');
+
+		const response = await press('page-publish', version);
+
+		expect(response.status).toBe(409);
+		expect(await refusal(response)).toEqual([
+			'Nothing was changed: this page has been saved since the editor was opened. Reload it, then try again.'
+		]);
+		expect((await open()).state).toBe('changed');
+	});
+});
+
 describe('a block’s sheet', () => {
 	it('writes a variant picked to the draft, drawn on the next load, and the live page stays', async () => {
 		const { version } = await open();

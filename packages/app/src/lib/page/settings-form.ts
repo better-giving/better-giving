@@ -1,3 +1,5 @@
+import type { ProgramMode } from '../forms/program-modes';
+
 // the editor's Donation settings sheet as it posts: one form for the program and what a donor may
 // give, stated as `PAGE_SETTINGS_INPUT` (../forms/input-schema.ts) under this id where it is
 // mounted ($lib/admin/editor/donation-settings.tsx) and where it is read
@@ -11,7 +13,7 @@ type ProgramOption = { readonly value: string; readonly label: string };
 export type SettingsSeed = {
 	/** the boxes as a form's program and giving groups hold them. */
 	readonly boxes: {
-		readonly program_mode: string;
+		readonly program_mode: ProgramMode;
 		readonly program_id: string;
 		readonly min_minor: string;
 		readonly max_minor: string;

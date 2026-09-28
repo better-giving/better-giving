@@ -3,23 +3,28 @@ import { eq } from 'drizzle-orm';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createStaticHandler, type LoaderFunction } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NO_FORM } from '$lib/donate/copy';
+import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { NEW_FORM } from '$lib/forms/new-form';
 import { defaultCampaign } from '$lib/page/defaults';
 import { createDb } from '$lib/server/db/client';
-import { page } from '$lib/server/db/schema';
+import { page, program } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { parseFormInput } from '$lib/server/forms/form-input';
 import { ownedFormInsert } from '$lib/server/forms/queries';
+import { createCampaign } from '$lib/server/pages/campaign';
 import { expectRecordedAsAForm } from '$lib/server/pages/owned-settings-gift.testing';
 import { endCampaign } from '$lib/server/pages/queries';
 import { gift } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
+import { ORIGIN, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
 import { mountRoutes } from '../route-request.testing';
 import type { Route } from './+types/$slug';
 import * as campaignPage from './$slug';
+import * as layout from './_app';
+import * as editor from './_app.admin.campaigns.$pageId';
 import * as surface from './api.v1';
 import * as servedConfig from './api.v1.forms.$id.config';
 import * as gifts from './api.v1.forms.$id.donations';
@@ -384,4 +389,86 @@ describe('an address no campaign could hold', () => {
 			expect(answered.data).toEqual({ kind: 'refused' });
 		}
 	);
+});
+
+describe('a campaign after its editor’s Publish', () => {
+	const editorRoute = mountRoutes([
+		{ path: undefined, module: layout },
+		{ path: 'admin/campaigns/:pageId', module: editor }
+	]);
+	let session: string;
+
+	beforeAll(async () => {
+		session = await signIn(db);
+	});
+
+	beforeEach(async () => {
+		await env.DB.batch([
+			env.DB.prepare('delete from chat_turn'),
+			env.DB.prepare('delete from page'),
+			env.DB.prepare('delete from form'),
+			env.DB.prepare('delete from program')
+		]);
+	});
+
+	/** a press on the campaign's editor, drawn at the version the page holds now. */
+	async function press(pageId: string, which: string, fields: Record<string, string> = {}) {
+		const [row] = await db.select().from(page).where(eq(page.id, pageId));
+		if (!row) throw new Error(`no page ${pageId} to press on`);
+		const body = new FormData();
+		body.set(WHICH_FORM, which);
+		body.set(RECORD_VERSION, String(row.updatedAt.getTime()));
+		for (const [name, value] of Object.entries(fields)) body.set(name, value);
+		const response = await editorRoute(
+			new Request(`${ORIGIN}/admin/campaigns/${pageId}`, {
+				method: 'POST',
+				headers: { cookie: session },
+				body
+			}),
+			{ env }
+		);
+		expect(response.status).toBe(200);
+	}
+
+	/** New campaign's create, with no line for the chat. */
+	const create = (title: string) =>
+		createCampaign(db, env, { title, line: '', timeZone: 'America/New_York', now: Date.now() });
+
+	it('publishes a new campaign from “Winter coat drive” at /winter-coat-drive, gifts going to the program chosen', async () => {
+		const [coats] = await db
+			.insert(program)
+			.values({ name: 'Winter coats' })
+			.returning({ id: program.id });
+		const { pageId } = await create('Winter coat drive');
+		expect((await visit()).status).toBe(404);
+
+		await press(pageId, 'page-first-publish', { gifts_go_to: coats?.id ?? '' });
+
+		const answered = await visit('/winter-coat-drive');
+		expect(answered.status).toBe(200);
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.config.program).toEqual({ mode: 'pinned', name: 'Winter coats' });
+		expect(block(markup(answered.data), 'title')).toContain('Winter coat drive');
+	});
+
+	it('brings an ended campaign back at the next free address when its own was taken', async () => {
+		const { pageId: ended } = await create('Winter coat drive');
+		await press(ended, 'page-first-publish', { gifts_go_to: 'none' });
+		if (!(await endCampaign(db, ended))) throw new Error('the fixture campaign did not end');
+		const { pageId: taker } = await create('Coats for kids');
+		await press(taker, 'campaign-address', { slug: 'winter-coat-drive', takeover: 'on' });
+		await press(taker, 'page-first-publish', { gifts_go_to: 'none' });
+
+		await press(ended, 'page-publish');
+
+		const back = await visit('/winter-coat-drive-2');
+		expect(back.status).toBe(200);
+		if (back.data.kind !== 'page') throw new Error(`drew ${back.data.kind}`);
+		expect(block(markup(back.data), 'title')).toContain('Winter coat drive');
+		const [row] = await db.select().from(page).where(eq(page.id, ended));
+		expect(back.data.view.config.formId).toBe(row?.formId);
+		const held = await visit('/winter-coat-drive');
+		if (held.data.kind !== 'page') throw new Error(`drew ${held.data.kind}`);
+		expect(block(markup(held.data), 'title')).toContain('Coats for kids');
+	});
 });

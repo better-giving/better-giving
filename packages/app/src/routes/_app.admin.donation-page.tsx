@@ -9,6 +9,7 @@ import { EditorEntries, EditorShell } from '$lib/admin/editor/editor-shell';
 import { PageLookSettings, ShareMessageSettingsSheet } from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
+import { usePublishPresses } from '$lib/admin/editor/publish-wiring';
 import { SettingsSheet } from '$lib/admin/editor/settings-sheet';
 import { screenTitle } from '$lib/admin/screen-title';
 import { resultFor } from '$lib/admin/use-admin-form';
@@ -22,6 +23,12 @@ import {
 	PAGE_SHARE_FORM_ID,
 	type PageSettingsSeed
 } from '$lib/page/page-settings-form';
+import {
+	DISCARD_FORM_ID,
+	PUBLISH_FORM_ID,
+	PUBLISH_FORMS,
+	UNDO_FORM_ID
+} from '$lib/page/publish-form';
 import { PAGE_SETTINGS_FORM_ID, type SettingsSeed } from '$lib/page/settings-form';
 import { parseRichText, textDocument } from '$lib/rich-text/document';
 import { invalid, parseForm, submittedDigest, submittedForm } from '$lib/server/conform';
@@ -32,6 +39,7 @@ import { readOrgStory, type StoryWrite, updateOrgStory } from '$lib/server/org/q
 import { editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
 import { ensureDonationPage, markDonationEditorVisited } from '$lib/server/pages/donation-page';
 import { editorPage, readEditorSettings, saveDraftSettings } from '$lib/server/pages/editor';
+import { answerPublishPress } from '$lib/server/pages/publish';
 import { readPageSettings, savePageSetting } from '$lib/server/pages/page-settings';
 import { database } from '../context';
 import type { BareHandle } from './_app';
@@ -50,6 +58,9 @@ import type { Route } from './+types/_app.admin.donation-page';
 // only at Publish, as a campaign's are ($lib/server/pages/editor.ts). so are the look and the share
 // message ($lib/server/pages/page-settings.ts); a goal and an end date are a campaign's alone, and
 // this action refuses them.
+//
+// **Publish, Undo and Discard changes** are $lib/server/pages/publish.ts's, the presses and their
+// confirms mounted through $lib/admin/editor/publish-wiring.tsx.
 //
 // **a block's words and pictures** are edited in its sheet, opened by a click on the block in the
 // preview and by its row in Settings' block list alike, and the layout by Settings' pictures; each
@@ -83,7 +94,8 @@ const SCREEN_FORMS = [
 	SKIP_FORM_ID,
 	PAGE_SETTINGS_FORM_ID,
 	...PAGE_SETTING_FORM_IDS,
-	...BLOCK_FORM_IDS
+	...BLOCK_FORM_IDS,
+	...PUBLISH_FORMS
 ] as const;
 
 const STALE_STORY =
@@ -169,6 +181,10 @@ export async function action({ context, request }: Route.ActionArgs) {
 		}
 		case PAGE_SETTINGS_FORM_ID:
 			return saveDraftSettings(db, { type: 'donation_page' }, body, NO_DONATION_PAGE);
+		case PUBLISH_FORM_ID:
+		case UNDO_FORM_ID:
+		case DISCARD_FORM_ID:
+			return answerPublishPress(db, { type: 'donation_page' }, body, NO_DONATION_PAGE);
 		case PAGE_LOOK_FORM_ID:
 		case PAGE_GOAL_FORM_ID:
 		case PAGE_END_DATE_FORM_ID:
@@ -186,13 +202,11 @@ function refusal(answer: Answer | undefined, form: { id: string }, box: string):
 	return resultFor(form, answer)?.error?.[box]?.[0] ?? null;
 }
 
-/** a press whose write belongs to a later part of the editor. */
-function noPress() {}
-
 export default function DonationPageEditor({ loaderData }: Route.ComponentProps) {
 	const { state, version, preview, askMission, storyVersion } = loaderData;
 	const [settings, setSettings] = useState(false);
 	const [donationSettings, setDonationSettings] = useState(false);
+	const presses = usePublishPresses({ version, state });
 	const [blockId, setBlockId] = useState<string | null>(null);
 	const openBlock = loaderData.blocks.find((block) => block.id === blockId) ?? null;
 	const layoutPick = useLayoutPick(loaderData.layout, version);
@@ -225,12 +239,7 @@ export default function DonationPageEditor({ loaderData }: Route.ComponentProps)
 					page={{ kind: 'donation' }}
 					state={state}
 					livePath="/donate"
-					publishing={false}
-					republished={false}
-					onPublish={noPress}
-					undoing={false}
-					onUndo={noPress}
-					onDiscard={noPress}
+					{...presses.bar}
 				/>
 			}
 			preview={
@@ -289,6 +298,7 @@ export default function DonationPageEditor({ loaderData }: Route.ComponentProps)
 					onSaved={() => setDonationSettings(false)}
 				/>
 			) : null}
+			{presses.confirm}
 			{/* a Skip is taken down as it is pressed; one that failed puts the ask back, saying so. */}
 			{askMission && sent !== SKIP_FORM_ID ? (
 				<MissionAsk

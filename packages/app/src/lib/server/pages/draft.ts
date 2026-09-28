@@ -176,10 +176,15 @@ function assistantTurn(text: string, model: string, note: ChatNote | null): NewT
 	return { author: 'assistant', text, model, imageIds: [], note };
 }
 
+/**
+ * a turn that leaves the draft as it was still moves the page's version, as every write to the
+ * page does, so a Discard changes drawn before it does not empty a chat it never saw.
+ */
 async function writeTurns(db: Db, pageId: string, turns: [NewTurn, NewTurn], when: SQL) {
 	const [first, second] = await db.batch([
 		turnStatement(db, pageId, turns[0], when),
-		turnStatement(db, pageId, turns[1], when)
+		turnStatement(db, pageId, turns[1], when),
+		db.update(page).set({ updatedAt: new Date() }).where(when)
 	]);
 	return [...first, ...second].map(chatEntry);
 }

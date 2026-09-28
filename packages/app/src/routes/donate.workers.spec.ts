@@ -1,14 +1,16 @@
 import { createExecutionContext, env } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createStaticHandler, type LoaderFunction } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NO_FORM } from '$lib/donate/copy';
+import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { defaultDonationPage } from '$lib/page/defaults';
 import { parseRichText } from '$lib/rich-text/document';
 import { readSetupState } from '$lib/server/config/setup-state';
 import { createDb } from '$lib/server/db/client';
-import { program } from '$lib/server/db/schema';
+import { page, program } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import {
 	readOrgSharing,
@@ -17,7 +19,13 @@ import {
 	updateOrgStory
 } from '$lib/server/org/queries';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
+import { ORIGIN, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
+import { mountRoutes } from '../route-request.testing';
+import * as layout from './_app';
+import * as editor from './_app.admin.donation-page';
+import * as surface from './api.v1';
+import * as gifts from './api.v1.forms.$id.donations';
 import type { Route } from './+types/donate';
 import * as donatePage from './donate';
 
@@ -346,5 +354,161 @@ describe('a deployment with no website', () => {
 			['notifications', 'ready']
 		]);
 		expect((await visit(FINISHED)).status).toBe(200);
+	});
+});
+
+describe('/donate after the editor’s presses', () => {
+	const editorRoute = mountRoutes([
+		{ path: undefined, module: layout },
+		{ path: 'admin/donation-page', module: editor }
+	]);
+	const giftRoute = mountRoutes([
+		{ path: 'api/v1', module: surface },
+		{ path: 'forms/:id/donations', module: gifts }
+	]);
+	let session: string;
+
+	beforeAll(async () => {
+		session = await signIn(db);
+	});
+
+	/** a press on the Donation page's editor, drawn at the version the page holds now. */
+	async function press(which: string, fields: Record<string, string> = {}) {
+		const [row] = await db.select().from(page);
+		if (!row) throw new Error('there is no Donation page to press on');
+		const body = new FormData();
+		body.set(WHICH_FORM, which);
+		body.set(RECORD_VERSION, String(row.updatedAt.getTime()));
+		for (const [name, value] of Object.entries(fields)) body.set(name, value);
+		const response = await editorRoute(
+			new Request(`${ORIGIN}/admin/donation-page`, {
+				method: 'POST',
+				headers: { cookie: session },
+				body
+			}),
+			{ env }
+		);
+		expect(response.status).toBe(200);
+	}
+
+	/** the draft's donation settings saved from the editor's sheet: $200 to $20,000. */
+	const saveSettings = () =>
+		press('page-settings', {
+			program_mode: 'none',
+			program_id: '',
+			min_minor: '200',
+			max_minor: '20000',
+			'suggested_amounts[0]': '250'
+		});
+
+	/** the draft's share message, as the chat or its sheet leaves it. */
+	async function draftMessage(message: string) {
+		const [row] = await db.select().from(page);
+		if (!row) throw new Error('there is no Donation page to write');
+		await db
+			.update(page)
+			.set({
+				draft: JSON.stringify({ ...JSON.parse(row.draft), shareMessage: message }),
+				updatedAt: new Date(row.updatedAt.getTime() + 1_000)
+			})
+			.where(eq(page.id, row.id));
+	}
+
+	async function drawn() {
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		return answered.data.view;
+	}
+
+	/** a network of its own for each gift, so the endpoint's meter never answers for the amount. */
+	let callers = 0;
+	/** what the gift endpoint answers a card gift of `amountMinor` on the Donation page's row. */
+	async function giftOf(amountMinor: number): Promise<{ status: number; message: string }> {
+		const { config } = await drawn();
+		callers += 1;
+		const response = await giftRoute(
+			new Request(`${OWN}/api/v1/forms/${config.formId}/donations`, {
+				method: 'POST',
+				headers: {
+					origin: OWN,
+					accept: 'application/json',
+					'content-type': 'application/json',
+					'cf-connecting-ip': `2001:db8:${1000 + callers}::1`
+				},
+				body: JSON.stringify({
+					formId: config.formId,
+					amountMinor,
+					frequency: 'one_time',
+					method: 'card',
+					coversFee: false,
+					email: 'ada@example.org',
+					firstName: 'Ada',
+					lastName: 'Okafor',
+					consentedToContact: false,
+					turnstileToken: 'tok'
+				})
+			}),
+			{ env: envWith(STRIPE) }
+		);
+		const { message } = (await response.json()) as { message: string };
+		return { status: response.status, message };
+	}
+
+	it('draws the published page after Publish, and the page before it after Undo', async () => {
+		await visit();
+		await draftMessage('Keep Elm Street warm this winter.');
+
+		await press('page-publish');
+		expect((await drawn()).sharing.message).toBe('Keep Elm Street warm this winter.');
+
+		await press('page-undo');
+		expect((await drawn()).sharing.message).toBe('Donate to Hope Foundation');
+	});
+
+	it('keeps drawing the published page through Discard changes', async () => {
+		await visit();
+		await draftMessage('Keep Elm Street warm this winter.');
+
+		await press('page-discard');
+
+		expect((await drawn()).sharing.message).toBe('Donate to Hope Foundation');
+	});
+
+	it('serves the draft’s donation settings only once published, and the ones before after Undo', async () => {
+		const opened = (await drawn()).config;
+		await saveSettings();
+		expect((await drawn()).config).toEqual(opened);
+
+		await press('page-publish');
+		expect((await drawn()).config).toMatchObject({
+			minAmountMinor: 20_000,
+			maxAmountMinor: 2_000_000,
+			suggestedAmountsMinor: [25_000]
+		});
+
+		await press('page-undo');
+		expect((await drawn()).config).toEqual(opened);
+	});
+
+	it('checks a gift against the published donation settings, never the draft’s', async () => {
+		await visit();
+		await saveSettings();
+		// $50 is inside the live $1–$10,000 and under the draft's $200; $15,000 the other way round.
+		// a gift inside the bounds goes on to the challenge, which this env has no keys to verify.
+		const passedBounds = {
+			status: 503,
+			message: 'This deployment cannot verify a challenge, so no donation can be accepted.'
+		};
+		const outside = (amount: number, range: string) => ({
+			status: 400,
+			message: `\`amountMinor\` is ${amount}, outside this form's range of ${range} minor units.`
+		});
+		expect(await giftOf(5_000)).toEqual(passedBounds);
+		expect(await giftOf(1_500_000)).toEqual(outside(1_500_000, '100 to 1000000'));
+
+		await press('page-publish');
+
+		expect(await giftOf(5_000)).toEqual(outside(5_000, '20000 to 2000000'));
+		expect(await giftOf(1_500_000)).toEqual(passedBounds);
 	});
 });

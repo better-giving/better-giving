@@ -16,10 +16,12 @@ import {
 } from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
+import { type FirstPublish, usePublishPresses } from '$lib/admin/editor/publish-wiring';
 import { SettingsSheet, type SettingsRow } from '$lib/admin/editor/settings-sheet';
 import { screenTitle } from '$lib/admin/screen-title';
 import { resultFor } from '$lib/admin/use-admin-form';
 import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
+import { PROGRAM_MODE_LABELS } from '$lib/forms/program-modes';
 import { BLOCK_FORM_IDS } from '$lib/page/block-edit';
 import { HEADING_MAX } from '$lib/page/catalog';
 import {
@@ -30,6 +32,13 @@ import {
 	PAGE_SHARE_FORM_ID,
 	type PageSettingsSeed
 } from '$lib/page/page-settings-form';
+import {
+	DISCARD_FORM_ID,
+	FIRST_PUBLISH_FORM_ID,
+	PUBLISH_FORM_ID,
+	PUBLISH_FORMS,
+	UNDO_FORM_ID
+} from '$lib/page/publish-form';
 import { PAGE_SETTINGS_FORM_ID, type SettingsSeed } from '$lib/page/settings-form';
 import { checkSlug, type SlugCheck } from '$lib/page/slug';
 import { invalid, parseForm, submittedForm, submittedVersion } from '$lib/server/conform';
@@ -37,6 +46,7 @@ import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
 import { editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
 import { editorPage, readEditorSettings, saveDraftSettings } from '$lib/server/pages/editor';
+import { answerPublishPress } from '$lib/server/pages/publish';
 import { readPageSettings, savePageSetting } from '$lib/server/pages/page-settings';
 import {
 	type NameWrite,
@@ -68,6 +78,9 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 // only at Publish; the Donation page's editor saves them the same way ($lib/server/pages/editor.ts).
 // so are the look, the goal, the end date and the share message
 // ($lib/server/pages/page-settings.ts).
+//
+// **Publish, Undo and Discard changes** are $lib/server/pages/publish.ts's, the presses and their
+// confirms mounted through $lib/admin/editor/publish-wiring.tsx.
 //
 // **a block's words and pictures** are edited in its sheet, opened by a click on the block in the
 // preview and by its row in Settings' block list alike, and the layout by Settings' pictures; each
@@ -111,6 +124,8 @@ const SCREEN_FORMS = [
 	NAME_FORM_ID,
 	ADDRESS_FORM_ID,
 	PAGE_SETTINGS_FORM_ID,
+	...PUBLISH_FORMS,
+	FIRST_PUBLISH_FORM_ID,
 	...PAGE_SETTING_FORM_IDS,
 	...BLOCK_FORM_IDS
 ] as const;
@@ -189,6 +204,16 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 			return saveAddress();
 		case PAGE_SETTINGS_FORM_ID:
 			return saveDraftSettings(
+				context.get(database),
+				{ id: params.pageId, type: 'campaign' },
+				body,
+				gone(params.pageId)
+			);
+		case PUBLISH_FORM_ID:
+		case FIRST_PUBLISH_FORM_ID:
+		case UNDO_FORM_ID:
+		case DISCARD_FORM_ID:
+			return answerPublishPress(
 				context.get(database),
 				{ id: params.pageId, type: 'campaign' },
 				body,
@@ -300,12 +325,34 @@ type Question = Extract<NonNullable<Answer>, { ask: unknown }>['ask'];
 /** the questions a move has been answered yes to, as the boxes post them. */
 type Confirmed = { readonly move: boolean; readonly takeover: boolean };
 
-/** a press whose write belongs to a later part of the editor. */
-function noPress() {}
+/**
+ * the first Publish's "Gifts go to": the active programs, the retired one the draft still pins, and
+ * the draft's own mode where it pins none, on what the draft holds now.
+ */
+function giftsGoTo(settings: SettingsSeed): Pick<FirstPublish, 'programs' | 'program'> {
+	const mode = settings.boxes.program_mode;
+	const pinned = mode === 'pinned';
+	return {
+		programs: [
+			...(pinned ? [] : [{ value: mode, label: PROGRAM_MODE_LABELS[mode] }]),
+			...(settings.retired ? [settings.retired] : []),
+			...settings.programs
+		],
+		program: pinned ? settings.boxes.program_id : mode
+	};
+}
 
 export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 	const { name, address, state, version, preview, host, settings: donationSettings } = loaderData;
 
+	const presses = usePublishPresses({
+		version,
+		state,
+		first:
+			state === 'unpublished'
+				? { name, address: address ?? '', ...giftsGoTo(donationSettings) }
+				: undefined
+	});
 	const nameFetcher = useFetcher<Answer>({ key: NAME_EDIT.id });
 	const chat = useEditorChat(loaderData.chat);
 	const addressFetcher = useFetcher<Answer>({ key: ADDRESS_EDIT.id });
@@ -379,14 +426,10 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 					page={{ kind: 'campaign', name, onRename: (next) => rename(next, 'bar') }}
 					state={state}
 					livePath={address ?? undefined}
-					publishing={false}
-					republished={false}
-					onPublish={noPress}
-					undoing={false}
-					onUndo={noPress}
-					onDiscard={noPress}
+					{...presses.bar}
 					report={
-						renamedIn === 'bar' && nameError !== null ? { press: 'name', text: nameError } : null
+						presses.bar.report ??
+						(renamedIn === 'bar' && nameError !== null ? { press: 'name', text: nameError } : null)
 					}
 				/>
 			}
@@ -488,6 +531,7 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 					onDismiss={() => setOpened(null)}
 				/>
 			) : null}
+			{presses.confirm}
 			{question?.kind === 'move' ? (
 				<Modal
 					title={`Change the address to ${question.to}?`}

@@ -12,6 +12,7 @@ import { formInputValuesFrom, type ParsedForm, parseFormInput } from '../forms/f
 import { ownedFormInsert, readForm } from '../forms/queries';
 import { ensureDonationPage } from './donation-page';
 import { draftTurn } from './draft';
+import { SLUG_ATTEMPTS } from './queries';
 
 // a campaign's reads and its making. New campaign makes one page and the settings row it owns in
 // one `batch()`:
@@ -155,9 +156,6 @@ export async function createCampaign(
 	}
 	return { pageId };
 }
-
-/** a free address is found this many times before a create gives up on the race. */
-const SLUG_ATTEMPTS = 5;
 
 /**
  * the page and its owned settings row in one `batch()`, at the first address free when read. a
