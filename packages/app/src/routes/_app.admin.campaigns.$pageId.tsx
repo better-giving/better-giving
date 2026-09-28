@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useFetcher } from 'react-router';
 import { z } from 'zod';
 import { AddressSheet } from '$lib/admin/editor/address-sheet';
+import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorEntries, EditorShell } from '$lib/admin/editor/editor-shell';
 import { NameSheet } from '$lib/admin/editor/name-sheet';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
@@ -13,11 +14,12 @@ import { resultFor } from '$lib/admin/use-admin-form';
 import { FORM_CURRENCY } from '$lib/forms/amounts';
 import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { HEADING_MAX } from '$lib/page/catalog';
+import { PAGE_SETTINGS_FORM_ID, type SettingsSeed } from '$lib/page/settings-form';
 import { checkSlug, type SlugCheck } from '$lib/page/slug';
 import { invalid, parseForm, submittedForm, submittedVersion } from '$lib/server/conform';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
-import { editorPage } from '$lib/server/pages/editor';
+import { editorPage, readEditorSettings, saveDraftSettings } from '$lib/server/pages/editor';
 import {
 	type NameWrite,
 	readPage,
@@ -43,6 +45,9 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 // the address an ended campaign holds, is answered with the question instead of a write, and the
 // save goes again with that question answered yes. the same body posted without the answer is
 // asked again, so no caller moves either address unasked.
+//
+// **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
+// only at Publish; the Donation page's editor saves them the same way ($lib/server/pages/editor.ts).
 //
 // every press is written against the version the editor was drawn at (`submittedVersion`), and the
 // preview is keyed on it, so the frame reloads on the render a landed write's revalidation brings.
@@ -77,7 +82,7 @@ const ADDRESS_EDIT = defineForm({
 	})
 });
 
-const SCREEN_FORMS = [NAME_FORM_ID, ADDRESS_FORM_ID] as const;
+const SCREEN_FORMS = [NAME_FORM_ID, ADDRESS_FORM_ID, PAGE_SETTINGS_FORM_ID] as const;
 
 const DONATION_PAGE_PATH = '/donate';
 
@@ -95,16 +100,25 @@ export function meta({ loaderData, matches }: Route.MetaArgs): Route.MetaDescrip
 }
 
 export async function loader({ context, params, request }: Route.LoaderArgs) {
+	const db = context.get(database);
 	let row: Page | null;
+	let settings: SettingsSeed;
 	try {
-		row = await readPage(context.get(database), params.pageId);
+		row = await readPage(db, params.pageId);
 	} catch (e) {
 		console.error(`loading campaign ${params.pageId}'s editor failed:`, e);
 		loadFailed('This campaign');
 	}
 	if (row === null || row.type !== 'campaign' || row.name === null) notFound(gone(params.pageId));
+	try {
+		settings = await readEditorSettings(db, row);
+	} catch (e) {
+		console.error(`loading campaign ${params.pageId}'s donation settings failed:`, e);
+		loadFailed('This campaign');
+	}
 	return {
 		...editorPage(row),
+		settings,
 		name: row.name,
 		address: row.slug === null ? null : `/${row.slug}`,
 		host: `${new URL(request.url).host}/`
@@ -135,6 +149,13 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 			return saveName();
 		case ADDRESS_FORM_ID:
 			return saveAddress();
+		case PAGE_SETTINGS_FORM_ID:
+			return saveDraftSettings(
+				context.get(database),
+				{ id: params.pageId, type: 'campaign' },
+				body,
+				gone(params.pageId)
+			);
 	}
 
 	// declared inside the action: react router strips the `action` export from the browser bundle
@@ -223,13 +244,13 @@ type Question = Extract<NonNullable<Answer>, { ask: unknown }>['ask'];
 type Confirmed = { readonly move: boolean; readonly takeover: boolean };
 
 /** a sheet opened from Settings. */
-type Opened = Extract<SettingsRow, 'name' | 'address'>;
+type Opened = Extract<SettingsRow, 'name' | 'address' | 'donation-settings'>;
 
 /** a press whose write belongs to a later part of the editor. */
 function noPress() {}
 
 export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
-	const { name, address, state, version, preview, host } = loaderData;
+	const { name, address, state, version, preview, host, settings: donationSettings } = loaderData;
 
 	const nameFetcher = useFetcher<Answer>({ key: NAME_EDIT.id });
 	const addressFetcher = useFetcher<Answer>({ key: ADDRESS_EDIT.id });
@@ -335,9 +356,9 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 					onLayout={noPress}
 					look={null}
 					shareMessage={loaderData.shareMessage}
-					donationSettings=""
+					donationSettings={donationSettings.summary}
 					onOpen={(row) => {
-						if (row === 'name' || row === 'address') setOpened(row);
+						if (row === 'name' || row === 'address' || row === 'donation-settings') setOpened(row);
 					}}
 				/>
 			) : null}
@@ -349,6 +370,14 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 					error={renamedIn === 'sheet' ? refusal(nameAnswer, NAME_EDIT, 'name') : null}
 					refusal={renamedIn === 'sheet' ? refusal(nameAnswer, NAME_EDIT, '') : null}
 					onDismiss={() => setOpened(null)}
+				/>
+			) : null}
+			{opened === 'donation-settings' ? (
+				<DonationSettingsSheet
+					seed={donationSettings}
+					version={version}
+					onDismiss={() => setOpened(null)}
+					onSaved={() => setOpened(null)}
 				/>
 			) : null}
 			{opened === 'address' ? (
