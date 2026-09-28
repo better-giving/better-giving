@@ -186,7 +186,10 @@ const CHALLENGE: ChallengeSeam = {
 async function card(
 	config: FormConfig = CONFIG,
 	answers: Answers = {},
-	page: { readonly pageProgram?: string | null } = {}
+	page: {
+		readonly pageProgram?: string | null;
+		readonly onProgramChange?: (programId: string | null, locked: boolean) => void;
+	} = {}
 ) {
 	const payment = paymentProvider(answers);
 	const paypal = paypalProvider();
@@ -208,6 +211,7 @@ async function card(
 				config={config}
 				seams={seams}
 				{...(pageProgram === undefined ? {} : { pageProgram })}
+				{...(page.onProgramChange === undefined ? {} : { onProgramChange: page.onProgramChange })}
 			/>
 		);
 	};
@@ -419,14 +423,69 @@ describe('a program the page picks', () => {
 		expect(bodies[0]).not.toHaveProperty('programId');
 	});
 
-	it('reads a program the served form does not offer as no program at all', async () => {
+	it('keeps its own select where the page names a program the served form does not offer', async () => {
+		// the page is showing a cause the gift cannot be credited to, so the card asks for itself
+		// rather than recording the gift somewhere the page does not say.
 		const bodies = sent();
 		const { root, payment } = await card(CONFIG, {}, { pageProgram: 'p-retired' });
-		walkToGive(root);
-		expect(programRow(root)).toBe('Where it’s needed most');
+		expect(root.querySelector('#program')).not.toBeNull();
 
+		await choose(root, 'program', 'Schools');
+		walkToGive(root);
+		expect(programRow(root)).toBe('Schools');
 		donate(root, payment);
-		expect(bodies[0]).not.toHaveProperty('programId');
+		expect(bodies[0]).toMatchObject({ programId: 'p2' });
+	});
+
+	it('reports the program the flow holds, and that it takes no pick once Donate is pressed', async () => {
+		sent();
+		const reports: [string | null, boolean][] = [];
+		const { root, payment, pagePicks } = await card(
+			CONFIG,
+			{},
+			{ pageProgram: null, onProgramChange: (id, locked) => reports.push([id, locked]) }
+		);
+		expect(reports.at(-1)).toEqual([null, false]);
+
+		pagePicks('p2');
+		expect(reports.at(-1)).toEqual(['p2', false]);
+
+		walkToGive(root);
+		donate(root, payment);
+		expect(reports.at(-1)).toEqual(['p2', true]);
+	});
+
+	it('sends a pick the page made while a press was in flight with the gift a retry sends', async () => {
+		const bodies: Record<string, unknown>[] = [];
+		const answers: ((response: Promise<Response>) => void)[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((_url: string, init?: RequestInit) => {
+				bodies.push(JSON.parse(String(init?.body)));
+				return new Promise<Response>((resolve) => {
+					answers.push((response) => resolve(response));
+				});
+			})
+		);
+		const { root, payment, pagePicks } = await card(CONFIG, {}, { pageProgram: 'p1' });
+		walkToGive(root);
+		donate(root, payment);
+		expect(bodies[0]).toMatchObject({ programId: 'p1' });
+
+		pagePicks('p2');
+		await act(async () => {
+			answers[0]?.(Promise.reject(new Error('the connection dropped')));
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+		expect(screen(root).className).toContain('takeover');
+
+		press(one(screen(root), ':scope > button[part~="action"]'));
+		expect(screen(root).className).toContain('step-give');
+		expect(programRow(root)).toBe('Schools');
+
+		press(one(root, 'button[part~="submit"]'));
+		expect(bodies).toHaveLength(2);
+		expect(bodies[1]).toMatchObject({ programId: 'p2' });
 	});
 });
 

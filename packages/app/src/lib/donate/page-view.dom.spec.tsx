@@ -393,6 +393,30 @@ describe('the program chooser', () => {
 		act(() => radios[0]?.click());
 		expect(onProgramPick).toHaveBeenLastCalledWith(null);
 	});
+
+	it('takes no pick while locked, and keeps each option reachable', () => {
+		const onProgramPick = vi.fn();
+		const page = defaultDonationPage({ name: 'Northside Neighbors' });
+		const root = mount(
+			<PageView
+				{...props('donation_page', page, {
+					onProgramPick,
+					chosenProgramId: 'prog-food',
+					chooserLocked: true
+				})}
+			/>
+		);
+		const radios = [
+			...root.querySelectorAll<HTMLInputElement>(
+				'[data-block="program-chooser"] input[type="radio"]'
+			)
+		];
+		expect(radios.map((r) => r.getAttribute('aria-disabled'))).toEqual(['true', 'true', 'true']);
+		expect(radios.some((r) => r.disabled)).toBe(false);
+		act(() => radios[2]?.click());
+		expect(onProgramPick).not.toHaveBeenCalled();
+		expect(radios.map((r) => r.checked)).toEqual([false, true, false]);
+	});
 });
 
 describe('share', () => {

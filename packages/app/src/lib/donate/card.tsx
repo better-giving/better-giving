@@ -118,12 +118,18 @@ export type DonateCardProps = {
 	 * absent, the card draws its own program select. present, it draws none and the gift carries
 	 * this pick, sent through the same door the select's own pick goes through and followed while
 	 * mounted — a remount would drop what the donor typed. an id the served config does not offer
-	 * is read as no program: the config is what the endpoint checks the gift against.
+	 * is not the page's to send: the card draws its own select again and the donor picks there.
 	 */
 	readonly pageProgram?: string | null;
+	/**
+	 * the program the flow holds (null for where it's needed most), and whether it takes a pick at
+	 * all — `locked` from the press on Donate until a donor is back on a step they edit. told on
+	 * arrival and on every change of either, so a page's chooser can draw the gift's own answer.
+	 */
+	readonly onProgramChange?: (programId: string | null, locked: boolean) => void;
 };
 
-export function DonateCard({ config, seams, pageProgram }: DonateCardProps) {
+export function DonateCard({ config, seams, pageProgram, onProgramChange }: DonateCardProps) {
 	// a second gift is a fresh boot rather than a state on the flow: what the last gift left behind is
 	// not the flow's to clear — the provider's own fields still hold the card the donor entered and a
 	// challenge token is spent once. remounting is what builds both again, and it starts empty, which
@@ -136,6 +142,7 @@ export function DonateCard({ config, seams, pageProgram }: DonateCardProps) {
 			restart={() => setBoot((at) => at + 1)}
 			{...(seams === undefined ? {} : { seams })}
 			{...(pageProgram === undefined ? {} : { pageProgram })}
+			{...(onProgramChange === undefined ? {} : { onProgramChange })}
 		/>
 	);
 }
@@ -144,12 +151,14 @@ function CheckoutCard({
 	config,
 	restart,
 	seams,
-	pageProgram
+	pageProgram,
+	onProgramChange
 }: {
 	config: FormConfig;
 	restart: () => void;
 	seams?: CheckoutMounts['seams'];
 	pageProgram?: string | null;
+	onProgramChange?: DonateCardProps['onProgramChange'];
 }) {
 	const { locale, currency } = config;
 	const money = (minor: number) => formatMinor(minor, locale, currency);
@@ -324,18 +333,26 @@ function CheckoutCard({
 
 	// ── the program the page picked ──────────────────────────────────────────────────────────────
 
-	// in the select's own encoding, read against the select's own options: `''` is where it's
-	// needed most, and an id the served config does not list falls to it.
-	const program = api.programSelect;
-	const offered = program.options.some((option) => option.value === pageProgram);
+	// in the select's own encoding, `''` being where it's needed most. undefined is no pick of the
+	// page's to send: none handed in, or one the served config does not offer.
+	const held = api.programSelect.value;
 	const pagePick =
-		pageProgram === undefined ? undefined : pageProgram !== null && offered ? pageProgram : '';
-	// on every commit where the flow holds something else, which is the page's pick moving and also
-	// the flow arriving somewhere it takes the pick again: a pick made while a press was in flight is
-	// dropped there, and sent again once a retry lands back on a step a donor edits.
+		pageProgram === null
+			? ''
+			: api.programSelect.options.some((option) => option.value === pageProgram)
+				? pageProgram
+				: undefined;
+	const editing = step === 'amount' || step === 'details' || step === 'give';
+	// sent where the flow holds something else and takes a pick: on the page's pick moving, and on
+	// the flow arriving back on a step a donor edits — a pick made while a press was in flight was
+	// dropped there, and a retry lands on the review step.
 	useEffect(() => {
-		if (pagePick !== undefined && pagePick !== program.value) program.set(pagePick);
-	});
+		if (pagePick === undefined || pagePick === held || !editing) return;
+		send({ type: 'SET_PROGRAM', programId: pagePick === '' ? null : pagePick });
+	}, [pagePick, held, editing, send]);
+	useEffect(() => {
+		onProgramChange?.(held === '' ? null : held, !editing);
+	}, [held, editing, onProgramChange]);
 
 	// ── the coin a crypto gift is sent in ────────────────────────────────────────────────────────
 
@@ -820,7 +837,7 @@ function CheckoutCard({
 						onContinue={onAmountContinue}
 						submits={shown === 'amount'}
 						refs={amountRefs}
-						drawsProgram={pageProgram === undefined}
+						drawsProgram={pagePick === undefined}
 					/>
 					<DetailsStep
 						api={api}

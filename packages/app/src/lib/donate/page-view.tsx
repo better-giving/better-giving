@@ -65,6 +65,8 @@ export type PageViewProps = {
 	/** a pick on the program chooser: a program's id, or null for where it's needed most. */
 	readonly onProgramPick?: (id: string | null) => void;
 	readonly chosenProgramId?: string | null;
+	/** the chooser takes no pick: the gift it would change has already been asked for. */
+	readonly chooserLocked?: boolean;
 	/** drawn as the editor's preview: a click on a block reports the block, and does nothing else. */
 	readonly preview?: boolean;
 	/** the caller's placement of the page root. */
@@ -258,6 +260,7 @@ function content(
 					programs={props.programs}
 					chosen={props.chosenProgramId ?? null}
 					onPick={props.onProgramPick}
+					locked={props.chooserLocked ?? false}
 					domId={domId}
 				/>
 			);

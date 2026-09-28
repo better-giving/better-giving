@@ -1093,10 +1093,10 @@ export const checkoutMachine = setup({
 		 * the cause the gift is credited to, taken on any of the three steps a donor edits.
 		 *
 		 * the card's own select is on the amount step, but a host may draw the choice outside the
-		 * card, beside every step, so the pick is written onto the decided gift as well as the draft
-		 * wherever there is one. no step handling it has minted
-		 * anything yet (`beginAttempt` drops an attempt on arrival at either later step), and every
-		 * state past the press drops it, because the request carrying the cause has left.
+		 * card, beside every step, so the pick is written onto the decided gift as well as the
+		 * draft wherever there is one. no step handling it has minted anything yet: `beginAttempt`
+		 * drops an attempt on arrival at either later step. every state past the press drops it,
+		 * the fund's window included, because the gift carrying the cause is already asked for.
 		 *
 		 * `null` is written onto the draft as an absent id rather than kept, so the draft holds the
 		 * donor's answer in the one shape `completeAmount` (./value.ts) reads — where it is needed

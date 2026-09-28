@@ -5,18 +5,15 @@ import type {
 } from '@better-giving/form/embed/stripe';
 import type { ChallengeSeam, TurnstileLike } from '@better-giving/form/embed/turnstile';
 import type { FeeRules, FormConfig } from '@better-giving/form/v1';
-import { act, useState } from 'react';
+import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import type { ProgramMode } from '../forms/program-modes';
 import { defaultDonationPage } from '../page/defaults';
-import { DonateCard } from './card';
-import { PageView, type PageViewProps } from './page-view';
+import { PageWithCard } from './page-with-card';
 
-// the Donation page's program chooser and the donation card, mounted together the way a route
-// mounts them: the chooser's pick held beside the page and handed to the card as `pageProgram`
-// wherever the page draws the chooser. what is asserted is the gift the card posts, which is the
-// only place the pick is worth anything.
+// the Donation page's program chooser and the donation card, through `PageWithCard` in
+// ./page-with-card.tsx: which programs the chooser lists, whether it is drawn at all, and the gift
+// the card posts after a pick, which is the only place the pick is worth anything.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -100,59 +97,42 @@ function paymentProvider() {
 	};
 }
 
-type Over = { readonly programMode: ProgramMode; readonly config: FormConfig };
-
-/** the Donation page as a route mounts it, holding the chooser's pick for the card. */
-async function donationPage({ programMode, config }: Over) {
+/** the Donation page with its card, on the served config `config`. */
+async function donationPage(config: FormConfig) {
 	const payment = paymentProvider();
 	const seams = {
 		payment: { stripe: { load: payment.load, delay: () => () => {} } },
 		challenge: CHALLENGE
 	};
-	const programs = config.program?.mode === 'choice' ? config.program.options : [];
-
-	function Page() {
-		const [chosen, setChosen] = useState<string | null>(null);
-		const props: PageViewProps = {
-			type: 'donation_page',
-			page: defaultDonationPage({ name: 'Northside Neighbors' }),
-			pageName: null,
-			org: {
-				name: 'Northside Neighbors',
-				mission: null,
-				vision: null,
-				info: {
-					legalName: 'Northside Neighbors',
-					ein: '84-2913377',
-					addressLines: ['40 Elm Street', 'Easton, PA 18042'],
-					email: null,
-					links: []
-				}
-			},
-			look: { brandColour: null, shade: 'warm', corner: 'round' },
-			sharing: { channels: [], message: '', url: 'https://give.example.org/donate' },
-			goal: null,
-			money: { locale: config.locale, currency: config.currency },
-			programs,
-			programMode,
-			chosenProgramId: chosen,
-			onProgramPick: setChosen,
-			donationBox: ({ hideProgramSelect }) => (
-				<DonateCard
-					config={config}
-					seams={seams}
-					{...(hideProgramSelect ? { pageProgram: chosen } : {})}
-				/>
-			)
-		};
-		return <PageView {...props} />;
-	}
-
 	const host = document.createElement('div');
 	document.body.appendChild(host);
 	const mounted = createRoot(host);
 	act(() => {
-		mounted.render(<Page />);
+		mounted.render(
+			<PageWithCard
+				config={config}
+				seams={seams}
+				type="donation_page"
+				page={defaultDonationPage({ name: 'Northside Neighbors' })}
+				pageName={null}
+				org={{
+					name: 'Northside Neighbors',
+					mission: null,
+					vision: null,
+					info: {
+						legalName: 'Northside Neighbors',
+						ein: '84-2913377',
+						addressLines: ['40 Elm Street', 'Easton, PA 18042'],
+						email: null,
+						links: []
+					}
+				}}
+				look={{ brandColour: null, shade: 'warm', corner: 'round' }}
+				sharing={{ channels: [], message: '', url: 'https://give.example.org/donate' }}
+				goal={null}
+				money={{ locale: config.locale, currency: config.currency }}
+			/>
+		);
 	});
 	onTestFinished(() => {
 		act(() => {
@@ -190,14 +170,18 @@ function type(root: HTMLElement, selector: string, value: string): void {
 const CHOOSER = '[data-block="program-chooser"]';
 const CONTINUE = 'section.step:not([hidden]) > button[part~="action"]';
 
-/** a chooser card picked by the words it shows. */
-function pickCard(root: HTMLElement, name: string): void {
+/** a chooser card's radio, found by the words it shows. */
+function chooserCard(root: HTMLElement, name: string): HTMLInputElement {
 	const card = [...root.querySelectorAll<HTMLLabelElement>(`${CHOOSER} label`)].find(
 		(label) => label.querySelector('.page-choose-name')?.textContent === name
 	);
 	const radio = card?.querySelector<HTMLInputElement>('input[type="radio"]');
 	if (radio == null) throw new Error(`no ${name} on the chooser`);
-	press(radio);
+	return radio;
+}
+
+function pickCard(root: HTMLElement, name: string): void {
+	press(chooserCard(root, name));
 }
 
 /** the quote requests the card posts, read back as the bodies it sent; none is answered. */
@@ -225,10 +209,8 @@ function donate(root: HTMLElement, payment: { pick(type: string): void }): void 
 }
 
 describe('the Donation page where donors choose the program', () => {
-	const choice: Over = { programMode: 'choice', config: CONFIG };
-
 	it('lists the card’s own programs on the chooser, and the card draws no select of its own', async () => {
-		const { root } = await donationPage(choice);
+		const { root } = await donationPage(CONFIG);
 		const names = [...root.querySelectorAll(`${CHOOSER} .page-choose-name`)].map(
 			(node) => node.textContent
 		);
@@ -238,8 +220,9 @@ describe('the Donation page where donors choose the program', () => {
 
 	it('sends the program a chooser card picked with the gift', async () => {
 		const bodies = sent();
-		const { root, payment } = await donationPage(choice);
+		const { root, payment } = await donationPage(CONFIG);
 		pickCard(root, 'Winter coats');
+		expect(chooserCard(root, 'Winter coats').checked).toBe(true);
 		donate(root, payment);
 		expect(bodies).toHaveLength(1);
 		expect(bodies[0]).toMatchObject({ programId: 'prog-coats' });
@@ -247,34 +230,43 @@ describe('the Donation page where donors choose the program', () => {
 
 	it('sends the later pick where the donor picks again', async () => {
 		const bodies = sent();
-		const { root, payment } = await donationPage(choice);
+		const { root, payment } = await donationPage(CONFIG);
 		pickCard(root, 'Winter coats');
 		pickCard(root, 'Food pantry');
 		donate(root, payment);
 		expect(bodies[0]).toMatchObject({ programId: 'prog-food' });
 	});
+
+	it('locks the chooser on the gift’s own program once Donate is pressed', async () => {
+		const bodies = sent();
+		const { root, payment } = await donationPage(CONFIG);
+		pickCard(root, 'Winter coats');
+		donate(root, payment);
+
+		const coats = chooserCard(root, 'Winter coats');
+		expect(coats.getAttribute('aria-disabled')).toBe('true');
+		pickCard(root, 'Food pantry');
+		expect(coats.checked).toBe(true);
+		expect(chooserCard(root, 'Food pantry').checked).toBe(false);
+		expect(bodies).toHaveLength(1);
+		expect(bodies[0]).toMatchObject({ programId: 'prog-coats' });
+	});
 });
 
 describe('the Donation page drawing no chooser', () => {
 	it.each([
-		['no program', { programMode: 'none', config: NO_PROGRAM }],
-		[
-			'one program',
-			{
-				programMode: 'pinned',
-				config: { ...CONFIG, program: { mode: 'pinned', name: 'Food pantry' } }
-			}
-		]
-	] satisfies [string, Over][])('draws none under %s', async (_, over) => {
-		const { root } = await donationPage(over);
+		['no program', NO_PROGRAM],
+		['one program', { ...NO_PROGRAM, program: { mode: 'pinned', name: 'Food pantry' } }]
+	] satisfies [string, FormConfig][])('draws none under %s', async (_, config) => {
+		const { root } = await donationPage(config);
 		expect(root.querySelector(CHOOSER)).toBeNull();
 	});
 
 	it('leaves the choice to the card’s own select where there is one program to choose', async () => {
 		const bodies = sent();
 		const { root, payment } = await donationPage({
-			programMode: 'choice',
-			config: { ...CONFIG, program: { mode: 'choice', options: PROGRAMS.slice(0, 1) } }
+			...NO_PROGRAM,
+			program: { mode: 'choice', options: PROGRAMS.slice(0, 1) }
 		});
 		expect(root.querySelector(CHOOSER)).toBeNull();
 		expect(root.querySelector('#program')).not.toBeNull();

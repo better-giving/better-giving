@@ -1909,6 +1909,25 @@ describe('a gift from a donor-advised fund', () => {
 		expect(actor.getSnapshot().value).toBe('processing');
 	});
 
+	it('leaves the cause alone while the fund’s window is open, and sends the one it opened on', async () => {
+		// the window is the authorization for the gift the review step stated, cause included.
+		const { actor, calls } = onFundRail({
+			config: {
+				...CHOICE_CONFIG,
+				providers: DAF_CONFIG.providers,
+				paymentMethods: DAF_CONFIG.paymentMethods
+			},
+			quote: () => Promise.resolve(GRANT)
+		});
+		actor.send({ type: 'OPEN_FUND' });
+		actor.send({ type: 'SET_PROGRAM', programId: 'prg_water' });
+		expect(actor.getSnapshot().context.fv?.programId).toBeNull();
+
+		actor.send({ type: 'FUND_APPROVED', authorizationId: 'wfs_1', authorizedMinor: 2600 });
+		await settle();
+		expect(calls.quote[0]).not.toHaveProperty('programId');
+	});
+
 	it('goes back to the review step with nothing sent when the window closes unapproved', async () => {
 		const { actor, calls } = onFundRail();
 		actor.send({ type: 'OPEN_FUND' });
