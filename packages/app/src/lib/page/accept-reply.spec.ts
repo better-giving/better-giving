@@ -1,7 +1,14 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { acceptReply, DEPTH_MAX, DRAFT_BYTES_MAX, OPS_MAX, REPLY_BYTES_MAX } from './accept-reply';
+import {
+	acceptReply,
+	DEPTH_MAX,
+	DRAFT_BYTES_MAX,
+	OPS_MAX,
+	REPLY_BYTES_MAX,
+	SAY_MAX
+} from './accept-reply';
 import type { Page } from './catalog';
 import { defaultCampaign, defaultDonationPage } from './defaults';
 
@@ -45,7 +52,9 @@ describe('a reply off the reply schema', () => {
 	it.each([
 		['not JSON', 'Sure! Here is your page.', 'the reply is not JSON'],
 		['no say', { page: { kind: 'merge', doc: { palette: 'duo' } } }, 'say: '],
-		['an unknown page edit', { say: 'Done.', page: { kind: 'rewrite', doc: {} } }, 'page.kind: ']
+		['an unknown page edit', { say: 'Done.', page: { kind: 'rewrite', doc: {} } }, 'page.kind: '],
+		['a blank say', { say: '  \n ' }, 'say: say holds no words'],
+		['a say past its cap', { say: 'x'.repeat(SAY_MAX + 1) }, `say: say holds at most ${SAY_MAX}`]
 	])('is refused when %s, handing current back unchanged', (_, reply, reason) => {
 		const current = campaign();
 		const result = accept(reply, { current });
@@ -351,9 +360,9 @@ describe('what a reply sets', () => {
 		expect(result).toEqual({
 			ok: true,
 			say: 'Renamed it, set a $5,000 goal ending 31 December, pinned it to Coats and suggested $30 and $60.',
-			name: 'Coats for winter',
 			draft: {
 				...campaign(),
+				name: 'Coats for winter',
 				goalMinor: 500_000,
 				endsAt,
 				settings: {
@@ -375,6 +384,16 @@ describe('what a reply sets', () => {
 				{ field: 'amounts', from: [2500, 5000], to: [3000, 6000] }
 			],
 			dropped: []
+		});
+	});
+
+	it('renames from the name the draft holds, where it holds one', () => {
+		const current = { ...campaign(), name: 'Coats for winter' };
+		const result = accept({ say: 'Renamed.', set: { name: 'Coats for Kids' } }, { current });
+		expect(result).toMatchObject({
+			ok: true,
+			draft: { name: 'Coats for Kids' },
+			changes: [{ field: 'name', from: 'Coats for winter', to: 'Coats for Kids' }]
 		});
 	});
 
@@ -618,7 +637,16 @@ describe('an impact figure', () => {
 		['1 dollar', 100],
 		['USD 40', 4000],
 		['40 usd', 4000],
-		['US$75', 7500]
+		['US$75', 7500],
+		['$15k', 1_500_000],
+		['$2.5K', 250_000],
+		['$1.2m', 120_000_000],
+		['3k dollars', 300_000],
+		['$15 thousand', 1_500_000],
+		['$2 Million', 200_000_000],
+		['$15 k', 1_500_000],
+		['15 thousand dollars', 1_500_000],
+		['$1.2555k', 125_550]
 	])('reads %j as a figure the operator stated', (text, amountMinor) => {
 		const result = accept(addTiers([amountMinor]), {
 			messages: [operator(`about ${text}, thanks`)]
@@ -630,7 +658,8 @@ describe('an impact figure', () => {
 		['25 children', 2500],
 		['25', 2500],
 		['$12.505', 1250],
-		['$1,00', 100]
+		['$1,00', 100],
+		['$15kids', 1_500_000]
 	])('does not read %j as the figure %i', (text, amountMinor) => {
 		const result = accept(addTiers([amountMinor]), { messages: [operator(text)] });
 		expect(tiersOf(result)).toMatchObject({ tiers: [] });
@@ -688,6 +717,30 @@ describe('a figure in the words', () => {
 			current
 		});
 		expect(result).toMatchObject({ ok: true });
+	});
+
+	it('the same reply sets as the goal lands', () => {
+		const words = lede('Help us raise $15,000 this winter.');
+		expect(accept(words)).toMatchObject({ ok: false });
+		expect(accept({ ...words, set: { goalMinor: 1_500_000 } })).toMatchObject({ ok: true });
+	});
+
+	it('scaled by a word is the scaled figure, not the digits', () => {
+		const result = accept(lede('$15 million raised so far.'), { messages: [operator('$15 each')] });
+		expect(result).toMatchObject({
+			ok: false,
+			reason:
+				'block 1 (id "title"): "$15 million" is not a figure the operator wrote in the chat or one the page already shows'
+		});
+	});
+
+	it('scaled past a cent refuses the reply rather than passing unread', () => {
+		const result = accept(lede('Nearly $1.234567k raised.'));
+		expect(result).toMatchObject({
+			ok: false,
+			reason:
+				'block 1 (id "title"): "$1.234567k" is not a figure the operator wrote in the chat or one the page already shows'
+		});
 	});
 
 	it('in a new campaign name the operator never stated refuses the reply', () => {

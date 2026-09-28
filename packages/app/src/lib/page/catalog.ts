@@ -225,6 +225,7 @@ const PAGE_NAMES: Record<PageType, string> = {
 const GOAL = 'a goal is a whole number of minor units above zero';
 const END = 'an end date is a whole number of milliseconds since 1970';
 const CAMPAIGN_ONLY = [
+	[PAGE_KEYS.name, 'name'],
 	[PAGE_KEYS.goalMinor, 'goal'],
 	[PAGE_KEYS.endsAt, 'end date']
 ] as const;
@@ -242,6 +243,12 @@ const pageDocument = (type: PageType) =>
 				})
 				.optional(),
 			switches: z.strictObject({ openOnMonthly: z.boolean(), dedicationOn: z.boolean() }),
+			[PAGE_KEYS.name]: z
+				.string()
+				.trim()
+				.min(1, { error: 'a campaign name holds words' })
+				.max(HEADING_MAX, { error: `a campaign name holds at most ${HEADING_MAX} characters` })
+				.optional(),
 			[PAGE_KEYS.goalMinor]: z.int({ error: GOAL }).positive({ error: GOAL }).optional(),
 			[PAGE_KEYS.endsAt]: z.int({ error: END }).positive({ error: END }).optional(),
 			settings: draftSettings.optional(),

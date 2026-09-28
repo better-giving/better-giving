@@ -265,14 +265,25 @@ describe('a block id', () => {
 describe('what a page carries beside its blocks', () => {
 	const endsAt = Date.UTC(2026, 11, 31);
 
-	it('accepts a campaign with a goal, an end date, its own look and a share message', () => {
+	it('accepts a campaign with its name, a goal, an end date, its own look and a share message', () => {
 		const input = page([box], {
+			name: 'Coats for Kids',
 			goalMinor: 5_000_000,
 			endsAt,
 			look: { shade: 'warm', corner: 'round', brandColour: '#1f6feb' },
 			shareMessage: 'I just gave to clean water. Join me?'
 		});
 		expect(parsePage('campaign', input)).toEqual({ ok: true, page: input });
+	});
+
+	it.each([
+		['blank', '  '],
+		['past a heading’s length', 'x'.repeat(HEADING_MAX + 1)]
+	])('refuses a campaign name that is %s', (_, name) => {
+		expect(parsePage('campaign', page([box], { name }))).toMatchObject({
+			ok: false,
+			path: ['name']
+		});
 	});
 
 	it('reads a null look as the organisation’s', () => {
@@ -291,7 +302,8 @@ describe('what a page carries beside its blocks', () => {
 
 	it.each([
 		['goalMinor', 5_000_000, 'the Donation page has no goal; only a campaign does'],
-		['endsAt', endsAt, 'the Donation page has no end date; only a campaign does']
+		['endsAt', endsAt, 'the Donation page has no end date; only a campaign does'],
+		['name', 'Spring', 'the Donation page has no name; only a campaign does']
 	])('refuses %s on the Donation page', (key, value, message) => {
 		expect(parsePage('donation_page', page([box], { [key]: value }))).toEqual({
 			ok: false,

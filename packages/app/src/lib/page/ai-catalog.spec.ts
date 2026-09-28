@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { draftFromPage, pageCatalog, pageFromDraft } from './ai-catalog';
 import { HEADING_MAX } from './catalog';
+import { LAYOUTS, PALETTES } from './keys';
 import { defaultCampaign, defaultDonationPage } from './defaults';
 
 // node pool, no database: the prompt is a string built from the catalog, and a draft goes through
@@ -46,6 +47,13 @@ describe('the drafting prompt', () => {
 			expect(prompt).not.toContain(forbidden);
 		}
 	);
+
+	it('says what each layout and each palette does', () => {
+		const prompt = pageCatalog('campaign').prompt();
+		for (const name of [...LAYOUTS, ...PALETTES]) {
+			expect(prompt).toMatch(new RegExp(`^- ${name}: \\w`, 'm'));
+		}
+	});
 });
 
 describe('a draft becoming a page', () => {

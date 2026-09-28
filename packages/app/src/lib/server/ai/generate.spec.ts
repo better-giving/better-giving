@@ -95,7 +95,11 @@ describe('the model a deployment answers with', () => {
 
 		const result = await generate({ AI, AI_MODEL: 'anthropic/claude-opus-9' }, REQUEST);
 
-		expect(result).toMatchObject({ ok: false, reason: 'off_list' });
+		expect(result).toMatchObject({
+			ok: false,
+			reason: 'off_list',
+			model: 'anthropic/claude-opus-9'
+		});
 		if (result.ok) return;
 		expect(result.operatorFix).toContain('`anthropic/claude-opus-9`');
 		expect(result.operatorFix).toContain('console');
@@ -118,7 +122,11 @@ describe('a deployment uploaded without the Workers AI binding', () => {
 	it('is refused, telling the operator to deploy this release, rather than thrown', async () => {
 		const result = await generate({ AI_MODEL: 'anthropic/claude-sonnet-4.6' }, REQUEST);
 
-		expect(result).toMatchObject({ ok: false, reason: 'not_bound' });
+		expect(result).toMatchObject({
+			ok: false,
+			reason: 'not_bound',
+			model: 'anthropic/claude-sonnet-4.6'
+		});
 		if (result.ok) return;
 		expect(result.operatorFix).toContain('`AI`');
 	});
@@ -212,7 +220,11 @@ describe('a chosen model that fails', () => {
 
 		const result = await generate({ AI }, REQUEST);
 
-		expect(result).toMatchObject({ ok: false, reason: 'unavailable' });
+		expect(result).toMatchObject({
+			ok: false,
+			reason: 'unavailable',
+			model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+		});
 		expect(AI.run).toHaveBeenCalledOnce();
 	});
 
@@ -221,7 +233,7 @@ describe('a chosen model that fails', () => {
 
 		const result = await generate({ AI, AI_MODEL: 'openai/gpt-5-mini' }, REQUEST);
 
-		expect(result).toMatchObject({ ok: false, reason: 'unavailable' });
+		expect(result).toMatchObject({ ok: false, reason: 'unavailable', model: 'openai/gpt-5-mini' });
 		expect(AI.run).toHaveBeenCalledTimes(2);
 	});
 
