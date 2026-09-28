@@ -1,5 +1,6 @@
-import { and, eq, exists, inArray, isNotNull, ne, notExists } from 'drizzle-orm';
+import { and, eq, exists, inArray, isNotNull, ne, notExists, type SQL } from 'drizzle-orm';
 import { type Page as PageDocument, parsePage } from '../../page/catalog';
+import { stateAt } from '../../page/ended';
 import { freeSlug } from '../../page/slug';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
@@ -76,13 +77,23 @@ export async function deleteNeverPublishedCampaign(
  * alone.
  */
 export async function endCampaign(db: Db, pageId: string, version: Date): Promise<boolean> {
+	const [, ended] = await db.batch(ending(db, pageId, version));
+	return ended.length === 1;
+}
+
+/**
+ * `endCampaign`'s two statements, in its order, for a batch that ends a campaign among others, each
+ * under `also` besides its own guard.
+ */
+function ending(db: Db, pageId: string, version: Date, also?: SQL) {
 	const endable = and(
 		eq(page.id, pageId),
 		eq(page.type, 'campaign'),
 		eq(page.state, 'live'),
-		eq(page.updatedAt, version)
+		eq(page.updatedAt, version),
+		also
 	);
-	const [, ended] = await db.batch([
+	return [
 		db
 			.update(form)
 			.set({ status: 'draft' })
@@ -93,8 +104,7 @@ export async function endCampaign(db: Db, pageId: string, version: Date): Promis
 				)
 			),
 		db.update(page).set({ state: 'ended' }).where(endable).returning({ id: page.id })
-	]);
-	return ended.length === 1;
+	] as const;
 }
 
 /** what a move of a campaign's address did, or the question it waits on. */
@@ -115,14 +125,16 @@ export type SlugConfirmed = { readonly move: boolean; readonly takeover: boolean
 /**
  * moves a campaign to `slug`, one the address rule (`checkSlug` in ../../page/slug.ts) has passed,
  * while the page is still the version it was drawn at. an address is not page content: it takes
- * effect here, not at publish.
+ * effect here, not at publish. a holder live past its published end as of `now` is an ended one
+ * (`isEnded` in ../../page/ended.ts): taking its address ends it as End does, in the same batch.
  */
 export async function updateCampaignSlug(
 	db: Db,
 	pageId: string,
 	version: Date,
 	slug: string,
-	confirmed: SlugConfirmed
+	confirmed: SlugConfirmed,
+	now: number
 ): Promise<SlugWrite> {
 	const [row] = await db
 		.select({ slug: page.slug, state: page.state })
@@ -131,7 +143,7 @@ export async function updateCampaignSlug(
 	if (!row) return { kind: 'gone' };
 	if (row.slug === slug) return { kind: 'written' };
 
-	const holder = await slugHolder(db, slug);
+	const holder = await slugHolder(db, slug, now);
 	if (holder !== null && holder.state !== 'ended') return { kind: 'taken', by: holder.name };
 	if (row.state !== 'never_published' && row.slug !== null && !confirmed.move) {
 		return { kind: 'ask', ask: 'move', from: row.slug };
@@ -140,55 +152,77 @@ export async function updateCampaignSlug(
 		return { kind: 'ask', ask: 'takeover', holder: holder.name };
 	}
 
-	// both statements are guarded on the page still being the version it was drawn at, so a stale
-	// save leaves the ended campaign its address; the release runs first, for `page_slug_idx`.
+	// every statement is guarded on the page still being the version it was drawn at, so a stale
+	// save leaves the ended campaign its address, and one past its end date its state; the release
+	// runs before the move, for `page_slug_idx`.
 	const drawn = and(eq(page.id, pageId), eq(page.updatedAt, version));
+	const stillDrawn = exists(db.select({ id: page.id }).from(page).where(drawn));
 	const move = db.update(page).set({ slug }).where(drawn).returning({ id: page.id });
 	try {
 		let moved: { id: string }[];
 		if (holder === null) {
 			moved = await move;
 		} else {
-			[, moved] = await db.batch([
-				db
-					.update(page)
-					.set({ slug: null })
-					.where(
-						and(
-							eq(page.id, holder.id),
-							eq(page.state, 'ended'),
-							eq(page.slug, slug),
-							exists(db.select({ id: page.id }).from(page).where(drawn))
-						)
-					),
-				move
-			]);
+			const release = db
+				.update(page)
+				.set({ slug: null })
+				.where(
+					and(eq(page.id, holder.id), eq(page.state, 'ended'), eq(page.slug, slug), stillDrawn)
+				);
+			if (holder.stored === 'live') {
+				const [endRow, endPage] = ending(db, holder.id, holder.version, stillDrawn);
+				[, , , moved] = await db.batch([endRow, endPage, release, move]);
+			} else {
+				[, moved] = await db.batch([release, move]);
+			}
 		}
 		return moved.length === 1 ? { kind: 'written' } : { kind: 'stale' };
 	} catch (error) {
 		// a campaign took the address, or an ended holder was published again, between the read and
 		// the write: `page_slug_idx` refused the batch whole.
 		if (sqliteResultCode(error) !== 'SQLITE_CONSTRAINT_UNIQUE') throw error;
-		const taker = await slugHolder(db, slug);
+		const taker = await slugHolder(db, slug, now);
 		if (taker === null) throw error;
 		return { kind: 'taken', by: taker.name };
 	}
 }
 
-/** the campaign holding `slug`, or null where none does. */
+/**
+ * the campaign holding `slug`, or null where none does: its `state` as of `now` (`isEnded`), and
+ * the state and version stored.
+ */
 async function slugHolder(
 	db: Db,
-	slug: string
-): Promise<{ id: string; name: string; state: Page['state'] } | null> {
+	slug: string,
+	now: number
+): Promise<{
+	id: string;
+	name: string;
+	state: Page['state'];
+	stored: Page['state'];
+	version: Date;
+} | null> {
 	const [held] = await db
-		.select({ id: page.id, name: page.name, state: page.state })
+		.select({
+			id: page.id,
+			name: page.name,
+			state: page.state,
+			published: page.published,
+			updatedAt: page.updatedAt
+		})
 		.from(page)
 		.where(eq(page.slug, slug));
 	if (!held) return null;
 	// unreachable: `page_slug_check` gives no donation page a slug and `page_name_check` no
 	// campaign a null name.
 	if (held.name === null) throw new Error(`page ${held.id} holds "${slug}" and has no name`);
-	return { id: held.id, name: held.name, state: held.state };
+	return {
+		id: held.id,
+		name: held.name,
+		state: stateAt(held, now),
+		stored: held.state,
+		version: held.updatedAt
+	};
 }
 
 /** what a rename did: the page as drawn is no longer the page stored, or there is none. */

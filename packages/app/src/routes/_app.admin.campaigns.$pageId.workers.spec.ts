@@ -160,8 +160,8 @@ describe('the address', () => {
 		const response = await address(pageId, 'coats', { move: 'on' });
 
 		expect(response.status).toBe(200);
-		expect((await readServedCampaign(db, 'coats'))?.id).toBe(pageId);
-		expect(await readServedCampaign(db, 'winter-coat-drive')).toBeNull();
+		expect((await readServedCampaign(db, 'coats', Date.now()))?.id).toBe(pageId);
+		expect(await readServedCampaign(db, 'winter-coat-drive', Date.now())).toBeNull();
 	});
 });
 
@@ -189,6 +189,41 @@ describe('an ended campaign’s address', () => {
 		expect(response.status).toBe(200);
 		expect((await stored(pageId)).slug).toBe('summer-camp');
 		expect((await stored(ended)).slug).toBeNull();
+	});
+
+	it('is taken the same from a live campaign past its published end date, which ends as End leaves it', async () => {
+		const ended = await campaign('Summer camp fund', 'summer-camp', 'live');
+		const published = JSON.parse((await stored(ended)).published ?? '{}');
+		await db
+			.update(page)
+			.set({
+				published: JSON.stringify({
+					...published,
+					endsAt: Date.now() - 1_000,
+					endsZone: 'America/New_York'
+				})
+			})
+			.where(eq(page.id, ended));
+		// live, as publish leaves a live campaign's row.
+		await db
+			.update(form)
+			.set({ status: 'live' })
+			.where(eq(form.id, (await stored(ended)).formId));
+		const pageId = await campaign('Summer camp 2027', 'summer-camp-2027', 'never_published');
+
+		const asked = await address(pageId, 'summer-camp');
+		expect(await asked.json()).toEqual({
+			ask: { kind: 'takeover', holder: 'Summer camp fund', to: '/summer-camp' }
+		});
+
+		const response = await address(pageId, 'summer-camp', { takeover: 'on' });
+
+		expect(response.status).toBe(200);
+		expect((await stored(pageId)).slug).toBe('summer-camp');
+		const holder = await stored(ended);
+		expect({ slug: holder.slug, state: holder.state }).toEqual({ slug: null, state: 'ended' });
+		const [owned] = await db.select().from(form).where(eq(form.id, holder.formId));
+		expect(owned?.status).toBe('draft');
 	});
 
 	it('is not taken by a save drawn from an older version, and the ended campaign keeps it', async () => {
@@ -486,7 +521,7 @@ describe('Publish', () => {
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({ published: true, undoable: false });
-		const live = await readServedCampaign(db, 'winter-coat-drive');
+		const live = await readServedCampaign(db, 'winter-coat-drive', Date.now());
 		expect(live?.id).toBe(pageId);
 		const [owned] = await db
 			.select()

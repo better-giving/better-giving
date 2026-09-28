@@ -82,8 +82,8 @@ export async function loadPageView(
 			() => cachedRails(processors, origin),
 			() => cachedCoins(processors, origin),
 			preview
-				? (form) => asPublished(form, parsed.ok ? parsed.page.settings : undefined)
-				: undefined
+				? { drafted: (form) => asPublished(form, parsed.ok ? parsed.page.settings : undefined) }
+				: {}
 		),
 		readOrgStory(db),
 		readOrgLook(db),

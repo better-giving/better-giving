@@ -3,6 +3,7 @@ import { NEW_FORM } from '../../forms/new-form';
 import { type Page as PageDocument, parsePage } from '../../page/catalog';
 import { defaultCampaign } from '../../page/defaults';
 import { endDayOf } from '../../page/end-date';
+import { stateAt } from '../../page/ended';
 import { MAX_FORM_NAME } from '../../forms/input-schema';
 import { freeSlug } from '../../page/slug';
 import type { Db } from '../db/client';
@@ -34,15 +35,21 @@ export type ServedCampaign = Page & {
 /**
  * the campaign at `slug` — live, drawn from its published page, or ended, drawn as having ended —
  * or `null` where none answers there. a never-published campaign's slug is held but answers nothing.
+ * `state` is as of `now`: `ended` too for a live campaign past its published end (`isEnded`).
  */
-export async function readServedCampaign(db: Db, slug: string): Promise<ServedCampaign | null> {
+export async function readServedCampaign(
+	db: Db,
+	slug: string,
+	now: number
+): Promise<ServedCampaign | null> {
 	const [row] = await db
 		.select()
 		.from(page)
 		.where(
 			and(eq(page.type, 'campaign'), eq(page.slug, slug), inArray(page.state, ['live', 'ended']))
 		);
-	return (row as ServedCampaign | undefined) ?? null;
+	if (!row) return null;
+	return { ...row, state: stateAt(row, now) } as ServedCampaign;
 }
 
 /** a campaign as the Campaigns list reads it: its row, and its draft's goal and end. */
@@ -56,9 +63,10 @@ export type CampaignListing = Pick<Page, 'id' | 'slug' | 'state' | 'updatedAt'> 
 /**
  * every campaign, newest first. the Donation page is no campaign and is not among them. a draft
  * the read rule refuses is listed without its goal and end, and logged, so one broken draft leaves
- * every other campaign on the list and its own editor reachable.
+ * every other campaign on the list and its own editor reachable. `state` is as of `now`: `ended`
+ * too for a live campaign past its published end (`isEnded`).
  */
-export async function readCampaigns(db: Db): Promise<CampaignListing[]> {
+export async function readCampaigns(db: Db, now: number): Promise<CampaignListing[]> {
 	const rows = await db
 		.select({
 			id: page.id,
@@ -66,12 +74,17 @@ export async function readCampaigns(db: Db): Promise<CampaignListing[]> {
 			slug: page.slug,
 			state: page.state,
 			updatedAt: page.updatedAt,
-			draft: page.draft
+			draft: page.draft,
+			published: page.published
 		})
 		.from(page)
 		.where(eq(page.type, 'campaign'))
 		.orderBy(desc(page.createdAt), desc(page.id));
-	return rows.map(({ draft, name, ...row }) => {
+	return rows.map(({ draft, published, name, ...stored }) => {
+		const row = {
+			...stored,
+			state: stateAt({ ...stored, published }, now)
+		};
 		// unreachable: `page_name_check` refuses a campaign without a name.
 		if (name === null) throw new Error(`campaign ${row.id} has no name`);
 		// `page_draft_object_check` holds the draft to a JSON object, so it always parses as JSON.

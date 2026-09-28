@@ -25,7 +25,9 @@ import {
 	CORNERS,
 	LOOK_KEYS,
 	PAGE_KEYS,
+	PAGE_STATES,
 	PAGE_TYPES,
+	type PageState,
 	type PageType,
 	SHADES
 } from '../../page/keys';
@@ -96,7 +98,8 @@ import type { PostableAccountId } from './postable';
 //             reason too, with the page document's key names beside them
 //             (../../page/keys.ts), since the page catalog reads the keys the checks here do,
 //             and `PAGE_TYPES` joined them there because the catalog reads a page by its type
-//             (../../page/catalog.ts). `CHAT_NOTES` was born there, for the chat's components.
+//             (../../page/catalog.ts), and `PAGE_STATES` because ../../page/ended.ts reads
+//             whether a page has ended. `CHAT_NOTES` was born there, for the chat's components.
 //             this list is every vocabulary that has left, and a move not added to it makes
 //             it read as complete while under-reporting.
 //             one vocabulary is not derived into a check at all: `donation.tribute_kind`,
@@ -2907,14 +2910,6 @@ export const orgPresentation = sqliteTable(
 		)
 	]
 );
-
-/**
- * `never_published` until a campaign's first publish; `live` while it answers at its address;
- * `ended` once it has been taken down. a campaign goes back from `ended` to `live` by publishing
- * again, and never back to `never_published`.
- */
-export const PAGE_STATES = ['never_published', 'live', 'ended'] as const;
-export type PageState = (typeof PAGE_STATES)[number];
 
 /** check body: a page document carries neither of a campaign's two keys, a goal and an end date. */
 const noCampaignSettings = (doc: SQLiteColumn) =>

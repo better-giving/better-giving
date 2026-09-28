@@ -43,6 +43,15 @@ export const LOOK_KEYS = {
 export const PAGE_TYPES = ['donation_page', 'campaign'] as const;
 export type PageType = (typeof PAGE_TYPES)[number];
 
+/**
+ * a page's stored state: `never_published` until a campaign's first publish; `live` while it
+ * answers at its address; `ended` once End has taken it down. a `live` campaign past its published
+ * end date reads as ended without this changing (./ended.ts). a campaign goes back from `ended` to
+ * `live` by publishing again, and never back to `never_published`.
+ */
+export const PAGE_STATES = ['never_published', 'live', 'ended'] as const;
+export type PageState = (typeof PAGE_STATES)[number];
+
 export const SHADES = ['light', 'warm', 'cool'] as const;
 export type Shade = (typeof SHADES)[number];
 

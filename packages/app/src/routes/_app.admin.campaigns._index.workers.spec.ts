@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { defaultCampaign } from '$lib/page/defaults';
 import { slugFromTitle } from '$lib/page/slug';
@@ -281,6 +281,74 @@ describe('New campaign', () => {
 			form: { id: 'campaign-create', result: { error: { title: ['Give the campaign a title.'] } } }
 		});
 		expect(await db.select().from(page)).toEqual([]);
+	});
+});
+
+/** an hour from now, well inside the signed-in session: the instant a campaign's end comes. */
+const ENDS_AT = NOW + 3_600_000;
+const ENDING = { endsAt: ENDS_AT, endsZone: 'America/New_York' };
+
+/** the clock the loader and the presses take their `now` from. */
+function clockAt(now: number) {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(now);
+}
+
+describe('a live campaign at its published end date', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('is listed live up to its end instant, and from it in the Ended group as End leaves one', async () => {
+		await campaign('Winter coat drive', 'live', ENDS_AT - 2 * DAY, ENDING);
+		await campaign('Summer camp fund', 'ended', ENDS_AT - 9 * DAY);
+
+		clockAt(ENDS_AT - 1);
+		const before = await load();
+		expect(before.campaigns.map((row) => [row.name, row.state])).toEqual([
+			['Winter coat drive', 'live']
+		]);
+
+		clockAt(ENDS_AT);
+		const { campaigns: live, ended } = await load();
+		expect(live).toEqual([]);
+		expect(ended.map((row) => [row.name, row.state])).toEqual([
+			['Winter coat drive', 'ended'],
+			['Summer camp fund', 'ended']
+		]);
+	});
+
+	it('stays live for an end date only its draft holds, however long past', async () => {
+		const pageId = await campaign('Winter coat drive', 'live', NOW);
+		await db
+			.update(page)
+			.set({ draft: JSON.stringify({ ...defaultCampaign(), settings: SETTINGS, ...ENDING }) })
+			.where(eq(page.id, pageId));
+		clockAt(ENDS_AT + DAY);
+
+		expect((await listed('Winter coat drive')).state).toBe('live');
+	});
+
+	it('is published again from the Ended group once its draft ends later, back live at its address', async () => {
+		const pageId = await campaign('Winter coat drive', 'live', NOW, ENDING);
+		await db
+			.update(page)
+			.set({
+				draft: JSON.stringify({
+					...defaultCampaign(),
+					settings: SETTINGS,
+					...ENDING,
+					endsAt: ENDS_AT + 7 * DAY
+				})
+			})
+			.where(eq(page.id, pageId));
+		clockAt(ENDS_AT);
+
+		const response = await press('campaign-publish', await listed('Winter coat drive'));
+
+		expect(response.status).toBe(302);
+		expect((await listed('Winter coat drive')).state).toBe('live');
+		expect(await visit('winter-coat-drive')).toMatchObject({ kind: 'page' });
 	});
 });
 

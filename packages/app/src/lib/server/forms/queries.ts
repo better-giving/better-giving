@@ -3,8 +3,9 @@ import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { FORM_CURRENCY } from '../../forms/amounts';
 import { postableId } from '../db/accounts';
 import type { Db } from '../db/client';
-import { form, type Form, mintFormId, page, type PageState, program } from '../db/schema';
-import type { PageType } from '../../page/keys';
+import { form, type Form, mintFormId, page, program } from '../db/schema';
+import { stateAt } from '../../page/ended';
+import type { PageState, PageType } from '../../page/keys';
 import type {
 	FormRecord,
 	ParsedForm,
@@ -317,14 +318,25 @@ function owningPage(row: {
 	return { type: 'campaign', name: row.pageName, state: row.pageState };
 }
 
-/** the page that owns the `form` row `id`, or `null` when no page names it or no row has that id. */
-export async function readOwningPage(db: Db, id: string): Promise<OwningPage | null> {
+/**
+ * the page that owns the `form` row `id`, or `null` when no page names it or no row has that id. a
+ * campaign's `state` is as of `now`: `ended` too for a live one past its published end (`isEnded`).
+ */
+export async function readOwningPage(db: Db, id: string, now: number): Promise<OwningPage | null> {
 	const [row] = await db
-		.select({ pageType: page.type, pageName: page.name, pageState: page.state })
+		.select({
+			pageType: page.type,
+			pageName: page.name,
+			pageState: page.state,
+			pagePublished: page.published
+		})
 		.from(page)
 		.where(eq(page.formId, id))
 		.limit(1);
-	return row ? owningPage(row) : null;
+	if (!row) return null;
+	const owner = owningPage(row);
+	if (owner?.type !== 'campaign') return owner;
+	return { ...owner, state: stateAt({ state: owner.state, published: row.pagePublished }, now) };
 }
 
 /**

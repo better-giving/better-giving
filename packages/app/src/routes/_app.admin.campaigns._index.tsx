@@ -27,6 +27,7 @@ import { formatMinorBrief } from '$lib/donations/money';
 import { FORM_CURRENCY } from '$lib/forms/amounts';
 import { defineForm, type RejectionStatus, WHICH_FORM } from '$lib/forms/definition';
 import { dayWords } from '$lib/page/end-date';
+import { stateAt } from '$lib/page/ended';
 import { NEW_CAMPAIGN_SCHEMA } from '$lib/page/new-campaign';
 import {
 	invalid,
@@ -55,7 +56,8 @@ import type { Route } from './+types/_app.admin.campaigns._index';
 // only ever of a campaign nobody was shown (`deleteNeverPublishedCampaign` argues why). every press is
 // written against the version its row was drawn at, so a row changed since — in its editor, in
 // another tab — is refused rather than acted on, and a press naming the Donation page names no
-// campaign.
+// campaign. a live campaign past its published end date is an ended one here, in its group and to
+// its presses, as everywhere ($lib/page/ended.ts).
 //
 // the goal and end date are the draft's, which is what the editor shows. an end date is the day
 // chosen, in the zone it was chosen in ($lib/page/end-date.ts's `endDayOf`), so every operator reads
@@ -141,14 +143,14 @@ export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 }
 
 export async function loader({ context, url }: Route.LoaderArgs) {
+	const now = Date.now();
 	let listed: CampaignListing[];
 	try {
-		listed = await readCampaigns(context.get(database));
+		listed = await readCampaigns(context.get(database), now);
 	} catch (e) {
 		console.error('loading the campaigns page failed:', e);
 		loadFailed('This page');
 	}
-	const now = Date.now();
 	const rows = listed.map((campaign) => ({
 		id: campaign.id,
 		name: campaign.name,
@@ -222,10 +224,11 @@ export async function action({ context, request }: Route.ActionArgs) {
 			invalid(status, submission.reject({ formErrors: [text] }), { pageId });
 
 		try {
+			const now = Date.now();
 			const row = await readPage(db, pageId);
 			if (row === null || row.type !== 'campaign') return refuse(404, noCampaign(press, pageId));
 			if (row.updatedAt.getTime() !== seen.getTime()) return refuse(409, STALE);
-			if (row.state !== ACTS_ON[press]) return refuse(409, NOT_THIS_STATE[press]);
+			if (stateAt(row, now) !== ACTS_ON[press]) return refuse(409, NOT_THIS_STATE[press]);
 
 			switch (press) {
 				case END_FORM_ID:
@@ -236,7 +239,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 						: refuse(409, STALE);
 				case PUBLISH_FORM_ID: {
 					const published = await publishPage(db, { type: 'campaign', id: pageId }, seen, {
-						now: Date.now()
+						now
 					});
 					switch (published.kind) {
 						case 'published':
