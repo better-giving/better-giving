@@ -363,3 +363,77 @@ describe('a block’s sheet', () => {
 		expect((await donationPage())?.published).toBe(before?.published);
 	});
 });
+
+describe('Reset to default', () => {
+	async function press(which: string, version: number) {
+		const body = new FormData();
+		body.set(WHICH_FORM, which);
+		body.set(RECORD_VERSION, String(version));
+		return request(
+			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
+			{ env }
+		);
+	}
+
+	/** the Donation page's draft laid out and palette'd its own way, as the chat leaves it. */
+	async function editDraft() {
+		const made = await donationPage();
+		if (made === null) throw new Error('the editor made no Donation page');
+		await db
+			.update(page)
+			.set({
+				draft: JSON.stringify({ ...JSON.parse(made.draft), palette: 'bold', layout: 'banner' }),
+				updatedAt: new Date(made.updatedAt.getTime() + 1_000)
+			})
+			.where(eq(page.id, made.id));
+	}
+
+	const refusal = async (response: Response) =>
+		((await response.json()) as { form?: { result?: { error?: Record<string, string[]> } } }).form
+			?.result?.error?.[''];
+
+	it('is not offered on a Donation page with no edits, and is offered once it has some', async () => {
+		expect(await open()).toMatchObject({ hasEdits: false });
+
+		await editDraft();
+
+		expect(await open()).toMatchObject({ hasEdits: true });
+	});
+
+	it('brings the default back after edits and a Publish, with nothing left to undo', async () => {
+		await open();
+		await editDraft();
+		await press('page-publish', (await open()).version);
+
+		const response = await press('page-reset', (await open()).version);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ reset: true });
+		expect(await open()).toMatchObject({ state: 'live', hasEdits: false });
+		const undo = await press('page-undo', (await open()).version);
+		expect(undo.status).toBe(409);
+	});
+
+	it('is refused on a Donation page with no edits, saying so', async () => {
+		const response = await press('page-reset', (await open()).version);
+
+		expect(response.status).toBe(422);
+		expect(await refusal(response)).toEqual([
+			'Nothing was reset: the Donation page is already the default, with no chat.'
+		]);
+	});
+
+	it('is refused when pressed on a page drawn before it last moved, and nothing changes', async () => {
+		const { version } = await open();
+		await editDraft();
+		const written = await donationPage();
+
+		const response = await press('page-reset', version);
+
+		expect(response.status).toBe(409);
+		expect(await refusal(response)).toEqual([
+			'Nothing was changed: this page has been saved since the editor was opened. Reload it, then try again.'
+		]);
+		expect(await donationPage()).toEqual(written);
+	});
+});

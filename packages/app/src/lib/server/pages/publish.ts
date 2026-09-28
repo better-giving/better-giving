@@ -375,7 +375,7 @@ const FIRST_PUBLISH = defineForm({
 const UNDO = defineForm({ id: UNDO_FORM_ID, schema: z.object({}) });
 const DISCARD = defineForm({ id: DISCARD_FORM_ID, schema: z.object({}) });
 
-const STALE =
+export const STALE =
 	'Nothing was changed: this page has been saved since the editor was opened. Reload it, then try again.';
 const NOTHING_TO_UNDO = 'Nothing was undone: no earlier version of this page was published.';
 const NOTHING_TO_DISCARD =

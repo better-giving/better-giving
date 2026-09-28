@@ -490,6 +490,41 @@ describe('/donate after the editor’s presses', () => {
 		expect((await drawn()).config).toEqual(opened);
 	});
 
+	it('draws the current default in the Organisation’s look and share message after Reset', async () => {
+		const ORG_LOOK = { brandColour: '#225588', shade: 'cool', corner: 'soft' };
+		await env.DB.prepare(
+			`insert into org_presentation (id, look, sharing, created_at, updated_at) values ('default', ?, ?, 0, 0)`
+		)
+			.bind(JSON.stringify(ORG_LOOK), JSON.stringify({ message: 'Every meal counts this winter.' }))
+			.run();
+		await visit();
+		const [row] = await db.select().from(page);
+		if (!row) throw new Error('there is no Donation page to write');
+		await db
+			.update(page)
+			.set({
+				draft: JSON.stringify({
+					...JSON.parse(row.draft),
+					palette: 'bold',
+					look: { brandColour: '#aa3300', shade: 'warm', corner: 'round' },
+					shareMessage: 'Keep Elm Street warm this winter.',
+					blocks: defaultDonationPage().blocks.filter((block) => block.type !== 'about-us')
+				}),
+				updatedAt: new Date(row.updatedAt.getTime() + 1_000)
+			})
+			.where(eq(page.id, row.id));
+		await press('page-publish');
+		expect((await drawn()).look).toMatchObject({ brandColour: '#aa3300' });
+
+		await press('page-reset');
+
+		const view = await drawn();
+		expect(view.page.blocks).toEqual(defaultDonationPage().blocks);
+		expect(view.page.palette).toBe(defaultDonationPage().palette);
+		expect(view.look).toEqual(ORG_LOOK);
+		expect(view.sharing.message).toBe('Every meal counts this winter.');
+	});
+
 	it('checks a gift against the published donation settings, never the draft’s', async () => {
 		await visit();
 		await saveSettings();

@@ -6,15 +6,16 @@ import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { PublishBar, type PublishState } from './publish-bar';
 import { type FirstPublish, usePublishPresses } from './publish-wiring';
 
-// what the editor's Publish, Undo and Discard changes post, and what the bar and the confirms do
-// with each answer. the editor's action here is a stand-in that records each body and answers what
-// the case scripts; what the real one does is $lib/server/pages/publish.workers.spec.ts's.
+// what the editor's Publish, Undo, Discard changes and Reset to default post, and what the bar and
+// the confirms do with each answer. the editor's action here is a stand-in that records each body and
+// answers what the case scripts; what the real one does is $lib/server/pages/publish.workers.spec.ts's
+// and reset.workers.spec.ts's.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const PAGE = '/admin/campaigns/p1';
 
-type Drawn = { version: number; state: PublishState };
+type Drawn = { version: number; state: PublishState; hasEdits?: boolean };
 
 let drawn: Drawn;
 let posted: Record<string, string>[];
@@ -38,8 +39,13 @@ const FIRST: FirstPublish = {
 };
 
 function Editor({ first }: { first: boolean }) {
-	const { version, state } = useLoaderData<Drawn>();
-	const presses = usePublishPresses({ version, state, first: first ? FIRST : undefined });
+	const { version, state, hasEdits } = useLoaderData<Drawn>();
+	const presses = usePublishPresses({
+		version,
+		state,
+		first: first ? FIRST : undefined,
+		reset: hasEdits === undefined ? undefined : { hasEdits }
+	});
 	return (
 		<>
 			<PublishBar
@@ -218,5 +224,52 @@ describe('Discard changes', () => {
 
 		expect(posted).toEqual([{ [WHICH_FORM]: 'page-discard', [RECORD_VERSION]: '1' }]);
 		expect(dialog()).toBeNull();
+	});
+});
+
+describe('Reset to default', () => {
+	const buttons = () => [...bar().querySelectorAll('button')].map((b) => b.textContent?.trim());
+
+	it('is offered only while the page has edits', async () => {
+		drawn = { ...drawn, hasEdits: false };
+		await screen();
+
+		expect(buttons()).not.toContain('Reset to default');
+	});
+
+	it('is confirmed before it posts, and is gone with its confirm once it lands', async () => {
+		drawn = { ...drawn, hasEdits: true };
+		answers = [{ body: { reset: true }, leaves: { version: 2, state: 'live', hasEdits: false } }];
+		await screen();
+
+		await press(button('Reset to default', bar()));
+		expect(posted).toEqual([]);
+		const asked = dialog();
+		if (asked === null) throw new Error('no confirm was put up');
+		expect(asked.textContent).toContain('can’t be undone');
+
+		await press(button('Reset to default', asked));
+
+		expect(posted).toEqual([{ [WHICH_FORM]: 'page-reset', [RECORD_VERSION]: '1' }]);
+		expect(dialog()).toBeNull();
+		expect(buttons()).not.toContain('Reset to default');
+	});
+
+	it('says a refusal in its confirm, which stays up', async () => {
+		const text =
+			'Nothing was changed: this page has been saved since the editor was opened. Reload it, then try again.';
+		drawn = { ...drawn, hasEdits: true };
+		answers = [
+			{
+				body: { form: { id: 'page-reset', result: { status: 'error', error: { '': [text] } } } },
+				status: 409
+			}
+		];
+		await screen();
+		await press(button('Reset to default', bar()));
+
+		await press(button('Reset to default', dialog() ?? document));
+
+		expect(dialog()?.textContent).toContain(text);
 	});
 });
