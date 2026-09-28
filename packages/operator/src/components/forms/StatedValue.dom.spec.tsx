@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CodeSlab } from '../data/CodeSlab.jsx';
 import { render } from '../render.testing';
 import { StatedValue } from './StatedValue.jsx';
 
@@ -67,5 +68,40 @@ describe('a stated value mounted into a document', () => {
 
 		expect(rest.querySelector('.adm-stated')?.className).toBe('adm-stated');
 		expect(flush.querySelector('.adm-stated')?.className).toBe('adm-stated adm-stated--flush');
+	});
+
+	it('stands a block value in a group named by its label', () => {
+		// the slab carries its own copy control, and a reader tabbing onto it lands inside the group
+		// without having read the label above — so the label is the group's name.
+		const root = render(StatedValue, {
+			label: 'Your deployment address',
+			block: (
+				<CodeSlab
+					content="https://give.riverbanktrust.org"
+					oneline
+					copyable
+					copyLabel="Copy address"
+				/>
+			),
+			flush: true
+		});
+
+		const group = root.querySelector('.adm-stated');
+		const name = group?.getAttribute('aria-labelledby');
+		expect(group?.getAttribute('role')).toBe('group');
+		expect(name ? root.ownerDocument.getElementById(name)?.textContent : null).toBe(
+			'Your deployment address'
+		);
+		expect(group?.querySelector(':scope > .adm-slab pre')?.textContent).toBe(
+			'https://give.riverbanktrust.org'
+		);
+		// the block is not set inside the value's span: a slab is a block and the span is a phrase.
+		expect(group?.querySelector('.adm-stated__value')).toBeNull();
+	});
+
+	it('gives the text form no role: its label is a row, not a name', () => {
+		const root = render(StatedValue, { label: 'Currency', value: 'GBP' });
+
+		expect(root.querySelector('.adm-stated')?.hasAttribute('role')).toBe(false);
 	});
 });
