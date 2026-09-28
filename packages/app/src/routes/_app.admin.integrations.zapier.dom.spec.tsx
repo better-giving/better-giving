@@ -2,7 +2,7 @@ import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, data } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
-import Zapier from './_app.admin.integrations.zapier';
+import Zapier, { shouldRevalidate } from './_app.admin.integrations.zapier';
 
 // what the Zapier page draws from its reading and does with the answers its presses get: the key
 // shown once in the card, a refusal said under the key, the question a replace asks and the strip
@@ -33,7 +33,7 @@ const ADDRESS = 'https://give.riverbanktrust.org';
 type Reading = {
 	address: string;
 	report: {
-		key: { prefix: string; lastFour: string; madeAt: string } | null;
+		key: { id: string; prefix: string; lastFour: string; madeAt: string } | null;
 		listening: { newGift: number; newDonor: number; giftRefunded: number };
 		deliveries: { waiting: number; failed: number; oldestWaitingAt: string | null };
 	};
@@ -43,7 +43,12 @@ type Reading = {
 
 const NOBODY = { newGift: 0, newDonor: 0, giftRefunded: 0 };
 const QUIET = { waiting: 0, failed: 0, oldestWaitingAt: null };
-const HELD = { prefix: 'bgz_7Qm2', lastFour: 'EjRa', madeAt: '2026-09-28T12:00:00.000Z' };
+const HELD = {
+	id: 'key-1',
+	prefix: 'bgz_7Qm2',
+	lastFour: 'EjRa',
+	madeAt: '2026-09-28T12:00:00.000Z'
+};
 
 function reading(over: Partial<Reading> = {}, report: Partial<Reading['report']> = {}): Reading {
 	return {
@@ -78,8 +83,7 @@ function named(root: Element | null | undefined, name: string): HTMLElement {
 	return found;
 }
 
-const keyBox = (root: HTMLElement) =>
-	root.querySelector<HTMLInputElement>('input[aria-label="Zapier key"]');
+const keyBox = (root: HTMLElement) => root.querySelector<HTMLInputElement>('input#zapier-key');
 
 it('draws the three triggers, the address and an empty key box with Make key before a key', () => {
 	const root = screen(reading());
@@ -119,26 +123,44 @@ async function settle(): Promise<void> {
 
 type Answer = 'made' | 'replaced' | 'key_exists' | 'conflict';
 
+/** what the stand-in action was posted and what it answers a replace with. */
+type Round = {
+	readonly listening?: Reading['report']['listening'];
+	readonly pause?: { readonly paused: number; readonly notPaused: number };
+};
+
+/** every body the stand-in action was posted, in order. */
+let posted: FormData[] = [];
+
 /**
  * the page over a loader and an action standing in for the route's own, so a press runs the whole
- * round — which is what the route's server half does (the workers spec beside this one).
+ * round — which is what the route's server half does (the workers spec beside this one). the stub
+ * takes the route's own `shouldRevalidate`, which is what decides whether a refusal re-reads.
  */
-async function flow(at: string, start: Reading['report']['key'], answer: Answer) {
+async function flow(
+	at: string,
+	start: Reading['report']['key'],
+	answer: Answer,
+	round: Round = {}
+) {
 	let key = start;
+	posted = [];
+	const listening = round.listening ?? { newGift: 2, newDonor: 1, giftRefunded: 0 };
+	const pause = round.pause ?? { paused: 2, notPaused: 1 };
 	const Stub = createRoutesStub([
 		{
 			path: SCREEN,
 			Component: Zapier as never,
-			// framework mode with SSR reads the loader again after every submission, a refused one
-			// included; the stub is data mode, which skips it after a 4xx unless told.
-			shouldRevalidate: () => true,
+			shouldRevalidate,
 			loader: ({ request }) =>
 				reading(
 					{ replacing: key !== null && new URL(request.url).searchParams.has('confirm') },
-					{ key, listening: { newGift: 2, newDonor: 1, giftRefunded: 0 } }
+					{ key, listening }
 				),
 			action: async ({ request }) => {
-				const form = String((await request.formData()).get('__form_id__'));
+				const body = await request.formData();
+				posted.push(body);
+				const form = String(body.get('__form_id__'));
 				const refuse = (sentence: string) =>
 					data(
 						{
@@ -153,16 +175,20 @@ async function flow(at: string, start: Reading['report']['key'], answer: Answer)
 					key = HELD;
 					return refuse('A key was already made.');
 				}
-				if (answer === 'conflict') return refuse('Another replace landed first.');
-				key = { ...HELD, lastFour: 'Wx9z' };
+				if (answer === 'conflict') {
+					key = { ...HELD, id: 'key-2', lastFour: 'Qq7t' };
+					return refuse('The key this page showed was already replaced.');
+				}
+				key = { ...HELD, id: 'key-2', lastFour: 'Wx9z' };
+				const disconnected =
+					answer === 'made' ? 0 : listening.newGift + listening.newDonor + listening.giftRefunded;
 				return {
 					made: {
 						press: answer === 'made' ? 'make' : 'replace',
 						key: KEY,
 						madeAt: HELD.madeAt,
-						disconnected: answer === 'made' ? 0 : 3,
-						paused: answer === 'made' ? 0 : 2,
-						notPaused: answer === 'made' ? 0 : 1
+						disconnected,
+						...(answer === 'made' ? { paused: 0, notPaused: 0 } : pause)
 					}
 				};
 			}
@@ -197,18 +223,49 @@ it('asks before a replace, itemising the Zaps it disconnects', async () => {
 	expect(named(card(), 'Yes, replace').tagName).toBe('BUTTON');
 });
 
-it('shows the new key once after a replace, and says which Zaps still read as on', async () => {
+it('posts the id of the key the question named', async () => {
+	await flow(`${SCREEN}?confirm=replace`, HELD, 'replaced');
+
+	await act(async () => named(card(), 'Yes, replace').click());
+	await settle();
+
+	expect(posted.map((body) => [body.get('__form_id__'), body.get('key_id')])).toEqual([
+		['zapier-key-replace', 'key-1']
+	]);
+});
+
+it('shows the new key once after a replace, saying in the card which Zaps still read as on', async () => {
 	const root = await flow(`${SCREEN}?confirm=replace`, HELD, 'replaced');
 
 	await act(async () => named(card(), 'Yes, replace').click());
 	await settle();
 
-	expect(card()?.querySelector('h2')?.textContent).toBe('Copy the key for Zapier');
-	expect(card()?.textContent).toContain(KEY);
+	const shown = card();
+	expect(shown?.querySelector('h2')?.textContent).toBe('Copy the key for Zapier');
+	expect(shown?.textContent).toContain(KEY);
+	// in the card's body, which is what the card is described by when it opens.
+	const body = document.getElementById(shown?.getAttribute('aria-describedby') ?? '');
+	expect(body?.textContent).toContain('3 Zaps disconnected.');
+	expect(body?.textContent).toContain('1 of them still reads as on in Zapier');
 	act(() => named(card(), 'Done').click());
 	expect(keyBox(root)?.value).toBe('bgz_7Qm2••••••••••••Wx9z');
-	expect(root.textContent).toContain('3 Zaps disconnected');
-	expect(root.textContent).toContain('1 of them still reads as on in Zapier');
+});
+
+it('says one disconnected Zap in the singular, in the question and in the answer', async () => {
+	const one = { newGift: 0, newDonor: 1, giftRefunded: 0 };
+	await flow(`${SCREEN}?confirm=replace`, HELD, 'replaced', {
+		listening: one,
+		pause: { paused: 1, notPaused: 0 }
+	});
+
+	expect(card()?.textContent).toContain('1 Zap disconnects: 1 on new donors.');
+	expect(card()?.textContent).toContain('Reconnect it in Zapier with the new key');
+	await act(async () => named(card(), 'Yes, replace').click());
+	await settle();
+
+	expect(card()?.textContent).toContain('1 Zap disconnected.');
+	expect(card()?.textContent).toContain('Reconnect it in Zapier with the new key');
+	expect(card()?.textContent).not.toContain('each');
 });
 
 it('says a refused make under the key, points the press at it and puts focus there', async () => {
@@ -220,6 +277,8 @@ it('says a refused make under the key, points the press at it and puts focus the
 	const press = named(root, 'Replace key');
 	const said = document.getElementById(press.getAttribute('aria-describedby') ?? '');
 	expect(said?.textContent).toContain('A key was already made.');
+	// the key box's own message, standing in the box's column rather than after the row.
+	expect(keyBox(root)?.getAttribute('aria-describedby')?.split(' ')).toContain(said?.id);
 	expect(document.activeElement).toBe(press);
 });
 
@@ -232,7 +291,8 @@ it('takes the question down on a refused replace and says why at the key row', a
 	expect(card()).toBeNull();
 	const press = named(root, 'Replace key');
 	const said = document.getElementById(press.getAttribute('aria-describedby') ?? '');
-	expect(said?.textContent).toContain('Another replace landed first.');
+	expect(said?.textContent).toContain('The key this page showed was already replaced.');
+	expect(keyBox(root)?.value).toBe('bgz_7Qm2••••••••••••Qq7t');
 	expect(document.activeElement).toBe(press);
 });
 
@@ -260,7 +320,7 @@ it('draws an amber strip when the Zaps are more than an hour behind, and no stri
 });
 
 it('says every disconnected Zap still reads as on where Zapier paused none of them', () => {
-	const root = screen(reading({}, { key: HELD }), {
+	screen(reading({}, { key: HELD }), {
 		made: {
 			press: 'replace',
 			key: KEY,
@@ -271,7 +331,27 @@ it('says every disconnected Zap still reads as on where Zapier paused none of th
 		}
 	});
 
-	expect(root.textContent).toContain('3 Zaps disconnected');
-	expect(root.textContent).toContain('They still read as on in Zapier.');
-	expect(root.textContent).not.toContain('of them');
+	expect(card()?.textContent).toContain('3 Zaps disconnected.');
+	expect(card()?.textContent).toContain('They still read as on in Zapier.');
+	expect(card()?.textContent).not.toContain('of them');
+});
+
+it('labels the key box where it can be seen, as the address row is', () => {
+	const root = screen(reading({}, { key: HELD }));
+
+	expect(root.querySelector('label[for="zapier-key"]')?.textContent).toBe('Zapier key');
+	expect(keyBox(root)?.hasAttribute('aria-label')).toBe(false);
+});
+
+it('re-reads the page after its own refused press, and otherwise takes the default', () => {
+	const args = (form: string, actionStatus: number) => {
+		const formData = new FormData();
+		formData.set('__form_id__', form);
+		return { formData, actionStatus, defaultShouldRevalidate: false } as never;
+	};
+
+	expect(shouldRevalidate(args('zapier-key-make', 409))).toBe(true);
+	expect(shouldRevalidate(args('zapier-key-replace', 409))).toBe(true);
+	expect(shouldRevalidate(args('zapier-key-replace', 400))).toBe(false);
+	expect(shouldRevalidate(args('sign-out', 409))).toBe(false);
 });

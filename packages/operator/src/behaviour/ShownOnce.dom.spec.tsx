@@ -50,6 +50,20 @@ describe('a secret shown once', () => {
 		expect(dialog.textContent).toContain('It won’t be shown again.');
 	});
 
+	it('reads what else the answer said as part of the card, after the value', () => {
+		const root = render(ShownOnce, {
+			title: 'Copy the key for Zapier',
+			secret: SECRET,
+			copyLabel: 'Copy the key',
+			onDone: () => {},
+			children: <p className="adm-prose">3 Zaps disconnected.</p>
+		});
+		const dialog = dialogIn(root);
+		const body = root.ownerDocument.getElementById(dialog.getAttribute('aria-describedby') ?? '');
+
+		expect(body?.textContent).toMatch(/It won’t be shown again\.3 Zaps disconnected\.$/);
+	});
+
 	it('puts exactly the value on the clipboard', async () => {
 		const root = render(ShownOnce, {
 			title: 'Copy the key',

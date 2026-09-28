@@ -5,12 +5,17 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { CodeSlab } from '@better-giving/operator/components/data/CodeSlab';
 import { TriggerList } from '@better-giving/operator/components/data/TriggerList';
 import { Field } from '@better-giving/operator/components/forms/Field';
-import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
-import { Column, Grouped, Groups, Stack } from '@better-giving/operator/components/shell/Layout';
+import { Column, Grouped, Groups } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { type RefObject, useEffect, useRef } from 'react';
-import { Form, Link, useNavigate, useNavigation } from 'react-router';
+import {
+	Form,
+	Link,
+	type ShouldRevalidateFunctionArgs,
+	useNavigate,
+	useNavigation
+} from 'react-router';
 import { z } from 'zod';
 import { screenTitle } from '$lib/admin/screen-title';
 import { type AdminActionData, resultFor, whichForm } from '$lib/admin/use-admin-form';
@@ -42,9 +47,13 @@ import type { Route } from './+types/_app.admin.integrations.zapier';
 // hand.
 //
 // **the key is in the press's answer and nowhere else.** the action answers it rather than
-// redirecting, so it rides that one response into `ShownOnce`; no loader returns it. a refused
-// press — a second make, a replace with nothing to replace, a replace another one beat — answers
-// with a sentence under the key row, which is where both presses stand and where focus is put.
+// redirecting, so it rides that one response into `ShownOnce`; no loader returns it.
+//
+// **a replace names the key it was asked about**, the id the page was shown, so a second press
+// sent against a page still showing that key ends nothing: it answers `conflict`. a refused press —
+// a second make, a replace naming a key already replaced — answers 409 with a sentence under the
+// key box, and `shouldRevalidate` reads the page again after it, so the row the sentence sits in
+// shows the key that stands and the press it offers.
 //
 // the address is this request's own origin: the address Zapier's servers reach this deployment on
 // is the one the operator reached this page on.
@@ -66,16 +75,29 @@ const MAKE_FORM_ID = 'zapier-key-make';
 const REPLACE_FORM_ID = 'zapier-key-replace';
 const SCREEN_FORMS = [MAKE_FORM_ID, REPLACE_FORM_ID] as const;
 
-/** the two presses state no box; the body says which of them it came from, and nothing else. */
+/** what a box the request did not carry is told. */
+const MISSING = 'required';
+
+/** the make states no box; the body says which form it came from, and nothing else. */
 const MAKE_FORM = defineForm({ id: MAKE_FORM_ID, schema: z.object({}) });
-const REPLACE_FORM = defineForm({ id: REPLACE_FORM_ID, schema: z.object({}) });
+
+/** the replace states the id of the key the question was asked about; the header says why. */
+const REPLACE_FORM = defineForm({
+	id: REPLACE_FORM_ID,
+	schema: z.object({
+		key_id: z
+			.string({ error: MISSING })
+			.min(1, { error: MISSING })
+			.max(64, { error: 'must be at most 64 characters' })
+	})
+});
 
 /** what each refusal `makeZapierKey` and `replaceZapierKey` can answer with says, under the key. */
 const REFUSED = {
 	key_exists: 'A key was already made, so no second one was. Replace it to get a key you can copy.',
 	no_key: 'There was no key to replace, so nothing changed. Make one.',
 	conflict:
-		'Another replace landed first, and its key is the one shown. Replace it again to get a key you can copy.'
+		'The key this page showed was already replaced, so nothing changed. The key shown now is the current one: replace it to get a key you can copy.'
 } as const;
 
 /** how long the oldest event still owed may wait before the page says your Zaps are behind. */
@@ -99,7 +121,12 @@ export async function loader({ context, url }: Route.LoaderArgs) {
 		key:
 			key === null
 				? null
-				: { prefix: key.prefix, lastFour: key.lastFour, madeAt: key.madeAt.toISOString() },
+				: {
+						id: key.id,
+						prefix: key.prefix,
+						lastFour: key.lastFour,
+						madeAt: key.madeAt.toISOString()
+					},
 		listening,
 		deliveries: {
 			waiting: deliveries.waiting,
@@ -158,7 +185,7 @@ export async function action(args: Route.ActionArgs) {
 		const submission = parseForm(body, REPLACE_FORM);
 		if (!submission.ok) return invalid(400, submission.reject());
 
-		const replaced = await replaceZapierKey(context.get(database), fetch);
+		const replaced = await replaceZapierKey(context.get(database), fetch, submission.value.key_id);
 		if (!replaced.ok) return invalid(409, unread(REPLACE_FORM, REFUSED[replaced.reason]));
 		const report: ZapierPressReport = {
 			press: 'replace',
@@ -170,6 +197,21 @@ export async function action(args: Route.ActionArgs) {
 		};
 		return { made: report };
 	}
+}
+
+/**
+ * the page is read again after this screen's own refused press, which react router skips for a
+ * 4xx by default: a 409 here means the key changed under the page, and the sentence it answers
+ * with names the key the row now shows.
+ */
+export function shouldRevalidate({
+	actionStatus,
+	formData,
+	defaultShouldRevalidate
+}: ShouldRevalidateFunctionArgs) {
+	const form = formData?.get(WHICH_FORM);
+	const ours = SCREEN_FORMS.some((id) => id === form);
+	return actionStatus === 409 && ours ? true : defaultShouldRevalidate;
 }
 
 type Listening = ZapierReport['listening'];
@@ -206,11 +248,10 @@ export default function Zapier({ loaderData, actionData }: Route.ComponentProps)
 						block={<CodeSlab content={address} oneline copyable copyLabel="Copy address" />}
 					/>
 					<KeyRow held={report.key} refused={refused} press={press} />
-					{made?.press === 'replace' && made.disconnected > 0 ? <Disconnected made={made} /> : null}
 				</Grouped>
 			</Groups>
 			{replacing && report.key !== null ? (
-				<ReplaceCard lastFour={report.key.lastFour} listening={report.listening} press={press} />
+				<ReplaceCard held={report.key} listening={report.listening} press={press} />
 			) : null}
 			{shown ? (
 				<ShownOnce
@@ -219,7 +260,9 @@ export default function Zapier({ loaderData, actionData }: Route.ComponentProps)
 					copyLabel="Copy the key"
 					onDone={done}
 					fallbackFocus={press}
-				/>
+				>
+					{made?.press === 'replace' && made.disconnected > 0 ? <Disconnected made={made} /> : null}
+				</ShownOnce>
 			) : null}
 		</Column>
 	);
@@ -234,6 +277,10 @@ function pressRefusal(actionData: AdminActionData): string | undefined {
 }
 
 const zaps = (n: number) => `${n} ${n === 1 ? 'Zap' : 'Zaps'}`;
+
+/** what the owner of `n` disconnected Zaps does next, whichever Zapier turned off. */
+const reconnect = (n: number) =>
+	`Reconnect ${n === 1 ? 'it' : 'each'} in Zapier with the new key, then turn it back on.`;
 
 /** the three triggers in a fundraiser's words, each counted where any Zap listens. */
 function triggers(listening: Listening) {
@@ -253,7 +300,7 @@ function triggers(listening: Listening) {
 /**
  * the key as a page may show it — its head and tail, never the key — in a box that states it,
  * and the press that acts on it: Make key where there is none, and Replace key, which asks first,
- * where there is one. a refused press is said under the row, and the press is pointed at it.
+ * where there is one. a refused press is said under the box, and the press is pointed at it.
  */
 function KeyRow({
 	held,
@@ -269,55 +316,48 @@ function KeyRow({
 	// answer lands is a second make, which is refused.
 	const making =
 		navigation.state !== 'idle' && navigation.formData?.get(WHICH_FORM) === MAKE_FORM.id;
-	const describedBy = refused === undefined ? undefined : REFUSAL_ID;
-	// one ref for whichever of the two elements the press is, a button or a link.
+	const describedBy = refused === undefined ? undefined : `${KEY_BOX}-err`;
 	const hold = (node: HTMLElement | null) => {
 		press.current = node;
 	};
 
 	const row = (
-		<Stack tight>
-			<Field
-				id="zapier-key"
-				aria-label="Zapier key"
-				code
-				readOnly
-				spellCheck={false}
-				value={held === null ? '' : `${held.prefix}${'•'.repeat(12)}${held.lastFour}`}
-				beside={
-					held === null ? (
-						<Button
-							ref={hold}
-							type="submit"
-							mark="key-round"
-							aria-label="Make key"
-							aria-describedby={describedBy}
-							aria-busy={making}
-							aria-disabled={making || undefined}
-							onClick={(event) => {
-								if (making) event.preventDefault();
-							}}
-						/>
-					) : (
-						// a link dressed as a button, because it writes nothing: it asks.
-						<Button
-							ref={hold}
-							as={Link}
-							to={`${SCREEN}?confirm=replace`}
-							preventScrollReset
-							mark="refresh-cw"
-							aria-label="Replace key"
-							aria-describedby={describedBy}
-						/>
-					)
-				}
-			/>
-			{refused === undefined ? null : (
-				<FieldMessage id={REFUSAL_ID} tone="error">
-					{refused}
-				</FieldMessage>
-			)}
-		</Stack>
+		<Field
+			id={KEY_BOX}
+			label="Zapier key"
+			error={refused}
+			code
+			readOnly
+			spellCheck={false}
+			value={held === null ? '' : `${held.prefix}${'•'.repeat(12)}${held.lastFour}`}
+			beside={
+				held === null ? (
+					<Button
+						ref={hold}
+						type="submit"
+						mark="key-round"
+						aria-label="Make key"
+						aria-describedby={describedBy}
+						aria-busy={making}
+						aria-disabled={making || undefined}
+						onClick={(event) => {
+							if (making) event.preventDefault();
+						}}
+					/>
+				) : (
+					// a link dressed as a button, because it writes nothing: it asks.
+					<Button
+						ref={hold}
+						as={Link}
+						to={`${SCREEN}?confirm=replace`}
+						preventScrollReset
+						mark="refresh-cw"
+						aria-label="Replace key"
+						aria-describedby={describedBy}
+					/>
+				)
+			}
+		/>
 	);
 
 	return held === null ? (
@@ -330,22 +370,24 @@ function KeyRow({
 	);
 }
 
-const REFUSAL_ID = 'zapier-key-refused';
+/** the key box's id, which `Field` names its refusal row from (`${id}-err`). */
+const KEY_BOX = 'zapier-key';
 
 /**
  * the question over the page, in the top layer: a replace ends every Zap on the old key, and that
  * cannot be taken back. it states what the press costs against this deployment's own Zaps.
  *
- * the press posts to the screen's own address rather than to this question's, so whatever the
- * action answers — the new key, or a refusal — lands on the page with the question down: the key
- * is shown once in its own card, and a refusal is said at the key row the question was asked from.
+ * the form states the key the question names, and the press posts to the screen's own address
+ * rather than to this question's, in place of it in the history: whatever the action answers
+ * lands on the page with the question down — the new key shown once in its own card, or a refusal
+ * said under the key box once the page is read again — and Back does not ask it again.
  */
 function ReplaceCard({
-	lastFour,
+	held,
 	listening,
 	press
 }: {
-	readonly lastFour: string;
+	readonly held: NonNullable<ZapierReport['key']>;
 	readonly listening: Listening;
 	readonly press: RefObject<HTMLElement | null>;
 }) {
@@ -364,8 +406,9 @@ function ReplaceCard({
 		.join(', ');
 
 	return (
-		<Form method="post" preventScrollReset>
+		<Form method="post" replace preventScrollReset>
 			<input {...whichForm(REPLACE_FORM.id)} />
+			<input type="hidden" name="key_id" value={held.id} />
 			<Modal
 				title="Replace the Zapier key?"
 				danger="Yes, replace"
@@ -386,16 +429,14 @@ function ReplaceCard({
 				onDismiss={() => navigate(SCREEN, { preventScrollReset: true })}
 				fallbackFocus={press}
 			>
-				<p className="adm-prose">The key ending {lastFour} stops working.</p>
+				<p className="adm-prose">The key ending {held.lastFour} stops working.</p>
 				{total > 0 ? (
 					<p className="adm-prose">
 						{zaps(total)} {total === 1 ? 'disconnects' : 'disconnect'}: {each}.
 					</p>
 				) : null}
 				<p className="adm-prose">
-					{total > 0
-						? 'Reconnect each in Zapier with the new key, then turn it back on.'
-						: 'Paste the new key into Zapier.'}
+					{total > 0 ? reconnect(total) : 'Paste the new key into Zapier.'}
 				</p>
 			</Modal>
 		</Form>
@@ -403,23 +444,24 @@ function ReplaceCard({
 }
 
 /**
- * what a replace did to the Zaps on the old key: how many it disconnected, and how many of those
- * Zapier did not turn off — they still read as on there, and only turning them off and on again
- * subscribes them on the new key (`pauseZaps` in $lib/server/zapier/subscriptions.ts).
+ * what a replace did to the Zaps on the old key, said in the card that shows the new key: how many
+ * it disconnected, and how many of those Zapier did not turn off — they still read as on there,
+ * and only turning them off and on again subscribes them on the new key (`pauseZaps` in
+ * $lib/server/zapier/subscriptions.ts).
  */
 function Disconnected({ made }: { readonly made: ZapierPressReport }) {
 	const { disconnected, notPaused: still } = made;
-	const reconnect = 'Reconnect each in Zapier with the new key, then turn it back on.';
+	const one = disconnected === 1;
 	const sentence =
 		still === 0
-			? reconnect
+			? reconnect(disconnected)
 			: still === disconnected
-				? `${disconnected === 1 ? 'It still reads' : 'They still read'} as on in Zapier. Reconnect ${disconnected === 1 ? 'it' : 'each'} with the new key, then turn ${disconnected === 1 ? 'it' : 'each'} off and on again.`
-				: `${reconnect} ${still} of them still ${still === 1 ? 'reads' : 'read'} as on in Zapier: turn ${still === 1 ? 'it' : 'those'} off and on again.`;
+				? `${one ? 'It still reads' : 'They still read'} as on in Zapier. Reconnect ${one ? 'it' : 'each'} with the new key, then turn ${one ? 'it' : 'each'} off and on again.`
+				: `${reconnect(disconnected)} ${still} of them still ${still === 1 ? 'reads' : 'read'} as on in Zapier: turn ${still === 1 ? 'it' : 'those'} off and on again.`;
 	return (
-		<Banner tone={still > 0 ? 'attention' : 'note'} word={`${zaps(disconnected)} disconnected`}>
-			{sentence}
-		</Banner>
+		<p className="adm-prose">
+			{zaps(disconnected)} disconnected. {sentence}
+		</p>
 	);
 }
 

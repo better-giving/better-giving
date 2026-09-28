@@ -31,9 +31,22 @@ type ShownOnceProps = {
 	 * which it is wherever the make remounts its form. ./Dialog.tsx's `fallbackFocus`.
 	 */
 	readonly fallbackFocus?: RefObject<HTMLElement | null> | undefined;
+	/**
+	 * what else the answer that made the secret says — what the make cost elsewhere — after the
+	 * sentence saying this is the only chance. it is in the card's body, so it is read with the card
+	 * as it opens; the page behind the card is inert until Done.
+	 */
+	readonly children?: ReactNode;
 };
 
-export function ShownOnce({ title, secret, copyLabel, onDone, fallbackFocus }: ShownOnceProps) {
+export function ShownOnce({
+	title,
+	secret,
+	copyLabel,
+	onDone,
+	fallbackFocus,
+	children
+}: ShownOnceProps) {
 	// the heading names the value's box as well as the card, so the one-line slab — which has no
 	// caption of its own to be named by — is read as the thing the question is about.
 	const titleId = useId();
@@ -47,6 +60,7 @@ export function ShownOnce({ title, secret, copyLabel, onDone, fallbackFocus }: S
 		>
 			<CodeSlab oneline content={secret} copyable copyLabel={copyLabel} labelledBy={titleId} />
 			<p className="adm-prose">It won’t be shown again.</p>
+			{children}
 		</Modal>
 	);
 }

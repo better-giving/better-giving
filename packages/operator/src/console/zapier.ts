@@ -25,9 +25,11 @@ export type ZapierPress = (typeof ZAPIER_PRESSES)[number];
 export interface ZapierReport {
 	/**
 	 * the key's first eight and last four characters, or null before one is made. `madeAt` is an
-	 * ISO-8601 instant.
+	 * ISO-8601 instant, and `id` is the key's own row, which a replace names so it cannot end a key
+	 * nobody was shown.
 	 */
 	readonly key: {
+		readonly id: string;
 		readonly prefix: string;
 		readonly lastFour: string;
 		readonly madeAt: string;
@@ -56,8 +58,7 @@ export interface ZapierReport {
  * Zapier paused, asking the Zap's owner to reconnect, or no longer had, and `notPaused` how many
  * hooks did not take it — a fault, an error or no answer — whose Zaps still read as on in Zapier
  * until their owners turn them off and on again; nothing asks again. the two sum to
- * `disconnected`. a refused press answers with the page form's own rejection instead, a sentence
- * under the key.
+ * `disconnected`. a refused press does not answer with this type.
  */
 export type ZapierPressReport = {
 	readonly press: ZapierPress;

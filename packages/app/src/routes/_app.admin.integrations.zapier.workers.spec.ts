@@ -127,7 +127,7 @@ async function signInAsMember(): Promise<string> {
 type Screen = {
 	address: string;
 	report: {
-		key: { prefix: string; lastFour: string; madeAt: string } | null;
+		key: { id: string; prefix: string; lastFour: string; madeAt: string } | null;
 		listening: { newGift: number; newDonor: number; giftRefunded: number };
 		deliveries: { waiting: number; failed: number; oldestWaitingAt: string | null };
 	};
@@ -174,6 +174,20 @@ function press(form: 'zapier-key-make' | 'zapier-key-replace'): FormData {
 	const body = new FormData();
 	body.set('__form_id__', form);
 	return body;
+}
+
+/** a replace pressed on a page showing the key `keyId`, which the confirm posts. */
+function replacing(keyId: string): FormData {
+	const body = press('zapier-key-replace');
+	body.set('key_id', keyId);
+	return body;
+}
+
+/** the id of the key the page shows now, which a replace pressed on it names. */
+async function shownKeyId(): Promise<string> {
+	const { key } = (await visit(deployer)).report;
+	if (key === null) throw new Error('the page shows no key to replace');
+	return key.id;
 }
 
 type Made = {
@@ -317,7 +331,7 @@ describe('POST /admin/integrations/zapier — replacing the key', () => {
 		await subscribeWith(old.key, 'new_donor', `${HOOK}c/`);
 		const paused = hooksAnswer(200);
 
-		const answer = await made(await post(deployer, press('zapier-key-replace')));
+		const answer = await made(await post(deployer, replacing(await shownKeyId())));
 
 		expect(answer).toMatchObject({ press: 'replace', disconnected: 3, paused: 3, notPaused: 0 });
 		expect(answer.key).toMatch(ZAPIER_KEY_SHAPE);
@@ -337,17 +351,37 @@ describe('POST /admin/integrations/zapier — replacing the key', () => {
 		await subscribeWith(old.key, 'gift_refunded', `${HOOK}a/`);
 		hooksAnswer(500);
 
-		const answer = await made(await post(deployer, press('zapier-key-replace')));
+		const answer = await made(await post(deployer, replacing(await shownKeyId())));
 
 		expect(answer).toMatchObject({ disconnected: 1, paused: 0, notPaused: 1 });
 	});
 
 	it('refuses a replace in words where there is no key, and makes none', async () => {
-		const answer = await post(deployer, press('zapier-key-replace'));
+		const answer = await post(deployer, replacing('0195-no-such-key'));
 
 		expect(answer.status).toBe(409);
 		expect(await refusal(answer)).toMatch(/no key/);
 		expect((await visit(deployer)).report.key).toBeNull();
+	});
+
+	it('refuses a second replace pressed on a page still showing the first key, and changes nothing', async () => {
+		await made(await post(deployer, press('zapier-key-make')));
+		const shown = await shownKeyId();
+		const first = await made(await post(deployer, replacing(shown)));
+
+		const second = await post(deployer, replacing(shown));
+
+		expect(second.status).toBe(409);
+		expect(await refusal(second)).toMatch(/already replaced/);
+		expect((await subscribeWith(first.key, 'new_gift', HOOK)).status).toBe(201);
+	});
+
+	it('refuses a replace that names no key as a bad request, before anything is replaced', async () => {
+		await made(await post(deployer, press('zapier-key-make')));
+		const shown = await shownKeyId();
+
+		expect((await post(deployer, press('zapier-key-replace'))).status).toBe(400);
+		expect(await shownKeyId()).toBe(shown);
 	});
 
 	it('asks to replace only where there is a key to replace', async () => {
@@ -424,7 +458,7 @@ describe('a member’s session', () => {
 		expect((await visit(deployer)).report.key).toBeNull();
 
 		const first = await made(await post(deployer, press('zapier-key-make')));
-		expect((await post(member, press('zapier-key-replace'))).status).toBe(404);
+		expect((await post(member, replacing(await shownKeyId()))).status).toBe(404);
 		expect((await subscribeWith(first.key, 'new_gift', HOOK)).status).toBe(201);
 	});
 });
