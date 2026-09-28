@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultCampaign } from '$lib/page/defaults';
 import { slugFromTitle } from '$lib/page/slug';
 import { createDb, type Db } from '$lib/server/db/client';
@@ -62,7 +62,7 @@ type Row = {
 	address: string | null;
 	state: string;
 	goal: string | null;
-	endsAt: number | null;
+	ends: string | null;
 };
 
 async function load(): Promise<{ campaigns: Row[]; ended: Row[] }> {
@@ -118,30 +118,68 @@ describe('the Campaigns list', () => {
 		expect(ended.map((row) => [row.name, row.state])).toEqual([['Summer camp fund', 'ended']]);
 	});
 
-	it('shows a campaign’s goal and end date from its draft', async () => {
-		const endsAt = NOW + 30 * DAY;
-		await campaign('Winter coat drive', 'live', NOW, { goalMinor: 1_500_000, endsAt });
+	it('shows a campaign’s goal and the day its end was chosen for, in the zone it was chosen in', async () => {
+		// the end of 31 December 2099 in los angeles, already 1 January in new york and in UTC
+		await campaign('Winter coat drive', 'live', NOW, {
+			goalMinor: 1_500_000,
+			endsAt: Date.parse('2100-01-01T08:00:00Z') - 1,
+			endsZone: 'America/Los_Angeles'
+		});
 		await campaign('Spring gala appeal', 'never_published', NOW - DAY);
 
 		const { campaigns: listed } = await load();
 
-		expect(listed.map(({ goal, endsAt }) => ({ goal, endsAt }))).toEqual([
-			{ goal: '$15,000', endsAt },
-			{ goal: null, endsAt: null }
+		expect(listed.map(({ goal, ends }) => ({ goal, ends }))).toEqual([
+			{ goal: '$15,000', ends: 'Dec 31, 2099' },
+			{ goal: null, ends: null }
 		]);
 	});
 
 	it('gives an ended campaign no end date where it was ended before it', async () => {
-		await campaign('Flood relief', 'ended', NOW - 9 * DAY, { endsAt: NOW + DAY });
-		const endedOn = NOW - DAY;
-		await campaign('Summer camp fund', 'ended', NOW - 10 * DAY, { endsAt: endedOn });
+		await campaign('Flood relief', 'ended', NOW - 9 * DAY, {
+			endsAt: NOW + DAY,
+			endsZone: 'America/New_York'
+		});
+		await campaign('Summer camp fund', 'ended', NOW - 10 * DAY, {
+			endsAt: Date.parse('2026-01-01T05:00:00Z') - 1,
+			endsZone: 'America/New_York'
+		});
 
 		const { ended } = await load();
 
-		expect(ended.map(({ name, endsAt }) => [name, endsAt])).toEqual([
+		expect(ended.map(({ name, ends }) => [name, ends])).toEqual([
 			['Flood relief', null],
-			['Summer camp fund', endedOn]
+			['Summer camp fund', 'Dec 31, 2025']
 		]);
+	});
+
+	it('lists a campaign whose draft its rule refuses by name, address and state alone', async () => {
+		const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const broken = await campaign('Winter coat drive', 'live', NOW, {
+			goalMinor: 1_500_000,
+			endsAt: NOW + DAY,
+			endsZone: 'America/New_York'
+		});
+		await env.DB.prepare(`update page set draft = '{}' where id = ?`).bind(broken).run();
+		await campaign('Spring gala appeal', 'live', NOW - DAY, { goalMinor: 500_000 });
+
+		const { campaigns: listed } = await load();
+
+		expect(listed).toEqual([
+			{
+				id: broken,
+				name: 'Winter coat drive',
+				address: '/winter-coat-drive',
+				state: 'live',
+				goal: null,
+				ends: null
+			},
+			expect.objectContaining({ name: 'Spring gala appeal', goal: '$5,000' })
+		]);
+		expect(errors).toHaveBeenCalledWith(
+			expect.stringContaining(`page ${broken}`),
+			expect.anything()
+		);
 	});
 });
 

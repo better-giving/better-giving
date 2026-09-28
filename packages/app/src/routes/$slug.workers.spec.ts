@@ -14,6 +14,7 @@ import { parseFormInput } from '$lib/server/forms/form-input';
 import { ownedFormInsert } from '$lib/server/forms/queries';
 import { expectRecordedAsAForm } from '$lib/server/pages/owned-settings-gift.testing';
 import { endCampaign } from '$lib/server/pages/queries';
+import { gift } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { requestContext } from '../request-context';
 import { mountRoutes } from '../route-request.testing';
@@ -45,6 +46,8 @@ const db = createDb(env.DB);
 beforeEach(async () => {
 	// children first — every FK in this schema is `NO ACTION`, and the gift below names a form.
 	await env.DB.batch([
+		env.DB.prepare('delete from ledger_entry'),
+		env.DB.prepare('delete from entry_group'),
 		env.DB.prepare('delete from line_item'),
 		env.DB.prepare('delete from payment'),
 		env.DB.prepare('delete from donation'),
@@ -169,6 +172,28 @@ describe('a published campaign at its address', () => {
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 		await expectRecordedAsAForm(db, answered.data.view.config.formId);
+	});
+});
+
+describe('a published campaign with a goal', () => {
+	it('draws its goal bar with what has settled through it, against the goal, to the day chosen', async () => {
+		const owned = await campaign({
+			published: {
+				...defaultCampaign(),
+				goalMinor: 500_000,
+				// the end of 31 December in los angeles, on PST by then, UTC-8
+				endsAt: Date.parse('2027-01-01T08:00:00Z') - 1,
+				endsZone: 'America/Los_Angeles'
+			}
+		});
+		await gift(db, owned, 12_500);
+		await gift(db, owned, 40_000, false);
+
+		const answered = await visit();
+
+		const bar = block(markup(answered.data), 'goal-bar').replace(/<[^>]+>/g, '');
+		expect(bar).toContain('$125 raised of $5,000');
+		expect(bar).toContain('Ends December 31');
 	});
 });
 

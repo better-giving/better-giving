@@ -122,6 +122,7 @@ describe('a draft becoming a page', () => {
 			switches: { openOnMonthly: true, dedicationOn: false },
 			goalMinor: 5_000_000,
 			endsAt: Date.UTC(2026, 11, 31),
+			endsZone: 'America/New_York',
 			settings: {
 				revenueAccountId: '4110',
 				minMinor: 500,
@@ -140,6 +141,7 @@ describe('a draft becoming a page', () => {
 			switches: { openOnMonthly: false, dedicationOn: true },
 			goalMinor: 1,
 			endsAt: 1,
+			endsZone: 'Asia/Tokyo',
 			settings: { minMinor: 1 }
 		};
 		expect(pageFromDraft('campaign', grabbing, onto)).toEqual({

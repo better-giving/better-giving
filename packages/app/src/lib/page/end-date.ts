@@ -1,7 +1,7 @@
 // a campaign's end date, between the day an operator names (`YYYY-MM-DD`) and the instant a page
 // document stores (`endsAt` in ./keys.ts): the last millisecond before the next day first begins in
 // the operator's time zone. a day an operator or a reply names (`set.endDate` in ./accept-reply.ts)
-// lands through `endOfDay`, and `dayOf` reads a stored end back as the day it closes.
+// lands through `endOfDay`, and `endDayOf` reads a stored end back as the day it closes.
 //
 // the zone's rules are `Intl`'s, so a day that is 23 or 25 hours long, or one whose next day starts
 // at 01:00 because the clocks skip midnight, ends where the zone says it does. an IANA name the
@@ -56,6 +56,18 @@ export function isTimeZone(zone: string): boolean {
 export function dayOf(at: number, timeZone: string): string | null {
 	const wall = wallClock(timeZone);
 	return wall === null ? null : new Date(wall(at)).toISOString().slice(0, 10);
+}
+
+/**
+ * the day, `YYYY-MM-DD`, a page's stored end closes on, in the zone it was chosen in (`endsZone`
+ * in ./keys.ts); null for a page with no end. ./catalog.ts holds the pair both or neither.
+ */
+export function endDayOf(page: {
+	readonly endsAt?: number | undefined;
+	readonly endsZone?: string | undefined;
+}): string | null {
+	const { endsAt, endsZone } = page;
+	return endsAt === undefined || endsZone === undefined ? null : dayOf(endsAt, endsZone);
 }
 
 /** `YYYY-MM-DD` as a fundraiser reads it: Dec 31, 2026. */
