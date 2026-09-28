@@ -578,13 +578,6 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			// `PROGRAM_MODE_LABELS` is keyed by the mode and a box holds a string.
 			programMode: record.programMode,
 			pinnedProgram: pinned?.name ?? null,
-			// where this deployment's own donation page answers, which the sites group states above the
-			// boxes: this form loads on that page whatever is ticked, and the page is on no `site` row.
-			//
-			// the request rather than a stored value: the host this request arrived on is one this
-			// worker answers on, which is the same reading `corsHeaders` in `$lib/server/api/cors.ts`
-			// makes.
-			donatePageOrigin: url.origin,
 			// whether the status box may offer Live at all. a blocker means `publishedConfig` serves
 			// nothing, so publishing here would produce a form that renders nothing on the org's own
 			// site — the name group's save re-checks this, because a filtered `<option>` list is not a
@@ -1408,11 +1401,11 @@ function StoredRecord({ data }: { readonly data: Route.ComponentProps['loaderDat
 				<div className="adm-setting">
 					<dt className="adm-setting__label">Sites</dt>
 					{/* the one row that reads as a sentence rather than a dash, because a form with no
-					    site is the reason this record is worth reading at all — and one with nothing
-					    ticked is still served on this deployment's own donation page, which is on no
-					    `site` row and is accepted off the request instead (./$formId.tsx). */}
+					    site is the reason this record is worth reading at all. the same words the sites
+					    group's hint leads with ($lib/admin/forms/origins-fields.tsx): a form is pageless,
+					    so one with nothing ticked is on no page. */}
 					{origins.length === 0 ? (
-						<dd className="adm-setting__value">Your donation page only.</dd>
+						<dd className="adm-setting__value">Not on any site yet.</dd>
 					) : (
 						// a list and never the joined text, however few there are: an origin is an
 						// identifier, and a comma between two of them reads as part of one.

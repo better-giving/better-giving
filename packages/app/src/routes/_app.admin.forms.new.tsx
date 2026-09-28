@@ -132,7 +132,7 @@ export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
 }
 
-export async function loader({ context, request }: Route.LoaderArgs) {
+export async function loader({ context }: Route.LoaderArgs) {
 	const db = context.get(database);
 
 	let profile: Awaited<ReturnType<typeof readOrgProfile>>;
@@ -146,8 +146,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		// need the processor is a form's to answer and both are the console's.
 		//
 		// the second is the deployment's own list of sites, which the tick boxes are drawn from. an
-		// empty one gates nothing: a form on no site loads on the donation page this deployment serves
-		// on its own address.
+		// empty one gates nothing: a form made ahead of the site it goes on is ordinary.
 		[profile, sites, programs] = await Promise.all([
 			readOrgProfile(db),
 			readSites(db),
@@ -181,9 +180,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		// because `form.allowed_origins` holds the addresses themselves and there is deliberately no
 		// foreign key between the two.
 		//
-		// an empty list is a complete state rather than a fault: a form on a deployment that lists no
-		// site still loads on the donation page below, so the group warns about nothing and the submit
-		// stays on.
+		// an empty list is a complete state rather than a fault: a form made ahead of the site it goes
+		// on is ordinary, so the group warns about nothing and the submit stays on.
 		sites,
 		// every cause this deployment still offers, as the two values the picker draws: the id a
 		// gift is recorded against and the name a fundraiser gave it. the archived ones are out —
@@ -192,13 +190,6 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		// an empty list is an ordinary state and not a fault: a deployment that has made no cause
 		// has none, and the group says where one is made rather than refusing anything.
 		programs: programs.map((cause) => ({ value: cause.id, label: cause.name })),
-		// where this deployment's own donation page answers, which the sites group states above the
-		// boxes: every form served here loads on that page whatever is ticked, and it is on no `site`
-		// row.
-		//
-		// the request rather than a stored value: the host this request arrived on is one this worker
-		// answers on, which is the same reading `corsHeaders` in `$lib/server/api/cors.ts` makes.
-		donatePageOrigin: new URL(request.url).origin,
 		// what a new form starts as, handed over like any other value this screen is drawn from:
 		// conform seeds the boxes from it and reports nothing about it until a submit, so a create
 		// screen never opens telling an operator to fill in a box they have not touched
