@@ -47,7 +47,13 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * its account in the foot. `null` for both drops the rail's foot rather than standing an empty one.
  *
  * `head` is the strip across the top of the panel, and `site` is the globe leading the
- * organisation's name — the console's link to its deployment's dashboard.
+ * organisation's name, drawn both ways: an address — the console's link to its deployment's
+ * dashboard, a new tab — and an in-app destination with its own name, the dashboard's, drawn as the
+ * handed link in the same tab.
+ *
+ * `folded` is drawn on the dashboard's rail: the column is unchanged, and below 64rem the bar holds
+ * the rest and ends in a More tab whose sheet lists the folded ones with their marks. the reader is
+ * in Donors there, a tab; press More to see the list.
  *
  * `link` is what every cell is drawn as. a mounted rail states one — this package declares no
  * router and cannot (CLAUDE.md: the graph is `app → operator ← console`) — so the second shell
@@ -102,11 +108,13 @@ export default function ShellAppShellPreview() {
 				</Column>
 			</AppShell>
 
-			{/* the dashboard's rail: three groups with a mark on every entry, the reader in a section
-			    rather than on its page, a name long enough to contest the identity row, a strip over
-			    the panel, and the cells drawn as the link the surface handed in. */}
+			{/* the dashboard's rail: three groups with a mark on every entry, the rare ones folded under
+			    More on a phone, the reader in a section rather than on its page, a name long enough to
+			    contest the identity row led by the in-app globe, a strip over the panel, and the cells
+			    drawn as the link the surface handed in. */}
 			<AppShell
 				org="The Wharfedale Riverside Community Kitchen and Night Shelter Trust"
+				site={{ href: '#', label: 'Donation page' }}
 				current={{ label: 'Donors', kind: 'section' }}
 				groups={[
 					{
@@ -116,15 +124,41 @@ export default function ShellAppShellPreview() {
 					},
 					{
 						destinations: [
-							{ label: 'Donation forms', short: 'Forms', href: '#', mark: 'file-text' },
-							{ label: 'Programs', short: 'Programs', href: '#', mark: 'folder-heart' },
+							{
+								label: 'Donation forms',
+								short: 'Forms',
+								href: '#',
+								mark: 'file-text',
+								folded: true
+							},
+							{
+								label: 'Programs',
+								short: 'Programs',
+								href: '#',
+								mark: 'folder-heart',
+								folded: true
+							},
 							{ label: 'Donors', short: 'Donors', href: '#', mark: 'users' },
 							{ label: 'Gifts', short: 'Gifts', href: '#', mark: 'hand-heart' },
-							{ label: 'Recurring gifts', short: 'Recurring', href: '#', mark: 'repeat' }
+							{
+								label: 'Recurring gifts',
+								short: 'Recurring',
+								href: '#',
+								mark: 'repeat',
+								folded: true
+							}
 						]
 					},
 					{
-						destinations: [{ label: 'Members', short: 'Members', href: '#', mark: 'shield-check' }]
+						destinations: [
+							{
+								label: 'Members',
+								short: 'Members',
+								href: '#',
+								mark: 'shield-check',
+								folded: true
+							}
+						]
 					}
 				]}
 				head={<span className="adm-headstrip__title">Donors</span>}

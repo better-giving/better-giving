@@ -38,6 +38,10 @@
  * `AppShell` takes as `groups`, and `DESTINATIONS` is the same entries flat, which is what a match
  * against an address walks.
  *
+ * `folded` is a destination the phone's bar holds under its More tab rather than as a tab of its
+ * own: the bar keeps what an operator opens every week — the dashboard, the donors and the gifts —
+ * and the rest are a press further away there and nowhere else, the column listing all of them.
+ *
  * `mark` is the glyph the column draws beside a label — a name from
  * packages/operator/src/components/status/glyphs.js. the bar at a phone's width draws none, so a
  * mark is never the only thing telling two destinations apart.
@@ -52,13 +56,31 @@ export const DESTINATION_GROUPS = [
 	},
 	{
 		destinations: [
-			{ href: '/admin/forms', label: 'Donation forms', short: 'Forms', mark: 'form' },
+			{
+				href: '/admin/forms',
+				label: 'Donation forms',
+				short: 'Forms',
+				mark: 'form',
+				folded: true
+			},
 			// directly after the forms, because a program is what a form asks a donor about: it is named
 			// here and then pinned or offered there, and neither screen means anything without the other.
-			{ href: '/admin/programs', label: 'Programs', short: 'Programs', mark: 'folder-heart' },
+			{
+				href: '/admin/programs',
+				label: 'Programs',
+				short: 'Programs',
+				mark: 'folder-heart',
+				folded: true
+			},
 			{ href: '/admin/donors', label: 'Donors', short: 'Donors', mark: 'users' },
 			{ href: '/admin/donations', label: 'Gifts', short: 'Gifts', mark: 'hand-heart' },
-			{ href: '/admin/recurring', label: 'Recurring gifts', short: 'Recurring', mark: 'repeat' }
+			{
+				href: '/admin/recurring',
+				label: 'Recurring gifts',
+				short: 'Recurring',
+				mark: 'repeat',
+				folded: true
+			}
 		]
 	},
 	{
@@ -66,14 +88,20 @@ export const DESTINATION_GROUPS = [
 			// who can open every destination on this rail, and the one that is not a record of giving.
 			// what a deployment holds one of is set up on the console, and this is neither — a
 			// colleague is a row somebody adds and removes, which is what makes it a collection.
-			{ href: '/admin/members', label: 'Members', short: 'Members', mark: 'shield-check' }
+			{
+				href: '/admin/members',
+				label: 'Members',
+				short: 'Members',
+				mark: 'shield-check',
+				folded: true
+			}
 		]
 	},
 	{
 		destinations: [
 			// last, in a group of its own: the journal entries every record above posts, and where a
 			// correction is posted against them. neither a record of giving nor a way in.
-			{ href: '/admin/books', label: 'Books', short: 'Books', mark: 'book-open' }
+			{ href: '/admin/books', label: 'Books', short: 'Books', mark: 'book-open', folded: true }
 		]
 	}
 ] as const;

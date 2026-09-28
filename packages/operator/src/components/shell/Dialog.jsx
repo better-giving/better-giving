@@ -20,6 +20,7 @@ const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
  * @template {ElementType} [C='button']
  * @template {ElementType} [X='button']
  * @template {ElementType} [D='button']
+ * @template {ElementType} [M='button']
  * @typedef {object} DialogProps
  * @property {ReactNode} [title]
  * @property {string | undefined} [titleId] the heading's id, which the element is labelled by. a
@@ -37,6 +38,9 @@ const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
  * @property {ButtonProps<X> | undefined} [cancelProps]
  * @property {ReactNode} [danger] the label on the control that does the destructive thing.
  * @property {ButtonProps<D> | undefined} [dangerProps]
+ * @property {ReactNode} [commit] the label on the control that does a thing that destroys nothing —
+ *   publishing, creating. a card takes this or `danger`, never both.
+ * @property {ButtonProps<M> | undefined} [commitProps]
  * @property {Ref<HTMLDialogElement> | undefined} [ref]
  * @property {ComponentProps<'dialog'>['onCancel'] | undefined} [onCancel]
  * @property {ComponentProps<'dialog'>['onClick'] | undefined} [onClick]
@@ -50,7 +54,7 @@ const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
  * submit. what ../../behaviour/Dialog.tsx adds is the presentation and nothing the question
  * depends on.
  *
- * the three controls are a label and the rest of what the control is, because what a confirm has
+ * each control is a label and the rest of what the control is, because what a confirm has
  * to be is settled by the screen around it and never here: on a screen that archives it is a form's
  * submit and the way out is a navigation, and on a screen that clears something in place both are
  * handlers. so each takes ../controls/Button.jsx's own props — `as` for the element type, `type`
@@ -64,7 +68,7 @@ const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
  * second one put there stops wrapping with the rest at the 375px floor —
  * `.adm-dialog__actions` in packages/operator/src/styles/adm.css is the row being described.
  *
- * **the element takes the focus itself, and it is ../../behaviour/Dialog.tsx that puts it there.**
+ * **the element takes the focus itself, and it is ./top-layer.js that puts it there.**
  * `showModal()` focuses the first focusable thing inside the card, and the first focusable thing
  * inside this one is always a control in the actions row it draws — on a dialog with a `danger` it
  * is the control that does the damage. so the reader would land on the answer before the question,
@@ -81,13 +85,21 @@ const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
  * the whole of it. a screen rendering this on its own passes none of the three: with no script
  * there is no cancel to intercept and nothing to hold the element by.
  *
+ * **two arrangements answer a question, and the act stands first in both.** `danger` is the one
+ * for an act that cannot be walked back, drawn in the danger rank; `commit` is the one for an act
+ * that destroys nothing — Publish, Create — drawn in the primary rank. the rank is what tells the
+ * two apart, so a destructive press drawn as a commit reads as safe: `commit` is never handed one.
+ * either way the act is first and `cancel` beside it, so a reader finds the answer in one place on
+ * every confirm, and either way there is no `exit` — a card that asks has its act and its way out.
+ *
  * the "once" arrangement has exactly one way out: no close mark, no cancel — used for a secret
  * shown once and never again. */
 /**
  * @template {ElementType} [C='button']
  * @template {ElementType} [X='button']
  * @template {ElementType} [D='button']
- * @param {DialogProps<C, X, D>} props
+ * @template {ElementType} [M='button']
+ * @param {DialogProps<C, X, D, M>} props
  */
 export function Dialog({
 	title,
@@ -100,6 +112,8 @@ export function Dialog({
 	cancelProps,
 	danger,
 	dangerProps,
+	commit,
+	commitProps,
 	ref,
 	onCancel,
 	onClick
@@ -133,9 +147,13 @@ export function Dialog({
 					<Control variant="danger" {...(dangerProps ?? {})}>
 						{danger}
 					</Control>
+				) : commit ? (
+					<Control variant="primary" {...(commitProps ?? {})}>
+						{commit}
+					</Control>
 				) : null}
 				{cancel ? <Control {...(cancelProps ?? {})}>{cancel}</Control> : null}
-				{!danger ? (
+				{!danger && !commit ? (
 					<Control variant="primary" {...(exitProps ?? {})}>
 						{exit}
 					</Control>
