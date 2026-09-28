@@ -635,6 +635,39 @@ describe('the press that spends the money', () => {
 		expect(calls.quote[0]).toMatchObject({ programId: 'prg_school' });
 	});
 
+	it('takes a cause picked on the two steps after the amount onto the gift it sends', async () => {
+		// a host can draw the choice outside the card, where it stands beside every step: the app's
+		// Donation page does (its program chooser). a pick the flow dropped there is a gift sent
+		// to a cause the page no longer shows.
+		const { actor, calls } = atDetails({ config: CHOICE_CONFIG });
+		actor.send({ type: 'SET_PROGRAM', programId: 'prg_water' });
+		expect(actor.getSnapshot().context.fv?.programId).toBe('prg_water');
+
+		actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SET_PROGRAM', programId: 'prg_school' });
+		expect(actor.getSnapshot().context.draft.programId).toBe('prg_school');
+
+		actor.send({ type: 'SET_METHOD', method: 'card' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		expect(calls.quote[0]).toMatchObject({ programId: 'prg_school' });
+	});
+
+	it('leaves the cause alone once the press is in flight', () => {
+		// the request carrying it has already left, so a pick taken now would be a receipt stating
+		// a cause the gift was not sent to.
+		const { actor } = readyToSubmit({ config: CHOICE_CONFIG, quote: neverAnswers });
+		actor.send({ type: 'SUBMIT' });
+		actor.send({ type: 'SET_PROGRAM', programId: 'prg_water' });
+		expect(actor.getSnapshot().context.fv?.programId).toBeNull();
+	});
+
 	it('sends no program on a gift the donor chose no cause for', async () => {
 		// an absent field is how the endpoint is told the gift goes where it is needed most, so an
 		// empty string here would be an id nothing in the form's list carries.

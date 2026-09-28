@@ -55,6 +55,8 @@ export type AmountStepProps = {
 	/** whether Enter on this screen reaches this step's own Continue. */
 	readonly submits: boolean;
 	readonly refs: AmountRefs;
+	/** whether the card draws the program choice; false where the page around it draws one. */
+	readonly drawsProgram: boolean;
 };
 
 /**
@@ -85,7 +87,8 @@ export function AmountStep({
 	onNotify,
 	onContinue,
 	submits,
-	refs
+	refs,
+	drawsProgram
 }: AmountStepProps) {
 	const { locale, currency } = config;
 	const offer = (minor: number) => formatOffer(minor, locale, currency);
@@ -113,7 +116,7 @@ export function AmountStep({
 	// where the gift goes, drawn only where the organisation left that to the donor. the projection
 	// carries the option that picks none on every form, so a list of one is a form with nothing to
 	// ask — which is the configuration's answer already made, read here rather than made again.
-	const choosesProgram = api.programSelect.options.length > 1;
+	const choosesProgram = drawsProgram && api.programSelect.options.length > 1;
 
 	// two marks, one at each end of the box: the symbol in front of the figure and the code behind
 	// it. the leading one is conditional and the trailing one is not — `en-US` writes `CHF` as `CHF`,

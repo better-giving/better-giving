@@ -111,9 +111,19 @@ export type DonateCardProps = {
 	 * boot into.
 	 */
 	readonly seams?: CheckoutMounts['seams'];
+	/**
+	 * the program a page's own chooser picked, where the page draws one: an id from the served
+	 * config's list, or null for where it's needed most.
+	 *
+	 * absent, the card draws its own program select. present, it draws none and the gift carries
+	 * this pick, sent through the same door the select's own pick goes through and followed while
+	 * mounted — a remount would drop what the donor typed. an id the served config does not offer
+	 * is read as no program: the config is what the endpoint checks the gift against.
+	 */
+	readonly pageProgram?: string | null;
 };
 
-export function DonateCard({ config, seams }: DonateCardProps) {
+export function DonateCard({ config, seams, pageProgram }: DonateCardProps) {
 	// a second gift is a fresh boot rather than a state on the flow: what the last gift left behind is
 	// not the flow's to clear — the provider's own fields still hold the card the donor entered and a
 	// challenge token is spent once. remounting is what builds both again, and it starts empty, which
@@ -125,6 +135,7 @@ export function DonateCard({ config, seams }: DonateCardProps) {
 			config={config}
 			restart={() => setBoot((at) => at + 1)}
 			{...(seams === undefined ? {} : { seams })}
+			{...(pageProgram === undefined ? {} : { pageProgram })}
 		/>
 	);
 }
@@ -132,11 +143,13 @@ export function DonateCard({ config, seams }: DonateCardProps) {
 function CheckoutCard({
 	config,
 	restart,
-	seams
+	seams,
+	pageProgram
 }: {
 	config: FormConfig;
 	restart: () => void;
 	seams?: CheckoutMounts['seams'];
+	pageProgram?: string | null;
 }) {
 	const { locale, currency } = config;
 	const money = (minor: number) => formatMinor(minor, locale, currency);
@@ -308,6 +321,21 @@ function CheckoutCard({
 	// next, and the decline names what happened last.
 	const paymentWords =
 		api.state.step !== 'give' ? '' : refusedPayment ? copy.PAYMENT_PROBLEM : decline.current.words;
+
+	// ── the program the page picked ──────────────────────────────────────────────────────────────
+
+	// in the select's own encoding, read against the select's own options: `''` is where it's
+	// needed most, and an id the served config does not list falls to it.
+	const program = api.programSelect;
+	const offered = program.options.some((option) => option.value === pageProgram);
+	const pagePick =
+		pageProgram === undefined ? undefined : pageProgram !== null && offered ? pageProgram : '';
+	// on every commit where the flow holds something else, which is the page's pick moving and also
+	// the flow arriving somewhere it takes the pick again: a pick made while a press was in flight is
+	// dropped there, and sent again once a retry lands back on a step a donor edits.
+	useEffect(() => {
+		if (pagePick !== undefined && pagePick !== program.value) program.set(pagePick);
+	});
 
 	// ── the coin a crypto gift is sent in ────────────────────────────────────────────────────────
 
@@ -792,6 +820,7 @@ function CheckoutCard({
 						onContinue={onAmountContinue}
 						submits={shown === 'amount'}
 						refs={amountRefs}
+						drawsProgram={pageProgram === undefined}
 					/>
 					<DetailsStep
 						api={api}

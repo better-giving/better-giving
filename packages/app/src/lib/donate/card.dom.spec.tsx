@@ -183,26 +183,36 @@ const CHALLENGE: ChallengeSeam = {
  * built and subscribed a few microtasks after the effect that asked for it, and a spec that reported
  * a rail before then would be reporting into nothing.
  */
-async function card(config: FormConfig = CONFIG, answers: Answers = {}) {
+async function card(
+	config: FormConfig = CONFIG,
+	answers: Answers = {},
+	page: { readonly pageProgram?: string | null } = {}
+) {
 	const payment = paymentProvider(answers);
 	const paypal = paypalProvider();
 	const host = document.createElement('div');
 	document.body.appendChild(host);
 	const mounted = createRoot(host);
-	act(() => {
+	// built once: a new seams object is a new checkout, and a re-render here is the page's pick moving.
+	const seams = {
+		payment: {
+			stripe: { load: payment.load, delay: () => () => {} },
+			paypal: { load: paypal.load, delay: () => () => {} },
+			chariot: { load: async () => true, delay: () => () => {} }
+		},
+		challenge: CHALLENGE
+	};
+	const draw = (pageProgram: string | null | undefined): void => {
 		mounted.render(
 			<DonateCard
 				config={config}
-				seams={{
-					payment: {
-						stripe: { load: payment.load, delay: () => () => {} },
-						paypal: { load: paypal.load, delay: () => () => {} },
-						chariot: { load: async () => true, delay: () => () => {} }
-					},
-					challenge: CHALLENGE
-				}}
+				seams={seams}
+				{...(pageProgram === undefined ? {} : { pageProgram })}
 			/>
 		);
+	};
+	act(() => {
+		draw(page.pageProgram);
 	});
 	onTestFinished(() => {
 		act(() => {
@@ -213,7 +223,16 @@ async function card(config: FormConfig = CONFIG, answers: Answers = {}) {
 	await act(async () => {
 		for (let at = 0; at < 4; at += 1) await Promise.resolve();
 	});
-	return { root: host, payment };
+	return {
+		root: host,
+		payment,
+		/** the page's program chooser moving to another pick, with the card still mounted. */
+		pagePicks: (pageProgram: string | null): void => {
+			act(() => {
+				draw(pageProgram);
+			});
+		}
+	};
 }
 
 function one(root: HTMLElement, selector: string): HTMLElement {
@@ -331,6 +350,84 @@ it('carries the cause a donor chose onto the review step', async () => {
 
 	walkToGive(root);
 	expect(one(root, '.row.program .program-name').textContent).toBe('Schools');
+});
+
+describe('a program the page picks', () => {
+	/** the quote requests the card posts, each read back as the body it sent; none is answered. */
+	function sent(): Record<string, unknown>[] {
+		const bodies: Record<string, unknown>[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((_url: string, init?: RequestInit) => {
+				bodies.push(JSON.parse(String(init?.body)));
+				return new Promise<Response>(() => {});
+			})
+		);
+		return bodies;
+	}
+
+	function donate(root: HTMLElement, payment: { pick(type: string): void }): void {
+		payment.pick('card');
+		press(one(root, 'button[part~="submit"]'));
+	}
+
+	const programRow = (root: HTMLElement) =>
+		one(root, '.row.program .program-name').textContent ?? '';
+
+	it('draws no program select of its own where the page picks, and its own one elsewhere', async () => {
+		const picked = await card(CONFIG, {}, { pageProgram: null });
+		expect(picked.root.querySelector('#program')).toBeNull();
+
+		const own = await card();
+		expect(own.root.querySelector('#program')).not.toBeNull();
+	});
+
+	it('sends the program the page picked with the gift', async () => {
+		const bodies = sent();
+		const { root, payment } = await card(CONFIG, {}, { pageProgram: 'p2' });
+		walkToGive(root);
+		expect(programRow(root)).toBe('Schools');
+
+		donate(root, payment);
+		expect(bodies).toHaveLength(1);
+		expect(bodies[0]).toMatchObject({ programId: 'p2' });
+	});
+
+	it('follows the page to another pick on the review step, keeping what the donor gave', async () => {
+		const bodies = sent();
+		const { root, payment, pagePicks } = await card(CONFIG, {}, { pageProgram: 'p1' });
+		walkToGive(root);
+		expect(programRow(root)).toBe('Clean water');
+
+		pagePicks('p2');
+		// the same card, on the same step: a remount would have put the donor back on step one.
+		expect(screen(root).className).toContain('step-give');
+		expect(programRow(root)).toBe('Schools');
+
+		donate(root, payment);
+		expect(bodies[0]).toMatchObject({ programId: 'p2', email: 'donor@example.org' });
+	});
+
+	it('sends no program once the page is back on where it is needed most', async () => {
+		const bodies = sent();
+		const { root, payment, pagePicks } = await card(CONFIG, {}, { pageProgram: 'p1' });
+		pagePicks(null);
+		walkToGive(root);
+		expect(programRow(root)).toBe('Where it’s needed most');
+
+		donate(root, payment);
+		expect(bodies[0]).not.toHaveProperty('programId');
+	});
+
+	it('reads a program the served form does not offer as no program at all', async () => {
+		const bodies = sent();
+		const { root, payment } = await card(CONFIG, {}, { pageProgram: 'p-retired' });
+		walkToGive(root);
+		expect(programRow(root)).toBe('Where it’s needed most');
+
+		donate(root, payment);
+		expect(bodies[0]).not.toHaveProperty('programId');
+	});
 });
 
 it('holds the dedication a donor chose, on the box and on its row', async () => {
