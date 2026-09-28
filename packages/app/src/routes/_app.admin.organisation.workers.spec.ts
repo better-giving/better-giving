@@ -15,6 +15,8 @@ import * as organisation from './_app.admin.organisation';
 const SCREEN = '/admin/organisation';
 const STORY_FORM = 'org-story';
 const UNDO_FORM = 'org-story-undo';
+const LOOK_FORM = 'org-look';
+const LOOK_UNDO_FORM = 'org-look-undo';
 
 let request: RouteRequester;
 let session: string;
@@ -42,6 +44,8 @@ type Loaded = {
 	vision: RichTextDocument | null;
 	version: string;
 	saved: 'story' | 'story-undone' | null;
+	look: { shade: string; corner: string; brandColour: string | null };
+	lookVersion: string;
 };
 
 async function load(flash = ''): Promise<Loaded> {
@@ -189,7 +193,7 @@ describe('the story', () => {
 	});
 });
 
-describe('Undo', () => {
+describe('Undo of the story', () => {
 	it('restores the previous mission and vision, and a second Undo puts the save back', async () => {
 		await save(words('First mission.'), words('First vision.'));
 		await save(words('Second mission.'));
@@ -231,5 +235,186 @@ describe('Undo', () => {
 		).run();
 		const answer = await post(UNDO_FORM, (await load()).version);
 		expect(answer).toMatchObject({ redirected: false, status: 409 });
+	});
+});
+
+type LookAnswer = {
+	status: number;
+	saved?: 'look' | 'look-undone';
+	version?: string;
+	errors: Record<string, string[]>;
+	message: string | undefined;
+	typed: Record<string, unknown>;
+};
+
+/** a look press as the section's fetcher posts one: it answers in place, never by a redirect. */
+async function postLook(
+	form: string,
+	version: string,
+	fields: Record<string, string> = {}
+): Promise<LookAnswer> {
+	const body = new FormData();
+	body.set(WHICH_FORM, form);
+	body.set(RECORD_VERSION, version);
+	for (const [field, value] of Object.entries(fields)) body.set(field, value);
+	const response = await request(
+		new Request(`${ORIGIN}${SCREEN}`, { method: 'POST', headers: { cookie: session }, body }),
+		{ env }
+	);
+	const answered = (await response.json()) as {
+		saved?: 'look' | 'look-undone';
+		version?: string;
+		form?: { result: { error?: Record<string, string[]>; initialValue?: Record<string, unknown> } };
+	};
+	const keyed = answered.form?.result.error ?? {};
+	return {
+		status: response.status,
+		...(answered.saved === undefined ? {} : { saved: answered.saved }),
+		...(answered.version === undefined ? {} : { version: answered.version }),
+		errors: Object.fromEntries(Object.entries(keyed).filter(([field]) => field !== '')),
+		message: keyed['']?.at(-1),
+		typed: answered.form?.result.initialValue ?? {}
+	};
+}
+
+/** a pick as the page drawn this moment would post it. */
+async function pick(look: { shade: string; corner: string; brandColour: string }) {
+	return postLook(LOOK_FORM, (await load()).lookVersion, look);
+}
+
+describe('the look', () => {
+	it('is light and soft with no brand colour before anything is saved', async () => {
+		expect((await load()).look).toEqual({ shade: 'light', corner: 'soft', brandColour: null });
+	});
+
+	it('is saved and read back, answering in place with the version it wrote', async () => {
+		const answer = await pick({ shade: 'warm', corner: 'round', brandColour: '#1d6b4f' });
+		expect(answer).toMatchObject({ status: 200, saved: 'look' });
+
+		const landed = await load();
+		expect(landed.look).toEqual({ shade: 'warm', corner: 'round', brandColour: '#1d6b4f' });
+		expect(answer.version).toBe(landed.lookVersion);
+	});
+
+	it('is saved with no brand colour where the colour box is blank', async () => {
+		await pick({ shade: 'cool', corner: 'square', brandColour: '#1d6b4f' });
+		await pick({ shade: 'cool', corner: 'square', brandColour: '' });
+		expect((await load()).look).toEqual({ shade: 'cool', corner: 'square', brandColour: null });
+	});
+
+	it('refuses a shade and a corner off their lists, naming each, and hands back what was picked', async () => {
+		const picked = { shade: 'dusk', corner: 'bevel', brandColour: '#1d6b4f' };
+		const answer = await pick(picked);
+
+		expect(answer.status).toBe(400);
+		expect(answer.errors.shade?.[0]).toBe('"dusk" is not a shade; a shade is light, warm or cool');
+		expect(answer.errors.corner?.[0]).toBe(
+			'"bevel" is not a corner; a corner is square, soft or round'
+		);
+		expect(answer.errors.brandColour).toBeUndefined();
+		expect(answer.typed).toMatchObject(picked);
+		expect((await load()).look).toEqual({ shade: 'light', corner: 'soft', brandColour: null });
+	});
+
+	it('refuses a pick from a page drawn before another save, at a 409, and keeps that save', async () => {
+		const { lookVersion: drawn } = await load();
+		await pick({ shade: 'warm', corner: 'soft', brandColour: '#1d6b4f' });
+
+		const answer = await postLook(LOOK_FORM, drawn, {
+			shade: 'cool',
+			corner: 'round',
+			brandColour: '#8a3b12'
+		});
+		expect(answer.status).toBe(409);
+		expect(answer.message).toMatch(/look has been saved since this page was opened/);
+		expect((await load()).look).toEqual({ shade: 'warm', corner: 'soft', brandColour: '#1d6b4f' });
+	});
+
+	it('is saved from a page drawn before a story save, which moves the row but not the look', async () => {
+		const { lookVersion: drawn } = await load();
+		await save(words('We keep families warm.'));
+
+		const answer = await postLook(LOOK_FORM, drawn, {
+			shade: 'warm',
+			corner: 'round',
+			brandColour: ''
+		});
+		expect(answer).toMatchObject({ status: 200, saved: 'look' });
+	});
+
+	it('leaves a story typed on a page drawn before a look save saveable', async () => {
+		const { version: drawn } = await load();
+		await pick({ shade: 'cool', corner: 'square', brandColour: '#1d6b4f' });
+
+		const answer = await post(STORY_FORM, drawn, {
+			mission: JSON.stringify(words('We keep families warm.')),
+			vision: JSON.stringify(words('Warm.'))
+		});
+		expect(answer).toMatchObject({ redirected: true });
+	});
+
+	it('refuses a brand colour that is not a lowercase #rrggbb, naming it', async () => {
+		const answer = await pick({ shade: 'warm', corner: 'soft', brandColour: '#1D6B4F' });
+		expect(answer.status).toBe(400);
+		expect(answer.errors).toEqual({
+			brandColour: [
+				'"#1D6B4F" is not a brand colour; a brand colour is a lowercase #rrggbb, or blank for none'
+			]
+		});
+	});
+});
+
+describe('Undo of the look', () => {
+	it('restores the previous look, and a second Undo puts the save back', async () => {
+		await pick({ shade: 'warm', corner: 'round', brandColour: '#1d6b4f' });
+		await pick({ shade: 'cool', corner: 'square', brandColour: '#8a3b12' });
+
+		const undone = await postLook(LOOK_UNDO_FORM, (await load()).lookVersion);
+		expect(undone).toMatchObject({ status: 200, saved: 'look-undone' });
+		const landed = await load();
+		expect(landed.look).toEqual({ shade: 'warm', corner: 'round', brandColour: '#1d6b4f' });
+		expect(undone.version).toBe(landed.lookVersion);
+
+		await postLook(LOOK_UNDO_FORM, landed.lookVersion);
+		expect((await load()).look).toEqual({
+			shade: 'cool',
+			corner: 'square',
+			brandColour: '#8a3b12'
+		});
+	});
+
+	it('takes the first save back to the default look', async () => {
+		await pick({ shade: 'warm', corner: 'round', brandColour: '#1d6b4f' });
+		await postLook(LOOK_UNDO_FORM, (await load()).lookVersion);
+		expect((await load()).look).toEqual({ shade: 'light', corner: 'soft', brandColour: null });
+	});
+
+	it('refuses an Undo from a page drawn before another save, at a 409, and keeps that save', async () => {
+		await pick({ shade: 'warm', corner: 'round', brandColour: '#1d6b4f' });
+		const { lookVersion: drawn } = await load();
+		await pick({ shade: 'cool', corner: 'square', brandColour: '#8a3b12' });
+
+		const answer = await postLook(LOOK_UNDO_FORM, drawn);
+		expect(answer.status).toBe(409);
+		expect(answer.message).toMatch(/look has been saved since this page was opened/);
+		expect((await load()).look).toEqual({
+			shade: 'cool',
+			corner: 'square',
+			brandColour: '#8a3b12'
+		});
+	});
+
+	it('refuses an Undo with no look saved to go back to, on a row a story save made', async () => {
+		await save(words('We keep families warm.'));
+		const answer = await postLook(LOOK_UNDO_FORM, (await load()).lookVersion);
+		expect(answer.status).toBe(409);
+	});
+
+	it('leaves the story where it is', async () => {
+		await save(words('First mission.'));
+		await save(words('Second mission.'));
+		await pick({ shade: 'warm', corner: 'round', brandColour: '#1d6b4f' });
+		await postLook(LOOK_UNDO_FORM, (await load()).lookVersion);
+		expect((await load()).mission).toEqual(words('Second mission.'));
 	});
 });
