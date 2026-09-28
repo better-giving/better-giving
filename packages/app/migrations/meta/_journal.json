@@ -127,6 +127,13 @@
       "when": 1790623449756,
       "tag": "0017_zapier_key_is_an_api_key",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1790625237747,
+      "tag": "0018_zapier_key_dropped",
+      "breakpoints": true
     }
   ]
 }

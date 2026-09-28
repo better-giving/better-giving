@@ -44,11 +44,13 @@ const nowhereToStop = STOP < 1;
 const API_KEY_REBUILT_BY = '0017_zapier_key_is_an_api_key.sql';
 const API_KEY_REBUILD = env.TEST_MIGRATIONS.findIndex((m) => m.name === API_KEY_REBUILT_BY);
 
+const ZAPIER_KEY_DROPPED_BY = '0018_zapier_key_dropped.sql';
+
 /**
- * columns a file from the stop on rewrites on purpose, each asserted in that file's own block
+ * tables a file from the stop on drops on purpose, each asserted gone in that file's own block
  * below, so the column-for-column comparison skips them.
  */
-const REWRITTEN: Record<string, readonly string[]> = { zapier_key: ['key', 'updated_at'] };
+const DROPPED: readonly string[] = ['zapier_key'];
 
 const sha256Hex = (value: string) => createHash('sha256').update(value).digest('hex');
 
@@ -245,10 +247,34 @@ let migrated:
 	| Promise<{
 			before: Map<string, Row[]>;
 			apiKeysBefore: Row[];
+			atApiKeyMove: Map<string, Row[]>;
+			recopy: { error: string | null; zapierRows: Row[] };
 			after: Map<string, Row[]>;
 			overSeed: string[];
 	  }>
 	| undefined;
+
+/**
+ * 0017's copy run again, alone, over the `zapier_key` row it left holding no key: the one moment
+ * that table and a keyless row both exist, since 0018 drops it. a copy that read the keyless row
+ * would write a row with no prefix, or a second zapier row, and fail on either.
+ */
+async function recopyKeyless(): Promise<{ error: string | null; zapierRows: Row[] }> {
+	const copy = env.TEST_MIGRATIONS[API_KEY_REBUILD]!.queries.filter((q) =>
+		q.startsWith('INSERT INTO `api_key`')
+	);
+	let error: string | null = null;
+	try {
+		if (copy.length !== 1) throw new Error(`0017 holds ${copy.length} copies into api_key, not 1`);
+		await db().batch(copy.map((q) => db().prepare(q)));
+	} catch (e) {
+		error = String((e as Error).message);
+	}
+	const { results } = await db()
+		.prepare(`select * from api_key where kind = 'zapier' order by rowid`)
+		.all<Row>();
+	return { error, zapierRows: results };
+}
 
 /** the chain stopped in front of `FIRST_UNAPPLIED`, seeded, then finished — once, for every block here. */
 function migrateOverSeed() {
@@ -262,9 +288,12 @@ function migrateOverSeed() {
 		await seedApiKeys();
 		const apiKeysBefore = (await db().prepare('select * from api_key order by rowid').all<Row>())
 			.results;
+		await applyD1Migrations(db(), chain.slice(0, API_KEY_REBUILD + 1));
+		const atApiKeyMove = await snapshot();
+		const recopy = await recopyKeyless();
 		await applyD1Migrations(db(), chain);
 		const overSeed = (await recorded()).slice(underSeed.length);
-		return { before, apiKeysBefore, after: await snapshot(), overSeed };
+		return { before, apiKeysBefore, atApiKeyMove, recopy, after: await snapshot(), overSeed };
 	})();
 	return migrated;
 }
@@ -297,13 +326,12 @@ describe('the migrations not yet applied keep every row the database already hel
 		async () => {
 			expect([...before.keys()].length).toBeGreaterThan(5);
 			for (const [table, rows] of before) {
-				const rewritten = REWRITTEN[table] ?? [];
+				if (DROPPED.includes(table)) continue;
 				const columns = rows.length > 0 ? Object.keys(rows[0]!) : [];
-				const kept = columns.filter((c) => !rewritten.includes(c));
 				expect(
-					(after.get(table) ?? []).map((r) => project(r, kept)),
+					(after.get(table) ?? []).map((r) => project(r, columns)),
 					`${table} lost or changed rows across the migrations from ${FIRST_UNAPPLIED}`
-				).toEqual(rows.map((r) => project(r, kept)));
+				).toEqual(rows.map((r) => project(r, columns)));
 			}
 		}
 	);
@@ -321,7 +349,6 @@ describe('the migrations not yet applied keep every row the database already hel
 			]);
 			expect(after.get('donation')?.find((r) => r.id === CHARGE_ID)?.recurring_id).toBe(PLAN_ID);
 			expect(after.get('recurring_plan')?.map((r) => r.id)).toEqual([PLAN_ID]);
-			expect(after.get('zapier_key')?.map((r) => r.id)).toEqual(['zapier']);
 			expect(after.get('zapier_subscription')?.map((r) => r.id)).toEqual([OPEN_ZAP, ENDED_ZAP]);
 			expect(after.get('zapier_delivery')?.map((r) => r.event_id)).toEqual([
 				'evt-probe',
@@ -472,11 +499,12 @@ describe('0012 gives a payment already written a place for its processor referen
 // same hash, and the plaintext `zapier_key` held is stored nowhere after it.
 describe('0017 carries the Zapier key into api_key and keeps no plaintext', () => {
 	let after: Map<string, Row[]>;
+	let before: Map<string, Row[]>;
 	let apiKeysBefore: Row[];
 
 	beforeAll(async () => {
 		if (nowhereToStop) return;
-		({ after, apiKeysBefore } = await migrateOverSeed());
+		({ atApiKeyMove: after, before, apiKeysBefore } = await migrateOverSeed());
 	});
 
 	it.skipIf(nowhereToStop)('writes one zapier row, admitted by the hash the key had', () => {
@@ -517,92 +545,52 @@ describe('0017 carries the Zapier key into api_key and keeps no plaintext', () =
 		expect(after.get('zapier_key')?.map((r) => r.key)).toEqual([null]);
 	});
 
+	it.skipIf(nowhereToStop)('keeps the rest of the zapier_key row as it was', () => {
+		const kept = (r: Row) => project(r, ['id', 'key_hash', 'created_at']);
+		expect(after.get('zapier_key')?.map(kept)).toEqual(before.get('zapier_key')?.map(kept));
+	});
+
 	it.skipIf(nowhereToStop)('keeps every key already in api_key, column for column', () => {
 		expect((after.get('api_key') ?? []).filter((r) => r.kind === 'api')).toEqual(apiKeysBefore);
 	});
 });
 
 // a `zapier_key` row with no stored key has nothing to cut a prefix from. 0008 deleted the one
-// such row a deployment could hold, but the copy still reads only rows holding a key: this runs
-// 0017's copy again, alone, over the row it left keyless.
+// such row a deployment could hold, but the copy still reads only rows holding a key:
+// `recopyKeyless` runs it again over the row 0017 left keyless.
 describe('0017 copies nothing from a zapier_key row holding no key', () => {
-	let zapierRows: Row[];
+	let recopy: { error: string | null; zapierRows: Row[] };
+	let atApiKeyMove: Map<string, Row[]>;
 
 	beforeAll(async () => {
 		if (nowhereToStop) return;
-		await migrateOverSeed();
-		const copy = env.TEST_MIGRATIONS.find((m) => m.name === API_KEY_REBUILT_BY)!.queries.filter(
-			(q) => q.startsWith('INSERT INTO `api_key`')
-		);
-		expect(copy).toHaveLength(1);
-		const keyless = await db().prepare(`select key, key_hash from zapier_key`).all<Row>();
-		expect(keyless.results).toEqual([{ key: null, key_hash: sha256Hex(ZAPIER_KEY) }]);
-		await db().batch([
-			db().prepare(`delete from api_key where kind = 'zapier'`),
-			...copy.map((q) => db().prepare(q))
-		]);
-		zapierRows = (await db().prepare(`select * from api_key where kind = 'zapier'`).all<Row>())
-			.results;
+		({ recopy, atApiKeyMove } = await migrateOverSeed());
 	});
 
-	it.skipIf(nowhereToStop)('writes no zapier row', () => {
-		expect(zapierRows).toEqual([]);
+	it.skipIf(nowhereToStop)('writes no second zapier row', () => {
+		expect(recopy.error).toBeNull();
+		expect(recopy.zapierRows).toEqual(
+			(atApiKeyMove.get('api_key') ?? []).filter((r) => r.kind === 'zapier')
+		);
 	});
 });
 
-// a key minted before 0007 stored it has nothing for the console to show, so 0008 drops its row and
-// ends every Zap on it the way a replace ends them. the seed above holds a stored key, so this
-// clears it and runs 0008 again, one batch, the way wrangler applies a file.
-describe('0008 drops a key that was never stored, and ends every Zap on it', () => {
-	let zapierKeys: Row[];
-	let subscriptions: Row[];
-	let deliveries: Row[];
+// what 0018 is for: nothing reads `zapier_key` once 0017 has carried its key across, so the table
+// goes. the key it held still admitting is the first block's.
+describe('0018 drops zapier_key', () => {
+	let after: Map<string, Row[]>;
 
 	beforeAll(async () => {
 		if (nowhereToStop) return;
-		await migrateOverSeed();
-		await db().prepare(`update zapier_key set key = null`).run();
-		const dropped = env.TEST_MIGRATIONS.find(
-			(m) => m.name === '0008_zapier_keyless_row_dropped.sql'
-		);
-		await db().batch(dropped!.queries.map((q) => db().prepare(q)));
-		zapierKeys = (await db().prepare(`select * from zapier_key`).all<Row>()).results;
-		subscriptions = (
-			await db().prepare(`select * from zapier_subscription order by rowid`).all<Row>()
-		).results;
-		deliveries = (await db().prepare(`select * from zapier_delivery`).all<Row>()).results;
+		({ after } = await migrateOverSeed());
 	});
 
-	it.skipIf(nowhereToStop)('leaves no key row', () => {
-		expect(zapierKeys).toEqual([]);
+	it('is the file after 0017', () => {
+		expect(env.TEST_MIGRATIONS[API_KEY_REBUILD + 1]?.name).toBe(ZAPIER_KEY_DROPPED_BY);
 	});
 
-	it.skipIf(nowhereToStop)('ends the open subscription as key_replaced, now', () => {
-		const open = subscriptions.find((r) => r.id === OPEN_ZAP)!;
-		expect(open.ended_reason).toBe('key_replaced');
-		expect(open.ended_at).toBeGreaterThan(Date.now() - 60_000);
-		expect(open.updated_at).toBe(open.ended_at);
-	});
-
-	it.skipIf(nowhereToStop)('leaves a subscription that had already ended as it ended', () => {
-		expect(subscriptions.find((r) => r.id === ENDED_ZAP)).toMatchObject({
-			ended_at: 5,
-			ended_reason: 'unsubscribed',
-			updated_at: 5
-		});
-	});
-
-	it.skipIf(nowhereToStop)('drops what the ended subscription was still owed', () => {
-		const owed = deliveries.find((r) => r.event_id === 'evt-probe')!;
-		expect(owed).toMatchObject({ status: 'dropped', leased_until: null });
-		expect(owed.updated_at).toBeGreaterThan(Date.now() - 60_000);
-	});
-
-	it.skipIf(nowhereToStop)('leaves a delivery already sent as it was sent', () => {
-		expect(deliveries.find((r) => r.event_id === 'evt-sent')).toMatchObject({
-			status: 'sent',
-			updated_at: 1
-		});
+	it.skipIf(nowhereToStop)('leaves no zapier_key table', () => {
+		expect([...after.keys()]).not.toContain('zapier_key');
 	});
 });
 

@@ -95,6 +95,28 @@ describe('the key is never stored, whole or in pieces', () => {
 	});
 });
 
+describe('the hash is 64 lowercase hex digits and nothing else', () => {
+	it('takes 64 lowercase hex digits', async () => {
+		const hash = '0123456789abcdef'.repeat(4);
+		await insertKey({ id: 'a', keyHash: hash });
+		const row = await env.DB.prepare(`select key_hash as h from api_key`).first();
+		expect(row).toEqual({ h: hash });
+	});
+
+	// uppercase hex is the right digest in a case a comparison against the lowercase one misses;
+	// 63 and 65 are a digest cut or padded by one.
+	it.each([
+		['uppercase hex', 'A'.repeat(64)],
+		['63 digits', 'a'.repeat(63)],
+		['65 digits', 'a'.repeat(65)],
+		['empty', '']
+	])('refuses %s', async (_, keyHash) => {
+		const message = await rejection(() => insertKey({ id: 'a', keyHash }));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('api_key_key_hash_check');
+	});
+});
+
 describe("each kind's prefix and tail are cut from that kind's own shape", () => {
 	it('takes a zapier key cut from bgz_ and base64url', async () => {
 		await insertKey({ id: 'a', kind: 'zapier' });

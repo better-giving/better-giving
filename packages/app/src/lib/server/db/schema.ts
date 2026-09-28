@@ -2640,7 +2640,11 @@ export const apiKey = sqliteTable(
 	(t) => [
 		check('api_key_name_not_blank_check', notBlank(t.name)),
 		check('api_key_kind_check', enumCheck(t.kind, API_KEY_KINDS)),
-		/** `zapier_key_key_hash_check`'s body, for the reasons given there. */
+		/**
+		 * `glob` and not `like`: glob is case-sensitive, so an uppercase digest — the same hash in
+		 * the case a lowercase comparison never matches — is refused rather than stored. the length
+		 * half refuses the key itself written where its hash belongs.
+		 */
 		check(
 			'api_key_key_hash_check',
 			sql`length(${t.keyHash}) = 64 and ${t.keyHash} not glob '*[^0-9a-f]*'`
@@ -2678,51 +2682,6 @@ export const apiKey = sqliteTable(
 		uniqueIndex('api_key_one_zapier_idx')
 			.on(t.kind)
 			.where(sql`${t.kind} = 'zapier' and ${t.revokedAt} is null`)
-	]
-);
-
-/**
- * where Zapier's key was held before it became a `zapier` row of `api_key`. read and written by
- * nothing: migrations/0017_zapier_key_is_an_api_key.sql carried each key's hash into `api_key`
- * and nulled `key`, and ../zapier/key.ts makes, replaces and admits the key there.
- */
-export const zapierKey = sqliteTable(
-	'zapier_key',
-	{
-		// not a uuidv7 and deliberately not `$defaultFn`: the row is a singleton, and the check
-		// below is what keeps it one.
-		id: text('id').primaryKey(),
-
-		/** the lowercase hex SHA-256 of the whole key string. */
-		keyHash: text('key_hash').notNull(),
-
-		createdAt: createdAt(),
-		updatedAt: updatedAt(),
-		// append new columns below this line — see rule 1 at the top of this file.
-
-		/** the plaintext key, once; `null` on every row since 0017. */
-		key: text('key')
-	},
-	(t) => [
-		check('zapier_key_id_check', sql`${t.id} = 'zapier'`),
-		/**
-		 * `bgz_` and 43 base64url characters, 32 bytes unpadded. the length refuses the 64-digit hash
-		 * written where the key belongs; `glob` is case-sensitive, so the prefix cannot pass as
-		 * `BGZ_`. `-` is last in the class, where glob reads it as itself rather than a range.
-		 */
-		check(
-			'zapier_key_key_check',
-			sql`${t.key} is null or (length(${t.key}) = 47 and ${t.key} glob 'bgz_*' and substr(${t.key}, 5) not glob '*[^A-Za-z0-9_-]*')`
-		),
-		/**
-		 * `glob` and not `like`: glob is case-sensitive, so an uppercase digest — the same hash in
-		 * the case a lowercase comparison never matches — is refused rather than stored. the length
-		 * half refuses the key itself written where its hash belongs.
-		 */
-		check(
-			'zapier_key_key_hash_check',
-			sql`length(${t.keyHash}) = 64 and ${t.keyHash} not glob '*[^0-9a-f]*'`
-		)
 	]
 );
 
@@ -3073,8 +3032,6 @@ export type QuickbooksSync = typeof quickbooksSync.$inferSelect;
 export type NewQuickbooksSync = typeof quickbooksSync.$inferInsert;
 export type ApiKey = typeof apiKey.$inferSelect;
 export type NewApiKey = typeof apiKey.$inferInsert;
-export type ZapierKey = typeof zapierKey.$inferSelect;
-export type NewZapierKey = typeof zapierKey.$inferInsert;
 export type ZapierSubscription = typeof zapierSubscription.$inferSelect;
 export type NewZapierSubscription = typeof zapierSubscription.$inferInsert;
 export type ZapierDelivery = typeof zapierDelivery.$inferSelect;

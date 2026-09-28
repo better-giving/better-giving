@@ -1,10 +1,11 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-// the constraints the three Zapier tables carry, which are one-way for the reason
-// ./donation-schema.workers.spec.ts opens with: each is a rebuild of the table to change.
+// the constraints the two Zapier tables carry, which are one-way for the reason
+// ./donation-schema.workers.spec.ts opens with: each is a rebuild of the table to change. Zapier's
+// key is a row of `api_key`, pinned in ./api-key-schema.workers.spec.ts.
 //
-// what is deliberately not here, on that file's redundancy rule: `STRICT` on the three tables and
+// what is deliberately not here, on that file's redundancy rule: `STRICT` on the two tables and
 // `NO ACTION` on the delivery's two foreign keys, both read off sqlite's catalogue by
 // ./strict.workers.spec.ts, and the `optionalNotBlank` body on `last_error` (the shared helper,
 // pinned on `payment.provider_txn_id`).
@@ -24,100 +25,6 @@ async function rejection(fn: () => Promise<unknown>): Promise<string> {
 	}
 	throw new Error('expected D1 to reject this statement, but it succeeded');
 }
-
-const HASH = 'a'.repeat(64);
-
-const insertKey = (id: string, keyHash: string) =>
-	env.DB.prepare(
-		`insert into zapier_key (id, key_hash, created_at, updated_at) values (?, ?, 0, 0)`
-	)
-		.bind(id, keyHash)
-		.run();
-
-// the singleton is seeded here rather than by the first test that needs it, so no case below
-// depends on having run after another one.
-beforeAll(async () => {
-	await insertKey('zapier', HASH);
-});
-
-describe('one zapier key per deployment', () => {
-	it('refuses a second key row under any other id', async () => {
-		const message = await rejection(() => insertKey('zapier-2', HASH));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('zapier_key_id_check');
-	});
-
-	it('refuses a second key row under the same id', async () => {
-		const message = await rejection(() => insertKey('zapier', HASH));
-		expect(message).toContain(SQLITE_CONSTRAINT_PRIMARYKEY);
-	});
-});
-
-describe('the key is stored as its lowercase hex sha-256 and nothing else', () => {
-	const setHash = (keyHash: string) =>
-		env.DB.prepare(`update zapier_key set key_hash = ? where id = 'zapier'`).bind(keyHash).run();
-
-	it('accepts 64 lowercase hex digits', async () => {
-		const hash = '0123456789abcdef'.repeat(4);
-		await setHash(hash);
-		const row = await env.DB.prepare(`select key_hash as h from zapier_key`).first();
-		expect(row).toEqual({ h: hash });
-	});
-
-	// uppercase hex is the right digest in a case a comparison against the lowercase one misses;
-	// the key itself is what a careless write stores instead of its hash; 63 and 65 are a digest
-	// cut or padded by one.
-	it.each([
-		['uppercase hex', 'A'.repeat(64)],
-		['the key itself', `bgz_${'a'.repeat(60)}`],
-		['63 digits', 'a'.repeat(63)],
-		['65 digits', 'a'.repeat(65)],
-		['empty', '']
-	])('refuses %s', async (_, keyHash) => {
-		const message = await rejection(() => setHash(keyHash));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('zapier_key_key_hash_check');
-	});
-});
-
-describe('the key itself is stored in the shape it is minted in, or not at all', () => {
-	const setKey = (key: string | null) =>
-		env.DB.prepare(`update zapier_key set key = ? where id = 'zapier'`).bind(key).run();
-
-	// 43 base64url characters, the whole alphabet `-` and `_` included.
-	const KEY = `bgz_${'AZaz09-_'.repeat(5)}abc`;
-
-	it.each([
-		['a minted key', KEY],
-		['no key', null]
-	])('accepts %s', async (_, key) => {
-		await setKey(key);
-		const row = await env.DB.prepare(`select key as k from zapier_key`).first();
-		expect(row).toEqual({ k: key });
-	});
-
-	// the hash is what a careless write stores where the key belongs; the rest are a key cut,
-	// padded, re-cased or re-encoded on its way into the row.
-	it.each([
-		['the hash', HASH],
-		['an uppercase prefix', `BGZ_${KEY.slice(4)}`],
-		['no prefix', KEY.slice(4)],
-		['42 characters after the prefix', KEY.slice(0, -1)],
-		['44 characters after the prefix', `${KEY.slice(0, -1)}==`],
-		['standard base64', `${KEY.slice(0, -1)}+`],
-		['a space', `${KEY.slice(0, -1)} `],
-		['`+` first after the prefix', `bgz_+${KEY.slice(5)}`],
-		['`/` mid-key', `${KEY.slice(0, 25)}/${KEY.slice(26)}`],
-		['`=` mid-key', `${KEY.slice(0, 25)}=${KEY.slice(26)}`],
-		['a space mid-key', `${KEY.slice(0, 25)} ${KEY.slice(26)}`],
-		['a non-ASCII letter mid-key', `${KEY.slice(0, 25)}é${KEY.slice(26)}`],
-		['empty', '']
-	])('refuses %s', async (_, key) => {
-		const message = await rejection(() => setKey(key));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('zapier_key_key_check');
-	});
-});
 
 const HOOK = 'https://hooks.zapier.com/hooks/standard/1/abc/';
 
