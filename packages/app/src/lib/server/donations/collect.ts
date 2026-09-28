@@ -42,8 +42,11 @@ import { chargeEntry, feeEntry, missingFeeCorrection, unpostable } from './entri
 import { sendReceipt, type ReceiptOutcome } from './receipt';
 import { sendSettledNotice, type Repeating } from './settled-notice';
 import { sendTributeNotice } from './tribute-notice';
-import { applyPlanChange, planChangeStatements } from '../recurring/changes';
-import { recurringGiftStartedWebhookStatements } from '../webhooks/events';
+import { type PlanChange, planChangeStatements } from '../recurring/changes';
+import {
+	recurringChargeFailedWebhookStatements,
+	recurringGiftStartedWebhookStatements
+} from '../webhooks/events';
 
 // the books for a gift that repeats: what one collection under a standing commitment writes, and
 // what the commitment's own standing writes when it stops.
@@ -159,7 +162,8 @@ import { recurringGiftStartedWebhookStatements } from '../webhooks/events';
 // collection that failed either — the rail's own retry schedule is what tries again, and a
 // deployment that mailed on every failed attempt would mail a donor whose card is merely expiring.
 // a failed attempt the processor reports (`RecurringGiftNotice.failedAttempt`) goes to
-// `recordFailedCollection` and writes no gift, payment or ledger row: it moved no money.
+// `recordFailedCollection`, which owes a destination listening a `recurring_gift.charge_failed` and
+// writes no gift, payment or ledger row: it moved no money.
 //
 // nothing keeps a running total on the commitment. what a commitment has given is a `SUM` over its
 // donations' ledger entries, at read time, like every other number in this app (CLAUDE.md).
@@ -322,10 +326,17 @@ async function standingResult(
 	event: RecurringEvent,
 	notice: RecurringGiftNotice,
 	plan: RecurringPlan | null,
-	already?: StandingChange | null
+	already?: Standing
 ): Promise<SettleResult> {
 	const change = already === undefined ? await recordStanding(db, event, notice, plan) : already;
 
+	if (change === 'unwritten') {
+		return {
+			ok: false,
+			reason: 'incomplete',
+			detail: `repeating gift ${notice.providerGiftId} is ${notice.state}, and its record could not be written to say so.`
+		};
+	}
 	if (change === 'stopped') {
 		return {
 			ok: true,
@@ -353,7 +364,9 @@ async function standingResult(
  * answered off the notice alone: the attempt moved no money, so there is no transaction to read —
  * an attempt refused for want of a payment method has none at all, and it is not a collection
  * settled outside the processor. the commitment's own standing is still written, because the last
- * miss is often the delivery that carries its lapse.
+ * miss is often the delivery that carries its lapse — even where the attempt's own rows were not,
+ * which then asks for the delivery again: both writes are keyed, so the second pass writes only
+ * what the first did not.
  */
 async function failedResult(
 	db: Db,
@@ -362,8 +375,15 @@ async function failedResult(
 	failed: FailedCollection,
 	plan: RecurringPlan | null
 ): Promise<SettleResult> {
-	const planId = await recordFailedCollection(db, plan, failed);
+	const owed = await recordFailedCollection(db, plan, failed);
 	const stood = await recordStanding(db, event, notice, plan);
+	if (owed !== null && owed !== 'written') {
+		return {
+			ok: false,
+			reason: 'incomplete',
+			detail: `attempt ${failed.attemptCount} at a collection under ${notice.providerGiftId} failed, and the recurring charge failed it owes could not be written (${owed}).`
+		};
+	}
 	if (stood !== null) return standingResult(db, event, notice, plan, stood);
 	const retry = failed.nextRetryAt
 		? `the rail tries again at ${failed.nextRetryAt.toISOString()}`
@@ -372,25 +392,29 @@ async function failedResult(
 		ok: true,
 		outcome: 'uncollected',
 		detail:
-			planId === null
+			owed === null
 				? `attempt ${failed.attemptCount} under ${notice.providerGiftId} failed, and no repeating gift here has collected under it; nothing was written.`
-				: `attempt ${failed.attemptCount} at a collection under ${notice.providerGiftId} failed and ${retry}; no gift was written.`
+				: `attempt ${failed.attemptCount} at a collection under ${notice.providerGiftId} failed and ${retry}; no gift was written, and recurring charge failed is owed to the destinations listening.`
 	};
 }
 
 /**
- * the commitment a failed attempt is reported against, or null where this deployment holds none —
- * the donor's own first charge failing on the page, before any repeating gift exists, or a
- * subscription this app did not make.
+ * how the rows a failed attempt owes were written, or null where this deployment holds no
+ * commitment to report it against — the donor's own first charge failing on the page, before any
+ * repeating gift exists, or a subscription this app did not make.
  *
- * no gift, payment or ledger row is written for it: the attempt moved no money.
+ * under a commitment with a row, the attempt owes each destination listening a
+ * `recurring_gift.charge_failed`, keyed on the attempt, so a redelivery owes nothing
+ * (`recurringChargeFailedWebhookStatements` in ../webhooks/events.ts). that row is the only write:
+ * no gift, payment or ledger row, because the attempt moved no money.
  */
 async function recordFailedCollection(
-	_db: Db,
+	db: Db,
 	plan: RecurringPlan | null,
-	_failed: FailedCollection
-): Promise<string | null> {
-	return plan?.id ?? null;
+	failed: FailedCollection
+): Promise<WriteOutcome | null> {
+	if (plan === null) return null;
+	return attempt(db, [recurringChargeFailedWebhookStatements(db, plan.id, failed)]);
 }
 
 /**
@@ -449,6 +473,9 @@ function endingOf(notice: RecurringGiftNotice, event: RecurringEvent): Ending | 
 /** what a delivery did to a commitment's own standing, where it did anything. */
 type StandingChange = 'stopped' | 'revived';
 
+/** what writing a commitment's standing came to: a change, none, or a batch that did not land. */
+type Standing = StandingChange | null | 'unwritten';
+
 /**
  * whether a commitment the rail reports as collecting has a record that says otherwise.
  *
@@ -489,24 +516,41 @@ async function recordStanding(
 	event: RecurringEvent,
 	notice: RecurringGiftNotice,
 	plan: RecurringPlan | null
-): Promise<StandingChange | null> {
+): Promise<Standing> {
 	if (plan === null) return null;
 
 	if (revives(notice, plan)) {
-		const restored = await applyPlanChange(db, plan.id, ['lapsed'], {
-			status: 'active',
-			endedAt: null,
-			nextChargeAt: notice.nextChargeAt
-		});
-		return restored ? 'revived' : null;
+		return writeStanding(
+			db,
+			plan.id,
+			['lapsed'],
+			{ status: 'active', endedAt: null, nextChargeAt: notice.nextChargeAt },
+			'revived'
+		);
 	}
 
 	const ending = endingOf(notice, event);
 	if (ending === null) return null;
 
-	const marked = await applyPlanChange(db, plan.id, ['active'], { ...ending, nextChargeAt: null });
+	return writeStanding(db, plan.id, ['active'], { ...ending, nextChargeAt: null }, 'stopped');
+}
 
-	return marked ? 'stopped' : null;
+/**
+ * `change` written over the commitment through {@link attemptBatch}: `landed` where it changed the
+ * row, null where it matched nothing, `unwritten` where the batch did not land. the last statement
+ * is the update, returning the id it wrote (`planChangeStatements` in ../recurring/changes.ts).
+ */
+async function writeStanding(
+	db: Db,
+	planId: string,
+	from: readonly RecurringPlanStatus[],
+	change: PlanChange,
+	landed: StandingChange
+): Promise<Standing> {
+	const wrote = await attemptBatch(db, planChangeStatements(db, planId, from, change));
+	if (wrote.outcome !== 'written') return 'unwritten';
+	const updated = wrote.results.at(-1);
+	return Array.isArray(updated) && updated.length > 0 ? landed : null;
 }
 
 /**
@@ -1431,26 +1475,36 @@ function claimWrites(
  * make repeating it safe.
  */
 async function attempt(db: Db, writes: BatchItem<'sqlite'>[]): Promise<WriteOutcome> {
+	return (await attemptBatch(db, writes)).outcome;
+}
+
+/** {@link attempt}, with each statement's result where the batch was written. */
+async function attemptBatch(
+	db: Db,
+	writes: BatchItem<'sqlite'>[]
+): Promise<
+	| { readonly outcome: 'written'; readonly results: readonly unknown[] }
+	| { readonly outcome: Exclude<WriteOutcome, 'written'> }
+> {
 	const [first, ...rest] = writes;
-	if (first === undefined) return 'failed';
+	if (first === undefined) return { outcome: 'failed' };
 
 	try {
-		await db.batch([first, ...rest]);
-		return 'written';
+		return { outcome: 'written', results: await db.batch([first, ...rest]) };
 	} catch (error) {
 		switch (sqliteResultCode(error)) {
 			case 'SQLITE_CONSTRAINT_UNIQUE':
-				return 'duplicate';
+				return { outcome: 'duplicate' };
 			case 'SQLITE_CONSTRAINT_FOREIGNKEY':
 			case 'SQLITE_CONSTRAINT_CHECK':
-				return 'refused';
+				return { outcome: 'refused' };
 			default:
 				try {
 					console.error('recording a collection under a repeating gift failed:', error);
 				} catch {
 					// nothing to report it to, and nothing on this path may throw.
 				}
-				return 'failed';
+				return { outcome: 'failed' };
 		}
 	}
 }

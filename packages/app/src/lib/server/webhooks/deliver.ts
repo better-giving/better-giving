@@ -17,7 +17,8 @@ import { signedHeaders } from './sign';
 // **delivery is at least once.** a post whose answer never came may have arrived, and it is posted
 // again under the same `webhook-id`, which is what a receiver dedupes on.
 //
-// **the body is rendered at send**, from the row's subject (./payload.ts): `{ type, timestamp,
+// **the body is rendered at send**, from the row's subject (./payload.ts) and, for a recurring
+// charge failed, its stored `detail`, which does not move between attempts: `{ type, timestamp,
 // data }`, the Standard Webhooks shape (https://www.standardwebhooks.com/), where `timestamp` is
 // when the event was recorded — the row's `created_at`, the same on every attempt — and `data` is
 // the event's subject with its gift as the read API answers it at that moment. a retry renders
@@ -370,6 +371,7 @@ function claimDue(db: Db, now: Date) {
 			destinationId: webhookDelivery.destinationId,
 			event: webhookDelivery.event,
 			subjectId: webhookDelivery.subjectId,
+			detail: webhookDelivery.detail,
 			attempts: webhookDelivery.attempts,
 			createdAt: webhookDelivery.createdAt
 		},

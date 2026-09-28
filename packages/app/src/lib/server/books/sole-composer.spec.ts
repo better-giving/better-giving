@@ -13,8 +13,9 @@ import { describe, expect, it } from 'vitest';
 // the builders that report no money are held the same way, each with its own composer:
 // `donorUpdatedWebhookStatements` goes into a batch only beside the consent write it reports, in
 // ../donations/donor.ts; `recurringGiftStartedWebhookStatements` only beside the insert that opens
-// a commitment, in ../donations/collect.ts; and `recurringGiftChangeWebhookStatements` only beside
-// a standing change to one, in ../recurring/changes.ts.
+// a commitment, and `recurringChargeFailedWebhookStatements` only for a failed attempt under one
+// with a row, both in ../donations/collect.ts; and `recurringGiftChangeWebhookStatements` only
+// beside a standing change to one, in ../recurring/changes.ts.
 //
 // a source scan rather than a runtime hook, written the way ../ledger/sole-writer.spec.ts is, so it
 // catches the writer nobody wrote a test for; it reads text, so a namespace import or a computed
@@ -73,6 +74,10 @@ const EVENT_COMPOSERS = [
 	['donorUpdatedWebhookStatements', resolve(import.meta.dirname, '../donations/donor.ts')],
 	[
 		'recurringGiftStartedWebhookStatements',
+		resolve(import.meta.dirname, '../donations/collect.ts')
+	],
+	[
+		'recurringChargeFailedWebhookStatements',
 		resolve(import.meta.dirname, '../donations/collect.ts')
 	],
 	['recurringGiftChangeWebhookStatements', resolve(import.meta.dirname, '../recurring/changes.ts')]

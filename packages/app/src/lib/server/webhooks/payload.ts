@@ -6,7 +6,7 @@ import { earlierSettledGiftOfDonor } from '../donations/queries';
 import { type ApiDonor, readDonors } from '../integrations/donor';
 import { type ApiGift, readGifts } from '../integrations/gift';
 import { inPage } from '../integrations/paging';
-import { readRecurringGifts } from '../integrations/recurring-gift';
+import { type ApiRecurringGift, readRecurringGifts } from '../integrations/recurring-gift';
 import {
 	REFUND_NO_LONGER_STANDS,
 	type RefundRow,
@@ -15,7 +15,7 @@ import {
 	selectRefunds
 } from '../integrations/refund';
 import type { WebhookEvent } from '../../webhooks/catalog';
-import { changedRecordOf } from './events';
+import { CHARGE_FAILED_DETAIL, type ChargeFailedDetail, changedRecordOf } from './events';
 
 // the `data` a destination is posted for each event, rendered at send from the row's subject
 // (./deliver.ts). every gift in it is the read API's (`readGifts` in ../integrations/gift.ts),
@@ -31,6 +31,11 @@ import { changedRecordOf } from './events';
 // latest by `updated_at`. `donor.added`'s `first_gift` is the
 // donor's earliest settled gift by date (`earlierSettledGiftOfDonor` in ../donations/queries.ts) —
 // the gift whose settlement queued the row, unless one dated earlier was entered by hand since.
+//
+// **a `recurring_gift.charge_failed` carries the attempt as it was written**, from the row's own
+// `detail` (`ChargeFailedDetail` in ./events.ts): an attempt is not a record the read API holds, so
+// only its `amount` and the `recurring_gift` beside it are rendered at send. a row whose `detail`
+// is not that shape is dropped rather than sent short of a key.
 //
 // **a `gift.refunded` row is sent only while its refund still stands**, read at send
 // (`readStandingRefunds` in ../integrations/refund.ts, the read a Zap's is) as it was in the
@@ -94,8 +99,25 @@ export type OpenedDispute = {
  */
 export type AddedDonor = ApiDonor & { readonly first_gift: ApiGift };
 
+/**
+ * one failed attempt at a collection, as a `recurring_gift.charge_failed` destination receives it:
+ * the attempt as it was written when it failed, and the commitment as the read API answers it at
+ * send. the attempt's keys are the row's own `detail` (`ChargeFailedDetail` in ./events.ts), since
+ * nothing read later can say which attempt this was.
+ */
+export type FailedCharge = ChargeFailedDetail & {
+	/** `amount_minor` in the read API's notation, rendered at send like every other `amount`. */
+	readonly amount: string;
+	readonly recurring_gift: ApiRecurringGift;
+};
+
 /** the subject a delivery row names, as ./deliver.ts claims it. */
-type Subject = { readonly event: WebhookEvent; readonly subjectId: string };
+type Subject = {
+	readonly event: WebhookEvent;
+	readonly subjectId: string;
+	/** `webhook_delivery.detail`, as written. */
+	readonly detail: string | null;
+};
 
 /** a row's `data`, or the words `last_error` keeps for why it is not sent. */
 type Rendered = { readonly data: unknown } | { readonly dropped: string };
@@ -113,9 +135,11 @@ export async function renderSubjects(
 	const updatedIds = ofEvent('donor.updated').flatMap((subject) => changedRecordOf(subject) ?? []);
 	const planIds = [
 		...ofEvent('recurring_gift.started'),
-		...[...ofEvent('recurring_gift.updated'), ...ofEvent('recurring_gift.ended')].flatMap(
-			(subject) => changedRecordOf(subject) ?? []
-		)
+		...[
+			...ofEvent('recurring_gift.updated'),
+			...ofEvent('recurring_gift.charge_failed'),
+			...ofEvent('recurring_gift.ended')
+		].flatMap((subject) => changedRecordOf(subject) ?? [])
 	];
 	const [withdrawals, standing, donors, firstGiftIds, plans] = await Promise.all([
 		withdrawalIds.length === 0
@@ -140,7 +164,7 @@ export async function renderSubjects(
 		return row === undefined || gift === undefined ? undefined : { row, gift };
 	};
 
-	return ({ event, subjectId }) => {
+	return ({ event, subjectId, detail }) => {
 		switch (event) {
 			case 'gift.made': {
 				const gift = gifts.get(subjectId);
@@ -182,6 +206,14 @@ export async function renderSubjects(
 					? unreadable('recurring gift', planId ?? subjectId)
 					: { data: plan };
 			}
+			case 'recurring_gift.charge_failed': {
+				const attempt = chargeFailedDetailOf(detail);
+				if (attempt === null) return unreadable('failed attempt', subjectId);
+				const planId = changedRecordOf(subjectId);
+				const plan = planId === null ? undefined : plans.get(planId);
+				if (plan === undefined) return unreadable('recurring gift', planId ?? subjectId);
+				return { data: failedCharge(attempt, plan) };
+			}
 			default:
 				return { dropped: `A ${event} event is not one this deployment sends.` };
 		}
@@ -190,6 +222,19 @@ export async function renderSubjects(
 
 function unreadable(what: string, id: string): Rendered {
 	return { dropped: `The ${what} ${id} this event was queued for could not be read.` };
+}
+
+/** a `recurring_gift.charge_failed` row's `detail`, or null where it is not the shape written. */
+function chargeFailedDetailOf(text: string | null): ChargeFailedDetail | null {
+	if (text === null) return null;
+	let value: unknown;
+	try {
+		value = JSON.parse(text);
+	} catch {
+		return null;
+	}
+	const parsed = CHARGE_FAILED_DETAIL.safeParse(value);
+	return parsed.success ? parsed.data : null;
 }
 
 /** each of `contactIds`' first settled gift, by the donor's id: the one with no earlier one. */
@@ -219,6 +264,14 @@ function refundedGift(row: RefundRow, gift: ApiGift): RefundedGift {
 		currency: row.currency,
 		source: row.source,
 		gift
+	};
+}
+
+function failedCharge(attempt: ChargeFailedDetail, plan: ApiRecurringGift): FailedCharge {
+	return {
+		...attempt,
+		amount: majorText(attempt.amount_minor, attempt.currency),
+		recurring_gift: plan
 	};
 }
 
