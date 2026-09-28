@@ -163,10 +163,12 @@ function arranged(blocks: Block[], layout: Layout, draw: Draw) {
 		);
 	}
 	// banner: the blocks before the box stand on one band, in the first one's ground, and each
-	// draws on none of its own.
+	// draws on none of its own. the band never takes a strong ground: the box's column stands on it,
+	// and a goal bar's brand fill would be drawn on a ground of its own colour, so strong draws as tint.
+	const first = lead[0]?.background ?? 'none';
 	return (
 		<>
-			<div className="page-band" data-background={lead[0]?.background ?? 'none'}>
+			<div className="page-band" data-background={first === 'strong' ? 'tint' : first}>
 				<div className="page-split">
 					{lead.length === 0 ? null : (
 						<div className="page-lead">{lead.map((block) => draw(block, 'none'))}</div>

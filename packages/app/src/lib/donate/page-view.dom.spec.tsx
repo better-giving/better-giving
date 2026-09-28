@@ -214,6 +214,28 @@ describe('where the blocks stand', () => {
 		).toEqual(['goal-bar', 'goal-bar', 'donation-box']);
 	});
 
+	it.each([
+		['strong', 'tint'],
+		['tint', 'tint'],
+		['soft', 'soft'],
+		['none', 'none']
+	] as const)(
+		'stands a banner on a band of the first block’s ground, %s drawing as %s',
+		(ground, band) => {
+			const page = defaultCampaign();
+			const blocks = page.blocks.map((b) =>
+				b.type === 'title' ? { ...b, background: ground } : b
+			);
+			const root = mount(
+				<PageView {...props('campaign', { ...page, layout: 'banner', blocks })} />
+			);
+			expect(root.querySelector('.page-band')?.getAttribute('data-background')).toBe(band);
+			expect(
+				root.querySelector('.page-band [data-block="title"]')?.getAttribute('data-background')
+			).toBe('none');
+		}
+	);
+
 	it('keeps the stored order in one column', () => {
 		const page = everyBlock('campaign', 'column');
 		const root = mount(<PageView {...props('campaign', page)} />);

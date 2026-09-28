@@ -333,6 +333,17 @@ describe('text on every ground clears 4.5:1 for every brand colour', () => {
 	});
 });
 
+describe('the focus ring on a strong ground', () => {
+	// a strong ground carries one ink, and a ring drawn on it is that ink (`--page-ring` in
+	// ./page.css); a ring is a boundary rather than text, so it is held to 3:1.
+	it.each(cases)(
+		'holds `--page-on-strong` at 3:1 on the strong ground on %s, %s',
+		(palette, shade) => {
+			expect(floor(palette, shade, 'strong', '--page-on-strong')).toBeGreaterThanOrEqual(3);
+		}
+	);
+});
+
 describe('the primary as ink', () => {
 	// a link and a tier's amount are drawn in it on the page ground and on a soft one.
 	it.each(cases)(
