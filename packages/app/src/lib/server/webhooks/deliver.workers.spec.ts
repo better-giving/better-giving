@@ -419,7 +419,7 @@ describe('sendDueWebhooks() — a post that fails', () => {
 });
 
 describe('sendDueWebhooks() — lanes', () => {
-	it('posts to at most three destinations at once, and to every one of them', async () => {
+	it('posts to at most two destinations at once, and to every one of them', async () => {
 		for (let made = 0; made < 7; made++) await destination();
 		await settle();
 		let inFlight = 0;
@@ -435,7 +435,7 @@ describe('sendDueWebhooks() — lanes', () => {
 
 		await runAt(START, slow);
 
-		expect(most).toBe(3);
+		expect(most).toBe(2);
 		expect(new Set(receiving.posts.map((post) => post.url)).size).toBe(7);
 	});
 });

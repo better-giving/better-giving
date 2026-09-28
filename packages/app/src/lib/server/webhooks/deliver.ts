@@ -68,20 +68,19 @@ const POST_TIMEOUT_MS = 15_000;
  * posts in flight at once. an invocation may have six requests waiting on their response headers,
  * and a seventh queues with its timeout already running
  * (https://developers.cloudflare.com/workers/platform/limits/#simultaneous-open-connections).
- * the minute cron runs this feed and ../zapier/deliver.ts in one invocation, three lanes each,
- * beside ../accounting/deliver.ts, which sends one request at a time — so a QuickBooks request can
- * still queue while all six lanes wait on headers.
+ * the minute cron's three feeds share those six in one invocation: ../zapier/deliver.ts's three
+ * lanes, these two, and ../accounting/deliver.ts's one request at a time.
  */
-const POSTS_AT_ONCE = 3;
+const POSTS_AT_ONCE = 2;
 
 /** how long a claimed row is the claiming run's alone, from that run's scheduled time. */
 const LEASE_MS = 2 * 60_000;
 
 /**
  * rows claimed per run, the longest-waiting first: as many as {@link POSTS_AT_ONCE} lanes post
- * inside {@link RUN_DEADLINE_MS} while each destination answers in four and a half seconds. where
- * they are slower — every one timing out, at worst, leaves 21 posted — a row no lane reached stays
- * leased, unposted, until the lease runs out and a later run takes it.
+ * inside {@link RUN_DEADLINE_MS} while each destination answers in three seconds. where they are
+ * slower — every one timing out, at worst, leaves 14 posted — a row no lane reached stays leased,
+ * unposted, until the lease runs out and a later run takes it.
  */
 const CLAIMS_PER_RUN = 70;
 

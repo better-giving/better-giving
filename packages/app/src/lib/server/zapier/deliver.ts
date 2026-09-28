@@ -77,9 +77,8 @@ const CLAIMS_PER_RUN = 100;
  * posts in flight at once. an invocation may have six requests waiting on their response headers,
  * and a seventh queues with its timeout already running
  * (https://developers.cloudflare.com/workers/platform/limits/#simultaneous-open-connections).
- * the minute cron runs this feed and ../webhooks/deliver.ts in one invocation, three lanes each,
- * beside ../accounting/deliver.ts, which sends one request at a time — so a QuickBooks request can
- * still queue while all six lanes wait on headers.
+ * the minute cron's three feeds share those six in one invocation: these three lanes,
+ * ../webhooks/deliver.ts's two, and ../accounting/deliver.ts's one request at a time.
  */
 const POSTS_AT_ONCE = 3;
 
