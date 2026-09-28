@@ -2755,8 +2755,14 @@ export const zapierSubscription = sqliteTable(
 		endedReason: text('ended_reason').$type<ZapierEndReason>(),
 
 		createdAt: createdAt(),
-		updatedAt: updatedAt()
+		updatedAt: updatedAt(),
 		// append new columns below this line — see rule 1 at the top of this file.
+
+		/**
+		 * when the hook's current run of failures began: the first post it failed since it last
+		 * took one. null while it takes what it is posted.
+		 */
+		failingSince: at('failing_since')
 	},
 	(t) => [
 		check('zapier_subscription_trigger_check', enumCheck(t.trigger, ZAPIER_TRIGGERS)),

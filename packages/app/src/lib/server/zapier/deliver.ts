@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { payment, zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
-import { eachAtMost } from './each-at-most';
+import { eachAtMost } from '../outbox/each-at-most';
 import { refundStands } from './events';
 import {
 	donorEventOf,

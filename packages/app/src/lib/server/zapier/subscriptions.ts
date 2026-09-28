@@ -10,7 +10,7 @@ import {
 	type ZapierTrigger
 } from '../db/schema';
 import type { ZapierReport } from '@better-giving/operator/console/zapier';
-import { eachAtMost } from './each-at-most';
+import { eachAtMost } from '../outbox/each-at-most';
 
 // the Zaps listening: which hook is subscribed to which trigger, and every way one stops.
 //
@@ -64,7 +64,8 @@ export async function subscribe(
 					endedAt: sql`null`.as('ended_at'),
 					endedReason: sql`null`.as('ended_reason'),
 					createdAt: sql`${now.getTime()}`.as('created_at'),
-					updatedAt: sql`${now.getTime()}`.as('updated_at')
+					updatedAt: sql`${now.getTime()}`.as('updated_at'),
+					failingSince: sql`null`.as('failing_since')
 				})
 				.from(zapierKey)
 				.where(eq(zapierKey.keyHash, keyHash))
