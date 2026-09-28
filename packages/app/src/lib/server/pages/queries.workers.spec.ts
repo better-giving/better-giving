@@ -5,7 +5,7 @@ import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import { chatTurn, form, page, type PageState } from '../db/schema';
 import type { PageType } from '../../page/keys';
-import { deleteNeverPublishedCampaign, endCampaign } from './queries';
+import { deleteNeverPublishedCampaign, endCampaign, readPage } from './queries';
 
 // the one delete of a page: a campaign that has never been live, with its owned settings row and
 // its chat, in one `batch()`. everything that has been live is refused, and so is the Donation page.
@@ -61,6 +61,16 @@ async function pageWithChat(type: PageType, state: PageState) {
 	return { pageId: row.id, formId: owned.id };
 }
 
+/** the version the page `pageId` stands at, as a list drawn now would carry it. */
+async function versionOf(pageId: string): Promise<Date> {
+	const row = await readPage(db, pageId);
+	if (row === null) throw new Error(`the fixture page ${pageId} is not there`);
+	return row.updatedAt;
+}
+
+/** a version earlier than any the page has stood at, as a list drawn before its last write carries. */
+const EARLIER = new Date(0);
+
 async function remaining({ pageId, formId }: { pageId: string; formId: string }) {
 	const pages = await db.select({ id: page.id }).from(page).where(eq(page.id, pageId));
 	const forms = await db.select({ id: form.id }).from(form).where(eq(form.id, formId));
@@ -74,26 +84,38 @@ async function remaining({ pageId, formId }: { pageId: string; formId: string })
 describe('deleteNeverPublishedCampaign()', () => {
 	it('removes a never-published campaign with its owned settings row and its chat', async () => {
 		const made = await pageWithChat('campaign', 'never_published');
-		expect(await deleteNeverPublishedCampaign(db, made.pageId)).toBe(true);
+		expect(await deleteNeverPublishedCampaign(db, made.pageId, await versionOf(made.pageId))).toBe(
+			true
+		);
 		expect(await remaining(made)).toEqual({ pages: 0, forms: 0, turns: 0 });
+	});
+
+	it('refuses a campaign written since the version it was drawn at', async () => {
+		const made = await pageWithChat('campaign', 'never_published');
+		expect(await deleteNeverPublishedCampaign(db, made.pageId, EARLIER)).toBe(false);
+		expect(await remaining(made)).toEqual({ pages: 1, forms: 1, turns: 1 });
 	});
 
 	it.each([['live'], ['ended']] as const)('refuses a campaign that is %s', async (state) => {
 		const made = await pageWithChat('campaign', state);
-		expect(await deleteNeverPublishedCampaign(db, made.pageId)).toBe(false);
+		expect(await deleteNeverPublishedCampaign(db, made.pageId, await versionOf(made.pageId))).toBe(
+			false
+		);
 		expect(await remaining(made)).toEqual({ pages: 1, forms: 1, turns: 1 });
 	});
 
 	it('refuses the Donation page', async () => {
 		const made = await pageWithChat('donation_page', 'live');
-		expect(await deleteNeverPublishedCampaign(db, made.pageId)).toBe(false);
+		expect(await deleteNeverPublishedCampaign(db, made.pageId, await versionOf(made.pageId))).toBe(
+			false
+		);
 		expect(await remaining(made)).toEqual({ pages: 1, forms: 1, turns: 1 });
 	});
 
 	it('refuses a page that does not exist', async () => {
-		expect(await deleteNeverPublishedCampaign(db, '019fc800-0000-7000-8000-000000000000')).toBe(
-			false
-		);
+		expect(
+			await deleteNeverPublishedCampaign(db, '019fc800-0000-7000-8000-000000000000', EARLIER)
+		).toBe(false);
 	});
 });
 
@@ -113,8 +135,14 @@ describe('endCampaign()', () => {
 
 	it('ends a live campaign and takes its owned settings row out of service with it', async () => {
 		const made = await servingPage('campaign', 'live');
-		expect(await endCampaign(db, made.pageId)).toBe(true);
+		expect(await endCampaign(db, made.pageId, await versionOf(made.pageId))).toBe(true);
 		expect(await standing(made)).toEqual({ state: 'ended', status: 'draft' });
+	});
+
+	it('refuses a campaign written since the version it was drawn at, leaving its row serving', async () => {
+		const made = await servingPage('campaign', 'live');
+		expect(await endCampaign(db, made.pageId, EARLIER)).toBe(false);
+		expect(await standing(made)).toEqual({ state: 'live', status: 'live' });
 	});
 
 	// each owned row is live here, so a row the batch touched without ending its page shows.
@@ -124,11 +152,11 @@ describe('endCampaign()', () => {
 		['the Donation page', 'donation_page', 'live']
 	] as const)('refuses %s and leaves its owned row serving', async (_, type, state) => {
 		const made = await servingPage(type, state);
-		expect(await endCampaign(db, made.pageId)).toBe(false);
+		expect(await endCampaign(db, made.pageId, await versionOf(made.pageId))).toBe(false);
 		expect(await standing(made)).toEqual({ state, status: 'live' });
 	});
 
 	it('refuses a page that does not exist', async () => {
-		expect(await endCampaign(db, '019fc800-0000-7000-8000-000000000000')).toBe(false);
+		expect(await endCampaign(db, '019fc800-0000-7000-8000-000000000000', EARLIER)).toBe(false);
 	});
 });
