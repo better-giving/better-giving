@@ -5141,7 +5141,7 @@
 	/* ---------- the chat --------------------------------------------------------------
 
 	   a page's chat, in its sheet: the turns in the body, and under them in the foot the
-	   suggestions, the photo on its way in and the box. the operator's words sit in a sunken
+	   suggestions, the photo on its way in, the box and why a send did not go. the operator's words sit in a sunken
 	   bubble at the end edge and a reply is plain text at the start, so whose turn is whose is
 	   read from where it stands rather than from a label. inside a turn is a step apart and
 	   between turns is several, so a reply and the note under it read as one turn.
@@ -5267,6 +5267,13 @@
 	/* at the row's end whether or not an attach press stands at its start. */
 	.adm-composer__send {
 		margin-inline-start: auto;
+	}
+
+	/* why the last send did not go, under the box. the region is on the page before it has anything
+	   to say, so it is announced when it does; while it is empty the foot's gap above it is taken
+	   back, and it holds no room. */
+	.adm-chat__refusal:empty {
+		margin-block-start: calc(-1 * var(--admin-space-5));
 	}
 
 	/* a photo on its way into the chat: its thumbnail, its name, and where it stands. */

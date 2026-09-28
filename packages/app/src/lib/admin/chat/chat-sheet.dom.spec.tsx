@@ -57,6 +57,7 @@ function one<T extends Element>(host: HTMLElement, selector: string): T {
 	return found;
 }
 
+const refusal = (host: HTMLElement) => one(host, '.adm-chat__refusal');
 const box = (host: HTMLElement) => one<HTMLTextAreaElement>(host, 'textarea');
 const send = (host: HTMLElement) => one<HTMLButtonElement>(host, 'button[aria-label="Send"]');
 
@@ -159,5 +160,58 @@ describe('the chat sheet', () => {
 		});
 		expect(box(host).value).toBe('$40 buys one winter coat');
 		expect(document.activeElement).toBe(box(host));
+	});
+
+	describe('handed a send back', () => {
+		const REFUSED = {
+			text: 'Make the story shorter',
+			reason: 'The chat did not answer. Send it again.'
+		};
+
+		it('puts the words back into an empty box and the focus in it', async () => {
+			const onSend = vi.fn();
+			const { host, redraw } = mount(props({ onSend }));
+			type(host, REFUSED.text);
+			await press(send(host));
+			expect(box(host).value).toBe('');
+
+			redraw(props({ onSend, unsent: { ...REFUSED } }));
+			expect(box(host).value).toBe(REFUSED.text);
+			expect(document.activeElement).toBe(box(host));
+
+			// the route builds a fresh object on each draw; the same words and reason are not new.
+			type(host, '');
+			redraw(props({ onSend, unsent: { ...REFUSED } }));
+			expect(box(host).value).toBe('');
+		});
+
+		it('keeps what was typed while the send was away', () => {
+			const { host, redraw } = mount(props());
+			type(host, 'Add a FAQ instead');
+
+			redraw(props({ unsent: REFUSED }));
+
+			expect(box(host).value).toBe('Add a FAQ instead');
+			expect(document.activeElement).toBe(box(host));
+		});
+
+		it('says why at the box, in a region there from the start, until the next send', async () => {
+			const onSend = vi.fn();
+			const { host, redraw } = mount(props({ onSend }));
+			const region = refusal(host);
+			expect(region.getAttribute('role')).toBe('status');
+			expect(region.textContent).toBe('');
+			expect(box(host).hasAttribute('aria-describedby')).toBe(false);
+
+			redraw(props({ onSend, unsent: REFUSED }));
+			expect(refusal(host)).toBe(region);
+			expect(region.textContent).toBe(REFUSED.reason);
+			expect(box(host).getAttribute('aria-describedby')).toBe(region.id);
+
+			await press(send(host));
+			expect(onSend).toHaveBeenCalledWith({ text: REFUSED.text, imageIds: [] });
+			expect(region.textContent).toBe('');
+			expect(box(host).hasAttribute('aria-describedby')).toBe(false);
+		});
 	});
 });

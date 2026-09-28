@@ -10,8 +10,8 @@ import { readActivePrograms } from '../programs/queries';
 
 // one page read by its id, the one module that deletes a `page`, gated by ./sole-deleter.spec.ts,
 // where a live campaign ends, the editor's two writes that are not page content — a campaign's
-// name and its address — and its donation settings, which are, each against the version the editor
-// was drawn at.
+// name and its address — and its donation settings and the Settings sheet's keys, which are, each
+// against the version the editor was drawn at.
 //
 // a page is deleted only while it is a campaign nobody has ever been shown. once a page has been
 // live a gift may point at its owned settings row, and ending it is the campaign's own state rather
@@ -310,6 +310,45 @@ export async function updateDraftSettings(
 	const written = await db
 		.update(page)
 		.set({ draft })
+		.where(and(eq(page.id, row.id), eq(page.updatedAt, version), eq(page.draft, row.draft)))
+		.returning({ id: page.id });
+	return written.length === 1 ? 'written' : 'stale';
+}
+
+/** a page document's keys the Settings sheet sets one at a time; `undefined` removes a key. */
+export type DraftKeys = Partial<
+	Pick<PageDocument, 'look' | 'goalMinor' | 'endsAt' | 'endsZone' | 'shareMessage'>
+>;
+
+/**
+ * sets or removes top-level keys of a page's draft while the page is still the version it was drawn
+ * at — the draft alone, so donors see nothing of it before Publish. the draft that results is held
+ * to the page's rule before it is written, and one that fails it throws: the caller has already
+ * refused whatever an operator could have typed.
+ */
+export async function updateDraftKeys(
+	db: Db,
+	target: SettingsTarget,
+	version: Date,
+	keys: DraftKeys
+): Promise<'written' | 'stale' | 'gone'> {
+	const [row] = await db
+		.select({ id: page.id, type: page.type, draft: page.draft })
+		.from(page)
+		.where(
+			target.type === 'campaign'
+				? and(eq(page.id, target.id), eq(page.type, 'campaign'))
+				: eq(page.type, 'donation_page')
+		);
+	if (!row) return 'gone';
+
+	const next = { ...JSON.parse(row.draft), ...keys };
+	const checked = parsePage(row.type, next);
+	if (!checked.ok)
+		throw new Error(`page ${row.id}'s draft would fail its rule: ${checked.message}`);
+	const written = await db
+		.update(page)
+		.set({ draft: JSON.stringify(next) })
 		.where(and(eq(page.id, row.id), eq(page.updatedAt, version), eq(page.draft, row.draft)))
 		.returning({ id: page.id });
 	return written.length === 1 ? 'written' : 'stale';
