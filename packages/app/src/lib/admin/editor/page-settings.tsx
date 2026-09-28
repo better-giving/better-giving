@@ -128,18 +128,22 @@ export function PageLookSettings({ seed, version }: PageLookSettingsProps) {
 					else post(lookFields(next));
 				}}
 			/>
-			{/* mounted empty, so the answer arriving in it is announced. */}
-			<span role="status">
-				{busy || waiting !== null ? (
-					<StatusWord register="momentary" neutral>
-						Saving…
-					</StatusWord>
-				) : refusal !== null ? (
-					<StatusWord register="momentary" blocked>
-						<MarkedText text={refusal} />
-					</StatusWord>
-				) : null}
-			</span>
+			{/* a row of its own under the look, as the organisation's Look draws it
+			    (routes/_app.admin.organisation.tsx); mounted empty, so the answer arriving in it is
+			    announced. */}
+			<div className="adm-actions">
+				<span role="status">
+					{busy || waiting !== null ? (
+						<StatusWord register="momentary" neutral>
+							Saving…
+						</StatusWord>
+					) : refusal !== null ? (
+						<StatusWord register="momentary" blocked mark="circle-alert">
+							<MarkedText text={refusal} />
+						</StatusWord>
+					) : null}
+				</span>
+			</div>
 		</>
 	);
 }

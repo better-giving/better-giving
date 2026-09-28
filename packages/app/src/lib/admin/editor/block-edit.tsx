@@ -5,6 +5,7 @@ import { RichTextEditor } from '$lib/admin/rich-text/rich-text-editor';
 import { type AdminActionData, resultFor } from '$lib/admin/use-admin-form';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { BLOCK_FORMS, type BlockText, type EditorBlock } from '$lib/page/block-edit';
+import { AffixedField } from './affixed-field';
 import { BlockSheet } from './block-sheet';
 import { useFocusOnRefusal } from './done-sheet';
 
@@ -16,9 +17,15 @@ import { useFocusOnRefusal } from './done-sheet';
 //
 // the words are the boxes' own, uncontrolled: a refused Done leaves them holding what was typed,
 // the refusal under the box the catalog's rule names, and the caret moved there. a picture applies
-// on pick and is drawn picked while its write is in flight; a refused one goes back to the draft's.
-// every post carries the version as the editor holds it at the press, so a pick that landed first
-// does not make the Done after it stale.
+// on pick and is drawn picked while its write is in flight; a refused one goes back to the draft's,
+// with its refusal under the pictures and never at Done. every post carries the version as the
+// editor holds it at the press, so a pick that landed first does not make the Done after it stale.
+//
+// the tiers and the questions are repeating rows: each row a pair of boxes whose legend, read to a
+// screen reader and not drawn, names it by its place — Tier 2 — and the rows a stack, so one row
+// stands off the next further than the two boxes inside it stand apart, and nearer than the
+// pictures stand off the rows. a tier's amount carries its currency on the box
+// (./affixed-field.tsx), as the goal's does.
 
 type Answer = AdminActionData & { readonly saved?: string };
 
@@ -55,9 +62,17 @@ type BlockEditSheetProps = {
 	readonly onDismiss: () => void;
 	/** a Done landed: the draft holds the words. */
 	readonly onSaved: () => void;
+	/** opened from Settings' block list, and standing over it. */
+	readonly stacked?: boolean | undefined;
 };
 
-export function BlockEditSheet({ block, version, onDismiss, onSaved }: BlockEditSheetProps) {
+export function BlockEditSheet({
+	block,
+	version,
+	onDismiss,
+	onSaved,
+	stacked = false
+}: BlockEditSheetProps) {
 	// unkeyed, so an answer does not outlive the sheet: a reopened sheet starts with none.
 	const words = useFetcher<Answer>();
 	const picks = useFetcher<Answer>();
@@ -81,12 +96,14 @@ export function BlockEditSheet({ block, version, onDismiss, onSaved }: BlockEdit
 		<BlockSheet
 			title={block.label}
 			block={block.type}
+			stacked={stacked}
 			variants={
 				block.variant === null
 					? undefined
 					: {
 							options: block.variants,
 							value: typeof picked === 'string' ? picked : block.variant,
+							refusal: pickRefusal,
 							onPick: (variant) => {
 								const body = post(VARIANT_FORM, version);
 								body.set('block_id', block.id);
@@ -112,7 +129,7 @@ export function BlockEditSheet({ block, version, onDismiss, onSaved }: BlockEdit
 								words.submit(body, { method: 'post' });
 							},
 							applying,
-							refusal: refusal(textForm, wordsAnswer, '') ?? pickRefusal
+							refusal: refusal(textForm, wordsAnswer, '')
 						}
 			}
 			onDismiss={onDismiss}
@@ -173,14 +190,16 @@ function BlockFields({ id, text, error }: BlockFieldsProps) {
 			);
 		case 'impact-tiers':
 			return (
-				<>
+				<div className="adm-stack">
 					{text.tiers.map((tier, at) => (
-						<fieldset key={`tier-${String(at)}`} className="adm-fieldset">
-							<legend className="adm-fieldset__legend">Tier {at + 1}</legend>
-							<Field
+						<fieldset key={`tier-${String(at)}`} className="adm-pair">
+							<legend className="adm-vh">Tier {at + 1}</legend>
+							<AffixedField
 								id={boxId(id, `tier_amount[${at}]`)}
 								name={`tier_amount[${at}]`}
-								label={`Amount, ${text.currency}`}
+								label="Amount"
+								affix={text.currency}
+								affixAt="end"
 								inputMode="decimal"
 								defaultValue={tier.amount}
 								error={error(`tier_amount[${at}]`)}
@@ -194,14 +213,14 @@ function BlockFields({ id, text, error }: BlockFieldsProps) {
 							/>
 						</fieldset>
 					))}
-				</>
+				</div>
 			);
 		case 'faq':
 			return (
-				<>
+				<div className="adm-stack">
 					{text.items.map((item, at) => (
-						<fieldset key={`item-${String(at)}`} className="adm-fieldset">
-							<legend className="adm-fieldset__legend">Question {at + 1}</legend>
+						<fieldset key={`item-${String(at)}`} className="adm-pair">
+							<legend className="adm-vh">Question {at + 1}</legend>
 							<Field
 								id={boxId(id, `question[${at}]`)}
 								name={`question[${at}]`}
@@ -218,7 +237,7 @@ function BlockFields({ id, text, error }: BlockFieldsProps) {
 							/>
 						</fieldset>
 					))}
-				</>
+				</div>
 			);
 	}
 }
@@ -251,13 +270,16 @@ export function isDonationBox(blocks: readonly EditorBlock[], id: string): boole
 
 /**
  * the Settings sheet's layout pictures: the draft's layout, drawn as the pick in flight while its
- * write is, and the pick posted to the editor's action.
+ * write is, the pick posted to the editor's action, and the last pick's refusal.
  */
 export function useLayoutPick(layout: string, version: number) {
 	const fetcher = useFetcher<Answer>({ key: LAYOUT_FORM.id });
-	const sent = fetcher.state === 'idle' ? null : fetcher.formData?.get('layout');
+	const idle = fetcher.state === 'idle';
+	const sent = idle ? null : fetcher.formData?.get('layout');
+	const answer = idle ? fetcher.data : undefined;
 	return {
 		layout: typeof sent === 'string' ? sent : layout,
+		layoutRefusal: refusal(LAYOUT_FORM, answer, 'layout') ?? refusal(LAYOUT_FORM, answer, ''),
 		onLayout: (next: string) => {
 			const body = post(LAYOUT_FORM, version);
 			body.set('layout', next);

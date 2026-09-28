@@ -287,6 +287,35 @@ describe('the pictures', () => {
 	});
 });
 
+describe('a block with nothing typed in it', () => {
+	const sheet = (refusal: string | null) => (
+		<BlockSheet
+			title="Share buttons"
+			block="share"
+			variants={{
+				options: [
+					{ value: 'buttons', label: 'Buttons' },
+					{ value: 'icons', label: 'Icons' }
+				],
+				value: 'buttons',
+				onPick: () => {},
+				refusal
+			}}
+			onDismiss={() => {}}
+		/>
+	);
+
+	it('reports a refused pick under its pictures, from a region there before it', () => {
+		const { root, redraw } = mountable(sheet(null));
+		expect(root.querySelector('button[type="submit"]')).toBeNull();
+		const region = () => root.querySelector('dialog [role="status"]');
+		expect(region()?.textContent).toBe('');
+
+		redraw(sheet('The page changed while this was open. Reload to see it.'));
+		expect(region()?.textContent).toBe('The page changed while this was open. Reload to see it.');
+	});
+});
+
 describe('the name in place', () => {
 	it('is a field with a name of its own', () => {
 		const root = mount(<InPlaceName value="Winter coat drive" onRename={() => {}} />);

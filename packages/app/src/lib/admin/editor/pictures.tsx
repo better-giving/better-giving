@@ -1,3 +1,5 @@
+import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
 
 // the layout and variant pickers, drawn as pictures: the drawing is the control and a pick applies
@@ -377,6 +379,24 @@ export function PicturePicker({ legend, name, set, options, value, onPick }: Pic
 					{option.label}
 				</label>
 			))}
+		</div>
+	);
+}
+
+/**
+ * the refusal of the last pick from the pictures just above it, in a region on the page from the
+ * moment the pictures are, so the refusal arriving in it is announced.
+ */
+export function PickRefusal({ refusal }: { readonly refusal: string | null | undefined }) {
+	return (
+		<div className="adm-actions">
+			<span role="status">
+				{refusal ? (
+					<StatusWord register="momentary" blocked mark="circle-alert">
+						<MarkedText text={refusal} />
+					</StatusWord>
+				) : null}
+			</span>
 		</div>
 	);
 }
