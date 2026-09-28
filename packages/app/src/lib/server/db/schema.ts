@@ -2962,8 +2962,8 @@ export const webhookDestinationEvent = sqliteTable(
 
 /**
  * where one delivery stands. `failed` is a row whose every attempt on the retry schedule failed,
- * or one sent nothing because its destination or its subject could not be read
- * (../webhooks/deliver.ts); it is kept, for the destination's recent deliveries.
+ * or one sent nothing because its destination or its subject could not be read, or its refund no
+ * longer stands (../webhooks/payload.ts); it is kept, for the destination's recent deliveries.
  */
 export const WEBHOOK_DELIVERY_STATUSES = ['pending', 'delivered', 'failed'] as const;
 export type WebhookDeliveryStatus = (typeof WEBHOOK_DELIVERY_STATUSES)[number];

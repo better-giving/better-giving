@@ -1,12 +1,18 @@
 import { env } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import { contact, donation, payment } from '../db/schema';
-import { readGiftPage } from '../integrations/gift';
+import { contact, dispute, donation, payment } from '../db/schema';
+import { readGiftPage, readGifts } from '../integrations/gift';
+import type { WebhookEvent } from '../../webhooks/catalog';
 import { sendDueWebhooks, WEBHOOK_RETRY_SCHEDULE_MS } from './deliver';
 import { createDestination } from './destinations';
-import { webhookStatements } from './events';
+import {
+	disputeOpenedWebhookStatements,
+	giftRefundedWebhookStatements,
+	webhookStatements
+} from './events';
 
 // the delivery run against a real D1, with each destination answered by a `fetch` written here.
 //
@@ -473,6 +479,179 @@ describe('sendDueWebhooks() — what is not sent', () => {
 				status: 'failed',
 				attempts: 0,
 				last_error: `The settled gift ${paymentId} this event was queued for could not be read.`
+			})
+		]);
+	});
+});
+
+describe('sendDueWebhooks() — a gift refunded and a dispute opened', () => {
+	afterEach(async () => {
+		await env.DB.prepare('delete from dispute').run();
+	});
+
+	async function listening(events: readonly WebhookEvent[]) {
+		const created = await createDestination(db, {
+			url: `https://crm.example.org/hooks/${uuidv7()}`,
+			events
+		});
+		if (!created.ok) throw new Error(created.detail);
+		return created.destination;
+	}
+
+	const WITHDRAWN_AT = new Date('2026-09-15T08:00:00.000Z');
+	const RESPOND_BY = new Date('2026-10-01T23:59:59.000Z');
+
+	/**
+	 * $20 of the settled gift `giftId` back, as a refund or as a dispute (`open` or `lost`), and what
+	 * that owes each destination, in one batch the way ../books/writes.ts splices it.
+	 */
+	async function withdraw(
+		giftId: string,
+		as: { readonly dispute?: 'open' | 'lost' } = {}
+	): Promise<string> {
+		const [gift] = await db.select().from(payment).where(eq(payment.id, giftId));
+		if (gift === undefined) throw new Error('no gift to withdraw from');
+		const refundId = uuidv7();
+		await db.batch([
+			db.insert(payment).values({
+				id: refundId,
+				donationId: gift.donationId,
+				amountMinor: 2_000,
+				currency: 'USD',
+				direction: 'refund',
+				method: 'check',
+				status: 'succeeded',
+				provider: 'manual',
+				occurredAt: WITHDRAWN_AT,
+				parentPaymentId: giftId
+			}),
+			...(as.dispute === undefined
+				? []
+				: [
+						db.insert(dispute).values({
+							paymentId: refundId,
+							respondBy: RESPOND_BY,
+							reason: 'fraudulent',
+							...(as.dispute === 'lost' ? { outcome: 'lost', closedAt: WITHDRAWN_AT } : {})
+						})
+					]),
+			as.dispute === 'open'
+				? disputeOpenedWebhookStatements(db, refundId)
+				: giftRefundedWebhookStatements(db, refundId)
+		]);
+		return refundId;
+	}
+
+	it('posts a refund signed, as the refund and the gift as the read API answers it now', async () => {
+		const target = await listening(['gift.refunded']);
+		const giftId = await settle();
+		const refundId = await withdraw(giftId);
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		const gift = (await readGifts(db, [giftId])).get(giftId);
+		expect(gift).toMatchObject({ status: 'partially_refunded', amount_refunded_minor: 2_000 });
+		const [post] = receiving.posts;
+		expect(post?.url).toBe(target.url);
+		if (post === undefined) return;
+		expect(await verifies(target.signingSecret, post, START)).toBe(true);
+		expect(JSON.parse(post.body)).toEqual({
+			type: 'gift.refunded',
+			timestamp: START.toISOString(),
+			data: {
+				id: refundId,
+				occurred_at: WITHDRAWN_AT.toISOString(),
+				amount: '20.00',
+				amount_minor: 2_000,
+				currency: 'USD',
+				source: 'refund',
+				gift
+			}
+		});
+		expect(await rows()).toEqual([expect.objectContaining({ status: 'delivered' })]);
+	});
+
+	it('names a lost dispute’s withdrawal as a dispute', async () => {
+		await listening(['gift.refunded']);
+		await withdraw(await settle(), { dispute: 'lost' });
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		expect(JSON.parse(receiving.posts[0]?.body ?? '{}').data.source).toBe('dispute');
+	});
+
+	it('posts a dispute opened as its withdrawal, its respond-by, and the gift', async () => {
+		const target = await listening(['gift.dispute_opened']);
+		const giftId = await settle();
+		const withdrawalId = await withdraw(giftId, { dispute: 'open' });
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		const gift = (await readGifts(db, [giftId])).get(giftId);
+		expect(gift).toMatchObject({ dispute_open: true });
+		expect(receiving.posts.map((post) => post.url)).toEqual([target.url]);
+		expect(JSON.parse(receiving.posts[0]?.body ?? '{}')).toEqual({
+			type: 'gift.dispute_opened',
+			timestamp: START.toISOString(),
+			data: {
+				id: withdrawalId,
+				opened_at: WITHDRAWN_AT.toISOString(),
+				amount: '20.00',
+				amount_minor: 2_000,
+				currency: 'USD',
+				respond_by: RESPOND_BY.toISOString(),
+				gift
+			}
+		});
+	});
+
+	it('answers a respond-by the processor never named with null', async () => {
+		await listening(['gift.dispute_opened']);
+		const withdrawalId = await withdraw(await settle(), { dispute: 'open' });
+		await db.update(dispute).set({ respondBy: null }).where(eq(dispute.paymentId, withdrawalId));
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		expect(JSON.parse(receiving.posts[0]?.body ?? '{}').data.respond_by).toBeNull();
+	});
+
+	it('fails a refund that stopped standing after it was queued, unposted, and says why', async () => {
+		await listening(['gift.refunded']);
+		const refundId = await withdraw(await settle());
+		await db.update(payment).set({ status: 'cancelled' }).where(eq(payment.id, refundId));
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		expect(receiving.posts).toEqual([]);
+		expect(await rows()).toEqual([
+			expect.objectContaining({
+				status: 'failed',
+				attempts: 0,
+				last_status: null,
+				last_error:
+					'The refund this event was queued for no longer stands: it failed, or its dispute no longer reads as lost. It was not sent.'
+			})
+		]);
+	});
+
+	it('fails a row whose refund cannot be read, unposted, and says why', async () => {
+		await listening(['gift.refunded']);
+		const refundId = await withdraw(await settle());
+		await db.delete(payment).where(eq(payment.id, refundId));
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		expect(receiving.posts).toEqual([]);
+		expect(await rows()).toEqual([
+			expect.objectContaining({
+				status: 'failed',
+				last_error: `The refund ${refundId} this event was queued for could not be read.`
 			})
 		]);
 	});

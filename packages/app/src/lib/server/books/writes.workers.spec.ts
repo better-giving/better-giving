@@ -1,11 +1,14 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
+import { sqliteResultCode } from '../db/rejection';
 import { contact, dispute, donation, payment, type ZapierTrigger } from '../db/schema';
 import { post, type Posting } from '../ledger/posting';
+import { createDestination } from '../webhooks/destinations';
+import type { WebhookEvent } from '../../webhooks/catalog';
 import { correctionWrites, reversalWrites, settledGiftWrites } from './writes';
 
 // what the composer hands a writer, spliced after that writer's own payment row and committed in
@@ -534,5 +537,201 @@ describe('reversalWrites()', () => {
 		expect(() =>
 			reversalWrites(db, { kind: 'refund', entry: withdrawal, finalRefundPaymentId: uuidv7() })
 		).toThrow(new RegExp(`handed one on ${refundId}`));
+	});
+});
+
+describe('reversalWrites() — what webhook destinations are owed', () => {
+	const refundId = uuidv7();
+	const withdrawal = post({
+		sourceType: 'refund',
+		sourceId: refundId,
+		currency: 'USD',
+		occurredAt: AT,
+		lines: [
+			{ accountId: postableId('undepositedFunds'), amountMinor: -2_000 },
+			{ accountId: postableId('donationsDeductible'), amountMinor: 2_000 }
+		]
+	});
+
+	async function clearDestinations() {
+		for (const table of ['webhook_delivery', 'webhook_destination_event', 'webhook_destination']) {
+			await env.DB.prepare(`delete from ${table}`).run();
+		}
+	}
+	beforeEach(clearDestinations);
+	afterEach(clearDestinations);
+
+	async function listening(events: readonly WebhookEvent[]): Promise<string> {
+		const created = await createDestination(db, {
+			url: `https://crm.example.org/hooks/${uuidv7()}`,
+			events
+		});
+		if (!created.ok) throw new Error(created.detail);
+		return created.destination.id;
+	}
+
+	/**
+	 * a $50 gift in the books, and the refund row every write below is keyed on, unwritten. wrapped,
+	 * because an awaited drizzle statement runs.
+	 */
+	async function giftWithRefundRow() {
+		const gift = await giftFrom();
+		await db.batch([
+			...gift.rows,
+			...settledGiftWrites(db, {
+				charge: chargeOf(gift.paymentId),
+				fee: null,
+				contactId: gift.contactId
+			})
+		]);
+		await env.DB.prepare('delete from webhook_delivery').run();
+		return {
+			row: db.insert(payment).values({
+				id: refundId,
+				donationId: gift.donationId,
+				amountMinor: 2_000,
+				currency: 'USD',
+				direction: 'refund',
+				method: 'card',
+				status: 'succeeded',
+				provider: 'stripe',
+				providerTxnId: `re_${refundId}`,
+				occurredAt: AT,
+				parentPaymentId: gift.paymentId
+			})
+		};
+	}
+
+	/** the destination rows, by destination. */
+	async function owedToDestinations() {
+		const { results } = await env.DB.prepare(
+			'select destination_id, event, subject_id from webhook_delivery order by destination_id, event'
+		).all<{ destination_id: string; event: string; subject_id: string }>();
+		return results;
+	}
+
+	it('owes each destination taking gift.refunded one row about a refund, keyed on the refund row, and none that does not', async () => {
+		const refund = await giftWithRefundRow();
+		const taking = [
+			await listening(['gift.refunded']),
+			await listening(['gift.made', 'gift.refunded'])
+		].sort();
+		await listening(['gift.made', 'gift.dispute_opened']);
+
+		await db.batch([
+			refund.row,
+			...reversalWrites(db, { kind: 'refund', entry: withdrawal, finalRefundPaymentId: refundId })
+		]);
+
+		expect(await owedToDestinations()).toEqual(
+			taking.map((destination_id) => ({
+				destination_id,
+				event: 'gift.refunded',
+				subject_id: refundId
+			}))
+		);
+	});
+
+	it('owes each destination taking gift.dispute_opened one row about a dispute opened, keyed on its withdrawal, and no gift.refunded', async () => {
+		const refund = await giftWithRefundRow();
+		const opened = await listening(['gift.dispute_opened', 'gift.refunded']);
+		await listening(['gift.refunded']);
+
+		await db.batch([
+			refund.row,
+			...reversalWrites(db, {
+				kind: 'dispute_opened',
+				entry: withdrawal,
+				finalRefundPaymentId: null
+			})
+		]);
+
+		expect(await owedToDestinations()).toEqual([
+			{ destination_id: opened, event: 'gift.dispute_opened', subject_id: refundId }
+		]);
+	});
+
+	it('owes gift.refunded and no gift.dispute_opened on a dispute lost with no opening', async () => {
+		const refund = await giftWithRefundRow();
+		const both = await listening(['gift.dispute_opened', 'gift.refunded']);
+
+		await db.batch([
+			refund.row,
+			db.insert(dispute).values({ paymentId: refundId, outcome: 'lost', closedAt: AT }),
+			...reversalWrites(db, {
+				kind: 'dispute_lost',
+				entry: withdrawal,
+				finalRefundPaymentId: refundId
+			})
+		]);
+
+		expect(await owedToDestinations()).toEqual([
+			{ destination_id: both, event: 'gift.refunded', subject_id: refundId }
+		]);
+	});
+
+	it('owes gift.refunded on a lost close, settled up or not, and nothing on a win', async () => {
+		const refund = await giftWithRefundRow();
+		const refunded = await listening(['gift.refunded']);
+		await db.batch([
+			refund.row,
+			db.insert(dispute).values({ paymentId: refundId }),
+			...reversalWrites(db, {
+				kind: 'dispute_opened',
+				entry: withdrawal,
+				finalRefundPaymentId: null
+			})
+		]);
+		await db.update(dispute).set({ outcome: 'won', closedAt: AT });
+		await db.batch(
+			reversalWrites(db, { kind: 'settle_up', entry: null, finalRefundPaymentId: refundId })
+		);
+		const afterWin = await owedToDestinations();
+		await db.update(dispute).set({ outcome: 'lost', closedAt: AT });
+
+		await db.batch(
+			reversalWrites(db, { kind: 'settle_up', entry: null, finalRefundPaymentId: refundId })
+		);
+
+		expect(afterWin).toEqual([]);
+		expect(await owedToDestinations()).toEqual([
+			{ destination_id: refunded, event: 'gift.refunded', subject_id: refundId }
+		]);
+	});
+
+	it('owes nothing about a refund row that no longer stands', async () => {
+		const refund = await giftWithRefundRow();
+		await listening(['gift.refunded']);
+		await refund.row;
+		await db.update(payment).set({ status: 'cancelled' }).where(eq(payment.id, refundId));
+
+		await db.batch(
+			reversalWrites(db, { kind: 'refund', entry: withdrawal, finalRefundPaymentId: refundId })
+		);
+
+		expect(await owedToDestinations()).toEqual([]);
+	});
+
+	it('owes nothing when the reversal’s batch is refused', async () => {
+		const refund = await giftWithRefundRow();
+		await listening(['gift.refunded', 'gift.dispute_opened']);
+
+		const refused = await db
+			.batch([
+				refund.row,
+				...reversalWrites(db, {
+					kind: 'dispute_opened',
+					entry: withdrawal,
+					finalRefundPaymentId: null
+				}),
+				...reversalWrites(db, { kind: 'refund', entry: withdrawal, finalRefundPaymentId: refundId })
+			])
+			.then(
+				() => 'committed',
+				(error: unknown) => sqliteResultCode(error)
+			);
+
+		expect(refused).toBe('SQLITE_CONSTRAINT_UNIQUE');
+		expect(await owedToDestinations()).toEqual([]);
 	});
 });

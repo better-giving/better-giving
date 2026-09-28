@@ -2,10 +2,11 @@ import { and, desc, eq, exists, lt, notExists, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import { majorText } from '../../forms/amounts';
 import type { Db } from '../db/client';
-import { dispute, donation, entryGroup, payment, type ZapierTrigger } from '../db/schema';
+import { donation, entryGroup, payment, type ZapierTrigger } from '../db/schema';
 import { refundStands } from '../donations/queries';
 import { type GiftEvent, renderGift, selectGifts } from '../integrations/gift';
 import { inPage } from '../integrations/paging';
+import { type RefundRow, type RefundSource, selectRefunds } from '../integrations/refund';
 
 export type { GiftEvent };
 
@@ -33,15 +34,6 @@ export type DonorEvent = {
 export function donorEventOf(gift: GiftEvent): DonorEvent {
 	return { id: gift.donor_id, name: gift.donor_name, email: gift.donor_email, first_gift: gift };
 }
-
-/**
- * what sent a gift's money back: `refund`, one the organisation made, or `dispute`, a dispute the
- * organisation lost or a payment the donor's bank returned. **the set may gain values**: a Zap
- * branches on the values it knows and lets any other pass, and a value's meaning never narrows, so
- * a value is never split into two later. the trigger's own description in packages/zapier says the
- * same to a Zap's author.
- */
-export type RefundSource = 'refund' | 'dispute';
 
 /**
  * one refund, or one dispute lost, as a `gift_refunded` Zap receives it: what left, and the gift it
@@ -94,24 +86,6 @@ export async function readRefundEvents(
 	);
 	return refundEventsOf(db, refunds);
 }
-
-/** a refund row with a `dispute` row on it is a dispute's withdrawal; any other is a refund. */
-function selectRefunds(db: Db) {
-	const disputed = alias(dispute, 'disputed');
-	return db
-		.select({
-			id: payment.id,
-			giftId: payment.parentPaymentId,
-			occurredAt: payment.occurredAt,
-			amountMinor: payment.amountMinor,
-			currency: payment.currency,
-			source: sql<RefundSource>`case when ${disputed.paymentId} is null then 'refund' else 'dispute' end`
-		})
-		.from(payment)
-		.leftJoin(disputed, eq(disputed.paymentId, payment.id));
-}
-
-type RefundRow = Awaited<ReturnType<ReturnType<typeof selectRefunds>['all']>>[number];
 
 async function refundEventsOf(
 	db: Db,

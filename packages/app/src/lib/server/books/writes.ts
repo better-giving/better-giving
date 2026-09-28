@@ -4,7 +4,11 @@ import type { Db } from '../db/client';
 import type { EntrySourceType } from '../db/schema';
 import { type Posting, postingStatements } from '../ledger/posting';
 import type { ReversalKind } from '../payments/provider';
-import { webhookStatements } from '../webhooks/events';
+import {
+	disputeOpenedWebhookStatements,
+	giftRefundedWebhookStatements,
+	webhookStatements
+} from '../webhooks/events';
 import { giftRefundedStatements, zapierStatements } from '../zapier/events';
 
 // the one place a posting becomes everything its batch owes: the entry group and its lines, the
@@ -94,8 +98,9 @@ export function correctionWrites(db: Db, correction: Posting): Writes {
  *
  * `finalRefundPaymentId` is the refund row whose money is now final — a refund, and a dispute
  * lost, whether it posts its withdrawal or closes one already posted — and a Zap on
- * `gift_refunded` hears of it. a dispute opened or won, its settle-up included, and a refund that
- * did not stand, name none.
+ * `gift_refunded` and a destination on `gift.refunded` hear of it. a dispute opened or won, its
+ * settle-up included, and a refund that did not stand, name none. a dispute opened is heard of by
+ * a destination on `gift.dispute_opened`, keyed on the withdrawal row its entry is keyed on.
  */
 export type ReversalEntry =
 	| {
@@ -125,12 +130,13 @@ const REVERSAL_SOURCE_TYPES = {
 } as const satisfies Record<ReversalKind | 'settle_up', ReversalSourceType>;
 
 /**
- * a reversal's group, the queue row it owes, and its `gift_refunded` rows. whether QuickBooks is
- * owed it is the group it answers holding a queue row (../accounting/outbox.ts), read off the
- * refund row the caller's batch writes or already holds, so it goes after that row.
+ * a reversal's group, the queue row it owes, its `gift_refunded` and `gift.refunded` rows, and a
+ * dispute opened's `gift.dispute_opened` rows. whether QuickBooks is owed it is the group it
+ * answers holding a queue row (../accounting/outbox.ts), read off the refund row the caller's
+ * batch writes or already holds, so it goes after that row.
  */
 export function reversalWrites(db: Db, reversal: ReversalEntry): Writes {
-	if (reversal.entry === null) return [giftRefundedStatements(db, reversal.finalRefundPaymentId)];
+	if (reversal.entry === null) return refundedWrites(db, reversal.finalRefundPaymentId);
 	const { kind, entry, finalRefundPaymentId } = reversal;
 	inSlot(
 		entry,
@@ -142,7 +148,16 @@ export function reversalWrites(db: Db, reversal: ReversalEntry): Writes {
 	return [
 		...postingStatements(db, entry),
 		...outboxStatements(db, [entry]),
-		...(finalRefundPaymentId === null ? [] : [giftRefundedStatements(db, finalRefundPaymentId)])
+		...(finalRefundPaymentId === null ? [] : refundedWrites(db, finalRefundPaymentId)),
+		...(kind === 'dispute_opened' ? [disputeOpenedWebhookStatements(db, entry.group.sourceId)] : [])
+	];
+}
+
+/** what a refund row whose money is now final owes each gift_refunded Zap and gift.refunded destination. */
+function refundedWrites(db: Db, refundPaymentId: string): Writes {
+	return [
+		giftRefundedStatements(db, refundPaymentId),
+		giftRefundedWebhookStatements(db, refundPaymentId)
 	];
 }
 

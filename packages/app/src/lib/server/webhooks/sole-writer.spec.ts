@@ -93,7 +93,7 @@ describe('webhooks/ is the only writer of webhook_delivery', () => {
 		const found = offenders(INSERTS, EVENTS);
 		expect(
 			found,
-			`these modules insert into webhook_delivery: ${found.join(', ')}. an event is owed to its destinations by webhookStatements() in src/lib/server/webhooks/events.ts, spliced into the batch of the change it reports, and by nothing else.`
+			`these modules insert into webhook_delivery: ${found.join(', ')}. an event is owed to its destinations by the statement builders in src/lib/server/webhooks/events.ts, spliced into the batch of the change it reports, and by nothing else.`
 		).toEqual([]);
 	});
 

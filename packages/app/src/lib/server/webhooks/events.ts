@@ -1,7 +1,13 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, exists, isNull, type SQL, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import type { Db } from '../db/client';
-import { webhookDelivery, webhookDestination, webhookDestinationEvent } from '../db/schema';
+import {
+	payment,
+	webhookDelivery,
+	webhookDestination,
+	webhookDestinationEvent
+} from '../db/schema';
+import { refundStands } from '../donations/queries';
 import type { WebhookEvent } from '../../webhooks/catalog';
 
 // the whole rule about which destinations an event is owed to, and the statements that say so.
@@ -38,18 +44,56 @@ export function webhookStatements(db: Db, gift: MadeGift): [BatchItem<'sqlite'>]
 	return [fanOut(db, 'gift.made', gift.paymentId, new Date())];
 }
 
+/**
+ * the `gift.refunded` rows for `refundPaymentId`, the refund-direction row whose money is now
+ * final: each refund of a gift, and each dispute lost on one, is its own event. outside the specs
+ * its one caller is `reversalWrites` in ../books/writes.ts.
+ *
+ * gated on `refundStands` (../donations/queries.ts) as the batch left that row, the rule
+ * `giftRefundedStatements` in ../zapier/events.ts holds for a Zap: a lost close racing a win that
+ * committed first owes nothing. ./deliver.ts reads the same gate again at send.
+ */
+export function giftRefundedWebhookStatements(
+	db: Db,
+	refundPaymentId: string
+): BatchItem<'sqlite'> {
+	const stands = db
+		.select({ one: sql`1` })
+		.from(payment)
+		.where(and(eq(payment.id, refundPaymentId), refundStands(db, payment)));
+	return fanOut(db, 'gift.refunded', refundPaymentId, new Date(), exists(stands));
+}
+
+/**
+ * the `gift.dispute_opened` rows for `withdrawalPaymentId`, the refund-direction row a dispute's
+ * opening wrote when it withdrew the money. outside the specs its one caller is `reversalWrites` in
+ * ../books/writes.ts.
+ */
+export function disputeOpenedWebhookStatements(
+	db: Db,
+	withdrawalPaymentId: string
+): BatchItem<'sqlite'> {
+	return fanOut(db, 'gift.dispute_opened', withdrawalPaymentId, new Date());
+}
+
 /** a version 4 uuid, lowercase, from sqlite's own random source. */
 const UUID_V4 = sql`lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)), 2) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6)))`;
 
 /**
- * one pending row, due at once, per un-archived destination taking `event`.
+ * one pending row, due at once, per un-archived destination taking `event`, where `extra` holds.
  *
  * drizzle's `insert().select()` names every column of the table in declaration order and refuses a
  * select whose keys differ, so every column is selected here, the defaults included. the select
  * always carries a `where`, which sqlite needs to parse the `on conflict` after it
  * (https://sqlite.org/lang_upsert.html, "parsing ambiguity").
  */
-function fanOut(db: Db, event: WebhookEvent, subjectId: string, now: Date): BatchItem<'sqlite'> {
+function fanOut(
+	db: Db,
+	event: WebhookEvent,
+	subjectId: string,
+	now: Date,
+	extra?: SQL
+): BatchItem<'sqlite'> {
 	const at = now.getTime();
 	return db
 		.insert(webhookDelivery)
@@ -78,7 +122,7 @@ function fanOut(db: Db, event: WebhookEvent, subjectId: string, now: Date): Batc
 						eq(webhookDestinationEvent.event, event)
 					)
 				)
-				.where(isNull(webhookDestination.archivedAt))
+				.where(and(isNull(webhookDestination.archivedAt), extra))
 		)
 		.onConflictDoNothing();
 }

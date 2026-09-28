@@ -50,7 +50,7 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 const IMPORT_BRACES = /\b(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s*from\b/g;
 
 const BUILDER =
-	/\b(postingStatements|outboxStatements|zapierStatements|giftRefundedStatements|webhookStatements)\b/g;
+	/\b(postingStatements|outboxStatements|zapierStatements|giftRefundedStatements|webhookStatements|giftRefundedWebhookStatements|disputeOpenedWebhookStatements)\b/g;
 
 /** every builder an import or re-export names, several to one pair of braces included. */
 function buildersImportedBy(source: string): string[] {
@@ -76,7 +76,7 @@ describe('books/ is the only importer of the statement builders', () => {
 		expect(names.some((n) => /\.(?:spec|test)\./.test(n))).toBe(false);
 	});
 
-	it('finds no import of postingStatements, outboxStatements, zapierStatements, giftRefundedStatements or webhookStatements outside books/', () => {
+	it('finds no import of a statement builder outside books/', () => {
 		const offenders = files.flatMap((file) =>
 			buildersImportedBy(readFileSync(file, 'utf8')).map(
 				(builder) => `${relative(SRC, file)} (${builder})`
@@ -93,7 +93,9 @@ describe('books/ is the only importer of the statement builders', () => {
 		// every builder, so it is the one file that must match each.
 		const writes = readFileSync(join(BOOKS_DIR, 'writes.ts'), 'utf8');
 		expect(buildersImportedBy(writes).sort()).toEqual([
+			'disputeOpenedWebhookStatements',
 			'giftRefundedStatements',
+			'giftRefundedWebhookStatements',
 			'outboxStatements',
 			'postingStatements',
 			'webhookStatements',

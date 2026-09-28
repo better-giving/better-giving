@@ -1,10 +1,10 @@
 import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { webhookDelivery, webhookDestination } from '../db/schema';
-import { type ApiGift, readGifts } from '../integrations/gift';
 import { inPage } from '../integrations/paging';
 import { defineOutbox, type Outcome } from '../outbox/lease';
 import { refusal } from '../outbox/refusal';
+import { renderSubjects } from './payload';
 import { signedHeaders } from './sign';
 
 // the webhook outbox, delivered: what reads `webhook_delivery` and posts each row to its
@@ -17,11 +17,12 @@ import { signedHeaders } from './sign';
 // **delivery is at least once.** a post whose answer never came may have arrived, and it is posted
 // again under the same `webhook-id`, which is what a receiver dedupes on.
 //
-// **the body is rendered at send**, from the row's subject, through the read API's own projection
-// (`readGifts` in ../integrations/gift.ts): `{ type, timestamp, data }`, the Standard Webhooks
-// shape (https://www.standardwebhooks.com/), where `timestamp` is when the event was recorded — the
-// row's `created_at`, the same on every attempt — and `data` is the gift as the read API answers
-// it at that moment. a retry renders again, so it carries where the gift stands by then.
+// **the body is rendered at send**, from the row's subject (./payload.ts): `{ type, timestamp,
+// data }`, the Standard Webhooks shape (https://www.standardwebhooks.com/), where `timestamp` is
+// when the event was recorded — the row's `created_at`, the same on every attempt — and `data` is
+// the event's subject with its gift as the read API answers it at that moment. a retry renders
+// again, so it carries where the gift stands by then. a row whose destination or subject cannot be
+// read, or whose refund no longer stands, is `failed` unposted, with why in `last_error`.
 //
 // where each answer lands:
 //   2xx      — `delivered`, with the status and the time, and the destination's run of failures,
@@ -115,28 +116,26 @@ export async function sendDueWebhooks(deps: WebhookDeliveryDeps, now: Date): Pro
 		db,
 		claim.rows.map((row) => row.destinationId)
 	);
-	const gifts = await readGifts(
-		db,
-		claim.rows.filter((row) => row.event === 'gift.made').map((row) => row.subjectId)
-	);
+	const render = await renderSubjects(db, claim.rows);
+	const unsent = (row: Claimed, lastError: string) =>
+		claim.land(row, { status: 'failed', lastError, updatedAt: now });
 
 	await claim.each(async (row) => {
 		const destination = destinations.get(row.destinationId);
-		const data = row.event === 'gift.made' ? gifts.get(row.subjectId) : undefined;
-		if (destination === undefined || data === undefined) {
-			const missing =
-				destination === undefined
-					? `destination ${row.destinationId}`
-					: `settled gift ${row.subjectId}`;
-			await claim.land(row, {
-				status: 'failed',
-				lastError: `The ${missing} this event was queued for could not be read.`,
-				updatedAt: now
-			});
+		if (destination === undefined) {
+			await unsent(
+				row,
+				`The destination ${row.destinationId} this event was queued for could not be read.`
+			);
+			return;
+		}
+		const rendered = render(row);
+		if ('unsent' in rendered) {
+			await unsent(row, rendered.unsent);
 			return;
 		}
 
-		const answer = await post(deps.fetch, destination, row, data);
+		const answer = await post(deps.fetch, destination, row, rendered.data);
 		const attempts = row.attempts + 1;
 		if (answer.delivered) {
 			await db.batch([
@@ -238,7 +237,7 @@ async function post(
 	fetcher: typeof fetch,
 	destination: Destination,
 	row: Claimed,
-	data: ApiGift
+	data: unknown
 ): Promise<Answer> {
 	const body = JSON.stringify({
 		type: row.event,
