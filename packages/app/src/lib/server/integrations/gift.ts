@@ -17,7 +17,7 @@ import {
 	type PaymentMethod
 } from '../db/schema';
 import { refundStands } from '../donations/queries';
-import { inPage, type Keyset, type PageOf, pageOf, pastKeyset } from './paging';
+import { inPage, type Keyset, type PageOf, type PageQuery, pageOf, pastKeyset } from './paging';
 
 // one gift as a system outside this deployment is told of it: the `new_gift` event a Zap receives
 // (../zapier/payload.ts) and each entry the read API's gifts list answers with
@@ -112,13 +112,8 @@ type GiftStanding = {
  */
 export const GIFT_ORDERS = { newest: 'gifts.newest', changed: 'gifts.changed' } as const;
 
-export type GiftPageQuery = { readonly limit: number; readonly after: Keyset | null } & (
-	| { readonly order: 'newest' }
-	| { readonly order: 'changed'; readonly since: Date }
-);
-
 /** one page of settled gifts in the order `query` names. */
-export async function readGiftPage(db: Db, query: GiftPageQuery): Promise<PageOf<ApiGift>> {
+export async function readGiftPage(db: Db, query: PageQuery): Promise<PageOf<ApiGift>> {
 	const keys =
 		query.order === 'newest' ? await newestKeys(db, query) : await changedKeys(db, query);
 	const page = pageOf(keys, query.limit, (key) => key);
@@ -160,7 +155,7 @@ const gift = alias(payment, 'gift');
 const isGift = (row: typeof payment | typeof gift) =>
 	and(eq(row.status, 'succeeded'), eq(row.direction, 'inbound'));
 
-async function newestKeys(db: Db, query: GiftPageQuery): Promise<Keyset[]> {
+async function newestKeys(db: Db, query: PageQuery): Promise<Keyset[]> {
 	const rows = await db
 		.select({ id: payment.id, at: payment.occurredAt })
 		.from(payment)
@@ -177,7 +172,7 @@ async function newestKeys(db: Db, query: GiftPageQuery): Promise<Keyset[]> {
 	return rows.map((row) => ({ id: row.id, at: row.at.getTime() }));
 }
 
-async function changedKeys(db: Db, query: GiftPageQuery & { order: 'changed' }): Promise<Keyset[]> {
+async function changedKeys(db: Db, query: PageQuery & { order: 'changed' }): Promise<Keyset[]> {
 	const changes = db
 		.select({ id: gift.id, at: changedAt(db).as('updated_at') })
 		.from(gift)

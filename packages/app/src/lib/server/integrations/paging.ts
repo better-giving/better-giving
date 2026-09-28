@@ -1,5 +1,6 @@
-import { type SQL, type SQLWrapper, sql } from 'drizzle-orm';
-import { integrationsRefusal } from './surface';
+import { and, asc, desc, gte, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
+import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
+import { integrationsJson, integrationsRefusal } from './surface';
 
 // how a list on the read API is walked a page at a time: the page size, the cursor, and the
 // keyset condition a list's own query splices in. every list under `/integrations/v1` takes these,
@@ -16,8 +17,9 @@ import { integrationsRefusal } from './surface';
 // its orders with a label no other list's order uses (`gifts.newest`). anyone can decode and forge
 // one, and a forged cursor is only another place to start the same read.
 //
-// **a list answers `{ data, next_cursor }`**, and `next_cursor` is null on the last page — a
-// page is read one row longer than it serves, so the last page is known without a trailing empty one.
+// **a list answers `{ data, next_cursor }`, and stays one**: a bare array could never grow a
+// cursor. `next_cursor` is null on the last page — a page is read one row longer than it serves,
+// so the last page is known without a trailing empty one.
 //
 // every refusal is a 400 naming the value it refused and what to send instead, through
 // ./surface.ts, so an integrator's code switches on the code and whoever reads the body can act on
@@ -34,6 +36,83 @@ export type Keyset = { readonly at: number; readonly id: string };
 
 /** the rows of one page, and where the next page starts, or null where this is the last. */
 export type PageOf<T> = { readonly rows: readonly T[]; readonly next: Keyset | null };
+
+/**
+ * a list's two orders, each named as its cursors carry it: newest first by when the row came to
+ * be, or oldest change first from the instant `updated_since` names.
+ */
+export type ListOrders = { readonly newest: string; readonly changed: string };
+
+/** the page a list request asks for, in the order its query names. */
+export type PageQuery = { readonly limit: number; readonly after: Keyset | null } & (
+	| { readonly order: 'newest' }
+	| { readonly order: 'changed'; readonly since: Date }
+);
+
+const PARAMETERS = ['limit', 'cursor', 'updated_since'] as const;
+
+/** the page `url` asks a list walked in `orders` for, or the 400 refusing its query. */
+export function readPageQuery(url: URL, orders: ListOrders): PageQuery | Response {
+	const unknown = unknownParameters(url, PARAMETERS);
+	if (unknown !== null) return unknown;
+	const limit = readLimit(url.searchParams.get('limit'));
+	if (limit instanceof Response) return limit;
+	const since = readUpdatedSince(url.searchParams.get('updated_since'));
+	if (since instanceof Response) return since;
+	const after = readCursor(
+		url.searchParams.get('cursor'),
+		since === null ? orders.newest : orders.changed
+	);
+	if (after instanceof Response) return after;
+	return since === null
+		? { order: 'newest', limit, after }
+		: { order: 'changed', limit, after, since };
+}
+
+/** `page` as a list answers it, its cursor issued for the order `query` read it in. */
+export function listAnswer<T>(page: PageOf<T>, orders: ListOrders, query: PageQuery): Response {
+	return integrationsJson({
+		data: page.rows,
+		next_cursor: page.next === null ? null : encodeCursor(orders[query.order], page.next)
+	});
+}
+
+/** the columns of a row that stores both times a list walks it by. */
+type StoredTimes = {
+	readonly id: AnySQLiteColumn;
+	readonly createdAt: AnySQLiteColumn;
+	readonly updatedAt: AnySQLiteColumn;
+};
+
+/**
+ * where and how a page of `query` reads a table that stores both of a list's times: its
+ * `created_at` for the newest-first order, and for the order of changes an `updated_at` that every
+ * writer of the row moves — which the module serving the list is the one to argue.
+ */
+export function storedTimesWalk(
+	query: PageQuery,
+	row: StoredTimes
+): {
+	readonly where: SQL | undefined;
+	readonly orderBy: readonly SQL[];
+	readonly keyOf: (read: { id: string; createdAt: Date; updatedAt: Date }) => Keyset;
+} {
+	if (query.order === 'newest')
+		return {
+			where:
+				query.after === null ? undefined : pastKeyset('desc', row.createdAt, row.id, query.after),
+			orderBy: [desc(row.createdAt), desc(row.id)],
+			keyOf: (read) => ({ at: read.createdAt.getTime(), id: read.id })
+		};
+	return {
+		where: and(
+			gte(row.updatedAt, query.since),
+			query.after === null ? undefined : pastKeyset('asc', row.updatedAt, row.id, query.after)
+		),
+		orderBy: [asc(row.updatedAt), asc(row.id)],
+		keyOf: (read) => ({ at: read.updatedAt.getTime(), id: read.id })
+	};
+}
 
 /**
  * one page of `rows`, read `limit + 1` long: the extra row says another page follows, and is
@@ -69,7 +148,7 @@ export function inPage(column: SQLWrapper, ids: readonly string[]): SQL {
 	return sql`${column} in (select value from json_each(${JSON.stringify(ids)}))`;
 }
 
-export function encodeCursor(order: string, last: Keyset): string {
+function encodeCursor(order: string, last: Keyset): string {
 	return btoa(JSON.stringify([order, last.at, last.id]))
 		.replaceAll('+', '-')
 		.replaceAll('/', '_')
@@ -78,9 +157,9 @@ export function encodeCursor(order: string, last: Keyset): string {
 
 /**
  * the 400 for a query naming a parameter outside `known`, or null where it names none. a
- * misspelt filter left unread would answer every gift as though it had filtered them.
+ * misspelt filter left unread would answer every row as though it had filtered them.
  */
-export function unknownParameters(url: URL, known: readonly string[]): Response | null {
+function unknownParameters(url: URL, known: readonly string[]): Response | null {
 	const unknown = [...new Set(url.searchParams.keys())].filter((name) => !known.includes(name));
 	if (unknown.length === 0) return null;
 	const names = (list: readonly string[]) => list.map((name) => `\`${name}\``).join(', ');
@@ -93,7 +172,7 @@ export function unknownParameters(url: URL, known: readonly string[]): Response 
 }
 
 /** the page size `raw` asks for, the default where it is absent, or the 400 refusing it. */
-export function readLimit(raw: string | null): number | Response {
+function readLimit(raw: string | null): number | Response {
 	if (raw === null) return DEFAULT_PAGE_SIZE;
 	const limit = /^[1-9][0-9]*$/.test(raw) ? Number(raw) : Number.NaN;
 	if (limit <= PAGE_SIZE_CEILING) return limit;
@@ -109,7 +188,7 @@ export function readLimit(raw: string | null): number | Response {
  * where the page `raw` continues from, in the order named `order`: null where the request carries
  * no cursor, and the 400 refusing it where it is not one this order issued.
  */
-export function readCursor(raw: string | null, order: string): Keyset | null | Response {
+function readCursor(raw: string | null, order: string): Keyset | null | Response {
 	if (raw === null) return null;
 	const decoded = decodeCursor(raw);
 	if (decoded !== null && decoded.order === order) return decoded.keyset;
@@ -128,7 +207,7 @@ export function readCursor(raw: string | null, order: string): Keyset | null | R
  * refusing it where it is not an ISO 8601 date and time with its offset. a fraction past the
  * millisecond is cut to it, which only widens a `>=` read by less than one.
  */
-export function readUpdatedSince(raw: string | null): Date | null | Response {
+function readUpdatedSince(raw: string | null): Date | null | Response {
 	if (raw === null) return null;
 	const instant = isoInstant(raw);
 	if (instant !== null) return instant;
