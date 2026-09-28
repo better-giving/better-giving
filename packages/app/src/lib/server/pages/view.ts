@@ -16,6 +16,7 @@ import type { OrgSharing } from '../org/presentation';
 import { readOrgLook, readOrgProfile, readOrgSharing, readOrgStory } from '../org/queries';
 import { present } from '../org/receipt-fields';
 import { createPaymentProviders } from '../payments/factory';
+import { pageGoal } from './goal';
 
 // everything a donor page draws beyond its own stored document, read for one page: the donation
 // page at /donate, a campaign at its address, and either one in the editor's preview.
@@ -33,7 +34,8 @@ import { createPaymentProviders } from '../payments/factory';
 // narrowed rule still takes gifts while somebody repairs it.
 //
 // the organisation's story, look and sharing are read live on every draw, so a save on the
-// dashboard's organisation page reaches every page at once.
+// dashboard's organisation page reaches every page at once, and so is a campaign's raised figure
+// (./goal.ts), a sum over the books that is never cached.
 
 /** a page as its loader holds it: its row's facts, the document to draw, and its public address. */
 export type PageSource = {
@@ -101,6 +103,7 @@ export async function loadPageView(
 	const { sharing } = orgSharing;
 	const orgName = config.orgLegalName;
 	const firstTitle = page.blocks.find((block) => block.type === 'title');
+	const goal = await pageGoal(db, source.formId, page, config.locale);
 
 	return {
 		kind: 'page',
@@ -127,7 +130,7 @@ export async function loadPageView(
 					}),
 				url: `${origin}${source.address}`
 			},
-			goal: null,
+			goal,
 			money: { locale: config.locale, currency: config.currency },
 			config
 		}

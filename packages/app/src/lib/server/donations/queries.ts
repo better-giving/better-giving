@@ -21,7 +21,8 @@ import { projectTribute } from '../../donations/tributes';
 // donor has given, and which month each donor's money first moved. both are one statement whose
 // driving table is `contact` — the file is sorted by that total across the whole of it, and
 // whether a donor is counted at all turns on `contact.archived_at`; that file's own header argues
-// both at length.
+// both at length. `readRaisedThroughForm` in ../ledger/queries.ts names both as well, as the path
+// from a form to its entries in the books, and counts money only as the ledger holds it.
 //
 // **those reads say in SQL what `projectStatus` below says in TypeScript, and the three have to
 // keep agreeing** — a succeeded inbound attempt collects, a succeeded refund takes back, every
