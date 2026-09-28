@@ -6,13 +6,16 @@ import type { BlockOf, PageProgram } from './types';
 // box's own select would offer, after the choice of none at all, which is the box's resting answer.
 // a pick is the route's to carry into the box (`onPick`); the box then draws no select of its own.
 //
-// a radio set, each option its own label so the words are the radio's name.
+// a radio set, each option its own label so the words are the radio's name. locked, each radio is
+// `aria-disabled` rather than `disabled`, so the set keeps its place in the tab order and a screen
+// reader still reads the pick standing; a press is ignored and the controlled `checked` stays put.
 
 export function ProgramChooserBlock({
 	block,
 	programs,
 	chosen,
 	onPick,
+	locked,
 	domId
 }: {
 	readonly block: BlockOf<'program-chooser'>;
@@ -20,6 +23,7 @@ export function ProgramChooserBlock({
 	/** the chosen program's id; null is none, the gift going where it is needed most. */
 	readonly chosen: string | null;
 	readonly onPick: ((id: string | null) => void) | undefined;
+	readonly locked: boolean;
 	readonly domId: string;
 }) {
 	const options: readonly (Omit<PageProgram, 'id'> & { readonly id: string | null })[] = [
@@ -38,7 +42,10 @@ export function ProgramChooserBlock({
 							name={`${domId}-program`}
 							value={option.id ?? ''}
 							checked={option.id === chosen}
-							onChange={() => onPick?.(option.id)}
+							aria-disabled={locked ? true : undefined}
+							onChange={() => {
+								if (!locked) onPick?.(option.id);
+							}}
 						/>
 						<span className="page-choose-mark">
 							{block.variant === 'cards' && option.id === chosen ? (

@@ -1090,6 +1090,27 @@ export const checkoutMachine = setup({
 		}),
 
 		/**
+		 * the cause the gift is credited to, taken on any of the three steps a donor edits.
+		 *
+		 * the card's own select is on the amount step, but a host may draw the choice outside the
+		 * card, beside every step, so the pick is written onto the decided gift as well as the
+		 * draft wherever there is one. no step handling it has minted anything yet: `beginAttempt`
+		 * drops an attempt on arrival at either later step. every state past the press drops it,
+		 * the fund's window included, because the gift carrying the cause is already asked for.
+		 *
+		 * `null` is written onto the draft as an absent id rather than kept, so the draft holds the
+		 * donor's answer in the one shape `completeAmount` (./value.ts) reads — where it is needed
+		 * most. a form offering no choice draws no control, so nothing on such a card sends this.
+		 */
+		pickProgram: assign(({ context, event }) => {
+			if (event.type !== 'SET_PROGRAM') return {};
+			return {
+				draft: { ...context.draft, programId: event.programId ?? undefined },
+				fv: context.fv === null ? null : { ...context.fv, programId: event.programId }
+			};
+		}),
+
+		/**
 		 * recomputes the stated fee from whatever is decided now.
 		 *
 		 * run after every assign that could move it — the rail, the coverage decision, the
@@ -1386,22 +1407,7 @@ export const checkoutMachine = setup({
 						draft: ({ context, event }) => ({ ...context.draft, note: event.note })
 					})
 				},
-				/**
-				 * the cause the gift is credited to, chosen on the step the gift itself is decided on.
-				 *
-				 * `null` is written as an absent id rather than kept, so the draft holds the donor's
-				 * answer in the one shape `completeAmount` (./value.ts) reads — where it is needed
-				 * most. there is no disclosure to leave open here and nothing to fabricate: a form
-				 * offering no choice draws no control, so nothing on such a card sends this.
-				 */
-				SET_PROGRAM: {
-					actions: assign({
-						draft: ({ context, event }) => ({
-							...context.draft,
-							programId: event.programId ?? undefined
-						})
-					})
-				},
+				SET_PROGRAM: { actions: 'pickProgram' },
 				/**
 				 * the donor opening the note, or closing it again.
 				 *
@@ -1542,6 +1548,7 @@ export const checkoutMachine = setup({
 						})
 					})
 				},
+				SET_PROGRAM: { actions: 'pickProgram' },
 				// a press with a field still missing stays on this step, the way the amount step's
 				// own does: the guard is what stops a donor reaching the screen that spends the money
 				// with no address for the receipt it produces.
@@ -1587,6 +1594,7 @@ export const checkoutMachine = setup({
 			// through a charge is delivered — see the `amount` step's own.
 			always: { guard: 'challengeIsHeld', target: 'failed', actions: 'deliverChallenge' },
 			on: {
+				SET_PROGRAM: { actions: 'pickProgram' },
 				SET_COIN: {
 					actions: assign({
 						payerDraft: ({ context, event }) => ({
