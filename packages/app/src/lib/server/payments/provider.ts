@@ -1596,6 +1596,8 @@ export type RecurringGiftEnd = {
  * it carries no amount, no currency and no fee. those are facts about one transaction and this app
  * already has one arm that reads them — `readSettlement` against `providerTxnId` — so a second copy
  * of them here would be two numbers for one charge with nothing saying which is the one to post.
+ * the one figure on it is `failedAttempt`'s, which is what an attempt asked for and moved none of,
+ * so nothing posts it.
  */
 export type RecurringGiftNotice = {
 	/**
@@ -1677,6 +1679,40 @@ export type RecurringGiftNotice = {
 	 * delivery's own time and is never a guess.
 	 */
 	readonly endedAt: Date | null;
+	/**
+	 * the attempt this delivery reports failing, on any collection after the commitment's opening
+	 * one. absent on every other notice — a collection that paid, the commitment's own
+	 * standing, and the donor's own first charge failing on the page, which is no repeating gift yet.
+	 * ./stripe.ts reports it (`failedAttemptOf`); from an adapter that does not, a failed attempt
+	 * reads as a collection that did not collect, and ../donations/collect.ts reports nothing for it.
+	 */
+	readonly failedAttempt?: FailedCollection;
+};
+
+/**
+ * one failed attempt at a collection under a commitment, as a destination is told of it.
+ *
+ * per attempt rather than per collection: the processor retries on its own schedule, and what a
+ * reader acts on is which attempt this was and whether another is coming. nothing here is posted —
+ * no money moved — and the amount is what the attempt asked for, never a figure for the books.
+ */
+export type FailedCollection = {
+	/**
+	 * the attempt's identity: every delivery reporting this attempt carries the same key, and the
+	 * next attempt at the same collection carries another. opaque to a caller, which stores and
+	 * compares it and reads nothing out of it.
+	 */
+	readonly attemptKey: string;
+	/** which attempt at this collection failed, counted from 1 along the processor's retry schedule. */
+	readonly attemptCount: number;
+	/** when the processor tries again, or null where it will not — the last miss. */
+	readonly nextRetryAt: Date | null;
+	/** business time: when the attempt failed. */
+	readonly failedAt: Date;
+	/** minor units, positive: what the attempt asked for. */
+	readonly amountMinor: number;
+	/** ISO-4217, uppercase. */
+	readonly currency: string;
 };
 
 export interface PaymentProvider {

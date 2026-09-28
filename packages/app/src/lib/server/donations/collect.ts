@@ -31,6 +31,7 @@ import {
 	GIFT_MINOR_METADATA_KEY,
 	INTERVAL_METADATA_KEY,
 	isRetryable,
+	type FailedCollection,
 	type ProcessorName,
 	type RecurringEvent,
 	type RecurringGiftNotice,
@@ -157,6 +158,8 @@ import { recurringGiftStartedWebhookStatements } from '../webhooks/events';
 // no thank-you: `donation.thankyou_sent_at` is written by nothing here. no email of any kind for a
 // collection that failed either — the rail's own retry schedule is what tries again, and a
 // deployment that mailed on every failed attempt would mail a donor whose card is merely expiring.
+// a failed attempt the processor reports (`RecurringGiftNotice.failedAttempt`) goes to
+// `recordFailedCollection` and writes no gift, payment or ledger row: it moved no money.
 //
 // nothing keeps a running total on the commitment. what a commitment has given is a `SUM` over its
 // donations' ledger entries, at read time, like every other number in this app (CLAUDE.md).
@@ -212,6 +215,8 @@ export async function collectRecurringGift(
 
 	// a delivery about the commitment itself, which is about no collection at all.
 	if (notice.about === 'commitment') return standingResult(deps.db, event, notice, plan);
+
+	if (notice.failedAttempt) return failedResult(deps.db, event, notice, notice.failedAttempt, plan);
 
 	if (notice.providerTxnId === null) {
 		// a collection with no transaction behind it, which is an invoice settled outside the
@@ -340,6 +345,52 @@ async function standingResult(
 		outcome: 'ignored',
 		detail: `repeating gift ${notice.providerGiftId} is ${notice.state}; nothing here changed.`
 	};
+}
+
+/**
+ * what a delivery reporting a failed attempt answers with.
+ *
+ * answered off the notice alone: the attempt moved no money, so there is no transaction to read —
+ * an attempt refused for want of a payment method has none at all, and it is not a collection
+ * settled outside the processor. the commitment's own standing is still written, because the last
+ * miss is often the delivery that carries its lapse.
+ */
+async function failedResult(
+	db: Db,
+	event: RecurringEvent,
+	notice: RecurringGiftNotice,
+	failed: FailedCollection,
+	plan: RecurringPlan | null
+): Promise<SettleResult> {
+	const planId = await recordFailedCollection(db, plan, failed);
+	const stood = await recordStanding(db, event, notice, plan);
+	if (stood !== null) return standingResult(db, event, notice, plan, stood);
+	const retry = failed.nextRetryAt
+		? `the rail tries again at ${failed.nextRetryAt.toISOString()}`
+		: 'the rail will not try again';
+	return {
+		ok: true,
+		outcome: 'uncollected',
+		detail:
+			planId === null
+				? `attempt ${failed.attemptCount} under ${notice.providerGiftId} failed, and no repeating gift here has collected under it; nothing was written.`
+				: `attempt ${failed.attemptCount} at a collection under ${notice.providerGiftId} failed and ${retry}; no gift was written.`
+	};
+}
+
+/**
+ * the commitment a failed attempt is reported against, or null where this deployment holds none —
+ * the donor's own first charge failing on the page, before any repeating gift exists, or a
+ * subscription this app did not make.
+ *
+ * no gift, payment or ledger row is written for it: the attempt moved no money.
+ */
+export async function recordFailedCollection(
+	_db: Db,
+	plan: RecurringPlan | null,
+	_failed: FailedCollection
+): Promise<string | null> {
+	return plan?.id ?? null;
 }
 
 /**
