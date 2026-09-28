@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, lte, or, type SQL, sql } from 'drizzle-orm';
-import type { BatchItem } from 'drizzle-orm/batch';
 import type { SelectResultFields } from 'drizzle-orm/query-builders/select.types';
+import type { RunnableQuery } from 'drizzle-orm/runnable-query';
 import type {
 	SelectedFieldsFlat,
 	SQLiteColumn,
@@ -8,7 +8,7 @@ import type {
 	SQLiteUpdateSetSource
 } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
-import { eachAtMost } from './each-at-most';
+import { eachAtMost } from '../each-at-most';
 
 // the lease every outbox is delivered on: which rows a run takes, how long they are its alone, when
 // it may start work on one, and how it lets each go. it knows nothing of what a row is owed, what
@@ -25,9 +25,17 @@ import { eachAtMost } from './each-at-most';
 //
 // **the lease runs from the run's scheduled time**, the `now` a claim is handed, to `leaseMs`
 // after it. a lease that has run out is no lease: the run that wrote it is gone or overran, and the
-// row is owed either way. every outcome is written by `land`, which gives the lease back in the
-// same statement — and only while this run still holds that lease and the row is still owed, so a
-// run that lost the row to a later one, or whose row was dropped under it, writes nothing.
+// row is owed either way. every outcome is a `landing`, one statement that gives the lease back —
+// and only while this run still holds that lease and the row is still owed, so a run that lost the
+// row to a later one, or whose row was dropped under it, writes nothing. it answers with the row's
+// key where it landed and with nothing where it did not, and the feed batches it with whatever
+// else must commit beside it. `sweep` is the same give-back for a feed's pass over rows no run
+// holds.
+//
+// **`leased_until` is the only column this module owns.** every other column is the feed's, written
+// through a claim's `set`, an outcome or a sweep's outcome. a column with an `$onUpdateFn` in
+// ../db/schema.ts (`updated_at`) is stamped with the wall clock by drizzle on any of these
+// statements that does not name it, so a feed that means to hold one names it as itself.
 //
 // **due-ness is stored, one way**: `next_attempt_at`. a waiting row's outcome is the feed's next
 // time for it; nothing here derives one.
@@ -42,23 +50,28 @@ import { eachAtMost } from './each-at-most';
 // **delivery is at least once.** a run that died mid-attempt writes nothing, and its rows come
 // back once the lease runs out, to be attempted again.
 //
-// an outbox table has a `status` whose `pending` means owed, and `next_attempt_at`, `leased_until`
-// and `updated_at` under those names. its claim wants one index over `status`, `next_attempt_at`,
-// the key and `leased_until`, in that order (`zapier_delivery_due_idx` in ../db/schema.ts).
+// an outbox table has a `status` whose `pending` means owed, and `next_attempt_at` and
+// `leased_until` under those names. its claim wants one index over `status`, `next_attempt_at`, the
+// key and `leased_until`, in that order (`zapier_delivery_due_idx` in ../db/schema.ts).
+//
+// ../accounting/deliver.ts is not delivered on this module. moving it would still take: a stored
+// `next_attempt_at` on `quickbooks_sync`, whose due-ness is derived from `updated_at` and
+// `attempts` today; an order the feed supplies, since it sends settled gifts ahead of moved history
+// through a join; and a way for `each`'s work to stop the whole run, since a refusal the backlog is
+// behind ends it there, where a throw here stops one lane.
 
-/** an outbox table: a row per thing owed, and the four columns the lease reads and writes. */
+/** an outbox table: a row per thing owed, and the three columns the lease reads. */
 export type OutboxTable = SQLiteTable & {
 	readonly status: SQLiteColumn;
 	readonly nextAttemptAt: SQLiteColumn;
 	readonly leasedUntil: SQLiteColumn;
-	readonly updatedAt: SQLiteColumn;
 };
 
-/** one feed's bounds on a run, every one measured from the run's scheduled time. */
+/** one feed's bounds on a run. */
 export type LeaseTerms = {
-	/** how long a claimed row is the claiming run's alone. */
+	/** how long a claimed row is the claiming run's alone, from the run's scheduled time. */
 	readonly leaseMs: number;
-	/** no row is claimed or started later than this. */
+	/** no row is claimed or started later than this after the run's scheduled time. */
 	readonly deadlineMs: number;
 	/** the longest one row's work can take; none is started closer than this to the lease's end. */
 	readonly attemptMs: number;
@@ -79,23 +92,25 @@ export type OutboxSpec<T extends OutboxTable, K extends Key> = LeaseTerms & {
 	readonly key: K;
 };
 
-/** what a row's outcome writes. the lease columns are the module's. */
-export type Outcome<T extends OutboxTable> = Omit<
-	SQLiteUpdateSetSource<T>,
-	'leasedUntil' | 'updatedAt'
->;
+/** what the feed writes on a row: any column but the lease. */
+export type Outcome<T extends OutboxTable> = Omit<SQLiteUpdateSetSource<T>, 'leasedUntil'>;
+
+/** a row's outcome as one statement for the feed's `batch()`, answering with the key it landed on. */
+export type Landing<K extends Key> = RunnableQuery<SelectResultFields<K>[], 'sqlite'>;
 
 /** the rows one run took, and the only way to write where each landed. */
-export type Claim<T extends OutboxTable, Row> = {
+export type Claim<T extends OutboxTable, K extends Key, Row> = {
 	readonly rows: readonly Row[];
 	/** when these rows stop being this run's. */
 	readonly lease: Date;
 	/**
 	 * `outcome` written and the lease given back, only while this run holds it and the row is owed.
-	 * `also` commits in the same `batch()` as the outcome, or neither does — and is written whether
-	 * or not the outcome lands, so it holds only what is true of the attempt itself.
+	 * the statement is the feed's to batch with its own, and it answers with `row`'s key where it
+	 * landed, with nothing where it did not.
 	 */
-	land(row: Row, outcome: Outcome<T>, also?: readonly BatchItem<'sqlite'>[]): Promise<void>;
+	landing(row: Row, outcome: Outcome<T>): Landing<K>;
+	/** {@link Claim.landing} on its own, and whether it landed. */
+	land(row: Row, outcome: Outcome<T>): Promise<boolean>;
 	/**
 	 * `work` over the rows, `lanes` at once, none started past the run's last start. a row not
 	 * started stays leased and comes back when the lease does. a lane that throws stops that lane;
@@ -108,19 +123,18 @@ export function defineOutbox<T extends OutboxTable, K extends Key>(spec: OutboxS
 	const { table } = spec;
 
 	/** held by nobody at `now`: never leased, or leased by a run whose lease has run out. */
-	function unleased(now: Date): SQL | undefined {
-		return or(isNull(table.leasedUntil), lte(table.leasedUntil, now));
-	}
+	const unleased = (now: Date) => or(isNull(table.leasedUntil), lte(table.leasedUntil, now));
 
 	/**
-	 * the due rows, leased to the run scheduled at `now`: the key and `returning` of each. `where`
-	 * narrows what is taken, for a row the feed will not work whatever its time says.
+	 * the due rows, leased to the run scheduled at `now`: the key and `returning` of each, read after
+	 * `set` is written. `where` narrows what is taken, for a row the feed will not work whatever its
+	 * time says.
 	 */
 	async function claim<R extends SelectedFieldsFlat>(
 		db: Db,
 		now: Date,
-		options: { readonly returning: R; readonly where?: SQL }
-	): Promise<Claim<T, SelectResultFields<K & R>>> {
+		options: { readonly returning: R; readonly where?: SQL; readonly set?: Outcome<T> }
+	): Promise<Claim<T, K, SelectResultFields<K & R>>> {
 		type Row = SelectResultFields<K & R>;
 		const lease = new Date(now.getTime() + spec.leaseMs);
 		const lastStart = Math.min(now.getTime() + spec.deadlineMs, lease.getTime() - spec.attemptMs);
@@ -133,16 +147,19 @@ export function defineOutbox<T extends OutboxTable, K extends Key>(spec: OutboxS
 				eq(table.status, 'pending'),
 				eq(table.leasedUntil, lease)
 			);
-		const claimed = (rows: readonly Row[]): Claim<T, Row> => ({
+		const landing = (row: Row, outcome: Outcome<T>) =>
+			db
+				.update(table as SQLiteTable)
+				.set({ ...outcome, leasedUntil: null })
+				.where(heldBy(row))
+				.returning(spec.key as Key) as unknown as Landing<K>;
+		const claimed = (rows: readonly Row[]): Claim<T, K, Row> => ({
 			rows,
 			lease,
-			async land(row, outcome, also = []) {
-				const landed = db
-					.update(table as SQLiteTable)
-					.set({ ...outcome, leasedUntil: null, updatedAt: now })
-					.where(heldBy(row));
-				if (also.length === 0) await landed;
-				else await db.batch([landed, ...also]);
+			landing,
+			async land(row, outcome) {
+				const [landed] = await db.batch([landing(row, outcome)]);
+				return landed.length > 0;
 			},
 			async each(work) {
 				await eachAtMost(spec.lanes, rows, async (row) => {
@@ -167,11 +184,26 @@ export function defineOutbox<T extends OutboxTable, K extends Key>(spec: OutboxS
 			.limit(spec.claimsPerRun);
 		const rows = await db
 			.update(table as SQLiteTable)
-			.set({ leasedUntil: lease, updatedAt: now })
+			.set({ ...options.set, leasedUntil: lease })
 			.where(sql`(${sql.join(Object.values(spec.key), sql`, `)}) in ${due}`)
 			.returning({ ...spec.key, ...options.returning });
 		return claimed(rows as Row[]);
 	}
 
-	return { claim, unleased };
+	/**
+	 * `outcome` written on every row still owed that no run holds at `now` and `where` admits, due or
+	 * not — a feed's give-up pass. a row under a live lease is left to the run holding it.
+	 */
+	async function sweep(
+		db: Db,
+		now: Date,
+		options: { readonly where: SQL; readonly outcome: Outcome<T> }
+	): Promise<void> {
+		await db
+			.update(table as SQLiteTable)
+			.set({ ...options.outcome, leasedUntil: null })
+			.where(and(eq(table.status, 'pending'), unleased(now), options.where));
+	}
+
+	return { claim, sweep };
 }

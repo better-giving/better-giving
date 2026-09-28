@@ -1,5 +1,4 @@
 import { and, eq, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
-import type { BatchItem } from 'drizzle-orm/batch';
 import type { Db } from '../db/client';
 import { payment, zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
 import { defineOutbox, type Outcome } from '../outbox/lease';
@@ -144,11 +143,10 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 	};
 	const standing = await readStandingRefunds(deps.db, refundIds);
 	const gone = new Set<string>();
-	const land = (
-		row: Claimed,
-		outcome: Outcome<typeof zapierDelivery>,
-		also?: readonly BatchItem<'sqlite'>[]
-	) => claim.land(row, { ...outcome, attempts: row.attempts + 1 }, also);
+	const landing = (row: Claimed, outcome: Outcome<typeof zapierDelivery>) =>
+		claim.landing(row, { ...outcome, attempts: row.attempts + 1, updatedAt: now });
+	const land = (row: Claimed, outcome: Outcome<typeof zapierDelivery>) =>
+		deps.db.batch([landing(row, outcome)]);
 
 	await claim.each(async (row) => {
 		if (gone.has(row.subscriptionId)) return;
@@ -178,7 +176,8 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 		}
 		if (answer === 'taken') {
 			// the hook took a post, whoever the row now belongs to: its run of failures is over.
-			await land(row, { status: 'sent', lastError: null }, [
+			await deps.db.batch([
+				landing(row, { status: 'sent', lastError: null }),
 				deps.db
 					.update(zapierSubscription)
 					.set({ failingSince: null })
@@ -196,7 +195,10 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 			gone.add(row.subscriptionId);
 			// so the Zap reads as off in its owner's account. the end has committed and stands
 			// whatever the pause answers, and a pause that fails is never asked again.
-			await pauseZaps(deps.fetch, ended.map((e) => e.hookUrl));
+			await pauseZaps(
+				deps.fetch,
+				ended.map((e) => e.hookUrl)
+			);
 			return;
 		}
 		await land(row, {
@@ -247,21 +249,14 @@ function nextAttempt(row: Claimed, retryAt: Date | undefined, now: Date): Date {
  * run holding it.
  */
 async function giveUpOnStale(db: Db, now: Date): Promise<void> {
-	await db
-		.update(zapierDelivery)
-		.set({
+	await outbox.sweep(db, now, {
+		where: lte(zapierDelivery.createdAt, new Date(now.getTime() - GIVE_UP_AFTER_MS)),
+		outcome: {
 			status: 'failed',
 			lastError: sql`coalesce(${zapierDelivery.lastError}, ${NEVER_DELIVERED})`,
-			leasedUntil: null,
 			updatedAt: now
-		})
-		.where(
-			and(
-				eq(zapierDelivery.status, 'pending'),
-				lte(zapierDelivery.createdAt, new Date(now.getTime() - GIVE_UP_AFTER_MS)),
-				outbox.unleased(now)
-			)
-		);
+		}
+	});
 }
 
 const NEVER_DELIVERED = 'Not delivered within 72 hours of being queued.';
@@ -272,6 +267,7 @@ const NEVER_DELIVERED = 'Not delivered within 72 hours of being queued.';
  */
 function claimDue(db: Db, now: Date) {
 	return outbox.claim(db, now, {
+		set: { updatedAt: now },
 		returning: {
 			paymentId: zapierDelivery.paymentId,
 			attempts: zapierDelivery.attempts,
