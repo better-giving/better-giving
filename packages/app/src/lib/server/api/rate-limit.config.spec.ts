@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { keyRateLimitRefusal } from '../integrations/surface';
 import { readWranglerConfig } from '../wrangler-config.testing';
 import { quoteRateLimitRefusal, rateLimitRefusal, signInRateLimitMessage } from './rate-limit';
 
@@ -16,10 +17,10 @@ import { quoteRateLimitRefusal, rateLimitRefusal, signInRateLimitMessage } from 
 // assertion is between the answer a caller actually receives and the period the deployment
 // actually enforces. the same read is what notices a binding going missing altogether — which for
 // API_RATE_LIMITER is the deployment `refuseIfRateLimited` refuses by name at runtime, and for the
-// other two is a bucket that silently stops bounding anything, since both of those fail open. that
-// difference is why every one of the three is named here rather than only the loud one: `test`
+// others is a bucket that silently stops bounding anything, since those fail open. that
+// difference is why every one of them is named here rather than only the loud one: `test`
 // runs in ci.yml on every push and pull request, ahead of any deploy at all, so a missing binding of any
-// of the three lands in front of whoever removed it rather than in production.
+// of them lands in front of whoever removed it rather than in production.
 //
 // every block the config declares is read, not the top level alone. a named environment inherits
 // no `ratelimits` at all — it holds only what it declares itself — so each one is a second full set
@@ -61,9 +62,9 @@ function declared(limiters: readonly Declared[] | undefined, name: string): Decl
 }
 
 /**
- * the three limiters this app charges, and where each one's period is promised back to a caller.
+ * the limiters this app charges, and where each one's period is promised back to a caller.
  *
- * the `promised` string is what the deployment tells somebody it refused. for the two that answer
+ * the `promised` string is what the deployment tells somebody it refused. for those that answer
  * over the wire it is the body; for the sign-in it is the sentence itself, because the one site
  * that spends that bucket is a form action, which answers with data the page renders rather than
  * with a `Response`.
@@ -81,7 +82,11 @@ const LIMITERS = [
 		name: 'QUOTE_RATE_LIMITER',
 		promised: async () => JSON.stringify(await quoteRateLimitRefusal(new Headers()).json())
 	},
-	{ name: 'SIGN_IN_RATE_LIMITER', promised: () => Promise.resolve(signInRateLimitMessage()) }
+	{ name: 'SIGN_IN_RATE_LIMITER', promised: () => Promise.resolve(signInRateLimitMessage()) },
+	{
+		name: 'INTEGRATIONS_KEY_RATE_LIMITER',
+		promised: async () => JSON.stringify(await keyRateLimitRefusal().json())
+	}
 ] as const;
 
 describe.each(BLOCKS)('the rate limit bindings $where is deployed with', ({ limiters }) => {
@@ -99,7 +104,7 @@ describe.each(BLOCKS)('the rate limit bindings $where is deployed with', ({ limi
 	/**
 	 * a namespace is account-wide, so two bindings sharing one share a count: the login bucket
 	 * would be spent by donors reading a form, and a scanner on the public api would lock the only
-	 * admin out of the only login. three bindings, three namespaces.
+	 * admin out of the only login. one namespace per binding.
 	 */
 	it('counts each limiter under a namespace of its own', () => {
 		const namespaces = new Set(limiters?.map((entry) => entry.namespace_id));
@@ -148,6 +153,22 @@ describe.each(BLOCKS)('the rate limit bindings $where is deployed with', ({ limi
 		expect(quoteRateLimitRefusal(new Headers()).headers.get('retry-after')).toBe(
 			String(declared(limiters, 'QUOTE_RATE_LIMITER')?.simple?.period)
 		);
+		expect(keyRateLimitRefusal().headers.get('retry-after')).toBe(
+			String(declared(limiters, 'INTEGRATIONS_KEY_RATE_LIMITER')?.simple?.period)
+		);
+	});
+
+	/**
+	 * the one refusal that names its limit, because the reader is a system being paced: an
+	 * integrator sizes a sync loop by it, and a number that disagreed with the binding would pace
+	 * that loop into refusals or leave the headroom unused.
+	 */
+	it('tells a key refused by INTEGRATIONS_KEY_RATE_LIMITER the limit it really holds it to', async () => {
+		const { message } = (await keyRateLimitRefusal().json()) as { message: string };
+		const { limit, period } = declared(limiters, 'INTEGRATIONS_KEY_RATE_LIMITER')?.simple ?? {};
+
+		expect(period).toBe(60);
+		expect(message).toContain(`${String(limit)} requests a minute`);
 	});
 
 	/**

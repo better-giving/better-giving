@@ -1,3 +1,4 @@
+import { INTEGRATIONS_BASE_PATH } from '../integrations/surface';
 import { ZAPIER_BASE_PATH } from '../zapier/surface';
 import { API_BASE_PATH } from './surface';
 
@@ -30,7 +31,10 @@ import { API_BASE_PATH } from './surface';
 // this surface and reaches across for exactly that: the key is the shared thing, not the surface.
 //
 // `/zapier` is a second surface charged through the same binding under its own key
-// (`zapierRateLimitKey`), in `src/routes/zapier.ts`'s middleware.
+// (`zapierRateLimitKey`), in `src/routes/zapier.ts`'s middleware. `/integrations/v1` is a third,
+// with two buckets: the caller's on that same binding until a key is admitted
+// (`integrationsFailedKeyRateLimitKey`), and the key's own on `INTEGRATIONS_KEY_RATE_LIMITER`
+// after (`integrationsKeyRateLimitKey`).
 //
 // the buckets are not answered alike when the binding is missing, and not answered alike for a
 // caller the edge did not attribute. both differences are written down once, at the foot of this
@@ -151,6 +155,32 @@ export function signInRateLimitKey(request: Request): string | null {
  */
 export function zapierRateLimitKey(request: Request): string {
 	return `${ZAPIER_BASE_PATH} ${caller(request)}`;
+}
+
+/**
+ * what one request on `/integrations/v1` counts against before its key is admitted: that surface
+ * and the caller, charged against the surface binding the way `zapierRateLimitKey` is.
+ *
+ * it bounds guessing — how many presented keys one address has checked in a minute, and so the
+ * indexed read each well-formed one costs. the 256-bit key is what makes a guess hopeless; this is
+ * the bound on what hoping costs this deployment. the same shape as the `/zapier` key: its own
+ * prefix, so it never spends a donation form's count or Zapier's, and an unattributed caller in one
+ * shared bucket.
+ */
+export function integrationsFailedKeyRateLimitKey(request: Request): string {
+	return `${INTEGRATIONS_BASE_PATH} ${caller(request)}`;
+}
+
+/**
+ * what one request on `/integrations/v1` counts against once its key is admitted: the admitted
+ * key's row id, charged against `INTEGRATIONS_KEY_RATE_LIMITER`.
+ *
+ * the key is the payer here: two systems calling from one host hold two keys and two budgets, and
+ * one busy or leaked key spends only its own, from however many addresses it is presented. what
+ * the limit bounds is how fast one key can read the database.
+ */
+export function integrationsKeyRateLimitKey(keyId: string): string {
+	return `${INTEGRATIONS_BASE_PATH} key ${keyId}`;
 }
 
 /** the caller half of every key here: one payer, however they spelled their address. */
@@ -452,7 +482,7 @@ export async function refuseIfRateLimited(
  * the same answer `refuseIfRateLimited` gives for the same unpromised case.
  *
  * the key is passed rather than derived, because which bucket a request counts against is the call
- * site's decision and the three above are not interchangeable.
+ * site's decision and the keys above are not interchangeable.
  */
 export async function isRateLimited(
 	limiter: RateLimit | undefined,

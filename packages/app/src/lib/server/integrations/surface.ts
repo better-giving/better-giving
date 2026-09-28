@@ -45,7 +45,8 @@ export const INTEGRATIONS_REFUSALS = [
 	'unknown_key',
 	'revoked_key',
 	'not_found',
-	'method_not_allowed'
+	'method_not_allowed',
+	'rate_limited'
 ] as const;
 export type IntegrationsRefusalCode = (typeof INTEGRATIONS_REFUSALS)[number];
 
@@ -77,6 +78,25 @@ export function readOnlyRefusal(method: string): Response {
 		`${method} is not a method this endpoint answers. The read API at ${INTEGRATIONS_BASE_PATH} only reads.`,
 		'Send it as GET, or HEAD for the headers alone. Nothing on this surface writes.',
 		{ allow: 'GET, HEAD' }
+	);
+}
+
+/**
+ * the 429 a key that has spent its own bucket is answered with, charged per key against
+ * `INTEGRATIONS_KEY_RATE_LIMITER` (`integrationsKeyRateLimitKey` in ../api/rate-limit.ts).
+ *
+ * the numbers are literals because the binding's are, in wrangler.jsonc, and nothing in the
+ * language joins them: `../api/rate-limit.config.spec.ts` holds this body and `Retry-After` to the
+ * limit and period every block there declares. the wait is the whole period, which is the longest
+ * the bucket can hold a key.
+ */
+export function keyRateLimitRefusal(): Response {
+	return integrationsRefusal(
+		429,
+		'rate_limited',
+		'This API key has used its limit of 120 requests a minute, which is counted per key. Nothing about the request is wrong.',
+		'Wait 60 seconds, as `Retry-After` says, and send it again; then pace this system under 120 requests a minute. Another system’s key has a limit of its own and is not slowed by this one.',
+		{ 'retry-after': '60' }
 	);
 }
 

@@ -37,7 +37,7 @@
  * so an environment missing one deploys, says so in a line that scrolls past, and then answers
  * every request without it: no `DB` is a worker whose every request 500s on the database, and a
  * missing limiter is quieter than that — `/api/v1` goes dark by name without API_RATE_LIMITER
- * while the quote and sign-in buckets fail open and meter nothing at all
+ * while the quote, sign-in and read-API key buckets fail open and meter nothing at all
  * (src/lib/server/api/rate-limit.ts). that block is read off `wrangler.jsonc`, which is the file
  * the migration step behind this one reads too. the same check reads the top level when no
  * environment is selected, because that is the environment a bare deploy selects.
@@ -97,7 +97,7 @@ const EMBED_RUNTIME_DIR = join('build', 'client', 'embed');
 const DATABASE = 'DB';
 
 /**
- * the three rate limiters a deployment has to be bound to, spelled as the code reads them off the
+ * the rate limiters a deployment has to be bound to, spelled as the code reads them off the
  * platform env (`src/lib/server/api/rate-limit.ts`).
  *
  * a third copy of these names, and the only one that is plain node: this file imports nothing, so
@@ -105,7 +105,12 @@ const DATABASE = 'DB';
  * failing to install. `src/lib/server/api/rate-limit.config.spec.ts` holds the same names — and
  * every number under them — against the config file, and runs at commit.
  */
-const LIMITERS = ['API_RATE_LIMITER', 'QUOTE_RATE_LIMITER', 'SIGN_IN_RATE_LIMITER'];
+const LIMITERS = [
+	'API_RATE_LIMITER',
+	'QUOTE_RATE_LIMITER',
+	'SIGN_IN_RATE_LIMITER',
+	'INTEGRATIONS_KEY_RATE_LIMITER'
+];
 
 /**
  * the whole check, against a root so the spec beside this file can hold every branch in a temp

@@ -144,10 +144,11 @@
 		}
 	],
 
-	// the three buckets this app charges: the whole public surface, the one endpoint on it that
-	// takes money, and the staff sign-in. CLAUDE.md names rate limiting as one of the things an
-	// endpoint on `/api/v1` owes before it ships; the sign-in is not on that surface and is here
-	// because it compares a single deploy-time secret for anyone who asks.
+	// the four buckets this app charges: the whole public surface, the one endpoint on it that
+	// takes money, the staff sign-in, and each key on the read API. CLAUDE.md names rate limiting
+	// as one of the things an endpoint on `/api/v1` owes before it ships; the sign-in is not on that
+	// surface and is here because it compares a single deploy-time secret for anyone who asks, and
+	// the read API's is here because a key reads donor records as fast as it is answered.
 	//
 	// this deployment answers anonymous writes on three paths, not one: `POST /api/v1/forms/:id/
 	// donations`, the sign-in, and `POST /api/stripe/webhook`. the webhook is the one with no
@@ -159,7 +160,7 @@
 	// is account-wide, so two bindings naming one share a count for a given key — donors reading a
 	// form would spend the sign-in's bucket, and a scanner on the public api would lock the only
 	// admin out. account-wide is also across Workers, so two deployments of this app in one account
-	// share all three of these; the keys are named after what they bound
+	// share all four of these; the keys are named after what they bound
 	// (src/lib/server/api/rate-limit.ts) rather than left to the namespace to keep apart, which is
 	// what stops two surfaces metered through one binding from eating each other's count.
 	//
@@ -169,7 +170,7 @@
 	// action, which is the one site that spends that bucket. what
 	// happens when one of these bindings is missing, and what happens when the edge attributes no
 	// address to a caller, are both stated in src/lib/server/api/rate-limit.ts rather than at the
-	// call sites. `src/lib/server/api/rate-limit.config.spec.ts` holds all three to this file, and
+	// call sites. `src/lib/server/api/rate-limit.config.spec.ts` holds all four to this file, and
 	// `test` runs ahead of the deploy.
 	"ratelimits": [
 		{
@@ -280,6 +281,31 @@
 				"limit": 10,
 				"period": 60
 			}
+		},
+		{
+			"name": "INTEGRATIONS_KEY_RATE_LIMITER",
+
+			// a namespace of its own, for the reason given above this block.
+			"namespace_id": "7415",
+
+			"simple": {
+				// per API key per minute on `/integrations/v1`, keyed on the admitted key's row
+				// (`integrationsKeyRateLimitKey` in src/lib/server/api/rate-limit.ts) — so two
+				// systems calling from one host hold two budgets, and one busy or leaked key cannot
+				// starve another or read the database flat out.
+				//
+				// two a second, sized against the caller this surface has: a sync job paging
+				// through gifts, where every request is one page. that is well above a job reading
+				// a page at a time and waiting on its own writes, and a leaked key reads no faster
+				// than it however many addresses it is presented from.
+				//
+				// the refusal names this number to the integrator
+				// (`keyRateLimitRefusal` in src/lib/server/integrations/surface.ts), and
+				// src/lib/server/api/rate-limit.config.spec.ts holds the two equal. the same two
+				// caveats as the others: per Cloudflare location, and per account.
+				"limit": 120,
+				"period": 60
+			}
 		}
 	],
 
@@ -338,8 +364,7 @@
 				}
 			],
 
-			// the same four buckets, the same three limits and the same probe, under four namespaces
-			// of their own.
+			// the same four buckets and the same four limits, under four namespaces of their own.
 			//
 			// the numbers are copied so that a rehearsal refuses where the real deployment would.
 			// the namespace ids are not, and that is what this whole repetition is for: a namespace
@@ -382,6 +407,14 @@
 					"namespace_id": "3823",
 					"simple": {
 						"limit": 10,
+						"period": 60
+					}
+				},
+				{
+					"name": "INTEGRATIONS_KEY_RATE_LIMITER",
+					"namespace_id": "3824",
+					"simple": {
+						"limit": 120,
 						"period": 60
 					}
 				}
