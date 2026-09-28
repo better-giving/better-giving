@@ -7,7 +7,7 @@ import { postableId } from '../db/accounts';
 import type { Db } from '../db/client';
 import { form, page } from '../db/schema';
 
-// a page and its owned settings row, put in for a spec that drafts on it. not a spec itself — no
+// a page and its owned settings row, put in for a spec that needs one. not a spec itself — no
 // pool's `include` matches this name — and nothing in the app imports it.
 
 export const SETTINGS = {
@@ -68,6 +68,29 @@ export async function insertPage(
 		.returning({ id: page.id });
 	if (!row) throw new Error('inserting the fixture page returned no row');
 	return row.id;
+}
+
+/**
+ * a campaign in `state` put over the existing settings row `formId`, for a spec whose row is already
+ * written and which needs a page to own it.
+ */
+export async function campaignOwning(
+	formId: string,
+	state: 'never_published' | 'ended'
+): Promise<void> {
+	await env.DB.prepare(
+		`insert into page (id, type, name, slug, state, form_id, draft, published, created_at, updated_at)
+		 values (?, 'campaign', ?, ?, ?, ?, '{}', ?, 0, 0)`
+	)
+		.bind(
+			crypto.randomUUID(),
+			CAMPAIGN_NAME,
+			`winter-coats-${(sequence += 1)}`,
+			state,
+			formId,
+			state === 'ended' ? '{}' : null
+		)
+		.run();
 }
 
 /** a Workers AI binding answering each call with the next of `replies`, in the free model's format. */

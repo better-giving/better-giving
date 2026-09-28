@@ -21,7 +21,7 @@ import { PROCESSOR_LABELS, processorOf, type ProcessorName } from '../payments/p
 import { readActivePrograms, readProgram } from '../programs/queries';
 import { redactPublicId } from '../../redact';
 import type { FormRecord } from './form-input';
-import { readForm } from './queries';
+import { readForm, readOwningPage, type OwningPage } from './queries';
 
 // one `form` row plus this deployment's own details, as the config `GET /api/v1/forms/:id/config`
 // answers with — or a refusal saying which value stopped it.
@@ -57,6 +57,8 @@ import { readForm } from './queries';
  * a member per *screen*, not per check. each of the six carries exactly one `fix`, and two checks
  * whose fix is the same sentence are the same member — so the branches below outnumber the
  * vocabulary on purpose, with the message saying which value and the code saying where to go.
+ * `form_not_published` alone has a second fix: a campaign's row is unpublished all the same, and
+ * its fix names Campaigns where a form's names Forms.
  */
 export const PUBLISHED_CONFIG_REFUSALS = [
 	'form_not_found',
@@ -112,6 +114,11 @@ export interface PublishedConfigSources {
 	/** the id as the request spelled it, so a not-found message can quote it back. */
 	readonly id: string;
 	readonly form: FormRecord | null;
+	/**
+	 * the page whose donation settings `form` is, or `null` for a form of its own: a page's row is
+	 * published from that page rather than set live under Forms, so the draft refusal names it.
+	 */
+	readonly owner: OwningPage | null;
 	readonly profile: OrgProfile | null;
 	readonly env: ConfigEnv;
 	/**
@@ -225,6 +232,7 @@ export async function readPublishedConfig(
 		return publishedConfig({
 			id,
 			form: null,
+			owner: null,
 			profile: null,
 			env,
 			cadences: [],
@@ -234,14 +242,15 @@ export async function readPublishedConfig(
 		});
 	}
 
-	const [profile, cadences, rails, coins, program] = await Promise.all([
+	const [owner, profile, cadences, rails, coins, program] = await Promise.all([
+		readOwningPage(db, form.id),
 		readOrgProfile(db),
 		readCadences(),
 		readRails(),
 		readCoins(),
 		readFormProgram(db, form)
 	]);
-	return publishedConfig({ id, form, profile, env, cadences, rails, coins, program });
+	return publishedConfig({ id, form, owner, profile, env, cadences, rails, coins, program });
 }
 
 /**
@@ -282,7 +291,7 @@ async function readFormProgram(db: Db, form: FormRecord): Promise<Program | null
  * ones are about a deployment they may not be able to see at all.
  */
 export function publishedConfig(sources: PublishedConfigSources): PublishedConfigResult {
-	const { id, form } = sources;
+	const { id, form, owner } = sources;
 
 	if (form === null) {
 		return refusal(
@@ -295,8 +304,10 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 	}
 
 	// only a live form serves. the two other statuses are refused separately because the way out
-	// of each is a different screen: a draft is published from the form's own edit page, and a
-	// retired form cannot be published at all — the three `updateForm*` group writes and
+	// of each is a different screen: a draft is published from the form's own edit page — or, where
+	// a campaign owns the row, from Campaigns, because the Forms screen 404s a page's row and
+	// `endCampaign` in ../pages/queries.ts is what put an ended one back to draft — and a retired
+	// form cannot be published at all — the three `updateForm*` group writes and
 	// `archiveForm` in ./queries.ts all refuse a row with `archived_at` set and nothing here
 	// clears it, so the way forward is
 	// a new form and a new snippet.
@@ -304,6 +315,22 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 	// `status` decides both, though `archived_at` is the column that records the retirement:
 	// `archiveForm` writes the pair in one statement precisely so they cannot come apart, and
 	// `FormRecord` carries the status rather than the timestamp.
+	if (form.status === 'draft' && owner?.type === 'campaign') {
+		return owner.state === 'ended'
+			? refusal(
+					form,
+					'form_not_published',
+					`Form \`${redactPublicId(form.id)}\` holds the donation settings of a campaign that has ended, so it takes no new gifts.`,
+					'An ended campaign takes gifts again once it is published again, from Campaigns in /admin.'
+				)
+			: refusal(
+					form,
+					'form_not_published',
+					`Form \`${redactPublicId(form.id)}\` holds a campaign's donation settings, and that campaign is not published yet.`,
+					'Publish the campaign from Campaigns in /admin; its settings take gifts from then on.'
+				);
+	}
+
 	if (form.status === 'draft') {
 		return refusal(
 			form,

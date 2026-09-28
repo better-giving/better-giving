@@ -68,8 +68,8 @@ beforeEach(async () => {
 	// after the forms, because `form.program_id` points here and nothing carries an ON DELETE.
 	await env.DB.prepare('delete from program').run();
 	await saveIdentity();
-	// every case starts from a deployment that has somewhere to serve a form, because a deployment
-	// with no site listed can make no form at all — the cases about that state say so themselves.
+	// every case starts from a deployment with sites to tick; the cases about a deployment that lists
+	// none say so themselves.
 	await listSites('https://acme.org', 'https://give.acme.org');
 });
 
@@ -366,8 +366,7 @@ describe('/admin/forms/new load', () => {
 
 	it('draws the group on a deployment with no site listed rather than hiding it', async () => {
 		// the empty list is a real state and it is what the group says something about — the boxes are
-		// still where the operator will come back and tick one. what it costs is the submit, which the
-		// page draws switched off and the action refuses behind.
+		// still where the operator will come back and tick one.
 		await listSites();
 		expect((await load()).sites).toEqual([]);
 	});
@@ -510,11 +509,11 @@ describe('/admin/forms/new — the sites tick boxes', () => {
 		expect(stored?.allowedOrigins).toEqual(['https://acme.org', 'https://give.acme.org']);
 	});
 
-	it('makes a form with no site ticked, because the donation page is where it loads', async () => {
+	it('makes a form with no site ticked, ahead of the site it goes on', async () => {
 		// the group with nothing ticked submits no key at all, which is the body a drawn page actually
 		// sends — `.prefault([])` is what feeds that absence through the rule, and the rule has nothing
-		// to say about it. every form this deployment serves loads on the donation page it answers on
-		// its own address, so a form on no site is an ordinary form.
+		// to say about it. a form is made ahead of the site it goes on, so a form on no site is an
+		// ordinary form.
 		const withoutSites = submission();
 		delete withoutSites.allowed_origins;
 		const { redirect, failure } = await save(withoutSites);
@@ -525,10 +524,8 @@ describe('/admin/forms/new — the sites tick boxes', () => {
 	});
 
 	it('makes a form on a deployment that lists no site at all', async () => {
-		// the deployment an organisation with no website of its own has: nothing to tick, and its forms
-		// given on the donation page this deployment answers on its own address. it is the state set-up
-		// is allowed to finish in, so it must be one a form can be made in — and there is no
-		// arrangement left in which a form would load nowhere.
+		// the deployment set-up may finish in: nothing to tick yet. a form is made ahead of the site it
+		// goes on, so this must be a state a form can be made in.
 		await listSites();
 
 		const empty = submission();

@@ -3,7 +3,7 @@ import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { FORM_CURRENCY } from '../../forms/amounts';
 import { postableId } from '../db/accounts';
 import type { Db } from '../db/client';
-import { form, type Form, mintFormId, page, program } from '../db/schema';
+import { form, type Form, mintFormId, page, type PageState, program } from '../db/schema';
 import type { PageType } from '../../page/keys';
 import type {
 	FormRecord,
@@ -295,30 +295,32 @@ export async function readForm(db: Db, id: string): Promise<StoredForm | null> {
 
 /**
  * the page whose donation settings a `form` row is, as a refusal names it: the Donation page has no
- * name (`page_name_check` in ../db/schema.ts), a campaign always has one.
+ * name (`page_name_check` in ../db/schema.ts), a campaign always has one. a campaign's `state` is
+ * what says why its row may not be live — never published, or ended.
  */
 export type OwningPage =
 	| { readonly type: 'donation_page' }
-	| { readonly type: 'campaign'; readonly name: string };
+	| { readonly type: 'campaign'; readonly name: string; readonly state: PageState };
 
 /** the owning page off a row joined to `page`, or `null` for a row no page names. */
 function owningPage(row: {
 	pageType: PageType | null;
 	pageName: string | null;
+	pageState: PageState | null;
 }): OwningPage | null {
 	if (row.pageType === null) return null;
 	if (row.pageType === 'donation_page') return { type: 'donation_page' };
-	if (row.pageName === null) {
-		// unreachable: `page_name_check` refuses a campaign without a name.
-		throw new Error('a campaign page has no name');
+	if (row.pageName === null || row.pageState === null) {
+		// unreachable: `page_name_check` refuses a campaign without a name, and `state` is not null.
+		throw new Error('a campaign page has no name or no state');
 	}
-	return { type: 'campaign', name: row.pageName };
+	return { type: 'campaign', name: row.pageName, state: row.pageState };
 }
 
 /** the page that owns the `form` row `id`, or `null` when no page names it or no row has that id. */
 export async function readOwningPage(db: Db, id: string): Promise<OwningPage | null> {
 	const [row] = await db
-		.select({ pageType: page.type, pageName: page.name })
+		.select({ pageType: page.type, pageName: page.name, pageState: page.state })
 		.from(page)
 		.where(eq(page.formId, id))
 		.limit(1);
@@ -421,7 +423,12 @@ function writable(db: Db, id: string, version: Date) {
  */
 async function missed(db: Db, id: string): Promise<'gone' | 'stale' | PageOwned> {
 	const [row] = await db
-		.select({ archivedAt: form.archivedAt, pageType: page.type, pageName: page.name })
+		.select({
+			archivedAt: form.archivedAt,
+			pageType: page.type,
+			pageName: page.name,
+			pageState: page.state
+		})
 		.from(form)
 		.leftJoin(page, eq(page.formId, form.id))
 		.where(eq(form.id, id))
