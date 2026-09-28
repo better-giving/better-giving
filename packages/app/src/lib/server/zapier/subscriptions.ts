@@ -18,7 +18,7 @@ import { eachAtMost } from '../outbox/each-at-most';
 // **ending one drops what it was still owed in the same batch**. a pending row behind an ended
 // subscription is an event queued for nobody, and the delivery run would carry on posting it to a
 // hook Zapier has let go of. `endSubscriptionStatements` is the one place that pairs the two, and
-// every end — Zapier unsubscribing, a hook answering 410 or refusing for three days, the key being
+// every end — Zapier unsubscribing, a hook answering 410 or failing for three days, the key being
 // replaced, a hook moving trigger — goes through it.
 
 /** a Zap asking for `trigger`'s events at `hookUrl`, already checked by the route. */
@@ -196,7 +196,7 @@ export async function pauseZaps(
 	return { paused, notPaused: hookUrls.length - paused };
 }
 
-/** pauses in flight at once, as ./deliver.ts holds its posts to. */
+/** pauses in flight at once. */
 const PAUSES_AT_ONCE = 6;
 
 /** how long one hook is given to answer a pause. */

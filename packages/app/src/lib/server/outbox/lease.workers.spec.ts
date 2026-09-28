@@ -1,9 +1,9 @@
 import { env } from 'cloudflare:test';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import { contact, donation, payment, zapierDelivery } from '../db/schema';
+import { contact, donation, payment, zapierDelivery, zapierSubscription } from '../db/schema';
 import { defineOutbox, type LeaseTerms } from './lease';
 
 // the lease module against a real D1, over `zapier_delivery` rows written here by hand. the table
@@ -224,6 +224,23 @@ describe('land()', () => {
 				updated_at: now
 			}
 		]);
+	});
+
+	it('commits the statements handed with an outcome together with it, or neither', async () => {
+		const now = Date.now();
+		await owe(backlog(1, now));
+		const claim = await outboxOf().claim(db, new Date(now), { returning });
+		const leased = await rowsNow();
+		const [row] = claim.rows;
+		if (row === undefined) throw new Error('one row was owed');
+		const refused = db
+			.update(zapierSubscription)
+			.set({ endedReason: sql`'no such reason'` })
+			.where(eq(zapierSubscription.id, subscriptionId));
+
+		await expect(claim.land(row, { status: 'sent', attempts: 1 }, [refused])).rejects.toThrow();
+
+		expect(await rowsNow()).toEqual(leased);
 	});
 
 	it('writes nothing to a row a later run has taken over', async () => {

@@ -1,4 +1,5 @@
 import { and, asc, eq, isNull, lte, or, type SQL, sql } from 'drizzle-orm';
+import type { BatchItem } from 'drizzle-orm/batch';
 import type { SelectResultFields } from 'drizzle-orm/query-builders/select.types';
 import type {
 	SelectedFieldsFlat,
@@ -89,8 +90,12 @@ export type Claim<T extends OutboxTable, Row> = {
 	readonly rows: readonly Row[];
 	/** when these rows stop being this run's. */
 	readonly lease: Date;
-	/** `outcome` written and the lease given back, only while this run holds it and the row is owed. */
-	land(row: Row, outcome: Outcome<T>): Promise<void>;
+	/**
+	 * `outcome` written and the lease given back, only while this run holds it and the row is owed.
+	 * `also` commits in the same `batch()` as the outcome, or neither does — and is written whether
+	 * or not the outcome lands, so it holds only what is true of the attempt itself.
+	 */
+	land(row: Row, outcome: Outcome<T>, also?: readonly BatchItem<'sqlite'>[]): Promise<void>;
 	/**
 	 * `work` over the rows, `lanes` at once, none started past the run's last start. a row not
 	 * started stays leased and comes back when the lease does. a lane that throws stops that lane;
@@ -131,11 +136,13 @@ export function defineOutbox<T extends OutboxTable, K extends Key>(spec: OutboxS
 		const claimed = (rows: readonly Row[]): Claim<T, Row> => ({
 			rows,
 			lease,
-			async land(row, outcome) {
-				await db
+			async land(row, outcome, also = []) {
+				const landed = db
 					.update(table as SQLiteTable)
 					.set({ ...outcome, leasedUntil: null, updatedAt: now })
 					.where(heldBy(row));
+				if (also.length === 0) await landed;
+				else await db.batch([landed, ...also]);
 			},
 			async each(work) {
 				await eachAtMost(spec.lanes, rows, async (row) => {

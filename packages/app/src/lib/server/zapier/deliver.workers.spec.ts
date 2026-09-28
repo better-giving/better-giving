@@ -127,18 +127,20 @@ type Post = { readonly url: string; readonly body: Record<string, unknown> };
 
 /**
  * a `fetch` standing in for Zapier's hooks: each url answers with the status `answer` gives it
- * (200 by default) and every post is recorded.
+ * (200 by default). every post is recorded, and every DELETE — a pause — apart from them.
  */
 function hooksAnswering(answer: (url: string) => number | Error = () => 200) {
 	const posts: Post[] = [];
+	const pauses: string[] = [];
 	const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = String(input);
-		posts.push({ url, body: JSON.parse(String(init?.body)) });
+		if (init?.method === 'DELETE') pauses.push(url);
+		else posts.push({ url, body: JSON.parse(String(init?.body)) });
 		const status = answer(url);
 		if (status instanceof Error) throw status;
 		return new Response(status === 200 ? '{"status":"success"}' : 'nope', { status });
 	}) as typeof globalThis.fetch;
-	return { fetch, posts };
+	return { fetch, posts, pauses };
 }
 
 async function deliveryRows() {
@@ -172,7 +174,7 @@ async function markFailingSince(subscriptionId: string, at: number): Promise<voi
 }
 
 const HOOK_FAILED_FOR_THREE_DAYS =
-	'Not sent: its hook had refused every post for three days, and its subscription was ended.';
+	'Not sent: every post to its hook had failed for three days, and its subscription was ended.';
 
 describe('sendDueZapierEvents()', () => {
 	it('posts a due gift to its hook once and marks it sent', async () => {
@@ -425,7 +427,7 @@ describe('sendDueZapierEvents()', () => {
 		]);
 	});
 
-	it('marks when a hook began refusing, and keeps that mark through its later refusals', async () => {
+	it('marks when a hook began failing, and keeps that mark through its later failures', async () => {
 		const hook = await listen();
 		await settle();
 		const zapier = hooksAnswering(() => 503);
@@ -438,18 +440,19 @@ describe('sendDueZapierEvents()', () => {
 		expect(await failingSince(hook.id)).toBe(now);
 	});
 
-	it('counts no post that went unanswered toward the three days', async () => {
+	it('counts a post that went unanswered toward the three days', async () => {
 		const hook = await listen();
 		await settle();
 		const unreachable = hooksAnswering(() => new TypeError('Network connection lost.'));
+		const now = Date.now() + 1_000;
 
-		await sendDueZapierEvents({ db, fetch: unreachable.fetch }, new Date(Date.now() + 1_000));
+		await sendDueZapierEvents({ db, fetch: unreachable.fetch }, new Date(now));
 
 		expect(unreachable.posts).toHaveLength(1);
-		expect(await failingSince(hook.id)).toBe(null);
+		expect(await failingSince(hook.id)).toBe(now);
 	});
 
-	it('ends a hook refusing for three days and drops what it was owed, the other Zaps untouched', async () => {
+	it('ends a hook failing for three days, drops what it was owed and pauses its Zap, the other Zaps untouched', async () => {
 		const failing = await listen();
 		const live = await listen();
 		await settle();
@@ -463,6 +466,8 @@ describe('sendDueZapierEvents()', () => {
 		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(now + HOUR));
 
 		expect(zapier.posts).toHaveLength(posted);
+		// the pause is answered 500 like every post, and the end stands regardless.
+		expect(zapier.pauses).toEqual([failing.hookUrl]);
 		const { results: subscriptions } = await env.DB.prepare(
 			'select id, ended_reason from zapier_subscription order by id'
 		).all<{ id: string; ended_reason: string | null }>();
@@ -481,7 +486,7 @@ describe('sendDueZapierEvents()', () => {
 		]);
 	});
 
-	it('keeps a hook refusing for a moment under three days', async () => {
+	it('keeps a hook failing for a moment under three days', async () => {
 		const hook = await listen();
 		await settle();
 		const now = Date.now() + 1_000;
@@ -495,7 +500,7 @@ describe('sendDueZapierEvents()', () => {
 		expect(await failingSince(hook.id)).toBe(now - 72 * HOUR + 1);
 	});
 
-	it('starts the three days over when a refusing hook takes a post', async () => {
+	it('starts the three days over when a failing hook takes a post', async () => {
 		const hook = await listen();
 		await settle();
 		const now = Date.now() + 1_000;
