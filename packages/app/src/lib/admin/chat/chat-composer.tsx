@@ -1,8 +1,16 @@
 import { ComposerPrimitive, ThreadPrimitive, useAui, useAuiState } from '@assistant-ui/react';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Mark } from '@better-giving/operator/components/status/Mark';
-import { type FormEvent, type KeyboardEvent, type ReactNode, useRef } from 'react';
-import type { ChatAttachment } from './chat-sheet';
+import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import {
+	type FormEvent,
+	type KeyboardEvent,
+	type ReactNode,
+	useEffect,
+	useId,
+	useRef
+} from 'react';
+import type { ChatAttachment, ChatUnsent } from './chat-sheet';
 
 function stateOf(attachment: ChatAttachment) {
 	switch (attachment.state) {
@@ -68,22 +76,40 @@ function Attachment({
 
    a suggestion sends its own words and leaves a draft in the box alone. the suggestions go while a
    reply is written, so the press puts the focus in the box before it sends, which is where the
-   reader is left when the row they pressed in is gone; Remove on a photo does the same. */
+   reader is left when the row they pressed in is gone; Remove on a photo does the same.
+
+   a refused send puts its words back only into an empty box — whatever was typed while it was
+   away is the newer draft — and moves the focus into the box, where its reason under it is read
+   out with it. that region is on the page before it has anything to say, so it is announced when
+   it does. */
 export function ChatComposer({
 	running,
 	suggestions,
 	attachment,
-	attach
+	attach,
+	unsent,
+	reason
 }: {
 	running: boolean;
 	suggestions: readonly string[];
 	attachment: ChatAttachment | undefined;
 	attach: ((composer: { held: boolean }) => ReactNode) | undefined;
+	/** the refused send, the same object until its words or its reason change. */
+	unsent: ChatUnsent | undefined;
+	/** why the last send was refused, or empty once another send leaves. */
+	reason: string;
 }) {
 	const aui = useAui();
 	const text = useAuiState((s) => s.composer.text).trim();
 	const input = useRef<HTMLTextAreaElement>(null);
 	const focusBox = () => input.current?.focus();
+	const reasonId = useId();
+
+	useEffect(() => {
+		if (unsent === undefined) return;
+		if (aui.composer.getState().text.trim() === '') aui.composer.setText(unsent.text);
+		input.current?.focus();
+	}, [aui, unsent]);
 
 	const landing = attachment?.state === 'resizing' || attachment?.state === 'uploading';
 	const canSend = !running && !landing && (text !== '' || attachment?.state === 'ready');
@@ -136,6 +162,7 @@ export function ChatComposer({
 					className="adm-composer__input"
 					aria-label="Message"
 					placeholder="Ask for a change"
+					aria-describedby={reason === '' ? undefined : reasonId}
 					onKeyDown={holdEnter}
 				/>
 				<div className="adm-composer__row">
@@ -154,6 +181,13 @@ export function ChatComposer({
 					/>
 				</div>
 			</ComposerPrimitive.Root>
+			<p className="adm-chat__refusal" id={reasonId} role="status">
+				{reason === '' ? null : (
+					<StatusWord register="momentary" blocked mark="circle-alert">
+						{reason}
+					</StatusWord>
+				)}
+			</p>
 			<p className="adm-vh" role="status">
 				{attachment === undefined ? '' : stateOf(attachment)}
 			</p>
