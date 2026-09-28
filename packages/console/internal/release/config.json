@@ -17,12 +17,13 @@
 		"0011_quickbooks_sync_realm.sql",
 		"0012_payment_provider_reference.sql",
 		"0013_store_pages_organisation_and_chat.sql",
-		"0014_image_metadata_and_bytes.sql"
+		"0014_image_metadata_and_bytes.sql",
+		"0015_chat_turn_note.sql"
 	],
 	"crons": [
 		"*/30 * * * *",
 		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "3588aef6d8184e601b61368e5d9edeb52f99b322"
+	"commit": "00d4c4fbdf27c55faa6fbc6a5416f5c03bfaa854"
 }
