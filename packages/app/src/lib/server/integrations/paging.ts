@@ -27,13 +27,14 @@ import { INTEGRATIONS_BASE_PATH, integrationsJson, integrationsRefusal } from '.
 //
 // **`resume_updated_since` is where a walk of changes that has reached its end resumes**, and it
 // is answered on that last page alone: null on every page before it and throughout the
-// newest-first walk. it is a minute before the last `updated_at` the page served — the instant sent
-// where the walk served nothing — and a caller keeping a copy stores it and sends it as the next
-// walk's `updated_since`. the minute is there because a change's time is stamped when its write is
-// built, a moment before the write commits: a write stamped before the last row served can commit
-// after the read that served it, and a walk resumed at that row's own time would pass it over for
-// good. a change committing more than a minute after its stamp can still be passed over. the rows
-// the overlap serves again are answered again, and the caller's one row per `id` absorbs them.
+// newest-first walk. it is a minute before the time the page's last row was ordered by — the
+// instant sent where the walk served nothing — and a caller keeping a copy stores it and sends it
+// as the next walk's `updated_since`. the minute is there because a change's time is stamped when
+// its write is built, a moment before the write commits: a write stamped before the last row served
+// can commit after the read that served it, and a walk resumed at that row's own time would pass
+// it over for good. a change committing more than a minute after its stamp can still be passed
+// over. the rows the overlap serves again are answered again, and the caller's one row per `id`
+// absorbs them.
 //
 // every refusal is a 400 naming the value it refused and what to send instead, through
 // ./surface.ts, so an integrator's code switches on the code and whoever reads the body can act on
@@ -48,8 +49,15 @@ const PAGE_SIZE_CEILING = 100;
 /** where a page ends in its order: the last row's sort time in epoch milliseconds, and its id. */
 export type Keyset = { readonly at: number; readonly id: string };
 
-/** the rows of one page, and where the next page starts, or null where this is the last. */
-export type PageOf<T> = { readonly rows: readonly T[]; readonly next: Keyset | null };
+/**
+ * the rows of one page; where the next page starts, or null where this is the last; and where
+ * this one ends in the list's order, or null where it served nothing.
+ */
+export type PageOf<T> = {
+	readonly rows: readonly T[];
+	readonly next: Keyset | null;
+	readonly last: Keyset | null;
+};
 
 /**
  * a list's two orders, each named as its cursors carry it: newest first by when the row came to
@@ -93,26 +101,22 @@ export function readPageQuery(url: URL, orders: ListOrders): PageQuery | Respons
  * `page` as a list answers it: its cursor issued for the order `query` read it in, and on the last
  * page of a walk of changes, where the next walk resumes.
  */
-export function listAnswer<T extends { readonly updated_at: string }>(
-	page: PageOf<T>,
-	orders: ListOrders,
-	query: PageQuery
-): Response {
+export function listAnswer<T>(page: PageOf<T>, orders: ListOrders, query: PageQuery): Response {
 	return integrationsJson({
 		data: page.rows,
 		next_cursor: page.next === null ? null : encodeCursor(orders[query.order], page.next),
 		resume_updated_since:
-			query.order === 'changed' && page.next === null ? resumeFrom(page.rows, query) : null
+			query.order === 'changed' && page.next === null ? resumeFrom(page.last, query) : null
 	});
 }
 
-function resumeFrom(
-	rows: readonly { readonly updated_at: string }[],
-	query: PageQuery & { order: 'changed' }
-): string {
-	const last = rows.at(-1);
-	if (last === undefined) return query.since.toISOString();
-	return new Date(Date.parse(last.updated_at) - RESUME_MARGIN_MS).toISOString();
+/**
+ * a minute before the time the page's last row was ordered by: the `updated_at` it was served
+ * with can be later, where a change committed between reading the order and reading the rows.
+ */
+function resumeFrom(last: Keyset | null, query: PageQuery & { order: 'changed' }): string {
+	if (last === null) return query.since.toISOString();
+	return new Date(last.at - RESUME_MARGIN_MS).toISOString();
 }
 
 /** the columns of a row that stores both times a list walks it by. */
@@ -157,10 +161,10 @@ export function storedTimesWalk(
  * served as that page's first.
  */
 export function pageOf<T>(rows: readonly T[], limit: number, keyOf: (row: T) => Keyset): PageOf<T> {
-	if (rows.length <= limit) return { rows, next: null };
 	const served = rows.slice(0, limit);
-	const last = served[served.length - 1];
-	return { rows: served, next: last === undefined ? null : keyOf(last) };
+	const lastServed = served.at(-1);
+	const last = lastServed === undefined ? null : keyOf(lastServed);
+	return { rows: served, next: rows.length > limit ? last : null, last };
 }
 
 /**

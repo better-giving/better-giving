@@ -33,8 +33,8 @@ import { type PageOf, type PageQuery, pageOf, storedTimesWalk } from './paging';
 //
 // **two orders**, the gifts list's (./gift.ts's header): with no `updated_since`, newest first by
 // when the commitment was recorded, then id; with it, every recurring gift whose `updated_at` is at
-// or after it, oldest change first, then id — resumed as that header says, from a minute before
-// the last `updated_at` served, since the stamp is taken as the write is built.
+// or after it, oldest change first, then id. a caller keeping a copy resumes from the
+// `resume_updated_since` the last page of a walk of changes answers (./paging.ts's header).
 
 /**
  * where a recurring gift stands, in the dashboard's words. **the set may gain values**: a reader
@@ -102,6 +102,7 @@ export async function readRecurringGiftPage(
 		.limit(query.limit + 1);
 	const page = pageOf(rows, query.limit, walk.keyOf);
 	return {
+		...page,
 		rows: page.rows.map((row) => ({
 			id: row.id,
 			donor_id: row.contactId,
@@ -113,7 +114,6 @@ export async function readRecurringGiftPage(
 			next_charge_at: row.nextChargeAt?.toISOString() ?? null,
 			started_at: row.startedAt.toISOString(),
 			updated_at: row.updatedAt.toISOString()
-		})),
-		next: page.next
+		}))
 	};
 }

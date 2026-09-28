@@ -26,8 +26,8 @@ import { type PageOf, type PageQuery, pageOf, storedTimesWalk } from './paging';
 //
 // **two orders**, the gifts list's (./gift.ts's header): with no `updated_since`, newest first by
 // when the donor was first recorded, then id; with it, every donor whose `updated_at` is at or
-// after it, oldest change first, then id — resumed as that header says, from a minute before the
-// last `updated_at` served, since the stamp is taken as the write is built.
+// after it, oldest change first, then id. a caller keeping a copy resumes from the
+// `resume_updated_since` the last page of a walk of changes answers (./paging.ts's header).
 
 /** one donor, as the read API's donors list answers it. */
 export type ApiDonor = {
@@ -67,6 +67,7 @@ export async function readDonorPage(db: Db, query: PageQuery): Promise<PageOf<Ap
 		.limit(query.limit + 1);
 	const page = pageOf(rows, query.limit, walk.keyOf);
 	return {
+		...page,
 		rows: page.rows.map((row) => ({
 			id: row.id,
 			name: row.displayName,
@@ -74,7 +75,6 @@ export async function readDonorPage(db: Db, query: PageQuery): Promise<PageOf<Ap
 			consent: consentState(row.consentedToContact),
 			created_at: row.createdAt.toISOString(),
 			updated_at: row.updatedAt.toISOString()
-		})),
-		next: page.next
+		}))
 	};
 }

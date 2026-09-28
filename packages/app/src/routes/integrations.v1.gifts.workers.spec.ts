@@ -533,6 +533,26 @@ describe('where the next walk of changes resumes', () => {
 		expect(changed.map((gift) => gift.id)).toContain(committedLate.paymentId);
 	});
 
+	it('is taken from the order the page was read in, so a change committing while its gifts were read passes nothing over', async () => {
+		const donorId = await seedDonor();
+		await seedGift(donorId, 10);
+		const refunded = await seedGift(donorId, 12);
+		const url = `${GIFTS}?updated_since=2026-09-01T00:00:00Z`;
+		const env = envWritingAfterTheOrder(() => seedRefund(refunded, 20, 5_000));
+
+		const response = await giftsRoute(new Request(url, bearer(await apiKey())), { env });
+		const page = (await response.json()) as Page;
+		const committedLate = await seedGift(donorId, 15);
+
+		expect(page.data.at(-1)).toMatchObject({
+			id: refunded.paymentId,
+			updated_at: '2026-09-20T12:00:00.000Z'
+		});
+		expect(page.resume_updated_since).toBe('2026-09-12T11:59:00.000Z');
+		const changed = await changedSince(String(page.resume_updated_since));
+		expect(changed.map((gift) => gift.id)).toContain(committedLate.paymentId);
+	});
+
 	it('is never answered in the newest-first walk', async () => {
 		const donorId = await seedDonor();
 		for (let day = 10; day <= 12; day++) await seedGift(donorId, day);
@@ -926,6 +946,44 @@ describe('when a key was last used', () => {
 		expect(await lastUsed(minted.id)).toEqual(first);
 	});
 });
+
+/**
+ * the pool's env with `write` run once, after the statement that reads a walk of changes' order
+ * and before the next statement runs — the moment between the two reads of a page of gifts.
+ */
+function envWritingAfterTheOrder(write: () => Promise<void>): Env {
+	let ordered = false;
+	let written: Promise<void> | undefined;
+	const gated = (statement: D1PreparedStatement, orders: boolean): D1PreparedStatement =>
+		new Proxy(statement, {
+			get(target, property) {
+				const value: unknown = Reflect.get(target, property);
+				if (typeof value !== 'function') return value;
+				if (property === 'bind')
+					return (...values: unknown[]) => gated(target.bind(...values), orders);
+				return async (...args: unknown[]) => {
+					if (ordered) {
+						written ??= write();
+						await written;
+					}
+					const answer: unknown = await value.apply(target, args);
+					if (orders) ordered = true;
+					return answer;
+				};
+			}
+		});
+	const db = new Proxy(env.DB, {
+		get(target, property) {
+			if (property === 'prepare')
+				return (sql: string) => gated(target.prepare(sql), /\) "changes"/.test(sql));
+			const value: unknown = Reflect.get(target, property);
+			return typeof value === 'function' ? value.bind(target) : value;
+		}
+	});
+	return new Proxy(env, {
+		get: (target, property) => (property === 'DB' ? db : Reflect.get(target, property))
+	}) as Env;
+}
 
 /**
  * the pool's env with every statement prepared on its D1 pushed onto `statements`, and run there
