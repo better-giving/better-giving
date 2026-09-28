@@ -7,7 +7,7 @@ import { database, platform } from '../context';
 import type { DonorPolicyHandle } from '../document-policy';
 import type { Route } from './+types/donate';
 
-// the Donation page: the organisation's own donor page, at /donate on the deployment.
+// the donation page: the organisation's own donor page, at /donate on the deployment.
 //
 // **it is a donor screen rather than an operator screen**, and everything odd about this file
 // follows from that. the reader is a person who was handed a link, so a refusal is a sentence rather
@@ -54,7 +54,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 
 /**
  * the refusal's `cache-control`, carried out of the loader: a `data()`'s headers reach a document
- * response only through this export (`getDocumentHeaders` in react-router).
+ * response only through this export (`getDocumentHeaders` in react-router). the drawn page sets
+ * none and takes the framework's default.
  */
 export function headers({ loaderHeaders }: Route.HeadersArgs) {
 	return loaderHeaders;

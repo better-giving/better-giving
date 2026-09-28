@@ -223,7 +223,7 @@ describe('a reply that edits the page', () => {
 			'a campaign takes no program-chooser; only the Donation page does'
 		]
 	])('refuses %s', (_, type, block, reason) => {
-		const current = type === 'campaign' ? campaign() : defaultDonationPage({ name: 'Harbour' });
+		const current = type === 'campaign' ? campaign() : defaultDonationPage();
 		const result = accept(
 			{
 				say: 'Added it.',
@@ -410,7 +410,7 @@ describe('what a reply sets', () => {
 		]
 	])('refuses a %s on the Donation page', (_, set, reason) => {
 		const current = {
-			...defaultDonationPage({ name: 'Harbour' }),
+			...defaultDonationPage(),
 			settings: { ...settings, suggestedAmounts: [], allowedOrigins: [] }
 		};
 		const result = accept({ say: 'Done.', set }, { type: 'donation_page', current, name: null });
@@ -469,7 +469,7 @@ describe('what a reply sets', () => {
 
 	it('refuses a program on the Donation page while its donors choose one', () => {
 		const current = {
-			...defaultDonationPage({ name: 'Harbour' }),
+			...defaultDonationPage(),
 			settings: {
 				...settings,
 				suggestedAmounts: [],

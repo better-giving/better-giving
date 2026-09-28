@@ -16,7 +16,7 @@ import { requestContext } from '../request-context';
 import type { Route } from './+types/donate';
 import * as donatePage from './donate';
 
-// the Donation page at /donate, against the real D1 the pool binds.
+// the donation page at /donate, against the real D1 the pool binds.
 //
 // a workers spec because every answer here is decided from rows — the page, its owned settings row,
 // the organisation's profile and story, the programs — and standing in for D1 would only prove the
@@ -149,6 +149,14 @@ describe('GET /donate on a fresh deployment', () => {
 });
 
 describe('the page /donate draws', () => {
+	// the stored heading is empty, so the title is the organisation's name on the day it is drawn.
+	it('greets donors by the organisation’s name as it stands, after a rename', async () => {
+		await visit();
+		await env.DB.prepare(`update org_profile set legal_name = 'Hope Foundation of Easton'`).run();
+		const html = markup((await visit()).data);
+		expect(block(html, 'title')).toContain('Donate to Hope Foundation of Easton');
+	});
+
 	it('shares its own address on this deployment, with the page title as the message', async () => {
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
@@ -178,6 +186,57 @@ describe('the page /donate draws', () => {
 	});
 });
 
+describe('the organisation’s sharing on /donate', () => {
+	async function share(sharing: unknown): Promise<void> {
+		await env.DB.prepare(
+			`insert into org_presentation (id, sharing, created_at, updated_at) values ('default', ?, 0, 0)`
+		)
+			.bind(JSON.stringify(sharing))
+			.run();
+	}
+
+	it('offers its channels in its order, with its message, and lists its social links', async () => {
+		await share({
+			channels: ['whatsapp', 'x', 'copy-link'],
+			message: 'Every meal counts this winter.',
+			links: [{ label: 'Instagram', href: 'https://instagram.com/hopefoundation' }]
+		});
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.sharing).toEqual({
+			channels: ['whatsapp', 'x', 'copy-link'],
+			message: 'Every meal counts this winter.',
+			url: `${OWN}/donate`
+		});
+		expect(answered.data.view.org.info.links).toEqual([
+			{ label: 'Instagram', href: 'https://instagram.com/hopefoundation' }
+		]);
+	});
+
+	// a link is typed by a person and drawn as an `href`, so anything but http(s) never reaches one.
+	it('draws no social link that is not an http(s) address', async () => {
+		await share({
+			links: [
+				{ label: 'Site', href: 'javascript:alert(1)' },
+				{ label: 'Facebook', href: 'https://facebook.com/hope' }
+			]
+		});
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.org.info.links).toEqual([
+			{ label: 'Facebook', href: 'https://facebook.com/hope' }
+		]);
+	});
+
+	it('reads a part it does not hold, or holds off the rule, as the default', async () => {
+		await share({ channels: ['myspace'] });
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.sharing.channels).toEqual(['facebook', 'email', 'copy-link']);
+		expect(answered.data.view.sharing.message).toBe('Donate to Hope Foundation');
+	});
+});
+
 describe('a published Donation page the read rule refuses', () => {
 	async function publish(document: unknown): Promise<string> {
 		await visit();
@@ -203,9 +262,9 @@ describe('a published Donation page the read rule refuses', () => {
 		{
 			why: 'naming a block its type forbids',
 			document: {
-				...defaultDonationPage({ name: 'Hope Foundation' }),
+				...defaultDonationPage(),
 				blocks: [
-					...defaultDonationPage({ name: 'Hope Foundation' }).blocks,
+					...defaultDonationPage().blocks,
 					{ id: 'goal', type: 'goal-bar', variant: 'bar', background: 'none' }
 				]
 			}

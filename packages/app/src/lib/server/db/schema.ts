@@ -259,9 +259,8 @@ const FORM_ID_ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
 const formId = () => text('id').primaryKey().$defaultFn(mintFormId);
 
 /**
- * a fresh `form.id`, as the column's default mints it. exported for a write that has to name the
- * row before inserting it — a page and its owned settings row go in one `batch()`, and the page's
- * `form_id` cannot be read off a `returning()` inside the same batch.
+ * a fresh `form.id`, as the column's default mints it. `ownedFormInsert` in ../forms/queries.ts
+ * says why a write names one itself.
  */
 export function mintFormId(): string {
 	const bytes = crypto.getRandomValues(new Uint8Array(16));

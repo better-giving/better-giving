@@ -5,9 +5,10 @@
 // each is a page `parsePage` accepts for its own type, held by ./defaults.spec.ts. the look is
 // absent, so both draw in the organisation's own. a block with nothing to show yet — the campaign's
 // goal bar with no goal, its story with a blank body — is placed anyway and leaves itself out at
-// render until it has content. the campaign's title heading is empty, which draws the campaign's
-// name (`BLOCK_DATA.title` in ./catalog.ts). the Donation page's is written out as the words an
-// empty one would draw, so the editor opens on text the operator can change.
+// render until it has content. both title headings are empty, which draws the campaign's name, and
+// on the donation page "Donate to" the organisation's name as it stands when the page is drawn
+// (`BLOCK_DATA.title` in ./catalog.ts, `titleHeading` in ../donate/page-view.tsx) — so a page made
+// before set-up named the organisation, or before a rename, greets donors by today's name.
 //
 // a fresh object per call: the editor changes what it is handed.
 import type { Page } from './catalog';
@@ -16,8 +17,7 @@ const blankStory = () => ({ type: 'doc' as const, content: [{ type: 'paragraph' 
 
 const switchesOff = () => ({ openOnMonthly: false, dedicationOn: false });
 
-/** `org.name` is the organisation's name as a donor reads it, which the title greets them with. */
-export function defaultDonationPage(org: { name: string }): Page {
+export function defaultDonationPage(): Page {
 	return {
 		layout: 'box-right',
 		palette: 'tint',
@@ -28,7 +28,7 @@ export function defaultDonationPage(org: { name: string }): Page {
 				type: 'title',
 				variant: 'left',
 				background: 'none',
-				heading: `Donate to ${org.name}`
+				heading: ''
 			},
 			{ id: 'programs', type: 'program-chooser', variant: 'cards', background: 'none' },
 			{ id: 'donate', type: 'donation-box', background: 'none' },

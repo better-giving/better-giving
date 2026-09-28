@@ -189,12 +189,11 @@ const SAMPLE = (
 // form happens on its own page.
 //
 // each record ends in the sites an operator has ticked for that form, and every one of them is a
-// press. a site's press
-// opens the embed card aimed at that site, because what an operator came for is the block to paste
-// into that page rather than a list of where the form is allowed. what the card hands over is two
-// placements rather than one block — the runtime, once per page, and the element, wherever the form
-// appears — because that is the instruction an integrator is following, and both are a value
-// somebody takes away rather than one they read down a list.
+// press. a site's press opens the embed card aimed at that site, because what an operator came for
+// is the block to paste into that page rather than a list of where the form is allowed. what the
+// card hands over is two placements rather than one block — the runtime, once per page, and the
+// element, wherever the form appears — because that is the instruction an integrator is following,
+// and both are a value somebody takes away rather than one they read down a list.
 //
 // because it writes nothing, it gates nothing and reports nothing about the deployment's own state.
 // the status ledger is on the screens under `new` and `[id]`, which are the ones that refuse a

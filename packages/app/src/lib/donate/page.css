@@ -238,11 +238,10 @@ body {
 	padding-inline: var(--page-gutter);
 }
 
-/* the organisation, named once, above the card rather than inside it. the card states the legal
-   identity the gift is solicited under and this states who the donor came here for, which is why it
-   is quiet type rather than a banner: the form is the thing on this page. a name with no space in
-   it wraps inside the stage rather than widening the document: `anywhere` is what keeps a 375px
-   viewport off a horizontal scrollbar for a name longer than the column. */
+/* the organisation's name over the notice a donor gets where no card can be drawn
+   (./notice.tsx). quiet type rather than a banner: the notice is the thing on this page. a name
+   with no space in it wraps inside the stage rather than widening the document: `anywhere` is
+   what keeps a 375px viewport off a horizontal scrollbar for a name longer than the column. */
 .org-name {
 	margin: 0 0 var(--page-gap-group);
 	overflow-wrap: anywhere;

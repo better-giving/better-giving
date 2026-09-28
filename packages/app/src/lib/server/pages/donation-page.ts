@@ -6,10 +6,9 @@ import { sqliteResultCode } from '../db/rejection';
 import { page, type Page } from '../db/schema';
 import { parseFormInput } from '../forms/form-input';
 import { ownedFormInsert } from '../forms/queries';
-import { readOrgProfile } from '../org/queries';
 import { readActivePrograms } from '../programs/queries';
 
-// the Donation page, made the first time anything needs it: /donate, its editor, or a new campaign
+// the donation page, made the first time anything needs it: /donate, its editor, or a new campaign
 // copying its donation settings. no migration seeds it, so a fresh deployment answers /donate before
 // anyone has opened the editor.
 //
@@ -21,10 +20,7 @@ import { readActivePrograms } from '../programs/queries';
 /** the page's staff-facing settings label; a donor never reads a form's name. */
 const SETTINGS_NAME = 'Donation page';
 
-/** who the default title greets where the organisation has saved no legal name yet. */
-const UNNAMED_ORG = 'us';
-
-/** the Donation page's row, made from the default if there is none yet. */
+/** the donation page's row, made from the default if there is none yet. */
 export async function ensureDonationPage(db: Db): Promise<Page> {
 	return (await readDonationPage(db)) ?? (await makeDonationPage(db));
 }
@@ -35,7 +31,7 @@ async function readDonationPage(db: Db): Promise<Page | null> {
 }
 
 async function makeDonationPage(db: Db): Promise<Page> {
-	const [profile, programs] = await Promise.all([readOrgProfile(db), readActivePrograms(db)]);
+	const programs = await readActivePrograms(db);
 	// "donor chooses" once there is a choice to make; with one program or none, as a new form opens.
 	const programMode = programs.length >= 2 ? 'choice' : NEW_FORM.program_mode;
 	const settings = parseFormInput({
@@ -51,7 +47,7 @@ async function makeDonationPage(db: Db): Promise<Page> {
 			`the Donation page's opening settings fail the form rule: ${JSON.stringify(settings.errors)}`
 		);
 	}
-	const document = JSON.stringify(defaultDonationPage({ name: profile?.legalName ?? UNNAMED_ORG }));
+	const document = JSON.stringify(defaultDonationPage());
 	const owned = ownedFormInsert(db, settings.value);
 	try {
 		const [, [made]] = await db.batch([

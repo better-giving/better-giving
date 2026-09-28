@@ -1,13 +1,14 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultDonationPage } from '../../page/defaults';
 import { createDb, type Db } from '../db/client';
+import { rejectionCode } from '../db/rejection.testing';
 import { form, page, program } from '../db/schema';
 import { writeOrgRow } from '../org/org-row.testing';
 import { ensureDonationPage } from './donation-page';
 
-// the Donation page made on first need: no migration seeds it, and whichever reader asks first makes
+// the donation page made on first need: no migration seeds it, and whichever reader asks first makes
 // it, against the real D1 whose one-Donation-page index settles two asking at once.
 
 let db: Db;
@@ -47,7 +48,7 @@ describe('ensureDonationPage on a deployment that has none', () => {
 		expect(more).toEqual([]);
 		expect(row?.id).toBe(made.id);
 		expect(row?.state).toBe('live');
-		const expected = defaultDonationPage({ name: 'Hope Foundation' });
+		const expected = defaultDonationPage();
 		expect(JSON.parse(row?.published ?? 'null')).toEqual(expected);
 		expect(JSON.parse(row?.draft ?? 'null')).toEqual(expected);
 	});
@@ -81,7 +82,17 @@ describe('ensureDonationPage once the page exists', () => {
 	});
 
 	it('makes one page when two first needs arrive at once, and leaves no settings row unowned', async () => {
+		const batch = vi.spyOn(db, 'batch');
 		const [one, two] = await Promise.all([ensureDonationPage(db), ensureDonationPage(db)]);
+
+		// both got past the read and wrote, so the index is what settled it rather than the order
+		const rejected = batch.mock.settledResults.flatMap((settled) =>
+			settled.type === 'rejected' ? [rejectionCode(() => Promise.reject(settled.value))] : []
+		);
+		expect(await Promise.all(rejected)).toEqual([
+			expect.stringMatching(/page\.type.*\bSQLITE_CONSTRAINT_UNIQUE\b/)
+		]);
+		expect(batch).toHaveBeenCalledTimes(2);
 		expect(one.id).toBe(two.id);
 		expect(await donationPages()).toHaveLength(1);
 		expect(await db.select({ id: form.id }).from(form)).toEqual([{ id: one.formId }]);

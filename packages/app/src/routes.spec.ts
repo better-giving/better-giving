@@ -121,7 +121,7 @@ const PROCESSOR_CALLBACKS: Readonly<Record<string, string>> = {
 };
 
 /**
- * the Donation page, which is the one screen outside the layout that wears no operator stylesheet.
+ * the donation page, which is the one screen outside the layout that wears no operator stylesheet.
  *
  * it draws the donation form's own card and links the form's four sheets in its own `links`, and
  * those four are unlayered while every operator declaration is layered (src/app.css) — so a
@@ -209,7 +209,7 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// stands in for a session is the `state` that went out with it, in a cookie on that same browser
 	// and cleared on every arm — so the round trip cannot be made twice.
 	'routes/quickbooks.callback.tsx',
-	// the Donation page, opened from a link the organisation published. it is unauthenticated
+	// the donation page, opened from a link the organisation published. it is unauthenticated
 	// because a donor holds no session and never could — there is nobody for a gate here to ask
 	// about. it initiates no payment itself and takes no submission: the gift goes through the
 	// endpoint above it, same-origin, which owes all four of that surface's checks. the one write

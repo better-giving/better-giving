@@ -1,4 +1,7 @@
+import { z } from 'zod';
+import { SHARE_MESSAGE_MAX } from '$lib/page/catalog';
 import { CORNERS, type Corner, SHADES, type Shade } from '$lib/page/keys';
+import { SHARE_CHANNELS, type ShareChannel } from '$lib/page/share';
 import { isEmptyDocument, parseRichText, type RichTextDocument } from '$lib/rich-text/document';
 
 // the organisation's story and its look as `org_presentation` holds them, the one rule each passes
@@ -211,4 +214,59 @@ export function lookFromStored(stored: string): OrgLook {
 export async function partVersion(stored: string): Promise<string> {
 	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(stored));
 	return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+// ---------------------------------------------------------------------------
+// the sharing — the share channels a page offers and their order, the organisation's default
+// share message, and its social links.
+//
+// read key by key, each through its own rule: a key absent, and `{}` (the column default), reads
+// as `null` or none, and the page falls back to its own defaults. a key the rule refuses is logged
+// and read the same way, so a row an older rule wrote cannot take a donor page down. the column is
+// only held to a JSON object (`org_presentation_sharing_object_check`), so this is the whole rule
+// on the way out. a social link is typed by a person and drawn as an `href`, so an address that is
+// not http(s) is dropped rather than drawn.
+// ---------------------------------------------------------------------------
+
+/** what the sharing column holds for a deployment that has never saved one — the column default. */
+export const NO_SHARING = '{}';
+
+export type OrgSharing = {
+	/** the channels in the organisation's order, or `null` where none are chosen. */
+	readonly channels: readonly ShareChannel[] | null;
+	/** the default share message, or `null` where none is written. */
+	readonly message: string | null;
+	readonly links: readonly { readonly label: string; readonly href: string }[];
+};
+
+const sharingChannels = z.array(z.enum(SHARE_CHANNELS));
+const sharingMessage = z.string().trim().min(1).max(SHARE_MESSAGE_MAX);
+const sharingLink = z.object({
+	label: z.string().trim().min(1),
+	href: z.url({ protocol: /^https?$/ })
+});
+
+/** the sharing a stored column holds, a key it lacks or the rule refuses read as none. */
+export function sharingFromStored(stored: string): OrgSharing {
+	let json: unknown;
+	try {
+		json = JSON.parse(stored);
+	} catch {
+		throw new Error('`org_presentation.sharing` holds text that is not JSON');
+	}
+	const held = json as { channels?: unknown; message?: unknown; links?: unknown };
+	const links = Array.isArray(held.links) ? held.links : [];
+	return {
+		channels: storedSharingPart(held.channels, sharingChannels, 'channels'),
+		message: storedSharingPart(held.message, sharingMessage, 'message'),
+		links: links.flatMap((link) => storedSharingPart(link, sharingLink, 'social link') ?? [])
+	};
+}
+
+function storedSharingPart<T>(held: unknown, rule: z.ZodType<T>, part: string): T | null {
+	if (held === undefined || held === null) return null;
+	const parsed = rule.safeParse(held);
+	if (parsed.success) return parsed.data;
+	console.error(`the stored sharing ${part} is refused and reads as none:`, parsed.error.issues);
+	return null;
 }

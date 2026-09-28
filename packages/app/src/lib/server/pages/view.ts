@@ -12,11 +12,12 @@ import { cachedCadences } from '../forms/cadence-cache';
 import { cachedCoins } from '../forms/coin-cache';
 import { readPublishedConfig, renderableConfig } from '../forms/published-config';
 import { cachedRails } from '../forms/rail-cache';
-import { readOrgLook, readOrgProfile, readOrgStory } from '../org/queries';
+import type { OrgSharing } from '../org/presentation';
+import { readOrgLook, readOrgProfile, readOrgSharing, readOrgStory } from '../org/queries';
 import { present } from '../org/receipt-fields';
 import { createPaymentProviders } from '../payments/factory';
 
-// everything a donor page draws beyond its own stored document, read for one page: the Donation
+// everything a donor page draws beyond its own stored document, read for one page: the donation
 // page at /donate, a campaign at its address, and either one in the editor's preview.
 //
 // the card's configuration is the owned settings row's served config, read exactly as
@@ -31,8 +32,8 @@ import { createPaymentProviders } from '../payments/factory';
 // now refuses, draws the plain page — the donation box alone — and is logged, so a page broken by a
 // narrowed rule still takes gifts while somebody repairs it.
 //
-// the organisation's story and look are read live on every draw, so an edit on the Organisation
-// page reaches every page at once.
+// the organisation's story, look and sharing are read live on every draw, so a save on the
+// dashboard's organisation page reaches every page at once.
 
 /** a page as its loader holds it: its row's facts, the document to draw, and its public address. */
 export type PageSource = {
@@ -40,7 +41,7 @@ export type PageSource = {
 	readonly type: PageType;
 	/** the settings row the page owns, whose served config the card takes the gift against. */
 	readonly formId: string;
-	/** a campaign's name; null on the Donation page. */
+	/** a campaign's name; null on the donation page. */
 	readonly name: string | null;
 	/** the stored document's text — `published` for a donor, the draft for the preview. */
 	readonly document: string | null;
@@ -58,7 +59,7 @@ export type LoadedPage =
 	/** the served config refuses the owned row: no card can be drawn. */
 	| { readonly kind: 'refused' };
 
-/** the channels a page offers until the Organisation's sharing is stored. */
+/** the channels a page offers where the organisation has chosen none. */
 const SHARE_CHANNELS_DEFAULT: readonly ShareChannel[] = ['facebook', 'email', 'copy-link'];
 
 export async function loadPageView(
@@ -69,7 +70,7 @@ export async function loadPageView(
 ): Promise<LoadedPage> {
 	const origin = new URL(request.url).origin;
 	const processors = createPaymentProviders(env);
-	const [served, story, orgLook, profile] = await Promise.all([
+	const [served, story, orgLook, sharing, profile] = await Promise.all([
 		readPublishedConfig(
 			db,
 			source.formId,
@@ -80,6 +81,7 @@ export async function loadPageView(
 		),
 		readOrgStory(db),
 		readOrgLook(db),
+		readOrgSharing(db),
 		readOrgProfile(db)
 	]);
 	const result = renderableConfig(served);
@@ -110,13 +112,14 @@ export async function loadPageView(
 				name: orgName,
 				mission: story.story.mission,
 				vision: story.story.vision,
-				info: orgInfo(config, profile)
+				info: orgInfo(config, profile, sharing)
 			},
 			look: page.look ?? orgLook.look,
 			sharing: {
-				channels: SHARE_CHANNELS_DEFAULT,
+				channels: sharing.channels ?? SHARE_CHANNELS_DEFAULT,
 				message:
 					page.shareMessage ??
+					sharing.message ??
 					titleHeading(firstTitle?.heading ?? '', {
 						type: source.type,
 						pageName: source.name,
@@ -142,17 +145,17 @@ function storedDocument(text: string | null): unknown {
 }
 
 /**
- * the identity the org-info block states. the EIN is the served config's, which the ladder has
- * already refused without; the profile holds no donor-facing email or social links, so neither is
- * drawn.
+ * the identity the org-info block states, and the social links the organisation's sharing lists.
+ * the EIN is the served config's, which the ladder has already refused without. `org_profile`
+ * holds no donor-facing email — its `notification_email` is operational — so none is drawn.
  */
-function orgInfo(config: FormConfig, profile: OrgProfile | null): OrgInfo {
+function orgInfo(config: FormConfig, profile: OrgProfile | null, sharing: OrgSharing): OrgInfo {
 	return {
 		legalName: config.orgLegalName,
 		ein: config.ein,
 		addressLines: profile === null ? [] : addressLines(profile),
 		email: null,
-		links: []
+		links: sharing.links
 	};
 }
 
