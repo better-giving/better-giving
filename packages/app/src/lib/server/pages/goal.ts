@@ -26,13 +26,6 @@ export async function campaignRaised(db: Db, formId: string): Promise<RaisedThro
 }
 
 /**
- * the zone a stored end is worded in. `endsAt` is the end of the day in the time zone of the browser
- * that set it (`PAGE_KEYS.endsAt` in ../../page/keys.ts), which is not stored and no deployment
- * setting names, so an end set west of UTC reads here as the day after the one chosen.
- */
-const END_ZONE = 'UTC';
-
-/**
  * the goal bar's figures for a page whose document sets a goal, or null where it sets none — which
  * the read rule (`parsePage` in ../../page/catalog.ts) holds to campaigns alone. `formId` is the
  * page's owned settings row, and `locale` the served config's, which words the last day.
@@ -45,20 +38,27 @@ export async function pageGoal(
 ): Promise<PageGoal | null> {
 	if (page.goalMinor === undefined) return null;
 	const { raisedMinor } = await campaignRaised(db, formId);
+	// the read rule holds `endsAt` and `endsZone` both or neither.
+	const { endsAt, endsZone } = page;
 	return {
 		raisedMinor,
 		goalMinor: page.goalMinor,
-		endsAt: page.endsAt === undefined ? null : lastDay(page.endsAt, locale)
+		endsAt:
+			endsAt === undefined || endsZone === undefined ? null : lastDay(endsAt, endsZone, locale)
 	};
 }
 
-/** the day an end closes on, as a page states it: "December 31". */
-function lastDay(endsAt: number, locale: string): string | null {
-	const day = dayOf(endsAt, END_ZONE);
+/**
+ * the day an end closes on, as a page states it: "December 31". the day is the one chosen, in the
+ * zone it was chosen in, whatever zone the worker or the donor is in.
+ */
+function lastDay(endsAt: number, timeZone: string, locale: string): string | null {
+	const day = dayOf(endsAt, timeZone);
 	if (day === null) return null;
+	// the day's own midnight in UTC, worded in UTC, so the words name the day `dayOf` found.
 	return new Intl.DateTimeFormat(locale, {
 		month: 'long',
 		day: 'numeric',
-		timeZone: END_ZONE
+		timeZone: 'UTC'
 	}).format(Date.parse(day));
 }

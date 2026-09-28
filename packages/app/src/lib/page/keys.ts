@@ -22,6 +22,8 @@ export const PAGE_KEYS = {
 	goalMinor: 'goalMinor',
 	/** a campaign's end: the end of the chosen day, unix ms, in the setting browser's time zone. */
 	endsAt: 'endsAt',
+	/** the IANA name of that time zone, which the page words the day in. present exactly when `endsAt` is. */
+	endsZone: 'endsZone',
 	/**
 	 * the page's own look; absent or null means the organisation's. the database checks a look's keys
 	 * one by one, each where present, and ./catalog.ts's parse refuses a look missing any of them.

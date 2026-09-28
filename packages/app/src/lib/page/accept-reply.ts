@@ -13,7 +13,8 @@
 // suggested amounts — each written into the draft, and anything else it names is refused: the
 // fund, the program's destination, the payment options, the look and the switches are the
 // operator's alone. an end date is a day, `YYYY-MM-DD`, in the zone of the browser that posted the
-// chat turn, stored as ./end-date.ts's `endOfDay` of it and refused once that day is over. pinning
+// chat turn, stored as ./end-date.ts's `endOfDay` of it with that zone beside it, and refused once
+// that day is over. pinning
 // a program is refused on the Donation page while its donors choose one, since its program chooser
 // stays. each value `set` changes comes back in `changes` — an end date as its day, a program with
 // the mode it leaves — so the reply's own words can be held to what it did. a rename is from the
@@ -393,6 +394,7 @@ function settle(
 		if (!end.ok) return { ok: false, reason: `set.endDate: ${end.reason}` };
 		changes.push({ field: 'endDate', from: endedOn, to: set.endDate });
 		onto.endsAt = end.endsAt;
+		onto.endsZone = timeZone;
 	}
 	if (set.programId === undefined && set.suggestedAmounts === undefined) {
 		return { ok: true, onto, renamed, changes };

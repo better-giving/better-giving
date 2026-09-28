@@ -53,6 +53,11 @@ export function dayOf(at: number, timeZone: string): string | null {
 	return wall === null ? null : new Date(wall(at)).toISOString().slice(0, 10);
 }
 
+/** whether the runtime knows `timeZone` as an IANA name. */
+export function isTimeZone(timeZone: string): boolean {
+	return wallClock(timeZone) !== null;
+}
+
 /** the zone's wall clock at an instant, to the second, as the instant UTC shows the same reading at. */
 function wallClock(timeZone: string): ((at: number) => number) | null {
 	let format: Intl.DateTimeFormat;

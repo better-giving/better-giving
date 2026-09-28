@@ -170,12 +170,14 @@ describe('a published campaign at its address', () => {
 });
 
 describe('a published campaign with a goal', () => {
-	it('draws its goal bar with what has settled through it, against the goal, to its last day', async () => {
+	it('draws its goal bar with what has settled through it, against the goal, to the day chosen', async () => {
 		const owned = await campaign({
 			published: {
 				...defaultCampaign(),
 				goalMinor: 500_000,
-				endsAt: Date.UTC(2026, 11, 31, 23, 59, 59, 999)
+				// the end of 31 December in los angeles, on PST by then, UTC-8
+				endsAt: Date.parse('2027-01-01T08:00:00Z') - 1,
+				endsZone: 'America/Los_Angeles'
 			}
 		});
 		await gift(db, owned, 12_500);

@@ -365,6 +365,7 @@ describe('what a reply sets', () => {
 				name: 'Coats for winter',
 				goalMinor: 500_000,
 				endsAt,
+				endsZone: 'America/New_York',
 				settings: {
 					...settings,
 					programMode: 'pinned',
@@ -402,7 +403,8 @@ describe('what a reply sets', () => {
 		const current = {
 			...campaign(),
 			goalMinor: 500_000,
-			endsAt: Date.parse('2027-01-01T00:00:00Z') - 1
+			endsAt: Date.parse('2027-01-01T00:00:00Z') - 1,
+			endsZone: 'Europe/London'
 		};
 		const result = accept(
 			{
@@ -437,12 +439,33 @@ describe('what a reply sets', () => {
 	});
 
 	it('reports an end date moved to another day as the day it moved from', () => {
-		const current = { ...campaign(), endsAt: Date.parse('2027-01-01T05:00:00Z') - 1 };
+		const current = {
+			...campaign(),
+			endsAt: Date.parse('2027-01-01T05:00:00Z') - 1,
+			endsZone: 'America/New_York'
+		};
 		const result = accept({ say: 'A week longer.', set: { endDate: '2027-01-07' } }, { current });
 		expect(result).toMatchObject({
 			ok: true,
 			draft: { endsAt: Date.parse('2027-01-08T05:00:00Z') - 1 },
 			changes: [{ field: 'endDate', from: '2026-12-31', to: '2027-01-07' }]
+		});
+	});
+
+	it('stores the zone the new day was chosen in beside the end', () => {
+		// set in london, moved by an operator in los angeles, on PST by January, UTC-8
+		const current = {
+			...campaign(),
+			endsAt: Date.parse('2027-01-01T00:00:00Z') - 1,
+			endsZone: 'Europe/London'
+		};
+		const result = accept(
+			{ say: 'A week longer.', set: { endDate: '2027-01-07' } },
+			{ current, timeZone: 'America/Los_Angeles' }
+		);
+		expect(result).toMatchObject({
+			ok: true,
+			draft: { endsAt: Date.parse('2027-01-08T08:00:00Z') - 1, endsZone: 'America/Los_Angeles' }
 		});
 	});
 

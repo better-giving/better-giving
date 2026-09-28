@@ -33,6 +33,7 @@ import {
 	type PageType,
 	SHADES
 } from './keys';
+import { isTimeZone } from './end-date';
 import { draftSettings } from './settings';
 
 export { BACKGROUNDS, LAYOUTS, PALETTES };
@@ -227,7 +228,8 @@ const END = 'an end date is a whole number of milliseconds since 1970';
 const CAMPAIGN_ONLY = [
 	[PAGE_KEYS.name, 'name'],
 	[PAGE_KEYS.goalMinor, 'goal'],
-	[PAGE_KEYS.endsAt, 'end date']
+	[PAGE_KEYS.endsAt, 'end date'],
+	[PAGE_KEYS.endsZone, 'end date']
 ] as const;
 
 const pageDocument = (type: PageType) =>
@@ -251,6 +253,12 @@ const pageDocument = (type: PageType) =>
 				.optional(),
 			[PAGE_KEYS.goalMinor]: z.int({ error: GOAL }).positive({ error: GOAL }).optional(),
 			[PAGE_KEYS.endsAt]: z.int({ error: END }).positive({ error: END }).optional(),
+			[PAGE_KEYS.endsZone]: z
+				.string()
+				.refine(isTimeZone, {
+					error: (issue) => `${JSON.stringify(issue.input)} is not a time zone`
+				})
+				.optional(),
 			settings: draftSettings.optional(),
 			blocks: z.array(block)
 		})
@@ -265,6 +273,20 @@ const pageDocument = (type: PageType) =>
 						message: `${PAGE_NAMES[type]} has no ${what}; only a campaign does`
 					});
 				}
+			} else if (ctx.value.endsAt !== undefined && ctx.value.endsZone === undefined) {
+				ctx.issues.push({
+					code: 'custom',
+					input: ctx.value,
+					path: [PAGE_KEYS.endsZone],
+					message: 'an end date names the time zone its day ends in'
+				});
+			} else if (ctx.value.endsAt === undefined && ctx.value.endsZone !== undefined) {
+				ctx.issues.push({
+					code: 'custom',
+					input: ctx.value,
+					path: [PAGE_KEYS.endsAt],
+					message: 'a time zone belongs to an end date, and there is none'
+				});
 			}
 			const firstWithId = new Map<string, number>();
 			for (const [index, { id }] of ctx.value.blocks.entries()) {
