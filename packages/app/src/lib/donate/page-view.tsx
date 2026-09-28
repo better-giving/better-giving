@@ -100,7 +100,9 @@ export function PageView(props: PageViewProps) {
 				data-block="donation-box"
 				data-block-id={block.id}
 			>
-				<div className="page-in">{props.donationBox({ hideProgramSelect })}</div>
+				<div className="page-in" inert={preview}>
+					{props.donationBox({ hideProgramSelect })}
+				</div>
 			</div>
 		) : (
 			<section
@@ -281,18 +283,26 @@ export function titleHeading(
 	return `Donate to ${org.name}`;
 }
 
+/** every element a keyboard can stop on, the ones inside the inert donation box aside. */
+const TAB_STOPS =
+	'a[href], area[href], button, input, select, textarea, summary, iframe, [tabindex], [contenteditable]';
+
 /**
  * in the preview, a click anywhere in a block posts that block's id to the editor around the frame
  * and goes no further: the preview is a picture of the page, so a link, a share or a pick in it is
- * not followed.
+ * not followed, and no handler of a block's hears it. nothing in it takes a tab stop either — the
+ * donation box is inert, and every other stop is taken out of the order. the document itself stays
+ * live, since an inert one would take no click to report.
  */
 function usePreviewReport(preview: boolean) {
 	useEffect(() => {
 		if (!preview) return;
+		for (const stop of document.querySelectorAll<HTMLElement>(TAB_STOPS)) stop.tabIndex = -1;
 		const report = (event: MouseEvent) => {
 			const target = event.target instanceof Element ? event.target : null;
 			const id = target?.closest<HTMLElement>('[data-block-id]')?.dataset.blockId;
 			event.preventDefault();
+			event.stopPropagation();
 			if (id === undefined) return;
 			const message: BlockMessage = { type: BLOCK_MESSAGE, id };
 			window.parent.postMessage(message, window.location.origin);
