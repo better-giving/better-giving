@@ -1,0 +1,250 @@
+import { createExecutionContext, env } from 'cloudflare:test';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createStaticHandler, type LoaderFunction } from 'react-router';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NO_FORM } from '$lib/donate/copy';
+import { NEW_FORM } from '$lib/forms/new-form';
+import { defaultCampaign } from '$lib/page/defaults';
+import { createDb } from '$lib/server/db/client';
+import { page } from '$lib/server/db/schema';
+import { edgeCache } from '$lib/server/edge-cache.testing';
+import { parseFormInput } from '$lib/server/forms/form-input';
+import { ownedFormInsert } from '$lib/server/forms/queries';
+import { expectRecordedAsAForm } from '$lib/server/pages/owned-settings-gift.testing';
+import { writeOrgRow } from '$lib/server/org/org-row.testing';
+import { requestContext } from '../request-context';
+import type { Route } from './+types/$slug';
+import * as campaignPage from './$slug';
+
+// a campaign at its own address, against the real D1 the pool binds.
+//
+// a workers spec for the reason ./donate.workers.spec.ts gives: every answer is decided from rows,
+// and the loader runs through react router's own matcher so a refusal's status is the framework's.
+
+/** this deployment's own origin, which every request in this file is made to. */
+const OWN = 'https://give.example.workers.dev';
+
+/** a deployment whose Stripe pair is set and agrees, so the env is never what refuses. */
+const STRIPE = {
+	STRIPE_SECRET_KEY: 'sk_test_abc',
+	STRIPE_PUBLISHABLE_KEY: 'pk_test_abc',
+	STRIPE_WEBHOOK_SECRET: 'whsec_abc'
+};
+
+const SLUG = 'winter-coat-drive';
+
+const db = createDb(env.DB);
+
+beforeEach(async () => {
+	// children first — every FK in this schema is `NO ACTION`, and the gift below names a form.
+	await env.DB.batch([
+		env.DB.prepare('delete from line_item'),
+		env.DB.prepare('delete from payment'),
+		env.DB.prepare('delete from donation'),
+		env.DB.prepare('delete from page'),
+		env.DB.prepare('delete from form'),
+		env.DB.prepare('delete from org_presentation'),
+		env.DB.prepare('delete from org_profile')
+	]);
+	await writeOrgRow(env.DB, { tax_id: '12-3456789' });
+	// the served cadences, warmed so the loader never sends the fixture key to Stripe
+	// ($lib/server/forms/cadence-cache.ts).
+	await edgeCache().put(
+		new Request(`${OWN}/__recurring-cadences`),
+		new Response(JSON.stringify(['one_time', 'yearly']), {
+			headers: { 'content-type': 'application/json', 'cache-control': 'max-age=300' }
+		})
+	);
+});
+
+/** the pool's env with the Stripe pair set, as a proxy rather than a copy. */
+const stripeEnv = new Proxy(env, {
+	get: (target, property) =>
+		typeof property === 'string' && property in STRIPE
+			? STRIPE[property as keyof typeof STRIPE]
+			: Reflect.get(target, property)
+}) as Env;
+
+type Campaign = {
+	readonly name?: string;
+	readonly slug?: string | null;
+	readonly state?: 'never_published' | 'live' | 'ended';
+	readonly published?: unknown;
+};
+
+/** a campaign and the live settings row it owns, as publish leaves them; its owned form's id. */
+async function campaign({
+	name = 'Winter coat drive',
+	slug = SLUG,
+	state = 'live',
+	published = defaultCampaign()
+}: Campaign = {}): Promise<string> {
+	const settings = parseFormInput({ ...NEW_FORM, name, status: 'live' });
+	if (!settings.ok)
+		throw new Error(`the fixture settings did not parse: ${JSON.stringify(settings)}`);
+	const owned = ownedFormInsert(db, settings.value);
+	await db.batch([
+		owned.statement,
+		db.insert(page).values({
+			type: 'campaign',
+			name,
+			slug,
+			state,
+			formId: owned.id,
+			draft: JSON.stringify(defaultCampaign()),
+			published: state === 'never_published' ? null : JSON.stringify(published)
+		})
+	]);
+	return owned.id;
+}
+
+const ROUTE_ID = 'campaign';
+const handler = createStaticHandler([
+	{ id: ROUTE_ID, path: ':slug', loader: campaignPage.loader as unknown as LoaderFunction }
+]);
+
+type LoaderData = Route.ComponentProps['loaderData'];
+
+async function visit(
+	address = `/${SLUG}`,
+	on: Env = stripeEnv
+): Promise<{ status: number; data: LoaderData; headers: Headers }> {
+	const answered = await handler.query(new Request(`${OWN}${address}`), {
+		requestContext: requestContext(on, createExecutionContext())
+	});
+	if (answered instanceof Response) {
+		throw new Error(`the loader short-circuited with a ${answered.status}`);
+	}
+	return {
+		status: answered.statusCode,
+		data: answered.loaderData[ROUTE_ID] as LoaderData,
+		headers: answered.loaderHeaders[ROUTE_ID] ?? new Headers()
+	};
+}
+
+/** the page's own tree, from what the loader handed it; the cast is the props react router adds. */
+function markup(loaderData: LoaderData): string {
+	return renderToStaticMarkup(
+		createElement(campaignPage.default, { loaderData } as unknown as Route.ComponentProps)
+	);
+}
+
+/** one block's section, by the block type the renderer stamps on it. */
+function block(html: string, type: string): string {
+	const found = new RegExp(`<section[^>]*data-block="${type}"[\\s\\S]*?</section>`).exec(html);
+	return found?.[0] ?? '';
+}
+
+describe('a published campaign at its address', () => {
+	it('draws its blocks around one donation box, against its own settings row', async () => {
+		const formId = await campaign();
+
+		const answered = await visit();
+		expect(answered.status).toBe(200);
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.config.formId).toBe(formId);
+		const html = markup(answered.data);
+		expect(block(html, 'title')).toContain('Winter coat drive');
+		expect(html.match(/data-block="donation-box"/g)).toHaveLength(1);
+		expect(answered.data.view.sharing.url).toBe(`${OWN}/${SLUG}`);
+	});
+
+	it('names the campaign in the tab', async () => {
+		await campaign();
+		const answered = await visit();
+		expect(campaignPage.meta({ loaderData: answered.data } as unknown as Route.MetaArgs)).toEqual([
+			{ title: 'Winter coat drive' }
+		]);
+	});
+
+	it('takes a gift that records against its owned row, as a gift through a form', async () => {
+		await campaign();
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		await expectRecordedAsAForm(db, answered.data.view.config.formId);
+	});
+});
+
+describe('a published campaign the read rule refuses', () => {
+	it.each([
+		{ why: 'missing its shape', published: {} },
+		{
+			why: 'naming a block it does not know',
+			published: {
+				...defaultCampaign(),
+				blocks: [...defaultCampaign().blocks, { id: 'x', type: 'marquee', background: 'none' }]
+			}
+		}
+	])('draws its own donation box alone when $why, and logs it', async ({ published }) => {
+		const formId = await campaign({ published });
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const answered = await visit();
+		expect(answered.status).toBe(200);
+		if (answered.data.kind !== 'plain') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.config.formId).toBe(formId);
+		const html = markup(answered.data);
+		expect(html).toContain('$25');
+		expect(html).not.toContain('data-block=');
+		expect(log).toHaveBeenCalledWith(
+			expect.stringContaining('fails the read rule'),
+			expect.any(String)
+		);
+	});
+});
+
+describe('an address no published campaign answers', () => {
+	/** the refusal every one of these draws: a 404 nothing keeps, naming nobody. */
+	function expectRefused(answered: Awaited<ReturnType<typeof visit>>): void {
+		expect(answered.status).toBe(404);
+		expect(answered.headers.get('cache-control')).toBe('no-store');
+		expect(answered.data).toEqual({ kind: 'refused' });
+		expect(markup(answered.data)).toContain(NO_FORM);
+		expect(campaignPage.meta({ loaderData: answered.data } as unknown as Route.MetaArgs)).toEqual([
+			{ title: 'Donate' }
+		]);
+	}
+
+	it('refuses a campaign never published', async () => {
+		await campaign({ state: 'never_published' });
+		expectRefused(await visit());
+	});
+
+	it('refuses a campaign that has ended', async () => {
+		await campaign({ state: 'ended' });
+		expectRefused(await visit());
+	});
+
+	it('refuses a slug no campaign holds', async () => {
+		await campaign();
+		expectRefused(await visit('/summer-fun-run'));
+	});
+});
+
+describe('an address no campaign could hold', () => {
+	/** the Stripe env with a database that fails the test on any use at all. */
+	const unreadable = new Proxy(stripeEnv, {
+		get: (target, property) =>
+			property === 'DB'
+				? new Proxy(env.DB, {
+						get: () => () => {
+							throw new Error('the loader read the database for an address no campaign holds');
+						}
+					})
+				: Reflect.get(target, property)
+	}) as Env;
+
+	// the router matches in any case, so the capitals arrive here; a slug is lowercase, and the
+	// address is refused rather than sent on to the one spelled the other way.
+	it.each(['/.env', '/wp-login.php', '/api', '/Winter-Coat-Drive', `/${'a'.repeat(61)}`])(
+		'refuses %s without reading the database',
+		async (address) => {
+			await campaign();
+			const answered = await visit(address, unreadable);
+			expect(answered.status).toBe(404);
+			expect(answered.headers.get('cache-control')).toBe('no-store');
+			expect(answered.data).toEqual({ kind: 'refused' });
+		}
+	);
+});
