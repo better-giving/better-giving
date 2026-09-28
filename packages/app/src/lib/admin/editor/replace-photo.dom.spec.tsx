@@ -109,6 +109,17 @@ describe('the replace press', () => {
 		expect(document.activeElement).toBe(press(host));
 	});
 
+	it('draws a refusal of the description under its box', () => {
+		const words = 'a photo’s description holds at most 250 characters';
+		const { host } = mount(
+			<ReplacePhotoControl {...props({ altId: 'alt-box', altError: words })} />
+		);
+		const box = one<HTMLInputElement>(host, '#alt-box');
+		const said = box.getAttribute('aria-describedby')?.split(' ') ?? [];
+		expect(said.map((id) => document.getElementById(id)?.textContent)).toContain(words);
+		expect(box.getAttribute('aria-invalid')).toBe('true');
+	});
+
 	it('speaks a refusal from a region that was there before it, and describes the press by it', () => {
 		const { host, redraw } = mount(<ReplacePhotoControl {...props()} />);
 		const region = status(host);
@@ -122,5 +133,47 @@ describe('the replace press', () => {
 		expect(region.textContent).toBe('That file isn’t a photo. Choose a JPEG, PNG, WebP or HEIC.');
 		expect(press(host).getAttribute('aria-describedby')).toBe(region.id);
 		expect(press(host).textContent).toBe('Replace photo');
+	});
+});
+
+describe('a block with no photo yet', () => {
+	const empty = (over: Partial<ReplacePhotoControlProps> = {}) =>
+		props({ imageSrc: undefined, alt: '', ...over });
+
+	it('offers Add photo alone: no photo drawn and no box describing one', () => {
+		const { host } = mount(<ReplacePhotoControl {...empty()} />);
+		expect(press(host).textContent).toBe('Add photo');
+		expect(host.querySelector('img')).toBeNull();
+		expect(host.querySelector('input:not([type="file"])')).toBeNull();
+	});
+
+	it('opens the picker and reports the pick as a replace does', async () => {
+		const open = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+		onTestFinished(() => open.mockRestore());
+		const onResized = vi.fn();
+		const { host } = mount(<ReplacePhotoControl {...empty({ onResized })} />);
+
+		act(() => press(host).click());
+		expect(open).toHaveBeenCalledOnce();
+
+		const input = one<HTMLInputElement>(host, 'input[type="file"]');
+		Object.defineProperty(input, 'files', {
+			value: [new File(['%PDF-1.7'], 'budget.pdf', { type: 'application/pdf' })]
+		});
+		await act(async () => {
+			input.dispatchEvent(new Event('change', { bubbles: true }));
+		});
+		expect(onResized).toHaveBeenCalledExactlyOnceWith({ ok: false, reason: 'not-an-image' });
+	});
+
+	it('says it is uploading, then draws the photo it was handed with its box', async () => {
+		const { host, redraw } = mount(<ReplacePhotoControl {...empty({ state: 'uploading' })} />);
+		expect(press(host).textContent).toBe('Uploading');
+
+		redraw(<ReplacePhotoControl {...empty({ imageSrc: '/image/0192a4c1' })} />);
+
+		expect(press(host).textContent).toBe('Replace photo');
+		expect(one(host, 'img').getAttribute('src')).toBe('/image/0192a4c1');
+		expect(host.querySelector('input:not([type="file"])')).not.toBeNull();
 	});
 });

@@ -826,6 +826,12 @@ body {
 	border-color: var(--_n11);
 }
 
+/* a channel's press is a link, and a link in a block takes the block's accent: the press is a card
+   on `--_n1` and keeps its own ink, as Copy link's button does. */
+.page-block a.page-share-button {
+	color: var(--_n12);
+}
+
 .page-share-button[data-shape='icon'] {
 	justify-content: center;
 	inline-size: var(--_row-min);
@@ -860,8 +866,11 @@ body {
 	border-radius: var(--_r-in);
 }
 
+/* the shown wording stands at the cell's start, its mark's gap away like every channel's label;
+   a button centres its text, which in a cell as wide as the longest wording widens that gap. */
 .page-share-words {
 	display: inline-grid;
+	justify-items: start;
 }
 
 .page-share-words > * {
@@ -909,6 +918,12 @@ body {
 .page-body > .page-flow:first-child > .page-block[data-block='hero']:first-child,
 .page-body > .page-split > .page-lead:first-child > .page-block[data-block='hero']:first-child {
 	margin-block-start: calc(-1 * var(--page-gap-lead));
+}
+
+/* the cover opens the body at every width, so it meets the masthead and stands the lead's gap off
+   the page under it. */
+.page-body > .page-block[data-block='hero'] {
+	margin-block: calc(-1 * var(--page-gap-lead)) var(--page-gap-lead);
 }
 
 .page-hero[data-variant='cover'] {

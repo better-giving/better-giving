@@ -110,6 +110,7 @@ const bar = () => {
 	return found;
 };
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"], dialog');
+const stateWord = () => bar().querySelector('.adm-publishbar__state');
 
 async function press(target: HTMLElement) {
 	await act(async () => {
@@ -225,6 +226,18 @@ describe('Discard changes', () => {
 		expect(posted).toEqual([{ [WHICH_FORM]: 'page-discard', [RECORD_VERSION]: '1' }]);
 		expect(dialog()).toBeNull();
 	});
+
+	it('hands the focus to the state it left, its own press gone', async () => {
+		answers = [{ body: { discarded: true }, leaves: { version: 2, state: 'live' } }];
+		await screen();
+		await press(button('Discard changes', bar()));
+
+		await press(button('Discard changes', dialog() ?? document));
+
+		expect(bar().textContent).not.toContain('Discard changes');
+		expect(document.activeElement).toBe(stateWord());
+		expect(stateWord()?.textContent).toBe('Live');
+	});
 });
 
 describe('Reset to default', () => {
@@ -253,6 +266,7 @@ describe('Reset to default', () => {
 		expect(posted).toEqual([{ [WHICH_FORM]: 'page-reset', [RECORD_VERSION]: '1' }]);
 		expect(dialog()).toBeNull();
 		expect(buttons()).not.toContain('Reset to default');
+		expect(document.activeElement).toBe(stateWord());
 	});
 
 	it('says a refusal in its confirm, which stays up', async () => {
@@ -271,5 +285,6 @@ describe('Reset to default', () => {
 		await press(button('Reset to default', dialog() ?? document));
 
 		expect(dialog()?.textContent).toContain(text);
+		expect(document.activeElement).not.toBe(stateWord());
 	});
 });
