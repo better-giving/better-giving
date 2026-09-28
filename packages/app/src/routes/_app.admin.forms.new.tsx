@@ -294,7 +294,16 @@ export async function action({ context, request }: Route.ActionArgs) {
 	// and a disabled button while a blocker stands, and markup is not what stops a POST. read here
 	// rather than carried from the loader, because what a page was drawn against is not what is true
 	// when the button is pressed — a row can be emptied in between.
-	const [profile, listed] = await Promise.all([readOrgProfile(db), readSites(db)]);
+	let profile: Awaited<ReturnType<typeof readOrgProfile>>;
+	let listed: string[];
+	try {
+		[profile, listed] = await Promise.all([readOrgProfile(db), readSites(db)]);
+	} catch (e) {
+		// the same banner a failed create gets, and it is the truthful one: nothing was made and
+		// nothing an operator can do to a box would change that.
+		console.error('reading what a new donation form is checked against failed:', e);
+		return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
+	}
 
 	if (anyBlocker(formsReadiness(profile))) {
 		// keyed to no box, deliberately: no box on this form is what went wrong, and the block above

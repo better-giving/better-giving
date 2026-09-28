@@ -343,6 +343,23 @@ describe('/admin/recurring/[id] load', () => {
 		expect((await runLoad()).processor).toBeNull();
 	});
 
+	it('says this gift could not be loaded when a read beside the commitment fails', async () => {
+		// the donor and the form are read after the commitment, and either one out of reach is the
+		// screen's own sentence rather than the root error page. renamed rather than dropped, so the
+		// rows around it survive, and put back whatever happens.
+		await plan();
+		for (const table of ['contact', 'form']) {
+			await env.DB.prepare(`alter table ${table} rename to ${table}_hidden`).run();
+			try {
+				const refusal = await loadFailure(PLAN_ID);
+				expect(refusal.status, table).toBe(500);
+				expect(refusal.sentence, table).toContain('This recurring gift could not be loaded.');
+			} finally {
+				await env.DB.prepare(`alter table ${table}_hidden rename to ${table}`).run();
+			}
+		}
+	});
+
 	it('refuses an id no commitment carries, and says where to go instead', async () => {
 		await plan();
 		const refusal = await loadFailure(crypto.randomUUID());

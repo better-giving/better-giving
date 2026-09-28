@@ -183,16 +183,20 @@ export async function createProgram(db: Db, input: ParsedProgram): Promise<Progr
 }
 
 /**
- * what a save of a cause did, which is three answers rather than two.
+ * what a save of a cause did, which is four answers rather than two.
  *
  * `duplicate_name` is its own word because it is its own sentence, keyed to the box the operator
  * has to retype: `gone` says this cause is not there to write to, and saying that to somebody who
  * picked a name a colleague used yesterday would send them looking for a cause that is fine.
+ * `stale` is a cause written since the version the caller was drawn from, refused rather than
+ * overwritten: a save replaces both columns, so a tab drawn before a colleague's rename would put
+ * the old name back.
  */
-export type ProgramSave = 'saved' | 'gone' | 'duplicate_name';
+export type ProgramSave = 'saved' | 'gone' | 'stale' | 'duplicate_name';
 
 /**
- * renames a cause and rewrites its description, and answers whether there was one to write.
+ * renames a cause and rewrites its description, and answers whether there was one to write at the
+ * version the caller was drawn from.
  *
  * `gone` rather than a throw for a row that is missing or archived: both are a tab that was open
  * when somebody else retired the cause, which is an ordinary thing for a staff screen to meet and
@@ -215,6 +219,7 @@ export type ProgramSave = 'saved' | 'gone' | 'duplicate_name';
 export async function updateProgram(
 	db: Db,
 	id: string,
+	version: Date,
 	input: ParsedProgram
 ): Promise<ProgramSave> {
 	let updated: { id: string }[];
@@ -222,14 +227,21 @@ export async function updateProgram(
 		updated = await db
 			.update(program)
 			.set({ name: input.name, description: input.description })
-			.where(and(eq(program.id, id), isNull(program.archivedAt)))
+			.where(and(eq(program.id, id), isNull(program.archivedAt), eq(program.updatedAt, version)))
 			.returning({ id: program.id });
 	} catch (error) {
 		if (sqliteResultCode(error) === NAME_TAKEN) return 'duplicate_name';
 		throw error;
 	}
+	if (updated.length > 0) return 'saved';
 
-	return updated.length > 0 ? 'saved' : 'gone';
+	// which refusal the `where` met, read after it: this picks the sentence and guards nothing.
+	const [row] = await db
+		.select({ archivedAt: program.archivedAt })
+		.from(program)
+		.where(eq(program.id, id))
+		.limit(1);
+	return row === undefined || row.archivedAt !== null ? 'gone' : 'stale';
 }
 
 /**

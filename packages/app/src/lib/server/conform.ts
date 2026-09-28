@@ -3,6 +3,7 @@ import { data } from 'react-router';
 import { z } from 'zod';
 import {
 	type FormRejection,
+	RECORD_VERSION,
 	type RejectionStatus,
 	type StatedForm,
 	WHICH_FORM
@@ -211,6 +212,28 @@ export function submittedForm<Id extends string>(body: FormData, forms: readonly
 		);
 	}
 	return named as Id;
+}
+
+/** a version as the loader publishes one: `updated_at` in unix ms, digits only. */
+const VERSION = /^\d{1,15}$/;
+
+/**
+ * the version of the record the submitting page was drawn from, as the write compares it.
+ *
+ * a refusal is a thrown `Response` rather than a rejection, for `submittedForm`'s reason: every
+ * page that submits one draws the box, so a body without it is a client this app did not write,
+ * and nothing the operator typed is what went wrong. the sentence names the box, because a 4xx
+ * body in this app is read by an agent (CLAUDE.md).
+ */
+export function submittedVersion(body: FormData): Date {
+	const sent = body.get(RECORD_VERSION);
+	if (typeof sent !== 'string' || !VERSION.test(sent)) {
+		throw new Response(
+			`\`${RECORD_VERSION}\` carries no version. it holds the record's \`updated_at\` in unix ms, as the page this body was submitted from was drawn with; reload that page and submit it again.`,
+			{ status: 400 }
+		);
+	}
+	return new Date(Number(sent));
 }
 
 /**

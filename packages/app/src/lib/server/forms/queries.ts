@@ -129,9 +129,15 @@ export async function readForms(db: Db): Promise<FormListRow[]> {
 // which is the whole mechanism — see the constraint list on `form` in ../db/schema.ts.
 
 /**
- * `FormRecord` (./form-input.ts), as drizzle needs its columns named — the same `satisfies`
- * discipline `FORM_COLUMNS` is under, and for the same reason: a column added to one and not
- * the other stops compiling.
+ * a form as it is stored: the record, and the version a group write is compared against — which
+ * is no column an operator configures, so it is not on `FormRecord`.
+ */
+export type StoredForm = FormRecord & Pick<Form, 'updatedAt'>;
+
+/**
+ * `StoredForm`, as drizzle needs its columns named — the same `satisfies` discipline
+ * `FORM_COLUMNS` is under, and for the same reason: a column added to one and not the other
+ * stops compiling.
  */
 const FORM_DETAIL_COLUMNS = {
 	id: form.id,
@@ -144,17 +150,18 @@ const FORM_DETAIL_COLUMNS = {
 	currency: form.currency,
 	allowedOrigins: form.allowedOrigins,
 	programMode: form.programMode,
-	programId: form.programId
-} satisfies Record<keyof FormRecord, SQLiteColumn>;
+	programId: form.programId,
+	updatedAt: form.updatedAt
+} satisfies Record<keyof StoredForm, SQLiteColumn>;
 
 /** the selected row with its two JSON columns decoded — the one place that mapping lives. */
 function toRecord(
 	row: {
-		[K in keyof FormRecord]: K extends 'suggestedAmounts' | 'allowedOrigins'
+		[K in keyof StoredForm]: K extends 'suggestedAmounts' | 'allowedOrigins'
 			? string
-			: FormRecord[K];
+			: StoredForm[K];
 	}
-): FormRecord {
+): StoredForm {
 	return {
 		...row,
 		suggestedAmounts: decodeSuggestedAmounts(row.suggestedAmounts),
@@ -223,7 +230,7 @@ async function offersProgram(db: Db, id: string): Promise<boolean> {
  * comes from `postableId` — door (1) of the two ../db/postable.ts enumerates, discharged by its
  * key type rather than by a read.
  */
-export async function createForm(db: Db, input: ParsedForm): Promise<FormRecord | null> {
+export async function createForm(db: Db, input: ParsedForm): Promise<StoredForm | null> {
 	// `null` and no row, for a pin no active cause answers to. the parse cannot decide it — what
 	// this deployment still offers is a table — and the foreign key answers only half of it, as a
 	// constraint error and a 500.
@@ -255,7 +262,7 @@ export async function createForm(db: Db, input: ParsedForm): Promise<FormRecord 
  * where "that form was retired" and "there is no such form" are different sentences on a
  * screen and hiding the first would collapse them into a 404.
  */
-export async function readForm(db: Db, id: string): Promise<FormRecord | null> {
+export async function readForm(db: Db, id: string): Promise<StoredForm | null> {
 	const [row] = await db.select(FORM_DETAIL_COLUMNS).from(form).where(eq(form.id, id)).limit(1);
 	return row ? toRecord(row) : null;
 }
@@ -312,16 +319,46 @@ export async function readFormOrigins(db: Db, id: string): Promise<readonly stri
 // the answer comes off the update's own `returning()` rather than a select in front of it, because
 // D1 has no transaction and a check-then-write would be two commits with a race between them.
 //
-// all four race the same way and none of them refuses a save on that account: two staff with one
-// screen open each submit their own group whole, so the later press replaces the earlier one and
-// nobody is told. it is last-write-wins by decision — on a deployment whose staff are a handful,
-// the collision costs one press to redo.
+// each is also a compare-and-set on `updated_at`: a save lands only on the version the caller's
+// page was drawn from, so a tab drawn before a colleague's save is answered `stale` rather than
+// putting back whatever that save moved — the draft status over a publish is the sharp one. the
+// version is the row's, not the group's, so a save in one group refuses a stale tab's save in any
+// other; a revalidation after a save hands the saving screen the new one.
 //
 // the id is a separate argument rather than a field on the parsed value, so it comes from the
 // route that loaded the form rather than from a body the browser posted back.
 //
-// `updated_at` is named in no `set` — it carries `$onUpdateFn`, so drizzle adds it to every one.
+// `updated_at` is named in no `set` — it carries `$onUpdateFn`, so drizzle adds it to every one,
+// and that is what moves the version every write here is compared against.
 // ---------------------------------------------------------------------------
+
+/**
+ * what a group write did.
+ *
+ * `gone` is a row that is missing or archived. `stale` is a row that has been written since the
+ * version the caller was drawn from, and is refused rather than overwritten: a save replaces every
+ * column its group owns, so a tab drawn before a publish would put the draft status back and take
+ * the form off every donor page with nobody told.
+ */
+export type FormSave = 'saved' | 'gone' | 'stale';
+
+/** the one row a group write may land on: this id, not archived, and still at `version`. */
+function writable(id: string, version: Date) {
+	return and(eq(form.id, id), isNull(form.archivedAt), eq(form.updatedAt, version));
+}
+
+/**
+ * which refusal a group write that matched no row met, read after the write rather than in front
+ * of it. it picks the sentence and guards nothing: the refusal already happened at the `where`.
+ */
+async function missed(db: Db, id: string): Promise<'gone' | 'stale'> {
+	const [row] = await db
+		.select({ archivedAt: form.archivedAt })
+		.from(form)
+		.where(eq(form.id, id))
+		.limit(1);
+	return row === undefined || row.archivedAt !== null ? 'gone' : 'stale';
+}
 
 /**
  * the name and the status.
@@ -330,22 +367,28 @@ export async function readFormOrigins(db: Db, id: string): Promise<readonly stri
  * form records against is `createForm`'s decision and is not an input, so an edit has nothing to
  * move it with.
  */
-export async function updateFormName(db: Db, id: string, input: ParsedFormName): Promise<boolean> {
+export async function updateFormName(
+	db: Db,
+	id: string,
+	version: Date,
+	input: ParsedFormName
+): Promise<FormSave> {
 	const updated = await db
 		.update(form)
 		.set({ name: input.name, status: input.status })
-		.where(and(eq(form.id, id), isNull(form.archivedAt)))
+		.where(writable(id, version))
 		.returning({ id: form.id });
 
-	return updated.length > 0;
+	return updated.length > 0 ? 'saved' : await missed(db, id);
 }
 
 /** the two bounds and the suggested tiles, which are one decision and so one write. */
 export async function updateFormGiving(
 	db: Db,
 	id: string,
+	version: Date,
 	input: ParsedFormGiving
-): Promise<boolean> {
+): Promise<FormSave> {
 	const updated = await db
 		.update(form)
 		.set({
@@ -353,10 +396,10 @@ export async function updateFormGiving(
 			maxMinor: input.maxMinor,
 			suggestedAmounts: encodeSuggestedAmounts(input.suggestedAmounts)
 		})
-		.where(and(eq(form.id, id), isNull(form.archivedAt)))
+		.where(writable(id, version))
 		.returning({ id: form.id });
 
-	return updated.length > 0;
+	return updated.length > 0 ? 'saved' : await missed(db, id);
 }
 
 /**
@@ -368,15 +411,16 @@ export async function updateFormGiving(
 export async function updateFormOrigins(
 	db: Db,
 	id: string,
+	version: Date,
 	input: ParsedFormOrigins
-): Promise<boolean> {
+): Promise<FormSave> {
 	const updated = await db
 		.update(form)
 		.set({ allowedOrigins: encodeAllowedOrigins(input.allowedOrigins) })
-		.where(and(eq(form.id, id), isNull(form.archivedAt)))
+		.where(writable(id, version))
 		.returning({ id: form.id });
 
-	return updated.length > 0;
+	return updated.length > 0 ? 'saved' : await missed(db, id);
 }
 
 /**
@@ -387,7 +431,7 @@ export async function updateFormOrigins(
  * there to write to, where this says the cause it was pointed at is not one this deployment still
  * offers.
  */
-export type ProgramSave = 'saved' | 'gone' | 'unknown_program';
+export type ProgramSave = FormSave | 'unknown_program';
 
 /**
  * the cause this form's gifts are recorded against, which is the mode and the one id together.
@@ -401,6 +445,7 @@ export type ProgramSave = 'saved' | 'gone' | 'unknown_program';
 export async function updateFormProgram(
 	db: Db,
 	id: string,
+	version: Date,
 	input: ParsedFormProgram
 ): Promise<ProgramSave> {
 	if (input.programId !== null && !(await offersProgram(db, input.programId))) {
@@ -410,10 +455,10 @@ export async function updateFormProgram(
 	const updated = await db
 		.update(form)
 		.set({ programMode: input.programMode, programId: input.programId })
-		.where(and(eq(form.id, id), isNull(form.archivedAt)))
+		.where(writable(id, version))
 		.returning({ id: form.id });
 
-	return updated.length > 0 ? 'saved' : 'gone';
+	return updated.length > 0 ? 'saved' : await missed(db, id);
 }
 
 /**

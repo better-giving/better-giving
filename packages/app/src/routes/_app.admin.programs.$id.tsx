@@ -8,7 +8,7 @@ import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
 import { type ReactNode, useEffect, useRef } from 'react';
-import { data, Form, href, Link, useNavigate, useNavigation } from 'react-router';
+import { data, Form, href, Link, useFormAction, useNavigate, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { ProgramFields } from '$lib/admin/programs/fields';
 import type { CrumbHandle } from '$lib/admin/crumbs';
@@ -17,6 +17,7 @@ import { savedSection } from '$lib/admin/saved-section';
 import { screenTitle } from '$lib/admin/screen-title';
 import {
 	type AdminActionData,
+	recordVersion,
 	resultFor,
 	useAdminForm,
 	whichForm
@@ -26,7 +27,7 @@ import { PROGRAM_TEXT_FIELDS, type ProgramInputValues } from '$lib/programs/fiel
 import { PROGRAM_INPUT_FORM } from '$lib/programs/input-schema';
 import { PROGRAM_STATUS_LABELS } from '$lib/programs/statuses';
 import { redactPublicId } from '$lib/redact';
-import { invalid, parseForm, submittedForm, unread } from '$lib/server/conform';
+import { invalid, parseForm, submittedForm, submittedVersion, unread } from '$lib/server/conform';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
 import {
@@ -101,6 +102,21 @@ const NAME_TAKEN = 'A program with this name already exists.';
 const ROW_GONE =
 	'Nothing was saved: this program has been archived, or it no longer exists. Reload the page to ' +
 	'see how it stands.';
+
+/**
+ * what a save says when the cause has been saved since its page was drawn.
+ *
+ * answered at a 409 and keyed to no box: nothing typed is wrong, and the same body is refused
+ * until the page is redrawn. it names the version the body carried, which is the value that went
+ * stale, and the one move that clears it.
+ */
+function staleSave(version: Date): string {
+	return (
+		`Nothing was saved: this page shows the program as it was saved at \`${version.toISOString()}\`, ` +
+		'and it has been saved again since. Reload the page to see how it stands, then make this ' +
+		'change again.'
+	);
+}
 
 /** what a save says when the write itself threw. */
 const WRITE_FAILED = 'Saving this program failed and nothing was changed. Try again.';
@@ -182,7 +198,10 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			// the URL because that is where a confirmation an operator can share, reload and back out
 			// of lives. never offered for a cause that is already archived: the action would refuse
 			// it, so a panel asking about it is a question with one wrong answer.
-			confirmArchive: !archived && new URL(request.url).searchParams.get('confirm') === 'archive'
+			confirmArchive: !archived && new URL(request.url).searchParams.get('confirm') === 'archive',
+			// the version the save is written against, carried back in the `<form>` so a tab drawn
+			// before another save is refused rather than putting back what that save moved.
+			version: record.updatedAt.getTime()
 		},
 		// the header that burns the marker rides on the response that publishes it, so a reload of
 		// this screen reports nothing. a `Set-Cookie` from a loader is sent without this route
@@ -230,23 +249,27 @@ export async function action(args: Route.ActionArgs) {
 			return invalid(400, submission.reject({ fieldErrors }));
 		}
 
+		const version = submittedVersion(body);
 		let saved: ProgramSave;
 		try {
-			saved = await updateProgram(context.get(database), id, parsed.value);
+			saved = await updateProgram(context.get(database), id, version, parsed.value);
 		} catch (e) {
 			console.error('saving a program failed:', e);
 			return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
 		}
 
-		// three answers and three sentences. the name is the one an operator can fix without leaving
+		// four answers and four sentences. the name is the one an operator can fix without leaving
 		// the page, so it is keyed to the box they retype rather than banner-ed.
 		if (saved === 'duplicate_name') {
 			return invalid(400, submission.reject({ fieldErrors: { name: [NAME_TAKEN] } }));
 		}
 		if (saved === 'gone') return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
+		if (saved === 'stale') {
+			return invalid(409, submission.reject({ formErrors: [staleSave(version)] }));
+		}
 
-		// POST-redirect-GET, so a reload does not re-post: this write replaces both columns, so a
-		// stale body sitting in the browser's reload buffer would silently undo a later save.
+		// POST-redirect-GET, so a reload does not re-post: the body in the browser's reload buffer
+		// carries the version this write moved past, so a re-post would be refused as stale.
 		return redirectWithFlash(request, SAVED_FLASH, screen(id), 'details');
 	}
 
@@ -380,7 +403,12 @@ export default function Program({ loaderData, actionData }: Route.ComponentProps
 			{editor === null ? (
 				<StoredRecord description={description} />
 			) : (
-				<Editor boxes={editor} saved={loaderData.saved} actionData={actionData} />
+				<Editor
+					boxes={editor}
+					version={loaderData.version}
+					saved={loaderData.saved}
+					actionData={actionData}
+				/>
 			)}
 
 			{archived ? null : (
@@ -411,10 +439,13 @@ function formRefusal(
  */
 function Editor({
 	boxes,
+	version,
 	saved,
 	actionData
 }: {
 	readonly boxes: ProgramInputValues;
+	/** the version of the cause this page was drawn from, which the save is written against. */
+	readonly version: number;
 	readonly saved: 'details' | null;
 	readonly actionData: AdminActionData;
 }) {
@@ -423,9 +454,19 @@ function Editor({
 	// which form is being submitted right now, read off the body the router is carrying rather than
 	// off the navigation state alone: two forms post to one address, and a bare `submitting` would
 	// put the dots on the archive as well.
+	//
+	// the whole navigation the press started and not its `submitting` half, which is the create
+	// screens' test: a save answers with a redirect, so `submitting` ends before the landing renders
+	// and would leave the button pressable again in the middle of its own write — and a second press
+	// carries the version the first one moved past. `useFormAction` is the address this form posts
+	// to, query included, and it stays on the navigation through the loading phase the redirect
+	// starts.
 	const navigation = useNavigation();
+	const here = useFormAction();
 	const submitting =
-		navigation.state === 'submitting' ? navigation.formData?.get(WHICH_FORM) : null;
+		navigation.state !== 'idle' && navigation.formAction === here
+			? navigation.formData?.get(WHICH_FORM)
+			: null;
 
 	// `!actionData`, because a refused write is answered with a rejection rather than a redirect, so
 	// the marker the last landing published may still be on the page.
@@ -444,6 +485,7 @@ function Editor({
 		// looks the form up by; the hidden box beside it is what the *action* looks the form up by.
 		<Form method="post" {...getFormProps(form)}>
 			<input {...whichForm(PROGRAM_EDIT.id)} />
+			<input {...recordVersion(version)} />
 			<ProgramFields
 				boxes={{ name: fields.name, description: fields.description }}
 				footer={<SaveButton label="Save program" state={buttonState(save)} />}
@@ -508,6 +550,16 @@ function ArchiveSection({
 }) {
 	const navigate = useNavigate();
 
+	// held for the whole navigation the press started, for the reason the save is: a second press
+	// during the redirect's loading phase is refused as already archived, and that refusal is not
+	// revalidated, so it would stand above a cause still drawn as editable.
+	const navigation = useNavigation();
+	const here = useFormAction();
+	const archiving =
+		navigation.state !== 'idle' &&
+		navigation.formAction === here &&
+		navigation.formData?.get(WHICH_FORM) === PROGRAM_ARCHIVE.id;
+
 	// where the answer lands when the question is left. moving focus in is the card's own and is not
 	// written here; handing it back cannot be the card's, because the link that asked is off the
 	// page by the time the shell reads what to return to. so this is the return leg alone: cancel,
@@ -545,6 +597,13 @@ function ArchiveSection({
 					<Modal
 						title={`Archive ${name}?`}
 						danger="Yes, archive this program"
+						dangerProps={{
+							'aria-disabled': archiving,
+							'aria-busy': archiving,
+							onClick: (event) => {
+								if (archiving) event.preventDefault();
+							}
+						}}
 						// a `Link` rather than an anchor, so leaving the card is a navigation the router
 						// handles rather than a full document load.
 						cancel="Cancel"

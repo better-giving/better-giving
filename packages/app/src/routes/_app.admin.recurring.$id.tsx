@@ -6,7 +6,7 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { RECURRING_STATUS_TONES } from '$lib/admin/status-tones';
 import { useEffect, useRef } from 'react';
-import { data, Form, href, Link, useNavigate, useNavigation } from 'react-router';
+import { data, Form, href, Link, useFormAction, useNavigate, useNavigation } from 'react-router';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { CrumbHandle } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -194,10 +194,17 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 
 	// two independent reads, so they go together: neither is an input to the other, and awaiting
 	// them in turn pays two round trips for one screen.
-	const [donors, form] = await Promise.all([
-		readContactSummaries(db, [plan.contactId]),
-		readForm(db, plan.formId)
-	]);
+	let donors: Awaited<ReturnType<typeof readContactSummaries>>;
+	let form: Awaited<ReturnType<typeof readForm>>;
+	try {
+		[donors, form] = await Promise.all([
+			readContactSummaries(db, [plan.contactId]),
+			readForm(db, plan.formId)
+		]);
+	} catch (e) {
+		console.error('reading the donor and form of a recurring gift failed:', e);
+		loadFailed('This recurring gift');
+	}
 	const donor = donors.get(plan.contactId);
 
 	// taken after every read and every refusal above, so a screen that could not be drawn burns no
@@ -406,8 +413,14 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 		subscriptionId
 	} = loaderData;
 
+	// the whole navigation the press started and not its `submitting` half, which is the create
+	// screens' test: the stop answers with a redirect, and a second press during its loading phase
+	// is refused as already stopped — a refusal the router does not revalidate on, so it would stand
+	// above a gift still reading Active. `useFormAction` is the address the confirmation posts to,
+	// `?confirm=stop` included, and it stays on the navigation through that phase.
 	const navigation = useNavigation();
-	const stopping = navigation.state === 'submitting';
+	const here = useFormAction();
+	const stopping = navigation.state !== 'idle' && navigation.formAction === here;
 	const navigate = useNavigate();
 
 	const stopped = status === 'cancelled';
@@ -678,7 +691,13 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 								   survive its own success. the write redirects, the status becomes Stopped
 								   and this whole block is gone, so a tick here would be one nobody ever
 								   sees. */
-								dangerProps={{ disabled: stopping, 'aria-busy': stopping || undefined }}
+								dangerProps={{
+									'aria-disabled': stopping,
+									'aria-busy': stopping,
+									onClick: (event) => {
+										if (stopping) event.preventDefault();
+									}
+								}}
 								cancel="Cancel"
 								/* `preventScrollReset` because this lands on the address it was pressed
 								   from and the whole of this block is at the foot of the page; where focus
