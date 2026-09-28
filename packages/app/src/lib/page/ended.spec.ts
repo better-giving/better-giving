@@ -19,12 +19,11 @@ describe('whether a campaign has ended', () => {
 		expect(isEnded(campaign, END)).toBe(true);
 	});
 
-	it('ends at the midnight of the zone the date was set in, whatever zone reads it', () => {
+	it('ends at the midnight of the zone its end date was set in, read on a UTC clock', () => {
 		const set = endOfDay({ day: '2026-12-31', timeZone: 'Pacific/Auckland', now: 0 });
 		if (!set.ok) throw new Error(set.reason);
 		const campaign = live({ endsAt: set.endsAt, endsZone: 'Pacific/Auckland' });
-		// Auckland is UTC+13 in December: its new year is 11:00 on Dec 31 in UTC, still Dec 30 in
-		// Honolulu.
+		// Auckland is UTC+13 in December: its new year is 11:00 on Dec 31 in UTC.
 		expect(isEnded(campaign, Date.parse('2026-12-31T10:59:59Z'))).toBe(false);
 		expect(isEnded(campaign, Date.parse('2026-12-31T11:00:00Z'))).toBe(true);
 	});

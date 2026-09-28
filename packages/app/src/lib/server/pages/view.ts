@@ -68,7 +68,14 @@ export async function loadPageView(
 	env: unknown,
 	source: PageSource,
 	request: Request,
-	{ preview = false }: { readonly preview?: boolean } = {}
+	{
+		now,
+		preview = false
+	}: {
+		/** the request's one clock, which the loader read the page's state against too. */
+		readonly now: number;
+		readonly preview?: boolean;
+	}
 ): Promise<LoadedPage> {
 	const origin = new URL(request.url).origin;
 	const processors = createPaymentProviders(env);
@@ -82,8 +89,11 @@ export async function loadPageView(
 			() => cachedRails(processors, origin),
 			() => cachedCoins(processors, origin),
 			preview
-				? { drafted: (form) => asPublished(form, parsed.ok ? parsed.page.settings : undefined) }
-				: {}
+				? {
+						now,
+						drafted: (form) => asPublished(form, parsed.ok ? parsed.page.settings : undefined)
+					}
+				: { now }
 		),
 		readOrgStory(db),
 		readOrgLook(db),

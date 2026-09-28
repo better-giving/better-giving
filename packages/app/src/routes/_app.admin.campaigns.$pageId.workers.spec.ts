@@ -56,6 +56,21 @@ async function campaign(name: string, slug: string | null, state: State): Promis
 	return pageId;
 }
 
+/** moves the published end of the live campaign `pageId` a second into the past. */
+async function endedByDate(pageId: string): Promise<void> {
+	const published = JSON.parse((await stored(pageId)).published ?? '{}');
+	await db
+		.update(page)
+		.set({
+			published: JSON.stringify({
+				...published,
+				endsAt: Date.now() - 1_000,
+				endsZone: 'America/New_York'
+			})
+		})
+		.where(eq(page.id, pageId));
+}
+
 async function stored(pageId: string) {
 	const [row] = await db.select().from(page).where(eq(page.id, pageId));
 	if (!row) throw new Error(`no page ${pageId}`);
@@ -193,17 +208,7 @@ describe('an ended campaign’s address', () => {
 
 	it('is taken the same from a live campaign past its published end date, which ends as End leaves it', async () => {
 		const ended = await campaign('Summer camp fund', 'summer-camp', 'live');
-		const published = JSON.parse((await stored(ended)).published ?? '{}');
-		await db
-			.update(page)
-			.set({
-				published: JSON.stringify({
-					...published,
-					endsAt: Date.now() - 1_000,
-					endsZone: 'America/New_York'
-				})
-			})
-			.where(eq(page.id, ended));
+		await endedByDate(ended);
 		// live, as publish leaves a live campaign's row.
 		await db
 			.update(form)
@@ -476,6 +481,13 @@ describe('the editor', () => {
 		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', state);
 
 		expect(await (await open(pageId)).json()).toMatchObject({ state: drawn });
+	});
+
+	it('reads a live campaign past its published end date as ended, as End leaves one', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+		await endedByDate(pageId);
+
+		expect(await (await open(pageId)).json()).toMatchObject({ state: 'ended' });
 	});
 
 	it('reads the draft’s end date as the day it was chosen, in the zone it was chosen in', async () => {

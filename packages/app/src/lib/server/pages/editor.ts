@@ -5,6 +5,7 @@ import { FORM_TEXT_FIELDS, type FormInputFieldErrors } from '../../forms/fields'
 import { PROGRAM_MODE_LABELS } from '../../forms/program-modes';
 import { parsePage } from '../../page/catalog';
 import { endDayOf } from '../../page/end-date';
+import { stateAt } from '../../page/ended';
 import { defineForm } from '../../forms/definition';
 import { PAGE_SETTINGS_INPUT } from '../../forms/input-schema';
 import { PAGE_SETTINGS_FORM_ID, type SettingsSeed } from '../../page/settings-form';
@@ -55,11 +56,12 @@ export type EditorPage = {
 	readonly endDate: string | null;
 };
 
-export function editorPage(row: Page): EditorPage {
+/** the page as the editor draws it; its state as of `now`, a campaign past its end reading ended. */
+export function editorPage(row: Page, now: number): EditorPage {
 	const draft = parsePage(row.type, JSON.parse(row.draft));
 	if (!draft.ok) throw new Error(`page ${row.id}'s stored draft fails its rule: ${draft.message}`);
 	return {
-		state: editorState(row),
+		state: editorState(row, now),
 		version: row.updatedAt.getTime(),
 		preview: `/preview/${row.id}`,
 		chat: `/admin/pages/${row.id}/chat`,
@@ -69,8 +71,8 @@ export function editorPage(row: Page): EditorPage {
 	};
 }
 
-function editorState(row: Page): EditorState {
-	switch (row.state) {
+function editorState(row: Page, now: number): EditorState {
+	switch (stateAt(row, now)) {
 		case 'never_published':
 			return 'unpublished';
 		case 'ended':

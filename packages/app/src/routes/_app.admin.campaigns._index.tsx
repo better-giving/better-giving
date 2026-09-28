@@ -59,9 +59,10 @@ import type { Route } from './+types/_app.admin.campaigns._index';
 // campaign. a live campaign past its published end date is an ended one here, in its group and to
 // its presses, as everywhere ($lib/page/ended.ts).
 //
-// the goal and end date are the draft's, which is what the editor shows. an end date is the day
-// chosen, in the zone it was chosen in ($lib/page/end-date.ts's `endDayOf`), so every operator reads
-// the same day wherever they are.
+// the goal and end date are the draft's, which is what the editor shows, except that a campaign
+// ended by its end date is dated by the published end it ended on. an end date is the day chosen,
+// in the zone it was chosen in ($lib/page/end-date.ts's `endDayOf`), so every operator reads the
+// same day wherever they are.
 
 const SCREEN_TITLE = 'Campaigns';
 

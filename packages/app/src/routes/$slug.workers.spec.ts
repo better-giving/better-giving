@@ -374,6 +374,7 @@ function clockAt(now: number) {
 describe('a live campaign at its published end date', () => {
 	afterEach(() => {
 		vi.useRealTimers();
+		vi.restoreAllMocks();
 	});
 
 	it('draws its page, and serves its donation box, up to its end instant', async () => {
@@ -381,6 +382,15 @@ describe('a live campaign at its published end date', () => {
 		clockAt(ENDS_AT - 1);
 		expect((await visit()).data.kind).toBe('page');
 		expect((await giftAnswers(formId)).config.status).toBe(200);
+	});
+
+	it('draws its page when the request came in before its end instant, however long the reads take', async () => {
+		await endingCampaign();
+		// every read of the clock a millisecond on from the last, the first a millisecond short
+		let reading = ENDS_AT - 1;
+		vi.spyOn(Date, 'now').mockImplementation(() => reading++);
+
+		expect((await visit()).data.kind).toBe('page');
 	});
 
 	it('answers from its end instant exactly as a campaign End ended', async () => {

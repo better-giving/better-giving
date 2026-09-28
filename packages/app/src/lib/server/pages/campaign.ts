@@ -56,7 +56,10 @@ export async function readServedCampaign(
 export type CampaignListing = Pick<Page, 'id' | 'slug' | 'state' | 'updatedAt'> & {
 	name: string;
 	goalMinor: number | null;
-	/** the draft's end, and the day it closes on in the zone it was chosen in; null for no end. */
+	/**
+	 * the draft's end — or, for a campaign ended by its end date, the published end it ended on —
+	 * and the day it closes on in the zone it was chosen in; null for no end.
+	 */
 	end: { readonly at: number; readonly day: string } | null;
 };
 
@@ -85,6 +88,8 @@ export async function readCampaigns(db: Db, now: number): Promise<CampaignListin
 			...stored,
 			state: stateAt({ ...stored, published }, now)
 		};
+		const endedOn =
+			stored.state === 'live' && row.state === 'ended' ? publishedEnd(published) : null;
 		// unreachable: `page_name_check` refuses a campaign without a name.
 		if (name === null) throw new Error(`campaign ${row.id} has no name`);
 		// `page_draft_object_check` holds the draft to a JSON object, so it always parses as JSON.
@@ -94,17 +99,28 @@ export async function readCampaigns(db: Db, now: number): Promise<CampaignListin
 				`page ${row.id}'s stored draft fails the read rule at \`${parsed.path.join('.')}\`, so it is listed without its goal and end:`,
 				parsed.message
 			);
-			return { ...row, name, goalMinor: null, end: null };
+			return { ...row, name, goalMinor: null, end: endedOn };
 		}
-		const { goalMinor, endsAt } = parsed.page;
-		const day = endDayOf(parsed.page);
 		return {
 			...row,
 			name,
-			goalMinor: goalMinor ?? null,
-			end: endsAt === undefined || day === null ? null : { at: endsAt, day }
+			goalMinor: parsed.page.goalMinor ?? null,
+			end: endedOn ?? endOf(parsed.page)
 		};
 	});
+}
+
+/** a page document's end and the day it closes on, in the zone it was chosen in; null for none. */
+function endOf(document: PageDocument): CampaignListing['end'] {
+	const day = endDayOf(document);
+	return document.endsAt === undefined || day === null ? null : { at: document.endsAt, day };
+}
+
+/** the published document's end, where the document passes the read rule; null otherwise. */
+function publishedEnd(published: string | null): CampaignListing['end'] {
+	if (published === null) return null;
+	const parsed = parsePage('campaign', JSON.parse(published));
+	return parsed.ok ? endOf(parsed.page) : null;
 }
 
 export type NewCampaign = {

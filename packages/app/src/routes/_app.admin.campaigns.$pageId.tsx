@@ -167,7 +167,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		loadFailed('This campaign');
 	}
 	return {
-		...editorPage(row),
+		...editorPage(row, Date.now()),
 		...editorDraft(row, settings.currency),
 		settings,
 		pageSettings,

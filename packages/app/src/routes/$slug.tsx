@@ -47,7 +47,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	if (!address.ok) return refusedPage();
 	const db = context.get(database);
 	const { env } = context.get(platform);
-	const campaign = await readServedCampaign(db, address.slug, Date.now());
+	const now = Date.now();
+	const campaign = await readServedCampaign(db, address.slug, now);
 	if (campaign === null) return refusedPage();
 	if (campaign.state === 'ended') {
 		const [profile, orgLook] = await Promise.all([readOrgProfile(db), readOrgLook(db)]);
@@ -72,7 +73,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			document: campaign.published,
 			address: `/${address.slug}`
 		},
-		request
+		request,
+		{ now }
 	);
 	if (loaded.kind === 'refused') return refusedPage();
 	return loaded;

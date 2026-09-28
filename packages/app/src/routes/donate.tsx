@@ -47,7 +47,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 			document: page.published,
 			address: '/donate'
 		},
-		request
+		request,
+		{ now: Date.now() }
 	);
 	if (loaded.kind === 'refused') return refusedPage();
 	return loaded;

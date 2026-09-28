@@ -318,6 +318,35 @@ describe('a live campaign at its published end date', () => {
 		]);
 	});
 
+	it.each([
+		['later', 7 * DAY],
+		['earlier', -3 * DAY]
+	])('dates it by the end it ended on, its draft’s end since moved %s', async (_, moved) => {
+		const pageId = await campaign('Winter coat drive', 'live', NOW, ENDING);
+		await db
+			.update(page)
+			.set({
+				draft: JSON.stringify({
+					...defaultCampaign(),
+					settings: SETTINGS,
+					...ENDING,
+					endsAt: ENDS_AT + moved
+				})
+			})
+			.where(eq(page.id, pageId));
+		clockAt(ENDS_AT);
+
+		const day = new Intl.DateTimeFormat('en-US', {
+			timeZone: 'America/New_York',
+			month: 'short',
+			day: 'numeric',
+			year: 'numeric'
+		}).format(ENDS_AT);
+		expect((await load()).ended.map(({ name, ends }) => [name, ends])).toEqual([
+			['Winter coat drive', day]
+		]);
+	});
+
 	it('stays live for an end date only its draft holds, however long past', async () => {
 		const pageId = await campaign('Winter coat drive', 'live', NOW);
 		await db
