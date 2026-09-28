@@ -16,9 +16,7 @@ import { FOOTER } from './admin-alert';
 
 // the mail that tells the people who run this deployment a webhook destination was paused.
 //
-// sent once per pause, to the same address as ./admin-alert.tsx and in the same voice — its own
-// template because what it says is fixed and its address is a thing to set off, which that
-// template's free-text body cannot do.
+// sent once per pause, to the same address as ./admin-alert.tsx and in the same voice.
 //
 // the destination is named by its URL in a code chip, never in quote marks: the operator pasted
 // that address, and the chip is how an operator screen sets a literal off inside a sentence
