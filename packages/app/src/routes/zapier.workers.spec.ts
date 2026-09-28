@@ -7,7 +7,7 @@ import { createDb, type Db } from '$lib/server/db/client';
 import { mintApiKey } from '$lib/server/integrations/keys';
 import { contact, donation, orgProfile, payment } from '$lib/server/db/schema';
 import { post, postingStatements } from '$lib/server/ledger/posting';
-import { makeZapierKey, replaceZapierKey } from '$lib/server/zapier/key';
+import { makeZapierKey, readZapierKey, replaceZapierKey } from '$lib/server/zapier/key';
 import {
 	donorEventOf,
 	readGiftEvents,
@@ -168,7 +168,14 @@ describe('a request without this deployment\u2019s key', () => {
 	});
 
 	it('is turned away once the key it carries has been replaced', async () => {
-		await replaceZapierKey(db, async () => new Response(null, { status: 200 }));
+		const shown = await readZapierKey(db);
+		if (shown === null) throw new Error('no key is shown');
+		const replaced = await replaceZapierKey(
+			db,
+			async () => new Response(null, { status: 200 }),
+			shown.id
+		);
+		if (!replaced.ok) throw new Error('the replace was refused');
 
 		const response = await meRoute(new Request(`${OWN}/zapier/me`, withKey(key)));
 

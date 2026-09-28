@@ -40,8 +40,12 @@ export type ReplacedZapierKey = MadeZapierKey & { readonly disconnected: number 
  */
 export type ZapierKeyNotReplaced = { readonly ok: false; readonly reason: 'no_key' | 'conflict' };
 
-/** what a page may show of a key: its head and tail, never the key. */
+/**
+ * what a page may show of a key: its head and tail, never the key, and its row's `id`, which a
+ * replace pressed on that page names.
+ */
 export type ZapierKeyShown = {
+	readonly id: string;
 	readonly prefix: string;
 	readonly lastFour: string;
 	readonly madeAt: Date;
@@ -53,7 +57,12 @@ const CURRENT = and(eq(apiKey.kind, 'zapier'), isNull(apiKey.revokedAt));
 /** the current key as a page may show it, or `null` before one is made. */
 export async function readZapierKey(db: Db): Promise<ZapierKeyShown | null> {
 	const [row] = await db
-		.select({ prefix: apiKey.prefix, lastFour: apiKey.lastFour, madeAt: apiKey.createdAt })
+		.select({
+			id: apiKey.id,
+			prefix: apiKey.prefix,
+			lastFour: apiKey.lastFour,
+			madeAt: apiKey.createdAt
+		})
 		.from(apiKey)
 		.where(CURRENT);
 	return row ?? null;
@@ -80,7 +89,10 @@ export async function makeZapierKey(db: Db): Promise<MadeZapierKey | ZapierKeyEx
 }
 
 /**
- * a new key in place of the current one, which stops working in the same batch.
+ * a new key in place of `expectedKeyId`, the key the operator was shown and pressed replace on,
+ * which stops working in the same batch. **a replace naming any other key changes nothing and
+ * answers `conflict`**, so a second press sent against a page that still shows the first key
+ * cannot kill the key the first press just showed.
  *
  * **every open subscription ends with it, as `key_replaced`, and what they were owed is dropped.**
  * a REST hook receives events without presenting the key, so a replace that only cut the auth
@@ -91,17 +103,19 @@ export async function makeZapierKey(db: Db): Promise<MadeZapierKey | ZapierKeyEx
  * Zapier, with no error. the pause cannot fail the replace or undo it, and `fetcher` is how it
  * reaches Zapier.
  *
- * the old row is revoked, not deleted, at the new row's `created_at`. the new row goes in only
- * while no other un-revoked `zapier` row stands (`api_key_one_zapier_idx`), and the ends only once
- * it has: of two replaces racing, the second's insert yields to the first's key, so it ends no Zap
- * made on that key and answers `conflict`.
+ * the named row is revoked, not deleted, at the new row's `created_at`, and only while it is the
+ * un-revoked one. the new row goes in only while no un-revoked `zapier` row stands
+ * (`api_key_one_zapier_idx`), and the ends only once it has. so where the named row was not
+ * revoked here — already replaced, or never the current key — the current key still stands, the
+ * insert yields to it and nothing ends: of two replaces naming one key, the second answers
+ * `conflict`.
  */
 export async function replaceZapierKey(
 	db: Db,
-	fetcher: typeof fetch
+	fetcher: typeof fetch,
+	expectedKeyId: string
 ): Promise<ReplacedZapierKey | ZapierKeyNotReplaced> {
-	const current = await currentKey(db);
-	if (current === undefined) return { ok: false, reason: 'no_key' };
+	if ((await currentKey(db)) === undefined) return { ok: false, reason: 'no_key' };
 	const { key, row } = newApiKeyRow(ZAPIER_KEY_KIND);
 	const now = new Date();
 	const landed = exists(
@@ -112,7 +126,7 @@ export async function replaceZapierKey(
 		db
 			.update(apiKey)
 			.set({ revokedAt: now })
-			.where(and(eq(apiKey.id, current.id), isNull(apiKey.revokedAt))),
+			.where(and(eq(apiKey.id, expectedKeyId), CURRENT)),
 		db
 			.insert(apiKey)
 			.values({ ...row, createdAt: now })
