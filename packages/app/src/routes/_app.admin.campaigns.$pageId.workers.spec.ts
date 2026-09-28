@@ -466,3 +466,80 @@ describe('the editor', () => {
 		expect((await open('pg_nothing')).status).toBe(404);
 	});
 });
+
+describe('Publish', () => {
+	async function refusal(response: Response): Promise<unknown> {
+		const answer = (await response.json()) as {
+			form?: { result?: { error?: Record<string, string[]> } };
+		};
+		return answer.form?.result?.error?.[''];
+	}
+
+	it('puts a first Publish live from its confirm, gifts going to the program chosen there', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+		const [coats] = await db
+			.insert(program)
+			.values({ name: 'Winter coats' })
+			.returning({ id: program.id });
+
+		const response = await post(pageId, 'page-first-publish', { gifts_go_to: coats?.id ?? '' });
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ published: true, undoable: false });
+		const live = await readServedCampaign(db, 'winter-coat-drive');
+		expect(live?.id).toBe(pageId);
+		const [owned] = await db
+			.select()
+			.from(form)
+			.where(eq(form.id, live?.formId ?? ''));
+		expect(owned).toMatchObject({ status: 'live', programMode: 'pinned', programId: coats?.id });
+	});
+
+	it('keeps the draft’s own program where the confirm is left on it', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+
+		const response = await post(pageId, 'page-first-publish', { gifts_go_to: 'none' });
+
+		expect(response.status).toBe(200);
+		const [owned] = await db
+			.select()
+			.from(form)
+			.where(eq(form.id, (await stored(pageId)).formId));
+		expect(owned).toMatchObject({ status: 'live', programMode: SETTINGS.programMode });
+	});
+
+	it('refuses a first Publish that skips its confirm, and nothing goes live', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+
+		const response = await post(pageId, 'page-publish', {});
+
+		expect(response.status).toBe(422);
+		expect(await refusal(response)).toEqual([
+			'Nothing was published: a campaign’s first Publish says where its gifts go. Publish it from its editor, choosing under “Gifts go to”.'
+		]);
+		expect((await stored(pageId)).state).toBe('never_published');
+	});
+
+	it('republishes a live campaign with no confirm, as a republish Undo can take back', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+
+		const response = await post(pageId, 'page-publish', {});
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ published: true, undoable: true });
+	});
+
+	it('answers 404 for an id no campaign has', async () => {
+		const response = await post(
+			'no-such-page',
+			'page-publish',
+			{},
+			String(Date.parse('2026-09-28T00:00:00Z'))
+		);
+
+		expect(response.status).toBe(404);
+		expect(await refusal(response)).toEqual([
+			'no campaign has the id "no-such-page"; open it again from the Campaigns list.'
+		]);
+	});
+});

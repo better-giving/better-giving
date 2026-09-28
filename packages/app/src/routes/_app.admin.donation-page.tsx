@@ -6,10 +6,18 @@ import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorEntries, EditorShell } from '$lib/admin/editor/editor-shell';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
+import { usePublishPresses } from '$lib/admin/editor/publish-wiring';
 import { SettingsSheet } from '$lib/admin/editor/settings-sheet';
 import { screenTitle } from '$lib/admin/screen-title';
 import { resultFor } from '$lib/admin/use-admin-form';
 import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
+import {
+	DISCARD_FORM_ID,
+	FIRST_PUBLISH_FORM_ID,
+	PUBLISH_FORM_ID,
+	PUBLISH_FORMS,
+	UNDO_FORM_ID
+} from '$lib/page/publish-form';
 import { PAGE_SETTINGS_FORM_ID, type SettingsSeed } from '$lib/page/settings-form';
 import { parseRichText, textDocument } from '$lib/rich-text/document';
 import { invalid, parseForm, submittedDigest, submittedForm } from '$lib/server/conform';
@@ -19,6 +27,7 @@ import type { Story } from '$lib/server/org/presentation';
 import { readOrgStory, type StoryWrite, updateOrgStory } from '$lib/server/org/queries';
 import { ensureDonationPage, markDonationEditorVisited } from '$lib/server/pages/donation-page';
 import { editorPage, readEditorSettings, saveDraftSettings } from '$lib/server/pages/editor';
+import { answerPublishPress } from '$lib/server/pages/publish';
 import { database } from '../context';
 import type { BareHandle } from './_app';
 import type { Route } from './+types/_app.admin.donation-page';
@@ -34,6 +43,9 @@ import type { Route } from './+types/_app.admin.donation-page';
 //
 // **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
 // only at Publish, as a campaign's are ($lib/server/pages/editor.ts).
+//
+// **Publish, Undo and Discard changes** are $lib/server/pages/publish.ts's, the presses and their
+// confirms mounted through $lib/admin/editor/publish-wiring.tsx.
 //
 // **the mission ask.** while the Organisation's mission is empty and this editor has never been
 // answered, it asks for the mission once, optionally. a Save writes what was typed to the
@@ -57,7 +69,7 @@ const MISSION_SAVE = defineForm({
 /** the mission ask's Skip, and every other way out of it. */
 const MISSION_SKIP = defineForm({ id: SKIP_FORM_ID, schema: z.object({}) });
 
-const SCREEN_FORMS = [SAVE_FORM_ID, SKIP_FORM_ID, PAGE_SETTINGS_FORM_ID] as const;
+const SCREEN_FORMS = [SAVE_FORM_ID, SKIP_FORM_ID, PAGE_SETTINGS_FORM_ID, ...PUBLISH_FORMS] as const;
 
 const STALE_STORY =
 	'Nothing was saved: the Organisation page’s story has been saved since this editor was opened. ' +
@@ -134,6 +146,11 @@ export async function action({ context, request }: Route.ActionArgs) {
 		}
 		case PAGE_SETTINGS_FORM_ID:
 			return saveDraftSettings(db, { type: 'donation_page' }, body, NO_DONATION_PAGE);
+		case PUBLISH_FORM_ID:
+		case FIRST_PUBLISH_FORM_ID:
+		case UNDO_FORM_ID:
+		case DISCARD_FORM_ID:
+			return answerPublishPress(db, { type: 'donation_page' }, body, NO_DONATION_PAGE);
 	}
 }
 
@@ -151,6 +168,7 @@ export default function DonationPageEditor({ loaderData }: Route.ComponentProps)
 	const { state, version, preview, askMission, storyVersion } = loaderData;
 	const [settings, setSettings] = useState(false);
 	const [donationSettings, setDonationSettings] = useState(false);
+	const presses = usePublishPresses({ version, state });
 
 	const mission = useFetcher<Answer>({ key: 'mission-ask' });
 	const busy = mission.state !== 'idle';
@@ -175,12 +193,7 @@ export default function DonationPageEditor({ loaderData }: Route.ComponentProps)
 					page={{ kind: 'donation' }}
 					state={state}
 					livePath="/donate"
-					publishing={false}
-					republished={false}
-					onPublish={noPress}
-					undoing={false}
-					onUndo={noPress}
-					onDiscard={noPress}
+					{...presses.bar}
 				/>
 			}
 			preview={
@@ -217,6 +230,7 @@ export default function DonationPageEditor({ loaderData }: Route.ComponentProps)
 					onSaved={() => setDonationSettings(false)}
 				/>
 			) : null}
+			{presses.confirm}
 			{/* a Skip is taken down as it is pressed; one that failed puts the ask back, saying so. */}
 			{askMission && sent !== SKIP_FORM_ID ? (
 				<MissionAsk

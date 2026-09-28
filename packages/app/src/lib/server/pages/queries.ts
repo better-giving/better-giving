@@ -5,7 +5,7 @@ import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import { chatTurn, form, type Page, page } from '../db/schema';
 import type { ParsedFormGiving, ParsedFormProgram } from '../forms/form-input';
-import { readForm } from '../forms/queries';
+import { readForm, type StoredForm } from '../forms/queries';
 import { readActivePrograms } from '../programs/queries';
 
 // one page read by its id, the one module that deletes a `page`, gated by ./sole-deleter.spec.ts,
@@ -240,6 +240,11 @@ export async function draftSettingsOf(db: Db, row: Page): Promise<DraftSettings>
 	if (draft.page.settings !== undefined) return draft.page.settings;
 	const owned = await readForm(db, row.formId);
 	if (owned === null) throw new Error(`page ${row.id}'s settings row ${row.formId} is gone`);
+	return settingsOfRow(owned);
+}
+
+/** a settings row as a page document's `settings` holds it. */
+export function settingsOfRow(owned: StoredForm): DraftSettings {
 	const { revenueAccountId, minMinor, maxMinor, currency, programMode, programId } = owned;
 	const { suggestedAmounts, allowedOrigins } = owned;
 	return {
